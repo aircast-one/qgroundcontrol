@@ -157,9 +157,10 @@ Item {
         CameraSwitchButton {
             id:                         fullVideoCameraSwitchButton
             z:                          _fullItemZorder + 3
-            anchors.bottom:             parent.bottom
+            anchors.top:                parent.top
             anchors.horizontalCenter:   parent.horizontalCenter
-            anchors.bottomMargin:       ScreenTools.defaultFontPixelHeight
+            anchors.topMargin:          ScreenTools.defaultFontPixelHeight
+            opacity:                    0.75
             visible:                    QGroundControl.videoManager.hasMultipleVideoSources &&
                                         videoControl.pipState.state === videoControl.pipState.fullState
             text:                       qsTr("Camera %1").arg(QGroundControl.videoManager.activeVideoSource + 1)
