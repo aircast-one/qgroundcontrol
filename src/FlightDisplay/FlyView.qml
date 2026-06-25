@@ -152,6 +152,20 @@ Item {
             visible:            !QGroundControl.videoManager.fullScreen
         }
 
+        // Camera switch button for the full-screen video. Placed here (above the instrument
+        // overlays) so it is not hidden behind them. The small-pip case is handled by PipView.
+        CameraSwitchButton {
+            id:                         fullVideoCameraSwitchButton
+            z:                          _fullItemZorder + 3
+            anchors.bottom:             parent.bottom
+            anchors.horizontalCenter:   parent.horizontalCenter
+            anchors.bottomMargin:       ScreenTools.defaultFontPixelHeight
+            visible:                    QGroundControl.videoManager.hasMultipleVideoSources &&
+                                        videoControl.pipState.state === videoControl.pipState.fullState
+            text:                       qsTr("Camera %1").arg(QGroundControl.videoManager.activeVideoSource + 1)
+            onClicked:                  QGroundControl.videoManager.switchActiveVideoSource()
+        }
+
         // Development tool for visualizing the insets for a paticular layer, show if needed
         FlyViewInsetViewer {
             id:                     widgetLayerInsetViewer

@@ -248,19 +248,9 @@ Item {
         }
     }
 
-    //-- Camera switch button. Shown only when the video is the main (full) item; while the
-    //   video is in the small pip the button is provided by PipView (above its swap MouseArea).
-    CameraSwitchButton {
-        id:                         cameraSwitchButton
-        z:                          10
-        anchors.right:              parent.right
-        anchors.bottom:             parent.bottom
-        anchors.margins:            ScreenTools.defaultFontPixelHeight
-        visible:                    QGroundControl.videoManager.hasMultipleVideoSources &&
-                                    _root.pipState.state === _root.pipState.fullState
-        text:                       qsTr("Camera %1").arg(QGroundControl.videoManager.activeVideoSource + 1)
-        onClicked:                  QGroundControl.videoManager.switchActiveVideoSource()
-    }
+    //-- Note: the camera-switch button for the full-screen video is provided by FlyView at a
+    //   higher z so it is not hidden behind the instrument overlays. The small-pip button is
+    //   provided by PipView.
 
     ProximityRadarVideoView{
         anchors.fill:   parent
