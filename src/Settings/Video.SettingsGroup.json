@@ -32,6 +32,43 @@
     "default":     ""
 },
 {
+    "name":             "videoSource2",
+    "shortDesc": "Video source (Camera 2)",
+    "longDesc":  "Source for the second video stream. UDP, TCP, RTSP and UVC Cameras may be supported depending on Vehicle and ground station version.",
+    "type":             "string",
+    "default":     ""
+},
+{
+    "name":             "udpUrl2",
+    "shortDesc": "Video UDP Url (Camera 2)",
+    "longDesc":  "UDP url address and port to bind to for the second video stream. Example: 0.0.0.0:5601",
+    "type":             "string",
+    "default":     "0.0.0.0:5601"
+},
+{
+    "name":             "rtspUrl2",
+    "shortDesc": "Video RTSP Url (Camera 2)",
+    "longDesc":  "RTSP url address and port to bind to for the second video stream. Example: rtsp://192.168.42.1:554/live",
+    "type":             "string",
+    "default":     ""
+},
+{
+    "name":             "tcpUrl2",
+    "shortDesc": "Video TCP Url (Camera 2)",
+    "longDesc":  "TCP url address and port to bind to for the second video stream. Example: 192.168.143.200:3001",
+    "type":             "string",
+    "default":     ""
+},
+{
+    "name":             "activeVideoSource",
+    "shortDesc": "Active Video Source",
+    "longDesc":  "Which configured video source is currently displayed. 0 = Camera 1, 1 = Camera 2.",
+    "type":             "uint32",
+    "min":              0,
+    "max":              1,
+    "default":     0
+},
+{
     "name":             "videoSavePath",
     "shortDesc": "Video save directory",
     "longDesc":  "Directory to save videos to.",

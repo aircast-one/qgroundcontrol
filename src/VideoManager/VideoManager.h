@@ -40,6 +40,8 @@ class VideoManager : public QObject
     Q_PROPERTY(bool     hasVideo                READ hasVideo                                   NOTIFY hasVideoChanged)
     Q_PROPERTY(bool     isStreamSource          READ isStreamSource                             NOTIFY isStreamSourceChanged)
     Q_PROPERTY(bool     isUvc                   READ isUvc                                      NOTIFY isUvcChanged)
+    Q_PROPERTY(int      activeVideoSource       READ activeVideoSource                          NOTIFY activeVideoSourceChanged)
+    Q_PROPERTY(bool     hasMultipleVideoSources READ hasMultipleVideoSources                    NOTIFY activeVideoSourceChanged)
     Q_PROPERTY(bool     recording               READ recording                                  NOTIFY recordingChanged)
     Q_PROPERTY(bool     streaming               READ streaming                                  NOTIFY streamingChanged)
     Q_PROPERTY(double   aspectRatio             READ aspectRatio                                NOTIFY aspectRatioChanged)
@@ -62,6 +64,10 @@ public:
     Q_INVOKABLE void startVideo();
     Q_INVOKABLE void stopRecording();
     Q_INVOKABLE void stopVideo();
+    /// Selects which configured video source (0 = Camera 1, 1 = Camera 2) is displayed.
+    Q_INVOKABLE void setActiveVideoSource(int index);
+    /// Toggles between the two configured video sources.
+    Q_INVOKABLE void switchActiveVideoSource();
 
     void init(QQuickWindow *rootWindow);
     void cleanup();
@@ -72,6 +78,8 @@ public:
     bool hasVideo() const;
     bool isStreamSource() const;
     bool isUvc() const;
+    int activeVideoSource() const;
+    bool hasMultipleVideoSources() const;
     bool recording() const { return _recording; }
     bool streaming() const { return _streaming; }
     double aspectRatio() const;
@@ -87,6 +95,7 @@ public:
     static bool uvcEnabled();
 
 signals:
+    void activeVideoSourceChanged();
     void aspectRatioChanged();
     void autoStreamConfiguredChanged();
     void decodingChanged();

@@ -26,6 +26,12 @@ Item {
     property string item1IsFullSettingsKey          // Settings key to save whether item1 was saved in full mode
     property bool   show:                   true
 
+    // Optional action button rendered above the pip (e.g. switch video source). Click is
+    // consumed so it does not trigger the pip swap.
+    property bool   showActionButton:       false
+    property string actionButtonText:       ""
+    signal          actionButtonClicked()
+
     readonly property string _pipExpandedSettingsKey: "IsPIPVisible"
 
     property var    _fullItem
@@ -239,5 +245,17 @@ Item {
             anchors.fill:   parent
             onClicked:      _root._setPipIsExpanded(true)
         }
+    }
+
+    // Optional action button (e.g. switch video source). Sits above pipMouseArea so its
+    // click is handled here instead of swapping the pip.
+    CameraSwitchButton {
+        id:                     actionButton
+        anchors.right:          parent.right
+        anchors.bottom:         parent.bottom
+        anchors.margins:        ScreenTools.defaultFontPixelHeight / 3
+        visible:                _isExpanded && _root.showActionButton
+        text:                   _root.actionButtonText
+        onClicked:              _root.actionButtonClicked()
     }
 }

@@ -95,6 +95,13 @@ void VideoManager::init(QQuickWindow *window)
     (void) connect(_videoSettings->udpUrl(), &Fact::rawValueChanged, this, &VideoManager::_videoSourceChanged);
     (void) connect(_videoSettings->rtspUrl(), &Fact::rawValueChanged, this, &VideoManager::_videoSourceChanged);
     (void) connect(_videoSettings->tcpUrl(), &Fact::rawValueChanged, this, &VideoManager::_videoSourceChanged);
+    (void) connect(_videoSettings->videoSource2(), &Fact::rawValueChanged, this, &VideoManager::_videoSourceChanged);
+    (void) connect(_videoSettings->udpUrl2(), &Fact::rawValueChanged, this, &VideoManager::_videoSourceChanged);
+    (void) connect(_videoSettings->rtspUrl2(), &Fact::rawValueChanged, this, &VideoManager::_videoSourceChanged);
+    (void) connect(_videoSettings->tcpUrl2(), &Fact::rawValueChanged, this, &VideoManager::_videoSourceChanged);
+    (void) connect(_videoSettings->videoSource2(), &Fact::rawValueChanged, this, &VideoManager::activeVideoSourceChanged);
+    (void) connect(_videoSettings->activeVideoSource(), &Fact::rawValueChanged, this, &VideoManager::_videoSourceChanged);
+    (void) connect(_videoSettings->activeVideoSource(), &Fact::rawValueChanged, this, &VideoManager::activeVideoSourceChanged);
     (void) connect(_videoSettings->aspectRatio(), &Fact::rawValueChanged, this, &VideoManager::aspectRatioChanged);
     (void) connect(_videoSettings->lowLatencyMode(), &Fact::rawValueChanged, this, [this](const QVariant &value) { Q_UNUSED(value); _restartAllVideos(); });
     (void) connect(MultiVehicleManager::instance(), &MultiVehicleManager::activeVehicleChanged, this, &VideoManager::_setActiveVehicle);
@@ -338,8 +345,47 @@ bool VideoManager::isStreamSource() const
         VideoSettings::videoSourceHerelinkAirUnit,
         VideoSettings::videoSourceHerelinkHotspot,
     };
-    const QString videoSource = _videoSettings->videoSource()->rawValue().toString();
+    const QString videoSource = _videoSettings->currentVideoSource()->rawValue().toString();
     return (videoSourceList.contains(videoSource) || autoStreamConfigured());
+}
+
+int VideoManager::activeVideoSource() const
+{
+    return _videoSettings->activeVideoSource()->rawValue().toInt();
+}
+
+bool VideoManager::hasMultipleVideoSources() const
+{
+    static const QStringList streamSources = {
+        VideoSettings::videoSourceUDPH264,
+        VideoSettings::videoSourceUDPH265,
+        VideoSettings::videoSourceRTSP,
+        VideoSettings::videoSourceTCP,
+        VideoSettings::videoSourceMPEGTS,
+        VideoSettings::videoSource3DRSolo,
+        VideoSettings::videoSourceParrotDiscovery,
+        VideoSettings::videoSourceYuneecMantisG,
+        VideoSettings::videoSourceHerelinkAirUnit,
+        VideoSettings::videoSourceHerelinkHotspot,
+    };
+    // A second camera is available when Camera 2 is set to a real stream source. Also keep it
+    // available while Camera 2 is the active source so the user can always switch back to Camera 1.
+    return (activeVideoSource() == 1) ||
+           streamSources.contains(_videoSettings->videoSource2()->rawValue().toString());
+}
+
+void VideoManager::setActiveVideoSource(int index)
+{
+    const int clamped = (index == 1) ? 1 : 0;
+    if (clamped == activeVideoSource()) {
+        return;
+    }
+    _videoSettings->activeVideoSource()->setRawValue(clamped);
+}
+
+void VideoManager::switchActiveVideoSource()
+{
+    setActiveVideoSource(activeVideoSource() == 0 ? 1 : 0);
 }
 
 void VideoManager::_videoSourceChanged()
@@ -509,19 +555,29 @@ bool VideoManager::_updateSettings(VideoReceiver *receiver)
     }
 
     settingsChanged |= _updateUVC(receiver);
-    settingsChanged |= _updateAutoStream(receiver);
 
-    const QString source = _videoSettings->videoSource()->rawValue().toString();
+    // The second video source is a manually configured stream, so MAVLink stream
+    // auto-configuration (which writes the primary source facts) only applies to Camera 1.
+    const bool secondary = (_videoSettings->activeVideoSource()->rawValue().toInt() == 1);
+    if (!secondary) {
+        settingsChanged |= _updateAutoStream(receiver);
+    }
+
+    Fact *const udpFact  = secondary ? _videoSettings->udpUrl2()  : _videoSettings->udpUrl();
+    Fact *const rtspFact = secondary ? _videoSettings->rtspUrl2() : _videoSettings->rtspUrl();
+    Fact *const tcpFact  = secondary ? _videoSettings->tcpUrl2()  : _videoSettings->tcpUrl();
+
+    const QString source = _videoSettings->currentVideoSource()->rawValue().toString();
     if (source == VideoSettings::videoSourceUDPH264) {
-        settingsChanged |= _updateVideoUri(receiver, QStringLiteral("udp://%1").arg(_videoSettings->udpUrl()->rawValue().toString()));
+        settingsChanged |= _updateVideoUri(receiver, QStringLiteral("udp://%1").arg(udpFact->rawValue().toString()));
     } else if (source == VideoSettings::videoSourceUDPH265) {
-        settingsChanged |= _updateVideoUri(receiver, QStringLiteral("udp265://%1").arg(_videoSettings->udpUrl()->rawValue().toString()));
+        settingsChanged |= _updateVideoUri(receiver, QStringLiteral("udp265://%1").arg(udpFact->rawValue().toString()));
     } else if (source == VideoSettings::videoSourceMPEGTS) {
-        settingsChanged |= _updateVideoUri(receiver, QStringLiteral("mpegts://%1").arg(_videoSettings->udpUrl()->rawValue().toString()));
+        settingsChanged |= _updateVideoUri(receiver, QStringLiteral("mpegts://%1").arg(udpFact->rawValue().toString()));
     } else if (source == VideoSettings::videoSourceRTSP) {
-        settingsChanged |= _updateVideoUri(receiver, _videoSettings->rtspUrl()->rawValue().toString());
+        settingsChanged |= _updateVideoUri(receiver, rtspFact->rawValue().toString());
     } else if (source == VideoSettings::videoSourceTCP) {
-        settingsChanged |= _updateVideoUri(receiver, QStringLiteral("tcp://%1").arg(_videoSettings->tcpUrl()->rawValue().toString()));
+        settingsChanged |= _updateVideoUri(receiver, QStringLiteral("tcp://%1").arg(tcpFact->rawValue().toString()));
     } else if (source == VideoSettings::videoSource3DRSolo) {
         settingsChanged |= _updateVideoUri(receiver, QStringLiteral("udp://0.0.0.0:5600"));
     } else if (source == VideoSettings::videoSourceParrotDiscovery) {
@@ -660,7 +716,7 @@ void VideoManager::_startReceiver(VideoReceiver *receiver)
         return;
     }
 
-    const QString source = _videoSettings->videoSource()->rawValue().toString();
+    const QString source = _videoSettings->currentVideoSource()->rawValue().toString();
     /* The gstreamer rtsp source will switch to tcp if udp is not available after 5 seconds.
        So we should allow for some negotiation time for rtsp */
 

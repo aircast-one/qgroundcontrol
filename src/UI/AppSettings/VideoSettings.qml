@@ -35,6 +35,13 @@ SettingsPage {
     property real   _urlFieldWidth:             ScreenTools.defaultFontPixelWidth * 40
     property bool   _requiresUDPUrl:            _isUDP264 || _isUDP265 || _isMPEGTS
 
+    // Second video source (Camera 2)
+    property string _videoSource2:              _videoSettings.videoSource2.rawValue
+    property bool   _isRTSP2:                   _videoSource2 === _videoSettings.rtspVideoSource
+    property bool   _isTCP2:                     _videoSource2 === _videoSettings.tcpVideoSource
+    property bool   _isUDP2:                     _videoSource2 === _videoSettings.udp264VideoSource || _videoSource2 === _videoSettings.udp265VideoSource || _videoSource2 === _videoSettings.mpegtsVideoSource
+    property bool   _source2Disabled:           _videoSource2 === _videoSettings.disabledVideoSource || _videoSource2 === ""
+
     SettingsGroupLayout {
         Layout.fillWidth:   true
         heading:            qsTr("Video Source")
@@ -77,6 +84,51 @@ SettingsPage {
             label:                      qsTr("UDP URL")
             fact:                       _videoSettings.udpUrl
             visible:                    _requiresUDPUrl && _videoSettings.udpUrl.visible
+        }
+    }
+
+    SettingsGroupLayout {
+        Layout.fillWidth:   true
+        heading:            qsTr("Video Source 2")
+        headingDescription: qsTr("Optional second camera. Use the switch button on the video to toggle between cameras.")
+        visible:            !_videoAutoStreamConfig && _isGST
+
+        LabelledFactComboBox {
+            Layout.fillWidth:   true
+            label:              qsTr("Source")
+            indexModel:         false
+            fact:               _videoSettings.videoSource2
+            visible:            fact.visible
+        }
+    }
+
+    SettingsGroupLayout {
+        Layout.fillWidth:   true
+        heading:            qsTr("Connection 2")
+        visible:            !_source2Disabled && !_videoAutoStreamConfig && _isGST && (_isTCP2 || _isRTSP2 || _isUDP2)
+
+        LabelledFactTextField {
+            Layout.fillWidth:           true
+            textFieldPreferredWidth:    _urlFieldWidth
+            label:                      qsTr("RTSP URL")
+            fact:                       _videoSettings.rtspUrl2
+            visible:                    _isRTSP2 && _videoSettings.rtspUrl2.visible
+        }
+
+        LabelledFactTextField {
+            Layout.fillWidth:           true
+            label:                      qsTr("TCP URL")
+            textFieldPreferredWidth:    _urlFieldWidth
+            fact:                       _videoSettings.tcpUrl2
+            visible:                    _isTCP2 && _videoSettings.tcpUrl2.visible
+        }
+
+        LabelledFactTextField {
+            Layout.fillWidth:           true
+            textFieldPreferredWidth:    _urlFieldWidth
+            label:                      qsTr("UDP URL")
+            fact:                       _videoSettings.udpUrl2
+            visible:                    _isUDP2 && _videoSettings.udpUrl2.visible
         }
     }
 

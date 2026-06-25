@@ -23,6 +23,11 @@ public:
     DEFINE_SETTINGFACT(udpUrl)
     DEFINE_SETTINGFACT(tcpUrl)
     DEFINE_SETTINGFACT(rtspUrl)
+    DEFINE_SETTINGFACT(videoSource2)
+    DEFINE_SETTINGFACT(udpUrl2)
+    DEFINE_SETTINGFACT(tcpUrl2)
+    DEFINE_SETTINGFACT(rtspUrl2)
+    DEFINE_SETTINGFACT(activeVideoSource)
     DEFINE_SETTINGFACT(aspectRatio)
     DEFINE_SETTINGFACT(videoFit)
     DEFINE_SETTINGFACT(gridLines)
@@ -45,6 +50,13 @@ public:
     Q_PROPERTY(QString  disabledVideoSource     READ disabledVideoSource    CONSTANT)
 
     bool     streamConfigured       ();
+
+    /// Returns the source/url fact for whichever video source (Camera 1 or Camera 2) is currently active.
+    Fact*    currentVideoSource     ();
+    Fact*    currentUdpUrl          ();
+    Fact*    currentRtspUrl         ();
+    Fact*    currentTcpUrl          ();
+
     QString  rtspVideoSource        () { return videoSourceRTSP; }
     QString  udp264VideoSource      () { return videoSourceUDPH264; }
     QString  udp265VideoSource      () { return videoSourceUDPH265; }

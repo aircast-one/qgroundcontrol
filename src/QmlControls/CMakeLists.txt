@@ -72,6 +72,7 @@ qt_add_qml_module(QGroundControlControlsModule
         AppMessages.qml
         AutotuneUI.qml
         AxisMonitor.qml
+        CameraSwitchButton.qml
         ClickableColor.qml
         ConfigButton.qml
         DeadMouseArea.qml

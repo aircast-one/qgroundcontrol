@@ -119,6 +119,12 @@ Item {
                                         (videoControl.pipState.state === videoControl.pipState.pipState || mapControl.pipState.state === mapControl.pipState.pipState)
             z:                      QGroundControl.zOrderWidgets
 
+            // Show a camera-switch button on the pip only while the video is the pip item
+            showActionButton:       QGroundControl.videoManager.hasMultipleVideoSources &&
+                                        videoControl.pipState.state === videoControl.pipState.pipState
+            actionButtonText:       qsTr("Camera %1").arg(QGroundControl.videoManager.activeVideoSource + 1)
+            onActionButtonClicked:  QGroundControl.videoManager.switchActiveVideoSource()
+
             property real leftEdgeBottomInset: visible ? width + anchors.margins : 0
             property real bottomEdgeLeftInset: visible ? height + anchors.margins : 0
         }
