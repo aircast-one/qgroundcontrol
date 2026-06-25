@@ -320,7 +320,10 @@ bool VideoManager::qtmultimediaEnabled()
 void VideoManager::setfullScreen(bool on)
 {
     if (on) {
-        if (!_activeVehicle || _activeVehicle->vehicleLinkManager()->communicationLost()) {
+        // Allow fullscreen whenever there is video to show. Previously this required a
+        // connected, communicating vehicle, which blocked fullscreen for standalone video
+        // (e.g. an RTSP stream viewed without any vehicle connected).
+        if (!hasVideo()) {
             on = false;
         }
     }
