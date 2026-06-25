@@ -999,15 +999,36 @@ bool GstVideoReceiver::_addVideoSink(GstPad *pad)
 {
     GstCaps *caps = gst_pad_query_caps(pad, nullptr);
 
+    // decodebin3 can expose multiple decoded streams (e.g. a stream carrying both video and
+    // audio). We must only link the video stream to the video sink - attempting to link via the
+    // element (gst_element_link) lets GStreamer pick any pad and fails to find a compatible one
+    // when a non-video pad is present, leaving the video black. Link the exact pad we were given
+    // and ignore non-video pads.
+    bool isVideoPad = false;
+    if (caps && (gst_caps_get_size(caps) > 0)) {
+        const GstStructure *structure = gst_caps_get_structure(caps, 0);
+        const gchar *name = structure ? gst_structure_get_name(structure) : nullptr;
+        isVideoPad = (name && g_str_has_prefix(name, "video/"));
+    }
+
+    if (!isVideoPad) {
+        qCDebug(GstVideoReceiverLog) << "Ignoring non-video decoder pad" << _uri;
+        gst_clear_caps(&caps);
+        return true;
+    }
+
     (void) gst_object_ref(_videoSink); // gst_bin_add() will steal one reference
     (void) gst_bin_add(GST_BIN(_pipeline), _videoSink);
 
-    if (!gst_element_link(_decoder, _videoSink)) {
+    GstPad *sinkPad = gst_element_get_static_pad(_videoSink, "sink");
+    if (!sinkPad || (gst_pad_link(pad, sinkPad) != GST_PAD_LINK_OK)) {
+        gst_clear_object(&sinkPad);
         (void) gst_bin_remove(GST_BIN(_pipeline), _videoSink);
         qCCritical(GstVideoReceiverLog) << "Unable to link video sink";
         gst_clear_caps(&caps);
         return false;
     }
+    gst_clear_object(&sinkPad);
 
     g_object_set(_videoSink,
                  "widget", _widget,
