@@ -20,6 +20,15 @@
 
 #include <gst/gst.h>
 
+#ifdef Q_OS_ANDROID
+#include <jni.h>
+#include <QtCore/QJniEnvironment>
+// Provided by GStreamer's androidmedia plugin (libgstandroidmedia). When GStreamer is statically
+// linked into the app, the plugin's own JNI_OnLoad never runs, so gst-amc has no JavaVM and the
+// MediaCodec (hardware) decoders fail to register. We hand it Qt's JavaVM explicitly.
+extern "C" gboolean gst_amc_jni_set_java_vm(JavaVM *java_vm);
+#endif
+
 QGC_LOGGING_CATEGORY(GStreamerLog, "qgc.videomanager.videoreceiver.gstreamer")
 QGC_LOGGING_CATEGORY(GStreamerAPILog, "qgc.videomanager.videoreceiver.gstreamer.api")
 
@@ -61,6 +70,52 @@ G_END_DECLS
 
 namespace
 {
+
+void _initAndroidMediaCodec()
+{
+#if defined(Q_OS_ANDROID) && defined(GST_PLUGIN_androidmedia_FOUND)
+    // Must run before the androidmedia plugin registers (in _registerPlugins) so gst-amc can
+    // enumerate the device's MediaCodec hardware decoders instead of falling back to software.
+    JavaVM *vm = QJniEnvironment::javaVM();
+    if (!vm) {
+        qCWarning(GStreamerLog) << "Android: no JavaVM available, hardware video decode will be unavailable";
+        return;
+    }
+    if (gst_amc_jni_set_java_vm(vm)) {
+        qCDebug(GStreamerLog) << "Android: provided JavaVM to gst-amc for hardware MediaCodec decoding";
+    } else {
+        qCWarning(GStreamerLog) << "Android: gst_amc_jni_set_java_vm() failed";
+    }
+#endif
+}
+
+void _boostAndroidHardwareDecoders()
+{
+#if defined(Q_OS_ANDROID) && defined(GST_PLUGIN_androidmedia_FOUND)
+    // The hardware MediaCodec (amc) decoders and the software avdec decoders both register at
+    // GST_RANK_PRIMARY, and decodebin breaks the tie towards software. Bump the amc video
+    // decoders one rank above so the hardware decoder is selected by default.
+    GstRegistry *registry = gst_registry_get();
+    if (!registry) {
+        return;
+    }
+    GList *decoders = gst_element_factory_list_get_elements(
+        static_cast<GstElementFactoryListType>(GST_ELEMENT_FACTORY_TYPE_DECODER | GST_ELEMENT_FACTORY_TYPE_MEDIA_VIDEO),
+        GST_RANK_NONE);
+    int boosted = 0;
+    for (GList *l = decoders; l != nullptr; l = l->next) {
+        GstPluginFeature *feature = GST_PLUGIN_FEATURE(l->data);
+        const gchar *name = gst_plugin_feature_get_name(feature);
+        if (name && g_str_has_prefix(name, "amcviddec")) {
+            gst_plugin_feature_set_rank(feature, GST_RANK_PRIMARY + 1);
+            (void) gst_registry_add_feature(registry, feature);
+            boosted++;
+        }
+    }
+    gst_plugin_feature_list_free(decoders);
+    qCDebug(GStreamerLog) << "Android: prioritized" << boosted << "hardware video decoders over software";
+#endif
+}
 
 void _registerPlugins()
 {
@@ -307,6 +362,8 @@ void _setCodecPriorities(GStreamer::VideoDecoderOptions option)
 
     switch (option) {
     case GStreamer::ForceVideoDecoderDefault:
+        // On Android, prefer hardware MediaCodec decoders over the equally-ranked software ones.
+        _boostAndroidHardwareDecoders();
         break;
     case GStreamer::ForceVideoDecoderSoftware:
         for (const char *name : {"avdec_h264", "avdec_h265", "avdec_mjpeg", "avdec_mpeg2video", "avdec_mpeg4", "avdec_vp8", "avdec_vp9",
@@ -397,6 +454,8 @@ bool initialize()
 
     const gchar *version = gst_version_string();
     qCDebug(GStreamerLog) << QString("GStreamer Initialized (Version: %1)").arg(version);
+
+    _initAndroidMediaCodec();
 
     _registerPlugins();
 

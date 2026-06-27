@@ -601,16 +601,27 @@ gboolean GstVideoReceiver::_filterParserCaps(GstElement *bin, GstPad *pad, GstEl
     GstCaps *sinkCaps = nullptr;
     GstCaps *filter = nullptr;
     GstStructure *structure = gst_caps_get_structure(srcCaps, 0);
+    // Android hardware (MediaCodec/amc) decoders only accept byte-stream; the desktop decoders
+    // and qml6glsink path prefer avc/hvc1. Force byte-stream on Android so decodebin3 can pick
+    // the hardware decoder (it is skipped entirely if the caps are constrained to avc/hvc1).
     if (gst_structure_has_name(structure, "video/x-h265")) {
         filter = gst_caps_from_string("video/x-h265");
         if (gst_caps_can_intersect(srcCaps, filter)) {
+#ifdef Q_OS_ANDROID
+            sinkCaps = gst_caps_from_string("video/x-h265,stream-format=byte-stream,alignment=au");
+#else
             sinkCaps = gst_caps_from_string("video/x-h265,stream-format=hvc1");
+#endif
         }
         gst_clear_caps(&filter);
     } else if (gst_structure_has_name(structure, "video/x-h264")) {
         filter = gst_caps_from_string("video/x-h264");
         if (gst_caps_can_intersect(srcCaps, filter)) {
+#ifdef Q_OS_ANDROID
+            sinkCaps = gst_caps_from_string("video/x-h264,stream-format=byte-stream,alignment=au");
+#else
             sinkCaps = gst_caps_from_string("video/x-h264,stream-format=avc");
+#endif
         }
         gst_clear_caps(&filter);
     }
