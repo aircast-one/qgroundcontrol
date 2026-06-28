@@ -1012,7 +1012,24 @@ bool GstVideoReceiver::_addVideoSink(GstPad *pad)
     }
 
     if (!isVideoPad) {
-        qCDebug(GstVideoReceiverLog) << "Ignoring non-video decoder pad" << _uri;
+        // Drain non-video streams (e.g. the audio track of an RTSP camera) into a fakesink.
+        // Leaving the pad unlinked makes decodebin3's internal multiqueue fill up and
+        // back-pressure the whole pipeline, which stutters/stalls the video.
+        qCDebug(GstVideoReceiverLog) << "Draining non-video decoder pad into fakesink" << _uri;
+        GstElement *fakeSink = gst_element_factory_make("fakesink", nullptr);
+        if (fakeSink) {
+            g_object_set(fakeSink, "sync", FALSE, "async", FALSE, "enable-last-sample", FALSE, nullptr);
+            (void) gst_bin_add(GST_BIN(_pipeline), fakeSink);
+            GstPad *fakeSinkPad = gst_element_get_static_pad(fakeSink, "sink");
+            if (!fakeSinkPad || (gst_pad_link(pad, fakeSinkPad) != GST_PAD_LINK_OK)) {
+                qCWarning(GstVideoReceiverLog) << "Failed to link non-video pad to fakesink" << _uri;
+                gst_clear_object(&fakeSinkPad);
+                (void) gst_bin_remove(GST_BIN(_pipeline), fakeSink);
+            } else {
+                gst_clear_object(&fakeSinkPad);
+                (void) gst_element_sync_state_with_parent(fakeSink);
+            }
+        }
         gst_clear_caps(&caps);
         return true;
     }
