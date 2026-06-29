@@ -601,16 +601,27 @@ gboolean GstVideoReceiver::_filterParserCaps(GstElement *bin, GstPad *pad, GstEl
     GstCaps *sinkCaps = nullptr;
     GstCaps *filter = nullptr;
     GstStructure *structure = gst_caps_get_structure(srcCaps, 0);
+    // Android hardware (MediaCodec/amc) decoders only accept byte-stream; the desktop decoders
+    // and qml6glsink path prefer avc/hvc1. Force byte-stream on Android so decodebin3 can pick
+    // the hardware decoder (it is skipped entirely if the caps are constrained to avc/hvc1).
     if (gst_structure_has_name(structure, "video/x-h265")) {
         filter = gst_caps_from_string("video/x-h265");
         if (gst_caps_can_intersect(srcCaps, filter)) {
+#ifdef Q_OS_ANDROID
+            sinkCaps = gst_caps_from_string("video/x-h265,stream-format=byte-stream,alignment=au");
+#else
             sinkCaps = gst_caps_from_string("video/x-h265,stream-format=hvc1");
+#endif
         }
         gst_clear_caps(&filter);
     } else if (gst_structure_has_name(structure, "video/x-h264")) {
         filter = gst_caps_from_string("video/x-h264");
         if (gst_caps_can_intersect(srcCaps, filter)) {
+#ifdef Q_OS_ANDROID
+            sinkCaps = gst_caps_from_string("video/x-h264,stream-format=byte-stream,alignment=au");
+#else
             sinkCaps = gst_caps_from_string("video/x-h264,stream-format=avc");
+#endif
         }
         gst_clear_caps(&filter);
     }
@@ -1037,7 +1048,29 @@ bool GstVideoReceiver::_addVideoSink(GstPad *pad)
     (void) gst_object_ref(_videoSink); // gst_bin_add() will steal one reference
     (void) gst_bin_add(GST_BIN(_pipeline), _videoSink);
 
-    GstPad *sinkPad = gst_element_get_static_pad(_videoSink, "sink");
+    // On Android the hardware (amc) decoder outputs frames padded to its internal stride;
+    // uploading those directly to the GL sink leaks the padding as a green edge. Insert a
+    // videoconvert, which honours the buffer's GstVideoMeta stride and emits tightly-packed
+    // frames, before the sink.
+    GstPad *linkTargetPad = nullptr;
+#ifdef Q_OS_ANDROID
+    GstElement *converter = gst_element_factory_make("videoconvert", nullptr);
+    if (converter) {
+        (void) gst_bin_add(GST_BIN(_pipeline), converter);
+        if (!gst_element_link(converter, _videoSink)) {
+            qCCritical(GstVideoReceiverLog) << "Unable to link videoconvert to video sink";
+            (void) gst_bin_remove(GST_BIN(_pipeline), converter);
+        } else {
+            (void) gst_element_sync_state_with_parent(converter);
+            linkTargetPad = gst_element_get_static_pad(converter, "sink");
+        }
+    }
+#endif
+    if (!linkTargetPad) {
+        linkTargetPad = gst_element_get_static_pad(_videoSink, "sink");
+    }
+
+    GstPad *sinkPad = linkTargetPad;
     if (!sinkPad || (gst_pad_link(pad, sinkPad) != GST_PAD_LINK_OK)) {
         gst_clear_object(&sinkPad);
         (void) gst_bin_remove(GST_BIN(_pipeline), _videoSink);
@@ -1047,10 +1080,21 @@ bool GstVideoReceiver::_addVideoSink(GstPad *pad)
     }
     gst_clear_object(&sinkPad);
 
+    // HW decoders (Android MediaCodec/amcvideodec) deliver frames with startup
+    // latency, so the renderer sees them as "late". With sync=TRUE the basesink
+    // drops these late frames, which shows up as stutter even though decode is
+    // cheap. Disable clock-sync so every decoded frame is presented as it arrives.
+#ifdef Q_OS_ANDROID
+    g_object_set(_videoSink,
+                 "widget", _widget,
+                 "sync", FALSE,
+                 NULL);
+#else
     g_object_set(_videoSink,
                  "widget", _widget,
                  "sync", (_buffer >= 0),
                  NULL);
+#endif
 
     (void) gst_element_sync_state_with_parent(_videoSink);
 
