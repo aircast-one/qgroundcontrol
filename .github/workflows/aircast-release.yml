@@ -1,0 +1,312 @@
+name: Aircast Release
+
+# Builds the Aircast QGroundControl fork (Android APK + macOS DMG) on a version
+# tag and publishes a GitHub release — the repo is public, so GitHub Releases
+# are the distribution channel (no S3 mirror).
+#
+# Tags are created with `make release.<patch|minor|major|dev|staging>`.
+#
+# Optional secrets: ANDROID_KEYSTORE_PASSWORD (APK signing),
+#                   MACOS_CERT_P12_BASE64 / MACOS_CERT_P12_PASSWORD /
+#                   MACOS_SIGNING_IDENTITY / MACOS_NOTARIZATION_* (macOS signing).
+# (Uses the built-in GITHUB_TOKEN for the GitHub release — no PAT needed.)
+
+permissions:
+  contents: write
+
+on:
+  push:
+    tags:
+      - "v[0-9]+.[0-9]+.[0-9]+" # production: v5.0.9
+      - "v*-staging.*" # staging:    v5.0.9-staging.1
+      - "v*-dev.*" # development: v5.0.9-dev.1
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "Existing tag to (re)release (e.g. v5.0.9, v5.0.9-dev.1)"
+        required: true
+        type: string
+
+env:
+  QT_VERSION: 6.8.3
+
+jobs:
+  setup:
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.config.outputs.version }}
+      environment: ${{ steps.config.outputs.environment }}
+      is_production: ${{ steps.config.outputs.is_production }}
+    steps:
+      - id: config
+        run: |
+          if [ "${{ github.event_name }}" == "push" ]; then
+            VERSION="${{ github.ref_name }}"
+          else
+            VERSION="${{ inputs.version }}"
+          fi
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+
+          if [[ "$VERSION" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+            echo "is_production=true" >> "$GITHUB_OUTPUT"
+            echo "environment=production" >> "$GITHUB_OUTPUT"
+          elif [[ "$VERSION" =~ -staging\. ]]; then
+            echo "is_production=false" >> "$GITHUB_OUTPUT"
+            echo "environment=staging" >> "$GITHUB_OUTPUT"
+          else
+            echo "is_production=false" >> "$GITHUB_OUTPUT"
+            echo "environment=development" >> "$GITHUB_OUTPUT"
+          fi
+          echo "Release: $VERSION"
+
+  build-android:
+    needs: setup
+    runs-on: ubuntu-latest
+    env:
+      QT_ANDROID_KEYSTORE_PATH: ${{ github.workspace }}/deploy/android/android_release.keystore
+      QT_ANDROID_KEYSTORE_ALIAS: QGCAndroidKeyStore
+      QT_ANDROID_KEYSTORE_STORE_PASS: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+      QT_ANDROID_KEYSTORE_KEY_PASS: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+      QT_ANDROID_ABIS: "armeabi-v7a;arm64-v8a"
+    steps:
+      - name: Checkout repo
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.setup.outputs.version }}
+          submodules: recursive
+          fetch-depth: 1
+          fetch-tags: false
+
+      - name: Get all tags for correct version determination
+        run: git fetch --all --tags -f --depth 1
+
+      - name: Initial Setup
+        uses: ./.github/actions/common
+
+      - name: Free Disk Space
+        uses: jlumbroso/free-disk-space@main
+        with:
+          tool-cache: false
+          android: false
+          large-packages: false
+
+      - name: Install Qt for Android
+        uses: ./.github/actions/qt-android
+        with:
+          host: linux
+          arch: linux_gcc_64
+          version: ${{ env.QT_VERSION }}
+          abis: ${{ env.QT_ANDROID_ABIS }}
+          cpm-modules: ${{ runner.temp }}/shadow_build_dir/cpm_modules
+
+      - name: Configure
+        working-directory: ${{ runner.temp }}/shadow_build_dir
+        run: ${{ env.QT_ROOT_DIR }}/bin/qt-cmake -S ${{ github.workspace }} -B . -G Ninja
+              -DCMAKE_BUILD_TYPE=Release
+              -DCMAKE_WARN_DEPRECATED=FALSE
+              -DQT_ANDROID_ABIS="${{ env.QT_ANDROID_ABIS }}"
+              -DQT_ANDROID_BUILD_ALL_ABIS=OFF
+              -DQT_HOST_PATH="${{ env.QT_ROOT_DIR }}/../gcc_64"
+              -DQT_ANDROID_SIGN_APK=${{ env.QT_ANDROID_KEYSTORE_STORE_PASS != '' && 'ON' || 'OFF' }}
+              -DQGC_STABLE_BUILD=ON
+
+      - name: Build
+        working-directory: ${{ runner.temp }}/shadow_build_dir
+        run: cmake --build . --target all --config Release
+
+      - name: Collect APK
+        run: |
+          V="${{ needs.setup.outputs.version }}"
+          mkdir -p out
+          cp ${{ runner.temp }}/shadow_build_dir/android-build/*.apk "out/QGroundControl-Aircast-$V.apk"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: qgc-android
+          path: out/*.apk
+
+  build-macos:
+    needs: setup
+    runs-on: macos-latest
+    steps:
+      - name: Checkout repo
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.setup.outputs.version }}
+          submodules: recursive
+          fetch-depth: 1
+          fetch-tags: false
+
+      - name: Get all tags for correct version determination
+        run: git fetch --all --tags -f --depth 1
+
+      - name: Initial Setup
+        uses: ./.github/actions/common
+
+      - name: Setup Xcode
+        uses: maxim-lobanov/setup-xcode@v1
+        with:
+          xcode-version: '<=16.x'
+
+      - name: Install Dependencies (include GStreamer)
+        working-directory: ${{ github.workspace }}/tools/setup
+        run: sh install-dependencies-osx.sh
+
+      - name: Setup Caching
+        uses: ./.github/actions/cache
+        with:
+          host: mac
+          target: clang_64
+          build-type: Release
+          cpm-modules: ${{ runner.temp }}/shadow_build_dir/cpm_modules
+
+      - name: Install Qt
+        uses: jurplel/install-qt-action@v4
+        with:
+          version: ${{ env.QT_VERSION }}
+          host: mac
+          target: desktop
+          arch: clang_64
+          dir: ${{ runner.temp }}
+          modules: qtcharts qtlocation qtpositioning qtspeech qt5compat qtmultimedia qtserialport qtimageformats qtshadertools qtconnectivity qtquick3d qtsensors
+          cache: true
+
+      - name: CMake configure
+        working-directory: ${{ runner.temp }}/shadow_build_dir
+        run: ${{ env.QT_ROOT_DIR }}/bin/qt-cmake -S ${{ github.workspace }} -B . -G Ninja
+              -DCMAKE_BUILD_TYPE=Release
+              -DCMAKE_OSX_ARCHITECTURES="x86_64;arm64"
+              -DQGC_STABLE_BUILD=ON
+              -DQGC_MACOS_SIGN_WITH_IDENTITY=${{ secrets.MACOS_CERT_P12_BASE64 != '' && 'ON' || 'OFF' }}
+
+      - name: Build
+        working-directory: ${{ runner.temp }}/shadow_build_dir
+        run: cmake --build . --target all --config Release
+
+      - name: Import Code Signing Certificate
+        if: ${{ secrets.MACOS_CERT_P12_BASE64 != '' }}
+        uses: apple-actions/import-codesign-certs@v5
+        with:
+          p12-file-base64: ${{ secrets.MACOS_CERT_P12_BASE64 }}
+          p12-password: ${{ secrets.MACOS_CERT_P12_PASSWORD }}
+
+      - name: Create app bundle (signed/notarized when certs are configured)
+        working-directory: ${{ runner.temp }}/shadow_build_dir
+        run: cmake --install . --config Release
+        env:
+          QGC_MACOS_SIGNING_IDENTITY: ${{ secrets.MACOS_SIGNING_IDENTITY }}
+          QGC_MACOS_NOTARIZATION_USERNAME: ${{ secrets.MACOS_NOTARIZATION_USERNAME }}
+          QGC_MACOS_NOTARIZATION_PASSWORD: ${{ secrets.MACOS_NOTARIZATION_PASSWORD }}
+          QGC_MACOS_NOTARIZATION_TEAM_ID: ${{ secrets.MACOS_NOTARIZATION_TEAM_ID }}
+
+      - name: Sanity check DMG executable
+        working-directory: ${{ runner.temp }}/shadow_build_dir
+        run: |
+          hdiutil attach QGroundControl.dmg
+          /Volumes/QGroundControl/QGroundControl.app/Contents/MacOS/QGroundControl --simple-boot-test
+          hdiutil detach /Volumes/QGroundControl
+
+      - name: Collect DMG
+        run: |
+          V="${{ needs.setup.outputs.version }}"
+          mkdir -p out
+          cp ${{ runner.temp }}/shadow_build_dir/QGroundControl.dmg "out/QGroundControl-Aircast-$V.dmg"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: qgc-macos
+          path: out/*.dmg
+
+  publish:
+    needs: [setup, build-android, build-macos]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          merge-multiple: true
+          path: assets
+
+      - name: Checksums
+        run: |
+          cd assets
+          for f in *.apk *.dmg; do
+            [ -f "$f" ] && sha256sum "$f" > "$f.sha256"
+          done || true
+          ls -la
+
+      - name: Create GitHub release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          V="${{ needs.setup.outputs.version }}"
+          PRE=""
+          if [ "${{ needs.setup.outputs.is_production }}" != "true" ]; then
+            PRE="--prerelease"
+          fi
+          if gh release view "$V" -R "${{ github.repository }}" >/dev/null 2>&1; then
+            gh release upload "$V" -R "${{ github.repository }}" --clobber assets/*
+          else
+            gh release create "$V" -R "${{ github.repository }}" \
+              --title "QGroundControl Aircast $V" \
+              --generate-notes \
+              $PRE assets/*
+          fi
+
+  cleanup-old-releases:
+    needs: [setup, publish]
+    if: always() && needs.publish.result == 'success'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Cleanup old releases
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          ENV="${{ needs.setup.outputs.environment }}"
+          KEEP_COUNT=5
+
+          # Match only this channel's tags (double-escaped for jq's regex).
+          if [ "${{ needs.setup.outputs.is_production }}" == "true" ]; then
+            TAG_PATTERN='^v[0-9]+\\.[0-9]+\\.[0-9]+$'
+          elif [ "$ENV" == "staging" ]; then
+            TAG_PATTERN='^v.*-staging\\..*$'
+          else
+            TAG_PATTERN='^v.*-dev\\..*$'
+          fi
+
+          RELEASES=$(gh api repos/${{ github.repository }}/releases \
+            --paginate \
+            --jq "[.[] | select(.tag_name | test(\"$TAG_PATTERN\")) | {id: .id, tag_name: .tag_name, created_at: .created_at}] | sort_by(.created_at) | reverse")
+
+          TOTAL_COUNT=$(echo "$RELEASES" | jq 'length')
+          echo "Found $TOTAL_COUNT releases for $ENV"
+
+          if [ "$TOTAL_COUNT" -gt "$KEEP_COUNT" ]; then
+            RELEASES_TO_DELETE=$(echo "$RELEASES" | jq ".[$KEEP_COUNT:]")
+            DELETE_COUNT=$(echo "$RELEASES_TO_DELETE" | jq 'length')
+            echo "Deleting $DELETE_COUNT old releases..."
+
+            echo "$RELEASES_TO_DELETE" | jq -c '.[]' | while read -r release; do
+              RELEASE_ID=$(echo "$release" | jq -r '.id')
+              TAG_NAME=$(echo "$release" | jq -r '.tag_name')
+              echo "Processing: $TAG_NAME"
+              gh api -X DELETE repos/${{ github.repository }}/releases/$RELEASE_ID || true
+              gh api -X DELETE repos/${{ github.repository }}/git/refs/tags/$TAG_NAME || true
+            done
+            echo "Kept latest $KEEP_COUNT releases"
+          else
+            echo "No cleanup needed ($TOTAL_COUNT <= $KEEP_COUNT)"
+          fi
+
+  notify:
+    needs: [setup, build-android, build-macos, publish, cleanup-old-releases]
+    if: always()
+    runs-on: ubuntu-latest
+    steps:
+      - run: |
+          {
+            echo "## QGroundControl Aircast Release"
+            echo "- **Version:** ${{ needs.setup.outputs.version }} (${{ needs.setup.outputs.environment }})"
+            echo "- **Android:** ${{ needs.build-android.result }}"
+            echo "- **macOS:** ${{ needs.build-macos.result }}"
+            echo "- **Release:** https://github.com/${{ github.repository }}/releases/tag/${{ needs.setup.outputs.version }}"
+          } >> "$GITHUB_STEP_SUMMARY"

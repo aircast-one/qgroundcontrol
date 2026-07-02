@@ -71,4 +71,7 @@ string(REGEX MATCH "([0-9]+)\\.([0-9]+)\\.([0-9]+)" QGC_APP_VERSION_MATCH ${QGC_
 set(QGC_APP_VERSION_MAJOR ${CMAKE_MATCH_1})
 set(QGC_APP_VERSION_MINOR ${CMAKE_MATCH_2})
 set(QGC_APP_VERSION_PATCH ${CMAKE_MATCH_3})
+# project(VERSION ...) accepts only numeric components; channel tags like v5.0.9-dev.1
+# would otherwise fail configure. The full tag stays visible via QGC_APP_VERSION_STR.
+set(QGC_APP_VERSION ${QGC_APP_VERSION_MATCH})
 # cmake_print_variables(QGC_APP_VERSION QGC_APP_VERSION_MAJOR QGC_APP_VERSION_MINOR QGC_APP_VERSION_PATCH)
