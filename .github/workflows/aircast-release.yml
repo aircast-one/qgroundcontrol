@@ -124,11 +124,6 @@ jobs:
     env:
       # secrets aren't available in step-level `if:` expressions - surface as env
       HAS_MACOS_CERTS: ${{ secrets.MACOS_CERT_P12_BASE64 != '' }}
-      # Isolate the build from the workstation user's git config: an
-      # `insteadOf` rewrite there forces dependency fetches over SSH, which
-      # breaks CPM/FetchContent when port 22 is blocked or flaky.
-      GIT_CONFIG_GLOBAL: /dev/null
-      GIT_CONFIG_SYSTEM: /dev/null
     steps:
       - name: Checkout repo
         uses: actions/checkout@v4
@@ -191,6 +186,12 @@ jobs:
 
       - name: CMake configure
         working-directory: ${{ runner.temp }}/shadow_build_dir
+        env:
+          # Isolate dependency fetches from the workstation user's git config:
+          # an `insteadOf` rewrite there forces CPM/FetchContent over SSH, which
+          # breaks when port 22 is blocked or flaky. These steps only read config,
+          # so an empty file is safe (checkout, which writes config, is untouched).
+          GIT_CONFIG_GLOBAL: /dev/null
         run: ${{ env.QT_ROOT_DIR }}/bin/qt-cmake -S ${{ github.workspace }} -B . -G Ninja
               -DCMAKE_BUILD_TYPE=Release
               -DCMAKE_OSX_ARCHITECTURES=${{ needs.setup.outputs.is_production == 'true' && '"x86_64;arm64"' || 'arm64' }}
@@ -200,6 +201,8 @@ jobs:
 
       - name: Build
         working-directory: ${{ runner.temp }}/shadow_build_dir
+        env:
+          GIT_CONFIG_GLOBAL: /dev/null
         run: cmake --build . --target all --config Release
 
       - name: Import Code Signing Certificate
@@ -350,11 +353,9 @@ jobs:
           sudo ./tools/setup/install-dependencies-debian.sh
 
       - name: Install Vulkan
-        run: |
-          wget -qO- https://packages.lunarg.com/lunarg-signing-key-pub.asc | sudo tee /etc/apt/trusted.gpg.d/lunarg.asc
-          sudo wget -qO /etc/apt/sources.list.d/lunarg-vulkan-jammy.list http://packages.lunarg.com/vulkan/lunarg-vulkan-jammy.list
-          sudo apt update
-          sudo apt install vulkan-sdk
+        # Distro packages instead of the LunarG vulkan-sdk meta-package, which has
+        # unresolvable dependencies outside Ubuntu jammy (e.g. libyaml-cpp0.7 on noble).
+        run: sudo apt-get install -y --no-install-recommends libvulkan-dev vulkan-tools glslang-tools spirv-tools
 
       - name: Setup Caching
         uses: ./.github/actions/cache
