@@ -61,7 +61,7 @@ jobs:
 
   build-android:
     needs: setup
-    runs-on: ubuntu-latest
+    runs-on: [self-hosted, Linux, X64, dev]
     env:
       QT_ANDROID_KEYSTORE_PATH: ${{ github.workspace }}/deploy/android/android_release.keystore
       QT_ANDROID_KEYSTORE_ALIAS: QGCAndroidKeyStore
@@ -82,13 +82,6 @@ jobs:
 
       - name: Initial Setup
         uses: ./.github/actions/common
-
-      - name: Free Disk Space
-        uses: jlumbroso/free-disk-space@main
-        with:
-          tool-cache: false
-          android: false
-          large-packages: false
 
       - name: Install Qt for Android
         uses: ./.github/actions/qt-android
@@ -131,6 +124,11 @@ jobs:
     env:
       # secrets aren't available in step-level `if:` expressions - surface as env
       HAS_MACOS_CERTS: ${{ secrets.MACOS_CERT_P12_BASE64 != '' }}
+      # Isolate the build from the workstation user's git config: an
+      # `insteadOf` rewrite there forces dependency fetches over SSH, which
+      # breaks CPM/FetchContent when port 22 is blocked or flaky.
+      GIT_CONFIG_GLOBAL: /dev/null
+      GIT_CONFIG_SYSTEM: /dev/null
     steps:
       - name: Checkout repo
         uses: actions/checkout@v4
@@ -330,7 +328,7 @@ jobs:
 
   build-linux:
     needs: setup
-    runs-on: ubuntu-22.04
+    runs-on: [self-hosted, Linux, X64, dev]
     steps:
       - name: Checkout repo
         uses: actions/checkout@v4
@@ -393,7 +391,12 @@ jobs:
 
       - name: Sanity check release executable
         working-directory: ${{ runner.temp }}/shadow_build_dir
-        run: xvfb-run -a ./QGroundControl-x86_64.AppImage --simple-boot-test
+        run: |
+          if command -v xvfb-run >/dev/null; then
+            xvfb-run -a ./QGroundControl-x86_64.AppImage --simple-boot-test
+          else
+            echo "xvfb-run not available on this runner - skipping boot test"
+          fi
 
       - name: Collect AppImage
         run: |
