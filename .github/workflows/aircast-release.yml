@@ -143,8 +143,11 @@ jobs:
       - name: Get all tags for correct version determination
         run: git fetch --all --tags -f --depth 1
 
+      # Not ./.github/actions/common: its setup-python assumes the GitHub-hosted
+      # image layout (/Users/runner) and fails on self-hosted Macs. The runner
+      # provides cmake/ninja/python locally.
       - name: Initial Setup
-        uses: ./.github/actions/common
+        run: mkdir -p "$RUNNER_TEMP/shadow_build_dir"
 
       - name: Install GStreamer (skipped when already present)
         run: |
