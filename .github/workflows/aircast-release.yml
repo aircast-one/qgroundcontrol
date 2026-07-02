@@ -128,6 +128,9 @@ jobs:
   build-macos:
     needs: setup
     runs-on: macos-latest
+    env:
+      # secrets aren't available in step-level `if:` expressions - surface as env
+      HAS_MACOS_CERTS: ${{ secrets.MACOS_CERT_P12_BASE64 != '' }}
     steps:
       - name: Checkout repo
         uses: actions/checkout@v4
@@ -177,14 +180,14 @@ jobs:
               -DCMAKE_BUILD_TYPE=Release
               -DCMAKE_OSX_ARCHITECTURES="x86_64;arm64"
               -DQGC_STABLE_BUILD=ON
-              -DQGC_MACOS_SIGN_WITH_IDENTITY=${{ secrets.MACOS_CERT_P12_BASE64 != '' && 'ON' || 'OFF' }}
+              -DQGC_MACOS_SIGN_WITH_IDENTITY=${{ env.HAS_MACOS_CERTS == 'true' && 'ON' || 'OFF' }}
 
       - name: Build
         working-directory: ${{ runner.temp }}/shadow_build_dir
         run: cmake --build . --target all --config Release
 
       - name: Import Code Signing Certificate
-        if: ${{ secrets.MACOS_CERT_P12_BASE64 != '' }}
+        if: env.HAS_MACOS_CERTS == 'true'
         uses: apple-actions/import-codesign-certs@v5
         with:
           p12-file-base64: ${{ secrets.MACOS_CERT_P12_BASE64 }}
