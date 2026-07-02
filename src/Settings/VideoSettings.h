@@ -23,10 +23,12 @@ public:
     DEFINE_SETTINGFACT(udpUrl)
     DEFINE_SETTINGFACT(tcpUrl)
     DEFINE_SETTINGFACT(rtspUrl)
+    DEFINE_SETTINGFACT(whepUrl)
     DEFINE_SETTINGFACT(videoSource2)
     DEFINE_SETTINGFACT(udpUrl2)
     DEFINE_SETTINGFACT(tcpUrl2)
     DEFINE_SETTINGFACT(rtspUrl2)
+    DEFINE_SETTINGFACT(whepUrl2)
     DEFINE_SETTINGFACT(activeVideoSource)
     DEFINE_SETTINGFACT(aspectRatio)
     DEFINE_SETTINGFACT(videoFit)
@@ -47,6 +49,7 @@ public:
     Q_PROPERTY(QString  udp265VideoSource       READ udp265VideoSource      CONSTANT)
     Q_PROPERTY(QString  tcpVideoSource          READ tcpVideoSource         CONSTANT)
     Q_PROPERTY(QString  mpegtsVideoSource       READ mpegtsVideoSource      CONSTANT)
+    Q_PROPERTY(QString  webrtcVideoSource       READ webrtcVideoSource      CONSTANT)
     Q_PROPERTY(QString  disabledVideoSource     READ disabledVideoSource    CONSTANT)
 
     bool     streamConfigured       ();
@@ -56,12 +59,14 @@ public:
     Fact*    currentUdpUrl          ();
     Fact*    currentRtspUrl         ();
     Fact*    currentTcpUrl          ();
+    Fact*    currentWhepUrl         ();
 
     QString  rtspVideoSource        () { return videoSourceRTSP; }
     QString  udp264VideoSource      () { return videoSourceUDPH264; }
     QString  udp265VideoSource      () { return videoSourceUDPH265; }
     QString  tcpVideoSource         () { return videoSourceTCP; }
     QString  mpegtsVideoSource      () { return videoSourceMPEGTS; }
+    QString  webrtcVideoSource      () { return videoSourceWebRTC; }
     QString  disabledVideoSource    () { return videoDisabled; }
 
     static constexpr const char* videoSourceNoVideo           = QT_TRANSLATE_NOOP("VideoSettings", "No Video Available");
@@ -71,6 +76,7 @@ public:
     static constexpr const char* videoSourceUDPH265           = QT_TRANSLATE_NOOP("VideoSettings", "UDP h.265 Video Stream");
     static constexpr const char* videoSourceTCP               = QT_TRANSLATE_NOOP("VideoSettings", "TCP-MPEG2 Video Stream");
     static constexpr const char* videoSourceMPEGTS            = QT_TRANSLATE_NOOP("VideoSettings", "MPEG-TS Video Stream");
+    static constexpr const char* videoSourceWebRTC            = QT_TRANSLATE_NOOP("VideoSettings", "WebRTC (WHEP) Video Stream");
     static constexpr const char* videoSource3DRSolo           = QT_TRANSLATE_NOOP("VideoSettings", "3DR Solo (requires restart)");
     static constexpr const char* videoSourceParrotDiscovery   = QT_TRANSLATE_NOOP("VideoSettings", "Parrot Discovery");
     static constexpr const char* videoSourceYuneecMantisG     = QT_TRANSLATE_NOOP("VideoSettings", "Yuneec Mantis G");

@@ -29,6 +29,7 @@
 
 #include <QtCore/qapplicationstatic.h>
 #include <QtCore/QDir>
+#include <QtCore/QUrl>
 #include <QtQml/QQmlEngine>
 #include <QtQuick/QQuickItem>
 #include <QtQuick/QQuickWindow>
@@ -95,10 +96,12 @@ void VideoManager::init(QQuickWindow *window)
     (void) connect(_videoSettings->udpUrl(), &Fact::rawValueChanged, this, &VideoManager::_videoSourceChanged);
     (void) connect(_videoSettings->rtspUrl(), &Fact::rawValueChanged, this, &VideoManager::_videoSourceChanged);
     (void) connect(_videoSettings->tcpUrl(), &Fact::rawValueChanged, this, &VideoManager::_videoSourceChanged);
+    (void) connect(_videoSettings->whepUrl(), &Fact::rawValueChanged, this, &VideoManager::_videoSourceChanged);
     (void) connect(_videoSettings->videoSource2(), &Fact::rawValueChanged, this, &VideoManager::_videoSourceChanged);
     (void) connect(_videoSettings->udpUrl2(), &Fact::rawValueChanged, this, &VideoManager::_videoSourceChanged);
     (void) connect(_videoSettings->rtspUrl2(), &Fact::rawValueChanged, this, &VideoManager::_videoSourceChanged);
     (void) connect(_videoSettings->tcpUrl2(), &Fact::rawValueChanged, this, &VideoManager::_videoSourceChanged);
+    (void) connect(_videoSettings->whepUrl2(), &Fact::rawValueChanged, this, &VideoManager::_videoSourceChanged);
     (void) connect(_videoSettings->videoSource2(), &Fact::rawValueChanged, this, &VideoManager::activeVideoSourceChanged);
     (void) connect(_videoSettings->activeVideoSource(), &Fact::rawValueChanged, this, &VideoManager::_videoSourceChanged);
     (void) connect(_videoSettings->activeVideoSource(), &Fact::rawValueChanged, this, &VideoManager::activeVideoSourceChanged);
@@ -342,6 +345,7 @@ bool VideoManager::isStreamSource() const
         VideoSettings::videoSourceRTSP,
         VideoSettings::videoSourceTCP,
         VideoSettings::videoSourceMPEGTS,
+        VideoSettings::videoSourceWebRTC,
         VideoSettings::videoSource3DRSolo,
         VideoSettings::videoSourceParrotDiscovery,
         VideoSettings::videoSourceYuneecMantisG,
@@ -365,6 +369,7 @@ bool VideoManager::hasMultipleVideoSources() const
         VideoSettings::videoSourceRTSP,
         VideoSettings::videoSourceTCP,
         VideoSettings::videoSourceMPEGTS,
+        VideoSettings::videoSourceWebRTC,
         VideoSettings::videoSource3DRSolo,
         VideoSettings::videoSourceParrotDiscovery,
         VideoSettings::videoSourceYuneecMantisG,
@@ -569,6 +574,7 @@ bool VideoManager::_updateSettings(VideoReceiver *receiver)
     Fact *const udpFact  = secondary ? _videoSettings->udpUrl2()  : _videoSettings->udpUrl();
     Fact *const rtspFact = secondary ? _videoSettings->rtspUrl2() : _videoSettings->rtspUrl();
     Fact *const tcpFact  = secondary ? _videoSettings->tcpUrl2()  : _videoSettings->tcpUrl();
+    Fact *const whepFact = secondary ? _videoSettings->whepUrl2() : _videoSettings->whepUrl();
 
     const QString source = _videoSettings->currentVideoSource()->rawValue().toString();
     if (source == VideoSettings::videoSourceUDPH264) {
@@ -581,6 +587,12 @@ bool VideoManager::_updateSettings(VideoReceiver *receiver)
         settingsChanged |= _updateVideoUri(receiver, rtspFact->rawValue().toString());
     } else if (source == VideoSettings::videoSourceTCP) {
         settingsChanged |= _updateVideoUri(receiver, QStringLiteral("tcp://%1").arg(tcpFact->rawValue().toString()));
+    } else if (source == VideoSettings::videoSourceWebRTC) {
+        // The receiver consumes the http(s) WHEP endpoint directly. fromUserInput() normalizes
+        // free-form entries ('host/path' gains a scheme and authority) without touching the
+        // scheme the user actually typed.
+        const QString whepInput = whepFact->rawValue().toString().trimmed();
+        settingsChanged |= _updateVideoUri(receiver, whepInput.isEmpty() ? QString() : QUrl::fromUserInput(whepInput).toString());
     } else if (source == VideoSettings::videoSource3DRSolo) {
         settingsChanged |= _updateVideoUri(receiver, QStringLiteral("udp://0.0.0.0:5600"));
     } else if (source == VideoSettings::videoSourceParrotDiscovery) {
@@ -721,9 +733,11 @@ void VideoManager::_startReceiver(VideoReceiver *receiver)
 
     const QString source = _videoSettings->currentVideoSource()->rawValue().toString();
     /* The gstreamer rtsp source will switch to tcp if udp is not available after 5 seconds.
-       So we should allow for some negotiation time for rtsp */
+       So we should allow for some negotiation time for rtsp. WHEP needs similar headroom for
+       its HTTP signaling plus ICE/DTLS setup before the first RTP packet arrives. */
 
-    const uint32_t timeout = ((source == VideoSettings::videoSourceRTSP) ? _videoSettings->rtspTimeout()->rawValue().toUInt() : 3);
+    const bool needsNegotiationTime = (source == VideoSettings::videoSourceRTSP) || (source == VideoSettings::videoSourceWebRTC);
+    const uint32_t timeout = (needsNegotiationTime ? _videoSettings->rtspTimeout()->rawValue().toUInt() : 3);
 
     receiver->start(timeout);
 }

@@ -32,6 +32,10 @@ DECLARE_SETTINGGROUP(Video, "Video")
     videoSourceList.append(videoSourceUDPH265);
     videoSourceList.append(videoSourceTCP);
     videoSourceList.append(videoSourceMPEGTS);
+#ifdef QGC_GST_STREAMING
+    // WHEP is implemented only in the GStreamer receiver; QMediaPlayer can't consume it
+    videoSourceList.append(videoSourceWebRTC);
+#endif
     videoSourceList.append(videoSource3DRSolo);
     videoSourceList.append(videoSourceParrotDiscovery);
     videoSourceList.append(videoSourceYuneecMantisG);
@@ -150,6 +154,15 @@ DECLARE_SETTINGSFACT_NO_FUNC(VideoSettings, rtspUrl2)
     return _rtspUrl2Fact;
 }
 
+DECLARE_SETTINGSFACT_NO_FUNC(VideoSettings, whepUrl2)
+{
+    if (!_whepUrl2Fact) {
+        _whepUrl2Fact = _createSettingsFact(whepUrl2Name);
+        connect(_whepUrl2Fact, &Fact::valueChanged, this, &VideoSettings::_configChanged);
+    }
+    return _whepUrl2Fact;
+}
+
 DECLARE_SETTINGSFACT_NO_FUNC(VideoSettings, activeVideoSource)
 {
     if (!_activeVideoSourceFact) {
@@ -177,6 +190,11 @@ Fact *VideoSettings::currentRtspUrl()
 Fact *VideoSettings::currentTcpUrl()
 {
     return (activeVideoSource()->rawValue().toInt() == 1) ? tcpUrl2() : tcpUrl();
+}
+
+Fact *VideoSettings::currentWhepUrl()
+{
+    return (activeVideoSource()->rawValue().toInt() == 1) ? whepUrl2() : whepUrl();
 }
 
 DECLARE_SETTINGSFACT_NO_FUNC(VideoSettings, forceVideoDecoder)
@@ -260,6 +278,15 @@ DECLARE_SETTINGSFACT_NO_FUNC(VideoSettings, tcpUrl)
     return _tcpUrlFact;
 }
 
+DECLARE_SETTINGSFACT_NO_FUNC(VideoSettings, whepUrl)
+{
+    if (!_whepUrlFact) {
+        _whepUrlFact = _createSettingsFact(whepUrlName);
+        connect(_whepUrlFact, &Fact::valueChanged, this, &VideoSettings::_configChanged);
+    }
+    return _whepUrlFact;
+}
+
 bool VideoSettings::streamConfigured(void)
 {
     //-- First, check if it's autoconfigured
@@ -286,6 +313,11 @@ bool VideoSettings::streamConfigured(void)
     if(vSource == videoSourceTCP) {
         qCDebug(VideoManagerLog) << "Testing configuration for TCP Stream:" << currentTcpUrl()->rawValue().toString();
         return !currentTcpUrl()->rawValue().toString().isEmpty();
+    }
+    //-- If WebRTC (WHEP), check for URL
+    if(vSource == videoSourceWebRTC) {
+        qCDebug(VideoManagerLog) << "Testing configuration for WebRTC (WHEP) Stream:" << currentWhepUrl()->rawValue().toString();
+        return !currentWhepUrl()->rawValue().toString().isEmpty();
     }
     //-- If MPEG-TS, check for URL
     if(vSource == videoSourceMPEGTS) {

@@ -635,6 +635,14 @@ gboolean GstVideoReceiver::_filterParserCaps(GstElement *bin, GstPad *pad, GstEl
     return FALSE;
 }
 
+// WHEP endpoints are plain HTTP(S) URLs; whep(s):// is accepted as an explicit alias.
+static bool _uriIsWhep(const QString &uri)
+{
+    const QString scheme = QUrl(uri).scheme().toLower();
+    return (scheme == QLatin1String("http")) || (scheme == QLatin1String("https")) ||
+           (scheme == QLatin1String("whep")) || (scheme == QLatin1String("wheps"));
+}
+
 GstElement *GstVideoReceiver::_makeSource(const QString &input)
 {
     if (input.isEmpty()) {
@@ -645,6 +653,7 @@ GstElement *GstVideoReceiver::_makeSource(const QString &input)
     const QUrl sourceUrl(input);
 
     const bool isRtsp = sourceUrl.scheme().startsWith("rtsp", Qt::CaseInsensitive);
+    const bool isWhep = _uriIsWhep(input);
     const bool isUdp264 = input.contains("udp://", Qt::CaseInsensitive);
     const bool isUdp265 = input.contains("udp265://", Qt::CaseInsensitive);
     const bool isUdpMPEGTS = input.contains("mpegts://", Qt::CaseInsensitive);
@@ -674,6 +683,67 @@ GstElement *GstVideoReceiver::_makeSource(const QString &input)
                          "location", input.toUtf8().constData(),
                          "latency", 25,
                          nullptr);
+        } else if (isWhep) {
+            // Checked before the substring-based tcp/udp branches: those would misroute a WHEP
+            // endpoint whose path or query happens to contain another URI.
+            source = gst_element_factory_make("whepsrc", "source");
+            if (!source) {
+                qCCritical(GstVideoReceiverLog) << "gst_element_factory_make('whepsrc') failed - GStreamer is missing the webrtchttp/webrtc plugins";
+                break;
+            }
+
+            // whep(s):// aliases map to the plain HTTP(S) endpoint; http(s) passes through untouched.
+            QUrl endpointUrl(sourceUrl);
+            const QString scheme = sourceUrl.scheme().toLower();
+            if (scheme == QLatin1String("whep")) {
+                endpointUrl.setScheme(QStringLiteral("http"));
+            } else if (scheme == QLatin1String("wheps")) {
+                endpointUrl.setScheme(QStringLiteral("https"));
+            }
+
+            // Offer H.264/H.265 only so the stream flows through the same parse/decode path as the
+            // other sources. An empty audio caps list keeps the audio m-line out of the offer.
+            GstCaps *videoCaps = gst_caps_from_string(
+                "application/x-rtp,media=(string)video,encoding-name=(string)H264,payload=(int)96,clock-rate=(int)90000;"
+                "application/x-rtp,media=(string)video,encoding-name=(string)H265,payload=(int)97,clock-rate=(int)90000");
+            if (!videoCaps) {
+                qCCritical(GstVideoReceiverLog) << "gst_caps_from_string() failed";
+                break;
+            }
+            GstCaps *audioCaps = gst_caps_new_empty();
+
+            // Bound whepsrc's blocking HTTP requests (including the teardown DELETE, default 15s)
+            // so a dead server can't stall the receiver thread, while leaving slow-but-alive
+            // links at least half the stream watchdog budget to complete signaling.
+            const guint whepRequestTimeout = qBound(5u, _timeout / 2, 10u);
+            g_object_set(source,
+                         "whep-endpoint", endpointUrl.toString().toUtf8().constData(),
+                         "video-caps", videoCaps,
+                         "audio-caps", audioCaps,
+                         "timeout", whepRequestTimeout,
+                         nullptr);
+            gst_clear_caps(&videoCaps);
+            gst_clear_caps(&audioCaps);
+
+            if (_buffer < 0) {
+                // webrtcbin ships a 200ms internal jitterbuffer. In low-latency mode shrink it the
+                // same way the plain-RTP path drops its rtpjitterbuffer.
+                GstIterator *it = gst_bin_iterate_elements(GST_BIN(source));
+                GValue item = G_VALUE_INIT;
+                bool webrtcbinFound = false;
+                while (!webrtcbinFound && (gst_iterator_next(it, &item) == GST_ITERATOR_OK)) {
+                    GstElement *child = GST_ELEMENT(g_value_get_object(&item));
+                    GstElementFactory *childFactory = gst_element_get_factory(child);
+                    if (childFactory && g_str_equal(GST_OBJECT_NAME(childFactory), "webrtcbin")) {
+                        g_object_set(child, "latency", 40u, nullptr);
+                        qCDebug(GstVideoReceiverLog) << "WHEP: set webrtcbin jitterbuffer latency to 40ms";
+                        webrtcbinFound = true;
+                    }
+                    g_value_reset(&item);
+                }
+                g_value_unset(&item);
+                gst_iterator_free(it);
+            }
         } else if (isTcpMPEGTS) {
             source = gst_element_factory_make("tcpclientsrc", "source");
             if (!source) {
@@ -809,6 +879,34 @@ GstElement *GstVideoReceiver::_makeSource(const QString &input)
     return srcbin;
 }
 
+void GstVideoReceiver::_onDecoderDeepElementAdded(GstBin *bin, GstBin *subBin, GstElement *element, gpointer data)
+{
+    Q_UNUSED(bin); Q_UNUSED(subBin); Q_UNUSED(data);
+
+    GstElementFactory *factory = gst_element_get_factory(element);
+    if (!factory) {
+        return;
+    }
+
+    // libav video decoders default to frame threading, which delays output by roughly one frame
+    // per worker thread (hundreds of ms). Slice threading has no such reorder delay. Audio
+    // avdec_* decoders lack these properties, hence the video-decoder type check.
+    if (!g_str_has_prefix(GST_OBJECT_NAME(factory), "avdec_")) {
+        return;
+    }
+    if (!gst_element_factory_list_is_type(factory, GST_ELEMENT_FACTORY_TYPE_DECODER | GST_ELEMENT_FACTORY_TYPE_MEDIA_VIDEO)) {
+        return;
+    }
+
+    // output-corrupt=false drops frames with missing references (packet loss) instead of
+    // rendering them as gray smears; recovery is the next intact reference chain either way.
+    g_object_set(element,
+                 "thread-type", 2 /* slice */,
+                 "output-corrupt", FALSE,
+                 nullptr);
+    qCDebug(GstVideoReceiverLog) << "Decoder" << GST_OBJECT_NAME(factory) << "set to slice threading, corrupt frames dropped";
+}
+
 GstElement *GstVideoReceiver::_makeDecoder(GstCaps *caps, GstElement *videoSink)
 {
     Q_UNUSED(caps); Q_UNUSED(videoSink)
@@ -816,6 +914,15 @@ GstElement *GstVideoReceiver::_makeDecoder(GstCaps *caps, GstElement *videoSink)
     GstElement *decoder = gst_element_factory_make("decodebin3", nullptr);
     if (!decoder) {
         qCCritical(GstVideoReceiverLog) << "gst_element_factory_make('decodebin3') failed";
+        return nullptr;
+    }
+
+    // Scoped to WHEP (in any latency mode): other source types keep libav's default frame
+    // threading, whose multi-core throughput matters more than its latency on those paths.
+    // For WHEP the decoder must stay fast even in normal-latency mode, so that toggling
+    // Low Latency Mode only trades the jitterbuffer depth (40ms vs 200ms), not the decoder.
+    if (_uriIsWhep(_uri)) {
+        (void) g_signal_connect(decoder, "deep-element-added", G_CALLBACK(_onDecoderDeepElementAdded), nullptr);
     }
 
     return decoder;
@@ -1100,18 +1207,26 @@ bool GstVideoReceiver::_addVideoSink(GstPad *pad)
 
     GST_DEBUG_BIN_TO_DOT_FILE(GST_BIN(_pipeline), GST_DEBUG_GRAPH_SHOW_ALL, "pipeline-with-videosink");
 
+    bool videoSizeKnown = false;
     if (_decoderValve) {
         // Extracting video size from source is more guaranteed
         GstPad *valveSrcPad = gst_element_get_static_pad(_decoderValve, "src");
         const GstCaps *valveSrcPadCaps = gst_pad_query_caps(valveSrcPad, nullptr);
         const GstStructure *structure = gst_caps_get_structure(valveSrcPadCaps, 0);
         if (structure) {
-            gint width, height;
-            (void) gst_structure_get_int(structure, "width", &width);
-            (void) gst_structure_get_int(structure, "height", &height);
-            _dispatchSignal([this, width, height]() { emit videoSizeChanged(QSize(width, height)); });
+            gint width = 0;
+            gint height = 0;
+            // The caps may not carry dimensions yet (parser hasn't seen the first SPS) -
+            // report unknown rather than garbage so the UI can fall back to its aspect setting.
+            if (gst_structure_get_int(structure, "width", &width)
+                    && gst_structure_get_int(structure, "height", &height)
+                    && (width > 0) && (height > 0)) {
+                videoSizeKnown = true;
+                _dispatchSignal([this, width, height]() { emit videoSizeChanged(QSize(width, height)); });
+            }
         }
-    } else {
+    }
+    if (!videoSizeKnown) {
         _dispatchSignal([this]() { emit videoSizeChanged(QSize()); });
     }
 

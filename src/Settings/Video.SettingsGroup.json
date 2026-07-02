@@ -32,6 +32,13 @@
     "default":     ""
 },
 {
+    "name":             "whepUrl",
+    "shortDesc": "Video WHEP Url",
+    "longDesc":  "WebRTC WHEP endpoint url for video stream. Example: https://sfu.example.com/whep/stream",
+    "type":             "string",
+    "default":     ""
+},
+{
     "name":             "videoSource2",
     "shortDesc": "Video source (Camera 2)",
     "longDesc":  "Source for the second video stream. UDP, TCP, RTSP and UVC Cameras may be supported depending on Vehicle and ground station version.",
@@ -56,6 +63,13 @@
     "name":             "tcpUrl2",
     "shortDesc": "Video TCP Url (Camera 2)",
     "longDesc":  "TCP url address and port to bind to for the second video stream. Example: 192.168.143.200:3001",
+    "type":             "string",
+    "default":     ""
+},
+{
+    "name":             "whepUrl2",
+    "shortDesc": "Video WHEP Url (Camera 2)",
+    "longDesc":  "WebRTC WHEP endpoint url for the second video stream. Example: https://sfu.example.com/whep/stream",
     "type":             "string",
     "default":     ""
 },
@@ -135,8 +149,8 @@
 },
 {
     "name":             "rtspTimeout",
-    "shortDesc": "RTSP Video Timeout",
-    "longDesc":  "How long to wait before assuming RTSP link is gone.",
+    "shortDesc": "Stream connection timeout",
+    "longDesc":  "How long to wait for stream data before restarting the connection. Covers RTSP negotiation and WebRTC (WHEP) signaling/ICE setup.",
     "type":             "uint32",
     "min":              1,
     "units":            "s",

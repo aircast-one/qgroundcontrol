@@ -17,6 +17,7 @@
 #include <QtCore/QWaitCondition>
 
 #include <glib.h>
+#include <gst/gstbin.h>
 #include <gst/gstelement.h>
 #include <gst/gstpad.h>
 
@@ -99,6 +100,7 @@ private:
     static void _wrapWithGhostPad(GstElement *element, GstPad *pad, gpointer data);
     static void _linkPad(GstElement *element, GstPad *pad, gpointer data);
     static gboolean _padProbe(GstElement *element, GstPad *pad, gpointer user_data);
+    static void _onDecoderDeepElementAdded(GstBin *bin, GstBin *subBin, GstElement *element, gpointer data);
     static gboolean _filterParserCaps(GstElement *bin, GstPad *pad, GstElement *element, GstQuery *query, gpointer data);
     static GstPadProbeReturn _teeProbe(GstPad *pad, GstPadProbeInfo *info, gpointer user_data);
     static GstPadProbeReturn _videoSinkProbe(GstPad *pad, GstPadProbeInfo *info, gpointer user_data);

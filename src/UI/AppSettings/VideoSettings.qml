@@ -30,6 +30,7 @@ SettingsPage {
     property bool   _isRTSP:                    _isStreamSource && (_videoSource === _videoSettings.rtspVideoSource)
     property bool   _isTCP:                     _isStreamSource && (_videoSource === _videoSettings.tcpVideoSource)
     property bool   _isMPEGTS:                  _isStreamSource && (_videoSource === _videoSettings.mpegtsVideoSource)
+    property bool   _isWHEP:                    _isStreamSource && (_videoSource === _videoSettings.webrtcVideoSource)
     property bool   _videoAutoStreamConfig:     _videoManager.autoStreamConfigured
     property bool   _videoSourceDisabled:       _videoSource === _videoSettings.disabledVideoSource
     property real   _urlFieldWidth:             ScreenTools.defaultFontPixelWidth * 40
@@ -40,6 +41,7 @@ SettingsPage {
     property bool   _isRTSP2:                   _videoSource2 === _videoSettings.rtspVideoSource
     property bool   _isTCP2:                     _videoSource2 === _videoSettings.tcpVideoSource
     property bool   _isUDP2:                     _videoSource2 === _videoSettings.udp264VideoSource || _videoSource2 === _videoSettings.udp265VideoSource || _videoSource2 === _videoSettings.mpegtsVideoSource
+    property bool   _isWHEP2:                   _videoSource2 === _videoSettings.webrtcVideoSource
     property bool   _source2Disabled:           _videoSource2 === _videoSettings.disabledVideoSource || _videoSource2 === ""
 
     SettingsGroupLayout {
@@ -60,7 +62,7 @@ SettingsPage {
     SettingsGroupLayout {
         Layout.fillWidth:   true
         heading:            qsTr("Connection")
-        visible:            !_videoSourceDisabled && !_videoAutoStreamConfig && (_isTCP || _isRTSP | _requiresUDPUrl)
+        visible:            !_videoSourceDisabled && !_videoAutoStreamConfig && (_isTCP || _isRTSP || _isWHEP || _requiresUDPUrl)
 
         LabelledFactTextField {
             Layout.fillWidth:           true
@@ -68,6 +70,14 @@ SettingsPage {
             label:                      qsTr("RTSP URL")
             fact:                       _videoSettings.rtspUrl
             visible:                    _isRTSP && _videoSettings.rtspUrl.visible
+        }
+
+        LabelledFactTextField {
+            Layout.fillWidth:           true
+            textFieldPreferredWidth:    _urlFieldWidth
+            label:                      qsTr("WHEP URL")
+            fact:                       _videoSettings.whepUrl
+            visible:                    _isWHEP && _videoSettings.whepUrl.visible
         }
 
         LabelledFactTextField {
@@ -84,6 +94,14 @@ SettingsPage {
             label:                      qsTr("UDP URL")
             fact:                       _videoSettings.udpUrl
             visible:                    _requiresUDPUrl && _videoSettings.udpUrl.visible
+        }
+
+        LabelledFactTextField {
+            Layout.fillWidth:           true
+            textFieldPreferredWidth:    _urlFieldWidth
+            label:                      qsTr("Connection Timeout")
+            fact:                       _videoSettings.rtspTimeout
+            visible:                    (_isRTSP || _isWHEP) && _videoSettings.rtspTimeout.visible
         }
     }
 
@@ -105,7 +123,7 @@ SettingsPage {
     SettingsGroupLayout {
         Layout.fillWidth:   true
         heading:            qsTr("Connection 2")
-        visible:            !_source2Disabled && !_videoAutoStreamConfig && _isGST && (_isTCP2 || _isRTSP2 || _isUDP2)
+        visible:            !_source2Disabled && !_videoAutoStreamConfig && _isGST && (_isTCP2 || _isRTSP2 || _isUDP2 || _isWHEP2)
 
         LabelledFactTextField {
             Layout.fillWidth:           true
@@ -113,6 +131,14 @@ SettingsPage {
             label:                      qsTr("RTSP URL")
             fact:                       _videoSettings.rtspUrl2
             visible:                    _isRTSP2 && _videoSettings.rtspUrl2.visible
+        }
+
+        LabelledFactTextField {
+            Layout.fillWidth:           true
+            textFieldPreferredWidth:    _urlFieldWidth
+            label:                      qsTr("WHEP URL")
+            fact:                       _videoSettings.whepUrl2
+            visible:                    _isWHEP2 && _videoSettings.whepUrl2.visible
         }
 
         LabelledFactTextField {

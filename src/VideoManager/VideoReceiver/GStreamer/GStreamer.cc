@@ -41,12 +41,14 @@ GST_PLUGIN_STATIC_DECLARE(d3d);
 GST_PLUGIN_STATIC_DECLARE(d3d11);
 GST_PLUGIN_STATIC_DECLARE(d3d12);
 GST_PLUGIN_STATIC_DECLARE(dav1d);
+GST_PLUGIN_STATIC_DECLARE(dtls);
 GST_PLUGIN_STATIC_DECLARE(dxva);
 GST_PLUGIN_STATIC_DECLARE(isomp4);
 GST_PLUGIN_STATIC_DECLARE(libav);
 GST_PLUGIN_STATIC_DECLARE(matroska);
 GST_PLUGIN_STATIC_DECLARE(mpegtsdemux);
 GST_PLUGIN_STATIC_DECLARE(msdk);
+GST_PLUGIN_STATIC_DECLARE(nice);
 GST_PLUGIN_STATIC_DECLARE(nvcodec);
 GST_PLUGIN_STATIC_DECLARE(opengl);
 GST_PLUGIN_STATIC_DECLARE(openh264);
@@ -56,7 +58,9 @@ GST_PLUGIN_STATIC_DECLARE(qsv);
 GST_PLUGIN_STATIC_DECLARE(rtp);
 GST_PLUGIN_STATIC_DECLARE(rtpmanager);
 GST_PLUGIN_STATIC_DECLARE(rtsp);
+GST_PLUGIN_STATIC_DECLARE(sctp);
 GST_PLUGIN_STATIC_DECLARE(sdpelem);
+GST_PLUGIN_STATIC_DECLARE(srtp);
 GST_PLUGIN_STATIC_DECLARE(tcp);
 GST_PLUGIN_STATIC_DECLARE(typefindfunctions);
 GST_PLUGIN_STATIC_DECLARE(udp);
@@ -64,12 +68,20 @@ GST_PLUGIN_STATIC_DECLARE(va);
 GST_PLUGIN_STATIC_DECLARE(videoparsersbad);
 GST_PLUGIN_STATIC_DECLARE(vpx);
 GST_PLUGIN_STATIC_DECLARE(vulkan);
+GST_PLUGIN_STATIC_DECLARE(webrtc);
+GST_PLUGIN_STATIC_DECLARE(webrtchttp);
 
 GST_PLUGIN_STATIC_DECLARE(qgc);
 G_END_DECLS
 
 namespace
 {
+
+// QGC's decoder rank ladder. Platform-default boosts must beat the software decoders they
+// compete with; an explicit user "force" must in turn beat both the boosts and any decoder
+// that registers natively above PRIMARY (e.g. vtdec_hw at PRIMARY+1).
+constexpr uint16_t DefaultBoostRank = GST_RANK_PRIMARY + 1;
+constexpr uint16_t ForcedRank = DefaultBoostRank + 1;
 
 void _initAndroidMediaCodec()
 {
@@ -107,7 +119,7 @@ void _boostAndroidHardwareDecoders()
         GstPluginFeature *feature = GST_PLUGIN_FEATURE(l->data);
         const gchar *name = gst_plugin_feature_get_name(feature);
         if (name && g_str_has_prefix(name, "amcviddec")) {
-            gst_plugin_feature_set_rank(feature, GST_RANK_PRIMARY + 1);
+            gst_plugin_feature_set_rank(feature, DefaultBoostRank);
             (void) gst_registry_add_feature(registry, feature);
             boosted++;
         }
@@ -139,6 +151,9 @@ void _registerPlugins()
     #ifdef GST_PLUGIN_dav1d_FOUND
         GST_PLUGIN_STATIC_REGISTER(dav1d);
     #endif
+    #ifdef GST_PLUGIN_dtls_FOUND
+        GST_PLUGIN_STATIC_REGISTER(dtls);
+    #endif
     #ifdef GST_PLUGIN_dxva_FOUND
         GST_PLUGIN_STATIC_REGISTER(dxva);
     #endif
@@ -148,6 +163,9 @@ void _registerPlugins()
         GST_PLUGIN_STATIC_REGISTER(mpegtsdemux);
     #ifdef GST_PLUGIN_msdk_FOUND
         GST_PLUGIN_STATIC_REGISTER(msdk);
+    #endif
+    #ifdef GST_PLUGIN_nice_FOUND
+        GST_PLUGIN_STATIC_REGISTER(nice);
     #endif
     #ifdef GST_PLUGIN_nvcodec_FOUND
         GST_PLUGIN_STATIC_REGISTER(nvcodec);
@@ -161,7 +179,13 @@ void _registerPlugins()
         GST_PLUGIN_STATIC_REGISTER(rtp);
         GST_PLUGIN_STATIC_REGISTER(rtpmanager);
         GST_PLUGIN_STATIC_REGISTER(rtsp);
+    #ifdef GST_PLUGIN_sctp_FOUND
+        GST_PLUGIN_STATIC_REGISTER(sctp);
+    #endif
         GST_PLUGIN_STATIC_REGISTER(sdpelem);
+    #ifdef GST_PLUGIN_srtp_FOUND
+        GST_PLUGIN_STATIC_REGISTER(srtp);
+    #endif
         GST_PLUGIN_STATIC_REGISTER(tcp);
         GST_PLUGIN_STATIC_REGISTER(typefindfunctions);
         GST_PLUGIN_STATIC_REGISTER(udp);
@@ -172,6 +196,12 @@ void _registerPlugins()
         GST_PLUGIN_STATIC_REGISTER(vpx);
     #ifdef GST_PLUGIN_vulkan_FOUND
         GST_PLUGIN_STATIC_REGISTER(vulkan);
+    #endif
+    #ifdef GST_PLUGIN_webrtc_FOUND
+        GST_PLUGIN_STATIC_REGISTER(webrtc);
+    #endif
+    #ifdef GST_PLUGIN_webrtchttp_FOUND
+        GST_PLUGIN_STATIC_REGISTER(webrtchttp);
     #endif
 #endif
 
@@ -358,7 +388,7 @@ void _setCodecPriorities(GStreamer::VideoDecoderOptions option)
 
     // TODO: ForceVideoDecoderCustom in VideoSettings with textbox in QML
 
-    static constexpr uint16_t PrioritizedRank = GST_RANK_PRIMARY + 1;
+    static constexpr uint16_t PrioritizedRank = ForcedRank;
 
     switch (option) {
     case GStreamer::ForceVideoDecoderDefault:

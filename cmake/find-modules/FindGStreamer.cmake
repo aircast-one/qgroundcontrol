@@ -240,22 +240,28 @@ if(GStreamer_USE_STATIC_LIBS)
     set(GSTREAMER_PLUGINS
         coreelements
         dav1d
+        dtls
         isomp4
         libav
         matroska
         mpegtsdemux
+        nice
         opengl
         openh264
         playback
         rtp
         rtpmanager
         rtsp
+        sctp
         sdpelem
+        srtp
         tcp
         typefindfunctions
         udp
         videoparsersbad
         vpx
+        webrtc
+        webrtchttp
     )
     if(ANDROID)
         list(APPEND GSTREAMER_PLUGINS androidmedia) # vulkan
