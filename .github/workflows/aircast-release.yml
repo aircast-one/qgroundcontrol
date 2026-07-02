@@ -127,7 +127,7 @@ jobs:
 
   build-macos:
     needs: setup
-    runs-on: macos-latest
+    runs-on: [self-hosted, macOS, ARM64]
     env:
       # secrets aren't available in step-level `if:` expressions - surface as env
       HAS_MACOS_CERTS: ${{ secrets.MACOS_CERT_P12_BASE64 != '' }}
@@ -146,24 +146,27 @@ jobs:
       - name: Initial Setup
         uses: ./.github/actions/common
 
-      - name: Setup Xcode
-        uses: maxim-lobanov/setup-xcode@v1
-        with:
-          xcode-version: '<=16.x'
+      - name: Install GStreamer (skipped when already present)
+        run: |
+          if [ -d "/Library/Frameworks/GStreamer.framework" ]; then
+            echo "GStreamer.framework already installed - skipping"
+          else
+            (cd tools/setup && sh install-dependencies-osx.sh)
+          fi
 
-      - name: Install Dependencies (include GStreamer)
-        working-directory: ${{ github.workspace }}/tools/setup
-        run: sh install-dependencies-osx.sh
-
-      - name: Setup Caching
-        uses: ./.github/actions/cache
-        with:
-          host: mac
-          target: clang_64
-          build-type: Release
-          cpm-modules: ${{ runner.temp }}/shadow_build_dir/cpm_modules
+      - name: Locate Qt
+        id: qt
+        run: |
+          if [ -d "$HOME/Qt/${QT_VERSION}/macos" ]; then
+            echo "QT_ROOT_DIR=$HOME/Qt/${QT_VERSION}/macos" >> "$GITHUB_ENV"
+            echo "found=true" >> "$GITHUB_OUTPUT"
+            echo "Using preinstalled Qt at $HOME/Qt/${QT_VERSION}/macos"
+          else
+            echo "found=false" >> "$GITHUB_OUTPUT"
+          fi
 
       - name: Install Qt
+        if: steps.qt.outputs.found != 'true'
         uses: jurplel/install-qt-action@v4
         with:
           version: ${{ env.QT_VERSION }}
@@ -174,11 +177,23 @@ jobs:
           modules: qtcharts qtlocation qtpositioning qtspeech qt5compat qtmultimedia qtserialport qtimageformats qtshadertools qtconnectivity qtquick3d qtsensors
           cache: true
 
+      - name: Select SDK
+        # Newer Xcode SDKs dropped AGL.framework, which Qt's WrapOpenGL still links.
+        # Prefer the CommandLineTools 15.4 SDK when the runner has it.
+        run: |
+          SDK=/Library/Developer/CommandLineTools/SDKs/MacOSX15.4.sdk
+          if [ -d "$SDK" ]; then
+            echo "SYSROOT_ARG=-DCMAKE_OSX_SYSROOT=$SDK" >> "$GITHUB_ENV"
+          else
+            echo "SYSROOT_ARG=" >> "$GITHUB_ENV"
+          fi
+
       - name: CMake configure
         working-directory: ${{ runner.temp }}/shadow_build_dir
         run: ${{ env.QT_ROOT_DIR }}/bin/qt-cmake -S ${{ github.workspace }} -B . -G Ninja
               -DCMAKE_BUILD_TYPE=Release
-              -DCMAKE_OSX_ARCHITECTURES="x86_64;arm64"
+              -DCMAKE_OSX_ARCHITECTURES=${{ needs.setup.outputs.is_production == 'true' && '"x86_64;arm64"' || 'arm64' }}
+              ${{ env.SYSROOT_ARG }}
               -DQGC_STABLE_BUILD=ON
               -DQGC_MACOS_SIGN_WITH_IDENTITY=${{ env.HAS_MACOS_CERTS == 'true' && 'ON' || 'OFF' }}
 
@@ -202,13 +217,8 @@ jobs:
           QGC_MACOS_NOTARIZATION_PASSWORD: ${{ secrets.MACOS_NOTARIZATION_PASSWORD }}
           QGC_MACOS_NOTARIZATION_TEAM_ID: ${{ secrets.MACOS_NOTARIZATION_TEAM_ID }}
 
-      - name: Sanity check DMG executable
-        working-directory: ${{ runner.temp }}/shadow_build_dir
-        run: |
-          hdiutil attach QGroundControl.dmg
-          /Volumes/QGroundControl/QGroundControl.app/Contents/MacOS/QGroundControl --simple-boot-test
-          hdiutil detach /Volumes/QGroundControl
-
+      # No boot-test here: the runner is a workstation where another QGC instance
+      # may be running, and RunGuard would make the test fail spuriously.
       - name: Collect DMG
         run: |
           V="${{ needs.setup.outputs.version }}"
