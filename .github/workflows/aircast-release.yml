@@ -233,8 +233,103 @@ jobs:
           name: qgc-macos
           path: out/*.dmg
 
+  build-windows:
+    needs: setup
+    runs-on: windows-latest
+    defaults:
+      run:
+        shell: cmd
+    env:
+      GST_VERSION: 1.22.12
+    steps:
+      - name: Checkout repo
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.setup.outputs.version }}
+          submodules: recursive
+          fetch-depth: 1
+          fetch-tags: false
+
+      - name: Get all tags for correct version determination
+        run: git fetch --all --tags -f --depth 1
+
+      - name: Initial Setup
+        uses: ./.github/actions/common
+
+      - name: Install Vulkan
+        working-directory: ${{ runner.temp }}
+        shell: pwsh
+        run: |
+          Invoke-WebRequest -Uri "https://sdk.lunarg.com/sdk/download/latest/windows/vulkan-sdk.exe" -OutFile vulkan-sdk.exe
+          .\vulkan-sdk.exe --root C:\VulkanSDK\latest --accept-licenses --default-answer --confirm-command install com.lunarg.vulkan.glm com.lunarg.vulkan.volk com.lunarg.vulkan.vma com.lunarg.vulkan.debug
+          echo "VULKAN_SDK=C:\VulkanSDK\latest" >> $env:GITHUB_ENV
+
+      - name: Install GStreamer
+        uses: blinemedical/setup-gstreamer@v1
+        with:
+          version: ${{ env.GST_VERSION }}
+
+      - name: Install NSIS
+        shell: powershell
+        run: choco install nsis -y
+
+      - name: Setup Caching
+        uses: ./.github/actions/cache
+        with:
+          host: windows
+          target: win64_msvc2022_64
+          build-type: Release
+          cpm-modules: ${{ runner.temp }}\shadow_build_dir\cpm_modules
+
+      - name: Install Qt for Windows
+        uses: jurplel/install-qt-action@v4
+        with:
+          version: ${{ env.QT_VERSION }}
+          host: windows
+          target: desktop
+          arch: win64_msvc2022_64
+          dir: ${{ runner.temp }}
+          modules: qtcharts qtlocation qtpositioning qtspeech qt5compat qtmultimedia qtserialport qtimageformats qtshadertools qtconnectivity qtquick3d qtsensors
+          cache: true
+
+      - name: Set up Visual Studio shell
+        uses: ilammy/msvc-dev-cmd@v1
+        with:
+          arch: x64
+
+      - name: Configure
+        working-directory: ${{ runner.temp }}\shadow_build_dir
+        run: ${{ env.QT_ROOT_DIR }}/bin/qt-cmake -S ${{ github.workspace }} -B . -G Ninja
+              -DCMAKE_BUILD_TYPE=Release
+              -DQT_HOST_PATH="${{ env.QT_ROOT_DIR }}/../msvc2022_64"
+              -DQGC_STABLE_BUILD=ON
+
+      - name: Build
+        working-directory: ${{ runner.temp }}\shadow_build_dir
+        run: cmake --build . --target all --config Release
+
+      - name: Sanity check release executable
+        working-directory: ${{ runner.temp }}\shadow_build_dir\Release
+        run: QGroundControl.exe --simple-boot-test
+
+      - name: Create installer
+        working-directory: ${{ runner.temp }}\shadow_build_dir
+        run: cmake --install . --config Release
+
+      - name: Collect installer
+        shell: pwsh
+        run: |
+          $V = "${{ needs.setup.outputs.version }}"
+          New-Item -ItemType Directory -Force -Path out | Out-Null
+          Copy-Item "${{ runner.temp }}\shadow_build_dir\QGroundControl-installer.exe" "out\QGroundControl-Aircast-$V-installer.exe"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: qgc-windows
+          path: out/*.exe
+
   publish:
-    needs: [setup, build-android, build-macos]
+    needs: [setup, build-android, build-macos, build-windows]
     runs-on: ubuntu-latest
     steps:
       - uses: actions/download-artifact@v4
@@ -245,7 +340,7 @@ jobs:
       - name: Checksums
         run: |
           cd assets
-          for f in *.apk *.dmg; do
+          for f in *.apk *.dmg *.exe; do
             [ -f "$f" ] && sha256sum "$f" > "$f.sha256"
           done || true
           ls -la
@@ -314,7 +409,7 @@ jobs:
           fi
 
   notify:
-    needs: [setup, build-android, build-macos, publish, cleanup-old-releases]
+    needs: [setup, build-android, build-macos, build-windows, publish, cleanup-old-releases]
     if: always()
     runs-on: ubuntu-latest
     steps:
@@ -324,5 +419,6 @@ jobs:
             echo "- **Version:** ${{ needs.setup.outputs.version }} (${{ needs.setup.outputs.environment }})"
             echo "- **Android:** ${{ needs.build-android.result }}"
             echo "- **macOS:** ${{ needs.build-macos.result }}"
+            echo "- **Windows:** ${{ needs.build-windows.result }}"
             echo "- **Release:** https://github.com/${{ github.repository }}/releases/tag/${{ needs.setup.outputs.version }}"
           } >> "$GITHUB_STEP_SUMMARY"
