@@ -65,8 +65,8 @@ jobs:
     env:
       QT_ANDROID_KEYSTORE_PATH: ${{ github.workspace }}/deploy/android/android_release.keystore
       QT_ANDROID_KEYSTORE_ALIAS: QGCAndroidKeyStore
-      QT_ANDROID_KEYSTORE_STORE_PASS: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
-      QT_ANDROID_KEYSTORE_KEY_PASS: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+      QT_ANDROID_KEYSTORE_STORE_PASS: ${{ secrets.ANDROID_KEYSTORE_STORE_PASSWORD }}
+      QT_ANDROID_KEYSTORE_KEY_PASS: ${{ secrets.ANDROID_KEYSTORE_KEY_PASSWORD }}
       QT_ANDROID_ABIS: "armeabi-v7a;arm64-v8a"
     steps:
       - name: Checkout repo
@@ -91,6 +91,19 @@ jobs:
           version: ${{ env.QT_VERSION }}
           abis: ${{ env.QT_ANDROID_ABIS }}
           cpm-modules: ${{ runner.temp }}/shadow_build_dir/cpm_modules
+
+      - name: Install release signing keystore
+        env:
+          ANDROID_KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+        run: |
+          if [ -n "$ANDROID_KEYSTORE_BASE64" ]; then
+            # The checked-in keystore is upstream's; the aircast signing keystore is
+            # injected from a secret so it never lives in this public repo.
+            echo "$ANDROID_KEYSTORE_BASE64" | base64 -d > "$QT_ANDROID_KEYSTORE_PATH"
+            echo "Installed aircast release keystore"
+          else
+            echo "No keystore secret - APK will be unsigned"
+          fi
 
       - name: Restore shared build cache from S3
         env:
