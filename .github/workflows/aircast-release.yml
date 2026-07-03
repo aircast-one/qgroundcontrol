@@ -210,6 +210,11 @@ jobs:
       - name: Initial Setup
         uses: ./.github/actions/common
 
+      - name: Install build tools
+        # The GitHub macOS image has cmake/ninja/ccache/git; only create-dmg
+        # (used to package the DMG) is missing.
+        run: brew install --quiet create-dmg ccache
+
       - name: Cache GStreamer installers
         id: gst-pkgs
         uses: actions/cache@v4
