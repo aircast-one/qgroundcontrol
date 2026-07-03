@@ -210,9 +210,31 @@ jobs:
       - name: Initial Setup
         uses: ./.github/actions/common
 
-      - name: Install Dependencies (include GStreamer)
-        working-directory: ${{ github.workspace }}/tools/setup
-        run: sh install-dependencies-osx.sh
+      - name: Cache GStreamer installers
+        id: gst-pkgs
+        uses: actions/cache@v4
+        with:
+          path: ${{ runner.temp }}/gst-pkgs
+          key: gstreamer-macos-pkgs-1.24.12
+
+      - name: Install GStreamer
+        # Explicit absolute paths instead of tools/setup/install-dependencies-osx.sh,
+        # whose `pushd $TMPDIR` + relative installer path leaves the .pkg unfound.
+        run: |
+          set -euo pipefail
+          GST_VERSION=1.24.12
+          GST_URL="https://gstreamer.freedesktop.org/data/pkg/osx/${GST_VERSION}"
+          PKG_DIR="${RUNNER_TEMP}/gst-pkgs"
+          mkdir -p "$PKG_DIR"
+          for pkg in "gstreamer-1.0-${GST_VERSION}-universal.pkg" "gstreamer-1.0-devel-${GST_VERSION}-universal.pkg"; do
+            if [ ! -f "$PKG_DIR/$pkg" ]; then
+              echo "Downloading $pkg"
+              curl -fsSL -o "$PKG_DIR/$pkg" "$GST_URL/$pkg"
+            fi
+            sudo installer -pkg "$PKG_DIR/$pkg" -target /
+          done
+          test -d /Library/Frameworks/GStreamer.framework
+          echo "GStreamer.framework installed"
 
       - name: Install Qt
         uses: jurplel/install-qt-action@v4
