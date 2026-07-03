@@ -17,13 +17,14 @@ permissions:
 on:
   push:
     tags:
-      - "v[0-9]+.[0-9]+.[0-9]+" # production: v5.0.9
-      - "v*-staging.*" # staging:    v5.0.9-staging.1
-      - "v*-dev.*" # development: v5.0.9-dev.1
+      # aircast-v prefix: bare vX.Y.Z is upstream QGC's tag namespace
+      - "aircast-v[0-9]+.[0-9]+.[0-9]+" # production: aircast-v5.0.9
+      - "aircast-v*-staging.*" # staging:    aircast-v5.0.9-staging.1
+      - "aircast-v*-dev.*" # development: aircast-v5.0.9-dev.1
   workflow_dispatch:
     inputs:
       version:
-        description: "Existing tag to (re)release (e.g. v5.0.9, v5.0.9-dev.1)"
+        description: "Existing tag to (re)release (e.g. aircast-v5.0.9, aircast-v5.0.9-dev.1)"
         required: true
         type: string
 
@@ -47,7 +48,7 @@ jobs:
           fi
           echo "version=$VERSION" >> "$GITHUB_OUTPUT"
 
-          if [[ "$VERSION" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+          if [[ "$VERSION" =~ ^aircast-v[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
             echo "is_production=true" >> "$GITHUB_OUTPUT"
             echo "environment=production" >> "$GITHUB_OUTPUT"
           elif [[ "$VERSION" =~ -staging\. ]]; then
@@ -161,8 +162,9 @@ jobs:
       - name: Collect APK
         run: |
           V="${{ needs.setup.outputs.version }}"
+          SHORT="${V#aircast-}"
           mkdir -p out
-          cp ${{ runner.temp }}/shadow_build_dir/android-build/*.apk "out/QGroundControl-Aircast-$V.apk"
+          cp ${{ runner.temp }}/shadow_build_dir/android-build/*.apk "out/QGroundControl-Aircast-$SHORT.apk"
 
       - uses: actions/upload-artifact@v4
         with:
@@ -277,8 +279,9 @@ jobs:
       - name: Collect DMG
         run: |
           V="${{ needs.setup.outputs.version }}"
+          SHORT="${V#aircast-}"
           mkdir -p out
-          cp ${{ runner.temp }}/shadow_build_dir/QGroundControl.dmg "out/QGroundControl-Aircast-$V.dmg"
+          cp ${{ runner.temp }}/shadow_build_dir/QGroundControl.dmg "out/QGroundControl-Aircast-$SHORT.dmg"
 
       - uses: actions/upload-artifact@v4
         with:
@@ -372,8 +375,9 @@ jobs:
         shell: pwsh
         run: |
           $V = "${{ needs.setup.outputs.version }}"
+          $SHORT = $V -replace '^aircast-',''
           New-Item -ItemType Directory -Force -Path out | Out-Null
-          Copy-Item "${{ runner.temp }}\shadow_build_dir\QGroundControl-installer.exe" "out\QGroundControl-Aircast-$V-installer.exe"
+          Copy-Item "${{ runner.temp }}\shadow_build_dir\QGroundControl-installer.exe" "out\QGroundControl-Aircast-$SHORT-installer.exe"
 
       - uses: actions/upload-artifact@v4
         with:
@@ -491,8 +495,9 @@ jobs:
       - name: Collect AppImage
         run: |
           V="${{ needs.setup.outputs.version }}"
+          SHORT="${V#aircast-}"
           mkdir -p out
-          cp ${{ runner.temp }}/shadow_build_dir/QGroundControl-x86_64.AppImage "out/QGroundControl-Aircast-$V-x86_64.AppImage"
+          cp ${{ runner.temp }}/shadow_build_dir/QGroundControl-x86_64.AppImage "out/QGroundControl-Aircast-$SHORT-x86_64.AppImage"
 
       - uses: actions/upload-artifact@v4
         with:
@@ -529,7 +534,7 @@ jobs:
             gh release upload "$V" -R "${{ github.repository }}" --clobber assets/*
           else
             gh release create "$V" -R "${{ github.repository }}" \
-              --title "QGroundControl Aircast $V" \
+              --title "QGroundControl Aircast ${V#aircast-}" \
               --generate-notes \
               $PRE assets/*
           fi
@@ -548,11 +553,11 @@ jobs:
 
           # Match only this channel's tags (double-escaped for jq's regex).
           if [ "${{ needs.setup.outputs.is_production }}" == "true" ]; then
-            TAG_PATTERN='^v[0-9]+\\.[0-9]+\\.[0-9]+$'
+            TAG_PATTERN='^aircast-v[0-9]+\\.[0-9]+\\.[0-9]+$'
           elif [ "$ENV" == "staging" ]; then
-            TAG_PATTERN='^v.*-staging\\..*$'
+            TAG_PATTERN='^aircast-v.*-staging\\..*$'
           else
-            TAG_PATTERN='^v.*-dev\\..*$'
+            TAG_PATTERN='^aircast-v.*-dev\\..*$'
           fi
 
           RELEASES=$(gh api repos/${{ github.repository }}/releases \

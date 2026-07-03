@@ -5,13 +5,15 @@ set -euo pipefail
 # release.sh - Create and push version tags for the Aircast QGroundControl fork
 # =============================================================================
 # The aircast-release workflow (.github/workflows/aircast-release.yml) builds
-# and publishes on these tag patterns, so the types below map to those triggers:
+# and publishes on these tag patterns, so the types below map to those triggers.
+# Tags are prefixed `aircast-v` because bare vX.Y.Z is upstream QGC's tag
+# namespace and collides on fetch.
 #
-#   patch    - Bump patch version   (v5.0.8 -> v5.0.9)           [production]
-#   minor    - Bump minor version   (v5.0.8 -> v5.1.0)           [production]
-#   major    - Bump major version   (v5.0.8 -> v6.0.0)           [production]
-#   dev      - Development release  (v5.0.8 -> v5.0.9-dev.1)
-#   staging  - Staging release      (v5.0.8 -> v5.0.8-staging.1)
+#   patch    - Bump patch version   (aircast-v5.0.8 -> aircast-v5.0.9)   [production]
+#   minor    - Bump minor version   (aircast-v5.0.8 -> aircast-v5.1.0)   [production]
+#   major    - Bump major version   (aircast-v5.0.8 -> aircast-v6.0.0)   [production]
+#   dev      - Development release  (aircast-v5.0.8 -> aircast-v5.0.9-dev.1)
+#   staging  - Staging release      (aircast-v5.0.8 -> aircast-v5.0.8-staging.1)
 #
 # Usage:
 #   ./scripts/release.sh <patch|minor|major|dev|staging>
@@ -27,7 +29,7 @@ log_info() { echo -e "${GREEN}▶${NC} $1"; }
 log_warn() { echo -e "${YELLOW}▶${NC} $1" >&2; }
 
 get_current_version() {
-    git tag -l 'v[0-9]*.[0-9]*.[0-9]*' --sort=-v:refname | grep -E '^v[0-9]+\.[0-9]+\.[0-9]+$' | head -1 || echo "v0.0.0"
+    git tag -l 'aircast-v[0-9]*.[0-9]*.[0-9]*' --sort=-v:refname | grep -E '^aircast-v[0-9]+\.[0-9]+\.[0-9]+$' | head -1 || echo "aircast-v0.0.0"
 }
 
 tag_exists() {
@@ -50,8 +52,8 @@ find_next_version() {
                 version="${base}-staging.$((num + 1))"
                 ;;
             *)
-                IFS='.' read -r major minor patch <<< "${version#v}"
-                version="v${major}.${minor}.$((patch + 1))"
+                IFS='.' read -r major minor patch <<< "${version#aircast-v}"
+                version="aircast-v${major}.${minor}.$((patch + 1))"
                 ;;
         esac
     done
@@ -59,7 +61,7 @@ find_next_version() {
 }
 
 parse_version() {
-    local version="${1#v}"
+    local version="${1#aircast-v}"
     version="${version%%-*}"
     echo "$version"
 }
@@ -72,27 +74,27 @@ log_info "Current version: $CURRENT"
 
 case "$TYPE" in
     patch)
-        NEW_VERSION="v${MAJOR}.${MINOR}.$((PATCH + 1))"
+        NEW_VERSION="aircast-v${MAJOR}.${MINOR}.$((PATCH + 1))"
         NEW_VERSION=$(find_next_version "$NEW_VERSION")
         MESSAGE="Release $NEW_VERSION"
         ;;
     minor)
-        NEW_VERSION="v${MAJOR}.$((MINOR + 1)).0"
+        NEW_VERSION="aircast-v${MAJOR}.$((MINOR + 1)).0"
         NEW_VERSION=$(find_next_version "$NEW_VERSION")
         MESSAGE="Release $NEW_VERSION"
         ;;
     major)
-        NEW_VERSION="v$((MAJOR + 1)).0.0"
+        NEW_VERSION="aircast-v$((MAJOR + 1)).0.0"
         NEW_VERSION=$(find_next_version "$NEW_VERSION")
         MESSAGE="Release $NEW_VERSION"
         ;;
     dev)
-        NEW_VERSION="v${MAJOR}.${MINOR}.$((PATCH + 1))-dev.1"
+        NEW_VERSION="aircast-v${MAJOR}.${MINOR}.$((PATCH + 1))-dev.1"
         NEW_VERSION=$(find_next_version "$NEW_VERSION")
         MESSAGE="Development Release $NEW_VERSION"
         ;;
     staging)
-        NEW_VERSION="v${MAJOR}.${MINOR}.${PATCH}-staging.1"
+        NEW_VERSION="aircast-v${MAJOR}.${MINOR}.${PATCH}-staging.1"
         NEW_VERSION=$(find_next_version "$NEW_VERSION")
         MESSAGE="Staging Release $NEW_VERSION"
         ;;
