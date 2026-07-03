@@ -314,7 +314,11 @@ jobs:
         run: |
           hdiutil attach QGroundControl.dmg
           /Volumes/QGroundControl/QGroundControl.app/Contents/MacOS/QGroundControl --simple-boot-test
-          hdiutil detach /Volumes/QGroundControl
+          # detach is cleanup, not a check: the boot-test process can briefly hold
+          # the volume ("Resource busy"), so retry and never fail the build on it.
+          for i in 1 2 3 4 5; do
+            hdiutil detach /Volumes/QGroundControl -force && break || sleep 3
+          done || true
 
       - name: Collect DMG
         run: |
