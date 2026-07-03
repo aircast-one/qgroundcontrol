@@ -490,9 +490,18 @@ target_compile_definitions(${CMAKE_PROJECT_NAME}
         QGC_APP_NAME="${QGC_APP_NAME}"
         QGC_ORG_NAME="${QGC_ORG_NAME}"
         QGC_ORG_DOMAIN="${QGC_ORG_DOMAIN}"
-        QGC_APP_VERSION_STR="${QGC_APP_VERSION_STR}"
         QGC_SETTINGS_VERSION=${QGC_SETTINGS_VERSION}
         $<$<NOT:$<BOOL:${QGC_STABLE_BUILD}>>:QGC_DAILY_BUILD>
+)
+
+# The git-describe version changes with every tag. Scoping it to the single file
+# that uses it keeps every other compile command stable, so ccache hits survive
+# across releases instead of rebuilding the world per tag.
+set_property(
+    SOURCE src/QGCApplication.cc
+    TARGET_DIRECTORY ${CMAKE_PROJECT_NAME}
+    APPEND PROPERTY COMPILE_DEFINITIONS
+    QGC_APP_VERSION_STR="${QGC_APP_VERSION_STR}"
 )
 
 set_target_properties(${CMAKE_PROJECT_NAME}
