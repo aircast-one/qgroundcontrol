@@ -92,6 +92,28 @@ jobs:
           abis: ${{ env.QT_ANDROID_ABIS }}
           cpm-modules: ${{ runner.temp }}/shadow_build_dir/cpm_modules
 
+      - name: Restore shared build cache from S3
+        env:
+          AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          AWS_DEFAULT_REGION: us-east-1
+        run: |
+          echo "CCACHE_DIR=${RUNNER_TEMP}/qgc-ccache" >> "$GITHUB_ENV"
+          echo "CCACHE_MAXSIZE=3G" >> "$GITHUB_ENV"
+          mkdir -p "${RUNNER_TEMP}/qgc-ccache"
+          if [ -z "$AWS_ACCESS_KEY_ID" ] || ! command -v aws >/dev/null; then
+            echo "No AWS credentials/cli - building without the shared cache"
+            exit 0
+          fi
+          OBJ="s3://aircast-artifacts/qgc-cache/${{ github.job }}.tar.zst"
+          if aws s3 cp "$OBJ" "${RUNNER_TEMP}/qgc-cache.tar.zst" --no-progress 2>/dev/null; then
+            tar -I zstd -xf "${RUNNER_TEMP}/qgc-cache.tar.zst" -C "${RUNNER_TEMP}"
+            rm -f "${RUNNER_TEMP}/qgc-cache.tar.zst"
+            echo "Shared cache restored from $OBJ"
+          else
+            echo "Shared cache MISS for $OBJ - will seed it after this build"
+          fi
+
       - name: Configure
         working-directory: ${{ runner.temp }}/shadow_build_dir
         run: ${{ env.QT_ROOT_DIR }}/bin/qt-cmake -S ${{ github.workspace }} -B . -G Ninja
@@ -106,6 +128,22 @@ jobs:
       - name: Build
         working-directory: ${{ runner.temp }}/shadow_build_dir
         run: cmake --build . --target all --config Release
+
+      - name: Save shared build cache to S3
+        env:
+          AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          AWS_DEFAULT_REGION: us-east-1
+        run: |
+          if [ -z "$AWS_ACCESS_KEY_ID" ] || ! command -v aws >/dev/null; then exit 0; fi
+          cd "${RUNNER_TEMP}"
+          ccache -s 2>/dev/null || true
+          EXTRA=""
+          [ -d shadow_build_dir/cpm_modules ] && EXTRA="shadow_build_dir/cpm_modules"
+          tar -I 'zstd -T0 -3' -cf qgc-cache.tar.zst qgc-ccache $EXTRA
+          aws s3 cp qgc-cache.tar.zst "s3://aircast-artifacts/qgc-cache/${{ github.job }}.tar.zst" --no-progress
+          rm -f qgc-cache.tar.zst
+          echo "Shared cache uploaded - any runner picks it up on the next build"
 
       - name: Collect APK
         run: |
@@ -376,6 +414,28 @@ jobs:
           modules: qtcharts qtlocation qtpositioning qtspeech qt5compat qtmultimedia qtserialport qtimageformats qtshadertools qtconnectivity qtquick3d qtsensors
           cache: true
 
+      - name: Restore shared build cache from S3
+        env:
+          AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          AWS_DEFAULT_REGION: us-east-1
+        run: |
+          echo "CCACHE_DIR=${RUNNER_TEMP}/qgc-ccache" >> "$GITHUB_ENV"
+          echo "CCACHE_MAXSIZE=3G" >> "$GITHUB_ENV"
+          mkdir -p "${RUNNER_TEMP}/qgc-ccache"
+          if [ -z "$AWS_ACCESS_KEY_ID" ] || ! command -v aws >/dev/null; then
+            echo "No AWS credentials/cli - building without the shared cache"
+            exit 0
+          fi
+          OBJ="s3://aircast-artifacts/qgc-cache/${{ github.job }}.tar.zst"
+          if aws s3 cp "$OBJ" "${RUNNER_TEMP}/qgc-cache.tar.zst" --no-progress 2>/dev/null; then
+            tar -I zstd -xf "${RUNNER_TEMP}/qgc-cache.tar.zst" -C "${RUNNER_TEMP}"
+            rm -f "${RUNNER_TEMP}/qgc-cache.tar.zst"
+            echo "Shared cache restored from $OBJ"
+          else
+            echo "Shared cache MISS for $OBJ - will seed it after this build"
+          fi
+
       - name: Configure
         working-directory: ${{ runner.temp }}/shadow_build_dir
         run: ${{ env.QT_ROOT_DIR }}/bin/qt-cmake -S ${{ github.workspace }} -B . -G Ninja
@@ -385,6 +445,22 @@ jobs:
       - name: Build
         working-directory: ${{ runner.temp }}/shadow_build_dir
         run: cmake --build . --target all --config Release
+
+      - name: Save shared build cache to S3
+        env:
+          AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          AWS_DEFAULT_REGION: us-east-1
+        run: |
+          if [ -z "$AWS_ACCESS_KEY_ID" ] || ! command -v aws >/dev/null; then exit 0; fi
+          cd "${RUNNER_TEMP}"
+          ccache -s 2>/dev/null || true
+          EXTRA=""
+          [ -d shadow_build_dir/cpm_modules ] && EXTRA="shadow_build_dir/cpm_modules"
+          tar -I 'zstd -T0 -3' -cf qgc-cache.tar.zst qgc-ccache $EXTRA
+          aws s3 cp qgc-cache.tar.zst "s3://aircast-artifacts/qgc-cache/${{ github.job }}.tar.zst" --no-progress
+          rm -f qgc-cache.tar.zst
+          echo "Shared cache uploaded - any runner picks it up on the next build"
 
       - name: Create AppImage
         working-directory: ${{ runner.temp }}/shadow_build_dir
