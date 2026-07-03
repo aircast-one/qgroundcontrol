@@ -69,7 +69,8 @@ jobs:
       QT_ANDROID_KEYSTORE_STORE_PASS: ${{ secrets.ANDROID_KEYSTORE_STORE_PASSWORD }}
       # PKCS12 keystores have no distinct key password - the store password unlocks the key
       QT_ANDROID_KEYSTORE_KEY_PASS: ${{ secrets.ANDROID_KEYSTORE_STORE_PASSWORD }}
-      QT_ANDROID_ABIS: "armeabi-v7a;arm64-v8a"
+      # Fleet tablets are arm64; build the legacy 32-bit ABI only for production
+      QT_ANDROID_ABIS: ${{ needs.setup.outputs.is_production == 'true' && 'armeabi-v7a;arm64-v8a' || 'arm64-v8a' }}
     steps:
       - name: Checkout repo
         uses: actions/checkout@v4
@@ -238,6 +239,28 @@ jobs:
             echo "SYSROOT_ARG=" >> "$GITHUB_ENV"
           fi
 
+      - name: Restore CPM sources from S3
+        # ccache is local on this runner; only dependency downloads are shared
+        env:
+          AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          AWS_DEFAULT_REGION: us-east-1
+        run: |
+          echo "CPM_SOURCE_CACHE=${RUNNER_TEMP}/shadow_build_dir/cpm_modules" >> "$GITHUB_ENV"
+          mkdir -p "${RUNNER_TEMP}/shadow_build_dir/cpm_modules"
+          if [ -z "$AWS_ACCESS_KEY_ID" ] || ! command -v aws >/dev/null; then
+            echo "No AWS credentials/cli - building without the shared CPM cache"
+            exit 0
+          fi
+          OBJ="s3://aircast-artifacts/qgc-cache/${{ github.job }}-cpm.tar.zst"
+          if aws s3 cp "$OBJ" "${RUNNER_TEMP}/qgc-cpm.tar.zst" --no-progress 2>/dev/null; then
+            tar -I zstd -xf "${RUNNER_TEMP}/qgc-cpm.tar.zst" -C "${RUNNER_TEMP}"
+            rm -f "${RUNNER_TEMP}/qgc-cpm.tar.zst"
+            echo "CPM cache restored from $OBJ"
+          else
+            echo "CPM cache MISS for $OBJ - will seed it after this build"
+          fi
+
       - name: CMake configure
         working-directory: ${{ runner.temp }}/shadow_build_dir
         env:
@@ -258,6 +281,18 @@ jobs:
         env:
           GIT_CONFIG_GLOBAL: /dev/null
         run: cmake --build . --target all --config Release
+
+      - name: Save CPM sources to S3
+        env:
+          AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          AWS_DEFAULT_REGION: us-east-1
+        run: |
+          if [ -z "$AWS_ACCESS_KEY_ID" ] || ! command -v aws >/dev/null; then exit 0; fi
+          cd "${RUNNER_TEMP}"
+          tar -I 'zstd -T0 -3' -cf qgc-cpm.tar.zst shadow_build_dir/cpm_modules
+          aws s3 cp qgc-cpm.tar.zst "s3://aircast-artifacts/qgc-cache/${{ github.job }}-cpm.tar.zst" --no-progress
+          rm -f qgc-cpm.tar.zst
 
       - name: Import Code Signing Certificate
         if: env.HAS_MACOS_CERTS == 'true'
@@ -312,18 +347,45 @@ jobs:
       - name: Initial Setup
         uses: ./.github/actions/common
 
+      - name: Cache Vulkan SDK
+        id: vulkan-cache
+        uses: actions/cache@v4
+        with:
+          path: C:\VulkanSDK\latest
+          key: vulkan-sdk-windows-v1
+
       - name: Install Vulkan
+        if: steps.vulkan-cache.outputs.cache-hit != 'true'
         working-directory: ${{ runner.temp }}
         shell: pwsh
         run: |
           Invoke-WebRequest -Uri "https://sdk.lunarg.com/sdk/download/latest/windows/vulkan-sdk.exe" -OutFile vulkan-sdk.exe
           .\vulkan-sdk.exe --root C:\VulkanSDK\latest --accept-licenses --default-answer --confirm-command install com.lunarg.vulkan.glm com.lunarg.vulkan.volk com.lunarg.vulkan.vma com.lunarg.vulkan.debug
-          echo "VULKAN_SDK=C:\VulkanSDK\latest" >> $env:GITHUB_ENV
+
+      - name: Set Vulkan environment
+        shell: pwsh
+        run: echo "VULKAN_SDK=C:\VulkanSDK\latest" >> $env:GITHUB_ENV
+
+      - name: Cache GStreamer
+        id: gst-cache
+        uses: actions/cache@v4
+        with:
+          path: C:\gstreamer
+          key: gstreamer-${{ env.GST_VERSION }}-windows-msvc
 
       - name: Install GStreamer
+        if: steps.gst-cache.outputs.cache-hit != 'true'
         uses: blinemedical/setup-gstreamer@v1
         with:
           version: ${{ env.GST_VERSION }}
+
+      - name: Set GStreamer environment (cache hit)
+        if: steps.gst-cache.outputs.cache-hit == 'true'
+        shell: pwsh
+        run: |
+          # FindGStreamer.cmake reads this env (and falls back to C:\gstreamer)
+          echo "GSTREAMER_1_0_ROOT_MSVC_X86_64=C:\gstreamer\1.0\msvc_x86_64" >> $env:GITHUB_ENV
+          echo "C:\gstreamer\1.0\msvc_x86_64\bin" >> $env:GITHUB_PATH
 
       - name: Install NSIS
         shell: powershell
@@ -387,7 +449,9 @@ jobs:
 
   build-linux:
     needs: setup
-    runs-on: [self-hosted, Linux, X64, dev]
+    # Pinned to the infra runner so Android (dev runner) and Linux build in
+    # parallel; the S3 shared cache keeps ccache warm across both hosts.
+    runs-on: [self-hosted, Linux, X64, infra]
     steps:
       - name: Checkout repo
         uses: actions/checkout@v4
