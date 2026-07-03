@@ -215,14 +215,15 @@ jobs:
         uses: actions/cache@v4
         with:
           path: ${{ runner.temp }}/gst-pkgs
-          key: gstreamer-macos-pkgs-1.24.12
+          key: gstreamer-macos-pkgs-1.24.13
 
       - name: Install GStreamer
         # Explicit absolute paths instead of tools/setup/install-dependencies-osx.sh,
         # whose `pushd $TMPDIR` + relative installer path leaves the .pkg unfound.
         run: |
           set -euo pipefail
-          GST_VERSION=1.24.12
+          # Must match GST_MACOS_PLUGINS_VERSION default in gstqml6gl/CMakeLists.txt.
+          GST_VERSION=1.24.13
           GST_URL="https://gstreamer.freedesktop.org/data/pkg/osx/${GST_VERSION}"
           PKG_DIR="${RUNNER_TEMP}/gst-pkgs"
           mkdir -p "$PKG_DIR"

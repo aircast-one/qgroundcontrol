@@ -4,7 +4,12 @@ if(MACOS)
     # Using FindGStreamer.cmake is currently bypassed on MACOS since it doesn't work
     # So for now we hack in a simple hardwired setup which does work
     find_library(GSTREAMER_FRAMEWORK GStreamer)
-    set(GST_PLUGINS_VERSION 1.24.12)
+    # Overridable so CI can track whatever 1.24.x the freedesktop server still hosts
+    # (older patch releases get pruned). Must match the installed GStreamer.framework.
+    if(NOT DEFINED GST_MACOS_PLUGINS_VERSION)
+        set(GST_MACOS_PLUGINS_VERSION 1.24.13)
+    endif()
+    set(GST_PLUGINS_VERSION ${GST_MACOS_PLUGINS_VERSION})
     set(GSTREAMER_FRAMEWORK_PATH "/Library/Frameworks/GStreamer.framework")
     if(NOT EXISTS "${GSTREAMER_FRAMEWORK_PATH}")
         message(FATAL_ERROR "GStreamer.framework not found at ${GSTREAMER_FRAMEWORK_PATH}. Install GStreamer using tools/setup/install-dependencies-osx.sh script")
