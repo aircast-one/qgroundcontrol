@@ -190,11 +190,11 @@ jobs:
 
   build-macos:
     needs: setup
-    runs-on: [self-hosted, macOS, ARM64]
-    timeout-minutes: 40
-    env:
-      # secrets aren't available in step-level `if:` expressions - surface as env
-      HAS_MACOS_CERTS: ${{ secrets.MACOS_CERT_P12_BASE64 != '' }}
+    # GitHub-hosted macos-14: free on public repos, Xcode 16 / macOS 15 SDK
+    # (still ships AGL.framework, so no SDK workaround needed), and keeps builds
+    # off the user's workstation (which orphaned macdeployqt and dropped network).
+    runs-on: macos-14
+    timeout-minutes: 45
     steps:
       - name: Checkout repo
         uses: actions/checkout@v4
@@ -207,33 +207,14 @@ jobs:
       - name: Get all tags for correct version determination
         run: git fetch --all --tags -f --depth 1
 
-      # Not ./.github/actions/common: its setup-python assumes the GitHub-hosted
-      # image layout (/Users/runner) and fails on self-hosted Macs. The runner
-      # provides cmake/ninja/python locally.
       - name: Initial Setup
-        run: mkdir -p "$RUNNER_TEMP/shadow_build_dir"
+        uses: ./.github/actions/common
 
-      - name: Install GStreamer (skipped when already present)
-        run: |
-          if [ -d "/Library/Frameworks/GStreamer.framework" ]; then
-            echo "GStreamer.framework already installed - skipping"
-          else
-            (cd tools/setup && sh install-dependencies-osx.sh)
-          fi
-
-      - name: Locate Qt
-        id: qt
-        run: |
-          if [ -d "$HOME/Qt/${QT_VERSION}/macos" ]; then
-            echo "QT_ROOT_DIR=$HOME/Qt/${QT_VERSION}/macos" >> "$GITHUB_ENV"
-            echo "found=true" >> "$GITHUB_OUTPUT"
-            echo "Using preinstalled Qt at $HOME/Qt/${QT_VERSION}/macos"
-          else
-            echo "found=false" >> "$GITHUB_OUTPUT"
-          fi
+      - name: Install Dependencies (include GStreamer)
+        working-directory: ${{ github.workspace }}/tools/setup
+        run: sh install-dependencies-osx.sh
 
       - name: Install Qt
-        if: steps.qt.outputs.found != 'true'
         uses: jurplel/install-qt-action@v4
         with:
           version: ${{ env.QT_VERSION }}
@@ -244,63 +225,43 @@ jobs:
           modules: qtcharts qtlocation qtpositioning qtspeech qt5compat qtmultimedia qtserialport qtimageformats qtshadertools qtconnectivity qtquick3d qtsensors
           cache: true
 
-      - name: Select SDK
-        # Newer Xcode SDKs dropped AGL.framework, which Qt's WrapOpenGL still links.
-        # Prefer the CommandLineTools 15.4 SDK when the runner has it.
-        run: |
-          SDK=/Library/Developer/CommandLineTools/SDKs/MacOSX15.4.sdk
-          if [ -d "$SDK" ]; then
-            echo "SYSROOT_ARG=-DCMAKE_OSX_SYSROOT=$SDK" >> "$GITHUB_ENV"
-          else
-            echo "SYSROOT_ARG=" >> "$GITHUB_ENV"
-          fi
-
-      - name: Restore CPM sources from S3
+      - name: Restore shared build cache from S3
         continue-on-error: true
-        # ccache is local on this runner; only dependency downloads are shared
         env:
           AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
           AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
           AWS_DEFAULT_REGION: us-east-1
         run: |
-          echo "CPM_SOURCE_CACHE=${RUNNER_TEMP}/shadow_build_dir/cpm_modules" >> "$GITHUB_ENV"
-          mkdir -p "${RUNNER_TEMP}/shadow_build_dir/cpm_modules"
+          echo "CCACHE_DIR=${RUNNER_TEMP}/qgc-ccache" >> "$GITHUB_ENV"
+          echo "CCACHE_MAXSIZE=3G" >> "$GITHUB_ENV"
+          echo "CCACHE_COMPILERCHECK=content" >> "$GITHUB_ENV"
+          mkdir -p "${RUNNER_TEMP}/qgc-ccache"
           if [ -z "$AWS_ACCESS_KEY_ID" ] || ! command -v aws >/dev/null; then
-            echo "No AWS credentials/cli - building without the shared CPM cache"
+            echo "No AWS credentials/cli - building without the shared cache"
             exit 0
           fi
-          OBJ="s3://aircast-artifacts/qgc-cache/${{ github.job }}-cpm.tar.zst"
-          if aws s3 cp "$OBJ" "${RUNNER_TEMP}/qgc-cpm.tar.zst" --no-progress 2>/dev/null; then
+          OBJ="s3://aircast-artifacts/qgc-cache/${{ github.job }}.tar.zst"
+          if aws s3 cp "$OBJ" "${RUNNER_TEMP}/qgc-cache.tar.zst" --no-progress 2>/dev/null; then
             # pipe form: macOS bsdtar doesn't support GNU tar's -I option
-            zstd -d -c "${RUNNER_TEMP}/qgc-cpm.tar.zst" | tar -xf - -C "${RUNNER_TEMP}"
-            rm -f "${RUNNER_TEMP}/qgc-cpm.tar.zst"
-            echo "CPM cache restored from $OBJ"
+            zstd -d -c "${RUNNER_TEMP}/qgc-cache.tar.zst" | tar -xf - -C "${RUNNER_TEMP}"
+            rm -f "${RUNNER_TEMP}/qgc-cache.tar.zst"
+            echo "Shared cache restored from $OBJ"
           else
-            echo "CPM cache MISS for $OBJ - will seed it after this build"
+            echo "Shared cache MISS for $OBJ - will seed it after this build"
           fi
 
       - name: CMake configure
         working-directory: ${{ runner.temp }}/shadow_build_dir
-        env:
-          # Isolate dependency fetches from the workstation user's git config:
-          # an `insteadOf` rewrite there forces CPM/FetchContent over SSH, which
-          # breaks when port 22 is blocked or flaky. These steps only read config,
-          # so an empty file is safe (checkout, which writes config, is untouched).
-          GIT_CONFIG_GLOBAL: /dev/null
         run: ${{ env.QT_ROOT_DIR }}/bin/qt-cmake -S ${{ github.workspace }} -B . -G Ninja
               -DCMAKE_BUILD_TYPE=Release
               -DCMAKE_OSX_ARCHITECTURES=${{ needs.setup.outputs.is_production == 'true' && '"x86_64;arm64"' || 'arm64' }}
-              ${{ env.SYSROOT_ARG }}
               -DQGC_STABLE_BUILD=ON
-              -DQGC_MACOS_SIGN_WITH_IDENTITY=${{ env.HAS_MACOS_CERTS == 'true' && 'ON' || 'OFF' }}
 
       - name: Build
         working-directory: ${{ runner.temp }}/shadow_build_dir
-        env:
-          GIT_CONFIG_GLOBAL: /dev/null
         run: cmake --build . --target all --config Release
 
-      - name: Save CPM sources to S3
+      - name: Save shared build cache to S3
         continue-on-error: true
         env:
           AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
@@ -309,29 +270,24 @@ jobs:
         run: |
           if [ -z "$AWS_ACCESS_KEY_ID" ] || ! command -v aws >/dev/null; then exit 0; fi
           cd "${RUNNER_TEMP}"
-          # pipe form: macOS bsdtar doesn't support GNU tar's -I option
-          tar -cf - shadow_build_dir/cpm_modules | zstd -T0 -3 > qgc-cpm.tar.zst
-          aws s3 cp qgc-cpm.tar.zst "s3://aircast-artifacts/qgc-cache/${{ github.job }}-cpm.tar.zst" --no-progress
-          rm -f qgc-cpm.tar.zst
+          ccache -s 2>/dev/null || true
+          EXTRA=""
+          [ -d shadow_build_dir/cpm_modules ] && EXTRA="shadow_build_dir/cpm_modules"
+          tar -cf - qgc-ccache $EXTRA | zstd -T0 -3 > qgc-cache.tar.zst
+          aws s3 cp qgc-cache.tar.zst "s3://aircast-artifacts/qgc-cache/${{ github.job }}.tar.zst" --no-progress
+          rm -f qgc-cache.tar.zst
 
-      - name: Import Code Signing Certificate
-        if: env.HAS_MACOS_CERTS == 'true'
-        uses: apple-actions/import-codesign-certs@v5
-        with:
-          p12-file-base64: ${{ secrets.MACOS_CERT_P12_BASE64 }}
-          p12-password: ${{ secrets.MACOS_CERT_P12_PASSWORD }}
-
-      - name: Create app bundle (signed/notarized when certs are configured)
+      - name: Create app bundle
         working-directory: ${{ runner.temp }}/shadow_build_dir
         run: cmake --install . --config Release
-        env:
-          QGC_MACOS_SIGNING_IDENTITY: ${{ secrets.MACOS_SIGNING_IDENTITY }}
-          QGC_MACOS_NOTARIZATION_USERNAME: ${{ secrets.MACOS_NOTARIZATION_USERNAME }}
-          QGC_MACOS_NOTARIZATION_PASSWORD: ${{ secrets.MACOS_NOTARIZATION_PASSWORD }}
-          QGC_MACOS_NOTARIZATION_TEAM_ID: ${{ secrets.MACOS_NOTARIZATION_TEAM_ID }}
 
-      # No boot-test here: the runner is a workstation where another QGC instance
-      # may be running, and RunGuard would make the test fail spuriously.
+      - name: Sanity check DMG executable
+        working-directory: ${{ runner.temp }}/shadow_build_dir
+        run: |
+          hdiutil attach QGroundControl.dmg
+          /Volumes/QGroundControl/QGroundControl.app/Contents/MacOS/QGroundControl --simple-boot-test
+          hdiutil detach /Volumes/QGroundControl
+
       - name: Collect DMG
         run: |
           V="${{ needs.setup.outputs.version }}"
