@@ -455,9 +455,10 @@ jobs:
 
   build-linux:
     needs: setup
-    # Pinned to the infra runner so Android (dev runner) and Linux build in
-    # parallel; the S3 shared cache keeps ccache warm across both hosts.
-    runs-on: [self-hosted, Linux, X64, infra]
+    # Serialized behind Android on the dev runner ON PURPOSE: infra.aircast.one
+    # is a k8s node running the GitOps stack, and a QGC build there starved the
+    # node and OOM-killed argocd-repo-server. Do not build on infra.
+    runs-on: [self-hosted, Linux, X64, dev]
     steps:
       - name: Checkout repo
         uses: actions/checkout@v4
