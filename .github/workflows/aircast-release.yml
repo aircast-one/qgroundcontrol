@@ -65,6 +65,7 @@ jobs:
     # GitHub-hosted: free with unlimited minutes on public repos, 4 cores, and
     # fully parallel with the other platforms. The S3 cache keeps it warm.
     runs-on: ubuntu-latest
+    timeout-minutes: 45
     env:
       QT_ANDROID_KEYSTORE_PATH: ${{ github.workspace }}/deploy/android/android_release.keystore
       QT_ANDROID_KEYSTORE_ALIAS: QGCAndroidKeyStore
@@ -190,6 +191,7 @@ jobs:
   build-macos:
     needs: setup
     runs-on: [self-hosted, macOS, ARM64]
+    timeout-minutes: 40
     env:
       # secrets aren't available in step-level `if:` expressions - surface as env
       HAS_MACOS_CERTS: ${{ secrets.MACOS_CERT_P12_BASE64 != '' }}
@@ -345,6 +347,7 @@ jobs:
   build-windows:
     needs: setup
     runs-on: windows-latest
+    timeout-minutes: 50
     defaults:
       run:
         shell: cmd
@@ -471,6 +474,7 @@ jobs:
     # NEVER move this to self-hosted infra: infra.aircast.one is a k8s node
     # and a QGC build there starved it and OOM-killed argocd-repo-server.
     runs-on: ubuntu-22.04
+    timeout-minutes: 45
     steps:
       - name: Checkout repo
         uses: actions/checkout@v4
