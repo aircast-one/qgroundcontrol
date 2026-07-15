@@ -232,5 +232,56 @@ Item {
             }
             property int zoom: 0
         }
+
+        //-- Additional cameras shown simultaneously as picture-in-picture tiles
+        Column {
+            id:                     multiViewTiles
+            anchors.right:          parent.right
+            anchors.verticalCenter: parent.verticalCenter
+            anchors.rightMargin:    ScreenTools.defaultFontPixelWidth * 2
+            spacing:                ScreenTools.defaultFontPixelHeight * 0.5
+            z:                      1000
+
+            Repeater {
+                model: QGroundControl.videoManager.maxVideoTiles()
+
+                delegate: Rectangle {
+                    id:             tile
+                    // Reading the notifying properties forces re-evaluation when the active
+                    // source, camera list or multi-view toggle changes.
+                    property int cameraNumber: (QGroundControl.videoManager.activeVideoSource,
+                                                QGroundControl.settingsManager.videoSettings.multiViewEnabled.rawValue,
+                                                QGroundControl.videoManager.tileCameraNumber(index))
+                    width:          ScreenTools.defaultFontPixelWidth * 34
+                    height:         Math.round(width * 9 / 16)
+                    visible:        cameraNumber > 0 && !QGroundControl.videoManager.fullScreen
+                    color:          "black"
+                    border.color:   "white"
+                    border.width:   1
+
+                    QGCVideoBackground {
+                        objectName:         "extraVideo" + index
+                        anchors.fill:       parent
+                        anchors.margins:    tile.border.width
+                        Component.onCompleted: QGroundControl.videoManager.registerTileItem(index, this)
+                    }
+
+                    QGCLabel {
+                        anchors.left:       parent.left
+                        anchors.top:        parent.top
+                        anchors.margins:    ScreenTools.defaultFontPixelWidth * 0.5
+                        text:               qsTr("Camera %1").arg(tile.cameraNumber)
+                        color:              "white"
+                        style:              Text.Outline
+                        styleColor:         "black"
+                    }
+
+                    MouseArea {
+                        anchors.fill:   parent
+                        onClicked:      QGroundControl.videoManager.promoteTile(index)
+                    }
+                }
+            }
+        }
     }
 }

@@ -274,6 +274,13 @@ SettingsPage {
                 }
             }
         }
+
+        FactCheckBoxSlider {
+            Layout.fillWidth:   true
+            text:               qsTr("Show all cameras at once (picture-in-picture)")
+            fact:               _videoSettings.multiViewEnabled
+            visible:            fact.visible
+        }
     }
 
     SettingsGroupLayout {

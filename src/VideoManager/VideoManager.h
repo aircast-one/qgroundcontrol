@@ -9,6 +9,7 @@
 
 #pragma once
 
+#include <QtCore/QHash>
 #include <QtCore/QLoggingCategory>
 #include <QtCore/QObject>
 #include <QtCore/QRunnable>
@@ -18,6 +19,7 @@
 Q_DECLARE_LOGGING_CATEGORY(VideoManagerLog)
 
 class QQuickWindow;
+class QQuickItem;
 class FinishVideoInitialization;
 class SubtitleWriter;
 class Vehicle;
@@ -66,6 +68,16 @@ public:
     Q_INVOKABLE void stopVideo();
     Q_INVOKABLE void setActiveVideoSource(int index);
     Q_INVOKABLE void switchActiveVideoSource();
+
+    /// Number of picture-in-picture tile slots available for simultaneous multi-view.
+    Q_INVOKABLE int maxVideoTiles() const;
+    /// 1-based camera number shown in tile `slot`, or 0 when the slot is unused/multi-view is off.
+    Q_INVOKABLE int tileCameraNumber(int slot) const;
+    /// Makes the camera shown in tile `slot` the main (active) view.
+    Q_INVOKABLE void promoteTile(int slot);
+    /// Hands a tile's video item to the manager so its sink can be created. The tile items
+    /// are created independently of C++ init order, so binding happens whenever both exist.
+    Q_INVOKABLE void registerTileItem(int slot, QQuickItem *item);
 
     void init(QQuickWindow *rootWindow);
     void cleanup();
@@ -121,6 +133,9 @@ private:
     bool _updateSettings(VideoReceiver *receiver);
     bool _updateVideoUri(VideoReceiver *receiver, const QString &uri);
     QString _sourceToUri(const QString &source, const QString &url) const;
+    int _cameraIndexForReceiver(const VideoReceiver *receiver) const;
+    void _bindTileWidget(int slot);
+    static constexpr int kMaxVideoTiles = 3;
     void _restartAllVideos();
     void _restartVideo(VideoReceiver *receiver);
     void _startReceiver(VideoReceiver *receiver);
@@ -128,6 +143,8 @@ private:
     static void _cleanupOldVideos();
 
     QList<VideoReceiver*> _videoReceivers;
+    QQuickWindow *_window = nullptr;
+    QHash<int, QQuickItem*> _tileWidgets;
 
     SubtitleWriter *_subtitleWriter = nullptr;
     VideoSettings *_videoSettings = nullptr;
