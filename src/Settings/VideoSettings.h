@@ -60,6 +60,7 @@ public:
     QString  currentVideoUrl        ();
     QString  videoSourceNameAt      (int index);
     QString  videoUrlAt             (int index);
+    QString  cameraName             (int index);
 
     /// Indices that hold a real, playable source (always includes Camera 1). Disabled
     /// additional cameras are excluded so they don't appear as switch targets.

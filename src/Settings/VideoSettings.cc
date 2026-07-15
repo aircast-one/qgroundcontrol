@@ -213,6 +213,18 @@ QString VideoSettings::videoSourceNameAt(int index)
     return extras.at(index - 1).toObject().value(QStringLiteral("source")).toString();
 }
 
+QString VideoSettings::cameraName(int index)
+{
+    if (index <= 0) {
+        return primaryCameraName()->rawValue().toString();
+    }
+    const QJsonArray extras = _extraSourcesArray();
+    if ((index - 1) >= extras.size()) {
+        return QString();
+    }
+    return extras.at(index - 1).toObject().value(QStringLiteral("name")).toString();
+}
+
 QString VideoSettings::videoUrlAt(int index)
 {
     if (index <= 0) {

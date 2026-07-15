@@ -78,6 +78,11 @@ public:
     /// Hands a tile's video item to the manager so its sink can be created. The tile items
     /// are created independently of C++ init order, so binding happens whenever both exist.
     Q_INVOKABLE void registerTileItem(int slot, QQuickItem *item);
+    /// True when the camera at `index` is currently decoding video — in the main view or in a
+    /// multi-view tile. Drives the per-camera status indicator.
+    Q_INVOKABLE bool cameraReceiving(int index) const;
+    /// Display name for the camera at `index` (its configured name, or "Camera N").
+    Q_INVOKABLE QString cameraName(int index) const;
 
     void init(QQuickWindow *rootWindow);
     void cleanup();
@@ -106,6 +111,7 @@ public:
 
 signals:
     void activeVideoSourceChanged();
+    void videoReceivingChanged();
     void aspectRatioChanged();
     void autoStreamConfiguredChanged();
     void decodingChanged();
@@ -145,6 +151,7 @@ private:
     static constexpr int kMaxVideoTiles = 3;
     QList<VideoReceiver*> _videoReceivers;
     QHash<int, QQuickItem*> _tileWidgets;
+    QHash<QString, bool> _receiverDecoding;
 
     SubtitleWriter *_subtitleWriter = nullptr;
     VideoSettings *_videoSettings = nullptr;

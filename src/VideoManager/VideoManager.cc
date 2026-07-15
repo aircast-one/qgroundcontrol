@@ -103,6 +103,7 @@ void VideoManager::init(QQuickWindow *window)
     (void) connect(_videoSettings->activeVideoSource(), &Fact::rawValueChanged, this, &VideoManager::activeVideoSourceChanged);
     (void) connect(_videoSettings->multiViewEnabled(), &Fact::rawValueChanged, this, &VideoManager::_videoSourceChanged);
     (void) connect(_videoSettings->multiViewEnabled(), &Fact::rawValueChanged, this, &VideoManager::activeVideoSourceChanged);
+    (void) connect(_videoSettings->primaryCameraName(), &Fact::rawValueChanged, this, &VideoManager::activeVideoSourceChanged);
     (void) connect(_videoSettings->aspectRatio(), &Fact::rawValueChanged, this, &VideoManager::aspectRatioChanged);
     (void) connect(_videoSettings->lowLatencyMode(), &Fact::rawValueChanged, this, [this](const QVariant &value) { Q_UNUSED(value); _restartAllVideos(); });
     (void) connect(MultiVehicleManager::instance(), &MultiVehicleManager::activeVehicleChanged, this, &VideoManager::_setActiveVehicle);
@@ -454,6 +455,22 @@ void VideoManager::_bindTileWidget(int slot)
         _restartVideo(receiver);
         return;
     }
+}
+
+bool VideoManager::cameraReceiving(int index) const
+{
+    for (VideoReceiver *receiver : _videoReceivers) {
+        if (_cameraIndexForReceiver(receiver) == index) {
+            return _receiverDecoding.value(receiver->name(), false);
+        }
+    }
+    return false;
+}
+
+QString VideoManager::cameraName(int index) const
+{
+    const QString name = _videoSettings->cameraName(index);
+    return name.isEmpty() ? tr("Camera %1").arg(index + 1) : name;
 }
 
 int VideoManager::_cameraIndexForReceiver(const VideoReceiver *receiver) const
@@ -884,7 +901,7 @@ void VideoManager::_initVideoReceiver(VideoReceiver *receiver, QQuickWindow *win
 
     (void) connect(receiver, &VideoReceiver::streamingChanged, this, [this, receiver](bool active) {
         qCDebug(VideoManagerLog) << "Video" << receiver->name() << "streaming changed, active:" << (active ? "yes" : "no");
-        if (!receiver->isThermal()) {
+        if (receiver->name() == QStringLiteral("videoContent")) {
             _streaming = active;
             emit streamingChanged();
         }
@@ -893,6 +910,11 @@ void VideoManager::_initVideoReceiver(VideoReceiver *receiver, QQuickWindow *win
     (void) connect(receiver, &VideoReceiver::decodingChanged, this, [this, receiver](bool active) {
         qCDebug(VideoManagerLog) << "Video" << receiver->name() << "decoding changed, active:" << (active ? "yes" : "no");
         if (!receiver->isThermal()) {
+            _receiverDecoding.insert(receiver->name(), active);
+            emit videoReceivingChanged();
+        }
+        // The main-view visibility tracks the primary receiver only; extra tiles must not clobber it.
+        if (receiver->name() == QStringLiteral("videoContent")) {
             _decoding = active;
             emit decodingChanged();
         }
