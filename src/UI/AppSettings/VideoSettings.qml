@@ -110,8 +110,6 @@ SettingsPage {
         headingDescription: qsTr("Extra camera streams. Use the switch button on the video to cycle between all cameras.")
         visible:            !_videoAutoStreamConfig && _isGST
 
-        readonly property int _firstExtraCameraNumber: 2
-
         ListModel { id: extraCamsModel }
 
         Component.onCompleted: {
@@ -147,7 +145,7 @@ SettingsPage {
 
                 QGCLabel {
                     Layout.fillWidth:   true
-                    text:               qsTr("Camera %1").arg(camRow.rowIndex + camList._firstExtraCameraNumber)
+                    text:               qsTr("Camera %1").arg(camRow.rowIndex + 2) // Camera 1 is the primary source
                 }
 
                 QGCTextField {
