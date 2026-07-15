@@ -270,7 +270,7 @@ Item {
                         anchors.left:       parent.left
                         anchors.top:        parent.top
                         anchors.margins:    ScreenTools.defaultFontPixelWidth * 0.5
-                        text:               QGroundControl.videoManager.cameraName(tile.cameraNumber - 1)
+                        text:               tile.cameraNumber > 0 ? QGroundControl.videoManager.cameraName(tile.cameraNumber - 1) : ""
                         color:              "white"
                         style:              Text.Outline
                         styleColor:         "black"

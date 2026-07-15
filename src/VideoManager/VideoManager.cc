@@ -103,6 +103,7 @@ void VideoManager::init(QQuickWindow *window)
     (void) connect(_videoSettings->activeVideoSource(), &Fact::rawValueChanged, this, &VideoManager::activeVideoSourceChanged);
     (void) connect(_videoSettings->multiViewEnabled(), &Fact::rawValueChanged, this, &VideoManager::_videoSourceChanged);
     (void) connect(_videoSettings->multiViewEnabled(), &Fact::rawValueChanged, this, &VideoManager::activeVideoSourceChanged);
+    // A rename reuses activeVideoSourceChanged so the switch button / status rows re-read cameraName().
     (void) connect(_videoSettings->primaryCameraName(), &Fact::rawValueChanged, this, &VideoManager::activeVideoSourceChanged);
     (void) connect(_videoSettings->aspectRatio(), &Fact::rawValueChanged, this, &VideoManager::aspectRatioChanged);
     (void) connect(_videoSettings->lowLatencyMode(), &Fact::rawValueChanged, this, [this](const QVariant &value) { Q_UNUSED(value); _restartAllVideos(); });
