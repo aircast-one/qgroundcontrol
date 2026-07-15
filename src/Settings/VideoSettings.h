@@ -11,6 +11,8 @@
 
 #include "SettingsGroup.h"
 
+#include <QtCore/QJsonArray>
+
 class VideoSettings : public SettingsGroup
 {
     Q_OBJECT
@@ -24,11 +26,7 @@ public:
     DEFINE_SETTINGFACT(tcpUrl)
     DEFINE_SETTINGFACT(rtspUrl)
     DEFINE_SETTINGFACT(whepUrl)
-    DEFINE_SETTINGFACT(videoSource2)
-    DEFINE_SETTINGFACT(udpUrl2)
-    DEFINE_SETTINGFACT(tcpUrl2)
-    DEFINE_SETTINGFACT(rtspUrl2)
-    DEFINE_SETTINGFACT(whepUrl2)
+    DEFINE_SETTINGFACT(extraVideoSources)
     DEFINE_SETTINGFACT(activeVideoSource)
     DEFINE_SETTINGFACT(aspectRatio)
     DEFINE_SETTINGFACT(videoFit)
@@ -54,12 +52,10 @@ public:
 
     bool     streamConfigured       ();
 
-    /// Returns the source/url fact for whichever video source (Camera 1 or Camera 2) is currently active.
-    Fact*    currentVideoSource     ();
-    Fact*    currentUdpUrl          ();
-    Fact*    currentRtspUrl         ();
-    Fact*    currentTcpUrl          ();
-    Fact*    currentWhepUrl         ();
+    int      videoSourceCount       ();
+    int      currentIndex           ();
+    QString  currentVideoSourceName ();
+    QString  currentVideoUrl        ();
 
     QString  rtspVideoSource        () { return videoSourceRTSP; }
     QString  udp264VideoSource      () { return videoSourceUDPH264; }
@@ -92,6 +88,7 @@ private slots:
 private:
     void _setDefaults               ();
     void _setForceVideoDecodeList();
+    QJsonArray _extraSourcesArray   ();
 
 private:
     bool _noVideo = false;

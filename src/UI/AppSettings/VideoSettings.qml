@@ -36,13 +36,11 @@ SettingsPage {
     property real   _urlFieldWidth:             ScreenTools.defaultFontPixelWidth * 40
     property bool   _requiresUDPUrl:            _isUDP264 || _isUDP265 || _isMPEGTS
 
-    // Second video source (Camera 2)
-    property string _videoSource2:              _videoSettings.videoSource2.rawValue
-    property bool   _isRTSP2:                   _videoSource2 === _videoSettings.rtspVideoSource
-    property bool   _isTCP2:                     _videoSource2 === _videoSettings.tcpVideoSource
-    property bool   _isUDP2:                     _videoSource2 === _videoSettings.udp264VideoSource || _videoSource2 === _videoSettings.udp265VideoSource || _videoSource2 === _videoSettings.mpegtsVideoSource
-    property bool   _isWHEP2:                   _videoSource2 === _videoSettings.webrtcVideoSource
-    property bool   _source2Disabled:           _videoSource2 === _videoSettings.disabledVideoSource || _videoSource2 === ""
+    function _sourceNeedsUrl(src) {
+        return src === _videoSettings.rtspVideoSource || src === _videoSettings.tcpVideoSource ||
+               src === _videoSettings.udp264VideoSource || src === _videoSettings.udp265VideoSource ||
+               src === _videoSettings.mpegtsVideoSource || src === _videoSettings.webrtcVideoSource
+    }
 
     SettingsGroupLayout {
         Layout.fillWidth:   true
@@ -106,55 +104,99 @@ SettingsPage {
     }
 
     SettingsGroupLayout {
+        id:                 camList
         Layout.fillWidth:   true
-        heading:            qsTr("Video Source 2")
-        headingDescription: qsTr("Optional second camera. Use the switch button on the video to toggle between cameras.")
+        heading:            qsTr("Additional Cameras")
+        headingDescription: qsTr("Extra camera streams. Use the switch button on the video to cycle between all cameras.")
         visible:            !_videoAutoStreamConfig && _isGST
 
-        LabelledFactComboBox {
-            Layout.fillWidth:   true
-            label:              qsTr("Source")
-            indexModel:         false
-            fact:               _videoSettings.videoSource2
-            visible:            fact.visible
-        }
-    }
+        readonly property int _firstExtraCameraNumber: 2
 
-    SettingsGroupLayout {
-        Layout.fillWidth:   true
-        heading:            qsTr("Connection 2")
-        visible:            !_source2Disabled && !_videoAutoStreamConfig && _isGST && (_isTCP2 || _isRTSP2 || _isUDP2 || _isWHEP2)
+        ListModel { id: extraCamsModel }
 
-        LabelledFactTextField {
-            Layout.fillWidth:           true
-            textFieldPreferredWidth:    _urlFieldWidth
-            label:                      qsTr("RTSP URL")
-            fact:                       _videoSettings.rtspUrl2
-            visible:                    _isRTSP2 && _videoSettings.rtspUrl2.visible
+        Component.onCompleted: {
+            var arr = []
+            try { arr = JSON.parse(_videoSettings.extraVideoSources.rawValue || "[]") } catch (e) { arr = [] }
+            for (var i = 0; i < arr.length; ++i) {
+                extraCamsModel.append({ source: arr[i].source || "", url: arr[i].url || "" })
+            }
         }
 
-        LabelledFactTextField {
-            Layout.fillWidth:           true
-            textFieldPreferredWidth:    _urlFieldWidth
-            label:                      qsTr("WHEP URL")
-            fact:                       _videoSettings.whepUrl2
-            visible:                    _isWHEP2 && _videoSettings.whepUrl2.visible
+        function saveExtraCams() {
+            var arr = []
+            for (var i = 0; i < extraCamsModel.count; ++i) {
+                var row = extraCamsModel.get(i)
+                arr.push({ source: row.source, url: row.url })
+            }
+            _videoSettings.extraVideoSources.rawValue = JSON.stringify(arr)
         }
 
-        LabelledFactTextField {
-            Layout.fillWidth:           true
-            label:                      qsTr("TCP URL")
-            textFieldPreferredWidth:    _urlFieldWidth
-            fact:                       _videoSettings.tcpUrl2
-            visible:                    _isTCP2 && _videoSettings.tcpUrl2.visible
+        Repeater {
+            model: extraCamsModel
+            delegate: RowLayout {
+                id:                 camRow
+                Layout.fillWidth:   true
+                spacing:            ScreenTools.defaultFontPixelWidth * 2
+
+                property int    rowIndex:   index
+                property string rowSource:  source
+                property string rowUrl:     url
+
+                QGCLabel {
+                    Layout.fillWidth:   true
+                    text:               qsTr("Camera %1").arg(camRow.rowIndex + camList._firstExtraCameraNumber)
+                }
+
+                QGCTextField {
+                    Layout.preferredWidth:  ScreenTools.defaultFontPixelWidth * 28
+                    visible:                _sourceNeedsUrl(camRow.rowSource)
+                    text:                   camRow.rowUrl
+                    placeholderText:        qsTr("Stream URL")
+                    onEditingFinished: {
+                        extraCamsModel.setProperty(camRow.rowIndex, "url", text)
+                        camList.saveExtraCams()
+                    }
+                }
+
+                QGCComboBox {
+                    sizeToContents:     true
+                    model:              _videoSettings.videoSource.enumStrings
+                    currentIndex:       Math.max(0, _videoSettings.videoSource.enumValues.indexOf(camRow.rowSource))
+                    onActivated: (activeIndex) => {
+                        extraCamsModel.setProperty(camRow.rowIndex, "source", _videoSettings.videoSource.enumValues[activeIndex])
+                        camList.saveExtraCams()
+                    }
+                }
+
+                QGCColoredImage {
+                    height:             ScreenTools.minTouchPixels
+                    width:              height
+                    sourceSize.height:  height
+                    fillMode:           Image.PreserveAspectFit
+                    mipmap:             true
+                    smooth:             true
+                    color:              QGroundControl.globalPalette.text
+                    source:             "/res/TrashDelete.svg"
+
+                    QGCMouseArea {
+                        fillItem: parent
+                        onClicked: {
+                            extraCamsModel.remove(camRow.rowIndex)
+                            camList.saveExtraCams()
+                            _videoManager.setActiveVideoSource(0)
+                        }
+                    }
+                }
+            }
         }
 
-        LabelledFactTextField {
-            Layout.fillWidth:           true
-            textFieldPreferredWidth:    _urlFieldWidth
-            label:                      qsTr("UDP URL")
-            fact:                       _videoSettings.udpUrl2
-            visible:                    _isUDP2 && _videoSettings.udpUrl2.visible
+        LabelledButton {
+            label:      qsTr("Add camera stream")
+            buttonText: qsTr("Add")
+            onClicked: {
+                extraCamsModel.append({ source: _videoSettings.disabledVideoSource, url: "" })
+                camList.saveExtraCams()
+            }
         }
     }
 
