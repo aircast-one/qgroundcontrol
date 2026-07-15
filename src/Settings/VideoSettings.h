@@ -26,6 +26,7 @@ public:
     DEFINE_SETTINGFACT(tcpUrl)
     DEFINE_SETTINGFACT(rtspUrl)
     DEFINE_SETTINGFACT(whepUrl)
+    DEFINE_SETTINGFACT(primaryCameraName)
     DEFINE_SETTINGFACT(extraVideoSources)
     DEFINE_SETTINGFACT(activeVideoSource)
     DEFINE_SETTINGFACT(aspectRatio)

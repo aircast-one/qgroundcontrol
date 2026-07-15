@@ -39,9 +39,16 @@
     "default":     ""
 },
 {
+    "name":             "primaryCameraName",
+    "shortDesc": "Camera 1 name",
+    "longDesc":  "Optional display name for the primary camera (Camera 1).",
+    "type":             "string",
+    "default":     ""
+},
+{
     "name":             "extraVideoSources",
     "shortDesc": "Additional video sources",
-    "longDesc":  "JSON array of additional camera streams beyond Camera 1. Each entry is an object with 'source' and 'url' keys.",
+    "longDesc":  "JSON array of additional camera streams beyond Camera 1. Each entry is an object with 'name', 'source' and 'url' keys.",
     "type":             "string",
     "default":     "[]"
 },

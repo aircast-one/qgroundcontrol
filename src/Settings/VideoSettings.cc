@@ -109,6 +109,15 @@ DECLARE_SETTINGSFACT_NO_FUNC(VideoSettings, videoSource)
     return _videoSourceFact;
 }
 
+DECLARE_SETTINGSFACT_NO_FUNC(VideoSettings, primaryCameraName)
+{
+    if (!_primaryCameraNameFact) {
+        _primaryCameraNameFact = _createSettingsFact(primaryCameraNameName);
+        connect(_primaryCameraNameFact, &Fact::valueChanged, this, &VideoSettings::_configChanged);
+    }
+    return _primaryCameraNameFact;
+}
+
 DECLARE_SETTINGSFACT_NO_FUNC(VideoSettings, extraVideoSources)
 {
     if (!_extraVideoSourcesFact) {
