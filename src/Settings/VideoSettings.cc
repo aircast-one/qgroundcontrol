@@ -12,6 +12,8 @@
 
 #include <QtQml/QQmlEngine>
 #include <QtCore/QVariantList>
+#include <QtCore/QJsonDocument>
+#include <QtCore/QJsonObject>
 
 #ifdef QGC_GST_STREAMING
 #include "GStreamer.h"
@@ -64,7 +66,6 @@ DECLARE_SETTINGGROUP(Video, "Video")
     }
 
     _nameToMetaDataMap[videoSourceName]->setEnumInfo(videoSourceCookedList, videoSourceList);
-    _nameToMetaDataMap[videoSource2Name]->setEnumInfo(videoSourceCookedList, videoSourceList);
 
     _setForceVideoDecodeList();
 
@@ -76,10 +77,8 @@ void VideoSettings::_setDefaults()
 {
     if (_noVideo) {
         _nameToMetaDataMap[videoSourceName]->setRawDefaultValue(videoSourceNoVideo);
-        _nameToMetaDataMap[videoSource2Name]->setRawDefaultValue(videoSourceNoVideo);
     } else {
         _nameToMetaDataMap[videoSourceName]->setRawDefaultValue(videoDisabled);
-        _nameToMetaDataMap[videoSource2Name]->setRawDefaultValue(videoDisabled);
     }
 }
 
@@ -110,57 +109,22 @@ DECLARE_SETTINGSFACT_NO_FUNC(VideoSettings, videoSource)
     return _videoSourceFact;
 }
 
-DECLARE_SETTINGSFACT_NO_FUNC(VideoSettings, videoSource2)
+DECLARE_SETTINGSFACT_NO_FUNC(VideoSettings, primaryCameraName)
 {
-    if (!_videoSource2Fact) {
-        _videoSource2Fact = _createSettingsFact(videoSource2Name);
-        //-- Check for sources no longer available
-        if(!_videoSource2Fact->enumValues().contains(_videoSource2Fact->rawValue().toString())) {
-            if (_noVideo) {
-                _videoSource2Fact->setRawValue(videoSourceNoVideo);
-            } else {
-                _videoSource2Fact->setRawValue(videoDisabled);
-            }
-        }
-        connect(_videoSource2Fact, &Fact::valueChanged, this, &VideoSettings::_configChanged);
+    if (!_primaryCameraNameFact) {
+        _primaryCameraNameFact = _createSettingsFact(primaryCameraNameName);
+        connect(_primaryCameraNameFact, &Fact::valueChanged, this, &VideoSettings::_configChanged);
     }
-    return _videoSource2Fact;
+    return _primaryCameraNameFact;
 }
 
-DECLARE_SETTINGSFACT_NO_FUNC(VideoSettings, udpUrl2)
+DECLARE_SETTINGSFACT_NO_FUNC(VideoSettings, extraVideoSources)
 {
-    if (!_udpUrl2Fact) {
-        _udpUrl2Fact = _createSettingsFact(udpUrl2Name);
-        connect(_udpUrl2Fact, &Fact::valueChanged, this, &VideoSettings::_configChanged);
+    if (!_extraVideoSourcesFact) {
+        _extraVideoSourcesFact = _createSettingsFact(extraVideoSourcesName);
+        connect(_extraVideoSourcesFact, &Fact::valueChanged, this, &VideoSettings::_configChanged);
     }
-    return _udpUrl2Fact;
-}
-
-DECLARE_SETTINGSFACT_NO_FUNC(VideoSettings, tcpUrl2)
-{
-    if (!_tcpUrl2Fact) {
-        _tcpUrl2Fact = _createSettingsFact(tcpUrl2Name);
-        connect(_tcpUrl2Fact, &Fact::valueChanged, this, &VideoSettings::_configChanged);
-    }
-    return _tcpUrl2Fact;
-}
-
-DECLARE_SETTINGSFACT_NO_FUNC(VideoSettings, rtspUrl2)
-{
-    if (!_rtspUrl2Fact) {
-        _rtspUrl2Fact = _createSettingsFact(rtspUrl2Name);
-        connect(_rtspUrl2Fact, &Fact::valueChanged, this, &VideoSettings::_configChanged);
-    }
-    return _rtspUrl2Fact;
-}
-
-DECLARE_SETTINGSFACT_NO_FUNC(VideoSettings, whepUrl2)
-{
-    if (!_whepUrl2Fact) {
-        _whepUrl2Fact = _createSettingsFact(whepUrl2Name);
-        connect(_whepUrl2Fact, &Fact::valueChanged, this, &VideoSettings::_configChanged);
-    }
-    return _whepUrl2Fact;
+    return _extraVideoSourcesFact;
 }
 
 DECLARE_SETTINGSFACT_NO_FUNC(VideoSettings, activeVideoSource)
@@ -172,29 +136,74 @@ DECLARE_SETTINGSFACT_NO_FUNC(VideoSettings, activeVideoSource)
     return _activeVideoSourceFact;
 }
 
-Fact *VideoSettings::currentVideoSource()
+QJsonArray VideoSettings::_extraSourcesArray()
 {
-    return (activeVideoSource()->rawValue().toInt() == 1) ? videoSource2() : videoSource();
+    return QJsonDocument::fromJson(extraVideoSources()->rawValue().toString().toUtf8()).array();
 }
 
-Fact *VideoSettings::currentUdpUrl()
+int VideoSettings::videoSourceCount()
 {
-    return (activeVideoSource()->rawValue().toInt() == 1) ? udpUrl2() : udpUrl();
+    return 1 + _extraSourcesArray().size();
 }
 
-Fact *VideoSettings::currentRtspUrl()
+bool VideoSettings::_isStreamSource(const QString &source)
 {
-    return (activeVideoSource()->rawValue().toInt() == 1) ? rtspUrl2() : rtspUrl();
+    static const QStringList streamSources = {
+        videoSourceUDPH264, videoSourceUDPH265, videoSourceRTSP, videoSourceTCP,
+        videoSourceMPEGTS, videoSourceWebRTC, videoSource3DRSolo,
+        videoSourceParrotDiscovery, videoSourceYuneecMantisG,
+        videoSourceHerelinkAirUnit, videoSourceHerelinkHotspot,
+    };
+    return streamSources.contains(source);
 }
 
-Fact *VideoSettings::currentTcpUrl()
+QList<int> VideoSettings::switchableIndices()
 {
-    return (activeVideoSource()->rawValue().toInt() == 1) ? tcpUrl2() : tcpUrl();
+    QList<int> indices{0};
+    const QJsonArray extras = _extraSourcesArray();
+    for (int i = 0; i < extras.size(); ++i) {
+        if (_isStreamSource(extras.at(i).toObject().value(QStringLiteral("source")).toString())) {
+            indices.append(i + 1);
+        }
+    }
+    return indices;
 }
 
-Fact *VideoSettings::currentWhepUrl()
+int VideoSettings::currentIndex()
 {
-    return (activeVideoSource()->rawValue().toInt() == 1) ? whepUrl2() : whepUrl();
+    const int index = activeVideoSource()->rawValue().toInt();
+    return (index >= 0 && index < videoSourceCount()) ? index : 0;
+}
+
+QString VideoSettings::currentVideoSourceName()
+{
+    const int index = currentIndex();
+    if (index == 0) {
+        return videoSource()->rawValue().toString();
+    }
+    return _extraSourcesArray().at(index - 1).toObject().value(QStringLiteral("source")).toString();
+}
+
+QString VideoSettings::currentVideoUrl()
+{
+    const int index = currentIndex();
+    if (index == 0) {
+        const QString source = videoSource()->rawValue().toString();
+        if (source == videoSourceUDPH264 || source == videoSourceUDPH265 || source == videoSourceMPEGTS) {
+            return udpUrl()->rawValue().toString();
+        }
+        if (source == videoSourceRTSP) {
+            return rtspUrl()->rawValue().toString();
+        }
+        if (source == videoSourceTCP) {
+            return tcpUrl()->rawValue().toString();
+        }
+        if (source == videoSourceWebRTC) {
+            return whepUrl()->rawValue().toString();
+        }
+        return QString();
+    }
+    return _extraSourcesArray().at(index - 1).toObject().value(QStringLiteral("url")).toString();
 }
 
 DECLARE_SETTINGSFACT_NO_FUNC(VideoSettings, forceVideoDecoder)
@@ -295,34 +304,14 @@ bool VideoSettings::streamConfigured(void)
         return true;
     }
     //-- Check if it's disabled (evaluate whichever source is currently active)
-    QString vSource = currentVideoSource()->rawValue().toString();
+    QString vSource = currentVideoSourceName();
     if(vSource == videoSourceNoVideo || vSource == videoDisabled) {
         return false;
     }
-    //-- If UDP, check for URL
-    if(vSource == videoSourceUDPH264 || vSource == videoSourceUDPH265) {
-        qCDebug(VideoManagerLog) << "Testing configuration for UDP Stream:" << currentUdpUrl()->rawValue().toString();
-        return !currentUdpUrl()->rawValue().toString().isEmpty();
-    }
-    //-- If RTSP, check for URL
-    if(vSource == videoSourceRTSP) {
-        qCDebug(VideoManagerLog) << "Testing configuration for RTSP Stream:" << currentRtspUrl()->rawValue().toString();
-        return !currentRtspUrl()->rawValue().toString().isEmpty();
-    }
-    //-- If TCP, check for URL
-    if(vSource == videoSourceTCP) {
-        qCDebug(VideoManagerLog) << "Testing configuration for TCP Stream:" << currentTcpUrl()->rawValue().toString();
-        return !currentTcpUrl()->rawValue().toString().isEmpty();
-    }
-    //-- If WebRTC (WHEP), check for URL
-    if(vSource == videoSourceWebRTC) {
-        qCDebug(VideoManagerLog) << "Testing configuration for WebRTC (WHEP) Stream:" << currentWhepUrl()->rawValue().toString();
-        return !currentWhepUrl()->rawValue().toString().isEmpty();
-    }
-    //-- If MPEG-TS, check for URL
-    if(vSource == videoSourceMPEGTS) {
-        qCDebug(VideoManagerLog) << "Testing configuration for MPEG-TS Stream:" << currentUdpUrl()->rawValue().toString();
-        return !currentUdpUrl()->rawValue().toString().isEmpty();
+    //-- Stream sources that require a URL are configured once that URL is set
+    if(vSource == videoSourceUDPH264 || vSource == videoSourceUDPH265 || vSource == videoSourceMPEGTS ||
+       vSource == videoSourceRTSP || vSource == videoSourceTCP || vSource == videoSourceWebRTC) {
+        return !currentVideoUrl().isEmpty();
     }
     //-- If Herelink Air unit, good to go
     if(vSource == videoSourceHerelinkAirUnit) {

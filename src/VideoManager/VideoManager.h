@@ -64,9 +64,7 @@ public:
     Q_INVOKABLE void startVideo();
     Q_INVOKABLE void stopRecording();
     Q_INVOKABLE void stopVideo();
-    /// Selects which configured video source (0 = Camera 1, 1 = Camera 2) is displayed.
     Q_INVOKABLE void setActiveVideoSource(int index);
-    /// Toggles between the two configured video sources.
     Q_INVOKABLE void switchActiveVideoSource();
 
     void init(QQuickWindow *rootWindow);
@@ -122,6 +120,7 @@ private:
     bool _updateUVC(VideoReceiver *receiver);
     bool _updateSettings(VideoReceiver *receiver);
     bool _updateVideoUri(VideoReceiver *receiver, const QString &uri);
+    QString _sourceToUri(const QString &source, const QString &url) const;
     void _restartAllVideos();
     void _restartVideo(VideoReceiver *receiver);
     void _startReceiver(VideoReceiver *receiver);
