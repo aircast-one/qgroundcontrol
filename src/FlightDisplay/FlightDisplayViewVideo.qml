@@ -260,7 +260,7 @@ Item {
                     border.width:   1
 
                     QGCVideoBackground {
-                        objectName:         "extraVideo" + index
+                        objectName:         "extraVideo" + index  // must match VideoManager::_tileReceiverName
                         anchors.fill:       parent
                         anchors.margins:    tile.border.width
                         Component.onCompleted: QGroundControl.videoManager.registerTileItem(index, this)

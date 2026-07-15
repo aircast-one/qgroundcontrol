@@ -135,15 +135,15 @@ private:
     QString _sourceToUri(const QString &source, const QString &url) const;
     int _cameraIndexForReceiver(const VideoReceiver *receiver) const;
     void _bindTileWidget(int slot);
-    static constexpr int kMaxVideoTiles = 3;
+    static QString _tileReceiverName(int slot);
     void _restartAllVideos();
     void _restartVideo(VideoReceiver *receiver);
     void _startReceiver(VideoReceiver *receiver);
     void _stopReceiver(VideoReceiver *receiver);
     static void _cleanupOldVideos();
 
+    static constexpr int kMaxVideoTiles = 3;
     QList<VideoReceiver*> _videoReceivers;
-    QQuickWindow *_window = nullptr;
     QHash<int, QQuickItem*> _tileWidgets;
 
     SubtitleWriter *_subtitleWriter = nullptr;

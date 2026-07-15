@@ -109,14 +109,12 @@ void VideoManager::init(QQuickWindow *window)
 
     (void) connect(this, &VideoManager::autoStreamConfiguredChanged, this, &VideoManager::_videoSourceChanged);
 
-    _window = window;
-
     QStringList videoStreamList = {
         "videoContent",
         "thermalVideo"
     };
     for (int i = 0; i < kMaxVideoTiles; ++i) {
-        videoStreamList.append(QStringLiteral("extraVideo%1").arg(i));
+        videoStreamList.append(_tileReceiverName(i));
     }
     for (const QString &streamName : videoStreamList) {
         VideoReceiver *receiver = QGCCorePlugin::instance()->createVideoReceiver(this);
@@ -425,19 +423,28 @@ void VideoManager::registerTileItem(int slot, QQuickItem *item)
     _bindTileWidget(slot);
 }
 
+QString VideoManager::_tileReceiverName(int slot)
+{
+    return QStringLiteral("extraVideo%1").arg(slot);
+}
+
 void VideoManager::_bindTileWidget(int slot)
 {
     QQuickItem *item = _tileWidgets.value(slot, nullptr);
     if (!item) {
         return;
     }
-    const QString name = QStringLiteral("extraVideo%1").arg(slot);
+    const QString name = _tileReceiverName(slot);
     for (VideoReceiver *receiver : std::as_const(_videoReceivers)) {
         if (receiver->name() != name) {
             continue;
         }
         if (receiver->widget() == item) {
             return;
+        }
+        if (receiver->sink()) {
+            QGCCorePlugin::instance()->releaseVideoSink(receiver->sink());
+            receiver->setSink(nullptr);
         }
         receiver->setWidget(item);
         void *sink = QGCCorePlugin::instance()->createVideoSink(item, receiver);
