@@ -137,6 +137,29 @@ int VideoSettings::videoSourceCount()
     return 1 + _extraSourcesArray().size();
 }
 
+bool VideoSettings::_isStreamSource(const QString &source)
+{
+    static const QStringList streamSources = {
+        videoSourceUDPH264, videoSourceUDPH265, videoSourceRTSP, videoSourceTCP,
+        videoSourceMPEGTS, videoSourceWebRTC, videoSource3DRSolo,
+        videoSourceParrotDiscovery, videoSourceYuneecMantisG,
+        videoSourceHerelinkAirUnit, videoSourceHerelinkHotspot,
+    };
+    return streamSources.contains(source);
+}
+
+QList<int> VideoSettings::switchableIndices()
+{
+    QList<int> indices{0};
+    const QJsonArray extras = _extraSourcesArray();
+    for (int i = 0; i < extras.size(); ++i) {
+        if (_isStreamSource(extras.at(i).toObject().value(QStringLiteral("source")).toString())) {
+            indices.append(i + 1);
+        }
+    }
+    return indices;
+}
+
 int VideoSettings::currentIndex()
 {
     const int index = activeVideoSource()->rawValue().toInt();

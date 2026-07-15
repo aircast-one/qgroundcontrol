@@ -57,6 +57,10 @@ public:
     QString  currentVideoSourceName ();
     QString  currentVideoUrl        ();
 
+    /// Indices that hold a real, playable source (always includes Camera 1). Disabled
+    /// additional cameras are excluded so they don't appear as switch targets.
+    QList<int> switchableIndices     ();
+
     QString  rtspVideoSource        () { return videoSourceRTSP; }
     QString  udp264VideoSource      () { return videoSourceUDPH264; }
     QString  udp265VideoSource      () { return videoSourceUDPH265; }
@@ -89,6 +93,7 @@ private:
     void _setDefaults               ();
     void _setForceVideoDecodeList();
     QJsonArray _extraSourcesArray   ();
+    static bool _isStreamSource     (const QString &source);
 
 private:
     bool _noVideo = false;

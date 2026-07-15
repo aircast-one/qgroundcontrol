@@ -359,7 +359,7 @@ int VideoManager::activeVideoSource() const
 
 bool VideoManager::hasMultipleVideoSources() const
 {
-    return _videoSettings->videoSourceCount() > 1;
+    return _videoSettings->switchableIndices().size() > 1;
 }
 
 void VideoManager::setActiveVideoSource(int index)
@@ -374,11 +374,13 @@ void VideoManager::setActiveVideoSource(int index)
 
 void VideoManager::switchActiveVideoSource()
 {
-    const int count = _videoSettings->videoSourceCount();
-    if (count <= 1) {
+    const QList<int> indices = _videoSettings->switchableIndices();
+    if (indices.size() <= 1) {
         return;
     }
-    setActiveVideoSource((activeVideoSource() + 1) % count);
+    const int pos = indices.indexOf(activeVideoSource());
+    const int next = indices.at(((pos < 0 ? 0 : pos) + 1) % indices.size());
+    setActiveVideoSource(next);
 }
 
 void VideoManager::_videoSourceChanged()

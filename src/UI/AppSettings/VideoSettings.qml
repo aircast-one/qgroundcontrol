@@ -117,8 +117,11 @@ SettingsPage {
         Component.onCompleted: {
             var arr = []
             try { arr = JSON.parse(_videoSettings.extraVideoSources.rawValue || "[]") } catch (e) { arr = [] }
+            var known = _videoSettings.videoSource.enumValues
             for (var i = 0; i < arr.length; ++i) {
-                extraCamsModel.append({ source: arr[i].source || "", url: arr[i].url || "" })
+                var src = arr[i].source || ""
+                if (known.indexOf(src) < 0) src = _videoSettings.disabledVideoSource
+                extraCamsModel.append({ source: src, url: arr[i].url || "" })
             }
         }
 
