@@ -19,4 +19,7 @@ export GST_PLUGIN_PATH="${APPDIR}/usr/lib/gstreamer-1.0"
 
 # export QT_QPA_PLATFORM="wayland;xcb"
 
-exec "${APPDIR}/usr/bin/QGroundControl" "$@"
+# Exec the app binary by discovery rather than a hardcoded name, so this
+# survives an app-name rebrand (usr/bin holds only the app executable).
+QGC_BIN="$(ls "${APPDIR}/usr/bin/" | head -n1)"
+exec "${APPDIR}/usr/bin/${QGC_BIN}" "$@"
