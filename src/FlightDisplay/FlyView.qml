@@ -122,7 +122,7 @@ Item {
             // Show a camera-switch button on the pip only while the video is the pip item
             showActionButton:       QGroundControl.videoManager.hasMultipleVideoSources &&
                                         videoControl.pipState.state === videoControl.pipState.pipState
-            actionButtonText:       qsTr("Camera %1").arg(QGroundControl.videoManager.activeVideoSource + 1)
+            actionButtonText:       QGroundControl.videoManager.cameraName(QGroundControl.videoManager.activeVideoSource)
             onActionButtonClicked:  QGroundControl.videoManager.switchActiveVideoSource()
 
             property real leftEdgeBottomInset: visible ? width + anchors.margins : 0
@@ -163,7 +163,7 @@ Item {
             opacity:                    0.75
             visible:                    QGroundControl.videoManager.hasMultipleVideoSources &&
                                         videoControl.pipState.state === videoControl.pipState.fullState
-            text:                       qsTr("Camera %1").arg(QGroundControl.videoManager.activeVideoSource + 1)
+            text:                       QGroundControl.videoManager.cameraName(QGroundControl.videoManager.activeVideoSource)
             onClicked:                  QGroundControl.videoManager.switchActiveVideoSource()
         }
 

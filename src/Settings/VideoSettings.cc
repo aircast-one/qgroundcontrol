@@ -136,6 +136,15 @@ DECLARE_SETTINGSFACT_NO_FUNC(VideoSettings, activeVideoSource)
     return _activeVideoSourceFact;
 }
 
+DECLARE_SETTINGSFACT_NO_FUNC(VideoSettings, multiViewEnabled)
+{
+    if (!_multiViewEnabledFact) {
+        _multiViewEnabledFact = _createSettingsFact(multiViewEnabledName);
+        connect(_multiViewEnabledFact, &Fact::valueChanged, this, &VideoSettings::_configChanged);
+    }
+    return _multiViewEnabledFact;
+}
+
 QJsonArray VideoSettings::_extraSourcesArray()
 {
     return QJsonDocument::fromJson(extraVideoSources()->rawValue().toString().toUtf8()).array();
@@ -169,6 +178,13 @@ QList<int> VideoSettings::switchableIndices()
     return indices;
 }
 
+QList<int> VideoSettings::tileCameraIndices()
+{
+    QList<int> tiles = switchableIndices();
+    tiles.removeAll(currentIndex());
+    return tiles;
+}
+
 int VideoSettings::currentIndex()
 {
     const int index = activeVideoSource()->rawValue().toInt();
@@ -177,17 +193,41 @@ int VideoSettings::currentIndex()
 
 QString VideoSettings::currentVideoSourceName()
 {
-    const int index = currentIndex();
-    if (index == 0) {
-        return videoSource()->rawValue().toString();
-    }
-    return _extraSourcesArray().at(index - 1).toObject().value(QStringLiteral("source")).toString();
+    return videoSourceNameAt(currentIndex());
 }
 
 QString VideoSettings::currentVideoUrl()
 {
-    const int index = currentIndex();
-    if (index == 0) {
+    return videoUrlAt(currentIndex());
+}
+
+QString VideoSettings::videoSourceNameAt(int index)
+{
+    if (index <= 0) {
+        return videoSource()->rawValue().toString();
+    }
+    const QJsonArray extras = _extraSourcesArray();
+    if ((index - 1) >= extras.size()) {
+        return videoSource()->rawValue().toString();
+    }
+    return extras.at(index - 1).toObject().value(QStringLiteral("source")).toString();
+}
+
+QString VideoSettings::cameraName(int index)
+{
+    if (index <= 0) {
+        return primaryCameraName()->rawValue().toString();
+    }
+    const QJsonArray extras = _extraSourcesArray();
+    if ((index - 1) >= extras.size()) {
+        return QString();
+    }
+    return extras.at(index - 1).toObject().value(QStringLiteral("name")).toString();
+}
+
+QString VideoSettings::videoUrlAt(int index)
+{
+    if (index <= 0) {
         const QString source = videoSource()->rawValue().toString();
         if (source == videoSourceUDPH264 || source == videoSourceUDPH265 || source == videoSourceMPEGTS) {
             return udpUrl()->rawValue().toString();
@@ -203,7 +243,11 @@ QString VideoSettings::currentVideoUrl()
         }
         return QString();
     }
-    return _extraSourcesArray().at(index - 1).toObject().value(QStringLiteral("url")).toString();
+    const QJsonArray extras = _extraSourcesArray();
+    if ((index - 1) >= extras.size()) {
+        return QString();
+    }
+    return extras.at(index - 1).toObject().value(QStringLiteral("url")).toString();
 }
 
 DECLARE_SETTINGSFACT_NO_FUNC(VideoSettings, forceVideoDecoder)

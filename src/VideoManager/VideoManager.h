@@ -9,6 +9,7 @@
 
 #pragma once
 
+#include <QtCore/QHash>
 #include <QtCore/QLoggingCategory>
 #include <QtCore/QObject>
 #include <QtCore/QRunnable>
@@ -18,6 +19,7 @@
 Q_DECLARE_LOGGING_CATEGORY(VideoManagerLog)
 
 class QQuickWindow;
+class QQuickItem;
 class FinishVideoInitialization;
 class SubtitleWriter;
 class Vehicle;
@@ -67,6 +69,21 @@ public:
     Q_INVOKABLE void setActiveVideoSource(int index);
     Q_INVOKABLE void switchActiveVideoSource();
 
+    /// Number of picture-in-picture tile slots available for simultaneous multi-view.
+    Q_INVOKABLE int maxVideoTiles() const;
+    /// 1-based camera number shown in tile `slot`, or 0 when the slot is unused/multi-view is off.
+    Q_INVOKABLE int tileCameraNumber(int slot) const;
+    /// Makes the camera shown in tile `slot` the main (active) view.
+    Q_INVOKABLE void promoteTile(int slot);
+    /// Hands a tile's video item to the manager so its sink can be created. The tile items
+    /// are created independently of C++ init order, so binding happens whenever both exist.
+    Q_INVOKABLE void registerTileItem(int slot, QQuickItem *item);
+    /// True when the camera at `index` is currently decoding video — in the main view or in a
+    /// multi-view tile. Drives the per-camera status indicator.
+    Q_INVOKABLE bool cameraReceiving(int index) const;
+    /// Display name for the camera at `index` (its configured name, or "Camera N").
+    Q_INVOKABLE QString cameraName(int index) const;
+
     void init(QQuickWindow *rootWindow);
     void cleanup();
     bool autoStreamConfigured() const;
@@ -94,6 +111,7 @@ public:
 
 signals:
     void activeVideoSourceChanged();
+    void videoReceivingChanged();
     void aspectRatioChanged();
     void autoStreamConfiguredChanged();
     void decodingChanged();
@@ -121,13 +139,19 @@ private:
     bool _updateSettings(VideoReceiver *receiver);
     bool _updateVideoUri(VideoReceiver *receiver, const QString &uri);
     QString _sourceToUri(const QString &source, const QString &url) const;
+    int _cameraIndexForReceiver(const VideoReceiver *receiver) const;
+    void _bindTileWidget(int slot);
+    static QString _tileReceiverName(int slot);
     void _restartAllVideos();
     void _restartVideo(VideoReceiver *receiver);
     void _startReceiver(VideoReceiver *receiver);
     void _stopReceiver(VideoReceiver *receiver);
     static void _cleanupOldVideos();
 
+    static constexpr int kMaxVideoTiles = 3;
     QList<VideoReceiver*> _videoReceivers;
+    QHash<int, QQuickItem*> _tileWidgets;
+    QHash<QString, bool> _receiverDecoding;
 
     SubtitleWriter *_subtitleWriter = nullptr;
     VideoSettings *_videoSettings = nullptr;

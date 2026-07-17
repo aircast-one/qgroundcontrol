@@ -29,6 +29,7 @@ public:
     DEFINE_SETTINGFACT(primaryCameraName)
     DEFINE_SETTINGFACT(extraVideoSources)
     DEFINE_SETTINGFACT(activeVideoSource)
+    DEFINE_SETTINGFACT(multiViewEnabled)
     DEFINE_SETTINGFACT(aspectRatio)
     DEFINE_SETTINGFACT(videoFit)
     DEFINE_SETTINGFACT(gridLines)
@@ -57,10 +58,17 @@ public:
     int      currentIndex           ();
     QString  currentVideoSourceName ();
     QString  currentVideoUrl        ();
+    QString  videoSourceNameAt      (int index);
+    QString  videoUrlAt             (int index);
+    QString  cameraName             (int index);
 
     /// Indices that hold a real, playable source (always includes Camera 1). Disabled
     /// additional cameras are excluded so they don't appear as switch targets.
     QList<int> switchableIndices     ();
+
+    /// Switchable indices except the active one, in order — the cameras shown as
+    /// picture-in-picture tiles when multi-view is enabled.
+    QList<int> tileCameraIndices     ();
 
     QString  rtspVideoSource        () { return videoSourceRTSP; }
     QString  udp264VideoSource      () { return videoSourceUDPH264; }

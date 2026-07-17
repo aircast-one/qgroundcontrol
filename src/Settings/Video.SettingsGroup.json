@@ -55,10 +55,17 @@
 {
     "name":             "activeVideoSource",
     "shortDesc": "Active Video Source",
-    "longDesc":  "Index of the configured video source currently displayed. 0 = Camera 1, 1..N = additional cameras.",
+    "longDesc":  "Index of the configured video source displayed as the main view. 0 = Camera 1, 1..N = additional cameras.",
     "type":             "uint32",
     "min":              0,
     "default":     0
+},
+{
+    "name":             "multiViewEnabled",
+    "shortDesc": "Show all cameras at once",
+    "longDesc":  "When enabled, additional cameras are shown as picture-in-picture tiles next to the main view instead of only when switched to.",
+    "type":             "bool",
+    "default":     false
 },
 {
     "name":             "videoSavePath",

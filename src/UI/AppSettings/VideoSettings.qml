@@ -145,7 +145,15 @@ SettingsPage {
                 Layout.fillWidth:   true
                 spacing:            ScreenTools.defaultFontPixelWidth * 2
 
-                property bool receiving: model.camIndex === _videoManager.activeVideoSource && _videoManager.decoding
+                // cameraReceiving() isn't a bindable property, so recompute on the relevant signals.
+                property bool receiving: false
+                function refreshReceiving() { receiving = _videoManager.cameraReceiving(model.camIndex) }
+                Component.onCompleted: refreshReceiving()
+                Connections {
+                    target: _videoManager
+                    function onVideoReceivingChanged() { camRow.refreshReceiving() }
+                    function onActiveVideoSourceChanged() { camRow.refreshReceiving() }
+                }
 
                 Rectangle {
                     width:              ScreenTools.defaultFontPixelHeight * 0.7
@@ -209,6 +217,13 @@ SettingsPage {
             label:      qsTr("Add camera stream")
             buttonText: qsTr("Add")
             onClicked:  camList.addCamera()
+        }
+
+        FactCheckBoxSlider {
+            Layout.fillWidth:   true
+            text:               qsTr("Show all cameras at once (picture-in-picture)")
+            fact:               _videoSettings.multiViewEnabled
+            visible:            fact.visible
         }
     }
 
