@@ -9,12 +9,13 @@ include(CMakeDependentOption)
 option(QGC_ENABLE_HERELINK "Enable Herelink Support" OFF)
 
 # App
-set(QGC_APP_NAME "QGroundControl" CACHE STRING "App Name")
-set(QGC_APP_COPYRIGHT "Copyright (c) 2025 QGroundControl. All rights reserved." CACHE STRING "Copyright")
-set(QGC_APP_DESCRIPTION "Open Source Ground Control App" CACHE STRING "Description")
-set(QGC_ORG_NAME "QGroundControl" CACHE STRING "Org Name")
-set(QGC_ORG_DOMAIN "qgroundcontrol.com" CACHE STRING "Domain")
-set(QGC_PACKAGE_NAME "org.mavlink.qgroundcontrol" CACHE STRING "Package Name")
+set(QGC_APP_NAME "AircastQGC" CACHE STRING "App Name")
+set(QGC_APP_DISPLAY_NAME "Aircast QGC" CACHE STRING "User-facing Display Name")
+set(QGC_APP_COPYRIGHT "Copyright (c) 2026 Aircast. All rights reserved." CACHE STRING "Copyright")
+set(QGC_APP_DESCRIPTION "Aircast ground station — a QGroundControl fork with built-in WebRTC video" CACHE STRING "Description")
+set(QGC_ORG_NAME "Aircast" CACHE STRING "Org Name")
+set(QGC_ORG_DOMAIN "aircast.one" CACHE STRING "Domain")
+set(QGC_PACKAGE_NAME "org.aircast.qgc" CACHE STRING "Package Name")
 set(QGC_SETTINGS_VERSION "9" CACHE STRING "Settings Version") # If you need to make an incompatible changes to stored settings, bump this version number up by 1. This will caused store settings to be cleared on next boot.
 
 # Build
@@ -64,7 +65,7 @@ option(QT_USE_TARGET_ANDROID_BUILD_DIR "Use Target Android Build Dir" OFF)
 
 # MacOS
 set(QGC_MACOS_PLIST_PATH "${CMAKE_SOURCE_DIR}/deploy/macos/MacOSXBundleInfo.plist.in" CACHE FILEPATH "MacOS PList Path")
-set(QGC_MACOS_BUNDLE_ID "org.qgroundcontrol.QGroundControl" CACHE STRING "MacOS Bundle ID") # MACOS
+set(QGC_MACOS_BUNDLE_ID "org.aircast.qgc" CACHE STRING "MacOS Bundle ID") # MACOS
 set(QGC_MACOS_ICON_PATH "${CMAKE_SOURCE_DIR}/deploy/macos" CACHE PATH "MacOS Icon Path") # MACOS
 set(QGC_MACOS_ENTITLEMENTS_PATH "${CMAKE_SOURCE_DIR}/deploy/macos/qgroundcontrol.entitlements" CACHE FILEPATH "MacOS Entitlements Path")
 # option(QGC_MACOS_UNIVERSAL_BUILD "Build MacOS Universal Build (arm64;x86_64)" ON) # MACOS

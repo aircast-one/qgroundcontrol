@@ -181,7 +181,7 @@ jobs:
           V="${{ needs.setup.outputs.version }}"
           SHORT="${V#aircast-}"
           mkdir -p out
-          cp ${{ runner.temp }}/shadow_build_dir/android-build/*.apk "out/QGroundControl-Aircast-$SHORT.apk"
+          cp ${{ runner.temp }}/shadow_build_dir/android-build/*.apk "out/AircastQGC-$SHORT.apk"
 
       - uses: actions/upload-artifact@v4
         with:
@@ -312,12 +312,14 @@ jobs:
       - name: Sanity check DMG executable
         working-directory: ${{ runner.temp }}/shadow_build_dir
         run: |
-          hdiutil attach QGroundControl.dmg
-          /Volumes/QGroundControl/QGroundControl.app/Contents/MacOS/QGroundControl --simple-boot-test
+          DMG=$(ls *.dmg | head -1)
+          VOL=$(hdiutil attach "$DMG" | grep -o '/Volumes/.*' | tail -1)
+          APP=$(ls -d "$VOL"/*.app | head -1)
+          "$APP/Contents/MacOS/$(basename "$APP" .app)" --simple-boot-test
           # detach is cleanup, not a check: the boot-test process can briefly hold
           # the volume ("Resource busy"), so retry and never fail the build on it.
           for i in 1 2 3 4 5; do
-            hdiutil detach /Volumes/QGroundControl -force && break || sleep 3
+            hdiutil detach "$VOL" -force && break || sleep 3
           done || true
 
       - name: Collect DMG
@@ -325,7 +327,7 @@ jobs:
           V="${{ needs.setup.outputs.version }}"
           SHORT="${V#aircast-}"
           mkdir -p out
-          cp ${{ runner.temp }}/shadow_build_dir/QGroundControl.dmg "out/QGroundControl-Aircast-$SHORT.dmg"
+          cp ${{ runner.temp }}/shadow_build_dir/*.dmg "out/AircastQGC-$SHORT.dmg"
 
       - uses: actions/upload-artifact@v4
         with:
@@ -437,7 +439,7 @@ jobs:
 
       - name: Sanity check release executable
         working-directory: ${{ runner.temp }}\shadow_build_dir\Release
-        run: QGroundControl.exe --simple-boot-test
+        run: AircastQGC.exe --simple-boot-test
 
       - name: Create installer
         working-directory: ${{ runner.temp }}\shadow_build_dir
@@ -449,7 +451,7 @@ jobs:
           $V = "${{ needs.setup.outputs.version }}"
           $SHORT = $V -replace '^aircast-',''
           New-Item -ItemType Directory -Force -Path out | Out-Null
-          Copy-Item "${{ runner.temp }}\shadow_build_dir\QGroundControl-installer.exe" "out\QGroundControl-Aircast-$SHORT-installer.exe"
+          Copy-Item "${{ runner.temp }}\shadow_build_dir\AircastQGC-installer.exe" "out\AircastQGC-$SHORT-installer.exe"
 
       - uses: actions/upload-artifact@v4
         with:
@@ -568,7 +570,7 @@ jobs:
         working-directory: ${{ runner.temp }}/shadow_build_dir
         run: |
           if command -v xvfb-run >/dev/null; then
-            xvfb-run -a ./QGroundControl-x86_64.AppImage --simple-boot-test
+            xvfb-run -a ./AircastQGC-x86_64.AppImage --simple-boot-test
           else
             echo "xvfb-run not available on this runner - skipping boot test"
           fi
@@ -578,7 +580,7 @@ jobs:
           V="${{ needs.setup.outputs.version }}"
           SHORT="${V#aircast-}"
           mkdir -p out
-          cp ${{ runner.temp }}/shadow_build_dir/QGroundControl-x86_64.AppImage "out/QGroundControl-Aircast-$SHORT-x86_64.AppImage"
+          cp ${{ runner.temp }}/shadow_build_dir/AircastQGC-x86_64.AppImage "out/AircastQGC-$SHORT-x86_64.AppImage"
 
       - uses: actions/upload-artifact@v4
         with:
@@ -615,7 +617,7 @@ jobs:
             gh release upload "$V" -R "${{ github.repository }}" --clobber assets/*
           else
             gh release create "$V" -R "${{ github.repository }}" \
-              --title "QGroundControl Aircast ${V#aircast-}" \
+              --title "Aircast QGC ${V#aircast-}" \
               --generate-notes \
               $PRE assets/*
           fi
@@ -672,7 +674,7 @@ jobs:
     steps:
       - run: |
           {
-            echo "## QGroundControl Aircast Release"
+            echo "## Aircast QGC Release"
             echo "- **Version:** ${{ needs.setup.outputs.version }} (${{ needs.setup.outputs.environment }})"
             echo "- **Android:** ${{ needs.build-android.result }}"
             echo "- **macOS:** ${{ needs.build-macos.result }}"
