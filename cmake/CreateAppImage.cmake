@@ -35,9 +35,14 @@ endif()
 #     execute_process(COMMAND chmod a+x "${LD_GSTPLUGIN_PATH}")
 # endif()
 
+# Discover the app executable by content rather than hardcoding its name,
+# so this survives an app-name rebrand (the binary is the only file in usr/bin).
+file(GLOB _appimage_executable "${APPDIR_PATH}/usr/bin/*")
+list(GET _appimage_executable 0 _appimage_executable)
+
 execute_process(COMMAND ${LD_PATH}
     --appdir ${APPDIR_PATH}
-    --executable ${APPDIR_PATH}/usr/bin/QGroundControl
+    --executable ${_appimage_executable}
     --desktop-file ${APPDIR_PATH}/usr/share/applications/org.mavlink.qgroundcontrol.desktop
     --custom-apprun ${CMAKE_BINARY_DIR}/AppRun)
 # --exclude-library "libgst*"
