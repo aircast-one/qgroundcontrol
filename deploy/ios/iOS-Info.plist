@@ -7,7 +7,7 @@
 	<key>NSMicrophoneUsageDescription</key>
 	<string>Qt Multimedia for iOS uses the camera and microphone.</string>
 	<key>CFBundleDisplayName</key>
-	<string>QGroundControl</string>
+	<string>Aircast QGC</string>
 	<key>CFBundleExecutable</key>
 	<string>$(EXECUTABLE_NAME)</string>
 	<key>NSHumanReadableCopyright</key>
@@ -15,7 +15,7 @@
 	<key>CFBundleIconFile</key>
 	<string></string>
 	<key>CFBundleIdentifier</key>
-	<string>org.QGroundControl.qgc</string>
+	<string>org.aircast.qgc</string>
 	<key>CFBundleName</key>
 	<string>$(PRODUCT_NAME)</string>
 	<key>CFBundlePackageType</key>

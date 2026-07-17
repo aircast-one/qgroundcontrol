@@ -37,9 +37,9 @@
         <file alias="pencil.svg">resources/pencil.svg</file>
         <file alias="Play.svg">resources/Play.svg</file>
         <file alias="PowerButton.svg">resources/PowerButton.svg</file>
-        <file alias="QGCLogoBlack.svg">resources/QGCLogoBlack.svg</file>
-        <file alias="QGCLogoFull.svg">resources/QGCLogoFull.svg</file>
-        <file alias="QGCLogoWhite.svg">resources/QGCLogoWhite.svg</file>
+        <file alias="QGCLogoBlack.svg">resources/QGCLogoBlack.png</file>
+        <file alias="QGCLogoFull.svg">resources/QGCLogoFull.png</file>
+        <file alias="QGCLogoWhite.svg">resources/QGCLogoWhite.png</file>
         <file alias="QGCLogoArrow.svg">resources/QGCLogoArrow.svg</file>
         <file alias="QGroundControlConnect.svg">resources/QGroundControlConnect.svg</file>
         <file alias="rtl.svg">resources/rtl.svg</file>
