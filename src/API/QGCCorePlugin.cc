@@ -300,6 +300,16 @@ void *QGCCorePlugin::createVideoSink(QQuickItem *widget, QObject *parent)
     return nullptr;
 #endif
 }
+void QGCCorePlugin::setVideoSinkWidget(void *sink, QQuickItem *widget)
+{
+#ifdef QGC_GST_STREAMING
+    GStreamer::setVideoSinkWidget(sink, widget);
+#else
+    Q_UNUSED(sink); Q_UNUSED(widget);
+    qCWarning(QGCCorePluginLog) << "setVideoSinkWidget not supported by this video backend";
+#endif
+}
+
 void QGCCorePlugin::releaseVideoSink(void *sink)
 {
 #ifdef QGC_GST_STREAMING

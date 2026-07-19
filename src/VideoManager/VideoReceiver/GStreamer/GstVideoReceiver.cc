@@ -1242,6 +1242,8 @@ void GstVideoReceiver::_noteTeeFrame()
 void GstVideoReceiver::_noteVideoSinkFrame()
 {
     _lastVideoFrameTime = QDateTime::currentSecsSinceEpoch();
+    (void) _framesDecoded.fetchAndAddRelaxed(1);
+    _lastFrameSeconds.storeRelaxed(_lastVideoFrameTime);
     if (!_decoding) {
         _decoding = true;
         qCDebug(GstVideoReceiverLog) << "Decoding started";
@@ -1519,11 +1521,14 @@ gboolean GstVideoReceiver::_padProbe(GstElement *element, GstPad *pad, gpointer 
 
 GstPadProbeReturn GstVideoReceiver::_teeProbe(GstPad *pad, GstPadProbeInfo *info, gpointer user_data)
 {
-    Q_UNUSED(pad); Q_UNUSED(info)
+    Q_UNUSED(pad)
 
     if (user_data) {
         GstVideoReceiver *pThis = static_cast<GstVideoReceiver*>(user_data);
         pThis->_noteTeeFrame();
+        if (GstBuffer *buffer = gst_pad_probe_info_get_buffer(info)) {
+            (void) pThis->_bytesReceived.fetchAndAddRelaxed(gst_buffer_get_size(buffer));
+        }
     }
 
     return GST_PAD_PROBE_OK;

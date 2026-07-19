@@ -80,6 +80,9 @@
 #include "DragToPositionTest.h"
 #include "PipViewTest.h"
 
+// VideoManager
+#include "VideoManagerTest.h"
+
 // Terrain
 #include "TerrainQueryTest.h"
 #include "TerrainTileTest.h"
@@ -184,6 +187,9 @@ int runTests(bool stress, QStringView unitTestOptions)
     // QmlControls
     UT_REGISTER_TEST(DragToPositionTest)
     UT_REGISTER_TEST(PipViewTest)
+
+    // VideoManager
+    UT_REGISTER_TEST(VideoManagerTest)
 
     // Terrain
     UT_REGISTER_TEST(TerrainQueryTest)

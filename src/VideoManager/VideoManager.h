@@ -12,8 +12,10 @@
 #include <QtCore/QHash>
 #include <QtCore/QLoggingCategory>
 #include <QtCore/QObject>
+#include <QtCore/QPointer>
 #include <QtCore/QRunnable>
 #include <QtCore/QSize>
+#include <QtCore/QStringList>
 // #include <QtQmlIntegration/QtQmlIntegration>
 
 Q_DECLARE_LOGGING_CATEGORY(VideoManagerLog)
@@ -37,6 +39,7 @@ class VideoManager : public QObject
     Q_PROPERTY(bool     uvcEnabled              READ uvcEnabled                                 CONSTANT)
     Q_PROPERTY(bool     autoStreamConfigured    READ autoStreamConfigured                       NOTIFY autoStreamConfiguredChanged)
     Q_PROPERTY(bool     decoding                READ decoding                                   NOTIFY decodingChanged)
+    Q_PROPERTY(QStringList cameraStatuses       READ cameraStatuses                             NOTIFY camerasChanged)
     Q_PROPERTY(bool     fullScreen              READ fullScreen             WRITE setfullScreen NOTIFY fullScreenChanged)
     Q_PROPERTY(bool     hasThermal              READ hasThermal                                 NOTIFY decodingChanged)
     Q_PROPERTY(bool     hasVideo                READ hasVideo                                   NOTIFY hasVideoChanged)
@@ -77,10 +80,18 @@ public:
     Q_INVOKABLE void promoteTile(int slot);
     /// Hands a tile's video item to the manager so its sink can be created. The tile items
     /// are created independently of C++ init order, so binding happens whenever both exist.
+    /// Pass null while the tile is collapsed: the receiver keeps streaming but stops
+    /// feeding the invisible item.
     Q_INVOKABLE void registerTileItem(int slot, QQuickItem *item);
-    /// True when the camera at `index` is currently decoding video — in the main view or in a
-    /// multi-view tile. Drives the per-camera status indicator.
-    Q_INVOKABLE bool cameraReceiving(int index) const;
+    /// Connection status per camera index; an empty entry means frames are rendering.
+    /// Bindable: re-evaluates on camerasChanged.
+    QStringList cameraStatuses() const;
+    /// Compat for the settings UI until it migrates to cameraStatuses.
+    Q_INVOKABLE bool cameraReceiving(int index) const { return _cameraStatus(index).isEmpty(); }
+    /// Decoded-frame counter and last-frame timestamp for the camera at `index` (0 when unknown).
+    quint64 cameraFramesDecoded(int index) const;
+    quint64 cameraBytesReceived(int index) const;
+    qint64 cameraSecondsSinceLastFrame(int index) const;
     /// Display name for the camera at `index` (its configured name, or "Camera N").
     Q_INVOKABLE QString cameraName(int index) const;
 
@@ -111,7 +122,7 @@ public:
 
 signals:
     void activeVideoSourceChanged();
-    void videoReceivingChanged();
+    void camerasChanged();
     void aspectRatioChanged();
     void autoStreamConfiguredChanged();
     void decodingChanged();
@@ -133,6 +144,8 @@ private slots:
     void _videoSourceChanged();
 
 private:
+    friend class VideoManagerTest;
+
     void _initVideoReceiver(VideoReceiver *receiver, QQuickWindow *window);
     bool _updateAutoStream(VideoReceiver *receiver);
     bool _updateUVC(VideoReceiver *receiver);
@@ -140,7 +153,11 @@ private:
     bool _updateVideoUri(VideoReceiver *receiver, const QString &uri);
     QString _sourceToUri(const QString &source, const QString &url) const;
     int _cameraIndexForReceiver(const VideoReceiver *receiver) const;
-    void _bindTileWidget(int slot);
+    QString _cameraStatus(int index) const;
+    QQuickItem *_widgetForCamera(int cameraIndex) const;
+    void _rebindWidgets();
+    void _refreshActiveReceiverState();
+    void _setReceiverStatus(VideoReceiver *receiver, const QString &status);
     static QString _tileReceiverName(int slot);
     void _restartAllVideos();
     void _restartVideo(VideoReceiver *receiver);
@@ -149,9 +166,18 @@ private:
     static void _cleanupOldVideos();
 
     static constexpr int kMaxVideoTiles = 3;
+
+    struct ReceiverState {
+        bool streaming = false;
+        bool decoding = false;
+        QSize videoSize;
+        QString status;
+    };
+
     QList<VideoReceiver*> _videoReceivers;
-    QHash<int, QQuickItem*> _tileWidgets;
-    QHash<QString, bool> _receiverDecoding;
+    QHash<int, QPointer<QQuickItem>> _tileWidgets;
+    QPointer<QQuickItem> _mainWidget;
+    QHash<QString, ReceiverState> _receiverState;
 
     SubtitleWriter *_subtitleWriter = nullptr;
     VideoSettings *_videoSettings = nullptr;
