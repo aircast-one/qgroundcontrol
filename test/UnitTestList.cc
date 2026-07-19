@@ -79,6 +79,7 @@
 // QmlControls
 #include "DragToPositionTest.h"
 #include "PipViewTest.h"
+#include "VideoTileTest.h"
 
 // VideoManager
 #include "VideoManagerTest.h"
@@ -187,6 +188,7 @@ int runTests(bool stress, QStringView unitTestOptions)
     // QmlControls
     UT_REGISTER_TEST(DragToPositionTest)
     UT_REGISTER_TEST(PipViewTest)
+    UT_REGISTER_TEST(VideoTileTest)
 
     // VideoManager
     UT_REGISTER_TEST(VideoManagerTest)

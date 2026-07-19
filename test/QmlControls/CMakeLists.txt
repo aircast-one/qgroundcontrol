@@ -4,6 +4,8 @@ target_sources(${CMAKE_PROJECT_NAME}
         DragToPositionTest.h
         PipViewTest.cc
         PipViewTest.h
+        VideoTileTest.cc
+        VideoTileTest.h
         QuickInteractionTestHelpers.h
 )
 

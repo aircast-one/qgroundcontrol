@@ -108,23 +108,29 @@ SettingsPage {
             arr.push({ name: "", source: _videoSettings.disabledVideoSource, url: "" })
             _videoSettings.extraVideoSources.rawValue = JSON.stringify(arr)
             reload()
+            openEditor(arr.length, true)
         }
 
         function removeCamera(camIndex) {
             var arr = parseExtras()
             arr.splice(camIndex - 1, 1)
             _videoSettings.extraVideoSources.rawValue = JSON.stringify(arr)
-            _videoManager.setActiveVideoSource(0)
+            if (_videoManager.activeVideoSource === camIndex) {
+                _videoManager.setActiveVideoSource(0)
+            } else if (_videoManager.activeVideoSource > camIndex) {
+                _videoManager.setActiveVideoSource(_videoManager.activeVideoSource - 1)
+            }
             reload()
         }
 
-        function openEditor(camIndex) {
+        function openEditor(camIndex, removeOnCancel) {
             var row = camerasModel.get(camIndex)
             cameraDialogComponent.createObject(mainWindow, {
-                editIndex:  camIndex,
-                initName:   row.camName,
-                initSource: row.camSource,
-                initUrl:    row.camUrl
+                editIndex:      camIndex,
+                removeOnCancel: removeOnCancel === true,
+                initName:       row.camName,
+                initSource:     row.camSource,
+                initUrl:        row.camUrl
             }).open()
         }
 
@@ -145,14 +151,9 @@ SettingsPage {
                 Layout.fillWidth:   true
                 spacing:            ScreenTools.defaultFontPixelWidth * 2
 
-                // cameraReceiving() isn't a bindable property, so recompute on the relevant signals.
-                property bool receiving: false
-                function refreshReceiving() { receiving = _videoManager.cameraReceiving(model.camIndex) }
-                Component.onCompleted: refreshReceiving()
-                Connections {
-                    target: _videoManager
-                    function onVideoReceivingChanged() { camRow.refreshReceiving() }
-                    function onActiveVideoSourceChanged() { camRow.refreshReceiving() }
+                property bool receiving: {
+                    var statuses = _videoManager.cameraStatuses
+                    return model.camIndex < statuses.length && statuses[model.camIndex] === ""
                 }
 
                 Rectangle {
@@ -236,6 +237,7 @@ SettingsPage {
             buttons:    Dialog.Save | Dialog.Cancel
 
             property int    editIndex
+            property bool   removeOnCancel: false
             property string initName
             property string initSource
             property string initUrl
@@ -243,6 +245,7 @@ SettingsPage {
 
             onAccepted: camList.saveCamera(editIndex, nameField.text, dlg.dlgSource,
                                            _sourceNeedsUrl(dlg.dlgSource) ? urlField.text : "")
+            onRejected: if (removeOnCancel) camList.removeCamera(editIndex)
 
             ColumnLayout {
                 spacing: ScreenTools.defaultFontPixelHeight / 2

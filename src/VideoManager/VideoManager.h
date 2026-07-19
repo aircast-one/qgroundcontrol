@@ -86,8 +86,6 @@ public:
     /// Connection status per camera index; an empty entry means frames are rendering.
     /// Bindable: re-evaluates on camerasChanged.
     QStringList cameraStatuses() const;
-    /// Compat for the settings UI until it migrates to cameraStatuses.
-    Q_INVOKABLE bool cameraReceiving(int index) const { return _cameraStatus(index).isEmpty(); }
     /// Decoded-frame counter and last-frame timestamp for the camera at `index` (0 when unknown).
     quint64 cameraFramesDecoded(int index) const;
     quint64 cameraBytesReceived(int index) const;
