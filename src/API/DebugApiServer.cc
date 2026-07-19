@@ -37,7 +37,6 @@
 #include <QtGui/QImage>
 #include <QtGui/QMouseEvent>
 #include <QtNetwork/QHostAddress>
-#include <QtNetwork/QHostInfo>
 #include <QtNetwork/QTcpServer>
 #include <QtNetwork/QTcpSocket>
 #include <QtQuick/QQuickItem>
@@ -99,6 +98,11 @@ void DebugApiServer::_handleConnection(QTcpSocket *socket)
     (void) connect(socket, &QTcpSocket::readyRead, this, [this, socket]() {
         socket->setProperty("request", socket->property("request").toByteArray() + socket->readAll());
         const QByteArray request = socket->property("request").toByteArray();
+        constexpr int kMaxRequestBytes = 8192;
+        if (request.size() > kMaxRequestBytes) {
+            socket->abort();
+            return;
+        }
         if (!request.contains("\r\n\r\n")) {
             return;
         }
@@ -106,7 +110,12 @@ void DebugApiServer::_handleConnection(QTcpSocket *socket)
         const QList<QByteArray> requestLine = request.left(request.indexOf("\r\n")).split(' ');
         QByteArray body = QByteArrayLiteral("{\"error\":\"bad request\"}");
         QByteArray statusLine = QByteArrayLiteral("HTTP/1.1 400 Bad Request");
-        if (requestLine.size() >= 2 && requestLine.at(0) == "GET") {
+        if (!request.toLower().contains("\r\nx-qgc-debug-api:")) {
+            // Browsers cannot attach custom headers without a CORS preflight (which this
+            // server never grants), so requiring one kills drive-by requests from web pages.
+            body = QByteArrayLiteral("{\"error\":\"missing X-QGC-Debug-Api header\"}");
+            statusLine = QByteArrayLiteral("HTTP/1.1 403 Forbidden");
+        } else if (requestLine.size() >= 2 && requestLine.at(0) == "GET") {
             const QUrl url = QUrl::fromEncoded(requestLine.at(1));
             body = _route(url.path(), QUrlQuery(url));
             statusLine = body.isEmpty() ? QByteArrayLiteral("HTTP/1.1 404 Not Found") : QByteArrayLiteral("HTTP/1.1 200 OK");
@@ -498,13 +507,10 @@ QByteArray DebugApiServer::_linkConnectJson(const QUrlQuery &query)
         name = QStringLiteral("debug-api %1:%2").arg(host).arg(port);
     }
 
-    QHostAddress address(host);
+    const QHostAddress address(host);
     if (address.isNull()) {
-        const QHostInfo info = QHostInfo::fromName(host);
-        if (info.addresses().isEmpty()) {
-            return _errorJson(QStringLiteral("cannot resolve host: %1").arg(host));
-        }
-        address = info.addresses().first();
+        // No DNS here: a blocking lookup would freeze the GUI thread. Clients resolve first.
+        return _errorJson(QStringLiteral("host must be an IP address (resolve %1 client-side)").arg(host));
     }
 
     LinkManager *linkManager = LinkManager::instance();
@@ -856,10 +862,10 @@ QByteArray DebugApiServer::_missionJson(const QUrlQuery &query, bool upload)
         return QJsonDocument(QJsonObject{{"uploading", file}}).toJson(QJsonDocument::Compact);
     }
 
-    auto connection = std::make_shared<QMetaObject::Connection>();
-    *connection = connect(plan, &PlanMasterController::syncInProgressChanged, this, [plan, file, connection]() {
+    QObject::disconnect(_pendingMissionDownload);
+    _pendingMissionDownload = connect(plan, &PlanMasterController::syncInProgressChanged, this, [this, plan, file]() {
         if (!plan->syncInProgress()) {
-            QObject::disconnect(*connection);
+            QObject::disconnect(_pendingMissionDownload);
             plan->saveToFile(file);
         }
     });

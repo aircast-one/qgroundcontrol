@@ -57,6 +57,7 @@ private:
     static QByteArray _settingJson(const QUrlQuery &query);
 
     QTcpServer *_server = nullptr;
+    QMetaObject::Connection _pendingMissionDownload;
     QStringList _messages;
     QList<int> _rcValues;
     PlanMasterController *_plan = nullptr;

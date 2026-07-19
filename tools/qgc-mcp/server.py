@@ -13,6 +13,7 @@ import json
 import os
 import pathlib
 from urllib.parse import quote
+import socket
 import subprocess
 import time
 import urllib.request
@@ -33,8 +34,12 @@ mcp = FastMCP("aircast-qgc")
 
 
 def _api(path: str) -> dict:
+    request = urllib.request.Request(
+        f"http://127.0.0.1:{API_PORT}{path}",
+        headers={"X-QGC-Debug-Api": "1"},
+    )
     try:
-        with urllib.request.urlopen(f"http://127.0.0.1:{API_PORT}{path}", timeout=5) as resp:
+        with urllib.request.urlopen(request, timeout=5) as resp:
             return json.load(resp)
     except OSError as exc:
         raise RuntimeError(f"debug api unreachable ({exc}); start the app with run_app") from exc
@@ -169,8 +174,9 @@ def key(combo: str) -> dict:
 def connect_vehicle(host: str = "sitl.aircast.one", port: int = 5760, name: str = "") -> dict:
     """Create (or reuse) a TCP MAVLink link to a vehicle/SITL and connect it. Hostnames are
     resolved. Follow with wait_until connected=true on the /vehicle endpoint."""
+    address = socket.gethostbyname(host)
     suffix = f"&name={quote(name)}" if name else ""
-    return _api(f"/links/connect?host={quote(host)}&port={port}{suffix}")
+    return _api(f"/links/connect?host={quote(address)}&port={port}{suffix}")
 
 
 @mcp.tool()
@@ -420,7 +426,9 @@ def logs(pattern: str = "", lines: int = 50) -> str:
     """Tail the app log started by run_app, optionally filtered by a substring."""
     if not LOG_FILE.exists():
         return "no log file; start the app with run_app first"
-    content = LOG_FILE.read_text(errors="replace").splitlines()
+    with open(LOG_FILE, "rb") as f:
+        f.seek(max(0, LOG_FILE.stat().st_size - 512 * 1024))
+        content = f.read().decode(errors="replace").splitlines()
     if pattern:
         content = [line for line in content if pattern in line]
     return "\n".join(content[-lines:]) or "no matching lines"
