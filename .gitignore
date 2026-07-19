@@ -94,3 +94,11 @@ docs/.vitepress/dist/
 
 CMakeUserPresets.json
 cpm_modules
+
+# Local test artifacts and credentials — never commit
+auto.crt
+auto.key
+mav.parm
+mav.tlog
+mav.tlog.raw
+__pycache__/

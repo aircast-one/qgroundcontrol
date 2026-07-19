@@ -1,0 +1,911 @@
+/****************************************************************************
+ *
+ * (c) 2009-2024 QGROUNDCONTROL PROJECT <http://www.qgroundcontrol.org>
+ *
+ * QGroundControl is licensed according to the terms in the file
+ * COPYING.md in the root of the source code directory.
+ *
+ ****************************************************************************/
+
+#include "DebugApiServer.h"
+#include "LinkManager.h"
+#include "MultiVehicleManager.h"
+#include "ParameterManager.h"
+#include "PlanMasterController.h"
+#include "QmlObjectListModel.h"
+#include "TCPLink.h"
+#include "QGCApplication.h"
+#include "QGCLoggingCategory.h"
+#include "SettingsManager.h"
+#include "Vehicle.h"
+#include "VideoManager.h"
+#include "VideoSettings.h"
+#include "Fact.h"
+
+#include <QtCore/QJsonArray>
+#include <QtCore/QJsonDocument>
+#include <QtCore/QJsonObject>
+#include <QtCore/QSettings>
+#include <QtCore/QStandardPaths>
+#include <QtCore/QUrl>
+#include <QtCore/QUrlQuery>
+#include <QtCore/QFile>
+#include <QtCore/QLoggingCategory>
+#include <QtCore/QTextStream>
+#include <QtCore/QMetaProperty>
+#include <QtGui/QKeySequence>
+#include <QtGui/QImage>
+#include <QtGui/QMouseEvent>
+#include <QtNetwork/QHostAddress>
+#include <QtNetwork/QHostInfo>
+#include <QtNetwork/QTcpServer>
+#include <QtNetwork/QTcpSocket>
+#include <QtQuick/QQuickItem>
+#include <QtQuick/QQuickWindow>
+#include <qpa/qwindowsysteminterface.h>
+
+#include <functional>
+
+QGC_LOGGING_CATEGORY(DebugApiServerLog, "qgc.api.debugapiserver")
+
+void DebugApiServer::startIfConfigured(QObject *parent)
+{
+    bool ok = false;
+    const uint port = qEnvironmentVariableIntValue("QGC_DEBUG_API_PORT", &ok);
+    if (!ok || port == 0 || port > 65535) {
+        return;
+    }
+    new DebugApiServer(static_cast<quint16>(port), parent);
+}
+
+DebugApiServer::DebugApiServer(quint16 port, QObject *parent)
+    : QObject(parent)
+    , _server(new QTcpServer(this))
+{
+    if (!_server->listen(QHostAddress::LocalHost, port)) {
+        qCWarning(DebugApiServerLog) << "listen failed on port" << port << _server->errorString();
+        return;
+    }
+    qCDebug(DebugApiServerLog) << "debug api listening on 127.0.0.1:" << port;
+
+    (void) connect(MultiVehicleManager::instance(), &MultiVehicleManager::activeVehicleChanged, this, [this](Vehicle *vehicle) {
+        if (!vehicle) {
+            return;
+        }
+        (void) connect(vehicle, &Vehicle::textMessageReceived, this, [this](int, int, int severity, const QString &text, const QString &) {
+            _messages.append(QStringLiteral("[sev%1] %2").arg(severity).arg(text));
+            while (_messages.size() > 200) {
+                _messages.removeFirst();
+            }
+        });
+        (void) connect(vehicle, &Vehicle::rcChannelsChanged, this, [this](int channelCount, int *pwmValues) {
+            _rcValues.clear();
+            for (int i = 0; i < channelCount; ++i) {
+                _rcValues.append(pwmValues[i]);
+            }
+        });
+    });
+
+    (void) connect(_server, &QTcpServer::newConnection, this, [this]() {
+        while (QTcpSocket *socket = _server->nextPendingConnection()) {
+            _handleConnection(socket);
+        }
+    });
+}
+
+void DebugApiServer::_handleConnection(QTcpSocket *socket)
+{
+    (void) connect(socket, &QTcpSocket::disconnected, socket, &QObject::deleteLater);
+    (void) connect(socket, &QTcpSocket::readyRead, this, [this, socket]() {
+        socket->setProperty("request", socket->property("request").toByteArray() + socket->readAll());
+        const QByteArray request = socket->property("request").toByteArray();
+        if (!request.contains("\r\n\r\n")) {
+            return;
+        }
+
+        const QList<QByteArray> requestLine = request.left(request.indexOf("\r\n")).split(' ');
+        QByteArray body = QByteArrayLiteral("{\"error\":\"bad request\"}");
+        QByteArray statusLine = QByteArrayLiteral("HTTP/1.1 400 Bad Request");
+        if (requestLine.size() >= 2 && requestLine.at(0) == "GET") {
+            const QUrl url = QUrl::fromEncoded(requestLine.at(1));
+            body = _route(url.path(), QUrlQuery(url));
+            statusLine = body.isEmpty() ? QByteArrayLiteral("HTTP/1.1 404 Not Found") : QByteArrayLiteral("HTTP/1.1 200 OK");
+            if (body.isEmpty()) {
+                body = QByteArrayLiteral("{\"error\":\"not found\"}");
+            }
+        }
+
+        QByteArray response = statusLine + "\r\nContent-Type: application/json\r\nContent-Length: " +
+                              QByteArray::number(body.size()) + "\r\nConnection: close\r\n\r\n" + body;
+        socket->write(response);
+        socket->disconnectFromHost();
+    });
+}
+
+QByteArray DebugApiServer::_route(const QString &path, const QUrlQuery &query)
+{
+    VideoManager *videoManager = VideoManager::instance();
+
+    if (path == QStringLiteral("/status")) {
+        return _statusJson();
+    }
+    if (path == QStringLiteral("/switch")) {
+        if (query.hasQueryItem(QStringLiteral("index"))) {
+            videoManager->setActiveVideoSource(query.queryItemValue(QStringLiteral("index")).toInt());
+        } else {
+            videoManager->switchActiveVideoSource();
+        }
+        return _statusJson();
+    }
+    if (path == QStringLiteral("/grab")) {
+        videoManager->grabImage();
+        return QJsonDocument(QJsonObject{{"imageFile", videoManager->imageFile()}}).toJson(QJsonDocument::Compact);
+    }
+    if (path == QStringLiteral("/record")) {
+        if (query.queryItemValue(QStringLiteral("on")) == QStringLiteral("1")) {
+            videoManager->startRecording();
+        } else {
+            videoManager->stopRecording();
+        }
+        return _statusJson();
+    }
+    if (path == QStringLiteral("/screenshot")) {
+        return _screenshotJson();
+    }
+    if (path == QStringLiteral("/vehicle")) {
+        return _vehicleJson();
+    }
+    if (path == QStringLiteral("/vehicle/params")) {
+        return _paramsJson(query);
+    }
+    if (path == QStringLiteral("/vehicle/params/set")) {
+        return _paramSetJson(query);
+    }
+    if (path == QStringLiteral("/vehicle/params/save")) {
+        return _paramsFileJson(query, true);
+    }
+    if (path == QStringLiteral("/vehicle/params/load")) {
+        return _paramsFileJson(query, false);
+    }
+    if (path == QStringLiteral("/vehicle/calibrate")) {
+        return _calibrateJson(query);
+    }
+    if (path == QStringLiteral("/vehicle/motortest")) {
+        return _motorTestJson(query);
+    }
+    if (path == QStringLiteral("/vehicle/messages")) {
+        return _messagesJson();
+    }
+    if (path == QStringLiteral("/vehicle/rc")) {
+        return _rcJson();
+    }
+    if (path == QStringLiteral("/mission/upload")) {
+        return _missionJson(query, true);
+    }
+    if (path == QStringLiteral("/mission/download")) {
+        return _missionJson(query, false);
+    }
+    if (path == QStringLiteral("/ui/tree")) {
+        return _uiTreeJson(query);
+    }
+    if (path == QStringLiteral("/ui/click")) {
+        return _uiClickJson(query, false);
+    }
+    if (path == QStringLiteral("/ui/doubleclick")) {
+        return _uiClickJson(query, true);
+    }
+    if (path == QStringLiteral("/ui/drag")) {
+        return _uiDragJson(query);
+    }
+    if (path == QStringLiteral("/ui/hover")) {
+        return _uiHoverJson(query);
+    }
+    if (path == QStringLiteral("/ui/type")) {
+        return _uiTypeJson(query);
+    }
+    if (path == QStringLiteral("/ui/key")) {
+        return _uiKeyJson(query);
+    }
+    if (path == QStringLiteral("/logging")) {
+        return _loggingJson(query);
+    }
+    if (path == QStringLiteral("/links")) {
+        return _linksJson();
+    }
+    if (path == QStringLiteral("/links/connect")) {
+        return _linkConnectJson(query);
+    }
+    if (path == QStringLiteral("/links/disconnect")) {
+        return _linkDisconnectJson(query);
+    }
+    if (path == QStringLiteral("/setting")) {
+        return _settingJson(query);
+    }
+    return QByteArray();
+}
+
+// Walks the visual (childItems) hierarchy: QML reparenting (pip swaps, Repeater delegates)
+// detaches the QObject parent chain, so findChildren() misses items the user can see.
+static QQuickItem *_findVisibleItem(QQuickWindow *window, const QString &objectName)
+{
+    QQuickItem *fallback = nullptr;
+    std::function<QQuickItem*(QQuickItem*)> walk = [&](QQuickItem *item) -> QQuickItem* {
+        if (item->objectName() == objectName) {
+            if (item->isVisible()) {
+                return item;
+            }
+            if (!fallback) {
+                fallback = item;
+            }
+        }
+        const QList<QQuickItem*> children = item->childItems();
+        for (QQuickItem *child : children) {
+            if (QQuickItem *found = walk(child)) {
+                return found;
+            }
+        }
+        return nullptr;
+    };
+    QQuickItem *found = walk(window->contentItem());
+    return found ? found : fallback;
+}
+
+QByteArray DebugApiServer::_uiTreeJson(const QUrlQuery &query)
+{
+    QQuickWindow *window = qgcApp()->mainRootWindow();
+    if (!window) {
+        return QJsonDocument(QJsonObject{{"error", "no main window"}}).toJson(QJsonDocument::Compact);
+    }
+
+    const QString filter = query.queryItemValue(QStringLiteral("name"));
+    constexpr int kMaxItems = 300;
+    QJsonArray items;
+
+    std::function<void(QQuickItem*)> walk = [&](QQuickItem *item) {
+        if (items.size() >= kMaxItems) {
+            return;
+        }
+        const QString name = item->objectName();
+        const bool named = !name.isEmpty();
+        if (named && (filter.isEmpty() || name.contains(filter, Qt::CaseInsensitive))) {
+            const QPointF scenePos = item->mapToScene(QPointF(0, 0));
+            items.append(QJsonObject{
+                {"objectName", name},
+                {"class", QString::fromLatin1(item->metaObject()->className())},
+                {"x", scenePos.x()},
+                {"y", scenePos.y()},
+                {"width", item->width()},
+                {"height", item->height()},
+                {"visible", item->isVisible()},
+                {"enabled", item->isEnabled()},
+            });
+        }
+        const QList<QQuickItem*> children = item->childItems();
+        for (QQuickItem *child : children) {
+            walk(child);
+        }
+    };
+    walk(window->contentItem());
+
+    return QJsonDocument(QJsonObject{{"items", items}, {"truncated", items.size() >= kMaxItems}}).toJson(QJsonDocument::Compact);
+}
+
+static QByteArray _errorJson(const QString &message)
+{
+    return QJsonDocument(QJsonObject{{"error", message}}).toJson(QJsonDocument::Compact);
+}
+
+// Resolves `<prefix>name` (visible item center) or `<prefix>x`/`<prefix>y` to scene coordinates.
+static bool _resolvePoint(QQuickWindow *window, const QUrlQuery &query, const QString &prefix, QPointF &scenePos, QByteArray &error)
+{
+    const QString nameKey = prefix.isEmpty() ? QStringLiteral("name") : (prefix + QStringLiteral("Name"));
+    const QString xKey = prefix.isEmpty() ? QStringLiteral("x") : (prefix + QStringLiteral("X"));
+    const QString yKey = prefix.isEmpty() ? QStringLiteral("y") : (prefix + QStringLiteral("Y"));
+
+    const QString name = query.queryItemValue(nameKey);
+    if (!name.isEmpty()) {
+        QQuickItem *item = _findVisibleItem(window, name);
+        if (!item) {
+            error = _errorJson(QStringLiteral("item not found: %1").arg(name));
+            return false;
+        }
+        scenePos = item->mapToScene(QPointF(item->width() / 2, item->height() / 2));
+        return true;
+    }
+    if (query.hasQueryItem(xKey) && query.hasQueryItem(yKey)) {
+        scenePos = QPointF(query.queryItemValue(xKey).toDouble(), query.queryItemValue(yKey).toDouble());
+        return true;
+    }
+    error = _errorJson(QStringLiteral("%1 or %2/%3 required").arg(nameKey, xKey, yKey));
+    return false;
+}
+
+// Injection goes through the QPA layer (what QTest uses) so Quick's pointer delivery treats
+// it exactly like real input; directly posted QMouseEvents are ignored by it.
+static void _mouse(QQuickWindow *window, const QPointF &scenePos, Qt::MouseButtons buttons, Qt::MouseButton button, QEvent::Type type)
+{
+    QWindowSystemInterface::handleMouseEvent(window, scenePos, window->mapToGlobal(scenePos), buttons, button, type);
+}
+
+QByteArray DebugApiServer::_uiClickJson(const QUrlQuery &query, bool doubleClick)
+{
+    QQuickWindow *window = qgcApp()->mainRootWindow();
+    if (!window) {
+        return _errorJson(QStringLiteral("no main window"));
+    }
+
+    QPointF scenePos;
+    QByteArray error;
+    if (!_resolvePoint(window, query, QString(), scenePos, error)) {
+        return error;
+    }
+
+    const int clicks = doubleClick ? 2 : 1;
+    for (int i = 0; i < clicks; ++i) {
+        _mouse(window, scenePos, Qt::LeftButton, Qt::LeftButton, QEvent::MouseButtonPress);
+        _mouse(window, scenePos, Qt::NoButton, Qt::LeftButton, QEvent::MouseButtonRelease);
+    }
+    QWindowSystemInterface::flushWindowSystemEvents();
+
+    return QJsonDocument(QJsonObject{{"clicked", clicks}, {"x", scenePos.x()}, {"y", scenePos.y()}}).toJson(QJsonDocument::Compact);
+}
+
+QByteArray DebugApiServer::_uiDragJson(const QUrlQuery &query)
+{
+    QQuickWindow *window = qgcApp()->mainRootWindow();
+    if (!window) {
+        return _errorJson(QStringLiteral("no main window"));
+    }
+
+    QPointF from;
+    QPointF to;
+    QByteArray error;
+    if (!_resolvePoint(window, query, QString(), from, error)) {
+        return error;
+    }
+    if (!_resolvePoint(window, query, QStringLiteral("to"), to, error)) {
+        return error;
+    }
+
+    const int steps = qBound(2, query.queryItemValue(QStringLiteral("steps")).toInt() ? query.queryItemValue(QStringLiteral("steps")).toInt() : 10, 100);
+    _mouse(window, from, Qt::LeftButton, Qt::LeftButton, QEvent::MouseButtonPress);
+    for (int i = 1; i <= steps; ++i) {
+        const QPointF pos = from + (to - from) * i / steps;
+        _mouse(window, pos, Qt::LeftButton, Qt::NoButton, QEvent::MouseMove);
+    }
+    _mouse(window, to, Qt::NoButton, Qt::LeftButton, QEvent::MouseButtonRelease);
+    QWindowSystemInterface::flushWindowSystemEvents();
+
+    return QJsonDocument(QJsonObject{
+        {"dragged", true},
+        {"fromX", from.x()}, {"fromY", from.y()},
+        {"toX", to.x()}, {"toY", to.y()},
+    }).toJson(QJsonDocument::Compact);
+}
+
+QByteArray DebugApiServer::_uiHoverJson(const QUrlQuery &query)
+{
+    QQuickWindow *window = qgcApp()->mainRootWindow();
+    if (!window) {
+        return _errorJson(QStringLiteral("no main window"));
+    }
+
+    QPointF scenePos;
+    QByteArray error;
+    if (!_resolvePoint(window, query, QString(), scenePos, error)) {
+        return error;
+    }
+
+    _mouse(window, scenePos, Qt::NoButton, Qt::NoButton, QEvent::MouseMove);
+    QWindowSystemInterface::flushWindowSystemEvents();
+
+    return QJsonDocument(QJsonObject{{"hovering", true}, {"x", scenePos.x()}, {"y", scenePos.y()}}).toJson(QJsonDocument::Compact);
+}
+
+QByteArray DebugApiServer::_uiTypeJson(const QUrlQuery &query)
+{
+    QQuickWindow *window = qgcApp()->mainRootWindow();
+    if (!window) {
+        return _errorJson(QStringLiteral("no main window"));
+    }
+
+    const QString text = query.queryItemValue(QStringLiteral("text"), QUrl::FullyDecoded);
+    if (text.isEmpty()) {
+        return _errorJson(QStringLiteral("text required"));
+    }
+    for (const QChar &character : text) {
+        QWindowSystemInterface::handleKeyEvent(window, QEvent::KeyPress, 0, Qt::NoModifier, QString(character));
+        QWindowSystemInterface::handleKeyEvent(window, QEvent::KeyRelease, 0, Qt::NoModifier, QString(character));
+    }
+    QWindowSystemInterface::flushWindowSystemEvents();
+
+    return QJsonDocument(QJsonObject{{"typed", text}}).toJson(QJsonDocument::Compact);
+}
+
+QByteArray DebugApiServer::_uiKeyJson(const QUrlQuery &query)
+{
+    QQuickWindow *window = qgcApp()->mainRootWindow();
+    if (!window) {
+        return _errorJson(QStringLiteral("no main window"));
+    }
+
+    const QString keyName = query.queryItemValue(QStringLiteral("key"), QUrl::FullyDecoded);
+    const QKeySequence sequence = QKeySequence::fromString(keyName);
+    if (sequence.count() != 1) {
+        return _errorJson(QStringLiteral("unknown key: %1").arg(keyName));
+    }
+    const QKeyCombination combination = sequence[0];
+    QWindowSystemInterface::handleKeyEvent(window, QEvent::KeyPress, combination.key(), combination.keyboardModifiers());
+    QWindowSystemInterface::handleKeyEvent(window, QEvent::KeyRelease, combination.key(), combination.keyboardModifiers());
+    QWindowSystemInterface::flushWindowSystemEvents();
+
+    return QJsonDocument(QJsonObject{{"key", keyName}}).toJson(QJsonDocument::Compact);
+}
+
+QByteArray DebugApiServer::_loggingJson(const QUrlQuery &query)
+{
+    const QString rules = query.queryItemValue(QStringLiteral("rules"), QUrl::FullyDecoded);
+    if (rules.isEmpty()) {
+        return _errorJson(QStringLiteral("rules required, e.g. qgc.videomanager.*.debug=true"));
+    }
+    QLoggingCategory::setFilterRules(QString(rules).replace(QLatin1Char(';'), QLatin1Char('\n')));
+    return QJsonDocument(QJsonObject{{"rules", rules}}).toJson(QJsonDocument::Compact);
+}
+
+static QmlObjectListModel *_linkConfigurations()
+{
+    return qvariant_cast<QmlObjectListModel*>(LinkManager::instance()->property("linkConfigurations"));
+}
+
+static LinkConfiguration *_findLinkConfiguration(const QString &name)
+{
+    QmlObjectListModel *configurations = _linkConfigurations();
+    for (int i = 0; configurations && i < configurations->count(); ++i) {
+        LinkConfiguration *config = qobject_cast<LinkConfiguration*>(configurations->get(i));
+        if (config && config->name() == name) {
+            return config;
+        }
+    }
+    return nullptr;
+}
+
+QByteArray DebugApiServer::_linksJson()
+{
+    QJsonArray links;
+    QmlObjectListModel *configurations = _linkConfigurations();
+    for (int i = 0; configurations && i < configurations->count(); ++i) {
+        LinkConfiguration *config = qobject_cast<LinkConfiguration*>(configurations->get(i));
+        if (config) {
+            links.append(QJsonObject{
+                {"name", config->name()},
+                {"type", config->type()},
+                {"connected", config->link() != nullptr},
+            });
+        }
+    }
+    return QJsonDocument(QJsonObject{{"links", links}}).toJson(QJsonDocument::Compact);
+}
+
+QByteArray DebugApiServer::_linkConnectJson(const QUrlQuery &query)
+{
+    const QString host = query.queryItemValue(QStringLiteral("host"), QUrl::FullyDecoded);
+    const quint16 port = static_cast<quint16>(query.queryItemValue(QStringLiteral("port")).toUInt());
+    if (host.isEmpty() || port == 0) {
+        return _errorJson(QStringLiteral("host and port required"));
+    }
+    QString name = query.queryItemValue(QStringLiteral("name"));
+    if (name.isEmpty()) {
+        name = QStringLiteral("debug-api %1:%2").arg(host).arg(port);
+    }
+
+    QHostAddress address(host);
+    if (address.isNull()) {
+        const QHostInfo info = QHostInfo::fromName(host);
+        if (info.addresses().isEmpty()) {
+            return _errorJson(QStringLiteral("cannot resolve host: %1").arg(host));
+        }
+        address = info.addresses().first();
+    }
+
+    LinkManager *linkManager = LinkManager::instance();
+    LinkConfiguration *config = _findLinkConfiguration(name);
+    if (!config) {
+        config = linkManager->createConfiguration(LinkConfiguration::TypeTcp, name);
+        if (!config) {
+            return _errorJson(QStringLiteral("createConfiguration failed"));
+        }
+        linkManager->endCreateConfiguration(config);
+    }
+    TCPConfiguration *tcpConfig = qobject_cast<TCPConfiguration*>(config);
+    if (!tcpConfig) {
+        return _errorJson(QStringLiteral("link %1 exists but is not tcp").arg(name));
+    }
+    tcpConfig->setHost(address.toString());
+    tcpConfig->setPort(port);
+
+    if (!config->link()) {
+        linkManager->createConnectedLink(config);
+    }
+    return QJsonDocument(QJsonObject{
+        {"name", name},
+        {"host", address.toString()},
+        {"port", port},
+        {"connected", config->link() != nullptr},
+    }).toJson(QJsonDocument::Compact);
+}
+
+QByteArray DebugApiServer::_linkDisconnectJson(const QUrlQuery &query)
+{
+    const QString name = query.queryItemValue(QStringLiteral("name"));
+    if (name.isEmpty()) {
+        LinkManager::instance()->disconnectAll();
+        return QJsonDocument(QJsonObject{{"disconnected", "all"}}).toJson(QJsonDocument::Compact);
+    }
+    LinkConfiguration *config = _findLinkConfiguration(name);
+    if (!config || !config->link()) {
+        return _errorJson(QStringLiteral("no connected link named %1").arg(name));
+    }
+    config->link()->disconnect();
+    return QJsonDocument(QJsonObject{{"disconnected", name}}).toJson(QJsonDocument::Compact);
+}
+
+QByteArray DebugApiServer::_settingJson(const QUrlQuery &query)
+{
+    VideoSettings *videoSettings = SettingsManager::instance()->videoSettings();
+    const QString factName = query.queryItemValue(QStringLiteral("fact"));
+
+    if (factName.isEmpty()) {
+        // Dump every Fact* property of the video settings group.
+        QJsonObject facts;
+        const QMetaObject *meta = videoSettings->metaObject();
+        for (int i = 0; i < meta->propertyCount(); ++i) {
+            const QMetaProperty property = meta->property(i);
+            Fact *fact = qvariant_cast<Fact*>(property.read(videoSettings));
+            if (fact) {
+                facts.insert(QString::fromLatin1(property.name()), QJsonValue::fromVariant(fact->rawValue()));
+            }
+        }
+        return QJsonDocument(facts).toJson(QJsonDocument::Compact);
+    }
+
+    Fact *fact = qvariant_cast<Fact*>(videoSettings->property(factName.toLatin1().constData()));
+    if (!fact) {
+        return QJsonDocument(QJsonObject{{"error", QStringLiteral("unknown fact: %1").arg(factName)}}).toJson(QJsonDocument::Compact);
+    }
+    if (query.hasQueryItem(QStringLiteral("value"))) {
+        fact->setRawValue(query.queryItemValue(QStringLiteral("value")));
+    }
+    return QJsonDocument(QJsonObject{{factName, QJsonValue::fromVariant(fact->rawValue())}}).toJson(QJsonDocument::Compact);
+}
+
+QByteArray DebugApiServer::_screenshotJson()
+{
+    QQuickWindow *window = qgcApp()->mainRootWindow();
+    if (!window) {
+        return QJsonDocument(QJsonObject{{"error", "no main window"}}).toJson(QJsonDocument::Compact);
+    }
+    QImage image = window->grabWindow();
+    // Full retina grabs are multi-megabyte; tooling consumers only need enough to read the UI.
+    constexpr int kMaxWidth = 1280;
+    if (image.width() > kMaxWidth) {
+        image = image.scaledToWidth(kMaxWidth, Qt::SmoothTransformation);
+    }
+    const QString file = QStandardPaths::writableLocation(QStandardPaths::TempLocation) + QStringLiteral("/qgc-debug-screenshot.jpg");
+    if (!image.save(file, "JPEG", 80)) {
+        return QJsonDocument(QJsonObject{{"error", "save failed"}}).toJson(QJsonDocument::Compact);
+    }
+    return QJsonDocument(QJsonObject{
+        {"imageFile", file},
+        {"size", QStringLiteral("%1x%2").arg(image.width()).arg(image.height())},
+    }).toJson(QJsonDocument::Compact);
+}
+
+QByteArray DebugApiServer::_vehicleJson()
+{
+    Vehicle *vehicle = MultiVehicleManager::instance()->activeVehicle();
+    if (!vehicle) {
+        return QJsonDocument(QJsonObject{{"connected", false}}).toJson(QJsonDocument::Compact);
+    }
+
+    QJsonObject json{
+        {"connected", true},
+        {"id", vehicle->id()},
+        {"armed", vehicle->armed()},
+        {"flightMode", vehicle->flightMode()},
+        {"latitude", vehicle->coordinate().latitude()},
+        {"longitude", vehicle->coordinate().longitude()},
+    };
+
+    if (FactGroup *group = vehicle->vehicleFactGroup()) {
+        if (Fact *fact = group->getFact(QStringLiteral("altitudeRelative"))) {
+            json.insert(QStringLiteral("altitudeRelative"), fact->rawValue().toDouble());
+        }
+        if (Fact *fact = group->getFact(QStringLiteral("groundSpeed"))) {
+            json.insert(QStringLiteral("groundSpeed"), fact->rawValue().toDouble());
+        }
+    }
+    if (FactGroup *gps = vehicle->gpsFactGroup()) {
+        if (Fact *fact = gps->getFact(QStringLiteral("count"))) {
+            json.insert(QStringLiteral("gpsCount"), fact->rawValue().toInt());
+        }
+        if (Fact *fact = gps->getFact(QStringLiteral("lock"))) {
+            json.insert(QStringLiteral("gpsLock"), fact->rawValue().toInt());
+        }
+    }
+    if (vehicle->batteries()->count() > 0) {
+        if (FactGroup *battery = qobject_cast<FactGroup*>(vehicle->batteries()->get(0))) {
+            if (Fact *fact = battery->getFact(QStringLiteral("percentRemaining"))) {
+                json.insert(QStringLiteral("batteryPercent"), fact->rawValue().toDouble());
+            }
+        }
+    }
+    return QJsonDocument(json).toJson(QJsonDocument::Compact);
+}
+
+static ParameterManager *_parameterManager(QByteArray &error)
+{
+    Vehicle *vehicle = MultiVehicleManager::instance()->activeVehicle();
+    if (!vehicle) {
+        error = _errorJson(QStringLiteral("no vehicle connected"));
+        return nullptr;
+    }
+    ParameterManager *parameterManager = vehicle->parameterManager();
+    if (!parameterManager || !parameterManager->parametersReady()) {
+        error = _errorJson(QStringLiteral("parameters not ready yet"));
+        return nullptr;
+    }
+    return parameterManager;
+}
+
+QByteArray DebugApiServer::_paramsJson(const QUrlQuery &query)
+{
+    QByteArray error;
+    ParameterManager *parameterManager = _parameterManager(error);
+    if (!parameterManager) {
+        return error;
+    }
+
+    const QString name = query.queryItemValue(QStringLiteral("name"), QUrl::FullyDecoded);
+    if (!name.isEmpty()) {
+        if (!parameterManager->parameterExists(ParameterManager::defaultComponentId, name)) {
+            return _errorJson(QStringLiteral("unknown parameter: %1").arg(name));
+        }
+        Fact *fact = parameterManager->getParameter(ParameterManager::defaultComponentId, name);
+        return QJsonDocument(QJsonObject{
+            {"name", name},
+            {"value", QJsonValue::fromVariant(fact->rawValue())},
+            {"units", fact->cookedUnits()},
+            {"min", QJsonValue::fromVariant(fact->cookedMin())},
+            {"max", QJsonValue::fromVariant(fact->cookedMax())},
+            {"description", fact->shortDescription()},
+        }).toJson(QJsonDocument::Compact);
+    }
+
+    const QString filter = query.queryItemValue(QStringLiteral("filter"), QUrl::FullyDecoded);
+    const int limitArg = query.queryItemValue(QStringLiteral("limit")).toInt();
+    const int limit = qBound(1, limitArg ? limitArg : 100, 10000);
+
+    QJsonObject params;
+    int total = 0;
+    const QStringList names = parameterManager->parameterNames(ParameterManager::defaultComponentId);
+    for (const QString &paramName : names) {
+        if (!filter.isEmpty() && !paramName.contains(filter, Qt::CaseInsensitive)) {
+            continue;
+        }
+        ++total;
+        if (params.size() < limit) {
+            params.insert(paramName, QJsonValue::fromVariant(parameterManager->getParameter(ParameterManager::defaultComponentId, paramName)->rawValue()));
+        }
+    }
+    return QJsonDocument(QJsonObject{
+        {"params", params},
+        {"matched", total},
+        {"truncated", total > params.size()},
+    }).toJson(QJsonDocument::Compact);
+}
+
+QByteArray DebugApiServer::_paramSetJson(const QUrlQuery &query)
+{
+    QByteArray error;
+    ParameterManager *parameterManager = _parameterManager(error);
+    if (!parameterManager) {
+        return error;
+    }
+
+    const QString name = query.queryItemValue(QStringLiteral("name"), QUrl::FullyDecoded);
+    if (name.isEmpty() || !query.hasQueryItem(QStringLiteral("value"))) {
+        return _errorJson(QStringLiteral("name and value required"));
+    }
+    if (!parameterManager->parameterExists(ParameterManager::defaultComponentId, name)) {
+        return _errorJson(QStringLiteral("unknown parameter: %1").arg(name));
+    }
+
+    Fact *fact = parameterManager->getParameter(ParameterManager::defaultComponentId, name);
+    fact->setRawValue(query.queryItemValue(QStringLiteral("value"), QUrl::FullyDecoded));
+    return QJsonDocument(QJsonObject{
+        {"name", name},
+        {"value", QJsonValue::fromVariant(fact->rawValue())},
+    }).toJson(QJsonDocument::Compact);
+}
+
+QByteArray DebugApiServer::_paramsFileJson(const QUrlQuery &query, bool save)
+{
+    QByteArray error;
+    ParameterManager *parameterManager = _parameterManager(error);
+    if (!parameterManager) {
+        return error;
+    }
+
+    QString file = query.queryItemValue(QStringLiteral("file"), QUrl::FullyDecoded);
+    if (file.isEmpty()) {
+        if (!save) {
+            return _errorJson(QStringLiteral("file required"));
+        }
+        file = QStandardPaths::writableLocation(QStandardPaths::TempLocation) + QStringLiteral("/qgc-params.params");
+    }
+
+    QFile paramFile(file);
+    if (save) {
+        if (!paramFile.open(QIODevice::WriteOnly | QIODevice::Text)) {
+            return _errorJson(QStringLiteral("cannot write %1").arg(file));
+        }
+        QTextStream stream(&paramFile);
+        parameterManager->writeParametersToStream(stream);
+        return QJsonDocument(QJsonObject{{"saved", file}}).toJson(QJsonDocument::Compact);
+    }
+
+    if (!paramFile.open(QIODevice::ReadOnly | QIODevice::Text)) {
+        return _errorJson(QStringLiteral("cannot read %1").arg(file));
+    }
+    QTextStream stream(&paramFile);
+    const QString result = parameterManager->readParametersFromStream(stream);
+    return QJsonDocument(QJsonObject{
+        {"loaded", file},
+        {"notes", result},
+    }).toJson(QJsonDocument::Compact);
+}
+
+QByteArray DebugApiServer::_calibrateJson(const QUrlQuery &query)
+{
+    Vehicle *vehicle = MultiVehicleManager::instance()->activeVehicle();
+    if (!vehicle) {
+        return _errorJson(QStringLiteral("no vehicle connected"));
+    }
+    if (query.queryItemValue(QStringLiteral("stop")) == QStringLiteral("1")) {
+        vehicle->stopCalibration(false);
+        return QJsonDocument(QJsonObject{{"calibration", "stopped"}}).toJson(QJsonDocument::Compact);
+    }
+
+    const QString type = query.queryItemValue(QStringLiteral("type"));
+    static const QHash<QString, QGCMAVLink::CalibrationType> kTypes{
+        {QStringLiteral("accel"), QGCMAVLink::CalibrationAccel},
+        {QStringLiteral("mag"), QGCMAVLink::CalibrationMag},
+        {QStringLiteral("compass"), QGCMAVLink::CalibrationMag},
+        {QStringLiteral("gyro"), QGCMAVLink::CalibrationGyro},
+        {QStringLiteral("level"), QGCMAVLink::CalibrationLevel},
+        {QStringLiteral("radio"), QGCMAVLink::CalibrationRadio},
+        {QStringLiteral("esc"), QGCMAVLink::CalibrationEsc},
+    };
+    if (!kTypes.contains(type)) {
+        return _errorJson(QStringLiteral("type must be one of: accel, mag, gyro, level, radio, esc"));
+    }
+    vehicle->startCalibration(kTypes.value(type));
+    return QJsonDocument(QJsonObject{{"calibration", type}}).toJson(QJsonDocument::Compact);
+}
+
+QByteArray DebugApiServer::_motorTestJson(const QUrlQuery &query)
+{
+    if (!qEnvironmentVariableIsSet("QGC_DEBUG_API_ALLOW_ACTUATORS")) {
+        return _errorJson(QStringLiteral("motor test disabled; set QGC_DEBUG_API_ALLOW_ACTUATORS=1 (props off!)"));
+    }
+    Vehicle *vehicle = MultiVehicleManager::instance()->activeVehicle();
+    if (!vehicle) {
+        return _errorJson(QStringLiteral("no vehicle connected"));
+    }
+    const int motor = query.queryItemValue(QStringLiteral("motor")).toInt();
+    const int percent = qBound(0, query.queryItemValue(QStringLiteral("percent")).toInt(), 100);
+    const int timeout = qBound(1, query.queryItemValue(QStringLiteral("timeout")).toInt(), 10);
+    if (motor < 1) {
+        return _errorJson(QStringLiteral("motor (1-based) required"));
+    }
+    vehicle->motorTest(motor, percent, timeout, false);
+    return QJsonDocument(QJsonObject{{"motor", motor}, {"percent", percent}, {"timeout", timeout}}).toJson(QJsonDocument::Compact);
+}
+
+QByteArray DebugApiServer::_messagesJson() const
+{
+    return QJsonDocument(QJsonObject{{"messages", QJsonArray::fromStringList(_messages)}}).toJson(QJsonDocument::Compact);
+}
+
+QByteArray DebugApiServer::_rcJson() const
+{
+    QJsonArray channels;
+    for (int value : _rcValues) {
+        channels.append(value);
+    }
+    return QJsonDocument(QJsonObject{{"channels", channels}}).toJson(QJsonDocument::Compact);
+}
+
+PlanMasterController *DebugApiServer::_planController()
+{
+    if (!_plan) {
+        _plan = new PlanMasterController(this);
+        _plan->setFlyView(false);
+        _plan->start();
+    }
+    return _plan;
+}
+
+QByteArray DebugApiServer::_missionJson(const QUrlQuery &query, bool upload)
+{
+    if (!MultiVehicleManager::instance()->activeVehicle()) {
+        return _errorJson(QStringLiteral("no vehicle connected"));
+    }
+    const QString file = query.queryItemValue(QStringLiteral("file"), QUrl::FullyDecoded);
+    if (file.isEmpty()) {
+        return _errorJson(QStringLiteral("file required"));
+    }
+
+    PlanMasterController *plan = _planController();
+    if (upload) {
+        if (!QFile::exists(file)) {
+            return _errorJson(QStringLiteral("no such file: %1").arg(file));
+        }
+        plan->loadFromFile(file);
+        plan->sendToVehicle();
+        return QJsonDocument(QJsonObject{{"uploading", file}}).toJson(QJsonDocument::Compact);
+    }
+
+    auto connection = std::make_shared<QMetaObject::Connection>();
+    *connection = connect(plan, &PlanMasterController::syncInProgressChanged, this, [plan, file, connection]() {
+        if (!plan->syncInProgress()) {
+            QObject::disconnect(*connection);
+            plan->saveToFile(file);
+        }
+    });
+    plan->loadFromVehicle();
+    return QJsonDocument(QJsonObject{{"downloading", file}}).toJson(QJsonDocument::Compact);
+}
+
+QByteArray DebugApiServer::_statusJson()
+{
+    VideoManager *videoManager = VideoManager::instance();
+    VideoSettings *videoSettings = SettingsManager::instance()->videoSettings();
+
+    const QStringList statuses = videoManager->cameraStatuses();
+    QJsonArray cameras;
+    for (int i = 0; i < statuses.size(); ++i) {
+        cameras.append(QJsonObject{
+            {"index", i},
+            {"name", videoManager->cameraName(i)},
+            {"source", videoSettings->videoSourceNameAt(i)},
+            {"status", statuses.at(i)},
+            {"receiving", statuses.at(i).isEmpty()},
+            {"framesDecoded", static_cast<qint64>(videoManager->cameraFramesDecoded(i))},
+            {"bytesReceived", static_cast<qint64>(videoManager->cameraBytesReceived(i))},
+            {"secondsSinceLastFrame", videoManager->cameraSecondsSinceLastFrame(i)},
+        });
+    }
+
+    QSettings layoutSettings;
+    layoutSettings.beginGroup(QStringLiteral("QGCQml"));
+    const QJsonObject layout{
+        {"mainIsMap", layoutSettings.value(QStringLiteral("MainFlyWindowIsMap"), true).toBool()},
+        {"pipExpanded", layoutSettings.value(QStringLiteral("IsPIPVisible"), true).toBool()},
+        {"pipCustomPosition", layoutSettings.value(QStringLiteral("PIPCustomPosition"), false).toBool()},
+        {"pipSize", layoutSettings.value(QStringLiteral("PIPSize"), 0).toDouble()},
+        {"tileSize", layoutSettings.value(QStringLiteral("VideoTileSize"), 0).toDouble()},
+    };
+
+    const QJsonObject status{
+        {"activeVideoSource", videoManager->activeVideoSource()},
+        {"multiViewEnabled", videoSettings->multiViewEnabled()->rawValue().toBool()},
+        {"decoding", videoManager->decoding()},
+        {"streaming", videoManager->streaming()},
+        {"recording", videoManager->recording()},
+        {"videoSize", QStringLiteral("%1x%2").arg(videoManager->videoSize().width()).arg(videoManager->videoSize().height())},
+        {"cameras", cameras},
+        {"layout", layout},
+    };
+    return QJsonDocument(status).toJson(QJsonDocument::Compact);
+}

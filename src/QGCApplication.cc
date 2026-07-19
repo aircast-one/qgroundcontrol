@@ -68,6 +68,7 @@
 #include "UDPLink.h"
 #include "Vehicle.h"
 #include "VehicleComponent.h"
+#include "DebugApiServer.h"
 #include "VideoManager.h"
 
 #ifndef QGC_DISABLE_MAVLINK_INSPECTOR
@@ -356,6 +357,7 @@ void QGCApplication::_initForNormalAppBoot()
     QGCPositionManager::instance()->init();
     LinkManager::instance()->init();
     VideoManager::instance()->init(mainRootWindow());
+    DebugApiServer::startIfConfigured(this);
 
     // Image provider for Optical Flow
     _qmlAppEngine->addImageProvider(_qgcImageProviderId, new QGCImageProvider());
