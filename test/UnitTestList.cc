@@ -77,6 +77,8 @@
 #include "ComponentInformationTranslationTest.h"
 
 // QmlControls
+#include "DragToPositionTest.h"
+#include "PipViewTest.h"
 
 // Terrain
 #include "TerrainQueryTest.h"
@@ -180,6 +182,8 @@ int runTests(bool stress, QStringView unitTestOptions)
     // qgcunittest
 
     // QmlControls
+    UT_REGISTER_TEST(DragToPositionTest)
+    UT_REGISTER_TEST(PipViewTest)
 
     // Terrain
     UT_REGISTER_TEST(TerrainQueryTest)

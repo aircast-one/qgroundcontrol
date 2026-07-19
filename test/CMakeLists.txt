@@ -101,6 +101,8 @@ add_subdirectory(qgcunittest)
 # add_qgc_test(MessageBoxTest)
 
 add_subdirectory(QmlControls)
+add_qgc_test(DragToPositionTest)
+add_qgc_test(PipViewTest)
 
 add_subdirectory(Terrain)
 add_qgc_test(TerrainQueryTest)

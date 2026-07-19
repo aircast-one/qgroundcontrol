@@ -17,14 +17,15 @@ import QGroundControl.Palette
 
 Item {
     id:         _root
-    width:      _pipSize
-    height:     _pipSize * (9/16)
-    visible:    item2 && item2.pipState !== item2.pipState.window && show
+    width:      parent ? Math.min(Math.max(_pipSize, parent.width * _minSize), parent.width * _maxSize) : _pipSize
+    height:     width * (9/16)
+    visible:    item2 && item2.pipState.state !== item2.pipState.windowState && show
 
     property var    item1:                  null    // Required
     property var    item2:                  null    // Optional, may come and go
     property string item1IsFullSettingsKey          // Settings key to save whether item1 was saved in full mode
     property bool   show:                   true
+    property real   margin:                 0
 
     // Optional action button rendered above the pip (e.g. switch video source). Click is
     // consumed so it does not trigger the pip swap.
@@ -33,20 +34,33 @@ Item {
     signal          actionButtonClicked()
 
     readonly property string _pipExpandedSettingsKey: "IsPIPVisible"
+    readonly property string _pipSizeSettingsKey:     "PIPSize"
+
+    readonly property alias hasCustomPosition: dragPosition.hasCustomPosition
+
+    DragToPosition {
+        id:                 dragPosition
+        target:             _root
+        settingsKeyPrefix:  "PIP"
+        defaultX:           _root.margin
+        defaultY:           _root.parent ? _root.parent.height - _root.height - _root.margin : 0
+    }
 
     property var    _fullItem
     property var    _pipOrWindowItem
     property alias  _windowContentItem: window.contentItem
     property alias  _pipContentItem:    pipContent
     property bool   _isExpanded:        true
-    property real   _pipSize:           parent.width * 0.2
+    property real   _pipSize:           parent ? parent.width * 0.2 : 0
     property real   _maxSize:           0.75                // Percentage of parent control size
     property real   _minSize:           0.10
-    property bool   _componentComplete: false
 
     Component.onCompleted: {
+        var savedSize = parseFloat(QGroundControl.loadGlobalSetting(_pipSizeSettingsKey, "0"))
+        if (savedSize > 0) {
+            _pipSize = savedSize
+        }
         _initForItems()
-        _componentComplete = true
     }
 
     onItem2Changed: _initForItems()
@@ -120,68 +134,36 @@ Item {
         enabled:        _isExpanded
         preventStealing: true
         hoverEnabled:   true
-        onClicked:      _swapPip()
+        cursorShape:    drag.active ? Qt.ClosedHandCursor : Qt.ArrowCursor
+        drag.target:    _root
+        drag.minimumX:  0
+        drag.minimumY:  0
+        drag.maximumX:  _root.parent ? _root.parent.width - _root.width : 0
+        drag.maximumY:  _root.parent ? _root.parent.height - _root.height : 0
+
+        property bool dragged: false
+
+        onPressed:          dragged = false
+        onPositionChanged:  { if (drag.active) dragged = true }
+        onReleased:         { if (dragged) dragPosition.commit() }
+        onCanceled:         { if (dragged) dragPosition.commit() }
+        onClicked:          { if (!dragged) _swapPip() }
     }
 
-    // MouseArea to drag in order to resize the PiP area
-    MouseArea {
-        id:                 pipResize
-        anchors.fill:       pipResizeIcon
-        preventStealing:    true
-        cursorShape:        Qt.PointingHandCursor
-
-        property real initialX:     0
-        property real initialWidth: 0
-
-        onPressed: (mouse) => {
-            // Remove the anchor so the our mouse coordinates stay in the same original place for drag tracking
-            pipResize.anchors.fill = undefined
-            pipResize.initialX = mouse.x
-            pipResize.initialWidth = _root.width
-        }
-
-        onReleased: pipResize.anchors.fill = pipResizeIcon
-
-        // Drag
-        onPositionChanged: (mouse) => {
-            if (pipResize.pressed) {
-                var parentWidth = _root.parent.width
-                var newWidth = pipResize.initialWidth + mouse.x - pipResize.initialX
-                if (newWidth < parentWidth * _maxSize && newWidth > parentWidth * _minSize) {
-                    _pipSize = newWidth
-                }
-            }
-        }
-    }
-
-    // Resize icon
-    Image {
-        id:             pipResizeIcon
-        source:         "/qmlimages/pipResize.svg"
-        fillMode:       Image.PreserveAspectFit
-        mipmap:         true
-        anchors.right:  parent.right
-        anchors.top:    parent.top
-        visible:        _isExpanded && (ScreenTools.isMobile || pipMouseArea.containsMouse)
-        height:         ScreenTools.defaultFontPixelHeight * 2.5
-        width:          ScreenTools.defaultFontPixelHeight * 2.5
-        sourceSize.height:  height
-    }
-
-    // Check min/max constraints on pip size when when parent is resized
-    Connections {
-        target: _root.parent
-
-        function onWidthChanged() {
-            if (!_componentComplete) {
-                // Wait until first time setup is done
-                return
-            }
-            var parentWidth = _root.parent.width
-            if (_root.width > parentWidth * _maxSize) {
-                _pipSize = parentWidth * _maxSize
-            } else if (_root.width < parentWidth * _minSize) {
-                _pipSize = parentWidth * _minSize
+    ResizeHandle {
+        target:      _root
+        enabled:     _isExpanded
+        iconVisible: _isExpanded && (ScreenTools.isMobile || pipMouseArea.containsMouse)
+        onResized:   (newWidth) => { _pipSize = newWidth }
+        onCommitted: {
+            _pipSize = _root.width
+            QGroundControl.saveGlobalSetting(_root._pipSizeSettingsKey, _root.width.toString())
+            // A resize alone must not turn the default position into a custom one; only
+            // update the stored spot if the user already dragged.
+            if (dragPosition.hasCustomPosition) {
+                dragPosition.commit()
+            } else {
+                dragPosition.rebind()
             }
         }
     }

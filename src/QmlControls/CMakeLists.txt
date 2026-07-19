@@ -76,6 +76,7 @@ qt_add_qml_module(QGroundControlControlsModule
         ClickableColor.qml
         ConfigButton.qml
         DeadMouseArea.qml
+        DragToPosition.qml
         DropButton.qml
         DropPanel.qml
         EditPositionDialog.qml
@@ -148,6 +149,7 @@ qt_add_qml_module(QGroundControlControlsModule
         QGCToolInsets.qml
         RCChannelMonitor.qml
         RCToParamDialog.qml
+        ResizeHandle.qml
         SectionHeader.qml
         SelectableControl.qml
         SettingsButton.qml

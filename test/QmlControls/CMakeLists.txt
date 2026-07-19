@@ -1,3 +1,14 @@
+target_sources(${CMAKE_PROJECT_NAME}
+    PRIVATE
+        DragToPositionTest.cc
+        DragToPositionTest.h
+        PipViewTest.cc
+        PipViewTest.h
+        QuickInteractionTestHelpers.h
+)
+
+target_include_directories(${CMAKE_PROJECT_NAME} PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
+
 # qt_add_qml_module(QmlControlsTest
 #     URI qmlcontrolstest
 #     VERSION 1.0
