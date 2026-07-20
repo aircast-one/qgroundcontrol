@@ -12,10 +12,12 @@
 
 ## What Aircast adds
 
+- **Multiple cameras** — configure any number of video cameras in a unified camera list, mixing RTSP, WHEP/WebRTC, UDP, and TCP sources. Switch the active camera from an in-view button, or view several at once.
 - **Multi-camera video UX** — draggable, resizable, collapsible picture-in-picture and per-camera video tiles; drag the instrument and telemetry panels anywhere. Layout persists across restarts.
 - **Zero-restart camera switching** — switching the active camera keeps every stream playing, with no RTSP/WHEP renegotiation and no black-frame wait.
 - **WHEP / WebRTC video** — low-latency WebRTC (WHEP) video source alongside the standard RTSP/UDP/TCP inputs, for cellular streaming.
 - **Per-camera connection status** — live status plus decoded-frame and bitrate counters, on tiles and in camera settings.
+- **Android hardware video decode** — MediaCodec hardware-accelerated decoding on Android for smoother, lower-CPU video.
 - **Debug API + MCP automation** *(opt-in, localhost only)* — a header-authenticated 127.0.0.1 API and a Model Context Protocol server for driving the app from tests, CI, and tooling. Off by default; no flight commands exposed.
 
 See the [release notes](https://github.com/aircast-one/qgroundcontrol/releases) for what shipped in each version.
