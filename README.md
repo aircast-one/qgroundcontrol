@@ -1,56 +1,45 @@
+# Aircast QGC
 
 <p align="center">
-  <img src="https://raw.githubusercontent.com/Dronecode/UX-Design/35d8148a8a0559cd4bcf50bfa2c94614983cce91/QGC/Branding/Deliverables/QGC_RGB_Logo_Horizontal_Positive_PREFERRED/QGC_RGB_Logo_Horizontal_Positive_PREFERRED.svg" alt="QGroundControl Logo" width="500">
-</p>
-
-<p align="center">
-  <a href="https://github.com/mavlink/QGroundControl/releases">
-    <img src="https://img.shields.io/github/release/mavlink/QGroundControl.svg" alt="Latest Release">
+  <a href="https://github.com/aircast-one/qgroundcontrol/releases/latest">
+    <img src="https://img.shields.io/github/v/release/aircast-one/qgroundcontrol?filter=aircast-v*&label=release" alt="Latest Release">
   </a>
 </p>
 
-*QGroundControl* (QGC) is a highly intuitive and powerful Ground Control Station (GCS) designed for UAVs. Whether you're a first-time pilot or an experienced professional, QGC provides a seamless user experience for flight control and mission planning, making it the go-to solution for any *MAVLink-enabled drone*.
+**Aircast QGC** is [Aircast](https://aircast.one)'s fork of [QGroundControl](https://github.com/mavlink/qgroundcontrol), tailored for operating drones over cellular links with a video-first ground station. It tracks upstream QGC and adds the features Aircast needs for low-latency cellular video and fleet operations.
 
 ---
 
-### 🌟 *Why Choose QGroundControl?*
+## What Aircast adds
 
-- *🚀 Ease of Use*: A beginner-friendly interface designed for smooth operation without sacrificing advanced features for pros.
-- *✈️ Comprehensive Flight Control*: Full flight control and mission management for *PX4* and *ArduPilot* powered UAVs.
-- *🛠️ Mission Planning*: Easily plan complex missions with a simple drag-and-drop interface.
+- **Multiple cameras** — configure any number of video cameras in a unified camera list, mixing RTSP, WHEP/WebRTC, UDP, and TCP sources. Switch the active camera from an in-view button, or view several at once.
+- **Multi-camera video UX** — draggable, resizable, collapsible picture-in-picture and per-camera video tiles; drag the instrument and telemetry panels anywhere. Layout persists across restarts.
+- **Zero-restart camera switching** — switching the active camera keeps every stream playing, with no RTSP/WHEP renegotiation and no black-frame wait.
+- **WHEP / WebRTC video** — low-latency WebRTC (WHEP) video source alongside the standard RTSP/UDP/TCP inputs, for cellular streaming.
+- **Per-camera connection status** — live status plus decoded-frame and bitrate counters, on tiles and in camera settings.
+- **Android hardware video decode** — MediaCodec hardware-accelerated decoding on Android for smoother, lower-CPU video.
+- **Debug API + MCP automation** *(opt-in, localhost only)* — a header-authenticated 127.0.0.1 API and a Model Context Protocol server for driving the app from tests, CI, and tooling. Off by default; no flight commands exposed.
 
-🔍 For a deeper dive into using QGC, check out the [User Manual](https://docs.qgroundcontrol.com/en/) – although, thanks to QGC's intuitive UI, you may not even need it!
+See the [release notes](https://github.com/aircast-one/qgroundcontrol/releases) for what shipped in each version.
 
+## Download
 
----
+Installers for macOS, Windows, Linux, and Android are on the [**Releases**](https://github.com/aircast-one/qgroundcontrol/releases/latest) page. Every asset ships with a `.sha256` checksum.
 
-### 🚁 *Key Features*
+## Build
 
-- 🕹️ *Full Flight Control*: Supports all *MAVLink drones*.
-- ⚙️ *Vehicle Setup*: Tailored configuration for *PX4* and *ArduPilot* platforms.
-- 🔧 *Fully Open Source*: Customize and extend the software to suit your needs.
-
-🎯 Check out the latest updates in our [New Features and Release Notes](https://github.com/mavlink/qgroundcontrol/blob/master/ChangeLog.md).
-
----
-
-### 💻 *Get Involved!*
-
-QGroundControl is *open-source*, meaning you have the power to shape it! Whether you're fixing bugs, adding features, or customizing for your specific needs, QGC welcomes contributions from the community.
-
-🛠️ Start building today with our [Developer Guide](https://dev.qgroundcontrol.com/en/) and [build instructions](https://dev.qgroundcontrol.com/en/getting_started/).
+Build instructions match upstream QGroundControl — see the [Developer Guide](https://dev.qgroundcontrol.com/en/) and [build instructions](https://dev.qgroundcontrol.com/en/getting_started/). Releases are cut with `make release.<patch|minor|major>`, which tags `aircast-v*` and triggers the release workflow.
 
 ---
 
-### 🔗 *Useful Links*
+## About QGroundControl
 
-- 🌐 [Official Website](http://qgroundcontrol.com)
-- 📘 [User Manual](https://docs.qgroundcontrol.com/en/)
-- 🛠️ [Developer Guide](https://dev.qgroundcontrol.com/en/)
-- 💬 [Discussion & Support](https://docs.qgroundcontrol.com/en/Support/Support.html)
-- 🤝 [Contributing](https://dev.qgroundcontrol.com/en/contribute/)
-- 📜 [License Information](https://github.com/mavlink/qgroundcontrol/blob/master/.github/COPYING.md)
+Aircast QGC is built on *QGroundControl* (QGC), a powerful Ground Control Station for UAVs, providing full flight control and mission planning for any *MAVLink-enabled drone* running *PX4* or *ArduPilot*.
 
----
+- [Official Website](http://qgroundcontrol.com)
+- [User Manual](https://docs.qgroundcontrol.com/en/)
+- [Developer Guide](https://dev.qgroundcontrol.com/en/)
+- [Contributing to upstream](https://dev.qgroundcontrol.com/en/contribute/)
+- [License](https://github.com/mavlink/qgroundcontrol/blob/master/.github/COPYING.md)
 
-With QGroundControl, you're in full command of your UAV, ready to take your missions to the next level.
+QGroundControl is open-source under a dual Apache 2.0 / GPLv3 license. Aircast QGC inherits that license; upstream contributions are welcome at [mavlink/QGroundControl](https://github.com/mavlink/qgroundcontrol).
