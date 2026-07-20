@@ -110,7 +110,8 @@ void DebugApiServer::_handleConnection(QTcpSocket *socket)
         const QList<QByteArray> requestLine = request.left(request.indexOf("\r\n")).split(' ');
         QByteArray body = QByteArrayLiteral("{\"error\":\"bad request\"}");
         QByteArray statusLine = QByteArrayLiteral("HTTP/1.1 400 Bad Request");
-        if (!request.toLower().contains("\r\nx-qgc-debug-api:")) {
+        const QByteArray headers = request.left(request.indexOf("\r\n\r\n")).toLower();
+        if (!headers.contains("\r\nx-qgc-debug-api:")) {
             // Browsers cannot attach custom headers without a CORS preflight (which this
             // server never grants), so requiring one kills drive-by requests from web pages.
             body = QByteArrayLiteral("{\"error\":\"missing X-QGC-Debug-Api header\"}");
