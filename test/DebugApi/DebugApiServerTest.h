@@ -19,4 +19,6 @@ private slots:
     void _missingAuthHeaderRejected();
     void _statusEndpoint();
     void _unknownPathReturns404();
+    void _handlerErrorReturns400();
+    void _motorTestRefusedWithoutActuatorGate();
 };

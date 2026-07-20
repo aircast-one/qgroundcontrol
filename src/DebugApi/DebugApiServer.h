@@ -58,7 +58,7 @@ private:
     static QByteArray _linksJson();
     static QByteArray _linkConnectJson(const QUrlQuery &query);
     static QByteArray _linkDisconnectJson(const QUrlQuery &query);
-    static QByteArray _settingJson(const QUrlQuery &query);
+    static QByteArray _videoSettingJson(const QUrlQuery &query);
 
     QTcpServer *_server = nullptr;
     QMetaObject::Connection _messageConnection;

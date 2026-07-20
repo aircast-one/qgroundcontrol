@@ -16,6 +16,7 @@ from urllib.parse import quote
 import socket
 import subprocess
 import time
+import urllib.error
 import urllib.request
 from pathlib import Path
 
@@ -41,6 +42,9 @@ def _api(path: str) -> dict:
     try:
         with urllib.request.urlopen(request, timeout=5) as resp:
             return json.load(resp)
+    except urllib.error.HTTPError as exc:
+        detail = exc.read().decode(errors="replace")
+        raise RuntimeError(f"debug api returned {exc.code}: {detail}") from exc
     except OSError as exc:
         raise RuntimeError(f"debug api unreachable ({exc}); start the app with run_app") from exc
 
@@ -236,7 +240,10 @@ def params_diff(file: str) -> dict:
         parts = line.split("\t")
         if len(parts) >= 4:
             preset[parts[2]] = parts[3]
-    current = _api("/vehicle/params?limit=10000")["params"]
+    result = _api("/vehicle/params?limit=10000")
+    if result.get("truncated"):
+        raise RuntimeError(f"vehicle reports {result['matched']} params, above the 10000 fetch limit; diff would be incomplete")
+    current = result["params"]
     changed = {}
     for name, value in preset.items():
         if name in current:
@@ -354,16 +361,16 @@ def configure_cameras(host: str, paths: list[str] | None = None, names: list[str
         raise ValueError(f"no cameras found on {host}")
     names = names or [f"{p} ({host})" for p in paths]
     result = {}
-    result["primary"] = _api(f"/setting?fact=rtspUrl&value={quote(f'rtsp://{host}:8554/{paths[0]}')}")
-    _api(f"/setting?fact=videoSource&value={quote('RTSP Video Stream')}")
-    _api(f"/setting?fact=primaryCameraName&value={quote(names[0])}")
+    result["primary"] = _api(f"/video/setting?fact=rtspUrl&value={quote(f'rtsp://{host}:8554/{paths[0]}')}")
+    _api(f"/video/setting?fact=videoSource&value={quote('RTSP Video Stream')}")
+    _api(f"/video/setting?fact=primaryCameraName&value={quote(names[0])}")
     extras = [
         {"name": names[i] if i < len(names) else paths[i],
          "source": "WebRTC (WHEP) Video Stream",
          "url": f"http://{host}:8889/{paths[i]}/whep"}
         for i in range(1, len(paths))
     ]
-    result["extras"] = _api(f"/setting?fact=extraVideoSources&value={quote(json.dumps(extras))}")
+    result["extras"] = _api(f"/video/setting?fact=extraVideoSources&value={quote(json.dumps(extras))}")
     return result
 
 
@@ -378,14 +385,14 @@ def set_logging(rules: str) -> dict:
 @mcp.tool()
 def get_video_settings() -> dict:
     """All video settings facts and their current values."""
-    return _api("/setting")
+    return _api("/video/setting")
 
 
 @mcp.tool()
 def set_video_setting(fact: str, value: str) -> dict:
     """Set a video settings fact by name (e.g. multiViewEnabled=true, rtspUrl=rtsp://...,
     extraVideoSources=<json array>). Applies live — streams reconfigure immediately."""
-    return _api(f"/setting?fact={fact}&value={quote(value)}")
+    return _api(f"/video/setting?fact={fact}&value={quote(value)}")
 
 
 @mcp.tool()

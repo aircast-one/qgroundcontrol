@@ -38,6 +38,7 @@
 #include "AudioOutput.h"
 #include "AutoPilotPlugin.h"
 #include "CmdLineOptParser.h"
+#include "DebugApiServer.h"
 #include "ESP8266ComponentController.h"
 #include "FollowMe.h"
 #include "GeoTagController.h"
@@ -68,7 +69,6 @@
 #include "UDPLink.h"
 #include "Vehicle.h"
 #include "VehicleComponent.h"
-#include "DebugApiServer.h"
 #include "VideoManager.h"
 
 #ifndef QGC_DISABLE_MAVLINK_INSPECTOR

@@ -16,6 +16,7 @@
 #include "TCPLink.h"
 #include "QGCApplication.h"
 #include "QGCLoggingCategory.h"
+#include "QGroundControlQmlGlobal.h"
 #include "SettingsManager.h"
 #include "Vehicle.h"
 #include "VideoManager.h"
@@ -127,9 +128,13 @@ void DebugApiServer::_handleConnection(QTcpSocket *socket)
         } else if (requestLine.size() >= 2 && requestLine.at(0) == "GET") {
             const QUrl url = QUrl::fromEncoded(requestLine.at(1));
             body = _route(url.path(), QUrlQuery(url));
-            statusLine = body.isEmpty() ? QByteArrayLiteral("HTTP/1.1 404 Not Found") : QByteArrayLiteral("HTTP/1.1 200 OK");
             if (body.isEmpty()) {
+                statusLine = QByteArrayLiteral("HTTP/1.1 404 Not Found");
                 body = QByteArrayLiteral("{\"error\":\"not found\"}");
+            } else if (body.startsWith("{\"error\"")) {
+                statusLine = QByteArrayLiteral("HTTP/1.1 400 Bad Request");
+            } else {
+                statusLine = QByteArrayLiteral("HTTP/1.1 200 OK");
             }
         }
 
@@ -138,6 +143,11 @@ void DebugApiServer::_handleConnection(QTcpSocket *socket)
         socket->write(response);
         socket->disconnectFromHost();
     });
+}
+
+static QByteArray _errorJson(const QString &message)
+{
+    return QJsonDocument(QJsonObject{{"error", message}}).toJson(QJsonDocument::Compact);
 }
 
 QByteArray DebugApiServer::_route(const QString &path, const QUrlQuery &query)
@@ -149,7 +159,12 @@ QByteArray DebugApiServer::_route(const QString &path, const QUrlQuery &query)
     }
     if (path == QStringLiteral("/switch")) {
         if (query.hasQueryItem(QStringLiteral("index"))) {
-            videoManager->setActiveVideoSource(query.queryItemValue(QStringLiteral("index")).toInt());
+            bool ok = false;
+            const int index = query.queryItemValue(QStringLiteral("index")).toInt(&ok);
+            if (!ok) {
+                return _errorJson(QStringLiteral("index must be a number"));
+            }
+            videoManager->setActiveVideoSource(index);
         } else {
             videoManager->switchActiveVideoSource();
         }
@@ -236,8 +251,8 @@ QByteArray DebugApiServer::_route(const QString &path, const QUrlQuery &query)
     if (path == QStringLiteral("/links/disconnect")) {
         return _linkDisconnectJson(query);
     }
-    if (path == QStringLiteral("/setting")) {
-        return _settingJson(query);
+    if (path == QStringLiteral("/video/setting")) {
+        return _videoSettingJson(query);
     }
     return QByteArray();
 }
@@ -308,11 +323,6 @@ QByteArray DebugApiServer::_uiTreeJson(const QUrlQuery &query)
     return QJsonDocument(QJsonObject{{"items", items}, {"truncated", items.size() >= kMaxItems}}).toJson(QJsonDocument::Compact);
 }
 
-static QByteArray _errorJson(const QString &message)
-{
-    return QJsonDocument(QJsonObject{{"error", message}}).toJson(QJsonDocument::Compact);
-}
-
 // Resolves `<prefix>name` (visible item center) or `<prefix>x`/`<prefix>y` to scene coordinates.
 static bool _resolvePoint(QQuickWindow *window, const QUrlQuery &query, const QString &prefix, QPointF &scenePos, QByteArray &error)
 {
@@ -325,6 +335,10 @@ static bool _resolvePoint(QQuickWindow *window, const QUrlQuery &query, const QS
         QQuickItem *item = _findVisibleItem(window, name);
         if (!item) {
             error = _errorJson(QStringLiteral("item not found: %1").arg(name));
+            return false;
+        }
+        if (!item->isVisible()) {
+            error = _errorJson(QStringLiteral("item exists but is not visible: %1").arg(name));
             return false;
         }
         scenePos = item->mapToScene(QPointF(item->width() / 2, item->height() / 2));
@@ -385,7 +399,15 @@ QByteArray DebugApiServer::_uiDragJson(const QUrlQuery &query)
         return error;
     }
 
-    const int steps = qBound(2, query.queryItemValue(QStringLiteral("steps")).toInt() ? query.queryItemValue(QStringLiteral("steps")).toInt() : 10, 100);
+    int steps = 10;
+    if (query.hasQueryItem(QStringLiteral("steps"))) {
+        bool ok = false;
+        steps = query.queryItemValue(QStringLiteral("steps")).toInt(&ok);
+        if (!ok) {
+            return _errorJson(QStringLiteral("steps must be a number"));
+        }
+    }
+    steps = qBound(2, steps, 100);
     _mouse(window, from, Qt::LeftButton, Qt::LeftButton, QEvent::MouseButtonPress);
     for (int i = 1; i <= steps; ++i) {
         const QPointF pos = from + (to - from) * i / steps;
@@ -559,7 +581,7 @@ QByteArray DebugApiServer::_linkDisconnectJson(const QUrlQuery &query)
     return QJsonDocument(QJsonObject{{"disconnected", name}}).toJson(QJsonDocument::Compact);
 }
 
-QByteArray DebugApiServer::_settingJson(const QUrlQuery &query)
+QByteArray DebugApiServer::_videoSettingJson(const QUrlQuery &query)
 {
     VideoSettings *videoSettings = SettingsManager::instance()->videoSettings();
     const QString factName = query.queryItemValue(QStringLiteral("fact"));
@@ -601,7 +623,7 @@ QByteArray DebugApiServer::_screenshotJson()
     if (image.width() > kMaxWidth) {
         image = image.scaledToWidth(kMaxWidth, Qt::SmoothTransformation);
     }
-    const QString file = QStandardPaths::writableLocation(QStandardPaths::TempLocation) + QStringLiteral("/qgc-debug-screenshot.jpg");
+    const QString file = QStandardPaths::writableLocation(QStandardPaths::TempLocation) + QStringLiteral("/qgc-debug-screenshot-%1.jpg").arg(QCoreApplication::applicationPid());
     if (!image.save(file, "JPEG", 80)) {
         return QJsonDocument(QJsonObject{{"error", "save failed"}}).toJson(QJsonDocument::Compact);
     }
@@ -752,7 +774,7 @@ QByteArray DebugApiServer::_paramsFileJson(const QUrlQuery &query, bool save)
         if (!save) {
             return _errorJson(QStringLiteral("file required"));
         }
-        file = QStandardPaths::writableLocation(QStandardPaths::TempLocation) + QStringLiteral("/qgc-params.params");
+        file = QStandardPaths::writableLocation(QStandardPaths::TempLocation) + QStringLiteral("/qgc-params-%1.params").arg(QCoreApplication::applicationPid());
     }
 
     QFile paramFile(file);
@@ -871,7 +893,13 @@ QByteArray DebugApiServer::_missionJson(const QUrlQuery &query, bool upload)
     _pendingMissionDownload = connect(plan, &PlanMasterController::syncInProgressChanged, this, [this, plan, file]() {
         if (!plan->syncInProgress()) {
             QObject::disconnect(_pendingMissionDownload);
-            plan->saveToFile(file);
+            // A failed or empty download must not produce a file: clients poll for the
+            // file's existence as the success signal.
+            if (plan->containsItems()) {
+                plan->saveToFile(file);
+            } else {
+                qCWarning(DebugApiServerLog) << "mission download finished empty, not writing" << file;
+            }
         }
     });
     plan->loadFromVehicle();
@@ -899,7 +927,7 @@ QByteArray DebugApiServer::_statusJson()
     }
 
     QSettings layoutSettings;
-    layoutSettings.beginGroup(QStringLiteral("QGCQml"));
+    layoutSettings.beginGroup(QLatin1String(QGroundControlQmlGlobal::kQmlGlobalKeyName));
     const QJsonObject layout{
         {"mainIsMap", layoutSettings.value(QStringLiteral("MainFlyWindowIsMap"), true).toBool()},
         {"pipExpanded", layoutSettings.value(QStringLiteral("IsPIPVisible"), true).toBool()},

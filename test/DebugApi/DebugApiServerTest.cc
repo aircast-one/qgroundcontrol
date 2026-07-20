@@ -67,3 +67,33 @@ void DebugApiServerTest::_unknownPathReturns404()
     QCOMPARE(reply->attribute(QNetworkRequest::HttpStatusCodeAttribute).toInt(), 404);
     reply->deleteLater();
 }
+
+void DebugApiServerTest::_handlerErrorReturns400()
+{
+    DebugApiServer server(0);
+
+    // No vehicle is connected in the unit test environment, so the handler fails.
+    QNetworkAccessManager network;
+    QNetworkReply *reply = _get(network, server.serverPort(), QStringLiteral("/vehicle/params"), true);
+    QTRY_VERIFY_WITH_TIMEOUT(reply->isFinished(), 5000);
+    QCOMPARE(reply->attribute(QNetworkRequest::HttpStatusCodeAttribute).toInt(), 400);
+
+    const QJsonObject body = QJsonDocument::fromJson(reply->readAll()).object();
+    QCOMPARE(body.value(QStringLiteral("error")).toString(), QStringLiteral("no vehicle connected"));
+    reply->deleteLater();
+}
+
+void DebugApiServerTest::_motorTestRefusedWithoutActuatorGate()
+{
+    qunsetenv("QGC_DEBUG_API_ALLOW_ACTUATORS");
+    DebugApiServer server(0);
+
+    QNetworkAccessManager network;
+    QNetworkReply *reply = _get(network, server.serverPort(), QStringLiteral("/vehicle/motortest?motor=1&percent=10"), true);
+    QTRY_VERIFY_WITH_TIMEOUT(reply->isFinished(), 5000);
+    QCOMPARE(reply->attribute(QNetworkRequest::HttpStatusCodeAttribute).toInt(), 400);
+
+    const QJsonObject body = QJsonDocument::fromJson(reply->readAll()).object();
+    QVERIFY(body.value(QStringLiteral("error")).toString().contains(QStringLiteral("disabled")));
+    reply->deleteLater();
+}
