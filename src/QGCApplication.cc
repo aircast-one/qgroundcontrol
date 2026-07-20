@@ -38,6 +38,7 @@
 #include "AudioOutput.h"
 #include "AutoPilotPlugin.h"
 #include "CmdLineOptParser.h"
+#include "DebugApiServer.h"
 #include "ESP8266ComponentController.h"
 #include "FollowMe.h"
 #include "GeoTagController.h"
@@ -356,6 +357,7 @@ void QGCApplication::_initForNormalAppBoot()
     QGCPositionManager::instance()->init();
     LinkManager::instance()->init();
     VideoManager::instance()->init(mainRootWindow());
+    DebugApiServer::startIfConfigured(this);
 
     // Image provider for Optical Flow
     _qmlAppEngine->addImageProvider(_qgcImageProviderId, new QGCImageProvider());

@@ -33,6 +33,9 @@
 // Comms
 #include "QGCSerialPortInfoTest.h"
 
+// DebugApi
+#include "DebugApiServerTest.h"
+
 // FactSystem
 #include "FactSystemTestGeneric.h"
 #include "FactSystemTestPX4.h"
@@ -143,6 +146,9 @@ int runTests(bool stress, QStringView unitTestOptions)
 
     // Comms
     UT_REGISTER_TEST(QGCSerialPortInfoTest)
+
+    // DebugApi
+    UT_REGISTER_TEST(DebugApiServerTest)
 
     // FactSystem
     UT_REGISTER_TEST(FactSystemTestGeneric)
