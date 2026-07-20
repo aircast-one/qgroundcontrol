@@ -11,16 +11,16 @@ Item {
         id: itemA
         objectName: "itemA"
         color: "red"
-        property var pipState: _aState
-        PipState { id: _aState; pipView: pip }
+        property var pipState: aState
+        PipState { id: aState; pipView: pip }
     }
 
     Rectangle {
         id: itemB
         objectName: "itemB"
         color: "blue"
-        property var pipState: _bState
-        PipState { id: _bState; pipView: pip }
+        property var pipState: bState
+        PipState { id: bState; pipView: pip }
     }
 
     PipView {
