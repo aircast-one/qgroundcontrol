@@ -15,7 +15,7 @@
         <file alias="FactSystemTest.qml">FactSystem/FactSystemTest.qml</file>
         <file alias="DragToPositionTest.qml">QmlControls/DragToPositionTest.qml</file>
         <file alias="PipViewTest.qml">QmlControls/PipViewTest.qml</file>
-        <file alias="VideoTileTest.qml">QmlControls/VideoTileTest.qml</file>
+        <file alias="VideoTileTest.qml">FlightDisplay/VideoTileTest.qml</file>
         <file alias="MissionPlanner.waypoints">MissionManager/MissionPlanner.waypoints</file>
         <file alias="OldFileFormat.mission">MissionManager/OldFileFormat.mission</file>
         <file alias="UT-MavCmdInfoCommon.json">MissionManager/UT-MavCmdInfoCommon.json</file>
