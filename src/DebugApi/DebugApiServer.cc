@@ -48,6 +48,11 @@
 
 QGC_LOGGING_CATEGORY(DebugApiServerLog, "qgc.debugapi.debugapiserver")
 
+// Leading marker byte on a handler error body. It cannot occur in JSON text output, so
+// _handleConnection maps a marked body to HTTP 400 unambiguously (rather than sniffing the
+// JSON shape) and strips the byte before writing the response.
+static constexpr char kErrorMarker = '\x01';
+
 void DebugApiServer::startIfConfigured(QObject *parent)
 {
     bool ok = false;
@@ -131,8 +136,9 @@ void DebugApiServer::_handleConnection(QTcpSocket *socket)
             if (body.isEmpty()) {
                 statusLine = QByteArrayLiteral("HTTP/1.1 404 Not Found");
                 body = QByteArrayLiteral("{\"error\":\"not found\"}");
-            } else if (body.startsWith("{\"error\"")) {
+            } else if (body.startsWith(kErrorMarker)) {
                 statusLine = QByteArrayLiteral("HTTP/1.1 400 Bad Request");
+                body.remove(0, 1);
             } else {
                 statusLine = QByteArrayLiteral("HTTP/1.1 200 OK");
             }
@@ -147,7 +153,7 @@ void DebugApiServer::_handleConnection(QTcpSocket *socket)
 
 static QByteArray _errorJson(const QString &message)
 {
-    return QJsonDocument(QJsonObject{{"error", message}}).toJson(QJsonDocument::Compact);
+    return kErrorMarker + QJsonDocument(QJsonObject{{"error", message}}).toJson(QJsonDocument::Compact);
 }
 
 QByteArray DebugApiServer::_route(const QString &path, const QUrlQuery &query)
