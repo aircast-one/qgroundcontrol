@@ -33,18 +33,10 @@ Item {
     property string actionButtonText:       ""
     signal          actionButtonClicked()
 
-    readonly property string _pipExpandedSettingsKey: "IsPIPVisible"
-    readonly property string _pipSizeSettingsKey:     "PIPSize"
-
     readonly property alias hasCustomPosition: dragPosition.hasCustomPosition
 
-    DragToPosition {
-        id:                 dragPosition
-        target:             _root
-        settingsKeyPrefix:  "PIP"
-        defaultX:           _root.margin
-        defaultY:           _root.parent ? _root.parent.height - _root.height - _root.margin : 0
-    }
+    readonly property string _pipExpandedSettingsKey: "IsPIPVisible"
+    readonly property string _pipSizeSettingsKey:     "PIPSize"
 
     property var    _fullItem
     property var    _pipOrWindowItem
@@ -54,6 +46,14 @@ Item {
     property real   _pipSize:           parent ? parent.width * 0.2 : 0
     property real   _maxSize:           0.75                // Percentage of parent control size
     property real   _minSize:           0.10
+
+    DragToPosition {
+        id:                 dragPosition
+        target:             _root
+        settingsKeyPrefix:  "PIP"
+        defaultX:           _root.margin
+        defaultY:           _root.parent ? _root.parent.height - _root.height - _root.margin : 0
+    }
 
     Component.onCompleted: {
         var savedSize = parseFloat(QGroundControl.loadGlobalSetting(_pipSizeSettingsKey, "0"))
