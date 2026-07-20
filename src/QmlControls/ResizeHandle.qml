@@ -21,23 +21,24 @@ import QGroundControl.ScreenTools
 Item {
     id: root
 
+    anchors.right:  parent.right
+    anchors.top:    parent.top
+    height:         ScreenTools.defaultFontPixelHeight * 2.5
+    width:          height
+
     required property Item target
+
+    property alias          iconVisible:    icon.visible
+    readonly property alias pressed:        area.pressed
+
+    signal resized(real newWidth)
+    signal committed()
 
     Component.onCompleted: {
         if (parent !== target) {
             console.warn("ResizeHandle must be a child of its target; anchoring and bottom-pinning are wrong otherwise")
         }
     }
-    property alias iconVisible: icon.visible
-    readonly property alias pressed: area.pressed
-
-    signal resized(real newWidth)
-    signal committed()
-
-    anchors.right:  parent.right
-    anchors.top:    parent.top
-    height:         ScreenTools.defaultFontPixelHeight * 2.5
-    width:          height
 
     Image {
         id:                 icon
