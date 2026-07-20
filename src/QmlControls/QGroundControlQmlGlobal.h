@@ -125,6 +125,8 @@ public:
     Q_PROPERTY(UTMSPManager*     utmspManager             READ    utmspManager                CONSTANT)
 #endif
 
+    static constexpr const char* kQmlGlobalKeyName = "QGCQml";
+
     Q_INVOKABLE void    saveGlobalSetting       (const QString& key, const QString& value);
     Q_INVOKABLE QString loadGlobalSetting       (const QString& key, const QString& defaultValue);
     Q_INVOKABLE void    saveBoolGlobalSetting   (const QString& key, bool value);
@@ -263,8 +265,6 @@ private:
     static QGeoCoordinate   _coord;
     static double           _zoom;
     QTimer                  _flightMapPositionSettledTimer;
-
-    static constexpr const char* kQmlGlobalKeyName = "QGCQml";
 
     static constexpr const char* _flightMapPositionSettingsGroup =          "FlightMapPosition";
     static constexpr const char* _flightMapPositionLatitudeSettingsKey =    "Latitude";

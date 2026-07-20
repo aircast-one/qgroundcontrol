@@ -18,7 +18,6 @@ qt_add_qml_module(FlightDisplayModule
         FlyViewAdditionalActionsList.qml
         FlyViewAdditionalActionsPanel.qml
         FlyViewAdditionalCustomActionsList.qml
-        FlyViewBottomRightRowLayout.qml
         FlyViewCustomLayer.qml
         FlyViewInsetViewer.qml
         FlyViewInstrumentPanel.qml

@@ -9,6 +9,7 @@
 
 #pragma once
 
+#include <QtCore/QAtomicInteger>
 #include <QtCore/QObject>
 #include <QtCore/QSize>
 #include <QtCore/QTimer>
@@ -35,6 +36,9 @@ public:
     bool lowLatency() const { return _lowLatency; }
     QGCVideoStreamInfo *videoStreamInfo() { return _videoStreamInfo; }
     QString recordingOutput() const { return _recordingOutput; }
+    quint64 framesDecoded() const { return _framesDecoded.loadRelaxed(); }
+    quint64 bytesReceived() const { return _bytesReceived.loadRelaxed(); }
+    qint64 lastFrameSeconds() const { return _lastFrameSeconds.loadRelaxed(); }
 
     virtual void setSink(void *sink) { if (sink != _sink) { _sink = sink; emit sinkChanged(_sink); } }
     virtual void setWidget(QQuickItem *widget) { if (widget != _widget) { _widget = widget; emit widgetChanged(_widget); } }
@@ -101,6 +105,10 @@ public slots:
     virtual void takeScreenshot(const QString &imageFile) = 0;
 
 protected:
+    QAtomicInteger<quint64> _framesDecoded = 0;
+    QAtomicInteger<quint64> _bytesReceived = 0;
+    QAtomicInteger<qint64> _lastFrameSeconds = 0;
+
     void *_sink = nullptr;
     QQuickItem *_widget = nullptr;
     QGCVideoStreamInfo *_videoStreamInfo = nullptr;

@@ -77,6 +77,12 @@
 #include "ComponentInformationTranslationTest.h"
 
 // QmlControls
+#include "DragToPositionTest.h"
+#include "PipViewTest.h"
+#include "VideoTileTest.h"
+
+// VideoManager
+#include "VideoManagerTest.h"
 
 // Terrain
 #include "TerrainQueryTest.h"
@@ -180,6 +186,12 @@ int runTests(bool stress, QStringView unitTestOptions)
     // qgcunittest
 
     // QmlControls
+    UT_REGISTER_TEST(DragToPositionTest)
+    UT_REGISTER_TEST(PipViewTest)
+    UT_REGISTER_TEST(VideoTileTest)
+
+    // VideoManager
+    UT_REGISTER_TEST(VideoManagerTest)
 
     // Terrain
     UT_REGISTER_TEST(TerrainQueryTest)

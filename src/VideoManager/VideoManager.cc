@@ -28,6 +28,7 @@
 #include "UVCReceiver.h"
 
 #include <QtCore/qapplicationstatic.h>
+#include <QtCore/QDateTime>
 #include <QtCore/QDir>
 #include <QtCore/QUrl>
 #include <QtQml/QQmlEngine>
@@ -36,6 +37,8 @@
 #include <QtCore/QTimer>
 
 QGC_LOGGING_CATEGORY(VideoManagerLog, "qgc.videomanager.videomanager")
+
+static constexpr const char *kMainReceiverName = "videoContent";
 
 static constexpr const char *kFileExtension[VideoReceiver::FILE_FORMAT_MAX + 1] = {
     "mkv",
@@ -105,14 +108,21 @@ void VideoManager::init(QQuickWindow *window)
     (void) connect(_videoSettings->multiViewEnabled(), &Fact::rawValueChanged, this, &VideoManager::activeVideoSourceChanged);
     // A rename reuses activeVideoSourceChanged so the switch button / status rows re-read cameraName().
     (void) connect(_videoSettings->primaryCameraName(), &Fact::rawValueChanged, this, &VideoManager::activeVideoSourceChanged);
+    // Camera statuses are gated on the active source and multi-view mode.
+    (void) connect(this, &VideoManager::activeVideoSourceChanged, this, &VideoManager::camerasChanged);
     (void) connect(_videoSettings->aspectRatio(), &Fact::rawValueChanged, this, &VideoManager::aspectRatioChanged);
     (void) connect(_videoSettings->lowLatencyMode(), &Fact::rawValueChanged, this, [this](const QVariant &value) { Q_UNUSED(value); _restartAllVideos(); });
     (void) connect(MultiVehicleManager::instance(), &MultiVehicleManager::activeVehicleChanged, this, &VideoManager::_setActiveVehicle);
 
     (void) connect(this, &VideoManager::autoStreamConfiguredChanged, this, &VideoManager::_videoSourceChanged);
 
+    _mainWidget = window->findChild<QQuickItem*>(QLatin1String(kMainReceiverName));
+    if (!_mainWidget) {
+        qCCritical(VideoManagerLog) << "main video widget not found";
+    }
+
     QStringList videoStreamList = {
-        "videoContent",
+        kMainReceiverName,
         "thermalVideo"
     };
     for (int i = 0; i < kMaxVideoTiles; ++i) {
@@ -128,9 +138,7 @@ void VideoManager::init(QQuickWindow *window)
         _initVideoReceiver(receiver, window);
     }
 
-    for (int i = 0; i < kMaxVideoTiles; ++i) {
-        _bindTileWidget(i);
-    }
+    _rebindWidgets();
 
     window->scheduleRenderJob(new FinishVideoInitialization(), QQuickWindow::BeforeSynchronizingStage);
 
@@ -140,7 +148,9 @@ void VideoManager::init(QQuickWindow *window)
 void VideoManager::cleanup()
 {
     for (VideoReceiver *receiver : std::as_const(_videoReceivers)) {
-        QGCCorePlugin::instance()->releaseVideoSink(receiver->sink());
+        if (receiver->sink()) {
+            QGCCorePlugin::instance()->releaseVideoSink(receiver->sink());
+        }
     }
 }
 
@@ -207,7 +217,7 @@ void VideoManager::startRecording(const QString &videoFile)
             qCDebug(VideoManagerLog) << "Video receiver is not ready.";
             continue;
         }
-        const QString streamName = (receiver->name() == QStringLiteral("videoContent")) ? "" : (receiver->name() + ".");
+        const QString streamName = (receiver->name() == QLatin1String(kMainReceiverName)) ? "" : (receiver->name() + ".");
         const QString videoFileName = videoFileNameTemplate.arg(streamName);
         receiver->startRecording(videoFileName, fileFormat);
     }
@@ -419,53 +429,89 @@ void VideoManager::promoteTile(int slot)
     }
 }
 
-void VideoManager::registerTileItem(int slot, QQuickItem *item)
-{
-    _tileWidgets.insert(slot, item);
-    _bindTileWidget(slot);
-}
 
 QString VideoManager::_tileReceiverName(int slot)
 {
     return QStringLiteral("extraVideo%1").arg(slot);
 }
 
-void VideoManager::_bindTileWidget(int slot)
+void VideoManager::registerTileItem(int slot, QQuickItem *item)
 {
-    QQuickItem *item = _tileWidgets.value(slot, nullptr);
-    if (!item) {
-        return;
-    }
-    const QString name = _tileReceiverName(slot);
-    for (VideoReceiver *receiver : std::as_const(_videoReceivers)) {
-        if (receiver->name() != name) {
-            continue;
-        }
-        if (receiver->widget() == item) {
-            return;
-        }
-        if (receiver->sink()) {
-            QGCCorePlugin::instance()->releaseVideoSink(receiver->sink());
-            receiver->setSink(nullptr);
-        }
-        receiver->setWidget(item);
-        void *sink = QGCCorePlugin::instance()->createVideoSink(item, receiver);
-        if (sink) {
-            receiver->setSink(sink);
-        }
-        _restartVideo(receiver);
-        return;
-    }
+    _tileWidgets.insert(slot, item);
+    _rebindWidgets();
 }
 
-bool VideoManager::cameraReceiving(int index) const
+QStringList VideoManager::cameraStatuses() const
+{
+    QStringList statuses;
+    const int count = _videoSettings->videoSourceCount();
+    statuses.reserve(count);
+    for (int i = 0; i < count; ++i) {
+        statuses.append(_cameraStatus(i));
+    }
+    return statuses;
+}
+
+QString VideoManager::_cameraStatus(int index) const
 {
     for (VideoReceiver *receiver : _videoReceivers) {
-        if (_cameraIndexForReceiver(receiver) == index) {
-            return _receiverDecoding.value(receiver->name(), false);
+        if (receiver->isThermal() || (_cameraIndexForReceiver(receiver) != index)) {
+            continue;
+        }
+        const ReceiverState state = _receiverState.value(receiver->name());
+        if (state.decoding) {
+            return QString();
+        }
+        if (state.streaming) {
+            return tr("Connected, waiting for frames");
+        }
+        return state.status.isEmpty() ? tr("Not started") : state.status;
+    }
+    return tr("No video source");
+}
+
+void VideoManager::_setReceiverStatus(VideoReceiver *receiver, const QString &status)
+{
+    if (receiver->isThermal()) {
+        return;
+    }
+    ReceiverState &state = _receiverState[receiver->name()];
+    if (state.status == status) {
+        return;
+    }
+    state.status = status;
+    emit camerasChanged();
+}
+
+quint64 VideoManager::cameraFramesDecoded(int index) const
+{
+    for (VideoReceiver *receiver : _videoReceivers) {
+        if (!receiver->isThermal() && (_cameraIndexForReceiver(receiver) == index)) {
+            return receiver->framesDecoded();
         }
     }
-    return false;
+    return 0;
+}
+
+quint64 VideoManager::cameraBytesReceived(int index) const
+{
+    for (VideoReceiver *receiver : _videoReceivers) {
+        if (!receiver->isThermal() && (_cameraIndexForReceiver(receiver) == index)) {
+            return receiver->bytesReceived();
+        }
+    }
+    return 0;
+}
+
+qint64 VideoManager::cameraSecondsSinceLastFrame(int index) const
+{
+    for (VideoReceiver *receiver : _videoReceivers) {
+        if (!receiver->isThermal() && (_cameraIndexForReceiver(receiver) == index)) {
+            const qint64 last = receiver->lastFrameSeconds();
+            return (last > 0) ? (QDateTime::currentSecsSinceEpoch() - last) : -1;
+        }
+    }
+    return -1;
 }
 
 QString VideoManager::cameraName(int index) const
@@ -474,62 +520,146 @@ QString VideoManager::cameraName(int index) const
     return name.isEmpty() ? tr("Camera %1").arg(index + 1) : name;
 }
 
+// Cameras are pinned to receivers (camera 0 -> videoContent, camera K+1 -> extraVideoK) so
+// switching the active camera never changes any receiver's URI — the streams keep running and
+// only the widget each receiver decodes into is swapped by _rebindWidgets().
 int VideoManager::_cameraIndexForReceiver(const VideoReceiver *receiver) const
 {
     const QString name = receiver->name();
-    if (name == QStringLiteral("videoContent")) {
-        return _videoSettings->currentIndex();
-    }
-    static const QString extraPrefix = QStringLiteral("extraVideo");
-    if (name.startsWith(extraPrefix)) {
-        if (!_videoSettings->multiViewEnabled()->rawValue().toBool()) {
-            return -1;
-        }
-        const int slot = name.mid(extraPrefix.size()).toInt();
-        const QList<int> tiles = _videoSettings->tileCameraIndices();
-        if (slot >= 0 && slot < tiles.size()) {
-            return tiles.at(slot);
+    int cameraIndex = -1;
+    if (name == QLatin1String(kMainReceiverName)) {
+        cameraIndex = 0;
+    } else {
+        static const QString extraPrefix = QStringLiteral("extraVideo");
+        if (name.startsWith(extraPrefix)) {
+            cameraIndex = name.mid(extraPrefix.size()).toInt() + 1;
         }
     }
-    return -1;
+    if (cameraIndex < 0 || cameraIndex >= _videoSettings->videoSourceCount()) {
+        return -1;
+    }
+    if ((cameraIndex != _videoSettings->currentIndex()) && !_videoSettings->multiViewEnabled()->rawValue().toBool()) {
+        return -1;
+    }
+    return cameraIndex;
+}
+
+QQuickItem *VideoManager::_widgetForCamera(int cameraIndex) const
+{
+    if (cameraIndex < 0) {
+        return nullptr;
+    }
+    if (cameraIndex == _videoSettings->currentIndex()) {
+        return _mainWidget;
+    }
+    if (!_videoSettings->multiViewEnabled()->rawValue().toBool()) {
+        return nullptr;
+    }
+    const int slot = _videoSettings->tileCameraIndices().indexOf(cameraIndex);
+    if (slot < 0 || slot >= kMaxVideoTiles) {
+        return nullptr;
+    }
+    return _tileWidgets.value(slot, nullptr);
+}
+
+void VideoManager::_rebindWidgets()
+{
+    for (VideoReceiver *receiver : std::as_const(_videoReceivers)) {
+        if (receiver->isThermal()) {
+            continue;
+        }
+        QQuickItem *desired = _widgetForCamera(_cameraIndexForReceiver(receiver));
+        if (receiver->widget() == desired) {
+            continue;
+        }
+        receiver->setWidget(desired);
+        if (receiver->sink()) {
+            // Re-point the existing sink at the new item: decoding continues uninterrupted.
+            QGCCorePlugin::instance()->setVideoSinkWidget(receiver->sink(), desired);
+        } else if (desired) {
+            void *sink = QGCCorePlugin::instance()->createVideoSink(desired, receiver);
+            if (sink) {
+                receiver->setSink(sink);
+                if (receiver->started()) {
+                    receiver->startDecoding(sink);
+                }
+            }
+        }
+    }
+    _refreshActiveReceiverState();
+}
+
+void VideoManager::_refreshActiveReceiverState()
+{
+    const int active = _videoSettings->currentIndex();
+    // Default to "no receiver" so an active camera without one resets streaming/decoding
+    // instead of keeping the previous camera's values. The video size deliberately keeps
+    // its last value until the new camera reports one, avoiding a zero-size aspect flicker.
+    bool streaming = false;
+    bool decoding = false;
+    QSize size;
+    for (VideoReceiver *receiver : std::as_const(_videoReceivers)) {
+        if (receiver->isThermal() || (_cameraIndexForReceiver(receiver) != active)) {
+            continue;
+        }
+        const ReceiverState state = _receiverState.value(receiver->name());
+        streaming = state.streaming;
+        decoding = state.decoding;
+        size = state.videoSize;
+        break;
+    }
+    if (_streaming != streaming) {
+        _streaming = streaming;
+        emit streamingChanged();
+    }
+    if (_decoding != decoding) {
+        _decoding = decoding;
+        emit decodingChanged();
+    }
+    if (size.isValid() && (_videoSize != size)) {
+        _videoSize = size;
+        emit videoSizeChanged();
+    }
 }
 
 void VideoManager::_videoSourceChanged()
 {
-    bool changed = false;
-    if (_activeVehicle) {
-        QGCCameraManager* camMgr = _activeVehicle->cameraManager();
-        for (VideoReceiver *receiver : std::as_const(_videoReceivers)) {
-            QGCVideoStreamInfo* info = nullptr;
-            if (receiver->isThermal()) {
-                info = camMgr ? camMgr->thermalStreamInstance() : nullptr;
-            } else {
-                info = camMgr ? camMgr->currentStreamInstance() : nullptr;
-            }
-            // Assign stream info
-            receiver->setVideoStreamInfo(info);
-            changed |= _updateSettings(receiver);
+    QList<VideoReceiver*> changedReceivers;
+    QGCCameraManager* camMgr = _activeVehicle ? _activeVehicle->cameraManager() : nullptr;
+    for (VideoReceiver *receiver : std::as_const(_videoReceivers)) {
+        QGCVideoStreamInfo* info = nullptr;
+        if (camMgr) {
+            info = receiver->isThermal() ? camMgr->thermalStreamInstance() : camMgr->currentStreamInstance();
         }
-    } else {
-        for (VideoReceiver *receiver : std::as_const(_videoReceivers)) {
-            receiver->setVideoStreamInfo(nullptr);
-            changed |= _updateSettings(receiver);
+        receiver->setVideoStreamInfo(info);
+        if (_updateSettings(receiver)) {
+            changedReceivers.append(receiver);
         }
     }
 
-    if (changed) {
-        emit hasVideoChanged();
-        emit isStreamSourceChanged();
-        emit isAutoStreamChanged();
+    // hasVideo/isStreamSource/isUvc derive from the ACTIVE camera's source type; with pinned
+    // URIs a switch changes no receiver settings, so re-emit unconditionally.
+    emit hasVideoChanged();
+    emit isStreamSourceChanged();
+    emit isUvcChanged();
+    emit isAutoStreamChanged();
 
+    if (!changedReceivers.isEmpty()) {
         if (hasVideo()) {
-            _restartAllVideos();
+            // Only touch the receivers whose settings actually changed; the others keep
+            // streaming uninterrupted.
+            for (VideoReceiver *receiver : std::as_const(changedReceivers)) {
+                _restartVideo(receiver);
+            }
         } else {
             stopVideo();
         }
 
         qCDebug(VideoManagerLog) << "New Video Source:" << _videoSettings->videoSource()->rawValue().toString();
     }
+
+    // Runs after URIs settle so widgets bind against the final camera->receiver mapping.
+    _rebindWidgets();
 }
 
 bool VideoManager::_updateUVC(VideoReceiver *receiver)
@@ -710,7 +840,7 @@ bool VideoManager::_updateSettings(VideoReceiver *receiver)
         return settingsChanged;
     }
 
-    if (receiver->name() == QStringLiteral("videoContent") && cameraIndex == 0) {
+    if (receiver->name() == QLatin1String(kMainReceiverName) && cameraIndex == 0) {
         settingsChanged |= _updateAutoStream(receiver);
     }
 
@@ -833,10 +963,13 @@ void VideoManager::_startReceiver(VideoReceiver *receiver)
 
     if (receiver->uri().isEmpty()) {
         qCDebug(VideoManagerLog) << "VideoUri is NULL" << receiver->name();
+        _setReceiverStatus(receiver, tr("No stream URL"));
         return;
     }
+    _setReceiverStatus(receiver, tr("Connecting…"));
 
-    const QString source = _videoSettings->currentVideoSourceName();
+    const int cameraIndex = _cameraIndexForReceiver(receiver);
+    const QString source = (cameraIndex >= 0) ? _videoSettings->videoSourceNameAt(cameraIndex) : _videoSettings->currentVideoSourceName();
     /* The gstreamer rtsp source will switch to tcp if udp is not available after 5 seconds.
        So we should allow for some negotiation time for rtsp. WHEP needs similar headroom for
        its HTTP signaling plus ICE/DTLS setup before the first RTP packet arrives. */
@@ -853,17 +986,21 @@ void VideoManager::_initVideoReceiver(VideoReceiver *receiver, QQuickWindow *win
         qCWarning(VideoManagerLog) << "Receiver already initialized";
     }
 
-    QQuickItem *widget = window->findChild<QQuickItem*>(receiver->name());
-    if (!widget) {
-        qCCritical(VideoManagerLog) << "stream widget not found" << receiver->name();
-    }
-    receiver->setWidget(widget);
+    // The thermal stream keeps its fixed widget; all camera receivers get their widget
+    // assigned by role (main view vs tile) in _rebindWidgets().
+    if (receiver->isThermal()) {
+        QQuickItem *widget = window->findChild<QQuickItem*>(receiver->name());
+        if (!widget) {
+            qCCritical(VideoManagerLog) << "stream widget not found" << receiver->name();
+        }
+        receiver->setWidget(widget);
 
-    void *sink = QGCCorePlugin::instance()->createVideoSink(receiver->widget(), receiver);
-    if (!sink) {
-        qCCritical(VideoManagerLog) << "createVideoSink() failed" << receiver->name();
+        void *sink = QGCCorePlugin::instance()->createVideoSink(receiver->widget(), receiver);
+        if (!sink) {
+            qCCritical(VideoManagerLog) << "createVideoSink() failed" << receiver->name();
+        }
+        receiver->setSink(sink);
     }
-    receiver->setSink(sink);
 
     (void) connect(receiver, &VideoReceiver::onStartComplete, this, [this, receiver](VideoReceiver::STATUS status) {
         if (!receiver) {
@@ -877,11 +1014,15 @@ void VideoManager::_initVideoReceiver(VideoReceiver *receiver, QQuickWindow *win
             if (receiver->sink()) {
                 receiver->startDecoding(receiver->sink());
             }
+            _setReceiverStatus(receiver, tr("Connecting…"));
             break;
         case VideoReceiver::STATUS_INVALID_URL:
+            _setReceiverStatus(receiver, tr("Invalid stream URL"));
+            break;
         case VideoReceiver::STATUS_INVALID_STATE:
             break;
         default:
+            _setReceiverStatus(receiver, tr("Connection failed, retrying"));
             _restartVideo(receiver);
             break;
         }
@@ -892,7 +1033,9 @@ void VideoManager::_initVideoReceiver(VideoReceiver *receiver, QQuickWindow *win
         receiver->setStarted(false);
         if (status == VideoReceiver::STATUS_INVALID_URL) {
             qCDebug(VideoManagerLog) << "Invalid video URL. Not restarting";
+            _setReceiverStatus(receiver, tr("Invalid stream URL"));
         } else {
+            _setReceiverStatus(receiver, tr("Reconnecting…"));
             QTimer::singleShot(1000, receiver, [this, receiver]() {
                 qCDebug(VideoManagerLog) << "Restarting video receiver" << receiver->name() << receiver->uri();
                 _startReceiver(receiver);
@@ -902,22 +1045,26 @@ void VideoManager::_initVideoReceiver(VideoReceiver *receiver, QQuickWindow *win
 
     (void) connect(receiver, &VideoReceiver::streamingChanged, this, [this, receiver](bool active) {
         qCDebug(VideoManagerLog) << "Video" << receiver->name() << "streaming changed, active:" << (active ? "yes" : "no");
-        if (receiver->name() == QStringLiteral("videoContent")) {
-            _streaming = active;
-            emit streamingChanged();
+        if (!receiver->isThermal()) {
+            _receiverState[receiver->name()].streaming = active;
+            emit camerasChanged();
+            if (_cameraIndexForReceiver(receiver) == _videoSettings->currentIndex()) {
+                _streaming = active;
+                emit streamingChanged();
+            }
         }
     });
 
     (void) connect(receiver, &VideoReceiver::decodingChanged, this, [this, receiver](bool active) {
         qCDebug(VideoManagerLog) << "Video" << receiver->name() << "decoding changed, active:" << (active ? "yes" : "no");
         if (!receiver->isThermal()) {
-            _receiverDecoding.insert(receiver->name(), active);
-            emit videoReceivingChanged();
-        }
-        // The main-view visibility tracks the primary receiver only; extra tiles must not clobber it.
-        if (receiver->name() == QStringLiteral("videoContent")) {
-            _decoding = active;
-            emit decodingChanged();
+            _receiverState[receiver->name()].decoding = active;
+            emit camerasChanged();
+            // The main-view visibility tracks the active camera's receiver; tiles must not clobber it.
+            if (_cameraIndexForReceiver(receiver) == _videoSettings->currentIndex()) {
+                _decoding = active;
+                emit decodingChanged();
+            }
         }
     });
 
@@ -942,8 +1089,11 @@ void VideoManager::_initVideoReceiver(VideoReceiver *receiver, QQuickWindow *win
     (void) connect(receiver, &VideoReceiver::videoSizeChanged, this, [this, receiver](QSize size) {
         qCDebug(VideoManagerLog) << "Video" << receiver->name() << "resized. New resolution:" << size.width() << "x" << size.height();
         if (!receiver->isThermal()) {
-            _videoSize = size;
-            emit videoSizeChanged();
+            _receiverState[receiver->name()].videoSize = size;
+            if (_cameraIndexForReceiver(receiver) == _videoSettings->currentIndex()) {
+                _videoSize = size;
+                emit videoSizeChanged();
+            }
         }
     });
 

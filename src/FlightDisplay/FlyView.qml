@@ -109,9 +109,8 @@ Item {
 
         PipView {
             id:                     _pipView
-            anchors.left:           parent.left
-            anchors.bottom:         parent.bottom
-            anchors.margins:        _toolsMargin
+            objectName:             "pipView"
+            margin:                 _toolsMargin
             item1IsFullSettingsKey: "MainFlyWindowIsMap"
             item1:                  mapControl
             item2:                  QGroundControl.videoManager.hasVideo ? videoControl : null
@@ -125,8 +124,8 @@ Item {
             actionButtonText:       QGroundControl.videoManager.cameraName(QGroundControl.videoManager.activeVideoSource)
             onActionButtonClicked:  QGroundControl.videoManager.switchActiveVideoSource()
 
-            property real leftEdgeBottomInset: visible ? width + anchors.margins : 0
-            property real bottomEdgeLeftInset: visible ? height + anchors.margins : 0
+            property real leftEdgeBottomInset: visible && !hasCustomPosition ? width + _toolsMargin : 0
+            property real bottomEdgeLeftInset: visible && !hasCustomPosition ? height + _toolsMargin : 0
         }
 
         FlyViewWidgetLayer {

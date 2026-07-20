@@ -100,13 +100,21 @@ add_subdirectory(qgcunittest)
 # add_qgc_test(MainWindowTest)
 # add_qgc_test(MessageBoxTest)
 
+add_subdirectory(FlightDisplay)
+add_qgc_test(VideoTileTest)
+
 add_subdirectory(QmlControls)
+add_qgc_test(DragToPositionTest)
+add_qgc_test(PipViewTest)
 
 add_subdirectory(Terrain)
 add_qgc_test(TerrainQueryTest)
 add_qgc_test(TerrainTileTest)
 
 add_subdirectory(UI)
+
+add_subdirectory(VideoManager)
+add_qgc_test(VideoManagerTest)
 
 add_subdirectory(Utilities)
 # Audio

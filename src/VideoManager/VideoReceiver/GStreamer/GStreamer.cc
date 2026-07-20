@@ -520,6 +520,13 @@ void *createVideoSink(QQuickItem *widget, QObject *parent)
     return videoSinkBin;
 }
 
+void setVideoSinkWidget(void *sink, QQuickItem *widget)
+{
+    if (sink) {
+        g_object_set(GST_ELEMENT(sink), "widget", widget, NULL);
+    }
+}
+
 void releaseVideoSink(void *sink)
 {
     GstElement *videoSink = GST_ELEMENT(sink);

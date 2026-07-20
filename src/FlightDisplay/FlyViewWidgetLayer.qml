@@ -49,10 +49,12 @@ Item {
     property real   _rightPanelWidth:       ScreenTools.defaultFontPixelWidth * 30
     property alias  _gripperMenu:           gripperOptions
     property real   _layoutMargin:          ScreenTools.defaultFontPixelWidth * 0.75
-    property bool   _layoutSpacing:         ScreenTools.defaultFontPixelWidth
+    property real   _layoutSpacing:         ScreenTools.defaultFontPixelWidth
     property bool   _showSingleVehicleUI:   true
 
     property bool utmspActTrigger
+
+    property real _bottomRightPanelsBottomInset: Math.max(telemetryValuesBar.bottomEdgeRightInset, instrumentPanel.bottomEdgeRightInset)
 
     QGCToolInsets {
         id:                     _totalToolInsets
@@ -61,13 +63,13 @@ Item {
         leftEdgeBottomInset:    virtualJoystickMultiTouch.visible ? virtualJoystickMultiTouch.leftEdgeBottomInset : parentToolInsets.leftEdgeBottomInset
         rightEdgeTopInset:      topRightPanel.rightEdgeTopInset
         rightEdgeCenterInset:   topRightPanel.rightEdgeCenterInset
-        rightEdgeBottomInset:   bottomRightRowLayout.rightEdgeBottomInset
+        rightEdgeBottomInset:   Math.max(telemetryValuesBar.rightEdgeBottomInset, instrumentPanel.rightEdgeBottomInset)
         topEdgeLeftInset:       toolStrip.topEdgeLeftInset
         topEdgeCenterInset:     mapScale.topEdgeCenterInset
         topEdgeRightInset:      topRightPanel.topEdgeRightInset
         bottomEdgeLeftInset:    virtualJoystickMultiTouch.visible ? virtualJoystickMultiTouch.bottomEdgeLeftInset : parentToolInsets.bottomEdgeLeftInset
-        bottomEdgeCenterInset:  bottomRightRowLayout.bottomEdgeCenterInset
-        bottomEdgeRightInset:   virtualJoystickMultiTouch.visible ? virtualJoystickMultiTouch.bottomEdgeRightInset : bottomRightRowLayout.bottomEdgeRightInset
+        bottomEdgeCenterInset:  _bottomRightPanelsBottomInset
+        bottomEdgeRightInset:   virtualJoystickMultiTouch.visible ? virtualJoystickMultiTouch.bottomEdgeRightInset : _bottomRightPanelsBottomInset
     }
 
     FlyViewTopRightPanel {
@@ -76,7 +78,7 @@ Item {
         anchors.right:          parent.right
         anchors.topMargin:      _layoutMargin
         anchors.rightMargin:    _layoutMargin
-        maximumHeight:          parent.height - (bottomRightRowLayout.height + _margins * 5)
+        maximumHeight:          parent.height - (_bottomRightPanelsBottomInset + _margins * 5)
 
         property real topEdgeRightInset:    height + _layoutMargin
         property real rightEdgeTopInset:    width + _layoutMargin
@@ -87,7 +89,8 @@ Item {
         id:                 topRightColumnLayout
         anchors.margins:    _layoutMargin
         anchors.top:        parent.top
-        anchors.bottom:     bottomRightRowLayout.top
+        anchors.bottom:     parent.bottom
+        anchors.bottomMargin: _layoutMargin + _bottomRightPanelsBottomInset
         anchors.right:      parent.right
         spacing:            _layoutSpacing
         visible:           !topRightPanel.visible
@@ -97,16 +100,60 @@ Item {
         property real rightEdgeCenterInset: rightEdgeTopInset
     }
 
-    FlyViewBottomRightRowLayout {
-        id:                 bottomRightRowLayout
-        anchors.margins:    _layoutMargin
-        anchors.bottom:     parent.bottom
-        anchors.right:      parent.right
-        spacing:            _layoutSpacing
+    TelemetryValuesBar {
+        id:                     telemetryValuesBar
+        extraWidth:             telemetryBarDragPosition.hasCustomPosition ? 0 : instrumentPanel.extraValuesWidth
+        settingsGroup:          factValueGrid.telemetryBarSettingsGroup
+        specificVehicleForCard: null
 
-        property real bottomEdgeRightInset:     height + _layoutMargin
-        property real bottomEdgeCenterInset:    bottomEdgeRightInset
-        property real rightEdgeBottomInset:     width + _layoutMargin
+        readonly property bool _awayFromEdge: telemetryBarDragPosition.hasCustomPosition || instrumentPanelDragPosition.hasCustomPosition
+
+        property real bottomEdgeRightInset: _awayFromEdge ? 0 : height + _layoutMargin
+        property real rightEdgeBottomInset: _awayFromEdge ? 0 : _root.width - x
+
+        DragToPosition {
+            id:                 telemetryBarDragPosition
+            target:             telemetryValuesBar
+            settingsKeyPrefix:  "TelemetryValuesBar"
+            defaultX:           instrumentPanel.visible ? instrumentPanel.x - telemetryValuesBar.width - _layoutMargin
+                                                        : _root.width - telemetryValuesBar.width - _layoutMargin
+            defaultY:           instrumentPanel.visible ? instrumentPanel.y + instrumentPanel.height - telemetryValuesBar.height
+                                                        : _root.height - telemetryValuesBar.height - _layoutMargin
+        }
+
+        DragHandler {
+            onActiveChanged: {
+                if (!active) {
+                    telemetryBarDragPosition.commit()
+                }
+            }
+        }
+    }
+
+    FlyViewInstrumentPanel {
+        id:         instrumentPanel
+        visible:    QGroundControl.corePlugin.options.flyView.showInstrumentPanel && _showSingleVehicleUI
+
+        property real bottomEdgeRightInset: visible && !instrumentPanelDragPosition.hasCustomPosition ? height + _layoutMargin : 0
+        property real rightEdgeBottomInset: visible && !instrumentPanelDragPosition.hasCustomPosition ? _root.width - x : 0
+
+        DragToPosition {
+            id:                 instrumentPanelDragPosition
+            target:             instrumentPanel
+            settingsKeyPrefix:  "InstrumentPanel"
+            defaultX:           _root.width - instrumentPanel.width - _layoutMargin
+            defaultY:           _root.height - instrumentPanel.height - _layoutMargin
+        }
+
+        DragHandler {
+            parent: instrumentPanel.contentItem
+            target: instrumentPanel
+            onActiveChanged: {
+                if (!active) {
+                    instrumentPanelDragPosition.commit()
+                }
+            }
+        }
     }
 
     FlyViewMissionCompleteDialog {
@@ -145,8 +192,8 @@ Item {
         property bool leftHandedMode:          QGroundControl.settingsManager.appSettings.virtualJoystickLeftHandedMode.rawValue
         property bool _virtualJoystickEnabled: QGroundControl.settingsManager.appSettings.virtualJoystick.rawValue
         property real bottomEdgeRightInset:    parent.height-y
-        property var  _pipViewMargin:          _pipView.visible ? parentToolInsets.bottomEdgeLeftInset + ScreenTools.defaultFontPixelHeight * 2 : 
-                                               bottomRightRowLayout.height + ScreenTools.defaultFontPixelHeight * 1.5
+        property var  _pipViewMargin:          _pipView.visible ? parentToolInsets.bottomEdgeLeftInset + ScreenTools.defaultFontPixelHeight * 2 :
+                                               _bottomRightPanelsBottomInset + ScreenTools.defaultFontPixelHeight * 1.5
 
         property var  bottomLoaderMargin:      _pipViewMargin >= parent.height / 2 ? parent.height / 2 : _pipViewMargin
 
