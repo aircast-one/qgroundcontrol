@@ -31,8 +31,8 @@
 #include <QtCore/QUrlQuery>
 #include <QtCore/QFile>
 #include <QtCore/QLoggingCategory>
-#include <QtCore/QTextStream>
 #include <QtCore/QMetaProperty>
+#include <QtCore/QTextStream>
 #include <QtGui/QKeySequence>
 #include <QtGui/QImage>
 #include <QtGui/QMouseEvent>
@@ -45,7 +45,7 @@
 
 #include <functional>
 
-QGC_LOGGING_CATEGORY(DebugApiServerLog, "qgc.api.debugapiserver")
+QGC_LOGGING_CATEGORY(DebugApiServerLog, "qgc.debugapi.debugapiserver")
 
 void DebugApiServer::startIfConfigured(QObject *parent)
 {
@@ -68,16 +68,19 @@ DebugApiServer::DebugApiServer(quint16 port, QObject *parent)
     qCDebug(DebugApiServerLog) << "debug api listening on 127.0.0.1:" << port;
 
     (void) connect(MultiVehicleManager::instance(), &MultiVehicleManager::activeVehicleChanged, this, [this](Vehicle *vehicle) {
+        // Re-activating a vehicle must not stack duplicate connections.
+        QObject::disconnect(_messageConnection);
+        QObject::disconnect(_rcConnection);
         if (!vehicle) {
             return;
         }
-        (void) connect(vehicle, &Vehicle::textMessageReceived, this, [this](int, int, int severity, const QString &text, const QString &) {
+        _messageConnection = connect(vehicle, &Vehicle::textMessageReceived, this, [this](int, int, int severity, const QString &text, const QString &) {
             _messages.append(QStringLiteral("[sev%1] %2").arg(severity).arg(text));
             while (_messages.size() > 200) {
                 _messages.removeFirst();
             }
         });
-        (void) connect(vehicle, &Vehicle::rcChannelsChanged, this, [this](int channelCount, int *pwmValues) {
+        _rcConnection = connect(vehicle, &Vehicle::rcChannelsChanged, this, [this](int channelCount, int *pwmValues) {
             _rcValues.clear();
             for (int i = 0; i < channelCount; ++i) {
                 _rcValues.append(pwmValues[i]);
@@ -90,6 +93,11 @@ DebugApiServer::DebugApiServer(quint16 port, QObject *parent)
             _handleConnection(socket);
         }
     });
+}
+
+quint16 DebugApiServer::serverPort() const
+{
+    return _server->serverPort();
 }
 
 void DebugApiServer::_handleConnection(QTcpSocket *socket)
@@ -462,14 +470,9 @@ QByteArray DebugApiServer::_loggingJson(const QUrlQuery &query)
     return QJsonDocument(QJsonObject{{"rules", rules}}).toJson(QJsonDocument::Compact);
 }
 
-static QmlObjectListModel *_linkConfigurations()
-{
-    return qvariant_cast<QmlObjectListModel*>(LinkManager::instance()->property("linkConfigurations"));
-}
-
 static LinkConfiguration *_findLinkConfiguration(const QString &name)
 {
-    QmlObjectListModel *configurations = _linkConfigurations();
+    QmlObjectListModel *configurations = LinkManager::instance()->linkConfigurations();
     for (int i = 0; configurations && i < configurations->count(); ++i) {
         LinkConfiguration *config = qobject_cast<LinkConfiguration*>(configurations->get(i));
         if (config && config->name() == name) {
@@ -482,7 +485,7 @@ static LinkConfiguration *_findLinkConfiguration(const QString &name)
 QByteArray DebugApiServer::_linksJson()
 {
     QJsonArray links;
-    QmlObjectListModel *configurations = _linkConfigurations();
+    QmlObjectListModel *configurations = LinkManager::instance()->linkConfigurations();
     for (int i = 0; configurations && i < configurations->count(); ++i) {
         LinkConfiguration *config = qobject_cast<LinkConfiguration*>(configurations->get(i));
         if (config) {
@@ -562,7 +565,8 @@ QByteArray DebugApiServer::_settingJson(const QUrlQuery &query)
     const QString factName = query.queryItemValue(QStringLiteral("fact"));
 
     if (factName.isEmpty()) {
-        // Dump every Fact* property of the video settings group.
+        // SettingsGroup facts are lazily-created Q_PROPERTYs (DEFINE_SETTINGFACT) with no
+        // enumeration API, so the meta-object is the only way to dump them generically.
         QJsonObject facts;
         const QMetaObject *meta = videoSettings->metaObject();
         for (int i = 0; i < meta->propertyCount(); ++i) {

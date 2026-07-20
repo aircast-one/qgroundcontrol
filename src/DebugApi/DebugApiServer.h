@@ -27,9 +27,13 @@ class DebugApiServer : public QObject
 public:
     static void startIfConfigured(QObject *parent);
 
-private:
-    DebugApiServer(quint16 port, QObject *parent);
+    /// Direct construction is for unit tests; production goes through startIfConfigured.
+    /// Pass port 0 to listen on an ephemeral port (see serverPort()).
+    DebugApiServer(quint16 port, QObject *parent = nullptr);
 
+    quint16 serverPort() const;
+
+private:
     void _handleConnection(QTcpSocket *socket);
     QByteArray _route(const QString &path, const QUrlQuery &query);
     static QByteArray _statusJson();
@@ -57,6 +61,8 @@ private:
     static QByteArray _settingJson(const QUrlQuery &query);
 
     QTcpServer *_server = nullptr;
+    QMetaObject::Connection _messageConnection;
+    QMetaObject::Connection _rcConnection;
     QMetaObject::Connection _pendingMissionDownload;
     QStringList _messages;
     QList<int> _rcValues;
