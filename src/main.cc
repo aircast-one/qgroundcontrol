@@ -7,6 +7,7 @@
  *
  ****************************************************************************/
 
+#include <QtCore/QUrl>
 #include <QtQuick/QQuickWindow>
 #include <QtWidgets/QApplication>
 
@@ -182,6 +183,17 @@ int main(int argc, char *argv[])
 #endif // QT_DEBUG
 
     QGCApplication app(argc, argv, runUnitTests, simpleBootTest);
+
+    // Linux/Windows deliver a custom-scheme launch (aircast-qgc://...) as a
+    // command-line argument. Stash it before init() so it applies at startup;
+    // macOS uses QFileOpenEvent instead (handled in QGCApplication::event).
+    for (int i = 1; i < argc; i++) {
+        const QString arg = QString::fromLocal8Bit(argv[i]);
+        if (arg.startsWith(QStringLiteral("aircast-qgc://"))) {
+            app.handleDeepLink(QUrl(arg));
+            break;
+        }
+    }
 
 #ifdef Q_OS_LINUX
 #ifndef Q_OS_ANDROID

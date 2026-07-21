@@ -23,6 +23,8 @@
 #include <QtCore/QMetaMethod>
 #include <QtCore/QMetaObject>
 #include <QtCore/QRegularExpression>
+#include <QtCore/QUrlQuery>
+#include <QtGui/QFileOpenEvent>
 #include <QtGui/QFontDatabase>
 #include <QtGui/QIcon>
 #include <QtNetwork/QNetworkProxyFactory>
@@ -64,6 +66,7 @@
 #include "QGroundControlQmlGlobal.h"
 #include "SettingsManager.h"
 #include "AppSettings.h"
+#include "VideoSettings.h"
 #include "ShapeFileHelper.h"
 #include "SyslinkComponentController.h"
 #include "UDPLink.h"
@@ -358,6 +361,14 @@ void QGCApplication::_initForNormalAppBoot()
     LinkManager::instance()->init();
     VideoManager::instance()->init(mainRootWindow());
     DebugApiServer::startIfConfigured(this);
+
+    // Settings and video are up: apply any aircast-qgc:// deep link that arrived
+    // during launch (stored before this point), and allow later ones to apply live.
+    _settingsReady = true;
+    if (_pendingDeepLink.isValid()) {
+        _applyDeepLink(_pendingDeepLink);
+        _pendingDeepLink.clear();
+    }
 
     // Image provider for Optical Flow
     _qmlAppEngine->addImageProvider(_qgcImageProviderId, new QGCImageProvider());
@@ -722,8 +733,56 @@ bool QGCApplication::compressEvent(QEvent *event, QObject *receiver, QPostEventL
     return false;
 }
 
+void QGCApplication::handleDeepLink(const QUrl &url)
+{
+    if (url.scheme() != QStringLiteral("aircast-qgc")) {
+        return;
+    }
+    if (_settingsReady) {
+        _applyDeepLink(url);
+    } else {
+        _pendingDeepLink = url;
+    }
+}
+
+void QGCApplication::_applyDeepLink(const QUrl &url)
+{
+    const QUrlQuery query(url);
+    const QString whep = query.queryItemValue(QStringLiteral("whep"), QUrl::FullyDecoded);
+    const QString rtsp = query.queryItemValue(QStringLiteral("rtsp"), QUrl::FullyDecoded);
+    const QString name = query.queryItemValue(QStringLiteral("name"), QUrl::FullyDecoded);
+
+    VideoSettings *videoSettings = SettingsManager::instance()->videoSettings();
+    if (!videoSettings) {
+        return;
+    }
+
+    if (!whep.isEmpty()) {
+        videoSettings->whepUrl()->setRawValue(whep);
+        videoSettings->videoSource()->setRawValue(QString::fromUtf8(VideoSettings::videoSourceWebRTC));
+    } else if (!rtsp.isEmpty()) {
+        videoSettings->rtspUrl()->setRawValue(rtsp);
+        videoSettings->videoSource()->setRawValue(QString::fromUtf8(VideoSettings::videoSourceRTSP));
+    } else {
+        qCWarning(QGCApplicationLog) << "aircast-qgc deep link has no whep/rtsp query" << url.toString();
+        return;
+    }
+
+    if (!name.isEmpty()) {
+        videoSettings->primaryCameraName()->setRawValue(name);
+    }
+
+    qCDebug(QGCApplicationLog) << "Applied aircast-qgc deep link" << url.toString();
+}
+
 bool QGCApplication::event(QEvent *e)
 {
+    if (e->type() == QEvent::FileOpen) {
+        // macOS delivers custom-scheme URLs (aircast-qgc://) as a file-open event.
+        handleDeepLink(static_cast<QFileOpenEvent*>(e)->url());
+        return true;
+    }
+
     if (e->type() == QEvent::Quit) {
         // On OSX if the user selects Quit from the menu (or Command-Q) the ApplicationWindow does not signal closing. Instead you get a Quit event here only.
         // This in turn causes the standard QGC shutdown sequence to not run. So in this case we close the window ourselves such that the

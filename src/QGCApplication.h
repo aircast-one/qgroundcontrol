@@ -14,6 +14,7 @@
 #include <QtCore/QSet>
 #include <QtCore/QTimer>
 #include <QtCore/QTranslator>
+#include <QtCore/QUrl>
 
 #include <QtWidgets/QApplication>
 
@@ -84,6 +85,11 @@ public:
 
     bool event(QEvent *e) final;
 
+    /// Handle an aircast-qgc:// deep link (from the OS open-url event or a
+    /// command-line argument): sets the camera video source from its query.
+    /// Applied immediately once settings are ready, otherwise deferred to init().
+    void handleDeepLink(const QUrl &url);
+
     static QString cachedParameterMetaDataFile();
     static QString cachedAirframeMetaDataFile();
 
@@ -129,7 +135,10 @@ private:
     bool compressEvent(QEvent *event, QObject *receiver, QPostEventList *postedEvents) final;
 
     void _initVideo();
-    
+
+    /// Apply a validated aircast-qgc:// deep link to the video settings.
+    void _applyDeepLink(const QUrl &url);
+
     /// Initialize the application for normal application boot. Or in other words we are not going to run unit tests.
     void _initForNormalAppBoot();
 
@@ -157,6 +166,8 @@ private:
     bool _showErrorsInToolbar = false;
     QElapsedTimer _msecsElapsedTime;
     bool _videoManagerInitialized = false;
+    bool _settingsReady = false;        ///< true once SettingsManager is initialized and deep links can be applied
+    QUrl _pendingDeepLink;              ///< aircast-qgc:// link received before settings were ready
 
     QList<QPair<QString /* title */, QString /* message */>> _delayedAppMessages;
 
