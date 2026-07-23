@@ -53,6 +53,8 @@ QGC_LOGGING_CATEGORY(DebugApiServerLog, "qgc.debugapi.debugapiserver")
 // JSON shape) and strips the byte before writing the response.
 static constexpr char kErrorMarker = '\x01';
 
+DebugApiServer *DebugApiServer::_instance = nullptr;
+
 void DebugApiServer::startIfConfigured(QObject *parent)
 {
     bool ok = false;
@@ -60,7 +62,16 @@ void DebugApiServer::startIfConfigured(QObject *parent)
     if (!ok || port == 0 || port > 65535) {
         return;
     }
-    new DebugApiServer(static_cast<quint16>(port), parent);
+    start(static_cast<quint16>(port), parent);
+}
+
+void DebugApiServer::start(quint16 port, QObject *parent)
+{
+    if (_instance) {
+        qCDebug(DebugApiServerLog) << "debug api already running on port" << _instance->serverPort();
+        return;
+    }
+    _instance = new DebugApiServer(port, parent);
 }
 
 DebugApiServer::DebugApiServer(quint16 port, QObject *parent)

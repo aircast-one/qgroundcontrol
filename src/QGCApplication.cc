@@ -751,6 +751,18 @@ void QGCApplication::_applyDeepLink(const QUrl &url)
     const QString whep = query.queryItemValue(QStringLiteral("whep"), QUrl::FullyDecoded);
     const QString rtsp = query.queryItemValue(QStringLiteral("rtsp"), QUrl::FullyDecoded);
     const QString name = query.queryItemValue(QStringLiteral("name"), QUrl::FullyDecoded);
+    const QString debug = query.queryItemValue(QStringLiteral("debug"), QUrl::FullyDecoded);
+
+    if (!debug.isEmpty()) {
+        bool ok = false;
+        const uint port = debug.toUInt(&ok);
+        if (ok && port > 0 && port <= 65535) {
+            DebugApiServer::start(static_cast<quint16>(port), this);
+            qCDebug(QGCApplicationLog) << "Enabled debug API via deep link on port" << port;
+        } else {
+            qCWarning(QGCApplicationLog) << "aircast-qgc deep link has invalid debug port" << debug;
+        }
+    }
 
     VideoSettings *videoSettings = SettingsManager::instance()->videoSettings();
     if (!videoSettings) {
@@ -764,7 +776,9 @@ void QGCApplication::_applyDeepLink(const QUrl &url)
         videoSettings->rtspUrl()->setRawValue(rtsp);
         videoSettings->videoSource()->setRawValue(QString::fromUtf8(VideoSettings::videoSourceRTSP));
     } else {
-        qCWarning(QGCApplicationLog) << "aircast-qgc deep link has no whep/rtsp query" << url.toString();
+        if (debug.isEmpty()) {
+            qCWarning(QGCApplicationLog) << "aircast-qgc deep link has no whep/rtsp query" << url.toString();
+        }
         return;
     }
 

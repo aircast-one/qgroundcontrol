@@ -5,8 +5,10 @@
 # ///
 """MCP server for building, running and driving AircastQGC.
 
-App-control tools talk to the localhost debug API that AircastQGC exposes when
-launched with QGC_DEBUG_API_PORT set (run_app does this automatically).
+App-control tools talk to the localhost debug API that AircastQGC exposes.
+On desktop, run_app launches it with QGC_DEBUG_API_PORT set. On Android,
+run_app_android launches it, enables the debug API via the aircast-qgc:// deep
+link, and adb-forwards the port to localhost so the same tools apply.
 """
 
 import json
@@ -30,6 +32,7 @@ APP = RELEASE_BUILD / "Release/AircastQGC.app/Contents/MacOS/AircastQGC"
 TEST_APP = TEST_BUILD / "Debug/QGroundControl.app/Contents/MacOS/QGroundControl"
 LOG_FILE = Path("/tmp/aircast-qgc-mcp.log")
 API_PORT = 8777
+ANDROID_PKG = "org.mavlink.qgroundcontrol"
 
 mcp = FastMCP("aircast-qgc")
 
@@ -46,7 +49,7 @@ def _api(path: str) -> dict:
         detail = exc.read().decode(errors="replace")
         raise RuntimeError(f"debug api returned {exc.code}: {detail}") from exc
     except OSError as exc:
-        raise RuntimeError(f"debug api unreachable ({exc}); start the app with run_app") from exc
+        raise RuntimeError(f"debug api unreachable ({exc}); start the app with run_app (desktop) or run_app_android") from exc
 
 
 @mcp.tool()
@@ -426,6 +429,48 @@ def stop_app() -> str:
     """Stop the running app."""
     result = subprocess.run(["pkill", "-9", "-x", "AircastQGC"], capture_output=True)
     return "stopped" if result.returncode == 0 else "was not running"
+
+
+def _adb(serial: str) -> list[str]:
+    return ["adb", "-s", serial] if serial else ["adb"]
+
+
+@mcp.tool()
+def run_app_android(serial: str = "") -> str:
+    """Launch AircastQGC on an adb-connected Android device, enable its debug API via deep
+    link, and forward it to localhost so every other tool works against the device.
+
+    serial: adb device serial (e.g. 192.168.0.112:5555); empty uses the only device."""
+    adb = _adb(serial)
+    deeplink = f"aircast-qgc://debug?debug={API_PORT}"
+    launch = subprocess.run(
+        [*adb, "shell", f"am start -a android.intent.action.VIEW -d '{deeplink}'"],
+        capture_output=True, text=True)
+    if launch.returncode != 0:
+        return f"launch failed: {launch.stderr or launch.stdout}"
+
+    forward = subprocess.run(
+        [*adb, "forward", f"tcp:{API_PORT}", f"tcp:{API_PORT}"], capture_output=True, text=True)
+    if forward.returncode != 0:
+        return f"adb forward failed: {forward.stderr or forward.stdout}"
+
+    deadline = time.monotonic() + 30
+    while time.monotonic() < deadline:
+        try:
+            _api("/status")
+            return f"started on {serial or 'device'}; debug api forwarded to 127.0.0.1:{API_PORT}"
+        except RuntimeError:
+            time.sleep(1)
+    return "app launched and forwarded, but debug api did not come up within 30s"
+
+
+@mcp.tool()
+def stop_app_android(serial: str = "") -> str:
+    """Stop AircastQGC on the Android device and remove the port forward."""
+    adb = _adb(serial)
+    subprocess.run([*adb, "shell", "am", "force-stop", ANDROID_PKG], capture_output=True)
+    subprocess.run([*adb, "forward", "--remove", f"tcp:{API_PORT}"], capture_output=True)
+    return "stopped"
 
 
 @mcp.tool()
