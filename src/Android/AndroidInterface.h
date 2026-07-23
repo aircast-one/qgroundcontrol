@@ -23,6 +23,8 @@ namespace AndroidInterface
     void setNativeMethods();
     void jniLogDebug(JNIEnv *envA, jobject thizA, jstring messageA);
     void jniLogWarning(JNIEnv *envA, jobject thizA, jstring messageA);
+    void jniDeepLink(JNIEnv *envA, jobject thizA, jstring urlA);
+    QString getLaunchDeepLink();
     bool checkStoragePermissions();
     QString getSDCardPath();
     void setKeepScreenOn(bool on);
