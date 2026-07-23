@@ -8,10 +8,13 @@
  ****************************************************************************/
 
 #include "AndroidInterface.h"
+#include "QGCApplication.h"
 #include "QGCLoggingCategory.h"
 
 #include <QtCore/QJniObject>
 #include <QtCore/QJniEnvironment>
+#include <QtCore/QMetaObject>
+#include <QtCore/QUrl>
 
 QGC_LOGGING_CATEGORY(AndroidInterfaceLog, "qgc.android.src.androidinterface")
 
@@ -59,7 +62,8 @@ void setNativeMethods()
 
     JNINativeMethod javaMethods[] {
         {"qgcLogDebug",   "(Ljava/lang/String;)V", reinterpret_cast<void *>(jniLogDebug)},
-        {"qgcLogWarning", "(Ljava/lang/String;)V", reinterpret_cast<void *>(jniLogWarning)}
+        {"qgcLogWarning", "(Ljava/lang/String;)V", reinterpret_cast<void *>(jniLogWarning)},
+        {"nativeDeepLink", "(Ljava/lang/String;)V", reinterpret_cast<void *>(jniDeepLink)}
     };
 
     (void) AndroidInterface::cleanJavaException();
@@ -102,6 +106,58 @@ void jniLogWarning(JNIEnv *envA, jobject thizA, jstring messageA)
     envA->ReleaseStringUTFChars(messageA, stringL);
     (void) QJniEnvironment::checkAndClearExceptions(envA);
     qCWarning(AndroidInterfaceLog) << logMessage;
+}
+
+void jniDeepLink(JNIEnv *envA, jobject thizA, jstring urlA)
+{
+    Q_UNUSED(thizA);
+
+    const char * const stringL = envA->GetStringUTFChars(urlA, nullptr);
+    const QString url = QString::fromUtf8(stringL);
+    envA->ReleaseStringUTFChars(urlA, stringL);
+    (void) QJniEnvironment::checkAndClearExceptions(envA);
+
+    QGCApplication *app = qgcApp();
+    if (!app) {
+        qCWarning(AndroidInterfaceLog) << "Deep link received before app ready" << url;
+        return;
+    }
+
+    (void) QMetaObject::invokeMethod(app, [app, url]() {
+        app->handleDeepLink(QUrl(url));
+    }, Qt::QueuedConnection);
+}
+
+QString getLaunchDeepLink()
+{
+    const QJniObject activity = QNativeInterface::QAndroidApplication::context();
+    if (!activity.isValid()) {
+        return QString();
+    }
+
+    const QJniObject intent = activity.callObjectMethod("getIntent", "()Landroid/content/Intent;");
+    (void) cleanJavaException();
+    if (!intent.isValid()) {
+        return QString();
+    }
+
+    const QJniObject action = intent.callObjectMethod("getAction", "()Ljava/lang/String;");
+    if (!action.isValid() || action.toString() != QStringLiteral("android.intent.action.VIEW")) {
+        return QString();
+    }
+
+    const QJniObject data = intent.callObjectMethod("getData", "()Landroid/net/Uri;");
+    if (!data.isValid()) {
+        return QString();
+    }
+
+    const QJniObject url = data.callObjectMethod("toString", "()Ljava/lang/String;");
+    (void) cleanJavaException();
+    if (!url.isValid()) {
+        return QString();
+    }
+
+    return url.toString();
 }
 
 bool checkStoragePermissions()

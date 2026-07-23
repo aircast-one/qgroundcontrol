@@ -60,6 +60,21 @@ public class QGCActivity extends QtActivity {
     }
 
     @Override
+    protected void onNewIntent(Intent intent) {
+        super.onNewIntent(intent);
+        setIntent(intent);
+
+        if (intent == null || !Intent.ACTION_VIEW.equals(intent.getAction())) {
+            return;
+        }
+
+        final Uri data = intent.getData();
+        if (data != null) {
+            nativeDeepLink(data.toString());
+        }
+    }
+
+    @Override
     protected void onDestroy() {
         try {
             releaseMulticastLock();
@@ -226,6 +241,7 @@ public class QGCActivity extends QtActivity {
 
     // Native C++ functions
     public native boolean nativeInit();
+    public native void nativeDeepLink(final String url);
     public native void qgcLogDebug(final String message);
     public native void qgcLogWarning(final String message);
 }

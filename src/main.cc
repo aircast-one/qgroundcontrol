@@ -195,6 +195,13 @@ int main(int argc, char *argv[])
         }
     }
 
+#ifdef Q_OS_ANDROID
+    const QString androidDeepLink = AndroidInterface::getLaunchDeepLink();
+    if (!androidDeepLink.isEmpty()) {
+        app.handleDeepLink(QUrl(androidDeepLink));
+    }
+#endif
+
 #ifdef Q_OS_LINUX
 #ifndef Q_OS_ANDROID
     SignalHandler::instance();
