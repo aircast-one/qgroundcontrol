@@ -31,7 +31,7 @@ ColumnLayout {
     Loader {
         id:                 photoVideoControlLoader
         Layout.alignment:   Qt.AlignTop | Qt.AlignRight
-        sourceComponent:    globals.activeVehicle ? photoVideoControlComponent : undefined
+        sourceComponent:    (globals.activeVehicle && QGroundControl.settingsManager.flyViewSettings.showPhotoVideoControl.rawValue) ? photoVideoControlComponent : undefined
 
         property real rightEdgeCenterInset: visible ? parent.width - x : 0
 

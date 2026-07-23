@@ -29,6 +29,7 @@ public:
     DEFINE_SETTINGFACT(goToLocationRequiresConfirmInGuided)
     DEFINE_SETTINGFACT(keepMapCenteredOnVehicle)
     DEFINE_SETTINGFACT(showSimpleCameraControl)
+    DEFINE_SETTINGFACT(showPhotoVideoControl)
     DEFINE_SETTINGFACT(showObstacleDistanceOverlay)
     DEFINE_SETTINGFACT(updateHomePosition)
     DEFINE_SETTINGFACT(instrumentQmlFile2)

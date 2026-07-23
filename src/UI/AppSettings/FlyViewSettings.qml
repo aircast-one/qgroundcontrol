@@ -107,6 +107,15 @@ SettingsPage {
 
         FactCheckBoxSlider {
             Layout.fillWidth:   true
+            text:               qsTr("Show photo/video recording control")
+            visible:            _showPhotoVideoControl.visible
+            fact:               _showPhotoVideoControl
+
+            property Fact _showPhotoVideoControl: _flyViewSettings.showPhotoVideoControl
+        }
+
+        FactCheckBoxSlider {
+            Layout.fillWidth:   true
             text:               qsTr("Update return to home position based on device location.")
             fact:               _updateHomePosition
             visible:            _updateHomePosition.visible

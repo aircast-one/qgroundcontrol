@@ -48,6 +48,12 @@
     "default":      true
 },
 {
+    "name":         "showPhotoVideoControl",
+    "shortDesc":    "Show the photo/video recording control on the fly view.",
+    "type":         "bool",
+    "default":      true
+},
+{
     "name":         "showObstacleDistanceOverlay",
     "shortDesc":    "Show obstacle distance overlay on map and video.",
     "type":         "bool",
