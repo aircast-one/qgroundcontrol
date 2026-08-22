@@ -334,7 +334,10 @@ void QGCApplication::init()
         // Since GStream builds are so problematic we initialize video during the simple boot test
         // to make sure it works and verfies plugin availability.
         _initVideo();
-    } else if (!_runningUnitTests) {
+    } else if (_runningUnitTests) {
+        // SettingsManager is initialized above, so deep links can apply directly in tests.
+        _settingsReady = true;
+    } else {
         _initForNormalAppBoot();
     }
 }
@@ -805,11 +808,14 @@ void QGCApplication::_applyDeepLink(const QUrl &url)
 
 void QGCApplication::_setupFromDevice(const QString &host)
 {
+    // The web API may sit on a non-standard port (host:port), but cameras and
+    // telemetry always live on the device's standard ports, so they use the bare host.
+    const QString bareHost = host.section(QLatin1Char(':'), 0, 0);
     QNetworkAccessManager *nam = new QNetworkAccessManager(this);
     const auto remaining = std::make_shared<int>(2);
-    const auto fetch = [this, nam, remaining, host](const QString &path, void (QGCApplication::*apply)(const QString&, const QJsonObject&)) {
+    const auto fetch = [this, nam, remaining, host, bareHost](const QString &path, void (QGCApplication::*apply)(const QString&, const QJsonObject&)) {
         QNetworkReply *reply = nam->get(QNetworkRequest(QUrl(QStringLiteral("http://%1%2").arg(host, path))));
-        connect(reply, &QNetworkReply::finished, this, [this, nam, remaining, reply, host, path, apply]() {
+        connect(reply, &QNetworkReply::finished, this, [this, nam, remaining, reply, host, bareHost, path, apply]() {
             reply->deleteLater();
             if (--(*remaining) == 0) {
                 nam->deleteLater();
@@ -818,7 +824,7 @@ void QGCApplication::_setupFromDevice(const QString &host)
                 qCWarning(QGCApplicationLog) << "Aircast device setup failed" << host << path << reply->errorString();
                 return;
             }
-            (this->*apply)(host, QJsonDocument::fromJson(reply->readAll()).object());
+            (this->*apply)(bareHost, QJsonDocument::fromJson(reply->readAll()).object());
         });
     };
     fetch(QStringLiteral("/api/stream/config"), &QGCApplication::_applyDeviceCameras);

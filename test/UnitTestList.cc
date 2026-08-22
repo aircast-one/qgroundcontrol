@@ -27,6 +27,9 @@
 // AutoPilotPlugins
 // #include "RadioConfigTest.h"
 
+// AircastSetup
+#include "AircastDeviceSetupTest.h"
+
 // Camera
 #include "QGCCameraManagerTest.h"
 
@@ -140,6 +143,9 @@ int runTests(bool stress, QStringView unitTestOptions)
 
     // AutoPilotPlugins
     // UT_REGISTER_TEST(RadioConfigTest)
+
+    // AircastSetup
+    UT_REGISTER_TEST(AircastDeviceSetupTest)
 
     // Camera
     UT_REGISTER_TEST(QGCCameraManagerTest)
