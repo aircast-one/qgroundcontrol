@@ -20,6 +20,9 @@
 
 #include <QtCore/QEvent>
 #include <QtCore/QFile>
+#include <QtCore/QJsonArray>
+#include <QtCore/QJsonDocument>
+#include <QtCore/QJsonObject>
 #include <QtCore/QMetaMethod>
 #include <QtCore/QMetaObject>
 #include <QtCore/QRegularExpression>
@@ -27,7 +30,10 @@
 #include <QtGui/QFileOpenEvent>
 #include <QtGui/QFontDatabase>
 #include <QtGui/QIcon>
+#include <QtNetwork/QHostInfo>
+#include <QtNetwork/QNetworkAccessManager>
 #include <QtNetwork/QNetworkProxyFactory>
+#include <QtNetwork/QNetworkReply>
 #include <QtQml/QQmlApplicationEngine>
 #include <QtQml/QQmlContext>
 #include <QtQuick/QQuickImageProvider>
@@ -64,11 +70,13 @@
 #include "QGCImageProvider.h"
 #include "QGCLoggingCategory.h"
 #include "QGroundControlQmlGlobal.h"
+#include "QmlObjectListModel.h"
 #include "SettingsManager.h"
 #include "AppSettings.h"
 #include "VideoSettings.h"
 #include "ShapeFileHelper.h"
 #include "SyslinkComponentController.h"
+#include "TCPLink.h"
 #include "UDPLink.h"
 #include "Vehicle.h"
 #include "VehicleComponent.h"
@@ -764,6 +772,12 @@ void QGCApplication::_applyDeepLink(const QUrl &url)
         }
     }
 
+    const QString deviceHost = query.queryItemValue(QStringLiteral("host"), QUrl::FullyDecoded);
+    if (!deviceHost.isEmpty()) {
+        _setupFromDevice(deviceHost);
+        return;
+    }
+
     VideoSettings *videoSettings = SettingsManager::instance()->videoSettings();
     if (!videoSettings) {
         return;
@@ -787,6 +801,127 @@ void QGCApplication::_applyDeepLink(const QUrl &url)
     }
 
     qCDebug(QGCApplicationLog) << "Applied aircast-qgc deep link" << url.toString();
+}
+
+void QGCApplication::_setupFromDevice(const QString &host)
+{
+    QNetworkAccessManager *nam = new QNetworkAccessManager(this);
+    const auto remaining = std::make_shared<int>(2);
+    const auto fetch = [this, nam, remaining, host](const QString &path, void (QGCApplication::*apply)(const QString&, const QJsonObject&)) {
+        QNetworkReply *reply = nam->get(QNetworkRequest(QUrl(QStringLiteral("http://%1%2").arg(host, path))));
+        connect(reply, &QNetworkReply::finished, this, [this, nam, remaining, reply, host, path, apply]() {
+            reply->deleteLater();
+            if (--(*remaining) == 0) {
+                nam->deleteLater();
+            }
+            if (reply->error() != QNetworkReply::NoError) {
+                qCWarning(QGCApplicationLog) << "Aircast device setup failed" << host << path << reply->errorString();
+                return;
+            }
+            (this->*apply)(host, QJsonDocument::fromJson(reply->readAll()).object());
+        });
+    };
+    fetch(QStringLiteral("/api/stream/config"), &QGCApplication::_applyDeviceCameras);
+    fetch(QStringLiteral("/api/telemetry/config"), &QGCApplication::_applyDeviceTelemetry);
+}
+
+void QGCApplication::_applyDeviceCameras(const QString &host, const QJsonObject &config)
+{
+    const QJsonObject paths = config.value(QStringLiteral("paths")).toObject();
+    QStringList cams;
+    for (auto it = paths.constBegin(); it != paths.constEnd(); ++it) {
+        if (!it.value().toObject().value(QStringLiteral("source")).toString().isEmpty()) {
+            cams.append(it.key());
+        }
+    }
+    if (cams.isEmpty()) {
+        qCWarning(QGCApplicationLog) << "Aircast device setup: no cameras configured on" << host;
+        return;
+    }
+
+    VideoSettings *videoSettings = SettingsManager::instance()->videoSettings();
+    if (!videoSettings) {
+        return;
+    }
+    videoSettings->rtspUrl()->setRawValue(QStringLiteral("rtsp://%1:8554/%2").arg(host, cams.first()));
+    videoSettings->videoSource()->setRawValue(QString::fromUtf8(VideoSettings::videoSourceRTSP));
+    videoSettings->primaryCameraName()->setRawValue(QStringLiteral("%1 (%2)").arg(cams.first(), host));
+
+    QJsonArray extras;
+    for (int i = 1; i < cams.size(); ++i) {
+        extras.append(QJsonObject{
+            {QStringLiteral("name"), QStringLiteral("%1 (%2)").arg(cams.at(i), host)},
+            {QStringLiteral("source"), QString::fromUtf8(VideoSettings::videoSourceWebRTC)},
+            {QStringLiteral("url"), QStringLiteral("http://%1:8889/%2/whep").arg(host, cams.at(i))},
+        });
+    }
+    videoSettings->extraVideoSources()->setRawValue(QString::fromUtf8(QJsonDocument(extras).toJson(QJsonDocument::Compact)));
+
+    qCDebug(QGCApplicationLog) << "Aircast device setup: configured" << cams.size() << "camera(s) from" << host;
+}
+
+void QGCApplication::_applyDeviceTelemetry(const QString &host, const QJsonObject &config)
+{
+    const QJsonArray endpoints = config.value(QStringLiteral("endpoints")).toArray();
+    const auto serverPort = [&endpoints](const QString &scheme) -> quint16 {
+        for (const QJsonValue &value : endpoints) {
+            const QString spec = value.toString();
+            if (!spec.startsWith(scheme + QLatin1Char(':'))) {
+                continue;
+            }
+            const uint port = spec.section(QLatin1Char(':'), -1).toUInt();
+            if (port > 0 && port <= 65535) {
+                return static_cast<quint16>(port);
+            }
+        }
+        return 0;
+    };
+
+    LinkManager *linkMgr = LinkManager::instance();
+    const QString linkName = QStringLiteral("Aircast %1").arg(host);
+    QmlObjectListModel *configs = linkMgr->linkConfigurations();
+    for (int i = 0; i < configs->count(); ++i) {
+        LinkConfiguration *existing = qobject_cast<LinkConfiguration*>(configs->get(i));
+        if (existing && existing->name() == linkName) {
+            linkMgr->removeConfiguration(existing);
+            break;
+        }
+    }
+
+    LinkConfiguration *linkConfig = nullptr;
+    if (const quint16 udpPort = serverPort(QStringLiteral("udps"))) {
+        UDPConfiguration *udpConfig = new UDPConfiguration(linkName);
+        udpConfig->addHost(host, udpPort);
+        linkConfig = udpConfig;
+    } else if (const quint16 tcpPort = serverPort(QStringLiteral("tcps"))) {
+        TCPConfiguration *tcpConfig = new TCPConfiguration(linkName);
+        // TCPConfiguration stores a QHostAddress, so hostnames must be resolved here.
+        QString address = host;
+        if (QHostAddress(host).isNull()) {
+            const QList<QHostAddress> resolved = QHostInfo::fromName(host).addresses();
+            if (resolved.isEmpty()) {
+                qCWarning(QGCApplicationLog) << "Aircast device setup: could not resolve" << host;
+                delete tcpConfig;
+                return;
+            }
+            address = resolved.first().toString();
+        }
+        tcpConfig->setHost(address);
+        tcpConfig->setPort(tcpPort);
+        linkConfig = tcpConfig;
+    } else {
+        qCWarning(QGCApplicationLog) << "Aircast device setup: no udps/tcps telemetry endpoint on" << host << endpoints;
+        return;
+    }
+
+    linkConfig->setAutoConnect(true);
+    SharedLinkConfigurationPtr sharedConfig = linkMgr->addConfiguration(linkConfig);
+    linkMgr->saveLinkConfigurationList();
+    if (linkMgr->createConnectedLink(sharedConfig)) {
+        qCDebug(QGCApplicationLog) << "Aircast device setup: telemetry link connected" << linkName;
+    } else {
+        qCWarning(QGCApplicationLog) << "Aircast device setup: telemetry link failed to connect" << linkName;
+    }
 }
 
 bool QGCApplication::event(QEvent *e)

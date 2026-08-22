@@ -23,6 +23,7 @@ class QQuickWindow;
 class QGCImageProvider;
 class QGCApplication;
 class QEvent;
+class QJsonObject;
 class QPostEventList;
 class QMetaMethod;
 class QMetaObject;
@@ -86,7 +87,8 @@ public:
     bool event(QEvent *e) final;
 
     /// Handle an aircast-qgc:// deep link (from the OS open-url event or a
-    /// command-line argument): sets the camera video source from its query.
+    /// command-line argument): sets the camera video source from its query, or
+    /// with host=<device> configures cameras and telemetry from an aircastd device.
     /// Applied immediately once settings are ready, otherwise deferred to init().
     void handleDeepLink(const QUrl &url);
 
@@ -138,6 +140,12 @@ private:
 
     /// Apply a validated aircast-qgc:// deep link to the video settings.
     void _applyDeepLink(const QUrl &url);
+
+    /// Fetch /api/stream/config and /api/telemetry/config from an aircastd
+    /// device and configure cameras and the telemetry link from them.
+    void _setupFromDevice(const QString &host);
+    void _applyDeviceCameras(const QString &host, const QJsonObject &config);
+    void _applyDeviceTelemetry(const QString &host, const QJsonObject &config);
 
     /// Initialize the application for normal application boot. Or in other words we are not going to run unit tests.
     void _initForNormalAppBoot();

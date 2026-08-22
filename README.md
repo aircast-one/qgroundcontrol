@@ -18,6 +18,7 @@
 - **WHEP / WebRTC video** — low-latency WebRTC (WHEP) video source alongside the standard RTSP/UDP/TCP inputs, for cellular streaming.
 - **Per-camera connection status** — live status plus decoded-frame and bitrate counters, on tiles and in camera settings.
 - **Android hardware video decode** — MediaCodec hardware-accelerated decoding on Android for smoother, lower-CPU video.
+- **One-tap device setup** — open `aircast-qgc://setup?host=<device>` and the app configures itself from an aircastd device: every camera (primary RTSP + extra WHEP sources) and a connected MAVLink telemetry link.
 - **Debug API + MCP automation** *(opt-in, localhost only)* — a header-authenticated 127.0.0.1 API and a Model Context Protocol server for driving the app from tests, CI, and tooling. Off by default; no flight commands exposed.
 
 See the [release notes](https://github.com/aircast-one/qgroundcontrol/releases) for what shipped in each version.
