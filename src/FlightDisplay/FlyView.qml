@@ -80,8 +80,9 @@ Item {
     }
 
     FlyViewToolBar {
-        id:         toolbar
-        visible:    !QGroundControl.videoManager.fullScreen
+        id:                 toolbar
+        visible:            !QGroundControl.videoManager.fullScreen
+        dockedTelemetryBar: telemetryValuesBar.dockedInToolbar ? telemetryValuesBar : null
     }
 
     Item {
@@ -197,6 +198,37 @@ Item {
         Viewer3D{
             id:                     viewer3DWindow
             anchors.fill:           parent
+        }
+    }
+
+    TelemetryValuesBar {
+        id:                     telemetryValuesBar
+        objectName:             "telemetryValuesBar"
+        settingsGroup:          factValueGrid.telemetryBarSettingsGroup
+        specificVehicleForCard: null
+        visible:                toolbar.visible
+
+        readonly property bool dockedInToolbar: y < ScreenTools.toolbarHeight
+
+        DragToPosition {
+            id:                 telemetryBarDragPosition
+            target:             telemetryValuesBar
+            settingsKeyPrefix:  "TelemetryValuesBar"
+            defaultX:           (_root.width - telemetryValuesBar.width) / 2
+            defaultY:           0
+        }
+
+        DragHandler {
+            onActiveChanged: {
+                if (!active) {
+                    if (telemetryValuesBar.dockedInToolbar) {
+                        telemetryValuesBar.y = 0
+                        telemetryValuesBar.x = Math.max(toolbar.dockAreaLeft,
+                                                        Math.min(telemetryValuesBar.x, _root.width - telemetryValuesBar.width))
+                    }
+                    telemetryBarDragPosition.commit()
+                }
+            }
         }
     }
 }

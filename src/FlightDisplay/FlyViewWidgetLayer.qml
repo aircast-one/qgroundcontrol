@@ -54,7 +54,7 @@ Item {
 
     property bool utmspActTrigger
 
-    property real _bottomRightPanelsBottomInset: Math.max(telemetryValuesBar.bottomEdgeRightInset, instrumentPanel.bottomEdgeRightInset)
+    property real _bottomRightPanelsBottomInset: instrumentPanel.bottomEdgeRightInset
 
     QGCToolInsets {
         id:                     _totalToolInsets
@@ -63,7 +63,7 @@ Item {
         leftEdgeBottomInset:    virtualJoystickMultiTouch.visible ? virtualJoystickMultiTouch.leftEdgeBottomInset : parentToolInsets.leftEdgeBottomInset
         rightEdgeTopInset:      topRightPanel.rightEdgeTopInset
         rightEdgeCenterInset:   topRightPanel.rightEdgeCenterInset
-        rightEdgeBottomInset:   Math.max(telemetryValuesBar.rightEdgeBottomInset, instrumentPanel.rightEdgeBottomInset)
+        rightEdgeBottomInset:   instrumentPanel.rightEdgeBottomInset
         topEdgeLeftInset:       toolStrip.topEdgeLeftInset
         topEdgeCenterInset:     mapScale.topEdgeCenterInset
         topEdgeRightInset:      topRightPanel.topEdgeRightInset
@@ -98,36 +98,6 @@ Item {
         property real topEdgeRightInset:    childrenRect.height + _layoutMargin
         property real rightEdgeTopInset:    width + _layoutMargin
         property real rightEdgeCenterInset: rightEdgeTopInset
-    }
-
-    TelemetryValuesBar {
-        id:                     telemetryValuesBar
-        extraWidth:             telemetryBarDragPosition.hasCustomPosition ? 0 : instrumentPanel.extraValuesWidth
-        settingsGroup:          factValueGrid.telemetryBarSettingsGroup
-        specificVehicleForCard: null
-
-        readonly property bool _awayFromEdge: telemetryBarDragPosition.hasCustomPosition || instrumentPanelDragPosition.hasCustomPosition
-
-        property real bottomEdgeRightInset: _awayFromEdge ? 0 : height + _layoutMargin
-        property real rightEdgeBottomInset: _awayFromEdge ? 0 : _root.width - x
-
-        DragToPosition {
-            id:                 telemetryBarDragPosition
-            target:             telemetryValuesBar
-            settingsKeyPrefix:  "TelemetryValuesBar"
-            defaultX:           instrumentPanel.visible ? instrumentPanel.x - telemetryValuesBar.width - _layoutMargin
-                                                        : _root.width - telemetryValuesBar.width - _layoutMargin
-            defaultY:           instrumentPanel.visible ? instrumentPanel.y + instrumentPanel.height - telemetryValuesBar.height
-                                                        : _root.height - telemetryValuesBar.height - _layoutMargin
-        }
-
-        DragHandler {
-            onActiveChanged: {
-                if (!active) {
-                    telemetryBarDragPosition.commit()
-                }
-            }
-        }
     }
 
     FlyViewInstrumentPanel {

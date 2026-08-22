@@ -19,5 +19,4 @@ SelectableControl {
 
     property var  missionController:    _missionController
     property real extraInset:           innerControl.extraInset
-    property real extraValuesWidth:     innerControl.extraValuesWidth
 }

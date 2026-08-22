@@ -378,6 +378,16 @@ static void _mouse(QQuickWindow *window, const QPointF &scenePos, Qt::MouseButto
 
 QByteArray DebugApiServer::_uiClickJson(const QUrlQuery &query, bool doubleClick)
 {
+    const QString buttonName = query.queryItemValue(QStringLiteral("button"));
+    Qt::MouseButton button = Qt::LeftButton;
+    if (!buttonName.isEmpty()) {
+        if (buttonName == QStringLiteral("right")) {
+            button = Qt::RightButton;
+        } else if (buttonName != QStringLiteral("left")) {
+            return _errorJson(QStringLiteral("button must be left or right, got: %1").arg(buttonName));
+        }
+    }
+
     QQuickWindow *window = qgcApp()->mainRootWindow();
     if (!window) {
         return _errorJson(QStringLiteral("no main window"));
@@ -391,8 +401,8 @@ QByteArray DebugApiServer::_uiClickJson(const QUrlQuery &query, bool doubleClick
 
     const int clicks = doubleClick ? 2 : 1;
     for (int i = 0; i < clicks; ++i) {
-        _mouse(window, scenePos, Qt::LeftButton, Qt::LeftButton, QEvent::MouseButtonPress);
-        _mouse(window, scenePos, Qt::NoButton, Qt::LeftButton, QEvent::MouseButtonRelease);
+        _mouse(window, scenePos, button, button, QEvent::MouseButtonPress);
+        _mouse(window, scenePos, Qt::NoButton, button, QEvent::MouseButtonRelease);
     }
     QWindowSystemInterface::flushWindowSystemEvents();
 

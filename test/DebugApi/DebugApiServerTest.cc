@@ -83,6 +83,39 @@ void DebugApiServerTest::_handlerErrorReturns400()
     reply->deleteLater();
 }
 
+void DebugApiServerTest::_uiClickRejectsUnknownButton()
+{
+    DebugApiServer server(0);
+
+    QNetworkAccessManager network;
+    QNetworkReply *reply = _get(network, server.serverPort(), QStringLiteral("/ui/click?x=1&y=1&button=middle"), true);
+    QTRY_VERIFY_WITH_TIMEOUT(reply->isFinished(), 5000);
+    QCOMPARE(reply->attribute(QNetworkRequest::HttpStatusCodeAttribute).toInt(), 400);
+
+    const QJsonObject body = QJsonDocument::fromJson(reply->readAll()).object();
+    QVERIFY(body.value(QStringLiteral("error")).toString().contains(QStringLiteral("button must be left or right")));
+    reply->deleteLater();
+}
+
+void DebugApiServerTest::_uiClickAcceptsLeftAndRightButton()
+{
+    DebugApiServer server(0);
+    QNetworkAccessManager network;
+
+    // No main window exists in the unit test environment, so a valid button gets past
+    // validation and fails on the window lookup instead.
+    for (const QString &button : {QStringLiteral("left"), QStringLiteral("right"), QString()}) {
+        const QString path = button.isEmpty() ? QStringLiteral("/ui/click?x=1&y=1")
+                                              : QStringLiteral("/ui/click?x=1&y=1&button=%1").arg(button);
+        QNetworkReply *reply = _get(network, server.serverPort(), path, true);
+        QTRY_VERIFY_WITH_TIMEOUT(reply->isFinished(), 5000);
+
+        const QJsonObject body = QJsonDocument::fromJson(reply->readAll()).object();
+        QCOMPARE(body.value(QStringLiteral("error")).toString(), QStringLiteral("no main window"));
+        reply->deleteLater();
+    }
+}
+
 void DebugApiServerTest::_motorTestRefusedWithoutActuatorGate()
 {
     qunsetenv("QGC_DEBUG_API_ALLOW_ACTUATORS");

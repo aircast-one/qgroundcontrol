@@ -21,19 +21,15 @@ Item {
     implicitWidth:  mainLayout.width + (_toolsMargin * 2)
     implicitHeight: mainLayout.height + (_toolsMargin * 2)
 
-    property real extraWidth: 0 ///< Extra width to add to the background rectangle
-
     property alias factValueGrid:           factValueGrid
     property alias settingsGroup:           factValueGrid.settingsGroup
     property alias specificVehicleForCard:  factValueGrid.specificVehicleForCard
 
     Rectangle {
-        id:         backgroundRect
-        width:      control.width + extraWidth
-        height:     control.height
-        color:      qgcPal.window
-        radius:     ScreenTools.defaultFontPixelWidth / 2
-        opacity:    0.75
+        anchors.fill:   parent
+        color:          qgcPal.window
+        radius:         ScreenTools.defaultFontPixelWidth / 2
+        opacity:        0.75
     }
 
     ColumnLayout {

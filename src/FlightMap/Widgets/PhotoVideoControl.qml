@@ -29,6 +29,8 @@ Rectangle {
     radius:     _margins
     visible:    _camera.capturesVideo || _camera.capturesPhotos
 
+    property bool   showCloseButton:            false
+
     property real   _margins:                   ScreenTools.defaultFontPixelHeight / 2
     property real   _smallMargins:              ScreenTools.defaultFontPixelWidth / 2
     property var    _activeVehicle:             globals.activeVehicle
@@ -80,6 +82,21 @@ Rectangle {
 
             ColumnLayout {
                 spacing: _margins
+
+                QGCColoredImage {
+                    Layout.alignment:       Qt.AlignRight
+                    Layout.preferredHeight: ScreenTools.defaultFontPixelHeight
+                    Layout.preferredWidth:  Layout.preferredHeight
+                    source:                 "/res/XDelete.svg"
+                    fillMode:               Image.PreserveAspectFit
+                    color:                  qgcPal.text
+                    visible:                showCloseButton
+
+                    QGCMouseArea {
+                        fillItem:   parent
+                        onClicked:  QGroundControl.settingsManager.flyViewSettings.showPhotoVideoControl.rawValue = false
+                    }
+                }
 
                 // Camera name
                 QGCLabel {

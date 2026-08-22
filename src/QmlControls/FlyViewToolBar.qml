@@ -22,12 +22,21 @@ import QGroundControl.Controllers
 Rectangle {
     id:     _root
     width:  parent.width
-    height: visible ? ScreenTools.toolbarHeight : 0
+    height: visible ? Math.max(ScreenTools.toolbarHeight, _dockedBarHeight) : 0
     color:  qgcPal.toolbarBackground
+
+    property Item   dockedTelemetryBar
 
     property var    _activeVehicle:     QGroundControl.multiVehicleManager.activeVehicle
     property bool   _communicationLost: _activeVehicle ? _activeVehicle.vehicleLinkManager.communicationLost : false
     property color  _mainStatusBGColor: qgcPal.brandingPurple
+    property real   _toolsSpacing:      ScreenTools.defaultFontPixelWidth
+
+    readonly property real dockAreaLeft: toolsFlickable.x
+
+    readonly property real _dockedBarHeight: dockedTelemetryBar ? dockedTelemetryBar.height : 0
+    readonly property real _dockedBarLeft:   dockedTelemetryBar ? _root.mapFromItem(dockedTelemetryBar.parent, dockedTelemetryBar.x, 0).x : width
+    readonly property real _dockedBarRight:  dockedTelemetryBar ? _dockedBarLeft + dockedTelemetryBar.width : 0
 
     function dropMainStatusIndicatorTool() {
         mainStatusIndicator.dropMainStatusIndicator();
@@ -37,6 +46,7 @@ Rectangle {
 
     /// Bottom single pixel divider
     Rectangle {
+        id:             bottomDivider
         anchors.left:   parent.left
         anchors.right:  parent.right
         anchors.bottom: parent.bottom
@@ -87,12 +97,10 @@ Rectangle {
     QGCFlickable {
         id:                     toolsFlickable
         anchors.leftMargin:     ScreenTools.defaultFontPixelWidth * ScreenTools.largeFontPointRatio * 1.5
-        anchors.rightMargin:    ScreenTools.defaultFontPixelWidth / 2
         anchors.left:           viewButtonRow.right
-        anchors.bottomMargin:   1
-        anchors.top:            parent.top
-        anchors.bottom:         parent.bottom
-        anchors.right:          parent.right
+        anchors.verticalCenter: parent.verticalCenter
+        height:                 ScreenTools.toolbarHeight - bottomDivider.height
+        width:                  Math.max(0, _dockedBarLeft - _toolsSpacing - x)
         contentWidth:           toolIndicators.width
         flickableDirection:     Flickable.HorizontalFlick
 
@@ -103,10 +111,10 @@ Rectangle {
     //-- Branding Logo
     Image {
         anchors.right:          parent.right
-        anchors.top:            parent.top
-        anchors.bottom:         parent.bottom
+        anchors.verticalCenter: parent.verticalCenter
         anchors.margins:        ScreenTools.defaultFontPixelHeight * 0.66
-        visible:                _activeVehicle && !_communicationLost && x > (toolsFlickable.x + toolsFlickable.contentWidth + ScreenTools.defaultFontPixelWidth)
+        height:                 ScreenTools.toolbarHeight - (anchors.margins * 2)
+        visible:                _activeVehicle && !_communicationLost && x > (Math.max(toolsFlickable.x + toolsFlickable.contentWidth, _dockedBarRight) + _toolsSpacing)
         fillMode:               Image.PreserveAspectFit
         source:                 _outdoorPalette ? _brandImageOutdoor : _brandImageIndoor
         mipmap:                 true

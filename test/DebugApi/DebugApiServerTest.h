@@ -21,4 +21,6 @@ private slots:
     void _unknownPathReturns404();
     void _handlerErrorReturns400();
     void _motorTestRefusedWithoutActuatorGate();
+    void _uiClickRejectsUnknownButton();
+    void _uiClickAcceptsLeftAndRightButton();
 };

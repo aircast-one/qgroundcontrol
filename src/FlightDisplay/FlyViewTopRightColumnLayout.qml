@@ -39,6 +39,7 @@ ColumnLayout {
             id: photoVideoControlComponent
 
             PhotoVideoControl {
+                showCloseButton: true
             }
         }
     }

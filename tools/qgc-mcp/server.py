@@ -21,6 +21,7 @@ import time
 import urllib.error
 import urllib.request
 from pathlib import Path
+from typing import Literal
 
 from mcp.server.fastmcp import FastMCP
 from mcp.server.fastmcp import Image
@@ -120,14 +121,16 @@ def ui_tree(filter: str = "") -> dict:
 
 
 @mcp.tool()
-def click(object_name: str = "", x: float | None = None, y: float | None = None) -> dict:
+def click(object_name: str = "", x: float | None = None, y: float | None = None,
+          button: Literal["left", "right"] = "left") -> dict:
     """Click a QML item by objectName (its visible instance, at its center), or raw scene
-    coordinates when x/y are given instead."""
+    coordinates when x/y are given instead. Right-click opens context actions such as the
+    telemetry bar's edit mode."""
     if object_name:
-        return _api(f"/ui/click?name={object_name}")
+        return _api(f"/ui/click?name={quote(object_name)}&button={quote(button)}")
     if x is None or y is None:
         raise ValueError("object_name or x/y required")
-    return _api(f"/ui/click?x={x}&y={y}")
+    return _api(f"/ui/click?x={x}&y={y}&button={quote(button)}")
 
 
 @mcp.tool()
