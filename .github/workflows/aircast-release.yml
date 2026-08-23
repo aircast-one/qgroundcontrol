@@ -165,7 +165,11 @@ jobs:
           [ "$(stat -c%s "$TARBALL")" -eq "$expected" ] || { echo "::error::incomplete $TARBALL"; exit 1; }
           mkdir -p gstreamer-android
           tar -xf "$TARBALL" -C gstreamer-android
-          echo "GST_ANDROID_SOURCE=${{ runner.temp }}/gstreamer-android" >> "$GITHUB_ENV"
+          # FindGStreamer.cmake expects the per-ABI dirs directly under the source dir,
+          # so normalise whether or not the archive has a top-level wrapper directory.
+          arch_dir=$(find gstreamer-android -maxdepth 2 -type d -name arm64 | head -1)
+          [ -n "$arch_dir" ] || { echo "::error::unexpected archive layout"; exit 1; }
+          echo "GST_ANDROID_SOURCE=$(cd "$(dirname "$arch_dir")" && pwd)" >> "$GITHUB_ENV"
 
       - name: Configure
         working-directory: ${{ runner.temp }}/shadow_build_dir
