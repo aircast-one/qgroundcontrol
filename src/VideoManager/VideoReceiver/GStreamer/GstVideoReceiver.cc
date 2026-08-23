@@ -921,7 +921,9 @@ GstElement *GstVideoReceiver::_makeDecoder(GstCaps *caps, GstElement *videoSink)
     // threading, whose multi-core throughput matters more than its latency on those paths.
     // For WHEP the decoder must stay fast even in normal-latency mode, so that toggling
     // Low Latency Mode only trades the jitterbuffer depth (40ms vs 200ms), not the decoder.
-    if (_uriIsWhep(_uri)) {
+    // Low Latency Mode makes the same trade for any source: a packet radio or UDP FPV feed
+    // wants the frame-threading delay gone even more than WHEP does.
+    if (_uriIsWhep(_uri) || (_buffer < 0)) {
         (void) g_signal_connect(decoder, "deep-element-added", G_CALLBACK(_onDecoderDeepElementAdded), nullptr);
     }
 
