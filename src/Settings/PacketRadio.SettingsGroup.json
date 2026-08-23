@@ -1,0 +1,60 @@
+{
+    "version": 1,
+    "fileType": "FactMetaData",
+    "QGC.MetaData.Facts":
+[
+{
+    "name":         "enabled",
+    "shortDesc":    "Receive over packet radio",
+    "longDesc":     "Receive video and telemetry from a wfb-ng packet radio link using a USB Wi-Fi adapter plugged into this computer",
+    "type":         "bool",
+    "default":      false
+},
+{
+    "name":         "channel",
+    "shortDesc":    "Channel",
+    "longDesc":     "Wi-Fi channel the drone transmits on. Must match the drone's packet radio channel.",
+    "type":         "uint32",
+    "min":          1,
+    "max":          177,
+    "default":      161
+},
+{
+    "name":         "channelWidth",
+    "shortDesc":    "Channel width",
+    "type":         "uint32",
+    "enumStrings":  "20 MHz,40 MHz",
+    "enumValues":   "0,1",
+    "default":      0
+},
+{
+    "name":         "keyFile",
+    "shortDesc":    "Key file (gs.key)",
+    "longDesc":     "Path to the ground station key matching the drone's keypair. Leave empty to use the built-in OpenIPC default key.",
+    "type":         "string",
+    "default":      ""
+},
+{
+    "name":         "deviceName",
+    "shortDesc":    "Wi-Fi adapter",
+    "longDesc":     "Which USB adapter to receive with. Leave empty to use the first supported adapter found.",
+    "type":         "string",
+    "default":      ""
+},
+{
+    "name":         "alinkEnabled",
+    "shortDesc":    "Adaptive link",
+    "longDesc":     "Let the ground station tell the drone to adjust bitrate and FEC as signal quality changes",
+    "type":         "bool",
+    "default":      false
+},
+{
+    "name":         "alinkTxPower",
+    "shortDesc":    "Adaptive link transmit power",
+    "type":         "uint32",
+    "min":          1,
+    "max":          63,
+    "default":      30
+}
+]
+}

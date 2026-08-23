@@ -1,0 +1,396 @@
+#ifndef RTL_JAGUAR3_DEVICE_H
+#define RTL_JAGUAR3_DEVICE_H
+
+#include <atomic>
+#include <mutex>
+#include <optional>
+#include <thread>
+
+#include "logger.h"
+#include "CfoTracker.h"
+#include "IRtlDevice.h"
+#include "TxMode.h"
+#include "RtlAdapter.h"
+#include "SelectedChannel.h"
+#include "ChipVariant.h"
+#include "HalJaguar3.h"
+#include "LaCapture.h"
+#include "RadioManagementJaguar3.h"
+#include "PhydmRuntimeJaguar3.h"
+#include "TxPktPwrBanks.h"
+
+/* RtlJaguar3Device is the orchestrator for the Realtek "Jaguar3" 802.11ac family
+ * — RTL8822CU, RTL8812EU, RTL8822EU. It is the Jaguar3 sibling of
+ * RtlJaguarDevice (Jaguar1) and implements the same IRtlDevice contract so the
+ * demos and WiFiDriver factory treat both uniformly.
+ *
+ * Bring-up is ported from Realtek vendor source (rtl88x2cu/phydm/halrf):
+ * power-on, firmware download, MAC/BB/RF config, IQK and DACK drive RX,
+ * channel/bandwidth (incl. 5/10 MHz narrowband) and on-air TX. send_packet is
+ * on-air; sustained continuous TX is kept alive by the coex runtime thread
+ * (coex_runtime_loop) — see src/jaguar3/CLAUDE.md. */
+class RtlJaguar3Device : public IRtlDevice {
+public:
+  RtlJaguar3Device(RtlAdapter device, Logger_t logger,
+                   jaguar3::ChipVariant variant = jaguar3::ChipVariant::C8822C,
+                   devourer::DeviceConfig cfg = {});
+  ~RtlJaguar3Device() override;
+
+  void Init(Action_ParsedRadioPacket packetProcessor,
+            SelectedChannel channel) override;
+  /* Blocking RX worker loop on an already-brought-up chip (see IRtlDevice).
+   * Init = bring-up + BFEE arm + StartRxLoop; a TX+RX caller (self-sounding
+   * single-radio ground station) does InitWrite once, then runs this on its
+   * own std::thread next to the TX loop. NB: for reliable RX the TX+RX intent
+   * must be declared at InitWrite time (DEVOURER_TX_WITH_RX set) — InitWrite
+   * then keeps the RX filters open and enables the RX path during bring-up.
+   * On a plain TX-only bring-up this falls back to a best-effort retrofit
+   * (filter re-open + enable_rx_path), which has proven unreliable on 8822E.
+   * Takes over the bulk-IN endpoint from the coex thread's C2H drain for as
+   * long as it runs. */
+  void StartRxLoop(Action_ParsedRadioPacket packetProcessor) override;
+  void StopRxLoop() override { _rx_stop = true; }
+  void SetMonitorChannel(SelectedChannel channel) override;
+  /* Lean frequency-hop retune (Jaguar3 port of the Jaguar1 FastRetune — see
+   * docs/frequency-hopping.md): the RF18 channel write inside its 3-wire
+   * bracket + force-anapar + BB reset, with the channel-keyed constants (SCO,
+   * TX DFIR, AGC table) written only when their bucket changes. Skips the
+   * bandwidth block, RXBB, MAC BW/TXSC, and — in 5/10 MHz mode — preserves the
+   * narrowband dividers, so fast hops keep the NB re-clock without re-running
+   * the divider recipe. Falls back to the full set_channel_bwmode on a band
+   * change. cache_rf selects the cached-RF18 variant (meaningful on the 8822c,
+   * whose RF18 is a read-modify-write; the 8822e composes it from scratch).
+   * Serializes on _reg_mu, so it is safe during an active TX session — the
+   * sanctioned in-session hop primitive (unlike a bare SetMonitorChannel). */
+  void FastRetune(uint8_t channel, bool cache_rf) override;
+  void FastSetBandwidth(ChannelWidth_t bw) override;
+  void InitWrite(SelectedChannel channel) override;
+  bool send_packet(const uint8_t *packet, size_t length) override;
+  /* Batch TX with USB aggregation (IRtlDevice contract): with
+   * cfg.tx.usb_agg_max > 1 consecutive frames are packed into shared bulk-OUT
+   * URBs — one [txdesc][frame] block per frame, first descriptor carrying the
+   * count in DMA_TXAGG_NUM (see src/TxAggPlan.h). Falls back to the per-frame
+   * loop when the knob is off. */
+  size_t send_packets(const TxPacketView *pkts, size_t count) override;
+  /* Hardware ACK responder (IRtlDevice contract; src/AckResponder.h). */
+  bool SetAckResponder(const devourer::MacAddr &mac) override;
+  void ClearAckResponder() override;
+  /* A-MPDU TX mode (IRtlDevice contract; src/AmpduMode.h). Programs the 8822C
+   * aggregate-fill timer (0x455) under _reg_mu (serialized against the coex
+   * thread) and records the descriptor state the TX path reads. */
+  bool SetAmpduMode(const devourer::AmpduMode &mode) override;
+  void ClearAmpduMode() override;
+  devourer::AmpduMode GetAmpduMode() override { return _ampdu; }
+  devourer::TxStats GetTxStats() override { return _device.GetTxStats(); }
+  SelectedChannel GetSelectedChannel() override;
+  uint64_t ReadTsf() override;
+  void WriteTsf(uint64_t tsf) override;
+  bool StartBeacon(const uint8_t *beacon, size_t len, int interval_tu) override;
+  /* In-place beacon content swap (IRtlDevice contract): a fresh
+   * download_beacon_page; interval/TBTT/port identity untouched. */
+  bool UpdateBeaconPayload(const uint8_t *beacon, size_t len) override;
+  bool StopBeacon() override;
+  int32_t AdjustBeaconTiming(int32_t microseconds) override;
+  int32_t AdjustBeaconTimingFine(int32_t microseconds) override;
+  /* TSF-preserving absolute TBTT pin (IRtlDevice contract; the J2 pattern —
+   * no reserved-page re-download needed on J3). */
+  int32_t PinBeaconTbtt(int32_t offset_us) override;
+  void Stop() override;
+
+  /* Runtime TX-power control (IRtlDevice contract; see src/TxPower.h).
+   * Jaguar3 caps: 7-bit TXAGC reference, 0.25 dB (1 qdB) per step. The offset
+   * shifts the per-path reference anchor (0x18e8/0x41e8 OFDM, 0x18a0/0x41a0
+   * CCK) — the 0x3a00 per-rate diff table is offset-invariant, so a live step
+   * is ~8 gated register writes (apply_tx_power_refs / a diffs-kept
+   * set_tx_power_ref) under _reg_mu, serialized against the coex tick's
+   * pwr_track (which RMWs the [7:0] thermal field of the SAME 0x18a0/0x41a0
+   * dwords — field-disjoint, so thermal compensation and the offset compose).
+   * A full SetMonitorChannel
+   * re-folds the knobs against the new channel group's efuse refs (gated on a
+   * knob being active); FastRetune never touches TXAGC. GetThermalStatus
+   * reads RF 0x42[6:1] via the calibration impl (efuse baseline on the E,
+   * first-read cold reference on the C). */
+  devourer::TxPowerCaps GetTxPowerCaps() override;
+  int SetTxPowerOffsetQdb(int qdb) override;
+  void SetTxPowerIndexOverride(int idx) override;
+  bool SetTxPowerRateDiffs(
+      const std::optional<devourer::TxRateDiffsQdb> &diffs) override;
+  bool ReApplyTxPower() override;
+  /* Per-packet TX-power offset — session default. Programs a
+   * hardware offset BANK (global 0x1e70 reg0/reg1, see TxPktPwrBanks.h) and
+   * stamps its 2-bit selector into every TX descriptor's TXPWR_OFSET_TYPE, so
+   * the per-frame power trim costs zero USB transfers once a bank holds the
+   * value. A radiotap DBM_TX_POWER field overrides per packet (dB delta vs
+   * the calibrated table, the Jaguar2 convention); up to two distinct
+   * non-zero offsets are held in banks concurrently — a third evicts the
+   * least-recently-used one (one masked 0x1e70 write). Offsets quantize to
+   * cfg.tuning.txpkt_step_qdb (default 4 qdB = 1 dB — the vendor-stated bank
+   * step; bench-pinned by tests/txpkt_pwr_ofset_onair.sh). Returns the
+   * applied qdB after quantize/clamp. 0 clears the default (type-0 baseline).
+   * Composes additively with SetTxPowerOffsetQdb (which moves the TXAGC
+   * references themselves). */
+  int SetTxPacketPowerOffsetQdb(int qdb);
+  int SetXtalCap(int cap) override;
+  int GetXtalCap() override { return _xtal_cap; }
+  devourer::TxPowerState GetTxPowerState() override;
+  devourer::ThermalStatus GetThermalStatus() override;
+  /* Per-chip TX caps (IRtlDevice): 8822C/8822E are 2T2R (STBC ok). */
+  devourer::TxCaps GetTxCaps() override;
+  /* Aggregate identity + radio + feature caps (IRtlDevice). Composes GetTxCaps
+   * / GetTxPowerCaps; identity from ChipVariant, transport from the adapter. */
+  devourer::AdapterCaps GetAdapterCaps() override;
+  /* Live per-chain RX-path activity (fed via _rxpaths in the RX loop). */
+  devourer::ActiveRxPaths GetActiveRxPaths() override {
+    return _rxpaths.snapshot();
+  }
+  /* Runtime TX-mode default — applied in send_packet when the radiotap carries
+   * no rate. Without this the Jaguar3 TX path fell back to MGN_1M for rate-less
+   * frames (so DEVOURER_TX_RATE/an MCS flood went on-air at 1 Mbps): the feature
+   * was ported for Jaguar1 (RtlJaguarDevice) but not Jaguar3. */
+  void SetTxMode(const devourer::TxMode &mode) override;
+  void ClearTxMode() override;
+
+  /* Realtek MP single-tone (CW carrier) — radiate a bare RF local-oscillator
+   * carrier at the tuned channel center. Path A; Jaguar3 (rtl8822c / rtl8822e,
+   * identical recipe). Unlike the older chips, Jaguar3's RF mode register (0x00)
+   * is written through the HSSI 3-wire port (0x1808), NOT the direct BB->RF
+   * window (which is read-only for RF 0x00), and the tone only radiates once the
+   * BB/MAC TX path is keyed via PMAC (0x1d08/0x1e70) — see phydm_mp_set_single_
+   * tone_jgr3 + phydm_set_pmac_txon_jgr3. `gain` is RF 0x00[4:0]. StopCwTone()
+   * restores RF 0x00, re-enables CCA and disables the LO + PMAC. Serializes on
+   * _reg_mu against the coex runtime thread. Idempotent. */
+  void StartCwTone(uint8_t gain);
+  void StopCwTone();
+
+  /* Modulated continuous TX — sibling of StartCwTone. Engages the JGR3 hardware
+   * continuous mode via the phydm PMAC packet generator: stop the normal TRX
+   * (pause TX queues 0x522, disable OFDM/CCK CCA), define a legacy-6M PMAC packet
+   * (L-SIG + rate + tx-info), enable PMAC (0x1d08) + TX-OFDM (0x1e70) + the
+   * continuous hold (0x1ca4). Radiates a 100%-duty modulated OFDM carrier at 6M
+   * (the SIG encoding is simplest for legacy OFDM; the stimulus rate is fixed at
+   * 6M regardless of `mode`). Idle-hold; StopContinuousTx reverses it. Serializes
+   * on _reg_mu against the coex thread. */
+  void StartContinuousTx(const devourer::TxMode& mode);
+  void StopContinuousTx();
+
+  /* Frame-free RX energy / channel-busy snapshot (see RxSense.h). Jaguar3's
+   * phydm DIG/FA machinery was never ported to devourer, but the 8822C/E BB has
+   * the same facilities in a newer register space — OFDM/CCK CCA (0x2c08), CCK
+   * FA (0x1a5c), OFDM FA (sum of 0x2d04/08/10/20/0c), IGI (0x1d70) — reset via
+   * 0x1a2c + 0x1eb4[25]. Read-then-reset for a per-call delta; serialized on
+   * _reg_mu against the coex runtime thread. The read side of the CW tone. */
+  RxEnergy GetRxEnergy(bool with_nhm) override;
+
+  /* Consolidated windowed RX link-quality snapshot (see RxQuality.h) — subsumes
+   * GetRxEnergy. Fed per decoded frame in the RX loop via _rxq. On Jaguar3 the
+   * noise-floor is the passive rssi-snr estimate (this generation has no
+   * background DIG, so IGI is static and can't track the floor). */
+  devourer::RxQuality GetRxQuality() override {
+    return devourer::build_rx_quality(_rxq.snapshot(), GetRxEnergy(true));
+  }
+
+  /* dis_cca / EDCCA-disable investigation knob (DEVOURER_DIS_CCA). Writes the
+   * vendor rtw_proc.c dis_cca recipe (MAC BIT_DIS_EDCCA 0x520[15] + EDCCA-mask
+   * countdown 0x524[11], BB 0x1a9c[20]/0x1a14[9:8]/0x1d58[0xff8]); disabled=false
+   * restores the inverse. Sticky across SetMonitorChannel; serialized on _reg_mu
+   * against the coex tick. On IRtlDevice: measured to collapse the hardware-beacon
+   * downlink residual from ~472 µs to 0.39 µs on a crowded channel (the TBTT
+   * beacon airs on schedule instead of after a CSMA backoff). */
+  void SetCcaMode(bool disabled) override;
+
+  /* Adapter-health probes (see src/AdapterHealth.h). EFUSE probe is 8822C
+   * only — the 8822E's OTP is not reliably readable post-bring-up by design
+   * (HalJaguar3::cache_efuse_8822e), so probing it would flag healthy units;
+   * 8822E returns supported=false. Serialized on _reg_mu against the coex
+   * tick like every other register-touching entry point. */
+  devourer::EfuseStability ProbeEfuseStability(int reads) override;
+  devourer::FwBootStatus GetFwBootStatus() override {
+    return _hal.fw_boot_status();
+  }
+
+  /* Research helper: one-shot LA-mode (phydm logic-analyzer) IQ capture into
+   * the TX packet buffer — JGR3 dialect (0x1ce4/0x1cf4 engine, 0x1c3c
+   * dbg-port mux), 128 KB window on both 8822C and 8822E. Serialized on
+   * _reg_mu against the coex runtime tick. Blocking; see LaCapture.h for
+   * the brick-risk caveats and the TX-quiesced contract. */
+  devourer::LaResult la_capture(const devourer::LaParams &p);
+  bool la_capture_wedged() const { return _la && _la->is_wedged(); }
+
+  bool should_stop = false;
+
+private:
+  /* Parse one send_packet-contract buffer (radiotap + 802.11) and build its
+   * TXDMA block — 48-byte descriptor, pkt_offset×8 pad, frame — at `out`
+   * (zeroed, sized desc + pad + frame by the caller). Performs the per-packet
+   * radiotap CHANNEL retune and the NDPA-period accounting, exactly like
+   * send_packet. Returns the block length, 0 on malformed input. Shared by
+   * send_packet (pkt_offset=0) and the send_packets URB packer. */
+  size_t build_tx_block(const uint8_t *packet, size_t length, uint8_t *out,
+                        uint8_t pkt_offset);
+
+  RtlAdapter _device;
+  const devourer::DeviceConfig _cfg;
+  Logger_t _logger;
+  jaguar3::ChipVariant _variant;
+  int _xtal_cap = -1; /* current crystal-cap code (SetXtalCap) */
+  jaguar3::HalJaguar3 _hal;
+  /* Lazy LA-mode capture helper (la_capture). */
+  std::unique_ptr<devourer::LaCapture> _la;
+  jaguar3::RadioManagementJaguar3 _radioManagement;
+  /* phydm dynamic mechanisms (FA/DIG/CCK-PD/EDCCA), ticked from the coex
+   * thread every ~2 s like the vendor watchdog. */
+  jaguar3::PhydmRuntimeJaguar3 _phydm;
+  SelectedChannel _channel{};
+  Action_ParsedRadioPacket _packetProcessor = nullptr;
+  /* Runtime TX-power knobs (atomic so GetTxPowerState's cached snapshot is
+   * readable cross-thread). Flat override -1 = the chip's efuse-calibrated
+   * power; offset in 0.25 dB reference steps. Applied live under _reg_mu once
+   * brought up; recorded and folded at InitWrite before. */
+  std::atomic<int> _tx_pwr_override{-1};
+  std::atomic<int> _tx_pwr_offset_steps{0};
+  /* Rotating SW_DEFINE tag stamped when tx.report is on — the CCX report
+   * echoes its low byte, correlating reports to frames (src/TxReport.h).
+   * 64-bit: the counter also gates the sampled SPE_RPT request (every Nth
+   * frame), and a narrow counter's wrap would jump the sampling phase for
+   * any N that doesn't divide it — off-modulo tag deltas masquerading as
+   * dropped reports at every seam. */
+  std::atomic<uint64_t> _tx_rpt_tag{0};
+  /* Per-packet TX-power banks (SetTxPacketPowerOffsetQdb / radiotap
+   * DBM_TX_POWER). _txpkt_banks is the allocation policy,
+   * mutated under _reg_mu; _txpkt_img mirrors its committed 0x1e70[31:16]
+   * image so the TX hot path resolves an already-programmed offset to its
+   * bank type from ONE relaxed atomic load (a miss takes _reg_mu and
+   * reprograms). _txpkt_dflt_* is the session default stamped on frames
+   * without a radiotap DBM_TX_POWER field. */
+  jaguar3::TxPktPwrBankPlanner _txpkt_banks;
+  std::atomic<uint16_t> _txpkt_img{0};
+  std::atomic<int> _txpkt_dflt_idx{0};
+  std::atomic<uint8_t> _txpkt_dflt_type{0};
+  bool _txpkt_ram_cleared = false; /* one-time macid-1 BB-RAM clear done */
+  /* Resolve a power-index offset to a descriptor type: lock-free on a bank
+   * hit / zero; takes _reg_mu and programs 0x1e70 on a miss. */
+  uint8_t txpkt_type_for_idx(int idx);
+  /* Program 0x1e70[31:16] from the planner image + the one-time defensive
+   * macid-1 RAM clear. Caller holds _reg_mu (or pre-coex bring-up). */
+  void apply_txpkt_banks_locked();
+  /* Requested-dB -> bank power-index steps (cfg.tuning.txpkt_step_qdb). */
+  int txpkt_idx_for_qdb(int qdb) const;
+  /* A-MPDU TX mode (SetAmpduMode). Read lock-free in the TX descriptor path
+   * (same pattern as the TX-mode default); a control write during TX is the
+   * caller's to sequence and at worst tears one frame's mode benignly. */
+  devourer::AmpduMode _ampdu;
+  /* Rail-hit flags from the last apply (references clamped at 0/0x7f). */
+  std::atomic<bool> _txpwr_sat_low{false};
+  std::atomic<bool> _txpwr_sat_high{false};
+  /* Bring-up completion: gates the live apply (+ _reg_mu use) in the setters. */
+  bool _brought_up = false;
+  /* Rolling per-frame RX link-quality aggregate (GetRxQuality). */
+  devourer::RxQualityAccumulator _rxq;
+  devourer::RxPathActivityAccumulator _rxpaths;
+  devourer::CfoTracker _cfo; /* closed-loop CFO tracker (DEVOURER_CFO_TRACK) */
+  /* Frame counter for periodic NDPA sounding (DEVOURER_TX_NDPA=N). */
+  uint64_t _ndpa_ctr = 0;
+  /* TX beamforming apply state (DEVOURER_BF_TXBF). The entry is configured at
+   * InitWrite (arm_beamformer_entry); the apply toggle is enabled from the RX
+   * loop only after a Compressed Beamforming Report from _bf_peer is ingested
+   * (blind apply degrades). */
+  bool _bf_txbf_armed = false;
+  std::atomic<bool> _bf_apply_on{false};
+  std::atomic<uint64_t> _bf_cbr_count{0};
+  uint8_t _bf_peer[6] = {0};
+  /* dis_cca sticky state — re-applied after SetMonitorChannel (the channel set
+   * rewrites the BB CCA registers). Caller holds _reg_mu. */
+  bool _cca_disabled = false;
+  void apply_cca_mode_locked(bool disabled);
+  /* TX+RX intent (DEVOURER_TX_WITH_RX at InitWrite / an RX-side Init):
+   * keeps the RX filters open across the TX bring-up. */
+  bool _rx_wanted = false;
+  /* Cached 8822E per-channel-group efuse base refs (the values InitWrite
+   * derived, incl. the 0x4b fallback) so an offset-only step recomputes
+   * effective refs without re-deriving; invalidated by a channel change. */
+  uint8_t _pwr_ref_a = 0, _pwr_ref_b = 0;
+  bool _pwr_ref_valid = false;
+  /* True while the 0x3a00 per-rate diff table is zeroed (flat semantics /
+   * 8822C default shape) — repeated flat steps then skip the 32-dword
+   * re-zero. */
+  bool _diffs_zeroed = false;
+  /* Caller-supplied per-rate TXAGC diffs (SetTxPowerRateDiffs), in place of
+   * the die's default shape (the 8822E's phy_reg_pg table, the 8822C's flat
+   * reference). std::nullopt = that default. Read/written under _reg_mu once
+   * brought up. */
+  std::optional<devourer::TxRateDiffsQdb> _rate_diffs;
+  /* Re-program TXAGC from the current knob state. full=true re-derives the
+   * 8822E efuse refs + rewrites the per-rate diff table (bring-up / channel
+   * change / flat<->efuse transitions); full=false is the light offset step.
+   * Caller holds _reg_mu when the coex thread may be running. */
+  void apply_tx_power_current(bool full);
+  /* Golden-init replay (DEVOURER_REPLAY_WSEQ, debug.replay_wseq): apply a
+   * captured kernel register-write stream verbatim at the end of InitWrite —
+   * the hardware-diff lever (same as Jaguar2's; found the 8822B RF18 bug). */
+  void apply_replay_wseq();
+  /* 8822E eFEM (rfe 21-24) GPIO pin-function routing — kernel-parity port of
+   * _efem_pinmux_config/pinmux_set_func_8822e for RFE_CTRL_3/5/7/8/9/11.
+   * Routes the DPDT antenna transfer switch to the RFE engine (hardware
+   * TX/RX switching) instead of the b5a6df7 static write that deafened RX
+   * path B. Applied by apply_dpdt_route_8822e(). */
+  void efem_pinmux_8822e();
+  /* 8822E DPDT antenna-transfer-switch routing — mode dispatch
+   * (_cfg.tuning.dpdt_8822e: efem/legacy/bit24/skip) + the PAD_CTRL1[29:28]
+   * post-coex re-assert. No-op on non-8822E. MUST run after
+   * coex_wlan_only_init (coex GPIO_MUXCFG writes would mask the RFE routing).
+   * Called from BOTH Init (RX bring-up) and InitWrite (TX bring-up) so RX-only
+   * sessions get chain B too — the kernel routes it in rtl8822e_init_misc,
+   * which runs in both directions. */
+  void apply_dpdt_route_8822e();
+  /* Runtime TX-mode default (SetTxMode/ClearTxMode). */
+  std::optional<devourer::TxMode> _tx_mode_default;
+
+  /* CW single-tone (StartCwTone/StopCwTone) saved state: the pre-tone RF 0x00
+   * (path A, full 20-bit). CCA/PMAC restore to fixed values, so no BB snapshot
+   * is needed. _cw_active guards double start/stop. */
+  bool _cw_active = false;
+  uint32_t _cw_rf00 = 0;
+  /* Modulated continuous TX (StartContinuousTx/StopContinuousTx) guard + saved
+   * TRX state for a clean restore (TX-queue pause byte 0x522, CCK-TX path
+   * 0x1a04[31:28]), captured by the phydm_stop_ic_trx-equivalent at start. */
+  bool _cont_active = false;
+  uint8_t _cont_txpause = 0;
+  uint32_t _cont_ccktx = 0;
+  /* Coex runtime: a background thread that drains bulk-IN, dispatches firmware
+   * C2H reports (BT-info etc.) and runs the periodic coex decision so the FW's
+   * PTA keeps the antenna with WLAN during sustained TX.
+   * THREADING CONTRACT: while a TX session is active (between InitWrite and Stop)
+   * the ~2 s housekeeping tick, StartRxLoop's one-shot RX-filter restore, and
+   * every channel retune (SetMonitorChannel / FastRetune — register RMW)
+   * serialize on _reg_mu. The TX hot path (send_packet) does no register I/O of
+   * its own, so it runs lock-free alongside them; a radiotap-CHANNEL hop inside
+   * send_packet takes the lock only for the retune itself (so a hop can be
+   * delayed by up to one coex tick). Callers must still not invoke SetTxPower
+   * mid-session. Bulk-IN has exactly one reader at a time: while StartRxLoop is
+   * active (_rx_loop_active) the coex thread skips its C2H drain — the RX async
+   * loop sees the C2H reports as part of its stream. */
+  std::thread _coex_thread;
+  volatile bool _coex_stop = false;
+  void coex_runtime_loop();
+  /* Nominal beacon interval in TU while a beacon is active (0 = none); the
+   * AdjustBeaconTiming one-shot tweak restores to this. */
+  int _bcn_interval_tu = 0;
+  /* TBTT-grid offset vs the TSF, in µs: TBTT fires at TSF % period == this.
+   * 0 after StartBeacon and after every fine steer (the EN_BCN_FUNCTION
+   * re-latch re-derives the grid from the TSF); each coarse interval-tweak
+   * steer moves the grid by its applied shift without moving the TSF, so the
+   * coarse path's TBTT phase-alignment must subtract it. Guarded by _reg_mu. */
+  int64_t _tbtt_off_us = 0;
+  /* StartRxLoop stop request (StopRxLoop). */
+  volatile bool _rx_stop = false;
+  /* True while StartRxLoop owns bulk-IN (gates the coex thread's drain). */
+  std::atomic<bool> _rx_loop_active{false};
+  /* Set when InitWrite zeroes the RX filters (0x6A0-0x6A4) for TX-only
+   * throughput; StartRxLoop restores the monitor_rx_cfg values and clears it. */
+  bool _rx_filters_closed = false;
+  /* Serializes the coex housekeeping tick against StartRxLoop's register
+   * restore (the only two register writers during an active TX session). */
+  std::mutex _reg_mu;
+};
+
+#endif /* RTL_JAGUAR3_DEVICE_H */

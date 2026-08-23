@@ -20,6 +20,9 @@
 #include "PositionManager.h"
 #include "QGCMapEngineManager.h"
 #include "ADSBVehicleManager.h"
+#ifdef QGC_WFB_ENABLED
+#include "PacketRadioManager.h"
+#endif
 #include "MissionCommandTree.h"
 #include "HorizontalFactValueGrid.h"
 #include "FlightPathSegment.h"
@@ -111,6 +114,9 @@ QGroundControlQmlGlobal::QGroundControlQmlGlobal(QObject *parent)
     : QObject(parent)
     , _mapEngineManager(QGCMapEngineManager::instance())
     , _adsbVehicleManager(ADSBVehicleManager::instance())
+#ifdef QGC_WFB_ENABLED
+    , _packetRadioManager(PacketRadioManager::instance())
+#endif
     , _qgcPositionManager(QGCPositionManager::instance())
     , _missionCommandTree(MissionCommandTree::instance())
     , _videoManager(VideoManager::instance())

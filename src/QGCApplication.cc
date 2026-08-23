@@ -62,6 +62,9 @@
 #include "MAVLinkProtocol.h"
 #include "MissionManager.h"
 #include "MultiVehicleManager.h"
+#ifdef QGC_WFB_ENABLED
+#include "PacketRadioManager.h"
+#endif
 #include "ParameterManager.h"
 #include "PositionManager.h"
 #include "QGCCameraManager.h"
@@ -371,6 +374,9 @@ void QGCApplication::_initForNormalAppBoot()
     QGCPositionManager::instance()->init();
     LinkManager::instance()->init();
     VideoManager::instance()->init(mainRootWindow());
+#ifdef QGC_WFB_ENABLED
+    PacketRadioManager::instance()->init();
+#endif
     DebugApiServer::startIfConfigured(this);
 
     // Settings and video are up: apply any aircast-qgc:// deep link that arrived

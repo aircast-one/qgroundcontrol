@@ -14,6 +14,7 @@
 #include <QtQmlIntegration/QtQmlIntegration>
 
 class ADSBVehicleManagerSettings;
+class PacketRadioSettings;
 class APMMavlinkStreamRateSettings;
 class AppSettings;
 class AutoConnectSettings;
@@ -44,6 +45,7 @@ class SettingsManager : public QObject
     // QML_ELEMENT
     // QML_UNCREATABLE("")
     Q_MOC_INCLUDE("ADSBVehicleManagerSettings.h")
+    Q_MOC_INCLUDE("PacketRadioSettings.h")
 #ifndef QGC_NO_ARDUPILOT_DIALECT
     Q_MOC_INCLUDE("APMMavlinkStreamRateSettings.h")
 #endif
@@ -69,6 +71,7 @@ class SettingsManager : public QObject
     Q_MOC_INCLUDE("Viewer3DSettings.h")
 #endif
     Q_PROPERTY(QObject *adsbVehicleManagerSettings      READ adsbVehicleManagerSettings     CONSTANT)
+    Q_PROPERTY(QObject *packetRadioSettings             READ packetRadioSettings            CONSTANT)
 #ifndef QGC_NO_ARDUPILOT_DIALECT
     Q_PROPERTY(QObject *apmMavlinkStreamRateSettings    READ apmMavlinkStreamRateSettings   CONSTANT)
 #endif
@@ -103,6 +106,7 @@ public:
     void init();
 
     ADSBVehicleManagerSettings *adsbVehicleManagerSettings() const;
+    PacketRadioSettings *packetRadioSettings() const;
 #ifndef QGC_NO_ARDUPILOT_DIALECT
     APMMavlinkStreamRateSettings *apmMavlinkStreamRateSettings() const;
 #endif
@@ -130,6 +134,7 @@ public:
 
 private:
     ADSBVehicleManagerSettings *_adsbVehicleManagerSettings = nullptr;
+    PacketRadioSettings *_packetRadioSettings = nullptr;
 #ifndef QGC_NO_ARDUPILOT_DIALECT
     APMMavlinkStreamRateSettings *_apmMavlinkStreamRateSettings = nullptr;
 #endif

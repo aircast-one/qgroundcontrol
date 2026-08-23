@@ -19,6 +19,7 @@
 Q_DECLARE_LOGGING_CATEGORY(GuidedActionsControllerLog)
 
 class ADSBVehicleManager;
+class PacketRadioManager;
 class FactGroup;
 class LinkManager;
 class MissionCommandTree;
@@ -33,6 +34,9 @@ class UTMSPManager;
 class AirLinkManager;
 
 Q_MOC_INCLUDE("ADSBVehicleManager.h")
+#ifdef QGC_WFB_ENABLED
+Q_MOC_INCLUDE("PacketRadioManager.h")
+#endif
 Q_MOC_INCLUDE("FactGroup.h")
 Q_MOC_INCLUDE("LinkManager.h")
 Q_MOC_INCLUDE("MissionCommandTree.h")
@@ -78,6 +82,9 @@ public:
     Q_PROPERTY(VideoManager*        videoManager            READ    videoManager            CONSTANT)
     Q_PROPERTY(SettingsManager*     settingsManager         READ    settingsManager         CONSTANT)
     Q_PROPERTY(ADSBVehicleManager*  adsbVehicleManager      READ    adsbVehicleManager      CONSTANT)
+#ifdef QGC_WFB_ENABLED
+    Q_PROPERTY(PacketRadioManager*  packetRadioManager      READ    packetRadioManager      CONSTANT)
+#endif
     Q_PROPERTY(QGCCorePlugin*       corePlugin              READ    corePlugin              CONSTANT)
     Q_PROPERTY(MissionCommandTree*  missionCommandTree      READ    missionCommandTree      CONSTANT)
 #ifndef QGC_NO_SERIAL_LINK
@@ -175,6 +182,9 @@ public:
     FactGroup*              gpsRtkFactGroup     ()  { return _gpsRtkFactGroup; }
 #endif
     ADSBVehicleManager*     adsbVehicleManager  ()  { return _adsbVehicleManager; }
+#ifdef QGC_WFB_ENABLED
+    PacketRadioManager*     packetRadioManager  ()  { return _packetRadioManager; }
+#endif
     QmlUnitsConversion*     unitsConversion     ()  { return &_unitsConversion; }
     static QGeoCoordinate   flightMapPosition   ()  { return _coord; }
     static double           flightMapZoom       ()  { return _zoom; }
@@ -239,6 +249,9 @@ signals:
 private:
     QGCMapEngineManager*    _mapEngineManager       = nullptr;
     ADSBVehicleManager*     _adsbVehicleManager     = nullptr;
+#ifdef QGC_WFB_ENABLED
+    PacketRadioManager*     _packetRadioManager     = nullptr;
+#endif
     QGCPositionManager*     _qgcPositionManager     = nullptr;
     MissionCommandTree*     _missionCommandTree     = nullptr;
     VideoManager*           _videoManager           = nullptr;

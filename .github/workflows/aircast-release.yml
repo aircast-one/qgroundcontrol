@@ -144,11 +144,35 @@ jobs:
             echo "Shared cache MISS for $OBJ - will seed it after this build"
           fi
 
+      # CPMAddPackage downloads this during configure with no retry, so one dropped
+      # connection on the freedesktop CDN fails the build. Fetch it up front, resuming
+      # until complete, and hand CPM the extracted tree via CPM_gstreamer_SOURCE.
+      - name: Prefetch GStreamer for Android
+        working-directory: ${{ runner.temp }}
+        run: |
+          set -euo pipefail
+          GST_VERSION=1.22.12
+          TARBALL="gstreamer-1.0-android-universal-${GST_VERSION}.tar.xz"
+          URL="https://gstreamer.freedesktop.org/data/pkg/android/${GST_VERSION}/${TARBALL}"
+          expected=$(curl -fsSLI "$URL" | tr -d '\r' | awk 'tolower($1)=="content-length:"{print $2}' | tail -1)
+          for attempt in $(seq 1 40); do
+            size=$([ -f "$TARBALL" ] && stat -c%s "$TARBALL" || echo 0)
+            if [ -n "$expected" ] && [ "$size" -eq "$expected" ]; then break; fi
+            echo "  attempt $attempt: $size/${expected:-?} bytes"
+            curl -sS -C - --retry 5 --retry-all-errors --retry-delay 5 \
+                 --max-time 900 -o "$TARBALL" "$URL" || true
+          done
+          [ "$(stat -c%s "$TARBALL")" -eq "$expected" ] || { echo "::error::incomplete $TARBALL"; exit 1; }
+          mkdir -p gstreamer-android
+          tar -xf "$TARBALL" -C gstreamer-android
+          echo "GST_ANDROID_SOURCE=${{ runner.temp }}/gstreamer-android" >> "$GITHUB_ENV"
+
       - name: Configure
         working-directory: ${{ runner.temp }}/shadow_build_dir
         run: ${{ env.QT_ROOT_DIR }}/bin/qt-cmake -S ${{ github.workspace }} -B . -G Ninja
               -DCMAKE_BUILD_TYPE=Release
               -DCMAKE_WARN_DEPRECATED=FALSE
+              -DCPM_gstreamer_SOURCE="${{ env.GST_ANDROID_SOURCE }}"
               -DQT_ANDROID_ABIS="${{ env.QT_ANDROID_ABIS }}"
               -DQT_ANDROID_BUILD_ALL_ABIS=OFF
               -DQT_HOST_PATH="${{ env.QT_ROOT_DIR }}/../gcc_64"
@@ -211,9 +235,10 @@ jobs:
         uses: ./.github/actions/common
 
       - name: Install build tools
-        # The GitHub macOS image has cmake/ninja/ccache/git; only create-dmg
-        # (used to package the DMG) is missing.
-        run: brew install --quiet create-dmg ccache
+        # The GitHub macOS image has cmake/ninja/ccache/git; create-dmg packages
+        # the DMG, libusb/libsodium are the packet radio receiver's native deps
+        # (copied into the bundle by cmake/BundleWfbDylibs.cmake).
+        run: brew install --quiet create-dmg ccache libusb libsodium
 
       - name: Cache GStreamer installers
         id: gst-pkgs
@@ -232,10 +257,27 @@ jobs:
           GST_URL="https://gstreamer.freedesktop.org/data/pkg/osx/${GST_VERSION}"
           PKG_DIR="${RUNNER_TEMP}/gst-pkgs"
           mkdir -p "$PKG_DIR"
+          # The freedesktop CDN drops connections mid-transfer, so resume until the
+          # file matches the advertised Content-Length instead of failing the build.
+          download_resumable() {
+            local url="$1" dest="$2" expected attempt size
+            expected=$(curl -fsSLI "$url" | tr -d '\r' | awk 'tolower($1)=="content-length:"{print $2}' | tail -1)
+            for attempt in $(seq 1 40); do
+              size=$([ -f "$dest" ] && stat -f%z "$dest" || echo 0)
+              if [ -n "$expected" ] && [ "$size" -eq "$expected" ]; then
+                return 0
+              fi
+              echo "  attempt $attempt: $size/${expected:-?} bytes"
+              curl -sS -C - --retry 5 --retry-all-errors --retry-delay 5 \
+                   --max-time 600 -o "$dest" "$url" || true
+            done
+            echo "::error::could not download $url"
+            return 1
+          }
           for pkg in "gstreamer-1.0-${GST_VERSION}-universal.pkg" "gstreamer-1.0-devel-${GST_VERSION}-universal.pkg"; do
             if [ ! -f "$PKG_DIR/$pkg" ]; then
               echo "Downloading $pkg"
-              curl -fsSL -o "$PKG_DIR/$pkg" "$GST_URL/$pkg"
+              download_resumable "$GST_URL/$pkg" "$PKG_DIR/$pkg"
             fi
             sudo installer -pkg "$PKG_DIR/$pkg" -target /
           done
@@ -384,11 +426,47 @@ jobs:
           path: C:\gstreamer
           key: gstreamer-${{ env.GST_VERSION }}-windows-msvc
 
-      - name: Install GStreamer
+      # setup-gstreamer@v1 downloads in one shot, so a single dropped connection on the
+      # freedesktop CDN fails the build. Resume until the MSIs are complete instead.
+      - name: Download GStreamer
         if: steps.gst-cache.outputs.cache-hit != 'true'
-        uses: blinemedical/setup-gstreamer@v1
-        with:
-          version: ${{ env.GST_VERSION }}
+        shell: bash
+        working-directory: ${{ runner.temp }}
+        run: |
+          set -euo pipefail
+          GST_URL="https://gstreamer.freedesktop.org/data/pkg/windows/${GST_VERSION}/msvc"
+          for msi in "gstreamer-1.0-msvc-x86_64-${GST_VERSION}.msi" "gstreamer-1.0-devel-msvc-x86_64-${GST_VERSION}.msi"; do
+            expected=$(curl -fsSLI "$GST_URL/$msi" | tr -d '\r' | awk 'tolower($1)=="content-length:"{print $2}' | tail -1)
+            for attempt in $(seq 1 40); do
+              size=$([ -f "$msi" ] && stat -c%s "$msi" || echo 0)
+              if [ -n "$expected" ] && [ "$size" -eq "$expected" ]; then break; fi
+              echo "  $msi attempt $attempt: $size/${expected:-?} bytes"
+              curl -sS -C - --retry 5 --retry-all-errors --retry-delay 5 \
+                   --max-time 900 -o "$msi" "$GST_URL/$msi" || true
+            done
+            [ "$(stat -c%s "$msi")" -eq "$expected" ] || { echo "::error::incomplete $msi"; exit 1; }
+          done
+
+      # msiexec verifies the embedded cabinet checksums, so a corrupt download fails here
+      # rather than producing a half-installed SDK the build trips over later.
+      - name: Install GStreamer MSIs
+        if: steps.gst-cache.outputs.cache-hit != 'true'
+        shell: pwsh
+        working-directory: ${{ runner.temp }}
+        run: |
+          foreach ($msi in @("gstreamer-1.0-msvc-x86_64-$env:GST_VERSION.msi",
+                             "gstreamer-1.0-devel-msvc-x86_64-$env:GST_VERSION.msi")) {
+            $p = Start-Process msiexec -ArgumentList "/i","$(Resolve-Path $msi)","/quiet","/qn" -Wait -PassThru -NoNewWindow
+            if ($p.ExitCode -ne 0) { throw "msiexec failed for $msi with exit code $($p.ExitCode)" }
+          }
+          if (-not (Test-Path "C:\gstreamer\1.0\msvc_x86_64")) { throw "GStreamer not installed" }
+
+      - name: Set GStreamer environment
+        if: steps.gst-cache.outputs.cache-hit != 'true'
+        shell: pwsh
+        run: |
+          echo "GSTREAMER_1_0_ROOT_MSVC_X86_64=C:\gstreamer\1.0\msvc_x86_64" >> $env:GITHUB_ENV
+          echo "C:\gstreamer\1.0\msvc_x86_64\bin" >> $env:GITHUB_PATH
 
       - name: Set GStreamer environment (cache hit)
         if: steps.gst-cache.outputs.cache-hit == 'true'

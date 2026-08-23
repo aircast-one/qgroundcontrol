@@ -1,0 +1,77 @@
+/* Programmatic TX-mode descriptor for the Jaguar TX path.
+ *
+ * A TxMode names the modulation class (legacy OFDM / HT / VHT), the rate
+ * (MCS / NSS / legacy rate), bandwidth, and the GI / FEC / STBC modifiers —
+ * everything that decides a frame's on-air PHY rate. It is the type accepted
+ * by RtlJaguarDevice::SetTxMode (the runtime default applied when a frame's
+ * radiotap carries no rate) and produced by RadiotapBuilder's env parser.
+ *
+ * Replaces the former per-knob DEVOURER_TX_* environment variables and the
+ * DEVOURER_TX_HT_MCS library gate: send_packet now honours the radiotap rate
+ * fields unconditionally, and a TxMode supplies the default when there is none.
+ */
+#ifndef DEVOURER_TX_MODE_H
+#define DEVOURER_TX_MODE_H
+
+#include <cstdint>
+
+#include "SelectedChannel.h"  // ChannelWidth_t
+
+namespace devourer {
+
+struct TxMode {
+  enum class Mode { Legacy, HT, VHT, HE };
+  Mode mode = Mode::Legacy;
+
+  /* Legacy OFDM rate in 500 kbps units (the radiotap RATE convention, which is
+   * identical to the MGN_* OFDM enum value): 12=6M, 18=9M, 24=12M, 36=18M,
+   * 48=24M, 72=36M, 96=48M, 108=54M. Default 6M. */
+  uint8_t legacy_rate_500kbps = 12;
+
+  /* HT MCS index 0..31 (NSS implicit: MCS0-7=1ss, 8-15=2ss, ...). */
+  uint8_t ht_mcs = 0;
+
+  /* VHT per 802.11ac: mcs 0..9, nss 1..4. */
+  uint8_t vht_mcs = 0;
+  uint8_t vht_nss = 1;
+
+  /* HE per 802.11ax (Kestrel only): mcs 0..11, nss 1..4. `he_gi_ltf` is the
+   * chip's 3-bit GI/LTF code (enum rtw_gi_ltf): 0=4xLTF+3.2us, 1=4xLTF+0.8us,
+   * 2=2xLTF+1.6us, 3=2xLTF+0.8us, 4=1xLTF+1.6us, 5=1xLTF+0.8us. Default 3
+   * (2xLTF + 0.8us, the common HE-SU choice). */
+  uint8_t he_mcs = 0;
+  uint8_t he_nss = 1;
+  uint8_t he_gi_ltf = 3;
+
+  /* HE ER SU (extended range, Kestrel only): 0 = off (normal HE SU),
+   * 1 = ER 242-tone RU (MCS 0-2, NSS 1, 20 MHz), 2 = ER 106-tone RU (MCS 0
+   * only, ~3 dB more margin). `he_dcm` = dual-carrier modulation (MCS 0/1/3/4;
+   * 0/1 under ER; excludes STBC), stacks with either ER flavour or plain SU. */
+  uint8_t he_er = 0;
+  bool he_dcm = false;
+
+  /* Bandwidth in MHz. Legacy is always 20; HT honours 20/40; VHT/HE 20/40/80. */
+  uint8_t bw_mhz = 20;
+
+  bool sgi = false;
+  bool ldpc = false;
+  bool stbc = false;
+};
+
+/* The descriptor inputs send_packet writes, derived from a TxMode. `fixed_rate`
+ * is an MGN_* value (see RadioManagementModule.h); `vht` drives the TX-desc
+ * rate_id (8 for legacy/HT, 9 for VHT). */
+struct TxParams {
+  uint8_t fixed_rate;
+  bool vht;
+  uint8_t sgi;
+  uint8_t ldpc;
+  uint8_t stbc;
+  ChannelWidth_t bwidth;
+};
+
+TxParams tx_mode_to_params(const TxMode& mode);
+
+}  // namespace devourer
+
+#endif  // DEVOURER_TX_MODE_H

@@ -49,6 +49,13 @@ ListModel {
     }
 
     ListElement {
+        name: qsTr("Packet Radio")
+        url: "qrc:/qml/QGroundControl/AppSettings/PacketRadioSettings.qml"
+        iconUrl: "qrc:/InstrumentValueIcons/radio.svg"
+        pageVisible: function() { return QGroundControl.settingsManager.packetRadioSettings.visible }
+    }
+
+    ListElement {
         name: qsTr("ADSB Server")
         url: "qrc:/qml/QGroundControl/AppSettings/ADSBServerSettings.qml"
         iconUrl: "qrc:/InstrumentValueIcons/airplane.svg"

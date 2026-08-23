@@ -15,6 +15,7 @@ qt_add_qml_module(AppSettingsModule
         LogReplaySettings.qml
         MapSettings.qml
         MockLink.qml
+        PacketRadioSettings.qml
         MockLinkSettings.qml
         PlanViewSettings.qml
         PX4LogTransferSettings.qml

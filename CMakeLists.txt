@@ -525,6 +525,19 @@ qt_add_qml_module(${CMAKE_PROJECT_NAME}
     NO_PLUGIN
 )
 
+if(CMAKE_SYSTEM_NAME STREQUAL "Darwin")
+    add_subdirectory(libs/wfb)
+    target_link_libraries(${CMAKE_PROJECT_NAME} PRIVATE wfblink)
+    target_compile_definitions(${CMAKE_PROJECT_NAME} PRIVATE QGC_WFB_ENABLED)
+
+    add_custom_command(TARGET ${CMAKE_PROJECT_NAME} POST_BUILD
+        COMMAND ${CMAKE_COMMAND}
+            -DAPP_BUNDLE=$<TARGET_BUNDLE_DIR:${CMAKE_PROJECT_NAME}>
+            -DAPP_BINARY=$<TARGET_FILE:${CMAKE_PROJECT_NAME}>
+            -P ${CMAKE_SOURCE_DIR}/cmake/BundleWfbDylibs.cmake
+        VERBATIM)
+endif()
+
 add_subdirectory(src)
 if(QGC_BUILD_TESTING)
     add_subdirectory(test)

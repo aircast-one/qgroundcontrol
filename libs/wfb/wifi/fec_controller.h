@@ -1,0 +1,73 @@
+#pragma once
+
+#include <chrono>
+#include <mutex>
+
+class FecController {
+public:
+    /// Query the current (possibly decayed) fec_change value.
+    /// Call this as often as you like; the class handles its own timing.
+    int value() {
+        if (!enabled_) {
+            return 0;
+        }
+
+        std::lock_guard lock(mutex_);
+        decayLocked_();
+        return val_;
+    }
+
+    /// Raise fec_change. If newValue <= current, the call is ignored.
+    /// A successful bump resets the 5-second "hold" timer.
+    void bump(const int newValue) {
+        std::lock_guard lock(mutex_);
+        if (newValue > val_) {
+            val_ = newValue;
+            lastChange_ = Clock::now();
+        }
+    }
+
+    void setEnabled(const bool use) {
+        enabled_ = use;
+    }
+
+private:
+    using Clock = std::chrono::steady_clock;
+    static constexpr std::chrono::seconds kTick{1}; // length of one hold/decay window
+
+    void decayLocked_() {
+        if (val_ == 0) {
+            return;
+        }
+
+        const auto now = Clock::now();
+        const auto elapsed = now - lastChange_;
+
+        // Still inside the mandatory 5-second hold? Do nothing.
+        if (elapsed < kTick) {
+            return;
+        }
+
+        // How many *full* ticks have passed since lastChange_?
+        const auto ticks = std::chrono::duration_cast<std::chrono::seconds>(elapsed).count() / kTick.count();
+        if (ticks == 0) {
+            return; // safety net (shouldn't hit)
+        }
+
+        int decayed = val_ - static_cast<int>(ticks);
+        if (decayed < 0) {
+            decayed = 0;
+        }
+
+        // Commit the decay and anchor lastChange_ on the most recent tick boundary
+        if (decayed != val_) {
+            val_ = decayed;
+            lastChange_ += kTick * ticks;
+        }
+    }
+
+    int val_{0};
+    Clock::time_point lastChange_{Clock::now()};
+    std::mutex mutex_;
+    bool enabled_ = false;
+};

@@ -10,6 +10,7 @@
 #include "SettingsManager.h"
 #include "QGCLoggingCategory.h"
 #include "ADSBVehicleManagerSettings.h"
+#include "PacketRadioSettings.h"
 #ifndef QGC_NO_ARDUPILOT_DIALECT
 #include "APMMavlinkStreamRateSettings.h"
 #endif
@@ -68,6 +69,7 @@ void SettingsManager::init()
     _unitsSettings = new UnitsSettings(this); // Must be first since AppSettings references it
 
     _adsbVehicleManagerSettings = new ADSBVehicleManagerSettings(this);
+    _packetRadioSettings = new PacketRadioSettings(this);
 #ifndef QGC_NO_ARDUPILOT_DIALECT
     _apmMavlinkStreamRateSettings = new APMMavlinkStreamRateSettings(this);
 #endif
@@ -94,6 +96,7 @@ void SettingsManager::init()
 }
 
 ADSBVehicleManagerSettings *SettingsManager::adsbVehicleManagerSettings() const { return _adsbVehicleManagerSettings; }
+PacketRadioSettings *SettingsManager::packetRadioSettings() const { return _packetRadioSettings; }
 #ifndef QGC_NO_ARDUPILOT_DIALECT
 APMMavlinkStreamRateSettings *SettingsManager::apmMavlinkStreamRateSettings() const { return _apmMavlinkStreamRateSettings; }
 #endif

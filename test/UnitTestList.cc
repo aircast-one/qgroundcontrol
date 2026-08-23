@@ -13,6 +13,9 @@
 
 // ADSB
 #include "ADSBTest.h"
+#ifdef QGC_WFB_ENABLED
+#include "PacketRadioTest.h"
+#endif
 
 // AnalyzeView
 #include "ExifParserTest.h"
@@ -132,6 +135,9 @@ int runTests(bool stress, QStringView unitTestOptions)
 {
     // ADSB
     UT_REGISTER_TEST(ADSBTest)
+#ifdef QGC_WFB_ENABLED
+    UT_REGISTER_TEST(PacketRadioTest)
+#endif
 
     // AnalyzeView
     UT_REGISTER_TEST(ExifParserTest)
