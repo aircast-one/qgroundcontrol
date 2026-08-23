@@ -87,6 +87,7 @@ private:
     void _restoreVideoSettings();
     void _setStatus(Status status);
     void _updateAdapters(const std::vector<DeviceId> &devices);
+    static std::vector<DeviceId> _enumerate();
     QString _resolveKeyPath();
 
     std::unique_ptr<WfbngLink> _link;
@@ -97,6 +98,7 @@ private:
 
     Status _status = Disabled;
     QString _adapterName;
+    QString _startError;
     QStringList _adapters;
     QVariantList _antennaRssi;
     QVariantList _antennaSnr;

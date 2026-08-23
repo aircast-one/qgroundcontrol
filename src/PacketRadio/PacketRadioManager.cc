@@ -20,6 +20,7 @@
 #include <QtCore/QStandardPaths>
 
 #include <algorithm>
+#include <exception>
 
 QGC_LOGGING_CATEGORY(PacketRadioManagerLog, "qgc.packetradio.manager")
 
@@ -140,7 +141,9 @@ QString PacketRadioManager::statusText() const
     case NoAdapter:
         return tr("No supported Wi-Fi adapter found");
     case AdapterUnavailable:
-        return tr("%1 found but cannot be opened — is another app using it?").arg(_adapterName);
+        return _startError.isEmpty()
+                   ? tr("%1 found but cannot be opened — is another app using it?").arg(_adapterName)
+                   : tr("%1 cannot be started: %2").arg(_adapterName, _startError);
     case InvalidKey:
         return tr("Key file cannot be read — check the path in Radio settings");
     case Listening:
@@ -165,9 +168,19 @@ void PacketRadioManager::_updateAdapters(const std::vector<DeviceId> &devices)
     }
 }
 
+std::vector<DeviceId> PacketRadioManager::_enumerate()
+{
+    try {
+        return WfbngLink::get_device_list();
+    } catch (const std::exception &error) {
+        qCWarning(PacketRadioManagerLog) << "USB enumeration failed:" << error.what();
+        return {};
+    }
+}
+
 void PacketRadioManager::refreshAdapters()
 {
-    _updateAdapters(WfbngLink::get_device_list());
+    _updateAdapters(_enumerate());
 }
 
 void PacketRadioManager::_setStatus(Status status)
@@ -215,7 +228,7 @@ void PacketRadioManager::_tryStart()
         return;
     }
 
-    const std::vector<DeviceId> devices = WfbngLink::get_device_list();
+    const std::vector<DeviceId> devices = _enumerate();
     _updateAdapters(devices);
 
     PacketRadioSettings *settings = SettingsManager::instance()->packetRadioSettings();
@@ -239,8 +252,16 @@ void PacketRadioManager::_tryStart()
     const uint8_t channel = static_cast<uint8_t>(settings->channel()->rawValue().toUInt());
     const int channelWidth = settings->channelWidth()->rawValue().toInt();
 
-    _link = std::make_unique<WfbngLink>();
-    if (!_link->start(*device, channel, channelWidth, keyPath.toStdString())) {
+    _startError.clear();
+    bool started = false;
+    try {
+        _link = std::make_unique<WfbngLink>();
+        started = _link->start(*device, channel, channelWidth, keyPath.toStdString());
+    } catch (const std::exception &error) {
+        _startError = QString::fromUtf8(error.what());
+        started = false;
+    }
+    if (!started) {
         _link.reset();
         _setStatus(AdapterUnavailable);
         _retryTimer.start();
@@ -262,7 +283,11 @@ void PacketRadioManager::_releaseLink()
     _retryTimer.stop();
     _pollTimer.stop();
     if (_link) {
-        _link->stop();
+        try {
+            _link->stop();
+        } catch (const std::exception &error) {
+            qCWarning(PacketRadioManagerLog) << "Error stopping wfb receiver:" << error.what();
+        }
         _link.reset();
     }
     _running = false;
@@ -272,6 +297,7 @@ void PacketRadioManager::_stop()
 {
     _releaseLink();
     _adapterName.clear();
+    _startError.clear();
     _antennaRssi.clear();
     _antennaSnr.clear();
     _haveSignal = false;

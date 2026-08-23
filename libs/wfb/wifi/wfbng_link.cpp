@@ -426,7 +426,13 @@ bool WfbngLink::start(const DeviceId &deviceId, uint8_t channel, int channelWidt
             if (!usb_tx_thread) {
                 init_thread(usb_tx_thread, [&]() {
                     return std::make_unique<std::thread>([this, args] {
-                        tx_frame->run(rtlDevice.get(), args.get());
+                        try {
+                            tx_frame->run(rtlDevice.get(), args.get());
+                        } catch (const std::exception &error) {
+                            GuiInterface::Instance().PutLog(LogLevel::Error,
+                                                            std::string("USB TX thread stopped: ") + error.what());
+                            return;
+                        }
                         GuiInterface::Instance().PutLog(LogLevel::Info, "USB TX thread should stop");
                     });
                 });
