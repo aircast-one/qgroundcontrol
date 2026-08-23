@@ -154,7 +154,18 @@ jobs:
           GST_VERSION=1.22.12
           TARBALL="gstreamer-1.0-android-universal-${GST_VERSION}.tar.xz"
           URL="https://gstreamer.freedesktop.org/data/pkg/android/${GST_VERSION}/${TARBALL}"
-          expected=$(curl -fsSLI "$URL" | tr -d '\r' | awk 'tolower($1)=="content-length:"{print $2}' | tail -1)
+          probe_size() {
+            local i len
+            for i in $(seq 1 20); do
+              len=$(curl -fsSLI --max-time 60 "$1" 2>/dev/null | tr -d '\r' \
+                    | awk 'tolower($1)=="content-length:"{print $2}' | tail -1) || len=""
+              if [ -n "$len" ]; then echo "$len"; return 0; fi
+              sleep 15
+            done
+            echo "::error::could not read Content-Length for $1" >&2
+            return 1
+          }
+          expected=$(probe_size "$URL")
           for attempt in $(seq 1 40); do
             size=$([ -f "$TARBALL" ] && stat -c%s "$TARBALL" || echo 0)
             if [ -n "$expected" ] && [ "$size" -eq "$expected" ]; then break; fi
@@ -263,9 +274,20 @@ jobs:
           mkdir -p "$PKG_DIR"
           # The freedesktop CDN drops connections mid-transfer, so resume until the
           # file matches the advertised Content-Length instead of failing the build.
+          probe_size() {
+            local i len
+            for i in $(seq 1 20); do
+              len=$(curl -fsSLI --max-time 60 "$1" 2>/dev/null | tr -d '\r' \
+                    | awk 'tolower($1)=="content-length:"{print $2}' | tail -1) || len=""
+              if [ -n "$len" ]; then echo "$len"; return 0; fi
+              sleep 15
+            done
+            echo "::error::could not read Content-Length for $1" >&2
+            return 1
+          }
           download_resumable() {
             local url="$1" dest="$2" expected attempt size
-            expected=$(curl -fsSLI "$url" | tr -d '\r' | awk 'tolower($1)=="content-length:"{print $2}' | tail -1)
+            expected=$(probe_size "$url")
             for attempt in $(seq 1 40); do
               size=$([ -f "$dest" ] && stat -f%z "$dest" || echo 0)
               if [ -n "$expected" ] && [ "$size" -eq "$expected" ]; then
@@ -439,8 +461,19 @@ jobs:
         run: |
           set -euo pipefail
           GST_URL="https://gstreamer.freedesktop.org/data/pkg/windows/${GST_VERSION}/msvc"
+          probe_size() {
+            local i len
+            for i in $(seq 1 20); do
+              len=$(curl -fsSLI --max-time 60 "$1" 2>/dev/null | tr -d '\r' \
+                    | awk 'tolower($1)=="content-length:"{print $2}' | tail -1) || len=""
+              if [ -n "$len" ]; then echo "$len"; return 0; fi
+              sleep 15
+            done
+            echo "::error::could not read Content-Length for $1" >&2
+            return 1
+          }
           for msi in "gstreamer-1.0-msvc-x86_64-${GST_VERSION}.msi" "gstreamer-1.0-devel-msvc-x86_64-${GST_VERSION}.msi"; do
-            expected=$(curl -fsSLI "$GST_URL/$msi" | tr -d '\r' | awk 'tolower($1)=="content-length:"{print $2}' | tail -1)
+            expected=$(probe_size "$GST_URL/$msi")
             for attempt in $(seq 1 40); do
               size=$([ -f "$msi" ] && stat -c%s "$msi" || echo 0)
               if [ -n "$expected" ] && [ "$size" -eq "$expected" ]; then break; fi
