@@ -758,8 +758,8 @@ void WfbngLink::handle_80211_frame(const Packet &packet) {
         const auto quality = signal_quality_calculator->calculate_signal_quality();
         link_score_[0] = quality.link_score[0];
         link_score_[1] = quality.link_score[1];
-        rssi_dbm_[0] = quality.rssi[0];
-        rssi_dbm_[1] = quality.rssi[1];
+        rssi_level_[0] = quality.rssi[0];
+        rssi_level_[1] = quality.rssi[1];
         snr_db_[0] = quality.snr[0];
         snr_db_[1] = quality.snr[1];
         packets_lost_ = quality.lost_last_second;
@@ -793,8 +793,8 @@ std::array<int, ANTENNA_COUNT> WfbngLink::get_link_score() const {
     return link_score_;
 }
 
-std::array<int, ANTENNA_COUNT> WfbngLink::get_rssi_dbm() const {
-    return rssi_dbm_;
+std::array<int, ANTENNA_COUNT> WfbngLink::get_rssi_level() const {
+    return rssi_level_;
 }
 
 std::array<int, ANTENNA_COUNT> WfbngLink::get_snr_db() const {

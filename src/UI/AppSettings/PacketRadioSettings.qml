@@ -44,8 +44,8 @@ SettingsPage {
 
         LabelledLabel {
             Layout.fillWidth:   true
-            label:              qsTr("Signal per antenna")
-            labelText:          _radio && _radio.haveSignal ? _radio.antennaRssi.join("  |  ") + qsTr(" dBm") : qsTr("waiting")
+            label:              qsTr("Signal per antenna (0-126)")
+            labelText:          _radio && _radio.haveSignal ? _radio.antennaRssi.join("  |  ") : qsTr("waiting")
         }
 
         LabelledLabel {

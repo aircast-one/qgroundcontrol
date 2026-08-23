@@ -288,7 +288,7 @@ void PacketRadioManager::_poll()
         return;
     }
 
-    const std::array<int, ANTENNA_COUNT> rssi = _link->get_rssi_dbm();
+    const std::array<int, ANTENNA_COUNT> rssi = _link->get_rssi_level();
     const std::array<int, ANTENNA_COUNT> snr = _link->get_snr_db();
     const std::array<int, ANTENNA_COUNT> scores = _link->get_link_score();
 

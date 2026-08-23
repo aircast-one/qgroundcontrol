@@ -80,7 +80,7 @@ public:
 
     std::array<int, ANTENNA_COUNT> get_link_score() const;
 
-    std::array<int, ANTENNA_COUNT> get_rssi_dbm() const;
+    std::array<int, ANTENNA_COUNT> get_rssi_level() const;
 
     std::array<int, ANTENNA_COUNT> get_snr_db() const;
 
@@ -111,7 +111,7 @@ protected:
 
     std::shared_ptr<SignalQualityCalculator> signal_quality_calculator;
     std::array<int, ANTENNA_COUNT> link_score_ = {};
-    std::array<int, ANTENNA_COUNT> rssi_dbm_ = {};
+    std::array<int, ANTENNA_COUNT> rssi_level_ = {};
     std::array<int, ANTENNA_COUNT> snr_db_ = {};
     int packets_lost_ = 0;                           // Number over the last second
 
