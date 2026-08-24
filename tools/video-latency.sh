@@ -1,11 +1,12 @@
 #!/usr/bin/env bash
-# Per-element video latency for a running stream, ranked worst first.
+# Video latency for a running stream: source-to-sink total, then per element.
 #
 #   tools/video-latency.sh [seconds] [path-to-AircastQGC]
 #
-# Runs the app under GStreamer's latency tracer, then reports mean/median/max
-# time each element holds a buffer. The decoder and any queue that buffers for
-# playback rather than for a live link show up at the top.
+# Runs the app under GStreamer's latency tracer. The headline number is how long
+# a buffer takes from the source pad to the sink - everything QGC controls once
+# the packet arrives. Camera encode and radio time are upstream of this and are
+# not included. The per-element table shows where that time goes.
 set -euo pipefail
 
 SECONDS_TO_SAMPLE="${1:-40}"
@@ -27,30 +28,52 @@ sleep "$SECONDS_TO_SAMPLE"
 kill -9 "$APP_PID" 2>/dev/null || true
 
 python3 - "$TRACE" <<'PY'
-import collections, re, sys
+import collections, re, statistics, sys
 
-samples = collections.defaultdict(list)
-pattern = re.compile(r'element=\(string\)([^,]+), src=\(string\)([^,]+), time=\(guint64\)(\d+)')
+pipeline = collections.defaultdict(list)
+elements = collections.defaultdict(list)
+
+pipeline_pattern = re.compile(
+    r'latency, src-element-id=\(string\)[^,]+, src-element=\(string\)([^,]+),'
+    r'.*?sink-element=\(string\)([^,]+),.*?time=\(guint64\)(\d+)')
+element_pattern = re.compile(
+    r'latency, element-id=\(string\)[^,]+, element=\(string\)([^,]+),'
+    r' src=\(string\)[^,]+, time=\(guint64\)(\d+)')
+
 for line in open(sys.argv[1], errors='ignore'):
-    found = pattern.search(line)
+    found = pipeline_pattern.search(line)
     if found:
-        samples[found.group(1)].append(int(found.group(3)))
+        pipeline[f"{found.group(1)} -> {found.group(2)}"].append(int(found.group(3)))
+        continue
+    found = element_pattern.search(line)
+    if found:
+        elements[found.group(1)].append(int(found.group(2)))
 
-if not samples:
+if not pipeline and not elements:
     print("no tracer samples - was video actually playing?")
     raise SystemExit(1)
 
-rows = []
-for element, values in samples.items():
-    values.sort()
-    rows.append((sum(values) / len(values) / 1e6, values[len(values) // 2] / 1e6,
-                 values[-1] / 1e6, len(values), element))
-rows.sort(reverse=True)
+def summarise(values):
+    values = sorted(values)
+    return (statistics.median(values) / 1e6,
+            sum(values) / len(values) / 1e6,
+            values[int(len(values) * 0.95)] / 1e6 if len(values) > 20 else values[-1] / 1e6,
+            len(values))
 
-print(f"{'element':<24}{'mean ms':>9}{'median':>9}{'max ms':>10}{'samples':>9}")
-for mean, median, worst, count, element in rows[:15]:
-    print(f"{element:<24}{mean:>9.2f}{median:>9.2f}{worst:>10.2f}{count:>9}")
-print(f"\ntotal pipeline mean: {sum(r[0] for r in rows):.1f} ms")
+if pipeline:
+    print("SOURCE TO SINK (what QGC adds after the packet arrives)")
+    print(f"{'path':<44}{'median':>9}{'mean':>9}{'p95':>9}{'samples':>9}")
+    for path, values in sorted(pipeline.items(), key=lambda kv: -statistics.median(kv[1])):
+        median, mean, p95, count = summarise(values)
+        print(f"{path:<44}{median:>9.1f}{mean:>9.1f}{p95:>9.1f}{count:>9}")
+    print()
+
+print("PER ELEMENT")
+print(f"{'element':<28}{'median':>9}{'mean':>9}{'p95':>9}{'samples':>9}")
+ranked = sorted(elements.items(), key=lambda kv: -statistics.median(kv[1]))
+for element, values in ranked[:12]:
+    median, mean, p95, count = summarise(values)
+    print(f"{element:<28}{median:>9.2f}{mean:>9.2f}{p95:>9.2f}{count:>9}")
 PY
 
 rm -f "$TRACE"
