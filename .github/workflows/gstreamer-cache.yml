@@ -1,0 +1,126 @@
+name: Warm GStreamer Cache
+
+# Release runs are triggered by tag pushes, and an Actions cache is only
+# restorable from the ref that created it or from the default branch. Caches
+# saved by a tagged release run are therefore useless to the next tag, so every
+# release re-downloaded GStreamer and a freedesktop CDN outage took the release
+# with it. This workflow populates the same cache keys from main, where every
+# tag run can reach them.
+
+on:
+  schedule:
+    - cron: "0 4 * * 1"
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - ".github/workflows/gstreamer-cache.yml"
+      - ".github/workflows/aircast-release.yml"
+
+jobs:
+  macos:
+    runs-on: macos-latest
+    env:
+      GST_VERSION: 1.24.13
+    steps:
+      - name: Cache GStreamer installers
+        id: cache
+        uses: actions/cache@v4
+        with:
+          path: ${{ runner.temp }}/gst-pkgs
+          key: gstreamer-macos-pkgs-1.24.13
+
+      - name: Download installers
+        if: steps.cache.outputs.cache-hit != 'true'
+        uses: nick-fields/retry@v4
+        with:
+          timeout_minutes: 30
+          max_attempts: 10
+          retry_wait_seconds: 60
+          shell: bash
+          command: |
+            set -euo pipefail
+            PKG_DIR="${RUNNER_TEMP}/gst-pkgs"
+            mkdir -p "$PKG_DIR"
+            for pkg in "gstreamer-1.0-${GST_VERSION}-universal.pkg" "gstreamer-1.0-devel-${GST_VERSION}-universal.pkg"; do
+              url="https://gstreamer.freedesktop.org/data/pkg/osx/${GST_VERSION}/${pkg}"
+              expected=$(curl -fsSLI --max-time 60 "$url" | tr -d '\r' \
+                         | awk 'tolower($1)=="content-length:"{print $2}' | tail -1)
+              # -C - resumes, so each retry picks up where the dropped one stopped.
+              curl -fsSL -C - --max-time 900 -o "$PKG_DIR/$pkg" "$url" || true
+              [ "$(stat -f%z "$PKG_DIR/$pkg")" -eq "$expected" ]
+            done
+
+  windows:
+    runs-on: windows-latest
+    env:
+      GST_VERSION: 1.22.12
+    steps:
+      - name: Cache GStreamer
+        id: cache
+        uses: actions/cache@v4
+        with:
+          path: C:\gstreamer
+          key: gstreamer-1.22.12-windows-msvc
+
+      - name: Download installers
+        if: steps.cache.outputs.cache-hit != 'true'
+        uses: nick-fields/retry@v4
+        with:
+          timeout_minutes: 30
+          max_attempts: 10
+          retry_wait_seconds: 60
+          shell: bash
+          command: |
+            set -euo pipefail
+            cd "$RUNNER_TEMP"
+            for msi in "gstreamer-1.0-msvc-x86_64-${GST_VERSION}.msi" "gstreamer-1.0-devel-msvc-x86_64-${GST_VERSION}.msi"; do
+              url="https://gstreamer.freedesktop.org/data/pkg/windows/${GST_VERSION}/msvc/${msi}"
+              expected=$(curl -fsSLI --max-time 60 "$url" | tr -d '\r' \
+                         | awk 'tolower($1)=="content-length:"{print $2}' | tail -1)
+              curl -fsSL -C - --max-time 900 -o "$msi" "$url" || true
+              [ "$(stat -c%s "$msi")" -eq "$expected" ]
+            done
+
+      - name: Install into the cached location
+        if: steps.cache.outputs.cache-hit != 'true'
+        shell: pwsh
+        working-directory: ${{ runner.temp }}
+        run: |
+          foreach ($msi in @("gstreamer-1.0-msvc-x86_64-$env:GST_VERSION.msi",
+                             "gstreamer-1.0-devel-msvc-x86_64-$env:GST_VERSION.msi")) {
+            $p = Start-Process msiexec -ArgumentList "/i","$(Resolve-Path $msi)","/quiet","/qn" -Wait -PassThru -NoNewWindow
+            if ($p.ExitCode -ne 0) { throw "msiexec failed for $msi with exit code $($p.ExitCode)" }
+          }
+          if (-not (Test-Path "C:\gstreamer\1.0\msvc_x86_64")) { throw "GStreamer not installed" }
+
+  android:
+    runs-on: ubuntu-latest
+    env:
+      GST_VERSION: 1.22.12
+    steps:
+      - name: Cache GStreamer tarball
+        id: cache
+        uses: actions/cache@v4
+        with:
+          path: ${{ runner.temp }}/gst-android
+          key: gstreamer-android-1.22.12
+
+      - name: Download tarball
+        if: steps.cache.outputs.cache-hit != 'true'
+        uses: nick-fields/retry@v4
+        with:
+          timeout_minutes: 30
+          max_attempts: 10
+          retry_wait_seconds: 60
+          shell: bash
+          command: |
+            set -euo pipefail
+            mkdir -p "${RUNNER_TEMP}/gst-android"
+            cd "${RUNNER_TEMP}/gst-android"
+            tarball="gstreamer-1.0-android-universal-${GST_VERSION}.tar.xz"
+            url="https://gstreamer.freedesktop.org/data/pkg/android/${GST_VERSION}/${tarball}"
+            expected=$(curl -fsSLI --max-time 60 "$url" | tr -d '\r' \
+                       | awk 'tolower($1)=="content-length:"{print $2}' | tail -1)
+            curl -fsSL -C - --max-time 900 -o "$tarball" "$url" || true
+            [ "$(stat -c%s "$tarball")" -eq "$expected" ]

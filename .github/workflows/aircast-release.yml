@@ -145,37 +145,42 @@ jobs:
           fi
 
       # CPMAddPackage downloads this during configure with no retry, so one dropped
-      # connection on the freedesktop CDN fails the build. Fetch it up front, resuming
-      # until complete, and hand CPM the extracted tree via CPM_gstreamer_SOURCE.
+      # connection on the freedesktop CDN fails the build. Take it from the cache
+      # warmed on main, and hand CPM the extracted tree via CPM_gstreamer_SOURCE.
+      - name: Cache GStreamer tarball
+        uses: actions/cache@v4
+        with:
+          path: ${{ runner.temp }}/gst-android
+          key: gstreamer-android-1.22.12
+
       - name: Prefetch GStreamer for Android
+        uses: nick-fields/retry@v4
+        with:
+          timeout_minutes: 30
+          max_attempts: 10
+          retry_wait_seconds: 60
+          shell: bash
+          command: |
+            set -euo pipefail
+            GST_VERSION=1.22.12
+            DIR="${RUNNER_TEMP}/gst-android"
+            mkdir -p "$DIR"
+            cd "$DIR"
+            TARBALL="gstreamer-1.0-android-universal-${GST_VERSION}.tar.xz"
+            URL="https://gstreamer.freedesktop.org/data/pkg/android/${GST_VERSION}/${TARBALL}"
+            if [ ! -f "$TARBALL" ]; then
+              expected=$(curl -fsSLI --max-time 60 "$URL" | tr -d '\r' \
+                         | awk 'tolower($1)=="content-length:"{print $2}' | tail -1)
+              curl -fsSL -C - --max-time 900 -o "$TARBALL" "$URL" || true
+              [ "$(stat -c%s "$TARBALL")" -eq "$expected" ]
+            fi
+
+      - name: Extract GStreamer for Android
         working-directory: ${{ runner.temp }}
         run: |
           set -euo pipefail
-          GST_VERSION=1.22.12
-          TARBALL="gstreamer-1.0-android-universal-${GST_VERSION}.tar.xz"
-          URL="https://gstreamer.freedesktop.org/data/pkg/android/${GST_VERSION}/${TARBALL}"
-          probe_size() {
-            local i len
-            for i in $(seq 1 20); do
-              len=$(curl -fsSLI --max-time 60 "$1" 2>/dev/null | tr -d '\r' \
-                    | awk 'tolower($1)=="content-length:"{print $2}' | tail -1) || len=""
-              if [ -n "$len" ]; then echo "$len"; return 0; fi
-              sleep 15
-            done
-            echo "::error::could not read Content-Length for $1" >&2
-            return 1
-          }
-          expected=$(probe_size "$URL")
-          for attempt in $(seq 1 40); do
-            size=$([ -f "$TARBALL" ] && stat -c%s "$TARBALL" || echo 0)
-            if [ -n "$expected" ] && [ "$size" -eq "$expected" ]; then break; fi
-            echo "  attempt $attempt: $size/${expected:-?} bytes"
-            curl -sS -C - --retry 5 --retry-all-errors --retry-delay 5 \
-                 --max-time 900 -o "$TARBALL" "$URL" || true
-          done
-          [ "$(stat -c%s "$TARBALL")" -eq "$expected" ] || { echo "::error::incomplete $TARBALL"; exit 1; }
           mkdir -p gstreamer-android
-          tar -xf "$TARBALL" -C gstreamer-android
+          tar -xf gst-android/gstreamer-1.0-android-universal-1.22.12.tar.xz -C gstreamer-android
           # FindGStreamer.cmake expects the per-ABI dirs directly under the source dir,
           # so normalise whether or not the archive has a top-level wrapper directory.
           arch_dir=$(find gstreamer-android -maxdepth 2 -type d -name arm64 | head -1)
@@ -265,50 +270,32 @@ jobs:
       - name: Install GStreamer
         # Explicit absolute paths instead of tools/setup/install-dependencies-osx.sh,
         # whose `pushd $TMPDIR` + relative installer path leaves the .pkg unfound.
-        run: |
-          set -euo pipefail
-          # Must match GST_MACOS_PLUGINS_VERSION default in gstqml6gl/CMakeLists.txt.
-          GST_VERSION=1.24.13
-          GST_URL="https://gstreamer.freedesktop.org/data/pkg/osx/${GST_VERSION}"
-          PKG_DIR="${RUNNER_TEMP}/gst-pkgs"
-          mkdir -p "$PKG_DIR"
-          # The freedesktop CDN drops connections mid-transfer, so resume until the
-          # file matches the advertised Content-Length instead of failing the build.
-          probe_size() {
-            local i len
-            for i in $(seq 1 20); do
-              len=$(curl -fsSLI --max-time 60 "$1" 2>/dev/null | tr -d '\r' \
-                    | awk 'tolower($1)=="content-length:"{print $2}' | tail -1) || len=""
-              if [ -n "$len" ]; then echo "$len"; return 0; fi
-              sleep 15
-            done
-            echo "::error::could not read Content-Length for $1" >&2
-            return 1
-          }
-          download_resumable() {
-            local url="$1" dest="$2" expected attempt size
-            expected=$(probe_size "$url")
-            for attempt in $(seq 1 40); do
-              size=$([ -f "$dest" ] && stat -f%z "$dest" || echo 0)
-              if [ -n "$expected" ] && [ "$size" -eq "$expected" ]; then
-                return 0
+        # The freedesktop CDN drops connections mid-transfer, so retry the whole
+        # step and resume with -C - rather than failing a 40 minute build.
+        uses: nick-fields/retry@v4
+        with:
+          timeout_minutes: 30
+          max_attempts: 10
+          retry_wait_seconds: 60
+          shell: bash
+          command: |
+            set -euo pipefail
+            # Must match GST_MACOS_PLUGINS_VERSION default in gstqml6gl/CMakeLists.txt.
+            GST_VERSION=1.24.13
+            GST_URL="https://gstreamer.freedesktop.org/data/pkg/osx/${GST_VERSION}"
+            PKG_DIR="${RUNNER_TEMP}/gst-pkgs"
+            mkdir -p "$PKG_DIR"
+            for pkg in "gstreamer-1.0-${GST_VERSION}-universal.pkg" "gstreamer-1.0-devel-${GST_VERSION}-universal.pkg"; do
+              if [ ! -f "$PKG_DIR/$pkg" ]; then
+                expected=$(curl -fsSLI --max-time 60 "$GST_URL/$pkg" | tr -d '\r' \
+                           | awk 'tolower($1)=="content-length:"{print $2}' | tail -1)
+                curl -fsSL -C - --max-time 900 -o "$PKG_DIR/$pkg" "$GST_URL/$pkg" || true
+                [ "$(stat -f%z "$PKG_DIR/$pkg")" -eq "$expected" ]
               fi
-              echo "  attempt $attempt: $size/${expected:-?} bytes"
-              curl -sS -C - --retry 5 --retry-all-errors --retry-delay 5 \
-                   --max-time 600 -o "$dest" "$url" || true
+              sudo installer -pkg "$PKG_DIR/$pkg" -target /
             done
-            echo "::error::could not download $url"
-            return 1
-          }
-          for pkg in "gstreamer-1.0-${GST_VERSION}-universal.pkg" "gstreamer-1.0-devel-${GST_VERSION}-universal.pkg"; do
-            if [ ! -f "$PKG_DIR/$pkg" ]; then
-              echo "Downloading $pkg"
-              download_resumable "$GST_URL/$pkg" "$PKG_DIR/$pkg"
-            fi
-            sudo installer -pkg "$PKG_DIR/$pkg" -target /
-          done
-          test -d /Library/Frameworks/GStreamer.framework
-          echo "GStreamer.framework installed"
+            test -d /Library/Frameworks/GStreamer.framework
+            echo "GStreamer.framework installed"
 
       - name: Install Qt
         uses: jurplel/install-qt-action@v4
@@ -456,33 +443,24 @@ jobs:
       # freedesktop CDN fails the build. Resume until the MSIs are complete instead.
       - name: Download GStreamer
         if: steps.gst-cache.outputs.cache-hit != 'true'
-        shell: bash
-        working-directory: ${{ runner.temp }}
-        run: |
-          set -euo pipefail
-          GST_URL="https://gstreamer.freedesktop.org/data/pkg/windows/${GST_VERSION}/msvc"
-          probe_size() {
-            local i len
-            for i in $(seq 1 20); do
-              len=$(curl -fsSLI --max-time 60 "$1" 2>/dev/null | tr -d '\r' \
-                    | awk 'tolower($1)=="content-length:"{print $2}' | tail -1) || len=""
-              if [ -n "$len" ]; then echo "$len"; return 0; fi
-              sleep 15
+        uses: nick-fields/retry@v4
+        with:
+          timeout_minutes: 30
+          max_attempts: 10
+          retry_wait_seconds: 60
+          shell: bash
+          command: |
+            set -euo pipefail
+            cd "$RUNNER_TEMP"
+            GST_URL="https://gstreamer.freedesktop.org/data/pkg/windows/${GST_VERSION}/msvc"
+            for msi in "gstreamer-1.0-msvc-x86_64-${GST_VERSION}.msi" "gstreamer-1.0-devel-msvc-x86_64-${GST_VERSION}.msi"; do
+              [ -f "$msi" ] && continue
+              expected=$(curl -fsSLI --max-time 60 "$GST_URL/$msi" | tr -d '\r' \
+                         | awk 'tolower($1)=="content-length:"{print $2}' | tail -1)
+              # -C - resumes, so each retry continues the dropped transfer.
+              curl -fsSL -C - --max-time 900 -o "$msi" "$GST_URL/$msi" || true
+              [ "$(stat -c%s "$msi")" -eq "$expected" ]
             done
-            echo "::error::could not read Content-Length for $1" >&2
-            return 1
-          }
-          for msi in "gstreamer-1.0-msvc-x86_64-${GST_VERSION}.msi" "gstreamer-1.0-devel-msvc-x86_64-${GST_VERSION}.msi"; do
-            expected=$(probe_size "$GST_URL/$msi")
-            for attempt in $(seq 1 40); do
-              size=$([ -f "$msi" ] && stat -c%s "$msi" || echo 0)
-              if [ -n "$expected" ] && [ "$size" -eq "$expected" ]; then break; fi
-              echo "  $msi attempt $attempt: $size/${expected:-?} bytes"
-              curl -sS -C - --retry 5 --retry-all-errors --retry-delay 5 \
-                   --max-time 900 -o "$msi" "$GST_URL/$msi" || true
-            done
-            [ "$(stat -c%s "$msi")" -eq "$expected" ] || { echo "::error::incomplete $msi"; exit 1; }
-          done
 
       # msiexec verifies the embedded cabinet checksums, so a corrupt download fails here
       # rather than producing a half-installed SDK the build trips over later.
