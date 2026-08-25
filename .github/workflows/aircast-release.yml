@@ -471,7 +471,10 @@ jobs:
         run: |
           foreach ($msi in @("gstreamer-1.0-msvc-x86_64-$env:GST_VERSION.msi",
                              "gstreamer-1.0-devel-msvc-x86_64-$env:GST_VERSION.msi")) {
-            $p = Start-Process msiexec -ArgumentList "/i","$(Resolve-Path $msi)","/quiet","/qn" -Wait -PassThru -NoNewWindow
+            # ADDLOCAL=ALL is required: without it the MSI installs only its default
+            # feature set and leaves C:\gstreamer\1.0\msvc_x86_64 empty while still
+            # exiting 0. INSTALLDIR pins the location the cache and build expect.
+            $p = Start-Process msiexec -ArgumentList "/passive","INSTALLDIR=C:\gstreamer","ADDLOCAL=ALL","/i","$(Resolve-Path $msi)" -Wait -PassThru -NoNewWindow
             if ($p.ExitCode -ne 0) { throw "msiexec failed for $msi with exit code $($p.ExitCode)" }
           }
           if (-not (Test-Path "C:\gstreamer\1.0\msvc_x86_64")) { throw "GStreamer not installed" }
