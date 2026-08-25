@@ -153,9 +153,16 @@ if(NOT DEVOURER_SANITIZE STREQUAL "")
     message(STATUS "devourer: sanitizer build (${DEVOURER_SANITIZE})")
 endif()
 
-# Find pkg-config and then use it to locate libusb.
-find_package(PkgConfig REQUIRED)
-pkg_check_modules(libusb REQUIRED IMPORTED_TARGET libusb-1.0)
+# Find pkg-config and then use it to locate libusb. The embedder can supply its
+# own target instead (DEVOURER_LIBUSB_TARGET) when the system copy is unusable,
+# e.g. a macOS universal build against single-arch Homebrew dylibs.
+if(DEVOURER_LIBUSB_TARGET)
+    set(DEVOURER_LIBUSB "${DEVOURER_LIBUSB_TARGET}")
+else()
+    find_package(PkgConfig REQUIRED)
+    pkg_check_modules(libusb REQUIRED IMPORTED_TARGET GLOBAL libusb-1.0)
+    set(DEVOURER_LIBUSB PkgConfig::libusb)
+endif()
 
 add_library(devourer
     # --- generation-agnostic core (always compiled) ---
@@ -246,8 +253,8 @@ if(NOT DEVOURER_LOG_MAX_LEVEL STREQUAL "")
         DEVOURER_LOG_MAX_LEVEL=DEVOURER_LL_${DEVOURER_LOG_MAX_LEVEL})
 endif()
 
-# Link devourer with libusb as found via pkg-config.
-target_link_libraries(devourer PUBLIC PkgConfig::libusb)
+# Link devourer with libusb as resolved above.
+target_link_libraries(devourer PUBLIC ${DEVOURER_LIBUSB})
 
 # Android (Termux / NDK): the diagnostics plane routes to logcat via
 # __android_log_write (src/logger.h), which lives in the system `log` library.
