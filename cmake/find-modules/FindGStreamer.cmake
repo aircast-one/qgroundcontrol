@@ -40,17 +40,36 @@ set(PKG_CONFIG_ARGN)
 
 if(WIN32)
     if(NOT DEFINED GStreamer_ROOT_DIR)
-        if(DEFINED ENV{GSTREAMER_1_0_ROOT_X86_64} AND EXISTS "$ENV{GSTREAMER_1_0_ROOT_X86_64}")
-            set(GStreamer_ROOT_DIR "$ENV{GSTREAMER_1_0_ROOT_X86_64}")
-        elseif(MSVC AND DEFINED ENV{GSTREAMER_1_0_ROOT_MSVC_X86_64} AND EXISTS "$ENV{GSTREAMER_1_0_ROOT_MSVC_X86_64}")
-            set(GStreamer_ROOT_DIR "$ENV{GSTREAMER_1_0_ROOT_MSVC_X86_64}")
-        elseif(MINGW AND DEFINED ENV{GSTREAMER_1_0_ROOT_MINGW_X86_64} AND EXISTS "$ENV{GSTREAMER_1_0_ROOT_MINGW_X86_64}")
-            set(GStreamer_ROOT_DIR "$ENV{GSTREAMER_1_0_ROOT_MINGW_X86_64}")
-        elseif(EXISTS "C:/Program Files/gstreamer/1.0/msvc_x86_64")
-            set(GStreamer_ROOT_DIR "C:/Program Files/gstreamer/1.0/msvc_x86_64")
-        elseif(EXISTS "C:/gstreamer/1.0/msvc_x86_64")
-            set(GStreamer_ROOT_DIR "C:/gstreamer/1.0/msvc_x86_64")
+        # Windows on ARM needs the arm64 packages, which GStreamer ships from 1.28.
+        if(CMAKE_SYSTEM_PROCESSOR MATCHES "^([Aa][Rr][Mm]64|aarch64|AARCH64)$")
+            set(_gst_arch arm64)
+            set(_gst_arch_env ARM64)
+        else()
+            set(_gst_arch x86_64)
+            set(_gst_arch_env X86_64)
         endif()
+
+        set(_gst_candidates
+            "$ENV{GSTREAMER_1_0_ROOT_${_gst_arch_env}}"
+            "$ENV{GSTREAMER_1_0_ROOT_MSVC_${_gst_arch_env}}"
+            "$ENV{GSTREAMER_1_0_ROOT_MINGW_${_gst_arch_env}}"
+            "C:/Program Files/gstreamer/1.0/msvc_${_gst_arch}"
+            "C:/gstreamer/1.0/msvc_${_gst_arch}"
+            # 1.28 dropped the 1.0/msvc_<arch> nesting and installs flat.
+            "C:/gstreamer"
+        )
+
+        foreach(_gst_candidate IN LISTS _gst_candidates)
+            if(_gst_candidate AND EXISTS "${_gst_candidate}/include")
+                set(GStreamer_ROOT_DIR "${_gst_candidate}")
+                break()
+            endif()
+        endforeach()
+
+        unset(_gst_arch)
+        unset(_gst_arch_env)
+        unset(_gst_candidates)
+        unset(_gst_candidate)
     endif()
 
     cmake_path(CONVERT "${GStreamer_ROOT_DIR}" TO_CMAKE_PATH_LIST GStreamer_ROOT_DIR NORMALIZE)

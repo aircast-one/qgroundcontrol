@@ -554,6 +554,135 @@ jobs:
           name: qgc-windows
           path: out/*.exe
 
+  # Windows on ARM. GStreamer only ships arm64 packages from 1.28, which also
+  # replaced the MSI pair with a single Inno Setup exe that installs flat rather
+  # than under 1.0/msvc_<arch>, so this cannot share the x64 job's install path.
+  # Non-blocking and outside `publish` until the platform has proven itself; the
+  # x64 release must not depend on it.
+  build-windows-arm64:
+    needs: setup
+    runs-on: windows-11-arm
+    timeout-minutes: 60
+    continue-on-error: true
+    env:
+      GST_VERSION: 1.28.6
+    steps:
+      - name: Checkout repo
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.setup.outputs.version }}
+          submodules: recursive
+          fetch-depth: 1
+          fetch-tags: false
+
+      - name: Get all tags for correct version determination
+        run: git fetch --all --tags -f --depth 1
+
+      - name: Initial Setup
+        uses: ./.github/actions/common
+
+      - name: Cache GStreamer
+        id: gst-cache
+        uses: actions/cache@v4
+        with:
+          path: C:\gstreamer
+          key: gstreamer-1.28.6-windows-arm64
+
+      - name: Download GStreamer
+        if: steps.gst-cache.outputs.cache-hit != 'true'
+        uses: nick-fields/retry@v4
+        with:
+          timeout_minutes: 30
+          max_attempts: 10
+          retry_wait_seconds: 60
+          shell: bash
+          command: |
+            set -euo pipefail
+            cd "$RUNNER_TEMP"
+            base="https://gstreamer.freedesktop.org/data/pkg/windows/${GST_VERSION}/msvc"
+            installer="gstreamer-1.0-msvc-arm64-${GST_VERSION}.exe"
+            if [ ! -f "$installer" ]; then
+              curl -fsSL -C - --max-time 900 -o "$installer" "$base/$installer"
+            fi
+            # 1.28 publishes checksums, so verify rather than trusting the transfer.
+            curl -fsSL --max-time 60 -o "$installer.sha256sum" "$base/$installer.sha256sum"
+            expected=$(awk '{print $1}' "$installer.sha256sum")
+            actual=$(sha256sum "$installer" | awk '{print $1}')
+            [ "$expected" = "$actual" ] || { echo "::error::checksum mismatch for $installer"; exit 1; }
+
+      - name: Install GStreamer
+        if: steps.gst-cache.outputs.cache-hit != 'true'
+        shell: pwsh
+        working-directory: ${{ runner.temp }}
+        run: |
+          $installer = "gstreamer-1.0-msvc-arm64-$env:GST_VERSION.exe"
+          $p = Start-Process -FilePath "$(Resolve-Path $installer)" `
+               -ArgumentList "/VERYSILENT","/SUPPRESSMSGBOXES","/NORESTART","/DIR=C:\gstreamer" `
+               -Wait -PassThru
+          if ($p.ExitCode -ne 0) { throw "GStreamer installer failed with exit code $($p.ExitCode)" }
+          if (-not (Test-Path "C:\gstreamer\include")) { throw "GStreamer headers missing after install" }
+
+      - name: Set GStreamer environment
+        shell: pwsh
+        run: |
+          echo "GSTREAMER_1_0_ROOT_MSVC_ARM64=C:\gstreamer" >> $env:GITHUB_ENV
+          echo "C:\gstreamer\bin" >> $env:GITHUB_PATH
+
+      - name: Install NSIS
+        run: choco install nsis -y
+        shell: pwsh
+
+      - name: Setup Caching
+        uses: ./.github/actions/cache
+        with:
+          host: windows
+          target: win64_msvc2022_arm64
+          build-type: Release
+          cpm-modules: ${{ runner.temp }}\shadow_build_dir\cpm_modules
+
+      - name: Install Qt for Windows (ARM64)
+        uses: jurplel/install-qt-action@v4
+        with:
+          version: ${{ env.QT_VERSION }}
+          host: windows_arm64
+          target: desktop
+          arch: win64_msvc2022_arm64
+          dir: ${{ runner.temp }}
+          modules: qtcharts qtlocation qtpositioning qtspeech qt5compat qtmultimedia qtserialport qtimageformats qtshadertools qtconnectivity qtquick3d qtsensors
+          cache: true
+
+      - name: Set up Visual Studio shell
+        uses: ilammy/msvc-dev-cmd@v1
+        with:
+          arch: arm64
+
+      - name: Configure
+        working-directory: ${{ runner.temp }}\shadow_build_dir
+        run: ${{ env.QT_ROOT_DIR }}/bin/qt-cmake -S ${{ github.workspace }} -B . -G Ninja
+              -DCMAKE_BUILD_TYPE=Release
+              -DQGC_STABLE_BUILD=ON
+
+      - name: Build
+        working-directory: ${{ runner.temp }}\shadow_build_dir
+        run: cmake --build . --target all --config Release
+
+      - name: Create installer
+        working-directory: ${{ runner.temp }}\shadow_build_dir
+        run: cmake --install . --config Release
+
+      - name: Collect installer
+        shell: pwsh
+        run: |
+          $V = "${{ needs.setup.outputs.version }}"
+          $SHORT = $V -replace '^aircast-',''
+          New-Item -ItemType Directory -Force -Path out | Out-Null
+          Copy-Item "${{ runner.temp }}\shadow_build_dir\AircastQGC-installer.exe" "out\AircastQGC-$SHORT-installer-arm64.exe"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: qgc-windows-arm64
+          path: out/*.exe
+
   build-linux:
     needs: setup
     # GitHub-hosted: free on public repos and parallel with everything else.

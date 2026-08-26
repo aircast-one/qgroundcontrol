@@ -97,6 +97,51 @@ jobs:
           }
           if (-not (Test-Path "C:\gstreamer\1.0\msvc_x86_64")) { throw "GStreamer not installed" }
 
+  windows-arm64:
+    runs-on: windows-11-arm
+    env:
+      GST_VERSION: 1.28.6
+    steps:
+      - name: Cache GStreamer
+        id: cache
+        uses: actions/cache@v4
+        with:
+          path: C:\gstreamer
+          key: gstreamer-1.28.6-windows-arm64
+
+      - name: Download installer
+        if: steps.cache.outputs.cache-hit != 'true'
+        uses: nick-fields/retry@v4
+        with:
+          timeout_minutes: 30
+          max_attempts: 10
+          retry_wait_seconds: 60
+          shell: bash
+          command: |
+            set -euo pipefail
+            cd "$RUNNER_TEMP"
+            base="https://gstreamer.freedesktop.org/data/pkg/windows/${GST_VERSION}/msvc"
+            installer="gstreamer-1.0-msvc-arm64-${GST_VERSION}.exe"
+            if [ ! -f "$installer" ]; then
+              curl -fsSL -C - --max-time 900 -o "$installer" "$base/$installer"
+            fi
+            curl -fsSL --max-time 60 -o "$installer.sha256sum" "$base/$installer.sha256sum"
+            expected=$(awk '{print $1}' "$installer.sha256sum")
+            actual=$(sha256sum "$installer" | awk '{print $1}')
+            [ "$expected" = "$actual" ] || { echo "::error::checksum mismatch for $installer"; exit 1; }
+
+      - name: Install into the cached location
+        if: steps.cache.outputs.cache-hit != 'true'
+        shell: pwsh
+        working-directory: ${{ runner.temp }}
+        run: |
+          $installer = "gstreamer-1.0-msvc-arm64-$env:GST_VERSION.exe"
+          $p = Start-Process -FilePath "$(Resolve-Path $installer)" `
+               -ArgumentList "/VERYSILENT","/SUPPRESSMSGBOXES","/NORESTART","/DIR=C:\gstreamer" `
+               -Wait -PassThru
+          if ($p.ExitCode -ne 0) { throw "GStreamer installer failed with exit code $($p.ExitCode)" }
+          if (-not (Test-Path "C:\gstreamer\include")) { throw "GStreamer headers missing after install" }
+
   android:
     runs-on: ubuntu-latest
     env:
