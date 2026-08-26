@@ -1,0 +1,31 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>glass-to-glass clock</title>
+<style>
+  html, body { margin: 0; height: 100%; background: #000; overflow: hidden; }
+  body { display: flex; flex-direction: column; justify-content: center; align-items: center; }
+  #ms {
+    font: 900 26vw/1 ui-monospace, "SF Mono", Menlo, monospace;
+    color: #fff;
+    letter-spacing: 0.02em;
+    font-variant-numeric: tabular-nums;
+  }
+  #bar { width: 92vw; height: 12vh; margin-top: 3vh; background: #111; position: relative; }
+  #fill { position: absolute; inset: 0 auto 0 0; background: #fff; }
+  #hint { position: fixed; top: 2vh; font: 500 2vh system-ui; color: #666; }
+</style>
+<div id="hint">point the camera at this screen &mdash; digits are milliseconds, wrapping every 10s</div>
+<div id="ms">0000</div>
+<div id="bar"><div id="fill"></div></div>
+<script>
+  const digits = document.getElementById('ms');
+  const fill = document.getElementById('fill');
+  const start = performance.now();
+  function tick(now) {
+    const elapsed = Math.floor(now - start) % 10000;
+    digits.textContent = String(elapsed).padStart(4, '0');
+    fill.style.width = (elapsed / 100) + '%';
+    requestAnimationFrame(tick);
+  }
+  requestAnimationFrame(tick);
+</script>
