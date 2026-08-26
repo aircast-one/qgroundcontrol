@@ -7,6 +7,7 @@ qt_add_qml_module(FlightDisplayModule
     QML_FILES
         CustomGuidedActionsController.qml
         DefaultChecklist.qml
+        DetectionOverlayVideo.qml
         FixedWingChecklist.qml
         FlightDisplayViewDummy.qml
         FlightDisplayViewGStreamer.qml

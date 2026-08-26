@@ -179,6 +179,15 @@ Item {
             property bool videoDisabled: QGroundControl.settingsManager.videoSettings.videoSource.rawValue === QGroundControl.settingsManager.videoSettings.disabledVideoSource
         }
 
+        //-- Aircast AI detection boxes — sized to the painted video rect so
+        //   normalized box coords line up with the frame under every fit mode.
+        DetectionOverlayVideo {
+            width:            videoBackground.getWidth()
+            height:           videoBackground.getHeight()
+            anchors.centerIn: parent
+            visible:          QGroundControl.videoManager.decoding
+        }
+
         //-- Thermal Image
         Item {
             id:                 thermalItem
