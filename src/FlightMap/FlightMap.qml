@@ -123,22 +123,17 @@ Map {
     signal mapPanStop
     signal mapClicked(var position)
     
+    function _zoomAbout(point, levels) {
+        const anchor = _map.toCoordinate(point, false)
+        _map.zoomLevel += levels
+        _map.alignCoordinateToPoint(anchor, point)
+    }
+
     PinchHandler {
         id:     pinchHandler
         target: null
 
-        property var pinchStartCentroid
-
-        onActiveChanged: {
-            if (active) {
-                pinchStartCentroid = _map.toCoordinate(pinchHandler.centroid.position, false)
-            }
-        }
-        onScaleChanged: (delta) => {
-            let newZoomLevel = Math.max(_map.zoomLevel + Math.log2(delta), 0)
-            _map.zoomLevel = newZoomLevel
-            _map.alignCoordinateToPoint(pinchStartCentroid, pinchHandler.centroid.position)
-        }
+        onScaleChanged: (delta) => _zoomAbout(pinchHandler.centroid.position, Math.log2(delta))
     }
 
     WheelHandler {
@@ -152,10 +147,7 @@ Map {
                 if (event.phase === Qt.ScrollEnd) mapPanStop()
                 return
             }
-            const cursor = Qt.point(event.x, event.y)
-            const anchor = _map.toCoordinate(cursor, false)
-            _map.zoomLevel += event.angleDelta.y / 120
-            _map.alignCoordinateToPoint(anchor, cursor)
+            _zoomAbout(Qt.point(event.x, event.y), event.angleDelta.y / 120)
         }
     }
 
