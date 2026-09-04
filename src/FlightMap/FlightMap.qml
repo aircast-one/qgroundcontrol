@@ -142,6 +142,7 @@ Map {
         onWheel: (event) => {
             const zoomModifier = event.modifiers & (Qt.ControlModifier | Qt.MetaModifier)
             if (event.device.type === PointerDevice.TouchPad && !zoomModifier) {
+                if (event.phase === Qt.ScrollMomentum) return
                 if (event.phase === Qt.ScrollBegin) mapPanStart()
                 _map.pan(-event.pixelDelta.x, -event.pixelDelta.y)
                 if (event.phase === Qt.ScrollEnd) mapPanStop()

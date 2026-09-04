@@ -39,13 +39,18 @@ void FlightMapTest::_trackpadScrollPansAndMouseWheelZooms()
     const QPointingDevice trackpad(QStringLiteral("trackpad"), 1, QInputDevice::DeviceType::TouchPad, QPointingDevice::PointerType::Finger, QInputDevice::Capability::Scroll, 1, 3);
     sendWheel(view, center, QPoint(0, -80), Qt::ScrollBegin, &trackpad);
     sendWheel(view, center, QPoint(0, 0), Qt::ScrollEnd, &trackpad);
+    sendWheel(view, center, QPoint(0, -40), Qt::ScrollMomentum, &trackpad);
+    sendWheel(view, center, QPoint(0, 0), Qt::ScrollEnd, &trackpad);
 
     const QGeoCoordinate panned = map->property("center").value<QGeoCoordinate>();
     QVERIFY(panned.latitude() < before.latitude());
     QCOMPARE(panned.longitude(), before.longitude());
     QCOMPARE(map->property("zoomLevel").toReal(), zoom);
+    QPointF beforeNow;
+    QMetaObject::invokeMethod(map, "fromCoordinate", Q_RETURN_ARG(QPointF, beforeNow), Q_ARG(QGeoCoordinate, before), Q_ARG(bool, false));
+    QVERIFY((beforeNow - QPointF(300, 120)).manhattanLength() < 2);
     QCOMPARE(map->property("panStarts").toInt(), 1);
-    QCOMPARE(map->property("panStops").toInt(), 1);
+    QCOMPARE(map->property("panStops").toInt(), 2);
 
     sendWheel(view, center, QPoint(0, 120), Qt::NoScrollPhase, QPointingDevice::primaryPointingDevice());
     QCOMPARE(map->property("zoomLevel").toReal(), zoom + 1);
