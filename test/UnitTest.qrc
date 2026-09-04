@@ -16,6 +16,7 @@
         <file alias="OverlayRigTest.qml">QmlControls/OverlayRigTest.qml</file>
         <file alias="PipViewTest.qml">QmlControls/PipViewTest.qml</file>
         <file alias="CameraControlLayerTest.qml">FlightDisplay/CameraControlLayerTest.qml</file>
+        <file alias="FlightMapWheelTest.qml">FlightDisplay/FlightMapWheelTest.qml</file>
         <file alias="RcOverrideIndicatorTest.qml">FlightDisplay/RcOverrideIndicatorTest.qml</file>
         <file alias="CameraControlSettingsTest.qml">FlightDisplay/CameraControlSettingsTest.qml</file>
         <file alias="VideoTileTest.qml">FlightDisplay/VideoTileTest.qml</file>

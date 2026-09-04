@@ -142,14 +142,21 @@ Map {
     }
 
     WheelHandler {
-        // workaround for QTBUG-87646 / QTBUG-112394 / QTBUG-112432:
-        // Magic Mouse pretends to be a trackpad but doesn't work with PinchHandler
-        // and we don't yet distinguish mice and trackpads on Wayland either
-        acceptedDevices:    Qt.platform.pluginName === "cocoa" || Qt.platform.pluginName === "wayland" ?
-                                PointerDevice.Mouse | PointerDevice.TouchPad : PointerDevice.Mouse
-        rotationScale:      1 / 120
-        property:           "zoomLevel"
+        acceptedDevices: PointerDevice.Mouse | PointerDevice.TouchPad
 
+        onWheel: (event) => {
+            const zoomModifier = event.modifiers & (Qt.ControlModifier | Qt.MetaModifier)
+            if (event.device.type === PointerDevice.TouchPad && !zoomModifier) {
+                if (event.phase === Qt.ScrollBegin) mapPanStart()
+                _map.pan(-event.pixelDelta.x, -event.pixelDelta.y)
+                if (event.phase === Qt.ScrollEnd) mapPanStop()
+                return
+            }
+            const cursor = Qt.point(event.x, event.y)
+            const anchor = _map.toCoordinate(cursor, false)
+            _map.zoomLevel += event.angleDelta.y / 120
+            _map.alignCoordinateToPoint(anchor, cursor)
+        }
     }
 
     // We specifically do not use a DragHandler for panning. It just causes too many problems if you overlay anything else like a Flickable above it.

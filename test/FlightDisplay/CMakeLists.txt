@@ -2,6 +2,8 @@ target_sources(${CMAKE_PROJECT_NAME}
     PRIVATE
         CameraControlTest.cc
         CameraControlTest.h
+        FlightMapTest.cc
+        FlightMapTest.h
         TelemetryChipsTest.cc
         TelemetryChipsTest.h
         VideoTileTest.cc

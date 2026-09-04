@@ -111,6 +111,7 @@ add_subdirectory(qgcunittest)
 
 add_subdirectory(FlightDisplay)
 add_qgc_test(CameraControlTest)
+add_qgc_test(FlightMapTest)
 add_qgc_test(TelemetryChipsTest)
 add_qgc_test(VideoTileTest)
 

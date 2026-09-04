@@ -125,6 +125,7 @@
 // #include "SendMavCommandWithSignalingTest.h"
 #include "RcChannelOverrideTest.h"
 #include "CameraControlTest.h"
+#include "FlightMapTest.h"
 #include "TelemetryChipsTest.h"
 #include "FlightModeReportingTest.h"
 #include "VehicleLinkManagerTest.h"
@@ -249,6 +250,7 @@ int runTests(bool stress, QStringView unitTestOptions)
     // UT_REGISTER_TEST(SendMavCommandWithSignalingTest)
     UT_REGISTER_TEST(RcChannelOverrideTest)
     UT_REGISTER_TEST(CameraControlTest)
+    UT_REGISTER_TEST(FlightMapTest)
     UT_REGISTER_TEST(TelemetryChipsTest)
     UT_REGISTER_TEST(FlightModeReportingTest)
     UT_REGISTER_TEST(VehicleLinkManagerTest)
