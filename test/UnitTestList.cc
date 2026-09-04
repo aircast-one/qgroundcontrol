@@ -87,6 +87,8 @@
 
 // QmlControls
 #include "DragToPositionTest.h"
+#include "OverlayRigTest.h"
+#include "PipRevealTest.h"
 #include "PipViewTest.h"
 #include "VideoTileTest.h"
 
@@ -121,6 +123,10 @@
 // #include "RequestMessageTest.h"
 // #include "SendMavCommandWithHandlerTest.h"
 // #include "SendMavCommandWithSignalingTest.h"
+#include "RcChannelOverrideTest.h"
+#include "CameraControlTest.h"
+#include "TelemetryChipsTest.h"
+#include "FlightModeReportingTest.h"
 #include "VehicleLinkManagerTest.h"
 
 // Missing
@@ -205,6 +211,8 @@ int runTests(bool stress, QStringView unitTestOptions)
 
     // QmlControls
     UT_REGISTER_TEST(DragToPositionTest)
+    UT_REGISTER_TEST(OverlayRigTest)
+    UT_REGISTER_TEST(PipRevealTest)
     UT_REGISTER_TEST(PipViewTest)
     UT_REGISTER_TEST(VideoTileTest)
 
@@ -239,6 +247,10 @@ int runTests(bool stress, QStringView unitTestOptions)
     // UT_REGISTER_TEST(RequestMessageTest)
     // UT_REGISTER_TEST(SendMavCommandWithHandlerTest)
     // UT_REGISTER_TEST(SendMavCommandWithSignalingTest)
+    UT_REGISTER_TEST(RcChannelOverrideTest)
+    UT_REGISTER_TEST(CameraControlTest)
+    UT_REGISTER_TEST(TelemetryChipsTest)
+    UT_REGISTER_TEST(FlightModeReportingTest)
     UT_REGISTER_TEST(VehicleLinkManagerTest)
 
     // Missing

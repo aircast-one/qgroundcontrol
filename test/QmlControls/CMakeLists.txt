@@ -2,6 +2,10 @@ target_sources(${CMAKE_PROJECT_NAME}
     PRIVATE
         DragToPositionTest.cc
         DragToPositionTest.h
+        OverlayRigTest.cc
+        OverlayRigTest.h
+        PipRevealTest.cc
+        PipRevealTest.h
         PipViewTest.cc
         PipViewTest.h
         QuickInteractionTestHelpers.h

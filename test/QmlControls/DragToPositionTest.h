@@ -21,5 +21,4 @@ private slots:
     void _dragBackToDefaultSnapsAndResets();
     void _clickStillReachesChild();
     void _comboBoxInPanelOpensPopup();
-    void _resizeHandleGrowsUpAndPinsBottom();
 };

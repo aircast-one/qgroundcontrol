@@ -17,8 +17,6 @@ import QGroundControl.ScreenTools
 Switch {
     id: control
 
-    readonly property int _radius: 3
-
     QGCPalette {
         id:                 qgcPal
         colorGroupEnabled:  true
@@ -31,20 +29,27 @@ Switch {
     }
 
     indicator: Rectangle {
-        implicitWidth: knob.width * 2
-        implicitHeight: knob.height
-        x: control.width - width - control.rightPadding
-        y: parent.height / 2 - height / 2
-        radius: knob.radius
-        color: control.checked ? qgcPal.primaryButton : qgcPal.button
+        implicitWidth:  Math.round(implicitHeight * 1.65)
+        implicitHeight: Math.round(ScreenTools.defaultFontPixelHeight * 1.3)
+        x:              control.width - width - control.rightPadding
+        y:              parent.height / 2 - height / 2
+        radius:         height / 2
+        color:          control.checked ? qgcPal.colorGreen : qgcPal.windowShadeLight
+
+        Behavior on color { ColorAnimation { duration: 150 } }
 
         Rectangle {
-            id: knob
-            x: control.checked ? parent.width - width : 0
-            width: ScreenTools.defaultFontPixelHeight
-            height: ScreenTools.defaultFontPixelHeight
-            radius: height / 2
-            color: qgcPal.buttonText
+            id:                     knob
+            anchors.verticalCenter: parent.verticalCenter
+            x:                      control.checked ? parent.width - width - 2 : 2
+            width:                  parent.height - 4
+            height:                 width
+            radius:                 height / 2
+            color:                  "#ffffff"
+            border.color:           "#1f000000"
+            border.width:           1
+
+            Behavior on x { NumberAnimation { duration: 150; easing.type: Easing.OutCubic } }
         }
     }
 }

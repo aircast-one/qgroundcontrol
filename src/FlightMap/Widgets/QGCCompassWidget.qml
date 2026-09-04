@@ -20,7 +20,7 @@ Rectangle {
     width:  size
     height: size
     radius: width / 2
-    color:  qgcPal.window
+    color:  usedByMultipleVehicleList ? qgcPal.window : "transparent"
     border.color:   qgcPal.text
     border.width:   usedByMultipleVehicleList ? 1 : 0
     opacity:        vehicle && usedByMultipleVehicleList && !vehicle.armed ? 0.5 : 1

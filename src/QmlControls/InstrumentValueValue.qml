@@ -32,6 +32,8 @@ ColumnLayout {
     property real   _width:                         0
     property real   _height:                        0
 
+    QGCPalette { id: qgcPal; colorGroupEnabled: enabled }
+
     QGCLabel {
         id:                 label
         Layout.alignment:   Qt.AlignVCenter

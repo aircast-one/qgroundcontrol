@@ -197,6 +197,7 @@ find_package(Qt6
         Sensors
         Sql
         Svg
+        Test
         TextToSpeech
         Widgets
         Xml
@@ -205,7 +206,6 @@ find_package(Qt6
         MultimediaQuickPrivate
         Quick3D
         SerialPort
-        Test
 )
 
 if(LINUX)
@@ -524,6 +524,22 @@ qt_add_qml_module(${CMAKE_PROJECT_NAME}
     RESOURCE_PREFIX /qml
     NO_PLUGIN
 )
+
+if(NOT ANDROID AND NOT IOS)
+    CPMAddPackage(
+        NAME qwindowkit
+        GITHUB_REPOSITORY stdware/qwindowkit
+        GIT_TAG 1.5.0
+        OPTIONS
+            "QWINDOWKIT_BUILD_STATIC ON"
+            "QWINDOWKIT_BUILD_WIDGETS OFF"
+            "QWINDOWKIT_BUILD_QUICK ON"
+            "QWINDOWKIT_BUILD_EXAMPLES OFF"
+            "QWINDOWKIT_INSTALL OFF"
+    )
+    target_link_libraries(${CMAKE_PROJECT_NAME} PRIVATE QWindowKit::Quick)
+    target_compile_definitions(${CMAKE_PROJECT_NAME} PRIVATE QGC_QWINDOWKIT)
+endif()
 
 if(CMAKE_SYSTEM_NAME STREQUAL "Darwin")
     add_subdirectory(libs/wfb)

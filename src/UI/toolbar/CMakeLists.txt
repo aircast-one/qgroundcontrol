@@ -10,6 +10,7 @@ qt_add_qml_module(ToolbarModule
         APMMainStatusIndicatorContentItem.qml
         APMSupportForwardingIndicator.qml
         ArmedIndicator.qml
+        GCSBatteryIndicator.qml
         GCSControlIndicator.qml
         GimbalIndicator.qml
         JoystickIndicator.qml
@@ -17,6 +18,7 @@ qt_add_qml_module(ToolbarModule
         ModeIndicator.qml
         MultiVehicleSelector.qml
         RCRSSIIndicator.qml
+        RcOverrideIndicator.qml
         RemoteIDIndicator.qml
         RTKGPSIndicator.qml
         TelemetryRSSIIndicator.qml

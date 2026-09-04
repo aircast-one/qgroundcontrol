@@ -152,10 +152,8 @@ Item {
 
                     IntegratedCompassAttitude {
                         id: compassWidget
-                        compassRadius:              _widgetHeight / 2 - attitudeSize / 2
+                        compassRadius:              _widgetHeight / 2
                         compassBorder:              0
-                        attitudeSize:               ScreenTools.defaultFontPixelWidth / 2
-                        attitudeSpacing:            attitudeSize / 2
                         usedByMultipleVehicleList:   true
                         vehicle:                     _vehicle
                     }

@@ -9,6 +9,8 @@
 
 import QtQuick
 
+import QGroundControl
+
 import QGroundControl.ScreenTools
 
 // Translucent dark rounded overlay button used over the video feed to switch the
@@ -18,9 +20,12 @@ Rectangle {
     width:      contentRow.width + (_margin * 2)
     height:     contentRow.height + (ScreenTools.defaultFontPixelHeight * 0.5)
     radius:     ScreenTools.defaultFontPixelHeight / 3
-    color:      cameraMouseArea.pressed ? Qt.rgba(0,0,0,0.85) : Qt.rgba(0,0,0,0.65)
+    color:      cameraMouseArea.pressed ? Qt.rgba(_qgcPal.overlayBackground.r, _qgcPal.overlayBackground.g, _qgcPal.overlayBackground.b, 1)
+                                          : _qgcPal.overlayBackground
     border.width: 1
-    border.color: cameraMouseArea.containsMouse ? Qt.rgba(1,1,1,0.5) : Qt.rgba(1,1,1,0.25)
+    border.color: cameraMouseArea.containsMouse ? Qt.rgba(_qgcPal.text.r, _qgcPal.text.g, _qgcPal.text.b, 0.5) : _qgcPal.overlayBorder
+
+    readonly property var _qgcPal: QGroundControl.globalPalette
 
     property string text: ""
     signal clicked()

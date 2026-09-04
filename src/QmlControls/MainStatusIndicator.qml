@@ -19,7 +19,9 @@ import QGroundControl.FactSystem
 
 RowLayout {
     id:         control
-    spacing:    ScreenTools.defaultFontPixelWidth
+    spacing:    _pillPadding + ScreenTools.defaultFontPixelWidth
+
+    readonly property real _pillPadding: ScreenTools.defaultFontPixelWidth * 1.6
 
     property var    _activeVehicle:     QGroundControl.multiVehicleManager.activeVehicle
     property var    _vehicleInAir:      _activeVehicle ? _activeVehicle.flying || _activeVehicle.landing : false
@@ -40,7 +42,22 @@ RowLayout {
         Layout.preferredWidth: contentWidth + vehicleMessagesIcon.width + control.spacing
         verticalAlignment:  Text.AlignVCenter
         text:               mainStatusText()
+        color:              qgcPal.toolbarText
         font.pointSize:     ScreenTools.largeFontPointSize
+
+        Rectangle {
+            z:                      -1
+            anchors.verticalCenter: parent.verticalCenter
+            anchors.left:           parent.left
+            anchors.leftMargin:     -control._pillPadding
+            width:                  parent.contentWidth + control._pillPadding * 2
+            height:                 parent.contentHeight + ScreenTools.defaultFontPixelHeight
+            radius:                 height / 2
+            color:                  Qt.rgba(1, 1, 1, 0.12)
+            border.color:           Qt.rgba(1, 1, 1, 0.4)
+            border.width:           1
+            visible:                !_activeVehicle
+        }
 
         property string _commLostText:      qsTr("Comms Lost")
         property string _readyToFlyText:    qsTr("Ready To Fly")
@@ -128,7 +145,7 @@ RowLayout {
             //visible:                _activeVehicle && _activeVehicle.messageCount > 0// FIXME: Is messageCount check needed?
 
             function getIconColor() {
-                let iconColor = qgcPal.text
+                let iconColor = qgcPal.toolbarText
                 if (_activeVehicle) {
                     if (_activeVehicle.messageTypeWarning) {
                         iconColor = qgcPal.colorOrange
@@ -150,6 +167,7 @@ RowLayout {
         id:                 vtolModeLabel
         Layout.fillHeight:  true
         verticalAlignment:  Text.AlignVCenter
+        color:              qgcPal.toolbarText
         text:               _vtolInFWDFlight ? qsTr("FW(vtol)") : qsTr("MR(vtol)")
         font.pointSize:     _vehicleInAir ? ScreenTools.largeFontPointSize : ScreenTools.defaultFontPointSize
         visible:            _activeVehicle && _activeVehicle.vtol

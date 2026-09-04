@@ -406,6 +406,8 @@ public:
     /// Update Available flight modes recieved from vehicle
     virtual void updateAvailableFlightModes(FlightModeList &flightModeList) { _updateFlightModeList(flightModeList); }
 
+    const FlightModeList &flightModeList() const { return _flightModeList; }
+
 signals:
     void toolIndicatorsChanged();
     void modeIndicatorsChanged();

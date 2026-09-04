@@ -1339,18 +1339,27 @@ void Vehicle::_handleHeartbeat(mavlink_message_t& message)
         _updateArmed(newArmed);
     }
 
-    if (heartbeat.base_mode != _base_mode || heartbeat.custom_mode != _custom_mode) {
-        QString previousFlightMode;
-        if (_base_mode != 0 || _custom_mode != 0){
-            // Vehicle is initialized with _base_mode=0 and _custom_mode=0. Don't pass this to flightMode() since it will complain about
-            // bad modes while unit testing.
-            previousFlightMode = flightMode();
-        }
-        _base_mode   = heartbeat.base_mode;
-        _custom_mode = heartbeat.custom_mode;
-        if (previousFlightMode != flightMode()) {
-            emit flightModeChanged(flightMode());
-        }
+    _base_mode   = heartbeat.base_mode;
+    _custom_mode = heartbeat.custom_mode;
+    _emitFlightModeChangedIfNeeded();
+}
+
+// flightMode() is not a pure function of base/custom mode: the firmware plugin resolves the
+// name from a mode table that is still being built when the first heartbeats arrive, so the
+// same mode bits read "Unknown" and then their real name a few heartbeats later. Emitting only
+// when the bits change left every QML binding stuck on the first answer for the whole flight.
+void Vehicle::_emitFlightModeChangedIfNeeded()
+{
+    // Vehicle is initialized with _base_mode=0 and _custom_mode=0. Don't pass this to flightMode() since it will complain about
+    // bad modes while unit testing.
+    if ((_base_mode == 0) && (_custom_mode == 0)) {
+        return;
+    }
+
+    const QString currentFlightMode = flightMode();
+    if (currentFlightMode != _lastReportedFlightMode) {
+        _lastReportedFlightMode = currentFlightMode;
+        emit flightModeChanged(currentFlightMode);
     }
 }
 
@@ -1360,12 +1369,8 @@ void Vehicle::_handleCurrentMode(mavlink_message_t& message)
     mavlink_msg_current_mode_decode(&message, &currentMode);
     if (currentMode.intended_custom_mode != 0) { // 0 == unknown/not supplied
         _has_custom_mode_user_intention = true;
-        QString previousFlightMode = flightMode();
-        bool changed = _custom_mode_user_intention != currentMode.intended_custom_mode;
         _custom_mode_user_intention = currentMode.intended_custom_mode;
-        if (changed && previousFlightMode != flightMode()) {
-            emit flightModeChanged(flightMode());
-        }
+        _emitFlightModeChangedIfNeeded();
     }
 }
 
@@ -1475,6 +1480,16 @@ void Vehicle::_handleRCChannels(mavlink_message_t& message)
         } else {
             pwmValues[i] = -1;
         }
+    }
+
+    QVariantList rcValues;
+    rcValues.reserve(QGCMAVLink::maxRcChannels);
+    for (int i = 0; i < QGCMAVLink::maxRcChannels; i++) {
+        rcValues.append(pwmValues[i]);
+    }
+    if (rcValues != _rcChannelValues) {
+        _rcChannelValues = rcValues;
+        emit rcChannelValuesChanged();
     }
 
     emit remoteControlRSSIChanged(channels.rssi);
@@ -3914,6 +3929,94 @@ void Vehicle::sendJoystickDataThreadSafe(float roll, float pitch, float yaw, flo
         0, 0,
         0, 0, 0, 0, 0, 0
     );
+    sendMessageOnLinkThreadSafe(sharedLink.get(), message);
+}
+
+// ArduPilot drops an RC override RC_OVERRIDE_TIME (3s by default) after the last message,
+// so the whole override set is resent while any channel is held. UINT16_MAX leaves a channel
+// alone; 0 hands it back to the physical transmitter.
+bool Vehicle::rcChannelIsMapped(int channel)
+{
+    const QString name = QStringLiteral("RC%1_OPTION").arg(channel);
+    if (!_parameterManager->parameterExists(ParameterManager::defaultComponentId, name)) {
+        return true;
+    }
+    return _parameterManager->getParameter(ParameterManager::defaultComponentId, name)->rawValue().toInt() != 0;
+}
+
+void Vehicle::setRcChannelOverride(int channel, int pwm)
+{
+    if (channel < 1 || channel > _rcChannelOverrideCount) {
+        qCWarning(VehicleLog) << "setRcChannelOverride: channel out of range" << channel;
+        return;
+    }
+
+    const bool wasActive = rcChannelOverrideActive();
+    _rcChannelOverrideReleaseTicks = 0;
+    _rcChannelOverrides[channel] = static_cast<quint16>(qBound(_rcPwmMin, pwm, _rcPwmMax));
+    if (!wasActive) {
+        emit rcChannelOverrideActiveChanged(true);
+    }
+
+    if (!_rcChannelOverrideTimer.isActive()) {
+        _rcChannelOverrideTimer.setInterval(_rcChannelOverrideIntervalMSecs);
+        connect(&_rcChannelOverrideTimer, &QTimer::timeout, this, &Vehicle::_rcChannelOverrideTick, Qt::UniqueConnection);
+        _rcChannelOverrideTimer.start();
+    }
+    _sendRcChannelOverrides();
+}
+
+// A release is a single 0 on each held channel, so a dropped packet would leave the channel
+// overridden until the vehicle's own RC_OVERRIDE_TIME expires. The release is repeated for a
+// few ticks instead, then the timer stops and the channels are forgotten.
+void Vehicle::clearRcChannelOverrides()
+{
+    if (_rcChannelOverrides.isEmpty()) {
+        return;
+    }
+
+    for (auto it = _rcChannelOverrides.begin(); it != _rcChannelOverrides.end(); ++it) {
+        it.value() = 0;
+    }
+    _rcChannelOverrideReleaseTicks = _rcChannelOverrideReleaseCount;
+    _sendRcChannelOverrides();
+}
+
+void Vehicle::_rcChannelOverrideTick()
+{
+    if (_rcChannelOverrideReleaseTicks > 0 && --_rcChannelOverrideReleaseTicks == 0) {
+        _rcChannelOverrideTimer.stop();
+        _sendRcChannelOverrides();
+        _rcChannelOverrides.clear();
+        emit rcChannelOverrideActiveChanged(false);
+        return;
+    }
+    _sendRcChannelOverrides();
+}
+
+void Vehicle::_sendRcChannelOverrides()
+{
+    SharedLinkInterfacePtr sharedLink = vehicleLinkManager()->primaryLink().lock();
+    if (!sharedLink || sharedLink->linkConfiguration()->isHighLatency()) {
+        return;
+    }
+
+    quint16 chan[_rcChannelOverrideCount];
+    for (int i = 0; i < _rcChannelOverrideCount; i++) {
+        chan[i] = _rcChannelOverrides.value(i + 1, UINT16_MAX);
+    }
+
+    mavlink_message_t message;
+    mavlink_msg_rc_channels_override_pack_chan(
+        static_cast<uint8_t>(MAVLinkProtocol::instance()->getSystemId()),
+        static_cast<uint8_t>(MAVLinkProtocol::getComponentId()),
+        sharedLink->mavlinkChannel(),
+        &message,
+        static_cast<uint8_t>(_id),
+        _defaultComponentId,
+        chan[0],  chan[1],  chan[2],  chan[3],  chan[4],  chan[5],  chan[6],  chan[7],
+        chan[8],  chan[9],  chan[10], chan[11], chan[12], chan[13], chan[14], chan[15],
+        chan[16], chan[17]);
     sendMessageOnLinkThreadSafe(sharedLink.get(), message);
 }
 

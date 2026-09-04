@@ -10,6 +10,7 @@
 import QtQuick
 import QtQuick.Controls
 import QtQuick.Dialogs
+import QtQuick.Effects
 import QtQuick.Layouts
 
 import QtLocation
@@ -36,6 +37,19 @@ Item {
     // These should only be used by MainRootWindow
     property var planController:    _planController
     property var guidedController:  _guidedController
+    property var overlayRig:        _overlayRig
+
+    OverlayRig {
+        id:         _overlayRig
+        viewport:   _root
+        topInset:   toolbar.height
+    }
+
+    Shortcut {
+        sequence:       "Escape"
+        enabled:        _overlayRig.editMode
+        onActivated:    _overlayRig.editMode = false
+    }
 
     // Properties of UTM adapter
     property bool utmspSendActTrigger: false
@@ -77,40 +91,53 @@ Item {
         id:                     _toolInsets
         leftEdgeBottomInset:    _pipView.leftEdgeBottomInset
         bottomEdgeLeftInset:    _pipView.bottomEdgeLeftInset
+        // The status floats over the picture now, so the map's own widgets have to keep clear
+        // of it themselves -- nothing pushes them down any more.
+        topEdgeLeftInset:       toolbar.height
+        topEdgeCenterInset:     toolbar.height
+        topEdgeRightInset:      toolbar.height
     }
 
     FlyViewToolBar {
         id:                 toolbar
+        z:                  QGroundControl.zOrderWidgets
         visible:            !QGroundControl.videoManager.fullScreen
-        dockedTelemetryBar: telemetryValuesBar.dockedInToolbar ? telemetryValuesBar : null
     }
 
     Item {
         id:                 mapHolder
-        anchors.top:        toolbar.bottom
+        anchors.top:        parent.top
         anchors.bottom:     parent.bottom
         anchors.left:       parent.left
         anchors.right:      parent.right
 
-        FlyViewMap {
-            id:                     mapControl
-            planMasterController:   _planController
-            rightPanelWidth:        ScreenTools.defaultFontPixelHeight * 9
-            pipView:                _pipView
-            pipMode:                !_mainWindowIsMap
-            toolInsets:             customOverlay.totalToolInsets
-            mapName:                "FlightDisplayView"
-            enabled:                !viewer3DWindow.isOpen
-        }
+        Item {
+            id:             backdropContent
+            objectName:     "backdropContent"
+            anchors.fill:   parent
 
-        FlyViewVideo {
-            id:         videoControl
-            pipView:    _pipView
+            FlyViewMap {
+                id:                     mapControl
+                planMasterController:   _planController
+                rightPanelWidth:        ScreenTools.defaultFontPixelHeight * 9
+                pipView:                _pipView
+                pipMode:                !_mainWindowIsMap
+                toolInsets:             customOverlay.totalToolInsets
+                mapName:                "FlightDisplayView"
+                enabled:                !viewer3DWindow.isOpen
+            }
+
+            FlyViewVideo {
+                id:         videoControl
+                overlayRig: _overlayRig
+                pipView:    _pipView
+            }
         }
 
         PipView {
             id:                     _pipView
             objectName:             "pipView"
+            fullContentItem:        backdropContent
             margin:                 _toolsMargin
             item1IsFullSettingsKey: "MainFlyWindowIsMap"
             item1:                  mapControl
@@ -125,12 +152,19 @@ Item {
             actionButtonText:       QGroundControl.videoManager.cameraName(QGroundControl.videoManager.activeVideoSource)
             onActionButtonClicked:  QGroundControl.videoManager.switchActiveVideoSource()
 
-            property real leftEdgeBottomInset: visible && !hasCustomPosition ? width + _toolsMargin : 0
+            widthOverride:          videoTilesLayer.pipWidthOverride
+
+            property real leftEdgeBottomInset: visible && !hasCustomPosition ? width + videoTilesLayer.dockExtent + _toolsMargin : 0
             property real bottomEdgeLeftInset: visible && !hasCustomPosition ? height + _toolsMargin : 0
+
+            overlayRig:            _overlayRig
+            Component.onCompleted:   _overlayRig.registerMovable(_pipView, _pipView.dragToPosition)
+            Component.onDestruction: _overlayRig.unregisterMovable(_pipView)
         }
 
         FlyViewWidgetLayer {
             id:                     widgetLayer
+            overlayRig:             _overlayRig
             anchors.top:            parent.top
             anchors.bottom:         parent.bottom
             anchors.left:           parent.left
@@ -150,6 +184,25 @@ Item {
             parentToolInsets:   widgetLayer.totalToolInsets
             mapControl:         _mapControl
             visible:            !QGroundControl.videoManager.fullScreen
+        }
+
+        CameraControlLayer {
+            id:                 cameraControlLayer
+            objectName:         "cameraControlLayer"
+            overlayRig:         _overlayRig
+            anchors.fill:       parent
+            videoIsMainItem:    !_mainWindowIsMap
+            z:                  _fullItemZorder + 1
+        }
+
+        VideoTilesLayer {
+            id:             videoTilesLayer
+            objectName:     "videoTilesLayer"
+            overlayRig:     _overlayRig
+            pipView:        _pipView
+            topInset:       toolbar.height
+            anchors.fill:   parent
+            z:              _fullItemZorder + 3
         }
 
         // Camera switch button for the full-screen video. Placed here (above the instrument
@@ -199,35 +252,106 @@ Item {
             id:                     viewer3DWindow
             anchors.fill:           parent
         }
+
+        MouseArea {
+            id:             editModeExitCatcher
+            anchors.fill:   parent
+            z:              _fullItemZorder + 0.5
+            visible:        _overlayRig.editMode
+            onClicked: (mouse) => {
+                const p = editModeExitCatcher.mapToItem(_overlayRig.viewport, mouse.x, mouse.y)
+                if (!_overlayRig.hitTest(p.x, p.y)) {
+                    _overlayRig.editMode = false
+                }
+            }
+        }
     }
 
-    TelemetryValuesBar {
-        id:                     telemetryValuesBar
-        objectName:             "telemetryValuesBar"
-        settingsGroup:          factValueGrid.telemetryBarSettingsGroup
-        specificVehicleForCard: null
-        visible:                toolbar.visible
+    ShaderEffectSource {
+        id:           backdropCapture
+        width:        backdropContent.width
+        height:       backdropContent.height
+        sourceItem:   backdropContent
+        live:         true
+        visible:      false
+        textureSize:  Qt.size(Math.max(1, Math.round(backdropContent.width  / _backdropDownscale)),
+                              Math.max(1, Math.round(backdropContent.height / _backdropDownscale)))
 
-        readonly property bool dockedInToolbar: y < ScreenTools.toolbarHeight
+        readonly property int _backdropDownscale: 4
+    }
 
-        DragToPosition {
-            id:                 telemetryBarDragPosition
-            target:             telemetryValuesBar
-            settingsKeyPrefix:  "TelemetryValuesBar"
-            defaultX:           (_root.width - telemetryValuesBar.width) / 2
-            defaultY:           0
-        }
+    MultiEffect {
+        id:            frostedBackdrop
+        width:         backdropContent.width
+        height:        backdropContent.height
+        source:        backdropCapture
+        blurEnabled:   true
+        blur:          1.0
+        blurMax:       32
+        saturation:    0.25
+        visible:       false
+        layer.enabled: true
 
-        DragHandler {
-            onActiveChanged: {
-                if (!active) {
-                    if (telemetryValuesBar.dockedInToolbar) {
-                        telemetryValuesBar.y = 0
-                        telemetryValuesBar.x = Math.max(toolbar.dockAreaLeft,
-                                                        Math.min(telemetryValuesBar.x, _root.width - telemetryValuesBar.width))
-                    }
-                    telemetryBarDragPosition.commit()
+        Component.onCompleted: mainWindow.frostedBackdrop = frostedBackdrop
+    }
+
+    TelemetryChipsLayer {
+        id:             telemetryChipsLayer
+        objectName:     "telemetryChipsLayer"
+        overlayRig:     _overlayRig
+        anchors.fill:   parent
+        visible:        toolbar.visible
+        z:              QGroundControl.zOrderWidgets
+    }
+
+    // The one place that says what this mode is, how it works, and how to leave it. Edit mode
+    // used to announce itself only by making things wobble, and carried two separate controls
+    // both labelled "Done".
+    Rectangle {
+        id:                         editModeDonePill
+        objectName:                 "editModeDonePill"
+        anchors.top:                parent.top
+        anchors.topMargin:          toolbar.height + ScreenTools.defaultFontPixelHeight
+        anchors.horizontalCenter:   parent.horizontalCenter
+        z:                          QGroundControl.zOrderTopMost
+        visible:                    _overlayRig.editMode
+        width:                      editModeRow.width + ScreenTools.defaultFontPixelWidth * 4
+        height:                     ScreenTools.defaultFontPixelHeight * 2.4
+        radius:                     height / 2
+        color:                      QGroundControl.globalPalette.overlayBackground
+        border.color:               QGroundControl.globalPalette.overlayBorder
+        border.width:               1
+
+        Row {
+            id:                 editModeRow
+            anchors.centerIn:   parent
+            spacing:            ScreenTools.defaultFontPixelWidth * 2
+
+            QGCLabel {
+                anchors.verticalCenter: parent.verticalCenter
+                color:                  QGroundControl.globalPalette.colorGrey
+                font.pointSize:         ScreenTools.smallFontPointSize
+                // Each window size keeps its own arrangement, and nothing else on screen says
+                // so - without this the layout looks lost every time the window is resized.
+                text: qsTr("Drag to arrange · Tap the eye to hide · Layout for %1×%2")
+                          .arg(Math.round(_root.width)).arg(Math.round(_root.height))
+            }
+
+            OverlayMenuItem {
+                anchors.verticalCenter: parent.verticalCenter
+                objectName:             "editModeAddRcControlButton"
+                text:                   qsTr("Add RC control…")
+                onClicked: {
+                    _overlayRig.editMode = false
+                    mainWindow.showSettingsTool(qsTr("Fly View"))
                 }
+            }
+
+            OverlayMenuItem {
+                anchors.verticalCenter: parent.verticalCenter
+                objectName:             "editModeDoneButton"
+                text:                   qsTr("Done")
+                onClicked:              _overlayRig.editMode = false
             }
         }
     }

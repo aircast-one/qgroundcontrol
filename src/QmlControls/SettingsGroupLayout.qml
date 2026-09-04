@@ -51,17 +51,20 @@ ColumnLayout {
         Layout.fillWidth:   true
         implicitWidth:      _contentLayout.implicitWidth + (showBorder ? _margins * 2 : 0)
         implicitHeight:     _contentLayout.implicitHeight + (showBorder ? _margins * 2: 0)
-        color:              "transparent"
+        color:              showBorder ? QGroundControl.globalPalette.windowShade : "transparent"
         border.color:       outerBorderColor
         border.width:       showBorder ? 1 : 0
-        radius:             ScreenTools.defaultFontPixelHeight / 2
+        radius:             Math.round(ScreenTools.defaultFontPixelHeight * 0.6)
 
         Repeater {
             model: showDividers? _contentLayout.children.length : 0
 
             Rectangle {
                 x:                  showBorder ? _margins : 0
-                y:                  _contentItem.y + _contentItem.height + _margins + (showBorder ? _margins : 0)
+                // Half of the actual row gap. Callers that pack rows tight (contentSpacing 0)
+                // used to get the hairline drawn a full margin down, striking through the
+                // next row's text.
+                y:                  _contentItem.y + _contentItem.height + (_contentLayout.spacing / 2) + (showBorder ? _margins : 0)
                 width:              parent.width - (showBorder ? _margins * 2 : 0)
                 height:             1
                 color:              QGroundControl.globalPalette.groupBorder

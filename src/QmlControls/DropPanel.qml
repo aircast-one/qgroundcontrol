@@ -66,15 +66,19 @@ Popup {
     }
 
     background: Item {
+        layer.enabled: true
+        layer.effect:  OverlayShadowEffect { }
         implicitWidth:  contentItem.implicitWidth + _innerMargin * 2 + _arrowPointWidth
         implicitHeight: contentItem.implicitHeight + _innerMargin * 2
 
         Rectangle {
             x:      _dropRight ? _arrowPointWidth : 0
-            radius: ScreenTools.defaultFontPixelHeight / 2
+            radius: ScreenTools.defaultFontPixelHeight * 0.75
             width:  parent.implicitWidth - _arrowPointWidth
             height: parent.implicitHeight
-            color:  _qgcPal.window
+            color:  _qgcPal.overlayBackground
+            border.color:   _qgcPal.overlayBorder
+            border.width:   1
         }
 
         // Arrowhead
@@ -92,13 +96,15 @@ Popup {
                 context.lineTo(_dropRight ? _arrowPointWidth : 0, 0)
                 context.lineTo(_dropRight ? _arrowPointWidth : 0, _arrowPointWidth * 2)
                 context.closePath()
-                context.fillStyle = _qgcPal.window
+                context.fillStyle = _qgcPal.overlayBackground
                 context.fill()
             }
         }
     }
 
     contentItem: SettingsGroupLayout {
+        showBorder: false
+
         Loader {
             sourceComponent: _root.sourceComponent
         }

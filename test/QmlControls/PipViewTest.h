@@ -20,5 +20,4 @@ private slots:
     void _dragOffscreenClampsCommittedPosition();
     void _dragBackToDefaultSnapsAndResets();
     void _clickSwapsWithoutDrag();
-    void _resizeFromCornerPersists();
 };

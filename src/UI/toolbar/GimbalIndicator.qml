@@ -356,7 +356,7 @@ Item {
         source:                  "/gimbal/payload.svg"
         fillMode:                Image.PreserveAspectFit
         sourceSize.height:       height
-        color:                   qgcPal.buttonText
+        color:                   qgcPal.toolbarText
 
         // Current active gimbal indicator
         QGCLabel {

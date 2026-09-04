@@ -20,12 +20,10 @@ Slider {
     rightPadding:   0
     topPadding:     0
     bottomPadding:  0
-
-    // FIXME-QT6 - This property used to be available in Control 1. Now we will need to implement the visuals ourselves
     property bool tickmarksEnabled: false
 
     
-    property bool zeroCentered:         false   // Value indicator starts display from zero instead of min value
+    property bool zeroCentered:         false
     property bool displayValue:         false
     property bool indicatorBarVisible:  true
 
@@ -44,34 +42,18 @@ Slider {
         width:          control.horizontal ? control.availableWidth : implicitWidth
         height:         control.horizontal ? implicitHeight : control.availableHeight
         radius:         control._barHeight / 2
-        color:          qgcPal.button
-        border.width:   1
-        border.color:   qgcPal.buttonText
-    }
+        color:          qgcPal.windowShadeLight
 
-    // FIXME-QT6: Indicator portion of slider not yet supported
-/*
-        Item {
-            id:     indicatorBar
-            clip:   true
-            visible: indicatorBarVisible
-            x:      control.zeroCentered ? zeroCenteredIndicatorStart : 0
-            width:  control.zeroCentered ? centerIndicatorWidth : control.visualPosition
-            height: parent.height
-
-            property real zeroValuePosition:            (Math.abs(control.from) / (control.to - control.from)) * parent.width
-            property real zeroCenteredIndicatorStart:   Math.min(control.visualPosition, zeroValuePosition)
-            property real zeroCenteredIndicatorStop:    Math.max(control.visualPosition, zeroValuePosition)
-            property real centerIndicatorWidth:         zeroCenteredIndicatorStop - zeroCenteredIndicatorStart
-
-            Rectangle {
-                anchors.fill:   parent
-                color:          qgcPal.colorBlue
-                border.color:   Qt.darker(color, 1.2)
-                radius:         height/2
-            }
+        Rectangle {
+            anchors.left:   parent.left
+            anchors.bottom: parent.bottom
+            width:          control.horizontal ? control.visualPosition * parent.width : parent.width
+            height:         control.horizontal ? parent.height : (1 - control.visualPosition) * parent.height
+            radius:         parent.radius
+            color:          qgcPal.colorBlue
+            visible:        control.indicatorBarVisible
         }
-    }*/
+    }
 
     handle: Rectangle {
         x:              control.horizontal ? 
@@ -82,8 +64,8 @@ Slider {
                             control.topPadding + control.visualPosition * (control.availableHeight - height)
         implicitWidth:  _radius * 2
         implicitHeight: _radius * 2
-        color:          qgcPal.button
-        border.color:   qgcPal.buttonText
+        color:          "#ffffff"
+        border.color:   "#33000000"
         border.width:   1
         radius:         _radius
 
@@ -95,7 +77,7 @@ Slider {
             anchors.centerIn:   parent
             font.family:        ScreenTools.normalFontFamily
             font.pointSize:     ScreenTools.smallFontPointSize
-            color:              qgcPal.buttonText
+            color:              "#000000"
         }
     }
 }

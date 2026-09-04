@@ -2,6 +2,8 @@ target_sources(${CMAKE_PROJECT_NAME}
     PRIVATE
         DeviceInfo.cc
         DeviceInfo.h
+        GCSBattery.cc
+        GCSBattery.h
         JsonHelper.cc
         JsonHelper.h
         FileSystem/QGCCachedFileDownload.cc
@@ -32,6 +34,8 @@ elseif(IOS)
             MobileScreenMgr.mm
             MobileScreenMgr.h
     )
+elseif(APPLE)
+    target_link_libraries(${CMAKE_PROJECT_NAME} PRIVATE "-framework IOKit")
 endif()
 
 target_include_directories(${CMAKE_PROJECT_NAME}

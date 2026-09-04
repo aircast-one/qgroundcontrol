@@ -14,7 +14,6 @@ import QGroundControl.Controls
 
 SelectableControl {
     z:                      QGroundControl.zOrderWidgets
-    selectionUIRightAnchor: true
     selectedControl:        QGroundControl.settingsManager.flyViewSettings.instrumentQmlFile2
 
     property var  missionController:    _missionController

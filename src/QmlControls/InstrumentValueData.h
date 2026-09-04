@@ -33,6 +33,7 @@ public:
     explicit InstrumentValueData(FactValueGrid* factValueGrid, QObject* parent);
 
     Q_PROPERTY(FactValueGrid*       factValueGrid       MEMBER _factValueGrid                               CONSTANT)
+    Q_PROPERTY(QString              uid                 READ    uid                                         NOTIFY uidChanged)              ///< Stable identity across restarts; owns per-value UI state such as saved screen position
     Q_PROPERTY(QStringList          factGroupNames      READ    factGroupNames                              NOTIFY factGroupNamesChanged)
     Q_PROPERTY(QStringList          factValueNames      READ    factValueNames                              NOTIFY factValueNamesChanged)
     Q_PROPERTY(QString              factGroupName       READ    factGroupName                               NOTIFY factGroupNameChanged)
@@ -60,6 +61,8 @@ public:
 
     QStringList     factGroupNames          (void) const;
     QStringList     factValueNames          (void) const;
+    QString         uid                     (void) const { return _uid; }
+    void            setUid                  (const QString& uid);
     QString         factGroupName           (void) const { return _factGroupName; }
     QString         factName                (void) const { return _factName; }
     Fact*           fact                    (void) const { return _fact; }
@@ -83,6 +86,7 @@ public:
     static constexpr const char*  vehicleFactGroupName =   "Vehicle";
 
 signals:
+    void uidChanged             (const QString& uid);
     void factChanged            (Fact* fact);
     void factNameChanged        (const QString& factName);
     void factGroupNameChanged   (const QString& factGroup);
@@ -117,6 +121,7 @@ private:
     QmlObjectListModel*     _rowModel =             nullptr;
     Fact*                   _fact =                 nullptr;
     QString                 _factName;
+    QString                 _uid;
     QString                 _factGroupName;
     QString                 _text;
     bool                    _showUnits =            true;

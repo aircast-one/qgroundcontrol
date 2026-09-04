@@ -1,7 +1,6 @@
 <RCC>
     <qresource prefix="/qml">
         <file alias="QGroundControl/Controls/QGCControlDebug.qml">QmlControls/QGCControlDebug.qml</file>
-        <file alias="QmlTest.qml">QmlControls/QmlTest.qml</file>
     </qresource>
     <qresource prefix="/unittest">
         <file alias="PolygonAreaTest.kml">MissionManager/PolygonAreaTest.kml</file>
@@ -14,8 +13,14 @@
         <file alias="TranslationTest_de_DE.ts">Vehicle/ComponentInformation/TranslationTest_de_DE.ts</file>
         <file alias="FactSystemTest.qml">FactSystem/FactSystemTest.qml</file>
         <file alias="DragToPositionTest.qml">QmlControls/DragToPositionTest.qml</file>
+        <file alias="OverlayRigTest.qml">QmlControls/OverlayRigTest.qml</file>
         <file alias="PipViewTest.qml">QmlControls/PipViewTest.qml</file>
+        <file alias="CameraControlLayerTest.qml">FlightDisplay/CameraControlLayerTest.qml</file>
+        <file alias="RcOverrideIndicatorTest.qml">FlightDisplay/RcOverrideIndicatorTest.qml</file>
+        <file alias="CameraControlSettingsTest.qml">FlightDisplay/CameraControlSettingsTest.qml</file>
         <file alias="VideoTileTest.qml">FlightDisplay/VideoTileTest.qml</file>
+        <file alias="StatusPillTest.qml">FlightDisplay/StatusPillTest.qml</file>
+        <file alias="TelemetryChipsTest.qml">FlightDisplay/TelemetryChipsTest.qml</file>
         <file alias="MissionPlanner.waypoints">MissionManager/MissionPlanner.waypoints</file>
         <file alias="OldFileFormat.mission">MissionManager/OldFileFormat.mission</file>
         <file alias="UT-MavCmdInfoCommon.json">MissionManager/UT-MavCmdInfoCommon.json</file>

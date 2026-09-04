@@ -23,7 +23,6 @@ qt_add_qml_module(FlightMapModule
         Widgets/CompassDial.qml
         Widgets/CompassHeadingIndicator.qml
         Widgets/HorizontalCompassAttitude.qml
-        Widgets/IntegratedAttitudeIndicator.qml
         Widgets/IntegratedCompassAttitude.qml
         Widgets/MapFitFunctions.qml
         Widgets/PhotoVideoControl.qml

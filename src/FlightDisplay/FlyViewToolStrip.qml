@@ -12,9 +12,16 @@ import QtQml.Models
 import QGroundControl
 import QGroundControl.Controls
 import QGroundControl.FlightDisplay
+import QGroundControl.ScreenTools
 
 ToolStrip {
     id: _root
+
+    color:          "transparent"
+    roundButtons:   true
+    buttonSpacing:  ScreenTools.defaultFontPixelHeight / 2
+    width:          Math.max(ScreenTools.minTouchPixels, ScreenTools.defaultFontPixelHeight * 2.4) +
+                        ScreenTools.defaultFontPixelWidth * 0.8
 
     signal displayPreFlightChecklist
 

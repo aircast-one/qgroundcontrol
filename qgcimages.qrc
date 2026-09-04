@@ -68,6 +68,15 @@
         <file alias="BatteryCritical.svg">src/UI/toolbar/Images/BatteryCritical.svg</file>
         <file alias="BatteryEMERGENCY.svg">src/UI/toolbar/Images/BatteryEMERGENCY.svg</file>
         <file alias="camera.svg">resources/camera.svg</file>
+        <file alias="CameraLight.svg">src/FlightDisplay/Images/CameraLight.svg</file>
+        <file alias="CameraRecenter.svg">src/FlightDisplay/Images/CameraRecenter.svg</file>
+        <file alias="CameraTilt.svg">src/FlightDisplay/Images/CameraTilt.svg</file>
+        <file alias="StatusRC.svg">src/FlightDisplay/Images/StatusRC.svg</file>
+        <file alias="StatusSat.svg">src/FlightDisplay/Images/StatusSat.svg</file>
+        <file alias="RcOverride.svg">src/FlightDisplay/Images/RcOverride.svg</file>
+        <file alias="CameraYawFollow.svg">src/FlightDisplay/Images/CameraYawFollow.svg</file>
+        <file alias="CameraYawLock.svg">src/FlightDisplay/Images/CameraYawLock.svg</file>
+        <file alias="CameraZoom.svg">src/FlightDisplay/Images/CameraZoom.svg</file>
         <file alias="camera_photo.svg">src/Camera/images/camera_photo.svg</file>
         <file alias="camera_video.svg">src/Camera/images/camera_video.svg</file>
         <file alias="CameraComponentIcon.png">src/AutoPilotPlugins/Common/Images/CameraComponentIcon.png</file>

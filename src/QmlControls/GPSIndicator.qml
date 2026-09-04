@@ -42,7 +42,7 @@ Item {
                 id:                     gpsLabel
                 rotation:               90
                 text:                   qsTr("RTK")
-                color:                  qgcPal.buttonText
+                color:                  qgcPal.toolbarText
                 anchors.verticalCenter: parent.verticalCenter
                 visible:                _rtkConnected
             }
@@ -52,30 +52,32 @@ Item {
                 width:              height
                 anchors.top:        parent.top
                 anchors.bottom:     parent.bottom
-                source:             "/qmlimages/Gps.svg"
+                source:             "/qmlimages/StatusSat.svg"
                 fillMode:           Image.PreserveAspectFit
                 sourceSize.height:  height
                 opacity:            (_activeVehicle && _activeVehicle.gps.count.value >= 0) ? 1 : 0.5
-                color:              qgcPal.buttonText
+                color:              qgcPal.toolbarText
             }
         }
 
         Column {
             id:                     gpsValuesColumn
             anchors.verticalCenter: parent.verticalCenter
-            visible:                _activeVehicle && !isNaN(_activeVehicle.gps.hdop.value)
+            visible:                _activeVehicle
             spacing:                0
 
             QGCLabel {
                 anchors.horizontalCenter:   hdopValue.horizontalCenter
-                color:              qgcPal.buttonText
-                text:               _activeVehicle ? _activeVehicle.gps.count.valueString : ""
+                color:              qgcPal.toolbarText
+                text:               _activeVehicle && _activeVehicle.gps.count.value >= 0
+                                        ? _activeVehicle.gps.count.valueString : qsTr("--")
             }
 
             QGCLabel {
-                id:     hdopValue
-                color:  qgcPal.buttonText
-                text:   _activeVehicle ? _activeVehicle.gps.hdop.value.toFixed(1) : ""
+                id:      hdopValue
+                color:   qgcPal.toolbarText
+                visible: _activeVehicle && !isNaN(_activeVehicle.gps.hdop.value)
+                text:    _activeVehicle ? _activeVehicle.gps.hdop.value.toFixed(1) : ""
             }
         }
     }

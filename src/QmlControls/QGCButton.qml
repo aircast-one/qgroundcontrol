@@ -32,7 +32,7 @@ Button {
     property alias backgroundColor:     backRect.color
     property alias textColor:           text.color
 
-    property bool   _showHighlight:     enabled && (pressed | checked)
+    property bool   _showHighlight:     enabled && checked
 
     property int _horizontalPadding:    ScreenTools.defaultFontPixelWidth * 2
     property int _verticalPadding:      Math.round(ScreenTools.defaultFontPixelHeight * heightFactor)
@@ -46,13 +46,13 @@ Button {
         implicitHeight: ScreenTools.implicitButtonHeight
         border.width:   showBorder ? 1 : 0
         border.color:   qgcPal.buttonBorder
-        color:          primary ? qgcPal.primaryButton : qgcPal.button
+        color:          _showHighlight ? qgcPal.buttonHighlight : (primary ? qgcPal.primaryButton : qgcPal.button)
 
         Rectangle {
             anchors.fill:   parent
-            color:          qgcPal.buttonHighlight
-            opacity:        _showHighlight ? 1 : control.enabled && control.hovered ? .2 : 0
             radius:         parent.radius
+            color:          qgcPal.globalTheme === QGCPalette.Light ? "black" : "white"
+            opacity:        control.enabled && control.pressed ? 0.14 : control.enabled && control.hovered ? 0.06 : 0
         }
     }
 

@@ -107,9 +107,6 @@ Rectangle {
 
         paletteImportExportPopup.close()
     }
-
-    //-------------------------------------------------------------------------
-    //-- Export/Import
     Popup {
         id:             paletteImportExportPopup
         width:          impCol.width  + (ScreenTools.defaultFontPixelWidth  * 4)
@@ -212,9 +209,6 @@ Rectangle {
             }
         }
     }
-
-    //-------------------------------------------------------------------------
-    //-- Header
     Rectangle {
         id:         _header
         width:      parent.width
@@ -254,8 +248,6 @@ Rectangle {
             }
         }
     }
-    //-------------------------------------------------------------------------
-    //-- Main Contents
     QGCFlickable {
         anchors.top:            _header.bottom
         anchors.bottom:         parent.bottom
@@ -267,15 +259,12 @@ Rectangle {
             id:         _rootCol
             Row {
                 spacing: 30
-                // Edit theme GroupBox
                 GroupBox {
                     title: "Preview and edit theme"
                 Column {
                     id: editRoot
                     spacing: 5
                     property size cellSize: "90x25"
-
-                    // Header row
                     Row {
                         Text {
                             width: editRoot.cellSize.width * 2
@@ -307,8 +296,6 @@ Rectangle {
                             text: qsTr("Value")
                         }
                     }
-
-                    // Populate the model with all color names in the global palette
                     Component.onCompleted: {
                         for(var colorNameStr in palette) {
                             if(palette[colorNameStr].r !== undefined) {
@@ -320,8 +307,6 @@ Rectangle {
                     ListModel {
                         id: paletteColorList
                     }
-
-                    // Reproduce all the models
                     Repeater {
                         model: paletteColorList
                         delegate: Row {
@@ -361,10 +346,8 @@ Rectangle {
                             }
                         }
                     }
-                } // Column
+                }
                 } // GroupBox { title: "Preview and edit theme"
-
-                // QGC controls preview
                 GroupBox { title: "Controls preview"
                 Column {
                     id: ctlPrevColumn
@@ -377,8 +360,6 @@ Rectangle {
                         id: previewGrid
                         columns: 3
                         spacing: 10
-
-                        // Header row
                         Text {
                             width: ctlPrevColumn._colWidth
                             height: ctlPrevColumn._height
@@ -400,8 +381,6 @@ Rectangle {
                             horizontalAlignment: Text.AlignHCenter
                             text: qsTr("Disabled")
                         }
-
-                        // QGCLabel
                         Loader {
                             sourceComponent: ctlRowHeader
                             property string text: "QGCLabel"
@@ -427,8 +406,6 @@ Rectangle {
                                 enabled: false
                             }
                         }
-
-                        // QGCButton
                         Loader {
                             sourceComponent: ctlRowHeader
                             property string text: "QGCButton"
@@ -444,8 +421,6 @@ Rectangle {
                             text: qsTr("Button")
                             enabled: false
                         }
-
-                        // QGCButton - primary
                         Loader {
                             sourceComponent: ctlRowHeader
                             property string text: "QGCButton(primary)"
@@ -463,8 +438,6 @@ Rectangle {
                             primary: true
                             enabled: false
                         }
-
-                        // ToolStripHoverButton
                         Loader {
                             sourceComponent: ctlRowHeader
                             property string text: "ToolStripHoverButton"
@@ -484,8 +457,6 @@ Rectangle {
                             imageSource: "/qmlimages/Gears.svg"
                             enabled: false
                         }
-
-                        // QGCButton - menu
                         Loader {
                             sourceComponent: ctlRowHeader
                             property string text: "QGCButton(menu)"
@@ -515,8 +486,6 @@ Rectangle {
                             enabled: false
                             onClicked: buttonMenu.popup()
                         }
-
-                        // QGCRadioButton
                         Loader {
                             sourceComponent: ctlRowHeader
                             property string text: "QGCRadioButton"
@@ -542,8 +511,6 @@ Rectangle {
                                 enabled: false
                             }
                         }
-
-                        // QGCCheckBox
                         Loader {
                             sourceComponent: ctlRowHeader
                             property string text: "QGCCheckBox"
@@ -569,8 +536,6 @@ Rectangle {
                                 enabled: false
                             }
                         }
-
-                        // QGCTextField
                         Loader {
                             sourceComponent: ctlRowHeader
                             property string text: "QGCTextField"
@@ -586,8 +551,6 @@ Rectangle {
                             text: "QGCTextField"
                             enabled: false
                         }
-
-                        // QGCComboBox
                         Loader {
                             sourceComponent: ctlRowHeader
                             property string text: "QGCComboBox"
@@ -603,8 +566,6 @@ Rectangle {
                             model: [ qsTr("Item 1"), qsTr("Item 2"), qsTr("Item 3") ]
                             enabled: false
                         }
-
-                        // SubMenuButton
                         Loader {
                             sourceComponent: ctlRowHeader
                             property string text: "SubMenuButton"
@@ -635,7 +596,7 @@ Rectangle {
                             anchors.centerIn: parent
                         }
                     }
-                } // Column
+                }
                 } // GroupBox { title: "Controls preview"
             }
 

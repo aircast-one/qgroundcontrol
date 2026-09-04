@@ -19,8 +19,6 @@ AbstractButton   {
     checkable:      true
     padding:        0
 
-    property bool   _showBorder: qgcPal.globalTheme === QGCPalette.Light
-
     QGCPalette { id: qgcPal; colorGroupEnabled: control.enabled }
 
     contentItem: Item {
@@ -38,20 +36,24 @@ AbstractButton   {
             id:                     indicator
             anchors.right:          parent.right
             anchors.verticalCenter: parent.verticalCenter
-            height:                 ScreenTools.defaultFontPixelHeight
-            width:                  height * 2
+            height:                 Math.round(ScreenTools.defaultFontPixelHeight * 1.3)
+            width:                  Math.round(height * 1.65)
             radius:                 height / 2
-            color:                  control.checked ? qgcPal.primaryButton : qgcPal.button
-            border.width:           _showBorder ? 1 : 0
-            border.color:           qgcPal.buttonBorder
+            color:                  control.checked ? qgcPal.colorGreen : qgcPal.windowShadeLight
+
+            Behavior on color { ColorAnimation { duration: 150 } }
 
             Rectangle {
                 anchors.verticalCenter: parent.verticalCenter
-                x:                      checked ? indicator.width - width - 1: 1
-                height:                 parent.height - 2
+                x:                      control.checked ? indicator.width - width - 2 : 2
+                height:                 parent.height - 4
                 width:                  height
                 radius:                 height / 2
-                color:                  qgcPal.buttonText
+                color:                  "#ffffff"
+                border.color:           "#1f000000"
+                border.width:           1
+
+                Behavior on x { NumberAnimation { duration: 150; easing.type: Easing.OutCubic } }
             }
         }
     }

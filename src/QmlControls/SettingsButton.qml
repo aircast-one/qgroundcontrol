@@ -32,8 +32,8 @@ Button {
 
     background: Rectangle {
         color:      qgcPal.buttonHighlight
-        opacity:    checked || pressed ? 1 : enabled && hovered ? .2 : 0
-        radius:     ScreenTools.defaultFontPixelWidth / 2
+        opacity:    checked || pressed ? 1 : enabled && hovered ? .12 : 0
+        radius:     ScreenTools.buttonBorderRadius
     }
 
     contentItem: RowLayout {

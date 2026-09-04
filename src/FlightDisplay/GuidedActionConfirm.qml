@@ -21,9 +21,13 @@ Rectangle {
     id:         _root
     width:      ScreenTools.defaultFontPixelWidth * 35
     height:     mainLayout.height + (_margins * 2)
-    radius:     ScreenTools.defaultFontPixelWidth / 2
-    color:      qgcPal.window
-    visible:    _utmspEnabled === true ? utmspSliderTrigger: false
+    radius:     ScreenTools.defaultFontPixelHeight * 0.75
+    color:      qgcPal.overlayBackground
+    border.color:   qgcPal.overlayBorder
+    border.width:   1
+    layer.enabled: true
+    layer.effect:  OverlayShadowEffect { }
+    visible:    _utmspEnabled && utmspSliderTrigger
 
     property var    guidedController
     property var    guidedValueSlider
@@ -140,11 +144,10 @@ Rectangle {
                 }
             }
 
-            Rectangle {
-                height: slider.height * 0.75
-                width:  height
-                radius: height / 2
-                color:  qgcPal.primaryButton
+            OverlayCapsule {
+                objectName: "guidedActionCancel"
+                height:     slider.height * 0.75
+                width:      height
 
                 QGCColoredImage {
                     anchors.margins:    parent.height / 4

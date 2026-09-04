@@ -14,7 +14,7 @@ static const qreal kMargin = 8;
 
 static void clearPanelSettings()
 {
-    clearQmlGlobalSettings({"TestPanelCustomPosition", "TestPanelPositionX", "TestPanelPositionY"});
+    clearDragPositionSettings({"TestPanel"});
 }
 
 static bool loadView(QQuickView& view)
@@ -50,11 +50,13 @@ void DragToPositionTest::_dragRepositionsAndPersists()
         const QPoint target(300, 200);
         dragPanel(view, start, target);
 
-        const QPointF expected(root->width() - panel->width() - kMargin + target.x() - start.x(),
-                               root->height() - panel->height() - kMargin + target.y() - start.y());
+        const qreal grid = dropGridOf(root);
+        const QPointF expected(snapToDropGrid(root->width() - panel->width() - kMargin + target.x() - start.x(), grid),
+                               snapToDropGrid(root->height() - panel->height() - kMargin + target.y() - start.y(), grid));
         QTRY_VERIFY(qAbs(panel->x() - expected.x()) < 2);
         QTRY_VERIFY(qAbs(panel->y() - expected.y()) < 2);
 
+        QTRY_VERIFY(storedPosition(QStringLiteral("TestPanel800x600-CustomPosition")));
         draggedPos = QPointF(panel->x(), panel->y());
     }
 
@@ -70,6 +72,8 @@ void DragToPositionTest::_dragOffscreenClampsCommittedPosition()
 {
     clearPanelSettings();
 
+    qreal edgeMargin = 0;
+
     {
         QQuickView view;
         QVERIFY(loadView(view));
@@ -78,12 +82,18 @@ void DragToPositionTest::_dragOffscreenClampsCommittedPosition()
         QQuickItem* panel = root->findChild<QQuickItem*>("panel");
         QVERIFY(panel);
 
+        QObject* dragPosition = root->findChild<QObject*>("dragPosition");
+        QVERIFY(dragPosition);
+        edgeMargin = dragPosition->property("edgeMargin").toReal();
+        QVERIFY(edgeMargin > 0);
+
         // Drag far past the top-left corner: the DragHandler itself is unbounded, but the
-        // committed position must clamp back on screen.
+        // committed position must clamp back on screen, docked at the edge margin.
         dragPanel(view, itemCenter(panel), QPoint(-300, -300));
 
-        QTRY_COMPARE(panel->x(), 0.0);
-        QTRY_COMPARE(panel->y(), 0.0);
+        QTRY_COMPARE(panel->x(), edgeMargin);
+        QTRY_COMPARE(panel->y(), edgeMargin);
+        QTRY_VERIFY(storedPosition(QStringLiteral("TestPanel800x600-CustomPosition")));
     }
 
     // The clamped position must also be what a fresh view restores to.
@@ -91,8 +101,8 @@ void DragToPositionTest::_dragOffscreenClampsCommittedPosition()
     QVERIFY(loadView(view2));
     QQuickItem* panel2 = view2.rootObject()->findChild<QQuickItem*>("panel");
     QVERIFY(panel2);
-    QCOMPARE(panel2->x(), 0.0);
-    QCOMPARE(panel2->y(), 0.0);
+    QCOMPARE(panel2->x(), edgeMargin);
+    QCOMPARE(panel2->y(), edgeMargin);
 }
 
 void DragToPositionTest::_dragBackToDefaultSnapsAndResets()
@@ -158,7 +168,7 @@ void DragToPositionTest::_clickStillReachesChild()
 void DragToPositionTest::_comboBoxInPanelOpensPopup()
 {
     clearPanelSettings();
-    clearQmlGlobalSettings({"TestSelectableCustomPosition", "TestSelectablePositionX", "TestSelectablePositionY"});
+    clearDragPositionSettings({"TestSelectable"});
 
     QQuickView view;
     QVERIFY(loadView(view));
@@ -187,38 +197,3 @@ void DragToPositionTest::_comboBoxInPanelOpensPopup()
     QCOMPARE(QPointF(panel->x(), panel->y()), posBeforeClick);
 }
 
-void DragToPositionTest::_resizeHandleGrowsUpAndPinsBottom()
-{
-    clearPanelSettings();
-
-    QQuickView view;
-    QVERIFY(loadView(view));
-
-    QQuickItem* root = view.rootObject();
-    QQuickItem* panel = root->findChild<QQuickItem*>("panel");
-    QQuickItem* handle = root->findChild<QQuickItem*>("resizeHandle");
-    QVERIFY(panel);
-    QVERIFY(handle);
-
-    // Move off the default corner first so the bottom edge is not held by the default binding.
-    const qreal defaultX = panel->x();
-    dragPanel(view, itemCenter(panel), QPoint(300, 200));
-    QTRY_VERIFY(panel->x() != defaultX);
-
-    const qreal initialWidth = panel->width();
-    const qreal initialBottom = panel->y() + panel->height();
-
-    // Pull straight up: dominant-axis growth, bottom edge stays pinned.
-    const QPoint grip = itemCenter(handle);
-    dragMouse(view, grip, grip - QPoint(0, 60), false);
-
-    QTRY_VERIFY(qAbs(panel->width() - (initialWidth + 60)) < 2);
-    QVERIFY(qAbs(panel->y() + panel->height() - initialBottom) < 1);
-
-    // Pull down-left (growth is the dominant axis, so shrinking needs both): bottom still pinned.
-    const QPoint grip2 = itemCenter(handle);
-    dragMouse(view, grip2, grip2 + QPoint(-40, 40), false);
-
-    QTRY_VERIFY(qAbs(panel->width() - (initialWidth + 20)) < 2);
-    QVERIFY(qAbs(panel->y() + panel->height() - initialBottom) < 1);
-}

@@ -108,6 +108,52 @@
     "min":          3,
     "max":          60,
     "default":      10
+},
+{
+    "name":         "gimbalTiltChannel",
+    "shortDesc":    "RC channel driving gimbal tilt. 0 disables on-screen gimbal control.",
+    "type":         "uint32",
+    "min":          0,
+    "max":          18,
+    "default":      0
+},
+{
+    "name":         "gimbalPanChannel",
+    "shortDesc":    "RC channel driving gimbal pan. 0 disables panning.",
+    "type":         "uint32",
+    "min":          0,
+    "max":          18,
+    "default":      0
+},
+{
+    "name":         "cameraZoomChannel",
+    "shortDesc":    "RC channel driving camera zoom. 0 hides the zoom slider.",
+    "type":         "uint32",
+    "min":          0,
+    "max":          18,
+    "default":      0
+},
+{
+    "name":         "cameraLightChannel",
+    "shortDesc":    "RC channel driving the camera light. 0 hides the light button.",
+    "type":         "uint32",
+    "min":          0,
+    "max":          18,
+    "default":      0
+},
+{
+    "name":         "cameraRecordChannel",
+    "shortDesc":    "RC channel driving the camera's own recording. 0 records only the ground station stream.",
+    "type":         "uint32",
+    "min":          0,
+    "max":          18,
+    "default":      0
+},
+{
+    "name":         "rcControls",
+    "shortDesc":    "User-defined on-screen RC controls as JSON: [{label, channel, type: slider|button}]",
+    "type":         "string",
+    "default":      "[]"
 }
 ]
 }

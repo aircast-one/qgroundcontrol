@@ -36,7 +36,6 @@ T.ComboBox {
 
     property real   _popupWidth:    width
     property bool   _onCompleted:   false
-    property bool   _showBorder:    qgcPal.globalTheme === QGCPalette.Light
 
     QGCPalette { id: qgcPal; colorGroupEnabled: enabled }
 
@@ -70,8 +69,6 @@ T.ComboBox {
         _onCompleted = true
         _calcPopupWidth()
     }
-
-    // The items in the popup
     delegate: ItemDelegate {
         width:  _popupWidth
         height: Math.round(popupItemMetrics.height * 1.75)
@@ -89,12 +86,13 @@ T.ComboBox {
         contentItem: Text {
             text:                   _text
             font:                   control.font
-            color:                  control.currentIndex === index ? qgcPal.buttonHighlightText : qgcPal.buttonText
+            color:                  control.highlightedIndex === index ? qgcPal.buttonHighlightText : qgcPal.buttonText
             verticalAlignment:      Text.AlignVCenter
         }
 
         background: Rectangle {
-            color:                  control.currentIndex === index ? qgcPal.buttonHighlight : qgcPal.button
+            radius:                 ScreenTools.buttonBorderRadius
+            color:                  control.highlightedIndex === index ? qgcPal.buttonHighlight : "transparent"
         }
 
         highlighted:                control.highlightedIndex === index
@@ -109,8 +107,6 @@ T.ComboBox {
         source:                 "/qmlimages/arrow-down.png"
         color:                  qgcPal.buttonText
     }
-
-    // The label of the button
     contentItem: QGCLabel {
         id:                         text
         anchors.verticalCenter:     parent.verticalCenter
@@ -123,7 +119,7 @@ T.ComboBox {
     background: Rectangle {
         color:          qgcPal.button
         border.color:   qgcPal.buttonBorder
-        border.width:   _showBorder ? 1 : 0
+        border.width:   1
         radius:         ScreenTools.buttonBorderRadius
     }
 
@@ -142,19 +138,14 @@ T.ComboBox {
             currentIndex:           control.highlightedIndex
             highlightMoveDuration:  0
 
-            Rectangle {
-                z:              10
-                width:          parent.width
-                height:         parent.height
-                color:          "transparent"
-                border.color:   qgcPal.text
-            }
-
             T.ScrollIndicator.vertical: ScrollIndicator { }
         }
 
         background: Rectangle {
-            color: qgcPal.window
+            color:          qgcPal.windowShade
+            border.color:   qgcPal.groupBorder
+            border.width:   1
+            radius:         Math.round(ScreenTools.defaultFontPixelHeight * 0.6)
         }
     }
 }

@@ -71,6 +71,20 @@ ApplicationWindow {
 
     readonly property real      _topBottomMargins:          ScreenTools.defaultFontPixelHeight * 0.5
 
+    readonly property real windowChromeLeftInset:  windowChromeLoader.item ? windowChromeLoader.item.leftInset : 0
+    readonly property real windowChromeRightInset: windowChromeLoader.item ? windowChromeLoader.item.rightInset : 0
+
+    property Item frostedBackdrop: null
+
+    property var _windowDragExclusions: []
+
+    function registerWindowDragExclusion(item) {
+        _windowDragExclusions = [..._windowDragExclusions, item]
+        if (windowChromeLoader.item) {
+            windowChromeLoader.item.excludeFromDrag(item)
+        }
+    }
+
     //-------------------------------------------------------------------------
     //-- Global Scope Variables
 
@@ -82,6 +96,7 @@ ApplicationWindow {
         readonly property real      defaultTextWidth:               ScreenTools.defaultFontPixelWidth
         readonly property var       planMasterControllerFlyView:    flyView.planController
         readonly property var       guidedControllerFlyView:        flyView.guidedController
+        readonly property var       overlayRigFlyView:              flyView.overlayRig
 
         // Number of QGCTextField's with validation errors. Used to prevent closing panels with validation errors.
         property int                validationErrorCount:           0 
@@ -494,7 +509,7 @@ ApplicationWindow {
 
             RowLayout {
                 id:                 toolDrawerToolbarLayout
-                anchors.leftMargin: ScreenTools.defaultFontPixelWidth
+                anchors.leftMargin: ScreenTools.defaultFontPixelWidth + mainWindow.windowChromeLeftInset
                 anchors.left:       parent.left
                 anchors.top:        parent.top
                 anchors.bottom:     parent.bottom
@@ -513,7 +528,8 @@ ApplicationWindow {
             }
 
             QGCMouseArea {
-                anchors.fill: toolDrawerToolbarLayout
+                anchors.fill:           toolDrawerToolbarLayout
+                Component.onCompleted:  mainWindow.registerWindowDragExclusion(this)
                 onClicked: {
                     if (mainWindow.allowViewSwitch()) {
                         toolDrawer.visible = false
@@ -535,6 +551,15 @@ ApplicationWindow {
                 onPopout:               toolDrawer.visible = false
             }
         }
+    }
+
+    Loader {
+        id:             windowChromeLoader
+        anchors.fill:   parent
+        z:              QGroundControl.zOrderTopMost + 1
+        active:         !ScreenTools.isMobile
+        source:         "WindowChrome.qml"
+        onLoaded:       mainWindow._windowDragExclusions.forEach(exclusion => item.excludeFromDrag(exclusion))
     }
 
     //-------------------------------------------------------------------------
@@ -658,7 +683,7 @@ ApplicationWindow {
     Popup {
         id:             indicatorDrawer
         x:              calcXPosition()
-        y:              ScreenTools.toolbarHeight + _margins
+        y:              ScreenTools.toolbarHeight + (ScreenTools.defaultFontPixelHeight / 2)
         leftInset:      0
         rightInset:     0
         topInset:       0
@@ -698,26 +723,39 @@ ApplicationWindow {
             Rectangle {
                 id:             backgroundRect
                 anchors.fill:   parent
-                color:          QGroundControl.globalPalette.window
-                radius:         indicatorDrawer._margins
-                opacity:        0.85
+                color:          QGroundControl.globalPalette.overlayBackground
+                border.color:   QGroundControl.globalPalette.overlayBorder
+                border.width:   1
+                radius:         ScreenTools.defaultFontPixelHeight * 0.75
+                layer.enabled:  true
+                layer.effect:   OverlayShadowEffect { }
             }
 
+            // Straddles the panel corner, so it carries its own shadow rather than the panel's
+            // layer, which would crop it.
             Rectangle {
                 anchors.horizontalCenter:   backgroundRect.right
                 anchors.verticalCenter:     backgroundRect.top
-                width:                      ScreenTools.largeFontPixelHeight
+                width:                      ScreenTools.defaultFontPixelHeight * 2.2
                 height:                     width
                 radius:                     width / 2
-                color:                      QGroundControl.globalPalette.button
-                border.color:               QGroundControl.globalPalette.buttonText
+                color:                      QGroundControl.globalPalette.overlayBackground
+                border.color:               QGroundControl.globalPalette.overlayBorder
+                border.width:               1
                 visible:                    indicatorDrawerLoader.item && indicatorDrawerLoader.item.showExpand && !indicatorDrawer._expanded
+                layer.enabled:              true
+                layer.effect:               OverlayShadowEffect { }
 
-                QGCLabel {
+                QGCColoredImage {
                     anchors.centerIn:   parent
-                    text:               ">"
-                    color:              QGroundControl.globalPalette.buttonText
-                }  
+                    source:             "/InstrumentValueIcons/cheveron-right.svg"
+                    color:              QGroundControl.globalPalette.text
+                    height:             parent.height * 0.6
+                    width:              height
+                    sourceSize.height:  height
+                    fillMode:           Image.PreserveAspectFit
+                    mipmap:             true
+                }
 
                 QGCMouseArea {
                     fillItem: parent

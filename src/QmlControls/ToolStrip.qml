@@ -27,6 +27,12 @@ Rectangle {
     property alias  title:              titleLabel.text
     property var    fontSize:           ScreenTools.smallFontPointSize
 
+    // Camera-chrome theme: no panel, each action a translucent dark disc like OverlayRoundButton
+    property bool   roundButtons:       false
+    property alias  buttonSpacing:      toolStripColumn.spacing
+
+    readonly property color _discColor: qgcPal.overlayBackground
+
     property var _dropPanel: dropPanel
 
     function simulateClick(buttonIndex) {
@@ -78,8 +84,16 @@ Rectangle {
                     anchors.left:       toolStripColumn.left
                     anchors.right:      toolStripColumn.right
                     height:             width
-                    radius:             ScreenTools.defaultFontPixelWidth / 2
+                    radius:             _root.roundButtons ? width / 2 : ScreenTools.defaultFontPixelWidth / 2
+                    iconOnly:           _root.roundButtons
                     fontPointSize:      _root.fontSize
+                    bkColor:            _root.roundButtons ? _root._discColor : qgcPal.toolbarBackground
+                    bkHoverColor:       _root.roundButtons ? Qt.rgba(_root._discColor.r, _root._discColor.g, _root._discColor.b, 1) : qgcPal.toolStripHoverColor
+                    bkCheckedColor:     _root.roundButtons ? qgcPal.text : qgcPal.buttonHighlight
+                    contentColor:       _root.roundButtons ? qgcPal.text : qgcPal.buttonText
+                    contentCheckedColor: _root.roundButtons ? qgcPal.window : qgcPal.buttonHighlightText
+                    borderColor:        _root.roundButtons ? qgcPal.overlayBorder : "transparent"
+                    borderWidth:        _root.roundButtons ? 1 : 0
                     toolStripAction:    modelData
                     dropPanel:          _dropPanel
                     onDropped: (index) => _root.dropped(index)

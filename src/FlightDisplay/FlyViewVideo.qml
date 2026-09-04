@@ -17,6 +17,8 @@ import QGroundControl.ScreenTools
 Item {
     id: _root
 
+    required property var overlayRig
+
     property Item pipView
     property Item pipState: videoPipState
 
@@ -60,6 +62,13 @@ Item {
         useSmallFont:   _root.pipState.state !== _root.pipState.fullState
         visible:        QGroundControl.videoManager.isStreamSource
     }
+
+    // The "no video" pill carries Retry and Video Settings, so a telemetry chip parked on top
+    // of it takes away controls the user needs exactly when the video is broken. Owned by the
+    // pip because the pill sits inside the video, and the video is sometimes the pip itself -
+    // without the owner the rig would push the pip away from its own contents.
+    Component.onCompleted:   _root.overlayRig.registerStatic(videoStreaming.statusPill, _root.pipView)
+    Component.onDestruction: _root.overlayRig.unregisterStatic(videoStreaming.statusPill)
     //-- UVC Video (USB Camera or Video Device)
     Loader {
         id:             cameraLoader
@@ -260,180 +269,5 @@ Item {
     ObstacleDistanceOverlayVideo {
         id: obstacleDistance
         showText: pipState.state === pipState.fullState
-    }
-
-    //-- Additional cameras shown simultaneously as picture-in-picture tiles
-    Item {
-        id:             multiViewTiles
-        anchors.fill:   parent
-        visible:        videoStreaming.visible
-
-        readonly property string _tileSizeSettingsKey: "VideoTileSize"
-        property real _tileSize: ScreenTools.defaultFontPixelWidth * 34
-        property real _minSize:  0.10               // Percentage of parent control size
-        property real _maxSize:  0.5
-
-        Component.onCompleted: {
-            var savedSize = parseFloat(QGroundControl.loadGlobalSetting(_tileSizeSettingsKey, "0"))
-            if (savedSize > 0) {
-                _tileSize = savedSize
-            }
-        }
-
-        Repeater {
-            model: QGroundControl.videoManager.maxVideoTiles()
-
-            delegate: Rectangle {
-                id:             tile
-                // Reading the notifying properties forces re-evaluation when the active
-                // source, camera list or multi-view toggle changes.
-                property int cameraNumber: (QGroundControl.videoManager.activeVideoSource,
-                                            QGroundControl.settingsManager.videoSettings.multiViewEnabled.rawValue,
-                                            QGroundControl.videoManager.tileCameraNumber(index))
-                width:          Math.min(Math.max(multiViewTiles._tileSize, multiViewTiles.width * multiViewTiles._minSize), multiViewTiles.width * multiViewTiles._maxSize)
-                height:         Math.round(width * 9 / 16)
-                visible:        cameraNumber > 0 && !QGroundControl.videoManager.fullScreen && pipState.state === pipState.fullState
-                color:          tileExpanded ? "black" : "transparent"
-
-                // Keyed by camera, not slot: collapsing a camera keeps it collapsed as it
-                // moves between tile slots when the active camera changes.
-                readonly property string _tileExpandedSettingsKey: "VideoTileCamera" + cameraNumber + "Expanded"
-                property bool tileExpanded: QGroundControl.loadBoolGlobalSetting(_tileExpandedSettingsKey, true)
-
-                on_TileExpandedSettingsKeyChanged: {
-                    tileExpanded = QGroundControl.loadBoolGlobalSetting(_tileExpandedSettingsKey, true)
-                    QGroundControl.videoManager.registerTileItem(index, tileExpanded ? tileVideo : null)
-                }
-
-                function setTileExpanded(expanded) {
-                    QGroundControl.saveBoolGlobalSetting(_tileExpandedSettingsKey, expanded)
-                    tileExpanded = expanded
-                    // A collapsed tile hands its widget back so the sink stops feeding an
-                    // invisible item; the stream connection itself stays warm.
-                    QGroundControl.videoManager.registerTileItem(index, expanded ? tileVideo : null)
-                }
-
-                DragToPosition {
-                    id:                 tileDragPosition
-                    target:             tile
-                    settingsKeyPrefix:  "VideoTile" + index
-                    defaultX:           multiViewTiles.width - tile.width - ScreenTools.defaultFontPixelWidth * 2
-                    defaultY:           (multiViewTiles.height - tile.height) / 2 + index * (tile.height + ScreenTools.defaultFontPixelHeight * 0.5)
-                }
-
-                DragHandler {
-                    enabled: tile.tileExpanded
-                    onActiveChanged: if (!active) tileDragPosition.commit()
-                }
-
-                QGCVideoBackground {
-                    id:                 tileVideo
-                    objectName:         "extraVideo" + index  // must match VideoManager::_tileReceiverName
-                    anchors.fill:       parent
-                    visible:            tile.tileExpanded
-                    Component.onCompleted: QGroundControl.videoManager.registerTileItem(index, tile.tileExpanded ? this : null)
-                }
-
-                property string statusText: {
-                    var statuses = QGroundControl.videoManager.cameraStatuses
-                    var cam = tile.cameraNumber - 1
-                    return cam >= 0 && cam < statuses.length ? statuses[cam] : ""
-                }
-
-                QGCLabel {
-                    anchors.centerIn:   parent
-                    text:               tile.statusText
-                    color:              "white"
-                    font.pointSize:     ScreenTools.smallFontPointSize
-                    visible:            tile.statusText !== "" && tile.tileExpanded
-                }
-
-                Rectangle {
-                    anchors.left:       parent.left
-                    anchors.top:        parent.top
-                    anchors.margins:    ScreenTools.defaultFontPixelHeight / 3
-                    width:              tileLabel.contentWidth + ScreenTools.defaultFontPixelWidth * 2
-                    height:             tileLabel.contentHeight + ScreenTools.defaultFontPixelHeight / 2
-                    radius:             ScreenTools.defaultFontPixelHeight / 3
-                    color:              Qt.rgba(0,0,0,0.75)
-                    visible:            tileLabel.text !== "" && tile.tileExpanded
-
-                    QGCLabel {
-                        id:                 tileLabel
-                        anchors.centerIn:   parent
-                        text:               tile.cameraNumber > 0 ? QGroundControl.videoManager.cameraName(tile.cameraNumber - 1) : ""
-                        color:              "white"
-                        font.pointSize:     ScreenTools.smallFontPointSize
-                    }
-                }
-
-                MouseArea {
-                    id:             tileMouseArea
-                    anchors.fill:   parent
-                    enabled:        tile.tileExpanded
-                    hoverEnabled:   true
-                    onClicked:      QGroundControl.videoManager.promoteTile(index)
-                }
-
-                ResizeHandle {
-                    id:          tileResizeHandle
-                    target:      tile
-                    enabled:     tile.tileExpanded
-                    height:      ScreenTools.defaultFontPixelHeight * 2
-                    iconVisible: tile.tileExpanded && (ScreenTools.isMobile || tileMouseArea.containsMouse || tileResizeHandle.pressed)
-                    onResized:   (newWidth) => { multiViewTiles._tileSize = newWidth }
-                    onCommitted: {
-                        multiViewTiles._tileSize = tile.width
-                        QGroundControl.saveGlobalSetting(multiViewTiles._tileSizeSettingsKey, tile.width.toString())
-                        // A resize alone must not turn the default stacking into a custom
-                        // position; only update the stored spot if the user already dragged.
-                        if (tileDragPosition.hasCustomPosition) {
-                            tileDragPosition.commit()
-                        } else {
-                            tileDragPosition.rebind()
-                        }
-                    }
-                }
-
-                Image {
-                    source:             "/qmlimages/pipHide.svg"
-                    mipmap:             true
-                    fillMode:           Image.PreserveAspectFit
-                    anchors.left:       parent.left
-                    anchors.bottom:     parent.bottom
-                    visible:            tile.tileExpanded && (ScreenTools.isMobile || tileMouseArea.containsMouse)
-                    height:             ScreenTools.defaultFontPixelHeight * 2
-                    width:              height
-                    sourceSize.height:  height
-                    MouseArea {
-                        anchors.fill:   parent
-                        onClicked:      tile.setTileExpanded(false)
-                    }
-                }
-
-                Rectangle {
-                    anchors.left:       parent.left
-                    anchors.bottom:     parent.bottom
-                    height:             ScreenTools.defaultFontPixelHeight * 2
-                    width:              height
-                    radius:             ScreenTools.defaultFontPixelHeight / 3
-                    color:              Qt.rgba(0,0,0,0.75)
-                    visible:            !tile.tileExpanded
-                    Image {
-                        width:              parent.width * 0.75
-                        height:             parent.height * 0.75
-                        sourceSize.height:  height
-                        source:             "/res/buttonRight.svg"
-                        mipmap:             true
-                        fillMode:           Image.PreserveAspectFit
-                        anchors.centerIn:   parent
-                    }
-                    MouseArea {
-                        anchors.fill:   parent
-                        onClicked:      tile.setTileExpanded(true)
-                    }
-                }
-            }
-        }
     }
 }

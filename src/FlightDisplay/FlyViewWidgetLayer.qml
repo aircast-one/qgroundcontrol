@@ -32,6 +32,8 @@ import QGroundControl.Vehicle
 Item {
     id: _root
 
+    required property var overlayRig
+
     property var    parentToolInsets
     property var    totalToolInsets:        _totalToolInsets
     property var    mapControl
@@ -55,6 +57,8 @@ Item {
     property bool utmspActTrigger
 
     property real _bottomRightPanelsBottomInset: instrumentPanel.bottomEdgeRightInset
+
+    readonly property real instrumentPanelReservedWidth: instrumentPanel.visible ? instrumentPanel.width + _layoutMargin * 2 : 0
 
     QGCToolInsets {
         id:                     _totalToolInsets
@@ -100,12 +104,69 @@ Item {
         property real rightEdgeCenterInset: rightEdgeTopInset
     }
 
+    // Was anchored inside the top-right column: no jiggle, no badge, no collision, and no way
+    // to move the record button off whatever it happened to land on. It is a floating overlay
+    // panel like every other one, so it belongs in the rig.
+    ArrangeableOverlayItem {
+        id:                 photoVideoSlot
+        overlayRig:         _root.overlayRig
+        control:            photoVideoControlLoader
+        editKey:            "photoVideoControl"
+        settingsKeyPrefix:  "PhotoVideoControl"
+        available:          photoVideoControlLoader.status === Loader.Ready
+        z:                  QGroundControl.zOrderWidgets
+        defaultX:           _root.width - photoVideoSlot.width - _layoutMargin
+        defaultY:           _layoutMargin + parentToolInsets.topEdgeRightInset +
+                                topRightColumnLayout.topEdgeRightInset
+
+        // A Loader so PhotoVideoControl is built only with an active vehicle, and does not
+        // have to null-check the mavlink camera everywhere.
+        Loader {
+            id:              photoVideoControlLoader
+            objectName:      "photoVideoControl"
+            sourceComponent: (globals.activeVehicle &&
+                                 QGroundControl.settingsManager.flyViewSettings.showPhotoVideoControl.rawValue &&
+                                 !cameraControlLayer.hasShutter) ? photoVideoControlComponent : undefined
+
+            Component {
+                id: photoVideoControlComponent
+
+                PhotoVideoControl {
+                    showCloseButton: false
+                }
+            }
+        }
+    }
+
     FlyViewInstrumentPanel {
         id:         instrumentPanel
-        visible:    QGroundControl.corePlugin.options.flyView.showInstrumentPanel && _showSingleVehicleUI
+        overlayRig: _root.overlayRig
+        visible:    QGroundControl.corePlugin.options.flyView.showInstrumentPanel && _showSingleVehicleUI &&
+                        (overlayRig.editMode || !overlayRig.isHidden("instrumentPanel"))
+        opacity:    overlayRig.isHidden("instrumentPanel") ? 0.35 : 1
 
-        property real bottomEdgeRightInset: visible && !instrumentPanelDragPosition.hasCustomPosition ? height + _layoutMargin : 0
-        property real rightEdgeBottomInset: visible && !instrumentPanelDragPosition.hasCustomPosition ? _root.width - x : 0
+        // DJI corner: the compass lives bottom-left with the minimap, so it reports no
+        // right-edge insets any more.
+        property real bottomEdgeRightInset: 0
+        property real rightEdgeBottomInset: 0
+
+        OverlayEditBadge {
+            rig:     overlayRig
+            editKey: "instrumentPanel"
+        }
+
+        Component.onCompleted:   overlayRig.registerMovable(instrumentPanel, instrumentPanelDragPosition)
+        Component.onDestruction: overlayRig.unregisterMovable(instrumentPanel)
+
+        Behavior on x {
+            enabled: !instrumentPanelDragHandler.active
+            NumberAnimation { duration: 350; easing.type: Easing.OutBack; easing.overshoot: 2 }
+        }
+
+        Behavior on y {
+            enabled: !instrumentPanelDragHandler.active
+            NumberAnimation { duration: 350; easing.type: Easing.OutBack; easing.overshoot: 2 }
+        }
 
         DragToPosition {
             id:                 instrumentPanelDragPosition
@@ -115,12 +176,21 @@ Item {
             defaultY:           _root.height - instrumentPanel.height - _layoutMargin
         }
 
+        JiggleAnimation {
+            target:  instrumentPanel
+            running: overlayRig.editMode && instrumentPanel.visible
+            lifted:  instrumentPanelDragHandler.active
+        }
+
         DragHandler {
-            parent: instrumentPanel.contentItem
-            target: instrumentPanel
+            id:      instrumentPanelDragHandler
+            parent:  instrumentPanel.contentItem
+            target:  instrumentPanel
+            enabled: overlayRig.editMode
             onActiveChanged: {
                 if (!active) {
                     instrumentPanelDragPosition.commit()
+                    overlayRig.resolve(instrumentPanel)
                 }
             }
         }
@@ -132,9 +202,12 @@ Item {
         rallyPointController:   _rallyPointController
     }
 
+    readonly property real _bottomCenterWidgetClearance: ScreenTools.defaultFontPixelHeight * 8
+
     GuidedActionConfirm {
-        anchors.margins:            _toolsMargin
-        anchors.top:                parent.top
+        objectName:                 "guidedActionConfirm"
+        anchors.bottomMargin:       _toolsMargin + parentToolInsets.bottomEdgeCenterInset + _bottomCenterWidgetClearance
+        anchors.bottom:             parent.bottom
         anchors.horizontalCenter:   parent.horizontalCenter
         z:                          QGroundControl.zOrderTopMost
         guidedController:           _guidedController
@@ -190,12 +263,14 @@ Item {
 
     FlyViewToolStrip {
         id:                     toolStrip
-        anchors.leftMargin:     _toolsMargin + parentToolInsets.leftEdgeCenterInset
-        anchors.topMargin:      _toolsMargin + parentToolInsets.topEdgeLeftInset
-        anchors.left:           parent.left
-        anchors.top:            parent.top
+        objectName:             "flyViewToolStrip"
+        Component.onCompleted:   overlayRig.registerMovable(toolStrip, toolStripDragPosition)
+        Component.onDestruction: overlayRig.unregisterMovable(toolStrip)
         z:                      QGroundControl.zOrderWidgets
-        maxHeight:              parent.height - y - parentToolInsets.bottomEdgeLeftInset - _toolsMargin
+        // Height of the column the strip may occupy. Deriving this from y instead would close
+        // a loop, because the dragged y is clamped against the strip's own height.
+        maxHeight:              parent.height - (_toolsMargin + parentToolInsets.topEdgeLeftInset) -
+                                    parentToolInsets.bottomEdgeLeftInset - _toolsMargin
         visible:                !QGroundControl.videoManager.fullScreen
 
         onDisplayPreFlightChecklist: {
@@ -208,6 +283,129 @@ Item {
         property real topEdgeLeftInset:     visible ? y + height : 0
         property real leftEdgeTopInset:     visible ? x + width : 0
         property real leftEdgeCenterInset:  leftEdgeTopInset
+
+        Behavior on x {
+            enabled: !toolStripDragHandler.active
+            NumberAnimation { duration: 350; easing.type: Easing.OutBack; easing.overshoot: 2 }
+        }
+
+        Behavior on y {
+            enabled: !toolStripDragHandler.active
+            NumberAnimation { duration: 350; easing.type: Easing.OutBack; easing.overshoot: 2 }
+        }
+
+        DragToPosition {
+            id:                 toolStripDragPosition
+            target:             toolStrip
+            settingsKeyPrefix:  "FlyViewToolStrip"
+            defaultX:           _toolsMargin + parentToolInsets.leftEdgeCenterInset
+            defaultY:           _toolsMargin + parentToolInsets.topEdgeLeftInset
+        }
+
+        JiggleAnimation {
+            target:  toolStrip
+            running: overlayRig.editMode && toolStrip.visible
+            lifted:  toolStripDragHandler.active
+        }
+
+        DragHandler {
+            id:      toolStripDragHandler
+            enabled: overlayRig.editMode
+
+            onActiveChanged: {
+                if (!active) {
+                    toolStripDragPosition.commit()
+                    overlayRig.resolve(toolStrip)
+                }
+            }
+        }
+    }
+
+    // Takeoff and land are their own arrangeable buttons rather than two rows in the tool
+    // strip: they are the two actions a pilot reaches for under time pressure, and where the
+    // thumb already is differs per airframe and per operator.
+    component GuidedOverlayButton: ArrangeableOverlayItem {
+        id: guidedSlot
+
+        required property string action
+        required property string title
+        required property string glyph
+        required property bool   actionable
+        required property string buttonName
+
+        // Visible in edit mode whatever the vehicle is doing. Gating on `actionable` alone
+        // meant the takeoff button could only be arranged while the vehicle was ready to take
+        // off and the land button only while it was flying - never on the bench, which is
+        // where people arrange their layout.
+        overlayRig: _root.overlayRig
+        control:    guidedButton
+        available:  actionable || _root.overlayRig.editMode
+        z:          QGroundControl.zOrderWidgets
+
+        Column {
+            id:      guidedButton
+            spacing: ScreenTools.defaultFontPixelHeight * 0.15
+
+            OverlayRoundButton {
+                id:                       guidedGlyph
+                objectName:               guidedSlot.buttonName
+                anchors.horizontalCenter: parent.horizontalCenter
+                icon:                     guidedSlot.glyph
+                editing:                  _root.overlayRig.editMode
+                lifted:                   guidedSlot.dragging
+                actionsEnabled:           guidedSlot.actionable
+                opacity:                  guidedSlot.actionable ? 1 : _unavailableOpacity
+                onClicked: {
+                    _guidedController.closeAll()
+                    _guidedController.confirmAction(_guidedController[guidedSlot.action])
+                }
+                onHeld: _root.overlayRig.editMode = true
+            }
+
+            // The tool strip labelled these; an unlabelled glyph for the two most consequential
+            // guided actions on the screen is not an improvement.
+            QGCLabel {
+                anchors.horizontalCenter: parent.horizontalCenter
+                text:                     guidedSlot.title
+                font.pointSize:           ScreenTools.smallFontPointSize
+                opacity:                  guidedSlot.actionable ? 1 : _unavailableOpacity
+                style:                    Text.Outline
+                styleColor:               "black"
+            }
+        }
+    }
+
+    readonly property real _unavailableOpacity: 0.5
+    readonly property real _guidedButtonX:      _toolsMargin + parentToolInsets.leftEdgeCenterInset
+    readonly property real _guidedButtonY:      _root.height - _toolsMargin -
+                                                    parentToolInsets.bottomEdgeLeftInset
+
+    GuidedOverlayButton {
+        id:                 takeoffSlot
+        action:             "actionTakeoff"
+        title:              _guidedController.takeoffTitle
+        glyph:              "/res/takeoff.svg"
+        buttonName:         "guidedTakeoffButton"
+        actionable:         _guidedController.showTakeoff
+        editKey:            "takeoffButton"
+        settingsKeyPrefix:  "GuidedTakeoffButton"
+        defaultX:           _guidedButtonX
+        defaultY:           _guidedButtonY - takeoffSlot.height
+    }
+
+    // Offset by its own height: the two are mutually exclusive today, so the rig never sees
+    // them as a pair to separate, and identical defaults would stack them the day both show.
+    GuidedOverlayButton {
+        id:                 landSlot
+        action:             "actionLand"
+        title:              _guidedController.landTitle
+        glyph:              "/res/land.svg"
+        buttonName:         "guidedLandButton"
+        actionable:         _guidedController.showLand
+        editKey:            "landButton"
+        settingsKeyPrefix:  "GuidedLandButton"
+        defaultX:           _guidedButtonX
+        defaultY:           _guidedButtonY - takeoffSlot.height - _toolsMargin - landSlot.height
     }
 
     GripperMenu {
@@ -215,17 +413,22 @@ Item {
     }
 
     VehicleWarnings {
-        anchors.centerIn:   parent
-        z:                  QGroundControl.zOrderTopMost
+        anchors.top:                parent.top
+        anchors.topMargin:          parentToolInsets.topEdgeCenterInset + _toolsMargin
+        anchors.horizontalCenter:   parent.horizontalCenter
+        z:                          QGroundControl.zOrderTopMost
     }
 
     MapScale {
         id:                 mapScale
+        objectName:         "flyViewMapScale"
         anchors.margins:    _toolsMargin
         anchors.left:       toolStrip.right
-        anchors.top:        parent.top
+        anchors.top:        toolStrip.top
+        anchors.topMargin:  0
         mapControl:         _mapControl
         buttonsOnLeft:      true
+        zoomButtonsVisible: false
         visible:            !ScreenTools.isTinyScreen && QGroundControl.corePlugin.options.flyView.showMapScale && !isViewer3DOpen && mapControl.pipState.state === mapControl.pipState.fullState
 
         property real topEdgeCenterInset: visible ? y + height : 0

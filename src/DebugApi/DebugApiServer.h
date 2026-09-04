@@ -9,6 +9,7 @@
 
 #pragma once
 
+#include <QtCore/QEvent>
 #include <QtCore/QObject>
 #include <QtCore/QStringList>
 
@@ -39,6 +40,13 @@ private:
     QByteArray _route(const QString &path, const QUrlQuery &query);
     static QByteArray _statusJson();
     static QByteArray _screenshotJson();
+    static QByteArray _uiMouseStepJson(const QUrlQuery &query, QEvent::Type type);
+    static QByteArray _uiPinchJson(const QUrlQuery &query);
+    static QByteArray _uiTapJson(const QUrlQuery &query);
+    static QByteArray _uiPropJson(const QUrlQuery &query);
+    static QByteArray _uiResizeJson(const QUrlQuery &query);
+    static QByteArray _mockLinkJson(const QUrlQuery &query);
+    static QByteArray _uiDismissJson();
     static QByteArray _vehicleJson();
     static QByteArray _paramsJson(const QUrlQuery &query);
     static QByteArray _paramSetJson(const QUrlQuery &query);

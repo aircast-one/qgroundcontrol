@@ -40,6 +40,8 @@ class VideoManager : public QObject
     Q_PROPERTY(bool     autoStreamConfigured    READ autoStreamConfigured                       NOTIFY autoStreamConfiguredChanged)
     Q_PROPERTY(bool     decoding                READ decoding                                   NOTIFY decodingChanged)
     Q_PROPERTY(QStringList cameraStatuses       READ cameraStatuses                             NOTIFY camerasChanged)
+    Q_PROPERTY(QVariantList cameraConnecting    READ cameraConnecting                           NOTIFY camerasChanged)
+    Q_PROPERTY(QVariantList cameraRecording     READ cameraRecording                            NOTIFY recordingChanged)
     Q_PROPERTY(bool     fullScreen              READ fullScreen             WRITE setfullScreen NOTIFY fullScreenChanged)
     Q_PROPERTY(bool     hasThermal              READ hasThermal                                 NOTIFY decodingChanged)
     Q_PROPERTY(bool     hasVideo                READ hasVideo                                   NOTIFY hasVideoChanged)
@@ -86,6 +88,10 @@ public:
     /// Connection status per camera index; an empty entry means frames are rendering.
     /// Bindable: re-evaluates on camerasChanged.
     QStringList cameraStatuses() const;
+    /// True per camera index while a connection attempt is in flight, as opposed to a state
+    /// that will not change on its own (no URL, bad URL). Only the former earns a spinner.
+    QVariantList cameraConnecting() const;
+    QVariantList cameraRecording() const;
     /// Decoded-frame counter and last-frame timestamp for the camera at `index` (0 when unknown).
     quint64 cameraFramesDecoded(int index) const;
     quint64 cameraBytesReceived(int index) const;
@@ -155,7 +161,9 @@ private:
     QQuickItem *_widgetForCamera(int cameraIndex) const;
     void _rebindWidgets();
     void _refreshActiveReceiverState();
-    void _setReceiverStatus(VideoReceiver *receiver, const QString &status);
+    void _setReceiverStatus(VideoReceiver *receiver, const QString &status, bool connecting = false);
+    bool _cameraConnecting(int index) const;
+    bool _cameraRecording(int index) const;
     static QString _tileReceiverName(int slot);
     void _restartAllVideos();
     void _restartVideo(VideoReceiver *receiver);
@@ -163,11 +171,13 @@ private:
     void _stopReceiver(VideoReceiver *receiver);
     static void _cleanupOldVideos();
 
-    static constexpr int kMaxVideoTiles = 3;
+    static constexpr int kMaxVideoTiles = 8;
 
     struct ReceiverState {
         bool streaming = false;
         bool decoding = false;
+        bool connecting = false;
+        bool recording = false;
         QSize videoSize;
         QString status;
     };

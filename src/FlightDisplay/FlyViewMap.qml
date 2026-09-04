@@ -30,6 +30,9 @@ FlightMap {
     planView:                   false
     zoomLevel:                  QGroundControl.flightMapZoom
     center:                     QGroundControl.flightMapPosition
+    // While arranging overlay items the picture stays put: a drag that starts on an item's
+    // transparent corner must not double as a map pan.
+    panEnabled:                 !globals.overlayRigFlyView || !globals.overlayRigFlyView.editMode
 
     property Item   pipView
     property Item   pipState:                   _pipState
@@ -51,6 +54,7 @@ FlightMap {
     property bool   _disableVehicleTracking:    false
     property bool   _keepVehicleCentered:       pipMode ? true : false
     property bool   _saveZoomLevelSetting:      true
+
 
     function _adjustMapZoomForPipMode() {
         _saveZoomLevelSetting = false
@@ -643,8 +647,7 @@ FlightMap {
                 ColumnLayout {
                     spacing: ScreenTools.defaultFontPixelWidth / 2
 
-                    QGCButton {
-                        Layout.fillWidth:   true
+                    OverlayMenuItem {
                         text:               qsTr("Cancel ROI")
                         onClicked: {
                             _activeVehicle.stopGuidedModeROI()
@@ -652,8 +655,7 @@ FlightMap {
                         }
                     }
 
-                    QGCButton {
-                        Layout.fillWidth:   true
+                    OverlayMenuItem {
                         text:               qsTr("Edit Position")
                         onClicked: {         
                             roiEditPositionDialogComponent.createObject(mainWindow, { showSetPositionFromVehicle: false }).open()
@@ -677,10 +679,16 @@ FlightMap {
                 ColumnLayout {
                     spacing: ScreenTools.defaultFontPixelWidth / 2
 
-                    QGCButton {
-                        Layout.fillWidth:   true
+                    property bool _showGoto:    globals.guidedControllerFlyView.showGotoLocation
+                    property bool _showOrbit:   globals.guidedControllerFlyView.showOrbit
+                    property bool _showROI:     globals.guidedControllerFlyView.showROI
+                    property bool _showHome:    globals.guidedControllerFlyView.showSetHome
+                    property bool _showHeading: globals.guidedControllerFlyView.showChangeHeading
+                    property bool _showOrigin:  globals.guidedControllerFlyView.showSetEstimatorOrigin
+
+                    OverlayMenuItem {
                         text:               qsTr("Go to location")
-                        visible:            globals.guidedControllerFlyView.showGotoLocation
+                        visible:            _showGoto
                         onClicked: {
                             mapClickDropPanel.close()
                             gotoLocationItem.show(mapClickCoord)
@@ -694,10 +702,11 @@ FlightMap {
                         }
                     }
 
-                    QGCButton {
-                        Layout.fillWidth:   true
+                    OverlayMenuSeparator { visible: _showOrbit && _showGoto }
+
+                    OverlayMenuItem {
                         text:               qsTr("Orbit at location")
-                        visible:            globals.guidedControllerFlyView.showOrbit
+                        visible:            _showOrbit
                         onClicked: {
                             mapClickDropPanel.close()
                             orbitMapCircle.show(mapClickCoord)
@@ -705,60 +714,122 @@ FlightMap {
                         }
                     }
 
-                    QGCButton {
-                        Layout.fillWidth:   true
+                    OverlayMenuSeparator { visible: _showROI && (_showGoto || _showOrbit) }
+
+                    OverlayMenuItem {
                         text:               qsTr("ROI at location")
-                        visible:            globals.guidedControllerFlyView.showROI
+                        visible:            _showROI
                         onClicked: {
                             mapClickDropPanel.close()
                             globals.guidedControllerFlyView.executeAction(globals.guidedControllerFlyView.actionROI, mapClickCoord, 0, false)
                         }
                     }
 
-                    QGCButton {
-                        Layout.fillWidth:   true
+                    OverlayMenuSeparator { visible: _showHome && (_showGoto || _showOrbit || _showROI) }
+
+                    OverlayMenuItem {
                         text:               qsTr("Set home here")
-                        visible:            globals.guidedControllerFlyView.showSetHome
+                        visible:            _showHome
                         onClicked: {
                             mapClickDropPanel.close()
                             globals.guidedControllerFlyView.confirmAction(globals.guidedControllerFlyView.actionSetHome, mapClickCoord)
                         }
                     }
 
-                    QGCButton {
-                        Layout.fillWidth:   true
-                        text:               qsTr("Set Estimator Origin")
-                        visible:            globals.guidedControllerFlyView.showSetEstimatorOrigin
-                        onClicked: {
-                            mapClickDropPanel.close()
-                            globals.guidedControllerFlyView.confirmAction(globals.guidedControllerFlyView.actionSetEstimatorOrigin, mapClickCoord)
-                        }
-                    }
+                    OverlayMenuSeparator { visible: _showHeading && (_showGoto || _showOrbit || _showROI || _showHome) }
 
-                    QGCButton {
-                        Layout.fillWidth:   true
+                    OverlayMenuItem {
                         text:               qsTr("Set Heading")
-                        visible:            globals.guidedControllerFlyView.showChangeHeading
+                        visible:            _showHeading
                         onClicked: {
                             mapClickDropPanel.close()
                             globals.guidedControllerFlyView.confirmAction(globals.guidedControllerFlyView.actionChangeHeading, mapClickCoord)
                         }
                     }
 
+                    OverlayMenuSeparator { visible: _showOrigin && (_showGoto || _showOrbit || _showROI || _showHome || _showHeading) }
+
+                    OverlayMenuItem {
+                        text:               qsTr("Set Estimator Origin")
+                        visible:            _showOrigin
+                        opacity:            0.7
+                        onClicked: {
+                            mapClickDropPanel.close()
+                            globals.guidedControllerFlyView.confirmAction(globals.guidedControllerFlyView.actionSetEstimatorOrigin, mapClickCoord)
+                        }
+                    }
+
+                    OverlayMenuSeparator { }
+
                     ColumnLayout {
-                        spacing: 0
-                        QGCLabel { text: qsTr("Lat: %1").arg(mapClickCoord.latitude.toFixed(6)) }
-                        QGCLabel { text: qsTr("Lon: %1").arg(mapClickCoord.longitude.toFixed(6)) }
+                        Layout.alignment:   Qt.AlignHCenter
+                        spacing:            0
+
+                        QGCLabel {
+                            Layout.alignment:   Qt.AlignHCenter
+                            opacity:            0.6
+                            font.pointSize:     ScreenTools.smallFontPointSize
+                            text:               qsTr("Lat: %1").arg(mapClickCoord.latitude.toFixed(6))
+                        }
+
+                        QGCLabel {
+                            Layout.alignment:   Qt.AlignHCenter
+                            opacity:            0.6
+                            font.pointSize:     ScreenTools.smallFontPointSize
+                            text:               qsTr("Lon: %1").arg(mapClickCoord.longitude.toFixed(6))
+                        }
                     }
                 }
             }
         }
     }
 
+    property var _mapClickMenuCoord: null
+
+    MapQuickItem {
+        coordinate:     _mapClickMenuCoord ? _mapClickMenuCoord : QtPositioning.coordinate()
+        visible:        _mapClickMenuCoord !== null
+        z:              QGroundControl.zOrderMapItems + 1
+        anchorPoint.x:  clickMarker.width / 2
+        anchorPoint.y:  clickMarker.height / 2
+
+        sourceItem: Item {
+            id:     clickMarker
+            width:  ScreenTools.defaultFontPixelHeight * 1.6
+            height: width
+
+            Rectangle {
+                anchors.fill:   parent
+                radius:         width / 2
+                color:          "transparent"
+                border.color:   Qt.rgba(0, 0, 0, 0.6)
+                border.width:   4
+            }
+
+            Rectangle {
+                anchors.fill:       parent
+                anchors.margins:    1
+                radius:             width / 2
+                color:              "transparent"
+                border.color:       "white"
+                border.width:       2
+            }
+
+            Rectangle {
+                anchors.centerIn:   parent
+                width:              4
+                height:             4
+                radius:             2
+                color:              "white"
+            }
+        }
+    }
+
     onMapClicked: (position) => {
-        if (!globals.guidedControllerFlyView.guidedUIVisible && 
+        if (!globals.guidedControllerFlyView.guidedUIVisible &&
             (globals.guidedControllerFlyView.showGotoLocation || globals.guidedControllerFlyView.showOrbit ||
              globals.guidedControllerFlyView.showROI || globals.guidedControllerFlyView.showSetHome ||
+             globals.guidedControllerFlyView.showChangeHeading ||
              globals.guidedControllerFlyView.showSetEstimatorOrigin)) {
 
             position = Qt.point(position.x, position.y)
@@ -766,6 +837,11 @@ FlightMap {
             // For some strange reason using mainWindow in mapToItem doesn't work, so we use globals.parent instead which also gets us mainWindow
             position = _root.mapToItem(globals.parent, position)
             var dropPanel = mapClickDropPanelComponent.createObject(mainWindow, { mapClickCoord: clickCoord, clickRect: Qt.rect(position.x, position.y, 0, 0) })
+            _mapClickMenuCoord = clickCoord
+            dropPanel.closed.connect(function() {
+                _mapClickMenuCoord = null
+                dropPanel.destroy()
+            })
             dropPanel.open()
         }
     }

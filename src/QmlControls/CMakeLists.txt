@@ -70,6 +70,7 @@ qt_add_qml_module(QGroundControlControlsModule
         AppSettings.qml
         APMSubMotorDisplay.qml
         AppMessages.qml
+        ArrangeableOverlayItem.qml
         AutotuneUI.qml
         AxisMonitor.qml
         CameraSwitchButton.qml
@@ -91,6 +92,7 @@ qt_add_qml_module(QGroundControlControlsModule
         InstrumentValueEditDialog.qml
         InstrumentValueLabel.qml
         InstrumentValueValue.qml
+        JiggleAnimation.qml
         JoystickThumbPad.qml
         KMLOrSHPFileDialog.qml
         LabelledButton.qml
@@ -104,6 +106,14 @@ qt_add_qml_module(QGroundControlControlsModule
         MissionItemIndexLabel.qml
         MvPanelPage.qml
         OfflineMapButton.qml
+        OverlayEditBadge.qml
+        OverlayMenuItem.qml
+        OverlayMenuSeparator.qml
+        OverlayCapsule.qml
+        OverlayPill.qml
+        OverlayRoundButton.qml
+        OverlayRig.qml
+        OverlayShadowEffect.qml
         ParameterDiffDialog.qml
         ParameterEditor.qml
         ParameterEditorDialog.qml
@@ -125,6 +135,7 @@ qt_add_qml_module(QGroundControlControlsModule
         QGCFlickableScrollIndicator.qml
         QGCGroupBox.qml
         QGCLabel.qml
+        QGCSpinner.qml
         QGCListView.qml
         QGCMapLabel.qml
         QGCMarqueeLabel.qml
@@ -146,10 +157,10 @@ qt_add_qml_module(QGroundControlControlsModule
         QGCTabButton.qml
         QGCTextField.qml
         QGCToolBarButton.qml
+        QGCToolTip.qml
         QGCToolInsets.qml
         RCChannelMonitor.qml
         RCToParamDialog.qml
-        ResizeHandle.qml
         SectionHeader.qml
         SelectableControl.qml
         SettingsButton.qml

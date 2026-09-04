@@ -31,6 +31,7 @@ Item {
 
         DragToPosition {
             id: dragPosition
+            objectName: "dragPosition"
             target: panel
             settingsKeyPrefix: "TestPanel"
             defaultX: root.width - panel.width - 8
@@ -57,21 +58,6 @@ Item {
             onClicked: panel.buttonClicks++
         }
 
-        // Mirrors the production wiring: handle owns the gesture, caller owns the size and
-        // keeps a pure resize from minting a custom position.
-        ResizeHandle {
-            objectName: "resizeHandle"
-            target: panel
-            onResized: (newWidth) => panel.panelSize = newWidth
-            onCommitted: {
-                panel.panelSize = panel.width
-                if (dragPosition.hasCustomPosition) {
-                    dragPosition.commit()
-                } else {
-                    dragPosition.rebind()
-                }
-            }
-        }
     }
 
     // Mirrors FlyViewInstrumentPanel/SelectableControl: a Control with the selection combo

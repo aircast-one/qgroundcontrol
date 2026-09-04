@@ -110,10 +110,14 @@ add_subdirectory(qgcunittest)
 # add_qgc_test(MessageBoxTest)
 
 add_subdirectory(FlightDisplay)
+add_qgc_test(CameraControlTest)
+add_qgc_test(TelemetryChipsTest)
 add_qgc_test(VideoTileTest)
 
 add_subdirectory(QmlControls)
 add_qgc_test(DragToPositionTest)
+add_qgc_test(OverlayRigTest)
+add_qgc_test(PipRevealTest)
 add_qgc_test(PipViewTest)
 
 add_subdirectory(Terrain)

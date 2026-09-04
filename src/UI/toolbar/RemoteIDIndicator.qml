@@ -24,7 +24,11 @@ Item {
     anchors.top:    parent.top
     anchors.bottom: parent.bottom
 
-    property bool   showIndicator:      remoteIDManager.available
+    property var    _remoteIDSettings:  QGroundControl.settingsManager.remoteIDSettings
+    property bool   showIndicator:      remoteIDManager && remoteIDManager.available &&
+                                            (_remoteIDSettings.sendBasicID.rawValue ||
+                                             _remoteIDSettings.sendOperatorID.rawValue ||
+                                             _remoteIDSettings.sendSelfID.rawValue)
 
     property var    activeVehicle:      QGroundControl.multiVehicleManager.activeVehicle
     property var    remoteIDManager:    activeVehicle ? activeVehicle.remoteIDManager : null

@@ -14,46 +14,65 @@ import QGroundControl.ScreenTools
 import QGroundControl.Controls
 
 Rectangle {
-    anchors.margins:    -ScreenTools.defaultFontPixelHeight
-    height:             warningsCol.height
-    width:              warningsCol.width
-    color:              Qt.rgba(1, 1, 1, 0.5)
-    radius:             ScreenTools.defaultFontPixelWidth / 2
+    height:             contentRow.height + _padding * 1.5
+    width:              contentRow.width + _padding * 3
+    color:              _qgcPal.overlayBackground
+    border.color:       _qgcPal.overlayBorder
+    border.width:       1
+    radius:             ScreenTools.defaultFontPixelHeight * 0.75
+    layer.enabled: true
+    layer.effect:  OverlayShadowEffect { }
     visible:            _noGPSLockVisible || _prearmErrorVisible
 
     property var  _activeVehicle:       QGroundControl.multiVehicleManager.activeVehicle
     property bool _noGPSLockVisible:    _activeVehicle && _activeVehicle.requiresGpsFix && !_activeVehicle.coordinate.isValid
     property bool _prearmErrorVisible:  _activeVehicle && !_activeVehicle.armed && _activeVehicle.prearmError && !_activeVehicle.healthAndArmingCheckReport.supported
 
-    Column {
-        id:         warningsCol
-        spacing:    ScreenTools.defaultFontPixelHeight
+    property var  _qgcPal:              QGroundControl.globalPalette
+    property real _padding:             ScreenTools.defaultFontPixelHeight * 0.75
 
-        QGCLabel {
-            anchors.horizontalCenter:   parent.horizontalCenter
-            visible:                    _noGPSLockVisible
-            color:                      "black"
-            font.pointSize:             ScreenTools.largeFontPointSize
-            text:                       qsTr("No GPS Lock for Vehicle")
+    Row {
+        id:                 contentRow
+        anchors.centerIn:   parent
+        spacing:            _padding * 0.75
+
+        QGCColoredImage {
+            anchors.verticalCenter: parent.verticalCenter
+            source:                 "/qmlimages/Yield.svg"
+            color:                  _qgcPal.colorOrange
+            height:                 ScreenTools.defaultFontPixelHeight * 1.2
+            width:                  height
+            sourceSize.height:      height
+            fillMode:               Image.PreserveAspectFit
+            mipmap:                 true
+            smooth:                 true
         }
 
-        QGCLabel {
-            anchors.horizontalCenter:   parent.horizontalCenter
-            visible:                    _prearmErrorVisible
-            color:                      "black"
-            font.pointSize:             ScreenTools.largeFontPointSize
-            text:                       _activeVehicle ? _activeVehicle.prearmError : ""
-        }
+        Column {
+            anchors.verticalCenter: parent.verticalCenter
+            spacing:                ScreenTools.defaultFontPixelHeight / 4
 
-        QGCLabel {
-            anchors.horizontalCenter:   parent.horizontalCenter
-            visible:                    _prearmErrorVisible
-            width:                      ScreenTools.defaultFontPixelWidth * 50
-            horizontalAlignment:        Text.AlignHCenter
-            wrapMode:                   Text.WordWrap
-            color:                      "black"
-            font.pointSize:             ScreenTools.largeFontPointSize
-            text:                       qsTr("The vehicle has failed a pre-arm check. In order to arm the vehicle, resolve the failure.")
+            QGCLabel {
+                visible:    _noGPSLockVisible
+                color:      _qgcPal.text
+                text:       qsTr("No GPS Lock for Vehicle")
+            }
+
+            QGCLabel {
+                visible:    _prearmErrorVisible
+                color:      _qgcPal.text
+                text:       _activeVehicle ? _activeVehicle.prearmError : ""
+            }
+
+            QGCLabel {
+                visible:    _prearmErrorVisible
+                width:      ScreenTools.defaultFontPixelWidth * 50
+                wrapMode:   Text.WordWrap
+                color:      _qgcPal.text
+                opacity:    0.7
+                font.pointSize: ScreenTools.smallFontPointSize
+                text:       qsTr("The vehicle has failed a pre-arm check. In order to arm the vehicle, resolve the failure.")
+            }
         }
     }
 }

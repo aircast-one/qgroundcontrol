@@ -126,6 +126,7 @@ void FactValueGrid::setFontSize(FontSize fontSize)
 
 void FactValueGrid::_saveValueData(QSettings& settings, InstrumentValueData* value)
 {
+    settings.setValue(_uidKey,          value->uid());
     settings.setValue(_textKey,         value->text());
     settings.setValue(_showUnitsKey,    value->showUnits());
     settings.setValue(_iconKey,         value->icon());
@@ -155,6 +156,13 @@ void FactValueGrid::_saveValueData(QSettings& settings, InstrumentValueData* val
 
 void FactValueGrid::_loadValueData(QSettings& settings, InstrumentValueData* value)
 {
+    // A value stored before uids existed adopts the one generated at construction, which is
+    // then written back on the next save.
+    const QString uid = settings.value(_uidKey).toString();
+    if (!uid.isEmpty()) {
+        value->setUid(uid);
+    }
+
     QString factName = settings.value(_factNameKey).toString();
     if (!factName.isEmpty()) {
         value->setFact(settings.value(_factGroupNameKey).toString(), factName);
@@ -246,8 +254,13 @@ QmlObjectListModel* FactValueGrid::appendColumn(void)
 
 void FactValueGrid::deleteLastColumn(void)
 {
-    if (_columns->count() > 1) {
-        _columns->removeAt(_columns->count() - 1)->deleteLater();
+    deleteColumn(_columns->count() - 1);
+}
+
+void FactValueGrid::deleteColumn(int index)
+{
+    if (_columns->count() > 1 && index >= 0 && index < _columns->count()) {
+        _columns->removeAt(index)->deleteLater();
         _saveSettings();
     }
 }

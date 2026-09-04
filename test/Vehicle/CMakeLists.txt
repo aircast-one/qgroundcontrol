@@ -6,6 +6,10 @@ target_sources(${CMAKE_PROJECT_NAME}
         InitialConnectTest.h
         MAVLinkLogManagerTest.cc
         MAVLinkLogManagerTest.h
+        FlightModeReportingTest.cc
+        FlightModeReportingTest.h
+        RcChannelOverrideTest.cc
+        RcChannelOverrideTest.h
         RequestMessageTest.cc
         RequestMessageTest.h
         SendMavCommandWithHandlerTest.cc

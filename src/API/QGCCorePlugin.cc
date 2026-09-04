@@ -40,6 +40,9 @@
 #include <QtQml/QQmlApplicationEngine>
 #include <QtQml/QQmlContext>
 #include <QtQuick/QQuickItem>
+#ifdef QGC_QWINDOWKIT
+#include <QWKQuick/qwkquickglobal.h>
+#endif
 
 QGC_LOGGING_CATEGORY(QGCCorePluginLog, "qgc.api.qgccoreplugin");
 
@@ -189,77 +192,47 @@ void QGCCorePlugin::factValueGridCreateDefaultSettings(FactValueGrid* factValueG
             value->setShowUnits(true);
         }
     } else {
-        const bool includeFWValues = ((factValueGrid->vehicleClass() == QGCMAVLink::VehicleClassFixedWing) || (factValueGrid->vehicleClass() == QGCMAVLink::VehicleClassVTOL) || (factValueGrid->vehicleClass() == QGCMAVLink::VehicleClassAirship));
+        // DJI's flight telemetry set: distance, height, horizontal speed, vertical speed.
+        // One value per chip, one row. Fixed wings additionally get airspeed, which is
+        // stall-safety data rather than decoration.
+        const bool includeFWValues = ((factValueGrid->vehicleClass() == QGCMAVLink::VehicleClassFixedWing) ||
+                                      (factValueGrid->vehicleClass() == QGCMAVLink::VehicleClassVTOL) ||
+                                      (factValueGrid->vehicleClass() == QGCMAVLink::VehicleClassAirship));
 
         factValueGrid->setFontSize(FactValueGrid::LargeFontSize);
 
-        (void) factValueGrid->appendColumn();
-        (void) factValueGrid->appendColumn();
-        (void) factValueGrid->appendColumn();
-        if (includeFWValues) {
+        struct DefaultValue {
+            const char* factName;
+            const char* icon;
+            const char* text;       // empty: use the fact's own short description
+        };
+        const QList<DefaultValue> defaults = {
+            { "DistanceToHome",   "home.svg",                "" },
+            { "AltitudeRelative", "arrow-thick-up.svg",      "" },
+            { "GroundSpeed",      "arrow-simple-right.svg",  "" },
+            { "ClimbRate",        "arrow-simple-up.svg",     "" },
+        };
+        const QList<DefaultValue> fixedWingDefaults = {
+            { "AirSpeed",         "",                        "AirSpd" },
+        };
+
+        for (const DefaultValue &def: (includeFWValues ? defaults + fixedWingDefaults : defaults)) {
             (void) factValueGrid->appendColumn();
-        }
-        factValueGrid->appendRow();
-
-        int rowIndex = 0;
-        QmlObjectListModel *column = factValueGrid->columns()->value<QmlObjectListModel*>(0);
-
-        InstrumentValueData *value = column->value<InstrumentValueData*>(rowIndex++);
-        value->setFact(QStringLiteral("Vehicle"), QStringLiteral("AltitudeRelative"));
-        value->setIcon(QStringLiteral("arrow-thick-up.svg"));
-        value->setText(value->fact()->shortDescription());
-        value->setShowUnits(true);
-
-        value = column->value<InstrumentValueData*>(rowIndex++);
-        value->setFact(QStringLiteral("Vehicle"), QStringLiteral("DistanceToHome"));
-        value->setIcon(QStringLiteral("bookmark copy 3.svg"));
-        value->setText(value->fact()->shortDescription());
-        value->setShowUnits(true);
-
-        rowIndex = 0;
-        column = factValueGrid->columns()->value<QmlObjectListModel*>(1);
-
-        value = column->value<InstrumentValueData*>(rowIndex++);
-        value->setFact(QStringLiteral("Vehicle"), QStringLiteral("ClimbRate"));
-        value->setIcon(QStringLiteral("arrow-simple-up.svg"));
-        value->setText(value->fact()->shortDescription());
-        value->setShowUnits(true);
-
-        value = column->value<InstrumentValueData*>(rowIndex++);
-        value->setFact(QStringLiteral("Vehicle"), QStringLiteral("GroundSpeed"));
-        value->setIcon(QStringLiteral("arrow-simple-right.svg"));
-        value->setText(value->fact()->shortDescription());
-        value->setShowUnits(true);
-
-        if (includeFWValues) {
-            rowIndex = 0;
-            column = factValueGrid->columns()->value<QmlObjectListModel*>(2);
-
-            value = column->value<InstrumentValueData*>(rowIndex++);
-            value->setFact(QStringLiteral("Vehicle"), QStringLiteral("AirSpeed"));
-            value->setText(QStringLiteral("AirSpd"));
-            value->setShowUnits(true);
-
-            value = column->value<InstrumentValueData*>(rowIndex++);
-            value->setFact(QStringLiteral("Vehicle"), QStringLiteral("ThrottlePct"));
-            value->setText(QStringLiteral("Thr"));
+            QmlObjectListModel *column = factValueGrid->columns()->value<QmlObjectListModel*>(factValueGrid->columns()->count() - 1);
+            InstrumentValueData *value = column->value<InstrumentValueData*>(0);
+            value->setFact(QStringLiteral("Vehicle"), QString::fromLatin1(def.factName));
+            const QString icon = QString::fromLatin1(def.icon);
+            if (!icon.isEmpty()) {
+                value->setIcon(icon);
+            }
+            const QString text = QString::fromLatin1(def.text);
+            // A fact the firmware does not publish leaves fact() null; the label is all we can
+            // show for it, and crashing the whole default layout over one missing fact is worse.
+            value->setText(!text.isEmpty()            ? text
+                           : value->fact()            ? value->fact()->shortDescription()
+                                                      : QString::fromLatin1(def.factName));
             value->setShowUnits(true);
         }
-
-        rowIndex = 0;
-        column = factValueGrid->columns()->value<QmlObjectListModel*>(includeFWValues ? 3 : 2);
-
-        value = column->value<InstrumentValueData*>(rowIndex++);
-        value->setFact(QStringLiteral("Vehicle"), QStringLiteral("FlightTime"));
-        value->setIcon(QStringLiteral("timer.svg"));
-        value->setText(value->fact()->shortDescription());
-        value->setShowUnits(false);
-
-        value = column->value<InstrumentValueData*>(rowIndex++);
-        value->setFact(QStringLiteral("Vehicle"), QStringLiteral("FlightDistance"));
-        value->setIcon(QStringLiteral("travel-walk.svg"));
-        value->setText(value->fact()->shortDescription());
-        value->setShowUnits(true);
     }
 }
 
@@ -267,6 +240,9 @@ QQmlApplicationEngine *QGCCorePlugin::createQmlApplicationEngine(QObject *parent
 {
     QQmlApplicationEngine *const qmlEngine = new QQmlApplicationEngine(parent);
     qmlEngine->addImportPath(QStringLiteral("qrc:/qml"));
+#ifdef QGC_QWINDOWKIT
+    QWK::registerTypes(qmlEngine);
+#endif
     qmlEngine->rootContext()->setContextProperty(QStringLiteral("joystickManager"), JoystickManager::instance());
     qmlEngine->rootContext()->setContextProperty(QStringLiteral("debugMessageModel"), QGCLogging::instance());
     qmlEngine->rootContext()->setContextProperty(QStringLiteral("logDownloadController"), LogDownloadController::instance());
@@ -326,6 +302,7 @@ const QVariantList &QGCCorePlugin::toolBarIndicators()
     static const QVariantList toolBarIndicatorList = QVariantList(
         {
             QVariant::fromValue(QUrl::fromUserInput(QStringLiteral("qrc:/qml/QGroundControl/Toolbar/RTKGPSIndicator.qml"))),
+            QVariant::fromValue(QUrl::fromUserInput(QStringLiteral("qrc:/qml/QGroundControl/Toolbar/GCSBatteryIndicator.qml"))),
         }
     );
 

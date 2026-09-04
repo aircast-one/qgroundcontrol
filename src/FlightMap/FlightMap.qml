@@ -9,6 +9,7 @@
 
 import QtQuick
 import QtQuick.Controls
+import QtQuick.Shapes
 import QtLocation
 import QtPositioning
 import QtQuick.Dialogs
@@ -154,14 +155,26 @@ Map {
     // We specifically do not use a DragHandler for panning. It just causes too many problems if you overlay anything else like a Flickable above it.
     // Causes all sorts of crazy problems where dragging/scrolling  no longerr works on items above in the hierarchy.
     // Since we are using a MouseArea we also can't use TapHandler for clicks. So we handle that here as well.
+    property bool panEnabled: true
+
     MultiPointTouchArea {
         anchors.fill: parent
         maximumTouchPoints: 1
         mouseEnabled: true
+        enabled: _map.panEnabled
 
         property bool dragActive: false
         property real lastMouseX
         property real lastMouseY
+
+        // An overlay item's DragHandler can steal the exclusive grab mid-gesture; without this
+        // reset the pan state goes stale and the map keeps reacting after the mouse is released.
+        onCanceled: {
+            if (dragActive) {
+                dragActive = false
+                mapPanStop()
+            }
+        }
 
         onPressed: (touchPoints) => {
             lastMouseX = touchPoints[0].x
@@ -204,18 +217,52 @@ Map {
         visible:        gcsPosition.isValid
         coordinate:     gcsPosition
 
-        sourceItem: Image {
-            id:             mapItemImage
-            source:         isNaN(gcsHeading) ? "/res/QGCLogoFull.svg" : "/res/QGCLogoArrow.svg"
-            mipmap:         true
-            antialiasing:   true
-            fillMode:       Image.PreserveAspectFit
-            height:         ScreenTools.defaultFontPixelHeight * (isNaN(gcsHeading) ? 1.75 : 2.5 )
-            sourceSize.height: height
-            transform: Rotation {
-                origin.x:       mapItemImage.width  / 2
-                origin.y:       mapItemImage.height / 2
-                angle:          isNaN(gcsHeading) ? 0 : gcsHeading
+        sourceItem: Item {
+            id:     gcsMarker
+            width:  ScreenTools.defaultFontPixelHeight * 2.6
+            height: width
+
+            readonly property color _locationBlue: "#2f7cf6"
+
+            Rectangle {
+                anchors.fill:   parent
+                radius:         width / 2
+                color:          Qt.alpha(parent._locationBlue, 0.2)
+            }
+
+            Shape {
+                anchors.fill:   parent
+                visible:        !isNaN(gcsHeading)
+                rotation:       isNaN(gcsHeading) ? 0 : gcsHeading
+                antialiasing:   true
+
+                ShapePath {
+                    strokeWidth:    0
+                    strokeColor:    "transparent"
+                    fillColor:      Qt.alpha(gcsMarker._locationBlue, 0.85)
+                    startX:         gcsMarker.width / 2
+                    startY:         0
+
+                    PathLine { x: gcsMarker.width * 0.72; y: gcsMarker.height * 0.36 }
+                    PathLine { x: gcsMarker.width * 0.28; y: gcsMarker.height * 0.36 }
+                    PathLine { x: gcsMarker.width / 2;    y: 0 }
+                }
+            }
+
+            Rectangle {
+                anchors.centerIn:   parent
+                width:              parent.width * 0.52
+                height:             width
+                radius:             width / 2
+                color:              "white"
+            }
+
+            Rectangle {
+                anchors.centerIn:   parent
+                width:              parent.width * 0.38
+                height:             width
+                radius:             width / 2
+                color:              parent._locationBlue
             }
         }
     }

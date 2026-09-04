@@ -14,7 +14,8 @@ static const qreal kMargin = 8;
 
 static void clearPipSettings()
 {
-    clearQmlGlobalSettings({"PIPSize", "PIPCustomPosition", "PIPPositionX", "PIPPositionY", "IsPIPVisible", "PipViewTestItem1IsFull"});
+    clearQmlGlobalSettings({"IsPIPVisible", "PipViewTestItem1IsFull"});
+    clearDragPositionSettings({"PIP"});
 }
 
 static bool loadView(QQuickView& view)
@@ -47,13 +48,15 @@ void PipViewTest::_dragRepositionsAndPersists()
         const QPoint target(500, 250);
         dragMouse(view, start, target);
 
-        const QPointF expected(kMargin + target.x() - start.x(),
-                               root->height() - pip->height() - kMargin + target.y() - start.y());
+        const qreal grid = dropGridOf(root);
+        const QPointF expected(snapToDropGrid(kMargin + target.x() - start.x(), grid),
+                               snapToDropGrid(root->height() - pip->height() - kMargin + target.y() - start.y(), grid));
         QTRY_VERIFY(qAbs(pip->x() - expected.x()) < 2);
         QTRY_VERIFY(qAbs(pip->y() - expected.y()) < 2);
 
         QCOMPARE(itemB->parentItem(), pipParentBefore);
 
+        QTRY_VERIFY(storedPosition(QStringLiteral("PIP800x600-CustomPosition")));
         draggedPos = QPointF(pip->x(), pip->y());
     }
 
@@ -76,12 +79,20 @@ void PipViewTest::_dragOffscreenClampsCommittedPosition()
     QQuickItem* pip = root->findChild<QQuickItem*>("pip");
     QVERIFY(pip);
 
-    // Aim well past the bottom-right corner; the drag itself is bounded by the
-    // MouseArea drag min/max and the committed position must stay fully on screen.
-    dragMouse(view, itemCenter(pip), QPoint(root->width() + 200, root->height() + 200));
+    // Aim at the far corner of the window rather than past it: Qt drops mouse events
+    // delivered outside the target window, so a drag aimed off-screen simply stops early and
+    // never reaches the bound it is meant to prove. drag.maximumX/Y still do the clamping.
+    dragMouse(view, itemCenter(pip), QPoint(root->width() - 1, root->height() - 1));
 
-    QTRY_COMPARE(pip->x(), root->width() - pip->width());
-    QTRY_COMPARE(pip->y(), root->height() - pip->height());
+    // Dropped positions are held edgeMargin away from the edge rather than flush against it,
+    // so the clamped corner is inset by exactly that much.
+    QObject* const dragPosition = root->findChild<QObject*>("dragPosition");
+    QVERIFY(dragPosition);
+    const qreal edgeMargin = dragPosition->property("edgeMargin").toReal();
+    QVERIFY(edgeMargin > 0);
+
+    QTRY_COMPARE(pip->x(), root->width() - pip->width() - edgeMargin);
+    QTRY_COMPARE(pip->y(), root->height() - pip->height() - edgeMargin);
 }
 
 void PipViewTest::_dragBackToDefaultSnapsAndResets()
@@ -142,41 +153,3 @@ void PipViewTest::_clickSwapsWithoutDrag()
     QVERIFY(itemA->parentItem() != root);
 }
 
-void PipViewTest::_resizeFromCornerPersists()
-{
-    clearPipSettings();
-
-    qreal resizedWidth = 0;
-
-    {
-        QQuickView view;
-        QVERIFY(loadView(view));
-
-        QQuickItem* pip = view.rootObject()->findChild<QQuickItem*>("pip");
-        QVERIFY(pip);
-
-        const qreal initialWidth = pip->width();
-        const QPoint corner = pip->mapToScene(QPointF(pip->width() - 10, 10)).toPoint();
-        dragMouse(view, corner, corner + QPoint(80, 0), false);
-
-        QTRY_VERIFY(qAbs(pip->width() - (initialWidth + 80)) < 2);
-        QTRY_VERIFY(qAbs(pip->height() - pip->width() * 9 / 16) < 2);
-
-        // Pulling the handle upward must also grow the pip, with the bottom edge pinned.
-        const qreal widthBeforeUpDrag = pip->width();
-        const qreal bottomBeforeUpDrag = pip->y() + pip->height();
-        const QPoint corner2 = pip->mapToScene(QPointF(pip->width() - 10, 10)).toPoint();
-        dragMouse(view, corner2, corner2 + QPoint(0, -60), false);
-
-        QTRY_VERIFY(qAbs(pip->width() - (widthBeforeUpDrag + 60)) < 2);
-        QVERIFY(qAbs(pip->y() + pip->height() - bottomBeforeUpDrag) < 1);
-
-        resizedWidth = pip->width();
-    }
-
-    QQuickView view2;
-    QVERIFY(loadView(view2));
-    QQuickItem* pip2 = view2.rootObject()->findChild<QQuickItem*>("pip");
-    QVERIFY(pip2);
-    QCOMPARE(pip2->width(), resizedWidth);
-}

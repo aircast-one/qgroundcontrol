@@ -8,6 +8,7 @@ import QGroundControl.ScreenTools
 TextField {
     id:                 control
     color:              qgcPal.textFieldText
+    placeholderTextColor: Qt.alpha(qgcPal.textFieldText, 0.4)
     selectionColor:     qgcPal.textFieldText
     selectedTextColor:  qgcPal.textField
     activeFocusOnPress: true
@@ -83,8 +84,8 @@ TextField {
     }
 
     background: Rectangle {
-        border.width:   control.validationError ? 2 : (qgcPal.globalTheme === QGCPalette.Light ? 1 : 0)
-        border.color:   control.validationError ? qgcPal.colorRed : qgcPal.buttonBorder
+        border.width:   control.validationError || control.activeFocus ? 2 : 1
+        border.color:   control.validationError ? qgcPal.colorRed : control.activeFocus ? qgcPal.colorBlue : qgcPal.buttonBorder
         radius:         ScreenTools.buttonBorderRadius
         color:          qgcPal.textField
         implicitWidth:  ScreenTools.implicitTextFieldWidth
@@ -147,8 +148,9 @@ TextField {
         }
     }
 
-    ToolTip {
-        id: validationToolTip
+    QGCToolTip {
+        id:     validationToolTip
+        delay:  0
 
         property var originalValidValue: undefined
 

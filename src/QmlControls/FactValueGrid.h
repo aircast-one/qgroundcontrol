@@ -47,6 +47,7 @@ public:
     Q_INVOKABLE void                resetToDefaults (void);
     Q_INVOKABLE QmlObjectListModel* appendColumn    (void);
     Q_INVOKABLE void                deleteLastColumn(void);
+    Q_INVOKABLE void                deleteColumn    (int index);
     Q_INVOKABLE void                appendRow       (void);
     Q_INVOKABLE void                deleteLastRow   (void);
 
@@ -106,6 +107,7 @@ private:
     static constexpr const char* _fontSizeKey         = "fontSize";
     static constexpr const char* _versionKey          = "version";
     static constexpr const char* _factGroupNameKey    = "factGroupName";
+    static constexpr const char* _uidKey              = "uid";
     static constexpr const char* _factNameKey         = "factName";
     static constexpr const char* _textKey             = "text";
     static constexpr const char* _showUnitsKey        = "showUnits";

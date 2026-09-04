@@ -18,21 +18,30 @@ import QGroundControl.Palette
 import QGroundControl.MultiVehicleManager
 import QGroundControl.ScreenTools
 import QGroundControl.Controllers
+import QGroundControl.FlightDisplay
 
 Rectangle {
-    id:     _root
-    width:  parent.width
-    height: visible ? Math.max(ScreenTools.toolbarHeight, _dockedBarHeight) : 0
-    color:  qgcPal.toolbarBackground
+    id:         _root
+    objectName: "flyViewToolBar"
+    width:      parent.width
+    height: visible ? Math.max(_slimHeight, _dockedBarHeight) + _topInset : 0
+    // No band. The status sits directly on the picture, held legible over bright imagery by a
+    // soft scrim rather than by a slab of chrome.
+    color:  "transparent"
+
+    // Full height: the strip carries icon-and-value pairs sized to be read in flight, and
+    // squeezing it left them cramped against the picture.
+    readonly property real _slimHeight: ScreenTools.toolbarHeight
+    readonly property real _topInset:   ScreenTools.defaultFontPixelHeight * 0.75
 
     property Item   dockedTelemetryBar
 
     property var    _activeVehicle:     QGroundControl.multiVehicleManager.activeVehicle
     property bool   _communicationLost: _activeVehicle ? _activeVehicle.vehicleLinkManager.communicationLost : false
-    property color  _mainStatusBGColor: qgcPal.brandingPurple
+    property color  _mainStatusBGColor: "transparent"
     property real   _toolsSpacing:      ScreenTools.defaultFontPixelWidth
 
-    readonly property real dockAreaLeft: toolsFlickable.x
+    readonly property real dockAreaLeft: toolIndicators.x
 
     readonly property real _dockedBarHeight: dockedTelemetryBar ? dockedTelemetryBar.height : 0
     readonly property real _dockedBarLeft:   dockedTelemetryBar ? _root.mapFromItem(dockedTelemetryBar.parent, dockedTelemetryBar.x, 0).x : width
@@ -43,6 +52,20 @@ Rectangle {
     }
 
     QGCPalette { id: qgcPal }
+
+    // Tall enough to hold the text against bright imagery; a scrim only as tall as the text
+    // leaves it fighting the picture directly underneath.
+    Rectangle {
+        anchors.left:   parent.left
+        anchors.right:  parent.right
+        anchors.top:    parent.top
+        height:         parent.height * 1.5
+        gradient: Gradient {
+            GradientStop { position: 0;    color: Qt.rgba(0, 0, 0, 0.85) }
+            GradientStop { position: 0.6;  color: Qt.rgba(0, 0, 0, 0.6) }
+            GradientStop { position: 1;    color: "transparent" }
+        }
+    }
 
     /// Bottom single pixel divider
     Rectangle {
@@ -55,27 +78,25 @@ Rectangle {
         visible:        qgcPal.globalTheme === QGCPalette.Light
     }
 
-    Rectangle {
-        anchors.fill: viewButtonRow
-        
-        gradient: Gradient {
-            orientation: Gradient.Horizontal
-            GradientStop { position: 0;                                     color: _mainStatusBGColor }
-            GradientStop { position: currentButton.x + currentButton.width; color: _mainStatusBGColor }
-            GradientStop { position: 1;                                     color: _root.color }
-        }
+
+
+    Component.onCompleted: {
+        mainWindow.registerWindowDragExclusion(viewButtonRow)
+        mainWindow.registerWindowDragExclusion(toolIndicators)
+        mainWindow.registerWindowDragExclusion(largeProgressBar)
     }
 
     RowLayout {
         id:                     viewButtonRow
-        anchors.bottomMargin:   1
-        anchors.top:            parent.top
-        anchors.bottom:         parent.bottom
-        spacing:                ScreenTools.defaultFontPixelWidth / 2
+        anchors.leftMargin:     mainWindow.windowChromeLeftInset + ScreenTools.defaultFontPixelWidth * 3
+        anchors.left:           parent.left
+        anchors.verticalCenter: parent.verticalCenter
+        anchors.verticalCenterOffset: _topInset / 2
+        spacing:                ScreenTools.defaultFontPixelWidth * 2
 
         QGCToolBarButton {
             id:                     currentButton
-            Layout.preferredHeight: viewButtonRow.height
+            Layout.preferredHeight: ScreenTools.defaultFontPixelHeight * 1.8
             icon.source:            "/res/QGCLogoFull.svg"
             logo:                   true
             onClicked:              mainWindow.showToolSelectDialog()
@@ -83,7 +104,32 @@ Rectangle {
 
         MainStatusIndicator {
             id: mainStatusIndicator
-            Layout.preferredHeight: viewButtonRow.height
+            Layout.preferredHeight: ScreenTools.defaultFontPixelHeight * 1.8
+        }
+
+        // Flight mode is flight-critical state: it sits with "Ready To Fly" in the fixed
+        // cluster, sized for the slim bar, instead of overflowing the scrolling strip.
+        Loader {
+            id:                 flightModeIndicatorLoader
+            objectName:         "flightModeIndicator"
+            Layout.alignment:   Qt.AlignVCenter
+            source:             _flightModeIndicatorUrl
+            visible:            status === Loader.Ready && item.showIndicator
+
+            onLoaded: item.fontPointSize = ScreenTools.defaultFontPointSize
+
+            readonly property url _flightModeIndicatorUrl: {
+                if (!_activeVehicle) {
+                    return ""
+                }
+                const urls = _activeVehicle.toolIndicators
+                for (var i = 0; i < urls.length; i++) {
+                    if (urls[i].toString().indexOf("FlightModeIndicator") >= 0) {
+                        return urls[i]
+                    }
+                }
+                return ""
+            }
         }
 
         QGCButton {
@@ -94,71 +140,15 @@ Rectangle {
         }
     }
 
-    QGCFlickable {
-        id:                     toolsFlickable
-        anchors.leftMargin:     ScreenTools.defaultFontPixelWidth * ScreenTools.largeFontPointRatio * 1.5
-        anchors.left:           viewButtonRow.right
-        anchors.verticalCenter: parent.verticalCenter
-        height:                 ScreenTools.toolbarHeight - bottomDivider.height
-        width:                  Math.max(0, _dockedBarLeft - _toolsSpacing - x)
-        contentWidth:           toolIndicators.width
-        flickableDirection:     Flickable.HorizontalFlick
-
-        FlyViewToolBarIndicators { id: toolIndicators }
-    }
-
-    //-------------------------------------------------------------------------
-    //-- Branding Logo
-    Image {
-        anchors.right:          parent.right
-        anchors.verticalCenter: parent.verticalCenter
-        anchors.margins:        ScreenTools.defaultFontPixelHeight * 0.66
-        height:                 ScreenTools.toolbarHeight - (anchors.margins * 2)
-        visible:                _activeVehicle && !_communicationLost && x > (Math.max(toolsFlickable.x + toolsFlickable.contentWidth, _dockedBarRight) + _toolsSpacing)
-        fillMode:               Image.PreserveAspectFit
-        source:                 _outdoorPalette ? _brandImageOutdoor : _brandImageIndoor
-        mipmap:                 true
-
-        property bool   _outdoorPalette:        qgcPal.globalTheme === QGCPalette.Light
-        property bool   _corePluginBranding:    QGroundControl.corePlugin.brandImageIndoor.length != 0
-        property string _userBrandImageIndoor:  QGroundControl.settingsManager.brandImageSettings.userBrandImageIndoor.value
-        property string _userBrandImageOutdoor: QGroundControl.settingsManager.brandImageSettings.userBrandImageOutdoor.value
-        property bool   _userBrandingIndoor:    QGroundControl.settingsManager.brandImageSettings.visible && _userBrandImageIndoor.length != 0
-        property bool   _userBrandingOutdoor:   QGroundControl.settingsManager.brandImageSettings.visible && _userBrandImageOutdoor.length != 0
-        property string _brandImageIndoor:      brandImageIndoor()
-        property string _brandImageOutdoor:     brandImageOutdoor()
-
-        function brandImageIndoor() {
-            if (_userBrandingIndoor) {
-                return _userBrandImageIndoor
-            } else {
-                if (_userBrandingOutdoor) {
-                    return _userBrandImageOutdoor
-                } else {
-                    if (_corePluginBranding) {
-                        return QGroundControl.corePlugin.brandImageIndoor
-                    } else {
-                        return _activeVehicle ? _activeVehicle.brandImageIndoor : ""
-                    }
-                }
-            }
-        }
-
-        function brandImageOutdoor() {
-            if (_userBrandingOutdoor) {
-                return _userBrandImageOutdoor
-            } else {
-                if (_userBrandingIndoor) {
-                    return _userBrandImageIndoor
-                } else {
-                    if (_corePluginBranding) {
-                        return QGroundControl.corePlugin.brandImageOutdoor
-                    } else {
-                        return _activeVehicle ? _activeVehicle.brandImageOutdoor : ""
-                    }
-                }
-            }
-        }
+    // QGC's own indicators: each one opens a detail drawer on click (cell voltages, GPS
+    // quality, RSSI). A display-only strip looked tidier and quietly removed all of that.
+    FlyViewToolBarIndicators {
+        id:                             toolIndicators
+        anchors.right:                  parent.right
+        anchors.rightMargin:            mainWindow.windowChromeRightInset + ScreenTools.defaultFontPixelWidth * 3
+        anchors.verticalCenter:         parent.verticalCenter
+        anchors.verticalCenterOffset:   _topInset / 2
+        height:                         ScreenTools.defaultFontPixelHeight * 1.8
     }
 
     // Small parameter download progress bar

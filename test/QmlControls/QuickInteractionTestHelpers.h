@@ -30,14 +30,49 @@ inline QPoint dragAnchorNudge()
     return QPoint(distance, distance);
 }
 
-inline void clearQmlGlobalSettings(std::initializer_list<const char*> keys)
+template <typename Keys>
+inline void clearQmlGlobalSettings(const Keys& keys)
 {
     QSettings settings;
     settings.beginGroup(QGroundControlQmlGlobal::kQmlGlobalKeyName);
-    for (const char* key : keys) {
-        settings.remove(QString::fromLatin1(key));
+    for (const auto& key : keys) {
+        settings.remove(QString(key));
     }
     settings.endGroup();
+}
+
+// Braced call sites deduce nothing against a template parameter, so they need this overload.
+inline void clearQmlGlobalSettings(std::initializer_list<const char*> keys)
+{
+    clearQmlGlobalSettings<std::initializer_list<const char*>>(keys);
+}
+
+// DragToPosition stores one arrangement per window size, so its keys carry the size they were
+// made at. Naming them in a test means the cleanup silently stops matching the day the test
+// view is resized; match the prefix instead.
+inline void clearDragPositionSettings(std::initializer_list<const char*> prefixes)
+{
+    QSettings settings;
+    settings.beginGroup(QGroundControlQmlGlobal::kQmlGlobalKeyName);
+    const QStringList keys = settings.allKeys();
+    for (const char* prefix : prefixes) {
+        for (const QString& key : keys) {
+            if (key.startsWith(QLatin1String(prefix))) {
+                settings.remove(key);
+            }
+        }
+    }
+    settings.endGroup();
+}
+
+// The position write in DragToPosition is debounced by a quarter second so a window drag does
+// not thrash the settings file. A test that tears its view down the instant the drop lands
+// persists nothing, and the reloaded view legitimately shows the default.
+inline bool storedPosition(const QString& key)
+{
+    QSettings settings;
+    settings.beginGroup(QGroundControlQmlGlobal::kQmlGlobalKeyName);
+    return settings.value(key).toBool();
 }
 
 inline bool loadTestView(QQuickView& view, const QString& qmlResource)
@@ -62,6 +97,20 @@ inline void dragMouse(QQuickView& view, const QPoint& from, const QPoint& to, bo
         QTest::mouseMove(&view, anchor + (end - anchor) * i / steps);
     }
     QTest::mouseRelease(&view, Qt::LeftButton, Qt::NoModifier, end);
+}
+
+// Dropped positions quantize to DragToPosition's snapGrid, so a drag of N pixels does not
+// land N pixels away. Expectations have to be snapped the same way or they are off by up to
+// half a grid step.
+inline qreal snapToDropGrid(qreal value, qreal grid)
+{
+    return grid > 0 ? qRound(value / grid) * grid : value;
+}
+
+inline qreal dropGridOf(QQuickItem* item)
+{
+    QObject* const dragPosition = item->findChild<QObject*>(QStringLiteral("dragPosition"));
+    return dragPosition ? dragPosition->property("snapGrid").toReal() : 0;
 }
 
 inline QPoint itemCenter(QQuickItem* item)

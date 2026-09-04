@@ -35,4 +35,10 @@ public:
     DEFINE_SETTINGFACT(instrumentQmlFile2)
     DEFINE_SETTINGFACT(requestControlAllowTakeover)
     DEFINE_SETTINGFACT(requestControlTimeout)
+    DEFINE_SETTINGFACT(gimbalTiltChannel)
+    DEFINE_SETTINGFACT(gimbalPanChannel)
+    DEFINE_SETTINGFACT(cameraZoomChannel)
+    DEFINE_SETTINGFACT(cameraLightChannel)
+    DEFINE_SETTINGFACT(cameraRecordChannel)
+    DEFINE_SETTINGFACT(rcControls)
 };

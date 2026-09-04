@@ -7,7 +7,6 @@
  *
  ****************************************************************************/
 
-
 import QtQuick
 import QtQuick.Controls
 
@@ -25,6 +24,9 @@ Item {
     clip:   true
 
     property bool useSmallFont: true
+
+    // The collision rig needs a handle on the status pill to keep telemetry chips off it.
+    readonly property alias statusPill: statusPill
 
     property double _ar:                (QGroundControl.videoManager.gstreamerEnabled && QGroundControl.videoManager.videoSize.width > 0 && QGroundControl.videoManager.videoSize.height > 0)
                                             ? QGroundControl.videoManager.videoSize.width / QGroundControl.videoManager.videoSize.height
@@ -50,7 +52,7 @@ Item {
         return videoBackground.getHeight()
     }
 
-    property double _thermalHeightFactor: 0.85 //-- TODO
+    property double _thermalHeightFactor: 0.85
 
         Image {
             id:             noVideo
@@ -65,22 +67,158 @@ Item {
                 return active >= 0 && active < statuses.length ? statuses[active] : ""
             }
 
-            Rectangle {
-                anchors.centerIn:   parent
-                width:              noVideoLabel.contentWidth + ScreenTools.defaultFontPixelHeight
-                height:             noVideoLabel.contentHeight + ScreenTools.defaultFontPixelHeight
-                radius:             ScreenTools.defaultFontPixelWidth / 2
-                color:              "black"
-                opacity:            0.5
+            readonly property bool connecting: {
+                var flags  = QGroundControl.videoManager.cameraConnecting
+                var active = QGroundControl.videoManager.activeVideoSource
+                return active >= 0 && active < flags.length ? flags[active] : false
             }
 
-            QGCLabel {
-                id:                 noVideoLabel
-                text:               QGroundControl.settingsManager.videoSettings.streamEnabled.rawValue ? noVideo.statusText.toUpperCase() : qsTr("VIDEO DISABLED")
-                font.bold:          true
-                color:              "white"
-                font.pointSize:     useSmallFont ? ScreenTools.smallFontPointSize : ScreenTools.largeFontPointSize
+            readonly property bool streamEnabled: QGroundControl.settingsManager.videoSettings.streamEnabled.rawValue
+
+            // "Nothing is arriving" and "data is arriving but will not decode" look identical
+            // on screen but have opposite fixes, so the pill has to tell them apart.
+            readonly property bool receivingData: QGroundControl.videoManager.streaming
+
+            readonly property string sourceLabel: {
+                const settings = QGroundControl.settingsManager.videoSettings
+                const source   = settings.videoSource.rawValue
+                const url      = source.indexOf("RTSP") >= 0 ? settings.rtspUrl.rawValue
+                               : source.indexOf("TCP")  >= 0 ? settings.tcpUrl.rawValue
+                               : source.indexOf("UDP")  >= 0 ? settings.udpUrl.rawValue
+                               : source.indexOf("WHEP") >= 0 ? settings.whepUrl.rawValue
+                                                             : ""
+                return url !== "" ? url : source
+            }
+
+            property int elapsedSecs: 0
+
+            // "3565 s" is a number the reader has to divide. Anything past a minute reads in
+            // the units people wait in.
+            readonly property string elapsedText: _elapsedText(elapsedSecs)
+
+            function _elapsedText(secs) {
+                if (secs < 60) {
+                    return qsTr("%1 s").arg(secs)
+                }
+                if (secs < 3600) {
+                    return qsTr("%1 min").arg(Math.floor(secs / 60))
+                }
+                return qsTr("%1 h %2 min").arg(Math.floor(secs / 3600)).arg(Math.floor((secs % 3600) / 60))
+            }
+
+            Timer {
+                interval:       1000
+                repeat:         true
+                running:        noVideo.visible && noVideo.streamEnabled
+                onTriggered:    noVideo.elapsedSecs++
+            }
+
+            property bool settled: false
+
+            property bool prolonged: false
+
+            onVisibleChanged: if (!visible) { settled = false; prolonged = false; elapsedSecs = 0 }
+
+            Timer {
+                interval:       400
+                running:        noVideo.visible && !noVideo.settled
+                onTriggered:    noVideo.settled = true
+            }
+
+            Timer {
+                interval:       8000
+                running:        noVideo.visible && !noVideo.prolonged
+                onTriggered:    noVideo.prolonged = true
+            }
+
+            QGCPalette { id: qgcPal }
+
+            Rectangle {
+                anchors.fill:   parent
+                color:          "black"
+                opacity:        0.45
+            }
+
+            OverlayCapsule {
+                id:                 statusPill
+                objectName:         "videoStatusPill"
+                frosted:            false
                 anchors.centerIn:   parent
+                width:              pillContent.width + ScreenTools.defaultFontPixelHeight * 1.6
+                height:             pillContent.height + ScreenTools.defaultFontPixelHeight * 0.9
+
+                Behavior on width  { NumberAnimation { duration: 250; easing.type: Easing.OutCubic } }
+                Behavior on height { NumberAnimation { duration: 250; easing.type: Easing.OutCubic } }
+                opacity:            noVideo.settled ? 1 : 0
+                // The rig reads visibility, not opacity. Left as a permanently visible item
+                // it would shove the chips aside during the second before the pill fades in.
+                visible:            opacity > 0
+
+                Behavior on opacity { NumberAnimation { duration: 250; easing.type: Easing.OutCubic } }
+
+                Column {
+                    id:                 pillContent
+                    anchors.centerIn:   parent
+                    spacing:            ScreenTools.defaultFontPixelHeight / 5
+
+                Row {
+                    id:                 statusRow
+                    anchors.horizontalCenter: parent.horizontalCenter
+                    spacing:            ScreenTools.defaultFontPixelWidth
+
+                    QGCSpinner {
+                        anchors.verticalCenter: parent.verticalCenter
+                        color:                  qgcPal.text
+                        visible:                noVideo.connecting && noVideo.streamEnabled
+                    }
+
+                    QGCLabel {
+                        id:                     noVideoLabel
+                        anchors.verticalCenter: parent.verticalCenter
+                        text:                   noVideo.streamEnabled ? noVideo.statusText : qsTr("Video off")
+                        color:                  qgcPal.text
+                        font.pointSize:         useSmallFont ? ScreenTools.defaultFontPointSize : ScreenTools.mediumFontPointSize
+                    }
+                }
+
+                    QGCLabel {
+                        anchors.horizontalCenter:   parent.horizontalCenter
+                        visible:                    noVideo.prolonged && noVideo.streamEnabled
+                        color:                      qgcPal.colorGrey
+                        font.pointSize:             ScreenTools.smallFontPointSize
+                        text: {
+                            const what = noVideo.receivingData
+                                             ? qsTr("Receiving data — waiting for video")
+                                             : qsTr("Nothing arriving from %1").arg(noVideo.sourceLabel)
+                            return qsTr("%1  ·  %2").arg(what).arg(noVideo.elapsedText)
+                        }
+                    }
+
+                    Row {
+                        anchors.horizontalCenter:   parent.horizontalCenter
+                        spacing:                    ScreenTools.defaultFontPixelWidth
+                        visible:                    noVideo.prolonged && noVideo.streamEnabled
+
+                        // Retry resolves this for most people, so it carries the weight; two
+                        // identical-looking buttons made the reader pick one at random.
+                        OverlayPill {
+                            anchors.verticalCenter: parent.verticalCenter
+                            frosted: false
+                            text: qsTr("Retry")
+                            onClicked: {
+                                noVideo.elapsedSecs = 0
+                                noVideo.prolonged   = false
+                                QGroundControl.videoManager.startVideo()
+                            }
+                        }
+
+                        OverlayMenuItem {
+                            anchors.verticalCenter: parent.verticalCenter
+                            text:       qsTr("Video Settings")
+                            onClicked:  mainWindow.showSettingsTool(qsTr("Video"))
+                        }
+                    }
+                }
             }
         }
 
@@ -94,11 +232,6 @@ Item {
                 if(_isMode_FIT_HEIGHT 
                         || (_isMode_FILL && (root.width/root.height < _ar))
                         || (_isMode_NO_CROP && (root.width/root.height > _ar))){
-                    // This return value has different implications depending on the mode
-                    // For FIT_HEIGHT and FILL
-                    //    makes so the video width will be larger than (or equal to) the screen width
-                    // For NO_CROP Mode
-                    //    makes so the video width will be smaller than (or equal to) the screen width
                     return root.height * _ar
                 }
             }
@@ -109,11 +242,6 @@ Item {
                 if(_isMode_FIT_WIDTH 
                         || (_isMode_FILL && (root.width/root.height > _ar)) 
                         || (_isMode_NO_CROP && (root.width/root.height < _ar))){
-                    // This return value has different implications depending on the mode
-                    // For FIT_WIDTH and FILL
-                    //    makes so the video height will be larger than (or equal to) the screen height
-                    // For NO_CROP Mode
-                    //    makes so the video height will be smaller than (or equal to) the screen height
                     return root.width * (1 / _ar)
                 }
             }
@@ -167,9 +295,6 @@ Item {
             }
         }
         Loader {
-            // GStreamer is causing crashes on Lenovo laptop OpenGL Intel drivers. In order to workaround this
-            // we don't load a QGCVideoBackground object when video is disabled. This prevents any video rendering
-            // code from running. Hence the Loader to completely remove it.
             height:             parent.getHeight()
             width:              parent.getWidth()
             anchors.centerIn:   parent
@@ -179,8 +304,6 @@ Item {
             property bool videoDisabled: QGroundControl.settingsManager.videoSettings.videoSource.rawValue === QGroundControl.settingsManager.videoSettings.disabledVideoSource
         }
 
-        //-- Aircast AI detection boxes — sized to the painted video rect so
-        //   normalized box coords line up with the frame under every fit mode.
         DetectionOverlayVideo {
             width:            videoBackground.getWidth()
             height:           videoBackground.getHeight()
@@ -188,7 +311,6 @@ Item {
             visible:          QGroundControl.videoManager.decoding
         }
 
-        //-- Thermal Image
         Item {
             id:                 thermalItem
             width:              height * QGroundControl.videoManager.thermalAspectRatio
@@ -226,7 +348,6 @@ Item {
                 opacity:        _camera ? (_camera.thermalMode === MavlinkCameraControl.THERMAL_BLEND ? _camera.thermalOpacity / 100 : 1.0) : 0
             }
         }
-        //-- Zoom
         PinchArea {
             id:             pinchZoom
             enabled:        _hasZoom

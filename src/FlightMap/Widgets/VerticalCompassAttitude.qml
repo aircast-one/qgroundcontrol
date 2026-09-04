@@ -20,7 +20,10 @@ Rectangle {
     width:  ScreenTools.defaultFontPixelHeight * 10
     height: _outerRadius * 4
     radius: _outerRadius
-    color:  QGroundControl.globalPalette.window
+    color:  QGroundControl.globalPalette.overlayBackground
+    border.color:   Qt.rgba(QGroundControl.globalPalette.text.r, QGroundControl.globalPalette.text.g,
+                            QGroundControl.globalPalette.text.b, 0.25)
+    border.width:   1
 
     property real extraInset:           0
     property real extraValuesWidth:     _outerRadius

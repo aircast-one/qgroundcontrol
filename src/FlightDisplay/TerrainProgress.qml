@@ -19,7 +19,12 @@ import QGroundControl.Palette
 Rectangle {
     implicitHeight: mainLayout.height + (_margins * 2)
     visible:        false
-    color:          qgcPal.window
+    radius:         ScreenTools.defaultFontPixelHeight / 2
+    color:          qgcPal.overlayBackground
+    border.color:   qgcPal.overlayBorder
+    border.width:   1
+    layer.enabled: true
+    layer.effect:  OverlayShadowEffect { }
 
     property var    _activeVehicle: QGroundControl.multiVehicleManager.activeVehicle
     property real   _margins:       ScreenTools.defaultFontPixelWidth / 2
@@ -74,12 +79,12 @@ Rectangle {
             Layout.fillWidth:   true
             height:             ScreenTools.defaultFontPixelHeight
             color:              "transparent"
-            border.color:       "green"
+            border.color:       qgcPal.colorGreen
 
             Rectangle {
                 anchors.top:    parent.top
                 anchors.bottom: parent.bottom
-                color:          "green"
+                color:          qgcPal.colorGreen
                 width:         parent.width * _pctComplete
 
                 QGCLabel {

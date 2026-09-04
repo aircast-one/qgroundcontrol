@@ -57,10 +57,10 @@ Item {
             anchors.top:        parent.top
             anchors.bottom:     parent.bottom
             sourceSize.height:  height
-            source:             "/qmlimages/RC.svg"
+            source:             "/qmlimages/StatusRC.svg"
             fillMode:           Image.PreserveAspectFit
             opacity:            _rcRSSIAvailable ? 1 : 0.5
-            color:              qgcPal.buttonText
+            color:              qgcPal.toolbarText
         }
 
         SignalStrength {

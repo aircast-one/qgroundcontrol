@@ -42,8 +42,16 @@ Rectangle {
         visible:        qgcPal.globalTheme === QGCPalette.Light
     }
 
+    Component.onCompleted: {
+        mainWindow.registerWindowDragExclusion(viewButtonRow)
+        mainWindow.registerWindowDragExclusion(toolIndicators)
+        mainWindow.registerWindowDragExclusion(largeProgressBar)
+    }
+
     RowLayout {
         id:                     viewButtonRow
+        anchors.leftMargin:     mainWindow.windowChromeLeftInset
+        anchors.left:           parent.left
         anchors.bottomMargin:   1
         anchors.top:            parent.top
         anchors.bottom:         parent.bottom
@@ -72,6 +80,7 @@ Rectangle {
         anchors.bottomMargin:   1
         anchors.top:            parent.top
         anchors.bottom:         parent.bottom
+        anchors.rightMargin:    mainWindow.windowChromeRightInset
         anchors.right:          parent.right
         contentWidth:           toolIndicators.width
         flickableDirection:     Flickable.HorizontalFlick

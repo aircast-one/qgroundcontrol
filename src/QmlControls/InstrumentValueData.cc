@@ -14,6 +14,7 @@
 #include "MultiVehicleManager.h"
 #include "Vehicle.h"
 #include "FactGroup.h"
+#include <QtCore/QUuid>
 
 // Important: The indices of these strings must match the InstrumentValueData::RangeType enum
 const QStringList InstrumentValueData::_rangeTypeNames = {
@@ -27,6 +28,7 @@ InstrumentValueData::InstrumentValueData(FactValueGrid* factValueGrid, QObject* 
     : QObject       (parent)
     , _factValueGrid(factValueGrid)
     , _vehicle      (factValueGrid->currentVehicle())
+    , _uid          (QUuid::createUuid().toString(QUuid::WithoutBraces))
 {
     connect(this, &InstrumentValueData::rangeTypeChanged,       this, &InstrumentValueData::_resetRangeInfo);
     connect(this, &InstrumentValueData::rangeTypeChanged,       this, &InstrumentValueData::_updateRanges);
@@ -41,6 +43,14 @@ InstrumentValueData::InstrumentValueData(FactValueGrid* factValueGrid, QObject* 
 
     if (!_factGroupName.isEmpty() && !_factName.isEmpty()) {
         _setFactWorker();
+    }
+}
+
+void InstrumentValueData::setUid(const QString& uid)
+{
+    if (_uid != uid) {
+        _uid = uid;
+        emit uidChanged(uid);
     }
 }
 

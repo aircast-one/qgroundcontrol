@@ -14,6 +14,7 @@
 #include <QtCore/QTimer>
 #include <QtPositioning/QGeoCoordinate>
 
+#include "GCSBattery.h"
 #include "QmlUnitsConversion.h"
 
 Q_DECLARE_LOGGING_CATEGORY(GuidedActionsControllerLog)
@@ -82,6 +83,7 @@ public:
     Q_PROPERTY(VideoManager*        videoManager            READ    videoManager            CONSTANT)
     Q_PROPERTY(SettingsManager*     settingsManager         READ    settingsManager         CONSTANT)
     Q_PROPERTY(ADSBVehicleManager*  adsbVehicleManager      READ    adsbVehicleManager      CONSTANT)
+    Q_PROPERTY(GCSBattery*          gcsBattery              READ    gcsBattery              CONSTANT)
 #ifdef QGC_WFB_ENABLED
     Q_PROPERTY(PacketRadioManager*  packetRadioManager      READ    packetRadioManager      CONSTANT)
 #endif
@@ -182,6 +184,7 @@ public:
     FactGroup*              gpsRtkFactGroup     ()  { return _gpsRtkFactGroup; }
 #endif
     ADSBVehicleManager*     adsbVehicleManager  ()  { return _adsbVehicleManager; }
+    GCSBattery*             gcsBattery          ()  { return &_gcsBattery; }
 #ifdef QGC_WFB_ENABLED
     PacketRadioManager*     packetRadioManager  ()  { return _packetRadioManager; }
 #endif
@@ -272,6 +275,7 @@ private:
 
     double                  _flightMapInitialZoom   = 17.0;
     QmlUnitsConversion      _unitsConversion;
+    GCSBattery              _gcsBattery;
 
     QStringList             _altitudeModeEnumString;
 

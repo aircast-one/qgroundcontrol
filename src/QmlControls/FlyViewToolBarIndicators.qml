@@ -15,15 +15,13 @@ import QGroundControl.Toolbar
 
 //-------------------------------------------------------------------------
 //-- Toolbar Indicators
+// Height comes from the instantiation site: the indicators size their icons from it, so the
+// bar decides how large they render instead of the strip stretching to fill it.
 Row {
     id:                 indicatorRow
-    anchors.top:        parent.top
-    anchors.bottom:     parent.bottom
-    anchors.margins:    _toolIndicatorMargins
     spacing:            ScreenTools.defaultFontPixelWidth * 1.75
 
     property var  _activeVehicle:           QGroundControl.multiVehicleManager.activeVehicle
-    property real _toolIndicatorMargins:    ScreenTools.defaultFontPixelHeight * 0.66
 
     Repeater {
         id:     appRepeater
@@ -40,11 +38,12 @@ Row {
         id:     toolIndicatorsRepeater
         model:  _activeVehicle ? _activeVehicle.toolIndicators : []
 
+        // Flight mode lives in the toolbar's fixed status cluster, not the scrolling strip
         Loader {
             anchors.top:        parent.top
             anchors.bottom:     parent.bottom
             source:             modelData
-            visible:            item.showIndicator
+            visible:            item.showIndicator && modelData.toString().indexOf("FlightModeIndicator") < 0
         }
     }
 

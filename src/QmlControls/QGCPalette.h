@@ -114,6 +114,10 @@ public:
     Q_PROPERTY(QStringList  colors              READ colors             CONSTANT)
 
     DEFINE_QGC_COLOR(window,                        setWindow)
+    DEFINE_QGC_COLOR(overlayBackground,             setOverlayBackground)
+    DEFINE_QGC_COLOR(overlayBorder,                 setOverlayBorder)
+    DEFINE_QGC_COLOR(overlayGlass,                  setOverlayGlass)
+    DEFINE_QGC_COLOR(toolbarText,                   setToolbarText)
     DEFINE_QGC_COLOR(windowShadeLight,              setWindowShadeLight)
     DEFINE_QGC_COLOR(windowShade,                   setWindowShade)
     DEFINE_QGC_COLOR(windowShadeDark,               setWindowShadeDark)

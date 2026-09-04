@@ -452,6 +452,54 @@ QStringList VideoManager::cameraStatuses() const
     return statuses;
 }
 
+QVariantList VideoManager::cameraConnecting() const
+{
+    QVariantList connecting;
+    const int count = _videoSettings->videoSourceCount();
+    connecting.reserve(count);
+    for (int i = 0; i < count; ++i) {
+        connecting.append(_cameraConnecting(i));
+    }
+    return connecting;
+}
+
+QVariantList VideoManager::cameraRecording() const
+{
+    QVariantList recording;
+    const int count = _videoSettings->videoSourceCount();
+    recording.reserve(count);
+    for (int i = 0; i < count; ++i) {
+        recording.append(_cameraRecording(i));
+    }
+    return recording;
+}
+
+bool VideoManager::_cameraRecording(int index) const
+{
+    for (VideoReceiver *receiver : _videoReceivers) {
+        if (!receiver->isThermal() && (_cameraIndexForReceiver(receiver) == index)) {
+            return _receiverState.value(receiver->name()).recording;
+        }
+    }
+    return false;
+}
+
+bool VideoManager::_cameraConnecting(int index) const
+{
+    for (VideoReceiver *receiver : _videoReceivers) {
+        if (receiver->isThermal() || (_cameraIndexForReceiver(receiver) != index)) {
+            continue;
+        }
+        const ReceiverState state = _receiverState.value(receiver->name());
+        if (state.decoding) {
+            return false;
+        }
+        // Streaming without frames yet is still progress being made.
+        return state.streaming || state.connecting;
+    }
+    return false;
+}
+
 QString VideoManager::_cameraStatus(int index) const
 {
     for (VideoReceiver *receiver : _videoReceivers) {
@@ -470,16 +518,17 @@ QString VideoManager::_cameraStatus(int index) const
     return tr("No video source");
 }
 
-void VideoManager::_setReceiverStatus(VideoReceiver *receiver, const QString &status)
+void VideoManager::_setReceiverStatus(VideoReceiver *receiver, const QString &status, bool connecting)
 {
     if (receiver->isThermal()) {
         return;
     }
     ReceiverState &state = _receiverState[receiver->name()];
-    if (state.status == status) {
+    if ((state.status == status) && (state.connecting == connecting)) {
         return;
     }
     state.status = status;
+    state.connecting = connecting;
     emit camerasChanged();
 }
 
@@ -966,7 +1015,7 @@ void VideoManager::_startReceiver(VideoReceiver *receiver)
         _setReceiverStatus(receiver, tr("No stream URL"));
         return;
     }
-    _setReceiverStatus(receiver, tr("Connecting…"));
+    _setReceiverStatus(receiver, tr("Connecting…"), true);
 
     const int cameraIndex = _cameraIndexForReceiver(receiver);
     const QString source = (cameraIndex >= 0) ? _videoSettings->videoSourceNameAt(cameraIndex) : _videoSettings->currentVideoSourceName();
@@ -1014,7 +1063,7 @@ void VideoManager::_initVideoReceiver(VideoReceiver *receiver, QQuickWindow *win
             if (receiver->sink()) {
                 receiver->startDecoding(receiver->sink());
             }
-            _setReceiverStatus(receiver, tr("Connecting…"));
+            _setReceiverStatus(receiver, tr("Connecting…"), true);
             break;
         case VideoReceiver::STATUS_INVALID_URL:
             _setReceiverStatus(receiver, tr("Invalid stream URL"));
@@ -1022,7 +1071,7 @@ void VideoManager::_initVideoReceiver(VideoReceiver *receiver, QQuickWindow *win
         case VideoReceiver::STATUS_INVALID_STATE:
             break;
         default:
-            _setReceiverStatus(receiver, tr("Connection failed, retrying"));
+            _setReceiverStatus(receiver, tr("Connection failed, retrying"), true);
             _restartVideo(receiver);
             break;
         }
@@ -1035,7 +1084,7 @@ void VideoManager::_initVideoReceiver(VideoReceiver *receiver, QQuickWindow *win
             qCDebug(VideoManagerLog) << "Invalid video URL. Not restarting";
             _setReceiverStatus(receiver, tr("Invalid stream URL"));
         } else {
-            _setReceiverStatus(receiver, tr("Reconnecting…"));
+            _setReceiverStatus(receiver, tr("Reconnecting…"), true);
             QTimer::singleShot(1000, receiver, [this, receiver]() {
                 qCDebug(VideoManagerLog) << "Restarting video receiver" << receiver->name() << receiver->uri();
                 _startReceiver(receiver);
@@ -1071,6 +1120,7 @@ void VideoManager::_initVideoReceiver(VideoReceiver *receiver, QQuickWindow *win
     (void) connect(receiver, &VideoReceiver::recordingChanged, this, [this, receiver](bool active) {
         qCDebug(VideoManagerLog) << "Video" << receiver->name() << "recording changed, active:" << (active ? "yes" : "no");
         if (!receiver->isThermal()) {
+            _receiverState[receiver->name()].recording = active;
             _recording = active;
             if (!active) {
                 _subtitleWriter->stopCapturingTelemetry();

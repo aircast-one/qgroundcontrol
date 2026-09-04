@@ -135,8 +135,15 @@ Item {
                 context.lineTo(panelX, panelY)                              // top left
 
                 context.closePath()
-                context.fillStyle = qgcPal.windowShade
+                context.fillStyle = toolStrip.roundButtons
+                                        ? qgcPal.overlayBackground
+                                        : qgcPal.windowShade
                 context.fill()
+                if (toolStrip.roundButtons) {
+                    context.strokeStyle = qgcPal.overlayBorder
+                    context.lineWidth = 1
+                    context.stroke()
+                }
             }
         } // Canvas - arrowCanvas
 

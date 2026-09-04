@@ -6,6 +6,12 @@ qt_add_qml_module(FlightDisplayModule
     RESOURCE_PREFIX /qml
     QML_FILES
         CustomGuidedActionsController.qml
+        CameraAimArea.qml
+        CameraControlLayer.qml
+        CameraDockPill.qml
+        CameraEdgeSlider.qml
+
+        CameraShutterButton.qml
         DefaultChecklist.qml
         DetectionOverlayVideo.qml
         FixedWingChecklist.qml
@@ -34,11 +40,9 @@ qt_add_qml_module(FlightDisplayModule
         GripperMenu.qml
         GuidedActionConfirm.qml
         GuidedActionGripper.qml
-        GuidedActionLand.qml
         GuidedActionPause.qml
         GuidedActionRTL.qml
         GuidedActionsController.qml
-        GuidedActionTakeoff.qml
         GuidedToolStripAction.qml
         GuidedValueSlider.qml
         MultiRotorChecklist.qml
@@ -59,9 +63,11 @@ qt_add_qml_module(FlightDisplayModule
         QGCVideoBackground.qml
         RoverChecklist.qml
         SubChecklist.qml
+        TelemetryChipsLayer.qml
         TelemetryValuesBar.qml
         TerrainProgress.qml
         VehicleWarnings.qml
+        VideoTilesLayer.qml
         VirtualJoystick.qml
     NO_PLUGIN # Required by Qt 6.6.3. TODO: Remove when no longer supported.
 )

@@ -117,8 +117,10 @@ Item {
 
     Rectangle {
         anchors.fill:   parent
-        color:          _qgcPal.window
-        opacity:        0.5
+        radius:         ScreenTools.defaultFontPixelHeight / 2
+        color:          _qgcPal.overlayBackground
+        border.color:   _qgcPal.overlayBorder
+        border.width:   1
     }
 
     ColumnLayout {

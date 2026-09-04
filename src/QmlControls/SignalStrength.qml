@@ -47,7 +47,7 @@ Item {
         source:             getIcon()
         fillMode:           Image.PreserveAspectFit
         anchors.fill:       parent
-        color:              qgcPal.buttonText
+        color:              qgcPal.toolbarText
         sourceSize.height:  size
     }
 }

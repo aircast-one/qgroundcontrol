@@ -17,12 +17,10 @@ import QGroundControl.FlightMap
 
 Item {
     id:             control
-    implicitWidth:  (compassRadius * 2) + attitudeSpacing + attitudeSize
+    implicitWidth:  compassRadius * 2
     implicitHeight: implicitWidth
 
-    property alias attitudeSize:                rollIndicator.attitudeSize
-    property alias attitudeSpacing:             rollIndicator.attitudeSpacing
-    property real extraInset:                   attitudeSize + attitudeSpacing
+    property real extraInset:                   0
     property real extraValuesWidth:             compassRadius
     property real defaultCompassRadius:         (mainWindow.width * 0.15) / 2
     property real maxCompassRadius:             ScreenTools.defaultFontPixelHeight * 7 / 2
@@ -32,31 +30,15 @@ Item {
     property var  qgcPal:                       QGroundControl.globalPalette
     property bool usedByMultipleVehicleList:    false
 
-    property real _totalAttitudeSize: attitudeSize + attitudeSpacing
-
-    IntegratedAttitudeIndicator {
-        id:                     rollIndicator
-        x:                      -_totalAttitudeSize
-        attitudeAngleDegrees:   vehicle ? vehicle.roll.rawValue : 0
-        compassRadius:          control.compassRadius
-    }
-
-    IntegratedAttitudeIndicator {
-        x:                      -_totalAttitudeSize
-        attitudeAngleDegrees:   vehicle ? vehicle.pitch.rawValue : 0
-        compassRadius:          control.compassRadius
-        attitudeSize:           control.attitudeSize
-        attitudeSpacing:        control.attitudeSpacing
-        transformOrigin:        Item.Center
-        rotation:               90
-    }
-
     Rectangle {
-        y:      _totalAttitudeSize
         width:  compassRadius * 2
         height: width
         radius: width / 2
-        color:  qgcPal.window
+        color:  qgcPal.overlayBackground
+        border.color:   qgcPal.overlayBorder
+        border.width:   1
+        layer.enabled: true
+        layer.effect:  OverlayShadowEffect { }
 
         QGCCompassWidget {
             size:                       parent.width - compassBorder

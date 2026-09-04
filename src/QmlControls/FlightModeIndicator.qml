@@ -42,12 +42,13 @@ RowLayout {
             height:     ScreenTools.defaultFontPixelHeight
             fillMode:   Image.PreserveAspectFit
             mipmap:     true
-            color:      qgcPal.text
+            color:      qgcPal.toolbarText
             source:     "/qmlimages/FlightModesComponentIcon.png"
         }
 
         QGCLabel {
             text:               activeVehicle ? activeVehicle.flightMode : qsTr("N/A", "No data to display")
+            color:              qgcPal.toolbarText
             font.pointSize:     fontPointSize
             Layout.alignment:   Qt.AlignCenter
 
@@ -81,12 +82,45 @@ RowLayout {
 
         ColumnLayout {
             id:         modeColumn
-            spacing:    ScreenTools.defaultFontPixelWidth / 2
+            spacing:    ScreenTools.defaultFontPixelWidth / 4
 
             property var    activeVehicle:            QGroundControl.multiVehicleManager.activeVehicle
             property var    flightModeSettings:       QGroundControl.settingsManager.flightModeSettings
             property var    hiddenFlightModesFact:    null
-            property var    hiddenFlightModesList:    [] 
+            property var    hiddenFlightModesList:    []
+
+            readonly property var _allModes:    activeVehicle ? activeVehicle.flightModes : []
+            readonly property var _returnModes: _allModes.filter((mode) => _isReturnMode(mode))
+            readonly property var _devModes:    _allModes.filter((mode) => _isDevMode(mode))
+            readonly property var _flightModes: _allModes.filter((mode) => !_isReturnMode(mode) && !_isDevMode(mode))
+
+            // Firmwares name their modes freely, so grouping is by name and anything
+            // unrecognised stays in the main group rather than disappearing from the menu.
+            readonly property var _returnKeywords: [ "return", "rtl", "land" ]
+
+            function _isReturnMode(mode) {
+                const name = mode.toLowerCase()
+                return _returnKeywords.some((keyword) => name.indexOf(keyword) !== -1)
+            }
+
+            function _isDevMode(mode) {
+                return mode.toLowerCase().indexOf("mocklink") !== -1
+            }
+
+            function _isHidden(mode) {
+                return hiddenFlightModesList.indexOf(mode) !== -1
+            }
+
+            function _setHidden(mode, hidden) {
+                const remaining = hiddenFlightModesList.filter((item) => item !== mode)
+                hiddenFlightModesList = hidden ? [ ...remaining, mode ] : remaining
+                hiddenFlightModesFact.value = hiddenFlightModesList.join(",")
+            }
+
+            function _showAllModes() {
+                hiddenFlightModesList = []
+                hiddenFlightModesFact.value = ""
+            }
 
             Component.onCompleted: {
                 // Hidden flight modes are classified by firmware and vehicle class
@@ -110,78 +144,55 @@ RowLayout {
                         control.allowEditMode = false
                     }
                 }
-                hiddenModesLabel.calcVisible()
             }
 
-            Connections {
-                target: control
-                onEditModeChanged: {
-                    if (editMode) {
-                        for (var i=0; i<modeRepeater.count; i++) {
-                            var button      = modeRepeater.itemAt(i).children[0]
-                            var checkBox    = modeRepeater.itemAt(i).children[1]
+            component ModeSection: Repeater {
+                delegate: RowLayout {
+                    Layout.fillWidth:   true
+                    spacing:            ScreenTools.defaultFontPixelWidth
+                    visible:            control.editMode || !modeColumn._isHidden(modelData)
 
-                            checkBox.checked = !hiddenFlightModesList.find(item => { return item === button.text } )
-                        }
-                    }
-                }
-            }
-
-            Repeater {
-                id:     modeRepeater
-                model:  activeVehicle ? activeVehicle.flightModes : []
-
-                RowLayout {
-                    spacing: ScreenTools.defaultFontPixelWidth
-                    visible: editMode || !hiddenFlightModesList.find(item => { return item === modelData } )
-
-                    QGCButton {
-                        id:                 modeButton
-                        text:               modelData
-                        Layout.fillWidth:   true
+                    OverlayMenuItem {
+                        text:       modelData
+                        checkable:  true
+                        checked:    modeColumn.activeVehicle && modeColumn.activeVehicle.flightMode === modelData
 
                         onClicked: {
-                            if (editMode) {
-                                parent.children[1].toggle()
-                                parent.children[1].clicked()
+                            if (control.editMode) {
+                                modeColumn._setHidden(modelData, !modeColumn._isHidden(modelData))
                             } else {
-                                //var controller = globals.guidedControllerFlyView
-                                //controller.confirmAction(controller.actionSetFlightMode, modelData)
-                                activeVehicle.flightMode = modelData
+                                modeColumn.activeVehicle.flightMode = modelData
                                 mainWindow.closeIndicatorDrawer()
                             }
                         }
                     }
 
                     QGCCheckBoxSlider {
-                        visible: editMode
-
-                        onClicked: {
-                            hiddenFlightModesList = []
-                            for (var i=0; i<modeRepeater.count; i++) {
-                                var checkBox = modeRepeater.itemAt(i).children[1]
-                                if (!checkBox.checked) {
-                                    hiddenFlightModesList.push(modeRepeater.model[i])
-                                }
-                            }
-                            hiddenFlightModesFact.value = hiddenFlightModesList.join(",")
-                            hiddenModesLabel.calcVisible()
-                        }
+                        visible:    control.editMode
+                        checked:    !modeColumn._isHidden(modelData)
+                        onClicked:  modeColumn._setHidden(modelData, !checked)
                     }
                 }
             }
 
-            QGCLabel {
-                id:                     hiddenModesLabel
-                text:                   qsTr("Some Modes Hidden")
-                Layout.fillWidth:       true
-                font.pointSize:         ScreenTools.smallFontPointSize
-                horizontalAlignment:    Text.AlignHCenter
-                visible:                false
+            ModeSection { model: modeColumn._flightModes }
 
-                function calcVisible() {
-                    hiddenModesLabel.visible = hiddenFlightModesList.length > 0
-                }
+            OverlayMenuSeparator { visible: modeColumn._returnModes.length > 0 && modeColumn._flightModes.length > 0 }
+
+            ModeSection { model: modeColumn._returnModes }
+
+            OverlayMenuSeparator { visible: modeColumn._devModes.length > 0 && modeColumn._allModes.length > modeColumn._devModes.length }
+
+            ModeSection { model: modeColumn._devModes }
+
+            OverlayMenuSeparator { visible: showAllModesItem.visible }
+
+            // A count of what is missing is a dead end; the row that reveals them is not.
+            OverlayMenuItem {
+                id:         showAllModesItem
+                text:       qsTr("Show All Modes")
+                visible:    modeColumn.hiddenFlightModesList.length > 0 && !control.editMode
+                onClicked:  modeColumn._showAllModes()
             }
         }
     }

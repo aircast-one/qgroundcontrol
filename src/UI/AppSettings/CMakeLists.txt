@@ -19,6 +19,7 @@ qt_add_qml_module(AppSettingsModule
         MockLinkSettings.qml
         PlanViewSettings.qml
         PX4LogTransferSettings.qml
+        QmlTest.qml
         RemoteIDSettings.qml
         SerialSettings.qml
         SettingsPage.qml

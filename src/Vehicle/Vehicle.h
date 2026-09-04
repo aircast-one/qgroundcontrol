@@ -140,6 +140,8 @@ public:
     Q_PROPERTY(QGeoCoordinate       armedPosition               READ armedPosition                                                  NOTIFY armedPositionChanged)
     Q_PROPERTY(bool                 armed                       READ armed                      WRITE setArmedShowError             NOTIFY armedChanged)
     Q_PROPERTY(bool                 autoDisarm                  READ autoDisarm                                                     NOTIFY autoDisarmChanged)
+    Q_PROPERTY(bool                 rcChannelOverrideActive     READ rcChannelOverrideActive                                        NOTIFY rcChannelOverrideActiveChanged)
+    Q_PROPERTY(QVariantList         rcChannelValues             READ rcChannelValues                                                NOTIFY rcChannelValuesChanged)
     Q_PROPERTY(bool                 flightModeSetAvailable      READ flightModeSetAvailable                                         CONSTANT)
     Q_PROPERTY(QStringList          flightModes                 READ flightModes                                                    NOTIFY flightModesChanged)
     Q_PROPERTY(QString              flightMode                  READ flightMode                 WRITE setFlightMode                 NOTIFY flightModeChanged)
@@ -406,6 +408,16 @@ public:
 
     /// Trigger camera using MAV_CMD_DO_DIGICAM_CONTROL command
     Q_INVOKABLE void triggerSimpleCamera(void);
+
+    bool rcChannelOverrideActive(void) const { return !_rcChannelOverrides.isEmpty(); }
+    QVariantList rcChannelValues(void) const { return _rcChannelValues; }
+
+    /// false only when the firmware exposes RC<n>_OPTION and it is unassigned; an unknown
+    /// mapping must not be reported as a broken one.
+    Q_INVOKABLE bool rcChannelIsMapped(int channel);
+
+    Q_INVOKABLE void setRcChannelOverride(int channel, int pwm);
+    Q_INVOKABLE void clearRcChannelOverrides(void);
 
     /// Set home from flight map coordinate
     Q_INVOKABLE void doSetHome(const QGeoCoordinate& coord);
@@ -831,6 +843,8 @@ signals:
     void homePositionChanged            (const QGeoCoordinate& homePosition);
     void armedPositionChanged();
     void armedChanged                   (bool armed);
+    void rcChannelOverrideActiveChanged (bool active);
+    void rcChannelValuesChanged         (void);
     void flightModeChanged              (const QString& flightMode);
     void flyingChanged                  (bool flying);
     void landingChanged                 (bool landing);
@@ -957,8 +971,11 @@ private:
     void _handleHomePosition            (mavlink_message_t& message);
     void _handleHeartbeat               (mavlink_message_t& message);
     void _handleCurrentMode             (mavlink_message_t& message);
+    void _emitFlightModeChangedIfNeeded ();
     void _handleRadioStatus             (mavlink_message_t& message);
     void _handleRCChannels              (mavlink_message_t& message);
+    void _sendRcChannelOverrides       (void);
+    void _rcChannelOverrideTick        (void);
     void _handleBatteryStatus           (mavlink_message_t& message);
     void _handleSysStatus               (mavlink_message_t& message);
     void _handleExtendedSysState        (mavlink_message_t& message);
@@ -1063,6 +1080,17 @@ private:
 
     QString             _prearmError;
     QTimer              _prearmErrorTimer;
+
+    QVariantList        _rcChannelValues;
+    QMap<int, quint16>  _rcChannelOverrides;
+    QTimer              _rcChannelOverrideTimer;
+    int                 _rcChannelOverrideReleaseTicks = 0;
+    static constexpr int _rcChannelOverrideCount        = 18;
+    static constexpr int _rcChannelOverrideIntervalMSecs = 200;
+    static constexpr int _rcChannelOverrideReleaseCount  = 3;
+    static constexpr int _rcPwmMin                      = 800;
+    static constexpr int _rcPwmMax                      = 2200;
+
     static const int    _prearmErrorTimeoutMSecs = 35 * 1000;   ///< Take away prearm error after 35 seconds
 
     bool                _initialPlanRequestComplete = false;
@@ -1078,6 +1106,7 @@ private:
 #endif
 
     bool    _armed = false;         ///< true: vehicle is armed
+    QString _lastReportedFlightMode;
     uint8_t _base_mode = 0;     ///< base_mode from HEARTBEAT
     uint32_t _custom_mode = 0;  ///< custom_mode from HEARTBEAT
     uint32_t _custom_mode_user_intention = 0;  ///< custom_mode_user_intention from CURRENT_MODE

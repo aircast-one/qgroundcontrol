@@ -7,12 +7,12 @@
  *
  ****************************************************************************/
 
-import QGroundControl.FlightDisplay
+import QtQuick
+import QtQuick.Layouts
 
-GuidedToolStripAction {
-    text:       _guidedController.takeoffTitle
-    iconSource: "/res/takeoff.svg"
-    visible:    _guidedController.showTakeoff || !_guidedController.showLand
-    enabled:    _guidedController.showTakeoff
-    actionID:   _guidedController.actionTakeoff
+// Hairline between two groups of overlay menu rows.
+Rectangle {
+    Layout.fillWidth:   true
+    implicitHeight:     1
+    color:              Qt.rgba(1, 1, 1, 0.12)
 }

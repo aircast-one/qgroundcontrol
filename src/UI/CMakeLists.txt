@@ -9,5 +9,7 @@ qt_add_qml_module(MainWindowModule
     RESOURCE_PREFIX /qml
     QML_FILES
         MainWindow.qml
+    RESOURCES
+        WindowChrome.qml
     NO_PLUGIN
 )

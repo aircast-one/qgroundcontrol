@@ -249,6 +249,180 @@ SettingsPage {
     }
 
     SettingsGroupLayout {
+        Layout.fillWidth:       true
+        Layout.preferredWidth:  ScreenTools.defaultFontPixelWidth * 40
+        heading:                qsTr("Camera & Gimbal Control")
+        headingDescription:     qsTr("Map the vehicle's RC channels once here and the fly view gains camera controls: drag the video to aim, tilt and zoom sliders on the edges. Leave a channel at 0 to hide its control. Channel numbers come from the vehicle's RCn_OPTION setup.")
+
+        LabelledFactTextField {
+            Layout.fillWidth:   true
+            label:              qsTr("Gimbal tilt channel")
+            fact:               _flyViewSettings.gimbalTiltChannel
+        }
+
+        LabelledFactTextField {
+            Layout.fillWidth:   true
+            label:              qsTr("Gimbal pan channel")
+            fact:               _flyViewSettings.gimbalPanChannel
+        }
+
+        LabelledFactTextField {
+            Layout.fillWidth:   true
+            label:              qsTr("Camera zoom channel")
+            fact:               _flyViewSettings.cameraZoomChannel
+        }
+
+        LabelledFactTextField {
+            Layout.fillWidth:   true
+            label:              qsTr("Camera light channel")
+            fact:               _flyViewSettings.cameraLightChannel
+        }
+
+        LabelledFactTextField {
+            Layout.fillWidth:   true
+            label:              qsTr("Camera record channel")
+            fact:               _flyViewSettings.cameraRecordChannel
+        }
+    }
+
+    SettingsGroupLayout {
+        id:                     rcControlsGroup
+        objectName:             "rcControlsGroup"
+        Layout.fillWidth:       true
+        Layout.preferredWidth:  ScreenTools.defaultFontPixelWidth * 40
+        heading:                qsTr("Custom RC Controls")
+        headingDescription:     qsTr("Add an on-screen slider or toggle button for any RC channel. Sliders sweep 1000-2000 µs, buttons switch between 1000 and 2000 µs. Controls are greyed out until a vehicle connects. Long-press any control in the fly view to arrange them.")
+
+        readonly property int _channelCount: 18
+
+        property var _controls: _parse(_flyViewSettings.rcControls.rawValue)
+
+        readonly property var _cameraChannels: [
+            { channel: _flyViewSettings.gimbalTiltChannel.rawValue,  owner: qsTr("Gimbal tilt") },
+            { channel: _flyViewSettings.gimbalPanChannel.rawValue,   owner: qsTr("Gimbal pan") },
+            { channel: _flyViewSettings.cameraZoomChannel.rawValue,  owner: qsTr("Camera zoom") },
+            { channel: _flyViewSettings.cameraLightChannel.rawValue, owner: qsTr("Camera light") },
+            { channel: _flyViewSettings.cameraRecordChannel.rawValue, owner: qsTr("Camera record") }
+        ]
+
+        function _channelNamesFor(rowIndex) {
+            return Array.from({ length: _channelCount }, (_, i) => {
+                const owner = _usedBy(i + 1, rowIndex)
+                return owner === "" ? String(i + 1) : qsTr("%1 · %2").arg(i + 1).arg(owner)
+            })
+        }
+
+        function _parse(json) {
+            try { return JSON.parse(json) } catch (e) { return [] }
+        }
+
+        function _usedBy(channel, beforeIndex) {
+            const camera = _cameraChannels.find((mapping) => mapping.channel === channel)
+            if (camera) {
+                return camera.owner
+            }
+            const rowIndex = _controls.findIndex((control, i) => i < beforeIndex && control.channel === channel)
+            return rowIndex < 0 ? "" : (_controls[rowIndex].label || qsTr("control %1").arg(rowIndex + 1))
+        }
+
+        function _firstFreeChannel() {
+            const free = Array.from({ length: _channelCount }, (_, i) => i + 1)
+                              .find((channel) => _usedBy(channel, _controls.length) === "")
+            return free === undefined ? 1 : free
+        }
+
+        function _save(controls) {
+            _flyViewSettings.rcControls.rawValue = JSON.stringify(controls)
+        }
+
+        function _update(index, patch) {
+            _save(_controls.map((control, i) => i === index ? Object.assign({}, control, patch) : control))
+        }
+
+        RowLayout {
+            Layout.fillWidth:   true
+            spacing:            ScreenTools.defaultFontPixelWidth
+            visible:            rcControlsGroup._controls.length > 0
+
+            QGCLabel { Layout.fillWidth: true;                                       text: qsTr("Label");   color: QGroundControl.globalPalette.colorGrey; font.pointSize: ScreenTools.smallFontPointSize }
+            QGCLabel { Layout.preferredWidth: ScreenTools.defaultFontPixelWidth * 16; text: qsTr("Channel"); color: QGroundControl.globalPalette.colorGrey; font.pointSize: ScreenTools.smallFontPointSize }
+            QGCLabel { Layout.preferredWidth: ScreenTools.defaultFontPixelWidth * 12; text: qsTr("Type");    color: QGroundControl.globalPalette.colorGrey; font.pointSize: ScreenTools.smallFontPointSize }
+            Item     { Layout.preferredWidth: removeSizer.width }
+
+            QGCButton { id: removeSizer; text: qsTr("Remove"); visible: false }
+        }
+
+        Repeater {
+            model: rcControlsGroup._controls
+
+            delegate: ColumnLayout {
+                id: rcControlRow
+
+                required property int index
+                required property var modelData
+
+                readonly property string conflict: rcControlsGroup._usedBy(modelData.channel, index)
+
+                Layout.fillWidth:   true
+                spacing:            ScreenTools.defaultFontPixelHeight / 4
+
+                RowLayout {
+                    Layout.fillWidth:   true
+                    spacing:            ScreenTools.defaultFontPixelWidth
+
+                    QGCTextField {
+                        objectName:         "rcControlLabel" + rcControlRow.index
+                        Layout.fillWidth:   true
+                        text:               rcControlRow.modelData.label
+                        placeholderText:    qsTr("CH%1").arg(rcControlRow.modelData.channel)
+                        onEditingFinished:  rcControlsGroup._update(rcControlRow.index, { label: text })
+                    }
+
+                    QGCComboBox {
+                        objectName:             "rcControlChannel" + rcControlRow.index
+                        Layout.preferredWidth:  ScreenTools.defaultFontPixelWidth * 16
+                        model:                  rcControlsGroup._channelNamesFor(rcControlRow.index)
+                        currentIndex:           Math.max(0, rcControlRow.modelData.channel - 1)
+                        onActivated:            (i) => rcControlsGroup._update(rcControlRow.index, { channel: i + 1 })
+                    }
+
+                    QGCComboBox {
+                        objectName:             "rcControlType" + rcControlRow.index
+                        Layout.preferredWidth:  ScreenTools.defaultFontPixelWidth * 12
+                        model:                  [ qsTr("Slider"), qsTr("Button") ]
+                        currentIndex:           rcControlRow.modelData.type === "button" ? 1 : 0
+                        onActivated:            (i) => rcControlsGroup._update(rcControlRow.index, { type: i === 1 ? "button" : "slider" })
+                    }
+
+                    QGCButton {
+                        objectName: "rcControlRemove" + rcControlRow.index
+                        text:       qsTr("Remove")
+                        onClicked:  rcControlsGroup._save(rcControlsGroup._controls.filter((_, i) => i !== rcControlRow.index))
+                    }
+                }
+
+                QGCLabel {
+                    objectName:         "rcControlConflict" + rcControlRow.index
+                    Layout.fillWidth:   true
+                    visible:            rcControlRow.conflict !== ""
+                    color:              QGroundControl.globalPalette.colorOrange
+                    font.pointSize:     ScreenTools.smallFontPointSize
+                    wrapMode:           Text.WordWrap
+                    text:               qsTr("Channel %1 is already driven by %2. Only the first control on a channel is shown in the fly view.")
+                                            .arg(rcControlRow.modelData.channel).arg(rcControlRow.conflict)
+                }
+            }
+        }
+
+        QGCButton {
+            objectName: "rcControlsAddButton"
+            text:       qsTr("Add control")
+            onClicked:  rcControlsGroup._save([...rcControlsGroup._controls,
+                                               { label: "", channel: rcControlsGroup._firstFreeChannel(), type: "slider" }])
+        }
+    }
+
+    SettingsGroupLayout {
         Layout.fillWidth:   true
         heading:            qsTr("3D View")
         visible:            _viewer3DSettings.visible
