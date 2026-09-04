@@ -2,19 +2,31 @@
 
 #include "QuickInteractionTestHelpers.h"
 
-#include <QtGui/QWheelEvent>
 #include <QtGui/QNativeGestureEvent>
+#include <QtGui/QWheelEvent>
 #include <QtPositioning/QGeoCoordinate>
 
-static void sendWheel(QQuickView& view, const QPointF& pos, const QPoint& delta, Qt::ScrollPhase phase, const QPointingDevice* device, Qt::KeyboardModifiers modifiers = Qt::NoModifier)
+static const QPointF kCenter(300, 200);
+static const QPointingDevice kTrackpad(QStringLiteral("trackpad"), 1, QInputDevice::DeviceType::TouchPad, QPointingDevice::PointerType::Finger, QInputDevice::Capability::Scroll, 1, 3);
+
+static QQuickItem* loadMap(QQuickView& view)
 {
-    QWheelEvent event(pos, view.mapToGlobal(pos.toPoint()), delta, delta, Qt::NoButton, modifiers, phase, false, Qt::MouseEventNotSynthesized, device);
+    if (!loadTestView(view, QStringLiteral("qrc:/unittest/FlightMapWheelTest.qml"))) {
+        return nullptr;
+    }
+    QQuickItem* const map = view.rootObject();
+    return QTest::qWaitFor([map] { return map->property("mapReady").toBool(); }) ? map : nullptr;
+}
+
+static void sendWheel(QQuickView& view, const QPointF& pos, const QPoint& pixelDelta, const QPoint& angleDelta, Qt::ScrollPhase phase, const QPointingDevice* device = &kTrackpad, Qt::KeyboardModifiers modifiers = Qt::NoModifier, Qt::MouseButtons buttons = Qt::NoButton)
+{
+    QWheelEvent event(pos, view.mapToGlobal(pos.toPoint()), pixelDelta, angleDelta, buttons, modifiers, phase, false, Qt::MouseEventNotSynthesized, device);
     QCoreApplication::sendEvent(&view, &event);
 }
 
-static void sendPinch(QQuickView& view, const QPointF& pos, Qt::NativeGestureType type, qreal value, const QPointingDevice* device)
+static void sendPinch(QQuickView& view, const QPointF& pos, Qt::NativeGestureType type, qreal value)
 {
-    QNativeGestureEvent event(type, device, 2, pos, pos, view.mapToGlobal(pos.toPoint()), value, QPointF());
+    QNativeGestureEvent event(type, &kTrackpad, 2, pos, pos, view.mapToGlobal(pos.toPoint()), value, QPointF());
     QCoreApplication::sendEvent(&view, &event);
 }
 
@@ -25,52 +37,125 @@ static QGeoCoordinate coordinateAt(QQuickItem* map, const QPointF& pos)
     return coordinate;
 }
 
-void FlightMapTest::_trackpadScrollPansAndMouseWheelZooms()
+static QPointF pointOf(QQuickItem* map, const QGeoCoordinate& coordinate)
+{
+    QPointF point;
+    QMetaObject::invokeMethod(map, "fromCoordinate", Q_RETURN_ARG(QPointF, point), Q_ARG(QGeoCoordinate, coordinate), Q_ARG(bool, false));
+    return point;
+}
+
+static bool near(const QPointF& a, const QPointF& b)
+{
+    return (a - b).manhattanLength() < 2;
+}
+
+void FlightMapTest::_trackpadOrMagicMouseScrollPans()
 {
     QQuickView view;
-    QVERIFY(loadTestView(view, QStringLiteral("qrc:/unittest/FlightMapWheelTest.qml")));
-    QQuickItem* const map = view.rootObject();
-    QTRY_VERIFY(map->property("mapReady").toBool());
-
-    const QPointF center(300, 200);
-    const QGeoCoordinate before = map->property("center").value<QGeoCoordinate>();
+    QQuickItem* const map = loadMap(view);
+    QVERIFY(map);
+    const QGeoCoordinate before = coordinateAt(map, kCenter);
     const qreal zoom = map->property("zoomLevel").toReal();
 
-    const QPointingDevice trackpad(QStringLiteral("trackpad"), 1, QInputDevice::DeviceType::TouchPad, QPointingDevice::PointerType::Finger, QInputDevice::Capability::Scroll, 1, 3);
-    sendWheel(view, center, QPoint(0, -80), Qt::ScrollBegin, &trackpad);
-    sendWheel(view, center, QPoint(0, 0), Qt::ScrollEnd, &trackpad);
-    sendWheel(view, center, QPoint(0, -40), Qt::ScrollMomentum, &trackpad);
-    sendWheel(view, center, QPoint(0, 0), Qt::ScrollEnd, &trackpad);
+    sendWheel(view, kCenter, QPoint(0, -80), QPoint(0, -80), Qt::ScrollBegin);
+    sendWheel(view, kCenter, QPoint(), QPoint(), Qt::ScrollEnd);
 
-    const QGeoCoordinate panned = map->property("center").value<QGeoCoordinate>();
-    QVERIFY(panned.latitude() < before.latitude());
-    QCOMPARE(panned.longitude(), before.longitude());
+    QVERIFY(near(pointOf(map, before), kCenter - QPointF(0, 80)));
     QCOMPARE(map->property("zoomLevel").toReal(), zoom);
-    QPointF beforeNow;
-    QMetaObject::invokeMethod(map, "fromCoordinate", Q_RETURN_ARG(QPointF, beforeNow), Q_ARG(QGeoCoordinate, before), Q_ARG(bool, false));
-    QVERIFY((beforeNow - QPointF(300, 120)).manhattanLength() < 2);
     QCOMPARE(map->property("panStarts").toInt(), 1);
-    QCOMPARE(map->property("panStops").toInt(), 2);
+    QCOMPARE(map->property("panStops").toInt(), 1);
+}
 
-    sendWheel(view, center, QPoint(0, 120), Qt::NoScrollPhase, QPointingDevice::primaryPointingDevice());
+void FlightMapTest::_momentumKeepsPanningAfterTheStopSignal()
+{
+    QQuickView view;
+    QQuickItem* const map = loadMap(view);
+    QVERIFY(map);
+    const QGeoCoordinate before = coordinateAt(map, kCenter);
+
+    sendWheel(view, kCenter, QPoint(0, -80), QPoint(0, -80), Qt::ScrollBegin);
+    sendWheel(view, kCenter, QPoint(), QPoint(), Qt::ScrollEnd);
+    sendWheel(view, kCenter, QPoint(0, -40), QPoint(0, -40), Qt::ScrollMomentum);
+    sendWheel(view, kCenter, QPoint(), QPoint(), Qt::ScrollEnd);
+
+    QVERIFY(near(pointOf(map, before), kCenter - QPointF(0, 120)));
+    QCOMPARE(map->property("panStarts").toInt(), 1);
+    QCOMPARE(map->property("panStops").toInt(), 1);
+}
+
+void FlightMapTest::_scrollWhileAButtonIsHeldIsIgnored()
+{
+    QQuickView view;
+    QQuickItem* const map = loadMap(view);
+    QVERIFY(map);
+    const QGeoCoordinate before = coordinateAt(map, kCenter);
+
+    sendWheel(view, kCenter, QPoint(0, -80), QPoint(0, -80), Qt::ScrollBegin, &kTrackpad, Qt::NoModifier, Qt::LeftButton);
+
+    QVERIFY(near(pointOf(map, before), kCenter));
+    QCOMPARE(map->property("panStarts").toInt(), 0);
+}
+
+void FlightMapTest::_touchpadWithoutPixelDeltaStillPans()
+{
+    QQuickView view;
+    QQuickItem* const map = loadMap(view);
+    QVERIFY(map);
+    const QGeoCoordinate before = coordinateAt(map, kCenter);
+
+    sendWheel(view, kCenter, QPoint(), QPoint(0, -160), Qt::NoScrollPhase);
+
+    QVERIFY(near(pointOf(map, before), kCenter - QPointF(0, 80)));
+}
+
+void FlightMapTest::_mouseWheelZoomsAboutTheCursor()
+{
+    QQuickView view;
+    QQuickItem* const map = loadMap(view);
+    QVERIFY(map);
+    const QPointF cursor(100, 50);
+    const QGeoCoordinate underCursor = coordinateAt(map, cursor);
+    const qreal zoom = map->property("zoomLevel").toReal();
+
+    sendWheel(view, cursor, QPoint(), QPoint(0, 120), Qt::NoScrollPhase, QPointingDevice::primaryPointingDevice());
+
     QCOMPARE(map->property("zoomLevel").toReal(), zoom + 1);
-    QVERIFY(map->property("center").value<QGeoCoordinate>().distanceTo(panned) < 1);
+    QVERIFY(near(pointOf(map, underCursor), cursor));
+}
 
-    sendWheel(view, center, QPoint(0, 120), Qt::NoScrollPhase, &trackpad, Qt::MetaModifier);
-    QCOMPARE(map->property("zoomLevel").toReal(), zoom + 2);
+void FlightMapTest::_modifierScrollZooms()
+{
+    QQuickView view;
+    QQuickItem* const map = loadMap(view);
+    QVERIFY(map);
+    const QGeoCoordinate before = coordinateAt(map, kCenter);
+    const qreal zoom = map->property("zoomLevel").toReal();
 
+    sendWheel(view, kCenter, QPoint(0, 120), QPoint(0, 120), Qt::NoScrollPhase, &kTrackpad, Qt::MetaModifier);
+
+    QCOMPARE(map->property("zoomLevel").toReal(), zoom + 1);
+    QVERIFY(near(pointOf(map, before), kCenter));
+    QCOMPARE(map->property("panStarts").toInt(), 0);
+}
+
+void FlightMapTest::_pinchFollowsTheFingersWhilePanning()
+{
+    QQuickView view;
+    QQuickItem* const map = loadMap(view);
+    QVERIFY(map);
     const QPointF fingers(120, 90);
+    const QPointF panDelta(0, 80);
     const QGeoCoordinate underFingers = coordinateAt(map, fingers);
-    sendPinch(view, fingers, Qt::BeginNativeGesture, 0, &trackpad);
-    sendPinch(view, fingers, Qt::ZoomNativeGesture, 1.0, &trackpad);
-    QCOMPARE(map->property("zoomLevel").toReal(), zoom + 3);
-    QVERIFY(coordinateAt(map, fingers).distanceTo(underFingers) < 1);
+    const qreal zoom = map->property("zoomLevel").toReal();
 
-    sendWheel(view, fingers, QPoint(0, -80), Qt::ScrollUpdate, &trackpad);
-    sendPinch(view, fingers, Qt::ZoomNativeGesture, 1.0, &trackpad);
-    sendPinch(view, fingers, Qt::EndNativeGesture, 0, &trackpad);
-    QCOMPARE(map->property("zoomLevel").toReal(), zoom + 4);
-    QPointF moved;
-    QMetaObject::invokeMethod(map, "fromCoordinate", Q_RETURN_ARG(QPointF, moved), Q_ARG(QGeoCoordinate, underFingers), Q_ARG(bool, false));
-    QVERIFY((moved - QPointF(120, 90 - 160)).manhattanLength() < 2);
+    sendPinch(view, fingers, Qt::BeginNativeGesture, 0);
+    sendPinch(view, fingers, Qt::ZoomNativeGesture, 1.0);
+    QCOMPARE(map->property("zoomLevel").toReal(), zoom + 1);
+    QVERIFY(near(pointOf(map, underFingers), fingers));
+
+    sendWheel(view, fingers, -panDelta.toPoint(), -panDelta.toPoint(), Qt::ScrollUpdate);
+    sendPinch(view, fingers, Qt::ZoomNativeGesture, 1.0);
+    sendPinch(view, fingers, Qt::EndNativeGesture, 0);
+    QCOMPARE(map->property("zoomLevel").toReal(), zoom + 2);
+    QVERIFY(near(pointOf(map, underFingers), fingers - panDelta * 2));
 }

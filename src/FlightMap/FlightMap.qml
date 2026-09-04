@@ -28,26 +28,22 @@ Map {
     id: _map
 
     plugin:     Plugin { name: "QGroundControl" }
-    opacity:    0.99 // https://bugreports.qt.io/browse/QTBUG-82185
+    opacity:    0.99
 
     property string mapName:                        'defaultMap'
     property bool   isSatelliteMap:                 activeMapType.name.indexOf("Satellite") > -1 || activeMapType.name.indexOf("Hybrid") > -1
     property var    gcsPosition:                    QGroundControl.qgcPositionManger.gcsPosition
     property real   gcsHeading:                     QGroundControl.qgcPositionManger.gcsHeading
-    property bool   allowGCSLocationCenter:         false   ///< true: map will center/zoom to gcs location one time
-    property bool   allowVehicleLocationCenter:     false   ///< true: map will center/zoom to vehicle location one time
-    property bool   firstGCSPositionReceived:       false   ///< true: first gcs position update was responded to
-    property bool   firstVehiclePositionReceived:   false   ///< true: first vehicle position update was responded to
-    property bool   planView:                       false   ///< true: map being using for Plan view, items should be draggable
+    property bool   allowGCSLocationCenter:         false
+    property bool   allowVehicleLocationCenter:     false
+    property bool   firstGCSPositionReceived:       false
+    property bool   firstVehiclePositionReceived:   false
+    property bool   planView:                       false
 
     property var    _activeVehicle:             QGroundControl.multiVehicleManager.activeVehicle
     property var    _activeVehicleCoordinate:   _activeVehicle ? _activeVehicle.coordinate : QtPositioning.coordinate()
 
     function setVisibleRegion(region) {
-        // TODO: Is this still necessary with Qt 5.11?
-        // This works around a bug on Qt where if you set a visibleRegion and then the user moves or zooms the map
-        // and then you set the same visibleRegion the map will not move/scale appropriately since it thinks there
-        // is nothing to do.
         let maxZoomLevel = 20
         _map.visibleRegion = QtPositioning.rectangle(QtPositioning.coordinate(0, 0), QtPositioning.coordinate(0, 0))
         _map.visibleRegion = region
@@ -77,11 +73,9 @@ Map {
         }
     }
 
-    // Center map to gcs location
     onGcsPositionChanged: {
         if (gcsPosition.isValid && allowGCSLocationCenter && !firstGCSPositionReceived && !firstVehiclePositionReceived) {
             firstGCSPositionReceived = true
-            //-- Only center on gsc if we have no vehicle (and we are supposed to do so)
             var _activeVehicleCoordinate = _activeVehicle ? _activeVehicle.coordinate : QtPositioning.coordinate()
             if(QGroundControl.settingsManager.flyViewSettings.keepMapCenteredOnVehicle.rawValue || !_activeVehicleCoordinate.isValid)
                 center = gcsPosition
@@ -136,25 +130,32 @@ Map {
         onScaleChanged: (delta) => _zoomAbout(pinchHandler.centroid.position, Math.log2(delta))
     }
 
+    property bool _wheelPanning: false
+
     WheelHandler {
         acceptedDevices: PointerDevice.Mouse | PointerDevice.TouchPad
 
         onWheel: (event) => {
             const zoomModifier = event.modifiers & (Qt.ControlModifier | Qt.MetaModifier)
-            if (event.device.type === PointerDevice.TouchPad && !zoomModifier) {
-                if (event.phase === Qt.ScrollMomentum) return
-                if (event.phase === Qt.ScrollBegin) mapPanStart()
-                _map.pan(-event.pixelDelta.x, -event.pixelDelta.y)
-                if (event.phase === Qt.ScrollEnd) mapPanStop()
+            if (event.device.type !== PointerDevice.TouchPad || zoomModifier) {
+                _zoomAbout(Qt.point(event.x, event.y), event.angleDelta.y / 120)
                 return
             }
-            _zoomAbout(Qt.point(event.x, event.y), event.angleDelta.y / 120)
+            if (event.buttons) return
+            if (event.phase === Qt.ScrollBegin) {
+                _wheelPanning = true
+                mapPanStart()
+            }
+            const delta = event.pixelDelta.x || event.pixelDelta.y ? event.pixelDelta
+                                                                  : Qt.point(event.angleDelta.x / 2, event.angleDelta.y / 2)
+            _map.pan(-delta.x, -delta.y)
+            if (event.phase === Qt.ScrollEnd && _wheelPanning) {
+                _wheelPanning = false
+                mapPanStop()
+            }
         }
     }
 
-    // We specifically do not use a DragHandler for panning. It just causes too many problems if you overlay anything else like a Flickable above it.
-    // Causes all sorts of crazy problems where dragging/scrolling  no longerr works on items above in the hierarchy.
-    // Since we are using a MouseArea we also can't use TapHandler for clicks. So we handle that here as well.
     property bool panEnabled: true
 
     MultiPointTouchArea {
@@ -167,8 +168,6 @@ Map {
         property real lastMouseX
         property real lastMouseY
 
-        // An overlay item's DragHandler can steal the exclusive grab mid-gesture; without this
-        // reset the pan state goes stale and the map keeps reacting after the mouse is released.
         onCanceled: {
             if (dragActive) {
                 dragActive = false
@@ -210,7 +209,6 @@ Map {
         }
     }
 
-    /// Ground Station location
     MapQuickItem {
         anchorPoint.x:  sourceItem.width / 2
         anchorPoint.y:  sourceItem.height / 2
@@ -266,4 +264,4 @@ Map {
             }
         }
     }
-} // Map
+}
