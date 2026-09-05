@@ -340,3 +340,24 @@ void PipViewTest::_gripResizeDoesNotMoveThePanel()
     QCOMPARE(pip->y() + pip->height(), bottom);
     QVERIFY(!pip->property("hasCustomPosition").toBool());
 }
+
+void PipViewTest::_gripResizeNeverReachesTheItemBeneath()
+{
+    clearPipSettings();
+
+    QQuickView view;
+    QVERIFY(loadView(view));
+
+    QQuickItem *const pip = pipOf(view);
+    QQuickItem *const grip = gripOf(view);
+    QVERIFY(pip && grip);
+    QTest::mouseMove(&view, itemCenter(pip));
+    QTest::mouseMove(&view, itemCenter(grip));
+    QTRY_VERIFY(grip->isVisible());
+
+    const qreal before = pip->width();
+    dragMouse(view, itemCenter(grip), itemCenter(grip) + QPoint(120, 0), false);
+    QTRY_VERIFY(pip->width() > before);
+
+    QCOMPARE(view.rootObject()->property("fullItemDrags").toInt(), 0);
+}

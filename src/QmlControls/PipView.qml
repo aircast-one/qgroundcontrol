@@ -238,19 +238,15 @@ Item {
         preventStealing: true
         hoverEnabled:   true
         cursorShape:    drag.active ? Qt.ClosedHandCursor : Qt.ArrowCursor
-        drag.target:    _root._arrangeable && !pressedOnGrip ? _root : null
+        drag.target:    _root._arrangeable ? _root : null
         drag.minimumX:  0
         drag.minimumY:  0
         drag.maximumX:  _root.parent ? _root.parent.width - _root.width : 0
         drag.maximumY:  _root.parent ? _root.parent.height - _root.height : 0
 
-        property bool dragged:      false
-        property bool pressedOnGrip: false
+        property bool dragged: false
 
-        onPressed: (mouse) => {
-            dragged = false
-            pressedOnGrip = resizeGrip.visible && resizeGrip.contains(mapToItem(resizeGrip, mouse.x, mouse.y))
-        }
+        onPressed:          dragged = false
         onPositionChanged:  { if (drag.active) dragged = true }
         onReleased: {
             if (dragged) {
@@ -261,7 +257,7 @@ Item {
             }
         }
         onCanceled:         { if (dragged) dragPosition.commit() }
-        onClicked:          { if (!dragged && !pressedOnGrip && !_root._editMode) _swapPip() }
+        onClicked:          { if (!dragged && !_root._editMode) _swapPip() }
 
         onPressAndHold: {
             if (_root.overlayRig) {
@@ -312,17 +308,15 @@ Item {
         height:             width
         radius:             width / 2
         color:              "transparent"
-        scale:              resizeHandler.active ? 1.1 : 1
+        scale:              resizeArea.pressed ? 1.1 : 1
 
         OverlayGlass {
             anchors.fill: parent
             radius:       parent.radius
         }
-        visible:            _isExpanded && _root.widthOverride === 0 && (_root._editMode || pipHover.hovered || resizeHandler.active)
+        visible:            _isExpanded && _root.widthOverride === 0 && (_root._editMode || pipHover.hovered || resizeArea.pressed)
 
         Behavior on scale { NumberAnimation { duration: 120; easing.type: Easing.OutCubic } }
-
-        HoverHandler { cursorShape: Qt.SizeBDiagCursor }
 
         QGCColoredImage {
             source:             "/InstrumentValueIcons/arrow-simple-right.svg"
@@ -335,27 +329,26 @@ Item {
             sourceSize.height:  height
             rotation:           -45
         }
-        DragHandler {
-            id:     resizeHandler
-            target: null
+
+        MouseArea {
+            id:              resizeArea
+            anchors.fill:    parent
+            preventStealing: true
+            cursorShape:     Qt.SizeBDiagCursor
 
             property real _startWidth:  0
             property real _startSceneX: 0
 
-            onActiveChanged: {
-                if (active) {
-                    _startWidth  = _root.width
-                    _startSceneX = centroid.scenePosition.x
-                } else {
-                    QGroundControl.saveGlobalSetting(_root._pipSizeSettingsKey, _root._pipSize.toString())
+            onPressed: (mouse) => {
+                _startWidth  = _root.width
+                _startSceneX = mapToItem(null, mouse.x, mouse.y).x
+            }
+            onPositionChanged: (mouse) => {
+                if (pressed) {
+                    _root._resizeTo(_startWidth + mapToItem(null, mouse.x, mouse.y).x - _startSceneX)
                 }
             }
-
-            onCentroidChanged: {
-                if (active) {
-                    _root._resizeTo(_startWidth + (centroid.scenePosition.x - _startSceneX))
-                }
-            }
+            onReleased: QGroundControl.saveGlobalSetting(_root._pipSizeSettingsKey, _root._pipSize.toString())
         }
     }
 

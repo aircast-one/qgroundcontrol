@@ -16,12 +16,19 @@ Item {
     width: 800
     height: 600
 
+    property int fullItemDrags: 0
+
     Rectangle {
         id: itemA
         objectName: "itemA"
         color: "red"
         property var pipState: aState
         PipState { id: aState; pipView: pip }
+
+        DragHandler {
+            target: null
+            onActiveChanged: if (active) root.fullItemDrags += 1
+        }
     }
 
     Rectangle {
