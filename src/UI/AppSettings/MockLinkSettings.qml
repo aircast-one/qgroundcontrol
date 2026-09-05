@@ -34,7 +34,7 @@ GridLayout {
             break
         case 1:
             subEditConfig.firmware = _MAV_AUTOPILOT_ARDUPILOTMEGA
-            if (vehicleTypeCombo.currentIndex === 1) {          // Hardcoded _MAV_TYPE_FIXED_WING
+            if (vehicleTypeCombo.currentIndex === 1) {
                 subEditConfig.vehicle = _MAV_TYPE_FIXED_WING
             } else {
                 subEditConfig.vehicle = _MAV_TYPE_QUADROTOR
@@ -60,7 +60,7 @@ GridLayout {
             firmwareTypeCombo.currentIndex = 2
             break
         }
-        if (subEditConfig.vehicle === _MAV_TYPE_FIXED_WING) {          // Hardcoded _MAV_TYPE_FIXED_WING
+        if (subEditConfig.vehicle === _MAV_TYPE_FIXED_WING) {
             vehicleTypeCombo.currentIndex = 1
         } else {
             vehicleTypeCombo.currentIndex = 0
@@ -81,7 +81,7 @@ GridLayout {
         checked:            subEditConfig.incrementVehicleId
     }
 
-    QGCLabel { text: qsTr("Firmware") }
+    QGCLabel { text: qsTr("Firmware"); Layout.preferredWidth: _firstColumnWidth }
     QGCComboBox {
         id:                     firmwareTypeCombo
         Layout.preferredWidth:  _secondColumnWidth

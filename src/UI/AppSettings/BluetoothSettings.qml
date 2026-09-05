@@ -20,7 +20,6 @@ ColumnLayout {
     spacing: _rowSpacing
 
     function saveSettings() {
-        // No need
     }
 
     GridLayout {
@@ -28,13 +27,13 @@ ColumnLayout {
         columnSpacing:  _colSpacing
         rowSpacing:     _rowSpacing
 
-        QGCLabel { text: qsTr("Device") }
+        QGCLabel { text: qsTr("Device"); Layout.preferredWidth: _firstColumnWidth }
         QGCLabel {
             Layout.preferredWidth:  _secondColumnWidth
             text:                   subEditConfig.deviceName
         }
 
-        QGCLabel { text: qsTr("Address") }
+        QGCLabel { text: qsTr("Address"); Layout.preferredWidth: _firstColumnWidth }
         QGCLabel {
             Layout.preferredWidth:  _secondColumnWidth
             text:                   subEditConfig.address

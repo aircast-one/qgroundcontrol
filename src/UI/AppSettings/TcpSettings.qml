@@ -26,14 +26,14 @@ GridLayout {
         subEditConfig.port = parseInt(portField.text)
     }
 
-    QGCLabel { text: qsTr("Server Address") }
+    QGCLabel { text: qsTr("Server Address"); Layout.preferredWidth: _firstColumnWidth }
     QGCTextField {
         id:                     hostField
         Layout.preferredWidth:  _secondColumnWidth
         text:                   subEditConfig.host
     }
 
-    QGCLabel { text: qsTr("Port") }
+    QGCLabel { text: qsTr("Port"); Layout.preferredWidth: _firstColumnWidth }
     QGCTextField {
         id:                     portField
         Layout.preferredWidth:  _secondColumnWidth

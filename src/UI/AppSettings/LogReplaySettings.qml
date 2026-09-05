@@ -22,8 +22,7 @@ RowLayout {
         subEditConfig.filename = logField.text
     }
 
-    QGCLabel { text: qsTr("Log File") }
-
+    QGCLabel { text: qsTr("Log File"); Layout.preferredWidth: _firstColumnWidth }
     QGCTextField {
         id: logField
         Layout.preferredWidth: _secondColumnWidth

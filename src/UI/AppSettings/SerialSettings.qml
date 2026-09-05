@@ -20,7 +20,6 @@ ColumnLayout {
     spacing: _rowSpacing
 
     function saveSettings() {
-        // No Need
     }
 
     GridLayout {
@@ -28,7 +27,7 @@ ColumnLayout {
         rowSpacing:     _rowSpacing
         columnSpacing:  _colSpacing
 
-        QGCLabel { text: qsTr("Serial Port") }
+        QGCLabel { text: qsTr("Serial Port"); Layout.preferredWidth: _firstColumnWidth }
         QGCComboBox {
             id:                     commPortCombo
             Layout.preferredWidth:  _secondColumnWidth
@@ -37,7 +36,6 @@ ColumnLayout {
             onActivated: (index) => {
                 if (index != -1) {
                     if (index >= QGroundControl.linkManager.serialPortStrings.length) {
-                        // This item was adding at the end, must use added text as name
                         subEditConfig.portName = commPortCombo.textAt(index)
                     } else {
                         subEditConfig.portName = QGroundControl.linkManager.serialPorts[index]
@@ -70,7 +68,7 @@ ColumnLayout {
             }
         }
 
-        QGCLabel { text: qsTr("Baud Rate") }
+        QGCLabel { text: qsTr("Baud Rate"); Layout.preferredWidth: _firstColumnWidth }
         QGCComboBox {
             id:                     baudCombo
             Layout.preferredWidth:  _secondColumnWidth
@@ -116,13 +114,12 @@ ColumnLayout {
             onCheckedChanged:   subEditConfig.flowControl = checked ? 1 : 0
         }
 
-        QGCLabel { text: qsTr("Parity") }
+        QGCLabel { text: qsTr("Parity"); Layout.preferredWidth: _firstColumnWidth }
         QGCComboBox {
             Layout.preferredWidth:  _secondColumnWidth
             model:                  [qsTr("None"), qsTr("Even"), qsTr("Odd")]
 
             onActivated: (index) => {
-                // Hard coded values from qserialport.h
                 switch (index) {
                 case 0:
                     subEditConfig.parity = 0
@@ -154,7 +151,7 @@ ColumnLayout {
             }
         }
 
-        QGCLabel { text: qsTr("Data Bits") }
+        QGCLabel { text: qsTr("Data Bits"); Layout.preferredWidth: _firstColumnWidth }
         QGCComboBox {
             Layout.preferredWidth:  _secondColumnWidth
             model:                  [ "5", "6", "7", "8" ]
@@ -162,7 +159,7 @@ ColumnLayout {
             onActivated: (index) => { subEditConfig.dataBits = index + 5 }
         }
 
-        QGCLabel { text: qsTr("Stop Bits") }
+        QGCLabel { text: qsTr("Stop Bits"); Layout.preferredWidth: _firstColumnWidth }
         QGCComboBox {
             Layout.preferredWidth:  _secondColumnWidth
             model:                  [ "1", "2" ]

@@ -188,6 +188,7 @@ SettingsPage {
         }
 
         LabelledButton {
+            objectName: "addLinkButton"
             label:      ""
             buttonText: qsTr("Add Link…")
 
@@ -202,16 +203,20 @@ SettingsPage {
         id: linkDialogComponent
 
         QGCPopupDialog {
-            title:                  originalConfig ? qsTr("Edit Link") : qsTr("Add New Link")
+            id:                     linkDialog
+            title:                  originalConfig ? qsTr("Edit Link") : qsTr("Add Link")
             buttons:                Dialog.Save | Dialog.Cancel
-            acceptButtonEnabled:    nameField.text !== ""
+            acceptButtonEnabled:    nameField.text.trim() !== ""
 
             property var originalConfig
             property var editingConfig
 
+            readonly property real _labelWidth:   ScreenTools.defaultFontPixelWidth * 14
+            readonly property real _rowSpacing:   ScreenTools.defaultFontPixelWidth * 2
+
             onAccepted: {
                 linkSettingsLoader.item.saveSettings()
-                editingConfig.name = nameField.text
+                editingConfig.name = nameField.text.trim()
                 if (originalConfig) {
                     _linkManager.endConfigurationEditing(originalConfig, editingConfig)
                 } else {
@@ -222,59 +227,125 @@ SettingsPage {
 
             onRejected: _linkManager.cancelConfigurationEditing(editingConfig)
 
-            ColumnLayout {
-                spacing: ScreenTools.defaultFontPixelHeight / 2
+            component OptionRow: RowLayout {
+                property alias title:       titleLabel.text
+                property alias description: descriptionLabel.text
+                property alias checked:     toggle.checked
 
-                RowLayout {
+                signal toggled(bool checked)
+
+                Layout.fillWidth:   true
+                spacing:            linkDialog._rowSpacing
+
+                ColumnLayout {
                     Layout.fillWidth:   true
-                    spacing:            ScreenTools.defaultFontPixelWidth
+                    spacing:            ScreenTools.defaultFontPixelHeight * 0.1
 
-                    QGCLabel { text: qsTr("Name") }
-                    QGCTextField {
-                        id:                 nameField
+                    QGCLabel {
+                        id:                 titleLabel
                         Layout.fillWidth:   true
-                        text:               editingConfig.name
-                        placeholderText:    qsTr("Enter name")
+                    }
+
+                    QGCLabel {
+                        id:                 descriptionLabel
+                        Layout.fillWidth:   true
+                        wrapMode:           Text.WordWrap
+                        font.pointSize:     ScreenTools.smallFontPointSize
+                        color:              QGroundControl.globalPalette.colorGrey
+                        visible:            text !== ""
                     }
                 }
 
                 QGCCheckBoxSlider {
-                    Layout.fillWidth:   true
-                    text:               qsTr("Connect automatically on start")
-                    checked:            editingConfig.autoConnect
-                    onCheckedChanged:   editingConfig.autoConnect = checked
+                    id:         toggle
+                    onClicked:  parent.toggled(checked)
                 }
+            }
 
-                QGCCheckBoxSlider {
+            ColumnLayout {
+                width:      ScreenTools.defaultFontPixelWidth * 60
+                spacing:    ScreenTools.defaultFontPixelHeight * 0.8
+
+                Component.onCompleted: nameField.forceActiveFocus()
+
+                SettingsGroupLayout {
                     Layout.fillWidth:   true
-                    text:               qsTr("High latency link")
-                    checked:            editingConfig.highLatency
-                    onCheckedChanged:   editingConfig.highLatency = checked
-                }
+                    heading:            qsTr("Link")
+                    popoverStyle:       true
+                    cardStyle:          true
 
-                LabelledComboBox {
-                    label:                  qsTr("Type")
-                    enabled:                originalConfig == null
-                    model:                  _linkManager.linkTypeStrings
-                    Component.onCompleted:  comboBox.currentIndex = editingConfig.linkType
+                    RowLayout {
+                        Layout.fillWidth:   true
+                        spacing:            linkDialog._rowSpacing
 
-                    onActivated: (index) => {
-                        if (index !== editingConfig.linkType) {
-                            var name = nameField.text
-                            editingConfig = _linkManager.createConfiguration(index, name)
+                        QGCLabel {
+                            Layout.preferredWidth:  linkDialog._labelWidth
+                            text:                   qsTr("Name")
+                        }
+
+                        QGCTextField {
+                            id:                 nameField
+                            Layout.fillWidth:   true
+                            text:               editingConfig.name
+                            placeholderText:    qsTr("Name")
                         }
                     }
+
+                    RowLayout {
+                        Layout.fillWidth:   true
+                        spacing:            linkDialog._rowSpacing
+
+                        QGCLabel {
+                            Layout.preferredWidth:  linkDialog._labelWidth
+                            text:                   qsTr("Type")
+                        }
+
+                        QGCComboBox {
+                            Layout.fillWidth:       true
+                            enabled:                originalConfig == null
+                            model:                  _linkManager.linkTypeStrings
+                            Component.onCompleted:  currentIndex = editingConfig.linkType
+
+                            onActivated: (index) => {
+                                if (index !== editingConfig.linkType) {
+                                    editingConfig = _linkManager.createConfiguration(index, nameField.text)
+                                }
+                            }
+                        }
+                    }
+
+                    Loader {
+                        id:                 linkSettingsLoader
+                        Layout.fillWidth:   true
+                        source:             subEditConfig.settingsURL
+
+                        property var subEditConfig:         editingConfig
+                        property int _firstColumnWidth:     linkDialog._labelWidth
+                        property int _secondColumnWidth:    width - linkDialog._labelWidth - linkDialog._rowSpacing
+                        property int _rowSpacing:           ScreenTools.defaultFontPixelHeight / 2
+                        property int _colSpacing:           linkDialog._rowSpacing
+                    }
                 }
 
-                Loader {
-                    id:     linkSettingsLoader
-                    source: subEditConfig.settingsURL
+                SettingsGroupLayout {
+                    Layout.fillWidth:   true
+                    heading:            qsTr("Options")
+                    popoverStyle:       true
+                    cardStyle:          true
 
-                    property var subEditConfig:         editingConfig
-                    property int _firstColumnWidth:     ScreenTools.defaultFontPixelWidth * 12
-                    property int _secondColumnWidth:    ScreenTools.defaultFontPixelWidth * 30
-                    property int _rowSpacing:           ScreenTools.defaultFontPixelHeight / 2
-                    property int _colSpacing:           ScreenTools.defaultFontPixelWidth / 2
+                    OptionRow {
+                        title:          qsTr("Connect on Start")
+                        description:    qsTr("Open this link when the app launches.")
+                        checked:        editingConfig.autoConnect
+                        onToggled:      (checked) => editingConfig.autoConnect = checked
+                    }
+
+                    OptionRow {
+                        title:          qsTr("High Latency")
+                        description:    qsTr("Tune the link for satellite or cellular round trips.")
+                        checked:        editingConfig.highLatency
+                        onToggled:      (checked) => editingConfig.highLatency = checked
+                    }
                 }
             }
         }

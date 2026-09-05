@@ -20,7 +20,6 @@ ColumnLayout {
     spacing: _rowSpacing
 
     function saveSettings() {
-        // No need
     }
 
     QGCLabel {
@@ -34,7 +33,7 @@ ColumnLayout {
     RowLayout {
         spacing: _colSpacing
 
-        QGCLabel { text: qsTr("Port") }
+        QGCLabel { text: qsTr("Port"); Layout.preferredWidth: _firstColumnWidth }
         QGCTextField {
             id:                     portField
             text:                   subEditConfig.localPort.toString()

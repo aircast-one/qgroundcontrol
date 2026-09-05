@@ -115,6 +115,7 @@ Rectangle {
                 model:  settingsPagesModel
 
                 SettingsButton {
+                    objectName:         "settingsPage" + name.replace(/\s/g, "")
                     Layout.fillWidth:   true
                     Layout.topMargin:   newSection && index > 0 ? _defaultTextHeight * 0.75 : 0
                     text:               name
