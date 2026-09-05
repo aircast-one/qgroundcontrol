@@ -69,6 +69,13 @@ RowLayout {
     readonly property real _capsuleHeight: Math.max(ScreenTools.minTouchPixels, ScreenTools.defaultFontPixelHeight * 2.4)
 
     property bool   _utmspEnabled:      QGroundControl.utmspSupported
+
+    // MainStatusIndicator reads these from whatever hosts it rather than declaring them, so a
+    // second host has to supply them too. It writes _mainStatusBGColor, so that one cannot be
+    // readonly.
+    property var    _activeVehicle:     QGroundControl.multiVehicleManager.activeVehicle
+    property bool   _communicationLost: _activeVehicle ? _activeVehicle.vehicleLinkManager.communicationLost : false
+    property color  _mainStatusBGColor: "transparent"
     property int    _statsPage:         0
 
     readonly property string _planName: {
@@ -174,6 +181,14 @@ RowLayout {
                 }
             }
         }
+    }
+
+    // The one piece of furniture that stays put across both modes, in the same place it sits in
+    // the fly view. Planning is planning for a vehicle, so whether that vehicle is there and ready
+    // is context the plan needs - and something persisting across the switch is what makes this
+    // read as one app changing mode rather than two that happen to share a map.
+    MainStatusIndicator {
+        Layout.preferredHeight: _capsuleHeight
     }
 
     // The plan, named, with its state against the vehicle underneath it. Width comes from
