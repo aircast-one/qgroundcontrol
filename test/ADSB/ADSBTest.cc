@@ -87,3 +87,24 @@ void ADSBTest::_adsbVehicleManagerTest()
     manager->adsbVehicleUpdate(vehicleInfo);
     QCOMPARE(manager->adsbVehicles()->count(), 1);
 }
+
+void ADSBTest::_headingFollowsMotionWhenTheFeedHasNone()
+{
+    ADSB::VehicleInfo_t info;
+    info.icaoAddress = 0x1234;
+    info.availableFlags = ADSB::LocationAvailable;
+    info.location = QGeoCoordinate(47.4, 8.5);
+    ADSBVehicle vehicle(info);
+    QSignalSpy headingSpy(&vehicle, &ADSBVehicle::headingChanged);
+
+    info.location = info.location.atDistanceAndAzimuth(100, 45);
+    vehicle.update(info);
+    QCOMPARE(headingSpy.count(), 1);
+    QVERIFY(qAbs(vehicle.heading() - 45) < 0.5);
+
+    info.availableFlags |= ADSB::HeadingAvailable;
+    info.heading = 270;
+    info.location = info.location.atDistanceAndAzimuth(100, 45);
+    vehicle.update(info);
+    QCOMPARE(vehicle.heading(), 270.0);
+}

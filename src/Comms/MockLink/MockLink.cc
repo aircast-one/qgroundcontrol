@@ -8,6 +8,7 @@
  ****************************************************************************/
 
 #include "MockLink.h"
+
 #include "LinkManager.h"
 #include "MockLinkFTP.h"
 #include "MockLinkWorker.h"
@@ -21,6 +22,7 @@
 #include <QtCore/QTemporaryFile>
 #include <QtCore/QThread>
 #include <QtCore/QTimer>
+#include <cmath>
 
 QGC_LOGGING_CATEGORY(MockLinkLog, "qgc.comms.mocklink.mocklink")
 QGC_LOGGING_CATEGORY(MockLinkVerboseLog, "qgc.comms.mocklink.mocklink:verbose")
@@ -1649,8 +1651,7 @@ void MockLink::_sendADSBVehicles()
             _adsbVehicles[i].coordinate.longitude() * 1e7,
             ADSB_ALTITUDE_TYPE_GEOMETRIC,
             _adsbVehicles[i].altitude * 1000, // Altitude in millimeters
-            // Use the current angle as heading
-            static_cast<uint16_t>(_adsbVehicles[i].angle * 100), // Heading in centidegrees
+            static_cast<uint16_t>(std::fmod(_adsbVehicles[i].angle, 360.0) * 100),
             0, 0, // Horizontal/Vertical velocity
             QString("N12345%1").arg(i, 2, 10, QChar('0')).toStdString().c_str(), // Unique callsign
             ADSB_EMITTER_TYPE_ROTOCRAFT,

@@ -10,4 +10,5 @@ private slots:
     void _adsbVehicleTest();
     void _adsbTcpLinkTest();
     void _adsbVehicleManagerTest();
+    void _headingFollowsMotionWhenTheFeedHasNone();
 };

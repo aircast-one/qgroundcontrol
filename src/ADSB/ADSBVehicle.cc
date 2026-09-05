@@ -38,12 +38,19 @@ void ADSBVehicle::update(const ADSB::VehicleInfo_t &vehicleInfo)
 
     qCDebug(ADSBVehicleLog) << "Updating" << QStringLiteral("%1 Flags: %2").arg(vehicleInfo.icaoAddress, 0, 16).arg(vehicleInfo.availableFlags, 0, 2);
 
+    const QGeoCoordinate previous = coordinate();
     if (vehicleInfo.availableFlags & ADSB::LocationAvailable) {
         if (!QGC::fuzzyCompare(vehicleInfo.location.latitude(), coordinate().latitude()) || !QGC::fuzzyCompare(vehicleInfo.location.longitude(), coordinate().longitude())) {
             _info.location.setLatitude(vehicleInfo.location.latitude());
             _info.location.setLongitude(vehicleInfo.location.longitude());
             emit coordinateChanged();
         }
+    }
+
+    const bool movedWithoutHeading = !(vehicleInfo.availableFlags & ADSB::HeadingAvailable) && previous.isValid() && previous.distanceTo(coordinate()) > 1.0;
+    if (movedWithoutHeading) {
+        _info.heading = previous.azimuthTo(coordinate());
+        emit headingChanged();
     }
 
     if (vehicleInfo.availableFlags & ADSB::AltitudeAvailable) {
@@ -75,7 +82,7 @@ void ADSBVehicle::update(const ADSB::VehicleInfo_t &vehicleInfo)
     }
 
     if (vehicleInfo.availableFlags & ADSB::SquawkAvailable) {
-        if (!QGC::fuzzyCompare(vehicleInfo.velocity, squawk())) {
+        if (vehicleInfo.squawk != squawk()) {
             _info.squawk = vehicleInfo.squawk;
             emit squawkChanged();
         }
