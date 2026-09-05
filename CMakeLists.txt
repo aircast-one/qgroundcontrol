@@ -495,21 +495,6 @@ elseif(ANDROID)
     add_android_openssl_libraries(${CMAKE_PROJECT_NAME})
 endif()
 
-# Rigid-body physics for the fly-view overlay rig: resting contact, sleeping, continuous collision,
-# friction, restitution and mass, none of which survive being hand-rolled in QML.
-CPMAddPackage(
-    NAME box2d
-    GITHUB_REPOSITORY erincatto/box2d
-    GIT_TAG v3.0.0
-    OPTIONS
-        "BOX2D_SAMPLES OFF"
-        "BOX2D_UNIT_TESTS OFF"
-        "BOX2D_BENCHMARKS OFF"
-        "BOX2D_VALIDATE OFF"
-        "BOX2D_AVX2 OFF"
-)
-target_link_libraries(${CMAKE_PROJECT_NAME} PRIVATE box2d)
-
 target_compile_definitions(${CMAKE_PROJECT_NAME}
     PRIVATE
         QGC_APP_NAME="${QGC_APP_DISPLAY_NAME}"

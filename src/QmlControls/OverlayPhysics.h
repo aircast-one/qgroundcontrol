@@ -1,14 +1,12 @@
 #pragma once
 
-#include <QtCore/QHash>
 #include <QtCore/QList>
+#include <QtCore/QMap>
 #include <QtCore/QObject>
 #include <QtCore/QPointF>
 #include <QtCore/QRectF>
 #include <QtCore/QSizeF>
 #include <QtCore/QVariantList>
-
-#include <box2d/id.h>
 
 class OverlayPhysics : public QObject
 {
@@ -25,7 +23,6 @@ public:
     Q_ENUM(Kind)
 
     explicit OverlayPhysics(QObject *parent = nullptr);
-    ~OverlayPhysics() override;
 
     Q_INVOKABLE int  create(int kind, qreal x, qreal y, qreal w, qreal h, int group = 0);
     Q_INVOKABLE void remove(int id);
@@ -62,37 +59,40 @@ signals:
 
 private:
     struct Body {
-        b2BodyId         body{};
-        b2ShapeId        shape{};
-        Kind             kind = Free;
-        QSizeF           size;
-        QPointF          home;
-        bool             hasHome = false;
-        int              group = 0;
-        bool             escaping = false;
-        QVariantList     attachments;
-        QList<b2ShapeId> extraShapes;
+        Kind          kind = Free;
+        QPointF       pos;
+        QPointF       velocity;
+        QSizeF        size;
+        QPointF       home;
+        QPointF       target;
+        bool          hasHome = false;
+        int           group = 0;
+        bool          awake = true;
+        int           restSteps = 0;
+        QVariantList  attachments;
+        QList<QRectF> parts;
     };
 
-    static constexpr qreal kPixelsPerMetre = 100.0;
-    static constexpr qreal kMaxDriveSpeed  = 3000.0;
-    static constexpr qreal kLayoutJump     = 160.0;
-    static constexpr qreal kEscapeSpeed    = 900.0;
+    static constexpr qreal kMaxDriveSpeed = 3000.0;
+    static constexpr qreal kLayoutJump    = 160.0;
+    static constexpr qreal kMinStep       = 1.0;
+    static constexpr qreal kRestMotion    = 0.5;
+    static constexpr int   kRestSteps     = 2;
+    static constexpr qreal kGridStep      = 8.0;
+    static constexpr qreal kBehindPenalty = 1.0e6;
 
-    void    _rebuildShape(Body &body);
-    void    _applyPull(Body &body);
-    void    _settleAtHome(Body &body);
-    bool    _touching(const Body &body) const;
-    bool    _applyEscape(Body &body);
-    void    _wakeFreeBodies(const Body &mover);
-    qreal   _vx(int id) const;
-    qreal   _vy(int id) const;
-    QPointF _centre(const Body &body) const;
+    QList<QRectF> _rectsOf(const Body &body, const QPointF &at) const;
+    QList<QRectF> _rectsOf(const Body &body) const { return _rectsOf(body, body.pos); }
+    QRectF        _footprint(const Body &body, const QPointF &at) const;
+    bool          _clear(const Body &body, const QPointF &at, const QList<QRectF> &obstacles) const;
+    QPointF       _clampToWalls(const Body &body, const QPointF &at) const;
+    QPointF       _targetFor(const Body &body, const QList<QRectF> &obstacles, const QPointF &carry) const;
+    QPointF       _carryOn(const Body &body) const;
+    void          _wakeFreeBodies(int except = -1);
+    qreal         _mass(const Body &body) const { return qMax(1.0, body.size.width() * body.size.height()); }
 
-    b2WorldId        _world{};
-    b2BodyId         _walls{};
     QRectF           _bounds;
-    QHash<int, Body> _bodies;
+    QMap<int, Body>  _bodies;
     int              _nextId = 1;
 
     qreal _pull         = 9000;

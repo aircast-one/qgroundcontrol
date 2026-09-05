@@ -77,7 +77,6 @@ QtObject {
 
     readonly property real _minDt: 0.004
     readonly property real _maxDt: 0.02
-    readonly property int  _minStepMSecs: 8
 
     readonly property OverlayPhysics _physics: OverlayPhysics {
         pull:         root._maxPull
@@ -303,10 +302,6 @@ QtObject {
                     entry.dragPosition.physicsActive = true
                 }
             })
-        }
-
-        if (Date.now() - _lastStepMSecs >= _minStepMSecs) {
-            _solve(true)
         }
     }
 

@@ -11,6 +11,7 @@
 #include "QuickInteractionTestHelpers.h"
 
 #include <QDateTime>
+#include <QPair>
 #include <algorithm>
 
 static void clearTestSettings()
@@ -606,4 +607,41 @@ void OverlayRigTest::_itemFollowsAMovedHomeWhenTheObstructionLeaves()
                               qPrintable(QStringLiteral("left rests at %1,%2 instead of its new home %3,%4")
                                              .arg(left->x()).arg(left->y()).arg(homeX + 300).arg(homeY)),
                               3000);
+}
+
+void OverlayRigTest::_crowdedItemsAllFindSeparatePlaces()
+{
+    QQuickView view;
+    QVERIFY(loadView(view));
+
+    QQuickItem *const root = view.rootObject();
+    QQuickItem *const staticItem = root->findChild<QQuickItem*>("staticItem");
+    QObject *const rig = rigOf(view);
+    QVERIFY(root && staticItem && rig);
+    WAIT_SETTLED(rig, 5000);
+
+    staticItem->setX(0);
+    staticItem->setY(250);
+    staticItem->setWidth(root->width());
+    staticItem->setHeight(root->height() - 250);
+    WAIT_SETTLED(rig, 8000);
+
+    const QStringList names = { "leftItem", "rightItem", "heavyItem", "carrierItem", "carrierRail", "passengerItem", "staticItem" };
+    QList<QPair<QString, QRectF>> rects;
+    for (const QString &name : names) {
+        QQuickItem *const item = root->findChild<QQuickItem*>(name);
+        QVERIFY2(item, qPrintable(name));
+        const QRectF rect(item->x(), item->y(), item->width(), item->height());
+        QVERIFY2(QRectF(0, 0, root->width(), root->height()).contains(rect),
+                 qPrintable(QStringLiteral("%1 left the window at %2,%3").arg(name).arg(rect.x()).arg(rect.y())));
+        rects.append({ name, rect });
+    }
+    for (int i = 0; i < rects.size(); ++i) {
+        for (int j = i + 1; j < rects.size(); ++j) {
+            const QRectF overlap = rects[i].second.intersected(rects[j].second);
+            QVERIFY2(overlap.isEmpty(),
+                     qPrintable(QStringLiteral("%1 overlaps %2 by %3x%4").arg(rects[i].first, rects[j].first)
+                                    .arg(overlap.width()).arg(overlap.height())));
+        }
+    }
 }
