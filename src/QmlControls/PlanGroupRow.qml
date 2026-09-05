@@ -13,8 +13,6 @@ import QGroundControl
 import QGroundControl.Controls
 import QGroundControl.ScreenTools
 
-// One row inside a PlanGroupCard. The separator is drawn at the top and only when something sits
-// above it, so a card never ends on a stray hairline and rows stay independent of their order.
 Rectangle {
     id: _root
 
@@ -23,6 +21,7 @@ Rectangle {
     property string value
     property bool   showChevron:  false
     property bool   interactive:  false
+    property bool   current:      false
     property color  textColor:    QGroundControl.globalPalette.text
 
     default property alias trailingItems: trailingRow.data
@@ -37,7 +36,10 @@ Rectangle {
     implicitHeight: Math.max(ScreenTools.defaultFontPixelHeight * 2.6,
                              labelColumn.implicitHeight + _vPad * 2,
                              trailingRow.implicitHeight + _vPad * 2)
-    color:          interactive && rowMouseArea.containsMouse ? Qt.alpha(_qgcPal.text, 0.05) : "transparent"
+    color:          current                                  ? Qt.alpha(_qgcPal.colorBlue, 0.22)
+                  : interactive && rowMouseArea.containsMouse ? Qt.alpha(_qgcPal.text, 0.05)
+                                                              : "transparent"
+    opacity:        enabled ? 1 : 0.4
 
     Behavior on color { ColorAnimation { duration: 100 } }
 

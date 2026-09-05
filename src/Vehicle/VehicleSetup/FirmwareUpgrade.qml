@@ -35,12 +35,7 @@ SetupPage {
             height:  availableHeight
             spacing: ScreenTools.defaultFontPixelHeight
 
-            // Those user visible strings are hard to translate because we can't send the
-            // HTML strings to translation as this can create a security risk. we need to find
-            // a better way to hightlight them, or use less highlights.
-
-            // User visible strings
-            readonly property string title:             qsTr("Firmware Setup") // Popup dialog title
+            readonly property string title:             qsTr("Firmware Setup")
             readonly property string highlightPrefix:   "<font color=\"" + qgcPal.warningText + "\">"
             readonly property string highlightSuffix:   "</font>"
             readonly property string welcomeText:       qsTr("%1 can upgrade the firmware on Pixhawk devices and SiK Radios.").arg(QGroundControl.appName)
@@ -63,11 +58,11 @@ SetupPage {
             property bool   initialBoardSearch:             true
             property string firmwareName
 
-            property bool _singleFirmwareMode:          QGroundControl.corePlugin.options.firmwareUpgradeSingleURL.length != 0   ///< true: running in special single firmware download mode
+            property bool _singleFirmwareMode:          QGroundControl.corePlugin.options.firmwareUpgradeSingleURL.length != 0
 
             function setupPageCompleted() {
                 controller.startBoardSearch()
-                _defaultFirmwareIsPX4 = _defaultFirmwareFact.rawValue === _defaultFimwareTypePX4 // we don't want this to be bound and change as radios are selected
+                _defaultFirmwareIsPX4 = _defaultFirmwareFact.rawValue === _defaultFimwareTypePX4
             }
 
             QGCFileDialog {
@@ -110,7 +105,6 @@ SetupPage {
 
                 onBoardFound: {
                     if (initialBoardSearch) {
-                        // Board was found right away, so something is already plugged in before we've started upgrade
                         statusTextArea.append(qgcUnplugText1)
                         statusTextArea.append(qgcUnplugText2)
 
@@ -123,7 +117,6 @@ SetupPage {
                             QGroundControl.multiVehicleManager.activeVehicle.vehicleLinkManager.autoDisconnect = true
                         }
                     } else {
-                        // We end up here when we detect a board plugged in after we've started upgrade
                         statusTextArea.append(highlightPrefix + qsTr("Found device") + highlightSuffix + ": " + controller.boardType)
                     }
                 }
@@ -144,9 +137,6 @@ SetupPage {
 
                     function firmwareVersionChanged(model) {
                         firmwareWarningMessageVisible = false
-                        // All of this bizarre, setting model to null and index to 1 and then to 0 is to work around
-                        // strangeness in the combo box implementation. This sequence of steps correctly changes the combo model
-                        // without generating any warnings and correctly updates the combo text with the new selection.
                         firmwareBuildTypeCombo.model = null
                         firmwareBuildTypeCombo.model = model
                         firmwareBuildTypeCombo.currentIndex = 1
@@ -168,7 +158,6 @@ SetupPage {
                             versionString = controller.px4StableVersion
                         }
                         px4FlightStackRadio.text = qsTr("PX4 Pro ") + versionString
-                        //px4FlightStackRadio2.text = qsTr("PX4 Pro ") + versionString
                     }
 
                     Component.onCompleted: {
@@ -195,7 +184,6 @@ SetupPage {
                                     vehicleType = apmVehicleTypeCombo.currentIndex
                                 } else {
                                     if (controller.apmFirmwareNames.length === 0) {
-                                        // Not ready yet, or no firmware available
                                         mainWindow.showMessageDialog(firmwareSelectDialog.title, qsTr("Either firmware list is still downloading, or no firmware is available for current selection."))
                                         firmwareSelectDialog.preventClose = true
                                         return
@@ -216,7 +204,6 @@ SetupPage {
                                     return
                                 }
                             }
-                            //-- If custom, get file path
                             if (firmwareBuildType === FirmwareUpgradeController.CustomFirmware) {
                                 customFirmwareDialog.openForLoad()
                             } else {
@@ -410,9 +397,9 @@ SetupPage {
                             wrapMode:           Text.WordWrap
                             visible:            firmwareWarningMessageVisible
                         }
-                    } // ColumnLayout
-                } // QGCPopupDialog
-            } // Component - firmwareSelectDialogComponent
+                    }
+                }
+            }
 
             ProgressBar {
                 id:                     progressBar
@@ -428,19 +415,21 @@ SetupPage {
             }
 
             TextArea {
-                id:                 statusTextArea
-                Layout.preferredWidth:              parent.width
-                Layout.fillHeight:  true
-                readOnly:           true
-                font.pointSize:     ScreenTools.defaultFontPointSize
-                textFormat:         TextEdit.RichText
-                text:               _singleFirmwareMode ? welcomeTextSingle : welcomeText
-                color:              qgcPal.text
+                id:                     statusTextArea
+                Layout.preferredWidth:  parent.width
+                Layout.fillHeight:      true
+                padding:                ScreenTools.defaultFontPixelHeight * 0.7
+                readOnly:               true
+                font.pointSize:         ScreenTools.defaultFontPointSize
+                textFormat:             TextEdit.RichText
+                text:                   _singleFirmwareMode ? welcomeTextSingle : welcomeText
+                color:                  qgcPal.text
 
                 background: Rectangle {
-                    color: qgcPal.windowShade
+                    color:  Qt.alpha(qgcPal.text, 0.055)
+                    radius: ScreenTools.defaultFontPixelHeight * 0.9
                 }
             }
-        } // ColumnLayout
-    } // Component
-} // SetupPage
+        }
+    }
+}

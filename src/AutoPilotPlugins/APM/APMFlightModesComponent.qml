@@ -64,6 +64,7 @@ SetupPage {
                     width:  flightModeColumn.width + (_margins * 2)
                     height: flightModeColumn.height + ScreenTools.defaultFontPixelHeight
                     color:  qgcPal.windowShade
+                    radius:  ScreenTools.defaultFontPixelHeight * 0.9
 
                     Column {
                         id:                 flightModeColumn
@@ -173,9 +174,9 @@ SetupPage {
                                 onActivated: (index) => { controller.simpleMode = index }
                             }
                         }
-                    } // Column - Flight Modes
-                } // Rectangle - Flight Modes
-            } // Column - Flight Modes
+                    }
+                }
+            }
 
             Column {
                 spacing: _margins
@@ -191,6 +192,7 @@ SetupPage {
                     width:  channelOptColumn.width + (_margins * 2)
                     height: channelOptColumn.height + ScreenTools.defaultFontPixelHeight
                     color:  qgcPal.windowShade
+                    radius:  ScreenTools.defaultFontPixelHeight * 0.9
 
                     Column {
                         id:                 channelOptColumn
@@ -221,10 +223,10 @@ SetupPage {
                                     indexModel: false
                                 }
                             }
-                        } // Repeater -- Channel options
-                    } // Column - Channel options
-                } // Rectangle - Channel options
-            } // Column - Channel options
-        } // Flow
-    } // Component - flightModePageComponent
-} // SetupPage
+                        }
+                    }
+                }
+            }
+        }
+    }
+}

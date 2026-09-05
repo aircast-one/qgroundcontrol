@@ -62,14 +62,8 @@ SetupPage {
             property bool _loadComplete: false
 
             Component.onCompleted: {
-                // We use QtCharts only on Desktop platforms
                 showAdvanced = !ScreenTools.isMobile
 
-                // Qml Sliders have a strange behavior in which they first set Slider::value to some internal
-                // setting and then set Slider::value to the bound properties value. If you have an onValueChanged
-                // handler which updates your property with the new value, this first value change will trash
-                // your bound values. In order to work around this we don't set the values into the Sliders until
-                // after Qml load is done. We also don't track value changes until Qml load completes.
                 rollPitch.value = _rateRollP.value
                 climb.value = _rateClimbP.value
                 if (_atcInputTCAvailable) {
@@ -80,8 +74,6 @@ SetupPage {
                 calcAutoTuneChannel()
             }
 
-            /// The AutoTune switch is stored in one of the RC#_OPTION parameters. We need to loop through those
-            /// to find them and setup the ui accordindly.
             function calcAutoTuneChannel() {
                 _autoTuneSwitchChannelIndex = 0
                 for (var channel=_firstOptionChannel; channel<=_lastOptionChannel; channel++) {
@@ -93,9 +85,7 @@ SetupPage {
                 }
             }
 
-            /// We need to clear AutoTune from any previous channel before setting it to a new one
             function setChannelAutoTuneOption(channel) {
-                // First clear any previous settings for AutTune
                 for (var optionChannel=_firstOptionChannel; optionChannel<=_lastOptionChannel; optionChannel++) {
                     var optionFact = controller.getParameterFact(-1, "r.RC" + optionChannel + "_OPTION")
                     if (optionFact.value == _autoTuneOption) {
@@ -103,7 +93,6 @@ SetupPage {
                     }
                 }
 
-                // Now set the function into the new channel
                 if (channel != 0) {
                     var optionFact = controller.getParameterFact(-1, "r.RC" + channel + "_OPTION")
                     optionFact.value = _autoTuneOption
@@ -134,6 +123,7 @@ SetupPage {
                     anchors.right:      parent.right
                     height:             basicTuningColumn.y + basicTuningColumn.height + _margins
                     color:              qgcPal.windowShade
+                    radius:              ScreenTools.defaultFontPixelHeight * 0.9
 
                     Column {
                         id:                 basicTuningColumn
@@ -305,7 +295,7 @@ SetupPage {
                             }
                         }
                     }
-                } // Rectangle - Basic tuning
+                }
 
                 Flow {
                     id:                 flowLayout
@@ -329,6 +319,7 @@ SetupPage {
                             height:         autoTuneColumn.y + autoTuneColumn.height + _margins
                             anchors.top:    autoTuneLabel.bottom
                             color:          qgcPal.windowShade
+                            radius:          ScreenTools.defaultFontPixelHeight * 0.9
 
                             Column {
                                 id:                 autoTuneColumn
@@ -369,8 +360,8 @@ SetupPage {
                                     }
                                 }
                             }
-                        } // Rectangle - AutoTune
-                    } // Rectangle - AutoTuneWrap
+                        }
+                    }
 
                     Rectangle {
                         height:     inFlightTuneLabel.height + channel6TuningOption.height
@@ -389,6 +380,7 @@ SetupPage {
                             height:         channel6TuningOptColumn.height + ScreenTools.defaultFontPixelHeight
                             anchors.top:    inFlightTuneLabel.bottom
                             color:          qgcPal.windowShade
+                            radius:          ScreenTools.defaultFontPixelHeight * 0.9
 
                             Column {
                                 id:                 channel6TuningOptColumn
@@ -404,7 +396,6 @@ SetupPage {
                                     QGCLabel {
                                         anchors.baseline:   optCombo.baseline
                                         text:               qsTr("RC Channel 6 Option (Tuning):")
-                                        //color:            controller.channelOptionEnabled[modelData] ? "yellow" : qgcPal.text
                                     }
 
                                     FactComboBox {
@@ -422,7 +413,6 @@ SetupPage {
                                     QGCLabel {
                                         anchors.baseline:   tuneMinField.baseline
                                         text:               qsTr("Min:")
-                                        //color:            controller.channelOptionEnabled[modelData] ? "yellow" : qgcPal.text
                                     }
 
                                     FactTextField {
@@ -434,7 +424,6 @@ SetupPage {
                                     QGCLabel {
                                         anchors.baseline:   tuneMaxField.baseline
                                         text:               qsTr("Max:")
-                                        //color:            controller.channelOptionEnabled[modelData] ? "yellow" : qgcPal.text
                                     }
 
                                     FactTextField {
@@ -443,10 +432,10 @@ SetupPage {
                                         fact:               controller.getParameterFact(-1, "r.TUNE_MIN")
                                     }
                                 }
-                            } // Column - Channel 6 Tuning option
-                        } // Rectangle - Channel 6 Tuning options
-                    } // Rectangle - Channel 6 Tuning options wrap
-                } // Flow - Tune
+                            }
+                        }
+                    }
+                }
             }
 
             Loader {
@@ -584,7 +573,7 @@ SetupPage {
                     axis: [ roll, pitch, yaw ]
                     chartDisplaySec: 3
                 }
-            } // Component - Advanced Page
-        } // Column
-    } // Component
-} // SetupView
+            }
+        }
+    }
+}

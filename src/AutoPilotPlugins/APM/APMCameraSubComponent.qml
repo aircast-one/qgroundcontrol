@@ -72,14 +72,12 @@ SetupPage {
             property Fact _rc15Function:        controller.getParameterFact(-1, "r.SERVO15_FUNCTION")
             property Fact _rc16Function:        controller.getParameterFact(-1, "r.SERVO16_FUNCTION")
 
-            // These enable/disable the options for setting up each axis
             property bool _tiltEnabled:         false
             property bool _panEnabled:          false
             property bool _rollEnabled:         false
 
             property bool _servoReverseIsBool:  controller.parameterExists(-1, "RC5_REVERSED")
 
-            // Gimbal Settings not available on older firmware
             property bool _showGimbaLSettings:  controller.parameterExists(-1, "MNT_DEFLT_MODE")
 
             readonly property real  _margins:                       ScreenTools.defaultFontPixelHeight
@@ -111,8 +109,6 @@ SetupPage {
                 loader.servoReverseFact = controller.getParameterFact(-1, rcPrefix + "REVERSED")
             }
 
-            /// Gimbal output channels are stored in SERVO#_FUNCTION parameters. We need to loop through those
-            /// to find them and setup the ui accordindly.
             function calcGimbalOutValues() {
                 gimbalDirectionTiltLoader.gimbalOutIndex = 0
                 gimbalDirectionPanLoader.gimbalOutIndex = 0
@@ -136,7 +132,6 @@ SetupPage {
             }
 
             function setRCFunction(channel, rcFunction) {
-                // First clear any previous settings for this function
                 for (var index=_firstGimbalOutChannel; index<=_lastGimbalOutChannel; index++) {
                     var functionFact = controller.getParameterFact(-1, "r.SERVO" + index + "_FUNCTION")
                     if (functionFact.value !== _rcFunctionDisabled && functionFact.value === rcFunction) {
@@ -144,14 +139,12 @@ SetupPage {
                     }
                 }
 
-                // Now set the function into the new channel
                 if (channel !== 0) {
                     var functionFact = controller.getParameterFact(-1, "r.SERVO" + channel + "_FUNCTION")
                     functionFact.value = rcFunction
                 }
             }
 
-            // Whenever any SERVO#_FUNCTION parameters changes we need to go looking for gimbal output channels again
             Connections { target: _rc5Function; onValueChanged: calcGimbalOutValues() }
             Connections { target: _rc6Function; onValueChanged: calcGimbalOutValues() }
             Connections { target: _rc7Function; onValueChanged: calcGimbalOutValues() }
@@ -165,7 +158,6 @@ SetupPage {
             Connections { target: _rc15Function; onValueChanged: calcGimbalOutValues() }
             Connections { target: _rc16Function; onValueChanged: calcGimbalOutValues() }
 
-            // Whenever an MNT_RC_IN_* setting is changed make sure to turn on RC targeting
             Connections {
                 target:         _mountRCInPan
                 onValueChanged: if(_mountDefaultMode) _mountDefaultMode.value = _mountDefaultModeRCTargetting
@@ -218,23 +210,7 @@ SetupPage {
                 property var  _fact:            controller.getParameterFact(-1, "MNT_JSTICK_SPD")
                 property bool _loadComplete:    false
 
-                /*
-                // FIXME-QT6 - Controls 2 doesn't style controls this way
-                // Override style to make handles smaller than default
-                style: SliderStyle {
-                    handle: Rectangle {
-                        anchors.centerIn:   parent
-                        color:              qgcPal.button
-                        border.color:       qgcPal.buttonText
-                        border.width:       1
-                        implicitWidth:      _radius * 2
-                        implicitHeight:     _radius * 2
-                        radius:             _radius
-
-                        property real _radius: Math.round(ScreenTools.defaultFontPixelHeight * 0.35)
-                    }
-                }
-                */
+                
 
                 onValueChanged: {
                     if (_loadComplete) {
@@ -245,60 +221,37 @@ SetupPage {
                 MouseArea {
                     anchors.fill: parent
                     onWheel: (wheel) => {
-                        // do nothing
                         wheel.accepted = true;
                     }
                     onPressed: (mouse) => {
-                        // propogate/accept
                         mouse.accepted = false;
                     }
                     onReleased: (mouse) => {
-                        // propogate/accept
                         mouse.accepted = false;
                     }
                 }
             }
 
-            // Gimbal axis setup
             Component {
                 id: gimbalDirectionSettings
 
-                // The following properties must be set in the Loader
-                //      property string directionTitle
-                //      property bool directionEnabled
-                //      property int gimbalOutIndex
-                //      property Fact mountRcInFact
-                //      property Fact mountStabFact
-                //      property Fact mountAngMinFact
-                //      property Fact mountAngMaxFact
-                //      property Fact servoPWMMinFact
-                //      property Fact servoPWMMaxFact
-                //      property Fact servoReverseFact
-                //      property bool servoReverseIsBool
-                //      property int rcFunction
-
-                // Each section is a row
                 Row {
-
-                    // Stack section title and section backdrop/content
                     Column {
                         spacing: _margins/2
 
-                        // Section Title
                         QGCLabel {
                             id:          directionLabel
                             text:        qsTr("Gimbal ") + directionTitle
                             font.bold:   true
                         }
 
-                        // Section Backdrop
                         Rectangle {
                             id:     rectangle
                             height: innerColumn.height + _margins*2
                             width:  innerColumn.width + _margins*2
                             color:  qgcPal.windowShade
+                            radius:  ScreenTools.defaultFontPixelHeight * 0.9
 
-                            // Section Content - 3 Rows
                             Column {
                                 id:                 innerColumn
                                 spacing:            _margins
@@ -306,11 +259,9 @@ SetupPage {
                                 anchors.top:        rectangle.top
                                 anchors.left:       rectangle.left
 
-                                // Input/output channel setup and CheckBoxes
                                 Row {
                                     spacing: _margins
 
-                                    // Input/output channel setup
                                     Column {
                                         spacing: _margins
 
@@ -337,9 +288,8 @@ SetupPage {
                                         Component.onCompleted: {
                                             mountRcInFact.value = hardCodedChanned
                                         }
-                                    } // Column - Input/output channel setup
+                                    }
 
-                                    // CheckBoxes
                                     Column {
                                         spacing: _margins
                                         enabled: directionEnabled
@@ -361,10 +311,9 @@ SetupPage {
                                             uncheckedValue:  0
                                             visible:         _allVisible.checked
                                         }
-                                    } // Column - CheckBoxes
-                                } // Row input/output setup and CheckBoxes
+                                    }
+                                }
 
-                                // Servo PWM Limits
                                 Row {
                                     id:      servoLimitRow
                                     spacing: _margins
@@ -396,9 +345,8 @@ SetupPage {
                                     FactTextField {
                                         fact: servoPWMMaxFact
                                     }
-                                } // Row - Servo PWM limits
+                                }
 
-                                // Gimbal angle limits
                                 Row {
                                     id:      angleLimitRow
                                     spacing: _margins
@@ -431,12 +379,12 @@ SetupPage {
                                     FactTextField {
                                         fact: mountAngMaxFact
                                     }
-                                } // Row - Gimbal angle limits
-                            } // Column - Section content
-                        }// Rectangle - Section backdrop
-                    } // Column - Stack section title and section backdrop/content
-                } // Row - section
-            } // Component - gimbalDirectionSettings
+                                }
+                            }
+                        }
+                    }
+                }
+            }
 
             Component {
                 id: gimbalSettings
@@ -461,6 +409,7 @@ SetupPage {
                         width:              gimbalModeCombo.x + gimbalModeCombo.width + _margins
                         height:             gimbalModeCombo.y + gimbalModeCombo.height + _margins
                         color:              qgcPal.windowShade
+                        radius:              ScreenTools.defaultFontPixelHeight * 0.9
 
                         QGCLabel {
                             id:                 gimbalTypeLabel
@@ -509,15 +458,15 @@ SetupPage {
                             fact:               _mountDefaultMode
                             indexModel:         false
                         }
-                    } // Rectangle
-                } // Item
-            } // Component - gimbalSettings
+                    }
+                }
+            }
 
             Loader {
                 id:                 gimbalDirectionTiltLoader
                 sourceComponent:    gimbalDirectionSettings
 
-                property int    hardCodedChanned:   8 // ArduSub/joystick.cpp cam_tilt
+                property int    hardCodedChanned:   8
                 property string directionTitle:     qsTr("Tilt")
                 property bool   directionEnabled:   _tiltEnabled
                 property int    gimbalOutIndex:     0
@@ -537,7 +486,7 @@ SetupPage {
                 sourceComponent:    gimbalDirectionSettings
                 visible:            _allVisible.checked
 
-                property int    hardCodedChanned:   0 // ArduSub/joystick.cpp cam_roll does not exist
+                property int    hardCodedChanned:   0
                 property string directionTitle:     qsTr("Roll")
                 property bool   directionEnabled:   _rollEnabled
                 property int    gimbalOutIndex:     0
@@ -557,7 +506,7 @@ SetupPage {
                 sourceComponent:    gimbalDirectionSettings
                 visible:            _allVisible.checked
 
-                property int    hardCodedChanned:   7 // ArduSub/joystick.cpp cam_pan
+                property int    hardCodedChanned:   7
                 property string directionTitle:     qsTr("Pan")
                 property bool   directionEnabled:   _panEnabled
                 property int    gimbalOutIndex:     0
@@ -577,6 +526,6 @@ SetupPage {
                 visible:    _allVisible.checked
             }
 
-        } // Column
-    } // Component
-} // SetupPage
+        }
+    }
+}

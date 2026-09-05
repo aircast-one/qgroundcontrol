@@ -35,25 +35,25 @@ SetupPage {
             QGCPalette { id: ggcPal; colorGroupEnabled: true }
 
             property Fact _failsafeGCSEnable:               controller.getParameterFact(-1, "FS_GCS_ENABLE")
-            property Fact _failsafeBattLowAct:              controller.getParameterFact(-1, "r.BATT_FS_LOW_ACT", false /* reportMissing */)
-            property Fact _failsafeBattMah:                 controller.getParameterFact(-1, "r.BATT_LOW_MAH", false /* reportMissing */)
-            property Fact _failsafeBattVoltage:             controller.getParameterFact(-1, "r.BATT_LOW_VOLT", false /* reportMissing */)
+            property Fact _failsafeBattLowAct:              controller.getParameterFact(-1, "r.BATT_FS_LOW_ACT", false )
+            property Fact _failsafeBattMah:                 controller.getParameterFact(-1, "r.BATT_LOW_MAH", false )
+            property Fact _failsafeBattVoltage:             controller.getParameterFact(-1, "r.BATT_LOW_VOLT", false )
             property Fact _failsafeThrEnable:               controller.getParameterFact(-1, "FS_THR_ENABLE")
             property Fact _failsafeThrValue:                controller.getParameterFact(-1, "FS_THR_VALUE")
 
             property Fact _batt1Monitor:                    controller.getParameterFact(-1, "BATT_MONITOR")
-            property Fact _batt2Monitor:                    controller.getParameterFact(-1, "BATT2_MONITOR", false /* reportMissing */)
+            property Fact _batt2Monitor:                    controller.getParameterFact(-1, "BATT2_MONITOR", false )
             property bool _batt2MonitorAvailable:           controller.parameterExists(-1, "BATT2_MONITOR")
             property bool _batt1MonitorEnabled:             _batt2MonitorAvailable ? _batt2Monitor.rawValue !== 0 : false
             property bool _batt2MonitorEnabled:             _batt2MonitorAvailable ? _batt2Monitor.rawValue !== 0 : false
             property bool _batt1ParamsAvailable:            controller.parameterExists(-1, "BATT_CAPACITY")
             property bool _batt2ParamsAvailable:            controller.parameterExists(-1, "BATT2_CAPACITY")
 
-            property Fact _failsafeBattCritAct:             controller.getParameterFact(-1, "BATT_FS_CRT_ACT", false /* reportMissing */)
-            property Fact _failsafeBatt2LowAct:             controller.getParameterFact(-1, "BATT2_FS_LOW_ACT", false /* reportMissing */)
-            property Fact _failsafeBatt2CritAct:            controller.getParameterFact(-1, "BATT2_FS_CRT_ACT", false /* reportMissing */)
-            property Fact _failsafeBatt2Mah:                controller.getParameterFact(-1, "BATT2_LOW_MAH", false /* reportMissing */)
-            property Fact _failsafeBatt2Voltage:            controller.getParameterFact(-1, "BATT2_LOW_VOLT", false /* reportMissing */)
+            property Fact _failsafeBattCritAct:             controller.getParameterFact(-1, "BATT_FS_CRT_ACT", false )
+            property Fact _failsafeBatt2LowAct:             controller.getParameterFact(-1, "BATT2_FS_LOW_ACT", false )
+            property Fact _failsafeBatt2CritAct:            controller.getParameterFact(-1, "BATT2_FS_CRT_ACT", false )
+            property Fact _failsafeBatt2Mah:                controller.getParameterFact(-1, "BATT2_LOW_MAH", false )
+            property Fact _failsafeBatt2Voltage:            controller.getParameterFact(-1, "BATT2_LOW_VOLT", false )
 
             property Fact _fenceAction: controller.getParameterFact(-1, "FENCE_ACTION")
             property Fact _fenceAltMax: controller.getParameterFact(-1, "FENCE_ALT_MAX")
@@ -89,6 +89,7 @@ SetupPage {
                     width:  batteryFailsafeColumn.x + batteryFailsafeColumn.width + _margins
                     height: batteryFailsafeColumn.y + batteryFailsafeColumn.height + _margins
                     color:  ggcPal.windowShade
+                    radius:  ScreenTools.defaultFontPixelHeight * 0.9
 
                     Column {
                         id:                 batteryFailsafeColumn
@@ -141,10 +142,10 @@ SetupPage {
                                 showUnits:          true
                                 Layout.fillWidth:   true
                             }
-                        } // GridLayout
-                    } // Column
-                } // Rectangle
-            } // Column - Battery Failsafe Settings
+                        }
+                    }
+                }
+            }
 
             Column {
                 spacing: _margins / 2
@@ -160,6 +161,7 @@ SetupPage {
                     width:  battery2FailsafeColumn.x + battery2FailsafeColumn.width + _margins
                     height: battery2FailsafeColumn.y + battery2FailsafeColumn.height + _margins
                     color:  ggcPal.windowShade
+                    radius:  ScreenTools.defaultFontPixelHeight * 0.9
 
                     Column {
                         id:                 battery2FailsafeColumn
@@ -211,10 +213,10 @@ SetupPage {
                                 showUnits:          true
                                 Layout.fillWidth:   true
                             }
-                        } // GridLayout
-                    } // Column
-                } // Rectangle
-            } // Column - Battery2 Failsafe Settings
+                        }
+                    }
+                }
+            }
 
             Column {
                 spacing: _margins / 2
@@ -228,6 +230,7 @@ SetupPage {
                     width:  generalFailsafeColumn.x + generalFailsafeColumn.width + _margins
                     height: generalFailsafeColumn.y + generalFailsafeColumn.height + _margins
                     color:  ggcPal.windowShade
+                    radius:  ScreenTools.defaultFontPixelHeight * 0.9
 
                     Column {
                         id:                 generalFailsafeColumn
@@ -264,10 +267,10 @@ SetupPage {
                                 showUnits:          true
                                 Layout.fillWidth:   true
                             }
-                        } // GridLayout
-                    } // Column
-                } // Rectangle - Failsafe Settings
-            } // Column - General Failsafe Settings
+                        }
+                    }
+                }
+            }
 
             Column {
                 spacing: _margins / 2
@@ -283,6 +286,7 @@ SetupPage {
                     width:  fenceAltMaxField.x + fenceAltMaxField.width + _margins
                     height: fenceAltMaxField.y + fenceAltMaxField.height + _margins
                     color:  ggcPal.windowShade
+                    radius:  ScreenTools.defaultFontPixelHeight * 0.9
 
                     QGCCheckBox {
                         id:                 circleGeo
@@ -390,8 +394,8 @@ SetupPage {
                         fact:               _fenceAltMax
                         showUnits:          true
                     }
-                } // Rectangle - GeoFence Settings
-            } // Column - GeoFence Settings
+                }
+            }
 
             Column {
                 spacing: _margins / 2
@@ -407,6 +411,7 @@ SetupPage {
                     width:  rltAltFinalField.x + rltAltFinalField.width + _margins
                     height: rltAltFinalField.y + rltAltFinalField.height + _margins
                     color:  ggcPal.windowShade
+                    radius:  ScreenTools.defaultFontPixelHeight * 0.9
 
                     Image {
                         id:                 icon
@@ -523,8 +528,8 @@ SetupPage {
                         enabled:            finalLoiterRadio.checked
                         showUnits:          true
                     }
-                } // Rectangle - RTL Settings
-            } // Column - RTL Settings
+                }
+            }
 
             Column {
                 spacing: _margins / 2
@@ -538,6 +543,7 @@ SetupPage {
                     width:  flowLayout.width
                     height: armingCheckInnerColumn.height + (_margins * 2)
                     color:  ggcPal.windowShade
+                    radius:  ScreenTools.defaultFontPixelHeight * 0.9
 
                     Column {
                         id:                 armingCheckInnerColumn
@@ -565,8 +571,8 @@ SetupPage {
                             visible:        _armingCheck.value != 1
                         }
                     }
-                } // Rectangle - Arming checks
-            } // Column - Arming Checks
-        } // Flow
-    } // Component - safetyPageComponent
-} // SetupView
+                }
+            }
+        }
+    }
+}

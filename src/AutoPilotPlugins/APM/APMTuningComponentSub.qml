@@ -66,6 +66,7 @@ SetupPage {
                 anchors.right:      parent.right
                 height:             posColumn.height + _margins*2
                 color:              qgcPal.windowShade
+                radius:              ScreenTools.defaultFontPixelHeight * 0.9
 
                 Column {
                     id:                 posColumn
@@ -92,8 +93,8 @@ SetupPage {
                     FactTextFieldSlider { fact: controller.getParameterFact(-1, "ATC_RAT_YAW_IMAX") }
                     FactTextFieldSlider { fact: controller.getParameterFact(-1, "ATC_RAT_YAW_D") }
 
-                } // Column - Position Controller Parameters
-            } // Rectangle - Position Controller Parameters
+                }
+            }
 
             Rectangle {
                 id:                 posParams
@@ -102,6 +103,7 @@ SetupPage {
                 anchors.right:      parent.right
                 height:             velColumn.height + _margins*2
                 color:              qgcPal.windowShade
+                radius:              ScreenTools.defaultFontPixelHeight * 0.9
 
                 Component {
                     id: velColumnUpTo36
@@ -124,7 +126,7 @@ SetupPage {
                         FactTextFieldSlider { fact: controller.getParameterFact(-1, "r.PSC_ACCZ_IMAX") }
                         FactTextFieldSlider { fact: controller.getParameterFact(-1, "r.PSC_ACCZ_P") }
 
-                    } // Column - VEL parameters
+                    }
                 }
                 Component {
                     id: velColumn40
@@ -149,7 +151,7 @@ SetupPage {
                         FactTextFieldSlider { fact: controller.getParameterFact(-1, "r.PSC_ACCZ_IMAX") }
                         FactTextFieldSlider { fact: controller.getParameterFact(-1, "r.PSC_ACCZ_P") }
 
-                    } // Column - VEL parameters
+                    }
                 }
                 Loader {
                     id:                 velColumn
@@ -159,7 +161,7 @@ SetupPage {
 
                     sourceComponent: globals.activeVehicle.versionCompare(3, 6, 0) <= 0 ? velColumnUpTo36 :velColumn40
                 }
-            } // Rectangle - VEL parameters
+            }
 
             Rectangle {
                 id:                 navParams
@@ -168,8 +170,8 @@ SetupPage {
                 anchors.right:      parent.right
                 height:             wpnavColumn.height + _margins*2
                 color:              qgcPal.windowShade
+                radius:              ScreenTools.defaultFontPixelHeight * 0.9
 
-                // WPNAV parameters up to 3.5
                 Component {
                     id: wpnavColumn35
                     Column {
@@ -178,7 +180,6 @@ SetupPage {
                         anchors.right:      parent.right
                         anchors.top:        parent.top
                         spacing:            _margins*1.5
-
 
                         FactTextFieldSlider { fact: controller.getParameterFact(-1, "WPNAV_ACCEL") }
                         FactTextFieldSlider { fact: controller.getParameterFact(-1, "WPNAV_ACCEL_Z") }
@@ -193,7 +194,6 @@ SetupPage {
                     }
                 }
 
-                // WPNAV parameters for 3.6 and upwards
                 Component {
                     id: wpnavColumn36
                     Column {
@@ -226,7 +226,7 @@ SetupPage {
 
                     sourceComponent: globals.activeVehicle.versionCompare(3, 6, 0) < 0 ? wpnavColumn35 : wpnavColumn36
                     }
-            } // Rectangle - WPNAV parameters
-        } // Column
-    } // Component
-} // SetupView
+            }
+        }
+    }
+}

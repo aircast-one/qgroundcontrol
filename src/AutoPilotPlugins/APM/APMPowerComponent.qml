@@ -36,7 +36,7 @@ SetupPage {
             spacing:    _margins
 
             property Fact _batt1Monitor:            controller.getParameterFact(-1, "BATT_MONITOR")
-            property Fact _batt2Monitor:            controller.getParameterFact(-1, "BATT2_MONITOR", false /* reportMissing */)
+            property Fact _batt2Monitor:            controller.getParameterFact(-1, "BATT2_MONITOR", false )
             property bool _batt2MonitorAvailable:   controller.parameterExists(-1, "BATT2_MONITOR")
             property bool _batt1MonitorEnabled:     _batt1Monitor.rawValue !== 0
             property bool _batt2MonitorEnabled:     _batt2MonitorAvailable && _batt2Monitor.rawValue !== 0
@@ -45,13 +45,12 @@ SetupPage {
             property bool _showBatt1Reboot:         _batt1MonitorEnabled && !_batt1ParamsAvailable
             property bool _showBatt2Reboot:         _batt2MonitorEnabled && !_batt2ParamsAvailable
             property bool _escCalibrationAvailable: controller.parameterExists(-1, "ESC_CALIBRATION")
-            property Fact _escCalibration:          controller.getParameterFact(-1, "ESC_CALIBRATION", false /* reportMissing */)
+            property Fact _escCalibration:          controller.getParameterFact(-1, "ESC_CALIBRATION", false )
 
             property string _restartRequired: qsTr("Requires vehicle reboot")
 
             QGCPalette { id: ggcPal; colorGroupEnabled: true }
 
-            // Battery1 Monitor settings only - used when only monitor param is available
             Column {
                 spacing: _margins / 2
                 visible: !_batt1MonitorEnabled || !_batt1ParamsAvailable
@@ -65,6 +64,7 @@ SetupPage {
                     width:  batt1Column.x + batt1Column.width + _margins
                     height: batt1Column.y + batt1Column.height + _margins
                     color:  ggcPal.windowShade
+                    radius:  ScreenTools.defaultFontPixelHeight * 0.9
 
                     ColumnLayout {
                         id:                 batt1Column
@@ -100,7 +100,6 @@ SetupPage {
                 }
             }
 
-            // Battery 1 settings
             Column {
                 id:         _batt1FullSettings
                 spacing:    _margins / 2
@@ -115,6 +114,7 @@ SetupPage {
                     width:  battery1Loader.x + battery1Loader.width + _margins
                     height: battery1Loader.y + battery1Loader.height + _margins
                     color:  ggcPal.windowShade
+                    radius:  ScreenTools.defaultFontPixelHeight * 0.9
 
                     Loader {
                         id:                 battery1Loader
@@ -123,14 +123,14 @@ SetupPage {
                         anchors.left:       parent.left
                         sourceComponent:    _batt1FullSettings.visible ? powerSetupComponent : undefined
 
-                        property Fact armVoltMin:       controller.getParameterFact(-1, "r.BATT_ARM_VOLT", false /* reportMissing */)
-                        property Fact battAmpPerVolt:   controller.getParameterFact(-1, "r.BATT_AMP_PERVLT", false /* reportMissing */)
-                        property Fact battAmpOffset:    controller.getParameterFact(-1, "BATT_AMP_OFFSET", false /* reportMissing */)
-                        property Fact battCapacity:     controller.getParameterFact(-1, "BATT_CAPACITY", false /* reportMissing */)
-                        property Fact battCurrPin:      controller.getParameterFact(-1, "BATT_CURR_PIN", false /* reportMissing */)
-                        property Fact battMonitor:      controller.getParameterFact(-1, "BATT_MONITOR", false /* reportMissing */)
-                        property Fact battVoltMult:     controller.getParameterFact(-1, "BATT_VOLT_MULT", false /* reportMissing */)
-                        property Fact battVoltPin:      controller.getParameterFact(-1, "BATT_VOLT_PIN", false /* reportMissing */)
+                        property Fact armVoltMin:       controller.getParameterFact(-1, "r.BATT_ARM_VOLT", false )
+                        property Fact battAmpPerVolt:   controller.getParameterFact(-1, "r.BATT_AMP_PERVLT", false )
+                        property Fact battAmpOffset:    controller.getParameterFact(-1, "BATT_AMP_OFFSET", false )
+                        property Fact battCapacity:     controller.getParameterFact(-1, "BATT_CAPACITY", false )
+                        property Fact battCurrPin:      controller.getParameterFact(-1, "BATT_CURR_PIN", false )
+                        property Fact battMonitor:      controller.getParameterFact(-1, "BATT_MONITOR", false )
+                        property Fact battVoltMult:     controller.getParameterFact(-1, "BATT_VOLT_MULT", false )
+                        property Fact battVoltPin:      controller.getParameterFact(-1, "BATT_VOLT_PIN", false )
                         property FactGroup  _batteryFactGroup:  _batt1FullSettings.visible ? controller.vehicle.getFactGroup("battery0") : null
                         property Fact vehicleVoltage:   _batteryFactGroup ? _batteryFactGroup.voltage : null
                         property Fact vehicleCurrent:   _batteryFactGroup ? _batteryFactGroup.current : null
@@ -138,7 +138,6 @@ SetupPage {
                 }
             }
 
-            // Battery2 Monitor settings only - used when only monitor param is available
             Column {
                 spacing: _margins / 2
                 visible: !_batt2MonitorEnabled || !_batt2ParamsAvailable
@@ -152,6 +151,7 @@ SetupPage {
                     width:  batt2Column.x + batt2Column.width + _margins
                     height: batt2Column.y + batt2Column.height + _margins
                     color:  ggcPal.windowShade
+                    radius:  ScreenTools.defaultFontPixelHeight * 0.9
 
                     ColumnLayout {
                         id:                 batt2Column
@@ -187,7 +187,6 @@ SetupPage {
                 }
             }
 
-            // Battery 2 settings - Used when full params are available
             Column {
                 id:         batt2FullSettings
                 spacing:    _margins / 2
@@ -202,6 +201,7 @@ SetupPage {
                     width:  battery2Loader.x + battery2Loader.width + _margins
                     height: battery2Loader.y + battery2Loader.height + _margins
                     color:  ggcPal.windowShade
+                    radius:  ScreenTools.defaultFontPixelHeight * 0.9
 
                     Loader {
                         id:                 battery2Loader
@@ -210,14 +210,14 @@ SetupPage {
                         anchors.left:       parent.left
                         sourceComponent:    batt2FullSettings.visible ? powerSetupComponent : undefined
 
-                        property Fact armVoltMin:       controller.getParameterFact(-1, "r.BATT2_ARM_VOLT", false /* reportMissing */)
-                        property Fact battAmpPerVolt:   controller.getParameterFact(-1, "r.BATT2_AMP_PERVLT", false /* reportMissing */)
-                        property Fact battAmpOffset:    controller.getParameterFact(-1, "BATT2_AMP_OFFSET", false /* reportMissing */)
-                        property Fact battCapacity:     controller.getParameterFact(-1, "BATT2_CAPACITY", false /* reportMissing */)
-                        property Fact battCurrPin:      controller.getParameterFact(-1, "BATT2_CURR_PIN", false /* reportMissing */)
-                        property Fact battMonitor:      controller.getParameterFact(-1, "BATT2_MONITOR", false /* reportMissing */)
-                        property Fact battVoltMult:     controller.getParameterFact(-1, "BATT2_VOLT_MULT", false /* reportMissing */)
-                        property Fact battVoltPin:      controller.getParameterFact(-1, "BATT2_VOLT_PIN", false /* reportMissing */)
+                        property Fact armVoltMin:       controller.getParameterFact(-1, "r.BATT2_ARM_VOLT", false )
+                        property Fact battAmpPerVolt:   controller.getParameterFact(-1, "r.BATT2_AMP_PERVLT", false )
+                        property Fact battAmpOffset:    controller.getParameterFact(-1, "BATT2_AMP_OFFSET", false )
+                        property Fact battCapacity:     controller.getParameterFact(-1, "BATT2_CAPACITY", false )
+                        property Fact battCurrPin:      controller.getParameterFact(-1, "BATT2_CURR_PIN", false )
+                        property Fact battMonitor:      controller.getParameterFact(-1, "BATT2_MONITOR", false )
+                        property Fact battVoltMult:     controller.getParameterFact(-1, "BATT2_VOLT_MULT", false )
+                        property Fact battVoltPin:      controller.getParameterFact(-1, "BATT2_VOLT_PIN", false )
                         property FactGroup  _batteryFactGroup:  batt2FullSettings.visible ? controller.vehicle.getFactGroup("battery1") : null
                         property Fact vehicleVoltage:   _batteryFactGroup ? _batteryFactGroup.voltage : null
                         property Fact vehicleCurrent:   _batteryFactGroup ? _batteryFactGroup.current : null
@@ -238,6 +238,7 @@ SetupPage {
                     width:  escCalibrationHolder.x + escCalibrationHolder.width + _margins
                     height: escCalibrationHolder.y + escCalibrationHolder.height + _margins
                     color:  ggcPal.windowShade
+                    radius:  ScreenTools.defaultFontPixelHeight * 0.9
 
                     Column {
                         id:         escCalibrationHolder
@@ -279,8 +280,8 @@ SetupPage {
                     }
                 }
             }
-        } // Flow
-    } // Component - powerPageComponent
+        }
+    }
 
     Component {
         id: powerSetupComponent
@@ -363,7 +364,6 @@ SetupPage {
                 }
             }
 
-
             GridLayout {
                 columns:        3
                 rowSpacing:     _margins
@@ -422,7 +422,6 @@ SetupPage {
                             battAmpPerVolt.value = sensorModel.get(index).ampPerVolt
                             battAmpOffset.value = sensorModel.get(index).ampOffset
                         } else {
-
                         }
                     }
                 }
@@ -531,9 +530,9 @@ SetupPage {
                     visible:            _showAdvanced
                 }
 
-            } // GridLayout
-        } // Column
-    } // Component - powerSetupComponent
+            }
+        }
+    }
 
     Component {
         id: calcVoltageMultiplierDlgComponent
@@ -640,4 +639,4 @@ SetupPage {
             }
         }
     }
-} // SetupPage
+}

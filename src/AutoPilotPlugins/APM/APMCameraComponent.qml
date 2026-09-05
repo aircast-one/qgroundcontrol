@@ -72,7 +72,6 @@ SetupPage {
 
             property bool _servoReverseIsBool:  controller.parameterExists(-1, "RC5_REVERSED")
 
-            // Gimbal Settings not available on older firmware
             property bool _showGimbaLSettings:  controller.parameterExists(-1, "MNT_DEFLT_MODE")
 
             readonly property real  _margins:                       ScreenTools.defaultFontPixelHeight
@@ -100,8 +99,6 @@ SetupPage {
                 loader.servoReverseFact = controller.getParameterFact(-1, rcPrefix + "REVERSED")
             }
 
-            /// Gimbal output channels are stored in SERVO#_FUNCTION parameters. We need to loop through those
-            /// to find them and setup the ui accordindly.
             function calcGimbalOutValues() {
                 gimbalDirectionTiltLoader.gimbalOutIndex = 0
                 gimbalDirectionPanLoader.gimbalOutIndex = 0
@@ -125,7 +122,6 @@ SetupPage {
             }
 
             function setRCFunction(channel, rcFunction) {
-                // First clear any previous settings for this function
                 for (var index=_firstGimbalOutChannel; index<=_lastGimbalOutChannel; index++) {
                     var functionFact = controller.getParameterFact(-1, "SERVO" + index + "_FUNCTION")
                     if (functionFact.value != _rcFunctionDisabled && functionFact.value == rcFunction) {
@@ -133,14 +129,12 @@ SetupPage {
                     }
                 }
 
-                // Now set the function into the new channel
                 if (channel != 0) {
                     var functionFact = controller.getParameterFact(-1, "SERVO" + channel + "_FUNCTION")
                     functionFact.value = rcFunction
                 }
             }
 
-            // Whenever any SERVO#_FUNCTION parameters changes we need to go looking for gimbal output channels again
             Connections { target: _rc5Function; onValueChanged: calcGimbalOutValues() }
             Connections { target: _rc6Function; onValueChanged: calcGimbalOutValues() }
             Connections { target: _rc7Function; onValueChanged: calcGimbalOutValues() }
@@ -152,7 +146,6 @@ SetupPage {
             Connections { target: _rc13Function; onValueChanged: calcGimbalOutValues() }
             Connections { target: _rc14Function; onValueChanged: calcGimbalOutValues() }
 
-            // Whenever an MNT_RC_IN_* setting is changed make sure to turn on RC targeting
             Connections {
                 target:         _mountRCInPan
                 onValueChanged: _mountDefaultMode.value = _mountDefaultModeRCTargetting
@@ -170,12 +163,9 @@ SetupPage {
 
             ListModel {
                 id: gimbalOutModel
-                // It appears that QGCComboBox can't handle models that don't have a initial item
-                // after onModelChanged
                 ListElement { text: qsTr("Disabled"); value: 0 }
 
                 function update(number) {
-                    // Not enough channels
                     if(number < 6) {
                         return
                     }
@@ -186,10 +176,7 @@ SetupPage {
                 }
 
                 Component.onCompleted: {
-                    // Number of main outputs
                     var baseValue = 8
-                    // Extra outputs
-                    // http://ardupilot.org/copter/docs/parameters.html#brd-pwm-count-auxiliary-pin-config
                     if (controller.parameterExists(-1, "BRD_PWM_COUNT")) {
                         const brd_pwm_count_value = controller.getParameterFact(-1, "BRD_PWM_COUNT").value
                         update(baseValue + (brd_pwm_count_value == 7 ? 3 : brd_pwm_count_value))
@@ -201,20 +188,6 @@ SetupPage {
 
             Component {
                 id: gimbalDirectionSettings
-
-                // The following properties must be set in the Loader
-                //      property string directionTitle
-                //      property bool directionEnabled
-                //      property int gimbalOutIndex
-                //      property Fact mountRcInFact
-                //      property Fact mountStabFact
-                //      property Fact mountAngMinFact
-                //      property Fact mountAngMaxFact
-                //      property Fact servoPWMMinFact
-                //      property Fact servoPWMMaxFact
-                //      property Fact servoReverseFact
-                //      property bool servoReverseIsBool
-                //      property int rcFunction
 
                 Item {
                     width:  rectangle.x + rectangle.width
@@ -234,6 +207,7 @@ SetupPage {
                         width:              mountAngMaxField.x + mountAngMaxField.width + _margins
                         height:             servoPWMMaxField.y + servoPWMMaxField.height + _margins
                         color:              qgcPal.windowShade
+                        radius:              ScreenTools.defaultFontPixelHeight * 0.9
 
                         FactCheckBox {
                             id:                 mountStabCheckBox
@@ -391,9 +365,9 @@ SetupPage {
                             fact:               servoPWMMaxFact
                             enabled:            directionEnabled
                         }
-                    } // Rectangle
-                } // Item
-            } // Component - gimbalDirectionSettings
+                    }
+                }
+            }
 
             Component {
                 id: gimbalSettings
@@ -418,6 +392,7 @@ SetupPage {
                         width:              gimbalModeCombo.x + gimbalModeCombo.width + _margins
                         height:             gimbalModeCombo.y + gimbalModeCombo.height + _margins
                         color:              qgcPal.windowShade
+                        radius:              ScreenTools.defaultFontPixelHeight * 0.9
 
                         QGCLabel {
                             id:                 gimbalTypeLabel
@@ -466,9 +441,9 @@ SetupPage {
                             fact:               _mountDefaultMode
                             indexModel:         false
                         }
-                    } // Rectangle
-                } // Item
-            } // Component - gimbalSettings
+                    }
+                }
+            }
 
             Loader {
                 id:                 gimbalDirectionTiltLoader
@@ -527,6 +502,6 @@ SetupPage {
             Loader {
                 id: gimbalSettingsLoader
             }
-        } // Column
-    } // Component
-} // SetupPage
+        }
+    }
+}

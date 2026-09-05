@@ -63,6 +63,7 @@ SetupPage {
                     width:  throttlePWMField.x + throttlePWMField.width + _margins
                     height: gcsCheckbox.y + gcsCheckbox.height + _margins
                     color:  qgcPal.windowShade
+                    radius:  ScreenTools.defaultFontPixelHeight * 0.9
 
                     QGCCheckBox {
                         id:                 throttleEnableCheckBox
@@ -137,8 +138,8 @@ SetupPage {
 
                         onClicked: _failsafeGCSEnable.value = checked ? 1 : 0
                     }
-                } // Rectangle - Failsafe trigger settings
-            } // Column - Failsafe trigger settings
+                }
+            }
 
             Column {
                 spacing: _margins / 2
@@ -152,6 +153,7 @@ SetupPage {
                     width:  rltAltField.x + rltAltField.width + _margins
                     height: rltAltField.y + rltAltField.height + _margins
                     color:  qgcPal.windowShade
+                    radius:  ScreenTools.defaultFontPixelHeight * 0.9
 
                     QGCRadioButton {
                         id:                 returnAtCurrentRadio
@@ -186,8 +188,8 @@ SetupPage {
                         showUnits:          true
                         enabled:            returnAltRadio.checked
                     }
-                } // Rectangle - RTL Settings
-            } // Column - RTL Settings
-        } // Flow
-    } // Component
-} // SetupView
+                }
+            }
+        }
+    }
+}

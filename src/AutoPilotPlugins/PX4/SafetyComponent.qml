@@ -69,6 +69,7 @@ SetupPage {
                     width:                  mainRow.width  + (_margins * 2)
                     height:                 mainRow.height + (_margins * 2)
                     color:                  qgcPal.windowShade
+                    radius:                  ScreenTools.defaultFontPixelHeight * 0.9
                     Row {
                         id:                 mainRow
                         spacing:            _margins
@@ -139,6 +140,7 @@ SetupPage {
                     width:                  mainRow.width + (_margins * 2)
                     height:                 odRow.height  + (_margins * 2)
                     color:                  qgcPal.windowShade
+                    radius:                  ScreenTools.defaultFontPixelHeight * 0.9
                     Row {
                         id:                 odRow
                         spacing:            _margins
@@ -223,7 +225,6 @@ SetupPage {
                                 }
                                 onValueChanged: {
                                     if(_collisionPrevention) {
-                                        //-- Negative means disabled
                                         if(_collisionPrevention.rawValue >= 0) {
                                             _collisionPrevention.rawValue = QGroundControl.unitsConversion.appSettingsHorizontalDistanceUnitsToMeters(value)
                                         }
@@ -251,6 +252,7 @@ SetupPage {
                     width:                  mainRow.width     + (_margins * 2)
                     height:                 rcLossGrid.height + (_margins * 2)
                     color:                  qgcPal.windowShade
+                    radius:                  ScreenTools.defaultFontPixelHeight * 0.9
                     Row {
                         id:                 rcLossGrid
                         spacing:            _margins
@@ -303,6 +305,7 @@ SetupPage {
                     width:                  mainRow.width           + (_margins * 2)
                     height:                 dataLinkLossGrid.height + (_margins * 2)
                     color:                  qgcPal.windowShade
+                    radius:                  ScreenTools.defaultFontPixelHeight * 0.9
                     Row {
                         id:                 dataLinkLossGrid
                         spacing:            _margins
@@ -355,6 +358,7 @@ SetupPage {
                     width:                  mainRow.width       + (_margins * 2)
                     height:                 geoFenceGrid.height + (_margins * 2)
                     color:                  qgcPal.windowShade
+                    radius:                  ScreenTools.defaultFontPixelHeight * 0.9
                     Row {
                         id:                 geoFenceGrid
                         spacing:            _margins
@@ -425,6 +429,7 @@ SetupPage {
                     width:              mainRow.width         + (_margins * 2)
                     height:             returnHomeGrid.height + (_margins * 2)
                     color:              qgcPal.windowShade
+                    radius:              ScreenTools.defaultFontPixelHeight * 0.9
                     Row {
                         id:                 returnHomeGrid
                         spacing:            _margins
@@ -522,6 +527,7 @@ SetupPage {
                     width:              mainRow.width       + (_margins * 2)
                     height:             landModeGrid.height + (_margins * 2)
                     color:              qgcPal.windowShade
+                    radius:              ScreenTools.defaultFontPixelHeight * 0.9
                     Row {
                         id:                 landModeGrid
                         spacing:            _margins
@@ -580,6 +586,7 @@ SetupPage {
                     width:              mainRow.width      + (_margins * 2)
                     height:             loggingGrid.height + (_margins * 2)
                     color:              qgcPal.windowShade
+                    radius:              ScreenTools.defaultFontPixelHeight * 0.9
                     Row {
                         id:                 loggingGrid
                         spacing:            _margins
@@ -631,6 +638,7 @@ SetupPage {
                     width:              mainRow.width   + (_margins * 2)
                     height:             hitlGrid.height + (_margins * 2)
                     color:              qgcPal.windowShade
+                    radius:              ScreenTools.defaultFontPixelHeight * 0.9
                     visible:            _hitlAvailable
                     Row {
                         id:                 hitlGrid

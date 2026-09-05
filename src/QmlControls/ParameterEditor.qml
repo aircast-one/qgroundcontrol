@@ -24,10 +24,7 @@ Item {
     id:         _root
 
     property Fact   _editorDialogFact: Fact { }
-    property int    _rowHeight:         ScreenTools.defaultFontPixelHeight * 2
-    property int    _rowWidth:          10 // Dynamic adjusted at runtime
-    property bool   _searchFilter:      searchText.text.trim() != "" || controller.showModifiedOnly  ///< true: showing results of search
-    property var    _searchResults      ///< List of parameter names from search results
+    property bool   _searchFilter:      searchText.text.trim() != "" || controller.showModifiedOnly
     property var    _activeVehicle:     QGroundControl.multiVehicleManager.activeVehicle
     property bool   _showRCToParam:     _activeVehicle.px4Firmware
     property var    _appSettings:       QGroundControl.settingsManager.appSettings
@@ -35,6 +32,8 @@ Item {
     property string initialSearchText
 
     Component.onCompleted: searchText.text = initialSearchText
+
+    QGCPalette { id: qgcPal; colorGroupEnabled: true }
 
     ParameterEditorController {
         id: controller
@@ -159,58 +158,54 @@ Item {
     }
 
     QGCFlickable {
-        id :                groupScroll
-        width:              ScreenTools.defaultFontPixelWidth * 25
+        id:                 groupScroll
+        anchors.topMargin:  ScreenTools.defaultFontPixelHeight * 0.8
         anchors.top:        header.bottom
         anchors.bottom:     parent.bottom
+        width:              ScreenTools.defaultFontPixelWidth * 28
         clip:               true
-        pixelAligned:       true
-        contentHeight:      groupedViewCategoryColumn.height
+        contentHeight:      groupColumn.height
         flickableDirection: Flickable.VerticalFlick
         visible:            !_searchFilter
 
-        ColumnLayout {
-            id:             groupedViewCategoryColumn
-            anchors.left:   parent.left
-            anchors.right:  parent.right
-            spacing:        Math.ceil(ScreenTools.defaultFontPixelHeight * 0.25)
+        Column {
+            id:         groupColumn
+            width:      parent.width
+            spacing:    ScreenTools.defaultFontPixelHeight * 0.8
 
             Repeater {
                 model: controller.categories
 
                 Column {
-                    Layout.fillWidth:   true
-                    spacing:            Math.ceil(ScreenTools.defaultFontPixelHeight * 0.25)
+                    width:      parent.width
+                    spacing:    ScreenTools.defaultFontPixelHeight * 0.35
 
+                    property var category: object
 
-                    SectionHeader {
-                        id:             categoryHeader
-                        anchors.left:   parent.left
-                        anchors.right:  parent.right
-                        text:           object.name
-                        checked:        object == controller.currentCategory
-
-                        onCheckedChanged: {
-                            if (checked) {
-                                controller.currentCategory  = object
-                            }
-                        }
+                    QGCLabel {
+                        text:               object.name.toUpperCase()
+                        font.pointSize:     ScreenTools.smallFontPointSize
+                        font.letterSpacing: 0.5
+                        color:              qgcPal.colorGrey
+                        leftPadding:        ScreenTools.defaultFontPixelWidth * 1.5
                     }
 
-                    Repeater {
-                        model: categoryHeader.checked ? object.groups : 0
+                    PlanGroupCard {
+                        width: parent.width
 
-                        QGCButton {
-                            width:          ScreenTools.defaultFontPixelWidth * 25
-                            text:           object.name
-                            height:         _rowHeight
-                            checked:        object == controller.currentGroup
-                            autoExclusive:  true
+                        Repeater {
+                            model: category.groups
 
-                            onClicked: {
-                                if (!checked) _rowWidth = 10
-                                checked = true
-                                controller.currentGroup = object
+                            PlanGroupRow {
+                                text:           object.name
+                                interactive:    true
+                                current:        object == controller.currentGroup
+                                onClicked: {
+                                    if (controller.currentCategory != category) {
+                                        controller.currentCategory = category
+                                    }
+                                    controller.currentGroup = object
+                                }
                             }
                         }
                     }
@@ -219,79 +214,43 @@ Item {
         }
     }
 
-    TableView {
-        id:                 tableView
-        anchors.leftMargin: ScreenTools.defaultFontPixelWidth
+    Rectangle {
+        anchors.topMargin:  ScreenTools.defaultFontPixelHeight * 0.8
+        anchors.leftMargin: _searchFilter ? 0 : ScreenTools.defaultFontPixelWidth * 2
         anchors.top:        header.bottom
         anchors.bottom:     parent.bottom
         anchors.left:       _searchFilter ? parent.left : groupScroll.right
         anchors.right:      parent.right
-        columnSpacing:      ScreenTools.defaultFontPixelWidth
-        rowSpacing:         ScreenTools.defaultFontPixelHeight / 4
-        model:              controller.parameters
-        contentWidth:       width
+        radius:             ScreenTools.defaultFontPixelHeight * 0.9
+        color:              Qt.alpha(qgcPal.text, 0.055)
         clip:               true
 
-        // Qt is supposed to adjust column widths automatically when larger widths come into view.
-        // But it doesn't work. So we have to do it force a layout manually when we scroll.
-        Timer {
-            id:             forceLayoutTimer
-            interval:       500
-            repeat:         false
-            onTriggered:    tableView.forceLayout()
-        }
+        QGCListView {
+            id:             parameterList
+            anchors.fill:   parent
+            model:          controller.parameters
 
-        onTopRowChanged: forceLayoutTimer.start()
-        onModelChanged: {
-            positionViewAtRow(0, TableView.AlignLeft | TableView.AlignTop)
-            forceLayoutTimer.start()
-        }
+            onModelChanged: positionViewAtBeginning()
 
-        delegate: Item {
-            implicitWidth:  label.contentWidth
-            implicitHeight: label.contentHeight
-            clip:           true
-
-            QGCLabel {
-                id:                 label
-                width:              column == 1 ? ScreenTools.defaultFontPixelWidth * 15 : contentWidth
-                text:               column == 1 ? col1String() : display
-                color:              column == 1 ? col1Color() : qgcPal.text
-                maximumLineCount:   1
-                elide:              column == 1 ? Text.ElideRight : Text.ElideNone
-
-                Component.onCompleted: {
-                    return
-                    if (tableView.columnWidth(column) < width) {
-                        console.log("setColumnWidth", column, width)
-                        tableView.setColumnWidth(column, width)
-                    }
-                }
-
-                function col1String() {
-                    if (fact.enumStrings.length === 0) {
-                        return fact.valueString + " " + fact.units
-                    }
-                    if (fact.bitmaskStrings.length != 0) {
-                        return fact.selectedBitmaskStrings.join(',')
-                    }
-                    return fact.enumStringValue
-                }
-
-                function col1Color() {
-                    if (fact.defaultValueAvailable) {
-                        return fact.valueEqualsDefault ? qgcPal.text : qgcPal.warningText
-                    } else {
-                        return qgcPal.text
-                    }
-                }
-            }
-
-            QGCMouseArea {
-                anchors.fill: parent
-                onClicked: mouse => {
+            delegate: PlanGroupRow {
+                text:           display
+                description:    fact.shortDescription
+                interactive:    true
+                value:          fact.enumStrings.length === 0    ? fact.valueString + " " + fact.units
+                              : fact.bitmaskStrings.length !== 0 ? fact.selectedBitmaskStrings.join(", ")
+                                                                 : fact.enumStringValue
+                onClicked: {
                     _editorDialogFact = fact
                     editorDialogComponent.createObject(mainWindow).open()
+                }
+
+                Rectangle {
+                    anchors.verticalCenter: parent.verticalCenter
+                    width:                  ScreenTools.defaultFontPixelHeight * 0.45
+                    height:                 width
+                    radius:                 width / 2
+                    color:                  qgcPal.colorOrange
+                    visible:                fact.defaultValueAvailable && !fact.valueEqualsDefault
                 }
             }
         }

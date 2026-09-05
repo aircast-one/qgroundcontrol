@@ -29,6 +29,7 @@ SetupPage {
             width:              availableWidth
             height:             elementsRow.height * 1.5
             color:              qgcPal.windowShade
+            radius:              ScreenTools.defaultFontPixelHeight * 0.9
 
             GridLayout {
                 id:               elementsRow

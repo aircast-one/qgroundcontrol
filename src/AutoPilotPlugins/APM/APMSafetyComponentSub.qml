@@ -36,7 +36,6 @@ SetupPage {
 
             property bool _firmware34:       globals.activeVehicle.versionCompare(3, 5, 0) < 0
 
-            // Enable/Action parameters
             property Fact _failsafeBatteryEnable:     controller.getParameterFact(-1, "r.BATT_FS_LOW_ACT", false)
             property Fact _failsafeEKFEnable:         controller.getParameterFact(-1, "FS_EKF_ACTION")
             property Fact _failsafeGCSEnable:         controller.getParameterFact(-1, "FS_GCS_ENABLE")
@@ -45,7 +44,6 @@ SetupPage {
             property Fact _failsafePressureEnable:    controller.getParameterFact(-1, "FS_PRESS_ENABLE")
             property Fact _failsafeTemperatureEnable: controller.getParameterFact(-1, "FS_TEMP_ENABLE")
 
-            // Threshold parameters
             property Fact _failsafePressureThreshold:    controller.getParameterFact(-1, "FS_PRESS_MAX")
             property Fact _failsafeTemperatureThreshold: controller.getParameterFact(-1, "FS_TEMP_MAX")
             property Fact _failsafePilotTimeout:         _firmware34 ? null : controller.getParameterFact(-1, "FS_PILOT_TIMEOUT")
@@ -75,6 +73,7 @@ SetupPage {
                     width:  flowLayout.width
                     height: childrenRect.height + _margins
                     color:  ggcPal.windowShade
+                    radius:  ScreenTools.defaultFontPixelHeight * 0.9
 
                     Column {
                         anchors.top: failsafeRectangle.top
@@ -345,9 +344,9 @@ SetupPage {
                                 fact:               _failsafePressureThreshold
                             }
                         }
-                    } // Column - Failsafe Settings
-                }// Rectangle - Failsafe Settings
-            } // Column - Failsafe Settings
+                    }
+                }
+            }
 
             Column {
                 spacing: _margins / 2
@@ -361,6 +360,7 @@ SetupPage {
                     width:  flowLayout.width
                     height: armingCheckInnerColumn.height + (_margins * 2)
                     color:  ggcPal.windowShade
+                    radius:  ScreenTools.defaultFontPixelHeight * 0.9
 
                     Column {
                         id:                 armingCheckInnerColumn
@@ -388,8 +388,8 @@ SetupPage {
                             visible:        _armingCheck.value != 1
                         }
                     }
-                } // Rectangle - Arming checks
-            } // Column - Arming Checks
-        } // Flow
-    } // Component - safetyPageComponent
-} // SetupView
+                }
+            }
+        }
+    }
+}

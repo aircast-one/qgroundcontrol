@@ -91,7 +91,7 @@ qt_add_qml_module(QGroundControlControlsModule
         FlightModeMenu.qml
         HeightIndicator.qml
         HorizontalFactValueGrid.qml
-        IndicatorButton.qml
+        SetupSheet.qml
         InstrumentValueEditDialog.qml
         InstrumentValueLabel.qml
         InstrumentValueValue.qml

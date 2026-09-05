@@ -58,6 +58,7 @@ SetupPage {
                     width:  throttleEnableCombo.x + throttleEnableCombo.width + _margins
                     height: crashCheckCombo.y + crashCheckCombo.height + _margins
                     color:  ggcPal.windowShade
+                    radius:  ScreenTools.defaultFontPixelHeight * 0.9
 
                     QGCLabel {
                         id:                 gcsEnableLabel
@@ -132,8 +133,8 @@ SetupPage {
 
                         onActivated: (index) => { _failsafeCrashCheck.value = index }
                     }
-                 } // Rectangle - Failsafe Settings
-            } // Column - Failsafe Settings
+                 }
+            }
 
             Column {
                 spacing: _margins / 2
@@ -147,6 +148,7 @@ SetupPage {
                     width:  flowLayout.width
                     height: armingCheckInnerColumn.height + (_margins * 2)
                     color:  ggcPal.windowShade
+                    radius:  ScreenTools.defaultFontPixelHeight * 0.9
 
                     Column {
                         id:                 armingCheckInnerColumn
@@ -174,8 +176,8 @@ SetupPage {
                             visible:        _armingCheck.value != 1
                         }
                     }
-                } // Rectangle - Arming checks
-            } // Column - Arming Checks
-        } // Flow
-    } // Component - safetyPageComponent
-} // SetupView
+                }
+            }
+        }
+    }
+}

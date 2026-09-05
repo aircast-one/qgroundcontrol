@@ -34,33 +34,32 @@ SetupPage {
             QGCPalette { id: ggcPal; colorGroupEnabled: true }
 
             property Fact _batt1Monitor:                    controller.getParameterFact(-1, "BATT_MONITOR")
-            property Fact _batt2Monitor:                    controller.getParameterFact(-1, "BATT2_MONITOR", false /* reportMissing */)
+            property Fact _batt2Monitor:                    controller.getParameterFact(-1, "BATT2_MONITOR", false )
             property bool _batt2MonitorAvailable:           controller.parameterExists(-1, "BATT2_MONITOR")
             property bool _batt1MonitorEnabled:             _batt1Monitor.rawValue !== 0
             property bool _batt2MonitorEnabled:             _batt2MonitorAvailable ? _batt2Monitor.rawValue !== 0 : false
             property bool _batt1ParamsAvailable:            controller.parameterExists(-1, "BATT_CAPACITY")
             property bool _batt2ParamsAvailable:            controller.parameterExists(-1, "BATT2_CAPACITY")
 
-            property Fact _failsafeBatt1LowAct:             controller.getParameterFact(-1, "BATT_FS_LOW_ACT", false /* reportMissing */)
-            property Fact _failsafeBatt2LowAct:             controller.getParameterFact(-1, "BATT2_FS_LOW_ACT", false /* reportMissing */)
-            property Fact _failsafeBatt1CritAct:            controller.getParameterFact(-1, "BATT_FS_CRT_ACT", false /* reportMissing */)
-            property Fact _failsafeBatt2CritAct:            controller.getParameterFact(-1, "BATT2_FS_CRT_ACT", false /* reportMissing */)
-            property Fact _failsafeBatt1LowMah:             controller.getParameterFact(-1, "BATT_LOW_MAH", false /* reportMissing */)
-            property Fact _failsafeBatt2LowMah:             controller.getParameterFact(-1, "BATT2_LOW_MAH", false /* reportMissing */)
-            property Fact _failsafeBatt1CritMah:            controller.getParameterFact(-1, "BATT_CRT_MAH", false /* reportMissing */)
-            property Fact _failsafeBatt2CritMah:            controller.getParameterFact(-1, "BATT2_CRT_MAH", false /* reportMissing */)
-            property Fact _failsafeBatt1LowVoltage:         controller.getParameterFact(-1, "BATT_LOW_VOLT", false /* reportMissing */)
-            property Fact _failsafeBatt2LowVoltage:         controller.getParameterFact(-1, "BATT2_LOW_VOLT", false /* reportMissing */)
-            property Fact _failsafeBatt1CritVoltage:        controller.getParameterFact(-1, "BATT_CRT_VOLT", false /* reportMissing */)
-            property Fact _failsafeBatt2CritVoltage:        controller.getParameterFact(-1, "BATT2_CRT_VOLT", false /* reportMissing */)
+            property Fact _failsafeBatt1LowAct:             controller.getParameterFact(-1, "BATT_FS_LOW_ACT", false )
+            property Fact _failsafeBatt2LowAct:             controller.getParameterFact(-1, "BATT2_FS_LOW_ACT", false )
+            property Fact _failsafeBatt1CritAct:            controller.getParameterFact(-1, "BATT_FS_CRT_ACT", false )
+            property Fact _failsafeBatt2CritAct:            controller.getParameterFact(-1, "BATT2_FS_CRT_ACT", false )
+            property Fact _failsafeBatt1LowMah:             controller.getParameterFact(-1, "BATT_LOW_MAH", false )
+            property Fact _failsafeBatt2LowMah:             controller.getParameterFact(-1, "BATT2_LOW_MAH", false )
+            property Fact _failsafeBatt1CritMah:            controller.getParameterFact(-1, "BATT_CRT_MAH", false )
+            property Fact _failsafeBatt2CritMah:            controller.getParameterFact(-1, "BATT2_CRT_MAH", false )
+            property Fact _failsafeBatt1LowVoltage:         controller.getParameterFact(-1, "BATT_LOW_VOLT", false )
+            property Fact _failsafeBatt2LowVoltage:         controller.getParameterFact(-1, "BATT2_LOW_VOLT", false )
+            property Fact _failsafeBatt1CritVoltage:        controller.getParameterFact(-1, "BATT_CRT_VOLT", false )
+            property Fact _failsafeBatt2CritVoltage:        controller.getParameterFact(-1, "BATT2_CRT_VOLT", false )
 
             property Fact _armingCheck: controller.getParameterFact(-1, "ARMING_CHECK")
 
             property real _margins:         ScreenTools.defaultFontPixelHeight
             property real _innerMargin:     _margins / 2
             property bool _showIcon:        !ScreenTools.isTinyScreen
-            property bool _roverFirmware:   controller.parameterExists(-1, "MODE1") // This catches all usage of ArduRover firmware vehicle types: Rover, Boat...
-
+            property bool _roverFirmware:   controller.parameterExists(-1, "MODE1")
 
             property string _restartRequired: qsTr("Requires vehicle reboot")
 
@@ -96,7 +95,6 @@ SetupPage {
                             Layout.fillWidth:   true
                         }
 
-
                         QGCLabel { text: qsTr("Critical voltage threshold:") }
                         FactTextField {
                             fact:               failsafeBattCritVoltage
@@ -117,8 +115,8 @@ SetupPage {
                             showUnits:          true
                             Layout.fillWidth:   true
                         }
-                    } // GridLayout
-                } // Column
+                    }
+                }
             }
 
             Component {
@@ -151,6 +149,7 @@ SetupPage {
                     width:  battery1FailsafeLoader.x + battery1FailsafeLoader.width + _margins
                     height: battery1FailsafeLoader.y + battery1FailsafeLoader.height + _margins
                     color:  ggcPal.windowShade
+                    radius:  ScreenTools.defaultFontPixelHeight * 0.9
 
                     Loader {
                         id:                 battery1FailsafeLoader
@@ -168,9 +167,8 @@ SetupPage {
                         property Fact failsafeBattLowVoltage:   _failsafeBatt1LowVoltage
                         property Fact failsafeBattCritVoltage:  _failsafeBatt1CritVoltage
                     }
-                } // Rectangle
-            } // Column - Battery Failsafe Settings
-
+                }
+            }
 
             Column {
                 spacing: _margins / 2
@@ -185,6 +183,7 @@ SetupPage {
                     width:  battery2FailsafeLoader.x + battery2FailsafeLoader.width + _margins
                     height: battery2FailsafeLoader.y + battery2FailsafeLoader.height + _margins
                     color:  ggcPal.windowShade
+                    radius:  ScreenTools.defaultFontPixelHeight * 0.9
 
                     Loader {
                         id:                 battery2FailsafeLoader
@@ -202,8 +201,8 @@ SetupPage {
                         property Fact failsafeBattLowVoltage:   _failsafeBatt2LowVoltage
                         property Fact failsafeBattCritVoltage:  _failsafeBatt2CritVoltage
                     }
-                } // Rectangle
-            } // Column - Battery Failsafe Settings
+                }
+            }
 
             Component {
                 id: planeGeneralFS
@@ -224,6 +223,7 @@ SetupPage {
                         width:  fsColumn.x + fsColumn.width + _margins
                         height: fsColumn.y + fsColumn.height + _margins
                         color:  qgcPal.windowShade
+                        radius:  ScreenTools.defaultFontPixelHeight * 0.9
 
                         ColumnLayout {
                             id:                 fsColumn
@@ -253,8 +253,8 @@ SetupPage {
                                 onClicked:  _failsafeGCSEnable.value = checked ? 1 : 0
                             }
                         }
-                    } // Rectangle - Failsafe trigger settings
-                } // Column - Failsafe trigger settings
+                    }
+                }
             }
 
             Loader {
@@ -284,6 +284,7 @@ SetupPage {
                         width:  fsGrid.x + fsGrid.width + _margins
                         height: fsGrid.y + fsGrid.height + _margins
                         color:  ggcPal.windowShade
+                        radius:  ScreenTools.defaultFontPixelHeight * 0.9
 
                         GridLayout {
                             id:                 fsGrid
@@ -319,8 +320,8 @@ SetupPage {
                                 indexModel:         false
                             }
                         }
-                    } // Rectangle - Failsafe Settings
-                } // Column - Failsafe Settings
+                    }
+                }
             }
 
             Loader {
@@ -334,9 +335,9 @@ SetupPage {
                     spacing: _margins / 2
 
                     property Fact _failsafeGCSEnable:               controller.getParameterFact(-1, "FS_GCS_ENABLE")
-                    property Fact _failsafeBattLowAct:              controller.getParameterFact(-1, "r.BATT_FS_LOW_ACT", false /* reportMissing */)
-                    property Fact _failsafeBattMah:                 controller.getParameterFact(-1, "r.BATT_LOW_MAH", false /* reportMissing */)
-                    property Fact _failsafeBattVoltage:             controller.getParameterFact(-1, "r.BATT_LOW_VOLT", false /* reportMissing */)
+                    property Fact _failsafeBattLowAct:              controller.getParameterFact(-1, "r.BATT_FS_LOW_ACT", false )
+                    property Fact _failsafeBattMah:                 controller.getParameterFact(-1, "r.BATT_LOW_MAH", false )
+                    property Fact _failsafeBattVoltage:             controller.getParameterFact(-1, "r.BATT_LOW_VOLT", false )
                     property Fact _failsafeThrEnable:               controller.getParameterFact(-1, "FS_THR_ENABLE")
                     property Fact _failsafeThrValue:                controller.getParameterFact(-1, "FS_THR_VALUE")
 
@@ -349,6 +350,7 @@ SetupPage {
                         width:  generalFailsafeColumn.x + generalFailsafeColumn.width + _margins
                         height: generalFailsafeColumn.y + generalFailsafeColumn.height + _margins
                         color:  ggcPal.windowShade
+                        radius:  ScreenTools.defaultFontPixelHeight * 0.9
 
                         Column {
                             id:                 generalFailsafeColumn
@@ -385,10 +387,10 @@ SetupPage {
                                     showUnits:          true
                                     Layout.fillWidth:   true
                                 }
-                            } // GridLayout
-                        } // Column
-                    } // Rectangle - Failsafe Settings
-                } // Column - General Failsafe Settings
+                            }
+                        }
+                    }
+                }
             }
 
             Loader {
@@ -421,6 +423,7 @@ SetupPage {
                         width:  mainLayout.width + (_margins * 2)
                         height: mainLayout.height + (_margins * 2)
                         color:  ggcPal.windowShade
+                        radius:  ScreenTools.defaultFontPixelHeight * 0.9
 
                         ColumnLayout {
                             id:         mainLayout
@@ -490,7 +493,7 @@ SetupPage {
                                     height: 1
                                     width:  1
                                 }
-                            } // GridLayout
+                            }
 
                             Item {
                                 height: 1
@@ -519,8 +522,8 @@ SetupPage {
                                 }
                             }
                         }
-                    } // Rectangle - GeoFence Settings
-                } // Column - GeoFence Settings
+                    }
+                }
             }
 
             Loader {
@@ -549,6 +552,7 @@ SetupPage {
                         width:  landSpeedField.x + landSpeedField.width + _margins
                         height: landSpeedField.y + landSpeedField.height + _margins
                         color:  ggcPal.windowShade
+                        radius:  ScreenTools.defaultFontPixelHeight * 0.9
 
                         QGCColoredImage {
                             id:                 icon
@@ -646,8 +650,8 @@ SetupPage {
                             fact:               _landSpeedFact
                             showUnits:          true
                         }
-                    } // Rectangle - RTL Settings
-                } // Column - RTL Settings
+                    }
+                }
             }
 
             Loader {
@@ -677,6 +681,7 @@ SetupPage {
                         width:  rltAltField.x + rltAltField.width + _margins
                         height: rltAltField.y + rltAltField.height + _margins
                         color:  qgcPal.windowShade
+                        radius:  ScreenTools.defaultFontPixelHeight * 0.9
 
                         QGCRadioButton {
                             id:                 returnAtCurrentRadio
@@ -709,8 +714,8 @@ SetupPage {
                             showUnits:          true
                             enabled:            returnAltRadio.checked
                         }
-                    } // Rectangle - RTL Settings
-                } // Column - RTL Settings
+                    }
+                }
             }
 
             Loader {
@@ -729,6 +734,7 @@ SetupPage {
                     width:  flowLayout.width
                     height: armingCheckInnerColumn.height + (_margins * 2)
                     color:  ggcPal.windowShade
+                    radius:  ScreenTools.defaultFontPixelHeight * 0.9
 
                     Column {
                         id:                 armingCheckInnerColumn
@@ -756,8 +762,8 @@ SetupPage {
                             visible:        _armingCheck.value != 1
                         }
                     }
-                } // Rectangle - Arming checks
-            } // Column - Arming Checks
-        } // Flow
-    } // Component - safetyPageComponent
-} // SetupView
+                }
+            }
+        }
+    }
+}

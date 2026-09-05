@@ -31,7 +31,6 @@ SetupPage {
                 spacing:                    ScreenTools.defaultFontPixelHeight
                 implicitWidth:              _leftColumnWidth
 
-                // mixer ui
                 RowLayout {
                     width:                      _leftColumnWidth
                     visible:                    actuators.mixer.groups.count > 0
@@ -55,6 +54,7 @@ SetupPage {
                     implicitWidth:          _leftColumnWidth
                     implicitHeight:         mixerUi.height + (_margins * 2)
                     color:                  qgcPal.windowShade
+                    radius:                  ScreenTools.defaultFontPixelHeight * 0.9
                     visible:                actuators.mixer.groups.count > 0
 
                     Column {
@@ -92,7 +92,6 @@ SetupPage {
                                         text:   ""
                                     }
 
-                                    // param config labels
                                     Repeater {
                                         model:              mixerGroup.channelConfigs
                                         QGCLabel {
@@ -102,7 +101,6 @@ SetupPage {
                                             Layout.column:  1 + index
                                         }
                                     }
-                                    // param instances
                                     Repeater {
                                         model:              mixerGroup.channels
                                         QGCLabel {
@@ -130,7 +128,6 @@ SetupPage {
                                     }
                                 }
 
-                                // extra group config params
                                 Repeater {
                                     model: mixerGroup.configParams
 
@@ -151,7 +148,6 @@ SetupPage {
                     }
                 }
 
-                // actuator image
                 Image {
                     id:                     actuatorImage
                     source:                 "image://actuators/geometry"+refreshFlag
@@ -176,7 +172,6 @@ SetupPage {
                     }
                 }
 
-                // actuator testing
                 QGCLabel {
                     text:               qsTr("Actuator Testing")
                     font.pointSize:     ScreenTools.mediumFontPointSize
@@ -186,6 +181,7 @@ SetupPage {
                     implicitWidth:            _leftColumnWidth
                     implicitHeight:           actuatorTesting.height + (_margins * 2)
                     color:                    qgcPal.windowShade
+                    radius:                    ScreenTools.defaultFontPixelHeight * 0.9
 
                     Column {
                         id:                   actuatorTesting
@@ -236,13 +232,12 @@ SetupPage {
                                 color:  qgcPal.warningText
                                 text: safetySwitch.checked ? qsTr("Careful: Actuator sliders are enabled") : qsTr("Propellers are removed - Enable sliders")
                             }
-                        } // Row
+                        }
 
                         Row {
                             spacing: ScreenTools.defaultFontPixelWidth * 2
                             enabled: safetySwitch.checked
 
-                            // (optional) slider for all motors
                             Loader {
                                 id:                allMotorsLoader
                                 sourceComponent:   actuators.actuatorTest.allMotorsActuator ?  allMotorsComponent : null
@@ -265,7 +260,6 @@ SetupPage {
                                 }
                             }
 
-                            // all channels
                             Repeater {
                                 id:         sliderRepeater
                                 model:      actuators.actuatorTest.actuators
@@ -281,10 +275,9 @@ SetupPage {
                                         }
                                     }
                                 }
-                            } // Repeater
-                        } // Row
+                            }
+                        }
 
-                        // actuator actions
                         Column {
                             visible: actuators.actuatorActions.count > 0
                             enabled: !safetySwitch.checked && !actuators.motorAssignmentActive
@@ -314,13 +307,12 @@ SetupPage {
                                 }
                             }
 
-                        } // Column
+                        }
 
-                    } // Column
-                } // Rectangle
+                    }
+                }
             }
 
-            // Right column
             Column {
                 QGCLabel {
                     text:               qsTr("Actuator Outputs")
@@ -334,8 +326,6 @@ SetupPage {
                     bottomPadding: ScreenTools.defaultFontPixelHeight
                 }
 
-
-                // actuator output selection tabs
                 QGCTabBar {
                     Repeater {
                         model: actuators.actuatorOutputs
@@ -349,12 +339,12 @@ SetupPage {
                     }
                 }
 
-                // actuator outputs
                 Rectangle {
                     id:                             selActuatorOutput
                     implicitWidth:                  actuatorGroupColumn.width + (_margins * 2)
                     implicitHeight:                 actuatorGroupColumn.height + (_margins * 2)
                     color:                          qgcPal.windowShade
+                    radius:                          ScreenTools.defaultFontPixelHeight * 0.9
 
                     property var actuatorOutput:    actuators.selectedActuatorOutput
 
@@ -363,7 +353,6 @@ SetupPage {
                         spacing:          _margins
                         anchors.centerIn: parent
 
-                        // Motor assignment
                         Row {
                             visible:           actuators.isMultirotor
                             enabled:           !safetySwitch.checked
@@ -384,7 +373,6 @@ SetupPage {
                                 MessageDialog {
                                     id:         motorAssignmentConfirmDialog
                                     visible:    false
-                                    //icon:       StandardIcon.Warning
                                     buttons:    MessageDialog.Yes | MessageDialog.No
                                     title:      qsTr("Motor Order Identification and Assignment")
                                     text:       actuators.motorAssignmentMessage
@@ -399,7 +387,6 @@ SetupPage {
                                 MessageDialog {
                                     id:         motorAssignmentFailureDialog
                                     visible:    false
-                                    //icon:       StandardIcon.Critical
                                     buttons:    MessageDialog.Ok
                                     title:      qsTr("Error")
                                     text:       actuators.motorAssignmentMessage
@@ -437,7 +424,6 @@ SetupPage {
                                 }
                             }
 
-
                             Repeater {
                                 model: selActuatorOutput.actuatorOutput.subgroups
 
@@ -467,7 +453,6 @@ SetupPage {
                                             text: ""
                                         }
 
-                                        // param config labels
                                         Repeater {
                                             model: subgroup.channelConfigs
                                             QGCLabel {
@@ -477,7 +462,6 @@ SetupPage {
                                                 Layout.column:  1 + index
                                             }
                                         }
-                                        // param instances
                                         Repeater {
                                             model: subgroup.channels
                                             QGCLabel {
@@ -502,7 +486,6 @@ SetupPage {
                                         }
                                     }
 
-                                    // extra subgroup config params
                                     Repeater {
                                         model: subgroup.configParams
 
@@ -517,9 +500,8 @@ SetupPage {
                                     }
 
                                 }
-                            } // subgroup Repeater
+                            }
 
-                            // extra actuator config params
                             Repeater {
                                 model: selActuatorOutput.actuatorOutput.configParams
 
@@ -533,7 +515,6 @@ SetupPage {
                                 }
                             }
 
-                            // notes
                             Repeater {
                                 model: selActuatorOutput.actuatorOutput.notes
                                 ColumnLayout {
@@ -546,9 +527,9 @@ SetupPage {
                             }
                         }
                     }
-                } // Rectangle
-            } // Column
-        } // Row
+                }
+            }
+        }
 
     }
 }
