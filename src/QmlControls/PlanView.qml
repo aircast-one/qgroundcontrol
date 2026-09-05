@@ -836,14 +836,28 @@ Item {
             width:                  _rightPanelWidth
             anchors.top:            parent.top
             anchors.topMargin:      planToolBar.height + _panelMargin
-            anchors.bottom:         parent.bottom
-            anchors.bottomMargin:   _panelMargin
             anchors.right:          parent.right
             anchors.rightMargin:    _panelMargin
+            height:                 Math.min(_wantedHeight, _availableHeight)
             z:                      QGroundControl.zOrderWidgets
             visible:                _editingLayer !== 0
 
             readonly property real _padding: ScreenTools.defaultFontPixelHeight * 0.7
+
+            readonly property real _availableHeight: _root.height - anchors.topMargin - _panelMargin -
+                                                         (_terrainProfileOpen ? _terrainProfileHeight + _panelMargin : 0)
+
+            readonly property real _wantedHeight: (layerSelector.visible ? layerSelector.height + _padding : 0) +
+                                                      _padding * 2 + _bodyHeight
+
+            readonly property real _bodyHeight: missionItemEditor.visible ? missionItemEditor.contentHeight
+                                              : itemDetail.visible        ? itemDetail.wantedHeight
+                                              : fenceEditor.visible       ? fenceEditor.contentHeight
+                                              : rallyEditor.visible       ? rallyEditor.contentHeight
+                                              // The UTM-SP editor wants the whole panel, and
+                                              // asking it how tall it is would be asking the panel
+                                              // how tall the panel is.
+                                                                          : _availableHeight
 
             Rectangle {
                 anchors.fill:   parent
@@ -1004,6 +1018,10 @@ Item {
                     anchors.fill:   parent
                     visible:        _editingLayer === _layerMission && _showItemDetail
 
+                    readonly property real wantedHeight: detailHeader.height +
+                                                             ScreenTools.defaultFontPixelHeight * 0.4 +
+                                                             detailColumn.height
+
                     Item {
                         id:             detailHeader
                         anchors.top:    parent.top
@@ -1096,6 +1114,7 @@ Item {
 
                 // GeoFence Editor
                 GeoFenceEditor {
+                    id:                     fenceEditor
                     anchors.top:            parent.top
                     anchors.bottom:         parent.bottom
                     anchors.left:           parent.left
@@ -1106,6 +1125,7 @@ Item {
                 }
 
                 RallyPointEditor {
+                    id:                     rallyEditor
                     anchors.fill:   parent
                     visible:        _editingLayer === _layerRallyPoints
                     controller:     _rallyPointController
