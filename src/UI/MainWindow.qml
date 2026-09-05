@@ -345,6 +345,20 @@ ApplicationWindow {
                     }
 
                     OverlayMenuItem {
+                        objectName:         "toolMenuVehicleSetup"
+                        Layout.fillWidth:   true
+                        icon:               "/InstrumentValueIcons/wrench.svg"
+                        contentColor:       indicatorDrawer.contentColor
+                        text:               qsTr("Vehicle Setup")
+                        onClicked: {
+                            if (mainWindow.allowViewSwitch()) {
+                                mainWindow.closeIndicatorDrawer()
+                                mainWindow.showVehicleConfig()
+                            }
+                        }
+                    }
+
+                    OverlayMenuItem {
                         Layout.fillWidth:   true
                         icon:               "/InstrumentValueIcons/chart-bar.svg"
                         contentColor:       indicatorDrawer.contentColor
