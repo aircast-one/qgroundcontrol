@@ -452,65 +452,66 @@ Item {
             onTriggered: _resetGeofencePolygon = true
         }
 
-        //-----------------------------------------------------------
-        // Left dock: file · edit · view. The strip used to be a column of labelled tiles pinned
-        // to the top-left corner, sized by its own maxHeight against the window. A dock is one
-        // object centred on the edge it belongs to, and the hairlines say which buttons are
-        // about the file, which edit the plan, and which only move the camera.
-        Rectangle {
+        Column {
             id:                     dock
             anchors.left:           parent.left
             anchors.leftMargin:     _panelMargin
             anchors.verticalCenter: parent.verticalCenter
-            width:                  dockColumn.width + _dockPadding * 2
-            height:                 dockColumn.height + _dockPadding * 2
-            radius:                 width / 2
-            color:                  "transparent"
+            spacing:                ScreenTools.defaultFontPixelHeight * 0.6
             z:                      QGroundControl.zOrderWidgets
-            layer.enabled:          true
-            layer.effect:           OverlayShadowEffect { elevated: true }
 
-            readonly property real _dockPadding: ScreenTools.defaultFontPixelHeight * 0.35
+            readonly property real  _cell:   Math.max(ScreenTools.minTouchPixels, ScreenTools.defaultFontPixelHeight * 2.4)
+            readonly property real  _radius: ScreenTools.defaultFontPixelHeight * 0.7
+            readonly property color _ink:    OverlayBackdrop.isDark ? _qgcPal.text : _qgcPal.window
 
-            OverlayGlass {
-                id:            dockGlass
-                anchors.fill:  parent
-                radius:        parent.radius
-                lightMaterial: false
-                tint:          Qt.alpha(_qgcPal.window, 0.72)
-                minTint:       0.7
-                maxTint:       0.92
+            component DockCapsule: OverlayCapsule {
+                default property alias buttons: stack.data
+
+                width:  dock._cell
+                height: stack.height
+                radius: dock._radius
+
+                Column {
+                    id:      stack
+                    width:   parent.width
+                    spacing: 0
+                }
             }
 
-            component DockButton: Rectangle {
-                id:      dockButton
-                width:   Math.max(ScreenTools.minTouchPixels, ScreenTools.defaultFontPixelHeight * 2.2)
-                height:  width
-                radius:  width / 2
-                color:   !dockButton.enabled       ? "transparent"
-                       : dockButton.checked        ? Qt.alpha(_qgcPal.primaryButton, 0.34)
-                       : dockMouseArea.containsMouse ? Qt.alpha(_qgcPal.text, 0.08)
-                                                     : "transparent"
+            component DockButton: Item {
+                id:     dockButton
+                width:  dock._cell
+                height: dock._cell
 
                 property string icon
                 property bool   checked: false
 
                 signal clicked()
 
-                Behavior on color { ColorAnimation { duration: 120 } }
+                Rectangle {
+                    anchors.fill:    parent
+                    anchors.margins: ScreenTools.defaultFontPixelHeight * 0.18
+                    radius:          dock._radius - anchors.margins
+                    color:  !dockButton.enabled         ? "transparent"
+                          : dockButton.checked          ? Qt.alpha(_qgcPal.primaryButton, 0.28)
+                          : dockMouseArea.containsMouse ? Qt.alpha(dock._ink, 0.08)
+                                                        : "transparent"
+
+                    Behavior on color { ColorAnimation { duration: 120 } }
+                }
 
                 QGCColoredImage {
                     anchors.centerIn:   parent
                     source:             dockButton.icon
-                    height:             parent.height * 0.5
+                    height:             parent.height * 0.52
                     width:              height
                     sourceSize.height:  height
                     fillMode:           Image.PreserveAspectFit
                     mipmap:             true
                     smooth:             true
-                    color:              !dockButton.enabled ? Qt.alpha(_qgcPal.text, 0.35)
+                    color:              !dockButton.enabled ? Qt.alpha(dock._ink, 0.35)
                                       : dockButton.checked  ? _qgcPal.primaryButton
-                                                            : _qgcPal.text
+                                                            : dock._ink
                 }
 
                 QGCMouseArea {
@@ -522,18 +523,13 @@ Item {
                 }
             }
 
-            component DockSeparator: Rectangle {
-                anchors.horizontalCenter: parent ? parent.horizontalCenter : undefined
-                width:  ScreenTools.defaultFontPixelHeight * 1.4
+            component DockHairline: Rectangle {
+                width:  dock._cell
                 height: 1
-                color:  Qt.alpha(_qgcPal.text, 0.12)
+                color:  Qt.alpha(dock._ink, 0.12)
             }
 
-            Column {
-                id:                 dockColumn
-                anchors.centerIn:   parent
-                spacing:            ScreenTools.defaultFontPixelHeight * 0.22
-
+            DockCapsule {
                 DockButton {
                     id:         fileButton
                     objectName: "planDockFile"
@@ -544,8 +540,10 @@ Item {
                         fileMenu.openFrom(fileButton)
                     }
                 }
+            }
 
-                DockSeparator {}
+            DockCapsule {
+                visible: _editingLayer !== _layerGeoFence
 
                 DockButton {
                     id:         addWaypointButton
@@ -561,6 +559,8 @@ Item {
                     }
                 }
 
+                DockHairline { visible: addWaypointButton.visible && addButton.visible }
+
                 DockButton {
                     id:         addButton
                     objectName: "planDockAdd"
@@ -572,15 +572,17 @@ Item {
                         addMenu.openFrom(addButton)
                     }
                 }
+            }
 
-                DockSeparator {}
-
+            DockCapsule {
                 DockButton {
                     id:         centerButton
                     objectName: "planDockCenter"
                     icon:      "/qmlimages/MapCenter.svg"
                     onClicked: centerMenu.openFrom(centerButton)
                 }
+
+                DockHairline {}
 
                 DockButton {
                     id:         mapTypeButton
