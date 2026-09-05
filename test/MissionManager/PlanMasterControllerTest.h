@@ -27,6 +27,7 @@ private slots:
     void _testMissionFileLoad(void);
     void _testMissionPlannerFileLoad(void);
     void _testActiveVehicleChanged(void);
+    void _testUndo(void);
 
 private:
     PlanMasterController*   _masterController;

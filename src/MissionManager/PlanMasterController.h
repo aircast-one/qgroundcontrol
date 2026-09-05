@@ -11,6 +11,7 @@
 
 #include <QtCore/QObject>
 #include <QtCore/QLoggingCategory>
+#include <QtCore/QTimer>
 
 #include "MissionController.h"
 #include "GeoFenceController.h"
@@ -54,6 +55,7 @@ public:
     Q_PROPERTY(QStringList              loadNameFilters         READ loadNameFilters                        CONSTANT)                       ///< File filter list loading plan files
     Q_PROPERTY(QStringList              saveNameFilters         READ saveNameFilters                        CONSTANT)                       ///< File filter list saving plan files
     Q_PROPERTY(QmlObjectListModel*      planCreators            MEMBER _planCreators                        NOTIFY planCreatorsChanged)
+    Q_PROPERTY(bool                     canUndo                 READ canUndo                                NOTIFY canUndoChanged)
 
     /// Should be called immediately upon Component.onCompleted.
     Q_INVOKABLE void start(void);
@@ -83,6 +85,8 @@ public:
     Q_INVOKABLE void saveToKml(const QString& filename);
     Q_INVOKABLE void removeAll(void);                       ///< Removes all from controller only, synce required to remove from vehicle
     Q_INVOKABLE void removeAllFromVehicle(void);            ///< Removes all from vehicle and controller
+    Q_INVOKABLE void undo(void);
+    Q_INVOKABLE void captureUndoSnapshot(void);
 
     MissionController*      missionController(void)     { return &_missionController; }
     GeoFenceController*     geoFenceController(void)    { return &_geoFenceController; }
@@ -99,6 +103,7 @@ public:
     QStringList loadNameFilters (void) const;
     QStringList saveNameFilters (void) const;
     bool        isEmpty         (void) const;
+    bool        canUndo         (void) const { return !_undoStack.isEmpty(); }
 
     void        setFlyView(bool flyView) { _flyView = flyView; }
 
@@ -122,6 +127,7 @@ signals:
     void planCreatorsChanged                (QmlObjectListModel* planCreators);
     void managerVehicleChanged              (Vehicle* managerVehicle);
     void promptForPlanUsageOnVehicleChange  (void);
+    void canUndoChanged                     (bool canUndo);
 
 private slots:
     void _activeVehicleChanged      (Vehicle* activeVehicle);
@@ -137,6 +143,7 @@ private slots:
 private:
     void _commonInit                (void);
     void _showPlanFromManagerVehicle(void);
+    bool _loadFromJson              (QJsonObject json, QString& errorString);
 
     MultiVehicleManager*    _multiVehicleMgr =          nullptr;
     Vehicle*                _controllerVehicle =        nullptr;    ///< Offline controller vehicle
@@ -154,4 +161,8 @@ private:
     bool                    _deleteWhenSendCompleted =  false;
     bool                    _previousOverallDirty =     false;
     QmlObjectListModel*     _planCreators =             nullptr;
+    QTimer                  _undoTimer;
+    QList<QByteArray>       _undoStack;
+    QByteArray              _undoBaseline;
+    static constexpr int    kUndoDepth =                100;
 };

@@ -403,6 +403,12 @@ Item {
                               _root.height - planToolBar.height - (_terrainProfileOpen ? _terrainProfileHeight : 0) - (_margin * 2))
         }
 
+        Shortcut {
+            sequence:    StandardKey.Undo
+            enabled:     _root.planActive
+            onActivated: _planMasterController.undo()
+        }
+
         Connections {
             target:  _root.map
             enabled: _root.planActive

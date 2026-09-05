@@ -50,6 +50,21 @@ void PlanMasterControllerTest::_testMissionPlannerFileLoad(void)
     QCOMPARE(_masterController->missionController()->visualItems()->count(), 6);
 }
 
+void PlanMasterControllerTest::_testUndo(void)
+{
+    _masterController->captureUndoSnapshot();
+    QVERIFY(!_masterController->canUndo());
+
+    _masterController->loadFromFile(":/unittest/OldFileFormat.mission");
+    _masterController->captureUndoSnapshot();
+    QVERIFY(_masterController->canUndo());
+    QCOMPARE(_masterController->missionController()->visualItems()->count(), 7);
+
+    _masterController->undo();
+    QVERIFY(!_masterController->canUndo());
+    QCOMPARE(_masterController->missionController()->visualItems()->count(), 1);
+}
+
 void PlanMasterControllerTest::_testActiveVehicleChanged(void) {
     // There was a defect where the PlanMasterController would, upon a new active vehicle,
     // overzelously disconnect all subscribers interested in the outgoing active vechicle.

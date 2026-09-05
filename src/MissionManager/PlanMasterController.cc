@@ -28,6 +28,7 @@
 
 #include <QtCore/QJsonDocument>
 #include <QtCore/QFileInfo>
+#include <QtGui/QGuiApplication>
 
 QGC_LOGGING_CATEGORY(PlanMasterControllerLog, "PlanMasterControllerLog")
 
@@ -74,6 +75,7 @@ void PlanMasterController::_commonInit(void)
 
     // Offline vehicle can change firmware/vehicle type
     connect(_controllerVehicle,     &Vehicle::vehicleTypeChanged,                   this, &PlanMasterController::_updatePlanCreatorsList);
+    connect(&_undoTimer,            &QTimer::timeout,                               this, &PlanMasterController::captureUndoSnapshot);
 }
 
 
@@ -92,6 +94,9 @@ void PlanMasterController::start(void)
     connect(_multiVehicleMgr, &MultiVehicleManager::activeVehicleChanged, this, &PlanMasterController::_activeVehicleChanged);
 
     _updatePlanCreatorsList();
+    if (!_flyView) {
+        _undoTimer.start(500);
+    }
 }
 
 void PlanMasterController::startStaticActiveVehicle(Vehicle* vehicle, bool deleteWhenSendCompleted)
@@ -368,33 +373,9 @@ void PlanMasterController::loadFromFile(const QString& filename)
             return;
         }
 
-        QJsonObject json = jsonDoc.object();
-        //-- Allow plugins to pre process the load
-        QGCCorePlugin::instance()->preLoadFromJson(this, json);
-
-        int version;
-        if (!JsonHelper::validateExternalQGCJsonFile(json, kPlanFileType, kPlanFileVersion, kPlanFileVersion, version, errorString)) {
-            qgcApp()->showAppMessage(errorMessage.arg(errorString));
-            return;
-        }
-
-        QList<JsonHelper::KeyValidateInfo> rgKeyInfo = {
-            { kJsonMissionObjectKey,        QJsonValue::Object, true },
-            { kJsonGeoFenceObjectKey,       QJsonValue::Object, true },
-            { kJsonRallyPointsObjectKey,    QJsonValue::Object, true },
-        };
-        if (!JsonHelper::validateKeys(json, rgKeyInfo, errorString)) {
-            qgcApp()->showAppMessage(errorMessage.arg(errorString));
-            return;
-        }
-
-        if (!_missionController.load(json[kJsonMissionObjectKey].toObject(), errorString) ||
-                !_geoFenceController.load(json[kJsonGeoFenceObjectKey].toObject(), errorString) ||
-                !_rallyPointController.load(json[kJsonRallyPointsObjectKey].toObject(), errorString)) {
+        if (!_loadFromJson(jsonDoc.object(), errorString)) {
             qgcApp()->showAppMessage(errorMessage.arg(errorString));
         } else {
-            //-- Allow plugins to post process the load
-            QGCCorePlugin::instance()->postLoadFromJson(this, json);
             success = true;
         }
     }
@@ -409,6 +390,69 @@ void PlanMasterController::loadFromFile(const QString& filename)
     if (!offline()) {
         setDirty(true);
     }
+}
+
+bool PlanMasterController::_loadFromJson(QJsonObject json, QString& errorString)
+{
+    QGCCorePlugin::instance()->preLoadFromJson(this, json);
+
+    int version;
+    if (!JsonHelper::validateExternalQGCJsonFile(json, kPlanFileType, kPlanFileVersion, kPlanFileVersion, version, errorString)) {
+        return false;
+    }
+
+    QList<JsonHelper::KeyValidateInfo> rgKeyInfo = {
+        { kJsonMissionObjectKey,        QJsonValue::Object, true },
+        { kJsonGeoFenceObjectKey,       QJsonValue::Object, true },
+        { kJsonRallyPointsObjectKey,    QJsonValue::Object, true },
+    };
+    if (!JsonHelper::validateKeys(json, rgKeyInfo, errorString)) {
+        return false;
+    }
+
+    if (!_missionController.load(json[kJsonMissionObjectKey].toObject(), errorString) ||
+            !_geoFenceController.load(json[kJsonGeoFenceObjectKey].toObject(), errorString) ||
+            !_rallyPointController.load(json[kJsonRallyPointsObjectKey].toObject(), errorString)) {
+        return false;
+    }
+
+    QGCCorePlugin::instance()->postLoadFromJson(this, json);
+    return true;
+}
+
+void PlanMasterController::captureUndoSnapshot(void)
+{
+    if (QGuiApplication::mouseButtons() != Qt::NoButton || syncInProgress()) {
+        return;
+    }
+    const QByteArray snapshot = saveToJson().toJson(QJsonDocument::Compact);
+    if (snapshot == _undoBaseline) {
+        return;
+    }
+    if (!_undoBaseline.isEmpty()) {
+        _undoStack.append(_undoBaseline);
+        if (_undoStack.count() > kUndoDepth) {
+            _undoStack.removeFirst();
+        }
+    }
+    _undoBaseline = snapshot;
+    qCDebug(PlanMasterControllerLog) << "captureUndoSnapshot depth" << _undoStack.count();
+    emit canUndoChanged(canUndo());
+}
+
+void PlanMasterController::undo(void)
+{
+    if (_undoStack.isEmpty()) {
+        return;
+    }
+    const QByteArray snapshot = _undoStack.takeLast();
+    qCDebug(PlanMasterControllerLog) << "undo depth" << _undoStack.count();
+    QString errorString;
+    if (!_loadFromJson(QJsonDocument::fromJson(snapshot).object(), errorString)) {
+        qgcApp()->showAppMessage(tr("Undo failed. %1").arg(errorString));
+    }
+    _undoBaseline = saveToJson().toJson(QJsonDocument::Compact);
+    emit canUndoChanged(canUndo());
 }
 
 QJsonDocument PlanMasterController::saveToJson()
