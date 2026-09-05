@@ -38,6 +38,16 @@ MapQuickItem {
     property var    _map:           map
     property bool   _multiVehicle:  QGroundControl.multiVehicleManager.vehicles.count > 1
 
+    Behavior on coordinate {
+        enabled: _adsbVehicle
+        CoordinateAnimation { duration: 1000 }
+    }
+
+    Behavior on heading {
+        enabled: _adsbVehicle && !isNaN(heading)
+        RotationAnimation { direction: RotationAnimation.Shortest; duration: 1000 }
+    }
+
     sourceItem: Item {
         id:         vehicleItem
         width:      vehicleIcon.width
