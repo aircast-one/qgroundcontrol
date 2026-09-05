@@ -446,8 +446,7 @@ ApplicationWindow {
                 radius:         toolPanel.radius
                 visible:        toolDrawer.floating
                 frosted:        mainWindow.flyViewBackdropVisible
-                minTint:        0.78
-                maxTint:        0.95
+                material:       OverlayGlass.Panel
             }
 
             layer.enabled:      toolDrawer.floating

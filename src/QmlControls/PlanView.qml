@@ -903,8 +903,7 @@ Item {
                     // words and far too thin under a panel of forms - over bright imagery the
                     // map reads straight through the labels. Same material, more of it.
                     tint:         Qt.alpha(_qgcPal.window, 0.86)
-                    minTint:      0.82
-                    maxTint:      0.96
+                    material:     OverlayGlass.Panel
                 }
             }
 
@@ -1224,8 +1223,7 @@ Item {
                     // words and far too thin under a panel of forms - over bright imagery the
                     // map reads straight through the labels. Same material, more of it.
                     tint:         Qt.alpha(_qgcPal.window, 0.86)
-                    minTint:      0.82
-                    maxTint:      0.96
+                    material:     OverlayGlass.Panel
                 }
             }
 

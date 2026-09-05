@@ -69,8 +69,6 @@ Item {
         objectName:   "edgeSliderGlass"
         anchors.fill: parent
         radius:       _root._radius
-        minTint:      0.3
-        maxTint:      0.6
     }
 
     readonly property real _fillThick: centered ? _shortSide * 0.2 : _shortSide

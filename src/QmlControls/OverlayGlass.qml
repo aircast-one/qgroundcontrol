@@ -23,34 +23,39 @@ Item {
 
     readonly property color contentColor: lightMaterial ? _qgcPal.window : _qgcPal.text
 
-    // In texels of the sampled backdrop. Scaled with the UI so it does not vanish at 200%.
+    enum Material { Control, Panel }
+
+    property int   material:  OverlayGlass.Control
     property real  blurRadius: ScreenTools.defaultFontPixelHeight * 0.7
-    property real  minTint:   0.35
-    property real  maxTint:   0.85
     property Item  backdrop:  OverlayBackdrop.forItem(_root)
+
+    readonly property bool _panel:   material === OverlayGlass.Panel
+    readonly property real _minTint: _panel ? 0.78 : 0.35
+    readonly property real _maxTint: _panel ? 0.95 : 0.85
 
     readonly property bool active: frosted && _backdrop !== null
 
     readonly property var  _qgcPal:   QGroundControl.globalPalette
     readonly property Item _backdrop: backdrop
 
-    function _originOf(item) {
-        let x = 0
-        let y = 0
+    function _transformKey(item) {
+        let key = 0
         for (let it = item; it; it = it.parent) {
-            x += it.x
-            y += it.y
+            key += it.x + it.y + it.scale + it.rotation
         }
-        return Qt.point(x, y)
+        return key
     }
+
+    readonly property real _transforms: _transformKey(_root) + (_backdrop ? _transformKey(_backdrop) : 0)
 
     readonly property rect _backdropRect: {
         if (!active) {
             return Qt.rect(0, 0, 1, 1)
         }
-        const here = _originOf(_root)
-        const there = _originOf(_backdrop)
-        return Qt.rect(here.x - there.x, here.y - there.y, _root.width, _root.height)
+        void _transforms
+        const topLeft = _root.mapToItem(_backdrop, 0, 0)
+        const bottomRight = _root.mapToItem(_backdrop, _root.width, _root.height)
+        return Qt.rect(topLeft.x, topLeft.y, bottomRight.x - topLeft.x, bottomRight.y - topLeft.y)
     }
 
     Rectangle {
@@ -87,8 +92,8 @@ Item {
         readonly property color   tintColor:  _root.tint
         readonly property vector2d size:      Qt.vector2d(width, height)
         readonly property real    radius:     _root.radius
-        readonly property real    minTint:    _root.minTint
-        readonly property real    maxTint:    _root.maxTint
+        readonly property real    minTint:    _root._minTint
+        readonly property real    maxTint:    _root._maxTint
         readonly property real    rimOpacity: _root.highlight ? 0.55 : 0.3
         readonly property real    refraction: Math.min(_root.radius, 12) * 0.9
         readonly property real    blurRadius: _root.blurRadius

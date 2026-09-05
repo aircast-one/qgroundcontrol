@@ -87,8 +87,7 @@ Rectangle {
         radius:                 _sidebarRadius
         frosted:                mainWindow.flyViewBackdropVisible
         tint:                   QGroundControl.globalPalette.windowShade
-        minTint:                0.78
-        maxTint:                0.94
+        material:               OverlayGlass.Panel
     }
 
     QGCFlickable {

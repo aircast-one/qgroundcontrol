@@ -152,8 +152,7 @@ Popup {
             anchors.fill:   parent
             radius:         dialogSurface.radius
             frosted:        mainWindow.glassBackdropVisible
-            minTint:        0.72
-            maxTint:        0.94
+            material:       OverlayGlass.Panel
         }
     }
 
