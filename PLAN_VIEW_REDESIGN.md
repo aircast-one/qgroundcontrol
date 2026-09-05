@@ -1,8 +1,10 @@
 # Plan View Redesign — Implementation Plan
 
 Goal: rebuild the Plan view with the same Apple-HIG glass overlay language the Fly view already uses.
-Interactive reference mock (canonical for look, spacing, and behavior):
-https://claude.ai/code/artifact/0987ee56-bb62-4b6d-ac38-1308f2d394f5
+
+The design was worked out against an interactive mock which no longer exists. The shipped Plan view
+is now the reference: one map shared with the Fly view, a content-sized glass inspector of grouped
+cards, a glass dock with menus, and the terrain profile as a sheet.
 
 ## Status — phases 1–9 built and verified in the running app
 
@@ -27,15 +29,27 @@ delete row; `RallyPointEditorHeader.qml` and `RallyPointItemEditor.qml` were del
 markers on the map are green to match their seals, since green means "somewhere the vehicle can
 come down" and the accent belongs to the mission it is asked to fly.
 
-Not done, still open (see also the backlog at the end):
-- Phase 8 map furniture: per-leg distance labels on the map, a split handle at *every* leg midpoint
-  (only QGC's single split-segment indicator exists), leg direction arrowheads are the stock
-  `MapLineArrow` rather than the mock's mid-leg triangles.
-- Upload's "blocked — waiting on terrain data" dim state: the button dims for offline / empty /
-  syncing only. Terrain-block still surfaces through the existing dialog rather than a disabled
-  button with a reason, because `readyForSaveState()` is a non-notifying invokable.
-- The complex-item editors themselves (Survey, Corridor, Structure, landing patterns) render
-  inside a glass card but keep their own internal section/grid layout.
+Beyond the phases, the two views were later merged onto one surface: there is a single
+`FlightMap`, owned by `FlyView`, which stays up in both modes while its chrome gates on
+`mainWindow.flyViewActive`. `PlanView` holds no map — it takes `map:` and `planActive:` and adds
+`PlanEditMapItems` to the shared one. The inspector sizes to its content rather than running full
+height, and the vehicle status pill persists across the switch.
+
+Still open:
+- No compact layout: below ~900 px the inspector still takes a third of the width instead of
+  becoming a bottom sheet.
+- The pip is not re-clamped when the window shrinks, so it can swallow the fly view at small sizes
+  (pre-existing, not introduced by this work).
+- No Settings entry while in Plan mode — the only route in is the fly toolbar's overflow menu,
+  which is hidden there.
+- Map furniture: per-leg distance labels, a split handle at *every* leg midpoint (only QGC's single
+  split-segment indicator exists), and leg arrowheads are the stock `MapLineArrow`.
+- Upload's "waiting on terrain data" state surfaces through a dialog rather than a disabled button
+  with a reason, because `readyForSaveState()` is a non-notifying invokable.
+- The complex-item editors (Survey, Corridor, Structure, landing patterns) render inside a glass
+  card but keep their own internal section/grid layout.
+- `PlanView.qml` is ~1300 lines. The remaining bulk is the dock menus, which are tightly coupled to
+  the view's actions and want a deliberate extraction rather than another mechanical splice.
 
 Everything below is the original phase plan, kept as the spec these were built against.
 
