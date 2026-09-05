@@ -133,13 +133,11 @@ QStringList PX4FirmwarePlugin::flightModes(Vehicle* vehicle) const
 
 QString PX4FirmwarePlugin::flightMode(uint8_t base_mode, uint32_t custom_mode) const
 {
-    QString flightMode = "Unknown";
-
     if (base_mode & MAV_MODE_FLAG_CUSTOM_MODE_ENABLED) {
-        return _modeEnumToString.value(custom_mode, tr("Unknown %1:%2").arg(base_mode).arg(custom_mode));
+        return _modeEnumToString.value(custom_mode, tr("Mode %1").arg(custom_mode));
     }
 
-    return flightMode;
+    return QString();
 }
 
 bool PX4FirmwarePlugin::setFlightMode(const QString& flightMode, uint8_t* base_mode, uint32_t* custom_mode) const

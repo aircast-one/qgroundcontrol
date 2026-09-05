@@ -151,7 +151,7 @@
 },
 {
     "name":         "rcControls",
-    "shortDesc":    "User-defined on-screen RC controls as JSON: [{label, channel, type: slider|button}]",
+    "shortDesc":    "User-defined on-screen RC controls as JSON: [{label, channel, type: slider|button|switch3|momentary, orientation: vertical|horizontal}]",
     "type":         "string",
     "default":      "[]"
 }

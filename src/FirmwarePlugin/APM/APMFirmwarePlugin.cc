@@ -111,12 +111,10 @@ QStringList APMFirmwarePlugin::flightModes(Vehicle *vehicle) const
 
 QString APMFirmwarePlugin::flightMode(uint8_t base_mode, uint32_t custom_mode) const
 {
-    QString flightMode = "Unknown";
-
     if (base_mode & MAV_MODE_FLAG_CUSTOM_MODE_ENABLED) {
-        return _modeEnumToString.value(custom_mode, flightMode);
+        return _modeEnumToString.value(custom_mode, tr("Mode %1").arg(custom_mode));
     }
-    return flightMode;
+    return QString();
 }
 
 bool APMFirmwarePlugin::setFlightMode(const QString &flightMode, uint8_t *base_mode, uint32_t *custom_mode) const

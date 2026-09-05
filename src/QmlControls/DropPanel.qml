@@ -71,14 +71,11 @@ Popup {
         implicitWidth:  contentItem.implicitWidth + _innerMargin * 2 + _arrowPointWidth
         implicitHeight: contentItem.implicitHeight + _innerMargin * 2
 
-        Rectangle {
+        OverlayGlass {
             x:      _dropRight ? _arrowPointWidth : 0
             radius: ScreenTools.defaultFontPixelHeight * 0.75
             width:  parent.implicitWidth - _arrowPointWidth
             height: parent.implicitHeight
-            color:  _qgcPal.overlayBackground
-            border.color:   _qgcPal.overlayBorder
-            border.width:   1
         }
 
         // Arrowhead

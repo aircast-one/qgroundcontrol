@@ -10,6 +10,7 @@
 #pragma once
 
 #include <QtCore/QLoggingCategory>
+#include <QtCore/QPointer>
 #include <QtLocation/private/qgeotiledmapreply_p.h>
 #include <QtNetwork/QNetworkReply>
 #include <QtNetwork/QNetworkRequest>
@@ -29,7 +30,6 @@ public:
     QGeoTiledMapReplyQGC(QNetworkAccessManager *networkManager, const QNetworkRequest &request, const QGeoTileSpec &spec, QObject *parent = nullptr);
     ~QGeoTiledMapReplyQGC();
 
-    void abort() final;
 
 private slots:
     void _networkReplyFinished();
@@ -41,7 +41,8 @@ private slots:
 private:
     static void _initDataFromResources();
 
-    QNetworkAccessManager *_networkManager = nullptr;
+    QPointer<QNetworkAccessManager> _networkManager;
+    QPointer<QNetworkReply> _reply;
     QNetworkRequest _request;
 
     static QByteArray _bingNoTileImage;

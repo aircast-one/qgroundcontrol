@@ -759,7 +759,10 @@ QByteArray DebugApiServer::_uiPropJson(const QUrlQuery &query)
         return _errorJson(QStringLiteral("name and property required"));
     }
 
-    QQuickItem *item = _findVisibleItem(window, name);
+    QObject *item = _findVisibleItem(window, name);
+    if (!item) {
+        item = window->findChild<QObject*>(name, Qt::FindChildrenRecursively);
+    }
     if (!item) {
         return _errorJson(QStringLiteral("item not found: %1").arg(name));
     }

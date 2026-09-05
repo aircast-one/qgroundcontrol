@@ -24,6 +24,10 @@ Button {
     icon.color:     textColor
 
     property color textColor: checked || pressed ? qgcPal.buttonHighlightText : qgcPal.buttonText
+    property color tileColor: "transparent"
+
+    readonly property bool _hasTile: tileColor.a > 0
+    readonly property real _tileSize: Math.round(ScreenTools.defaultFontPixelHeight * 1.35)
 
     QGCPalette {
         id:                 qgcPal
@@ -39,11 +43,21 @@ Button {
     contentItem: RowLayout {
         spacing: ScreenTools.defaultFontPixelWidth
 
-        QGCColoredImage {
-            source: control.icon.source
-            color:  control.icon.color
-            width:  ScreenTools.defaultFontPixelHeight
-            height: ScreenTools.defaultFontPixelHeight
+        Rectangle {
+            Layout.preferredWidth:  _hasTile ? _tileSize : ScreenTools.defaultFontPixelHeight
+            Layout.preferredHeight: Layout.preferredWidth
+            radius:                 Math.round(_tileSize * 0.28)
+            color:                  control.tileColor
+
+            QGCColoredImage {
+                anchors.centerIn:   parent
+                source:             control.icon.source
+                color:              _hasTile ? "white" : control.icon.color
+                width:              _hasTile ? Math.round(_tileSize * 0.68) : parent.width
+                height:             width
+                sourceSize.height:  height
+                fillMode:           Image.PreserveAspectFit
+            }
         }
 
         QGCLabel {

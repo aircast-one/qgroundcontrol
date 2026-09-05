@@ -171,7 +171,7 @@ void CameraControlTest::_settingsExposeTheChannelMapping()
 
     QVERIFY(hasVisibleItemWithText(view.rootObject(), QStringLiteral("Gimbal tilt channel")));
     QVERIFY(hasVisibleItemWithText(view.rootObject(), QStringLiteral("Camera zoom channel")));
-    QVERIFY(hasVisibleItemWithText(view.rootObject(), QStringLiteral("Add control")));
+    QVERIFY(hasVisibleItemWithText(view.rootObject(), QStringLiteral("Add Control")));
 }
 
 void CameraControlTest::_settingsFlagConflictingChannels()
@@ -226,7 +226,7 @@ void CameraControlTest::_customRcControlsAppearForTheirChannels()
     QQuickItem* const button = findItemByName(view.rootObject(), QStringLiteral("rcControlButton7"));
     QVERIFY(button);
     QVERIFY(button->isVisible());
-    QCOMPARE(button->property("text").toString(), QStringLiteral("Spray"));
+    QVERIFY(hasVisibleItemWithText(button->parentItem(), QStringLiteral("Spray")));
     QVERIFY(!button->property("checked").toBool());
     QVERIFY(QMetaObject::invokeMethod(button, "clicked"));
     QVERIFY(button->property("checked").toBool());
@@ -245,6 +245,105 @@ void CameraControlTest::_customRcControlsAppearForTheirChannels()
 
     settings->rcControls()->setRawValue(saved);
 }
+
+void CameraControlTest::_threePositionSwitchCyclesThroughPositions()
+{
+    ChannelMappingScope mapping(0, 0, 0, 0);
+    FlyViewSettings* const settings = SettingsManager::instance()->flyViewSettings();
+    const QVariant saved = settings->rcControls()->rawValue();
+    settings->rcControls()->setRawValue(QStringLiteral(
+        R"([{"label":"Mode","channel":5,"type":"switch3"}])"));
+
+    QQmlPropertyMap globals;
+    QQuickView view;
+    QVERIFY(loadLayer(view, globals));
+
+    QQuickItem* const switch3 = findItemByName(view.rootObject(), QStringLiteral("rcControlSwitch35"));
+    QVERIFY(switch3);
+    QVERIFY(switch3->isVisible());
+    QVERIFY(hasVisibleItemWithText(switch3->parentItem(), QStringLiteral("Mode")));
+    QCOMPARE(switch3->property("currentIndex").toInt(), 1);
+    QVERIFY(QMetaObject::invokeMethod(switch3, "activated", Q_ARG(int, 2)));
+    QCOMPARE(switch3->property("currentIndex").toInt(), 2);
+
+    settings->rcControls()->setRawValue(saved);
+}
+
+void CameraControlTest::_momentarySwitchTogglesCheckedOnPressAndRelease()
+{
+    ChannelMappingScope mapping(0, 0, 0, 0);
+    FlyViewSettings* const settings = SettingsManager::instance()->flyViewSettings();
+    const QVariant saved = settings->rcControls()->rawValue();
+    settings->rcControls()->setRawValue(QStringLiteral(
+        R"([{"label":"Arm","channel":6,"type":"momentary"}])"));
+
+    QQmlPropertyMap globals;
+    QQuickView view;
+    QVERIFY(loadLayer(view, globals));
+
+    QQuickItem* const momentary = findItemByName(view.rootObject(), QStringLiteral("rcControlMomentary6"));
+    QVERIFY(momentary);
+    QVERIFY(momentary->isVisible());
+    QVERIFY(hasVisibleItemWithText(momentary->parentItem(), QStringLiteral("Arm")));
+    QVERIFY(!momentary->property("checked").toBool());
+    QVERIFY(QMetaObject::invokeMethod(momentary, "pressed"));
+    QVERIFY(momentary->property("checked").toBool());
+    QVERIFY(QMetaObject::invokeMethod(momentary, "released"));
+    QVERIFY(!momentary->property("checked").toBool());
+
+    settings->rcControls()->setRawValue(saved);
+}
+
+void CameraControlTest::_sliderOrientationCanBeHorizontal()
+{
+    ChannelMappingScope mapping(0, 0, 0, 0);
+    FlyViewSettings* const settings = SettingsManager::instance()->flyViewSettings();
+    const QVariant saved = settings->rcControls()->rawValue();
+    settings->rcControls()->setRawValue(QStringLiteral(
+        R"([{"label":"Pan","channel":7,"type":"slider","orientation":"horizontal"}])"));
+
+    QQmlPropertyMap globals;
+    QQuickView view;
+    QVERIFY(loadLayer(view, globals));
+
+    QQuickItem* const slider = findItemByName(view.rootObject(), QStringLiteral("rcControlSlider7"));
+    QVERIFY(slider);
+    QVERIFY(!slider->property("vertical").toBool());
+
+    settings->rcControls()->setRawValue(saved);
+}
+
+void CameraControlTest::_momentarySwitchReleasesWhenEditModeInterruptsThePress()
+{
+    ChannelMappingScope mapping(0, 0, 0, 0);
+    FlyViewSettings* const settings = SettingsManager::instance()->flyViewSettings();
+    const QVariant saved = settings->rcControls()->rawValue();
+    settings->rcControls()->setRawValue(QStringLiteral(
+        R"([{"label":"Arm","channel":6,"type":"momentary"}])"));
+
+    QQmlPropertyMap globals;
+    QQuickView view;
+    QVERIFY(loadLayer(view, globals));
+
+    QQuickItem* const layer = findItemByName(view.rootObject(), QStringLiteral("cameraControlLayer"));
+    QVERIFY(layer);
+    QObject* const overlayRig = layer->property("overlayRig").value<QObject*>();
+    QVERIFY(overlayRig);
+
+    QQuickItem* const momentary = findItemByName(view.rootObject(), QStringLiteral("rcControlMomentary6"));
+    QVERIFY(momentary);
+    QVERIFY(QMetaObject::invokeMethod(momentary, "pressed"));
+    QVERIFY(momentary->property("checked").toBool());
+
+    // The same long-press that arms edit mode disables this button's own MouseArea mid-press,
+    // so no onReleased signal ever fires. The channel must not stay latched at max PWM.
+    overlayRig->setProperty("editMode", true);
+    QVERIFY(!momentary->property("checked").toBool());
+
+    overlayRig->setProperty("editMode", false);
+    settings->rcControls()->setRawValue(saved);
+}
+
 void CameraControlTest::_overrideIndicatorLaysOutForTheToolbar()
 {
     QQmlPropertyMap globals;

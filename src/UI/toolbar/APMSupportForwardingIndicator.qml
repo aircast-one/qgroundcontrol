@@ -30,6 +30,7 @@ Item {
         
         ToolIndicatorPage {
             contentComponent: SettingsGroupLayout {
+                popoverStyle: true
                 QGCLabel { text: qsTr("Mavlink traffic is being forwarded to a support server") }
 
                 LabelledLabel { 

@@ -106,10 +106,16 @@ Item {
         cameraTrackingEnabled:   videoStreaming._camera && videoStreaming._camera.trackingEnabled
     }
 
+    // Only while there is a picture to interact with. This fills the whole video area for
+    // gimbal click-control and tracking-ROI drawing, and it is declared after the video, so it
+    // sits on top of everything the video draws - including the no-signal state's Retry and
+    // Video Settings buttons, which it swallowed. Click-to-aim and ROI selection both need a
+    // frame to act on, so there is nothing for it to do when nothing is decoding.
     MouseArea {
         id:                         flyViewVideoMouseArea
         anchors.fill:               parent
-        enabled:                    pipState.state === pipState.fullState
+        enabled:                    pipState.state === pipState.fullState &&
+                                        QGroundControl.videoManager.decoding
         hoverEnabled:               true
 
         property double x0:         0

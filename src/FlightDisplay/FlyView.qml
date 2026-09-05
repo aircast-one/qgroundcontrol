@@ -41,6 +41,7 @@ Item {
 
     OverlayRig {
         id:         _overlayRig
+        objectName: "overlayRigFlyView"
         viewport:   _root
         topInset:   toolbar.height
     }
@@ -62,6 +63,35 @@ Item {
 
     property bool   _mainWindowIsMap:       mapControl.pipState.state === mapControl.pipState.fullState
     property bool   _isFullWindowItemDark:  _mainWindowIsMap ? mapControl.isSatelliteMap : true
+
+    // The glass keys off the same signal the map chrome already trusts: a street map is a light
+    // backdrop, satellite and video are dark. Wrong material is worse than no material, so
+    // anything we cannot classify stays dark.
+    Binding {
+        target:     OverlayBackdrop
+        property:   "isDark"
+        value:      _root._isFullWindowItemDark
+    }
+
+    // Everything that can move inside the captured layers: the video, the instruments a
+    // connected vehicle drives (attitude, battery, telemetry all sit in mapHolder), and the
+    // jiggle while arranging. With none of them running the backdrop cannot change.
+    Binding {
+        target:     OverlayBackdrop
+        property:   "sourceAnimating"
+        value:      QGroundControl.videoManager.decoding ||
+                        QGroundControl.multiVehicleManager.activeVehicle !== null ||
+                        _overlayRig.editMode
+    }
+
+    // A map pan or zoom changes the backdrop without any video running, so it asks for a single
+    // refresh rather than keeping the pulse alive.
+    Connections {
+        target:                 mapControl
+        ignoreUnknownSignals:   true
+        function onCenterChanged()    { OverlayBackdrop.refresh() }
+        function onZoomLevelChanged() { OverlayBackdrop.refresh() }
+    }
     property var    _activeVehicle:         QGroundControl.multiVehicleManager.activeVehicle
     property var    _missionController:     _planController.missionController
     property var    _geoFenceController:    _planController.geoFenceController
@@ -158,7 +188,7 @@ Item {
             property real bottomEdgeLeftInset: visible && !hasCustomPosition ? height + _toolsMargin : 0
 
             overlayRig:            _overlayRig
-            Component.onCompleted:   _overlayRig.registerMovable(_pipView, _pipView.dragToPosition)
+            Component.onCompleted:   _overlayRig.registerAnchor(_pipView, _pipView.dragToPosition)
             Component.onDestruction: _overlayRig.unregisterMovable(_pipView)
         }
 
@@ -272,7 +302,7 @@ Item {
         width:        backdropContent.width
         height:       backdropContent.height
         sourceItem:   backdropContent
-        live:         true
+        live:         false
         visible:      false
         textureSize:  Qt.size(Math.max(1, Math.round(backdropContent.width  / _backdropDownscale)),
                               Math.max(1, Math.round(backdropContent.height / _backdropDownscale)))
@@ -292,7 +322,47 @@ Item {
         visible:       false
         layer.enabled: true
 
-        Component.onCompleted: mainWindow.frostedBackdrop = frostedBackdrop
+        Component.onCompleted: {
+            OverlayBackdrop.contentSource   = backdropContent
+            OverlayBackdrop.contentBackdrop = frostedBackdrop
+        }
+
+        Connections {
+            target: OverlayBackdrop
+            function onRefreshed() {
+                backdropCapture.scheduleUpdate()
+                chromeCapture.scheduleUpdate()
+            }
+        }
+    }
+
+    ShaderEffectSource {
+        id:           chromeCapture
+        width:        mapHolder.width
+        height:       mapHolder.height
+        sourceItem:   mapHolder
+        live:         false
+        visible:      false
+        textureSize:  Qt.size(Math.max(1, Math.round(mapHolder.width  / 4)),
+                              Math.max(1, Math.round(mapHolder.height / 4)))
+    }
+
+    MultiEffect {
+        id:            frostedBackdropFull
+        width:         mapHolder.width
+        height:        mapHolder.height
+        source:        chromeCapture
+        blurEnabled:   true
+        blur:          1.0
+        blurMax:       32
+        saturation:    0.25
+        visible:       false
+        layer.enabled: true
+
+        Component.onCompleted: {
+            OverlayBackdrop.fullSource   = mapHolder
+            OverlayBackdrop.fullBackdrop = frostedBackdropFull
+        }
     }
 
     TelemetryChipsLayer {
@@ -318,9 +388,12 @@ Item {
         width:                      editModeRow.width + ScreenTools.defaultFontPixelWidth * 4
         height:                     ScreenTools.defaultFontPixelHeight * 2.4
         radius:                     height / 2
-        color:                      QGroundControl.globalPalette.overlayBackground
-        border.color:               QGroundControl.globalPalette.overlayBorder
-        border.width:               1
+        color:                      "transparent"
+
+        OverlayGlass {
+            anchors.fill: parent
+            radius:       parent.radius
+        }
 
         Row {
             id:                 editModeRow

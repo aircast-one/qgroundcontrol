@@ -5,9 +5,6 @@ import QtQuick.Layouts
 import QGroundControl.Palette
 import QGroundControl.ScreenTools
 
-/// Standard push button control:
-///     If there is both an icon and text the icon will be to the left of the text
-///     If icon only, icon will be centered
 Button {
     id:             control
     hoverEnabled:   !ScreenTools.isMobile
@@ -21,7 +18,7 @@ Button {
 
     property bool   primary:        false                               ///< primary button for a group of buttons
     property bool   showBorder:     qgcPal.globalTheme === QGCPalette.Light
-    property real   backRadius:     ScreenTools.buttonBorderRadius
+    property real   backRadius:     height / 2
     property real   heightFactor:   0.5
     property string iconSource:     ""
     property real   fontWeight:     Font.Normal // default for qml Text

@@ -24,15 +24,30 @@ import QGroundControl.Palette
 SettingsPage {
     property var    _settingsManager:           QGroundControl.settingsManager
     property var    _appSettings:               _settingsManager.appSettings
+    property var    _unitsSettings:             _settingsManager.unitsSettings
     property var    _brandImageSettings:        _settingsManager.brandImageSettings
     property Fact   _appFontPointSize:          _appSettings.appFontPointSize
     property Fact   _userBrandImageIndoor:      _brandImageSettings.userBrandImageIndoor
     property Fact   _userBrandImageOutdoor:     _brandImageSettings.userBrandImageOutdoor
     property Fact   _appSavePath:               _appSettings.savePath
+    property Fact   _androidSaveToSDCard:       _appSettings.androidSaveToSDCard
+    property bool   _resetPending:              false
+
+    readonly property var _scalePercents: [ 80, 90, 100, 110, 125, 150, 175, 200 ]
+
+    function _pointSizeForPercent(percent) {
+        return Math.round(ScreenTools.platformFontPointSize * percent / 100)
+    }
+
+    function _nearestScaleIndex() {
+        const current = _appFontPointSize.value / ScreenTools.platformFontPointSize * 100
+        return _scalePercents
+            .map((p, i) => ({ d: Math.abs(p - current), i }))
+            .reduce((best, c) => c.d < best.d ? c : best).i
+    }
 
     SettingsGroupLayout {
         Layout.fillWidth:   true
-        heading:            qsTr("General")
 
         LabelledFactComboBox {
             label:      qsTr("Language")
@@ -42,168 +57,65 @@ SettingsPage {
         }
 
         LabelledFactComboBox {
-            label:      qsTr("Color Scheme")
-            fact:       _appSettings.indoorPalette
-            indexModel: false
-            visible:    _appSettings.indoorPalette.visible
-        }
-
-        LabelledFactComboBox {
-            label:       qsTr("Stream GCS Position")
+            label:      qsTr("Stream GCS Position")
             fact:       _appSettings.followTarget
             indexModel: false
             visible:    _appSettings.followTarget.visible
         }
 
         FactCheckBoxSlider {
-            Layout.fillWidth: true
-            text:           qsTr("Mute all audio output")
-            fact:       _audioMuted
-            visible:    _audioMuted.visible
+            Layout.fillWidth:   true
+            text:               qsTr("Mute all audio output")
+            fact:               _audioMuted
+            visible:            _audioMuted.visible
             property Fact _audioMuted: _appSettings.audioMuted
         }
+    }
 
-        FactCheckBoxSlider {
-            Layout.fillWidth: true
-            text:       qsTr("Save application data to SD Card")
-            fact:       _androidSaveToSDCard
-            visible:    _androidSaveToSDCard.visible
-            property Fact _androidSaveToSDCard: _appSettings.androidSaveToSDCard
+    SettingsGroupLayout {
+        Layout.fillWidth:   true
+        heading:            qsTr("Appearance")
+
+        LabelledFactComboBox {
+            label:      qsTr("Color Scheme")
+            fact:       _appSettings.indoorPalette
+            indexModel: false
+            visible:    _appSettings.indoorPalette.visible
         }
 
-        QGCCheckBoxSlider {
-            Layout.fillWidth: true
-            text:       qsTr("Clear all settings on next start")
-            checked:    false
-            onClicked: {
-                if (checked) {
-                    QGroundControl.deleteAllSettingsNextBoot()
-                } else {
-                    QGroundControl.clearDeleteAllSettingsNextBoot()
-                }
-            }
+        LabelledComboBox {
+            label:          qsTr("UI Scaling")
+            model:          _scalePercents.map(p => p + "%")
+            currentIndex:   _nearestScaleIndex()
+            visible:        _appFontPointSize.visible
+            onActivated:    (index) => { _appFontPointSize.value = _pointSizeForPercent(_scalePercents[index]) }
         }
 
         RowLayout {
             Layout.fillWidth:   true
             spacing:            ScreenTools.defaultFontPixelWidth * 2
-            visible:            _appFontPointSize.visible
+            visible:            _brandImageSettings.visible && !ScreenTools.isMobile && _userBrandImageIndoor.visible
 
-            QGCLabel { 
+            ColumnLayout {
                 Layout.fillWidth:   true
-                text:               qsTr("UI Scaling") 
-            }
-
-            RowLayout {
-                spacing: ScreenTools.defaultFontPixelWidth * 2
-
-                QGCButton {
-                    Layout.preferredWidth:  height
-                    height:                 baseFontEdit.height * 1.5
-                    text:                   "-"
-                    onClicked: {
-                        if (_appFontPointSize.value > _appFontPointSize.min) {
-                            _appFontPointSize.value = _appFontPointSize.value - 1
-                        }
-                    }
-                }
+                spacing:            0
 
                 QGCLabel {
-                    id:                     baseFontEdit
-                    width:                  ScreenTools.defaultFontPixelWidth * 6
-                    text:                   (QGroundControl.settingsManager.appSettings.appFontPointSize.value / ScreenTools.platformFontPointSize * 100).toFixed(0) + "%"
+                    Layout.fillWidth:   true
+                    text:               qsTr("Indoor Brand Image")
                 }
-
-                QGCButton {
-                    Layout.preferredWidth:  height
-                    height:                 baseFontEdit.height * 1.5
-                    text:                   "+"
-                    onClicked: {
-                        if (_appFontPointSize.value < _appFontPointSize.max) {
-                            _appFontPointSize.value = _appFontPointSize.value + 1
-                        }
-                    }
-                }
-            }
-        }
-
-        RowLayout {
-            Layout.fillWidth:   true
-            spacing:            ScreenTools.defaultFontPixelWidth * 2
-            visible:            _appSavePath.visible && !ScreenTools.isMobile
-
-            ColumnLayout {
-                Layout.fillWidth:   true
-                spacing:            0
-
-                QGCLabel { text: qsTr("Application Load/Save Path") }
-                QGCLabel { 
+                QGCLabel {
                     Layout.fillWidth:   true
                     font.pointSize:     ScreenTools.smallFontPointSize
-                    text:               _appSavePath.rawValue === "" ? qsTr("<default location>") : _appSavePath.value
-                    elide:              Text.ElideMiddle
-                }
-            }
-
-            QGCButton {
-                text:       qsTr("Browse")
-                onClicked:  savePathBrowseDialog.openForLoad()
-                QGCFileDialog {
-                    id:                 savePathBrowseDialog
-                    title:              qsTr("Choose the location to save/load files")
-                    folder:             _appSavePath.rawValue
-                    selectFolder:       true
-                    onAcceptedForLoad:  (file) => _appSavePath.rawValue = file
-                }
-            }
-        }
-    }
-
-    SettingsGroupLayout {
-        Layout.fillWidth:   true
-        heading:            qsTr("Units")
-        visible:            QGroundControl.settingsManager.unitsSettings.visible
-
-        Repeater {
-            model: [ QGroundControl.settingsManager.unitsSettings.horizontalDistanceUnits, QGroundControl.settingsManager.unitsSettings.verticalDistanceUnits, QGroundControl.settingsManager.unitsSettings.areaUnits, QGroundControl.settingsManager.unitsSettings.speedUnits, QGroundControl.settingsManager.unitsSettings.temperatureUnits ]
-
-            LabelledFactComboBox {
-                label:                  modelData.shortDescription
-                fact:                   modelData
-                indexModel:             false
-            }
-        }
-    }
-
-    SettingsGroupLayout {
-        Layout.fillWidth:   true
-        heading:            qsTr("Brand Image")
-        visible:            _brandImageSettings.visible && !ScreenTools.isMobile
-        
-        RowLayout {
-            Layout.fillWidth:   true
-            spacing:            ScreenTools.defaultFontPixelWidth * 2
-            visible:            _userBrandImageIndoor.visible
-
-            ColumnLayout {
-                Layout.fillWidth:   true
-                spacing:            0
-
-                QGCLabel { 
-                    Layout.fillWidth:   true
-                    text:               qsTr("Indoor Image") 
-                }
-                QGCLabel { 
-                    Layout.fillWidth:   true
-                    font.pointSize:     ScreenTools.smallFontPointSize
-                    text:               _userBrandImageIndoor.valueString.replace("file:///", "") 
+                    color:              QGroundControl.globalPalette.colorGrey
+                    text:               _userBrandImageIndoor.valueString.replace("file:///", "")
                     elide:              Text.ElideMiddle
                     visible:            _userBrandImageIndoor.valueString.length > 0
                 }
             }
 
             QGCButton {
-                text:       qsTr("Browse")
+                text:       qsTr("Choose…")
                 onClicked:  userBrandImageIndoorBrowseDialog.openForLoad()
 
                 QGCFileDialog {
@@ -219,27 +131,28 @@ SettingsPage {
         RowLayout {
             Layout.fillWidth:   true
             spacing:            ScreenTools.defaultFontPixelWidth * 2
-            visible:            _userBrandImageOutdoor.visible
+            visible:            _brandImageSettings.visible && !ScreenTools.isMobile && _userBrandImageOutdoor.visible
 
             ColumnLayout {
                 Layout.fillWidth:   true
                 spacing:            0
 
-                QGCLabel { 
+                QGCLabel {
                     Layout.fillWidth:   true
-                    text:               qsTr("Outdoor Image") 
+                    text:               qsTr("Outdoor Brand Image")
                 }
-                QGCLabel { 
+                QGCLabel {
                     Layout.fillWidth:   true
                     font.pointSize:     ScreenTools.smallFontPointSize
-                    text:               _userBrandImageOutdoor.valueString.replace("file:///", "") 
+                    color:              QGroundControl.globalPalette.colorGrey
+                    text:               _userBrandImageOutdoor.valueString.replace("file:///", "")
                     elide:              Text.ElideMiddle
                     visible:            _userBrandImageOutdoor.valueString.length > 0
                 }
             }
 
             QGCButton {
-                text:       qsTr("Browse")
+                text:       qsTr("Choose…")
                 onClicked:  userBrandImageOutdoorBrowseDialog.openForLoad()
 
                 QGCFileDialog {
@@ -253,11 +166,97 @@ SettingsPage {
         }
 
         LabelledButton {
-            label:      qsTr("Reset Images")
-            buttonText: qsTr("Reset")
+            label:      ""
+            buttonText: qsTr("Reset Images…")
+            visible:    _brandImageSettings.visible && !ScreenTools.isMobile
             onClicked:  {
                 _userBrandImageIndoor.rawValue = ""
                 _userBrandImageOutdoor.rawValue = ""
+            }
+        }
+    }
+
+    SettingsGroupLayout {
+        Layout.fillWidth:   true
+        heading:            qsTr("Files")
+        visible:            (_appSavePath.visible && !ScreenTools.isMobile) || _androidSaveToSDCard.visible
+
+        RowLayout {
+            Layout.fillWidth:   true
+            spacing:            ScreenTools.defaultFontPixelWidth * 2
+            visible:            _appSavePath.visible && !ScreenTools.isMobile
+
+            ColumnLayout {
+                Layout.fillWidth:   true
+                spacing:            0
+
+                QGCLabel { text: qsTr("Application Load/Save Path") }
+                QGCLabel {
+                    Layout.fillWidth:   true
+                    font.pointSize:     ScreenTools.smallFontPointSize
+                    color:              QGroundControl.globalPalette.colorGrey
+                    text:               _appSavePath.rawValue === "" ? qsTr("<default location>") : _appSavePath.value
+                    elide:              Text.ElideMiddle
+                }
+            }
+
+            QGCButton {
+                text:       qsTr("Choose…")
+                onClicked:  savePathBrowseDialog.openForLoad()
+                QGCFileDialog {
+                    id:                 savePathBrowseDialog
+                    title:              qsTr("Choose the location to save/load files")
+                    folder:             _appSavePath.rawValue
+                    selectFolder:       true
+                    onAcceptedForLoad:  (file) => _appSavePath.rawValue = file
+                }
+            }
+        }
+
+        FactCheckBoxSlider {
+            Layout.fillWidth:   true
+            text:               qsTr("Save application data to SD Card")
+            fact:               _androidSaveToSDCard
+            visible:            _androidSaveToSDCard.visible
+        }
+    }
+
+    SettingsGroupLayout {
+        Layout.fillWidth:   true
+        heading:            qsTr("Units")
+        visible:            _unitsSettings.visible
+
+        Repeater {
+            model: [ _unitsSettings.horizontalDistanceUnits, _unitsSettings.verticalDistanceUnits, _unitsSettings.areaUnits, _unitsSettings.speedUnits, _unitsSettings.temperatureUnits ]
+
+            LabelledFactComboBox {
+                label:      modelData.shortDescription
+                fact:       modelData
+                indexModel: false
+            }
+        }
+    }
+
+    SettingsGroupLayout {
+        Layout.fillWidth:   true
+
+        LabelledButton {
+            label:      _resetPending ? qsTr("All settings will be cleared on next start") : ""
+            buttonText: _resetPending ? qsTr("Cancel Reset") : qsTr("Reset All Settings…")
+            onClicked:  {
+                if (_resetPending) {
+                    QGroundControl.clearDeleteAllSettingsNextBoot()
+                    _resetPending = false
+                } else {
+                    mainWindow.showMessageDialog(
+                        qsTr("Reset All Settings"),
+                        qsTr("All settings will be cleared the next time %1 starts. This cannot be undone.").arg(QGroundControl.appName),
+                        Dialog.Ok | Dialog.Cancel,
+                        function() {
+                            QGroundControl.deleteAllSettingsNextBoot()
+                            _resetPending = true
+                        })
+                }
             }
         }
     }

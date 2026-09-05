@@ -79,13 +79,6 @@ Item {
             }
         }
 
-        QGCLabel {
-            anchors.verticalCenter: parent.verticalCenter
-            font.pointSize:         ScreenTools.mediumFontPointSize
-            color:                  qgcPal.toolbarText
-            text:                   totalPowerText()
-            visible:                text !== ""
-        }
     }
     MouseArea {
         anchors.fill:   parent
@@ -113,20 +106,27 @@ Item {
             anchors.bottom: parent.bottom
             spacing:        ScreenTools.defaultFontPixelWidth * 0.6
 
+            // Neutral until it wants attention, then yellow, then red.
+            //
+            // When the vehicle reports OK, it is OK - show neutral. Colouring an OK pack by the
+            // display thresholds (80/60 by default) meant a healthy battery was yellow or orange
+            // for most of a normal flight, which is the same as having no warning colour at all.
+            // The thresholds still drive the colour when the firmware reports no charge state.
             function getBatteryColor() {
                 switch (battery.chargeState.rawValue) {
                     case MAVLink.MAV_BATTERY_CHARGE_STATE_OK:
+                        return qgcPal.toolbarText
+                    case MAVLink.MAV_BATTERY_CHARGE_STATE_UNDEFINED:
                         if (!isNaN(battery.percentRemaining.rawValue)) {
                             if (battery.percentRemaining.rawValue > threshold1) {
-                                return qgcPal.toolbarText 
+                                return qgcPal.toolbarText
                             } else if (battery.percentRemaining.rawValue > threshold2) {
-                                return qgcPal.colorYellowGreen 
+                                return qgcPal.colorYellow
                             } else {
-                                return qgcPal.colorYellow 
+                                return qgcPal.colorOrange
                             }
-                        } else {
-                            return qgcPal.toolbarText
                         }
+                        return qgcPal.toolbarText
                     case MAVLink.MAV_BATTERY_CHARGE_STATE_LOW:
                         return qgcPal.colorOrange
                     case MAVLink.MAV_BATTERY_CHARGE_STATE_CRITICAL:
@@ -169,49 +169,16 @@ Item {
                 anchors.verticalCenter: parent.verticalCenter
                 text:                   qsTr("B%1").arg(batteryIndex + 1)
                 font.pointSize:         ScreenTools.smallFontPointSize
-                color:                  qgcPal.toolbarText
+                // Secondary: it names the value, it is not the value.
+                color:                  qgcPal.colorGrey
                 visible:                _activeVehicle && _activeVehicle.batteries.count > 1
             }
 
-            Item {
-                id:                     batteryGlyph
+            BatteryGlyph {
                 anchors.verticalCenter: parent.verticalCenter
-                height:                 ScreenTools.defaultFontPixelHeight * 1.15
-                width:                  height * 2
-
-                readonly property real _fill: isNaN(battery.percentRemaining.rawValue) ? 0
-                                                : Math.max(0, Math.min(1, battery.percentRemaining.rawValue / 100))
-
-                Rectangle {
-                    id:             shell
-                    anchors.left:   parent.left
-                    width:          parent.width - nub.width
-                    height:         parent.height
-                    radius:         height * 0.3
-                    color:          "transparent"
-                    border.color:   getBatteryColor()
-                    border.width:   Math.max(1, parent.height * 0.09)
-
-                    Rectangle {
-                        anchors.left:           parent.left
-                        anchors.leftMargin:     shell.border.width * 2
-                        anchors.verticalCenter: parent.verticalCenter
-                        height:                 parent.height - shell.border.width * 4
-                        width:                  (parent.width - shell.border.width * 4) * batteryGlyph._fill
-                        radius:                 height * 0.25
-                        color:                  getBatteryColor()
-                    }
-                }
-
-                Rectangle {
-                    id:                     nub
-                    anchors.left:           shell.right
-                    anchors.verticalCenter: parent.verticalCenter
-                    width:                  parent.height * 0.14
-                    height:                 parent.height * 0.42
-                    radius:                 width / 2
-                    color:                  getBatteryColor()
-                }
+                fill:                   isNaN(battery.percentRemaining.rawValue) ? 0
+                                            : battery.percentRemaining.rawValue / 100
+                color:                  getBatteryColor()
             }
 
            ColumnLayout {
@@ -225,15 +192,15 @@ Item {
                     verticalAlignment:      Text.AlignVCenter
                     color:                  qgcPal.toolbarText
                     text:                   getBatteryPercentageText()
-                    font.pointSize:         _showBoth ? ScreenTools.defaultFontPointSize : ScreenTools.mediumFontPointSize
+                    font.pointSize:         ScreenTools.mediumFontPointSize
                     visible:                _showBoth || _showPercentage
                 }
 
                 QGCLabel {
                     Layout.alignment:       Qt.AlignHCenter
-                    font.pointSize:         _showBoth ? ScreenTools.defaultFontPointSize : ScreenTools.mediumFontPointSize
                     color:                  qgcPal.toolbarText
                     text:                   getBatteryVoltageText()
+                    font.pointSize:         ScreenTools.mediumFontPointSize
                     visible:                _showBoth || _showVoltage
                 }
 
@@ -386,17 +353,31 @@ Item {
                 }
             }
 
+            // Off the strip and into the popover. A bare "12.0A" with no glyph and no label was
+            // a value nobody asked for taking permanent space next to the ones they did.
+            SettingsGroupLayout {
+                popoverStyle: true
+                Layout.fillWidth:   true
+                showDividers:       true
+                visible:            control.totalPowerText() !== ""
+
+                LabelledLabel {
+                    label:      qsTr("Total draw")
+                    labelText:  control.totalPowerText()
+                }
+            }
+
             Repeater {
                 model: _batteries
 
                 SettingsGroupLayout {
+                    popoverStyle: true
                     Layout.fillWidth:   true
                     heading:            _batteryCount === 1 ? "" : qsTr("Battery %1").arg(index + 1)
                     contentSpacing:     0
                     // Apple's grouped list: hairlines between rows, no box drawn around them.
                     showDividers:       true
-                    showBorder:         false
-
+    
                     property var batteryValuesAvailable: batteryValuesAvailableLoader.item
 
                     Loader {
@@ -482,6 +463,7 @@ Item {
             FactPanelController { id: controller }
 
             SettingsGroupLayout {
+                popoverStyle: true
                 heading:            qsTr("Battery Display")
                 Layout.fillWidth:   true
 
@@ -593,6 +575,7 @@ Item {
             }
 
             SettingsGroupLayout {
+                popoverStyle: true
                 visible: _activeVehicle.autopilotPlugin.knownVehicleComponentAvailable(AutoPilotPlugin.KnownPowerVehicleComponent) &&
                             QGroundControl.corePlugin.showAdvancedUI
 

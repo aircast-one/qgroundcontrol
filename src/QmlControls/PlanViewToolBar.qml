@@ -19,170 +19,31 @@ import QGroundControl.MultiVehicleManager
 import QGroundControl.ScreenTools
 import QGroundControl.Controllers
 
-Rectangle {
+// A shelf of floating controls, not a bar. The solid strip it replaced ended the map at its
+// bottom edge and made the plan look like it was being viewed through a window rather than
+// worked on directly.
+Item {
     id:     _root
     width:  parent.width
-    height: ScreenTools.toolbarHeight
-    color:  qgcPal.toolbarBackground
+    height: toolRow.height + _margin * 2
 
-    property var    planMasterController
+    property var  planMasterController
+    // How much of the right edge the inspector already owns. The shelf stops there rather than
+    // running under it, so the primary action never sits on top of the panel.
+    property real rightInset: 0
 
-    property var    _activeVehicle:         QGroundControl.multiVehicleManager.activeVehicle
-    property real   _controllerProgressPct: planMasterController.missionController.progressPct
-    
-    QGCPalette { id: qgcPal }
+    readonly property real _margin: ScreenTools.defaultFontPixelHeight * 0.9
 
-    /// Bottom single pixel divider
-    Rectangle {
-        anchors.left:   parent.left
-        anchors.right:  parent.right
-        anchors.bottom: parent.bottom
-        height:         1
-        color:          "black"
-        visible:        qgcPal.globalTheme === QGCPalette.Light
-    }
+    Component.onCompleted: mainWindow.registerWindowDragExclusion(toolRow)
 
-    Component.onCompleted: {
-        mainWindow.registerWindowDragExclusion(viewButtonRow)
-        mainWindow.registerWindowDragExclusion(toolIndicators)
-        mainWindow.registerWindowDragExclusion(largeProgressBar)
-    }
-
-    RowLayout {
-        id:                     viewButtonRow
-        anchors.leftMargin:     mainWindow.windowChromeLeftInset
+    PlanToolBarIndicators {
+        id:                     toolRow
+        anchors.top:            parent.top
+        anchors.topMargin:      _margin
         anchors.left:           parent.left
-        anchors.bottomMargin:   1
-        anchors.top:            parent.top
-        anchors.bottom:         parent.bottom
-        spacing:                ScreenTools.defaultFontPixelWidth / 2
-
-        QGCLabel {
-            font.pointSize: ScreenTools.largeFontPointSize
-            text:           "<"
-        }
-
-        QGCLabel {
-            text:           qsTr("Exit Plan")
-            font.pointSize: ScreenTools.largeFontPointSize
-        }
-    }
-
-    QGCMouseArea {
-        anchors.fill:   viewButtonRow
-        onClicked:      mainWindow.showFlyView()
-    }
-
-    QGCFlickable {
-        id:                     toolsFlickable
-        //anchors.leftMargin:     ScreenTools.defaultFontPixelWidth * ScreenTools.largeFontPointRatio * 1.5
-        anchors.left:           viewButtonRow.right
-        anchors.bottomMargin:   1
-        anchors.top:            parent.top
-        anchors.bottom:         parent.bottom
-        anchors.rightMargin:    mainWindow.windowChromeRightInset
         anchors.right:          parent.right
-        contentWidth:           toolIndicators.width
-        flickableDirection:     Flickable.HorizontalFlick
-
-        PlanToolBarIndicators {
-            id:                     toolIndicators
-            anchors.top:            parent.top
-            anchors.bottom:         parent.bottom
-            planMasterController:   _root.planMasterController
-        }
-    }
-
-    // Small mission download progress bar
-    Rectangle {
-        id:             progressBar
-        anchors.left:   parent.left
-        anchors.bottom: parent.bottom
-        height:         4
-        width:          _controllerProgressPct * parent.width
-        color:          qgcPal.colorGreen
-        visible:        false
-
-        onVisibleChanged: {
-            if (visible) {
-                largeProgressBar._userHide = false
-            }
-        }
-    }
-
-    // Large mission download progress bar
-    Rectangle {
-        id:             largeProgressBar
-        anchors.bottom: parent.bottom
-        anchors.left:   parent.left
-        anchors.right:  parent.right
-        height:         parent.height
-        color:          qgcPal.window
-        visible:        _showLargeProgress
-
-        property bool _userHide:                false
-        property bool _showLargeProgress:       progressBar.visible && !_userHide && qgcPal.globalTheme === QGCPalette.Light
-
-        Connections {
-            target:                 QGroundControl.multiVehicleManager
-            onActiveVehicleChanged: largeProgressBar._userHide = false
-        }
-
-        Rectangle {
-            anchors.top:    parent.top
-            anchors.bottom: parent.bottom
-            width:          _controllerProgressPct * parent.width
-            color:          qgcPal.colorGreen
-        }
-
-        QGCLabel {
-            anchors.centerIn:   parent
-            text:               qsTr("Syncing Mission")
-            font.pointSize:     ScreenTools.largeFontPointSize
-            visible:            _controllerProgressPct !== 1
-        }
-
-        QGCLabel {
-            anchors.centerIn:   parent
-            text:               qsTr("Done")
-            font.pointSize:     ScreenTools.largeFontPointSize
-            visible:            _controllerProgressPct === 1
-        }
-
-        QGCLabel {
-            anchors.margins:    _margin
-            anchors.right:      parent.right
-            anchors.bottom:     parent.bottom
-            text:               qsTr("Click anywhere to hide")
-
-            property real _margin: ScreenTools.defaultFontPixelWidth / 2
-        }
-
-        MouseArea {
-            anchors.fill:   parent
-            onClicked:      largeProgressBar._userHide = true
-        }
-    }
-    // Progress bar
-    Connections {
-        target: planMasterController.missionController
-
-        onProgressPctChanged: {
-            if (_controllerProgressPct === 1) {
-                if (_root.visible) {
-                    resetProgressTimer.start()
-                } else {
-                    progressBar.visible = false
-                }
-            } else if (_controllerProgressPct > 0) {
-                progressBar.visible = true
-            }
-        }
-    }
-
-    Timer {
-        id:             resetProgressTimer
-        interval:       3000
-        onTriggered:    progressBar.visible = false
+        anchors.leftMargin:     _margin + mainWindow.windowChromeLeftInset
+        anchors.rightMargin:    _margin + Math.max(mainWindow.windowChromeRightInset, _root.rightInset)
+        planMasterController:   _root.planMasterController
     }
 }

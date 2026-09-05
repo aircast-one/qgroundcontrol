@@ -32,9 +32,25 @@ Item {
         PipState { id: bState; pipView: pip }
     }
 
+    property alias editMode: stubOverlayRig.editMode
+
+    QtObject {
+        id: stubOverlayRig
+
+        property bool editMode: false
+
+        function registerMovable(item, dragPosition) { }
+        function unregisterMovable(item) { }
+        function requestReflow() { }
+        function isHidden(key) { return false }
+        function registerHideKey(key) { }
+        function setHidden(key, hidden) { }
+    }
+
     PipView {
         id: pip
         objectName: "pip"
+        overlayRig: stubOverlayRig
         margin: 8
         item1: itemA
         item2: itemB

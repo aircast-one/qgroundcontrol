@@ -148,13 +148,20 @@ Item {
                         width:        place.w
                         height:       place.h
                         radius:       _root._radius
-                        color:        noSignal ? _root._qgcPal.overlayBackground : "black"
-                        border.width: 1
+                        color:        noSignal ? "transparent" : "black"
+                        border.width: noSignal ? 0 : 1
                         border.color: tileMouseArea.containsMouse ? Qt.alpha(_root._qgcPal.text, 0.6)
                                                                   : _root._qgcPal.overlayBorder
                         visible:      place.shown
                         layer.enabled: true
                         layer.effect:  OverlayShadowEffect { elevated: false }
+
+                        OverlayGlass {
+                            anchors.fill: parent
+                            visible:      tile.noSignal
+                            radius:       parent.radius
+                            highlight:    tileMouseArea.containsMouse
+                        }
 
                         readonly property var    place:        _root._placement[index]
                         readonly property int    cameraNumber: _root._slots[index]
@@ -285,11 +292,14 @@ Item {
                     width:        _root._thumbWidth
                     height:       _root._capsuleHeight
                     radius:       _root._radius
-                    color:        _root._qgcPal.overlayBackground
-                    border.width: 1
-                    border.color: moreMouseArea.containsMouse ? Qt.alpha(_root._qgcPal.text, 0.6)
-                                                              : _root._qgcPal.overlayBorder
+                    color:        "transparent"
                     visible:      _root._overflow > 0
+
+                    OverlayGlass {
+                        anchors.fill: parent
+                        radius:       parent.radius
+                        highlight:    moreMouseArea.containsMouse
+                    }
 
                     QGCLabel {
                         anchors.centerIn: parent

@@ -166,12 +166,27 @@ bool VideoSettings::_isStreamSource(const QString &source)
     return streamSources.contains(source);
 }
 
+bool VideoSettings::_sourceNeedsUrl(const QString &source)
+{
+    static const QStringList urlSources = {
+        videoSourceUDPH264, videoSourceUDPH265, videoSourceMPEGTS,
+        videoSourceRTSP, videoSourceTCP, videoSourceWebRTC,
+    };
+    return urlSources.contains(source);
+}
+
+bool VideoSettings::sourceConfigured(int index)
+{
+    const QString source = videoSourceNameAt(index);
+    return !_sourceNeedsUrl(source) || !videoUrlAt(index).isEmpty();
+}
+
 QList<int> VideoSettings::switchableIndices()
 {
     QList<int> indices{0};
     const QJsonArray extras = _extraSourcesArray();
     for (int i = 0; i < extras.size(); ++i) {
-        if (_isStreamSource(extras.at(i).toObject().value(QStringLiteral("source")).toString())) {
+        if (_isStreamSource(extras.at(i).toObject().value(QStringLiteral("source")).toString()) && sourceConfigured(i + 1)) {
             indices.append(i + 1);
         }
     }
@@ -188,7 +203,10 @@ QList<int> VideoSettings::tileCameraIndices()
 int VideoSettings::currentIndex()
 {
     const int index = activeVideoSource()->rawValue().toInt();
-    return (index >= 0 && index < videoSourceCount()) ? index : 0;
+    if ((index <= 0) || (index >= videoSourceCount())) {
+        return 0;
+    }
+    return sourceConfigured(index) ? index : 0;
 }
 
 QString VideoSettings::currentVideoSourceName()
@@ -353,8 +371,7 @@ bool VideoSettings::streamConfigured(void)
         return false;
     }
     //-- Stream sources that require a URL are configured once that URL is set
-    if(vSource == videoSourceUDPH264 || vSource == videoSourceUDPH265 || vSource == videoSourceMPEGTS ||
-       vSource == videoSourceRTSP || vSource == videoSourceTCP || vSource == videoSourceWebRTC) {
+    if (_sourceNeedsUrl(vSource)) {
         return !currentVideoUrl().isEmpty();
     }
     //-- If Herelink Air unit, good to go

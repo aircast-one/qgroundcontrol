@@ -25,12 +25,8 @@ Rectangle {
     objectName: "flyViewToolBar"
     width:      parent.width
     height: visible ? Math.max(_slimHeight, _dockedBarHeight) + _topInset : 0
-    // No band. The status sits directly on the picture, held legible over bright imagery by a
-    // soft scrim rather than by a slab of chrome.
     color:  "transparent"
 
-    // Full height: the strip carries icon-and-value pairs sized to be read in flight, and
-    // squeezing it left them cramped against the picture.
     readonly property real _slimHeight: ScreenTools.toolbarHeight
     readonly property real _topInset:   ScreenTools.defaultFontPixelHeight * 0.75
 
@@ -40,6 +36,8 @@ Rectangle {
     property bool   _communicationLost: _activeVehicle ? _activeVehicle.vehicleLinkManager.communicationLost : false
     property color  _mainStatusBGColor: "transparent"
     property real   _toolsSpacing:      ScreenTools.defaultFontPixelWidth
+
+    readonly property real _clusterHeight: Math.max(ScreenTools.minTouchPixels, ScreenTools.defaultFontPixelHeight * 2.5)
 
     readonly property real dockAreaLeft: toolIndicators.x
 
@@ -53,21 +51,6 @@ Rectangle {
 
     QGCPalette { id: qgcPal }
 
-    // Tall enough to hold the text against bright imagery; a scrim only as tall as the text
-    // leaves it fighting the picture directly underneath.
-    Rectangle {
-        anchors.left:   parent.left
-        anchors.right:  parent.right
-        anchors.top:    parent.top
-        height:         parent.height * 1.5
-        gradient: Gradient {
-            GradientStop { position: 0;    color: Qt.rgba(0, 0, 0, 0.85) }
-            GradientStop { position: 0.6;  color: Qt.rgba(0, 0, 0, 0.6) }
-            GradientStop { position: 1;    color: "transparent" }
-        }
-    }
-
-    /// Bottom single pixel divider
     Rectangle {
         id:             bottomDivider
         anchors.left:   parent.left
@@ -83,6 +66,7 @@ Rectangle {
     Component.onCompleted: {
         mainWindow.registerWindowDragExclusion(viewButtonRow)
         mainWindow.registerWindowDragExclusion(toolIndicators)
+        mainWindow.registerWindowDragExclusion(overflowButton)
         mainWindow.registerWindowDragExclusion(largeProgressBar)
     }
 
@@ -94,21 +78,31 @@ Rectangle {
         anchors.verticalCenterOffset: _topInset / 2
         spacing:                ScreenTools.defaultFontPixelWidth * 2
 
-        QGCToolBarButton {
-            id:                     currentButton
-            Layout.preferredHeight: ScreenTools.defaultFontPixelHeight * 1.8
-            icon.source:            "/res/QGCLogoFull.svg"
-            logo:                   true
-            onClicked:              mainWindow.showToolSelectDialog()
+        OverlayCapsule {
+            id:                     viewSwitch
+            objectName:             "viewSwitch"
+            Layout.preferredHeight: _clusterHeight
+            Layout.preferredWidth:  viewSwitchControl.implicitWidth
+            radius:                 height / 2
+
+            OverlayViewSwitch {
+                id:           viewSwitchControl
+                anchors.fill: parent
+                options:      [qsTr("Fly"), qsTr("Plan")]
+                currentIndex: mainWindow.flyViewActive ? 0 : 1
+                onActivated:  (index) => {
+                    if (mainWindow.allowViewSwitch()) {
+                        index === 0 ? mainWindow.showFlyView() : mainWindow.showPlanView()
+                    }
+                }
+            }
         }
 
         MainStatusIndicator {
-            id: mainStatusIndicator
-            Layout.preferredHeight: ScreenTools.defaultFontPixelHeight * 1.8
+            id:                     mainStatusIndicator
+            Layout.preferredHeight: _clusterHeight
         }
 
-        // Flight mode is flight-critical state: it sits with "Ready To Fly" in the fixed
-        // cluster, sized for the slim bar, instead of overflowing the scrolling strip.
         Loader {
             id:                 flightModeIndicatorLoader
             objectName:         "flightModeIndicator"
@@ -140,18 +134,26 @@ Rectangle {
         }
     }
 
-    // QGC's own indicators: each one opens a detail drawer on click (cell voltages, GPS
-    // quality, RSSI). A display-only strip looked tidier and quietly removed all of that.
-    FlyViewToolBarIndicators {
-        id:                             toolIndicators
+    OverlayRoundButton {
+        id:                             overflowButton
+        objectName:                     "toolSelectButton"
         anchors.right:                  parent.right
         anchors.rightMargin:            mainWindow.windowChromeRightInset + ScreenTools.defaultFontPixelWidth * 3
+        anchors.verticalCenter:         parent.verticalCenter
+        anchors.verticalCenterOffset:   _topInset / 2
+        icon:                           "/InstrumentValueIcons/dots-horizontal-triple.svg"
+        onClicked:                      mainWindow.showToolSelectDialog(overflowButton)
+    }
+
+    FlyViewToolBarIndicators {
+        id:                             toolIndicators
+        anchors.right:                  overflowButton.left
+        anchors.rightMargin:            ScreenTools.defaultFontPixelWidth * 2
         anchors.verticalCenter:         parent.verticalCenter
         anchors.verticalCenterOffset:   _topInset / 2
         height:                         ScreenTools.defaultFontPixelHeight * 1.8
     }
 
-    // Small parameter download progress bar
     Rectangle {
         anchors.bottom: parent.bottom
         height:         _root.height * 0.05
@@ -160,7 +162,6 @@ Rectangle {
         visible:        !largeProgressBar.visible
     }
 
-    // Large parameter download progress bar
     Rectangle {
         id:             largeProgressBar
         anchors.bottom: parent.bottom

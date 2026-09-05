@@ -22,7 +22,6 @@ import QGroundControl.Palette
 
 SettingsPage {
 
-    // Visual properties
     property real _margins:             ScreenTools.defaultFontPixelWidth
     property real _labelWidth:          ScreenTools.defaultFontPixelWidth * 28
     property real _valueWidth:          ScreenTools.defaultFontPixelWidth * 24
@@ -30,18 +29,14 @@ SettingsPage {
     property real _comboFieldWidth:     ScreenTools.defaultFontPixelWidth * 30
     property real _valueFieldWidth:     ScreenTools.defaultFontPixelWidth * 10
     property int  _borderWidth:         3
-    // Flags visual properties
     property real   flagsWidth:         ScreenTools.defaultFontPixelWidth * 15
     property real   flagsHeight:        ScreenTools.defaultFontPixelWidth * 7
     property int    radiusFlags:        5
 
-    // Flag to get active vehicle and active RID
     property var  _activeRID:           _activeVehicle && _activeVehicle.remoteIDManager ? _activeVehicle.remoteIDManager : null
 
-    // Healthy connection with RID device
     property bool commsGood:            _activeVehicle && _activeVehicle.remoteIDManager ? _activeVehicle.remoteIDManager.commsGood : false
 
-    // General properties
     property var  _activeVehicle:       QGroundControl.multiVehicleManager.activeVehicle
     property var  _offlineVehicle:      QGroundControl.multiVehicleManager.offlineEditingVehicle
     property int  _regionOperation:     QGroundControl.settingsManager.remoteIDSettings.region.value
@@ -76,7 +71,6 @@ SettingsPage {
         EU
     }
 
-    // GPS properties
     property var    gcsPosition:        QGroundControl.qgcPositionManger.gcsPosition
     property real   gcsHeading:         QGroundControl.qgcPositionManger.gcsHeading
     property real   gcsHDOP:            QGroundControl.qgcPositionManger.gcsPositionHorizontalAccuracy
@@ -85,7 +79,6 @@ SettingsPage {
 
     QGCPalette { id: qgcPal }
 
-    // Function to get the corresponding Self ID label depending on the Self ID Type selected
     function getSelfIdLabelText() {
         switch (selfIDComboBox.currentIndex) {
         case 0:
@@ -102,7 +95,6 @@ SettingsPage {
         }
     }
 
-    // Function to get the corresponding Self ID fact depending on the Self ID Type selected
     function getSelfIDFact() {
         switch (selfIDComboBox.currentIndex) {
         case 0:
@@ -131,9 +123,6 @@ SettingsPage {
             anchors.horizontalCenter:   parent.horizontalCenter
             spacing:                    _margins
 
-            // ---------------------------------------- STATUS -----------------------------------------
-            // Status flags. Visual representation for the state of all necesary information for remoteID
-            // to work propely.
             Rectangle {
                 id:                     flagsRectangle
                 Layout.preferredHeight: statusGrid.height + (_margins * 2)
@@ -287,7 +276,7 @@ SettingsPage {
 
             SettingsGroupLayout {
                 heading:                qsTr("Basic ID")
-                headingDescription:     qsTr("If Basic ID is already set on the RID device, this will be registered as Basic ID 2")
+                description:            qsTr("If Basic ID is already set on the RID device, this will be registered as Basic ID 2")
                 Layout.fillWidth:       true
                 Layout.preferredWidth:  textLabelWidth
                 outerBorderColor:       _activeRID ? (_remoteIDManager.basicIDGood ? defaultBorderColor : qgcPal.colorRed) : defaultBorderColor
@@ -378,7 +367,7 @@ SettingsPage {
                         Layout.fillWidth:       true
                         text:                   operatorIDFact.valueString
                         visible:                operatorIDFact.visible
-                        maximumLength:          20                  // Maximum defined by Mavlink definition of OPEN_DRONE_ID_OPERATOR_ID message
+                        maximumLength:          20
 
                         property bool operatorIDInvalid: ((_regionOperation === RemoteIDSettings.RegionOperation.EU || remoteIDSettings.sendOperatorID.value) &&
                                                             _activeRID && !_remoteIDManager.operatorIDGood)
@@ -413,7 +402,7 @@ SettingsPage {
 
             SettingsGroupLayout {
                 heading:                qsTr("Self ID")
-                headingDescription:     qsTr("If an emergency is declared, Emergency Text will be broadcast even if Broadcast setting is not enabled.")
+                description:            qsTr("If an emergency is declared, Emergency Text will be broadcast even if Broadcast setting is not enabled.")
                 Layout.fillWidth:       true
                 Layout.preferredWidth:  textLabelWidth
 
@@ -480,7 +469,7 @@ SettingsPage {
             spacing:            ScreenTools.defaultFontPixelHeight / 2
             Layout.alignment:   Qt.AlignTop
             SettingsGroupLayout {
-                heading:            qsTr("GroundStation Location")
+                heading:            qsTr("Ground Station Location")
                 Layout.fillWidth:   true
                 outerBorderColor : _activeRID ? (_remoteIDManager.gcsGPSGood ? defaultBorderColor : qgcPal.colorRed) : defaultBorderColor
                 LabelledFactComboBox {
@@ -606,7 +595,7 @@ SettingsPage {
 
                 QGCCheckBoxSlider {
                     id:                 euProvideInfoSlider
-                    text:               qsTr("Provide Information")
+                    text:               qsTr("Provide information")
                     checked:            _fact.rawValue === RemoteIDSettings.ClassificationType.EU
                     visible:            _fact.visible
                     Layout.fillWidth:   true

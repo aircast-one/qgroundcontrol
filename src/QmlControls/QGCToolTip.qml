@@ -36,9 +36,12 @@ ToolTip {
     background: Rectangle {
         layer.enabled: true
         layer.effect:  OverlayShadowEffect { }
-        color:          control._qgcPal.overlayBackground
-        border.color:   control._qgcPal.overlayBorder
-        border.width:   1
+        color:          "transparent"
         radius:         height / 2
+
+        OverlayGlass {
+            anchors.fill: parent
+            radius:       parent.radius
+        }
     }
 }

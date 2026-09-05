@@ -90,6 +90,7 @@ RowLayout {
 
             expandedComponent: Component {
                 SettingsGroupLayout {
+                    popoverStyle: true
                     Layout.fillWidth: true
 
                     FactCheckBoxSlider {

@@ -16,12 +16,15 @@ import QGroundControl.Controls
 Rectangle {
     height:             contentRow.height + _padding * 1.5
     width:              contentRow.width + _padding * 3
-    color:              _qgcPal.overlayBackground
-    border.color:       _qgcPal.overlayBorder
-    border.width:       1
+    color:              "transparent"
     radius:             ScreenTools.defaultFontPixelHeight * 0.75
     layer.enabled: true
     layer.effect:  OverlayShadowEffect { }
+
+    OverlayGlass {
+        anchors.fill: parent
+        radius:       parent.radius
+    }
     visible:            _noGPSLockVisible || _prearmErrorVisible
 
     property var  _activeVehicle:       QGroundControl.multiVehicleManager.activeVehicle

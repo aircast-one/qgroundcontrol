@@ -38,30 +38,70 @@ ToolIndicatorPage {
         }
     }
 
+    // What auto-connect is currently listening on, in the user's words. Without it the pill
+    // says "Not connected" and nothing on screen says whether anything is being attempted -
+    // so there is no way to tell whether to wait, replug, or go and configure a link.
+    readonly property var _watching: [
+        autoConnectSettings.autoConnectPixhawk.rawValue    ? qsTr("USB")        : "",
+        autoConnectSettings.autoConnectSiKRadio.rawValue   ? qsTr("SiK radio")  : "",
+        autoConnectSettings.autoConnectUDP.rawValue        ? qsTr("UDP %1").arg(autoConnectSettings.udpListenPort.rawValue) : "",
+        autoConnectSettings.autoConnectZeroConf.rawValue   ? qsTr("Zero-Conf")  : ""
+    ].filter((entry) => entry !== "")
+
     contentComponent: Component {
-        SettingsGroupLayout { 
-            heading: qsTr("Select Link to Connect")
+        ColumnLayout {
+            spacing: ScreenTools.defaultFontPixelHeight / 2
 
-            QGCLabel {
-                text:       qsTr("No Links Configured")
-                visible:    noLinks
-            }
-        
-            Repeater {
-                model: linkConfigs
+            SettingsGroupLayout {
+                popoverStyle: true
+                heading: qsTr("Select Link to Connect")
 
-                delegate: QGCButton {
+                QGCLabel {
                     Layout.fillWidth:   true
-                    text:               object.name + (object.link ? " (" + qsTr("Connected") + ")" : "")
-                    visible:            !object.dynamic
-                    enabled:            !object.link
-                    autoExclusive:      true
+                    wrapMode:           Text.WordWrap
+                    text:               qsTr("No links are configured yet.")
+                    visible:            noLinks
+                }
+
+                // The way forward used to live behind the expand chevron, so a first run
+                // followed the only instruction on screen and arrived at a sentence with
+                // nothing to press.
+                QGCButton {
+                    Layout.fillWidth:   true
+                    text:               qsTr("Configure a Link")
+                    visible:            noLinks
 
                     onClicked: {
-                        QGroundControl.linkManager.createConnectedLink(object)
+                        mainWindow.showSettingsTool(qsTr("Comm Links"))
                         mainWindow.closeIndicatorDrawer()
                     }
                 }
+
+                Repeater {
+                    model: linkConfigs
+
+                    delegate: QGCButton {
+                        Layout.fillWidth:   true
+                        text:               object.name + (object.link ? " (" + qsTr("Connected") + ")" : "")
+                        visible:            !object.dynamic
+                        enabled:            !object.link
+                        autoExclusive:      true
+
+                        onClicked: {
+                            QGroundControl.linkManager.createConnectedLink(object)
+                            mainWindow.closeIndicatorDrawer()
+                        }
+                    }
+                }
+            }
+
+            QGCLabel {
+                Layout.fillWidth:   true
+                wrapMode:           Text.WordWrap
+                font.pointSize:     ScreenTools.smallFontPointSize
+                color:              QGroundControl.globalPalette.colorGrey
+                visible:            control._watching.length > 0
+                text:               qsTr("Watching for a vehicle on %1.").arg(control._watching.join(", "))
             }
         }
     }
@@ -71,6 +111,7 @@ ToolIndicatorPage {
             spacing: ScreenTools.defaultFontPixelHeight / 2
 
             SettingsGroupLayout {
+                popoverStyle: true
                 LabelledButton {
                     label:      qsTr("Communication Links")
                     buttonText: qsTr("Configure")
@@ -83,6 +124,7 @@ ToolIndicatorPage {
             }
 
             SettingsGroupLayout {
+                popoverStyle: true
                 heading:        qsTr("AutoConnect")
                 visible:        autoConnectSettings.visible
 

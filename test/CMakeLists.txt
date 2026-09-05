@@ -125,6 +125,9 @@ add_subdirectory(Terrain)
 add_qgc_test(TerrainQueryTest)
 add_qgc_test(TerrainTileTest)
 
+add_subdirectory(QtLocationPlugin)
+add_qgc_test(QGeoMapReplyQGCTest)
+
 add_subdirectory(UI)
 
 add_subdirectory(VideoManager)

@@ -70,6 +70,10 @@ Item {
             sourceItem: MissionItemIndexLabel {
                 id:                 itemIndexLabel
                 label:              qsTr("R", "rally point map item label")
+                // Green is where the vehicle can come down - launch, and the alternates to it.
+                // The accent belongs to the mission the vehicle is asked to fly.
+                color:              checked ? Qt.lighter(QGroundControl.globalPalette.colorGreen, 1.2)
+                                            : QGroundControl.globalPalette.colorGreen
                 checked:            _editingLayer == _layerRallyPoints ? rallyPointObject === myRallyPointController.currentRallyPoint : false
                 highlightSelected:  true
                 onClicked:          myRallyPointController.currentRallyPoint = rallyPointObject

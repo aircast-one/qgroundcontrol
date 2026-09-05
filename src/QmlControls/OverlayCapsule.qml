@@ -8,7 +8,6 @@
  ****************************************************************************/
 
 import QtQuick
-import QtQuick.Effects
 
 import QGroundControl
 import QGroundControl.ScreenTools
@@ -16,59 +15,31 @@ import QGroundControl.ScreenTools
 Rectangle {
     id: _root
 
-    property bool highlight: false
-    property bool lifted:    false
-    property bool frosted:   true
+    property bool  highlight: false
+    property bool  lifted:    false
+    property bool  frosted:   true
+    property color accent:    "transparent"
+    property alias backdrop:      glass.backdrop
+    property alias lightMaterial: glass.lightMaterial
 
-    readonly property var  _qgcPal:   QGroundControl.globalPalette
-    readonly property Item _backdrop: typeof mainWindow === "undefined" ? null : mainWindow.frostedBackdrop
-    readonly property bool _frosted:  frosted && _backdrop !== null
+    readonly property color contentColor: glass.contentColor
 
-    readonly property rect _backdropRect: (_root.x, _root.y, _root.width, _root.height, _frosted
-                                            ? _root.mapToItem(_backdrop, 0, 0, _root.width, _root.height)
-                                            : Qt.rect(0, 0, 1, 1))
+    readonly property var _qgcPal: QGroundControl.globalPalette
 
     height:         ScreenTools.defaultFontPixelHeight * 2.2
     radius:         height / 2
-    color:          _frosted ? "transparent" : _qgcPal.overlayBackground
-    border.width:   0
+    color:          "transparent"
     layer.enabled:  true
     layer.effect:   OverlayShadowEffect { elevated: _root.lifted }
 
-    ShaderEffectSource {
-        id:            frost
-        anchors.fill:  parent
-        visible:       _root._frosted
-        sourceItem:    _root._backdrop
-        sourceRect:    _root._backdropRect
-        layer.enabled: true
-        layer.effect:  MultiEffect {
-            maskEnabled:      true
-            maskSource:       frostMask
-            maskThresholdMin: 0.5
-            maskSpreadAtMin:  1.0
-        }
-    }
-
-    Item {
-        id:            frostMask
-        anchors.fill:  parent
-        layer.enabled: true
-        visible:       false
-
-        Rectangle {
-            anchors.fill: parent
-            radius:       _root.radius
-            color:        "black"
-        }
-    }
-
-    Rectangle {
+    OverlayGlass {
+        id:           glass
         anchors.fill: parent
         radius:       _root.radius
-        color:        _root._frosted ? _root._qgcPal.overlayGlass : "transparent"
-        border.width: 1
-        border.color: _root.highlight ? Qt.alpha(_root._qgcPal.text, 0.6)
-                                      : _root._qgcPal.overlayBorder
+        highlight:    _root.highlight
+        frosted:      _root.frosted
+        // An accent tints the glass rather than covering it. Painting the accent on top threw
+        // away the refraction and the rim and left a flat slab sitting on a glass panel.
+        tint:         _root.accent.a > 0 ? _root.accent : _qgcPal.overlayGlass
     }
 }

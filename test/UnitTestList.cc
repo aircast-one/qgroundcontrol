@@ -87,6 +87,8 @@
 
 // QmlControls
 #include "DragToPositionTest.h"
+#include "OverlayBackdropTest.h"
+#include "OverlaySegmentedControlTest.h"
 #include "OverlayRigTest.h"
 #include "PipRevealTest.h"
 #include "PipViewTest.h"
@@ -98,6 +100,9 @@
 // Terrain
 #include "TerrainQueryTest.h"
 #include "TerrainTileTest.h"
+
+// QtLocationPlugin
+#include "QGeoMapReplyQGCTest.h"
 
 // UI
 
@@ -212,6 +217,8 @@ int runTests(bool stress, QStringView unitTestOptions)
 
     // QmlControls
     UT_REGISTER_TEST(DragToPositionTest)
+    UT_REGISTER_TEST(OverlayBackdropTest)
+    UT_REGISTER_TEST(OverlaySegmentedControlTest)
     UT_REGISTER_TEST(OverlayRigTest)
     UT_REGISTER_TEST(PipRevealTest)
     UT_REGISTER_TEST(PipViewTest)
@@ -223,6 +230,9 @@ int runTests(bool stress, QStringView unitTestOptions)
     // Terrain
     UT_REGISTER_TEST(TerrainQueryTest)
     UT_REGISTER_TEST(TerrainTileTest)
+
+    // QtLocationPlugin
+    UT_REGISTER_TEST(QGeoMapReplyQGCTest)
 
     // UI
 

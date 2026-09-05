@@ -42,7 +42,7 @@ Item {
     opacity:    overlayRig.isHidden(editKey) ? _hiddenOpacity : 1
 
     Behavior on x {
-        enabled: !root.dragging
+        enabled: !root.dragging && _position.settling
         NumberAnimation {
             duration:           root._animationDuration
             easing.type:        Easing.OutBack
@@ -51,7 +51,7 @@ Item {
     }
 
     Behavior on y {
-        enabled: !root.dragging
+        enabled: !root.dragging && _position.settling
         NumberAnimation {
             duration:           root._animationDuration
             easing.type:        Easing.OutBack
@@ -74,7 +74,7 @@ Item {
         onActiveChanged: {
             if (!active) {
                 _position.commit()
-                root.overlayRig.resolve(root)
+                root.overlayRig.requestReflow()
             }
         }
     }

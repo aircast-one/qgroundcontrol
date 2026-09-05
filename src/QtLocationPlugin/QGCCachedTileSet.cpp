@@ -29,6 +29,8 @@
 #include <QGCFileDownload.h>
 #include <QGCLoggingCategory.h>
 
+#include <algorithm>
+
 #include <QtNetwork/QNetworkProxy>
 
 QGC_LOGGING_CATEGORY(QGCCachedTileSetLog, "qgc.qtlocation.qgccachedtileset")
@@ -42,7 +44,14 @@ QGCCachedTileSet::QGCCachedTileSet(const QString &name, QObject *parent)
 
 QGCCachedTileSet::~QGCCachedTileSet()
 {
-    // qCDebug(QGCCachedTileSetLog) << Q_FUNC_INFO << this;
+    for (const QPointer<QNetworkReply> &reply : std::as_const(_replies)) {
+        if (!reply) {
+            continue;
+        }
+        (void) disconnect(reply, nullptr, this, nullptr);
+        reply->abort();
+    }
+    _replies.clear();
 }
 
 QString QGCCachedTileSet::downloadStatus() const
@@ -154,7 +163,12 @@ void QGCCachedTileSet::_prepareDownload()
         return;
     }
 
-    for (qsizetype i = _replies.count(); i < QGeoTileFetcherQGC::concurrentDownloads(_type); i++) {
+    const auto liveReplies = [this]() {
+        return std::count_if(_replies.cbegin(), _replies.cend(),
+                             [](const QPointer<QNetworkReply> &reply) { return !reply.isNull(); });
+    };
+
+    for (qsizetype i = liveReplies(); i < QGeoTileFetcherQGC::concurrentDownloads(_type); i++) {
         if (_tilesToDownload.isEmpty()) {
             break;
         }
@@ -166,7 +180,6 @@ void QGCCachedTileSet::_prepareDownload()
         request.setAttribute(QNetworkRequest::User, tile->hash());
 
         QNetworkReply* const reply = _networkManager->get(request);
-        reply->setParent(this);
         QGCFileDownload::setIgnoreSSLErrorsIfNeeded(*reply);
         (void) connect(reply, &QNetworkReply::finished, this, &QGCCachedTileSet::_networkReplyFinished);
         (void) connect(reply, &QNetworkReply::errorOccurred, this, &QGCCachedTileSet::_networkReplyError);

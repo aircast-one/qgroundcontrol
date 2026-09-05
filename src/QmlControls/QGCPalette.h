@@ -117,6 +117,7 @@ public:
     DEFINE_QGC_COLOR(overlayBackground,             setOverlayBackground)
     DEFINE_QGC_COLOR(overlayBorder,                 setOverlayBorder)
     DEFINE_QGC_COLOR(overlayGlass,                  setOverlayGlass)
+    DEFINE_QGC_COLOR(overlayGlassLight,             setOverlayGlassLight)
     DEFINE_QGC_COLOR(toolbarText,                   setToolbarText)
     DEFINE_QGC_COLOR(windowShadeLight,              setWindowShadeLight)
     DEFINE_QGC_COLOR(windowShade,                   setWindowShade)

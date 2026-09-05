@@ -26,5 +26,12 @@ private slots:
     void _registerMovableDoesNotDuplicate();
     void _ownedStaticPushesOthersButNotOwner();
     void _staticThatMovesPushesMovablesOutOfTheWay();
+    void _displacedItemStaysAgainstWhatPushedIt();
+    void _itemSpringsBackWhenTheObstructionLeaves();
+    void _overlapIsAnsweredOnTheChangeThatCausedIt();
+    void _disturbedLayoutComesToRest();
+    void _sweepingObstacleDoesNotFlingItemsAcrossTheWindow();
+    void _furnitureBoltedToAMovableDoesNotFeedItself();
+    void _anEdgeCarriesWhatItHitsInItsOwnDirection();
     void cleanupTestCase();
 };

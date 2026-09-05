@@ -31,7 +31,7 @@ RowLayout {
     }
 
     QGCButton {
-        text: qsTr("Browse")
+        text: qsTr("Choose…")
         onClicked: filePicker.openForLoad()
     }
 

@@ -52,6 +52,7 @@ Item {
             showExpand: false
 
             contentComponent: SettingsGroupLayout {
+                popoverStyle: true
                 heading: qsTr("Telemetry RSSI Status")
 
                 LabelledLabel {

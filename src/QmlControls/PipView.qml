@@ -79,6 +79,16 @@ Item {
         _setPipIsExpanded(isExpanded)
     }
 
+    // The stored size is the pip's own width; naturalWidth clamps it again on read so a size
+    // saved on a wide screen cannot swallow a narrow one. The video tiles are sized from this,
+    // so the grip resizes the whole video cluster, not just the pip.
+    function _resizeTo(newWidth) {
+        if (!parent) {
+            return
+        }
+        _pipSize = Math.max(parent.width * _minSize, Math.min(newWidth, parent.width * _maxSize))
+    }
+
     function showWindow() {
         window.width = _root.width
         window.height = _root.height
@@ -201,6 +211,12 @@ Item {
         lifted:  pipMouseArea.drag.active
     }
 
+    // Hover reveal reads this, not the MouseArea below. The grip and the popup button carry
+    // handlers of their own, and a child handler taking the hover point drops the MouseArea's
+    // containsMouse - which hid the control the cursor had just arrived at, which handed hover
+    // back, forever. A HoverHandler on the root stays hovered over its own children.
+    HoverHandler { id: pipHover }
+
     MouseArea {
         id:             pipMouseArea
         anchors.fill:   parent
@@ -214,20 +230,32 @@ Item {
         drag.maximumX:  _root.parent ? _root.parent.width - _root.width : 0
         drag.maximumY:  _root.parent ? _root.parent.height - _root.height : 0
 
-        property bool dragged: false
+        property bool dragged:      false
+        // The resize grip's DragHandler doesn't stop this MouseArea from also seeing the same
+        // press/release: outside edit mode drag.target is null, so `dragged` above can never go
+        // true, and every release would otherwise read as a plain click and swap map/video out
+        // from under a resize. Captured at press time so it isn't racing the grip's own active
+        // state, which has already gone false again by the time this MouseArea's click fires.
+        // Any future DragHandler-based control added inside the pip (popupPIP/pipToggle are
+        // fine - they use their own nested MouseArea, which already wins over this one) needs
+        // the same treatment here, or it will reproduce this exact swap-on-drag bug.
+        property bool pressedOnGrip: false
 
-        onPressed:          dragged = false
+        onPressed: (mouse) => {
+            dragged = false
+            pressedOnGrip = resizeGrip.visible && resizeGrip.contains(mapToItem(resizeGrip, mouse.x, mouse.y))
+        }
         onPositionChanged:  { if (drag.active) dragged = true }
         onReleased: {
             if (dragged) {
                 dragPosition.commit()
                 if (_root.overlayRig) {
-                    _root.overlayRig.resolve(_root)
+                    _root.overlayRig.requestReflow()
                 }
             }
         }
         onCanceled:         { if (dragged) dragPosition.commit() }
-        onClicked:          { if (!dragged && !_root._editMode) _swapPip() }
+        onClicked:          { if (!dragged && !pressedOnGrip && !_root._editMode) _swapPip() }
 
         onPressAndHold: {
             if (_root.overlayRig) {
@@ -244,10 +272,13 @@ Item {
         width:              ScreenTools.defaultFontPixelHeight * 2.2
         height:             width
         radius:             width / 2
-        color:              QGroundControl.globalPalette.overlayBackground
-        border.color:       QGroundControl.globalPalette.overlayBorder
-        border.width:       1
-        visible:            _isExpanded && !ScreenTools.isMobile && pipMouseArea.containsMouse && !_root._editMode
+        color:              "transparent"
+        visible:            _isExpanded && !ScreenTools.isMobile && pipHover.hovered && !_root._editMode
+
+        OverlayGlass {
+            anchors.fill: parent
+            radius:       parent.radius
+        }
 
         QGCColoredImage {
             source:             "/InstrumentValueIcons/browser-window-new.svg"
@@ -266,6 +297,74 @@ Item {
         }
     }
 
+    // Top-right, because that is the corner that moves: the pip is pinned to the bottom of the
+    // screen, so growing it travels up and to the right. A grip on the bottom edge would sit
+    // still while the box grew away from it, and would share that corner with the camera switch.
+    // Hover-reveal, like a macOS PiP window, so it doesn't cost an accidental resize of the live
+    // feed. Move-by-drag stays edit-mode-gated below; only this small targeted handle is live.
+    Rectangle {
+        id:                 resizeGrip
+        objectName:         "pipResizeGrip"
+        anchors.right:      parent.right
+        anchors.top:        parent.top
+        anchors.margins:    ScreenTools.defaultFontPixelHeight / 3
+        width:              ScreenTools.defaultFontPixelHeight * 1.8
+        height:             width
+        radius:             width / 2
+        color:              "transparent"
+        scale:              resizeHandler.active ? 1.1 : 1
+
+        OverlayGlass {
+            anchors.fill: parent
+            radius:       parent.radius
+        }
+        // Hidden while the video rail's grid mode is driving the width: the grip would fight
+        // an override it cannot change.
+        visible:            _isExpanded && _root.widthOverride === 0 && (_root._editMode || pipHover.hovered || resizeHandler.active)
+
+        Behavior on scale { NumberAnimation { duration: 120; easing.type: Easing.OutCubic } }
+
+        HoverHandler { cursorShape: Qt.SizeBDiagCursor }
+
+        QGCColoredImage {
+            source:             "/InstrumentValueIcons/arrow-simple-right.svg"
+            color:              QGroundControl.globalPalette.text
+            mipmap:             true
+            fillMode:           Image.PreserveAspectFit
+            anchors.centerIn:   parent
+            height:             parent.height * 0.55
+            width:              height
+            sourceSize.height:  height
+            rotation:           -45
+        }
+
+        // Measured against the scene, not the handler's own translation: the grip is anchored to
+        // an edge that resizing moves, so translation would shrink as fast as the width grew and
+        // the pip would oscillate under the finger.
+        DragHandler {
+            id:     resizeHandler
+            target: null
+
+            property real _startWidth:  0
+            property real _startSceneX: 0
+
+            onActiveChanged: {
+                if (active) {
+                    _startWidth  = _root.width
+                    _startSceneX = centroid.scenePosition.x
+                } else {
+                    QGroundControl.saveGlobalSetting(_root._pipSizeSettingsKey, _root._pipSize.toString())
+                }
+            }
+
+            onCentroidChanged: {
+                if (active) {
+                    _root._resizeTo(_startWidth + (centroid.scenePosition.x - _startSceneX))
+                }
+            }
+        }
+    }
+
     Rectangle {
         id:                 pipToggle
         objectName:         "pipToggle"
@@ -275,17 +374,20 @@ Item {
         width:              ScreenTools.defaultFontPixelHeight * 2.2
         height:             width
         radius:             width / 2
-        color:              QGroundControl.globalPalette.overlayBackground
-        border.color:       QGroundControl.globalPalette.overlayBorder
-        border.width:       1
+        color:              "transparent"
         visible:            opacity > 0
         opacity:            _root._editMode ? 0
                                 : !_isExpanded ? 1
-                                : (ScreenTools.isMobile || pipMouseArea.containsMouse) ? 1 : 0
+                                : (ScreenTools.isMobile || pipHover.hovered) ? 1 : 0
         scale:              pipToggleMouseArea.pressed ? 0.92 : 1
 
         Behavior on opacity { NumberAnimation { duration: _revealDuration; easing.type: _revealEasing } }
         Behavior on scale   { NumberAnimation { duration: 120; easing.type: Easing.OutCubic } }
+
+        OverlayGlass {
+            anchors.fill: parent
+            radius:       parent.radius
+        }
 
         QGCColoredImage {
             objectName:         "pipToggleChevron"

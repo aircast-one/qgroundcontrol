@@ -22,6 +22,7 @@
 #include <QtCore/QHash>
 #include <QtCore/QLoggingCategory>
 #include <QtCore/QObject>
+#include <QtCore/QPointer>
 #include <QtCore/QQueue>
 #include <QtCore/QString>
 #include <QtNetwork/QNetworkReply>
@@ -187,7 +188,7 @@ private:
     bool _cancelPending = false;
     QDateTime _creationDate;
 
-    QHash<QString, QNetworkReply*> _replies;
+    QHash<QString, QPointer<QNetworkReply>> _replies;
     QQueue<QGCTile*> _tilesToDownload;
     QGCMapEngineManager *_manager = nullptr;
     QNetworkAccessManager *_networkManager = nullptr;

@@ -19,11 +19,13 @@ TextField {
                             Qt.ImhFormattedNumbersOnly:  // Forces use of virtual numeric keyboard instead of full keyboard
                             Qt.ImhNone                   // iOS numeric keyboard has no done button, we can't use it.
     leftPadding:        _marginPadding
-    rightPadding:       _marginPadding + unitsHelpLayout.width
+    rightPadding:       _marginPadding + unitsHelpLayout.width +
+                            (unitsHelpLayout.width > 0 ? ScreenTools.defaultFontPixelWidth / 2 : 0)
     topPadding:         _marginPadding
     bottomPadding:      _marginPadding
     EnterKey.type:      Qt.EnterKeyDone
 
+    property bool   showFrame:          true
     property bool   showUnits:          false
     property bool   showHelp:           false
     property string unitsLabel:         ""
@@ -84,10 +86,12 @@ TextField {
     }
 
     background: Rectangle {
-        border.width:   control.validationError || control.activeFocus ? 2 : 1
+        readonly property bool _framed: control.showFrame || control.activeFocus || control.validationError
+
+        border.width:   control.validationError || control.activeFocus ? 2 : _framed ? 1 : 0
         border.color:   control.validationError ? qgcPal.colorRed : control.activeFocus ? qgcPal.colorBlue : qgcPal.buttonBorder
         radius:         ScreenTools.buttonBorderRadius
-        color:          qgcPal.textField
+        color:          _framed ? qgcPal.textField : "transparent"
         implicitWidth:  ScreenTools.implicitTextFieldWidth
         implicitHeight: ScreenTools.implicitTextFieldHeight
 

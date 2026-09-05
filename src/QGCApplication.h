@@ -27,6 +27,7 @@ class QJsonObject;
 class QPostEventList;
 class QMetaMethod;
 class QMetaObject;
+class QNetworkAccessManager;
 
 #if defined(qApp)
 #undef qApp
@@ -176,6 +177,8 @@ private:
     bool _videoManagerInitialized = false;
     bool _settingsReady = false;        ///< true once SettingsManager is initialized and deep links can be applied
     QUrl _pendingDeepLink;              ///< aircast-qgc:// link received before settings were ready
+    QNetworkAccessManager *_deviceSetupNetworkManager = nullptr; ///< Long-lived manager for _setupFromDevice(); never deleted mid-request
+    int _deviceSetupGeneration = 0;     ///< Bumped on each _setupFromDevice() call so a stale reply from a superseded call can't overwrite a newer one's config
 
     QList<QPair<QString /* title */, QString /* message */>> _delayedAppMessages;
 

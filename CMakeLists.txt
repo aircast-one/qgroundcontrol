@@ -1,5 +1,14 @@
 cmake_minimum_required(VERSION 3.25)
 
+if(CMAKE_BINARY_DIR STREQUAL CMAKE_SOURCE_DIR)
+    message(FATAL_ERROR
+        "In-source builds are not supported: they scatter .qt/, .rcc/, CMakeFiles/ and "
+        "per-directory Makefiles through src/, and overwrite the tracked release Makefile "
+        "at the repository root.\n"
+        "Configure out of tree instead:  cmake -B build -S .\n"
+        "This tree already has CMakeCache.txt and CMakeFiles/ in it; remove them first.")
+endif()
+
 list(APPEND CMAKE_MODULE_PATH
     ${CMAKE_SOURCE_DIR}/cmake
     ${CMAKE_SOURCE_DIR}/cmake/modules
@@ -195,6 +204,7 @@ find_package(Qt6
         QuickControls2
         QuickWidgets
         Sensors
+        ShaderTools
         Sql
         Svg
         Test
@@ -484,6 +494,21 @@ elseif(ANDROID)
     include(${android_openssl_SOURCE_DIR}/android_openssl.cmake)
     add_android_openssl_libraries(${CMAKE_PROJECT_NAME})
 endif()
+
+# Rigid-body physics for the fly-view overlay rig: resting contact, sleeping, continuous collision,
+# friction, restitution and mass, none of which survive being hand-rolled in QML.
+CPMAddPackage(
+    NAME box2d
+    GITHUB_REPOSITORY erincatto/box2d
+    GIT_TAG v3.0.0
+    OPTIONS
+        "BOX2D_SAMPLES OFF"
+        "BOX2D_UNIT_TESTS OFF"
+        "BOX2D_BENCHMARKS OFF"
+        "BOX2D_VALIDATE OFF"
+        "BOX2D_AVX2 OFF"
+)
+target_link_libraries(${CMAKE_PROJECT_NAME} PRIVATE box2d)
 
 target_compile_definitions(${CMAKE_PROJECT_NAME}
     PRIVATE

@@ -12,8 +12,6 @@ import QtQuick
 import QGroundControl.Controls
 import QGroundControl.ScreenTools
 
-// A tappable overlay capsule carrying one label: the edit-mode actions and any other floating
-// text button.
 OverlayCapsule {
     id: _root
 

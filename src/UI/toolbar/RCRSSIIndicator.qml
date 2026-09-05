@@ -36,6 +36,7 @@ Item {
             showExpand: false
 
             contentComponent: SettingsGroupLayout {
+                popoverStyle: true
                 heading: qsTr("RC RSSI Status")
 
                 LabelledLabel {

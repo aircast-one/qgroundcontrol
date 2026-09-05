@@ -18,24 +18,30 @@ Rectangle {
     width:      Math.max(ScreenTools.minTouchPixels, ScreenTools.defaultFontPixelHeight * _widthInFontHeights)
     height:     width * aspect
     radius:     Math.min(width, height) / 2
-    color:          checked ? qgcPal.text
-                            : mouseArea.pressed ? Qt.alpha(qgcPal.overlayBackground, 1)
-                                                : qgcPal.overlayBackground
-    border.color:   checked ? "transparent"
-                            : mouseArea.containsMouse ? Qt.alpha(qgcPal.text, _hoverBorderOpacity)
-                                                      : qgcPal.overlayBorder
-    border.width:   1
+    color:          checked ? qgcPal.text : "transparent"
     layer.enabled: true
     layer.effect:  OverlayShadowEffect { elevated: _root.lifted }
+
+    OverlayGlass {
+        id:           glass
+        anchors.fill: parent
+        visible:      !_root.checked
+        radius:       _root.radius
+        highlight:    mouseArea.containsMouse
+    }
 
     property string icon:         ""
     property string text:         ""
     property bool   checked:      false
     property real   aspect:       1
     property real   iconRotation: 0
+    property alias  backdrop:      glass.backdrop
+    property alias  lightMaterial: glass.lightMaterial
 
     signal clicked()
     signal held()
+    signal pressed()
+    signal released()
 
     property bool editing:        false
     property bool lifted:         false
@@ -43,14 +49,13 @@ Rectangle {
 
     readonly property real _widthInFontHeights: 2.4
     readonly property real _glyphFraction:      0.5
-    readonly property real _hoverBorderOpacity: 0.6
 
     QGCPalette { id: qgcPal; colorGroupEnabled: enabled }
 
     QGCColoredImage {
         anchors.centerIn:   parent
         source:             icon
-        color:              checked ? qgcPal.window : qgcPal.text
+        color:              checked ? qgcPal.window : glass.contentColor
         height:             Math.min(parent.width, parent.height) * _glyphFraction
         width:              height
         sourceSize.height:  height
@@ -67,7 +72,7 @@ Rectangle {
         width:              parent.width - ScreenTools.defaultFontPixelWidth
         visible:            icon === ""
         text:               _root.text
-        color:              checked ? qgcPal.window : qgcPal.text
+        color:              checked ? qgcPal.window : glass.contentColor
         font.pointSize:     ScreenTools.smallFontPointSize
         horizontalAlignment: Text.AlignHCenter
         elide:              Text.ElideRight
@@ -81,5 +86,7 @@ Rectangle {
         enabled:        !_root.editing
         onClicked:      if (_root.actionsEnabled) _root.clicked()
         onPressAndHold: _root.held()
+        onPressed:      if (_root.actionsEnabled) _root.pressed()
+        onReleased:     if (_root.actionsEnabled) _root.released()
     }
 }

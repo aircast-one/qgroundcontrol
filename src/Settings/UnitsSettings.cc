@@ -83,7 +83,7 @@ DECLARE_SETTINGSFACT_NO_FUNC(UnitsSettings, areaUnits)
         // Distance/Area/Speed units settings can't be loaded from json since it creates an infinite loop of meta data loading.
         QStringList     enumStrings;
         QVariantList    enumValues;
-        enumStrings << UnitsSettings::tr("SquareFeet") << UnitsSettings::tr("SquareMeters") << UnitsSettings::tr("SquareKilometers") << UnitsSettings::tr("Hectares") << UnitsSettings::tr("Acres") << UnitsSettings::tr("SquareMiles");
+        enumStrings << UnitsSettings::tr("Square Feet") << UnitsSettings::tr("Square Meters") << UnitsSettings::tr("Square Kilometers") << UnitsSettings::tr("Hectares") << UnitsSettings::tr("Acres") << UnitsSettings::tr("Square Miles");
         enumValues <<
             QVariant::fromValue(static_cast<uint32_t>(AreaUnitsSquareFeet)) <<
             QVariant::fromValue(static_cast<uint32_t>(AreaUnitsSquareMeters)) <<
@@ -119,7 +119,7 @@ DECLARE_SETTINGSFACT_NO_FUNC(UnitsSettings, speedUnits)
         // Distance/Area/Speed units settings can't be loaded from json since it creates an infinite loop of meta data loading.
         QStringList     enumStrings;
         QVariantList    enumValues;
-        enumStrings << "Feet/second" << "Meters/second" << "Miles/hour" << "Kilometers/hour" << UnitsSettings::tr("Knots");
+        enumStrings << UnitsSettings::tr("Feet per Second") << UnitsSettings::tr("Meters per Second") << UnitsSettings::tr("Miles per Hour") << UnitsSettings::tr("Kilometers per Hour") << UnitsSettings::tr("Knots");
         enumValues <<
             QVariant::fromValue(static_cast<uint32_t>(SpeedUnitsFeetPerSecond)) <<
             QVariant::fromValue(static_cast<uint32_t>(SpeedUnitsMetersPerSecond)) <<

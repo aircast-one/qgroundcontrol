@@ -10,13 +10,15 @@
 import QtQuick
 import QtQuick.Controls
 
+import QGroundControl
 import QGroundControl.ScreenTools
 import QGroundControl.Palette
 
 Button {
     id:             control
     width:          contentLayoutItem.contentWidth + (contentMargins * 2)
-    height:         width
+    implicitHeight: iconOnly ? discSize + captionLabel.height + _captionSpacing : width
+    height:         implicitHeight
     hoverEnabled:   !ScreenTools.isMobile
     enabled:        toolStripAction.enabled
 
@@ -26,7 +28,6 @@ Button {
     checked:        toolStripAction.checked
     checkable:      toolStripAction.dropPanelComponent || modelData.checkable
 
-    // Elevation only in the round fly-view theme; the plan-view strip is a flat panel.
     layer.enabled:  iconOnly
     layer.effect:   OverlayShadowEffect { }
 
@@ -36,9 +37,8 @@ Button {
     property alias  fontPointSize:      innerText.font.pointSize
     property alias  imageSource:        innerImage.source
     property alias  contentWidth:       innerText.contentWidth
-    // Plain properties, not aliases: buttonBkRect lives inside `background:` and border.color
-    // is a grouped sub-property, which QML refuses to alias ("Invalid alias target location").
     property color  borderColor:        "transparent"
+    property bool   glass:              false
     property real   borderWidth:        0
 
     property color  bkColor:             qgcPal.toolbarBackground
@@ -49,6 +49,8 @@ Button {
 
     property bool forceImageScale11: false
     property bool iconOnly:          false
+    readonly property real _captionSpacing: ScreenTools.defaultFontPixelHeight * 0.15
+    readonly property real discSize:        iconOnly ? Math.max(ScreenTools.minTouchPixels, ScreenTools.defaultFontPixelHeight * 2.4) : width
     property real imageScale:        iconOnly ? 0.5 : (forceImageScale11 && (text == "") ? 0.8 : 0.6)
     property real contentMargins:    iconOnly ? 0 : innerText.height * 0.1
 
@@ -77,16 +79,26 @@ Button {
 
     QGCPalette { id: qgcPal; colorGroupEnabled: control.enabled }
 
-    QGCToolTip {
-        visible:    control.iconOnly && control.hovered && control.text !== ""
-        text:       control.text
-        delay:      300
+    QGCLabel {
+        id:                         captionLabel
+        anchors.horizontalCenter:   parent.horizontalCenter
+        y:                          control.discSize + control._captionSpacing
+        text:                       control.text
+        color:                      QGroundControl.globalPalette.text
+        opacity:                    control.enabled ? 1 : 0.5
+        font.pointSize:             ScreenTools.smallFontPointSize
+        style:                      Text.Outline
+        styleColor:                 "black"
+        visible:                    control.iconOnly && control.text !== ""
     }
 
     contentItem: Item {
-        id:                 contentLayoutItem
-        anchors.fill:       parent
-        anchors.margins:    contentMargins
+        id:                         contentLayoutItem
+        anchors.horizontalCenter:   parent.horizontalCenter
+        anchors.top:                parent.top
+        anchors.topMargin:          contentMargins
+        width:                      (control.iconOnly ? control.discSize : control.width) - contentMargins * 2
+        height:                     (control.iconOnly ? control.discSize : control.height) - contentMargins * 2
 
         Column {
             anchors.centerIn:   parent
@@ -152,11 +164,21 @@ Button {
 
     background: Rectangle {
         id:             buttonBkRect
-        color:          (control.checked || control.pressed) ?
-                            bkCheckedColor :
-                            ((control.enabled && control.hovered) ? bkHoverColor : bkColor)
+        color:          (control.checked || control.pressed) ? bkCheckedColor
+                            : control.glass ? "transparent"
+                                            : ((control.enabled && control.hovered) ? bkHoverColor : bkColor)
         border.color:   control.borderColor
         border.width:   control.borderWidth
-        anchors.fill:   parent
+        anchors.horizontalCenter: parent.horizontalCenter
+        anchors.top:    parent.top
+        width:          control.iconOnly ? control.discSize : control.width
+        height:         control.iconOnly ? control.discSize : control.height
+
+        OverlayGlass {
+            anchors.fill: parent
+            visible:      control.glass && !control.checked && !control.pressed
+            radius:       buttonBkRect.radius
+            highlight:    control.enabled && control.hovered
+        }
     }
 }

@@ -24,16 +24,22 @@ RowLayout {
     property alias  textFieldShowHelp:       _factTextField.showHelp
     property alias  textField:               _factTextField
 
-    spacing: ScreenTools.defaultFontPixelWidth * 2
+    spacing:                ScreenTools.defaultFontPixelWidth * 2
+    Layout.preferredHeight: ScreenTools.settingsRowHeight
 
     QGCLabel {
         Layout.fillWidth:   true
+        Layout.alignment:   Qt.AlignVCenter
         text:               label
     }
 
     FactTextField {
         id:                     _factTextField
         Layout.preferredWidth:  textFieldPreferredWidth
+        Layout.preferredHeight: ScreenTools.settingsRowHeight
+        Layout.alignment:       Qt.AlignVCenter
+        showFrame:              false
+        horizontalAlignment:    TextInput.AlignRight
     }
 }
 

@@ -16,8 +16,14 @@ import QGroundControl.ScreenTools
 
 Item {
     id:     _root
-    width:  Math.max(ScreenTools.minTouchPixels, ScreenTools.defaultFontPixelHeight * _widthInFontHeights)
-    height: ScreenTools.defaultFontPixelHeight * _heightInFontHeights
+
+    property bool vertical: true
+
+    readonly property real _shortSide: Math.max(ScreenTools.minTouchPixels, ScreenTools.defaultFontPixelHeight * _widthInFontHeights)
+    readonly property real _longSide:  ScreenTools.defaultFontPixelHeight * _heightInFontHeights
+
+    width:  vertical ? _shortSide : _longSide
+    height: vertical ? _longSide  : _shortSide
     layer.enabled: true
     layer.effect:  OverlayShadowEffect { elevated: _root.lifted }
 
@@ -27,6 +33,7 @@ Item {
     property real   from:   0
     property real   to:     1
     property real   value:  0
+    property bool   centered: false
 
     signal moved(real value)
     signal recenterRequested()
@@ -41,25 +48,23 @@ Item {
     readonly property real  _handleInFontHeights: 1.15
     readonly property real  _trackOpacity:        0.35
     readonly property real  _fillOpacity:         0.9
-    readonly property real  _borderOpacity:       0.25
-    readonly property real  _panelOpacity:        0.9
-    readonly property color _panelColor:          Qt.alpha(qgcPal.overlayBackground, 1)
 
-    QGCPalette { id: qgcPal; colorGroupEnabled: enabled }
+    QGCPalette { id: qgcPal; colorGroupEnabled: _root.enabled }
 
-    Rectangle {
-        anchors.fill:   parent
-        radius:         width / 2
-        color:          Qt.alpha(_panelColor, _panelOpacity)
-        border.color:   Qt.alpha(qgcPal.text, _borderOpacity)
-        border.width:   1
+    OverlayGlass {
+        anchors.fill: parent
+        radius:       Math.min(_root.width, _root.height) / 2
     }
 
+    // Icon and readout stay upright in both orientations - only the track rotates.
     QGCColoredImage {
         id:                         iconImage
-        anchors.top:                parent.top
-        anchors.topMargin:          ScreenTools.defaultFontPixelHeight / 2
-        anchors.horizontalCenter:   parent.horizontalCenter
+        anchors.top:                _root.vertical ? parent.top : undefined
+        anchors.topMargin:          _root.vertical ? ScreenTools.defaultFontPixelHeight / 2 : 0
+        anchors.left:               _root.vertical ? undefined : parent.left
+        anchors.leftMargin:         _root.vertical ? 0 : ScreenTools.defaultFontPixelHeight / 2
+        anchors.horizontalCenter:   _root.vertical ? parent.horizontalCenter : undefined
+        anchors.verticalCenter:     _root.vertical ? undefined : parent.verticalCenter
         source:                     icon
         visible:                    icon !== ""
         color:                      qgcPal.text
@@ -73,9 +78,12 @@ Item {
 
     QGCLabel {
         id:                         readoutLabel
-        anchors.top:                iconImage.bottom
-        anchors.topMargin:          ScreenTools.defaultFontPixelHeight / 4
-        anchors.horizontalCenter:   parent.horizontalCenter
+        anchors.top:                _root.vertical ? iconImage.bottom : undefined
+        anchors.topMargin:          _root.vertical ? ScreenTools.defaultFontPixelHeight / 4 : 0
+        anchors.horizontalCenter:   _root.vertical ? parent.horizontalCenter : undefined
+        anchors.left:               _root.vertical ? undefined : iconImage.right
+        anchors.leftMargin:         _root.vertical ? 0 : ScreenTools.defaultFontPixelHeight / 4
+        anchors.verticalCenter:     _root.vertical ? undefined : parent.verticalCenter
         text:                       slider.pressed && valueReadout ? Math.round(slider.value) : readout
         visible:                    text !== ""
         color:                      qgcPal.text
@@ -85,12 +93,16 @@ Item {
     Slider {
         id:                         slider
         enabled:                    !_root.editing && _root.actionsEnabled
-        orientation:                Qt.Vertical
-        anchors.top:                readoutLabel.visible ? readoutLabel.bottom : iconImage.bottom
+        orientation:                _root.vertical ? Qt.Vertical : Qt.Horizontal
+        anchors.top:                _root.vertical ? (readoutLabel.visible ? readoutLabel.bottom : iconImage.bottom) : parent.top
         anchors.bottom:             parent.bottom
-        anchors.topMargin:          ScreenTools.defaultFontPixelHeight / 2
+        anchors.left:               _root.vertical ? undefined : (readoutLabel.visible ? readoutLabel.right : iconImage.right)
+        anchors.right:              _root.vertical ? undefined : parent.right
+        anchors.topMargin:          _root.vertical ? ScreenTools.defaultFontPixelHeight / 2 : 0
         anchors.bottomMargin:       ScreenTools.defaultFontPixelHeight / 2
-        anchors.horizontalCenter:   parent.horizontalCenter
+        anchors.leftMargin:         _root.vertical ? 0 : ScreenTools.defaultFontPixelHeight / 4
+        anchors.rightMargin:        _root.vertical ? 0 : ScreenTools.defaultFontPixelHeight / 2
+        anchors.horizontalCenter:   _root.vertical ? parent.horizontalCenter : undefined
         from:                       _root.from
         to:                         _root.to
         onMoved:                    _root.moved(value)
@@ -103,28 +115,41 @@ Item {
         }
 
         background: Rectangle {
-            x:              slider.leftPadding + slider.availableWidth / 2 - width / 2
-            y:              slider.topPadding
-            implicitWidth:  Math.max(2, ScreenTools.defaultFontPixelWidth / 4)
+            x:              _root.vertical ? slider.leftPadding + slider.availableWidth / 2 - width / 2 : slider.leftPadding
+            y:              _root.vertical ? slider.topPadding : slider.topPadding + slider.availableHeight / 2 - height / 2
+            implicitWidth:  _root.vertical ? Math.max(2, ScreenTools.defaultFontPixelWidth / 4) : slider.availableWidth
+            implicitHeight: _root.vertical ? slider.availableHeight : Math.max(2, ScreenTools.defaultFontPixelWidth / 4)
             width:          implicitWidth
-            height:         slider.availableHeight
-            radius:         width / 2
+            height:         implicitHeight
+            radius:         Math.min(width, height) / 2
             color:          qgcPal.text
             opacity:        _trackOpacity
 
             Rectangle {
-                width:      parent.width
-                height:     parent.height * (1 - slider.visualPosition)
-                anchors.bottom: parent.bottom
+                width:      _root.vertical ? parent.width : (_root.centered ? Math.abs(parent.width / 2 - parent.width * slider.visualPosition) : parent.width * slider.visualPosition)
+                height:     _root.vertical ? (_root.centered ? Math.abs(parent.height / 2 - parent.height * slider.visualPosition) : parent.height * (1 - slider.visualPosition)) : parent.height
+                x:          _root.vertical ? 0 : (_root.centered ? Math.min(parent.width / 2, parent.width * slider.visualPosition) : 0)
+                y:          _root.vertical ? (_root.centered ? Math.min(parent.height / 2, parent.height * slider.visualPosition) : parent.height * slider.visualPosition) : 0
                 radius:     parent.radius
                 color:      qgcPal.text
                 opacity:    _fillOpacity
             }
+
+            Rectangle {
+                x:          _root.vertical ? (parent.width - width) / 2 : parent.width / 2 - width / 2
+                y:          _root.vertical ? parent.height / 2 - height / 2 : (parent.height - height) / 2
+                width:      _root.vertical ? ScreenTools.defaultFontPixelHeight * 0.6 : Math.max(2, ScreenTools.defaultFontPixelWidth / 4)
+                height:     _root.vertical ? Math.max(2, ScreenTools.defaultFontPixelWidth / 4) : ScreenTools.defaultFontPixelHeight * 0.6
+                radius:     Math.min(width, height) / 2
+                color:      qgcPal.text
+                opacity:    0.9
+                visible:    _root.centered
+            }
         }
 
         handle: Rectangle {
-            x:              slider.leftPadding + slider.availableWidth / 2 - width / 2
-            y:              slider.topPadding + slider.visualPosition * (slider.availableHeight - height)
+            x:              _root.vertical ? slider.leftPadding + slider.availableWidth / 2 - width / 2 : slider.leftPadding + slider.visualPosition * (slider.availableWidth - width)
+            y:              _root.vertical ? slider.topPadding + slider.visualPosition * (slider.availableHeight - height) : slider.topPadding + slider.availableHeight / 2 - height / 2
             implicitWidth:  ScreenTools.defaultFontPixelHeight * _handleInFontHeights
             implicitHeight: implicitWidth
             radius:         width / 2

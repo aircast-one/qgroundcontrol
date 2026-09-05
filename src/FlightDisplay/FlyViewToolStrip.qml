@@ -20,8 +20,7 @@ ToolStrip {
     color:          "transparent"
     roundButtons:   true
     buttonSpacing:  ScreenTools.defaultFontPixelHeight / 2
-    width:          Math.max(ScreenTools.minTouchPixels, ScreenTools.defaultFontPixelHeight * 2.4) +
-                        ScreenTools.defaultFontPixelWidth * 0.8
+    width:          ScreenTools.defaultFontPixelWidth * 12
 
     signal displayPreFlightChecklist
 

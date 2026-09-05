@@ -19,4 +19,5 @@ private slots:
     void _configuresCamerasAndTelemetryFromDevice();
     void _reapplyReplacesExistingLink();
     void _clientOnlyTelemetryEndpointCreatesNoLink();
+    void _staleReplyFromSupersededSetupIsIgnored();
 };

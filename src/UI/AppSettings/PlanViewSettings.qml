@@ -33,7 +33,7 @@ SettingsPage {
 
         LabelledFactTextField {
             Layout.fillWidth:   true
-            label:              qsTr("VTOL TransitionDistance")
+            label:              qsTr("VTOL Transition Distance")
             fact:               _planViewSettings.vtolTransitionDistance
             visible:            fact.visible
         }

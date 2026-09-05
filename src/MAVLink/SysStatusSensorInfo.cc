@@ -62,54 +62,45 @@ void SysStatusSensorInfo::update(const mavlink_sys_status_t &sysStatus)
     }
 }
 
+QList<QPair<MAV_SYS_STATUS_SENSOR, SysStatusSensorInfo::SensorInfo>> SysStatusSensorInfo::_orderedSensors() const
+{
+    QList<QPair<MAV_SYS_STATUS_SENSOR, SensorInfo>> unhealthy;
+    QList<QPair<MAV_SYS_STATUS_SENSOR, SensorInfo>> healthy;
+    QList<QPair<MAV_SYS_STATUS_SENSOR, SensorInfo>> disabled;
+
+    for (std::pair<MAV_SYS_STATUS_SENSOR, const SensorInfo&> sensor : _sensorInfoMap.asKeyValueRange()) {
+        QList<QPair<MAV_SYS_STATUS_SENSOR, SensorInfo>> &bucket =
+            !sensor.second.enabled ? disabled : (sensor.second.healthy ? healthy : unhealthy);
+        bucket.append({sensor.first, sensor.second});
+    }
+
+    return unhealthy + healthy + disabled;
+}
+
 QStringList SysStatusSensorInfo::sensorNames() const
 {
     QStringList rgNames;
-
-    // List ordering is unhealthy, healthy, disabled
-    for (std::pair<MAV_SYS_STATUS_SENSOR, const SensorInfo&> sensorInfo : _sensorInfoMap.asKeyValueRange()) {
-        if (sensorInfo.second.enabled && !sensorInfo.second.healthy) {
-            rgNames.append(QGCMAVLink::mavSysStatusSensorToString(sensorInfo.first));
-        }
+    for (const auto &sensor : _orderedSensors()) {
+        rgNames.append(QGCMAVLink::mavSysStatusSensorToString(sensor.first));
     }
-
-    for (std::pair<MAV_SYS_STATUS_SENSOR, const SensorInfo&> sensorInfo : _sensorInfoMap.asKeyValueRange()) {
-        if (sensorInfo.second.enabled && sensorInfo.second.healthy) {
-            rgNames.append(QGCMAVLink::mavSysStatusSensorToString(sensorInfo.first));
-        }
-    }
-
-    for (std::pair<MAV_SYS_STATUS_SENSOR, const SensorInfo&> sensorInfo : _sensorInfoMap.asKeyValueRange()) {
-        if (!sensorInfo.second.enabled) {
-            rgNames.append(QGCMAVLink::mavSysStatusSensorToString(sensorInfo.first));
-        }
-    }
-
     return rgNames;
+}
+
+QVariantList SysStatusSensorInfo::sensorHealthy() const
+{
+    QVariantList rgHealthy;
+    for (const auto &sensor : _orderedSensors()) {
+        rgHealthy.append(sensor.second.enabled && sensor.second.healthy);
+    }
+    return rgHealthy;
 }
 
 QStringList SysStatusSensorInfo::sensorStatus() const
 {
     QStringList rgStatus;
-
-    // List ordering is unhealthy, healthy, disabled
-    for (const SensorInfo &sensorInfo : _sensorInfoMap.values()) {
-        if (sensorInfo.enabled && !sensorInfo.healthy) {
-            rgStatus.append(tr("Error"));
-        }
+    for (const auto &sensor : _orderedSensors()) {
+        rgStatus.append(!sensor.second.enabled ? tr("Disabled")
+                                               : (sensor.second.healthy ? tr("Normal") : tr("Error")));
     }
-
-    for (const SensorInfo &sensorInfo : _sensorInfoMap.values()) {
-        if (sensorInfo.enabled && sensorInfo.healthy) {
-            rgStatus.append(tr("Normal"));
-        }
-    }
-
-    for (const SensorInfo &sensorInfo : _sensorInfoMap.values()) {
-        if (!sensorInfo.enabled) {
-            rgStatus.append(tr("Disabled"));
-        }
-    }
-
     return rgStatus;
 }

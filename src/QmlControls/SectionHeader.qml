@@ -11,7 +11,7 @@ CheckBox {
     checked:        true
     leftPadding:    0
 
-    property var            color:          qgcPal.text
+    property var            color:          qgcPal.colorGrey
     property bool           showSpacer:     true
     property ButtonGroup    buttonGroup:    null
 
@@ -32,9 +32,14 @@ CheckBox {
             visible:                control.showSpacer
         }
 
+        // A section header names the group; it is not a heading competing with the rows under
+        // it. Small, grey and quiet is the grouped-list treatment used everywhere else in the
+        // app now.
         QGCLabel {
             text:               control.text
             color:              control.color
+            font.pointSize:     ScreenTools.smallFontPointSize
+            font.letterSpacing: 0.5
             Layout.fillWidth:   true
 
             QGCColoredImage {
@@ -48,10 +53,12 @@ CheckBox {
             }
         }
 
+        // A hairline, not a bright white rule. At full text colour this was the loudest thing
+        // in any panel it appeared in - louder than the controls it was introducing.
         Rectangle {
             Layout.fillWidth:   true
             height:             1
-            color:              qgcPal.text
+            color:              Qt.alpha(qgcPal.text, 0.15)
         }
     }
 

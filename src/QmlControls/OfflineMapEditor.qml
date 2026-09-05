@@ -337,7 +337,7 @@ FlightMap {
                         enabled:    tileSet ? (tileSet.savedTileSize > 0) : false
                     }
                     QGCButton {
-                        text:       qsTr("Ok")
+                        text:       qsTr("OK")
                         width:      ScreenTools.defaultFontPixelWidth * (infoView._extraButton ? 6 : 10)
                         visible:    !_defaultSet
                         enabled:    editSetName.text !== ""

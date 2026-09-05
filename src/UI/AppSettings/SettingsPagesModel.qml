@@ -17,6 +17,8 @@ ListModel {
         name: qsTr("General")
         url: "qrc:/qml/QGroundControl/AppSettings/GeneralSettings.qml"
         iconUrl: "qrc:/res/QGCLogoWhite.svg"
+        tileColor: "#8e8e93"
+        newSection: true
         pageVisible: function() { return true }
     }
 
@@ -24,6 +26,8 @@ ListModel {
         name: qsTr("Fly View")
         url: "qrc:/qml/QGroundControl/AppSettings/FlyViewSettings.qml"
         iconUrl: "qrc:/qmlimages/PaperPlane.svg"
+        tileColor: "#0a84ff"
+        newSection: true
         pageVisible: function() { return true }
     }
 
@@ -31,6 +35,8 @@ ListModel {
         name: qsTr("Plan View")
         url: "qrc:/qml/QGroundControl/AppSettings/PlanViewSettings.qml"
         iconUrl: "qrc:/qmlimages/Plan.svg"
+        tileColor: "#30d158"
+        newSection: false
         pageVisible: function() { return true }
     }
 
@@ -38,6 +44,8 @@ ListModel {
         name: qsTr("Video")
         url: "qrc:/qml/QGroundControl/AppSettings/VideoSettings.qml"
         iconUrl: "qrc:/InstrumentValueIcons/camera.svg"
+        tileColor: "#ff375f"
+        newSection: false
         pageVisible: function() { return QGroundControl.settingsManager.videoSettings.visible }
     }
 
@@ -45,6 +53,8 @@ ListModel {
         name: qsTr("Telemetry")
         url: "qrc:/qml/QGroundControl/AppSettings/TelemetrySettings.qml"
         iconUrl: "qrc:/InstrumentValueIcons/drone.svg"
+        tileColor: "#5e5ce6"
+        newSection: true
         pageVisible: function() { return true }
     }
 
@@ -52,6 +62,8 @@ ListModel {
         name: qsTr("Packet Radio")
         url: "qrc:/qml/QGroundControl/AppSettings/PacketRadioSettings.qml"
         iconUrl: "qrc:/InstrumentValueIcons/radio.svg"
+        tileColor: "#ff9f0a"
+        newSection: false
         pageVisible: function() { return QGroundControl.settingsManager.packetRadioSettings.visible }
     }
 
@@ -59,6 +71,8 @@ ListModel {
         name: qsTr("ADSB Server")
         url: "qrc:/qml/QGroundControl/AppSettings/ADSBServerSettings.qml"
         iconUrl: "qrc:/InstrumentValueIcons/airplane.svg"
+        tileColor: "#64d2ff"
+        newSection: false
         pageVisible: function() { return true }
     }
 
@@ -66,6 +80,8 @@ ListModel {
         name: qsTr("Comm Links")
         url: "qrc:/qml/QGroundControl/AppSettings/LinkSettings.qml"
         iconUrl: "qrc:/InstrumentValueIcons/usb.svg"
+        tileColor: "#bf5af2"
+        newSection: false
         pageVisible: function() { return true }
     }
 
@@ -73,6 +89,17 @@ ListModel {
         name: qsTr("Maps")
         url: "qrc:/qml/QGroundControl/AppSettings/MapSettings.qml"
         iconUrl: "qrc:/InstrumentValueIcons/globe.svg"
+        tileColor: "#30d158"
+        newSection: false
+        pageVisible: function() { return true }
+    }
+
+    ListElement {
+        name: qsTr("Remote ID")
+        url: "qrc:/qml/QGroundControl/AppSettings/RemoteIDSettings.qml"
+        iconUrl: "qrc:/qmlimages/RidIconManNoID.svg"
+        tileColor: "#0a84ff"
+        newSection: true
         pageVisible: function() { return true }
     }
 
@@ -80,6 +107,8 @@ ListModel {
         name: qsTr("PX4 Log Transfer")
         url: "qrc:/qml/QGroundControl/AppSettings/PX4LogTransferSettings.qml"
         iconUrl: "qrc:/InstrumentValueIcons/inbox-download.svg"
+        tileColor: "#ac8e68"
+        newSection: false
         pageVisible: function() { 
             var activeVehicle = QGroundControl.multiVehicleManager.activeVehicle
             return QGroundControl.corePlugin.options.showPX4LogTransferOptions && 
@@ -89,9 +118,11 @@ ListModel {
     }
 
     ListElement {
-        name: qsTr("Remote ID")
-        url: "qrc:/qml/QGroundControl/AppSettings/RemoteIDSettings.qml"
-        iconUrl: "qrc:/qmlimages/RidIconManNoID.svg"
+        name: qsTr("Help")
+        url: "qrc:/qml/QGroundControl/AppSettings/HelpSettings.qml"
+        iconUrl: "qrc:/InstrumentValueIcons/question.svg"
+        tileColor: "#0a84ff"
+        newSection: true
         pageVisible: function() { return true }
     }
 
@@ -99,13 +130,8 @@ ListModel {
         name: qsTr("Console")
         url: "qrc:/qml/QGroundControl/Controls/AppMessages.qml"
         iconUrl: "qrc:/InstrumentValueIcons/conversation.svg"
-        pageVisible: function() { return true }
-    }
-
-    ListElement {
-        name: qsTr("Help")
-        url: "qrc:/qml/QGroundControl/AppSettings/HelpSettings.qml"
-        iconUrl: "qrc:/InstrumentValueIcons/question.svg"
+        tileColor: "#8e8e93"
+        newSection: true
         pageVisible: function() { return true }
     }
 
@@ -113,6 +139,8 @@ ListModel {
         name: qsTr("Mock Link")
         url: "qrc:/qml/QGroundControl/AppSettings/MockLink.qml"
         iconUrl: "qrc:/InstrumentValueIcons/drone.svg"
+        tileColor: "#ffd60a"
+        newSection: false
         pageVisible: function() { return ScreenTools.isDebug }
     }
 
@@ -120,6 +148,8 @@ ListModel {
         name: qsTr("Debug")
         url: "qrc:/qml/QGroundControl/AppSettings/DebugWindow.qml"
         iconUrl: "qrc:/InstrumentValueIcons/bug.svg"
+        tileColor: "#ff453a"
+        newSection: false
         pageVisible: function() { return ScreenTools.isDebug }
     }
 
@@ -127,7 +157,8 @@ ListModel {
         name: qsTr("Palette Test")
         url: "qrc:/qml/QGroundControl/AppSettings/QmlTest.qml"
         iconUrl: "qrc:/InstrumentValueIcons/photo.svg"
+        tileColor: "#ff375f"
+        newSection: false
         pageVisible: function() { return ScreenTools.isDebug }
     }
 }
-

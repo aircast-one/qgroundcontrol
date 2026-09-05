@@ -22,16 +22,17 @@ AbstractButton   {
     QGCPalette { id: qgcPal; colorGroupEnabled: control.enabled }
 
     contentItem: Item {
-        implicitWidth:  (label.visible ? label.contentWidth + ScreenTools.defaultFontPixelWidth : 0) + indicator.width 
-        implicitHeight: label.contentHeight
+        implicitWidth:  (label.visible ? label.contentWidth + ScreenTools.defaultFontPixelWidth : 0) + indicator.width
+        implicitHeight: ScreenTools.settingsRowHeight
 
-        QGCLabel { 
-            id:             label
-            anchors.left:   parent.left
-            text:           visible ? control.text : "X"
-            visible:        control.text !== ""
+        QGCLabel {
+            id:                     label
+            anchors.left:           parent.left
+            anchors.verticalCenter: parent.verticalCenter
+            text:                   visible ? control.text : "X"
+            visible:                control.text !== ""
         }
-    
+
         Rectangle {
             id:                     indicator
             anchors.right:          parent.right
@@ -39,6 +40,7 @@ AbstractButton   {
             height:                 Math.round(ScreenTools.defaultFontPixelHeight * 1.3)
             width:                  Math.round(height * 1.65)
             radius:                 height / 2
+            opacity:                control.enabled ? 1 : 0.4
             color:                  control.checked ? qgcPal.colorGreen : qgcPal.windowShadeLight
 
             Behavior on color { ColorAnimation { duration: 150 } }

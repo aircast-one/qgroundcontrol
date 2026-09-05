@@ -38,7 +38,7 @@ Item {
     readonly property var  _qgcPal:       QGroundControl.globalPalette
 
     component ChipCapsule: OverlayCapsule {
-        height: _chipHeight
+        height:   _chipHeight
     }
 
     // A fresh settings group (not the old telemetry bar's): the DJI default set applies
@@ -91,12 +91,12 @@ Item {
                     Component.onDestruction: overlayRig.unregisterMovable(chip)
 
                     Behavior on x {
-                        enabled: !chipDragHandler.active
+                        enabled: !chipDragHandler.active && dragPosition.settling
                         NumberAnimation { duration: 350; easing.type: Easing.OutBack; easing.overshoot: 2 }
                     }
 
                     Behavior on y {
-                        enabled: !chipDragHandler.active
+                        enabled: !chipDragHandler.active && dragPosition.settling
                         NumberAnimation { duration: 350; easing.type: Easing.OutBack; easing.overshoot: 2 }
                     }
 
@@ -143,7 +143,7 @@ Item {
                         onActiveChanged: {
                             if (!active) {
                                 dragPosition.commit()
-                                overlayRig.resolve(chip)
+                                overlayRig.requestReflow()
                             }
                         }
                     }
@@ -192,7 +192,7 @@ Item {
             text:       qsTr("+ Add Value")
             onClicked: {
                 const column = grid.appendColumn()
-                Qt.callLater(function() { overlayRig.resolve(null) })
+                Qt.callLater(function() { overlayRig.requestReflow() })
                 editDialogComponent.createObject(mainWindow, { instrumentValueData: column.get(0) }).open()
             }
         }

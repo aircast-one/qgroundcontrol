@@ -60,25 +60,16 @@ Item {
             }
         }
 
-        Column {
-            id:                     gpsValuesColumn
+        // One line, on the same baseline as every other indicator. Stacking the count over the
+        // HDOP made GPS the one item in the strip that was two rows tall, and the reader's eye
+        // has to travel down and back up for it. The HDOP lives in the popover, where the rest
+        // of the fix detail already is.
+        QGCLabel {
             anchors.verticalCenter: parent.verticalCenter
+            color:                  qgcPal.toolbarText
             visible:                _activeVehicle
-            spacing:                0
-
-            QGCLabel {
-                anchors.horizontalCenter:   hdopValue.horizontalCenter
-                color:              qgcPal.toolbarText
-                text:               _activeVehicle && _activeVehicle.gps.count.value >= 0
+            text:                   _activeVehicle && _activeVehicle.gps.count.value >= 0
                                         ? _activeVehicle.gps.count.valueString : qsTr("--")
-            }
-
-            QGCLabel {
-                id:      hdopValue
-                color:   qgcPal.toolbarText
-                visible: _activeVehicle && !isNaN(_activeVehicle.gps.hdop.value)
-                text:    _activeVehicle ? _activeVehicle.gps.hdop.value.toFixed(1) : ""
-            }
         }
     }
 

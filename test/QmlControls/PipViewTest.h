@@ -20,4 +20,8 @@ private slots:
     void _dragOffscreenClampsCommittedPosition();
     void _dragBackToDefaultSnapsAndResets();
     void _clickSwapsWithoutDrag();
+    void _gripResizesAndPersists();
+    void _resizeClampsToViewportFraction();
+    void _hoverRevealHoldsSteadyOverTheGrip();
+    void _gripResizeOutsideEditModeDoesNotSwap();
 };

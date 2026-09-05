@@ -37,8 +37,8 @@ def call(port, path, **params):
     except (urllib.error.URLError, ConnectionError, TimeoutError, OSError) as error:
         # A stack trace here reads as a bug in the harness; the actual problem is almost always
         # that nothing is listening, and saying so is what lets someone act.
-        sys.exit(f"no debug api on port {port} ({error}). "
-                 f"Start the app with QGC_DEBUG_API_PORT={port} and run `ui-probe.py ready`.")
+        raise ConnectionError(f"no debug api on port {port} ({error}). "
+                              f"Start the app with QGC_DEBUG_API_PORT={port} and run `ui-probe.py ready`.")
 
 
 def wait_ready(port, timeout=60):
@@ -47,7 +47,7 @@ def wait_ready(port, timeout=60):
         try:
             call(port, "/status")
             return True
-        except SystemExit:
+        except ConnectionError:
             time.sleep(1)
     return False
 
@@ -245,7 +245,10 @@ def main():
     check.set_defaults(func=cmd_assert)
 
     args = parser.parse_args()
-    args.func(args)
+    try:
+        args.func(args)
+    except ConnectionError as error:
+        sys.exit(str(error))
 
 
 if __name__ == "__main__":

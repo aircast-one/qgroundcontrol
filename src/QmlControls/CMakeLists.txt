@@ -14,6 +14,8 @@ target_sources(${CMAKE_PROJECT_NAME}
         MavlinkAction.h
         MavlinkActionManager.cc
         MavlinkActionManager.h
+        OverlayPhysics.cc
+        OverlayPhysics.h
         ParameterEditorController.cc
         ParameterEditorController.h
         QGCFenceCircle.cc
@@ -58,6 +60,8 @@ target_sources(${CMAKE_PROJECT_NAME}
 )
 
 target_include_directories(${CMAKE_PROJECT_NAME} PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
+
+set_source_files_properties(OverlayBackdrop.qml PROPERTIES QT_QML_SINGLETON_TYPE TRUE)
 
 qt_add_library(QGroundControlControlsModule STATIC)
 
@@ -109,10 +113,16 @@ qt_add_qml_module(QGroundControlControlsModule
         OverlayEditBadge.qml
         OverlayMenuItem.qml
         OverlayMenuSeparator.qml
+        OverlayBackdrop.qml
+        OverlayCaption.qml
         OverlayCapsule.qml
+        OverlayGlass.qml
         OverlayPill.qml
+        OverlayPopover.qml
         OverlayRoundButton.qml
         OverlayRig.qml
+        OverlaySegmentedControl.qml
+        OverlayViewSwitch.qml
         OverlayShadowEffect.qml
         ParameterDiffDialog.qml
         ParameterEditor.qml
@@ -201,10 +211,10 @@ qt_add_qml_module(QGroundControlControlsModule
         MissionItemStatus.qml
         MissionSettingsEditor.qml
         PlanEditToolbar.qml
+        PlanGroupCard.qml
+        PlanGroupRow.qml
         PlanToolBarIndicators.qml
         PlanView.qml
-        RallyPointEditorHeader.qml
-        RallyPointItemEditor.qml
         RallyPointMapVisuals.qml
         SimpleItemEditor.qml
         SimpleItemMapVisual.qml
@@ -226,6 +236,8 @@ qt_add_qml_module(QGroundControlControlsModule
         OfflineMapInfo.qml
 
         # src/UI/toolbar/
+        BatteryGlyph.qml
+        GcsBatteryGlyph.qml
         BatteryIndicator.qml
         FlightModeIndicator.qml
         FlightModeMenuIndicator.qml
@@ -244,6 +256,12 @@ qt_add_qml_module(QGroundControlControlsModule
         OfflineMapEditor.qml
 
     NO_PLUGIN # Required by Qt 6.6.3. TODO: Remove when no longer supported.
+)
+
+qt_add_shaders(QGroundControlControlsModule "qgc_glass_shaders"
+    PREFIX "/shaders"
+    BASE "${CMAKE_CURRENT_SOURCE_DIR}/Shaders"
+    FILES Shaders/LiquidGlass.frag
 )
 
 qt_add_library(ScreenToolsModule STATIC)

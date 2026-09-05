@@ -104,7 +104,7 @@ Item {
         SettingsGroupLayout {
             Layout.fillWidth:   true
             heading:            qsTr("Offline Maps")
-            headingDescription: qsTr("Download map tiles for use when offline")
+            description:        qsTr("Download map tiles for use when offline")
 
             Repeater {
                 model: QGroundControl.mapEngineManager.tileSets
@@ -117,15 +117,15 @@ Item {
             }
 
             LabelledButton {
-                label:      qsTr("Add New Set")
-                buttonText: qsTr("Add")
+                label:      ""
+                buttonText: qsTr("Add Tile Set…")
                 enabled:    !_currentlyImportOrExporting
                 onClicked:  offlineMapEditorComponent.createObject(root).addNewSet()
             }
 
             LabelledButton {
                 label:      qsTr("Import Map Tiles")
-                buttonText: qsTr("Import")
+                buttonText: qsTr("Import…")
                 visible:    QGroundControl.corePlugin.options.showOfflineMapImport
                 enabled:    !_currentlyImportOrExporting
                 onClicked: {
@@ -136,7 +136,7 @@ Item {
 
             LabelledButton {
                 label:      qsTr("Export Map Tiles")
-                buttonText: qsTr("Export")
+                buttonText: qsTr("Export…")
                 visible:    QGroundControl.corePlugin.options.showOfflineMapExport
                 enabled:    !_currentlyImportOrExporting
                 onClicked:  exportDialogComponent.createObject(mainWindow).open()
@@ -163,7 +163,7 @@ Item {
         SettingsGroupLayout {
             Layout.fillWidth:   true
             heading:            qsTr("Tokens")
-            headingDescription: qsTr("Allows access to additional providers")
+            description:        qsTr("Allows access to additional providers")
 
             LabelledFactTextField {
                 textFieldPreferredWidth:    _largeTextFieldWidth
@@ -204,7 +204,7 @@ Item {
         SettingsGroupLayout {
             Layout.fillWidth:   true
             heading:            qsTr("Custom Map URL")
-            headingDescription: qsTr("URL with {x} {y} {z} or {zoom} substitutions")
+            description:        qsTr("URL with {x} {y} {z} or {zoom} substitutions")
 
             LabelledFactTextField {
                 textFieldPreferredWidth:    _largeTextFieldWidth

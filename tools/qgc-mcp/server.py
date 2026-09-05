@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 # /// script
 # requires-python = ">=3.10"
-# dependencies = ["mcp"]
+# dependencies = ["mcp<2"]
 # ///
 """MCP server for building, running and driving AircastQGC.
 
@@ -29,8 +29,9 @@ from mcp.server.fastmcp import Image
 REPO = Path(__file__).resolve().parents[2]
 RELEASE_BUILD = REPO / "build-aircast"
 TEST_BUILD = REPO / "build-test"
-APP = RELEASE_BUILD / "Release/AircastQGC.app/Contents/MacOS/AircastQGC"
-TEST_APP = TEST_BUILD / "Debug/QGroundControl.app/Contents/MacOS/QGroundControl"
+RELEASE_APP = RELEASE_BUILD / "Release/AircastQGC.app/Contents/MacOS/AircastQGC"
+TEST_APP = TEST_BUILD / "Debug/AircastQGC.app/Contents/MacOS/AircastQGC"
+APP = RELEASE_APP if RELEASE_APP.exists() else TEST_APP
 LOG_FILE = Path("/tmp/aircast-qgc-mcp.log")
 API_PORT = 8777
 ANDROID_PKG = "org.mavlink.qgroundcontrol"

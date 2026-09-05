@@ -23,7 +23,7 @@ SettingsPage {
     property var _autoConnectSettings:  QGroundControl.settingsManager.autoConnectSettings
 
     SettingsGroupLayout {
-        heading:        qsTr("AutoConnect")
+        heading:        qsTr("Auto Connect")
         visible:        _autoConnectSettings.visible
 
         Repeater {
@@ -188,8 +188,8 @@ SettingsPage {
         }
 
         LabelledButton {
-            label:      qsTr("Add New Link")
-            buttonText: qsTr("Add")
+            label:      ""
+            buttonText: qsTr("Add Link…")
 
             onClicked: {
                 var editingConfig = _linkManager.createConfiguration(ScreenTools.isSerialAvailable ? LinkConfiguration.TypeSerial : LinkConfiguration.TypeUdp, "")
@@ -215,7 +215,6 @@ SettingsPage {
                 if (originalConfig) {
                     _linkManager.endConfigurationEditing(originalConfig, editingConfig)
                 } else {
-                    // If it was edited, it's no longer "dynamic"
                     editingConfig.dynamic = false
                     _linkManager.endCreateConfiguration(editingConfig)
                 }
@@ -241,14 +240,14 @@ SettingsPage {
 
                 QGCCheckBoxSlider {
                     Layout.fillWidth:   true
-                    text:               qsTr("Automatically Connect on Start")
+                    text:               qsTr("Connect automatically on start")
                     checked:            editingConfig.autoConnect
                     onCheckedChanged:   editingConfig.autoConnect = checked
                 }
 
                 QGCCheckBoxSlider {
                     Layout.fillWidth:   true
-                    text:               qsTr("High Latency")
+                    text:               qsTr("High latency link")
                     checked:            editingConfig.highLatency
                     onCheckedChanged:   editingConfig.highLatency = checked
                 }
@@ -261,9 +260,7 @@ SettingsPage {
 
                     onActivated: (index) => {
                         if (index !== editingConfig.linkType) {
-                            // Save current name
                             var name = nameField.text
-                            // Create new link configuration
                             editingConfig = _linkManager.createConfiguration(index, name)
                         }
                     }

@@ -61,8 +61,6 @@ Item {
         Component.onCompleted: overlayRig.registerMovable(rightItem, rightPosition)
     }
 
-    // An order of magnitude heavier than leftItem: mass is area, so the pair must separate
-    // almost entirely by moving the light one.
     Rectangle {
         id:         heavyItem
         objectName: "heavyItem"
@@ -95,11 +93,58 @@ Item {
     Rectangle {
         id:         attachedItem
         objectName: "attachedItem"
-        x:          125
-        y:          400
+        x:          leftItem.x + leftItem.width + 5
+        y:          leftItem.y
         width:      80
         height:     60
 
         Component.onCompleted: overlayRig.registerStatic(attachedItem, leftItem)
+    }
+
+    Rectangle {
+        id:         carrierItem
+        objectName: "carrierItem"
+        width:      120
+        height:     60
+
+        DragToPosition {
+            id:                 carrierPosition
+            objectName:         "carrierPosition"
+            target:             carrierItem
+            settingsKeyPrefix:  "OverlayRigTestCarrier"
+            defaultX:           60
+            defaultY:           700
+        }
+
+        Component.onCompleted: overlayRig.registerMovable(carrierItem, carrierPosition)
+    }
+
+    Rectangle {
+        id:         carrierRail
+        objectName: "carrierRail"
+        x:          carrierItem.x + carrierItem.width + 5
+        y:          carrierItem.y
+        width:      80
+        height:     60
+
+        Component.onCompleted: overlayRig.registerStatic(carrierRail, carrierItem)
+    }
+
+    Rectangle {
+        id:         passengerItem
+        objectName: "passengerItem"
+        width:      90
+        height:     50
+
+        DragToPosition {
+            id:                 passengerPosition
+            objectName:         "passengerPosition"
+            target:             passengerItem
+            settingsKeyPrefix:  "OverlayRigTestPassenger"
+            defaultX:           150
+            defaultY:           700
+        }
+
+        Component.onCompleted: overlayRig.registerMovable(passengerItem, passengerPosition)
     }
 }

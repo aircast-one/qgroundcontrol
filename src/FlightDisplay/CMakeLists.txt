@@ -61,6 +61,7 @@ qt_add_qml_module(FlightDisplayModule
         ProximityRadarValues.qml
         ProximityRadarVideoView.qml
         QGCVideoBackground.qml
+        RcControlsLayer.qml
         RoverChecklist.qml
         SubChecklist.qml
         TelemetryChipsLayer.qml

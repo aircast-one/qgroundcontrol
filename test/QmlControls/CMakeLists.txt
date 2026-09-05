@@ -2,6 +2,10 @@ target_sources(${CMAKE_PROJECT_NAME}
     PRIVATE
         DragToPositionTest.cc
         DragToPositionTest.h
+        OverlayBackdropTest.cc
+        OverlayBackdropTest.h
+        OverlaySegmentedControlTest.cc
+        OverlaySegmentedControlTest.h
         OverlayRigTest.cc
         OverlayRigTest.h
         PipRevealTest.cc

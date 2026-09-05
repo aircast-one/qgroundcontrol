@@ -20,11 +20,14 @@ Rectangle {
     implicitHeight: mainLayout.height + (_margins * 2)
     visible:        false
     radius:         ScreenTools.defaultFontPixelHeight / 2
-    color:          qgcPal.overlayBackground
-    border.color:   qgcPal.overlayBorder
-    border.width:   1
+    color:          "transparent"
     layer.enabled: true
     layer.effect:  OverlayShadowEffect { }
+
+    OverlayGlass {
+        anchors.fill: parent
+        radius:       parent.radius
+    }
 
     property var    _activeVehicle: QGroundControl.multiVehicleManager.activeVehicle
     property real   _margins:       ScreenTools.defaultFontPixelWidth / 2

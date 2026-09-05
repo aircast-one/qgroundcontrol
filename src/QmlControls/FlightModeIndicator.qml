@@ -33,22 +33,44 @@ RowLayout {
     property bool allowEditMode:    true
     property bool editMode:         false
 
+    readonly property string _flightMode:   activeVehicle ? activeVehicle.flightMode : ""
+    readonly property bool   _connecting:   activeVehicle && _flightMode === ""
+    readonly property bool   _modeKnown:    activeVehicle && activeVehicle.flightModes.indexOf(_flightMode) >= 0
+
+    readonly property var _modeGlyphs: [
+        { keywords: [ "return", "rtl", "land", "smart" ],                         icon: "/InstrumentValueIcons/home.svg" },
+        { keywords: [ "mission", "auto", "takeoff", "offboard", "follow" ],       icon: "/InstrumentValueIcons/play.svg" },
+        { keywords: [ "position", "loiter", "hold", "guided", "brake", "orbit" ], icon: "/InstrumentValueIcons/target.svg" },
+        { keywords: [ "manual", "stabil", "acro", "altitude", "alt", "sport" ],   icon: "/InstrumentValueIcons/hand-stop.svg" },
+    ]
+
+    function _modeIcon(mode) {
+        const name = mode.toLowerCase()
+        const match = _modeGlyphs.find((glyph) => glyph.keywords.some((keyword) => name.indexOf(keyword) !== -1))
+        return match ? match.icon : "/qmlimages/FlightModesComponentIcon.png"
+    }
+
     RowLayout {
-        Layout.fillWidth: true
+        Layout.fillWidth:   true
+        spacing:            ScreenTools.defaultFontPixelWidth
 
         QGCColoredImage {
-            id:         flightModeIcon
-            width:      ScreenTools.defaultFontPixelWidth * 3
-            height:     ScreenTools.defaultFontPixelHeight
-            fillMode:   Image.PreserveAspectFit
-            mipmap:     true
-            color:      qgcPal.toolbarText
-            source:     "/qmlimages/FlightModesComponentIcon.png"
+            id:                 flightModeIcon
+            width:              ScreenTools.defaultFontPixelHeight
+            height:             ScreenTools.defaultFontPixelHeight
+            sourceSize.height:  height
+            fillMode:           Image.PreserveAspectFit
+            mipmap:             true
+            color:              qgcPal.toolbarText
+            source:             control._modeIcon(control._flightMode)
+            visible:            !control._connecting
         }
 
         QGCLabel {
-            text:               activeVehicle ? activeVehicle.flightMode : qsTr("N/A", "No data to display")
-            color:              qgcPal.toolbarText
+            text:               !activeVehicle ? qsTr("N/A", "No data to display")
+                                : control._connecting ? qsTr("Connecting…")
+                                : control._flightMode
+            color:              control._connecting ? qgcPal.colorGrey : qgcPal.toolbarText
             font.pointSize:     fontPointSize
             Layout.alignment:   Qt.AlignCenter
 
@@ -94,8 +116,6 @@ RowLayout {
             readonly property var _devModes:    _allModes.filter((mode) => _isDevMode(mode))
             readonly property var _flightModes: _allModes.filter((mode) => !_isReturnMode(mode) && !_isDevMode(mode))
 
-            // Firmwares name their modes freely, so grouping is by name and anything
-            // unrecognised stays in the main group rather than disappearing from the menu.
             readonly property var _returnKeywords: [ "return", "rtl", "land" ]
 
             function _isReturnMode(mode) {
@@ -123,7 +143,6 @@ RowLayout {
             }
 
             Component.onCompleted: {
-                // Hidden flight modes are classified by firmware and vehicle class
                 var hiddenFlightModesPropPrefix
                 if (activeVehicle.px4Firmware) {
                     hiddenFlightModesPropPrefix = "px4HiddenFlightModes"
@@ -136,7 +155,6 @@ RowLayout {
                     var hiddenFlightModesProp = hiddenFlightModesPropPrefix + activeVehicle.vehicleClassInternalName()
                     if (flightModeSettings.hasOwnProperty(hiddenFlightModesProp)) {
                         hiddenFlightModesFact = flightModeSettings[hiddenFlightModesProp]
-                        // Split string into list of flight modes
                         if (hiddenFlightModesFact && hiddenFlightModesFact.value !== "") {
                             hiddenFlightModesList = hiddenFlightModesFact.value.split(",")
                         }
@@ -175,6 +193,16 @@ RowLayout {
                 }
             }
 
+            QGCLabel {
+                Layout.fillWidth:       true
+                Layout.maximumWidth:    ScreenTools.defaultFontPixelWidth * 36
+                wrapMode:               Text.WordWrap
+                font.pointSize:         ScreenTools.smallFontPointSize
+                color:                  QGroundControl.globalPalette.colorOrange
+                visible:                modeColumn.activeVehicle && !control._connecting && !control._modeKnown
+                text:                   qsTr("The vehicle is in %1, which this version of the app doesn't know. Choose a mode below to change it.").arg(control._flightMode)
+            }
+
             ModeSection { model: modeColumn._flightModes }
 
             OverlayMenuSeparator { visible: modeColumn._returnModes.length > 0 && modeColumn._flightModes.length > 0 }
@@ -187,7 +215,6 @@ RowLayout {
 
             OverlayMenuSeparator { visible: showAllModesItem.visible }
 
-            // A count of what is missing is a dead end; the row that reveals them is not.
             OverlayMenuItem {
                 id:         showAllModesItem
                 text:       qsTr("Show All Modes")
@@ -212,6 +239,7 @@ RowLayout {
             }
 
             SettingsGroupLayout {
+                popoverStyle: true
                 Layout.fillWidth:  true
 
                 RowLayout {

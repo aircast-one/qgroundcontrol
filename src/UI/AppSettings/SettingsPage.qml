@@ -26,6 +26,12 @@ Item {
 
     default property alias contentItem: mainLayout.data
 
+    // What the host needs to size a floating panel around this page.
+    readonly property real contentWidth:  mainLayout.width
+    readonly property real contentHeight: mainLayout.height
+
+    readonly property real _minContentWidth: ScreenTools.defaultFontPixelWidth * 50
+
     QGCFlickable {
         anchors.fill:   parent
         contentWidth:   mainLayout.width
@@ -33,8 +39,13 @@ Item {
 
         ColumnLayout {
             id:         mainLayout
-            x:          Math.max(0, root.width / 2 - width / 2)
-            width:      Math.max(implicitWidth, ScreenTools.defaultFontPixelWidth * 50)
+            x:          0
+            // No upper cap. implicitWidth is already the natural width of the content - nothing
+            // in here stretches to fill - so a cap does not prevent over-wide rows, it clips
+            // pages that are legitimately wide. Remote ID is two columns and lost its second
+            // one to exactly that. The host clamps the panel to the window instead, and this
+            // Flickable scrolls whatever does not fit.
+            width:      Math.max(implicitWidth, _minContentWidth)
             spacing:    ScreenTools.defaultFontPixelHeight
         }
     }

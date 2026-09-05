@@ -32,6 +32,7 @@ void PipViewTest::_dragRepositionsAndPersists()
     {
         QQuickView view;
         QVERIFY(loadView(view));
+        view.rootObject()->setProperty("editMode", true);
 
         QQuickItem* root = view.rootObject();
         QQuickItem* pip = root->findChild<QQuickItem*>("pip");
@@ -62,6 +63,7 @@ void PipViewTest::_dragRepositionsAndPersists()
 
     QQuickView view2;
     QVERIFY(loadView(view2));
+    view2.rootObject()->setProperty("editMode", true);
     QQuickItem* pip2 = view2.rootObject()->findChild<QQuickItem*>("pip");
     QVERIFY(pip2);
     QCOMPARE(pip2->x(), draggedPos.x());
@@ -74,6 +76,7 @@ void PipViewTest::_dragOffscreenClampsCommittedPosition()
 
     QQuickView view;
     QVERIFY(loadView(view));
+        view.rootObject()->setProperty("editMode", true);
 
     QQuickItem* root = view.rootObject();
     QQuickItem* pip = root->findChild<QQuickItem*>("pip");
@@ -102,6 +105,7 @@ void PipViewTest::_dragBackToDefaultSnapsAndResets()
     {
         QQuickView view;
         QVERIFY(loadView(view));
+        view.rootObject()->setProperty("editMode", true);
 
         QQuickItem* root = view.rootObject();
         QQuickItem* pip = root->findChild<QQuickItem*>("pip");
@@ -123,6 +127,7 @@ void PipViewTest::_dragBackToDefaultSnapsAndResets()
     // The reset must persist: a fresh view starts at the default position.
     QQuickView view2;
     QVERIFY(loadView(view2));
+    view2.rootObject()->setProperty("editMode", true);
     QQuickItem* pip2 = view2.rootObject()->findChild<QQuickItem*>("pip");
     QVERIFY(pip2);
     QCOMPARE(pip2->x(), kMargin);
@@ -153,3 +158,130 @@ void PipViewTest::_clickSwapsWithoutDrag()
     QVERIFY(itemA->parentItem() != root);
 }
 
+
+static QQuickItem *gripOf(QQuickView &view)
+{
+    return view.rootObject()->findChild<QQuickItem*>(QStringLiteral("pipResizeGrip"));
+}
+
+static QQuickItem *pipOf(QQuickView &view)
+{
+    return view.rootObject()->findChild<QQuickItem*>(QStringLiteral("pip"));
+}
+
+// The pip sizes the video tiles as well, so this grip is the only control over how much of the
+// screen the video cluster takes. It has to survive a reload or it is a toy.
+void PipViewTest::_gripResizesAndPersists()
+{
+    clearPipSettings();
+
+    qreal widened = 0;
+    {
+        QQuickView view;
+        QVERIFY(loadView(view));
+        view.rootObject()->setProperty("editMode", true);
+
+        QQuickItem *const pip = pipOf(view);
+        QQuickItem *const grip = gripOf(view);
+        QVERIFY(pip && grip);
+        QTRY_VERIFY(grip->isVisible());
+
+        const qreal before = pip->width();
+        dragMouse(view, itemCenter(grip), itemCenter(grip) + QPoint(80, 0), false);
+        QTRY_VERIFY(pip->width() > before);
+        widened = pip->width();
+        QCOMPARE(pip->height(), widened * 9 / 16);
+    }
+
+    QQuickView view2;
+    QVERIFY(loadView(view2));
+    QQuickItem *const pip2 = pipOf(view2);
+    QVERIFY(pip2);
+    QTRY_COMPARE(pip2->width(), widened);
+}
+
+// A size dragged out on a wide screen must not swallow a narrow one, and the grip must not be
+// draggable down to nothing.
+void PipViewTest::_resizeClampsToViewportFraction()
+{
+    clearPipSettings();
+
+    QQuickView view;
+    QVERIFY(loadView(view));
+    view.rootObject()->setProperty("editMode", true);
+
+    QQuickItem *const root = view.rootObject();
+    QQuickItem *const pip = pipOf(view);
+    QQuickItem *const grip = gripOf(view);
+    QVERIFY(pip && grip);
+    QTRY_VERIFY(grip->isVisible());
+
+    const qreal maxFraction = pip->property("_maxSize").toReal();
+    const qreal minFraction = pip->property("_minSize").toReal();
+    QVERIFY(maxFraction > 0 && minFraction > 0);
+
+    dragMouse(view, itemCenter(grip), itemCenter(grip) + QPoint(3000, 0), false);
+    QTRY_VERIFY(pip->width() <= root->width() * maxFraction + 1);
+
+    dragMouse(view, itemCenter(grip), itemCenter(grip) - QPoint(3000, 0), false);
+    QTRY_VERIFY(pip->width() >= root->width() * minFraction - 1);
+}
+
+// The grip is revealed by hover and sits under the cursor that revealed it. Deriving that reveal
+// from a MouseArea meant the grip's own handler took the hover point, containsMouse went false,
+// the grip vanished, hover came back - a strobe for as long as you pointed at it. Hovering the
+// grip has to be a stable state, not an oscillation.
+void PipViewTest::_hoverRevealHoldsSteadyOverTheGrip()
+{
+    clearPipSettings();
+
+    QQuickView view;
+    QVERIFY(loadView(view));
+
+    QQuickItem *const pip = view.rootObject()->findChild<QQuickItem*>(QStringLiteral("pip"));
+    QQuickItem *const grip = view.rootObject()->findChild<QQuickItem*>(QStringLiteral("pipResizeGrip"));
+    QVERIFY(pip && grip);
+    QVERIFY(!grip->isVisible());
+
+    QTest::mouseMove(&view, itemCenter(pip));
+    QTRY_VERIFY(grip->isVisible());
+
+    // Now the cursor moves onto the grip itself, which is where the strobe used to start.
+    const QPoint onGrip = itemCenter(grip);
+    for (int sample = 0; sample < 20; sample++) {
+        QTest::mouseMove(&view, onGrip);
+        QVERIFY2(grip->isVisible(), qPrintable(QStringLiteral("grip hid on sample %1 while hovered").arg(sample)));
+    }
+}
+
+// The grip only works outside edit mode because pipMouseArea below it still sees the same
+// press/release. Its own dragged flag can never go true there (drag.target is null), so without
+// the pressedOnGrip guard every grip drag would also read as a plain click and swap map/video
+// out from under the resize.
+void PipViewTest::_gripResizeOutsideEditModeDoesNotSwap()
+{
+    clearPipSettings();
+
+    QQuickView view;
+    QVERIFY(loadView(view));
+
+    QQuickItem* const root = view.rootObject();
+    QQuickItem* const pip = pipOf(view);
+    QQuickItem* const grip = gripOf(view);
+    QQuickItem* const itemA = root->findChild<QQuickItem*>("itemA");
+    QQuickItem* const itemB = root->findChild<QQuickItem*>("itemB");
+    QVERIFY(pip && grip && itemA && itemB);
+
+    QCOMPARE(itemA->parentItem(), root);
+    QVERIFY(itemB->parentItem() != root);
+
+    QTest::mouseMove(&view, itemCenter(pip));
+    QTRY_VERIFY(grip->isVisible());
+
+    const qreal before = pip->width();
+    dragMouse(view, itemCenter(grip), itemCenter(grip) + QPoint(80, 0), false);
+    QTRY_VERIFY(pip->width() > before);
+
+    QCOMPARE(itemA->parentItem(), root);
+    QVERIFY(itemB->parentItem() != root);
+}

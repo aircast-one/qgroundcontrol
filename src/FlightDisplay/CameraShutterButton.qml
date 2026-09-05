@@ -21,11 +21,17 @@ Rectangle {
     width:          Math.max(ScreenTools.minTouchPixels * 1.2, ScreenTools.defaultFontPixelHeight * 3.2)
     height:         width
     radius:         width / 2
-    color:          Qt.alpha(qgcPal.overlayBackground, 0.55)
+    color:          "transparent"
     border.color:   qgcPal.text
     border.width:   Math.max(3, width / 16)
     layer.enabled: true
     layer.effect:  OverlayShadowEffect { elevated: _root.lifted }
+
+    OverlayGlass {
+        anchors.fill:    parent
+        anchors.margins: _root.border.width
+        radius:          width / 2
+    }
 
     property bool recording: false
 

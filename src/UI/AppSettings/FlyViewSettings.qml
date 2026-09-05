@@ -53,12 +53,11 @@ SettingsPage {
 
     SettingsGroupLayout {
         Layout.fillWidth:   true
-        heading:            qsTr("General")
 
         FactCheckBoxSlider {
             id:                 useCheckList
             Layout.fillWidth:   true
-            text:               qsTr("Use Preflight Checklist")
+            text:               qsTr("Use preflight checklist")
             fact:               _useChecklist
             visible:            _useChecklist.visible && QGroundControl.corePlugin.options.preFlightChecklistUrl.toString().length
             property Fact _useChecklist:      _settingsManager.appSettings.useChecklist
@@ -66,7 +65,7 @@ SettingsPage {
 
         FactCheckBoxSlider {
             Layout.fillWidth:   true
-            text:               qsTr("Enforce Preflight Checklist")
+            text:               qsTr("Enforce preflight checklist")
             fact:               _enforceChecklist
             enabled:            _settingsManager.appSettings.useChecklist.value
             visible:            useCheckList.visible && _enforceChecklist.visible
@@ -75,14 +74,14 @@ SettingsPage {
 
         FactCheckBoxSlider {
             Layout.fillWidth:   true
-            text:               qsTr("Enable Multi-Vehicle Panel")
+            text:               qsTr("Show multi-vehicle panel")
             fact:               _enableMultiVehiclePanel
             visible:            _enableMultiVehiclePanel.visible
         }
 
         FactCheckBoxSlider {
             Layout.fillWidth:   true
-            text:               qsTr("Keep Map Centered On Vehicle")
+            text:               qsTr("Keep map centered on vehicle")
             fact:               _keepMapCenteredOnVehicle
             visible:            _keepMapCenteredOnVehicle.visible
             property Fact _keepMapCenteredOnVehicle: _flyViewSettings.keepMapCenteredOnVehicle
@@ -90,7 +89,7 @@ SettingsPage {
 
         FactCheckBoxSlider {
             Layout.fillWidth:   true
-            text:               qsTr("Show Telemetry Log Replay Status Bar")
+            text:               qsTr("Show telemetry log replay status bar")
             fact:               _showLogReplayStatusBar
             visible:            _showLogReplayStatusBar.visible
             property Fact _showLogReplayStatusBar: _flyViewSettings.showLogReplayStatusBar
@@ -116,7 +115,7 @@ SettingsPage {
 
         FactCheckBoxSlider {
             Layout.fillWidth:   true
-            text:               qsTr("Update return to home position based on device location.")
+            text:               qsTr("Update return to home position based on device location")
             fact:               _updateHomePosition
             visible:            _updateHomePosition.visible
             property Fact _updateHomePosition: _flyViewSettings.updateHomePosition
@@ -160,7 +159,7 @@ SettingsPage {
 
         FactCheckBoxSlider {
             Layout.fillWidth:   true
-            text:               qsTr("Require Confirmation for Go To Location in Guided Mode")
+            text:               qsTr("Confirm before Go To Location in guided mode")
             fact:               _goToLocationRequiresConfirmInGuided
             visible:            fact.visible
         }
@@ -170,7 +169,7 @@ SettingsPage {
         Layout.fillWidth:       true
         Layout.preferredWidth:  ScreenTools.defaultFontPixelWidth * 35
         heading:                qsTr("MAVLink Actions")
-        headingDescription:     qsTr("Action JSON files should be created in the '%1' folder.").arg(QGroundControl.settingsManager.appSettings.mavlinkActionsSavePath)
+        description:            qsTr("Action JSON files should be created in the '%1' folder.").arg(QGroundControl.settingsManager.appSettings.mavlinkActionsSavePath)
 
         LabelledComboBox {
             Layout.fillWidth:   true
@@ -213,7 +212,7 @@ SettingsPage {
 
         FactCheckBoxSlider {
             Layout.fillWidth:   true
-            text:               qsTr("Auto-Center Throttle")
+            text:               qsTr("Auto-center throttle")
             visible:            _virtualJoystickAutoCenterThrottle.visible
             enabled:            _virtualJoystick.rawValue
             fact:               _virtualJoystickAutoCenterThrottle
@@ -221,7 +220,7 @@ SettingsPage {
 
         FactCheckBoxSlider {
             Layout.fillWidth:   true
-            text:               qsTr("Left-Handed Mode (swap sticks)")
+            text:               qsTr("Left-handed mode (swap sticks)")
             visible:            _virtualJoystickLeftHandedMode.visible
             enabled:            _virtualJoystick.rawValue
             fact:               _virtualJoystickLeftHandedMode
@@ -242,7 +241,7 @@ SettingsPage {
 
         FactCheckBoxSlider {
             Layout.fillWidth:   true
-            text:               qsTr("Lock Compass Nose-Up")
+            text:               qsTr("Lock compass nose-up")
             visible:            _lockNoseUpCompass.visible
             fact:               _lockNoseUpCompass
         }
@@ -252,7 +251,7 @@ SettingsPage {
         Layout.fillWidth:       true
         Layout.preferredWidth:  ScreenTools.defaultFontPixelWidth * 40
         heading:                qsTr("Camera & Gimbal Control")
-        headingDescription:     qsTr("Map the vehicle's RC channels once here and the fly view gains camera controls: drag the video to aim, tilt and zoom sliders on the edges. Leave a channel at 0 to hide its control. Channel numbers come from the vehicle's RCn_OPTION setup.")
+        description:            qsTr("Map the vehicle's RC channels once here and the fly view gains camera controls: drag the video to aim, tilt and zoom sliders on the edges. Leave a channel at 0 to hide its control. Channel numbers come from the vehicle's RCn_OPTION setup.")
 
         LabelledFactTextField {
             Layout.fillWidth:   true
@@ -289,11 +288,23 @@ SettingsPage {
         id:                     rcControlsGroup
         objectName:             "rcControlsGroup"
         Layout.fillWidth:       true
-        Layout.preferredWidth:  ScreenTools.defaultFontPixelWidth * 40
+        Layout.preferredWidth:  ScreenTools.defaultFontPixelWidth * 65
         heading:                qsTr("Custom RC Controls")
-        headingDescription:     qsTr("Add an on-screen slider or toggle button for any RC channel. Sliders sweep 1000-2000 µs, buttons switch between 1000 and 2000 µs. Controls are greyed out until a vehicle connects. Long-press any control in the fly view to arrange them.")
+        description:            qsTr("Add an on-screen control for any RC channel: a slider, a latching toggle switch, a 3-position switch, or a spring-loaded momentary switch. Sliders sweep 1000-2000 µs; switches move between 1000/1500/2000 µs. Controls are greyed out until a vehicle connects. Long-press any control in the fly view to arrange them.")
 
         readonly property int _channelCount: 18
+
+        readonly property var _typeOptions: [
+            { value: "slider",    label: qsTr("Slider") },
+            { value: "button",    label: qsTr("Toggle Switch") },
+            { value: "switch3",   label: qsTr("3-Position Switch") },
+            { value: "momentary", label: qsTr("Momentary Switch") }
+        ]
+
+        function _typeIndex(type) {
+            const i = _typeOptions.findIndex((option) => option.value === type)
+            return i < 0 ? 0 : i
+        }
 
         property var _controls: _parse(_flyViewSettings.rcControls.rawValue)
 
@@ -344,9 +355,10 @@ SettingsPage {
             spacing:            ScreenTools.defaultFontPixelWidth
             visible:            rcControlsGroup._controls.length > 0
 
-            QGCLabel { Layout.fillWidth: true;                                       text: qsTr("Label");   color: QGroundControl.globalPalette.colorGrey; font.pointSize: ScreenTools.smallFontPointSize }
-            QGCLabel { Layout.preferredWidth: ScreenTools.defaultFontPixelWidth * 16; text: qsTr("Channel"); color: QGroundControl.globalPalette.colorGrey; font.pointSize: ScreenTools.smallFontPointSize }
-            QGCLabel { Layout.preferredWidth: ScreenTools.defaultFontPixelWidth * 12; text: qsTr("Type");    color: QGroundControl.globalPalette.colorGrey; font.pointSize: ScreenTools.smallFontPointSize }
+            QGCLabel { Layout.fillWidth: true;                                       text: qsTr("Name");        color: QGroundControl.globalPalette.colorGrey; font.pointSize: ScreenTools.smallFontPointSize }
+            QGCLabel { Layout.preferredWidth: ScreenTools.defaultFontPixelWidth * 16; text: qsTr("Channel");     color: QGroundControl.globalPalette.colorGrey; font.pointSize: ScreenTools.smallFontPointSize }
+            QGCLabel { Layout.preferredWidth: ScreenTools.defaultFontPixelWidth * 16; text: qsTr("Type");        color: QGroundControl.globalPalette.colorGrey; font.pointSize: ScreenTools.smallFontPointSize }
+            QGCLabel { Layout.preferredWidth: ScreenTools.defaultFontPixelWidth * 12; text: qsTr("Orientation"); color: QGroundControl.globalPalette.colorGrey; font.pointSize: ScreenTools.smallFontPointSize }
             Item     { Layout.preferredWidth: removeSizer.width }
 
             QGCButton { id: removeSizer; text: qsTr("Remove"); visible: false }
@@ -388,10 +400,19 @@ SettingsPage {
 
                     QGCComboBox {
                         objectName:             "rcControlType" + rcControlRow.index
+                        Layout.preferredWidth:  ScreenTools.defaultFontPixelWidth * 16
+                        model:                  rcControlsGroup._typeOptions.map((option) => option.label)
+                        currentIndex:           rcControlsGroup._typeIndex(rcControlRow.modelData.type)
+                        onActivated:            (i) => rcControlsGroup._update(rcControlRow.index, { type: rcControlsGroup._typeOptions[i].value })
+                    }
+
+                    QGCComboBox {
+                        objectName:             "rcControlOrientation" + rcControlRow.index
                         Layout.preferredWidth:  ScreenTools.defaultFontPixelWidth * 12
-                        model:                  [ qsTr("Slider"), qsTr("Button") ]
-                        currentIndex:           rcControlRow.modelData.type === "button" ? 1 : 0
-                        onActivated:            (i) => rcControlsGroup._update(rcControlRow.index, { type: i === 1 ? "button" : "slider" })
+                        visible:                (rcControlRow.modelData.type || "slider") === "slider"
+                        model:                  [ qsTr("Vertical"), qsTr("Horizontal") ]
+                        currentIndex:           rcControlRow.modelData.orientation === "horizontal" ? 1 : 0
+                        onActivated:            (i) => rcControlsGroup._update(rcControlRow.index, { orientation: i === 1 ? "horizontal" : "vertical" })
                     }
 
                     QGCButton {
@@ -416,7 +437,7 @@ SettingsPage {
 
         QGCButton {
             objectName: "rcControlsAddButton"
-            text:       qsTr("Add control")
+            text:       qsTr("Add Control")
             onClicked:  rcControlsGroup._save([...rcControlsGroup._controls,
                                                { label: "", channel: rcControlsGroup._firstFreeChannel(), type: "slider" }])
         }
@@ -447,7 +468,7 @@ SettingsPage {
                 QGCLabel {
                     wrapMode:   Text.WordWrap
                     visible:    true
-                    text:       qsTr("3D Map File:")
+                    text:       qsTr("3D Map File")
                 }
 
                 QGCTextField {
@@ -476,13 +497,13 @@ SettingsPage {
                 }
 
                 QGCButton {
-                    text: qsTr("Select File")
+                    text: qsTr("Choose…")
 
                     onClicked: {
                         var filename = _viewer3DOsmFilePath.rawValue;
                         const found = filename.match(/(.*)[\/\\]/);
                         if(found){
-                            filename = found[1]||''; // extracting the directory from the file path
+                            filename = found[1]||'';
                             fileDialog.folder = (filename[0] === "/")?(filename.slice(1)):(filename);
                         }
                         fileDialog.openForLoad()

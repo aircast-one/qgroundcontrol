@@ -9,6 +9,7 @@
 
 import QtQuick
 import QtQuick.Controls
+import QtQuick.Effects
 
 import QGroundControl
 import QGroundControl.FlightDisplay
@@ -23,9 +24,10 @@ Item {
     id:     root
     clip:   true
 
+    QGCPalette { id: qgcPal }
+
     property bool useSmallFont: true
 
-    // The collision rig needs a handle on the status pill to keep telemetry chips off it.
     readonly property alias statusPill: statusPill
 
     property double _ar:                (QGroundControl.videoManager.gstreamerEnabled && QGroundControl.videoManager.videoSize.width > 0 && QGroundControl.videoManager.videoSize.height > 0)
@@ -54,12 +56,18 @@ Item {
 
     property double _thermalHeightFactor: 0.85
 
-        Image {
+        // A placeholder has to be unmistakably a placeholder. This used to be a full-bleed
+        // photograph of farmland - photorealistic aerial imagery in the exact place the
+        // aircraft's camera feed goes, which a pilot glancing across the screen reads as a live
+        // picture until they stop and read the pill. Absent content gets a neutral surface and
+        // a symbol saying what is missing, never content that could be mistaken for the real
+        // thing.
+        Rectangle {
             id:             noVideo
             anchors.fill:   parent
-            source:         "/res/NoVideoBackground.jpg"
-            fillMode:       Image.PreserveAspectCrop
+            color:          qgcPal.window
             visible:        !(QGroundControl.videoManager.decoding)
+
 
             property string statusText: {
                 var statuses = QGroundControl.videoManager.cameraStatuses
@@ -75,25 +83,23 @@ Item {
 
             readonly property bool streamEnabled: QGroundControl.settingsManager.videoSettings.streamEnabled.rawValue
 
-            // "Nothing is arriving" and "data is arriving but will not decode" look identical
-            // on screen but have opposite fixes, so the pill has to tell them apart.
             readonly property bool receivingData: QGroundControl.videoManager.streaming
 
-            readonly property string sourceLabel: {
+            readonly property string noVideoText: {
                 const settings = QGroundControl.settingsManager.videoSettings
                 const source   = settings.videoSource.rawValue
-                const url      = source.indexOf("RTSP") >= 0 ? settings.rtspUrl.rawValue
-                               : source.indexOf("TCP")  >= 0 ? settings.tcpUrl.rawValue
-                               : source.indexOf("UDP")  >= 0 ? settings.udpUrl.rawValue
-                               : source.indexOf("WHEP") >= 0 ? settings.whepUrl.rawValue
-                                                             : ""
-                return url !== "" ? url : source
+                if (source.indexOf("UDP") >= 0 || source.indexOf("MPEG-TS") >= 0) {
+                    return qsTr("No video on UDP port %1").arg(settings.udpUrl.rawValue.split(":").pop())
+                }
+                const url = source.indexOf("RTSP") >= 0 ? settings.rtspUrl.rawValue
+                          : source.indexOf("TCP")  >= 0 ? settings.tcpUrl.rawValue
+                          : source.indexOf("WHEP") >= 0 ? settings.whepUrl.rawValue
+                                                        : ""
+                return url !== "" ? qsTr("No video from %1").arg(url) : qsTr("No video from %1").arg(source)
             }
 
             property int elapsedSecs: 0
 
-            // "3565 s" is a number the reader has to divide. Anything past a minute reads in
-            // the units people wait in.
             readonly property string elapsedText: _elapsedText(elapsedSecs)
 
             function _elapsedText(secs) {
@@ -131,92 +137,105 @@ Item {
                 onTriggered:    noVideo.prolonged = true
             }
 
-            QGCPalette { id: qgcPal }
 
-            Rectangle {
-                anchors.fill:   parent
-                color:          "black"
-                opacity:        0.45
-            }
 
-            OverlayCapsule {
-                id:                 statusPill
-                objectName:         "videoStatusPill"
-                frosted:            false
+        }
+
+        Item {
+            id:                 statusPill
+            objectName:         "videoStatusPill"
+            anchors.centerIn:   parent
+            width:              pillContent.width
+            height:             pillContent.height
+            opacity:            noVideo.settled ? 1 : 0
+            visible:            noVideo.visible && opacity > 0
+
+            Behavior on opacity { NumberAnimation { duration: 250; easing.type: Easing.OutCubic } }
+
+            Column {
+                id:                 pillContent
                 anchors.centerIn:   parent
-                width:              pillContent.width + ScreenTools.defaultFontPixelHeight * 1.6
-                height:             pillContent.height + ScreenTools.defaultFontPixelHeight * 0.9
+                spacing:            ScreenTools.defaultFontPixelHeight / 2
 
-                Behavior on width  { NumberAnimation { duration: 250; easing.type: Easing.OutCubic } }
-                Behavior on height { NumberAnimation { duration: 250; easing.type: Easing.OutCubic } }
-                opacity:            noVideo.settled ? 1 : 0
-                // The rig reads visibility, not opacity. Left as a permanently visible item
-                // it would shove the chips aside during the second before the pill fades in.
-                visible:            opacity > 0
-
-                Behavior on opacity { NumberAnimation { duration: 250; easing.type: Easing.OutCubic } }
-
-                Column {
-                    id:                 pillContent
-                    anchors.centerIn:   parent
-                    spacing:            ScreenTools.defaultFontPixelHeight / 5
+                // Part of the stack, not a separate object hovering above a card: symbol,
+                // title, cause, actions is one composition.
+                QGCColoredImage {
+                    anchors.horizontalCenter: parent.horizontalCenter
+                    source:             "/InstrumentValueIcons/video-camera.svg"
+                    color:              qgcPal.text
+                    opacity:            0.25
+                    height:             ScreenTools.defaultFontPixelHeight * 4
+                    width:              height
+                    sourceSize.height:  height
+                    fillMode:           Image.PreserveAspectFit
+                    mipmap:             true
+                }
 
                 Row {
-                    id:                 statusRow
-                    anchors.horizontalCenter: parent.horizontalCenter
-                    spacing:            ScreenTools.defaultFontPixelWidth
+                    id:                         statusRow
+                    anchors.horizontalCenter:   parent.horizontalCenter
+                    spacing:                    ScreenTools.defaultFontPixelWidth
 
+                    // Only while it is genuinely still trying. Once the title settles to
+                    // "No Video Signal" a spinner beside it says the opposite of the words.
                     QGCSpinner {
                         anchors.verticalCenter: parent.verticalCenter
                         color:                  qgcPal.text
-                        visible:                noVideo.connecting && noVideo.streamEnabled
+                        visible:                noVideo.connecting && noVideo.streamEnabled &&
+                                                    !noVideo.prolonged
                     }
 
                     QGCLabel {
                         id:                     noVideoLabel
                         anchors.verticalCenter: parent.verticalCenter
-                        text:                   noVideo.streamEnabled ? noVideo.statusText : qsTr("Video off")
+                        // Titles the state once it is clearly a state rather than a moment. The
+                        // trailing ellipsis promises this is about to finish - true for the
+                        // first few seconds, a lie by the time the detail line appears.
+                        text:                   !noVideo.streamEnabled ? qsTr("Video off")
+                                              : noVideo.prolonged      ? qsTr("No Video Signal")
+                                                                       : noVideo.statusText
                         color:                  qgcPal.text
-                        font.pointSize:         useSmallFont ? ScreenTools.defaultFontPointSize : ScreenTools.mediumFontPointSize
+                        font.pointSize:         ScreenTools.defaultFontPointSize
                     }
                 }
 
-                    QGCLabel {
-                        anchors.horizontalCenter:   parent.horizontalCenter
-                        visible:                    noVideo.prolonged && noVideo.streamEnabled
-                        color:                      qgcPal.colorGrey
-                        font.pointSize:             ScreenTools.smallFontPointSize
-                        text: {
-                            const what = noVideo.receivingData
-                                             ? qsTr("Receiving data — waiting for video")
-                                             : qsTr("Nothing arriving from %1").arg(noVideo.sourceLabel)
-                            return qsTr("%1  ·  %2").arg(what).arg(noVideo.elapsedText)
+                QGCLabel {
+                    anchors.horizontalCenter:   parent.horizontalCenter
+                    visible:                    noVideo.prolonged && noVideo.streamEnabled
+                    color:                      qgcPal.colorGrey
+                    font.pointSize:             ScreenTools.smallFontPointSize
+                    text: {
+                        const what = noVideo.receivingData
+                                         ? qsTr("Receiving data — waiting for video")
+                                         : noVideo.noVideoText
+                        return qsTr("%1 for %2").arg(what).arg(noVideo.elapsedText)
+                    }
+                }
+
+                Row {
+                    anchors.horizontalCenter:   parent.horizontalCenter
+                    spacing:                    ScreenTools.defaultFontPixelWidth
+                    visible:                    noVideo.prolonged && noVideo.streamEnabled
+
+                    OverlayPill {
+                        objectName: "videoRetryButton"
+                        anchors.verticalCenter: parent.verticalCenter
+                        frosted: false
+                        accent:  qgcPal.colorBlue
+                        text:    qsTr("Retry")
+                        onClicked: {
+                            noVideo.elapsedSecs = 0
+                            noVideo.prolonged   = false
+                            QGroundControl.videoManager.startVideo()
                         }
                     }
 
-                    Row {
-                        anchors.horizontalCenter:   parent.horizontalCenter
-                        spacing:                    ScreenTools.defaultFontPixelWidth
-                        visible:                    noVideo.prolonged && noVideo.streamEnabled
-
-                        // Retry resolves this for most people, so it carries the weight; two
-                        // identical-looking buttons made the reader pick one at random.
-                        OverlayPill {
-                            anchors.verticalCenter: parent.verticalCenter
-                            frosted: false
-                            text: qsTr("Retry")
-                            onClicked: {
-                                noVideo.elapsedSecs = 0
-                                noVideo.prolonged   = false
-                                QGroundControl.videoManager.startVideo()
-                            }
-                        }
-
-                        OverlayMenuItem {
-                            anchors.verticalCenter: parent.verticalCenter
-                            text:       qsTr("Video Settings")
-                            onClicked:  mainWindow.showSettingsTool(qsTr("Video"))
-                        }
+                    OverlayPill {
+                        objectName: "videoSettingsButton"
+                        anchors.verticalCenter: parent.verticalCenter
+                        frosted:    false
+                        text:       qsTr("Video Settings")
+                        onClicked:  mainWindow.showSettingsTool(qsTr("Video"))
                     }
                 }
             }

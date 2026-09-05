@@ -13,9 +13,6 @@ import QGroundControl
 import QGroundControl.Controls
 import QGroundControl.ScreenTools
 
-// The device QGC runs on, not a pack on the aircraft, so it never reads as another vehicle
-// battery sitting beside the real ones. The silhouette follows the hardware: a laptop on the
-// desktop builds, a handheld on phone and tablet, filling with the charge either way.
 Item {
     id: _root
 

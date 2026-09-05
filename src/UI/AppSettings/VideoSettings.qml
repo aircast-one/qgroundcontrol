@@ -28,8 +28,6 @@ SettingsPage {
     property bool   _videoAutoStreamConfig: _videoManager.autoStreamConfigured
     property real   _fieldWidth:            ScreenTools.defaultFontPixelWidth * 40
 
-    // Single source of truth for which sources need a URL and, for Camera 1, which fact holds it.
-    // (Extra cameras store their URL in the extraVideoSources JSON instead.)
     function _primaryUrlFact(source) {
         if (source === _videoSettings.udp264VideoSource || source === _videoSettings.udp265VideoSource || source === _videoSettings.mpegtsVideoSource)
             return _videoSettings.udpUrl
@@ -42,23 +40,35 @@ SettingsPage {
     function _primaryUrl() { var f = _primaryUrlFact(_videoSettings.videoSource.rawValue); return f ? f.rawValue : "" }
     function _setPrimaryUrl(source, url) { var f = _primaryUrlFact(source); if (f) f.rawValue = url }
 
+    function _sourceLabel(enumString) {
+        return enumString === _videoSettings.disabledVideoSource ? qsTr("Disabled") : enumString.replace(/ Video Stream$/, "")
+    }
     function _sourceDisplay(src) {
-        if (src === "" || src === _videoSettings.disabledVideoSource) return qsTr("Disabled")
-        var i = _videoSettings.videoSource.enumValues.indexOf(src)
-        return i >= 0 ? _videoSettings.videoSource.enumStrings[i] : src
+        if (src === "") return qsTr("Disabled")
+        const i = _videoSettings.videoSource.enumValues.indexOf(src)
+        return _sourceLabel(i >= 0 ? _videoSettings.videoSource.enumStrings[i] : src)
+    }
+    function _cameraTitle(camIndex) {
+        const cam = camerasModel.get(camIndex)
+        return cam && cam.camName !== "" ? cam.camName : qsTr("Camera %1").arg(camIndex + 1)
     }
 
     SettingsGroupLayout {
         id:                 camList
         Layout.fillWidth:   true
         heading:            qsTr("Cameras")
-        headingDescription: _videoAutoStreamConfig
-                                ? qsTr("Camera 1 is configured automatically over MAVLink.")
-                                : qsTr("Main view shows the selected camera. Use the switch button on the video to cycle between them.")
+        description:        qsTr("Additional cameras appear picture-in-picture over the main view.")
         visible:            _isGST
 
-        // camerasModel row index == camIndex (row 0 = Camera 1, rows 1..N = extras in order).
-        // openEditor/saveCamera/removeCamera rely on this — keep reload() appending in order.
+        property int    selectedIndex:  -1
+        property string selectedSource: ""
+
+        readonly property bool _selectedLocked: selectedIndex === 0 && _videoAutoStreamConfig
+
+        function selectedCamera() {
+            return selectedIndex >= 0 && selectedIndex < camerasModel.count ? camerasModel.get(selectedIndex) : null
+        }
+
         ListModel { id: camerasModel }
 
         function parseExtras() {
@@ -67,6 +77,14 @@ SettingsPage {
         }
 
         function reload() {
+            const known = _videoSettings.videoSource.enumValues
+            const extras = parseExtras().map((cam, i) => ({
+                camIndex:  i + 1,
+                isPrimary: false,
+                camName:   cam.name || "",
+                camSource: known.indexOf(cam.source || "") < 0 ? _videoSettings.disabledVideoSource : cam.source,
+                camUrl:    cam.url || ""
+            }))
             camerasModel.clear()
             camerasModel.append({
                 camIndex:  0,
@@ -75,19 +93,8 @@ SettingsPage {
                 camSource: _videoSettings.videoSource.rawValue,
                 camUrl:    _primaryUrl()
             })
-            var known = _videoSettings.videoSource.enumValues
-            var arr = parseExtras()
-            for (var i = 0; i < arr.length; ++i) {
-                var src = arr[i].source || ""
-                if (known.indexOf(src) < 0) src = _videoSettings.disabledVideoSource
-                camerasModel.append({
-                    camIndex:  i + 1,
-                    isPrimary: false,
-                    camName:   arr[i].name || "",
-                    camSource: src,
-                    camUrl:    arr[i].url || ""
-                })
-            }
+            extras.forEach(cam => camerasModel.append(cam))
+            syncFields()
         }
 
         function saveCamera(camIndex, name, source, url) {
@@ -96,207 +103,255 @@ SettingsPage {
                 _videoSettings.videoSource.rawValue = source
                 _setPrimaryUrl(source, url)
             } else {
-                var arr = parseExtras()
-                arr[camIndex - 1] = { name: name, source: source, url: url }
-                _videoSettings.extraVideoSources.rawValue = JSON.stringify(arr)
+                const arr = parseExtras()
+                _videoSettings.extraVideoSources.rawValue = JSON.stringify(
+                    arr.map((cam, i) => i === camIndex - 1 ? { name: name, source: source, url: url } : cam))
             }
             reload()
         }
 
+        function saveSelected(name, source, url) {
+            if (selectedCamera()) saveCamera(selectedIndex, name, source, url)
+        }
+
+        function urlForSource(camIndex, source) {
+            const fact = camIndex === 0 ? _primaryUrlFact(source) : null
+            return fact ? fact.rawValue : ""
+        }
+
         function addCamera() {
-            var arr = parseExtras()
-            arr.push({ name: "", source: _videoSettings.disabledVideoSource, url: "" })
-            _videoSettings.extraVideoSources.rawValue = JSON.stringify(arr)
+            const arr = parseExtras()
+            _videoSettings.extraVideoSources.rawValue = JSON.stringify([...arr, { name: "", source: _videoSettings.disabledVideoSource, url: "" }])
             reload()
-            openEditor(arr.length, true)
+            selectedIndex = arr.length + 1
+            nameField.forceActiveFocus()
         }
 
         function removeCamera(camIndex) {
-            var arr = parseExtras()
-            arr.splice(camIndex - 1, 1)
-            _videoSettings.extraVideoSources.rawValue = JSON.stringify(arr)
+            _videoSettings.extraVideoSources.rawValue = JSON.stringify(parseExtras().filter((_, i) => i !== camIndex - 1))
             if (_videoManager.activeVideoSource === camIndex) {
                 _videoManager.setActiveVideoSource(0)
             } else if (_videoManager.activeVideoSource > camIndex) {
                 _videoManager.setActiveVideoSource(_videoManager.activeVideoSource - 1)
             }
+            selectedIndex = -1
             reload()
         }
 
-        function openEditor(camIndex, removeOnCancel) {
-            var row = camerasModel.get(camIndex)
-            cameraDialogComponent.createObject(mainWindow, {
-                editIndex:      camIndex,
-                removeOnCancel: removeOnCancel === true,
-                initName:       row.camName,
-                initSource:     row.camSource,
-                initUrl:        row.camUrl
-            }).open()
+        function confirmRemove(camIndex) {
+            const row = camerasModel.get(camIndex)
+            const name = row.camName !== "" ? row.camName : qsTr("Camera %1").arg(camIndex + 1)
+            mainWindow.showMessageDialog(qsTr("Remove Camera"), qsTr("Remove “%1”?").arg(name), Dialog.Ok | Dialog.Cancel,
+                                         function() { camList.removeCamera(camIndex) })
         }
 
-        Component.onCompleted: reload()
+        function syncFields() {
+            const cam = selectedCamera()
+            selectedSource = cam ? cam.camSource : ""
+            nameField.text = cam ? cam.camName : ""
+            urlField.text = cam ? cam.camUrl : ""
+            sourceCombo.currentIndex = cam ? Math.max(0, _videoSettings.videoSource.enumValues.indexOf(cam.camSource)) : 0
+        }
 
-        // Refresh Camera 1 when MAVLink auto-stream rewrites its source externally.
-        // Extra-camera edits go through addCamera/removeCamera/saveCamera, which reload directly.
+        onSelectedIndexChanged: syncFields()
+        Component.onCompleted:  reload()
+
         Connections {
             target: _videoSettings.videoSource
             function onRawValueChanged() { camList.reload() }
         }
 
-        Repeater {
-            model: camerasModel
+        component MiniButton: Rectangle {
+            property string label
+            property bool   enabled: true
+            signal clicked
 
-            delegate: RowLayout {
-                id:                 camRow
-                Layout.fillWidth:   true
-                spacing:            ScreenTools.defaultFontPixelWidth * 2
+            readonly property real _size: Math.round(ScreenTools.defaultFontPixelHeight * 1.5)
 
-                property bool receiving: {
-                    var statuses = _videoManager.cameraStatuses
-                    return model.camIndex < statuses.length && statuses[model.camIndex] === ""
-                }
+            implicitWidth:      Math.max(_size, labelItem.implicitWidth + ScreenTools.defaultFontPixelWidth * 2)
+            implicitHeight:     _size
+            color:              QGroundControl.globalPalette.button
+            border.color:       QGroundControl.globalPalette.groupBorder
+            border.width:       1
+            opacity:            enabled ? 1 : 0.4
 
-                Rectangle {
-                    width:              ScreenTools.defaultFontPixelHeight * 0.7
-                    height:             width
-                    radius:             width / 2
-                    color:              camRow.receiving ? QGroundControl.globalPalette.colorGreen : QGroundControl.globalPalette.colorGrey
-                    border.color:       QGroundControl.globalPalette.text
-                    border.width:       1
-                }
+            QGCLabel {
+                id:                 labelItem
+                anchors.centerIn:   parent
+                text:               parent.label
+            }
 
-                QGCLabel {
-                    Layout.fillWidth:   true
-                    text:               model.camName !== "" ? model.camName : qsTr("Camera %1").arg(model.camIndex + 1)
-                    elide:              Text.ElideRight
-                }
-
-                QGCLabel {
-                    text:               _sourceDisplay(model.camSource)
-                    opacity:            0.7
-                }
-
-                QGCColoredImage {
-                    height:             ScreenTools.minTouchPixels
-                    width:              height
-                    sourceSize.height:  height
-                    fillMode:           Image.PreserveAspectFit
-                    mipmap:             true
-                    smooth:             true
-                    color:              QGroundControl.globalPalette.text
-                    source:             "/res/pencil.svg"
-                    enabled:            !(model.isPrimary && _videoAutoStreamConfig)
-                    opacity:            enabled ? 1 : 0.3
-
-                    QGCMouseArea {
-                        fillItem:   parent
-                        enabled:    parent.enabled
-                        onClicked:  camList.openEditor(model.camIndex)
-                    }
-                }
-
-                QGCColoredImage {
-                    height:             ScreenTools.minTouchPixels
-                    width:              height
-                    sourceSize.height:  height
-                    fillMode:           Image.PreserveAspectFit
-                    mipmap:             true
-                    smooth:             true
-                    visible:            !model.isPrimary
-                    color:              QGroundControl.globalPalette.text
-                    source:             "/res/TrashDelete.svg"
-
-                    QGCMouseArea {
-                        fillItem:   parent
-                        onClicked:  camList.removeCamera(model.camIndex)
-                    }
-                }
+            QGCMouseArea {
+                anchors.fill:   parent
+                enabled:        parent.enabled
+                onClicked:      parent.clicked()
             }
         }
 
-        LabelledButton {
-            label:      qsTr("Add camera stream")
-            buttonText: qsTr("Add")
-            onClicked:  camList.addCamera()
+        ColumnLayout {
+            Layout.fillWidth:   true
+            spacing:            ScreenTools.defaultFontPixelHeight / 4
+
+            Rectangle {
+                Layout.fillWidth:   true
+                implicitHeight:     camTableColumn.implicitHeight + 2
+                color:              QGroundControl.globalPalette.window
+                border.color:       QGroundControl.globalPalette.groupBorder
+                border.width:       1
+                radius:             Math.round(ScreenTools.defaultFontPixelHeight * 0.3)
+                clip:               true
+
+                ColumnLayout {
+                    id:                 camTableColumn
+                    anchors.fill:       parent
+                    anchors.margins:    1
+                    spacing:            0
+
+                    Repeater {
+                        model: camerasModel
+
+                        delegate: Rectangle {
+                            id:                 camRow
+                            Layout.fillWidth:   true
+                            implicitHeight:     Math.round(ScreenTools.defaultFontPixelHeight * 1.7)
+                            color:              selected ? QGroundControl.globalPalette.buttonHighlight
+                                                         : index % 2 ? QGroundControl.globalPalette.windowShadeDark : "transparent"
+
+                            readonly property bool selected:  camList.selectedIndex === model.camIndex
+                            readonly property bool receiving: {
+                                const statuses = _videoManager.cameraStatuses
+                                return model.camIndex < statuses.length && statuses[model.camIndex] === ""
+                            }
+
+                            RowLayout {
+                                anchors.fill:           parent
+                                anchors.leftMargin:     ScreenTools.defaultFontPixelWidth
+                                anchors.rightMargin:    ScreenTools.defaultFontPixelWidth
+                                spacing:                ScreenTools.defaultFontPixelWidth * 2
+
+                                QGCLabel {
+                                    Layout.fillWidth:   true
+                                    text:               model.camName !== "" ? model.camName : qsTr("Camera %1").arg(model.camIndex + 1)
+                                    elide:              Text.ElideRight
+                                    color:              camRow.selected ? QGroundControl.globalPalette.buttonHighlightText : QGroundControl.globalPalette.text
+                                }
+
+                                Rectangle {
+                                    width:      ScreenTools.defaultFontPixelHeight * 0.5
+                                    height:     width
+                                    radius:     width / 2
+                                    color:      QGroundControl.globalPalette.colorGreen
+                                    visible:    camRow.receiving
+                                }
+
+                                QGCLabel {
+                                    readonly property bool _unconfigured: _sourceNeedsUrl(model.camSource) && model.camUrl === ""
+
+                                    text:   _unconfigured ? qsTr("Needs URL") : _sourceDisplay(model.camSource)
+                                    color:  camRow.selected ? QGroundControl.globalPalette.buttonHighlightText
+                                                            : _unconfigured ? QGroundControl.globalPalette.colorOrange
+                                                                            : QGroundControl.globalPalette.colorGrey
+                                }
+                            }
+
+                            QGCMouseArea {
+                                anchors.fill:   parent
+                                onClicked:      camList.selectedIndex = model.camIndex
+                            }
+                        }
+                    }
+                }
+            }
+
+            RowLayout {
+                Layout.fillWidth:   true
+                spacing:            0
+
+                readonly property real _radius: Math.round(ScreenTools.defaultFontPixelHeight * 0.3)
+
+                MiniButton {
+                    label:              "+"
+                    topLeftRadius:      parent._radius
+                    bottomLeftRadius:   parent._radius
+                    onClicked:          camList.addCamera()
+                }
+
+                MiniButton {
+                    Layout.leftMargin:  -1
+                    label:              "−"
+                    topRightRadius:     parent._radius
+                    bottomRightRadius:  parent._radius
+                    enabled:            camList.selectedIndex > 0
+                    onClicked:          camList.confirmRemove(camList.selectedIndex)
+                }
+
+                Item { Layout.fillWidth: true }
+            }
         }
 
         FactCheckBoxSlider {
             Layout.fillWidth:   true
-            text:               qsTr("Show all cameras at once (picture-in-picture)")
+            text:               qsTr("Show all cameras")
             fact:               _videoSettings.multiViewEnabled
             visible:            fact.visible
         }
     }
 
-    Component {
-        id: cameraDialogComponent
+    SettingsGroupLayout {
+        Layout.fillWidth:   true
+        heading:            camList.selectedIndex >= 0 ? _cameraTitle(camList.selectedIndex) : ""
+        description:        camList._selectedLocked ? qsTr("Camera 1 is configured automatically over MAVLink.") : ""
+        visible:            _isGST && camList.selectedIndex >= 0
+        enabled:            !camList._selectedLocked
 
-        QGCPopupDialog {
-            id:         dlg
-            title:      qsTr("Camera %1").arg(editIndex + 1)
-            buttons:    Dialog.Save | Dialog.Cancel
+        RowLayout {
+            Layout.fillWidth:   true
+            spacing:            ScreenTools.defaultFontPixelWidth * 2
 
-            property int    editIndex
-            property bool   removeOnCancel: false
-            property string initName
-            property string initSource
-            property string initUrl
-            property string dlgSource: initSource
+            QGCLabel { Layout.fillWidth: true; text: qsTr("Name") }
 
-            onAccepted: camList.saveCamera(editIndex, nameField.text, dlg.dlgSource,
-                                           _sourceNeedsUrl(dlg.dlgSource) ? urlField.text : "")
-            onRejected: if (removeOnCancel) camList.removeCamera(editIndex)
+            QGCTextField {
+                id:                     nameField
+                objectName:             "camNameField"
+                Layout.preferredWidth:  ScreenTools.defaultFontPixelWidth * 24
+                placeholderText:        qsTr("Camera %1").arg(camList.selectedIndex + 1)
+                onEditingFinished:      camList.saveSelected(text, camList.selectedSource, urlField.text)
+            }
+        }
 
-            ColumnLayout {
-                spacing: ScreenTools.defaultFontPixelHeight / 2
-
-                RowLayout {
-                    Layout.fillWidth:   true
-                    spacing:            ScreenTools.defaultFontPixelWidth * 2
-                    QGCLabel { Layout.fillWidth: true; text: qsTr("Name") }
-                    QGCTextField {
-                        id:                     nameField
-                        Layout.preferredWidth:  _fieldWidth
-                        text:                   dlg.initName
-                        placeholderText:        qsTr("Camera %1").arg(dlg.editIndex + 1)
-                    }
+        LabelledComboBox {
+            id:         sourceCombo
+            objectName: "camSourceCombo"
+            label:      qsTr("Source")
+            model:      _videoSettings.videoSource.enumStrings.map(_sourceLabel)
+            onActivated: (i) => {
+                const source = _videoSettings.videoSource.enumValues[i]
+                if (source !== camList.selectedSource) {
+                    camList.saveSelected(nameField.text, source, camList.urlForSource(camList.selectedIndex, source))
                 }
+            }
+        }
 
-                RowLayout {
-                    Layout.fillWidth:   true
-                    spacing:            ScreenTools.defaultFontPixelWidth * 2
-                    QGCLabel { Layout.fillWidth: true; text: qsTr("Source") }
-                    QGCComboBox {
-                        Layout.preferredWidth:  _fieldWidth
-                        model:                  _videoSettings.videoSource.enumStrings
-                        currentIndex:           Math.max(0, _videoSettings.videoSource.enumValues.indexOf(dlg.initSource))
-                        onActivated: (i) => {
-                            var newSource = _videoSettings.videoSource.enumValues[i]
-                            if (newSource !== dlg.dlgSource) urlField.text = ""   // old URL doesn't apply to a different protocol
-                            dlg.dlgSource = newSource
-                        }
-                    }
-                }
+        RowLayout {
+            Layout.fillWidth:   true
+            spacing:            ScreenTools.defaultFontPixelWidth * 2
+            visible:            _sourceNeedsUrl(camList.selectedSource)
 
-                RowLayout {
-                    Layout.fillWidth:   true
-                    spacing:            ScreenTools.defaultFontPixelWidth * 2
-                    visible:            _sourceNeedsUrl(dlg.dlgSource)
-                    QGCLabel { Layout.fillWidth: true; text: qsTr("URL") }
-                    QGCTextField {
-                        id:                     urlField
-                        Layout.preferredWidth:  _fieldWidth
-                        text:                   dlg.initUrl
-                        placeholderText:        qsTr("Stream URL")
-                    }
-                }
+            QGCLabel { Layout.fillWidth: true; text: qsTr("URL") }
+
+            QGCTextField {
+                id:                     urlField
+                objectName:             "camUrlField"
+                Layout.preferredWidth:  _fieldWidth
+                placeholderText:        qsTr("Stream URL")
+                onEditingFinished:      camList.saveSelected(nameField.text, camList.selectedSource, text)
             }
         }
     }
 
     SettingsGroupLayout {
         Layout.fillWidth:   true
-        heading:            qsTr("Settings")
+        heading:            qsTr("Stream")
         visible:            _isStreamSource
 
         LabelledFactTextField {
@@ -322,14 +377,14 @@ SettingsPage {
 
         FactCheckBoxSlider {
             Layout.fillWidth:   true
-            text:               qsTr("Low Latency Mode")
+            text:               qsTr("Low latency mode")
             fact:               _videoSettings.lowLatencyMode
             visible:            !_videoAutoStreamConfig && _isStreamSource && fact.visible && _isGST
         }
 
         LabelledFactComboBox {
             Layout.fillWidth:   true
-            label:              qsTr("Video decode priority")
+            label:              qsTr("Video Decode Priority")
             fact:               _videoSettings.forceVideoDecoder
             visible:            fact.visible
             indexModel:         false
@@ -342,21 +397,21 @@ SettingsPage {
 
         LabelledFactComboBox {
             Layout.fillWidth:   true
-            label:              qsTr("Record File Format")
+            label:              qsTr("File Format")
             fact:               _videoSettings.recordingFormat
             visible:            _videoSettings.recordingFormat.visible
         }
 
         FactCheckBoxSlider {
             Layout.fillWidth:   true
-            text:               qsTr("Auto-Delete Saved Recordings")
+            text:               qsTr("Delete old recordings automatically")
             fact:               _videoSettings.enableStorageLimit
             visible:            fact.visible
         }
 
         LabelledFactTextField {
             Layout.fillWidth:   true
-            label:              qsTr("Max Storage Usage")
+            label:              qsTr("Storage Limit")
             fact:               _videoSettings.maxVideoSize
             visible:            fact.visible
             enabled:            _videoSettings.enableStorageLimit.rawValue

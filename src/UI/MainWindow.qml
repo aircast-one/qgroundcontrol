@@ -10,6 +10,7 @@
 import QtQuick
 import QtQuick.Controls
 import QtQuick.Dialogs
+import QtQuick.Effects
 import QtQuick.Layouts
 import QtQuick.Window
 
@@ -23,8 +24,6 @@ import QGroundControl.FlightMap
 
 import QGroundControl.UTMSP
 
-/// @brief Native QML top level window
-/// All properties defined here are visible to all QML pages.
 ApplicationWindow {
     id:             mainWindow
     visible:        true
@@ -33,11 +32,9 @@ ApplicationWindow {
     property bool   _utmspStartTelemetry
 
     Component.onCompleted: {
-        // Start the sequence of first run prompt(s)
         firstRunPromptManager.nextPrompt()
     }
 
-    /// Saves main window position and size and re-opens it in the same position and size next time
     MainWindowSavedState {
         window: mainWindow
     }
@@ -74,7 +71,9 @@ ApplicationWindow {
     readonly property real windowChromeLeftInset:  windowChromeLoader.item ? windowChromeLoader.item.leftInset : 0
     readonly property real windowChromeRightInset: windowChromeLoader.item ? windowChromeLoader.item.rightInset : 0
 
-    property Item frostedBackdrop: null
+    readonly property bool glassBackdropVisible: flyView.visible && !toolDrawer.visible
+    readonly property bool flyViewBackdropVisible: flyView.visible
+    readonly property real panelRadius: Math.round(ScreenTools.defaultFontPixelHeight * 1.6)
 
     property var _windowDragExclusions: []
 
@@ -85,8 +84,6 @@ ApplicationWindow {
         }
     }
 
-    //-------------------------------------------------------------------------
-    //-- Global Scope Variables
 
     QtObject {
         id: globals
@@ -98,18 +95,13 @@ ApplicationWindow {
         readonly property var       guidedControllerFlyView:        flyView.guidedController
         readonly property var       overlayRigFlyView:              flyView.overlayRig
 
-        // Number of QGCTextField's with validation errors. Used to prevent closing panels with validation errors.
         property int                validationErrorCount:           0 
 
-        // Property to manage RemoteID quick access to settings page
         property bool               commingFromRIDIndicator:        false
     }
 
-    /// Default color palette used throughout the UI
     QGCPalette { id: qgcPal; colorGroupEnabled: true }
 
-    //-------------------------------------------------------------------------
-    //-- Actions
 
     signal armVehicleRequest
     signal forceArmVehicleRequest
@@ -118,26 +110,25 @@ ApplicationWindow {
     signal vtolTransitionToMRFlightRequest
     signal showPreFlightChecklistIfNeeded
 
-    //-------------------------------------------------------------------------
-    //-- Global Scope Functions
 
-    // This function is used to prevent view switching if there are validation errors
     function allowViewSwitch(previousValidationErrorCount = 0) {
-        // Run validation on active focus control to ensure it is valid before switching views
         if (mainWindow.activeFocusControl instanceof FactTextField) {
             mainWindow.activeFocusControl._onEditingFinished()
         }
         return globals.validationErrorCount <= previousValidationErrorCount
     }
 
+    // Fly and Plan are two ways of looking at the same flight over the same ground, so they
+    // dissolve into one another rather than replacing each other outright. Swapping `visible`
+    // cut from one to the other with nothing in between, which read as two separate apps.
+    property bool flyViewActive: true
+
     function showPlanView() {
-        flyView.visible = false
-        planView.visible = true
+        flyViewActive = false
     }
 
     function showFlyView() {
-        flyView.visible = true
-        planView.visible = false
+        flyViewActive = true
     }
 
     function showTool(toolTitle, toolSource, toolIcon) {
@@ -170,20 +161,17 @@ ApplicationWindow {
     }
 
     function showSettingsTool(settingsPage = "") {
-        showTool(qsTr("Application Settings"), "qrc:/qml/QGroundControl/Controls/AppSettings.qml", "/res/QGCLogoWhite")
+        showTool(qsTr("Settings"), "qrc:/qml/QGroundControl/Controls/AppSettings.qml", "/res/QGCLogoWhite")
         if (settingsPage !== "") {
             toolDrawerLoader.item.showSettingsPage(settingsPage)
         }
     }
 
-    //-------------------------------------------------------------------------
-    //-- Global simple message dialog
 
     function showMessageDialog(dialogTitle, dialogText, buttons = Dialog.Ok, acceptFunction = null, closeFunction = null) {
         simpleMessageDialogComponent.createObject(mainWindow, { title: dialogTitle, text: dialogText, buttons: buttons, acceptFunction: acceptFunction, closeFunction: closeFunction }).open()
     }
 
-    // This variant is only meant to be called by QGCApplication
     function _showMessageDialog(dialogTitle, dialogText) {
         showMessageDialog(dialogTitle, dialogText)
     }
@@ -199,16 +187,12 @@ ApplicationWindow {
 
     function finishCloseProcess() {
         _forceClose = true
-        // For some reason on the Qml side Qt doesn't automatically disconnect a signal when an object is destroyed.
-        // So we have to do it ourselves otherwise the signal flows through on app shutdown to an object which no longer exists.
         firstRunPromptManager.clearNextPromptSignal()
         QGroundControl.linkManager.shutdown()
         QGroundControl.videoManager.stopVideo();
         mainWindow.close()
     }
 
-    // Check for things which should prevent the app from closing
-    //  Returns true if it is OK to close
     readonly property int _skipUnsavedMissionCheckMask: 0x01
     readonly property int _skipPendingParameterWritesCheckMask: 0x02
     readonly property int _skipActiveConnectionsCheckMask: 0x04
@@ -278,16 +262,25 @@ ApplicationWindow {
         color:          QGroundControl.globalPalette.window
     }
 
-    FlyView { 
+    FlyView {
         id:                     flyView
         anchors.fill:           parent
         utmspSendActTrigger:    _utmspSendActTrigger
+        opacity:                mainWindow.flyViewActive ? 1 : 0
+        visible:                opacity > 0
+        enabled:                mainWindow.flyViewActive
+
+        Behavior on opacity { NumberAnimation { duration: 220; easing.type: Easing.InOutQuad } }
     }
 
     PlanView {
         id:             planView
         anchors.fill:   parent
-        visible:        false
+        opacity:        mainWindow.flyViewActive ? 0 : 1
+        visible:        opacity > 0
+        enabled:        !mainWindow.flyViewActive
+
+        Behavior on opacity { NumberAnimation { duration: 220; easing.type: Easing.InOutQuad } }
     }
 
     footer: LogReplayStatusBar {
@@ -325,9 +318,9 @@ ApplicationWindow {
         }
     }
 
-    function showToolSelectDialog() {
+    function showToolSelectDialog(indicatorItem) {
         if (mainWindow.allowViewSwitch()) {
-            mainWindow.showIndicatorDrawer(toolSelectComponent, null)
+            mainWindow.showIndicatorDrawer(toolSelectComponent, indicatorItem)
         }
     }
 
@@ -335,140 +328,64 @@ ApplicationWindow {
         id: toolSelectComponent
 
         ToolIndicatorPage {
-            id:         toolSelectDialog
-            //title:      qsTr("Select Tool")
-
-            property real _toolButtonHeight:    ScreenTools.defaultFontPixelHeight * 3
-            property real _margins:             ScreenTools.defaultFontPixelWidth
+            id: toolSelectDialog
 
             contentComponent: Component {
                 ColumnLayout {
-                    width:  innerLayout.width + (toolSelectDialog._margins * 2)
-                    height: innerLayout.height + (toolSelectDialog._margins * 2)
+                    objectName: "toolSelectMenu"
+                    spacing:    0
 
-                    ColumnLayout {
-                        id:             innerLayout
-                        Layout.margins: toolSelectDialog._margins
-                        spacing:        ScreenTools.defaultFontPixelWidth
+                    QGCLabel {
+                        Layout.leftMargin:   ScreenTools.defaultFontPixelWidth * 1.5
+                        Layout.bottomMargin: ScreenTools.defaultFontPixelHeight * 0.3
+                        text:                QGroundControl.appName
+                        color:               indicatorDrawer.contentColor
+                        font.bold:           true
+                        font.pointSize:      ScreenTools.defaultFontPointSize + 1
+                    }
 
-                        SubMenuButton {
-                            height:             toolSelectDialog._toolButtonHeight
-                            Layout.fillWidth:   true
-                            text:               qsTr("Plan Flight")
-                            imageResource:      "/qmlimages/Plan.svg"
-                            onClicked: {
-                                if (mainWindow.allowViewSwitch()) {
-                                    mainWindow.closeIndicatorDrawer()
-                                    mainWindow.showPlanView()
-                                }
+                    OverlayMenuItem {
+                        Layout.fillWidth:   true
+                        icon:               "/InstrumentValueIcons/chart-bar.svg"
+                        contentColor:       indicatorDrawer.contentColor
+                        text:               qsTr("Analysis")
+                        onClicked: {
+                            if (mainWindow.allowViewSwitch()) {
+                                mainWindow.closeIndicatorDrawer()
+                                mainWindow.showAnalyzeTool()
                             }
                         }
+                    }
 
-                        SubMenuButton {
-                            id:                 analyzeButton
-                            height:             toolSelectDialog._toolButtonHeight
-                            Layout.fillWidth:   true
-                            text:               qsTr("Analyze Tools")
-                            imageResource:      "/qmlimages/Analyze.svg"
-                            visible:            QGroundControl.corePlugin.showAdvancedUI
-                            onClicked: {
-                                if (mainWindow.allowViewSwitch()) {
-                                    mainWindow.closeIndicatorDrawer()
-                                    mainWindow.showAnalyzeTool()
-                                }
+                    OverlayMenuItem {
+                        Layout.fillWidth:   true
+                        icon:               "/InstrumentValueIcons/cog.svg"
+                        contentColor:       indicatorDrawer.contentColor
+                        text:               qsTr("Settings")
+                        visible:            !QGroundControl.corePlugin.options.combineSettingsAndSetup
+                        onClicked: {
+                            if (mainWindow.allowViewSwitch()) {
+                                mainWindow.closeIndicatorDrawer()
+                                mainWindow.showSettingsTool()
                             }
                         }
+                    }
 
-                        SubMenuButton {
-                            id:                 setupButton
-                            height:             toolSelectDialog._toolButtonHeight
-                            Layout.fillWidth:   true
-                            text:               qsTr("Vehicle Configuration")
-                            imageResource:      "/qmlimages/Gears.svg"
-                            onClicked: {
-                                if (mainWindow.allowViewSwitch()) {
-                                    mainWindow.closeIndicatorDrawer()
-                                    mainWindow.showVehicleConfig()
-                                }
-                            }
-                        }
+                    OverlayMenuSeparator {
+                        Layout.fillWidth:   true
+                        visible:            closeItem.visible
+                    }
 
-                        SubMenuButton {
-                            id:                 settingsButton
-                            height:             toolSelectDialog._toolButtonHeight
-                            Layout.fillWidth:   true
-                            text:               qsTr("Application Settings")
-                            imageResource:      "/res/QGCLogoFull.svg"
-                            imageColor:         "transparent"
-                            visible:            !QGroundControl.corePlugin.options.combineSettingsAndSetup
-                            onClicked: {
-                                if (mainWindow.allowViewSwitch()) {
-                                    drawer.close()
-                                    mainWindow.showSettingsTool()
-                                }
-                            }
-                        }
-
-                        SubMenuButton {
-                            id:                 closeButton
-                            height:             toolSelectDialog._toolButtonHeight
-                            Layout.fillWidth:   true
-                            text:               qsTr("Close %1").arg(QGroundControl.appName)
-                            imageResource:      "/res/cancel.svg"
-                            visible:            mainWindow.visibility === Window.FullScreen
-                            onClicked: {
-                                if (mainWindow.allowViewSwitch()) {
-                                    mainWindow.finishCloseProcess()
-                                }
-                            }
-                        }
-
-                        ColumnLayout {
-                            width:                  innerLayout.width
-                            spacing:                0
-                            Layout.alignment:       Qt.AlignHCenter
-
-                            QGCLabel {
-                                id:                     versionLabel
-                                text:                   qsTr("%1 Version").arg(QGroundControl.appName)
-                                font.pointSize:         ScreenTools.smallFontPointSize
-                                wrapMode:               QGCLabel.WordWrap
-                                Layout.maximumWidth:    parent.width
-                                Layout.alignment:       Qt.AlignHCenter
-                            }
-
-                            QGCLabel {
-                                text:                   QGroundControl.qgcVersion
-                                font.pointSize:         ScreenTools.smallFontPointSize
-                                wrapMode:               QGCLabel.WrapAnywhere
-                                Layout.maximumWidth:    parent.width
-                                Layout.alignment:       Qt.AlignHCenter
-
-                                QGCMouseArea {
-                                    id:                 easterEggMouseArea
-                                    anchors.topMargin:  -versionLabel.height
-                                    anchors.fill:       parent
-
-                                    onClicked: (mouse) => {
-                                        if (mouse.modifiers & Qt.ControlModifier) {
-                                            QGroundControl.corePlugin.showTouchAreas = !QGroundControl.corePlugin.showTouchAreas
-                                            showTouchAreasNotification.open()
-                                        } else if (ScreenTools.isMobile || mouse.modifiers & Qt.ShiftModifier) {
-                                            mainWindow.closeIndicatorDrawer()
-                                            if(!QGroundControl.corePlugin.showAdvancedUI) {
-                                                advancedModeOnConfirmation.open()
-                                            } else {
-                                                advancedModeOffConfirmation.open()
-                                            }
-                                        }
-                                    }
-
-                                    // This allows you to change this on mobile
-                                    onPressAndHold: {
-                                        QGroundControl.corePlugin.showTouchAreas = !QGroundControl.corePlugin.showTouchAreas
-                                        showTouchAreasNotification.open()
-                                    }
-                                }
+                    OverlayMenuItem {
+                        id:                 closeItem
+                        Layout.fillWidth:   true
+                        icon:               "/InstrumentValueIcons/close.svg"
+                        contentColor:       indicatorDrawer.contentColor
+                        text:               qsTr("Close %1").arg(QGroundControl.appName)
+                        visible:            mainWindow.visibility === Window.FullScreen
+                        onClicked: {
+                            if (mainWindow.allowViewSwitch()) {
+                                mainWindow.finishCloseProcess()
                             }
                         }
                     }
@@ -481,12 +398,22 @@ ApplicationWindow {
         id:             toolDrawer
         anchors.fill:   parent
         visible:        false
-        color:          qgcPal.window
+        color:          floating ? Qt.rgba(0, 0, 0, 0.55) : qgcPal.window
 
         property var backIcon
         property string toolTitle
         property alias toolSource:  toolDrawerLoader.source
         property var toolIcon
+
+        readonly property var  _tool:    toolDrawerLoader.item
+        readonly property real _toolWidth:  _tool && _tool.preferredWidth  > 0 ? _tool.preferredWidth  : 0
+        readonly property real _toolHeight: _tool && _tool.preferredHeight > 0 ? _tool.preferredHeight : 0
+        readonly property bool floating: _toolWidth > 0 && _toolHeight > 0
+
+        readonly property real _panelWidth:  Math.min(_toolWidth,
+                                                      width - ScreenTools.defaultFontPixelWidth * 4)
+        readonly property real _panelHeight: Math.min(_toolHeight + toolDrawerToolbar.height,
+                                                      height - ScreenTools.defaultFontPixelHeight * 2)
 
         onVisibleChanged: {
             if (!toolDrawer.visible) {
@@ -494,10 +421,52 @@ ApplicationWindow {
             }
         }
 
-        // This need to block click event leakage to underlying map.
         DeadMouseArea {
             anchors.fill: parent
         }
+
+        Rectangle {
+            id:                 toolPanel
+            objectName:         "toolPanel"
+            anchors.centerIn:   parent
+            width:              toolDrawer.floating ? toolDrawer._panelWidth  : parent.width
+            height:             toolDrawer.floating ? toolDrawer._panelHeight : parent.height
+            color:              toolDrawer.floating ? "transparent" : qgcPal.window
+            radius:             toolDrawer.floating ? mainWindow.panelRadius : 0
+            clip:               true
+
+            OverlayGlass {
+                anchors.fill:   parent
+                radius:         toolPanel.radius
+                visible:        toolDrawer.floating
+                frosted:        mainWindow.flyViewBackdropVisible
+                minTint:        0.78
+                maxTint:        0.95
+            }
+
+            layer.enabled:      toolDrawer.floating
+            layer.effect:       MultiEffect {
+                maskEnabled:        true
+                maskSource:         toolPanelMask
+                maskThresholdMin:   0.5
+                maskSpreadAtMin:    1.0
+            }
+
+            Item {
+                id:             toolPanelMask
+                anchors.fill:   parent
+                layer.enabled:  true
+                visible:        false
+
+                Rectangle {
+                    anchors.fill:   parent
+                    radius:         toolPanel.radius
+                    color:          "black"
+                }
+            }
+
+            Behavior on width  { NumberAnimation { duration: 200; easing.type: Easing.OutCubic } }
+            Behavior on height { NumberAnimation { duration: 200; easing.type: Easing.OutCubic } }
 
         Rectangle {
             id:             toolDrawerToolbar
@@ -505,25 +474,30 @@ ApplicationWindow {
             anchors.right:  parent.right
             anchors.top:    parent.top
             height:         ScreenTools.toolbarHeight
-            color:          qgcPal.toolbarBackground
+            color:          toolDrawer.floating ? "transparent" : qgcPal.toolbarBackground
 
             RowLayout {
                 id:                 toolDrawerToolbarLayout
-                anchors.leftMargin: ScreenTools.defaultFontPixelWidth + mainWindow.windowChromeLeftInset
+                anchors.leftMargin: ScreenTools.defaultFontPixelWidth +
+                                        (toolDrawer.floating ? 0 : mainWindow.windowChromeLeftInset)
                 anchors.left:       parent.left
                 anchors.top:        parent.top
                 anchors.bottom:     parent.bottom
                 spacing:            ScreenTools.defaultFontPixelWidth
 
-                QGCLabel {
-                    font.pointSize: ScreenTools.largeFontPointSize
-                    text:           "<"
+                QGCColoredImage {
+                    Layout.preferredWidth:  ScreenTools.defaultFontPixelHeight
+                    Layout.preferredHeight: ScreenTools.defaultFontPixelHeight
+                    source:                 "/InstrumentValueIcons/cheveron-left.svg"
+                    sourceSize.height:      height
+                    color:                  qgcPal.colorBlue
                 }
 
                 QGCLabel {
                     id:             toolbarDrawerText
-                    text:           qsTr("Exit") + " " + toolDrawer.toolTitle
+                    text:           toolDrawer.toolTitle
                     font.pointSize: ScreenTools.largeFontPointSize
+                    font.bold:      true
                 }
             }
 
@@ -551,6 +525,7 @@ ApplicationWindow {
                 onPopout:               toolDrawer.visible = false
             }
         }
+        }
     }
 
     Loader {
@@ -562,14 +537,10 @@ ApplicationWindow {
         onLoaded:       mainWindow._windowDragExclusions.forEach(exclusion => item.excludeFromDrag(exclusion))
     }
 
-    //-------------------------------------------------------------------------
-    //-- Critical Vehicle Message Popup
 
     function showCriticalVehicleMessage(message) {
         closeIndicatorDrawer()
         if (criticalVehicleMessagePopup.visible || QGroundControl.videoManager.fullScreen) {
-            // We received additional warning message while an older warning message was still displayed.
-            // When the user close the older one drop the message indicator tool so they can see the rest of them.
             criticalVehicleMessagePopup.additionalCriticalMessagesReceived = true
         } else {
             criticalVehicleMessagePopup.criticalVehicleMessage      = message
@@ -667,8 +638,6 @@ ApplicationWindow {
         }
     }
 
-    //-------------------------------------------------------------------------
-    //-- Indicator Drawer
 
     function showIndicatorDrawer(drawerComponent, indicatorItem) {
         indicatorDrawer.sourceComponent = drawerComponent
@@ -682,31 +651,61 @@ ApplicationWindow {
 
     Popup {
         id:             indicatorDrawer
-        x:              calcXPosition()
+        x: {
+            if (!indicatorItem) {
+                return _margins
+            }
+            const xCenter = indicatorItem.mapToItem(mainWindow.contentItem, indicatorItem.width / 2, 0).x
+            const maxX    = mainWindow.contentItem.width - width - _margins
+            return Math.max(_margins, Math.min(xCenter - width / 2, maxX))
+        }
         y:              ScreenTools.toolbarHeight + (ScreenTools.defaultFontPixelHeight / 2)
         leftInset:      0
         rightInset:     0
         topInset:       0
         bottomInset:    0
-        padding:        _margins * 2
+        padding:        ScreenTools.defaultFontPixelHeight * 0.6
         visible:        false
         modal:          true
+        dim:            false
         focus:          true
         closePolicy:    Popup.CloseOnEscape | Popup.CloseOnPressOutside
 
         property var sourceComponent
         property var indicatorItem
 
+        // Same rule the glass itself applies. Computed here rather than read off the background,
+        // which the Popup does not instantiate until it first opens.
+        readonly property color contentColor: OverlayBackdrop.isDark ? qgcPal.text : qgcPal.window
+
         property bool _expanded:    false
         property real _margins:     ScreenTools.defaultFontPixelHeight / 4
 
-        function calcXPosition() {
-            if (indicatorItem) {
-                var xCenter = indicatorItem.mapToItem(mainWindow.contentItem, indicatorItem.width / 2, 0).x
-                return Math.max(_margins, Math.min(xCenter - (contentItem.implicitWidth / 2), mainWindow.contentItem.width - contentItem.implicitWidth - _margins - (indicatorDrawer.padding * 2) - (ScreenTools.defaultFontPixelHeight / 2)))
-            } else {
-                return _margins
-            }
+        readonly property real _panelRadius: ScreenTools.defaultFontPixelHeight * 0.75
+        readonly property real _innerRadius: Math.max(0, _panelRadius - padding)
+
+        property real _morph: 0
+
+        readonly property point _sourceCentre: indicatorItem
+            ? indicatorItem.mapToItem(mainWindow.contentItem, indicatorItem.width / 2, indicatorItem.height / 2)
+            : Qt.point(x + width / 2, y)
+        readonly property real _originX: Math.max(0, Math.min(width,  _sourceCentre.x - x))
+        readonly property real _originY: Math.max(0, Math.min(height, _sourceCentre.y - y))
+        readonly property real _startScale: indicatorItem && width > 0
+            ? Math.max(0.12, Math.min(0.9, indicatorItem.width / width))
+            : 0.3
+        readonly property real _scale: _startScale + (1 - _startScale) * _morph
+
+        enter: Transition {
+            NumberAnimation { target: indicatorDrawer; property: "_morph"; from: 0; to: 1
+                              duration: 260; easing.type: Easing.OutCubic }
+            NumberAnimation { property: "opacity"; from: 0; to: 1; duration: 130 }
+        }
+
+        exit: Transition {
+            NumberAnimation { target: indicatorDrawer; property: "_morph"; from: 1; to: 0
+                              duration: 170; easing.type: Easing.InCubic }
+            NumberAnimation { property: "opacity"; from: 1; to: 0; duration: 170 }
         }
 
         onOpened: {
@@ -719,79 +718,124 @@ ApplicationWindow {
             indicatorDrawerLoader.sourceComponent   = undefined
         }
 
+        Rectangle {
+            parent:         mainWindow.contentItem
+            visible:        indicatorDrawer.visible && indicatorDrawer.indicatorItem
+            radius:         ScreenTools.defaultFontPixelHeight * 0.4
+            color:          Qt.alpha(QGroundControl.globalPalette.text, 0.15)
+            z:              indicatorDrawer.z - 1
+
+            readonly property point _origin: indicatorDrawer.indicatorItem
+                ? indicatorDrawer.indicatorItem.mapToItem(mainWindow.contentItem, 0, 0)
+                : Qt.point(0, 0)
+            readonly property real _pad: ScreenTools.defaultFontPixelWidth * 0.6
+
+            x:      _origin.x - _pad
+            y:      _origin.y - _pad / 2
+            width:  (indicatorDrawer.indicatorItem ? indicatorDrawer.indicatorItem.width  : 0) + _pad * 2
+            height: (indicatorDrawer.indicatorItem ? indicatorDrawer.indicatorItem.height : 0) + _pad
+        }
+
         background: Item {
+            transform: Scale {
+                origin.x: indicatorDrawer._originX
+                origin.y: indicatorDrawer._originY
+                xScale:   indicatorDrawer._scale
+                yScale:   indicatorDrawer._scale
+            }
+
             Rectangle {
                 id:             backgroundRect
                 anchors.fill:   parent
-                color:          QGroundControl.globalPalette.overlayBackground
-                border.color:   QGroundControl.globalPalette.overlayBorder
-                border.width:   1
-                radius:         ScreenTools.defaultFontPixelHeight * 0.75
+                color:          "transparent"
+                radius:         indicatorDrawer._panelRadius
                 layer.enabled:  true
                 layer.effect:   OverlayShadowEffect { }
+
+                OverlayGlass {
+                    objectName:   "drawerGlass"
+                    anchors.fill: parent
+                    radius:       parent.radius
+                }
             }
 
-            // Straddles the panel corner, so it carries its own shadow rather than the panel's
-            // layer, which would crop it.
+        }
+
+        contentItem: ColumnLayout {
+            spacing: indicatorDrawer._margins
+            opacity: indicatorDrawer._morph * indicatorDrawer._morph
+
+            transform: Scale {
+                origin.x: indicatorDrawer._originX - indicatorDrawer.padding
+                origin.y: indicatorDrawer._originY - indicatorDrawer.padding
+                xScale:   indicatorDrawer._scale
+                yScale:   indicatorDrawer._scale
+            }
+
+            QGCFlickable {
+                id:                 indicatorDrawerLoaderFlickable
+                Layout.fillWidth:   true
+                implicitWidth:  Math.min(mainWindow.contentItem.width - (2 * indicatorDrawer._margins) - (indicatorDrawer.padding * 2), indicatorDrawerLoader.width)
+                implicitHeight: Math.min(mainWindow.contentItem.height - ScreenTools.toolbarHeight - (2 * indicatorDrawer._margins) - (indicatorDrawer.padding * 2), indicatorDrawerLoader.height)
+                contentWidth:   indicatorDrawerLoader.width
+                contentHeight:  indicatorDrawerLoader.height
+
+                Loader {
+                    id: indicatorDrawerLoader
+
+                    Binding {
+                        target:     indicatorDrawerLoader.item
+                        property:   "expanded"
+                        value:      indicatorDrawer._expanded
+                    }
+
+                    Binding {
+                        target:     indicatorDrawerLoader.item
+                        property:   "drawer"
+                        value:      indicatorDrawer
+                    }
+                }
+            }
+
             Rectangle {
-                anchors.horizontalCenter:   backgroundRect.right
-                anchors.verticalCenter:     backgroundRect.top
-                width:                      ScreenTools.defaultFontPixelHeight * 2.2
-                height:                     width
-                radius:                     width / 2
-                color:                      QGroundControl.globalPalette.overlayBackground
-                border.color:               QGroundControl.globalPalette.overlayBorder
-                border.width:               1
-                visible:                    indicatorDrawerLoader.item && indicatorDrawerLoader.item.showExpand && !indicatorDrawer._expanded
-                layer.enabled:              true
-                layer.effect:               OverlayShadowEffect { }
+                Layout.fillWidth:       true
+                Layout.preferredHeight: ScreenTools.defaultFontPixelHeight * 2
+                radius:                 indicatorDrawer._innerRadius
+                color:                  moreArea.containsMouse ? Qt.alpha(QGroundControl.globalPalette.text, 0.08)
+                                                               : "transparent"
+                visible:                indicatorDrawerLoader.item &&
+                                            indicatorDrawerLoader.item.showExpand && !indicatorDrawer._expanded
+
+                QGCLabel {
+                    anchors.left:           parent.left
+                    anchors.leftMargin:     indicatorDrawer._margins
+                    anchors.verticalCenter: parent.verticalCenter
+                    text:                   qsTr("Details")
+                }
 
                 QGCColoredImage {
-                    anchors.centerIn:   parent
-                    source:             "/InstrumentValueIcons/cheveron-right.svg"
-                    color:              QGroundControl.globalPalette.text
-                    height:             parent.height * 0.6
-                    width:              height
-                    sourceSize.height:  height
-                    fillMode:           Image.PreserveAspectFit
-                    mipmap:             true
+                    anchors.right:          parent.right
+                    anchors.rightMargin:    indicatorDrawer._margins
+                    anchors.verticalCenter: parent.verticalCenter
+                    source:                 "/InstrumentValueIcons/cheveron-right.svg"
+                    color:                  QGroundControl.globalPalette.colorGrey
+                    height:                 ScreenTools.defaultFontPixelHeight * 0.9
+                    width:                  height
+                    sourceSize.height:      height
+                    fillMode:               Image.PreserveAspectFit
+                    mipmap:                 true
                 }
 
                 QGCMouseArea {
-                    fillItem: parent
-                    onClicked: indicatorDrawer._expanded = true
-                }
-            }
-        }
-
-        contentItem: QGCFlickable {
-            id:             indicatorDrawerLoaderFlickable
-            implicitWidth:  Math.min(mainWindow.contentItem.width - (2 * indicatorDrawer._margins) - (indicatorDrawer.padding * 2), indicatorDrawerLoader.width)
-            implicitHeight: Math.min(mainWindow.contentItem.height - ScreenTools.toolbarHeight - (2 * indicatorDrawer._margins) - (indicatorDrawer.padding * 2), indicatorDrawerLoader.height)
-            contentWidth:   indicatorDrawerLoader.width
-            contentHeight:  indicatorDrawerLoader.height
-
-            Loader {
-                id: indicatorDrawerLoader
-
-                Binding {
-                    target:     indicatorDrawerLoader.item
-                    property:   "expanded"
-                    value:      indicatorDrawer._expanded
-                }
-
-                Binding {
-                    target:     indicatorDrawerLoader.item
-                    property:   "drawer"
-                    value:      indicatorDrawer
+                    id:             moreArea
+                    anchors.fill:   parent
+                    hoverEnabled:   !ScreenTools.isMobile
+                    onClicked:      indicatorDrawer._expanded = true
                 }
             }
         }
     }
 
-    // We have to create the popup windows for the Analyze pages here so that the creation context is rooted
-    // to mainWindow. Otherwise if they are rooted to the AnalyzeView itself they will die when the analyze viewSwitch
-    // closes.
 
     function createrWindowedAnalyzePage(title, source) {
         var windowedPage = windowedAnalyzePage.createObject(mainWindow)

@@ -45,6 +45,15 @@ T.ComboBox {
         font.pointSize:     control.font.pointSize
     }
 
+    TextMetrics {
+        id:     rowMetrics
+        font:   control.font
+        text:   "Xg"
+    }
+
+    readonly property real _rowHeight:    Math.round(rowMetrics.height * 1.75)
+    readonly property real _popupPadding: Math.round(ScreenTools.defaultFontPixelHeight * 0.25)
+
     ItemDelegate {
         id:             itemDelegateMetrics
         visible:        false
@@ -59,7 +68,7 @@ T.ComboBox {
                 textMetrics.text = control.textRole ? model[i][control.textRole] : model[i]
                 largestTextWidth = Math.max(textMetrics.width, largestTextWidth)
             }
-            _popupWidth = largestTextWidth + itemDelegateMetrics.leftPadding + itemDelegateMetrics.rightPadding
+            _popupWidth = largestTextWidth + itemDelegateMetrics.leftPadding + itemDelegateMetrics.rightPadding + _popupPadding * 2
         }
     }
 
@@ -70,18 +79,12 @@ T.ComboBox {
         _calcPopupWidth()
     }
     delegate: ItemDelegate {
-        width:  _popupWidth
-        height: Math.round(popupItemMetrics.height * 1.75)
+        width:  _popupWidth - _popupPadding * 2
+        height: _rowHeight
 
         property string _text: control.textRole ? 
                                     (model.hasOwnProperty(control.textRole) ? model[control.textRole] : modelData[control.textRole]) :
                                     modelData
-
-        TextMetrics {
-            id:             popupItemMetrics
-            font:           control.font
-            text:           _text
-        }
 
         contentItem: Text {
             text:                   _text
@@ -98,14 +101,32 @@ T.ComboBox {
         highlighted:                control.highlightedIndex === index
     }
 
-    indicator: QGCColoredImage {
-        anchors.rightMargin:    control.padding
+    indicator: Rectangle {
+        anchors.rightMargin:    Math.round(control.padding / 2)
         anchors.right:          parent.right
         anchors.verticalCenter: parent.verticalCenter
-        height:                 ScreenTools.defaultFontPixelWidth
+        height:                 Math.round(ScreenTools.defaultFontPixelHeight * 1.1)
         width:                  height
-        source:                 "/qmlimages/arrow-down.png"
-        color:                  qgcPal.buttonText
+        radius:                 height / 2
+        color:                  control.enabled ? qgcPal.colorBlue : qgcPal.windowShadeLight
+
+        Column {
+            anchors.centerIn:   parent
+            spacing:            -Math.round(parent.height * 0.18)
+
+            Repeater {
+                model: [ "/InstrumentValueIcons/cheveron-up.svg", "/InstrumentValueIcons/cheveron-down.svg" ]
+
+                QGCColoredImage {
+                    source:             modelData
+                    color:              "white"
+                    height:             Math.round(ScreenTools.defaultFontPixelHeight * 0.55)
+                    width:              height
+                    sourceSize.height:  height
+                    fillMode:           Image.PreserveAspectFit
+                }
+            }
+        }
     }
     contentItem: QGCLabel {
         id:                         text
@@ -120,20 +141,31 @@ T.ComboBox {
         color:          qgcPal.button
         border.color:   qgcPal.buttonBorder
         border.width:   1
-        radius:         ScreenTools.buttonBorderRadius
+        radius:         height / 2
     }
 
     popup: T.Popup {
         x:              control.width - _popupWidth
-        y:              control.height
+        y:              control.height + _popupPadding
         width:          _popupWidth
-        height:         Math.min(contentItem.implicitHeight, control.Window.height - topMargin - bottomMargin)
+        height:         Math.min(control.count * _rowHeight + _popupPadding * 2, control.Window.height - topMargin - bottomMargin)
+        padding:        _popupPadding
         topMargin:      6
         bottomMargin:   6
+        transformOrigin: Item.TopRight
+
+        enter: Transition {
+            NumberAnimation { property: "opacity"; from: 0;    to: 1; duration: 140; easing.type: Easing.OutCubic }
+            NumberAnimation { property: "scale";   from: 0.94; to: 1; duration: 160; easing.type: Easing.OutCubic }
+        }
+
+        exit: Transition {
+            NumberAnimation { property: "opacity"; from: 1; to: 0;    duration: 90; easing.type: Easing.InCubic }
+            NumberAnimation { property: "scale";   from: 1; to: 0.98; duration: 90; easing.type: Easing.InCubic }
+        }
 
         contentItem: ListView {
             clip:                   true
-            implicitHeight:         contentHeight
             model:                  control.delegateModel
             currentIndex:           control.highlightedIndex
             highlightMoveDuration:  0
@@ -145,7 +177,7 @@ T.ComboBox {
             color:          qgcPal.windowShade
             border.color:   qgcPal.groupBorder
             border.width:   1
-            radius:         Math.round(ScreenTools.defaultFontPixelHeight * 0.6)
+            radius:         Math.round(ScreenTools.defaultFontPixelHeight * 0.75)
         }
     }
 }

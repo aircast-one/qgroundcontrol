@@ -10,15 +10,68 @@
 #include "OverlayRigTest.h"
 #include "QuickInteractionTestHelpers.h"
 
+#include <QDateTime>
+#include <algorithm>
+
 static void clearTestSettings()
 {
     clearDragPositionSettings({"OverlayRigTest"});
 }
 
+#define WAIT_SETTLED(rig, ms) \
+    do { \
+        QObject *const _rig = (rig); \
+        const qint64 _deadline = QDateTime::currentMSecsSinceEpoch() + (ms); \
+        while (_rig->property("reflowPending").toBool() && QDateTime::currentMSecsSinceEpoch() < _deadline) { \
+            QTest::qWait(20); \
+        } \
+        if (_rig->property("reflowPending").toBool()) { \
+            qWarning().noquote() << "RIG DID NOT SETTLE. awake:\n" << _rig->property("awakeReport").toString() \
+                                 << "\ntrace (last 60):\n" << _rig->property("trace").toString().split('\n').mid(-60).join('\n'); \
+            QFAIL("simulation did not settle"); \
+        } \
+    } while (false)
+
+static void traceAround(QObject *rig, const QString &item, const QString &restPrefix, const QStringList &alsoShow)
+{
+    const QStringList lines = rig->property("trace").toString().split('\n');
+    int first = -1;
+    for (int i = 0; i < lines.size(); ++i) {
+        if (lines[i].contains(item + QStringLiteral(" free")) && !lines[i].contains(restPrefix)) {
+            first = i;
+            break;
+        }
+    }
+    if (first < 0) {
+        qWarning().noquote() << "TRACE: " << item << "never left rest";
+        return;
+    }
+    for (int i = qMax(0, first - 3); i < qMin(lines.size(), first + 5); ++i) {
+        if (alsoShow.contains(QStringLiteral("*"))) {
+            qWarning().noquote() << "TRACE:" << lines[i].left(1200);
+            continue;
+        }
+        QStringList kept;
+        for (const QString &part : lines[i].split(QStringLiteral(" | "))) {
+            if (part.contains(item) || std::any_of(alsoShow.begin(), alsoShow.end(), [&](const QString &n) { return part.contains(n); })
+                    || part.contains(QStringLiteral(" step "))) {
+                kept.append(part.left(160));
+            }
+        }
+        qWarning().noquote() << "TRACE:" << kept.join(QStringLiteral("\n       "));
+    }
+}
+
 static bool loadView(QQuickView &view)
 {
     clearTestSettings();
-    return loadTestView(view, QStringLiteral("qrc:/unittest/OverlayRigTest.qml"));
+    if (!loadTestView(view, QStringLiteral("qrc:/unittest/OverlayRigTest.qml"))) {
+        return false;
+    }
+    if (QObject *const rig = view.rootObject()->property("rig").value<QObject*>()) {
+        rig->setProperty("debugLog", true);
+    }
+    return true;
 }
 
 void OverlayRigTest::cleanupTestCase()
@@ -39,8 +92,6 @@ static bool hitTest(QObject *rig, qreal x, qreal y, bool *invoked)
     return result.toBool();
 }
 
-// A tap on a registered widget must not read as empty space: the fly view uses hitTest to
-// decide whether a click in edit mode is "arrange this" or "leave edit mode".
 void OverlayRigTest::_hitTestFindsRegisteredItems()
 {
     QQuickView view;
@@ -83,9 +134,11 @@ static QRectF rectOf(QQuickItem *item)
     return QRectF(item->x(), item->y(), item->width(), item->height());
 }
 
-// A resize used to remap and rewrite every stored position, so shrinking and growing back lost
-// the arrangement a little more each time. Now each size keeps its own, and a size that has
-// never been arranged simply inherits.
+static QPointF homeOf(QObject *position)
+{
+    return QPointF(position->property("homeX").toReal(), position->property("homeY").toReal());
+}
+
 void OverlayRigTest::_resizeLeavesArrangementAlone()
 {
     QQuickView view;
@@ -93,16 +146,17 @@ void OverlayRigTest::_resizeLeavesArrangementAlone()
 
     QQuickItem *const root = view.rootObject();
     QQuickItem *const right = root->findChild<QQuickItem*>("rightItem");
-    QVERIFY(right);
-    QVERIFY(moveTo(positionOf(view, "rightPosition"), 860.0, 600.0));
+    QObject *const rightPosition = positionOf(view, "rightPosition");
+    QVERIFY(right && rightPosition);
+    QVERIFY(moveTo(rightPosition, 860.0, 600.0));
     QCoreApplication::processEvents();
-    QCOMPARE(right->x(), 860.0);
+    QCOMPARE(homeOf(rightPosition).x(), 860.0);
 
     root->setWidth(root->width() + 200);
-    QTRY_COMPARE(right->x(), 860.0);
+    QTRY_COMPARE(homeOf(rightPosition).x(), 860.0);
 
     root->setWidth(root->width() - 200);
-    QTRY_COMPARE(right->x(), 860.0);
+    QTRY_COMPARE(homeOf(rightPosition).x(), 860.0);
 }
 
 void OverlayRigTest::_eachWindowSizeKeepsItsOwnArrangement()
@@ -116,20 +170,18 @@ void OverlayRigTest::_eachWindowSizeKeepsItsOwnArrangement()
     QVERIFY(right && rightPosition);
 
     QVERIFY(moveTo(rightPosition, 860.0, 600.0));
-    QTRY_VERIFY(right->x() == 860.0);
+    QTRY_COMPARE(homeOf(rightPosition).x(), 860.0);
 
     root->setWidth(1200);
-    QTRY_COMPARE(right->x(), 860.0);
+    QTRY_COMPARE(homeOf(rightPosition).x(), 860.0);
     QVERIFY(moveTo(rightPosition, 400.0, 200.0));
-    QTRY_COMPARE(right->x(), 400.0);
+    QTRY_COMPARE(homeOf(rightPosition).x(), 400.0);
 
-    // Back to the first size: its own arrangement returns, not the one just made at 1200.
     root->setWidth(1000);
-    QTRY_COMPARE(right->x(), 860.0);
-    QCOMPARE(right->y(), 600.0);
+    QTRY_COMPARE(homeOf(rightPosition), QPointF(860.0, 600.0));
 
     root->setWidth(1200);
-    QTRY_COMPARE(right->x(), 400.0);
+    QTRY_COMPARE(homeOf(rightPosition).x(), 400.0);
 }
 
 void OverlayRigTest::_unseenSizeStartsFromTheNearestArrangement()
@@ -143,15 +195,11 @@ void OverlayRigTest::_unseenSizeStartsFromTheNearestArrangement()
     QVERIFY(moveTo(positionOf(view, "rightPosition"), 700.0, 300.0));
     QTRY_COMPARE(right->x(), 700.0);
 
-    // 1010x800 has never been arranged; 1000x800 is the closest thing to what the user meant.
     root->setWidth(1010);
     QTRY_COMPARE(right->x(), 700.0);
     QCOMPARE(right->y(), 300.0);
 }
 
-// The contract the fly view actually needs: after a reflow nothing overlaps anything. Stacking
-// every movable on one spot is the case relaxation alone cannot solve - each item has three
-// obstacles and no single-axis escape - so this covers the eviction pass as well.
 void OverlayRigTest::_resolveLeavesNothingOverlapping()
 {
     QQuickView view;
@@ -169,7 +217,7 @@ void OverlayRigTest::_resolveLeavesNothingOverlapping()
     QCoreApplication::processEvents();
 
     QVERIFY(QMetaObject::invokeMethod(rigOf(view), "resolve", Q_ARG(QVariant, QVariant())));
-    QCoreApplication::processEvents();
+    WAIT_SETTLED(rigOf(view), 5000);
 
     const QList<QQuickItem*> all { left, right, heavy, staticItem };
     for (int i = 0; i < all.size(); ++i) {
@@ -180,7 +228,6 @@ void OverlayRigTest::_resolveLeavesNothingOverlapping()
     }
 }
 
-// Mass is area. A small chip must not shove a big panel across the screen.
 void OverlayRigTest::_lightItemYieldsToHeavyOne()
 {
     QQuickView view;
@@ -196,12 +243,12 @@ void OverlayRigTest::_lightItemYieldsToHeavyOne()
     const QPointF lightBefore(left->x(), left->y());
 
     QVERIFY(QMetaObject::invokeMethod(rigOf(view), "resolve", Q_ARG(QVariant, QVariant())));
-    QCoreApplication::processEvents();
 
-    const qreal lightMoved = QLineF(lightBefore, QPointF(left->x(), left->y())).length();
-    const qreal heavyMoved = QLineF(heavyBefore, QPointF(heavy->x(), heavy->y())).length();
-    QVERIFY2(lightMoved > heavyMoved * 4,
-             qPrintable(QStringLiteral("light moved %1, heavy moved %2").arg(lightMoved).arg(heavyMoved)));
+    const auto lightMoved = [&]() { return QLineF(lightBefore, QPointF(left->x(), left->y())).length(); };
+    const auto heavyMoved = [&]() { return QLineF(heavyBefore, QPointF(heavy->x(), heavy->y())).length(); };
+    QTRY_VERIFY2_WITH_TIMEOUT(lightMoved() > 30 && lightMoved() > heavyMoved() * 4,
+                              qPrintable(QStringLiteral("light moved %1, heavy moved %2").arg(lightMoved()).arg(heavyMoved())),
+                              3000);
 }
 
 void OverlayRigTest::_registerMovableDoesNotDuplicate()
@@ -221,8 +268,6 @@ void OverlayRigTest::_registerMovableDoesNotDuplicate()
                                       Q_ARG(QVariant, 30.0), Q_ARG(QVariant, 400.0), Q_ARG(QVariant, false)));
     QCoreApplication::processEvents();
 
-    // A duplicate entry would push the same item twice per pass, so it lands somewhere other
-    // than where one registration puts it.
     QVERIFY(QMetaObject::invokeMethod(rig, "resolve", Q_ARG(QVariant, QVariant())));
     QCoreApplication::processEvents();
     const QPointF once(left->x(), left->y());
@@ -254,19 +299,16 @@ void OverlayRigTest::_ownedStaticPushesOthersButNotOwner()
 
     QCOMPARE(left->x(), 20.0);
     QCOMPARE(left->y(), 400.0);
+    const auto clearOfAttachedNow = [right, attached]() {
+        return right->x() >= attached->x() + attached->width() || right->x() + right->width() <= attached->x() ||
+               right->y() >= attached->y() + attached->height() || right->y() + right->height() <= attached->y();
+    };
+    QTRY_VERIFY_WITH_TIMEOUT(clearOfAttachedNow(), 3000);
     const bool clearOfAttached = right->x() >= attached->x() + attached->width() || right->x() + right->width() <= attached->x() ||
                                  right->y() >= attached->y() + attached->height() || right->y() + right->height() <= attached->y();
     QVERIFY(clearOfAttached);
 }
 
-// The video rail is glued to the pip, so it travels whenever the pip is dragged or nudged. A
-// rig that only watches size never hears about that and leaves the telemetry chips sitting
-// under the rail's buttons.
-//
-// The settle wait is what makes this a test of the move and not of the load: the rig reflows
-// once on startup and again on every viewport resize, and the window being shown supplies
-// both. Without waiting those out, the static gets separated by a reflow that was already
-// queued and the test passes on a rig that ignores position entirely.
 void OverlayRigTest::_staticThatMovesPushesMovablesOutOfTheWay()
 {
     QQuickView view;
@@ -277,7 +319,7 @@ void OverlayRigTest::_staticThatMovesPushesMovablesOutOfTheWay()
     QVERIFY(left && staticItem);
 
     QObject *const rig = rigOf(view);
-    QTRY_VERIFY_WITH_TIMEOUT(!rig->property("reflowPending").toBool(), 3000);
+    WAIT_SETTLED(rig, 3000);
 
     const qreal restingX = left->x();
     const qreal restingY = left->y();
@@ -289,4 +331,219 @@ void OverlayRigTest::_staticThatMovesPushesMovablesOutOfTheWay()
                left->y() >= staticItem->y() + staticItem->height() || left->y() + left->height() <= staticItem->y();
     };
     QTRY_VERIFY_WITH_TIMEOUT(clearOfStatic(), 3000);
+}
+
+void OverlayRigTest::_displacedItemStaysAgainstWhatPushedIt()
+{
+    QQuickView view;
+    QVERIFY(loadView(view));
+
+    QQuickItem *const left = view.rootObject()->findChild<QQuickItem*>("leftItem");
+    QQuickItem *const staticItem = view.rootObject()->findChild<QQuickItem*>("staticItem");
+    QVERIFY(left && staticItem);
+
+    QObject *const rig = rigOf(view);
+    WAIT_SETTLED(rig, 3000);
+
+    const qreal homeX = left->x();
+    const qreal homeY = left->y();
+
+    staticItem->setWidth(400);
+    staticItem->setHeight(200);
+    staticItem->setX(homeX - 40);
+    staticItem->setY(homeY - 40);
+
+    const auto clearOfStatic = [left, staticItem]() {
+        return left->x() >= staticItem->x() + staticItem->width() || left->x() + left->width() <= staticItem->x() ||
+               left->y() >= staticItem->y() + staticItem->height() || left->y() + left->height() <= staticItem->y();
+    };
+    QTRY_VERIFY_WITH_TIMEOUT(clearOfStatic(), 3000);
+
+    const auto hugging = [left, staticItem]() {
+        const qreal gapBelow = left->y() - (staticItem->y() + staticItem->height());
+        const qreal gapAbove = staticItem->y() - (left->y() + left->height());
+        const qreal gapRight = left->x() - (staticItem->x() + staticItem->width());
+        const qreal gapLeft  = staticItem->x() - (left->x() + left->width());
+        return qMax(qMax(gapBelow, gapAbove), qMax(gapRight, gapLeft));
+    };
+    if (!QTest::qWaitFor([&]() { return hugging() >= 0 && hugging() < 20; }, 5000)) {
+        traceAround(rig, QStringLiteral("leftItem"), QStringLiteral("leftItem free pos 12,392 vel 0,0"), { QStringLiteral("*") });
+        qWarning().noquote() << "TRACE: world ->" << rig->property("worldReport").toString();
+    }
+    QTRY_VERIFY2_WITH_TIMEOUT(hugging() >= 0 && hugging() < 20,
+                              qPrintable(QStringLiteral("item settled %1px from the obstacle at %2,%3 (home was %4,%5)")
+                                             .arg(hugging()).arg(left->x()).arg(left->y()).arg(homeX).arg(homeY)),
+                              5000);
+}
+
+void OverlayRigTest::_itemSpringsBackWhenTheObstructionLeaves()
+{
+    QQuickView view;
+    QVERIFY(loadView(view));
+
+    QQuickItem *const left = view.rootObject()->findChild<QQuickItem*>("leftItem");
+    QQuickItem *const staticItem = view.rootObject()->findChild<QQuickItem*>("staticItem");
+    QVERIFY(left && staticItem);
+
+    QObject *const rig = rigOf(view);
+    WAIT_SETTLED(rig, 3000);
+
+    const qreal homeX = left->x();
+    const qreal homeY = left->y();
+
+    staticItem->setX(homeX);
+    staticItem->setY(homeY);
+    QTRY_VERIFY_WITH_TIMEOUT(left->x() != homeX || left->y() != homeY, 3000);
+
+    staticItem->setVisible(false);
+    QTRY_VERIFY_WITH_TIMEOUT(qFuzzyCompare(left->x() + 1, homeX + 1) &&
+                                 qFuzzyCompare(left->y() + 1, homeY + 1), 3000);
+}
+
+void OverlayRigTest::_overlapIsAnsweredOnTheChangeThatCausedIt()
+{
+    QQuickView view;
+    QVERIFY(loadView(view));
+
+    QQuickItem *const left = view.rootObject()->findChild<QQuickItem*>("leftItem");
+    QQuickItem *const staticItem = view.rootObject()->findChild<QQuickItem*>("staticItem");
+    QObject *const leftPosition = positionOf(view, "leftPosition");
+    QVERIFY(left && staticItem && leftPosition);
+
+    QObject *const rig = rigOf(view);
+    WAIT_SETTLED(rig, 3000);
+
+    staticItem->setY(leftPosition->property("homeY").toReal());
+    WAIT_SETTLED(rig, 3000);
+    QVERIFY(!leftPosition->property("displaced").toBool());
+
+    staticItem->setX(leftPosition->property("homeX").toReal());
+
+    QTRY_VERIFY2_WITH_TIMEOUT(leftPosition->property("displaced").toBool(),
+                              "rig took longer than a few frames to answer the geometry change that caused the overlap",
+                              300);
+}
+
+void OverlayRigTest::_disturbedLayoutComesToRest()
+{
+    QQuickView view;
+    QVERIFY(loadView(view));
+
+    QQuickItem *const left = view.rootObject()->findChild<QQuickItem*>("leftItem");
+    QQuickItem *const staticItem = view.rootObject()->findChild<QQuickItem*>("staticItem");
+    QObject *const leftPosition = positionOf(view, "leftPosition");
+    QObject *const rig = rigOf(view);
+    QVERIFY(left && staticItem && leftPosition && rig);
+
+    WAIT_SETTLED(rig, 5000);
+
+    const QPointF home = homeOf(leftPosition);
+
+    staticItem->setX(home.x());
+    staticItem->setY(home.y());
+    QTRY_VERIFY_WITH_TIMEOUT(leftPosition->property("displaced").toBool(), 3000);
+
+    staticItem->setVisible(false);
+
+    WAIT_SETTLED(rig, 5000);
+    QVERIFY2(!leftPosition->property("displaced").toBool(),
+             qPrintable(QStringLiteral("settled %1,%2 away from home")
+                            .arg(leftPosition->property("nudgeX").toReal())
+                            .arg(leftPosition->property("nudgeY").toReal())));
+    QCOMPARE(left->x(), home.x());
+    QCOMPARE(left->y(), home.y());
+}
+
+void OverlayRigTest::_sweepingObstacleDoesNotFlingItemsAcrossTheWindow()
+{
+    QQuickView view;
+    QVERIFY(loadView(view));
+
+    QQuickItem *const root = view.rootObject();
+    QQuickItem *const left = root->findChild<QQuickItem*>("leftItem");
+    QQuickItem *const staticItem = root->findChild<QQuickItem*>("staticItem");
+    QObject *const leftPosition = positionOf(view, "leftPosition");
+    QObject *const rig = rigOf(view);
+    QVERIFY(root && left && staticItem && leftPosition && rig);
+
+    WAIT_SETTLED(rig, 5000);
+
+    const QPointF home = homeOf(leftPosition);
+    staticItem->setY(home.y() - 20);
+
+    const qreal gap = rig->property("_gap").toReal();
+    qreal worstLead = 0;
+    for (int step = 0; step < 40; step++) {
+        staticItem->setX(home.x() - 300 + (step * 20));
+        QTest::qWait(16);
+        const qreal edge = staticItem->x() + staticItem->width() + gap;
+        worstLead = qMax(worstLead, left->x() - edge);
+    }
+
+    QVERIFY2(worstLead < 350,
+             qPrintable(QStringLiteral("item got %1px ahead of the edge pushing it").arg(worstLead)));
+
+    staticItem->setVisible(false);
+    WAIT_SETTLED(rig, 5000);
+    QTRY_COMPARE(QPointF(left->x(), left->y()), home);
+}
+
+void OverlayRigTest::_furnitureBoltedToAMovableDoesNotFeedItself()
+{
+    QQuickView view;
+    QVERIFY(loadView(view));
+
+    QQuickItem *const carrier = view.rootObject()->findChild<QQuickItem*>("carrierItem");
+    QQuickItem *const passenger = view.rootObject()->findChild<QQuickItem*>("passengerItem");
+    QObject *const rig = rigOf(view);
+    QVERIFY(carrier && passenger && rig);
+
+    WAIT_SETTLED(rig, 8000);
+
+    const QPointF carrierAtRest(carrier->x(), carrier->y());
+    const QPointF passengerAtRest(passenger->x(), passenger->y());
+
+    QTest::qWait(400);
+
+    QCOMPARE(QPointF(carrier->x(), carrier->y()), carrierAtRest);
+    QCOMPARE(QPointF(passenger->x(), passenger->y()), passengerAtRest);
+}
+
+void OverlayRigTest::_anEdgeCarriesWhatItHitsInItsOwnDirection()
+{
+    QQuickView view;
+    QVERIFY(loadView(view));
+
+    QQuickItem *const left = view.rootObject()->findChild<QQuickItem*>("leftItem");
+    QQuickItem *const staticItem = view.rootObject()->findChild<QQuickItem*>("staticItem");
+    QObject *const leftPosition = positionOf(view, "leftPosition");
+    QObject *const rig = rigOf(view);
+    QVERIFY(left && staticItem && leftPosition && rig);
+
+    WAIT_SETTLED(rig, 5000);
+    const QPointF home = homeOf(leftPosition);
+
+    const qreal gap = rig->property("_gap").toReal();
+    staticItem->setY(home.y() + left->height() + gap + 24);
+    staticItem->setX(home.x() - 250);
+    WAIT_SETTLED(rig, 5000);
+    staticItem->setWidth(600);
+    staticItem->setHeight(80);
+    WAIT_SETTLED(rig, 5000);
+    QVERIFY2(QPointF(left->x(), left->y()) == home,
+             qPrintable(QStringLiteral("item moved to %1,%2 during setup (home %3,%4, gap %5)").arg(left->x()).arg(left->y()).arg(home.x()).arg(home.y()).arg(gap)));
+
+    const qreal before = staticItem->y();
+    staticItem->setY(before - 120);
+
+    const bool carriedUp = QTest::qWaitFor([&]() { return left->y() + left->height() <= staticItem->y() + 12.0; }, 1500);
+    if (!carriedUp) {
+        traceAround(rig, QStringLiteral("leftItem"), QStringLiteral("leftItem free pos 12,392 vel 0,0"), { QStringLiteral("*") });
+    }
+    QTRY_VERIFY2_WITH_TIMEOUT(left->y() + left->height() <= staticItem->y() + 12.0,
+                              qPrintable(QStringLiteral("item bottom %1 is still inside the obstacle top %2")
+                                             .arg(left->y() + left->height()).arg(staticItem->y())),
+                              1000);
+    QVERIFY2(qAbs(left->x() - home.x()) < 2.0,
+             qPrintable(QStringLiteral("item was ejected sideways to x=%1 (home %2)").arg(left->x()).arg(home.x())));
 }

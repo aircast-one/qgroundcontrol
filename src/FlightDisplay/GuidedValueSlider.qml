@@ -115,12 +115,9 @@ Item {
         anchors.fill:   parent
     }
 
-    Rectangle {
-        anchors.fill:   parent
-        radius:         ScreenTools.defaultFontPixelHeight / 2
-        color:          _qgcPal.overlayBackground
-        border.color:   _qgcPal.overlayBorder
-        border.width:   1
+    OverlayGlass {
+        anchors.fill: parent
+        radius:       ScreenTools.defaultFontPixelHeight / 2
     }
 
     ColumnLayout {

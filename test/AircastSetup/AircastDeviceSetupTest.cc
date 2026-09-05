@@ -18,6 +18,7 @@
 #include <QtCore/QJsonArray>
 #include <QtCore/QJsonDocument>
 #include <QtCore/QJsonObject>
+#include <QtCore/QTimer>
 #include <QtNetwork/QTcpServer>
 #include <QtNetwork/QTcpSocket>
 #include <QtTest/QTest>
@@ -40,14 +41,25 @@ public:
                     ? QByteArrayLiteral("HTTP/1.1 404 Not Found\r\nContent-Length: 0\r\nConnection: close\r\n\r\n")
                     : QByteArrayLiteral("HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: ")
                         + QByteArray::number(body.size()) + QByteArrayLiteral("\r\nConnection: close\r\n\r\n") + body;
-                socket->write(response);
-                socket->disconnectFromHost();
+                const auto respond = [socket, response]() {
+                    socket->write(response);
+                    socket->disconnectFromHost();
+                };
+                if (responseDelayMs > 0) {
+                    QTimer::singleShot(responseDelayMs, socket, respond);
+                } else {
+                    respond();
+                }
             });
             connect(socket, &QTcpSocket::disconnected, socket, &QObject::deleteLater);
         });
     }
 
     QString hostWithPort() const { return QStringLiteral("127.0.0.1:%1").arg(_server.serverPort()); }
+
+    /// Delays every HTTP response by this many milliseconds, to deterministically make this device
+    /// the "slow, superseded" one in a race against another FakeAircastd.
+    int responseDelayMs = 0;
 
     void setDevice(const QStringList &cameras, const QStringList &telemetryEndpoints)
     {
@@ -163,4 +175,35 @@ void AircastDeviceSetupTest::_clientOnlyTelemetryEndpointCreatesNoLink()
     // handler a bounded window to (wrongly) create a link before asserting.
     QTest::qWait(200);
     QCOMPARE(_aircastLinkConfigs().size(), 0);
+}
+
+void AircastDeviceSetupTest::_staleReplyFromSupersededSetupIsIgnored()
+{
+    // deviceA is slow to respond; deviceB responds immediately. Firing deviceA's
+    // deep link and then immediately superseding it with deviceB's must leave
+    // deviceB's config in place even once deviceA's late reply finally arrives.
+    FakeAircastd deviceA;
+    deviceA.responseDelayMs = 300;
+    deviceA.setDevice({QStringLiteral("stale")}, {QStringLiteral("udps:0.0.0.0:14550")});
+
+    FakeAircastd deviceB;
+    deviceB.setDevice({QStringLiteral("fresh")}, {QStringLiteral("udps:0.0.0.0:14551")});
+
+    _applySetupDeepLink(deviceA);
+    _applySetupDeepLink(deviceB);
+
+    VideoSettings *videoSettings = SettingsManager::instance()->videoSettings();
+    QTRY_COMPARE_WITH_TIMEOUT(videoSettings->rtspUrl()->rawValue().toString(), QStringLiteral("rtsp://127.0.0.1:8554/fresh"), 5000);
+
+    // Let deviceA's delayed reply land, then confirm it did not clobber deviceB's config.
+    QTest::qWait(deviceA.responseDelayMs + 200);
+    QCOMPARE(videoSettings->rtspUrl()->rawValue().toString(), QStringLiteral("rtsp://127.0.0.1:8554/fresh"));
+    QCOMPARE(videoSettings->primaryCameraName()->rawValue().toString(), QStringLiteral("fresh (127.0.0.1)"));
+
+    QTRY_COMPARE_WITH_TIMEOUT(_aircastLinkConfigs().size(), 1, 5000);
+    const UDPConfiguration *udpConfig = qobject_cast<UDPConfiguration*>(_aircastLinkConfigs().first());
+    QVERIFY(udpConfig);
+    QCOMPARE(udpConfig->hostList(), QStringList{QStringLiteral("127.0.0.1:14551")});
+
+    _removeAircastLinkConfigs();
 }

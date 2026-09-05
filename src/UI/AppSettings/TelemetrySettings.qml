@@ -53,7 +53,7 @@ SettingsPage {
         id:                 mavlink2SigningGroup
         Layout.fillWidth:   true
         heading:            qsTr("MAVLink 2 Signing")
-        headingDescription: qsTr("Signing keys should only be sent to the vehicle over secure links.")
+        description:        qsTr("Signing keys should only be sent to the vehicle over secure links.")
         visible:            _mavlink2SigningKey.visible
 
         property Fact _mavlink2SigningKey: _mavlinkSettings.mavlink2SigningKey
@@ -106,7 +106,7 @@ SettingsPage {
         LabelledFactTextField {
             Layout.fillWidth:           true
             textFieldPreferredWidth:    ScreenTools.defaultFontPixelWidth * 20
-            label:                      qsTr("Host name")
+            label:                      qsTr("Host Name")
             fact:                       _mavlinkSettings.forwardMavlinkHostName
             visible:                    fact.visible
             enabled:                    _mavlinkSettings.forwardMavlink.rawValue
@@ -152,7 +152,7 @@ SettingsPage {
         QGCCheckBoxSlider {
             id:                 controllerByVehicleCheckBox
             Layout.fillWidth:   true
-            text:               qsTr("Controlled By vehicle")
+            text:               qsTr("Controlled by Vehicle")
             checked:            !_apmStartMavlinkStreams.rawValue
             onClicked:          _apmStartMavlinkStreams.rawValue = !checked
         }
@@ -216,35 +216,35 @@ SettingsPage {
 
     SettingsGroupLayout {
         Layout.fillWidth:   true
-        heading:            qsTr("Link Status (Current Vehicle))")
+        heading:            qsTr("Link Status")
 
         LabelledLabel {
             Layout.fillWidth:   true
-            label:              qsTr("Total messages sent (computed)")
+            label:              qsTr("Messages Sent")
             labelText:          _activeVehicle ? _activeVehicle.mavlinkSentCount : _notConnectedStr
         }
 
         LabelledLabel {
             Layout.fillWidth:   true
-            label:              qsTr("Total messages received")
+            label:              qsTr("Messages Received")
             labelText:          _activeVehicle ? _activeVehicle.mavlinkReceivedCount : _notConnectedStr
         }
 
         LabelledLabel {
             Layout.fillWidth:   true
-            label:              qsTr("Total message loss")
+            label:              qsTr("Messages Lost")
             labelText:          _activeVehicle ? _activeVehicle.mavlinkLossCount : _notConnectedStr
         }
 
         LabelledLabel {
             Layout.fillWidth:   true
-            label:              qsTr("Loss rate:")
+            label:              qsTr("Loss Rate")
             labelText:          _activeVehicle ? _activeVehicle.mavlinkLossPercent.toFixed(0) + '%' : _notConnectedStr
         }
 
         LabelledLabel {
             Layout.fillWidth:   true
-            label:              qsTr("Signing:")
+            label:              qsTr("Signing")
             labelText:          _activeVehicle ? (_activeVehicle.mavlinkSigning ? "On" : "Off") : _notConnectedStr
         }
     }

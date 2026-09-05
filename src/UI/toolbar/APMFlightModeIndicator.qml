@@ -32,13 +32,16 @@ FlightModeIndicator {
             Layout.fillWidth:   true
             heading:            qsTr("Return to Launch")
 
-            property Fact rtlAltFact: controller.getParameterFact(-1, "RTL_ALT")
+            readonly property bool _hasRtlAlt: controller.parameterExists(-1, "RTL_ALT")
+            // Copter-only; Plane uses ALT_HOLD_RTL. Asking anyway pops the missing-parameter alert.
+            property Fact rtlAltFact: _hasRtlAlt ? controller.getParameterFact(-1, "RTL_ALT") : null
 
             FactPanelController { id: controller }
 
             RowLayout {
                 Layout.fillWidth:   true
                 spacing:            ScreenTools.defaultFontPixelWidth * 2
+                visible:            _hasRtlAlt
 
                 QGCLabel {
                     id:                 label  
@@ -49,10 +52,10 @@ FlightModeIndicator {
                 QGCComboBox {
                     id:             returnAtCombo
                     sizeToContents: true
-                    model:          [ qsTr("Current alttiude"), qsTr("Specified altitude") ]
+                    model:          [ qsTr("Current altitude"), qsTr("Specified altitude") ]
 
                     function setCurrentIndex() {
-                        if (rtlAltFact.value === 0) {
+                        if (!rtlAltFact || rtlAltFact.value === 0) {
                             returnAtCombo.currentIndex = 0
                         } else {
                             returnAtCombo.currentIndex = 1
@@ -77,7 +80,7 @@ FlightModeIndicator {
 
                 FactTextField {
                     fact:       rtlAltFact
-                    enabled:    rtlAltFact.rawValue !== 0
+                    enabled:    rtlAltFact && rtlAltFact.rawValue !== 0
                 }
             }
         }

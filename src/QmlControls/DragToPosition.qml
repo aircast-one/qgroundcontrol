@@ -12,14 +12,6 @@ import QtQuick
 import QGroundControl
 import QGroundControl.ScreenTools
 
-// Persists a user-dragged position for `target`. Install a drag (MouseArea drag.target or
-// DragHandler) on the target and call commit() when the drag ends. Until the user drags,
-// the target follows the defaultX/defaultY bindings. Dropping the target so it mostly
-// overlaps its default spot snaps it there and clears the custom position.
-//
-// One arrangement per window size: the position is stored under the size it was made at, so
-// the laptop layout and the docked layout are separate and each comes back when the window
-// returns to that size. A size never seen before starts from the nearest one on record.
 QtObject {
     id: root
 
@@ -29,23 +21,24 @@ QtObject {
     property real               defaultY:       0
     property real               snapThreshold:  ScreenTools.defaultFontPixelHeight
 
-    // Dropped positions quantize to this grid so arrangements line up instead of landing on
-    // arbitrary pixels. 0 disables snapping.
     property real               snapGrid:       ScreenTools.defaultFontPixelHeight
 
-    // No item sits flush against a screen edge; drops past an edge dock at this margin.
     property real               edgeMargin:     ScreenTools.defaultFontPixelHeight / 2
 
     readonly property bool      hasCustomPosition: _customPos
 
-    // Transient displacement applied by the collision rig while a piece of chrome is
-    // temporarily larger (the video rail in grid mode). Never persisted, so collapsing the
-    // chrome returns the item to its dragged or default spot.
     property real               nudgeX:            0
     property real               nudgeY:            0
 
-    // True for as long as the rig is holding this item off something else - not a pulse on the
-    // move, a standing state. An item parked away from where it was put says so.
+    property bool               physicsActive:     false
+    readonly property bool      settling:          !physicsActive
+    readonly property bool      loading:           _reloadTimer.running
+
+    function setNudge(x, y) {
+        nudgeX = x
+        nudgeY = y
+    }
+
     readonly property bool      displaced:         nudgeX !== 0 || nudgeY !== 0
 
     property bool _customPos:   false
@@ -58,15 +51,11 @@ QtObject {
     readonly property int  _saveDelayMSecs:   250
     readonly property int  _reloadDelayMSecs: 250
 
-    // Window sizes worth remembering an arrangement for, most recently used last. Capped: the
-    // list is walked on every load, and a resize drag can otherwise stop at hundreds of sizes.
     readonly property int  _maxRememberedSizes: 8
 
     readonly property string _sizeKey:  _sizeW + "x" + _sizeH
     readonly property string _sizesKey: settingsKeyPrefix + "Sizes"
 
-    // Read once and kept in step by _save: only this object ever writes the list, so a settings
-    // read per item per resize buys nothing.
     property var _sizes: []
 
     function _group(sizeKey) {
@@ -77,21 +66,18 @@ QtObject {
         return Math.max(edgeMargin, Math.min(value, bound - edgeMargin))
     }
 
+    readonly property real homeX: (_customPos && target && target.parent
+                                       ? _clampToParent(_customX, target.parent.width - target.width)
+                                       : defaultX)
+    readonly property real homeY: (_customPos && target && target.parent
+                                       ? _clampToParent(_customY, target.parent.height - target.height)
+                                       : defaultY)
+
     function _bindPosition() {
-        target.x = Qt.binding(function() {
-            return (_customPos && target.parent
-                ? _clampToParent(_customX, target.parent.width - target.width)
-                : defaultX) + nudgeX
-        })
-        target.y = Qt.binding(function() {
-            return (_customPos && target.parent
-                ? _clampToParent(_customY, target.parent.height - target.height)
-                : defaultY) + nudgeY
-        })
+        target.x = Qt.binding(function() { return homeX + nudgeX })
+        target.y = Qt.binding(function() { return homeY + nudgeY })
     }
 
-    // Where the user let go is where it belongs, nudge included: the drop is a placement, so
-    // the transient displacement it may have been carrying becomes part of the stored position.
     function commit() {
         const x = target.x
         const y = target.y
@@ -106,9 +92,6 @@ QtObject {
         moveTo(x, y)
     }
 
-    // A position past an edge docks at the edge margin: the grid is for arranging items in
-    // open space, and rounding an edge-docked item to the nearest grid line leaves it floating
-    // off the edge it was dropped against.
     function _place(value, limit, snapToGrid) {
         const bound = Math.max(edgeMargin, limit - edgeMargin)
         if (value <= edgeMargin) {
@@ -123,8 +106,6 @@ QtObject {
         return Math.max(edgeMargin, Math.min(Math.round(value / snapGrid) * snapGrid, bound))
     }
 
-    // Programmatic placement (e.g. the collision rig shifting an item aside): persists like a
-    // user drag, without the snap-to-default check.
     function moveTo(newX, newY, snapToGrid = true) {
         _customX = _place(newX, target.parent ? target.parent.width  - target.width  : newX, snapToGrid)
         _customY = _place(newY, target.parent ? target.parent.height - target.height : newY, snapToGrid)
@@ -133,9 +114,6 @@ QtObject {
         _bindPosition()
     }
 
-    // Three settings writes per call, and the rig moves every registered item at once - a
-    // window drag would turn that into thousands of disk writes a second. The position lives in
-    // memory immediately; only the write waits for things to stop moving.
     readonly property Timer _saveTimer: Timer {
         interval:    root._saveDelayMSecs
         onTriggered: root._save()
@@ -178,9 +156,6 @@ QtObject {
             : Math.abs(parseFloat(parts[0]) - _sizeW) + Math.abs(parseFloat(parts[1]) - _sizeH)
     }
 
-    // A window size with no arrangement of its own inherits the closest one on record rather
-    // than dropping back to the shipped defaults: the user arranged something, and the nearest
-    // size is the closest thing to what they meant. The rig separates whatever overlaps after.
     function _storedKey() {
         if (_sizes.includes(_sizeKey)) {
             return _sizeKey
@@ -205,17 +180,11 @@ QtObject {
         _bindPosition()
     }
 
-    // Only the settings read is debounced. The key itself follows the window immediately: a
-    // drop made just after a resize belongs to the size that was on screen when it was made,
-    // and a lagging key filed it under the previous one.
     readonly property Timer _reloadTimer: Timer {
         interval:    root._reloadDelayMSecs
         onTriggered: { root._loadSizes(); root._load() }
     }
 
-    // The target gets reparented (PipView swaps its two items), which moves it into a container
-    // of a different size. The Connections target re-binds itself, but the size is only read
-    // when _adoptSize runs, so the reparent has to ask for one.
     readonly property Connections _targetWatcher: Connections {
         target: root.target
 
@@ -238,7 +207,7 @@ QtObject {
         if (w <= 0 || h <= 0 || (w === _sizeW && h === _sizeH)) {
             return
         }
-        // Whatever is queued was arranged at the old size, so it is written under the old key.
+
         if (_saveTimer.running) {
             _saveTimer.stop()
             _save()
@@ -248,8 +217,6 @@ QtObject {
         _reloadTimer.restart()
     }
 
-    // The key can change at runtime (a telemetry chip re-keyed to a new fact): pick up the
-    // position stored under the new key instead of dragging the old one along.
     onSettingsKeyPrefixChanged: {
         if (_completed) {
             _load()

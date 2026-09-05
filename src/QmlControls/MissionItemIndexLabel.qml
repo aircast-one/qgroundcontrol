@@ -18,7 +18,11 @@ Canvas {
     property bool   small:                  !checked
     property bool   child:                  false
     property bool   highlightSelected:      false
-    property var    color:                  checked ? "green" : (child ? qgcPal.mapIndicatorChild : qgcPal.mapIndicator)
+    // Selection brightens the accent rather than switching hue. Green on the map means the
+    // launch point, and a second meaning for it made the current item read as a home marker.
+    property var    color:                  child ? qgcPal.mapIndicatorChild
+                                          : checked ? Qt.lighter(qgcPal.mapIndicator, 1.35)
+                                                    : qgcPal.mapIndicator
     property real   anchorPointX:           _height / 2
     property real   anchorPointY:           _height / 2
     property bool   specifiesCoordinate:    true

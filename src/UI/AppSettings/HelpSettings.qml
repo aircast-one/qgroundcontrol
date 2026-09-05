@@ -12,54 +12,69 @@ import QtQuick.Layouts
 
 import QGroundControl
 import QGroundControl.Controls
-import QGroundControl.Palette
 import QGroundControl.ScreenTools
 
-Rectangle {
-    color:          qgcPal.window
-    anchors.fill:   parent
+SettingsPage {
+    SettingsGroupLayout {
+        Layout.fillWidth:   true
+        heading:            qsTr("About")
 
-    readonly property real _margins: ScreenTools.defaultFontPixelHeight
+        RowLayout {
+            Layout.fillWidth:       true
+            Layout.preferredHeight: ScreenTools.settingsRowHeight
+            spacing:                ScreenTools.defaultFontPixelWidth * 2
 
-    QGCPalette { id: qgcPal; colorGroupEnabled: true }
-
-    QGCFlickable {
-        anchors.margins:    _margins
-        anchors.fill:       parent
-        contentWidth:       grid.width
-        contentHeight:      grid.height
-        clip:               true
-
-        GridLayout {
-            id:         grid
-            columns:    2
-
-            QGCLabel { text: qsTr("QGroundControl User Guide") }
             QGCLabel {
-                linkColor:          qgcPal.text
-                text:               "<a href=\"https://docs.qgroundcontrol.com\">https://docs.qgroundcontrol.com</a>"
-                onLinkActivated:    (link) => Qt.openUrlExternally(link)
+                Layout.fillWidth:   true
+                text:               qsTr("%1 Version").arg(QGroundControl.appName)
             }
 
-            QGCLabel { text: qsTr("PX4 Users Discussion Forum") }
             QGCLabel {
-                linkColor:          qgcPal.text
-                text:               "<a href=\"http://discuss.px4.io/c/qgroundcontrol\">http://discuss.px4.io/c/qgroundcontrol</a>"
-                onLinkActivated:    (link) => Qt.openUrlExternally(link)
-            }
+                id:         versionLabel
+                text:       QGroundControl.qgcVersion
+                color:      QGroundControl.globalPalette.colorGrey
 
-            QGCLabel { text: qsTr("ArduPilot Users Discussion Forum") }
-            QGCLabel {
-                linkColor:          qgcPal.text
-                text:               "<a href=\"https://discuss.ardupilot.org/c/ground-control-software/qgroundcontrol\">https://discuss.ardupilot.org/c/ground-control-software/qgroundcontrol</a>"
-                onLinkActivated:    (link) => Qt.openUrlExternally(link)
+                QGCMouseArea {
+                    anchors.fill:   parent
+                    onClicked: (mouse) => {
+                        if (mouse.modifiers & Qt.ControlModifier) {
+                            QGroundControl.corePlugin.showTouchAreas = !QGroundControl.corePlugin.showTouchAreas
+                        } else if (ScreenTools.isMobile || mouse.modifiers & Qt.ShiftModifier) {
+                            QGroundControl.corePlugin.showAdvancedUI = !QGroundControl.corePlugin.showAdvancedUI
+                        }
+                    }
+                    onPressAndHold: QGroundControl.corePlugin.showTouchAreas = !QGroundControl.corePlugin.showTouchAreas
+                }
             }
+        }
+    }
 
-            QGCLabel { text: qsTr("QGroundControl Discord Channel") }
-            QGCLabel {
-                linkColor:          qgcPal.text
-                text:               "<a href=\"https://discord.com/channels/1022170275984457759/1022185820683255908\">https://discord.com/channels/1022170275984457759/1022185820683255908</a>"
-                onLinkActivated:    (link) => Qt.openUrlExternally(link)
+    SettingsGroupLayout {
+        Layout.fillWidth: true
+
+        Repeater {
+            model: [
+                { name: qsTr("QGroundControl User Guide"),        url: "https://docs.qgroundcontrol.com" },
+                { name: qsTr("PX4 Users Discussion Forum"),       url: "http://discuss.px4.io/c/qgroundcontrol" },
+                { name: qsTr("ArduPilot Users Discussion Forum"), url: "https://discuss.ardupilot.org/c/ground-control-software/qgroundcontrol" },
+                { name: qsTr("QGroundControl Discord Channel"),   url: "https://discord.com/channels/1022170275984457759/1022185820683255908" },
+            ]
+
+            RowLayout {
+                Layout.fillWidth:       true
+                Layout.preferredHeight: ScreenTools.settingsRowHeight
+                spacing:                ScreenTools.defaultFontPixelWidth * 2
+
+                QGCLabel {
+                    Layout.fillWidth:   true
+                    text:               modelData.name
+                }
+
+                QGCLabel {
+                    linkColor:          QGroundControl.globalPalette.colorBlue
+                    text:               "<a href=\"" + modelData.url + "\">" + modelData.url.replace(/^https?:\/\//, "").split("/")[0] + "</a>"
+                    onLinkActivated:    (link) => Qt.openUrlExternally(link)
+                }
             }
         }
     }

@@ -20,12 +20,15 @@ Rectangle {
     width:      contentRow.width + (_margin * 2)
     height:     contentRow.height + (ScreenTools.defaultFontPixelHeight * 0.5)
     radius:     ScreenTools.defaultFontPixelHeight / 3
-    color:      cameraMouseArea.pressed ? Qt.rgba(_qgcPal.overlayBackground.r, _qgcPal.overlayBackground.g, _qgcPal.overlayBackground.b, 1)
-                                          : _qgcPal.overlayBackground
-    border.width: 1
-    border.color: cameraMouseArea.containsMouse ? Qt.rgba(_qgcPal.text.r, _qgcPal.text.g, _qgcPal.text.b, 0.5) : _qgcPal.overlayBorder
+    color:      "transparent"
 
     readonly property var _qgcPal: QGroundControl.globalPalette
+
+    OverlayGlass {
+        anchors.fill: parent
+        radius:       _root.radius
+        highlight:    cameraMouseArea.containsMouse
+    }
 
     property string text: ""
     signal clicked()

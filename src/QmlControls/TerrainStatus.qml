@@ -16,11 +16,12 @@ import QGroundControl.Controls
 import QGroundControl.Palette
 
 Rectangle {
-    id:         root
-    radius:     ScreenTools.defaultFontPixelWidth * 0.5
-    color:      qgcPal.window
-    opacity:    0.80
-    clip:       true
+    id:             root
+    radius:         ScreenTools.defaultFontPixelWidth
+    color:          Qt.alpha(qgcPal.window, 0.92)
+    border.color:   Qt.alpha(qgcPal.text, 0.15)
+    border.width:   1
+    clip:           true
 
     property var missionController
 
@@ -37,24 +38,39 @@ Rectangle {
 
     QGCPalette { id: qgcPal }
 
-    QGCLabel {
-        id:                     titleLabel
-        anchors.top:            parent.bottom
-        width:                  parent.height
-        font.pointSize:         ScreenTools.smallFontPointSize
-        text:                   qsTr("Height AMSL (%1)").arg(_unitsConversion.appSettingsVerticalDistanceUnitsString)
-        horizontalAlignment:    Text.AlignHCenter
-        rotation:               -90
-        transformOrigin:        Item.TopLeft
+    Item {
+        id:                 header
+        anchors.top:        parent.top
+        anchors.left:       parent.left
+        anchors.right:      parent.right
+        anchors.margins:    _margins * 2
+        height:             titleLabel.height
+
+        QGCLabel {
+            id:                 titleLabel
+            anchors.left:       parent.left
+            text:               qsTr("Elevation")
+            font.pointSize:     ScreenTools.smallFontPointSize
+            font.letterSpacing: 0.5
+            color:              qgcPal.colorGrey
+        }
+
+        QGCLabel {
+            anchors.right:      parent.right
+            font.pointSize:     ScreenTools.smallFontPointSize
+            color:              qgcPal.colorGrey
+            text:               qsTr("Height AMSL (%1)").arg(_unitsConversion.appSettingsVerticalDistanceUnitsString)
+        }
     }
 
     QGCFlickable {
         id:                 terrainProfileFlickable
-        anchors.top:        parent.top
+        anchors.top:        header.bottom
         anchors.bottom:     parent.bottom
-        anchors.leftMargin: titleLabel.contentHeight
         anchors.left:       parent.left
         anchors.right:      parent.right
+        anchors.leftMargin: _margins
+        anchors.rightMargin: _margins
         clip:               true
 
         Item {

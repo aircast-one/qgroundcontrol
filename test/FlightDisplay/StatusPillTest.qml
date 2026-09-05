@@ -25,7 +25,6 @@ Item {
         function unregisterStatic(item) { statics = statics.filter((entry) => entry !== item) }
         function registerMovable(item, dragPosition) { }
         function unregisterMovable(item) { }
-        function resolve(item) { }
         function isHidden(key) { return false }
         function requestReflow() { }
     }

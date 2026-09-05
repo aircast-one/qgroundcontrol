@@ -87,6 +87,7 @@
 
 #ifndef QGC_DISABLE_MAVLINK_INSPECTOR
 #include "MAVLinkInspectorController.h"
+#include "OverlayPhysics.h"
 #endif
 #ifdef QGC_VIEWER3D
 #include "Viewer3DManager.h"
@@ -303,6 +304,7 @@ void QGCApplication::init()
 #ifndef QGC_DISABLE_MAVLINK_INSPECTOR
     qmlRegisterUncreatableType<MAVLinkChartController>("QGroundControl", 1, 0, "MAVLinkChart", "Reference only");
     qmlRegisterType<MAVLinkInspectorController>("QGroundControl.Controllers", 1, 0, "MAVLinkInspectorController");
+    qmlRegisterType<OverlayPhysics>("QGroundControl.Controls", 1, 0, "OverlayPhysics");
 #endif
     qmlRegisterType<GeoTagController>("QGroundControl.Controllers", 1, 0, "GeoTagController");
     qmlRegisterType<LogDownloadController>("QGroundControl.Controllers", 1, 0, "LogDownloadController");
@@ -817,14 +819,18 @@ void QGCApplication::_setupFromDevice(const QString &host)
     // The web API may sit on a non-standard port (host:port), but cameras and
     // telemetry always live on the device's standard ports, so they use the bare host.
     const QString bareHost = host.section(QLatin1Char(':'), 0, 0);
-    QNetworkAccessManager *nam = new QNetworkAccessManager(this);
-    const auto remaining = std::make_shared<int>(2);
-    const auto fetch = [this, nam, remaining, host, bareHost](const QString &path, void (QGCApplication::*apply)(const QString&, const QJsonObject&)) {
+    if (!_deviceSetupNetworkManager) {
+        _deviceSetupNetworkManager = new QNetworkAccessManager(this);
+    }
+    QNetworkAccessManager *const nam = _deviceSetupNetworkManager;
+    const int generation = ++_deviceSetupGeneration;
+    const auto fetch = [this, nam, host, bareHost, generation](const QString &path, void (QGCApplication::*apply)(const QString&, const QJsonObject&)) {
         QNetworkReply *reply = nam->get(QNetworkRequest(QUrl(QStringLiteral("http://%1%2").arg(host, path))));
-        connect(reply, &QNetworkReply::finished, this, [this, nam, remaining, reply, host, bareHost, path, apply]() {
+        connect(reply, &QNetworkReply::finished, this, [this, reply, host, bareHost, path, apply, generation]() {
             reply->deleteLater();
-            if (--(*remaining) == 0) {
-                nam->deleteLater();
+            if (generation != _deviceSetupGeneration) {
+                // A newer _setupFromDevice() call has superseded this one; a late reply must not clobber it.
+                return;
             }
             if (reply->error() != QNetworkReply::NoError) {
                 qCWarning(QGCApplicationLog) << "Aircast device setup failed" << host << path << reply->errorString();

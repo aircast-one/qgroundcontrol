@@ -65,6 +65,7 @@ public:
     /// Indices that hold a real, playable source (always includes Camera 1). Disabled
     /// additional cameras are excluded so they don't appear as switch targets.
     QList<int> switchableIndices     ();
+    bool     sourceConfigured       (int index);
 
     /// Switchable indices except the active one, in order — the cameras shown as
     /// picture-in-picture tiles when multi-view is enabled.
@@ -103,6 +104,7 @@ private:
     void _setForceVideoDecodeList();
     QJsonArray _extraSourcesArray   ();
     static bool _isStreamSource     (const QString &source);
+    static bool _sourceNeedsUrl     (const QString &source);
 
 private:
     bool _noVideo = false;

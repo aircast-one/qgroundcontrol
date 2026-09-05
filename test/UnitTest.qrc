@@ -13,7 +13,9 @@
         <file alias="TranslationTest_de_DE.ts">Vehicle/ComponentInformation/TranslationTest_de_DE.ts</file>
         <file alias="FactSystemTest.qml">FactSystem/FactSystemTest.qml</file>
         <file alias="DragToPositionTest.qml">QmlControls/DragToPositionTest.qml</file>
+        <file alias="OverlayBackdropTest.qml">QmlControls/OverlayBackdropTest.qml</file>
         <file alias="OverlayRigTest.qml">QmlControls/OverlayRigTest.qml</file>
+        <file alias="OverlaySegmentedControlTest.qml">QmlControls/OverlaySegmentedControlTest.qml</file>
         <file alias="PipViewTest.qml">QmlControls/PipViewTest.qml</file>
         <file alias="CameraControlLayerTest.qml">FlightDisplay/CameraControlLayerTest.qml</file>
         <file alias="FlightMapWheelTest.qml">FlightDisplay/FlightMapWheelTest.qml</file>

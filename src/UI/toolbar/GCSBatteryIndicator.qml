@@ -24,10 +24,12 @@ Item {
     property bool showIndicator: _battery.available
 
     readonly property var  _battery: QGroundControl.gcsBattery
-    readonly property color _color:  _battery.charging      ? qgcPal.colorGreen :
-                                     _battery.level <= 10   ? qgcPal.colorRed :
-                                     _battery.level <= 25   ? qgcPal.colorYellow :
-                                                              qgcPal.toolbarText
+    // Neutral while it is fine; a colour only when it wants attention. Matches the vehicle
+    // packs exactly, so the two can be compared at a glance.
+    readonly property color _color:  _battery.charging    ? qgcPal.colorGreen :
+                                     _battery.level <= 10 ? qgcPal.colorRed :
+                                     _battery.level <= 25 ? qgcPal.colorYellow :
+                                                            qgcPal.toolbarText
 
     Row {
         id:             gcsBatteryRow
@@ -35,50 +37,11 @@ Item {
         anchors.bottom: parent.bottom
         spacing:        ScreenTools.defaultFontPixelWidth * 0.6
 
-        Item {
-            id:                     glyph
+        GcsBatteryGlyph {
             anchors.verticalCenter: parent.verticalCenter
-            height:                 ScreenTools.defaultFontPixelHeight * 1.15
-            width:                  height * 2
-
-            Rectangle {
-                id:             shell
-                anchors.left:   parent.left
-                width:          parent.width - nub.width
-                height:         parent.height
-                radius:         height * 0.3
-                color:          "transparent"
-                border.color:   control._color
-                border.width:   Math.max(1, parent.height * 0.09)
-
-                Rectangle {
-                    anchors.left:           parent.left
-                    anchors.leftMargin:     shell.border.width * 2
-                    anchors.verticalCenter: parent.verticalCenter
-                    height:                 parent.height - shell.border.width * 4
-                    width:                  (parent.width - shell.border.width * 4) * Math.max(0, Math.min(1, control._battery.level / 100))
-                    radius:                 height * 0.25
-                    color:                  control._color
-                }
-            }
-
-            Rectangle {
-                id:                     nub
-                anchors.left:           shell.right
-                anchors.verticalCenter: parent.verticalCenter
-                width:                  parent.height * 0.14
-                height:                 parent.height * 0.42
-                radius:                 width / 2
-                color:                  control._color
-            }
-
-            QGCLabel {
-                anchors.centerIn:   shell
-                text:               "⚡"
-                color:              qgcPal.toolbarText
-                font.pointSize:     ScreenTools.smallFontPointSize
-                visible:            control._battery.charging
-            }
+            fill:                   control._battery.level / 100
+            charging:               control._battery.charging
+            color:                  control._color
         }
 
         QGCLabel {
@@ -95,9 +58,35 @@ Item {
                                            : qsTr("Ground station battery")
     }
 
+    // The only indicator in the row that could not be opened. A hover tooltip is nothing on a
+    // touchscreen, which is where this runs.
     QGCMouseArea {
         id:             mouseArea
         anchors.fill:   parent
         hoverEnabled:   !ScreenTools.isMobile
+        onClicked:      mainWindow.showIndicatorDrawer(gcsBatteryPage, control)
+    }
+
+    Component {
+        id: gcsBatteryPage
+
+        ToolIndicatorPage {
+            contentComponent: Component {
+                SettingsGroupLayout {
+                    popoverStyle: true
+                    heading: qsTr("Ground Station")
+
+                    LabelledLabel {
+                        label:      qsTr("Charge")
+                        labelText:  control._battery.level + "%"
+                    }
+
+                    LabelledLabel {
+                        label:      qsTr("State")
+                        labelText:  control._battery.charging ? qsTr("Charging") : qsTr("On battery")
+                    }
+                }
+            }
+        }
     }
 }

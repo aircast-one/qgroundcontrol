@@ -27,7 +27,6 @@ Rectangle {
     property alias  title:              titleLabel.text
     property var    fontSize:           ScreenTools.smallFontPointSize
 
-    // Camera-chrome theme: no panel, each action a translucent dark disc like OverlayRoundButton
     property bool   roundButtons:       false
     property alias  buttonSpacing:      toolStripColumn.spacing
 
@@ -83,10 +82,11 @@ Rectangle {
                     id:                 buttonTemplate
                     anchors.left:       toolStripColumn.left
                     anchors.right:      toolStripColumn.right
-                    height:             width
-                    radius:             _root.roundButtons ? width / 2 : ScreenTools.defaultFontPixelWidth / 2
+                    height:             _root.roundButtons ? implicitHeight : width
+                    radius:             _root.roundButtons ? discSize / 2 : ScreenTools.defaultFontPixelWidth / 2
                     iconOnly:           _root.roundButtons
                     fontPointSize:      _root.fontSize
+                    glass:              _root.roundButtons
                     bkColor:            _root.roundButtons ? _root._discColor : qgcPal.toolbarBackground
                     bkHoverColor:       _root.roundButtons ? Qt.rgba(_root._discColor.r, _root._discColor.g, _root._discColor.b, 1) : qgcPal.toolStripHoverColor
                     bkCheckedColor:     _root.roundButtons ? qgcPal.text : qgcPal.buttonHighlight
@@ -99,7 +99,6 @@ Rectangle {
                     onDropped: (index) => _root.dropped(index)
 
                     onCheckedChanged: {
-                        // We deal with exclusive check state manually since usinug autoExclusive caused all sorts of crazt problems
                         if (checked) {
                             for (var i=0; i<repeater.count; i++) {
                                 if (i != index) {

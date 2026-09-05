@@ -1,6 +1,11 @@
 set(frameworks_dir "${APP_BUNDLE}/Contents/Frameworks")
 file(MAKE_DIRECTORY "${frameworks_dir}")
 
+# Same filesystem as the bundle, so the move into Frameworks is a rename and not a copy.
+set(staging_dir "${APP_BUNDLE}/Contents/Frameworks/.wfb-staging")
+file(REMOVE_RECURSE "${staging_dir}")
+file(MAKE_DIRECTORY "${staging_dir}")
+
 execute_process(
     COMMAND otool -L "${APP_BINARY}"
     OUTPUT_VARIABLE otool_output
@@ -27,24 +32,34 @@ foreach(line IN LISTS otool_lines)
     endif()
 
     get_filename_component(dep_name "${dep}" NAME)
-    file(COPY "${dep}" DESTINATION "${frameworks_dir}" FOLLOW_SYMLINK_CHAIN)
-    execute_process(COMMAND chmod u+w "${frameworks_dir}/${dep_name}")
-    execute_process(COMMAND install_name_tool -id "@rpath/${dep_name}" "${frameworks_dir}/${dep_name}")
+
+    # Patched and signed in a staging directory, then moved into place with a rename, which is
+    # atomic on the same filesystem. Doing it in Frameworks left the dylib sitting there with a
+    # signature that no longer matched its bytes for as long as install_name_tool and codesign
+    # took to run - and this step runs on every build. A launch inside that window is killed by
+    # the codesigning monitor before main: dyld maps the header, the kernel hashes the page, the
+    # hash does not match, SIGKILL with CODESIGNING Code 2 Invalid Page.
+    set(staged "${staging_dir}/${dep_name}")
+    file(COPY "${dep}" DESTINATION "${staging_dir}" FOLLOW_SYMLINK_CHAIN)
+    execute_process(COMMAND chmod u+w "${staged}")
+    execute_process(COMMAND install_name_tool -id "@rpath/${dep_name}" "${staged}")
+
+    execute_process(COMMAND codesign --force --sign - "${staged}"
+                    RESULT_VARIABLE sign_result ERROR_VARIABLE sign_error)
+    if(NOT sign_result EQUAL 0)
+        message(FATAL_ERROR "wfb bundling: failed to sign ${dep_name}: ${sign_error}")
+    endif()
+
+    file(RENAME "${staged}" "${frameworks_dir}/${dep_name}")
+
     execute_process(COMMAND install_name_tool -change "${dep}" "@rpath/${dep_name}" "${APP_BINARY}")
     message(STATUS "wfb bundling: embedded ${dep_name}")
 endforeach()
 
+file(REMOVE_RECURSE "${staging_dir}")
+
 execute_process(COMMAND install_name_tool -add_rpath "@executable_path/../Frameworks" "${APP_BINARY}"
                 ERROR_QUIET)
-
-file(GLOB bundled_dylibs "${frameworks_dir}/libusb*.dylib" "${frameworks_dir}/libsodium*.dylib")
-foreach(dylib IN LISTS bundled_dylibs)
-    execute_process(COMMAND codesign --force --sign - "${dylib}"
-                    RESULT_VARIABLE sign_result ERROR_VARIABLE sign_error)
-    if(NOT sign_result EQUAL 0)
-        message(FATAL_ERROR "wfb bundling: failed to sign ${dylib}: ${sign_error}")
-    endif()
-endforeach()
 
 execute_process(COMMAND codesign --force --sign - "${APP_BUNDLE}"
                 RESULT_VARIABLE sign_result ERROR_VARIABLE sign_error)
@@ -52,7 +67,10 @@ if(NOT sign_result EQUAL 0)
     message(FATAL_ERROR "wfb bundling: failed to re-sign app bundle: ${sign_error}")
 endif()
 
-execute_process(COMMAND codesign --verify "${APP_BUNDLE}"
+# --deep --strict, because plain --verify does not descend into nested code: a dylib in
+# Frameworks whose signature did not match its bytes passed this check and then killed the app
+# at launch.
+execute_process(COMMAND codesign --verify --deep --strict "${APP_BUNDLE}"
                 RESULT_VARIABLE verify_result ERROR_VARIABLE verify_error)
 if(NOT verify_result EQUAL 0)
     message(FATAL_ERROR "wfb bundling: signature invalid after bundling: ${verify_error}")

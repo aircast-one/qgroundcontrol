@@ -29,6 +29,10 @@ private slots:
     void _shutterFollowsTheRecordChannelWhenTheStreamIsDead();
     void _settingsExposeTheChannelMapping();
     void _customRcControlsAppearForTheirChannels();
+    void _threePositionSwitchCyclesThroughPositions();
+    void _momentarySwitchTogglesCheckedOnPressAndRelease();
+    void _sliderOrientationCanBeHorizontal();
+    void _momentarySwitchReleasesWhenEditModeInterruptsThePress();
     void _settingsFlagConflictingChannels();
     void _overrideIndicatorLaysOutForTheToolbar();
 };

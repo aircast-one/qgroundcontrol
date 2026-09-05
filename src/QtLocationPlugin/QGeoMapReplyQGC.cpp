@@ -53,7 +53,11 @@ QGeoTiledMapReplyQGC::QGeoTiledMapReplyQGC(QNetworkAccessManager *networkManager
 
 QGeoTiledMapReplyQGC::~QGeoTiledMapReplyQGC()
 {
-    // qCDebug(QGeoTiledMapReplyQGCLog) << Q_FUNC_INFO << this;
+    if (_reply) {
+        (void) disconnect(_reply, nullptr, this, nullptr);
+        _reply->abort();
+        _reply->deleteLater();
+    }
 }
 
 void QGeoTiledMapReplyQGC::_initDataFromResources()
@@ -183,6 +187,11 @@ void QGeoTiledMapReplyQGC::_cacheError(QGCMapTask::TaskType type, QStringView er
 
     Q_ASSERT(type == QGCMapTask::taskFetchTile);
 
+    if (!_networkManager) {
+        setError(QGeoTiledMapReply::CommunicationError, tr("Network Manager No Longer Available"));
+        return;
+    }
+
     if (!QGCDeviceInfo::isInternetAvailable()) {
         setError(QGeoTiledMapReply::CommunicationError, tr("Network Not Available"));
         return;
@@ -191,16 +200,11 @@ void QGeoTiledMapReplyQGC::_cacheError(QGCMapTask::TaskType type, QStringView er
     _request.setOriginatingObject(this);
 
     QNetworkReply* const reply = _networkManager->get(_request);
-    reply->setParent(this);
+    _reply = reply;
     QGCFileDownload::setIgnoreSSLErrorsIfNeeded(*reply);
 
     (void) connect(reply, &QNetworkReply::finished, this, &QGeoTiledMapReplyQGC::_networkReplyFinished);
     (void) connect(reply, &QNetworkReply::errorOccurred, this, &QGeoTiledMapReplyQGC::_networkReplyError);
     (void) connect(reply, &QNetworkReply::sslErrors, this, &QGeoTiledMapReplyQGC::_networkReplySslErrors);
     (void) connect(this, &QGeoTiledMapReplyQGC::aborted, reply, &QNetworkReply::abort);
-}
-
-void QGeoTiledMapReplyQGC::abort()
-{
-    QGeoTiledMapReply::abort();
 }

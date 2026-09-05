@@ -22,12 +22,15 @@ Rectangle {
     width:      ScreenTools.defaultFontPixelWidth * 35
     height:     mainLayout.height + (_margins * 2)
     radius:     ScreenTools.defaultFontPixelHeight * 0.75
-    color:      qgcPal.overlayBackground
-    border.color:   qgcPal.overlayBorder
-    border.width:   1
+    color:      "transparent"
     layer.enabled: true
     layer.effect:  OverlayShadowEffect { }
     visible:    _utmspEnabled && utmspSliderTrigger
+
+    OverlayGlass {
+        anchors.fill: parent
+        radius:       _root.radius
+    }
 
     property var    guidedController
     property var    guidedValueSlider

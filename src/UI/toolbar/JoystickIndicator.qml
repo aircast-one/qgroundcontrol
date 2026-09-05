@@ -32,6 +32,7 @@ Item {
             showExpand: false
 
             contentComponent: SettingsGroupLayout {
+                popoverStyle: true
                 heading: qsTr("Joystick Status")
 
                 GridLayout {

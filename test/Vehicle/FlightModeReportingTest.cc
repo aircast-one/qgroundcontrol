@@ -16,18 +16,12 @@
 #include <QtTest/QSignalSpy>
 #include <QtTest/QTest>
 
-// flightMode() is the firmware plugin's answer for the current mode bits, and the plugin
-// rebuilds that table from the vehicle's own mode list after connect (StandardModes calls
-// updateAvailableFlightModes). So the same bits legitimately resolve to "Unknown" first and to
-// a real name moments later. A vehicle that only announces the mode when the bits change never
-// reports that second answer, and every QML binding stays on the first one for the whole
-// flight -- the toolbar reads "Unknown" while the aircraft flies in a named mode.
 void FlightModeReportingTest::_renamingTheModeAnnouncesItEvenThoughTheModeBitsAreUnchanged()
 {
     _connectMockLinkNoInitialConnectSequence();
     Vehicle* const vehicle = MultiVehicleManager::instance()->activeVehicle();
     QVERIFY(vehicle);
-    QTRY_VERIFY_WITH_TIMEOUT(vehicle->flightMode() != QStringLiteral("Unknown"), 5000);
+    QTRY_VERIFY_WITH_TIMEOUT(!vehicle->flightMode().isEmpty() && !vehicle->flightMode().startsWith(QStringLiteral("Mode ")), 5000);
 
     FirmwarePlugin* const plugin = vehicle->firmwarePlugin();
     QVERIFY(plugin);
@@ -57,7 +51,6 @@ void FlightModeReportingTest::_renamingTheModeAnnouncesItEvenThoughTheModeBitsAr
     QTRY_VERIFY_WITH_TIMEOUT(!spy.isEmpty(), 5000);
     QCOMPARE(spy.last().at(0).toString(), renamedTo);
 
-    // The announcement was not the mode bits changing: they are exactly what they were.
     QCOMPARE(vehicle->baseMode(), baseModeBefore);
     QCOMPARE(vehicle->customMode(), customModeBefore);
     QVERIFY(nameBefore != renamedTo);

@@ -15,57 +15,57 @@ ColumnLayout {
 
     property alias contentSpacing: _contentLayout.spacing
 
-    property string defaultBorderColor  : QGroundControl.globalPalette.groupBorder
+    property string defaultBorderColor  : "transparent"
     property string outerBorderColor    : defaultBorderColor
 
     property string heading
-    property string headingDescription
+    property string description
     property bool   showDividers:       true
-    property bool   showBorder:         true
+    property bool   showBorder:         !popoverStyle
+
+    property bool   popoverStyle:       false
+
+    // A grouped-list card: the quiet small-caps heading of popoverStyle, but the rows sit on an
+    // inset surface instead of directly on the panel. Without it a group nested inside a panel
+    // has to draw its own box to look like a group at all, which is how a card ends up inside a
+    // card inside a card.
+    property bool   cardStyle:          false
+
+    readonly property bool _inset: showBorder || cardStyle
 
     property real _margins: ScreenTools.defaultFontPixelHeight / 2
 
-    ColumnLayout {
+    QGCLabel {
         Layout.leftMargin:  _margins
-        Layout.fillWidth:   true
-        spacing:            0
+        text:               popoverStyle ? heading.toUpperCase() : heading
+        font.pointSize:     popoverStyle ? ScreenTools.smallFontPointSize
+                                         : ScreenTools.defaultFontPointSize + 1
+        font.bold:          !popoverStyle
+        font.letterSpacing: popoverStyle ? 0.5 : 0
+        color:              popoverStyle ? QGroundControl.globalPalette.colorGrey
+                                         : QGroundControl.globalPalette.text
         visible:            heading !== ""
-
-        QGCLabel { 
-            text:           heading
-            font.pointSize: ScreenTools.defaultFontPointSize + 1
-            font.bold:      true
-        }
-
-        QGCLabel { 
-            Layout.fillWidth:   true
-            text:               headingDescription
-            wrapMode:           Text.WordWrap
-            font.pointSize:     ScreenTools.smallFontPointSize
-            visible:            headingDescription !== ""
-        }
     }
 
     Rectangle {
         id:                 outerRect
         Layout.fillWidth:   true
-        implicitWidth:      _contentLayout.implicitWidth + (showBorder ? _margins * 2 : 0)
-        implicitHeight:     _contentLayout.implicitHeight + (showBorder ? _margins * 2: 0)
-        color:              showBorder ? QGroundControl.globalPalette.windowShade : "transparent"
+        implicitWidth:      _contentLayout.implicitWidth + (control._inset ? _margins * 2 : 0)
+        implicitHeight:     _contentLayout.implicitHeight + (control._inset ? _margins * 2: 0)
+        color:              cardStyle  ? Qt.alpha(QGroundControl.globalPalette.text, 0.055)
+                          : showBorder ? QGroundControl.globalPalette.windowShade
+                                       : "transparent"
         border.color:       outerBorderColor
-        border.width:       showBorder ? 1 : 0
-        radius:             Math.round(ScreenTools.defaultFontPixelHeight * 0.6)
+        border.width:       showBorder && !cardStyle ? 1 : 0
+        radius:             Math.round(ScreenTools.defaultFontPixelHeight * 0.85)
 
         Repeater {
             model: showDividers? _contentLayout.children.length : 0
 
             Rectangle {
-                x:                  showBorder ? _margins : 0
-                // Half of the actual row gap. Callers that pack rows tight (contentSpacing 0)
-                // used to get the hairline drawn a full margin down, striking through the
-                // next row's text.
-                y:                  _contentItem.y + _contentItem.height + (_contentLayout.spacing / 2) + (showBorder ? _margins : 0)
-                width:              parent.width - (showBorder ? _margins * 2 : 0)
+                x:                  control._inset ? _margins : 0
+                y:                  _contentItem.y + _contentItem.height + (_contentLayout.spacing / 2) + (control._inset ? _margins : 0)
+                width:              parent.width - x
                 height:             1
                 color:              QGroundControl.globalPalette.groupBorder
                 visible:            _contentItem.visible && 
@@ -78,10 +78,21 @@ ColumnLayout {
  
         ColumnLayout {
             id:                 _contentLayout
-            x:                  showBorder ? _margins : 0
-            y:                  showBorder ? _margins : 0
-            width:              parent.width - (showBorder ? _margins * 2 : 0)
-            spacing:            _margins * 2
+            x:                  control._inset ? _margins : 0
+            y:                  control._inset ? _margins : 0
+            width:              parent.width - (control._inset ? _margins * 2 : 0)
+            spacing:            _margins
         }
+    }
+
+    QGCLabel {
+        Layout.leftMargin:  _margins
+        Layout.rightMargin: _margins
+        Layout.fillWidth:   true
+        text:               description
+        wrapMode:           Text.WordWrap
+        font.pointSize:     ScreenTools.smallFontPointSize
+        color:              QGroundControl.globalPalette.colorGrey
+        visible:            description !== ""
     }
 }

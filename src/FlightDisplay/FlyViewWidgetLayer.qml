@@ -159,12 +159,12 @@ Item {
         Component.onDestruction: overlayRig.unregisterMovable(instrumentPanel)
 
         Behavior on x {
-            enabled: !instrumentPanelDragHandler.active
+            enabled: !instrumentPanelDragHandler.active && instrumentPanelDragPosition.settling
             NumberAnimation { duration: 350; easing.type: Easing.OutBack; easing.overshoot: 2 }
         }
 
         Behavior on y {
-            enabled: !instrumentPanelDragHandler.active
+            enabled: !instrumentPanelDragHandler.active && instrumentPanelDragPosition.settling
             NumberAnimation { duration: 350; easing.type: Easing.OutBack; easing.overshoot: 2 }
         }
 
@@ -190,7 +190,7 @@ Item {
             onActiveChanged: {
                 if (!active) {
                     instrumentPanelDragPosition.commit()
-                    overlayRig.resolve(instrumentPanel)
+                    overlayRig.requestReflow()
                 }
             }
         }
@@ -285,12 +285,12 @@ Item {
         property real leftEdgeCenterInset:  leftEdgeTopInset
 
         Behavior on x {
-            enabled: !toolStripDragHandler.active
+            enabled: !toolStripDragHandler.active && toolStripDragPosition.settling
             NumberAnimation { duration: 350; easing.type: Easing.OutBack; easing.overshoot: 2 }
         }
 
         Behavior on y {
-            enabled: !toolStripDragHandler.active
+            enabled: !toolStripDragHandler.active && toolStripDragPosition.settling
             NumberAnimation { duration: 350; easing.type: Easing.OutBack; easing.overshoot: 2 }
         }
 
@@ -315,7 +315,7 @@ Item {
             onActiveChanged: {
                 if (!active) {
                     toolStripDragPosition.commit()
-                    overlayRig.resolve(toolStrip)
+                    overlayRig.requestReflow()
                 }
             }
         }

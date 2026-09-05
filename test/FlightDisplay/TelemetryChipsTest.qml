@@ -18,7 +18,7 @@ Item {
 
         function registerMovable(item, dragPosition) { }
         function unregisterMovable(item) { }
-        function resolve(item) { }
+        function requestReflow() { }
         function isHidden(key) { return false }
         function registerHideKey(key) { }
         function setHidden(key, hidden) { }

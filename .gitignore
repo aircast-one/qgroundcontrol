@@ -103,3 +103,36 @@ mav.tlog
 mav.tlog.raw
 __pycache__/
 /manifest.json
+
+# In-source CMake/Qt build output. The build belongs in build/ (see the
+# in-source guard in CMakeLists.txt); these patterns clean up trees configured
+# before that guard existed.
+.qt/
+.rcc/
+.lupdate/
+qmltypes/
+meta_types/
+/qml/
+/Testing/
+/CPackConfig.cmake
+/CPackSourceConfig.cmake
+/compile_commands.json
+cmake_install.cmake
+CTestTestfile.cmake
+src/**/Makefile
+libs/**/Makefile
+test/**/Makefile
+
+# CPM dependency checkouts fetched into the source tree. Each is its own git
+# repo, which is why IDEs report thousands of "modified" files that are not ours.
+libs/eigen/
+libs/libevents/libevents/
+libs/OpenSSL/android_openssl/
+libs/qmdnsengine/
+libs/qmlglsink/gst-plugins-good/
+libs/shapelib/
+libs/xz-embedded/
+
+# Qt-generated plugin import stub and CPM-fetched GPS drivers
+/src/QtLocationPlugin/QGCLocation_init.cpp
+/src/GPS/Drivers/

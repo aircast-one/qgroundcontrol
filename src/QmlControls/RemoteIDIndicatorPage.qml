@@ -330,6 +330,7 @@ ToolIndicatorPage {
 
 
                 SettingsGroupLayout {
+                    popoverStyle: true
                     visible:            armStatusLabel.labelText !== ""
                     LabelledLabel {
                         id :                armStatusLabel
@@ -340,8 +341,9 @@ ToolIndicatorPage {
                 }
 
                 SettingsGroupLayout {
+                    popoverStyle: true
                     heading:                qsTr("Self ID")
-                    headingDescription:     qsTr("If an emergency is declared, Emergency Text will be broadcast even if Broadcast setting is not enabled.")
+                    description:            qsTr("If an emergency is declared, Emergency Text will be broadcast even if Broadcast setting is not enabled.")
                     Layout.fillWidth:       true
                     Layout.preferredWidth:  textLabelWidth + textFieldWidth
 
@@ -404,6 +406,7 @@ ToolIndicatorPage {
                 }
 
                 SettingsGroupLayout {
+                    popoverStyle: true
                     Layout.fillWidth:   true
                     visible:            QGroundControl.corePlugin.showAdvancedUI
 

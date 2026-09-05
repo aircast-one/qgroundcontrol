@@ -34,6 +34,7 @@ ToolIndicatorPage {
             spacing: ScreenTools.defaultFontPixelHeight / 2
 
             SettingsGroupLayout {
+                popoverStyle: true
                 heading: qsTr("Vehicle GPS Status")
                 visible: activeVehicle
 
@@ -64,6 +65,7 @@ ToolIndicatorPage {
             }
 
             SettingsGroupLayout {
+                popoverStyle: true
                 heading:    qsTr("RTK GPS Status")
                 visible:    QGroundControl.gpsRtk.connected.value
 
@@ -92,6 +94,7 @@ ToolIndicatorPage {
 
     expandedComponent: Component {
         SettingsGroupLayout {
+            popoverStyle: true
             heading:        qsTr("RTK GPS Settings")
 
             property real sliderWidth: ScreenTools.defaultFontPixelWidth * 40
