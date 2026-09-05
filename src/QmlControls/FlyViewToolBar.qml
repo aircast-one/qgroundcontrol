@@ -67,7 +67,6 @@ Rectangle {
         mainWindow.registerWindowDragExclusion(viewButtonRow)
         mainWindow.registerWindowDragExclusion(toolIndicators)
         mainWindow.registerWindowDragExclusion(overflowButton)
-        mainWindow.registerWindowDragExclusion(largeProgressBar)
     }
 
     RowLayout {
@@ -101,6 +100,29 @@ Rectangle {
         MainStatusIndicator {
             id:                     mainStatusIndicator
             Layout.preferredHeight: _clusterHeight
+        }
+
+        OverlayActivityCapsule {
+            id:                     activityChip
+            objectName:             "vehicleActivityChip"
+            Layout.preferredHeight: _clusterHeight
+            Layout.preferredWidth:  width
+            progress:               _loading && _activeVehicle.loadProgress > 0 ? _activeVehicle.loadProgress : -1
+            done:                   !_loading
+            text:                   _loading ? qsTr("Loading vehicle") : qsTr("Connected")
+            opacity:                _activeVehicle && (_loading || lingerTimer.running) ? 1 : 0
+            visible:                opacity > 0
+
+            readonly property bool _loading: _activeVehicle ? !_activeVehicle.initialConnectComplete : false
+
+            on_LoadingChanged: if (!_loading) lingerTimer.restart()
+
+            Behavior on opacity { NumberAnimation { duration: 200 } }
+
+            Timer {
+                id:       lingerTimer
+                interval: 1800
+            }
         }
 
         Loader {
@@ -152,59 +174,5 @@ Rectangle {
         anchors.verticalCenter:         parent.verticalCenter
         anchors.verticalCenterOffset:   _topInset / 2
         height:                         ScreenTools.defaultFontPixelHeight * 1.8
-    }
-
-    Rectangle {
-        anchors.bottom: parent.bottom
-        height:         _root.height * 0.05
-        width:          _activeVehicle ? _activeVehicle.loadProgress * parent.width : 0
-        color:          qgcPal.colorGreen
-        visible:        !largeProgressBar.visible
-    }
-
-    Rectangle {
-        id:             largeProgressBar
-        anchors.bottom: parent.bottom
-        anchors.left:   parent.left
-        anchors.right:  parent.right
-        height:         parent.height
-        color:          qgcPal.window
-        visible:        _showLargeProgress
-
-        property bool _initialDownloadComplete: _activeVehicle ? _activeVehicle.initialConnectComplete : true
-        property bool _userHide:                false
-        property bool _showLargeProgress:       !_initialDownloadComplete && !_userHide && qgcPal.globalTheme === QGCPalette.Light
-
-        Connections {
-            target:                 QGroundControl.multiVehicleManager
-            function onActiveVehicleChanged(activeVehicle) { largeProgressBar._userHide = false }
-        }
-
-        Rectangle {
-            anchors.top:    parent.top
-            anchors.bottom: parent.bottom
-            width:          _activeVehicle ? _activeVehicle.loadProgress * parent.width : 0
-            color:          qgcPal.colorGreen
-        }
-
-        QGCLabel {
-            anchors.centerIn:   parent
-            text:               qsTr("Downloading")
-            font.pointSize:     ScreenTools.largeFontPointSize
-        }
-
-        QGCLabel {
-            anchors.margins:    _margin
-            anchors.right:      parent.right
-            anchors.bottom:     parent.bottom
-            text:               qsTr("Click anywhere to hide")
-
-            property real _margin: ScreenTools.defaultFontPixelWidth / 2
-        }
-
-        MouseArea {
-            anchors.fill:   parent
-            onClicked:      largeProgressBar._userHide = true
-        }
     }
 }
