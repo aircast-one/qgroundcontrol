@@ -44,6 +44,9 @@ Item {
     }
 
     function _shapeCaption() {
+        if (mapPolyline.count < 2) {
+            return ""
+        }
         const length = _units.metersToAppSettingsHorizontalDistanceUnits(_length())
         return qsTr("Length %1 %2").arg(Number(length).toLocaleString(Qt.locale(), "f", length >= 100 ? 0 : 1)).arg(_units.appSettingsHorizontalDistanceUnitsString)
     }

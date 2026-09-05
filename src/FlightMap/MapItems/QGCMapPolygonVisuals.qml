@@ -63,6 +63,9 @@ Item {
     }
 
     function _shapeCaption() {
+        if (mapPolygon.count === 0) {
+            return ""
+        }
         if (_circleMode) {
             return qsTr("Radius %1").arg(_distanceText(_circleRadius))
         }
