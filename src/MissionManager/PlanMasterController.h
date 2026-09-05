@@ -55,7 +55,9 @@ public:
     Q_PROPERTY(QStringList              loadNameFilters         READ loadNameFilters                        CONSTANT)                       ///< File filter list loading plan files
     Q_PROPERTY(QStringList              saveNameFilters         READ saveNameFilters                        CONSTANT)                       ///< File filter list saving plan files
     Q_PROPERTY(QmlObjectListModel*      planCreators            MEMBER _planCreators                        NOTIFY planCreatorsChanged)
-    Q_PROPERTY(bool                     canUndo                 READ canUndo                                NOTIFY canUndoChanged)
+    Q_PROPERTY(bool                     canUndo                 READ canUndo                                NOTIFY undoStacksChanged)
+    Q_PROPERTY(bool                     canRedo                 READ canRedo                                NOTIFY undoStacksChanged)
+    Q_PROPERTY(bool                     undoTracking            READ undoTracking   WRITE setUndoTracking   NOTIFY undoTrackingChanged)
 
     /// Should be called immediately upon Component.onCompleted.
     Q_INVOKABLE void start(void);
@@ -86,7 +88,7 @@ public:
     Q_INVOKABLE void removeAll(void);                       ///< Removes all from controller only, synce required to remove from vehicle
     Q_INVOKABLE void removeAllFromVehicle(void);            ///< Removes all from vehicle and controller
     Q_INVOKABLE void undo(void);
-    Q_INVOKABLE void captureUndoSnapshot(void);
+    Q_INVOKABLE void redo(void);
 
     MissionController*      missionController(void)     { return &_missionController; }
     GeoFenceController*     geoFenceController(void)    { return &_geoFenceController; }
@@ -104,6 +106,9 @@ public:
     QStringList saveNameFilters (void) const;
     bool        isEmpty         (void) const;
     bool        canUndo         (void) const { return !_undoStack.isEmpty(); }
+    bool        canRedo         (void) const { return !_redoStack.isEmpty(); }
+    bool        undoTracking    (void) const { return _undoTimer.isActive(); }
+    void        setUndoTracking (bool tracking);
 
     void        setFlyView(bool flyView) { _flyView = flyView; }
 
@@ -127,7 +132,8 @@ signals:
     void planCreatorsChanged                (QmlObjectListModel* planCreators);
     void managerVehicleChanged              (Vehicle* managerVehicle);
     void promptForPlanUsageOnVehicleChange  (void);
-    void canUndoChanged                     (bool canUndo);
+    void undoStacksChanged                  (void);
+    void undoTrackingChanged                (void);
 
 private slots:
     void _activeVehicleChanged      (Vehicle* activeVehicle);
@@ -139,11 +145,16 @@ private slots:
     void _sendRallyPointsComplete   (void);
     void _updateOverallDirty        (void);
     void _updatePlanCreatorsList    (void);
+    void _captureUndoSnapshot       (void);
 
 private:
     void _commonInit                (void);
     void _showPlanFromManagerVehicle(void);
     bool _loadFromJson              (QJsonObject json, QString& errorString);
+    QByteArray _planSnapshot        (void);
+    QByteArray _editKey             (const QByteArray& snapshot) const;
+    bool _restoreSnapshot           (const QByteArray& snapshot, QString& errorString);
+    void _shiftSnapshot             (QList<QByteArray>& from, QList<QByteArray>& to, const QString& failureMessage);
 
     MultiVehicleManager*    _multiVehicleMgr =          nullptr;
     Vehicle*                _controllerVehicle =        nullptr;    ///< Offline controller vehicle
@@ -163,6 +174,12 @@ private:
     QmlObjectListModel*     _planCreators =             nullptr;
     QTimer                  _undoTimer;
     QList<QByteArray>       _undoStack;
+    QList<QByteArray>       _redoStack;
     QByteArray              _undoBaseline;
+    QByteArray              _cleanSnapshot;
+    bool                    _restoring =                false;
     static constexpr int    kUndoDepth =                100;
+    static constexpr int    kUndoSnapshotIntervalMs =   500;
+
+    friend class PlanMasterControllerTest;
 };

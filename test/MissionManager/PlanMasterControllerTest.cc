@@ -12,6 +12,10 @@
 #include "MissionManager.h"
 #include "PlanMasterController.h"
 #include "Vehicle.h"
+#include "GeoFenceController.h"
+#include "QmlObjectListModel.h"
+
+#include <QtPositioning/QGeoCoordinate>
 
 #include <QtTest/QTest>
 
@@ -52,17 +56,80 @@ void PlanMasterControllerTest::_testMissionPlannerFileLoad(void)
 
 void PlanMasterControllerTest::_testUndo(void)
 {
-    _masterController->captureUndoSnapshot();
+    _masterController->_captureUndoSnapshot();
     QVERIFY(!_masterController->canUndo());
 
     _masterController->loadFromFile(":/unittest/OldFileFormat.mission");
-    _masterController->captureUndoSnapshot();
+    _masterController->_captureUndoSnapshot();
     QVERIFY(_masterController->canUndo());
+    QVERIFY(!_masterController->canRedo());
     QCOMPARE(_masterController->missionController()->visualItems()->count(), 7);
 
     _masterController->undo();
     QVERIFY(!_masterController->canUndo());
+    QVERIFY(_masterController->canRedo());
     QCOMPARE(_masterController->missionController()->visualItems()->count(), 1);
+
+    _masterController->redo();
+    QVERIFY(_masterController->canUndo());
+    QVERIFY(!_masterController->canRedo());
+    QCOMPARE(_masterController->missionController()->visualItems()->count(), 7);
+}
+
+void PlanMasterControllerTest::_testUndoFence(void)
+{
+    GeoFenceController* fence = _masterController->geoFenceController();
+    _masterController->_captureUndoSnapshot();
+
+    fence->addInclusionPolygon(QGeoCoordinate(47.0, 8.0), QGeoCoordinate(46.9, 8.1));
+    _masterController->_captureUndoSnapshot();
+    QCOMPARE(fence->polygons()->count(), 1);
+
+    _masterController->undo();
+    QCOMPARE(fence->polygons()->count(), 0);
+
+    _masterController->redo();
+    QCOMPARE(fence->polygons()->count(), 1);
+}
+
+void PlanMasterControllerTest::_testUndoCorruptSnapshot(void)
+{
+    _masterController->_captureUndoSnapshot();
+    _masterController->loadFromFile(":/unittest/OldFileFormat.mission");
+    _masterController->_captureUndoSnapshot();
+    QCOMPARE(_masterController->_undoStack.count(), 1);
+
+    _masterController->_undoStack.append("{\"fileType\":\"Plan\"");
+    _masterController->undo();
+    QCOMPARE(_masterController->missionController()->visualItems()->count(), 7);
+    QCOMPARE(_masterController->_undoStack.count(), 1);
+    QVERIFY(!_masterController->canRedo());
+
+    _masterController->_undoStack.append("{\"fileType\":\"Plan\",\"version\":1,\"groundStation\":\"QGroundControl\",\"mission\":{},\"geoFence\":{},\"rallyPoints\":{}}");
+    _masterController->undo();
+    QCOMPARE(_masterController->missionController()->visualItems()->count(), 7);
+    QCOMPARE(_masterController->_undoStack.count(), 1);
+
+    _masterController->undo();
+    QCOMPARE(_masterController->missionController()->visualItems()->count(), 1);
+}
+
+void PlanMasterControllerTest::_testUndoTracksDirty(void)
+{
+    GeoFenceController* fence = _masterController->geoFenceController();
+    _masterController->setDirty(false);
+    _masterController->_captureUndoSnapshot();
+    QVERIFY(!_masterController->dirty());
+
+    fence->addInclusionPolygon(QGeoCoordinate(47.0, 8.0), QGeoCoordinate(46.9, 8.1));
+    _masterController->_captureUndoSnapshot();
+    QVERIFY(_masterController->dirty());
+
+    _masterController->undo();
+    QVERIFY(!_masterController->dirty());
+
+    _masterController->redo();
+    QVERIFY(_masterController->dirty());
 }
 
 void PlanMasterControllerTest::_testActiveVehicleChanged(void) {

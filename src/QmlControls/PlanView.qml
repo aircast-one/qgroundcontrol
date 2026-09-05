@@ -193,8 +193,9 @@ Item {
     }
 
     PlanMasterController {
-        id:         planMasterController
-        flyView:    false
+        id:           planMasterController
+        flyView:      false
+        undoTracking: _root.planActive
 
         Component.onCompleted: {
             _planMasterController.start()
@@ -407,6 +408,12 @@ Item {
             sequence:    StandardKey.Undo
             enabled:     _root.planActive
             onActivated: _planMasterController.undo()
+        }
+
+        Shortcut {
+            sequence:    StandardKey.Redo
+            enabled:     _root.planActive
+            onActivated: _planMasterController.redo()
         }
 
         Connections {

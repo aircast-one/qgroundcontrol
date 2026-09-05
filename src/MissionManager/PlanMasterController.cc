@@ -75,7 +75,7 @@ void PlanMasterController::_commonInit(void)
 
     // Offline vehicle can change firmware/vehicle type
     connect(_controllerVehicle,     &Vehicle::vehicleTypeChanged,                   this, &PlanMasterController::_updatePlanCreatorsList);
-    connect(&_undoTimer,            &QTimer::timeout,                               this, &PlanMasterController::captureUndoSnapshot);
+    connect(&_undoTimer,            &QTimer::timeout,                               this, &PlanMasterController::_captureUndoSnapshot);
 }
 
 
@@ -94,9 +94,7 @@ void PlanMasterController::start(void)
     connect(_multiVehicleMgr, &MultiVehicleManager::activeVehicleChanged, this, &PlanMasterController::_activeVehicleChanged);
 
     _updatePlanCreatorsList();
-    if (!_flyView) {
-        _undoTimer.start(500);
-    }
+    _cleanSnapshot = _planSnapshot();
 }
 
 void PlanMasterController::startStaticActiveVehicle(Vehicle* vehicle, bool deleteWhenSendCompleted)
@@ -420,39 +418,107 @@ bool PlanMasterController::_loadFromJson(QJsonObject json, QString& errorString)
     return true;
 }
 
-void PlanMasterController::captureUndoSnapshot(void)
+QByteArray PlanMasterController::_planSnapshot(void)
 {
-    if (QGuiApplication::mouseButtons() != Qt::NoButton || syncInProgress()) {
+    return saveToJson().toJson(QJsonDocument::Compact);
+}
+
+QByteArray PlanMasterController::_editKey(const QByteArray& snapshot) const
+{
+    if (offline()) {
+        return snapshot;
+    }
+    QJsonObject plan = QJsonDocument::fromJson(snapshot).object();
+    QJsonObject mission = plan[kJsonMissionObjectKey].toObject();
+    for (const char* vehicleDrivenKey : { "plannedHomePosition", "firmwareType", "vehicleType" }) {
+        mission.remove(QLatin1String(vehicleDrivenKey));
+    }
+    plan[kJsonMissionObjectKey] = mission;
+    return QJsonDocument(plan).toJson(QJsonDocument::Compact);
+}
+
+void PlanMasterController::setUndoTracking(bool tracking)
+{
+    if (tracking == _undoTimer.isActive()) {
         return;
     }
-    const QByteArray snapshot = saveToJson().toJson(QJsonDocument::Compact);
-    if (snapshot == _undoBaseline) {
+    if (tracking) {
+        _undoBaseline = _planSnapshot();
+        _undoTimer.start(kUndoSnapshotIntervalMs);
+    } else {
+        _undoTimer.stop();
+    }
+    emit undoTrackingChanged();
+}
+
+void PlanMasterController::_captureUndoSnapshot(void)
+{
+    if (QGuiApplication::mouseButtons() != Qt::NoButton || syncInProgress() || _restoring) {
         return;
     }
-    if (!_undoBaseline.isEmpty()) {
-        _undoStack.append(_undoBaseline);
-        if (_undoStack.count() > kUndoDepth) {
-            _undoStack.removeFirst();
-        }
+    const QByteArray snapshot = _planSnapshot();
+    if (_undoBaseline.isEmpty() || _editKey(snapshot) == _editKey(_undoBaseline)) {
+        _undoBaseline = snapshot;
+        return;
+    }
+    _undoStack.append(_undoBaseline);
+    if (_undoStack.count() > kUndoDepth) {
+        _undoStack.removeFirst();
     }
     _undoBaseline = snapshot;
-    qCDebug(PlanMasterControllerLog) << "captureUndoSnapshot depth" << _undoStack.count();
-    emit canUndoChanged(canUndo());
+    _redoStack.clear();
+    qCDebug(PlanMasterControllerLog) << "undo snapshot captured, depth" << _undoStack.count();
+    emit undoStacksChanged();
 }
 
 void PlanMasterController::undo(void)
 {
-    if (_undoStack.isEmpty()) {
+    _shiftSnapshot(_undoStack, _redoStack, tr("Undo failed. %1"));
+}
+
+void PlanMasterController::redo(void)
+{
+    _shiftSnapshot(_redoStack, _undoStack, tr("Redo failed. %1"));
+}
+
+void PlanMasterController::_shiftSnapshot(QList<QByteArray>& from, QList<QByteArray>& to, const QString& failureMessage)
+{
+    if (from.isEmpty()) {
         return;
     }
-    const QByteArray snapshot = _undoStack.takeLast();
-    qCDebug(PlanMasterControllerLog) << "undo depth" << _undoStack.count();
     QString errorString;
-    if (!_loadFromJson(QJsonDocument::fromJson(snapshot).object(), errorString)) {
-        qgcApp()->showAppMessage(tr("Undo failed. %1").arg(errorString));
+    if (!_restoreSnapshot(from.last(), errorString)) {
+        from.removeLast();
+        qgcApp()->showAppMessage(failureMessage.arg(errorString));
+        QString ignored;
+        _restoreSnapshot(_undoBaseline, ignored);
+        emit undoStacksChanged();
+        return;
     }
-    _undoBaseline = saveToJson().toJson(QJsonDocument::Compact);
-    emit canUndoChanged(canUndo());
+    from.removeLast();
+    to.append(_undoBaseline);
+    _undoBaseline = _planSnapshot();
+    emit undoStacksChanged();
+}
+
+bool PlanMasterController::_restoreSnapshot(const QByteArray& snapshot, QString& errorString)
+{
+    QJsonParseError parseError;
+    const QJsonDocument doc = QJsonDocument::fromJson(snapshot, &parseError);
+    if (parseError.error != QJsonParseError::NoError) {
+        errorString = parseError.errorString();
+        return false;
+    }
+    const int seqNum = _missionController.currentPlanViewSeqNum();
+    _restoring = true;
+    const bool loaded = _loadFromJson(doc.object(), errorString);
+    _restoring = false;
+    if (!loaded) {
+        return false;
+    }
+    _missionController.setCurrentPlanViewSeqNum(seqNum, true);
+    setDirty(_editKey(_planSnapshot()) != _editKey(_cleanSnapshot));
+    return true;
 }
 
 QJsonDocument PlanMasterController::saveToJson()
@@ -658,6 +724,9 @@ void PlanMasterController::_updateOverallDirty(void)
 {
     if(_previousOverallDirty != dirty()){
         _previousOverallDirty = dirty();
+        if (!_previousOverallDirty && !_restoring) {
+            _cleanSnapshot = _planSnapshot();
+        }
         emit dirtyChanged(_previousOverallDirty);
     }    
 }
