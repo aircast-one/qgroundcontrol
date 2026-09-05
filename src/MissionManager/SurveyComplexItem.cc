@@ -208,6 +208,7 @@ bool SurveyComplexItem::_loadV4V5(const QJsonObject& complexObject, int sequence
     }
 
     _entryPoint = complexObject[_jsonEntryPointKey].toInt();
+    emit entryPointChanged();
 
     _ignoreRecalc = false;
 
@@ -275,6 +276,7 @@ bool SurveyComplexItem::_loadV3(const QJsonObject& complexObject, int sequenceNu
     } else {
         _entryPoint = EntryLocationTopRight;
     }
+    emit entryPointChanged();
 
     _cameraCalc.distanceToSurface()->setRawValue        (gridObject[_jsonV3GridAltitudeKey].toDouble());
     _cameraCalc.adjustedFootprintSide()->setRawValue    (gridObject[_jsonV3GridSpacingKey].toDouble());
@@ -1335,6 +1337,7 @@ void SurveyComplexItem::rotateEntryPoint(void)
     } else {
         _entryPoint++;
     }
+    emit entryPointChanged();
 
     _rebuildTransects();
 

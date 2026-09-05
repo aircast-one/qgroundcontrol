@@ -980,23 +980,6 @@ Item {
                         anchors.right:  parent.right
                         spacing:        ScreenTools.defaultFontPixelHeight * 0.5
 
-                        Loader {
-                            id:             missionSettingsLoader
-                            width:          parent.width
-                            // No explicit height: the loader takes its implicit height from the
-                            // editor it holds, so the column below it stays put as the editor
-                            // grows and shrinks with the vehicle's options.
-                            active:         missionItemEditor._missionSettingsItem !== null
-                            source:         missionItemEditor._missionSettingsItem ? missionItemEditor._missionSettingsItem.editorQml : ""
-
-                            property var  masterController:     _planMasterController
-                            property var  missionItem:          missionItemEditor._missionSettingsItem
-                            property var  map:                  _root.map
-                            property real availableWidth:       missionSettingsLoader.width
-                            property var  editorRoot:           missionSettingsLoader
-                            property bool _noMissionItemsAdded: _visualItems.count === 1
-                        }
-
                         QGCLabel {
                             text:           qsTr("ITEMS")
                             leftPadding:    ScreenTools.defaultFontPixelHeight / 2
@@ -1009,8 +992,6 @@ Item {
                             id:    itemsCard
                             width: parent.width
 
-                            // Sequence 0 is the mission settings item, shown above as its own
-                            // section rather than as a row of this list, so the list starts at 1.
                             readonly property int _firstItemIndex: 1
 
                             Repeater {
@@ -1043,6 +1024,21 @@ Item {
                                 onClicked:   insertSimpleItemAfterCurrent(mapCenter())
                             }
                         }
+
+                        Loader {
+                            id:             missionSettingsLoader
+                            width:          parent.width
+                            active:         missionItemEditor._missionSettingsItem !== null
+                            source:         missionItemEditor._missionSettingsItem ? missionItemEditor._missionSettingsItem.editorQml : ""
+
+                            property var  masterController:     _planMasterController
+                            property var  missionItem:          missionItemEditor._missionSettingsItem
+                            property var  map:                  _root.map
+                            property real availableWidth:       missionSettingsLoader.width
+                            property var  editorRoot:           missionSettingsLoader
+                            property bool _noMissionItemsAdded: _visualItems.count === 1
+                        }
+
                     }
                 }
 

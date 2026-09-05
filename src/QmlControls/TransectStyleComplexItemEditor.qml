@@ -24,6 +24,7 @@ Rectangle {
     property string transectValuesHeaderName:       _internalError
     property var    transectValuesComponent:        undefined
     property var    presetsTransectValuesComponent: undefined
+    property string entryPointText:                 qsTr("Rotate Entry Point")
 
     readonly property string _internalError: "Internal Error"
 
@@ -80,7 +81,6 @@ Rectangle {
                 Layout.fillWidth:   true
             }
 
-            // Grid tab
             ColumnLayout {
                 Layout.fillWidth:   true
                 spacing:            _margin
@@ -92,6 +92,42 @@ Rectangle {
                     wrapMode:           Text.WordWrap
                     color:              qgcPal.warningText
                     visible:            _missionItem.cameraShots > 0 && _cameraMinTriggerInterval !== 0 && _cameraMinTriggerInterval > _missionItem.timeBetweenShots
+                }
+
+                Item {
+                    objectName:       "transectCameraRow"
+                    Layout.fillWidth: true
+                    implicitHeight:   cameraRow.implicitHeight + _margin * 2
+
+                    RowLayout {
+                        id:                     cameraRow
+                        anchors.left:           parent.left
+                        anchors.right:          parent.right
+                        anchors.verticalCenter: parent.verticalCenter
+                        spacing:                _margin
+
+                        QGCLabel { text: qsTr("Camera") }
+
+                        QGCLabel {
+                            Layout.fillWidth:    true
+                            horizontalAlignment: Text.AlignRight
+                            elide:               Text.ElideRight
+                            color:               qgcPal.primaryButton
+                            text:                _missionItem.cameraCalc.isManualCamera || _missionItem.cameraCalc.isCustomCamera
+                                                     ? _missionItem.cameraCalc.cameraBrand
+                                                     : _missionItem.cameraCalc.cameraBrand + " " + _missionItem.cameraCalc.cameraModel
+                        }
+
+                        QGCLabel {
+                            text:  "\u203A"
+                            color: qgcPal.primaryButton
+                        }
+                    }
+
+                    QGCMouseArea {
+                        anchors.fill: parent
+                        onClicked:    tabBar.currentIndex = 1
+                    }
                 }
 
                 CameraCalcGrid {
@@ -119,7 +155,7 @@ Rectangle {
 
                 QGCButton {
                     Layout.alignment:   Qt.AlignHCenter
-                    text:               qsTr("Rotate Entry Point")
+                    text:               entryPointText
                     onClicked:          _missionItem.rotateEntryPoint()
                     visible:            transectValuesHeader.checked
                 }
@@ -134,16 +170,14 @@ Rectangle {
                     Layout.fillWidth:   true
                     visible:            statsHeader.checked
                 }
-            } // Grid Column
+            }
 
-            // Camera Tab
             CameraCalcCamera {
                 Layout.fillWidth:   true
                 visible:            tabBar.currentIndex === 1
                 cameraCalc:         _missionItem.cameraCalc
             }
 
-            // Terrain Tab
             TransectStyleComplexItemTerrainFollow {
                 Layout.fillWidth:   true
                 spacing:            _margin
@@ -151,7 +185,6 @@ Rectangle {
                 missionItem:        _missionItem
             }
 
-            // Presets Tab
             ColumnLayout {
                 Layout.fillWidth:   true
                 spacing:            _margin
@@ -235,8 +268,8 @@ Rectangle {
                     Layout.fillWidth:   true
                     visible:            presetsStatsHeader.checked
                 }
-            } // Main editing column
-        } // Top level  Column
+            }
+        }
 
         Component {
             id: savePresetDialog

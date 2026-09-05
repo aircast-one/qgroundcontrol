@@ -8,7 +8,6 @@ import QGroundControl.Controls
 import QGroundControl.FactControls
 import QGroundControl.Palette
 
-// Camera calculator "Grid" section for mission item editors
 Column {
     spacing: _margin
 
@@ -107,10 +106,31 @@ Column {
                 enabled:                fixedImageDensityRadio.checked
                 Layout.fillWidth:       true
             }
-        }
-    } // Column - Camera spec based ui
 
-    // No camera spec ui
+            QGCLabel {
+                text:  frontalDistanceLabel
+                color: Qt.alpha(qgcPal.text, 0.6)
+            }
+            QGCLabel {
+                Layout.fillWidth:    true
+                horizontalAlignment: Text.AlignRight
+                text:                cameraCalc.adjustedFootprintFrontal.valueString + " " + cameraCalc.adjustedFootprintFrontal.units
+                color:               Qt.alpha(qgcPal.text, 0.6)
+            }
+
+            QGCLabel {
+                text:  sideDistanceLabel
+                color: Qt.alpha(qgcPal.text, 0.6)
+            }
+            QGCLabel {
+                Layout.fillWidth:    true
+                horizontalAlignment: Text.AlignRight
+                text:                cameraCalc.adjustedFootprintSide.valueString + " " + cameraCalc.adjustedFootprintSide.units
+                color:               Qt.alpha(qgcPal.text, 0.6)
+            }
+        }
+    }
+
     GridLayout {
         anchors.left:   parent.left
         anchors.right:  parent.right
@@ -137,5 +157,5 @@ Column {
             Layout.fillWidth:   true
             fact:               cameraCalc.adjustedFootprintSide
         }
-    } // GridLayout
-} // Column
+    }
+}

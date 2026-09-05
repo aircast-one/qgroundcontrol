@@ -32,12 +32,14 @@ public:
     Q_PROPERTY(Fact*            flyAlternateTransects  READ flyAlternateTransects  CONSTANT)
     Q_PROPERTY(Fact*            splitConcavePolygons   READ splitConcavePolygons   CONSTANT)
     Q_PROPERTY(QGeoCoordinate   centerCoordinate       READ centerCoordinate       WRITE setCenterCoordinate)
+    Q_PROPERTY(int              entryPoint             READ entryPoint             NOTIFY entryPointChanged)
 
     Fact* gridAngle             (void) { return &_gridAngleFact; }
     Fact* flyAlternateTransects (void) { return &_flyAlternateTransectsFact; }
     Fact* splitConcavePolygons  (void) { return &_splitConcavePolygonsFact; }
 
     Q_INVOKABLE void rotateEntryPoint(void);
+    int entryPoint(void) const { return _entryPoint; }
 
     // Overrides from ComplexMissionItem
     QString         patternName         (void) const final { return name; }
@@ -84,6 +86,7 @@ public:
     static constexpr const char* splitConcavePolygonsName =   "SplitConcavePolygons";
 
 signals:
+    void entryPointChanged(void);
     void refly90DegreesChanged(bool refly90Degrees);
 
 private slots:

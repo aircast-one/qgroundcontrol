@@ -18,13 +18,13 @@ TransectStyleComplexItemEditor {
     transectValuesHeaderName:       qsTr("Transects")
     transectValuesComponent:        _transectValuesComponent
     presetsTransectValuesComponent: _transectValuesComponent
+    entryPointText:                 qsTr("Start from %1").arg(_entryNames[missionItem.entryPoint])
 
-    // The following properties must be available up the hierarchy chain
-    //  property real   availableWidth    ///< Width for control
-    //  property var    missionItem       ///< Mission Item for editor
 
     property real   _margin:        ScreenTools.defaultFontPixelWidth / 2
     property var    _missionItem:   missionItem
+
+    readonly property var _entryNames: [ qsTr("top left"), qsTr("top right"), qsTr("bottom left"), qsTr("bottom right") ]
 
     Component {
         id: _transectValuesComponent
@@ -66,37 +66,35 @@ TransectStyleComplexItemEditor {
                 visible:            !forPresets
             }
 
-            QGCOptionsComboBox {
+            FactCheckBox {
                 Layout.columnSpan:  2
-                Layout.fillWidth:   true
-                visible:            !forPresets
+                text:               qsTr("Hover to capture each image")
+                fact:               missionItem.hoverAndCapture
+                enabled:            missionItem.cameraCalc.distanceMode === QGroundControl.AltitudeModeRelative || missionItem.cameraCalc.distanceMode === QGroundControl.AltitudeModeAbsolute
+                visible:            !forPresets && missionItem.hoverAndCaptureAllowed
+            }
 
-                model: [
-                    {
-                        text:       qsTr("Hover and capture image"),
-                        fact:       missionItem.hoverAndCapture,
-                        enabled:    missionItem.cameraCalc.distanceMode === QGroundControl.AltitudeModeRelative || missionItem.cameraCalc.distanceMode === QGroundControl.AltitudeModeAbsolute,
-                        visible:    missionItem.hoverAndCaptureAllowed
-                    },
-                    {
-                        text:       qsTr("Refly at 90 deg offset"),
-                        fact:       missionItem.refly90Degrees,
-                        enabled:    missionItem.cameraCalc.distanceMode !== QGroundControl.AltitudeModeCalcAboveTerrain,
-                        visible:    true
-                    },
-                    {
-                        text:       qsTr("Images in turnarounds"),
-                        fact:       missionItem.cameraTriggerInTurnAround,
-                        enabled:    missionItem.hoverAndCaptureAllowed ? !missionItem.hoverAndCapture.rawValue : true,
-                        visible:    true
-                    },
-                    {
-                        text:       qsTr("Fly alternate transects"),
-                        fact:       missionItem.flyAlternateTransects,
-                        enabled:    true,
-                        visible:    _vehicle ? (_vehicle.fixedWing || _vehicle.vtol) : false
-                    }
-                ]
+            FactCheckBox {
+                Layout.columnSpan:  2
+                text:               qsTr("Refly at 90\u00B0 for a cross grid")
+                fact:               missionItem.refly90Degrees
+                enabled:            missionItem.cameraCalc.distanceMode !== QGroundControl.AltitudeModeCalcAboveTerrain
+                visible:            !forPresets
+            }
+
+            FactCheckBox {
+                Layout.columnSpan:  2
+                text:               qsTr("Images in turnarounds")
+                fact:               missionItem.cameraTriggerInTurnAround
+                enabled:            missionItem.hoverAndCaptureAllowed ? !missionItem.hoverAndCapture.rawValue : true
+                visible:            !forPresets
+            }
+
+            FactCheckBox {
+                Layout.columnSpan:  2
+                text:               qsTr("Fly alternate transects")
+                fact:               missionItem.flyAlternateTransects
+                visible:            !forPresets && (_vehicle ? (_vehicle.fixedWing || _vehicle.vtol) : false)
             }
         }
     }
@@ -108,7 +106,6 @@ TransectStyleComplexItemEditor {
         onAcceptedForLoad: (file) => {
             missionItem.surveyAreaPolygon.loadKMLOrSHPFile(file)
             missionItem.resetState = false
-            //editorMap.mapFitFunctions.fitMapViewportTomissionItems()
             close()
         }
     }
