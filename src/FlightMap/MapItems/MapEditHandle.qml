@@ -15,7 +15,7 @@ import QGroundControl.ScreenTools
 Rectangle {
     id: _root
 
-    property string icon: ""
+    property bool grip: false
 
     width:         ScreenTools.defaultFontPixelHeight * 1.2
     height:        width
@@ -24,15 +24,21 @@ Rectangle {
     layer.enabled: true
     layer.effect:  OverlayShadowEffect { }
 
-    QGCColoredImage {
-        anchors.centerIn:  parent
-        visible:           _root.icon !== ""
-        source:            _root.icon
-        color:             Qt.rgba(0, 0, 0, 0.75)
-        height:            parent.height * 0.6
-        width:             height
-        sourceSize.height: height
-        fillMode:          Image.PreserveAspectFit
-        mipmap:            true
+    Grid {
+        anchors.centerIn: parent
+        visible:          _root.grip
+        columns:          2
+        spacing:          _root.width * 0.12
+
+        Repeater {
+            model: 4
+
+            Rectangle {
+                width:  _root.width * 0.15
+                height: width
+                radius: width / 2
+                color:  Qt.rgba(0, 0, 0, 0.55)
+            }
+        }
     }
 }

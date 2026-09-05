@@ -47,7 +47,32 @@ Item {
     property real _zorderSplitHandle:   QGroundControl.zOrderMapItems + 2
     property real _zorderCenterHandle:  QGroundControl.zOrderMapItems + 1   // Lowest such that drag or split takes precedence
 
-    readonly property string _traceText: qsTr("Click the map to add vertices")
+    readonly property var _units: QGroundControl.unitsConversion
+
+    function _perimeter() {
+        const path = mapPolygon.path
+        return path.reduce((sum, vertex, i) => sum + vertex.distanceTo(path[(i + 1) % path.length]), 0)
+    }
+
+    function _measure(value, unit) {
+        return Number(value).toLocaleString(Qt.locale(), "f", value >= 100 ? 0 : 1) + " " + unit.replace("^2", "\u00B2")
+    }
+
+    function _distanceText(meters) {
+        return _measure(_units.metersToAppSettingsHorizontalDistanceUnits(meters), _units.appSettingsHorizontalDistanceUnitsString)
+    }
+
+    function _shapeCaption() {
+        if (_circleMode) {
+            return qsTr("Radius %1").arg(_distanceText(_circleRadius))
+        }
+        return _measure(_units.squareMetersToAppSettingsAreaUnits(mapPolygon.area), _units.appSettingsAreaUnitsString) + " \u00B7 " + _distanceText(_perimeter())
+    }
+
+    function _traceCaption() {
+        return mapPolygon.count < 3 ? qsTr("Click the map to add points \u00B7 %1 of 3").arg(mapPolygon.count)
+                                    : qsTr("%1 points").arg(mapPolygon.count)
+    }
 
     function addCommonVisuals() {
         if (_objMgrCommonVisuals.empty) {
@@ -207,18 +232,20 @@ Item {
     }
     Component.onDestruction: mapPolygon.traceMode = false
 
-    function _toggleTrace() {
-        if (mapPolygon.traceMode) {
-            if (mapPolygon.count < 3) {
-                _restorePreviousVertices()
-            }
-            mapPolygon.traceMode = false
-        } else {
-            _saveCurrentVertices()
-            _circleMode = false
-            mapPolygon.traceMode = true
-            mapPolygon.clear()
-        }
+    function _startTrace() {
+        _saveCurrentVertices()
+        _circleMode = false
+        mapPolygon.traceMode = true
+        mapPolygon.clear()
+    }
+
+    function _finishTrace() {
+        mapPolygon.traceMode = false
+    }
+
+    function _cancelTrace() {
+        _restorePreviousVertices()
+        mapPolygon.traceMode = false
     }
 
     QGCDynamicObjectManager { id: _objMgrCommonVisuals }
@@ -452,7 +479,7 @@ Item {
             z:              _zorderDragHandle
             sourceItem: MapEditHandle {
                 id:   dragHandle
-                icon: "/qmlimages/MapCenter.svg"
+                grip: true
             }
         }
     }
@@ -574,13 +601,15 @@ Item {
             anchors.horizontalCenterOffset: mapControl.centerViewport.left + (mapControl.centerViewport.width / 2)
             y:                              mapControl.centerViewport.top
             availableWidth:                 mapControl.centerViewport.width
-            caption:                        mapPolygon.traceMode ? _traceText : ""
+            caption:                        mapPolygon.traceMode ? _traceCaption() : _shapeCaption()
             tools: mapPolygon.traceMode
-                ? [ { text: qsTr("Done"), accent: true, action: _toggleTrace } ]
-                : [ { text: qsTr("Basic"),        action: _resetPolygon },
-                    { text: qsTr("Circular"),     action: _resetCircle },
-                    { text: qsTr("Trace"),        action: _toggleTrace },
-                    { text: qsTr("Load KML/SHP…"), action: kmlOrSHPLoadDialog.openForLoad } ]
+                ? [ { text: qsTr("Cancel"), action: _cancelTrace },
+                    { text: qsTr("Done"), accent: true, enabled: mapPolygon.count >= 3, action: _finishTrace } ]
+                : [ { text: qsTr("Rectangle"), action: _resetPolygon },
+                    { text: qsTr("Circle"),    action: _resetCircle },
+                    { separator: true },
+                    { text: qsTr("Trace"),     action: _startTrace },
+                    { text: qsTr("Import…"),   action: kmlOrSHPLoadDialog.openForLoad } ]
         }
     }
 

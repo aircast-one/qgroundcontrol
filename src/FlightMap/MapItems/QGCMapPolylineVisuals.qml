@@ -36,7 +36,22 @@ Item {
     property real   _zorderSplitHandle:     QGroundControl.zOrderMapItems + 2
     property var    _savedVertices:         [ ]
 
-    readonly property string _traceText: qsTr("Click the map to add vertices")
+    readonly property var _units: QGroundControl.unitsConversion
+
+    function _length() {
+        const path = mapPolyline.path
+        return path.slice(1).reduce((sum, vertex, i) => sum + path[i].distanceTo(vertex), 0)
+    }
+
+    function _shapeCaption() {
+        const length = _units.metersToAppSettingsHorizontalDistanceUnits(_length())
+        return qsTr("Length %1 %2").arg(Number(length).toLocaleString(Qt.locale(), "f", length >= 100 ? 0 : 1)).arg(_units.appSettingsHorizontalDistanceUnitsString)
+    }
+
+    function _traceCaption() {
+        return mapPolyline.count < 2 ? qsTr("Click the map to add points \u00B7 %1 of 2").arg(mapPolyline.count)
+                                     : qsTr("%1 points").arg(mapPolyline.count)
+    }
 
     function _addCommonVisuals() {
         if (_objMgrCommonVisuals.empty) {
@@ -112,17 +127,19 @@ Item {
     }
     Component.onDestruction: mapPolyline.traceMode = false
 
-    function _toggleTrace() {
-        if (mapPolyline.traceMode) {
-            if (mapPolyline.count < 2) {
-                _restorePreviousVertices()
-            }
-            mapPolyline.traceMode = false
-        } else {
-            _saveCurrentVertices()
-            mapPolyline.traceMode = true
-            mapPolyline.clear()
-        }
+    function _startTrace() {
+        _saveCurrentVertices()
+        mapPolyline.traceMode = true
+        mapPolyline.clear()
+    }
+
+    function _finishTrace() {
+        mapPolyline.traceMode = false
+    }
+
+    function _cancelTrace() {
+        _restorePreviousVertices()
+        mapPolyline.traceMode = false
     }
 
     QGCDynamicObjectManager { id: _objMgrCommonVisuals }
@@ -327,12 +344,14 @@ Item {
             y:                              mapControl.centerViewport.top
             z:                              QGroundControl.zOrderMapItems + 2
             availableWidth:                 mapControl.centerViewport.width
-            caption:                        mapPolyline.traceMode ? _traceText : ""
+            caption:                        mapPolyline.traceMode ? _traceCaption() : _shapeCaption()
             tools: mapPolyline.traceMode
-                ? [ { text: qsTr("Done"), accent: true, action: _toggleTrace } ]
-                : [ { text: qsTr("Basic"),        action: _resetPolyline },
-                    { text: qsTr("Trace"),        action: _toggleTrace },
-                    { text: qsTr("Load KML/SHP…"), action: kmlOrSHPLoadDialog.openForLoad } ]
+                ? [ { text: qsTr("Cancel"), action: _cancelTrace },
+                    { text: qsTr("Done"), accent: true, enabled: mapPolyline.count >= 2, action: _finishTrace } ]
+                : [ { text: qsTr("Line"),    action: _resetPolyline },
+                    { separator: true },
+                    { text: qsTr("Trace"),   action: _startTrace },
+                    { text: qsTr("Import…"), action: kmlOrSHPLoadDialog.openForLoad } ]
         }
     }
 

@@ -39,7 +39,8 @@ OverlayCapsule {
             height: _root.height - _root._pad * 2
 
             Item {
-                visible: _root.caption !== ""
+                objectName: "planEditCaption"
+                visible:    _root.caption !== ""
                 width:   captionLabel.implicitWidth + ScreenTools.defaultFontPixelWidth * 3
                 height:  parent.height
 
@@ -62,30 +63,52 @@ OverlayCapsule {
             Repeater {
                 model: _root.tools
 
-                Rectangle {
-                    visible: modelData.visible !== false
-                    width:   toolLabel.implicitWidth + ScreenTools.defaultFontPixelWidth * 3
-                    height:  parent.height
-                    radius:  height / 2
-                    color:   toolMouseArea.pressed       ? Qt.alpha(_root.contentColor, 0.18)
-                           : toolMouseArea.containsMouse ? Qt.alpha(_root.contentColor, 0.1)
-                                                         : "transparent"
+                Item {
+                    objectName: "planEditTool" + index
 
-                    Behavior on color { ColorAnimation { duration: 120 } }
+                    readonly property bool _separator: modelData.separator === true
+                    readonly property bool _enabled:   modelData.enabled !== false
+                    readonly property bool _accent:    modelData.accent === true
 
-                    QGCLabel {
-                        id:               toolLabel
+                    width:  _separator ? ScreenTools.defaultFontPixelWidth * 2
+                                       : toolLabel.implicitWidth + ScreenTools.defaultFontPixelWidth * 3
+                    height: parent.height
+
+                    Rectangle {
                         anchors.centerIn: parent
-                        text:             modelData.text
-                        font.bold:        modelData.accent === true
-                        color:            modelData.accent === true ? _root._qgcPal.primaryButton : _root.contentColor
+                        visible:          parent._separator
+                        width:            1
+                        height:           parent.height * 0.55
+                        color:            Qt.alpha(_root.contentColor, 0.2)
                     }
 
-                    QGCMouseArea {
-                        id:           toolMouseArea
+                    Rectangle {
                         anchors.fill: parent
-                        hoverEnabled: !ScreenTools.isMobile
-                        onClicked:    modelData.action()
+                        visible:      !parent._separator
+                        radius:       height / 2
+                        color:        toolMouseArea.pressed       ? Qt.alpha(_root.contentColor, 0.18)
+                                    : toolMouseArea.containsMouse ? Qt.alpha(_root.contentColor, 0.1)
+                                                                  : "transparent"
+
+                        Behavior on color { ColorAnimation { duration: 120 } }
+
+                        QGCLabel {
+                            id:               toolLabel
+                            anchors.centerIn: parent
+                            text:             parent.parent._separator ? "" : modelData.text
+                            font.bold:        parent.parent._accent
+                            color:            !parent.parent._enabled ? Qt.alpha(_root.contentColor, 0.35)
+                                            : parent.parent._accent   ? _root._qgcPal.primaryButton
+                                                                      : _root.contentColor
+                        }
+
+                        QGCMouseArea {
+                            id:           toolMouseArea
+                            anchors.fill: parent
+                            enabled:      parent.parent._enabled
+                            hoverEnabled: !ScreenTools.isMobile
+                            onClicked:    modelData.action()
+                        }
                     }
                 }
             }

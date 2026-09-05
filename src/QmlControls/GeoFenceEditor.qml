@@ -116,6 +116,7 @@ QGCFlickable {
             visible:    root._supported
 
             PlanGroupRow {
+                objectName:  "fenceAddPolygon"
                 text:        qsTr("＋  Polygon Fence")
                 textColor:   root._qgcPal.primaryButton
                 interactive: true

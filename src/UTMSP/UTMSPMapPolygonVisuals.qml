@@ -36,7 +36,11 @@ Item {
     property real            _zorderDragHandle   : QGroundControl.zOrderMapItems + 3
     property real            _zorderSplitHandle  : QGroundControl.zOrderMapItems + 2
     property real            _zorderCenterHandle : QGroundControl.zOrderMapItems + 1
-    readonly property string _fenceText          : qsTr("Click the map to add vertices")
+
+    function _traceCaption() {
+        return mapPolygon.count < 3 ? qsTr("Click the map to add points \u00B7 %1 of 3").arg(mapPolygon.count)
+                                    : qsTr("%1 points").arg(mapPolygon.count)
+    }
     property string          someParameter       : "defaultParameter"
     property real            radius              : ScreenTools.defaultFontPixelHeight * 4.44     //Automatic Geofence Radius
     property real            centerX             //Initial Drone X-Position
@@ -341,17 +345,19 @@ Item {
     }
     Component.onDestruction: mapPolygon.traceMode = false
 
-    function _toggleTrace() {
-        if (mapPolygon.traceMode) {
-            if (mapPolygon.count < 3) {
-                _restorePreviousVertices()
-            }
-            mapPolygon.traceMode = false
-        } else {
-            _saveCurrentVertices()
-            mapPolygon.traceMode = true
-            mapPolygon.clear()
-        }
+    function _startTrace() {
+        _saveCurrentVertices()
+        mapPolygon.traceMode = true
+        mapPolygon.clear()
+    }
+
+    function _finishTrace() {
+        mapPolygon.traceMode = false
+    }
+
+    function _cancelTrace() {
+        _restorePreviousVertices()
+        mapPolygon.traceMode = false
     }
 
     QGCDynamicObjectManager { id: _objMgrCommonVisuals }
@@ -503,7 +509,7 @@ Item {
             z:              _zorderDragHandle
             sourceItem: MapEditHandle {
                 id:   dragHandle
-                icon: "/qmlimages/MapCenter.svg"
+                grip: true
             }
         }
     }
@@ -625,11 +631,12 @@ Item {
             anchors.horizontalCenterOffset: mapControl.centerViewport.left + (mapControl.centerViewport.width / 2)
             y:                              mapControl.centerViewport.top
             availableWidth:                 mapControl.centerViewport.width
-            caption:                        mapPolygon.traceMode ? _fenceText : ""
+            caption:                        mapPolygon.traceMode ? _traceCaption() : ""
             tools: mapPolygon.traceMode
-                ? [ { text: qsTr("Done"), accent: true, action: _toggleTrace } ]
+                ? [ { text: qsTr("Cancel"), action: _cancelTrace },
+                    { text: qsTr("Done"), accent: true, enabled: mapPolygon.count >= 3, action: _finishTrace } ]
                 : [ { text: qsTr("Automatic"), action: _resetPolygon },
-                    { text: qsTr("Manual"),    action: _toggleTrace } ]
+                    { text: qsTr("Manual"),    action: _startTrace } ]
         }
     }
 
