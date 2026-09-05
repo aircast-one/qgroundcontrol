@@ -202,3 +202,34 @@ void FlightMapTest::_mouseDragFlicksWithInertia()
     QTRY_VERIFY(!map->property("flicking").toBool());
     QVERIFY(pointOf(map, before).y() < atRelease.y() - 50);
 }
+
+static void moveWithoutButtons(QQuickView& view, const QPointF& pos)
+{
+    QMouseEvent event(QEvent::MouseMove, pos, view.mapToGlobal(pos.toPoint()), Qt::NoButton, Qt::NoButton, Qt::NoModifier);
+    QCoreApplication::sendEvent(&view, &event);
+}
+
+void FlightMapTest::_lostReleaseDoesNotLeaveTheMapStuckToTheCursor()
+{
+    QQuickView view;
+    QQuickItem* const map = loadMap(view);
+    QVERIFY(map);
+    const QGeoCoordinate before = coordinateAt(map, kCenter);
+    const QPointF dragEnd = kCenter - QPointF(0, 60);
+
+    QTest::mousePress(&view, Qt::LeftButton, Qt::NoModifier, kCenter.toPoint());
+    QTest::mouseMove(&view, ((kCenter + dragEnd) / 2).toPoint(), 20);
+    QTest::mouseMove(&view, dragEnd.toPoint(), 20);
+    QVERIFY(near(pointOf(map, before), dragEnd));
+    QCOMPARE(map->property("panStarts").toInt(), 1);
+
+    moveWithoutButtons(view, dragEnd - QPointF(0, 60));
+    moveWithoutButtons(view, dragEnd - QPointF(0, 120));
+
+    QVERIFY(near(pointOf(map, before), dragEnd));
+    QVERIFY(!map->property("flicking").toBool());
+    QCOMPARE(map->property("panStops").toInt(), 0);
+
+    QTest::mouseRelease(&view, Qt::LeftButton, Qt::NoModifier, dragEnd.toPoint());
+    QCOMPARE(map->property("panStops").toInt(), 1);
+}

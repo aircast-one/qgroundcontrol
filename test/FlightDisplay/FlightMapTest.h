@@ -16,4 +16,5 @@ private slots:
     void _pinchFollowsTheFingersWhilePanning();
     void _rightClickSignalsApartFromLeftClick();
     void _mouseDragFlicksWithInertia();
+    void _lostReleaseDoesNotLeaveTheMapStuckToTheCursor();
 };

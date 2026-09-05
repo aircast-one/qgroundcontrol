@@ -202,64 +202,38 @@ Map {
         flickAnimation.restart()
     }
 
-    MultiPointTouchArea {
-        anchors.fill: parent
-        maximumTouchPoints: 1
-        mouseEnabled: true
-        enabled: _map.panEnabled
+    DragHandler {
+        target:          null
+        enabled:         _map.panEnabled
+        acceptedButtons: Qt.LeftButton
 
-        property bool dragActive: false
-        property real lastMouseX
-        property real lastMouseY
-        property real lastMoveTime
-        property real velocityX
-        property real velocityY
+        property vector2d _velocity
+        property real     _lastMoveTime
 
-        onCanceled: {
-            if (dragActive) {
-                dragActive = false
-                mapPanStop()
+        onActiveChanged: {
+            if (active) {
+                flickAnimation.stop()
+                mapPanStart()
+                return
+            }
+            mapPanStop()
+            if (centroid.pressedButtons === Qt.NoButton && Date.now() - _lastMoveTime < 100) {
+                _map._flick(-_velocity.x / 1000, -_velocity.y / 1000)
             }
         }
 
-        onPressed: (touchPoints) => {
-            flickAnimation.stop()
-            lastMouseX = touchPoints[0].x
-            lastMouseY = touchPoints[0].y
-            lastMoveTime = Date.now()
-            velocityX = 0
-            velocityY = 0
+        onTranslationChanged: (delta) => {
+            if (!active) return
+            _map.pan(-delta.x, -delta.y)
+            _velocity = centroid.velocity
+            _lastMoveTime = Date.now()
         }
+    }
 
-        onGestureStarted: (gesture) => {
-            dragActive = true
-            gesture.grab()
-            mapPanStart()
-        }
-
-        onUpdated: (touchPoints) => {
-            if (!dragActive) return
-            const deltaX = lastMouseX - touchPoints[0].x
-            const deltaY = lastMouseY - touchPoints[0].y
-            if (Math.abs(deltaX) < 1.0 && Math.abs(deltaY) < 1.0) return
-            _map.pan(deltaX, deltaY)
-            lastMouseX = touchPoints[0].x
-            lastMouseY = touchPoints[0].y
-            velocityX = -touchPoints[0].velocity.x / 1000
-            velocityY = -touchPoints[0].velocity.y / 1000
-            lastMoveTime = Date.now()
-        }
-
-        onReleased: (touchPoints) => {
-            if (dragActive) {
-                _map.pan(lastMouseX - touchPoints[0].x, lastMouseY - touchPoints[0].y)
-                dragActive = false
-                mapPanStop()
-                if (Date.now() - lastMoveTime < 100) _map._flick(velocityX, velocityY)
-            } else {
-                mapClicked(Qt.point(touchPoints[0].x, touchPoints[0].y))
-            }
-        }
+    TapHandler {
+        acceptedButtons:  Qt.LeftButton
+        onPressedChanged: if (pressed) flickAnimation.stop()
+        onTapped:         (eventPoint) => mapClicked(eventPoint.position)
     }
 
     MapQuickItem {
