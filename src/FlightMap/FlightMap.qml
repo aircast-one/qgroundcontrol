@@ -116,6 +116,7 @@ Map {
     signal mapPanStart
     signal mapPanStop
     signal mapClicked(var position)
+    signal mapRightClicked(var position)
     
     function _zoomAbout(point, levels) {
         const anchor = _map.toCoordinate(point, false)
@@ -127,7 +128,18 @@ Map {
         id:     pinchHandler
         target: null
 
+        onActiveChanged: if (active) flickAnimation.stop()
         onScaleChanged: (delta) => _zoomAbout(pinchHandler.centroid.position, Math.log2(delta))
+    }
+
+    TapHandler {
+        acceptedButtons: Qt.RightButton
+        onTapped:        (eventPoint) => mapRightClicked(eventPoint.position)
+    }
+
+    TapHandler {
+        acceptedDevices: PointerDevice.TouchScreen
+        onLongPressed:   mapRightClicked(point.position)
     }
 
     property bool _wheelPanning: false
@@ -143,6 +155,7 @@ Map {
             }
             if (event.buttons) return
             if (event.phase === Qt.ScrollBegin) {
+                flickAnimation.stop()
                 _wheelPanning = true
                 mapPanStart()
             }
@@ -157,6 +170,37 @@ Map {
     }
 
     property bool panEnabled: true
+    readonly property bool flicking: flickAnimation.running
+
+    property real _flickDistanceX: 0
+    property real _flickDistanceY: 0
+    property real _flickT: 0
+    property real _flickLastT: 0
+
+    NumberAnimation {
+        id:             flickAnimation
+        target:         _map
+        property:       "_flickT"
+        from:           0
+        to:             1
+        duration:       700
+        easing.type:    Easing.OutCubic
+    }
+
+    on_FlickTChanged: {
+        _map.pan(_flickDistanceX * (_flickT - _flickLastT), _flickDistanceY * (_flickT - _flickLastT))
+        _flickLastT = _flickT
+    }
+
+    function _flick(velocityX, velocityY) {
+        const speed = Math.hypot(velocityX, velocityY)
+        if (speed < 0.3) return
+        const pixelsPerVelocity = Math.min(speed, 3) / speed * flickAnimation.duration / 3
+        _flickDistanceX = velocityX * pixelsPerVelocity
+        _flickDistanceY = velocityY * pixelsPerVelocity
+        _flickLastT = 0
+        flickAnimation.restart()
+    }
 
     MultiPointTouchArea {
         anchors.fill: parent
@@ -167,6 +211,9 @@ Map {
         property bool dragActive: false
         property real lastMouseX
         property real lastMouseY
+        property real lastMoveTime
+        property real velocityX
+        property real velocityY
 
         onCanceled: {
             if (dragActive) {
@@ -176,8 +223,12 @@ Map {
         }
 
         onPressed: (touchPoints) => {
+            flickAnimation.stop()
             lastMouseX = touchPoints[0].x
             lastMouseY = touchPoints[0].y
+            lastMoveTime = Date.now()
+            velocityX = 0
+            velocityY = 0
         }
 
         onGestureStarted: (gesture) => {
@@ -187,15 +238,16 @@ Map {
         }
 
         onUpdated: (touchPoints) => {
-            if (dragActive) {
-                let deltaX = touchPoints[0].x - lastMouseX
-                let deltaY = touchPoints[0].y - lastMouseY
-                if (Math.abs(deltaX) >= 1.0 || Math.abs(deltaY) >= 1.0) {
-                    _map.pan(lastMouseX - touchPoints[0].x, lastMouseY - touchPoints[0].y)
-                    lastMouseX = touchPoints[0].x
-                    lastMouseY = touchPoints[0].y
-                }
-            }
+            if (!dragActive) return
+            const deltaX = lastMouseX - touchPoints[0].x
+            const deltaY = lastMouseY - touchPoints[0].y
+            if (Math.abs(deltaX) < 1.0 && Math.abs(deltaY) < 1.0) return
+            _map.pan(deltaX, deltaY)
+            lastMouseX = touchPoints[0].x
+            lastMouseY = touchPoints[0].y
+            velocityX = -touchPoints[0].velocity.x / 1000
+            velocityY = -touchPoints[0].velocity.y / 1000
+            lastMoveTime = Date.now()
         }
 
         onReleased: (touchPoints) => {
@@ -203,6 +255,7 @@ Map {
                 _map.pan(lastMouseX - touchPoints[0].x, lastMouseY - touchPoints[0].y)
                 dragActive = false
                 mapPanStop()
+                if (Date.now() - lastMoveTime < 100) _map._flick(velocityX, velocityY)
             } else {
                 mapClicked(Qt.point(touchPoints[0].x, touchPoints[0].y))
             }

@@ -14,4 +14,6 @@ private slots:
     void _mouseWheelZoomsAboutTheCursor();
     void _modifierScrollZooms();
     void _pinchFollowsTheFingersWhilePanning();
+    void _rightClickSignalsApartFromLeftClick();
+    void _mouseDragFlicksWithInertia();
 };

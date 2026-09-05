@@ -30,16 +30,14 @@ FlightMap {
     planView:                   false
     zoomLevel:                  QGroundControl.flightMapZoom
     center:                     QGroundControl.flightMapPosition
-    // While arranging overlay items the picture stays put: a drag that starts on an item's
-    // transparent corner must not double as a map pan.
     panEnabled:                 !globals.overlayRigFlyView || !globals.overlayRigFlyView.editMode
 
     property Item   pipView
     property Item   pipState:                   _pipState
     property var    rightPanelWidth
     property var    planMasterController
-    property bool   pipMode:                    false   // true: map is shown in a small pip mode
-    property var    toolInsets                          // Insets for the center viewport area
+    property bool   pipMode:                    false
+    property var    toolInsets
 
     property var    _activeVehicle:             QGroundControl.multiVehicleManager.activeVehicle
     property var    _planMasterController:      planMasterController
@@ -54,7 +52,6 @@ FlightMap {
     property bool   _disableVehicleTracking:    false
     property bool   _keepVehicleCentered:       pipMode ? true : false
     property bool   _saveZoomLevelSetting:      true
-
 
     function _adjustMapZoomForPipMode() {
         _saveZoomLevelSetting = false
@@ -72,7 +69,6 @@ FlightMap {
 
     onVisibleChanged: {
         if (visible) {
-            // Synchronize center position with Plan View
             center = QGroundControl.flightMapPosition
         }
     }
@@ -86,7 +82,6 @@ FlightMap {
         QGroundControl.flightMapPosition = _root.center
     }
 
-    // We track whether the user has panned or not to correctly handle automatic map positioning
     onMapPanStart:  _disableVehicleTracking = true
     onMapPanStop:   panRecenterTimer.restart()
 
@@ -119,8 +114,6 @@ FlightMap {
         animateLong.start()
     }
 
-    // returns the rectangle formed by the four center insets
-    // used for checking if vehicle is under ui, and as a target for recentering the view
     function _insetCenterRect() {
         return Qt.rect(toolInsets.leftEdgeCenterInset,
                        toolInsets.topEdgeCenterInset,
@@ -128,8 +121,6 @@ FlightMap {
                        _root.height - toolInsets.topEdgeCenterInset - toolInsets.bottomEdgeCenterInset)
     }
 
-    // returns the four rectangles formed by the 8 corner insets
-    // used for detecting if the vehicle has flown under the instrument panel, virtual joystick etc
     function _insetCornerRects() {
         var rects = {
         "topleft":      Qt.rect(0,0,
@@ -148,17 +139,13 @@ FlightMap {
     }
 
     function recenterNeeded() {
-        var vehiclePoint = _root.fromCoordinate(_activeVehicleCoordinate, false /* clipToViewport */)
+        var vehiclePoint = _root.fromCoordinate(_activeVehicleCoordinate, false)
         var centerRect = _insetCenterRect()
-        //return !pointInRect(vehiclePoint,insetRect)
 
-        // If we are outside the center inset rectangle, recenter
         if(!pointInRect(vehiclePoint, centerRect)){
             return true
         }
 
-        // if we are inside the center inset rectangle
-        // then additionally check if we are underneath one of the corner inset rectangles
         var cornerRects = _insetCornerRects()
         if(pointInRect(vehiclePoint, cornerRects["topleft"])){
             return true
@@ -170,7 +157,6 @@ FlightMap {
             return true
         }
 
-        // if we are inside the center inset rectangle, and not under any corner elements
         return false
     }
 
@@ -178,19 +164,17 @@ FlightMap {
         if (animateLat.running || animateLong.running) {
             return
         }
-        // We let FlightMap handle first vehicle position
         if (!_keepMapCenteredOnVehicle && firstVehiclePositionReceived && _activeVehicleCoordinate.isValid && !_disableVehicleTracking) {
             if (_keepVehicleCentered) {
                 _root.center = _activeVehicleCoordinate
             } else {
                 if (firstVehiclePositionReceived && recenterNeeded()) {
-                    // Move the map such that the vehicle is centered within the inset area
-                    var vehiclePoint = _root.fromCoordinate(_activeVehicleCoordinate, false /* clipToViewport */)
+                    var vehiclePoint = _root.fromCoordinate(_activeVehicleCoordinate, false)
                     var centerInsetRect = _insetCenterRect()
                     var centerInsetPoint = Qt.point(centerInsetRect.x + centerInsetRect.width / 2, centerInsetRect.y + centerInsetRect.height / 2)
                     var centerOffset = Qt.point((_root.width / 2) - centerInsetPoint.x, (_root.height / 2) - centerInsetPoint.y)
                     var vehicleOffsetPoint = Qt.point(vehiclePoint.x + centerOffset.x, vehiclePoint.y + centerOffset.y)
-                    var vehicleOffsetCoord = _root.toCoordinate(vehicleOffsetPoint, false /* clipToViewport */)
+                    var vehicleOffsetCoord = _root.toCoordinate(vehicleOffsetPoint, false)
                     animatedMapRecenter(_root.center, vehicleOffsetCoord)
                 }
             }
@@ -241,7 +225,7 @@ FlightMap {
     }
 
     MapFitFunctions {
-        id:                         mapFitFunctions // The name for this id cannot be changed without breaking references outside of this code. Beware!
+        id:                         mapFitFunctions
         map:                        _root
         usePlannedHomePosition:     false
         planMasterController:       _planMasterController
@@ -252,7 +236,6 @@ FlightMap {
         showText: !pipMode
     }
 
-    // Add trajectory lines to the map
     MapPolyline {
         id:         trajectoryPolyline
         line.width: 3
@@ -275,7 +258,6 @@ FlightMap {
         }
     }
 
-    // Add the vehicles to the map
     MapItemView {
         model: QGroundControl.multiVehicleManager.vehicles
         delegate: VehicleMapItem {
@@ -286,7 +268,6 @@ FlightMap {
             z:              QGroundControl.zOrderVehicles
         }
     }
-    // Add distance sensor view
     MapItemView{
         model: QGroundControl.multiVehicleManager.vehicles
         delegate: ProximityRadarMapView {
@@ -296,7 +277,6 @@ FlightMap {
             z:              QGroundControl.zOrderVehicles
         }
     }
-    // Add ADSB vehicles to the map
     MapItemView {
         model: QGroundControl.adsbVehicleManager.adsbVehicles
         delegate: VehicleMapItem {
@@ -311,7 +291,6 @@ FlightMap {
         }
     }
 
-    // Add the items associated with each vehicles flight plan to the map
     Repeater {
         model: QGroundControl.multiVehicleManager.vehicles
 
@@ -330,7 +309,6 @@ FlightMap {
         }
     }
 
-    // Allow custom builds to add map items
     CustomMapItems {
         map:            _root
         largeMapView:   !pipMode
@@ -344,7 +322,6 @@ FlightMap {
         homePosition:           _activeVehicle && _activeVehicle.homePosition.isValid ? _activeVehicle.homePosition :  QtPositioning.coordinate()
     }
 
-    // Rally points on map
     MapItemView {
         model: _rallyPointController.points
 
@@ -362,7 +339,6 @@ FlightMap {
         }
     }
 
-    // Camera trigger points
     MapItemView {
         model: _activeVehicle ? _activeVehicle.cameraTriggerPoints : 0
 
@@ -372,7 +348,6 @@ FlightMap {
         }
     }
 
-    // GoTo Location forward flight circle visuals
     QGCMapCircleVisuals {
         id:                 fwdFlightGotoMapCircle
         mapControl:         parent
@@ -386,7 +361,6 @@ FlightMap {
         property alias radius: _fwdFlightGotoMapCircle.radius
 
         Component.onCompleted: {
-            // Only allow editing the radius, not the position
             centerDragHandleVisible = false
 
             globals.guidedControllerFlyView.fwdFlightGotoMapCircle = this
@@ -402,13 +376,11 @@ FlightMap {
             _fwdFlightGotoMapCircle.interactive = true
         }
 
-        // Called when loiter edit is confirmed
         function actionConfirmed() {
             _fwdFlightGotoMapCircle.interactive = false
             _fwdFlightGotoMapCircle._commitRadius()
         }
 
-        // Called when loiter edit is cancelled
         function actionCancelled() {
             _fwdFlightGotoMapCircle.interactive = false
             _fwdFlightGotoMapCircle._restoreRadius()
@@ -425,7 +397,6 @@ FlightMap {
 
             onCenterChanged: {
                 radius.rawValue = _defaultLoiterRadius
-                // Don't commit the radius in case this operation is undone
             }
 
             Component.onCompleted: {
@@ -443,7 +414,6 @@ FlightMap {
         }
     }
 
-    // GoTo Location visuals
     MapQuickItem {
         id:             gotoLocationItem
         visible:        false
@@ -462,7 +432,6 @@ FlightMap {
 
         onInGotoFlightModeChanged: {
             if (!inGotoFlightMode && gotoLocationItem.visible) {
-                // Hide goto indicator when vehicle falls out of guided mode
                 hide()
             }
         }
@@ -479,21 +448,17 @@ FlightMap {
         function actionConfirmed() {
             _commitCoordinate()
 
-            // Commit the new radius which possibly changed
             fwdFlightGotoMapCircle.actionConfirmed()
 
-            // We leave the indicator visible. The handling for onInGuidedModeChanged will hide it.
         }
 
         function actionCancelled() {
             _restoreCoordinate()
 
-            // Also restore the loiter radius
             fwdFlightGotoMapCircle.actionCancelled()
         }
 
         function _commitCoordinate() {
-            // Must deep copy
             _committedCoordinate = QtPositioning.coordinate(
                 coordinate.latitude,
                 coordinate.longitude
@@ -509,7 +474,6 @@ FlightMap {
         }
     }
 
-    // Orbit editing visuals
     QGCMapCircleVisuals {
         id:             orbitMapCircle
         mapControl:     parent
@@ -540,7 +504,6 @@ FlightMap {
         }
 
         function actionConfirmed() {
-            // Live orbit status is handled by telemetry so we hide here and telemetry will show again.
             hide()
         }
 
@@ -563,7 +526,6 @@ FlightMap {
         }
     }
 
-    // ROI Location visuals
     MapQuickItem {
         id:             roiLocationItem
         visible:        _activeVehicle && _activeVehicle.isROIEnabled
@@ -582,8 +544,7 @@ FlightMap {
             anchors.fill: parent
             onClicked: (position) => {
                 position = Qt.point(position.x, position.y)
-                var clickCoord = _root.toCoordinate(position, false /* clipToViewPort */)
-                // For some strange reason using mainWindow in mapToItem doesn't work, so we use globals.parent instead which also gets us mainWindow
+                var clickCoord = _root.toCoordinate(position, false)
                 position = mapToItem(globals.parent, position)
                 var dropPanel = roiEditDropPanelComponent.createObject(mainWindow, { clickRect: Qt.rect(position.x, position.y, 0, 0) })
                 dropPanel.open()
@@ -596,13 +557,11 @@ FlightMap {
             label:      qsTr("ROI here", "Make this a Region Of Interest")
         }
 
-        //-- Visibilty controlled by actual state
         function show(coord) {
             roiLocationItem.coordinate = coord
         }
     }
 
-    // Orbit telemetry visuals
     QGCMapCircleVisuals {
         id:             orbitTelemetryCircle
         mapControl:     parent
@@ -695,7 +654,7 @@ FlightMap {
 
                             if ((_activeVehicle.flightMode == _activeVehicle.gotoFlightMode) && !_flyViewSettings.goToLocationRequiresConfirmInGuided.value) {
                                 globals.guidedControllerFlyView.executeAction(globals.guidedControllerFlyView.actionGoto, mapClickCoord, gotoLocationItem)
-                                gotoLocationItem.actionConfirmed() // Still need to call this to commit the new coordinate and radius
+                                gotoLocationItem.actionConfirmed()
                             } else {
                                 globals.guidedControllerFlyView.confirmAction(globals.guidedControllerFlyView.actionGoto, mapClickCoord, gotoLocationItem)
                             }
@@ -825,7 +784,7 @@ FlightMap {
         }
     }
 
-    onMapClicked: (position) => {
+    onMapRightClicked: (position) => {
         if (!globals.guidedControllerFlyView.guidedUIVisible &&
             (globals.guidedControllerFlyView.showGotoLocation || globals.guidedControllerFlyView.showOrbit ||
              globals.guidedControllerFlyView.showROI || globals.guidedControllerFlyView.showSetHome ||
@@ -833,8 +792,7 @@ FlightMap {
              globals.guidedControllerFlyView.showSetEstimatorOrigin)) {
 
             position = Qt.point(position.x, position.y)
-            var clickCoord = _root.toCoordinate(position, false /* clipToViewPort */)
-            // For some strange reason using mainWindow in mapToItem doesn't work, so we use globals.parent instead which also gets us mainWindow
+            var clickCoord = _root.toCoordinate(position, false)
             position = _root.mapToItem(globals.parent, position)
             var dropPanel = mapClickDropPanelComponent.createObject(mainWindow, { mapClickCoord: clickCoord, clickRect: Qt.rect(position.x, position.y, 0, 0) })
             _mapClickMenuCoord = clickCoord

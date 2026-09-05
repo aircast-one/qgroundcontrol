@@ -159,3 +159,46 @@ void FlightMapTest::_pinchFollowsTheFingersWhilePanning()
     QCOMPARE(map->property("zoomLevel").toReal(), zoom + 2);
     QVERIFY(near(pointOf(map, underFingers), fingers - panDelta * 2));
 }
+
+void FlightMapTest::_rightClickSignalsApartFromLeftClick()
+{
+    QQuickView view;
+    QQuickItem* const map = loadMap(view);
+    QVERIFY(map);
+
+    QTest::mouseClick(&view, Qt::RightButton, Qt::NoModifier, kCenter.toPoint());
+    QCOMPARE(map->property("rightClicks").toInt(), 1);
+    QCOMPARE(map->property("leftClicks").toInt(), 0);
+    QCOMPARE(map->property("lastClick").toPointF(), kCenter);
+
+    const QPointF elsewhere(100, 50);
+    QTest::mouseClick(&view, Qt::LeftButton, Qt::NoModifier, elsewhere.toPoint());
+    QCOMPARE(map->property("leftClicks").toInt(), 1);
+    QCOMPARE(map->property("rightClicks").toInt(), 1);
+    QCOMPARE(map->property("lastClick").toPointF(), elsewhere);
+}
+
+static void flickMouse(QQuickView& view, const QPointF& from, const QPointF& to, int moveDelayMs)
+{
+    QTest::mousePress(&view, Qt::LeftButton, Qt::NoModifier, from.toPoint());
+    QTest::mouseMove(&view, ((from + to) / 2).toPoint(), moveDelayMs);
+    QTest::mouseMove(&view, to.toPoint(), moveDelayMs);
+    QTest::mouseRelease(&view, Qt::LeftButton, Qt::NoModifier, to.toPoint());
+}
+
+void FlightMapTest::_mouseDragFlicksWithInertia()
+{
+    QQuickView view;
+    QQuickItem* const map = loadMap(view);
+    QVERIFY(map);
+    const QGeoCoordinate before = coordinateAt(map, kCenter);
+
+    flickMouse(view, kCenter, kCenter - QPointF(0, 60), 20);
+    const QPointF atRelease = pointOf(map, before);
+    QVERIFY(near(atRelease, kCenter - QPointF(0, 60)));
+    QVERIFY(map->property("flicking").toBool());
+    QCOMPARE(map->property("panStops").toInt(), 1);
+
+    QTRY_VERIFY(!map->property("flicking").toBool());
+    QVERIFY(pointOf(map, before).y() < atRelease.y() - 50);
+}

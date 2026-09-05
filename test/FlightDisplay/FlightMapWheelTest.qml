@@ -12,6 +12,12 @@ FlightMap {
     property int panStarts: 0
     property int panStops:  0
 
+    property int leftClicks:  0
+    property int rightClicks: 0
+    property point lastClick
+
+    onMapClicked:       (position) => { leftClicks++;  lastClick = position }
+    onMapRightClicked:  (position) => { rightClicks++; lastClick = position }
     onMapPanStart:  panStarts++
     onMapPanStop:   panStops++
 }
