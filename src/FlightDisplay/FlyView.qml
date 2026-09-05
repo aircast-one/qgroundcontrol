@@ -369,6 +369,8 @@ Item {
         id:             telemetryChipsLayer
         objectName:     "telemetryChipsLayer"
         overlayRig:     _overlayRig
+        leftInset:      widgetLayer.totalToolInsets.leftEdgeBottomInset
+        rightInset:     widgetLayer.totalToolInsets.rightEdgeBottomInset
         anchors.fill:   parent
         visible:        toolbar.visible
         z:              QGroundControl.zOrderWidgets

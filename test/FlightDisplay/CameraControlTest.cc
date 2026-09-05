@@ -105,6 +105,12 @@ static bool loadLayer(QQuickView& view, QQmlPropertyMap& globals)
     view.engine()->rootContext()->setContextProperty(QStringLiteral("globals"), &globals);
     return loadTestView(view, QStringLiteral("qrc:/unittest/CameraControlLayerTest.qml"));
 }
+static void restoreRcControls(FlyViewSettings* const settings, const QVariant& saved)
+{
+    settings->rcControls()->setRawValue(saved);
+    QCoreApplication::sendPostedEvents(nullptr, QEvent::DeferredDelete);
+}
+
 void CameraControlTest::_unmappedChannelsShowNoControls()
 {
     ChannelMappingScope mapping(0, 0, 0, 0);
@@ -204,7 +210,7 @@ void CameraControlTest::_settingsFlagConflictingChannels()
     QVERIFY(QMetaObject::invokeMethod(group, "_firstFreeChannel", Q_RETURN_ARG(QVariant, firstFree)));
     QCOMPARE(firstFree.toInt(), 1);
 
-    settings->rcControls()->setRawValue(saved);
+    restoreRcControls(settings, saved);
 }
 
 void CameraControlTest::_customRcControlsAppearForTheirChannels()
@@ -243,7 +249,7 @@ void CameraControlTest::_customRcControlsAppearForTheirChannels()
     QVERIFY(!findItemByName(view.rootObject(), QStringLiteral("rcControlButton8")));
     QVERIFY(!findItemByName(view.rootObject(), QStringLiteral("rcControlButton10")));
 
-    settings->rcControls()->setRawValue(saved);
+    restoreRcControls(settings, saved);
 }
 
 void CameraControlTest::_threePositionSwitchCyclesThroughPositions()
@@ -266,7 +272,7 @@ void CameraControlTest::_threePositionSwitchCyclesThroughPositions()
     QVERIFY(QMetaObject::invokeMethod(switch3, "activated", Q_ARG(int, 2)));
     QCOMPARE(switch3->property("currentIndex").toInt(), 2);
 
-    settings->rcControls()->setRawValue(saved);
+    restoreRcControls(settings, saved);
 }
 
 void CameraControlTest::_momentarySwitchTogglesCheckedOnPressAndRelease()
@@ -291,7 +297,7 @@ void CameraControlTest::_momentarySwitchTogglesCheckedOnPressAndRelease()
     QVERIFY(QMetaObject::invokeMethod(momentary, "released"));
     QVERIFY(!momentary->property("checked").toBool());
 
-    settings->rcControls()->setRawValue(saved);
+    restoreRcControls(settings, saved);
 }
 
 void CameraControlTest::_sliderOrientationCanBeHorizontal()
@@ -310,7 +316,7 @@ void CameraControlTest::_sliderOrientationCanBeHorizontal()
     QVERIFY(slider);
     QVERIFY(!slider->property("vertical").toBool());
 
-    settings->rcControls()->setRawValue(saved);
+    restoreRcControls(settings, saved);
 }
 
 void CameraControlTest::_momentarySwitchReleasesWhenEditModeInterruptsThePress()
@@ -341,7 +347,7 @@ void CameraControlTest::_momentarySwitchReleasesWhenEditModeInterruptsThePress()
     QVERIFY(!momentary->property("checked").toBool());
 
     overlayRig->setProperty("editMode", false);
-    settings->rcControls()->setRawValue(saved);
+    restoreRcControls(settings, saved);
 }
 
 void CameraControlTest::_overrideIndicatorLaysOutForTheToolbar()

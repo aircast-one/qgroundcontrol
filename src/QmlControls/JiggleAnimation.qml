@@ -28,7 +28,7 @@ ParallelAnimation {
     }
 
     onLiftedChanged: {
-        if (target) {
+        if (target && running) {
             _liftAnimation.to = lifted ? 1.07 : 1.0
             _liftAnimation.restart()
         }

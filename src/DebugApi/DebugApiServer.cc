@@ -14,7 +14,9 @@
 #include <QtCore/QScopeGuard>
 #include <QtCore/QEventLoop>
 #include "LinkManager.h"
+#ifdef QT_DEBUG
 #include "MockLink.h"
+#endif
 #include "MultiVehicleManager.h"
 #include "ParameterManager.h"
 #include "PlanMasterController.h"
@@ -906,6 +908,10 @@ QByteArray DebugApiServer::_uiMouseStepJson(const QUrlQuery &query, QEvent::Type
 
 QByteArray DebugApiServer::_mockLinkJson(const QUrlQuery &query)
 {
+#ifndef QT_DEBUG
+    Q_UNUSED(query)
+    return _errorJson(QStringLiteral("mock links exist only in debug builds"));
+#else
     const QString autopilot = query.queryItemValue(QStringLiteral("autopilot")).toLower();
 
     if (autopilot.isEmpty()) {
@@ -948,6 +954,7 @@ QByteArray DebugApiServer::_mockLinkJson(const QUrlQuery &query)
         {"started", true},
         {"autopilot", autopilot},
     }).toJson(QJsonDocument::Compact);
+#endif
 }
 
 QByteArray DebugApiServer::_uiDismissJson()

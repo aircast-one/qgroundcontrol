@@ -31,11 +31,16 @@ QtObject {
     readonly property int  _contactPasses: 3
     readonly property real _positionEpsilon: 0.5
 
-    readonly property real _gravity:      2000
-    readonly property real _springRadius: 40
-    readonly property real _damping:      2.5
-    readonly property real _friction:     0.6
-    readonly property real _restitution:  0.15
+    readonly property real _gravity:      _tuning("Pull", 2000)
+    readonly property real _springRadius: _tuning("SpringRadius", 90)
+    readonly property real _damping:      _tuning("Damping", 4)
+    readonly property real _friction:     _tuning("Friction", 0.6)
+    readonly property real _restitution:  _tuning("Restitution", 0.02)
+
+    function _tuning(name, fallback) {
+        const value = parseFloat(QGroundControl.loadGlobalSetting("OverlayRig" + name, ""))
+        return isNaN(value) ? fallback : value
+    }
 
     readonly property real _minDt: 0.004
 

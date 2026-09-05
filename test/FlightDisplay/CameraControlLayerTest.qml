@@ -12,7 +12,16 @@ Item {
 
         property bool editMode: false
 
-        function registerStatic(item) { }
+        function registerStatic(item, owner) { }
+        function unregisterStatic(item) { }
+        function registerMovable(item, dragPosition) { }
+        function registerAnchor(item, dragPosition) { }
+        function unregisterMovable(item) { }
+        function registerHideKey(key) { }
+        function isHidden(key) { return false }
+        function setHidden(key, hidden) { }
+        function requestReflow() { }
+        function resolve(item) { }
     }
 
     CameraControlLayer {
