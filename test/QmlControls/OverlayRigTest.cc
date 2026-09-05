@@ -645,3 +645,30 @@ void OverlayRigTest::_crowdedItemsAllFindSeparatePlaces()
         }
     }
 }
+
+void OverlayRigTest::_droppedItemNeverSnapsBackToWhereItCameFrom()
+{
+    QQuickView view;
+    QVERIFY(loadView(view));
+
+    QQuickItem *const left = view.rootObject()->findChild<QQuickItem*>("leftItem");
+    QObject *const leftPosition = positionOf(view, "leftPosition");
+    QObject *const rig = rigOf(view);
+    QVERIFY(left && leftPosition && rig);
+    WAIT_SETTLED(rig, 3000);
+
+    const qreal fromX = left->x();
+    left->setX(fromX + 400);
+    left->setY(left->y() + 100);
+    QVERIFY(QMetaObject::invokeMethod(leftPosition, "commit"));
+    QVERIFY(QMetaObject::invokeMethod(rig, "requestReflow"));
+
+    const qreal droppedX = left->x();
+    const qint64 deadline = QDateTime::currentMSecsSinceEpoch() + 600;
+    while (QDateTime::currentMSecsSinceEpoch() < deadline) {
+        QVERIFY2(left->x() > fromX + 200,
+                 qPrintable(QStringLiteral("item flew back to x=%1 after being dropped at %2").arg(left->x()).arg(droppedX)));
+        QTest::qWait(5);
+    }
+    QCOMPARE(left->x(), homeOf(leftPosition).x());
+}

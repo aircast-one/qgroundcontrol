@@ -193,7 +193,7 @@ QtObject {
     function _register(item, dragPosition, anchored) {
         _unwatch(_movables, item)
         _movables = [..._movables.filter((entry) => entry.item !== item),
-                     { item: item, dragPosition: dragPosition, watcher: _watch(item, false),
+                     { item: item, dragPosition: dragPosition, watcher: _watch(item, true),
                        homeWatcher: _watchHome(dragPosition), vx: 0, vy: 0, anchored: anchored }]
 
         dragPosition.physicsActive = _physicsTimer.running
@@ -446,7 +446,8 @@ QtObject {
                 return
             }
 
-            if (fresh) {
+            if (fresh || Math.abs(_physics.x(entry.body) - body.x) > _positionEpsilon
+                      || Math.abs(_physics.y(entry.body) - body.y) > _positionEpsilon) {
                 _physics.place(entry.body, body.x, body.y)
             }
             _physics.setHome(entry.body, homeBody.x, homeBody.y)

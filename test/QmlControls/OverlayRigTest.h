@@ -30,6 +30,7 @@ private slots:
     void _itemSpringsBackWhenTheObstructionLeaves();
     void _itemFollowsAMovedHomeWhenTheObstructionLeaves();
     void _crowdedItemsAllFindSeparatePlaces();
+    void _droppedItemNeverSnapsBackToWhereItCameFrom();
     void _overlapIsAnsweredOnTheChangeThatCausedIt();
     void _disturbedLayoutComesToRest();
     void _sweepingObstacleDoesNotFlingItemsAcrossTheWindow();
