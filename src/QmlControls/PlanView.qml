@@ -129,11 +129,8 @@ Item {
     }
 
     onVisibleChanged: {
-        if(visible) {
+        if (visible) {
             OverlayBackdrop.refresh()
-            if (!_planMasterController.containsItems) {
-                fileMenu.openFrom(fileButton)
-            }
         }
     }
 
