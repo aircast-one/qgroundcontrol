@@ -24,6 +24,7 @@ private slots:
     void _resizeClampsToViewportFraction();
     void _hoverRevealHoldsSteadyOverTheGrip();
     void _gripResizeOutsideEditModeDoesNotSwap();
+    void _gripResizeDoesNotMoveThePanel();
     void _forcingItem1FullOverridesTheSavedArrangement();
     void _forcingItem1FullDoesNotDisturbTheSavedArrangement();
     void _swapIsRefusedWhileItem1IsForcedFull();

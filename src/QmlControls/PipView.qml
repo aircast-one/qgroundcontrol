@@ -238,7 +238,7 @@ Item {
         preventStealing: true
         hoverEnabled:   true
         cursorShape:    drag.active ? Qt.ClosedHandCursor : Qt.ArrowCursor
-        drag.target:    _root._arrangeable ? _root : null
+        drag.target:    _root._arrangeable && !pressedOnGrip ? _root : null
         drag.minimumX:  0
         drag.minimumY:  0
         drag.maximumX:  _root.parent ? _root.parent.width - _root.width : 0

@@ -83,14 +83,7 @@ void PipViewTest::_dragOffscreenClampsCommittedPosition()
     QQuickItem* root = view.rootObject();
     QQuickItem* pip = root->findChild<QQuickItem*>("pip");
     QVERIFY(pip);
-
-    // Aim at the far corner of the window rather than past it: Qt drops mouse events
-    // delivered outside the target window, so a drag aimed off-screen simply stops early and
-    // never reaches the bound it is meant to prove. drag.maximumX/Y still do the clamping.
     dragMouse(view, itemCenter(pip), QPoint(root->width() - 1, root->height() - 1));
-
-    // Dropped positions are held edgeMargin away from the edge rather than flush against it,
-    // so the clamped corner is inset by exactly that much.
     QObject* const dragPosition = root->findChild<QObject*>("dragPosition");
     QVERIFY(dragPosition);
     const qreal edgeMargin = dragPosition->property("edgeMargin").toReal();
@@ -117,16 +110,12 @@ void PipViewTest::_dragBackToDefaultSnapsAndResets()
 
         dragMouse(view, itemCenter(pip), QPoint(500, 250));
         QTRY_VERIFY(pip->x() != defaultPos.x());
-
-        // Drop it a few pixels from the default corner: it must snap exactly back.
         const QPoint offsetFromDefault(pip->x() - defaultPos.x() - 4, pip->y() - defaultPos.y() - 4);
         dragMouse(view, itemCenter(pip), itemCenter(pip) - offsetFromDefault);
 
         QTRY_COMPARE(pip->x(), defaultPos.x());
         QTRY_COMPARE(pip->y(), defaultPos.y());
     }
-
-    // The reset must persist: a fresh view starts at the default position.
     QQuickView view2;
     QVERIFY(loadView(view2));
     view2.rootObject()->setProperty("editMode", true);
@@ -170,9 +159,6 @@ static QQuickItem *pipOf(QQuickView &view)
 {
     return view.rootObject()->findChild<QQuickItem*>(QStringLiteral("pip"));
 }
-
-// The pip sizes the video tiles as well, so this grip is the only control over how much of the
-// screen the video cluster takes. It has to survive a reload or it is a toy.
 void PipViewTest::_gripResizesAndPersists()
 {
     clearPipSettings();
@@ -201,9 +187,6 @@ void PipViewTest::_gripResizesAndPersists()
     QVERIFY(pip2);
     QTRY_COMPARE(pip2->width(), widened);
 }
-
-// A size dragged out on a wide screen must not swallow a narrow one, and the grip must not be
-// draggable down to nothing.
 void PipViewTest::_resizeClampsToViewportFraction()
 {
     clearPipSettings();
@@ -228,11 +211,6 @@ void PipViewTest::_resizeClampsToViewportFraction()
     dragMouse(view, itemCenter(grip), itemCenter(grip) - QPoint(3000, 0), false);
     QTRY_VERIFY(pip->width() >= root->width() * minFraction - 1);
 }
-
-// The grip is revealed by hover and sits under the cursor that revealed it. Deriving that reveal
-// from a MouseArea meant the grip's own handler took the hover point, containsMouse went false,
-// the grip vanished, hover came back - a strobe for as long as you pointed at it. Hovering the
-// grip has to be a stable state, not an oscillation.
 void PipViewTest::_hoverRevealHoldsSteadyOverTheGrip()
 {
     clearPipSettings();
@@ -247,19 +225,12 @@ void PipViewTest::_hoverRevealHoldsSteadyOverTheGrip()
 
     QTest::mouseMove(&view, itemCenter(pip));
     QTRY_VERIFY(grip->isVisible());
-
-    // Now the cursor moves onto the grip itself, which is where the strobe used to start.
     const QPoint onGrip = itemCenter(grip);
     for (int sample = 0; sample < 20; sample++) {
         QTest::mouseMove(&view, onGrip);
         QVERIFY2(grip->isVisible(), qPrintable(QStringLiteral("grip hid on sample %1 while hovered").arg(sample)));
     }
 }
-
-// The grip only works outside edit mode because pipMouseArea below it still sees the same
-// press/release. Its own dragged flag can never go true there (drag.target is null), so without
-// the pressedOnGrip guard every grip drag would also read as a plain click and swap map/video
-// out from under the resize.
 void PipViewTest::_gripResizeOutsideEditModeDoesNotSwap()
 {
     clearPipSettings();
@@ -287,9 +258,6 @@ void PipViewTest::_gripResizeOutsideEditModeDoesNotSwap()
     QCOMPARE(itemA->parentItem(), root);
     QVERIFY(itemB->parentItem() != root);
 }
-
-// Another mode can need the first item to be the whole surface - the plan view needs the map, and
-// hiding the pip while the map was in it is what left the plan with nothing to draw on.
 void PipViewTest::_forcingItem1FullOverridesTheSavedArrangement()
 {
     clearPipSettings();
@@ -301,8 +269,6 @@ void PipViewTest::_forcingItem1FullOverridesTheSavedArrangement()
     QQuickItem *const itemA = root->findChild<QQuickItem*>("itemA");
     QQuickItem *const itemB = root->findChild<QQuickItem*>("itemB");
     QVERIFY(pip && itemA && itemB);
-
-    // Put item2 full, the arrangement that used to strand the plan view.
     QMetaObject::invokeMethod(pip, "_swapPip");
     QTRY_COMPARE(itemB->parentItem(), root);
 
@@ -312,8 +278,6 @@ void PipViewTest::_forcingItem1FullOverridesTheSavedArrangement()
     pip->setProperty("forceItem1Full", false);
     QTRY_COMPARE(itemB->parentItem(), root);
 }
-
-// The override is temporary. What the user chose for the fly view has to survive it.
 void PipViewTest::_forcingItem1FullDoesNotDisturbTheSavedArrangement()
 {
     clearPipSettings();
@@ -351,4 +315,28 @@ void PipViewTest::_swapIsRefusedWhileItem1IsForcedFull()
     QMetaObject::invokeMethod(pip, "_swapPip");
     QCOMPARE(itemA->parentItem(), root);
     QVERIFY(!QSettings().contains(QStringLiteral("PipViewTestItem1IsFull")));
+}
+
+void PipViewTest::_gripResizeDoesNotMoveThePanel()
+{
+    clearPipSettings();
+
+    QQuickView view;
+    QVERIFY(loadView(view));
+    view.rootObject()->setProperty("editMode", true);
+
+    QQuickItem *const pip = pipOf(view);
+    QQuickItem *const grip = gripOf(view);
+    QVERIFY(pip && grip);
+    QTRY_VERIFY(grip->isVisible());
+
+    const qreal left = pip->x();
+    const qreal bottom = pip->y() + pip->height();
+    const qreal before = pip->width();
+    dragMouse(view, itemCenter(grip), itemCenter(grip) + QPoint(80, 0), false);
+    QTRY_VERIFY(pip->width() > before);
+
+    QCOMPARE(pip->x(), left);
+    QCOMPARE(pip->y() + pip->height(), bottom);
+    QVERIFY(!pip->property("hasCustomPosition").toBool());
 }
