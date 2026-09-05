@@ -7,9 +7,9 @@
  *
  ****************************************************************************/
 
-
 import QtQuick
 import QtQuick.Controls
+import QtQuick.Layouts
 
 import QGroundControl
 import QGroundControl.FactSystem
@@ -20,135 +20,283 @@ import QGroundControl.Palette
 import QGroundControl.AutoPilotPlugins.PX4
 import QGroundControl.AutoPilotPlugins.APM
 
-Rectangle {
+Item {
     id:             _summaryRoot
+    objectName:     "vehicleSummary"
     anchors.fill:   parent
-    anchors.rightMargin: ScreenTools.defaultFontPixelWidth
-    anchors.leftMargin:  ScreenTools.defaultFontPixelWidth
-    color:          qgcPal.window
 
-    property real _minSummaryW:     ScreenTools.isTinyScreen ? ScreenTools.defaultFontPixelWidth * 28 : ScreenTools.defaultFontPixelWidth * 36
-    property real _summaryBoxWidth: _minSummaryW
-    property real _summaryBoxSpace: ScreenTools.defaultFontPixelWidth * 2
+    readonly property var  _vehicle:        QGroundControl.multiVehicleManager.activeVehicle
+    readonly property var  _plugin:         _vehicle ? _vehicle.autopilotPlugin : null
+    readonly property var  _components:     _plugin ? _plugin.vehicleComponents : []
+    readonly property bool _setupComplete:  _plugin ? _plugin.setupComplete : false
+    readonly property real _fh:             ScreenTools.defaultFontPixelHeight
+    readonly property real _fw:             ScreenTools.defaultFontPixelWidth
+    readonly property real _pad:            _fw * 1.5
+    readonly property real _radius:         _fh * 0.9
+    readonly property real _minCardWidth:   ScreenTools.isTinyScreen ? _fw * 28 : _fw * 36
+    readonly property real _cardSpacing:    _fw * 1.5
+    readonly property int  _columns:        Math.max(1, Math.floor((width + _cardSpacing) / (_minCardWidth + _cardSpacing)))
+    readonly property real _cardWidth:      (width - _cardSpacing * (_columns - 1)) / _columns
+    readonly property string _firmwareText: _vehicle ? _vehicle.firmwareTypeString + " " + _vehicle.firmwareMajorVersion + "." + _vehicle.firmwareMinorVersion + "." + _vehicle.firmwarePatchVersion + " " + _vehicle.firmwareVersionTypeString : ""
 
-    function computeSummaryBoxSize() {
-        var sw  = 0
-        var rw  = 0
-        var idx = Math.floor(_summaryRoot.width / (_minSummaryW + ScreenTools.defaultFontPixelWidth))
-        if(idx < 1) {
-            _summaryBoxWidth = _summaryRoot.width
-            _summaryBoxSpace = 0
-        } else {
-            _summaryBoxSpace = 0
-            if(idx > 1) {
-                _summaryBoxSpace = ScreenTools.defaultFontPixelWidth * 2
-                sw = _summaryBoxSpace * (idx - 1)
-            }
-            rw = _summaryRoot.width - sw
-            _summaryBoxWidth = rw / idx
-        }
-    }
+    QGCPalette { id: qgcPal; colorGroupEnabled: enabled }
 
     function capitalizeWords(sentence) {
-        return sentence.replace(/(?:^|\s)\S/g, function(a) { return a.toUpperCase(); });
+        return sentence.replace(/(?:^|\s)\S/g, a => a.toUpperCase())
     }
 
-    QGCPalette {
-        id:                 qgcPal
-        colorGroupEnabled:  enabled
-    }
-
-    Component.onCompleted: {
-        computeSummaryBoxSize()
-    }
-
-    onWidthChanged: {
-        computeSummaryBoxSize()
+    component SectionCaption: QGCLabel {
+        font.pointSize:     ScreenTools.smallFontPointSize
+        font.letterSpacing: 0.5
+        color:              qgcPal.colorGrey
+        leftPadding:        _pad
     }
 
     QGCFlickable {
         clip:               true
         anchors.fill:       parent
-        contentHeight:      summaryColumn.height
+        contentHeight:      summaryColumn.height + _fh
         contentWidth:       _summaryRoot.width
         flickableDirection: Flickable.VerticalFlick
 
         Column {
             id:             summaryColumn
             width:          _summaryRoot.width
-            spacing:        ScreenTools.defaultFontPixelHeight
+            spacing:        _fh * 0.9
 
-            QGCLabel {
-                width:			parent.width
-                wrapMode:		Text.WordWrap
-                color:			setupComplete ? qgcPal.text : qgcPal.warningText
-                font.bold:      true
-                horizontalAlignment: Text.AlignHCenter
-                text:           setupComplete ?
-                    qsTr("Below you will find a summary of the settings for your vehicle. To the left are the setup menus for each component.") :
-                    qsTr("WARNING: Your vehicle requires setup prior to flight. Please resolve the items marked in red using the menu on the left.")
+            Rectangle {
+                id:     heroCard
+                width:  parent.width
+                height: heroRow.implicitHeight + _pad * 2
+                radius: _radius
+                color:  Qt.alpha(qgcPal.text, 0.055)
 
-                property bool setupComplete: QGroundControl.multiVehicleManager.activeVehicle ? QGroundControl.multiVehicleManager.activeVehicle.autopilotPlugin.setupComplete : false
-            }
+                RowLayout {
+                    id:                 heroRow
+                    anchors.fill:       parent
+                    anchors.margins:    _pad
+                    spacing:            _pad
 
-            Flow {
-                id:         _flowCtl
-                width:      _summaryRoot.width
-                spacing:    _summaryBoxSpace
-
-                Repeater {
-                    model: QGroundControl.multiVehicleManager.activeVehicle ? QGroundControl.multiVehicleManager.activeVehicle.autopilotPlugin.vehicleComponents : undefined
-
-                    // Outer summary item rectangle
                     Rectangle {
-                        width:      _summaryBoxWidth
-                        height:     ScreenTools.defaultFontPixelHeight * 13
-                        color:      qgcPal.windowShade
-                        visible:    modelData.summaryQmlSource.toString() !== ""
-                        border.width: 1
-                        border.color: qgcPal.text
-                        Component.onCompleted: {
-                            border.color = Qt.rgba(border.color.r, border.color.g, border.color.b, 0.1)
+                        Layout.preferredWidth:  _fh * 4.2
+                        Layout.preferredHeight: Layout.preferredWidth
+                        radius:                 _fh * 0.8
+                        color:                  Qt.alpha(qgcPal.colorBlue, 0.16)
+
+                        QGCColoredImage {
+                            anchors.centerIn:   parent
+                            width:              parent.width * 0.62
+                            height:             width
+                            sourceSize.height:  height
+                            fillMode:           Image.PreserveAspectFit
+                            source:             "/InstrumentValueIcons/drone.svg"
+                            color:              qgcPal.colorBlue
+                        }
+                    }
+
+                    ColumnLayout {
+                        Layout.fillWidth:   true
+                        spacing:            _fh * 0.15
+
+                        QGCLabel {
+                            Layout.fillWidth:   true
+                            text:               _vehicle ? _vehicle.vehicleTypeString : ""
+                            font.pointSize:     ScreenTools.largeFontPointSize
+                            font.bold:          true
+                            elide:              Text.ElideRight
                         }
 
-                        readonly property real titleHeight: ScreenTools.defaultFontPixelHeight * 2
+                        QGCLabel {
+                            Layout.fillWidth:   true
+                            text:               _firmwareText
+                            color:              Qt.alpha(qgcPal.text, 0.6)
+                            elide:              Text.ElideRight
+                        }
 
-                        // Title bar
-                        QGCButton {
-                            id:     titleBar
-                            width:  parent.width
-                            height: titleHeight
-                            text:   capitalizeWords(modelData.name)
+                        QGCLabel {
+                            Layout.fillWidth:   true
+                            text:               _vehicle ? qsTr("Vehicle %1").arg(_vehicle.id) : ""
+                            color:              Qt.alpha(qgcPal.text, 0.6)
+                            font.pointSize:     ScreenTools.smallFontPointSize
+                            elide:              Text.ElideRight
+                        }
+                    }
 
-                            // Setup indicator
+                    Rectangle {
+                        objectName:             "setupStatusPill"
+                        Layout.preferredWidth:  statusRow.implicitWidth + _fw * 2.4
+                        Layout.preferredHeight: _fh * 1.8
+                        Layout.alignment:       Qt.AlignVCenter
+                        radius:                 height / 2
+                        color:                  Qt.alpha(_statusColor, 0.16)
+
+                        readonly property color _statusColor: _setupComplete ? qgcPal.colorGreen : qgcPal.colorOrange
+
+                        Row {
+                            id:                 statusRow
+                            anchors.centerIn:   parent
+                            spacing:            _fw * 0.8
+
                             Rectangle {
-                                anchors.rightMargin:    ScreenTools.defaultFontPixelWidth
-                                anchors.right:          parent.right
                                 anchors.verticalCenter: parent.verticalCenter
-                                width:                  ScreenTools.defaultFontPixelWidth * 1.75
+                                width:                  _fh * 0.55
                                 height:                 width
                                 radius:                 width / 2
-                                color:                  modelData.setupComplete ? "#00d932" : "red"
-                                visible:                modelData.requiresSetup && modelData.setupSource !== ""
+                                color:                  parent.parent._statusColor
                             }
 
-                            onClicked : {
-                                //console.log(modelData.setupSource)
-                                if (modelData.setupSource !== "") {
-                                    setupView.showVehicleComponentPanel(modelData)
-                                }
+                            QGCLabel {
+                                anchors.verticalCenter: parent.verticalCenter
+                                text:                   _setupComplete ? qsTr("Ready") : qsTr("Needs setup")
+                                color:                  parent.parent._statusColor
+                                font.bold:              true
                             }
                         }
-                        // Summary Qml
-                        Rectangle {
-                            anchors.top:    titleBar.bottom
-                            width:          parent.width
-                            Loader {
-                                anchors.fill:       parent
-                                anchors.margins:    ScreenTools.defaultFontPixelWidth
-                                source:             modelData.summaryQmlSource
+                    }
+                }
+            }
 
-                                property var vehicleComponent: modelData
+            Column {
+                width:      parent.width
+                spacing:    _fh * 0.35
+                visible:    !_setupComplete
+
+                SectionCaption { text: qsTr("NEEDS SETUP") }
+
+                PlanGroupCard {
+                    width: parent.width
+
+                    Repeater {
+                        model: _components
+
+                        PlanGroupRow {
+                            text:           capitalizeWords(modelData.name)
+                            description:    modelData.description
+                            interactive:    true
+                            showChevron:    true
+                            visible:        modelData.requiresSetup && !modelData.setupComplete && modelData.setupSource.toString() !== ""
+                            onClicked:      setupView.showVehicleComponentPanel(modelData)
+                        }
+                    }
+                }
+            }
+
+            Column {
+                width:      parent.width
+                spacing:    _fh * 0.35
+
+                SectionCaption { text: qsTr("COMPONENTS") }
+
+                Flow {
+                    width:      parent.width
+                    spacing:    _cardSpacing
+
+                    Repeater {
+                        model: _components
+
+                        Rectangle {
+                            width:      _cardWidth
+                            height:     cardColumn.height
+                            radius:     _radius
+                            color:      Qt.alpha(qgcPal.text, 0.055)
+                            visible:    modelData.summaryQmlSource.toString() !== ""
+
+                            readonly property bool _canOpen:    modelData.setupSource.toString() !== ""
+                            readonly property bool _showStatus: modelData.requiresSetup && _canOpen
+                            readonly property real _tileSize:   Math.round(_fh * 1.35)
+
+                            Column {
+                                id:     cardColumn
+                                width:  parent.width
+
+                                Item {
+                                    width:  parent.width
+                                    height: _fh * 2.6
+
+                                    RowLayout {
+                                        anchors.fill:           parent
+                                        anchors.leftMargin:     _pad
+                                        anchors.rightMargin:    _pad
+                                        spacing:                _fw
+
+                                        Rectangle {
+                                            Layout.preferredWidth:  _tileSize
+                                            Layout.preferredHeight: _tileSize
+                                            radius:                 Math.round(_tileSize * 0.28)
+                                            color:                  setupView.tileColorFor(modelData.name)
+
+                                            QGCColoredImage {
+                                                anchors.centerIn:   parent
+                                                width:              Math.round(_tileSize * 0.68)
+                                                height:             width
+                                                sourceSize.height:  height
+                                                fillMode:           Image.PreserveAspectFit
+                                                source:             modelData.iconResource
+                                                color:              "white"
+                                            }
+                                        }
+
+                                        QGCLabel {
+                                            Layout.fillWidth:   true
+                                            text:               capitalizeWords(modelData.name)
+                                            font.bold:          true
+                                            elide:              Text.ElideRight
+                                        }
+
+                                        QGCColoredImage {
+                                            Layout.preferredWidth:  _fh * 0.9
+                                            Layout.preferredHeight: Layout.preferredWidth
+                                            sourceSize.height:      height
+                                            source:                 "/InstrumentValueIcons/checkmark-outline.svg"
+                                            color:                  qgcPal.colorGreen
+                                            visible:                _showStatus && modelData.setupComplete
+                                        }
+
+                                        Rectangle {
+                                            Layout.preferredWidth:  _fh * 0.55
+                                            Layout.preferredHeight: Layout.preferredWidth
+                                            radius:                 width / 2
+                                            color:                  qgcPal.colorRed
+                                            visible:                _showStatus && !modelData.setupComplete
+                                        }
+
+                                        QGCLabel {
+                                            text:           "›"
+                                            color:          Qt.alpha(qgcPal.text, 0.4)
+                                            font.pointSize: ScreenTools.mediumFontPointSize
+                                            visible:        _canOpen
+                                        }
+                                    }
+
+                                    QGCMouseArea {
+                                        anchors.fill:   parent
+                                        enabled:        _canOpen
+                                        onClicked:      setupView.showVehicleComponentPanel(modelData)
+                                    }
+                                }
+
+                                Rectangle {
+                                    x:      _pad
+                                    width:  parent.width - _pad
+                                    height: 1
+                                    color:  Qt.alpha(qgcPal.text, 0.09)
+                                }
+
+                                Item {
+                                    width:  parent.width
+                                    height: summaryLoader.height + _fh * 0.6
+
+                                    Loader {
+                                        id:                 summaryLoader
+                                        x:                  _pad
+                                        y:                  _fh * 0.3
+                                        width:              parent.width - _pad * 2
+                                        height:             item ? Math.max(0, ...Array.from(item.children).map(child => child.implicitHeight)) : 0
+                                        source:             modelData.summaryQmlSource
+
+                                        property var vehicleComponent: modelData
+                                    }
+                                }
                             }
                         }
                     }

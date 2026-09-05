@@ -23,8 +23,9 @@ Button {
     autoExclusive:  true
     icon.color:     textColor
 
-    property color textColor: checked || pressed ? qgcPal.buttonHighlightText : qgcPal.buttonText
-    property color tileColor: "transparent"
+    property color textColor:    checked || pressed ? qgcPal.buttonHighlightText : qgcPal.buttonText
+    property color tileColor:    "transparent"
+    property bool  badgeVisible: false
 
     readonly property bool _hasTile: tileColor.a > 0
     readonly property real _tileSize: Math.round(ScreenTools.defaultFontPixelHeight * 1.35)
@@ -66,6 +67,14 @@ Button {
             text:                   control.text
             color:                  control.textColor
             horizontalAlignment:    QGCLabel.AlignLeft
+        }
+
+        Rectangle {
+            Layout.preferredWidth:  Math.round(ScreenTools.defaultFontPixelHeight * 0.55)
+            Layout.preferredHeight: Layout.preferredWidth
+            radius:                 width / 2
+            color:                  qgcPal.colorRed
+            visible:                control.badgeVisible
         }
     }
 }

@@ -8,7 +8,6 @@ import QGroundControl.Palette
 
 Item {
     anchors.fill:   parent
-    color:          qgcPal.windowShadeDark
 
     FactPanelController { id: controller; }
 

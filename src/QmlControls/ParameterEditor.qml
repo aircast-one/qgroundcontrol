@@ -32,20 +32,12 @@ Item {
     property bool   _showRCToParam:     _activeVehicle.px4Firmware
     property var    _appSettings:       QGroundControl.settingsManager.appSettings
     property var    _controller:        controller
+    property string initialSearchText
+
+    Component.onCompleted: searchText.text = initialSearchText
 
     ParameterEditorController {
         id: controller
-    }
-
-    Timer {
-        id:         clearTimer
-        interval:   100;
-        running:    false;
-        repeat:     false
-        onTriggered: {
-            searchText.text = ""
-            controller.searchText = ""
-        }
     }
 
     QGCMenu {
@@ -140,43 +132,32 @@ Item {
         id:             header
         anchors.left:   parent.left
         anchors.right:  parent.right
+        spacing:        ScreenTools.defaultFontPixelWidth
 
-        RowLayout {
-            Layout.alignment:   Qt.AlignLeft
-            spacing:            ScreenTools.defaultFontPixelWidth
-
-            QGCTextField {
-                id:                     searchText
-                placeholderText:        qsTr("Search")
-                onDisplayTextChanged:   controller.searchText = displayText
-            }
-
-            QGCButton {
-                text: qsTr("Clear")
-                onClicked: {
-                    if(ScreenTools.isMobile) {
-                        Qt.inputMethod.hide();
-                    }
-                    clearTimer.start()
-                }
-            }
-
-            QGCCheckBox {
-                text:       qsTr("Show modified only")
-                checked:    controller.showModifiedOnly
-                onClicked:  controller.showModifiedOnly = checked
-                visible:    QGroundControl.multiVehicleManager.activeVehicle.px4Firmware
-            }
+        QGCTextField {
+            id:                     searchText
+            objectName:             "parameterSearchField"
+            Layout.fillWidth:       true
+            Layout.maximumWidth:    ScreenTools.defaultFontPixelWidth * 60
+            placeholderText:        qsTr("Search parameters")
+            onDisplayTextChanged:   controller.searchText = displayText
         }
 
+        QGCCheckBox {
+            text:       qsTr("Modified")
+            checked:    controller.showModifiedOnly
+            onClicked:  controller.showModifiedOnly = checked
+            visible:    QGroundControl.multiVehicleManager.activeVehicle.px4Firmware
+        }
+
+        Item { Layout.fillWidth: true }
+
         QGCButton {
-            Layout.alignment:   Qt.AlignRight
-            text:               qsTr("Tools")
-            onClicked:          toolsMenu.popup()
+            text:       qsTr("Tools")
+            onClicked:  toolsMenu.popup()
         }
     }
 
-    /// Group buttons
     QGCFlickable {
         id :                groupScroll
         width:              ScreenTools.defaultFontPixelWidth * 25

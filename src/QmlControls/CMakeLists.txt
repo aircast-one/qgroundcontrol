@@ -79,7 +79,6 @@ qt_add_qml_module(QGroundControlControlsModule
         AxisMonitor.qml
         CameraSwitchButton.qml
         ClickableColor.qml
-        ConfigButton.qml
         DeadMouseArea.qml
         DragToPosition.qml
         DropButton.qml
