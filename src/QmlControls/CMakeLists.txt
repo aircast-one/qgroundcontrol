@@ -112,6 +112,7 @@ qt_add_qml_module(QGroundControlControlsModule
         MvPanelPage.qml
         OfflineMapButton.qml
         OverlayActivityCapsule.qml
+        OverlayActivityRing.qml
         OverlayEditBadge.qml
         OverlayMenuItem.qml
         OverlayMenuSeparator.qml

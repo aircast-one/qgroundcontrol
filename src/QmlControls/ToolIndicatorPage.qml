@@ -13,18 +13,17 @@ import QtQuick.Layouts
 import QGroundControl
 import QGroundControl.ScreenTools
 
-// ToolIndicatorPage
-//      The base control for all Toolbar Indicator drop down pages. It supports a normal and expanded view.
 
 RowLayout {
     id:         control
     spacing:    ScreenTools.defaultFontPixelWidth
 
-    property bool       showExpand:         false   // Controls whether the expand widget is shown or not
-    property bool       waitForParameters:  false   // UI won't show until parameters are ready
-    property Component  contentComponent            // Item for the normal view portion of the page
-    property Component  expandedComponent           // Item for the expanded portion of the page
-    property var        pageProperties              // Allows you to share a QtObject full of properties between pages
+    property bool       showExpand:         false
+    property string     expandText:         qsTr("Details")
+    property bool       waitForParameters:  false
+    property Component  contentComponent
+    property Component  expandedComponent
+    property var        pageProperties
 
     // These properties are bound by the MainRoowWindow loader
     property bool expanded: false

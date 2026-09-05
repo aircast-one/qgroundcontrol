@@ -117,10 +117,6 @@ ApplicationWindow {
         }
         return globals.validationErrorCount <= previousValidationErrorCount
     }
-
-    // Fly and Plan are two ways of looking at the same flight over the same ground, so they
-    // dissolve into one another rather than replacing each other outright. Swapping `visible`
-    // cut from one to the other with nothing in between, which read as two separate apps.
     property bool flyViewActive: true
 
     function showPlanView() {
@@ -261,11 +257,6 @@ ApplicationWindow {
         anchors.fill:   parent
         color:          QGroundControl.globalPalette.window
     }
-
-    // One surface, two sets of components. The fly view owns the map, the video and the pip and
-    // stays up in both modes; its own chrome comes and goes with the mode, and the plan's chrome
-    // and editing handles arrive on the same map. There is no second page to navigate to, which
-    // is why the switch can be a slider rather than a way out.
     FlyView {
         id:                     flyView
         anchors.fill:           parent
@@ -671,9 +662,9 @@ ApplicationWindow {
             if (!indicatorItem) {
                 return _margins
             }
-            const xCenter = indicatorItem.mapToItem(mainWindow.contentItem, indicatorItem.width / 2, 0).x
-            const maxX    = mainWindow.contentItem.width - width - _margins
-            return Math.max(_margins, Math.min(xCenter - width / 2, maxX))
+            const left = indicatorItem.mapToItem(mainWindow.contentItem, 0, 0).x
+            const maxX = mainWindow.contentItem.width - width - _margins
+            return Math.max(_margins, Math.min(left, maxX))
         }
         y:              ScreenTools.toolbarHeight + (ScreenTools.defaultFontPixelHeight / 2)
         leftInset:      0
@@ -689,10 +680,7 @@ ApplicationWindow {
 
         property var sourceComponent
         property var indicatorItem
-
-        // Same rule the glass itself applies. Computed here rather than read off the background,
-        // which the Popup does not instantiate until it first opens.
-        readonly property color contentColor: OverlayBackdrop.isDark ? qgcPal.text : qgcPal.window
+        readonly property color contentColor: qgcPal.text
 
         property bool _expanded:    false
         property real _margins:     ScreenTools.defaultFontPixelHeight / 4
@@ -769,9 +757,11 @@ ApplicationWindow {
                 layer.effect:   OverlayShadowEffect { }
 
                 OverlayGlass {
-                    objectName:   "drawerGlass"
-                    anchors.fill: parent
-                    radius:       parent.radius
+                    objectName:    "drawerGlass"
+                    anchors.fill:  parent
+                    radius:        parent.radius
+                    frosted:       false
+                    lightMaterial: false
                 }
             }
 
@@ -816,6 +806,7 @@ ApplicationWindow {
             Rectangle {
                 Layout.fillWidth:       true
                 Layout.preferredHeight: ScreenTools.defaultFontPixelHeight * 2
+                implicitWidth:          detailsLabel.implicitWidth + detailsChevron.width + ScreenTools.defaultFontPixelWidth * 4
                 radius:                 indicatorDrawer._innerRadius
                 color:                  moreArea.containsMouse ? Qt.alpha(QGroundControl.globalPalette.text, 0.08)
                                                                : "transparent"
@@ -823,15 +814,17 @@ ApplicationWindow {
                                             indicatorDrawerLoader.item.showExpand && !indicatorDrawer._expanded
 
                 QGCLabel {
+                    id:                     detailsLabel
                     anchors.left:           parent.left
-                    anchors.leftMargin:     indicatorDrawer._margins
+                    anchors.leftMargin:     ScreenTools.defaultFontPixelWidth * 1.5
                     anchors.verticalCenter: parent.verticalCenter
-                    text:                   qsTr("Details")
+                    text:                   indicatorDrawerLoader.item ? indicatorDrawerLoader.item.expandText : ""
                 }
 
                 QGCColoredImage {
+                    id:                     detailsChevron
                     anchors.right:          parent.right
-                    anchors.rightMargin:    indicatorDrawer._margins
+                    anchors.rightMargin:    ScreenTools.defaultFontPixelWidth * 1.5
                     anchors.verticalCenter: parent.verticalCenter
                     source:                 "/InstrumentValueIcons/cheveron-right.svg"
                     color:                  QGroundControl.globalPalette.colorGrey

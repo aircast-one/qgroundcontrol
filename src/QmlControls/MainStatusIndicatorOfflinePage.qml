@@ -1,6 +1,6 @@
 /****************************************************************************
  *
- * (c) 2009-2022 QGROUNDCONTROL PROJECT <http://www.qgroundcontrol.org>
+ * (c) 2009-2020 QGROUNDCONTROL PROJECT <http://www.qgroundcontrol.org>
  *
  * QGroundControl is licensed according to the terms in the file
  * COPYING.md in the root of the source code directory.
@@ -22,10 +22,10 @@ import QGroundControl.FactControls
 ToolIndicatorPage {
     id:         control
     showExpand: true
+    expandText: qsTr("Connection Settings")
 
     property var    linkConfigs:            QGroundControl.linkManager.linkConfigurations
     property bool   noLinks:                true
-    property var    editingConfig:          null
     property var    autoConnectSettings:    QGroundControl.settingsManager.autoConnectSettings
 
     Component.onCompleted: {
@@ -38,70 +38,90 @@ ToolIndicatorPage {
         }
     }
 
-    // What auto-connect is currently listening on, in the user's words. Without it the pill
-    // says "Not connected" and nothing on screen says whether anything is being attempted -
-    // so there is no way to tell whether to wait, replug, or go and configure a link.
-    readonly property var _watching: [
-        autoConnectSettings.autoConnectPixhawk.rawValue    ? qsTr("USB")        : "",
-        autoConnectSettings.autoConnectSiKRadio.rawValue   ? qsTr("SiK radio")  : "",
-        autoConnectSettings.autoConnectUDP.rawValue        ? qsTr("UDP %1").arg(autoConnectSettings.udpListenPort.rawValue) : "",
-        autoConnectSettings.autoConnectZeroConf.rawValue   ? qsTr("Zero-Conf")  : ""
-    ].filter((entry) => entry !== "")
+    readonly property bool _watching: autoConnectSettings.autoConnectPixhawk.rawValue
+                                   || autoConnectSettings.autoConnectSiKRadio.rawValue
+                                   || autoConnectSettings.autoConnectUDP.rawValue
+                                   || autoConnectSettings.autoConnectZeroConf.rawValue
+
+    function openLinkSettings() {
+        mainWindow.showSettingsTool(qsTr("Comm Links"))
+        mainWindow.closeIndicatorDrawer()
+    }
 
     contentComponent: Component {
         ColumnLayout {
-            spacing: ScreenTools.defaultFontPixelHeight / 2
+            spacing: ScreenTools.defaultFontPixelHeight * 0.75
 
-            SettingsGroupLayout {
-                popoverStyle: true
-                heading: qsTr("Select Link to Connect")
+            readonly property real _margin: ScreenTools.defaultFontPixelWidth * 1.5
+
+            ColumnLayout {
+                Layout.fillWidth:   true
+                Layout.minimumWidth: ScreenTools.defaultFontPixelWidth * 28
+                Layout.leftMargin:  parent._margin
+                Layout.rightMargin: parent._margin
+                spacing:            ScreenTools.defaultFontPixelHeight / 6
 
                 QGCLabel {
-                    Layout.fillWidth:   true
-                    wrapMode:           Text.WordWrap
-                    text:               qsTr("No links are configured yet.")
-                    visible:            noLinks
+                    text:           qsTr("Not Connected")
+                    font.pointSize: ScreenTools.mediumFontPointSize
+                    font.bold:      true
                 }
 
-                // The way forward used to live behind the expand chevron, so a first run
-                // followed the only instruction on screen and arrived at a sentence with
-                // nothing to press.
-                QGCButton {
+                RowLayout {
                     Layout.fillWidth:   true
-                    text:               qsTr("Configure a Link")
-                    visible:            noLinks
+                    spacing:            ScreenTools.defaultFontPixelWidth
 
-                    onClicked: {
-                        mainWindow.showSettingsTool(qsTr("Comm Links"))
-                        mainWindow.closeIndicatorDrawer()
+                    OverlayActivityRing {
+                        width:          ScreenTools.defaultFontPixelHeight * 0.8
+                        visible:        control._watching
+                        contentColor:   QGroundControl.globalPalette.colorGrey
+                    }
+
+                    QGCLabel {
+                        objectName:         "connectionFootnote"
+                        Layout.fillWidth:   true
+                        wrapMode:           Text.WordWrap
+                        font.pointSize:     ScreenTools.smallFontPointSize
+                        color:              QGroundControl.globalPalette.colorGrey
+                        text:               control._watching ? qsTr("Looking for a vehicle…")
+                                                              : qsTr("Automatic connection is off.")
                     }
                 }
+            }
+
+            QGCButton {
+                objectName:         "addLinkButton"
+                Layout.fillWidth:   true
+                Layout.leftMargin:  parent._margin
+                Layout.rightMargin: parent._margin
+                text:               qsTr("Add Link…")
+                primary:            true
+                visible:            noLinks
+                onClicked:          control.openLinkSettings()
+            }
+
+            ColumnLayout {
+                Layout.fillWidth:   true
+                spacing:            0
+                visible:            !noLinks
 
                 Repeater {
                     model: linkConfigs
 
-                    delegate: QGCButton {
-                        Layout.fillWidth:   true
-                        text:               object.name + (object.link ? " (" + qsTr("Connected") + ")" : "")
-                        visible:            !object.dynamic
-                        enabled:            !object.link
-                        autoExclusive:      true
-
+                    delegate: OverlayMenuItem {
+                        text:       object.name
+                        checkable:  true
+                        checked:    object.link ? true : false
+                        visible:    !object.dynamic
                         onClicked: {
+                            if (object.link) {
+                                return
+                            }
                             QGroundControl.linkManager.createConnectedLink(object)
                             mainWindow.closeIndicatorDrawer()
                         }
                     }
                 }
-            }
-
-            QGCLabel {
-                Layout.fillWidth:   true
-                wrapMode:           Text.WordWrap
-                font.pointSize:     ScreenTools.smallFontPointSize
-                color:              QGroundControl.globalPalette.colorGrey
-                visible:            control._watching.length > 0
-                text:               qsTr("Watching for a vehicle on %1.").arg(control._watching.join(", "))
             }
         }
     }
@@ -115,11 +135,7 @@ ToolIndicatorPage {
                 LabelledButton {
                     label:      qsTr("Communication Links")
                     buttonText: qsTr("Configure")
-
-                    onClicked: {
-                        mainWindow.showSettingsTool(qsTr("Comm Links"))
-                        mainWindow.closeIndicatorDrawer()
-                    }
+                    onClicked:  control.openLinkSettings()
                 }
             }
 

@@ -457,9 +457,26 @@ Item {
             spacing:                ScreenTools.defaultFontPixelHeight * 0.6
             z:                      QGroundControl.zOrderWidgets
 
-            readonly property real  _cell:   Math.max(ScreenTools.minTouchPixels, ScreenTools.defaultFontPixelHeight * 2.4)
+            readonly property real  _icon:   Math.max(ScreenTools.minTouchPixels, ScreenTools.defaultFontPixelHeight * 2.4)
+            // An icon dock is only legible to someone who already knows it. The fly view's tool
+            // strip captions its buttons; this one now does too, and the cell is as wide as the
+            // longest caption so the column keeps one edge.
+            readonly property real  _cell:   Math.max(_icon, captionMetrics.width + ScreenTools.defaultFontPixelWidth * 2)
+            readonly property real  _caption: captionMetrics.height
             readonly property real  _radius: ScreenTools.defaultFontPixelHeight * 0.7
             readonly property color _ink:    OverlayBackdrop.isDark ? _qgcPal.text : _qgcPal.window
+
+            TextMetrics {
+                id:   captionMetrics
+                font: captionFont.font
+                text: qsTr("Waypoint")
+            }
+
+            QGCLabel {
+                id:             captionFont
+                visible:        false
+                font.pointSize: ScreenTools.smallFontPointSize
+            }
 
             component DockCapsule: OverlayCapsule {
                 default property alias buttons: stack.data
@@ -478,9 +495,10 @@ Item {
             component DockButton: Item {
                 id:     dockButton
                 width:  dock._cell
-                height: dock._cell
+                height: dock._icon + dock._caption * 1.5
 
                 property string icon
+                property string text
                 property bool   checked: false
 
                 signal clicked()
@@ -498,9 +516,11 @@ Item {
                 }
 
                 QGCColoredImage {
-                    anchors.centerIn:   parent
+                    id:                 dockIcon
+                    anchors.horizontalCenter: parent.horizontalCenter
+                    y:                  (dock._icon - height) / 2
                     source:             dockButton.icon
-                    height:             parent.height * 0.52
+                    height:             dock._icon * 0.46
                     width:              height
                     sourceSize.height:  height
                     fillMode:           Image.PreserveAspectFit
@@ -509,6 +529,17 @@ Item {
                     color:              !dockButton.enabled ? Qt.alpha(dock._ink, 0.35)
                                       : dockButton.checked  ? _qgcPal.primaryButton
                                                             : dock._ink
+                }
+
+                QGCLabel {
+                    anchors.horizontalCenter: parent.horizontalCenter
+                    anchors.bottom:           parent.bottom
+                    anchors.bottomMargin:     ScreenTools.defaultFontPixelHeight * 0.22
+                    text:                     dockButton.text
+                    font.pointSize:           ScreenTools.smallFontPointSize
+                    color:                    !dockButton.enabled ? Qt.alpha(dock._ink, 0.35)
+                                            : dockButton.checked  ? _qgcPal.primaryButton
+                                                                  : dock._ink
                 }
 
                 QGCMouseArea {
@@ -529,6 +560,7 @@ Item {
             DockCapsule {
                 DockButton {
                     id:         fileButton
+                    text:       qsTr("File")
                     objectName: "planDockFile"
                     icon:    _planMasterController.dirty ? "/qmlimages/MapSyncChanged.svg" : "/qmlimages/MapSync.svg"
                     enabled: !_planMasterController.syncInProgress
@@ -544,6 +576,7 @@ Item {
 
                 DockButton {
                     id:         addWaypointButton
+                    text:       _editingLayer === _layerRallyPoints ? qsTr("Rally") : qsTr("Waypoint")
                     objectName: "planDockAddWaypoint"
                     icon:    "/qmlimages/MapAddMission.svg"
                     checked: _addWaypointMode
@@ -560,6 +593,7 @@ Item {
 
                 DockButton {
                     id:         addButton
+                    text:       qsTr("Add")
                     objectName: "planDockAdd"
                     icon:    "/qmlimages/MapDrawShape.svg"
                     checked: _addROIOnClick
@@ -574,6 +608,7 @@ Item {
             DockCapsule {
                 DockButton {
                     id:         centerButton
+                    text:       qsTr("Center")
                     objectName: "planDockCenter"
                     icon:      "/qmlimages/MapCenter.svg"
                     onClicked: centerMenu.openFrom(centerButton)
@@ -583,6 +618,7 @@ Item {
 
                 DockButton {
                     id:         mapTypeButton
+                    text:       qsTr("Map")
                     objectName: "planDockMapType"
                     icon:      "/qmlimages/MapType.svg"
                     onClicked: mapTypeMenu.openFrom(mapTypeButton)

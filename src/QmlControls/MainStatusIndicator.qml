@@ -44,9 +44,10 @@ RowLayout {
         verticalAlignment:      Text.AlignVCenter
         text:                   mainStatusText()
         color:                  qgcPal.toolbarText
-        font.pointSize:         ScreenTools.largeFontPointSize
+        font.bold:              true
 
-        readonly property real _iconSlot: vehicleMessagesIcon.visible ? vehicleMessagesIcon.width + ScreenTools.defaultFontPixelWidth : 0
+        readonly property real _iconSlot: (vehicleMessagesIcon.visible ? vehicleMessagesIcon.width + ScreenTools.defaultFontPixelWidth : 0)
+                                          + chevron.width + ScreenTools.defaultFontPixelWidth
 
         OverlayCapsule {
             id:                     statusPill
@@ -55,13 +56,13 @@ RowLayout {
             anchors.verticalCenter: parent.verticalCenter
             anchors.left:           parent.left
             width:                  parent.contentWidth + parent._iconSlot + control._pillPadding * 2
-            height:                 parent.contentHeight + ScreenTools.defaultFontPixelHeight
+            height:                 parent.height
         }
 
         property string _commLostText:      qsTr("Comms Lost")
         property string _readyToFlyText:    qsTr("Ready To Fly")
         property string _notReadyToFlyText: qsTr("Not Ready")
-        property string _disconnectedText:  qsTr("Not connected")
+        property string _disconnectedText:  qsTr("Not Connected")
         property string _armedText:         qsTr("Armed")
         property string _flyingText:        qsTr("Flying")
         property string _landingText:       qsTr("Landing")
@@ -131,10 +132,24 @@ RowLayout {
         }
 
         QGCColoredImage {
-            id:                     vehicleMessagesIcon
+            id:                     chevron
             anchors.verticalCenter: parent.verticalCenter
             anchors.right:          parent.right
             anchors.rightMargin:    control._pillPadding
+            width:                  ScreenTools.defaultFontPixelHeight * 0.7
+            height:                 width
+            source:                 "/InstrumentValueIcons/cheveron-down.svg"
+            color:                  Qt.alpha(qgcPal.toolbarText, 0.6)
+            sourceSize.height:      height
+            fillMode:               Image.PreserveAspectFit
+            mipmap:                 true
+        }
+
+        QGCColoredImage {
+            id:                     vehicleMessagesIcon
+            anchors.verticalCenter: parent.verticalCenter
+            anchors.right:          chevron.left
+            anchors.rightMargin:    ScreenTools.defaultFontPixelWidth
             width:                  ScreenTools.defaultFontPixelWidth * 2
             height:                 width
             source:                 "/res/VehicleMessages.png"
