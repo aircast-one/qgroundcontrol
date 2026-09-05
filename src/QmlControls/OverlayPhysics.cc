@@ -2,6 +2,8 @@
 
 #include <box2d/box2d.h>
 
+#include <QtCore/QVarLengthArray>
+
 #include <algorithm>
 #include <cmath>
 
@@ -231,6 +233,35 @@ void OverlayPhysics::step(qreal dt)
         }
     }
     b2World_Step(_world, static_cast<float>(dt), kSubSteps);
+    for (auto &body : _bodies) {
+        if (body.kind == Free && body.hasHome) {
+            _settleAtHome(body);
+        }
+    }
+}
+
+void OverlayPhysics::_settleAtHome(Body &body)
+{
+    if (!b2Body_IsAwake(body.body) || _touching(body)) {
+        return;
+    }
+    const QPointF delta = body.home - _centre(body);
+    const b2Vec2 velocity = b2Body_GetLinearVelocity(body.body);
+    if (std::hypot(delta.x(), delta.y()) >= 1.0 || std::hypot(velocity.x, velocity.y) * kPixelsPerMetre >= 20.0) {
+        return;
+    }
+    b2Body_SetTransform(body.body, toMetres(body.home.x(), body.home.y(), kPixelsPerMetre), b2Rot_identity);
+    b2Body_SetLinearVelocity(body.body, b2Vec2{ 0.0f, 0.0f });
+    b2Body_SetAwake(body.body, false);
+}
+
+bool OverlayPhysics::_touching(const Body &body) const
+{
+    const int capacity = b2Body_GetContactCapacity(body.body);
+    QVarLengthArray<b2ContactData, 16> contacts(capacity);
+    const int count = b2Body_GetContactData(body.body, contacts.data(), capacity);
+    return std::any_of(contacts.cbegin(), contacts.cbegin() + count,
+                       [](const b2ContactData &contact) { return contact.manifold.pointCount > 0; });
 }
 
 qreal OverlayPhysics::x(int id) const
@@ -364,12 +395,6 @@ void OverlayPhysics::_applyPull(Body &body)
     const b2Vec2 velocity = b2Body_GetLinearVelocity(body.body);
     const qreal speed = std::hypot(velocity.x, velocity.y) * kPixelsPerMetre;
 
-    if (distance < 1.0 && speed < 20.0) {
-        b2Body_SetTransform(body.body, toMetres(body.home.x(), body.home.y(), kPixelsPerMetre), b2Rot_identity);
-        b2Body_SetLinearVelocity(body.body, b2Vec2{ 0.0f, 0.0f });
-        b2Body_SetAwake(body.body, false);
-        return;
-    }
     if (distance < 0.5) {
         return;
     }

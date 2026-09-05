@@ -81,6 +81,8 @@ private:
 
     void    _rebuildShape(Body &body);
     void    _applyPull(Body &body);
+    void    _settleAtHome(Body &body);
+    bool    _touching(const Body &body) const;
     bool    _applyEscape(Body &body);
     void    _wakeFreeBodies(const Body &mover);
     qreal   _vx(int id) const;

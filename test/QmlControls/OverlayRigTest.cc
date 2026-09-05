@@ -547,3 +547,34 @@ void OverlayRigTest::_anEdgeCarriesWhatItHitsInItsOwnDirection()
     QVERIFY2(qAbs(left->x() - home.x()) < 2.0,
              qPrintable(QStringLiteral("item was ejected sideways to x=%1 (home %2)").arg(left->x()).arg(home.x())));
 }
+
+void OverlayRigTest::_releasedItemStaysWhereItWasDropped()
+{
+    QQuickView view;
+    QVERIFY(loadView(view));
+
+    QQuickItem *const left = view.rootObject()->findChild<QQuickItem*>("leftItem");
+    QObject *const leftPosition = positionOf(view, "leftPosition");
+    QVERIFY(left && leftPosition);
+
+    QObject *const rig = rigOf(view);
+    WAIT_SETTLED(rig, 3000);
+
+    const qreal startX = left->x();
+    for (int frame = 1; frame <= 6; ++frame) {
+        left->setX(startX + frame * 70);
+        QVERIFY(QMetaObject::invokeMethod(rig, "resolve", Q_ARG(QVariant, QVariant())));
+        QTest::qWait(16);
+    }
+    const QPointF dropped(left->x(), left->y());
+    QVERIFY(QMetaObject::invokeMethod(leftPosition, "commit"));
+    QVERIFY(QMetaObject::invokeMethod(rig, "resolve", Q_ARG(QVariant, QVariant())));
+
+    qreal worst = 0;
+    for (int i = 0; i < 60; ++i) {
+        QTest::qWait(16);
+        worst = std::max(worst, QLineF(dropped, QPointF(left->x(), left->y())).length());
+    }
+    QVERIFY2(worst < 24, qPrintable(QStringLiteral("strayed %1 px from the drop point").arg(worst)));
+    WAIT_SETTLED(rig, 3000);
+}

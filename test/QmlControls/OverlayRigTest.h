@@ -33,5 +33,6 @@ private slots:
     void _sweepingObstacleDoesNotFlingItemsAcrossTheWindow();
     void _furnitureBoltedToAMovableDoesNotFeedItself();
     void _anEdgeCarriesWhatItHitsInItsOwnDirection();
+    void _releasedItemStaysWhereItWasDropped();
     void cleanupTestCase();
 };

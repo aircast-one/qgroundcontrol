@@ -31,11 +31,12 @@ QtObject {
     readonly property int  _contactPasses: 3
     readonly property real _positionEpsilon: 0.5
 
-    readonly property real _gravity:      _tuning("Pull", 2000)
-    readonly property real _springRadius: _tuning("SpringRadius", 90)
-    readonly property real _damping:      _tuning("Damping", 4)
-    readonly property real _friction:     _tuning("Friction", 0.6)
-    readonly property real _restitution:  _tuning("Restitution", 0.02)
+    readonly property real _response:        _tuning("Response", 0.55)
+    readonly property real _dampingFraction: _tuning("DampingFraction", 0.85)
+    readonly property real _maxPull:         _tuning("MaxPull", 30000)
+    readonly property real _friction:        _tuning("Friction", 0.6)
+    readonly property real _restitution:     _tuning("Restitution", 0)
+    readonly property real _omega:           2 * Math.PI / _response
 
     function _tuning(name, fallback) {
         const value = parseFloat(QGroundControl.loadGlobalSetting("OverlayRig" + name, ""))
@@ -43,15 +44,13 @@ QtObject {
     }
 
     readonly property real _minDt: 0.004
-
     readonly property real _maxDt: 0.02
     readonly property int  _minStepMSecs: 8
-    readonly property int  _tickMSecs:    16
 
     readonly property OverlayPhysics _physics: OverlayPhysics {
-        pull:         root._gravity
-        springRadius: root._springRadius
-        damping:      root._damping
+        pull:         root._maxPull
+        springRadius: root._maxPull / (root._omega * root._omega)
+        damping:      2 * root._dampingFraction * root._omega
         friction:     root._friction
         restitution:  root._restitution
     }
@@ -94,9 +93,7 @@ QtObject {
 
     readonly property bool reflowPending: _physicsTimer.running
 
-    readonly property Timer _physicsTimer: Timer {
-        interval:   root._tickMSecs
-        repeat:     true
+    readonly property FrameAnimation _physicsTimer: FrameAnimation {
         onTriggered: root._solve(true)
     }
 
@@ -318,6 +315,7 @@ QtObject {
         _physics.setSize(entry.body, body.w, body.h)
         if (entry.bodyKind !== kind) {
             _physics.setKind(entry.body, kind)
+            _physics.place(entry.body, body.x, body.y)
             entry.bodyKind = kind
         }
         return false
