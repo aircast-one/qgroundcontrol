@@ -28,7 +28,10 @@ Rectangle {
     property var    fontSize:           ScreenTools.smallFontPointSize
 
     property bool   roundButtons:       false
+    property bool   editing:            false
     property alias  buttonSpacing:      toolStripColumn.spacing
+
+    signal held()
 
     readonly property color _discColor: qgcPal.overlayBackground
 
@@ -96,7 +99,9 @@ Rectangle {
                     borderWidth:        _root.roundButtons ? 1 : 0
                     toolStripAction:    modelData
                     dropPanel:          _dropPanel
+                    editing:            _root.editing
                     onDropped: (index) => _root.dropped(index)
+                    onPressAndHold:     _root.held()
 
                     onCheckedChanged: {
                         if (checked) {

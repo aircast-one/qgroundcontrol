@@ -20,7 +20,6 @@ Button {
     implicitHeight: iconOnly ? discSize + captionLabel.height + _captionSpacing : width
     height:         implicitHeight
     hoverEnabled:   !ScreenTools.isMobile
-    enabled:        toolStripAction.enabled
 
     visible:        toolStripAction.visible
     imageSource:    toolStripAction.showAlternateIcon ? modelData.alternateIconSource : modelData.iconSource
@@ -49,6 +48,8 @@ Button {
 
     property bool forceImageScale11: false
     property bool iconOnly:          false
+    property bool editing:           false
+    readonly property bool actionable: toolStripAction.enabled && !editing
     readonly property real _captionSpacing: ScreenTools.defaultFontPixelHeight * 0.15
     readonly property real discSize:        iconOnly ? Math.max(ScreenTools.minTouchPixels, ScreenTools.defaultFontPixelHeight * 2.4) : width
     property real imageScale:        iconOnly ? 0.5 : (forceImageScale11 && (text == "") ? 0.8 : 0.6)
@@ -62,6 +63,9 @@ Button {
     onCheckedChanged: toolStripAction.checked = checked
 
     onClicked: {
+        if (!actionable) {
+            return
+        }
         if (mainWindow.allowViewSwitch()) {
             dropPanel.hide()
             if (!toolStripAction.dropPanelComponent) {
@@ -77,7 +81,7 @@ Button {
         }
     }
 
-    QGCPalette { id: qgcPal; colorGroupEnabled: control.enabled }
+    QGCPalette { id: qgcPal; colorGroupEnabled: toolStripAction.enabled }
 
     QGCLabel {
         id:                         captionLabel
@@ -85,7 +89,7 @@ Button {
         y:                          control.discSize + control._captionSpacing
         text:                       control.text
         color:                      QGroundControl.globalPalette.text
-        opacity:                    control.enabled ? 1 : 0.5
+        opacity:                    toolStripAction.enabled ? 1 : 0.5
         font.pointSize:             ScreenTools.smallFontPointSize
         style:                      Text.Outline
         styleColor:                 "black"
@@ -166,7 +170,7 @@ Button {
         id:             buttonBkRect
         color:          (control.checked || control.pressed) ? bkCheckedColor
                             : control.glass ? "transparent"
-                                            : ((control.enabled && control.hovered) ? bkHoverColor : bkColor)
+                                            : ((control.actionable && control.hovered) ? bkHoverColor : bkColor)
         border.color:   control.borderColor
         border.width:   control.borderWidth
         anchors.horizontalCenter: parent.horizontalCenter
@@ -178,7 +182,7 @@ Button {
             anchors.fill: parent
             visible:      control.glass && !control.checked && !control.pressed
             radius:       buttonBkRect.radius
-            highlight:    control.enabled && control.hovered
+            highlight:    control.actionable && control.hovered
         }
     }
 }

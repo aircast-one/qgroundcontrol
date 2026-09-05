@@ -272,6 +272,8 @@ Item {
         maxHeight:              parent.height - (_toolsMargin + parentToolInsets.topEdgeLeftInset) -
                                     parentToolInsets.bottomEdgeLeftInset - _toolsMargin
         visible:                !QGroundControl.videoManager.fullScreen
+        editing:                overlayRig.editMode
+        onHeld:                 overlayRig.editMode = true
 
         onDisplayPreFlightChecklist: {
             if (!preFlightChecklistLoader.active) {
