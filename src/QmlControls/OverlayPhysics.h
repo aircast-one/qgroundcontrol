@@ -17,6 +17,7 @@ class OverlayPhysics : public QObject
     Q_PROPERTY(qreal damping      READ damping      WRITE setDamping      NOTIFY tuningChanged)
     Q_PROPERTY(qreal friction     READ friction     WRITE setFriction     NOTIFY tuningChanged)
     Q_PROPERTY(qreal restitution  READ restitution  WRITE setRestitution  NOTIFY tuningChanged)
+    Q_PROPERTY(qreal grid         READ grid         WRITE setGrid         NOTIFY tuningChanged)
 
 public:
     enum Kind { Free, Driven };
@@ -41,18 +42,21 @@ public:
     Q_INVOKABLE bool    allAsleep() const;
     Q_INVOKABLE QString describe(int id) const;
     Q_INVOKABLE QString report() const;
+    Q_INVOKABLE QPointF landing(int id, qreal homeX, qreal homeY) const;
 
     qreal pull() const { return _pull; }
     qreal springRadius() const { return _springRadius; }
     qreal damping() const { return _damping; }
     qreal friction() const { return _friction; }
     qreal restitution() const { return _restitution; }
+    qreal grid() const { return _grid; }
 
     void setPull(qreal value);
     void setSpringRadius(qreal value);
     void setDamping(qreal value);
     void setFriction(qreal value);
     void setRestitution(qreal value);
+    void setGrid(qreal value);
 
 signals:
     void tuningChanged();
@@ -87,6 +91,7 @@ private:
     bool          _clear(const Body &body, const QPointF &at, const QList<QRectF> &obstacles) const;
     QPointF       _clampToWalls(const Body &body, const QPointF &at) const;
     QPointF       _targetFor(const Body &body, const QList<QRectF> &obstacles, const QPointF &carry) const;
+    QPointF       _snapped(const Body &body, const QPointF &at) const;
     QPointF       _carryOn(const Body &body) const;
     void          _wakeFreeBodies(int except = -1);
     qreal         _mass(const Body &body) const { return qMax(1.0, body.size.width() * body.size.height()); }
@@ -100,4 +105,5 @@ private:
     qreal _damping      = 6;
     qreal _friction     = 0.6;
     qreal _restitution  = 0.15;
+    qreal _grid         = 0;
 };

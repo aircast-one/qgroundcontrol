@@ -42,6 +42,25 @@ Item {
         topInset:   toolbar.height
     }
 
+    Rectangle {
+        objectName:   "overlayDropPreview"
+        x:            _overlayRig.dropPreview.x
+        y:            _overlayRig.dropPreview.y
+        width:        _overlayRig.dropPreview.width
+        height:       _overlayRig.dropPreview.height
+        z:            QGroundControl.zOrderWidgets - 1
+        radius:       ScreenTools.defaultFontPixelHeight * 0.6
+        color:        Qt.alpha(QGroundControl.globalPalette.text, 0.22)
+        border.width: 2
+        border.color: Qt.alpha(QGroundControl.globalPalette.text, 0.7)
+        visible:      opacity > 0
+        opacity:      _overlayRig.dropPreviewVisible ? 1 : 0
+
+        Behavior on x       { NumberAnimation { duration: 120; easing.type: Easing.OutCubic } }
+        Behavior on y       { NumberAnimation { duration: 120; easing.type: Easing.OutCubic } }
+        Behavior on opacity { NumberAnimation { duration: 150 } }
+    }
+
     Shortcut {
         sequence:       "Escape"
         enabled:        _overlayRig.editMode

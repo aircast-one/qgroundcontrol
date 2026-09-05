@@ -102,15 +102,29 @@ inline void dragMouse(QQuickView& view, const QPoint& from, const QPoint& to, bo
 // Dropped positions quantize to DragToPosition's snapGrid, so a drag of N pixels does not
 // land N pixels away. Expectations have to be snapped the same way or they are off by up to
 // half a grid step.
-inline qreal snapToDropGrid(qreal value, qreal grid)
+inline qreal snapToDropGrid(qreal value, qreal extent, qreal size, qreal grid, qreal margin)
 {
-    return grid > 0 ? qRound(value / grid) * grid : value;
+    const qreal low = margin;
+    const qreal high = qMax(low, size - margin - extent);
+    if (grid <= 0) {
+        return qBound(low, value, high);
+    }
+    const bool nearFarEdge = value + (extent / 2) > size / 2;
+    const qreal snapped = nearFarEdge ? high - qRound((high - value) / grid) * grid
+                                      : low + qRound((value - low) / grid) * grid;
+    return qBound(low, snapped, high);
 }
 
 inline qreal dropGridOf(QQuickItem* item)
 {
     QObject* const dragPosition = item->findChild<QObject*>(QStringLiteral("dragPosition"));
     return dragPosition ? dragPosition->property("snapGrid").toReal() : 0;
+}
+
+inline qreal dropMarginOf(QQuickItem* item)
+{
+    QObject* const dragPosition = item->findChild<QObject*>(QStringLiteral("dragPosition"));
+    return dragPosition ? dragPosition->property("edgeMargin").toReal() : 0;
 }
 
 inline QPoint itemCenter(QQuickItem* item)

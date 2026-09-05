@@ -24,6 +24,7 @@ QtObject {
     property real               snapGrid:       ScreenTools.defaultFontPixelHeight
 
     property real               edgeMargin:     ScreenTools.defaultFontPixelHeight / 2
+    property var                aligner:        null
 
     readonly property bool      hasCustomPosition: _customPos
 
@@ -66,12 +67,24 @@ QtObject {
         return Math.max(edgeMargin, Math.min(value, bound - edgeMargin))
     }
 
-    readonly property real homeX: (_customPos && target && target.parent
-                                       ? _clampToParent(_customX, target.parent.width - target.width)
-                                       : defaultX)
-    readonly property real homeY: (_customPos && target && target.parent
-                                       ? _clampToParent(_customY, target.parent.height - target.height)
-                                       : defaultY)
+    function _snap(value, extent, size) {
+        const low  = edgeMargin
+        const high = Math.max(low, size - edgeMargin - extent)
+        if (snapGrid <= 0) {
+            return Math.max(low, Math.min(value, high))
+        }
+        const nearFarEdge = value + extent / 2 > size / 2
+        const snapped = nearFarEdge ? high - Math.round((high - value) / snapGrid) * snapGrid
+                                    : low + Math.round((value - low) / snapGrid) * snapGrid
+        return Math.max(low, Math.min(snapped, high))
+    }
+
+    readonly property real homeX: !target || !target.parent ? defaultX
+                                : _customPos ? _clampToParent(_customX, target.parent.width - target.width)
+                                             : _snap(defaultX, target.width, target.parent.width)
+    readonly property real homeY: !target || !target.parent ? defaultY
+                                : _customPos ? _clampToParent(_customY, target.parent.height - target.height)
+                                             : _snap(defaultY, target.height, target.parent.height)
 
     function _bindPosition() {
         target.x = Qt.binding(function() { return homeX + nudgeX })
@@ -92,23 +105,19 @@ QtObject {
         moveTo(x, y)
     }
 
-    function _place(value, limit, snapToGrid) {
-        const bound = Math.max(edgeMargin, limit - edgeMargin)
-        if (value <= edgeMargin) {
-            return edgeMargin
+    function _place(value, extent, size, snapToGrid) {
+        if (!snapToGrid) {
+            return Math.max(edgeMargin, Math.min(value, Math.max(edgeMargin, size - edgeMargin - extent)))
         }
-        if (value >= bound) {
-            return bound
-        }
-        if (!snapToGrid || snapGrid <= 0) {
-            return value
-        }
-        return Math.max(edgeMargin, Math.min(Math.round(value / snapGrid) * snapGrid, bound))
+        return _snap(value, extent, size)
     }
 
     function moveTo(newX, newY, snapToGrid = true) {
-        _customX = _place(newX, target.parent ? target.parent.width  - target.width  : newX, snapToGrid)
-        _customY = _place(newY, target.parent ? target.parent.height - target.height : newY, snapToGrid)
+        const aligned = snapToGrid && aligner && target.parent ? aligner(target, newX, newY) : null
+        _customX = aligned ? _place(aligned.x, target.width,  target.parent.width,  false)
+                           : _place(newX, target.width,  target.parent ? target.parent.width  : newX + target.width,  snapToGrid)
+        _customY = aligned ? _place(aligned.y, target.height, target.parent.height, false)
+                           : _place(newY, target.height, target.parent ? target.parent.height : newY + target.height, snapToGrid)
         _customPos = true
         _saveTimer.restart()
         _bindPosition()

@@ -10,6 +10,8 @@
 #include "DragToPositionTest.h"
 #include "QuickInteractionTestHelpers.h"
 
+#include <cmath>
+
 static const qreal kMargin = 8;
 
 static void clearPanelSettings()
@@ -21,9 +23,6 @@ static bool loadView(QQuickView& view)
 {
     return loadTestView(view, QStringLiteral("qrc:/unittest/DragToPositionTest.qml"));
 }
-
-// DragHandler applies the full translation from the press point once its threshold is
-// exceeded, so unlike the MouseArea drag in PipViewTest no anchor compensation is needed.
 static void dragPanel(QQuickView& view, const QPoint& from, const QPoint& to)
 {
     dragMouse(view, from, to, false);
@@ -51,8 +50,9 @@ void DragToPositionTest::_dragRepositionsAndPersists()
         dragPanel(view, start, target);
 
         const qreal grid = dropGridOf(root);
-        const QPointF expected(snapToDropGrid(root->width() - panel->width() - kMargin + target.x() - start.x(), grid),
-                               snapToDropGrid(root->height() - panel->height() - kMargin + target.y() - start.y(), grid));
+        const qreal margin = dropMarginOf(root);
+        const QPointF expected(snapToDropGrid(root->width() - panel->width() - kMargin + target.x() - start.x(), panel->width(), root->width(), grid, margin),
+                               snapToDropGrid(root->height() - panel->height() - kMargin + target.y() - start.y(), panel->height(), root->height(), grid, margin));
         QTRY_VERIFY(qAbs(panel->x() - expected.x()) < 2);
         QTRY_VERIFY(qAbs(panel->y() - expected.y()) < 2);
 
@@ -86,17 +86,12 @@ void DragToPositionTest::_dragOffscreenClampsCommittedPosition()
         QVERIFY(dragPosition);
         edgeMargin = dragPosition->property("edgeMargin").toReal();
         QVERIFY(edgeMargin > 0);
-
-        // Drag far past the top-left corner: the DragHandler itself is unbounded, but the
-        // committed position must clamp back on screen, docked at the edge margin.
         dragPanel(view, itemCenter(panel), QPoint(-300, -300));
 
         QTRY_COMPARE(panel->x(), edgeMargin);
         QTRY_COMPARE(panel->y(), edgeMargin);
         QTRY_VERIFY(storedPosition(QStringLiteral("TestPanel800x600-CustomPosition")));
     }
-
-    // The clamped position must also be what a fresh view restores to.
     QQuickView view2;
     QVERIFY(loadView(view2));
     QQuickItem* panel2 = view2.rootObject()->findChild<QQuickItem*>("panel");
@@ -122,9 +117,6 @@ void DragToPositionTest::_dragBackToDefaultSnapsAndResets()
 
         dragPanel(view, itemCenter(panel), QPoint(300, 200));
         QTRY_VERIFY(panel->x() != defaultPos.x());
-
-        // Drop it well off the default corner but overlapping more than half the panel:
-        // it must snap exactly back.
         const QPoint offsetFromDefault(panel->x() - defaultPos.x() + qRound(panel->width() * 0.4),
                                        panel->y() - defaultPos.y() + qRound(panel->height() * 0.4));
         dragPanel(view, itemCenter(panel), itemCenter(panel) - offsetFromDefault);
@@ -132,8 +124,6 @@ void DragToPositionTest::_dragBackToDefaultSnapsAndResets()
         QTRY_COMPARE(panel->x(), defaultPos.x());
         QTRY_COMPARE(panel->y(), defaultPos.y());
     }
-
-    // The reset must persist: a fresh view starts at the default position.
     QQuickView view2;
     QVERIFY(loadView(view2));
     QQuickItem* root2 = view2.rootObject();
@@ -177,15 +167,11 @@ void DragToPositionTest::_comboBoxInPanelOpensPopup()
     QQuickItem* combo = view.rootObject()->findChild<QQuickItem*>("combo");
     QVERIFY(panel);
     QVERIFY(combo);
-
-    // Dragging by the content area moves the panel.
     QQuickItem* content = panel->property("contentItem").value<QQuickItem*>();
     QVERIFY(content);
     const QPointF defaultPos(panel->x(), panel->y());
     dragMouse(view, itemCenter(content), itemCenter(content) + QPoint(250, 60), false);
     QTRY_VERIFY(panel->x() != defaultPos.x());
-
-    // Selection UI shown: the combo popup must open and the panel must not move.
     panel->setProperty("showSelectionUI", true);
     QTRY_VERIFY(combo->isVisible() && combo->width() > 0);
     const QPointF posBeforeClick(panel->x(), panel->y());
@@ -197,3 +183,27 @@ void DragToPositionTest::_comboBoxInPanelOpensPopup()
     QCOMPARE(QPointF(panel->x(), panel->y()), posBeforeClick);
 }
 
+
+void DragToPositionTest::_dropsSnapToTheGridFromTheNearestEdge()
+{
+    clearPanelSettings();
+
+    QQuickView view;
+    QVERIFY(loadView(view));
+    QQuickItem* root = view.rootObject();
+    QQuickItem* panel = root->findChild<QQuickItem*>("panel");
+    QVERIFY(panel);
+    const qreal grid = dropGridOf(root);
+    const qreal margin = dropMarginOf(root);
+    QVERIFY(grid > 0);
+
+    dragPanel(view, itemCenter(panel), QPoint(230, 170));
+    QTRY_VERIFY(panel->x() < root->width() / 2);
+    QCOMPARE(std::fmod(panel->x() - margin, grid), 0.0);
+    QCOMPARE(std::fmod(panel->y() - margin, grid), 0.0);
+
+    dragPanel(view, itemCenter(panel), QPoint(root->width() - 130, root->height() - 90));
+    QTRY_VERIFY(panel->x() > root->width() / 2);
+    QCOMPARE(std::fmod(root->width() - margin - (panel->x() + panel->width()), grid), 0.0);
+    QCOMPARE(std::fmod(root->height() - margin - (panel->y() + panel->height()), grid), 0.0);
+}

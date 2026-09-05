@@ -17,6 +17,7 @@ class DragToPositionTest : public UnitTest
 
 private slots:
     void _dragRepositionsAndPersists();
+    void _dropsSnapToTheGridFromTheNearestEdge();
     void _dragOffscreenClampsCommittedPosition();
     void _dragBackToDefaultSnapsAndResets();
     void _clickStillReachesChild();

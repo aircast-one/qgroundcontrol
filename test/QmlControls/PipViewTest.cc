@@ -52,8 +52,9 @@ void PipViewTest::_dragRepositionsAndPersists()
         dragMouse(view, start, target);
 
         const qreal grid = dropGridOf(root);
-        const QPointF expected(snapToDropGrid(kMargin + target.x() - start.x(), grid),
-                               snapToDropGrid(root->height() - pip->height() - kMargin + target.y() - start.y(), grid));
+        const qreal margin = dropMarginOf(root);
+        const QPointF expected(snapToDropGrid(kMargin + target.x() - start.x(), pip->width(), root->width(), grid, margin),
+                               snapToDropGrid(root->height() - pip->height() - kMargin + target.y() - start.y(), pip->height(), root->height(), grid, margin));
         QTRY_VERIFY(qAbs(pip->x() - expected.x()) < 2);
         QTRY_VERIFY(qAbs(pip->y() - expected.y()) < 2);
 

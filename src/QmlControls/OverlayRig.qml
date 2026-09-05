@@ -84,6 +84,7 @@ QtObject {
         damping:      2 * root._dampingFraction * root._omega
         friction:     root._friction
         restitution:  root._restitution
+        grid:         root._gap
     }
     property real _wallsW: -1
     property real _wallsH: -1
@@ -197,7 +198,45 @@ QtObject {
                        homeWatcher: _watchHome(dragPosition), vx: 0, vy: 0, anchored: anchored }]
 
         dragPosition.physicsActive = _physicsTimer.running
+        dragPosition.aligner = (target, x, y) => root.alignDrop(target, x, y)
         requestReflow()
+    }
+
+    readonly property real magnetRadius: _gap * 0.75
+
+    property rect dropPreview:        Qt.rect(0, 0, 0, 0)
+    property bool dropPreviewVisible: false
+
+    function alignDrop(item, x, y) {
+        const w = item.width
+        const h = item.height
+        const neighbours = _movables.map((entry) => entry.item)
+            .concat(_statics.filter((entry) => entry.owner !== item).map((entry) => entry.item))
+            .filter((other) => other && other !== item && other.visible && other.width > 0 && other.height > 0)
+            .map((other) => {
+                const at = other.parent.mapToItem(item.parent, other.x, other.y)
+                return Qt.rect(at.x, at.y, other.width, other.height)
+            })
+        const xCandidates = neighbours
+            .map((r) => [r.x, r.x + r.width - w, r.x + r.width + edgeMargin, r.x - edgeMargin - w])
+            .reduce((all, some) => all.concat(some), [])
+        const yCandidates = neighbours
+            .map((r) => [r.y, r.y + r.height - h, r.y + r.height + edgeMargin, r.y - edgeMargin - h])
+            .reduce((all, some) => all.concat(some), [])
+        return Qt.point(_alignAxis(x, w, item.parent.width, xCandidates),
+                        _alignAxis(y, h, item.parent.height, yCandidates))
+    }
+
+    function _alignAxis(value, extent, size, candidates) {
+        const low  = edgeMargin
+        const high = Math.max(low, size - edgeMargin - extent)
+        const nearFarEdge = value + extent / 2 > size / 2
+        const onGrid = nearFarEdge ? high - Math.round((high - value) / _gap) * _gap
+                                   : low + Math.round((value - low) / _gap) * _gap
+        const magnetic = candidates.filter((candidate) => Math.abs(candidate - value) <= magnetRadius)
+        const best = magnetic.length === 0 ? onGrid : magnetic.reduce((closest, candidate) =>
+            Math.abs(candidate - value) < Math.abs(closest - value) ? candidate : closest)
+        return Math.max(low, Math.min(best, high))
     }
 
     function unregisterMovable(item) {
@@ -307,6 +346,7 @@ QtObject {
 
     function _sleep() {
         _physicsTimer.stop()
+        dropPreviewVisible = false
         _movables.forEach((entry) => {
             if (entry.dragPosition) {
                 entry.dragPosition.physicsActive = false
@@ -407,6 +447,7 @@ QtObject {
 
         const report = []
         let held = false
+        let dragged = null
 
         _movables.forEach((entry) => {
             if (!entry.item || !entry.item.visible || !entry.dragPosition) {
@@ -435,6 +476,9 @@ QtObject {
 
             if (driven) {
                 held = held || isHeld
+                if (isHeld && !entry.anchored) {
+                    dragged = entry.item
+                }
                 if (fresh) {
                     _physics.place(entry.body, body.x, body.y)
                 } else {
@@ -452,6 +496,15 @@ QtObject {
             }
             _physics.setHome(entry.body, homeBody.x, homeBody.y)
         })
+
+        if (dragged) {
+            const snapped = alignDrop(dragged, dragged.x, dragged.y)
+            const home = dragged.parent.mapToItem(viewport, snapped.x, snapped.y)
+            const entry = _movables.find((candidate) => candidate.item === dragged)
+            const landing = _physics.landing(entry.body, home.x - _bodyMargin, home.y - _bodyMargin)
+            dropPreview = Qt.rect(landing.x + _bodyMargin, landing.y + _bodyMargin, dragged.width, dragged.height)
+        }
+        dropPreviewVisible = dragged !== null
 
         if (integrate) {
             _physics.step(dt)

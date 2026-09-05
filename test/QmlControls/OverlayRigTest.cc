@@ -13,6 +13,7 @@
 #include <QDateTime>
 #include <QPair>
 #include <algorithm>
+#include <cmath>
 
 static void clearTestSettings()
 {
@@ -298,8 +299,7 @@ void OverlayRigTest::_ownedStaticPushesOthersButNotOwner()
 
     QVERIFY(QMetaObject::invokeMethod(rigOf(view), "resolve", Q_ARG(QVariant, QVariant::fromValue(static_cast<QObject*>(right)))));
 
-    QCOMPARE(left->x(), 20.0);
-    QCOMPARE(left->y(), 400.0);
+    QCOMPARE(QPointF(left->x(), left->y()), homeOf(positionOf(view, "leftPosition")));
     const auto clearOfAttachedNow = [right, attached]() {
         return right->x() >= attached->x() + attached->width() || right->x() + right->width() <= attached->x() ||
                right->y() >= attached->y() + attached->height() || right->y() + right->height() <= attached->y();
@@ -602,10 +602,12 @@ void OverlayRigTest::_itemFollowsAMovedHomeWhenTheObstructionLeaves()
     WAIT_SETTLED(rig, 3000);
 
     leftPosition->setProperty("defaultX", homeX + 300);
+    const QPointF newHome = homeOf(leftPosition);
+    QVERIFY(newHome.x() > homeX + 200);
     staticItem->setVisible(false);
-    QTRY_VERIFY2_WITH_TIMEOUT(qFuzzyCompare(left->x() + 1, homeX + 301) && qFuzzyCompare(left->y() + 1, homeY + 1),
+    QTRY_VERIFY2_WITH_TIMEOUT(qFuzzyCompare(left->x() + 1, newHome.x() + 1) && qFuzzyCompare(left->y() + 1, newHome.y() + 1),
                               qPrintable(QStringLiteral("left rests at %1,%2 instead of its new home %3,%4")
-                                             .arg(left->x()).arg(left->y()).arg(homeX + 300).arg(homeY)),
+                                             .arg(left->x()).arg(left->y()).arg(newHome.x()).arg(newHome.y())),
                               3000);
 }
 
@@ -671,4 +673,33 @@ void OverlayRigTest::_droppedItemNeverSnapsBackToWhereItCameFrom()
         QTest::qWait(5);
     }
     QCOMPARE(left->x(), homeOf(leftPosition).x());
+}
+
+void OverlayRigTest::_dropAlignsWithANeighboursEdge()
+{
+    QQuickView view;
+    QVERIFY(loadView(view));
+
+    QQuickItem *const left = view.rootObject()->findChild<QQuickItem*>("leftItem");
+    QQuickItem *const right = view.rootObject()->findChild<QQuickItem*>("rightItem");
+    QObject *const rightPosition = positionOf(view, "rightPosition");
+    QObject *const rig = rigOf(view);
+    QVERIFY(left && right && rightPosition && rig);
+    QVERIFY(moveTo(rightPosition, 503.0, 300.0));
+    WAIT_SETTLED(rig, 3000);
+
+    QVariant landing;
+    QVERIFY(QMetaObject::invokeMethod(rig, "alignDrop", Q_RETURN_ARG(QVariant, landing),
+                                      Q_ARG(QVariant, QVariant::fromValue(static_cast<QObject*>(left))),
+                                      Q_ARG(QVariant, 507.0), Q_ARG(QVariant, 380.0)));
+    QCOMPARE(landing.toPointF().x(), 503.0);
+    QCOMPARE(landing.toPointF().y(), right->y() + right->height() + rig->property("edgeMargin").toReal());
+
+    QVERIFY(QMetaObject::invokeMethod(rig, "alignDrop", Q_RETURN_ARG(QVariant, landing),
+                                      Q_ARG(QVariant, QVariant::fromValue(static_cast<QObject*>(left))),
+                                      Q_ARG(QVariant, 211.0), Q_ARG(QVariant, 615.0)));
+    const qreal grid = rig->property("_gap").toReal();
+    const qreal margin = rig->property("edgeMargin").toReal();
+    QCOMPARE(std::fmod(landing.toPointF().x() - margin, grid), 0.0);
+    QCOMPARE(std::fmod(view.rootObject()->height() - margin - (landing.toPointF().y() + left->height()), grid), 0.0);
 }
