@@ -179,11 +179,10 @@ Item {
                                     ? qsTr("Speeds are used to estimate mission time only. They do not change the flight speed.")
                                     : ""
 
-            LabelledFactComboBox {
+            LabelledFactMenu {
                 Layout.fillWidth:   true
                 label:              _firmwareLabel
                 fact:               QGroundControl.settingsManager.appSettings.offlineEditingFirmwareClass
-                indexModel:         false
                 visible:            _multipleFirmware && _allowFWVehicleTypeSelection
             }
 
@@ -194,11 +193,10 @@ Item {
                 visible:            _multipleFirmware && !_allowFWVehicleTypeSelection
             }
 
-            LabelledFactComboBox {
+            LabelledFactMenu {
                 Layout.fillWidth:   true
                 label:              _vehicleLabel
                 fact:               QGroundControl.settingsManager.appSettings.offlineEditingVehicleClass
-                indexModel:         false
                 visible:            _multipleVehicleTypes && _allowFWVehicleTypeSelection
             }
 

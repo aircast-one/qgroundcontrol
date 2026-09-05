@@ -37,6 +37,7 @@ ColumnLayout {
 
     QGCLabel {
         Layout.leftMargin:  _margins
+        Layout.topMargin:   _margins
         text:               popoverStyle ? heading.toUpperCase() : heading
         font.pointSize:     popoverStyle ? ScreenTools.smallFontPointSize
                                          : ScreenTools.defaultFontPointSize + 1
@@ -52,7 +53,7 @@ ColumnLayout {
         Layout.fillWidth:   true
         implicitWidth:      _contentLayout.implicitWidth + (control._inset ? _margins * 2 : 0)
         implicitHeight:     _contentLayout.implicitHeight + (control._inset ? _margins * 2: 0)
-        color:              cardStyle  ? Qt.alpha(QGroundControl.globalPalette.text, 0.055)
+        color:              cardStyle  ? QGroundControl.globalPalette.overlayCard
                           : showBorder ? QGroundControl.globalPalette.windowShade
                                        : "transparent"
         border.color:       outerBorderColor
@@ -88,6 +89,7 @@ ColumnLayout {
     QGCLabel {
         Layout.leftMargin:  _margins
         Layout.rightMargin: _margins
+        Layout.topMargin:   _margins / 2
         Layout.fillWidth:   true
         text:               description
         wrapMode:           Text.WordWrap

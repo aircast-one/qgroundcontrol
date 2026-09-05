@@ -75,11 +75,7 @@ QtObject {
             return contentBackdrop
         }
         // Innermost registered scope wins, so a view nested inside another still frosts its own.
-        for (let i = scopes.length - 1; i >= 0; --i) {
-            if (scopes[i].source && _contains(scopes[i].source, item)) {
-                return scopes[i].backdrop
-            }
-        }
-        return fullBackdrop
+        const scope = scopes.slice().reverse().find(candidate => candidate.source && _contains(candidate.source, item))
+        return scope ? scope.backdrop : fullBackdrop
     }
 }

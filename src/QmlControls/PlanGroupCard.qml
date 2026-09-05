@@ -12,15 +12,12 @@ import QtQuick
 import QGroundControl
 import QGroundControl.ScreenTools
 
-// An inset group of rows on the inspector panel. Rows sit flush inside one surface separated by
-// hairlines, rather than each carrying its own border and shadow - a list of framed boxes reads
-// as a list of unrelated things.
 Rectangle {
     id: _root
 
     default property alias rows: rowColumn.data
 
-    color:          Qt.alpha(QGroundControl.globalPalette.text, 0.055)
+    color:          QGroundControl.globalPalette.overlayCard
     radius:         ScreenTools.defaultFontPixelHeight * 0.9
     implicitHeight: rowColumn.implicitHeight
     clip:           true

@@ -20,7 +20,8 @@ RowLayout {
     property real  labelPreferredWidth:    -1
     property real  fontPointSize:          ScreenTools.defaultFontPointSize
 
-    spacing: ScreenTools.defaultFontPixelWidth * 2
+    spacing:                ScreenTools.defaultFontPixelWidth * 2
+    Layout.preferredHeight: ScreenTools.settingsRowHeight
 
     QGCLabel { 
         id:                 _labelLabel

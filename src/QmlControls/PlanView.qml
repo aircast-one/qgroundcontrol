@@ -49,7 +49,6 @@ Item {
     readonly property int   _decimalPlaces:             8
     readonly property real  _margin:                    ScreenTools.defaultFontPixelHeight * 0.5
     readonly property real  _toolsMargin:               ScreenTools.defaultFontPixelWidth * 0.75
-    readonly property real  _radius:                    ScreenTools.defaultFontPixelWidth  * 0.5
     // Derived, not branched. The width used to be an if/else that added 21.667 characters when
     // UTMSP was on - a number with no relationship to anything on screen.
     readonly property real  _rightPanelWidth:           Math.min(width / 3, ScreenTools.defaultFontPixelWidth * (_utmspEnabled ? 52 : 40))
@@ -57,21 +56,21 @@ Item {
     // surface with panels resting on it rather than as a set of docked regions butted together.
     readonly property real  _panelMargin:               ScreenTools.defaultFontPixelHeight * 0.9
     readonly property real  _panelRadius:               ScreenTools.defaultFontPixelHeight * 1.3
-    readonly property var   _defaultVehicleCoordinate:  QtPositioning.coordinate(37.803784, -122.462276)
-    readonly property bool  _waypointsOnlyMode:         QGroundControl.corePlugin.options.missionWaypointsOnly
+
+    // The surface this view draws on, owned by whoever hosts it.
+    property var    map
+    property bool   planActive
 
     property var    _planMasterController:              planMasterController
     property var    _missionController:                 _planMasterController.missionController
     property var    _geoFenceController:                _planMasterController.geoFenceController
     property var    _rallyPointController:              _planMasterController.rallyPointController
     property var    _visualItems:                       _missionController.visualItems
-    property bool   _lightWidgetBorders:                editorMap.isSatelliteMap
     property bool   _addROIOnClick:                     false
     // The add-waypoint mode used to live as `checked` on a ToolStripAction, so the map's click
     // handler reached into the tool strip's model to find out what a click meant. The mode is
     // the view's state; the dock button only reflects it.
     property bool   _addWaypointMode:                   false
-    property bool   _singleComplexItem:                 _missionController.complexMissionItemNames.length === 1
     // One index over one list. There used to be two tab bars with duplicated buttons and two
     // parallel expressions selecting between them, so adding a layer meant editing both.
     property int    _layerIndex:                        0
@@ -110,7 +109,7 @@ Item {
 
 
     function mapCenter() {
-        var coordinate = editorMap.center
+        var coordinate = map.center
         coordinate.latitude  = coordinate.latitude.toFixed(_decimalPlaces)
         coordinate.longitude = coordinate.longitude.toFixed(_decimalPlaces)
         coordinate.altitude  = coordinate.altitude.toFixed(_decimalPlaces)
@@ -124,15 +123,13 @@ Item {
 
     MapFitFunctions {
         id:                         mapFitFunctions  // The name for this id cannot be changed without breaking references outside of this code. Beware!
-        map:                        editorMap
+        map:                        _root.map
         usePlannedHomePosition:     true
         planMasterController:       _planMasterController
     }
 
     onVisibleChanged: {
         if(visible) {
-            editorMap.zoomLevel = QGroundControl.flightMapZoom
-            editorMap.center    = QGroundControl.flightMapPosition
             OverlayBackdrop.refresh()
             if (!_planMasterController.containsItems) {
                 fileMenu.openFrom(fileButton)
@@ -380,61 +377,51 @@ Item {
         id:             panel
         anchors.fill:   parent
 
-        FlightMap {
-            id:                         editorMap
-            anchors.fill:               parent
-            mapName:                    "MissionEditor"
-            allowGCSLocationCenter:     true
-            allowVehicleLocationCenter: true
-            planView:                   true
+        // The plan does not own a map. It used to build a second FlightMap showing the same
+        // ground as the fly view's, which is why the two could drift apart and why glass here
+        // frosted the wrong one. This is the editing layer, drawn onto the shared surface.
+        PlanEditMapItems {
+            map:                  _root.map
+            planActive:           _root.planActive
+            planMasterController: _planMasterController
+            missionInteractive:   _editingLayer === _layerMission || _editingLayer === _layerUTMSP
+            fenceInteractive:     _editingLayer === _layerGeoFence
+            rallyInteractive:     _editingLayer === _layerRallyPoints
+            utmspInteractive:     _editingLayer === _layerUTMSP
+            utmspEnabled:         _utmspEnabled
+            resetGeofencePolygon: _resetGeofencePolygon
+            onItemClicked:        (sequenceNumber) => _missionController.setCurrentPlanViewSeqNum(sequenceNumber, false)
+        }
 
-            zoomLevel:                  QGroundControl.flightMapZoom
-            center:                     QGroundControl.flightMapPosition
+        // While the plan is the active mode it owns what counts as the map's usable middle, so
+        // fit-to-view clears the dock, the inspector and the profile rather than the fly view's
+        // instruments.
+        Binding {
+            target:   _root.map
+            property: "centerViewport"
+            when:     _root.planActive
+            value:    Qt.rect(dock.x + dock.width + _margin,
+                              planToolBar.height + _margin,
+                              _root.width - (dock.x + dock.width) - (rightPanel.width + _panelMargin) - (_margin * 2),
+                              _root.height - planToolBar.height - (_terrainProfileOpen ? _terrainProfileHeight : 0) - (_margin * 2))
+        }
 
-            // This is the center rectangle of the map which is not obscured by tools
-            // Reads the reservation, not the profile's y. Deriving the map's usable centre from
-            // a child's position meant the fit-to-view geometry changed as the profile
-            // animated, and any change to the profile's layout silently moved it.
-            property rect centerViewport:   Qt.rect(_leftToolWidth + _margin,
-                                                    _topReserved + _margin,
-                                                    editorMap.width - _leftToolWidth - _rightToolWidth - (_margin * 2),
-                                                    editorMap.height - _topReserved - _terrainReserved - (_margin * 2))
+        Connections {
+            target:  _root.map
+            enabled: _root.planActive
 
-            property real _terrainReserved: _root._terrainProfileOpen ? _root._terrainProfileHeight : 0
-            property real _topReserved:     planToolBar.height
-
-            property real _leftToolWidth:       dock.x + dock.width
-            property real _rightToolWidth:      rightPanel.width + _root._panelMargin
-            property real _nonInteractiveOpacity:  0.5
-
-            // Initial map position duplicates Fly view position
-            Component.onCompleted: editorMap.center = QGroundControl.flightMapPosition
-
-            QGCMapPalette { id: mapPal; lightColors: editorMap.isSatelliteMap }
-
-            onZoomLevelChanged: {
-                QGroundControl.flightMapZoom = editorMap.zoomLevel
-                OverlayBackdrop.refresh()
-            }
-            onCenterChanged: {
-                QGroundControl.flightMapPosition = editorMap.center
-                OverlayBackdrop.refresh()
-            }
-
-            onMapClicked: (mouse) => {
-                // Take focus to close any previous editing
-                editorMap.focus = true
+            function onMapClicked(mouse) {
                 if (!mainWindow.allowViewSwitch()) {
                     return
                 }
-                var coordinate = editorMap.toCoordinate(Qt.point(mouse.x, mouse.y), false /* clipToViewPort */)
-                coordinate.latitude = coordinate.latitude.toFixed(_decimalPlaces)
+                var coordinate = _root.map.toCoordinate(Qt.point(mouse.x, mouse.y), false /* clipToViewPort */)
+                coordinate.latitude  = coordinate.latitude.toFixed(_decimalPlaces)
                 coordinate.longitude = coordinate.longitude.toFixed(_decimalPlaces)
-                coordinate.altitude = coordinate.altitude.toFixed(_decimalPlaces)
-				if(_utmspEnabled){
-                	QGroundControl.utmspManager.utmspVehicle.updateLastCoordinates(coordinate.latitude, coordinate.longitude)
+                coordinate.altitude  = coordinate.altitude.toFixed(_decimalPlaces)
+                if (_utmspEnabled) {
+                    QGroundControl.utmspManager.utmspVehicle.updateLastCoordinates(coordinate.latitude, coordinate.longitude)
                 }
-                
+
                 switch (_editingLayer) {
                 case _layerMission:
                 case _layerUTMSP:
@@ -452,181 +439,17 @@ Item {
                     break
                 }
             }
-
-            // Add the mission item visuals to the map
-            Repeater {
-                model: _missionController.visualItems
-                delegate: MissionItemMapVisual {
-                    map:         editorMap
-                    opacity:     _editingLayer == _layerMission || _editingLayer == _layerUTMSP ? 1 : editorMap._nonInteractiveOpacity
-                    interactive: _editingLayer == _layerMission || _editingLayer == _layerUTMSP
-                    vehicle:     _planMasterController.controllerVehicle
-                    onClicked:   (sequenceNumber) => { _missionController.setCurrentPlanViewSeqNum(sequenceNumber, false) }
-                }
-            }
-
-            // Add lines between waypoints
-            MissionLineView {
-                showSpecialVisual:  _missionController.isROIBeginCurrentItem
-                model:              _missionController.simpleFlightPathSegments
-                opacity:            _editingLayer == _layerMission ||  _editingLayer == _layerUTMSP  ? 1 : editorMap._nonInteractiveOpacity
-            }
-
-            // Direction arrows in waypoint lines
-            MapItemView {
-                model: _editingLayer == _layerMission ||_editingLayer == _layerUTMSP ? _missionController.directionArrows : undefined
-
-                delegate: MapLineArrow {
-                    fromCoord:      object ? object.coordinate1 : undefined
-                    toCoord:        object ? object.coordinate2 : undefined
-                    arrowPosition:  3
-                    z:              QGroundControl.zOrderWaypointLines + 1
-                }
-            }
-
-            // Incomplete segment lines
-            MapItemView {
-                model: _missionController.incompleteComplexItemLines
-
-                delegate: MapPolyline {
-                    path:       [ object.coordinate1, object.coordinate2 ]
-                    line.width: 1
-                    line.color: "red"
-                    z:          QGroundControl.zOrderWaypointLines
-                    opacity:    _editingLayer == _layerMission ? 1 : editorMap._nonInteractiveOpacity
-                }
-            }
-
-            // UI for splitting the current segment
-            MapQuickItem {
-                id:             splitSegmentItem
-                anchorPoint.x:  sourceItem.width / 2
-                anchorPoint.y:  sourceItem.height / 2
-                z:              QGroundControl.zOrderWaypointLines + 1
-                visible:        _editingLayer == _layerMission ||  _editingLayer == _layerUTMSP
-
-                sourceItem: SplitIndicator {
-                    onClicked:  _missionController.insertSimpleMissionItem(splitSegmentItem.coordinate,
-                                                                           _missionController.currentPlanViewVIIndex,
-                                                                           true /* makeCurrentItem */)
-                }
-
-                function _updateSplitCoord() {
-                    if (_missionController.splitSegment) {
-                        var distance = _missionController.splitSegment.coordinate1.distanceTo(_missionController.splitSegment.coordinate2)
-                        var azimuth = _missionController.splitSegment.coordinate1.azimuthTo(_missionController.splitSegment.coordinate2)
-                        splitSegmentItem.coordinate = _missionController.splitSegment.coordinate1.atDistanceAndAzimuth(distance / 2, azimuth)
-                    } else {
-                        coordinate = QtPositioning.coordinate()
-                    }
-                }
-
-                Connections {
-                    target:                 _missionController
-                    function onSplitSegmentChanged()  { splitSegmentItem._updateSplitCoord() }
-                }
-
-                Connections {
-                    target:                 _missionController.splitSegment
-                    function onCoordinate1Changed()   { splitSegmentItem._updateSplitCoord() }
-                    function onCoordinate2Changed()   { splitSegmentItem._updateSplitCoord() }
-                }
-            }
-
-            // Add the vehicles to the map
-            MapItemView {
-                model: QGroundControl.multiVehicleManager.vehicles
-                delegate: VehicleMapItem {
-                    vehicle:        object
-                    coordinate:     object.coordinate
-                    map:            editorMap
-                    size:           ScreenTools.defaultFontPixelHeight * 3
-                    z:              QGroundControl.zOrderMapItems - 1
-                }
-            }
-
-            GeoFenceMapVisuals {
-                map:                    editorMap
-                myGeoFenceController:   _geoFenceController
-                interactive:            _editingLayer == _layerGeoFence
-                homePosition:           _missionController.plannedHomePosition
-                planView:               true
-                opacity:                _editingLayer != _layerGeoFence ? editorMap._nonInteractiveOpacity : 1
-            }
-
-            RallyPointMapVisuals {
-                map:                    editorMap
-                myRallyPointController: _rallyPointController
-                interactive:            _editingLayer == _layerRallyPoints
-                planView:               true
-                opacity:                _editingLayer != _layerRallyPoints ? editorMap._nonInteractiveOpacity : 1
-            }
-
-            UTMSPMapVisuals {
-                id: utmspvisual
-                enabled:                _utmspEnabled
-                map:                    editorMap
-                currentMissionItems:    _visualItems
-                myGeoFenceController:   _geoFenceController
-                interactive:            _editingLayer == _layerUTMSP
-                homePosition:           _missionController.plannedHomePosition
-                planView:               true
-                opacity:                _editingLayer != _layerUTMSP ? editorMap._nonInteractiveOpacity : 1
-                resetCheck:             _resetGeofencePolygon
-            }
-
-            Connections {
-                target: utmspEditor
-                function onResetGeofencePolygonTriggered() {
-                    resetTimer.start()
-                }
-            }
-            Timer {
-                id: resetTimer
-                interval: 2500
-                running: false
-                repeat: false
-                onTriggered: {
-                    _resetGeofencePolygon = true
-                }
-            }
         }
 
-        //-----------------------------------------------------------
-        // What the glass in this view refracts. Every overlay surface here used to sample the
-        // fly view's backdrop, because that was the only one registered - so the panels frosted
-        // a blurred snapshot of a different map, offset from the one they were sitting on. That
-        // is what made the material read as a picture underneath rather than as glass.
-        ShaderEffectSource {
-            id:             planBackdropCapture
-            anchors.fill:   editorMap
-            sourceItem:     editorMap
-            live:           false
-            visible:        false
-            textureSize:    Qt.size(Math.max(1, Math.round(editorMap.width  / _downscale)),
-                                    Math.max(1, Math.round(editorMap.height / _downscale)))
-
-            readonly property int _downscale: 4
+        Connections {
+            target: utmspEditor
+            function onResetGeofencePolygonTriggered() { resetTimer.start() }
         }
 
-        MultiEffect {
-            id:            planFrostedBackdrop
-            anchors.fill:  editorMap
-            source:        planBackdropCapture
-            blurEnabled:   true
-            blur:          1.0
-            blurMax:       32
-            saturation:    0.25
-            visible:       false
-            layer.enabled: true
-
-            Component.onCompleted:   OverlayBackdrop.addScope(_root, planFrostedBackdrop)
-            Component.onDestruction:  OverlayBackdrop.removeScope(_root)
-
-            Connections {
-                target: OverlayBackdrop
-                function onRefreshed() { planBackdropCapture.scheduleUpdate() }
-            }
+        Timer {
+            id:       resetTimer
+            interval: 2500
+            onTriggered: _resetGeofencePolygon = true
         }
 
         //-----------------------------------------------------------
@@ -864,9 +687,9 @@ Item {
                     text: object.name
                     onClicked: {
                         planCreatorMenu.close()
-                        const centerPoint = Qt.point(editorMap.centerViewport.left + (editorMap.centerViewport.width / 2),
-                                                     editorMap.centerViewport.top + (editorMap.centerViewport.height / 2))
-                        const coord = editorMap.toCoordinate(centerPoint, false /* clipToViewPort */)
+                        const centerPoint = Qt.point(map.centerViewport.left + (map.centerViewport.width / 2),
+                                                     map.centerViewport.top + (map.centerViewport.height / 2))
+                        const coord = map.toCoordinate(centerPoint, false /* clipToViewPort */)
                         if (_planMasterController.containsItems) {
                             createPlanRemoveAllPromptDialog.createObject(mainWindow, { mapCenter: coord, planCreator: object }).open()
                         } else {
@@ -965,7 +788,7 @@ Item {
                 enabled: _missionController.plannedHomePosition.isValid
                 onClicked: {
                     centerMenu.close()
-                    editorMap.center = _missionController.plannedHomePosition
+                    map.center = _missionController.plannedHomePosition
                 }
             }
 
@@ -974,7 +797,7 @@ Item {
                 enabled: globals.activeVehicle && globals.activeVehicle.coordinate.isValid
                 onClicked: {
                     centerMenu.close()
-                    editorMap.center = globals.activeVehicle.coordinate
+                    map.center = globals.activeVehicle.coordinate
                 }
             }
         }
@@ -1053,7 +876,7 @@ Item {
             // One control built from the layer list, so a layer is added in one place. Mission,
             // Fence and Rally are modes over the same canvas rather than separate pages, which
             // is a segmented control, not a tab bar.
-            OverlaySegmentedControl {
+            OverlayViewSwitch {
                 id:                  layerSelector
                 objectName:          "planLayerSelector"
                 anchors.top:         parent.top
@@ -1064,7 +887,7 @@ Item {
                 currentIndex:        _layerIndex
                 onActivated: (index) => { _layerIndex = index }
 
-                segments: _activeLayers.map(layer => ({
+                options: _activeLayers.map(layer => ({
                     text:    layer === _layerMission     ? qsTr("Mission")
                            : layer === _layerGeoFence    ? qsTr("Fence")
                            : layer === _layerRallyPoints ? qsTr("Rally")
@@ -1117,7 +940,7 @@ Item {
 
                             property var  masterController:     _planMasterController
                             property var  missionItem:          missionItemEditor._missionSettingsItem
-                            property var  map:                  editorMap
+                            property var  map:                  _root.map
                             property real availableWidth:       missionSettingsLoader.width
                             property var  editorRoot:           missionSettingsLoader
                             property bool _noMissionItemsAdded: _visualItems.count === 1
@@ -1125,26 +948,30 @@ Item {
 
                         QGCLabel {
                             text:           qsTr("ITEMS")
+                            leftPadding:    ScreenTools.defaultFontPixelHeight / 2
                             font.pointSize: ScreenTools.smallFontPointSize
                             font.bold:      true
                             color:          Qt.alpha(_qgcPal.text, 0.5)
                         }
 
                         PlanGroupCard {
+                            id:    itemsCard
                             width: parent.width
+
+                            // Sequence 0 is the mission settings item, shown above as its own
+                            // section rather than as a row of this list, so the list starts at 1.
+                            readonly property int _firstItemIndex: 1
 
                             Repeater {
                                 model: _visualItems
 
                                 MissionItemEditor {
-                                    map:              editorMap
+                                    map:              _root.map
                                     masterController: _planMasterController
                                     missionItem:      object
                                     width:            missionColumn.width
-                                    readOnly:         false
-                                    // Sequence 0 is the mission settings item, shown above as its
-                                    // own section rather than as a row of this list.
-                                    visible:          index > 0
+                                    visible:          index >= itemsCard._firstItemIndex
+                                    firstRow:         index === itemsCard._firstItemIndex
                                     onClicked: (sequenceNumber) => { _missionController.setCurrentPlanViewSeqNum(object.sequenceNumber, false) }
                                     onRemove: {
                                         var removeVIIndex = index
@@ -1224,7 +1051,7 @@ Item {
                                 width:   parent.width
                                 height:  detailLoader.height + ScreenTools.defaultFontPixelHeight * 0.8
                                 radius:  ScreenTools.defaultFontPixelHeight * 0.9
-                                color:   Qt.alpha(_qgcPal.text, 0.055)
+                                color:   _qgcPal.overlayCard
 
                                 Loader {
                                     id:                 detailLoader
@@ -1274,164 +1101,17 @@ Item {
                     anchors.left:           parent.left
                     anchors.right:          parent.right
                     myGeoFenceController:   _geoFenceController
-                    flightMap:              editorMap
+                    flightMap:              _root.map
                     visible:                _editingLayer == _layerGeoFence
                 }
 
-                // Rally points, as one grouped list. There used to be a description card and,
-                // below it, an editor for whichever point happened to be current - so the set of
-                // rally points was only ever visible on the map, never in the panel.
-                QGCFlickable {
-                    anchors.fill:       parent
-                    contentHeight:      rallyColumn.height
-                    clip:               true
-                    visible:            _editingLayer === _layerRallyPoints
-
-                    Column {
-                        id:             rallyColumn
-                        anchors.left:   parent.left
-                        anchors.right:  parent.right
-                        spacing:        ScreenTools.defaultFontPixelHeight * 0.5
-
-                        PlanGroupCard {
-                            width:      parent.width
-                            visible:    !_rallyPointController.supported || _rallyPointController.points.count === 0
-
-                            Column {
-                                width:         parent.width
-                                topPadding:    ScreenTools.defaultFontPixelHeight
-                                bottomPadding: ScreenTools.defaultFontPixelHeight
-                                spacing:       ScreenTools.defaultFontPixelHeight * 0.5
-
-                                QGCLabel {
-                                    anchors.horizontalCenter: parent.horizontalCenter
-                                    font.bold:                true
-                                    text:                     _rallyPointController.supported ? qsTr("No rally points")
-                                                                                              : qsTr("Not supported")
-                                }
-
-                                QGCLabel {
-                                    width:                    parent.width - ScreenTools.defaultFontPixelWidth * 4
-                                    anchors.horizontalCenter: parent.horizontalCenter
-                                    horizontalAlignment:      Text.AlignHCenter
-                                    wrapMode:                 Text.WordWrap
-                                    font.pointSize:           ScreenTools.smallFontPointSize
-                                    color:                    Qt.alpha(_qgcPal.text, 0.5)
-                                    text:                     _rallyPointController.supported
-                                                                  ? qsTr("Alternate landing points for Return to Launch. Turn on the waypoint tool and tap the map to place one.")
-                                                                  : qsTr("This vehicle does not support Rally Points.")
-                                }
-                            }
-                        }
-
-                        QGCLabel {
-                            text:           qsTr("RALLY POINTS")
-                            font.pointSize: ScreenTools.smallFontPointSize
-                            font.bold:      true
-                            color:          Qt.alpha(_qgcPal.text, 0.5)
-                            visible:        _rallyPointController.points.count > 0
-                        }
-
-                        PlanGroupCard {
-                            width:      parent.width
-                            visible:    _rallyPointController.points.count > 0
-
-                            Repeater {
-                                model: _rallyPointController.points
-
-                                Column {
-                                    width: rallyColumn.width
-
-                                    readonly property bool _isCurrent: object === _rallyPointController.currentRallyPoint
-
-                                    PlanGroupRow {
-                                        id:          rallyRow
-                                        text:        qsTr("Rally %1").arg(index + 1)
-                                        description: object.coordinate.latitude.toFixed(6) + ", " + object.coordinate.longitude.toFixed(6)
-                                        interactive: true
-                                        color:       parent._isCurrent ? Qt.alpha(_qgcPal.primaryButton, 0.16) : "transparent"
-                                        onClicked:   _rallyPointController.currentRallyPoint = object
-
-                                        Rectangle {
-                                            anchors.verticalCenter: parent.verticalCenter
-                                            width:                  ScreenTools.defaultFontPixelHeight * 1.5
-                                            height:                 width
-                                            radius:                 width * 0.3
-                                            color:                  _qgcPal.colorGreen
-
-                                            QGCLabel {
-                                                anchors.centerIn:   parent
-                                                text:               index + 1
-                                                color:              "white"
-                                                font.bold:          true
-                                                font.pointSize:     ScreenTools.smallFontPointSize
-                                            }
-                                        }
-                                    }
-
-                                    Column {
-                                        width:          parent.width
-                                        visible:        parent._isCurrent
-                                        leftPadding:    ScreenTools.defaultFontPixelWidth * 1.5
-                                        rightPadding:   ScreenTools.defaultFontPixelWidth * 1.5
-                                        bottomPadding:  ScreenTools.defaultFontPixelHeight * 0.5
-                                        spacing:        ScreenTools.defaultFontPixelHeight * 0.3
-
-                                        Repeater {
-                                            model: object.textFieldFacts
-
-                                            Item {
-                                                width:  rallyColumn.width - ScreenTools.defaultFontPixelWidth * 3
-                                                height: rallyFactField.height
-
-                                                QGCLabel {
-                                                    anchors.left:           parent.left
-                                                    anchors.verticalCenter: parent.verticalCenter
-                                                    text:                   modelData.name
-                                                }
-
-                                                FactTextField {
-                                                    id:                     rallyFactField
-                                                    anchors.right:          parent.right
-                                                    width:                  Math.min(parent.width * 0.5, ScreenTools.defaultFontPixelWidth * 12)
-                                                    showUnits:              true
-                                                    fact:                   modelData
-                                                }
-                                            }
-                                        }
-
-                                        PlanGroupRow {
-                                            width:       rallyColumn.width - ScreenTools.defaultFontPixelWidth * 3
-                                            text:        qsTr("Delete Rally Point")
-                                            textColor:   _qgcPal.colorRed
-                                            interactive: true
-                                            onClicked:   _rallyPointController.removePoint(object)
-                                        }
-                                    }
-                                }
-                            }
-
-                            PlanGroupRow {
-                                text:        qsTr("＋  Add rally point")
-                                textColor:   _qgcPal.primaryButton
-                                interactive: true
-                                onClicked:   _rallyPointController.addPoint(editorMap.center)
-                            }
-                        }
-
-                        PlanGroupCard {
-                            width:      parent.width
-                            visible:    _rallyPointController.supported && _rallyPointController.points.count === 0
-
-                            PlanGroupRow {
-                                text:        qsTr("＋  Add rally point")
-                                textColor:   _qgcPal.primaryButton
-                                interactive: true
-                                onClicked:   _rallyPointController.addPoint(editorMap.center)
-                            }
-                        }
-                    }
+                RallyPointEditor {
+                    anchors.fill:   parent
+                    visible:        _editingLayer === _layerRallyPoints
+                    controller:     _rallyPointController
+                    mapCenter:      _root.map ? _root.map.center : undefined
                 }
+
                 UTMSPAdapterEditor{
                     id: utmspEditor
                     enabled:                 _utmspEnabled
@@ -1441,7 +1121,7 @@ Item {
                     anchors.right:           parent.right
                     currentMissionItems:     _visualItems
                     myGeoFenceController:    _geoFenceController
-                    flightMap:               editorMap
+                    flightMap:               _root.map
                     visible:                 _editingLayer == _layerUTMSP
                     triggerSubmitButton:     _triggerSubmit
                     resetRegisterFlightPlan: _resetRegisterFlightPlan
@@ -1549,7 +1229,7 @@ Item {
             anchors.bottomMargin:   terrainSheet.visible ? _panelMargin + licenseLabel.height : _panelMargin
             anchors.left:           dock.right
             anchors.leftMargin:     _panelMargin
-            mapControl:             editorMap
+            mapControl:             _root.map
             buttonsOnLeft:          true
             terrainButtonVisible:   _editingLayer === _layerMission
             terrainButtonChecked:   _root._terrainProfileOpen

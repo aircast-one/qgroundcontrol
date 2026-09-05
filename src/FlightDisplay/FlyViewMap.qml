@@ -39,6 +39,10 @@ FlightMap {
     property bool   pipMode:                    false
     property var    toolInsets
 
+    // What is not covered by whichever chrome is currently up. The plan binds over this while it
+    // is the active mode, so fit-to-view clears its dock and inspector instead of the fly view's.
+    property rect   centerViewport: _insetCenterRect()
+
     property var    _activeVehicle:             QGroundControl.multiVehicleManager.activeVehicle
     property var    _planMasterController:      planMasterController
     property var    _geoFenceController:        planMasterController.geoFenceController
@@ -280,6 +284,10 @@ FlightMap {
     MapItemView {
         model: QGroundControl.adsbVehicleManager.adsbVehicles
         delegate: VehicleMapItem {
+            // Traffic awareness belongs to flying, not to planning - in plan mode it is clutter
+            // over the thing being edited. Hidden rather than unmodelled, because dropping the
+            // model tears the delegates down while their bindings still read the vanished object.
+            visible:        mainWindow.flyViewActive
             coordinate:     object.coordinate
             altitude:       object.altitude
             callsign:       object.callsign
@@ -811,7 +819,7 @@ FlightMap {
         anchors.top:        parent.top
         mapControl:         _root
         buttonsOnLeft:      true
-        visible:            !ScreenTools.isTinyScreen && QGroundControl.corePlugin.options.flyView.showMapScale && mapControl.pipState.state === mapControl.pipState.windowState
+        visible:            !ScreenTools.isTinyScreen && QGroundControl.corePlugin.options.flyView.showMapScale && mapControl.pipState.state === mapControl.pipState.windowState && mainWindow.flyViewActive
 
         property real centerInset: visible ? parent.height - y : 0
     }

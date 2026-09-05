@@ -262,20 +262,21 @@ ApplicationWindow {
         color:          QGroundControl.globalPalette.window
     }
 
+    // One surface, two sets of components. The fly view owns the map, the video and the pip and
+    // stays up in both modes; its own chrome comes and goes with the mode, and the plan's chrome
+    // and editing handles arrive on the same map. There is no second page to navigate to, which
+    // is why the switch can be a slider rather than a way out.
     FlyView {
         id:                     flyView
         anchors.fill:           parent
         utmspSendActTrigger:    _utmspSendActTrigger
-        opacity:                mainWindow.flyViewActive ? 1 : 0
-        visible:                opacity > 0
-        enabled:                mainWindow.flyViewActive
-
-        Behavior on opacity { NumberAnimation { duration: 220; easing.type: Easing.InOutQuad } }
     }
 
     PlanView {
         id:             planView
         anchors.fill:   parent
+        map:            flyView.mapControl
+        planActive:     !mainWindow.flyViewActive
         opacity:        mainWindow.flyViewActive ? 0 : 1
         visible:        opacity > 0
         enabled:        !mainWindow.flyViewActive
@@ -665,6 +666,7 @@ ApplicationWindow {
 
     Popup {
         id:             indicatorDrawer
+        objectName:     "indicatorDrawer"
         x: {
             if (!indicatorItem) {
                 return _margins

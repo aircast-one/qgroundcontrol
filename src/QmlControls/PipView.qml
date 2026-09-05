@@ -25,6 +25,11 @@ Item {
     property var    item1:                  null
     property var    item2:                  null
     property string item1IsFullSettingsKey
+
+    // While another mode needs the first item to be the whole surface - the plan needs the map,
+    // not the video - the arrangement is overridden without disturbing what the user last chose
+    // for the fly view, which is restored when the override lifts.
+    property bool   forceItem1Full: false
     property Item   fullContentItem:        _root.parent
     property bool   show:                   true
     property real   widthOverride:          0
@@ -95,8 +100,10 @@ Item {
         window.show()
     }
 
-    function _initForItems() {
-        var item1IsFull = QGroundControl.loadBoolGlobalSetting(item1IsFullSettingsKey, true)
+    onForceItem1FullChanged: _applyItemStates()
+
+    function _applyItemStates() {
+        var item1IsFull = forceItem1Full || QGroundControl.loadBoolGlobalSetting(item1IsFullSettingsKey, true)
         if (item1 && item2) {
             item1.pipState.state = item1IsFull ? item1.pipState.fullState : item1.pipState.pipState
             item2.pipState.state = item1IsFull ? item2.pipState.pipState : item2.pipState.fullState
@@ -107,10 +114,17 @@ Item {
             _fullItem = item1
             _pipOrWindowItem = null
         }
+    }
+
+    function _initForItems() {
+        _applyItemStates()
         _setPipIsExpanded(QGroundControl.loadBoolGlobalSetting(_pipExpandedSettingsKey, true))
     }
 
     function _swapPip() {
+        if (forceItem1Full) {
+            return
+        }
         var item1IsFull = false
         if (item1.pipState.state === item1.pipState.fullState) {
             item1.pipState.state = item1.pipState.pipState

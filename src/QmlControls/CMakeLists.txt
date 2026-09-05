@@ -101,6 +101,7 @@ qt_add_qml_module(QGroundControlControlsModule
         KMLOrSHPFileDialog.qml
         LabelledButton.qml
         LabelledComboBox.qml
+        LabelledFactMenu.qml
         LabelledLabel.qml
         LogReplayStatusBar.qml
         MainWindowSavedState.qml
@@ -120,8 +121,8 @@ qt_add_qml_module(QGroundControlControlsModule
         OverlayPill.qml
         OverlayPopover.qml
         OverlayRoundButton.qml
-        OverlayRig.qml
         OverlaySegmentedControl.qml
+        OverlayRig.qml
         OverlayViewSwitch.qml
         OverlayShadowEffect.qml
         ParameterDiffDialog.qml
@@ -211,10 +212,12 @@ qt_add_qml_module(QGroundControlControlsModule
         MissionItemStatus.qml
         MissionSettingsEditor.qml
         PlanEditToolbar.qml
+        PlanEditMapItems.qml
         PlanGroupCard.qml
         PlanGroupRow.qml
         PlanToolBarIndicators.qml
         PlanView.qml
+        RallyPointEditor.qml
         RallyPointMapVisuals.qml
         SimpleItemEditor.qml
         SimpleItemMapVisual.qml

@@ -105,6 +105,8 @@ Item {
     property real   _rightPanelWidth:       ScreenTools.defaultFontPixelWidth * 30
     property var    _mapControl:            mapControl
 
+    readonly property alias mapControl: mapControl
+
     property real   _fullItemZorder:    0
     property real   _pipItemZorder:     QGroundControl.zOrderWidgets
 
@@ -131,7 +133,7 @@ Item {
     FlyViewToolBar {
         id:                 toolbar
         z:                  QGroundControl.zOrderWidgets
-        visible:            !QGroundControl.videoManager.fullScreen
+        visible:            !QGroundControl.videoManager.fullScreen && mainWindow.flyViewActive
     }
 
     Item {
@@ -161,6 +163,7 @@ Item {
                 id:         videoControl
                 overlayRig: _overlayRig
                 pipView:    _pipView
+                visible:    mainWindow.flyViewActive
             }
         }
 
@@ -170,9 +173,10 @@ Item {
             fullContentItem:        backdropContent
             margin:                 _toolsMargin
             item1IsFullSettingsKey: "MainFlyWindowIsMap"
+            forceItem1Full:         !mainWindow.flyViewActive
             item1:                  mapControl
             item2:                  QGroundControl.videoManager.hasVideo ? videoControl : null
-            show:                   QGroundControl.videoManager.hasVideo && !QGroundControl.videoManager.fullScreen &&
+            show:                   mainWindow.flyViewActive && QGroundControl.videoManager.hasVideo && !QGroundControl.videoManager.fullScreen &&
                                         (videoControl.pipState.state === videoControl.pipState.pipState || mapControl.pipState.state === mapControl.pipState.pipState)
             z:                      QGroundControl.zOrderWidgets
 
@@ -202,7 +206,7 @@ Item {
             z:                      _fullItemZorder + 2 // we need to add one extra layer for map 3d viewer (normally was 1)
             parentToolInsets:       _toolInsets
             mapControl:             _mapControl
-            visible:                !QGroundControl.videoManager.fullScreen
+            visible:                !QGroundControl.videoManager.fullScreen && mainWindow.flyViewActive
             utmspActTrigger:        utmspSendActTrigger
             isViewer3DOpen:         viewer3DWindow.isOpen
         }
@@ -213,7 +217,7 @@ Item {
             z:                  _fullItemZorder + 2
             parentToolInsets:   widgetLayer.totalToolInsets
             mapControl:         _mapControl
-            visible:            !QGroundControl.videoManager.fullScreen
+            visible:            !QGroundControl.videoManager.fullScreen && mainWindow.flyViewActive
         }
 
         CameraControlLayer {
@@ -221,6 +225,7 @@ Item {
             objectName:         "cameraControlLayer"
             overlayRig:         _overlayRig
             anchors.fill:       parent
+            visible:            mainWindow.flyViewActive
             videoIsMainItem:    !_mainWindowIsMap
             z:                  _fullItemZorder + 1
         }
@@ -228,6 +233,7 @@ Item {
         VideoTilesLayer {
             id:             videoTilesLayer
             objectName:     "videoTilesLayer"
+            visible:        mainWindow.flyViewActive
             overlayRig:     _overlayRig
             pipView:        _pipView
             topInset:       toolbar.height

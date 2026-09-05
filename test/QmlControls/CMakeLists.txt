@@ -6,6 +6,8 @@ target_sources(${CMAKE_PROJECT_NAME}
         OverlayBackdropTest.h
         OverlaySegmentedControlTest.cc
         OverlaySegmentedControlTest.h
+        OverlayViewSwitchTest.cc
+        OverlayViewSwitchTest.h
         OverlayRigTest.cc
         OverlayRigTest.h
         PipRevealTest.cc

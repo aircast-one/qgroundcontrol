@@ -55,6 +55,22 @@ Item {
         onTriggered:  QGroundControl.videoManager.startVideo()
     }
 
+    // Leaving the fly view tears the stream down rather than hiding it. Hiding the item leaves
+    // the receiver decoding, holding its socket and burning the GPU behind a panel nobody is
+    // looking at - there is no video to plan with, so there is no video to run.
+    Connections {
+        target: mainWindow
+
+        function onFlyViewActiveChanged() {
+            if (mainWindow.flyViewActive) {
+                videoStartDelay.start()
+            } else {
+                videoStartDelay.stop()
+                QGroundControl.videoManager.stopVideo()
+            }
+        }
+    }
+
     //-- Video Streaming
     FlightDisplayViewVideo {
         id:             videoStreaming

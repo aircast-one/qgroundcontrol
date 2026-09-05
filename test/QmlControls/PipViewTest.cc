@@ -10,6 +10,8 @@
 #include "PipViewTest.h"
 #include "QuickInteractionTestHelpers.h"
 
+#include <QtCore/QSettings>
+
 static const qreal kMargin = 8;
 
 static void clearPipSettings()
@@ -284,4 +286,69 @@ void PipViewTest::_gripResizeOutsideEditModeDoesNotSwap()
 
     QCOMPARE(itemA->parentItem(), root);
     QVERIFY(itemB->parentItem() != root);
+}
+
+// Another mode can need the first item to be the whole surface - the plan view needs the map, and
+// hiding the pip while the map was in it is what left the plan with nothing to draw on.
+void PipViewTest::_forcingItem1FullOverridesTheSavedArrangement()
+{
+    clearPipSettings();
+
+    QQuickView view;
+    QVERIFY(loadView(view));
+    QQuickItem *const root = view.rootObject();
+    QQuickItem *const pip = root->findChild<QQuickItem*>("pip");
+    QQuickItem *const itemA = root->findChild<QQuickItem*>("itemA");
+    QQuickItem *const itemB = root->findChild<QQuickItem*>("itemB");
+    QVERIFY(pip && itemA && itemB);
+
+    // Put item2 full, the arrangement that used to strand the plan view.
+    QMetaObject::invokeMethod(pip, "_swapPip");
+    QTRY_COMPARE(itemB->parentItem(), root);
+
+    pip->setProperty("forceItem1Full", true);
+    QTRY_COMPARE(itemA->parentItem(), root);
+
+    pip->setProperty("forceItem1Full", false);
+    QTRY_COMPARE(itemB->parentItem(), root);
+}
+
+// The override is temporary. What the user chose for the fly view has to survive it.
+void PipViewTest::_forcingItem1FullDoesNotDisturbTheSavedArrangement()
+{
+    clearPipSettings();
+
+    QQuickView view;
+    QVERIFY(loadView(view));
+    QQuickItem *const pip = view.rootObject()->findChild<QQuickItem*>("pip");
+    QVERIFY(pip);
+
+    QMetaObject::invokeMethod(pip, "_swapPip");
+    const QVariant saved = QSettings().value(QStringLiteral("PipViewTestItem1IsFull"));
+    QCOMPARE(saved.toBool(), false);
+
+    pip->setProperty("forceItem1Full", true);
+    QCOMPARE(QSettings().value(QStringLiteral("PipViewTestItem1IsFull")), saved);
+
+    pip->setProperty("forceItem1Full", false);
+    QCOMPARE(QSettings().value(QStringLiteral("PipViewTestItem1IsFull")), saved);
+}
+
+void PipViewTest::_swapIsRefusedWhileItem1IsForcedFull()
+{
+    clearPipSettings();
+
+    QQuickView view;
+    QVERIFY(loadView(view));
+    QQuickItem *const root = view.rootObject();
+    QQuickItem *const pip = root->findChild<QQuickItem*>("pip");
+    QQuickItem *const itemA = root->findChild<QQuickItem*>("itemA");
+    QVERIFY(pip && itemA);
+
+    pip->setProperty("forceItem1Full", true);
+    QTRY_COMPARE(itemA->parentItem(), root);
+
+    QMetaObject::invokeMethod(pip, "_swapPip");
+    QCOMPARE(itemA->parentItem(), root);
+    QVERIFY(!QSettings().contains(QStringLiteral("PipViewTestItem1IsFull")));
 }

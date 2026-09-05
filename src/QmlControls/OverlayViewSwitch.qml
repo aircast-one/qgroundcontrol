@@ -18,6 +18,8 @@ import QGroundControl.ScreenTools
 Item {
     id: _root
 
+    // Entries are either a plain string or { text, enabled } - a layer that the vehicle does not
+    // support is still shown, so the control keeps its shape, but cannot be moved onto.
     property var options:      []
     property int currentIndex: 0
 
@@ -28,12 +30,15 @@ Item {
     readonly property real _optionWidth: options.length ? (width - _pad * 2) / options.length : 0
     readonly property real _restX:       _pad + currentIndex * _optionWidth
 
+    function _textOf(entry)    { return entry.text !== undefined ? entry.text : entry }
+    function _enabledOf(entry) { return entry.enabled !== undefined ? entry.enabled : true }
+
     // Where the thumb is now, not where it is headed. During a drag this leads currentIndex, so
     // the labels take emphasis as the thumb crosses them rather than after it lands.
-    readonly property int _thumbIndex: _optionWidth > 0
+    readonly property int _thumbIndex: (dragHandler.active && _optionWidth > 0)
                                            ? Math.max(0, Math.min(options.length - 1,
                                                                   Math.round((thumb.x - _pad) / _optionWidth)))
-                                           : 0
+                                           : currentIndex
 
     implicitHeight: Math.max(ScreenTools.minTouchPixels, ScreenTools.defaultFontPixelHeight * 2.2)
     implicitWidth:  measureRow.implicitWidth + _pad * 2
@@ -46,8 +51,8 @@ Item {
             model: _root.options
 
             QGCLabel {
-                text:       modelData
-                font.bold:  true
+                text:         _root._textOf(modelData)
+                font.bold:    true
                 leftPadding:  ScreenTools.defaultFontPixelWidth * 1.6
                 rightPadding: ScreenTools.defaultFontPixelWidth * 1.6
             }
@@ -55,8 +60,9 @@ Item {
     }
 
     Rectangle {
-        id:      thumb
-        x:       _root._restX
+        id:         thumb
+        objectName: "viewSwitchThumb"
+        x:          _root._restX
         y:       _root._pad
         width:   _root._optionWidth
         height:  parent.height - _root._pad * 2
@@ -76,7 +82,7 @@ Item {
             target:         thumb
             yAxis.enabled:  false
             xAxis.minimum:  _root._pad
-            xAxis.maximum:  _root.width - _root._pad - thumb.width
+            xAxis.maximum:  Math.max(_root._pad, _root.width - _root._pad - thumb.width)
             cursorShape:    Qt.PointingHandCursor
 
             // Dragging assigns x directly, which replaces the binding that parks the thumb on the
@@ -88,7 +94,7 @@ Item {
                 }
                 const landed = _root._thumbIndex
                 thumb.x = Qt.binding(() => _root._restX)
-                if (landed !== _root.currentIndex) {
+                if (landed !== _root.currentIndex && _root._enabledOf(_root.options[landed])) {
                     _root.activated(landed)
                 }
             }
@@ -99,23 +105,29 @@ Item {
         model: _root.options
 
         Item {
-            objectName: "viewSwitchOption" + index
+            // Derived from the control, not fixed: two switches on screen would otherwise both
+            // answer to the same names and a lookup would find whichever came first.
+            objectName: (_root.objectName === "" ? "viewSwitch" : _root.objectName) + "Option" + index
             x:          _root._pad + index * _root._optionWidth
             y:          _root._pad
             width:      _root._optionWidth
             height:     _root.height - _root._pad * 2
 
+            readonly property bool _isEnabled: _root._enabledOf(modelData)
+
             QGCLabel {
                 anchors.centerIn: parent
-                text:             modelData
+                text:             _root._textOf(modelData)
                 font.bold:        index === _root._thumbIndex
-                color:            index === _root._thumbIndex ? _root._qgcPal.text
+                color:            !parent._isEnabled          ? Qt.alpha(_root._qgcPal.text, 0.3)
+                                : index === _root._thumbIndex ? _root._qgcPal.text
                                                               : Qt.alpha(_root._qgcPal.text, 0.6)
 
                 Behavior on color { ColorAnimation { duration: 120 } }
             }
 
             TapHandler {
+                enabled:  parent._isEnabled
                 onTapped: if (index !== _root.currentIndex) _root.activated(index)
             }
         }

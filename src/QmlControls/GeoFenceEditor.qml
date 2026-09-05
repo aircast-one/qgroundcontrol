@@ -36,6 +36,7 @@ QGCFlickable {
     }
 
     component SectionLabel: QGCLabel {
+        leftPadding:    ScreenTools.defaultFontPixelHeight / 2
         font.pointSize: ScreenTools.smallFontPointSize
         font.bold:      true
         color:          Qt.alpha(root._qgcPal.text, 0.5)

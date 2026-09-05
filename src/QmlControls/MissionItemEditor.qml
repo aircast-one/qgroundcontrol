@@ -26,7 +26,10 @@ Rectangle {
     property var    map                 ///< Map control
     property var    masterController
     property var    missionItem         ///< MissionItem associated with this editor
-    property bool   readOnly            ///< true: read only view, false: full editing view
+
+    // Whether this is the first row drawn in its card. Keyed off y before, which only worked
+    // because the hidden mission-settings row happened to collapse to zero height above it.
+    property bool   firstRow: false
 
     signal clicked
     signal remove
@@ -37,16 +40,12 @@ Rectangle {
     property bool   _currentItem:               missionItem.isCurrentItem
     property bool   _readyForSave:              missionItem.readyForSaveState === VisualMissionItem.ReadyForSave
     property bool   _waypointsOnlyMode:         QGroundControl.corePlugin.options.missionWaypointsOnly
-    // Read by MissionSettingsEditor from this scope when it loads below the Mission Start row.
-    property bool   _noMissionItemsAdded:       ListView.view ? ListView.view.model.count === 1 : false
 
     // A survey or scan opens as its own page, so its editor never expands under the row.
     readonly property bool _isComplexItem:  !missionItem.isSimpleItem && missionItem.sequenceNumber !== 0
     readonly property bool _expandInline:   _currentItem && !_isComplexItem
     readonly property bool _isLaunchItem:   missionItem.sequenceNumber === 0 || missionItem.isTakeoffItem
 
-    readonly property real  _editFieldWidth:    Math.min(width - _innerMargin * 2, ScreenTools.defaultFontPixelWidth * 12)
-    readonly property real  _margin:            ScreenTools.defaultFontPixelWidth / 2
     readonly property real  _innerMargin:       ScreenTools.defaultFontPixelHeight * 0.4
     readonly property real  _hPad:              ScreenTools.defaultFontPixelWidth * 1.5
     readonly property real  _sealSize:          ScreenTools.defaultFontPixelHeight * 1.5
@@ -78,7 +77,7 @@ Rectangle {
         anchors.leftMargin: _hPad
         height:             1
         color:              Qt.alpha(qgcPal.text, 0.09)
-        visible:            _root.y > 0 && !_currentItem
+        visible:            !_root.firstRow && !_currentItem
     }
 
     QGCMouseArea {

@@ -45,6 +45,8 @@ void QGCPalette::_buildMap()
     DECLARE_QGC_COLOR(overlayBorder,        "#26000000", "#26000000", "#29ffffff", "#29ffffff")
     DECLARE_QGC_COLOR(overlayGlass,         "#8cf2f2f7", "#8cf2f2f7", "#73151515", "#73151515")
     DECLARE_QGC_COLOR(overlayGlassLight,    "#8cf2f2f7", "#8cf2f2f7", "#bfe9e9ee", "#bfe9e9ee")
+    // The inset surface a group of rows sits on inside a panel - the grouped-list card.
+    DECLARE_QGC_COLOR(overlayCard,          "#1c000000", "#1c000000", "#1affffff", "#1affffff")
     DECLARE_QGC_COLOR(toolbarText,          "#8e8e93", "#000000", "#8e8e93", "#ffffff")
     DECLARE_QGC_COLOR(windowShadeLight,     "#d1d1d6", "#c7c7cc", "#3a3a3c", "#48484a")
     DECLARE_QGC_COLOR(windowShade,          "#ffffff", "#ffffff", "#2c2c2e", "#2c2c2e")

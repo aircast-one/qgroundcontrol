@@ -60,7 +60,6 @@ RowLayout {
     property string _headingText:                   isNaN(_heading) ?                   _noValue : Math.round(_heading) % 360
     property string _missionPlannedDistanceText:    isNaN(_missionPlannedDistance) ?    _noValue : QGroundControl.unitsConversion.metersToAppSettingsHorizontalDistanceUnits(_missionPlannedDistance).toFixed(0) + " " + QGroundControl.unitsConversion.appSettingsHorizontalDistanceUnitsString
     property string _missionMaxTelemetryText:       isNaN(_missionMaxTelemetry) ?       _noValue : QGroundControl.unitsConversion.metersToAppSettingsHorizontalDistanceUnits(_missionMaxTelemetry).toFixed(0) + " " + QGroundControl.unitsConversion.appSettingsHorizontalDistanceUnitsString
-    property string _batteryChangePointText:        _batteryChangePoint < 0 ?           _noValue : _batteryChangePoint
     property string _batteriesRequiredText:         _batteriesRequired < 0 ?            _noValue : _batteriesRequired
 
     // An em dash, the way every readout in the system shows "there is no number here".
@@ -158,7 +157,6 @@ RowLayout {
     // dissolve under it.
     OverlayCapsule {
         id:                     viewSwitch
-        objectName:             "planViewSwitch"
         Layout.preferredHeight: _capsuleHeight
         Layout.preferredWidth:  viewSwitchControl.implicitWidth
         Layout.minimumWidth:    Layout.preferredWidth
@@ -166,6 +164,7 @@ RowLayout {
 
         OverlayViewSwitch {
             id:           viewSwitchControl
+            objectName:   "planViewSwitch"
             anchors.fill: parent
             options:      [qsTr("Fly"), qsTr("Plan")]
             currentIndex: mainWindow.flyViewActive ? 0 : 1

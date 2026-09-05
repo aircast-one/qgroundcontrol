@@ -80,13 +80,13 @@ Rectangle {
 
         OverlayCapsule {
             id:                     viewSwitch
-            objectName:             "viewSwitch"
             Layout.preferredHeight: _clusterHeight
             Layout.preferredWidth:  viewSwitchControl.implicitWidth
             radius:                 height / 2
 
             OverlayViewSwitch {
                 id:           viewSwitchControl
+                objectName:   "viewSwitch"
                 anchors.fill: parent
                 options:      [qsTr("Fly"), qsTr("Plan")]
                 currentIndex: mainWindow.flyViewActive ? 0 : 1

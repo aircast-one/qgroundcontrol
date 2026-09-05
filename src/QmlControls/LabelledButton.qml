@@ -21,7 +21,8 @@ RowLayout {
     signal clicked
 
     id:         _root
-    spacing:    ScreenTools.defaultFontPixelWidth * 2
+    spacing:                ScreenTools.defaultFontPixelWidth * 2
+    Layout.preferredHeight: ScreenTools.settingsRowHeight
 
     QGCLabel { 
         id:                 _label
