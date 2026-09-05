@@ -20,7 +20,6 @@ ToolStrip {
     color:          "transparent"
     roundButtons:   true
     buttonSpacing:  ScreenTools.defaultFontPixelHeight / 2
-    width:          ScreenTools.defaultFontPixelWidth * 12
 
     signal displayPreFlightChecklist
 

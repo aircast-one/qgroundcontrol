@@ -18,16 +18,20 @@ import QGroundControl.Controls
 Rectangle {
     id:         _root
     color:      qgcPal.toolbarBackground
-    width:      ScreenTools.defaultFontPixelWidth * 8
+    width:      roundButtons ? _roundWidth : ScreenTools.defaultFontPixelWidth * 8
     height:     Math.min(maxHeight, toolStripColumn.height + (flickable.anchors.margins * 2))
     radius:     ScreenTools.defaultFontPixelWidth / 2
 
     property alias  model:              repeater.model
-    property real   maxHeight           ///< Maximum height for control, determines whether text is hidden to make control shorter
+    property real   maxHeight
     property alias  title:              titleLabel.text
     property var    fontSize:           ScreenTools.smallFontPointSize
 
     property bool   roundButtons:       false
+
+    readonly property real _roundWidth: repeater.count > 0 && repeater.itemAt(0)
+                                            ? repeater.itemAt(0).discSize + (flickable.anchors.margins * 2)
+                                            : ScreenTools.defaultFontPixelWidth * 8
     property bool   editing:            false
     property alias  buttonSpacing:      toolStripColumn.spacing
 
@@ -38,7 +42,7 @@ Rectangle {
     property var _dropPanel: dropPanel
 
     function simulateClick(buttonIndex) {
-        buttonIndex = buttonIndex + 1 // skip over title label
+        buttonIndex = buttonIndex + 1
         var button = toolStripColumn.children[buttonIndex]
         if (button.checkable) {
             button.checked = !button.checked

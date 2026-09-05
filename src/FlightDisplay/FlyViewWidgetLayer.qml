@@ -67,7 +67,7 @@ Item {
         rightEdgeCenterInset:   topRightPanel.rightEdgeCenterInset
         rightEdgeBottomInset:   instrumentPanel.rightEdgeBottomInset
         topEdgeLeftInset:       toolStrip.topEdgeLeftInset
-        topEdgeCenterInset:     mapScale.topEdgeCenterInset
+        topEdgeCenterInset:     mapScaleSlot.topEdgeCenterInset
         topEdgeRightInset:      topRightPanel.topEdgeRightInset
         bottomEdgeLeftInset:    virtualJoystickMultiTouch.visible ? virtualJoystickMultiTouch.bottomEdgeLeftInset : parentToolInsets.bottomEdgeLeftInset
         bottomEdgeCenterInset:  _bottomRightPanelsBottomInset
@@ -384,19 +384,28 @@ Item {
         z:                          QGroundControl.zOrderTopMost
     }
 
-    MapScale {
-        id:                 mapScale
-        objectName:         "flyViewMapScale"
-        anchors.margins:    _toolsMargin
-        anchors.left:       toolStrip.right
-        anchors.top:        toolStrip.top
-        anchors.topMargin:  0
-        mapControl:         _mapControl
-        buttonsOnLeft:      true
-        zoomButtonsVisible: false
-        visible:            !ScreenTools.isTinyScreen && QGroundControl.corePlugin.options.flyView.showMapScale && !isViewer3DOpen && mapControl.pipState.state === mapControl.pipState.fullState
+    ArrangeableOverlayItem {
+        id:                 mapScaleSlot
+        overlayRig:         _root.overlayRig
+        control:            mapScale
+        editKey:            "mapScale"
+        settingsKeyPrefix:  "FlyViewMapScale"
+        z:                  QGroundControl.zOrderWidgets
+        available:          !ScreenTools.isTinyScreen && QGroundControl.corePlugin.options.flyView.showMapScale && !isViewer3DOpen && mapControl.pipState.state === mapControl.pipState.fullState
+        defaultX:           toolStripDragPosition.defaultX + toolStrip.width + _root.overlayRig.edgeMargin
+        defaultY:           toolStripDragPosition.defaultY
 
         property real topEdgeCenterInset: visible ? y + height : 0
+
+        MapScale {
+            id:                 mapScale
+            objectName:         "flyViewMapScale"
+            mapControl:         _mapControl
+            buttonsOnLeft:      true
+            zoomButtonsVisible: false
+
+            TapHandler { onLongPressed: _root.overlayRig.hold(mapScale) }
+        }
     }
 
     Loader {
