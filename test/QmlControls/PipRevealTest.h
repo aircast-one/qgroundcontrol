@@ -18,4 +18,5 @@ class PipRevealTest : public UnitTest
 private slots:
     void _collapsingAnimatesInsteadOfVanishing();
     void _oneToggleTurnsToServeBothStates();
+    void _collapsedPipLeavesTheRig();
 };

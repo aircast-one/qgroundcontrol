@@ -25,10 +25,6 @@ Item {
     property var    item1:                  null
     property var    item2:                  null
     property string item1IsFullSettingsKey
-
-    // While another mode needs the first item to be the whole surface - the plan needs the map,
-    // not the video - the arrangement is overridden without disturbing what the user last chose
-    // for the fly view, which is restored when the override lifts.
     property bool   forceItem1Full: false
     property Item   fullContentItem:        _root.parent
     property bool   show:                   true
@@ -76,6 +72,19 @@ Item {
             _pipSize = savedSize
         }
         _initForItems()
+        _syncRig()
+    }
+
+    Component.onDestruction: if (overlayRig) overlayRig.unregisterMovable(_root)
+
+    on_IsExpandedChanged: _syncRig()
+    onOverlayRigChanged:  _syncRig()
+
+    function _syncRig() {
+        if (!overlayRig) {
+            return
+        }
+        _isExpanded ? overlayRig.registerAnchor(_root, dragPosition) : overlayRig.unregisterMovable(_root)
     }
 
     onItem2Changed: _initForItems()
@@ -83,10 +92,6 @@ Item {
     function setExpanded(isExpanded) {
         _setPipIsExpanded(isExpanded)
     }
-
-    // The stored size is the pip's own width; naturalWidth clamps it again on read so a size
-    // saved on a wide screen cannot swallow a narrow one. The video tiles are sized from this,
-    // so the grip resizes the whole video cluster, not just the pip.
     function _resizeTo(newWidth) {
         if (!parent) {
             return
@@ -224,11 +229,6 @@ Item {
         running: _root._editMode && _root.visible && _isExpanded
         lifted:  pipMouseArea.drag.active || (_root.overlayRig && _root.overlayRig.heldItem === _root)
     }
-
-    // Hover reveal reads this, not the MouseArea below. The grip and the popup button carry
-    // handlers of their own, and a child handler taking the hover point drops the MouseArea's
-    // containsMouse - which hid the control the cursor had just arrived at, which handed hover
-    // back, forever. A HoverHandler on the root stays hovered over its own children.
     HoverHandler { id: pipHover }
 
     MouseArea {
@@ -245,14 +245,6 @@ Item {
         drag.maximumY:  _root.parent ? _root.parent.height - _root.height : 0
 
         property bool dragged:      false
-        // The resize grip's DragHandler doesn't stop this MouseArea from also seeing the same
-        // press/release: outside edit mode drag.target is null, so `dragged` above can never go
-        // true, and every release would otherwise read as a plain click and swap map/video out
-        // from under a resize. Captured at press time so it isn't racing the grip's own active
-        // state, which has already gone false again by the time this MouseArea's click fires.
-        // Any future DragHandler-based control added inside the pip (popupPIP/pipToggle are
-        // fine - they use their own nested MouseArea, which already wins over this one) needs
-        // the same treatment here, or it will reproduce this exact swap-on-drag bug.
         property bool pressedOnGrip: false
 
         onPressed: (mouse) => {
@@ -310,12 +302,6 @@ Item {
             onClicked:      _pipOrWindowItem.pipState.state = _pipOrWindowItem.pipState.windowState
         }
     }
-
-    // Top-right, because that is the corner that moves: the pip is pinned to the bottom of the
-    // screen, so growing it travels up and to the right. A grip on the bottom edge would sit
-    // still while the box grew away from it, and would share that corner with the camera switch.
-    // Hover-reveal, like a macOS PiP window, so it doesn't cost an accidental resize of the live
-    // feed. Move-by-drag stays edit-mode-gated below; only this small targeted handle is live.
     Rectangle {
         id:                 resizeGrip
         objectName:         "pipResizeGrip"
@@ -332,8 +318,6 @@ Item {
             anchors.fill: parent
             radius:       parent.radius
         }
-        // Hidden while the video rail's grid mode is driving the width: the grip would fight
-        // an override it cannot change.
         visible:            _isExpanded && _root.widthOverride === 0 && (_root._editMode || pipHover.hovered || resizeHandler.active)
 
         Behavior on scale { NumberAnimation { duration: 120; easing.type: Easing.OutCubic } }
@@ -351,10 +335,6 @@ Item {
             sourceSize.height:  height
             rotation:           -45
         }
-
-        // Measured against the scene, not the handler's own translation: the grip is anchored to
-        // an edge that resizing moves, so translation would shrink as fast as the width grew and
-        // the pip would oscillate under the finger.
         DragHandler {
             id:     resizeHandler
             target: null

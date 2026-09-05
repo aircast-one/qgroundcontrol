@@ -578,3 +578,32 @@ void OverlayRigTest::_releasedItemStaysWhereItWasDropped()
     QVERIFY2(worst < 24, qPrintable(QStringLiteral("strayed %1 px from the drop point").arg(worst)));
     WAIT_SETTLED(rig, 3000);
 }
+
+void OverlayRigTest::_itemFollowsAMovedHomeWhenTheObstructionLeaves()
+{
+    QQuickView view;
+    QVERIFY(loadView(view));
+
+    QQuickItem *const left = view.rootObject()->findChild<QQuickItem*>("leftItem");
+    QQuickItem *const staticItem = view.rootObject()->findChild<QQuickItem*>("staticItem");
+    QObject *const leftPosition = positionOf(view, "leftPosition");
+    QVERIFY(left && staticItem && leftPosition);
+
+    QObject *const rig = rigOf(view);
+    WAIT_SETTLED(rig, 3000);
+
+    const qreal homeX = left->x();
+    const qreal homeY = left->y();
+
+    staticItem->setX(homeX);
+    staticItem->setY(homeY);
+    QTRY_VERIFY_WITH_TIMEOUT(left->x() != homeX || left->y() != homeY, 3000);
+    WAIT_SETTLED(rig, 3000);
+
+    leftPosition->setProperty("defaultX", homeX + 300);
+    staticItem->setVisible(false);
+    QTRY_VERIFY2_WITH_TIMEOUT(qFuzzyCompare(left->x() + 1, homeX + 301) && qFuzzyCompare(left->y() + 1, homeY + 1),
+                              qPrintable(QStringLiteral("left rests at %1,%2 instead of its new home %3,%4")
+                                             .arg(left->x()).arg(left->y()).arg(homeX + 300).arg(homeY)),
+                              3000);
+}

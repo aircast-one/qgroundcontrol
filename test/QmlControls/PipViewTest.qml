@@ -32,15 +32,18 @@ Item {
         PipState { id: bState; pipView: pip }
     }
 
-    property alias editMode: stubOverlayRig.editMode
+    property alias editMode:    stubOverlayRig.editMode
+    property alias pipAnchored: stubOverlayRig.pipAnchored
 
     QtObject {
         id: stubOverlayRig
 
-        property bool editMode: false
+        property bool editMode:    false
+        property bool pipAnchored: false
 
         function registerMovable(item, dragPosition) { }
-        function unregisterMovable(item) { }
+        function registerAnchor(item, dragPosition) { pipAnchored = true }
+        function unregisterMovable(item) { pipAnchored = false }
         function requestReflow() { }
         function isHidden(key) { return false }
         function registerHideKey(key) { }

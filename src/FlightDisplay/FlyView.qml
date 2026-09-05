@@ -27,14 +27,10 @@ import QGroundControl.FlightMap
 import QGroundControl.Palette
 import QGroundControl.ScreenTools
 import QGroundControl.Vehicle
-
-// 3D Viewer modules
 import Viewer3D
 
 Item {
     id: _root
-
-    // These should only be used by MainRootWindow
     property var planController:    _planController
     property var guidedController:  _guidedController
     property var overlayRig:        _overlayRig
@@ -51,8 +47,6 @@ Item {
         enabled:        _overlayRig.editMode
         onActivated:    _overlayRig.editMode = false
     }
-
-    // Properties of UTM adapter
     property bool utmspSendActTrigger: false
 
     PlanMasterController {
@@ -63,19 +57,11 @@ Item {
 
     property bool   _mainWindowIsMap:       mapControl.pipState.state === mapControl.pipState.fullState
     property bool   _isFullWindowItemDark:  _mainWindowIsMap ? mapControl.isSatelliteMap : true
-
-    // The glass keys off the same signal the map chrome already trusts: a street map is a light
-    // backdrop, satellite and video are dark. Wrong material is worse than no material, so
-    // anything we cannot classify stays dark.
     Binding {
         target:     OverlayBackdrop
         property:   "isDark"
         value:      _root._isFullWindowItemDark
     }
-
-    // Everything that can move inside the captured layers: the video, the instruments a
-    // connected vehicle drives (attitude, battery, telemetry all sit in mapHolder), and the
-    // jiggle while arranging. With none of them running the backdrop cannot change.
     Binding {
         target:     OverlayBackdrop
         property:   "sourceAnimating"
@@ -83,9 +69,6 @@ Item {
                         QGroundControl.multiVehicleManager.activeVehicle !== null ||
                         _overlayRig.editMode
     }
-
-    // A map pan or zoom changes the backdrop without any video running, so it asks for a single
-    // refresh rather than keeping the pulse alive.
     Connections {
         target:                 mapControl
         ignoreUnknownSignals:   true
@@ -123,8 +106,6 @@ Item {
         id:                     _toolInsets
         leftEdgeBottomInset:    _pipView.leftEdgeBottomInset
         bottomEdgeLeftInset:    _pipView.bottomEdgeLeftInset
-        // The status floats over the picture now, so the map's own widgets have to keep clear
-        // of it themselves -- nothing pushes them down any more.
         topEdgeLeftInset:       toolbar.height
         topEdgeCenterInset:     toolbar.height
         topEdgeRightInset:      toolbar.height
@@ -179,8 +160,6 @@ Item {
             show:                   mainWindow.flyViewActive && QGroundControl.videoManager.hasVideo && !QGroundControl.videoManager.fullScreen &&
                                         (videoControl.pipState.state === videoControl.pipState.pipState || mapControl.pipState.state === mapControl.pipState.pipState)
             z:                      QGroundControl.zOrderWidgets
-
-            // Show a camera-switch button on the pip only while the video is the pip item
             showActionButton:       QGroundControl.videoManager.hasMultipleVideoSources &&
                                         videoControl.pipState.state === videoControl.pipState.pipState
             actionButtonText:       QGroundControl.videoManager.cameraName(QGroundControl.videoManager.activeVideoSource)
@@ -188,12 +167,10 @@ Item {
 
             widthOverride:          videoTilesLayer.pipWidthOverride
 
-            property real leftEdgeBottomInset: visible && !hasCustomPosition ? width + videoTilesLayer.dockExtent + _toolsMargin : 0
-            property real bottomEdgeLeftInset: visible && !hasCustomPosition ? height + _toolsMargin : 0
+            property real leftEdgeBottomInset: visible && expanded && !hasCustomPosition ? width + videoTilesLayer.dockExtent + _toolsMargin : 0
+            property real bottomEdgeLeftInset: visible && expanded && !hasCustomPosition ? height + _toolsMargin : 0
 
             overlayRig:            _overlayRig
-            Component.onCompleted:   _overlayRig.registerAnchor(_pipView, _pipView.dragToPosition)
-            Component.onDestruction: _overlayRig.unregisterMovable(_pipView)
         }
 
         FlyViewWidgetLayer {
@@ -203,7 +180,7 @@ Item {
             anchors.bottom:         parent.bottom
             anchors.left:           parent.left
             anchors.right:          guidedValueSlider.visible ? guidedValueSlider.left : parent.right
-            z:                      _fullItemZorder + 2 // we need to add one extra layer for map 3d viewer (normally was 1)
+            z:                      _fullItemZorder + 2
             parentToolInsets:       _toolInsets
             mapControl:             _mapControl
             visible:                !QGroundControl.videoManager.fullScreen && mainWindow.flyViewActive
@@ -240,9 +217,6 @@ Item {
             anchors.fill:   parent
             z:              _fullItemZorder + 3
         }
-
-        // Camera switch button for the full-screen video. Placed here (above the instrument
-        // overlays) so it is not hidden behind them. The small-pip case is handled by PipView.
         CameraSwitchButton {
             id:                         fullVideoCameraSwitchButton
             z:                          _fullItemZorder + 3
@@ -255,8 +229,6 @@ Item {
             text:                       QGroundControl.videoManager.cameraName(QGroundControl.videoManager.activeVideoSource)
             onClicked:                  QGroundControl.videoManager.switchActiveVideoSource()
         }
-
-        // Development tool for visualizing the insets for a paticular layer, show if needed
         FlyViewInsetViewer {
             id:                     widgetLayerInsetViewer
             anchors.top:            parent.top
@@ -273,8 +245,6 @@ Item {
             missionController:  _missionController
             guidedValueSlider:     _guidedValueSlider
         }
-
-        //-- Guided value slider (e.g. altitude)
         GuidedValueSlider {
             id:                 guidedValueSlider
             anchors.right:      parent.right
@@ -381,10 +351,6 @@ Item {
         visible:        toolbar.visible
         z:              QGroundControl.zOrderWidgets
     }
-
-    // The one place that says what this mode is, how it works, and how to leave it. Edit mode
-    // used to announce itself only by making things wobble, and carried two separate controls
-    // both labelled "Done".
     Rectangle {
         id:                         editModeDonePill
         objectName:                 "editModeDonePill"
@@ -412,8 +378,6 @@ Item {
                 anchors.verticalCenter: parent.verticalCenter
                 color:                  QGroundControl.globalPalette.colorGrey
                 font.pointSize:         ScreenTools.smallFontPointSize
-                // Each window size keeps its own arrangement, and nothing else on screen says
-                // so - without this the layout looks lost every time the window is resized.
                 text: qsTr("Drag to arrange · Tap the eye to hide · Layout for %1×%2")
                           .arg(Math.round(_root.width)).arg(Math.round(_root.height))
             }

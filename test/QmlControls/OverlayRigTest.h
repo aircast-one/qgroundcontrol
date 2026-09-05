@@ -28,6 +28,7 @@ private slots:
     void _staticThatMovesPushesMovablesOutOfTheWay();
     void _displacedItemStaysAgainstWhatPushedIt();
     void _itemSpringsBackWhenTheObstructionLeaves();
+    void _itemFollowsAMovedHomeWhenTheObstructionLeaves();
     void _overlapIsAnsweredOnTheChangeThatCausedIt();
     void _disturbedLayoutComesToRest();
     void _sweepingObstacleDoesNotFlingItemsAcrossTheWindow();

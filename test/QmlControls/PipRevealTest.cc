@@ -28,10 +28,6 @@ static bool setExpanded(QQuickItem* pip, bool expanded)
 {
     return QMetaObject::invokeMethod(pip, "_setPipIsExpanded", Q_ARG(QVariant, expanded));
 }
-
-// A property that animates reports many intermediate values on its way; one that is simply
-// switched reports a single change. That difference is the whole of "there is a transition",
-// and it is what a reader of the screen actually sees.
 void PipRevealTest::_collapsingAnimatesInsteadOfVanishing()
 {
     clearPipSettings();
@@ -56,15 +52,9 @@ void PipRevealTest::_collapsingAnimatesInsteadOfVanishing()
              qPrintable(QStringLiteral("opacity reached 0 in %1 step(s): it was switched, not animated").arg(opacitySteps.count())));
     QVERIFY2(scaleSteps.count() > 3,
              qPrintable(QStringLiteral("scale reached its collapsed value in %1 step(s)").arg(scaleSteps.count())));
-
-    // It shrinks toward the corner the toggle occupies rather than shrinking to nothing.
     QVERIFY(content->scale() < 1.0);
     QVERIFY(content->scale() > 0.5);
 }
-
-// The collapsed and expanded states used to be two different buttons in two different places.
-// Whichever state the pip is in there must be exactly one of them, and it must turn to face
-// the other way rather than be swapped for a differently drawn one.
 void PipRevealTest::_oneToggleTurnsToServeBothStates()
 {
     clearPipSettings();
@@ -92,4 +82,22 @@ void PipRevealTest::_oneToggleTurnsToServeBothStates()
 
     QVERIFY(setExpanded(pip, true));
     QTRY_VERIFY_WITH_TIMEOUT(qFuzzyIsNull(chevron->rotation()), 3000);
+}
+
+void PipRevealTest::_collapsedPipLeavesTheRig()
+{
+    clearPipSettings();
+
+    QQuickView view;
+    QVERIFY(loadView(view));
+
+    QQuickItem* const pip = view.rootObject()->findChild<QQuickItem*>("pip");
+    QVERIFY(pip);
+    QCOMPARE(view.rootObject()->property("pipAnchored").toBool(), true);
+
+    QVERIFY(setExpanded(pip, false));
+    QTRY_COMPARE_WITH_TIMEOUT(view.rootObject()->property("pipAnchored").toBool(), false, 3000);
+
+    QVERIFY(setExpanded(pip, true));
+    QTRY_COMPARE_WITH_TIMEOUT(view.rootObject()->property("pipAnchored").toBool(), true, 3000);
 }
