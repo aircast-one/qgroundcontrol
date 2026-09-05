@@ -640,11 +640,14 @@ SetupPage {
                 }
             }
 
+            property string _calName
+
             component CalRow: PlanGroupRow {
                 property bool needsCalibration: false
 
                 objectName:  "calRow" + text.replace(/\s/g, "")
                 interactive: true
+                onClicked:   _calName = text
 
                 Rectangle {
                     anchors.verticalCenter: parent.verticalCenter
@@ -739,7 +742,7 @@ SetupPage {
                 anchors.leftMargin: _margins * 2
                 anchors.right:      parent.right
                 anchors.top:        parent.top
-                anchors.bottom:     parent.bottom
+                height:             Math.min(parent.height, Math.max(ScreenTools.defaultFontPixelHeight * 5, statusTextArea.contentHeight + _margins * 4))
                 radius:             ScreenTools.defaultFontPixelHeight * 0.9
                 color:              Qt.alpha(qgcPal.text, 0.055)
 
@@ -756,9 +759,9 @@ SetupPage {
 
             SetupSheet {
                 open:   cancelButton.enabled
-                title:  qsTr("Calibrating")
+                title:  _calName !== "" ? qsTr("Calibrating %1").arg(_calName) : qsTr("Calibrating")
 
-                ProgressBar {
+                SetupProgressBar {
                     id:                 progressBar
                     Layout.fillWidth:   true
                 }

@@ -7,54 +7,51 @@
  *
  ****************************************************************************/
 
-
 import QtQuick
 import QtQuick.Controls
 
-import QGroundControl.Palette
+import QGroundControl
+import QGroundControl.Controls
 import QGroundControl.ScreenTools
 
 Rectangle {
-    // Indicates whether calibration is valid for this control
-    property bool calValid: false
+    id: _root
 
-    // Indicates whether the control is currently being calibrated
-    property bool calInProgress: false
+    property bool   calValid:           false
+    property bool   calInProgress:      false
+    property string calInProgressText:  qsTr("Hold Still")
+    property var    imageSource:        ""
 
-    // Text to show while calibration is in progress
-    property string calInProgressText: qsTr("Hold Still")
+    readonly property var   _qgcPal:     QGroundControl.globalPalette
+    readonly property color _stateColor: calInProgress ? _qgcPal.colorBlue
+                                       : calValid      ? _qgcPal.colorGreen
+                                                       : Qt.alpha(_qgcPal.text, 0.12)
 
-    // Image source
-    property var imageSource: ""
+    radius:         ScreenTools.defaultFontPixelHeight * 0.8
+    color:          Qt.alpha(_qgcPal.text, 0.055)
+    border.width:   2
+    border.color:   _stateColor
 
-    property var __qgcPal: QGCPalette { colorGroupEnabled: enabled }
+    Behavior on border.color { ColorAnimation { duration: 150 } }
 
-    color:  calInProgress ? "yellow" : (calValid ? "green" : "red")
+    Image {
+        anchors.fill:           parent
+        anchors.margins:        ScreenTools.defaultFontPixelHeight * 0.5
+        anchors.bottomMargin:   stateLabel.height + ScreenTools.defaultFontPixelHeight * 0.5
+        source:                 imageSource
+        fillMode:               Image.PreserveAspectFit
+        smooth:                 true
+    }
 
-    Rectangle {
-        readonly property int inset: 5
-
-        x:      inset
-        y:      inset
-        width:  parent.width - (inset * 2)
-        height: parent.height - (inset * 2)
-        color: qgcPal.windowShade
-
-        Image {
-            width:      parent.width
-            height:     parent.height
-            source:     imageSource
-            fillMode:   Image.PreserveAspectFit
-            smooth: true
-        }
-
-        QGCLabel {
-            width:                  parent.width
-            height:                 parent.height
-            horizontalAlignment:    Text.AlignHCenter
-            verticalAlignment:      Text.AlignBottom
-            font.pointSize:         ScreenTools.mediumFontPointSize
-            text:                   calInProgress ? calInProgressText : (calValid ? qsTr("Completed") : qsTr("Incomplete"))
-        }
+    QGCLabel {
+        id:                     stateLabel
+        anchors.left:           parent.left
+        anchors.right:          parent.right
+        anchors.bottom:         parent.bottom
+        anchors.bottomMargin:   ScreenTools.defaultFontPixelHeight * 0.4
+        horizontalAlignment:    Text.AlignHCenter
+        font.bold:              calInProgress
+        color:                  calInProgress || calValid ? _stateColor : Qt.alpha(_qgcPal.text, 0.5)
+        text:                   calInProgress ? calInProgressText : (calValid ? qsTr("Done") : qsTr("Pending"))
     }
 }

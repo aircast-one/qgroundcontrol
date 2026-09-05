@@ -19,8 +19,11 @@ Item {
     id:             _root
     parent:         Overlay.overlay
     anchors.fill:   parent
-    visible:        open
+    opacity:        open ? 1 : 0
+    visible:        opacity > 0
     z:              QGroundControl.zOrderTopMost + 1
+
+    Behavior on opacity { NumberAnimation { duration: 160; easing.type: Easing.OutCubic } }
 
     property bool   open:  false
     property string title
@@ -50,6 +53,9 @@ Item {
         color:              _root._qgcPal.window
         border.width:       1
         border.color:       Qt.alpha(_root._qgcPal.text, 0.1)
+        scale:              _root.open ? 1 : 0.96
+
+        Behavior on scale { NumberAnimation { duration: 160; easing.type: Easing.OutCubic } }
 
         ColumnLayout {
             id:                 sheetLayout
