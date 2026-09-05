@@ -69,7 +69,7 @@ Item {
                 value:                  _root._pwmCenter
                 onMoved:                (v) => { value = v; _root.send(rcSliderSlot.modelData.channel, v) }
                 onRecenterRequested:    { value = _root._pwmCenter; _root.send(rcSliderSlot.modelData.channel, _root._pwmCenter) }
-                onHeld:                 overlayRig.editMode = true
+                onHeld:                 overlayRig.hold(rcSlider)
 
                 Connections {
                     target: QGroundControl.multiVehicleManager
@@ -109,7 +109,7 @@ Item {
                         checked = !checked
                         _root.send(rcButtonSlot.modelData.channel, checked ? _root._pwmMax : _root._pwmMin)
                     }
-                    onHeld:         overlayRig.editMode = true
+                    onHeld:         overlayRig.hold(rcButton)
 
                     Connections {
                         target: QGroundControl.multiVehicleManager
@@ -157,7 +157,7 @@ Item {
                     }
 
                     TapHandler {
-                        onLongPressed: overlayRig.editMode = true
+                        onLongPressed: overlayRig.hold(rcSwitch3)
                     }
 
                     Connections {
@@ -201,7 +201,7 @@ Item {
                     icon:           "/InstrumentValueIcons/bolt.svg"
                     onPressed:      { checked = true;  _root.send(rcMomentarySlot.modelData.channel, _root._pwmMax) }
                     onReleased:     { checked = false; _root.send(rcMomentarySlot.modelData.channel, _root._pwmMin) }
-                    onHeld:         overlayRig.editMode = true
+                    onHeld:         overlayRig.hold(rcMomentaryButton)
 
                     function _release() {
                         if (checked) {

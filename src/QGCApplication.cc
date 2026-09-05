@@ -30,6 +30,7 @@
 #include <QtGui/QFileOpenEvent>
 #include <QtGui/QFontDatabase>
 #include <QtGui/QIcon>
+#include <QtGui/QStyleHints>
 #include <QtNetwork/QHostInfo>
 #include <QtNetwork/QNetworkAccessManager>
 #include <QtNetwork/QNetworkProxyFactory>
@@ -164,6 +165,7 @@ QGCApplication::QGCApplication(int &argc, char *argv[], bool unitTesting, bool s
     setOrganizationName(QGC_ORG_NAME);
     setOrganizationDomain(QGC_ORG_DOMAIN);
     setApplicationVersion(QString(QGC_APP_VERSION_STR));
+    styleHints()->setMousePressAndHoldInterval(500);
 #ifdef Q_OS_LINUX
     setWindowIcon(QIcon(":/res/qgroundcontrol.ico"));
 #endif

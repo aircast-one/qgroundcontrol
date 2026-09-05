@@ -27,12 +27,15 @@ ParallelAnimation {
         easing.type: Easing.OutQuad
     }
 
-    onLiftedChanged: {
+    function _settleLift() {
         if (target && running) {
             _liftAnimation.to = lifted ? 1.07 : 1.0
             _liftAnimation.restart()
         }
     }
+
+    onLiftedChanged: _settleLift()
+    onStarted:       _settleLift()
 
     onTargetChanged: {
         if (target && !target.transform.includes(_translate)) {

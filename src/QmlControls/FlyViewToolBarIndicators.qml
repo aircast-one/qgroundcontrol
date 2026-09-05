@@ -100,7 +100,7 @@ Row {
             JiggleAnimation {
                 target:  slot
                 running: indicatorRow._editMode && slot.visible
-                lifted:  dragHandler.active
+                lifted:  dragHandler.active || (indicatorRow._overlayRig && indicatorRow._overlayRig.heldItem === slot)
             }
 
             OverlayEditBadge {
@@ -112,13 +112,14 @@ Row {
                 anchors.fill:   parent
                 enabled:        !indicatorRow._editMode
                 visible:        enabled
-                onPressAndHold: if (indicatorRow._overlayRig) indicatorRow._overlayRig.editMode = true
+                onPressAndHold: if (indicatorRow._overlayRig) indicatorRow._overlayRig.hold(slot)
             }
 
             DragHandler {
                 id:            dragHandler
                 target:        null
-                enabled:       indicatorRow._editMode && slot.visible
+                enabled:       slot.visible
+                dragThreshold: indicatorRow._overlayRig ? indicatorRow._overlayRig.dragThreshold : 32767
                 yAxis.enabled: false
 
                 onActiveChanged: if (!active) slot.dragOffset = 0

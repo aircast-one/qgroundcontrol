@@ -133,12 +133,12 @@ Item {
                     JiggleAnimation {
                         target:  chip
                         running: control._editMode
-                        lifted:  chipDragHandler.active
+                        lifted:  chipDragHandler.active || overlayRig.heldItem === chip
                     }
 
                     DragHandler {
-                        id:      chipDragHandler
-                        enabled: control._editMode
+                        id:            chipDragHandler
+                        dragThreshold: overlayRig.dragThreshold
 
                         onActiveChanged: {
                             if (!active) {
@@ -162,7 +162,7 @@ Item {
                             }
                         }
 
-                        onPressAndHold: overlayRig.editMode = true
+                        onPressAndHold: overlayRig.hold(chipMouseArea)
                     }
 
                     QGCToolTip {

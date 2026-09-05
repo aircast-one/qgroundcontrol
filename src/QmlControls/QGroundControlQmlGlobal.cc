@@ -8,6 +8,7 @@
  ****************************************************************************/
 
 #include "QGroundControlQmlGlobal.h"
+#include "Haptics.h"
 
 #include "QGCApplication.h"
 #include "QGCCorePlugin.h"
@@ -183,6 +184,11 @@ QString QGroundControlQmlGlobal::loadGlobalSetting (const QString& key, const QS
     QSettings settings;
     settings.beginGroup(kQmlGlobalKeyName);
     return settings.value(key, defaultValue).toString();
+}
+
+void QGroundControlQmlGlobal::hapticFeedback()
+{
+    Haptics::tap();
 }
 
 void QGroundControlQmlGlobal::saveBoolGlobalSetting (const QString& key, bool value)

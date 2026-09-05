@@ -20,6 +20,7 @@ Button {
     implicitHeight: iconOnly ? discSize + captionLabel.height + _captionSpacing : width
     height:         implicitHeight
     hoverEnabled:   !ScreenTools.isMobile
+    enabled:        !editing
 
     visible:        toolStripAction.visible
     imageSource:    toolStripAction.showAlternateIcon ? modelData.alternateIconSource : modelData.iconSource

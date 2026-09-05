@@ -29,6 +29,7 @@ Item {
     property real defaultY:     0
 
     readonly property bool dragging: _dragHandler.active
+    readonly property bool held:     overlayRig.heldItem === root
 
     readonly property int  _animationDuration:  350
     readonly property real _animationOvershoot: 2
@@ -68,8 +69,8 @@ Item {
     }
 
     DragHandler {
-        id:      _dragHandler
-        enabled: root.overlayRig.editMode
+        id:            _dragHandler
+        dragThreshold: root.overlayRig.dragThreshold
 
         onActiveChanged: {
             if (!active) {
@@ -81,7 +82,7 @@ Item {
 
     JiggleAnimation {
         target:     root
-        lifted:     root.dragging
+        lifted:     root.dragging || root.held
         running:    root.overlayRig.editMode && root.visible
     }
 

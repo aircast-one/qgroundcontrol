@@ -273,7 +273,7 @@ Item {
                                     parentToolInsets.bottomEdgeLeftInset - _toolsMargin
         visible:                !QGroundControl.videoManager.fullScreen
         editing:                overlayRig.editMode
-        onHeld:                 overlayRig.editMode = true
+        onHeld:                 overlayRig.hold(toolStrip)
 
         onDisplayPreFlightChecklist: {
             if (!preFlightChecklistLoader.active) {
@@ -307,12 +307,12 @@ Item {
         JiggleAnimation {
             target:  toolStrip
             running: overlayRig.editMode && toolStrip.visible
-            lifted:  toolStripDragHandler.active
+            lifted:  toolStripDragHandler.active || overlayRig.heldItem === toolStrip
         }
 
         DragHandler {
-            id:      toolStripDragHandler
-            enabled: overlayRig.editMode
+            id:            toolStripDragHandler
+            dragThreshold: overlayRig.dragThreshold
 
             onActiveChanged: {
                 if (!active) {
@@ -361,7 +361,7 @@ Item {
                     _guidedController.closeAll()
                     _guidedController.confirmAction(_guidedController[guidedSlot.action])
                 }
-                onHeld: _root.overlayRig.editMode = true
+                onHeld: _root.overlayRig.hold(guidedGlyph)
             }
 
             // The tool strip labelled these; an unlabelled glyph for the two most consequential

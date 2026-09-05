@@ -60,7 +60,7 @@ Control {
 
             onPressAndHold: {
                 if (overlayRig) {
-                    overlayRig.editMode = true
+                    overlayRig.hold(control)
                 }
             }
         }

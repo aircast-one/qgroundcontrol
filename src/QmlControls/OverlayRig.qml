@@ -19,6 +19,38 @@ QtObject {
     property real topInset: 0
     property bool editMode: false
 
+    property Item heldItem: null
+
+    readonly property int dragThreshold: editMode ? Application.styleHints.startDragDistance : 32767
+
+    readonly property Timer _holdPulse: Timer {
+        interval:    700
+        onTriggered: root.heldItem = null
+    }
+
+    function hold(item) {
+        heldItem = _movableFor(item)
+        editMode = true
+        _holdPulse.restart()
+    }
+
+    function _movableFor(item) {
+        for (let it = item; it; it = it.parent) {
+            if (_movables.some((entry) => entry.item === it)) {
+                return it
+            }
+        }
+        return item
+    }
+
+    onEditModeChanged: {
+        if (editMode) {
+            QGroundControl.hapticFeedback()
+        } else {
+            heldItem = null
+        }
+    }
+
     readonly property real _referenceMass: 3500
     readonly property real _minPickup:     0.15
     readonly property real _minDragScale:  0.4

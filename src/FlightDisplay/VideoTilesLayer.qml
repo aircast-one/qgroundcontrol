@@ -280,7 +280,7 @@ Item {
                                     QGroundControl.videoManager.promoteTile(index)
                                 }
                             }
-                            onPressAndHold: if (_root.overlayRig) _root.overlayRig.editMode = true
+                            onPressAndHold: if (_root.overlayRig) _root.overlayRig.hold(tileMouseArea)
                         }
                     }
                 }
@@ -333,10 +333,11 @@ Item {
                 checked:     _root.grid
                 editing:     _root._editMode
                 onClicked:   _root.setGrid(!_root.grid)
-                onHeld:      if (_root.overlayRig) _root.overlayRig.editMode = true
+                onHeld:      if (_root.overlayRig) _root.overlayRig.hold(layoutButton)
             }
 
             OverlayRoundButton {
+                id:           tabButton
                 objectName:   "videoRailTab"
                 anchors.horizontalCenter: parent.horizontalCenter
                 width:        layoutButton.width * 0.5
@@ -346,7 +347,7 @@ Item {
                 visible:      !_root.grid
                 editing:      _root._editMode
                 onClicked:    _root.setTucked(!_root.tucked)
-                onHeld:       if (_root.overlayRig) _root.overlayRig.editMode = true
+                onHeld:       if (_root.overlayRig) _root.overlayRig.hold(tabButton)
             }
         }
     }

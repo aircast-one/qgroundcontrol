@@ -222,7 +222,7 @@ Item {
     JiggleAnimation {
         target:  _root
         running: _root._editMode && _root.visible && _isExpanded
-        lifted:  pipMouseArea.drag.active
+        lifted:  pipMouseArea.drag.active || (_root.overlayRig && _root.overlayRig.heldItem === _root)
     }
 
     // Hover reveal reads this, not the MouseArea below. The grip and the popup button carry
@@ -273,7 +273,7 @@ Item {
 
         onPressAndHold: {
             if (_root.overlayRig) {
-                _root.overlayRig.editMode = true
+                _root.overlayRig.hold(pipMouseArea)
             }
         }
     }

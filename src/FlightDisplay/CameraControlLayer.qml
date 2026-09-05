@@ -204,7 +204,7 @@ Item {
                 }
             }
             onRecenterRequested:    recenterGimbal()
-            onHeld:                 overlayRig.editMode = true
+            onHeld:                 overlayRig.hold(tiltSlider)
         }
     }
 
@@ -246,7 +246,7 @@ Item {
             value:                  _zoom
             onMoved:                (v) => setZoom(v)
             onRecenterRequested:    setZoom(_pwmCenter)
-            onHeld:                 overlayRig.editMode = true
+            onHeld:                 overlayRig.hold(zoomSlider)
         }
     }
 
@@ -269,7 +269,7 @@ Item {
             actionsEnabled: _hasVehicle
             recording:      _recording
             onClicked:      toggleRecording()
-            onHeld:         overlayRig.editMode = true
+            onHeld:         overlayRig.hold(shutterButton)
         }
     }
 
@@ -298,7 +298,7 @@ Item {
                 icon:           _yawLocked ? "/qmlimages/CameraYawLock.svg"
                                            : "/qmlimages/CameraYawFollow.svg"
                 onClicked:      toggleYawLock()
-                onHeld:         overlayRig.editMode = true
+                onHeld:         overlayRig.hold(yawModeButton)
             }
 
             OverlayCaption { text: _yawLocked ? qsTr("Yaw Lock") : qsTr("Yaw Free") }
@@ -332,7 +332,7 @@ Item {
                     _lightOn = !_lightOn
                     _send(_lightChannel, _lightOn ? _pwmMax : _pwmMin)
                 }
-                onHeld:         overlayRig.editMode = true
+                onHeld:         overlayRig.hold(lightButton)
             }
 
             OverlayCaption { text: qsTr("Light") }
@@ -362,7 +362,7 @@ Item {
                 actionsEnabled: _hasVehicle
                 icon:           "/qmlimages/CameraRecenter.svg"
                 onClicked:      recenterGimbal()
-                onHeld:         overlayRig.editMode = true
+                onHeld:         overlayRig.hold(recenterButton)
             }
 
             OverlayCaption { text: qsTr("Recenter") }
