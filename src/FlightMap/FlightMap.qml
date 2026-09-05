@@ -192,12 +192,12 @@ Map {
         _flickLastT = _flickT
     }
 
-    function _flick(velocityX, velocityY) {
-        const speed = Math.hypot(velocityX, velocityY)
-        if (speed < 0.3) return
-        const pixelsPerVelocity = Math.min(speed, 3) / speed * flickAnimation.duration / 3
-        _flickDistanceX = velocityX * pixelsPerVelocity
-        _flickDistanceY = velocityY * pixelsPerVelocity
+    function _flick(pixelsPerSecondX, pixelsPerSecondY) {
+        const speed = Math.hypot(pixelsPerSecondX, pixelsPerSecondY)
+        if (speed < 300) return
+        const distancePerSpeed = Math.min(speed, 3000) / speed * flickAnimation.duration / 3000
+        _flickDistanceX = pixelsPerSecondX * distancePerSpeed
+        _flickDistanceY = pixelsPerSecondY * distancePerSpeed
         _flickLastT = 0
         flickAnimation.restart()
     }
@@ -207,8 +207,8 @@ Map {
         enabled:         _map.panEnabled
         acceptedButtons: Qt.LeftButton
 
-        property vector2d _velocity
-        property real     _lastMoveTime
+        readonly property int _flickWindowMSecs: 100
+        property real _lastMoveTime
 
         onActiveChanged: {
             if (active) {
@@ -217,15 +217,13 @@ Map {
                 return
             }
             mapPanStop()
-            if (centroid.pressedButtons === Qt.NoButton && Date.now() - _lastMoveTime < 100) {
-                _map._flick(-_velocity.x / 1000, -_velocity.y / 1000)
+            if (Date.now() - _lastMoveTime < _flickWindowMSecs) {
+                _map._flick(-centroid.velocity.x, -centroid.velocity.y)
             }
         }
 
         onTranslationChanged: (delta) => {
-            if (!active) return
             _map.pan(-delta.x, -delta.y)
-            _velocity = centroid.velocity
             _lastMoveTime = Date.now()
         }
     }

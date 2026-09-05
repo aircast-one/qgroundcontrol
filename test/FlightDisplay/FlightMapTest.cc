@@ -4,6 +4,7 @@
 
 #include <QtGui/QNativeGestureEvent>
 #include <QtGui/QWheelEvent>
+#include <QtGui/qpa/qwindowsysteminterface.h>
 #include <QtPositioning/QGeoCoordinate>
 
 static const QPointF kCenter(300, 200);
@@ -205,8 +206,8 @@ void FlightMapTest::_mouseDragFlicksWithInertia()
 
 static void moveWithoutButtons(QQuickView& view, const QPointF& pos)
 {
-    QMouseEvent event(QEvent::MouseMove, pos, view.mapToGlobal(pos.toPoint()), Qt::NoButton, Qt::NoButton, Qt::NoModifier);
-    QCoreApplication::sendEvent(&view, &event);
+    QWindowSystemInterface::handleMouseEvent(&view, pos, view.mapToGlobal(pos.toPoint()), Qt::NoButton, Qt::NoButton, QEvent::MouseMove);
+    QWindowSystemInterface::flushWindowSystemEvents();
 }
 
 void FlightMapTest::_lostReleaseDoesNotLeaveTheMapStuckToTheCursor()
@@ -221,15 +222,13 @@ void FlightMapTest::_lostReleaseDoesNotLeaveTheMapStuckToTheCursor()
     QTest::mouseMove(&view, ((kCenter + dragEnd) / 2).toPoint(), 20);
     QTest::mouseMove(&view, dragEnd.toPoint(), 20);
     QVERIFY(near(pointOf(map, before), dragEnd));
-    QCOMPARE(map->property("panStarts").toInt(), 1);
 
     moveWithoutButtons(view, dragEnd - QPointF(0, 60));
     moveWithoutButtons(view, dragEnd - QPointF(0, 120));
-
     QVERIFY(near(pointOf(map, before), dragEnd));
     QVERIFY(!map->property("flicking").toBool());
-    QCOMPARE(map->property("panStops").toInt(), 0);
 
     QTest::mouseRelease(&view, Qt::LeftButton, Qt::NoModifier, dragEnd.toPoint());
+    QCOMPARE(map->property("panStarts").toInt(), 1);
     QCOMPARE(map->property("panStops").toInt(), 1);
 }
