@@ -551,18 +551,12 @@ Item {
                 }
             }
 
-            component DockHairline: Rectangle {
-                width:  dock._cell
-                height: 1
-                color:  Qt.alpha(dock._ink, 0.12)
-            }
-
             DockCapsule {
                 DockButton {
                     id:         fileButton
                     text:       qsTr("File")
                     objectName: "planDockFile"
-                    icon:    _planMasterController.dirty ? "/qmlimages/MapSyncChanged.svg" : "/qmlimages/MapSync.svg"
+                    icon:    "/InstrumentValueIcons/folder-outline.svg"
                     enabled: !_planMasterController.syncInProgress
                     onClicked: {
                         allAddClickBoolsOff()
@@ -578,7 +572,7 @@ Item {
                     id:         addWaypointButton
                     text:       _editingLayer === _layerRallyPoints ? qsTr("Rally") : qsTr("Waypoint")
                     objectName: "planDockAddWaypoint"
-                    icon:    "/qmlimages/MapAddMission.svg"
+                    icon:    "/InstrumentValueIcons/pin.svg"
                     checked: _addWaypointMode
                     enabled: _editingLayer === _layerRallyPoints ? _rallyPointController.supported
                                                                  : _missionController.flyThroughCommandsAllowed
@@ -588,8 +582,6 @@ Item {
                         _addWaypointMode = !_addWaypointMode
                     }
                 }
-
-                DockHairline { visible: addWaypointButton.visible && addButton.visible }
 
                 DockButton {
                     id:         addButton
@@ -613,8 +605,6 @@ Item {
                     icon:      "/qmlimages/MapCenter.svg"
                     onClicked: centerMenu.openFrom(centerButton)
                 }
-
-                DockHairline {}
 
                 DockButton {
                     id:         mapTypeButton
