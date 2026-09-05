@@ -184,14 +184,7 @@ Item {
                 width:  dragHandle.width + labelControl.width
                 height: dragHandle.height
 
-                Rectangle {
-                    id:         dragHandle
-                    width:      ScreenTools.defaultFontPixelHeight * 1.5
-                    height:     width
-                    radius:     width / 2
-                    color:      "white"
-                    opacity:    .90
-                }
+                MapEditHandle { id: dragHandle }
 
                 Rectangle {
                     id:                     labelControl

@@ -32,13 +32,11 @@ Item {
     property real            interiorOpacity     : 1
     property int             borderWidth         : 0
     property color           borderColor         : "black"
-    property string          _instructionText    : _polygonToolsText
     property var             _StoreCoordinates  : []
     property real            _zorderDragHandle   : QGroundControl.zOrderMapItems + 3
     property real            _zorderSplitHandle  : QGroundControl.zOrderMapItems + 2
     property real            _zorderCenterHandle : QGroundControl.zOrderMapItems + 1
-    readonly property string _polygonToolsText   : qsTr("Option")
-    readonly property string _fenceText          : qsTr("Click on the map to add vertices. Click 'Done Fencing' when finished.")
+    readonly property string _fenceText          : qsTr("Click the map to add vertices")
     property string          someParameter       : "defaultParameter"
     property real            radius              : ScreenTools.defaultFontPixelHeight * 4.44     //Automatic Geofence Radius
     property real            centerX             //Initial Drone X-Position
@@ -330,10 +328,8 @@ Item {
         target: mapPolygon
         onTraceModeChanged: {
             if (mapPolygon.traceMode) {
-                _instructionText = _fenceText
                 _objMgrTraceVisuals.createObject(traceMouseAreaComponent, mapControl, false)
             } else {
-                _instructionText = _polygonToolsText
                 _objMgrTraceVisuals.destroyObjects()
             }
         }
@@ -344,6 +340,19 @@ Item {
         _handleInteractiveChanged()
     }
     Component.onDestruction: mapPolygon.traceMode = false
+
+    function _toggleTrace() {
+        if (mapPolygon.traceMode) {
+            if (mapPolygon.count < 3) {
+                _restorePreviousVertices()
+            }
+            mapPolygon.traceMode = false
+        } else {
+            _saveCurrentVertices()
+            mapPolygon.traceMode = true
+            mapPolygon.clear()
+        }
+    }
 
     QGCDynamicObjectManager { id: _objMgrCommonVisuals }
     QGCDynamicObjectManager { id: _objMgrToolVisuals }
@@ -492,24 +501,9 @@ Item {
             anchorPoint.x:  dragHandle.width  * 0.5
             anchorPoint.y:  dragHandle.height * 0.5
             z:              _zorderDragHandle
-            sourceItem: Rectangle {
-                id:             dragHandle
-                width:          ScreenTools.defaultFontPixelHeight * 1.5
-                height:         width
-                radius:         width * 0.5
-                color:          Qt.rgba(1,1,1,0.8)
-                border.color:   Qt.rgba(0,0,0,0.25)
-                border.width:   1
-                QGCColoredImage {
-                    width:      parent.width
-                    height:     width
-                    color:      Qt.rgba(0,0,0,1)
-                    mipmap:     true
-                    fillMode:   Image.PreserveAspectFit
-                    source:     "/qmlimages/MapCenter.svg"
-                    sourceSize.height:  height
-                    anchors.centerIn:   parent
-                }
+            sourceItem: MapEditHandle {
+                id:   dragHandle
+                icon: "/qmlimages/MapCenter.svg"
             }
         }
     }
@@ -526,15 +520,7 @@ Item {
 
             property int polygonVertex
 
-            sourceItem: Rectangle {
-                id:             dragHandle
-                width:          ScreenTools.defaultFontPixelHeight * 1.5
-                height:         width
-                radius:         width * 0.5
-                color:          Qt.rgba(1,1,1,0.8)
-                border.color:   Qt.rgba(0,0,0,0.25)
-                border.width:   1
-            }
+            sourceItem: MapEditHandle { id: dragHandle }
         }
     }
 
@@ -639,32 +625,11 @@ Item {
             anchors.horizontalCenterOffset: mapControl.centerViewport.left + (mapControl.centerViewport.width / 2)
             y:                              mapControl.centerViewport.top
             availableWidth:                 mapControl.centerViewport.width
-
-            QGCButton {
-                _horizontalPadding: 2
-                text:               qsTr("Automatic")
-                visible:            !mapPolygon.traceMode
-                onClicked:          _resetPolygon()
-            }
-
-
-            QGCButton {
-                _horizontalPadding: 2
-                text:               mapPolygon.traceMode ? qsTr("Done fencing") : qsTr("Mannual")
-                onClicked: {
-                    if (mapPolygon.traceMode) {
-                        if (mapPolygon.count < 3) {
-                            _restorePreviousVertices()
-                        }
-                        mapPolygon.traceMode = false
-                    } else {
-                        _saveCurrentVertices()
-                        mapPolygon.traceMode = true
-                        mapPolygon.clear()
-                    }
-                }
-            }
-
+            caption:                        mapPolygon.traceMode ? _fenceText : ""
+            tools: mapPolygon.traceMode
+                ? [ { text: qsTr("Done"), accent: true, action: _toggleTrace } ]
+                : [ { text: qsTr("Automatic"), action: _resetPolygon },
+                    { text: qsTr("Manual"),    action: _toggleTrace } ]
         }
     }
 
@@ -695,13 +660,9 @@ Item {
             anchorPoint.y:  dragHandle.height / 2
             z:              QGroundControl.zOrderMapItems + 2
 
-            sourceItem: Rectangle {
-                id:         dragHandle
-                width:      ScreenTools.defaultFontPixelHeight * 1.5
-                height:     width
-                radius:     width / 2
-                color:      "white"
-                opacity:    interiorOpacity * .90
+            sourceItem: MapEditHandle {
+                id:      dragHandle
+                opacity: interiorOpacity
             }
         }
     }

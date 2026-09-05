@@ -8,67 +8,87 @@
  ****************************************************************************/
 
 import QtQuick
-import QtQuick.Controls
-import QtQuick.Layouts
 
 import QGroundControl
-import QGroundControl.ScreenTools
 import QGroundControl.Controls
-import QGroundControl.Palette
+import QGroundControl.ScreenTools
 
-/// Toolbar used for things like Polygon editing tools
-Item {
-    width:  Math.min(toolsRowLayout.width + (_margins * 2), availableWidth)
-    height: toolsFlickable.y + toolsFlickable.height + _margins
+OverlayCapsule {
+    id: _root
+
+    property real   availableWidth
+    property string caption: ""
+    property var    tools:   []
+
+    width:  Math.min(toolsRow.width + _pad * 2, availableWidth)
+    lifted: true
     z:      QGroundControl.zOrderMapItems + 2
 
-    property real availableWidth
-
-    property real _radius:  ScreenTools.defaultFontPixelWidth / 2
-    property real _margins: ScreenTools.defaultFontPixelWidth / 2
-
-    Component.onCompleted: {
-        // Move the child controls from consumer into the layout control
-        var moveList = []
-        var i
-        for (i = 2; i < children.length; i++) {
-            moveList.push(children[i])
-        }
-        for (i = 0; i < moveList.length; i++) {
-            moveList[i].parent = toolsRowLayout
-        }
-        instructionComponent.createObject(toolsRowLayout)
-    }
-
-    Rectangle {
-        anchors.fill:    parent
-        radius:         _radius
-        color:          QGroundControl.globalPalette.toolbarBackground
-    }
+    readonly property var  _qgcPal: QGroundControl.globalPalette
+    readonly property real _pad:    ScreenTools.defaultFontPixelHeight * 0.25
 
     QGCFlickable {
-        id:                 toolsFlickable
-        anchors.margins:    _margins
-        anchors.top:        parent.top
-        anchors.left:       parent.left
-        anchors.right:      parent.right
-        height:             toolsRowLayout.height
+        anchors.fill:       parent
+        anchors.margins:    _root._pad
         clip:               true
         flickableDirection: Flickable.HorizontalFlick
-        contentWidth:       toolsRowLayout.width
+        contentWidth:       toolsRow.width
 
-        RowLayout {
-            id:                 toolsRowLayout
-            spacing:            _margins
-        }
-    }
+        Row {
+            id:     toolsRow
+            height: _root.height - _root._pad * 2
 
-    Component {
-        id: instructionComponent
+            Item {
+                visible: _root.caption !== ""
+                width:   captionLabel.implicitWidth + ScreenTools.defaultFontPixelWidth * 3
+                height:  parent.height
 
-        QGCLabel {
-            id:             instructionLabel
-            text:           _instructionText
+                QGCLabel {
+                    id:               captionLabel
+                    anchors.centerIn: parent
+                    text:             _root.caption
+                    color:            Qt.alpha(_root.contentColor, 0.65)
+                }
+
+                Rectangle {
+                    anchors.right:          parent.right
+                    anchors.verticalCenter: parent.verticalCenter
+                    width:                  1
+                    height:                 parent.height * 0.55
+                    color:                  Qt.alpha(_root.contentColor, 0.2)
+                }
+            }
+
+            Repeater {
+                model: _root.tools
+
+                Rectangle {
+                    visible: modelData.visible !== false
+                    width:   toolLabel.implicitWidth + ScreenTools.defaultFontPixelWidth * 3
+                    height:  parent.height
+                    radius:  height / 2
+                    color:   toolMouseArea.pressed       ? Qt.alpha(_root.contentColor, 0.18)
+                           : toolMouseArea.containsMouse ? Qt.alpha(_root.contentColor, 0.1)
+                                                         : "transparent"
+
+                    Behavior on color { ColorAnimation { duration: 120 } }
+
+                    QGCLabel {
+                        id:               toolLabel
+                        anchors.centerIn: parent
+                        text:             modelData.text
+                        font.bold:        modelData.accent === true
+                        color:            modelData.accent === true ? _root._qgcPal.primaryButton : _root.contentColor
+                    }
+
+                    QGCMouseArea {
+                        id:           toolMouseArea
+                        anchors.fill: parent
+                        hoverEnabled: !ScreenTools.isMobile
+                        onClicked:    modelData.action()
+                    }
+                }
+            }
         }
     }
 }

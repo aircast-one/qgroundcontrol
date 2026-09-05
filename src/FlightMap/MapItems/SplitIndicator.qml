@@ -8,44 +8,44 @@
  ****************************************************************************/
 
 import QtQuick
-import QtQuick.Controls
 
-import QGroundControl.ScreenTools
 import QGroundControl.Controls
+import QGroundControl.ScreenTools
 
 Rectangle {
-    id:             _root
-    width:          ScreenTools.defaultFontPixelHeight * 1.5
-    height:         width
-    radius:         width / 2
-    border.color:   indicatorColor
-    color:          "transparent"
-    opacity:        0.75
-
-    property color indicatorColor: "white"
+    id: _root
 
     signal clicked
 
+    width:         ScreenTools.defaultFontPixelHeight * 1.0
+    height:        width
+    radius:        width / 2
+    color:         Qt.rgba(1, 1, 1, splitMouseArea.containsMouse ? 1 : 0.7)
+    layer.enabled: true
+    layer.effect:  OverlayShadowEffect { }
+
+    Behavior on color { ColorAnimation { duration: 120 } }
+
     Rectangle {
-        anchors.margins:            _root.height / 6
-        anchors.top:                parent.top
-        anchors.bottom:             parent.bottom
-        anchors.horizontalCenter:   parent.horizontalCenter
-        width:                      1
-        color:                      indicatorColor
+        anchors.centerIn: parent
+        width:            parent.width * 0.5
+        height:           2
+        radius:           1
+        color:            Qt.rgba(0, 0, 0, 0.7)
     }
 
     Rectangle {
-        anchors.margins:            _root.height / 6
-        anchors.left:               parent.left
-        anchors.right:              parent.right
-        anchors.verticalCenter:     parent.verticalCenter
-        height:                     1
-        color:                      indicatorColor
+        anchors.centerIn: parent
+        width:            2
+        height:           parent.width * 0.5
+        radius:           1
+        color:            Qt.rgba(0, 0, 0, 0.7)
     }
 
     QGCMouseArea {
-        fillItem:   parent
-        onClicked:  _root.clicked()
+        id:           splitMouseArea
+        fillItem:     parent
+        hoverEnabled: !ScreenTools.isMobile
+        onClicked:    _root.clicked()
     }
 }

@@ -32,13 +32,11 @@ Item {
 
     property var    _dragHandlesComponent
     property var    _splitHandlesComponent
-    property string _instructionText:       _corridorToolsText
     property real   _zorderDragHandle:      QGroundControl.zOrderMapItems + 3   // Highest to prevent splitting when items overlap
     property real   _zorderSplitHandle:     QGroundControl.zOrderMapItems + 2
     property var    _savedVertices:         [ ]
 
-    readonly property string _corridorToolsText:    qsTr("Polyline Tools")
-    readonly property string _traceText:            qsTr("Click in the map to add vertices. Click 'Done Tracing' when finished.")
+    readonly property string _traceText: qsTr("Click the map to add vertices")
 
     function _addCommonVisuals() {
         if (_objMgrCommonVisuals.empty) {
@@ -99,10 +97,8 @@ Item {
         target: mapPolyline
         onTraceModeChanged: {
             if (mapPolyline.traceMode) {
-                _instructionText = _traceText
                 _objMgrTraceVisuals.createObject(traceMouseAreaComponent, mapControl, false)
             } else {
-                _instructionText = _corridorToolsText
                 _objMgrTraceVisuals.destroyObjects()
             }
         }
@@ -115,6 +111,19 @@ Item {
         }
     }
     Component.onDestruction: mapPolyline.traceMode = false
+
+    function _toggleTrace() {
+        if (mapPolyline.traceMode) {
+            if (mapPolyline.count < 2) {
+                _restorePreviousVertices()
+            }
+            mapPolyline.traceMode = false
+        } else {
+            _saveCurrentVertices()
+            mapPolyline.traceMode = true
+            mapPolyline.clear()
+        }
+    }
 
     QGCDynamicObjectManager { id: _objMgrCommonVisuals }
     QGCDynamicObjectManager { id: _objMgrInteractiveVisuals }
@@ -272,15 +281,7 @@ Item {
 
             property int polylineVertex
 
-            sourceItem: Rectangle {
-                id:             dragHandle
-                width:          ScreenTools.defaultFontPixelHeight * 1.5
-                height:         width
-                radius:         width * 0.5
-                color:          Qt.rgba(1,1,1,0.8)
-                border.color:   Qt.rgba(0,0,0,0.25)
-                border.width:   1
-            }
+            sourceItem: MapEditHandle { id: dragHandle }
         }
     }
 
@@ -326,37 +327,12 @@ Item {
             y:                              mapControl.centerViewport.top
             z:                              QGroundControl.zOrderMapItems + 2
             availableWidth:                 mapControl.centerViewport.width
-
-            QGCButton {
-                _horizontalPadding: 0
-                text:               qsTr("Basic")
-                visible:            !mapPolyline.traceMode
-                onClicked:          _resetPolyline()
-            }
-
-            QGCButton {
-                _horizontalPadding: 0
-                text:               mapPolyline.traceMode ? qsTr("Done Tracing") : qsTr("Trace")
-                onClicked: {
-                    if (mapPolyline.traceMode) {
-                        if (mapPolyline.count < 2) {
-                            _restorePreviousVertices()
-                        }
-                        mapPolyline.traceMode = false
-                    } else {
-                        _saveCurrentVertices()
-                        mapPolyline.traceMode = true
-                        mapPolyline.clear();
-                    }
-                }
-            }
-
-            QGCButton {
-                _horizontalPadding: 0
-                text:               qsTr("Load KML/SHP...")
-                onClicked:          kmlOrSHPLoadDialog.openForLoad()
-                visible:            !mapPolyline.traceMode
-            }
+            caption:                        mapPolyline.traceMode ? _traceText : ""
+            tools: mapPolyline.traceMode
+                ? [ { text: qsTr("Done"), accent: true, action: _toggleTrace } ]
+                : [ { text: qsTr("Basic"),        action: _resetPolyline },
+                    { text: qsTr("Trace"),        action: _toggleTrace },
+                    { text: qsTr("Load KML/SHP…"), action: kmlOrSHPLoadDialog.openForLoad } ]
         }
     }
 

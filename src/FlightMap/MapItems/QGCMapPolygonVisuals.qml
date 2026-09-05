@@ -39,7 +39,6 @@ Item {
     property bool   _circleRadiusDrag:          false
     property var    _circleRadiusDragCoord:     QtPositioning.coordinate()
     property bool   _editCircleRadius:          false
-    property string _instructionText:           _polygonToolsText
     property var    _savedVertices:             [ ]
     property bool   _savedCircleMode
     property bool   _isVertexBeingDragged:      false
@@ -48,8 +47,7 @@ Item {
     property real _zorderSplitHandle:   QGroundControl.zOrderMapItems + 2
     property real _zorderCenterHandle:  QGroundControl.zOrderMapItems + 1   // Lowest such that drag or split takes precedence
 
-    readonly property string _polygonToolsText: qsTr("Polygon Tools")
-    readonly property string _traceText:        qsTr("Click in the map to add vertices. Click 'Done Tracing' when finished.")
+    readonly property string _traceText: qsTr("Click the map to add vertices")
 
     function addCommonVisuals() {
         if (_objMgrCommonVisuals.empty) {
@@ -196,10 +194,8 @@ Item {
         target: mapPolygon
         onTraceModeChanged: {
             if (mapPolygon.traceMode) {
-                _instructionText = _traceText
                 _objMgrTraceVisuals.createObject(traceMouseAreaComponent, mapControl, false)
             } else {
-                _instructionText = _polygonToolsText
                 _objMgrTraceVisuals.destroyObjects()
             }
         }
@@ -210,6 +206,20 @@ Item {
         _handleInteractiveChanged()
     }
     Component.onDestruction: mapPolygon.traceMode = false
+
+    function _toggleTrace() {
+        if (mapPolygon.traceMode) {
+            if (mapPolygon.count < 3) {
+                _restorePreviousVertices()
+            }
+            mapPolygon.traceMode = false
+        } else {
+            _saveCurrentVertices()
+            _circleMode = false
+            mapPolygon.traceMode = true
+            mapPolygon.clear()
+        }
+    }
 
     QGCDynamicObjectManager { id: _objMgrCommonVisuals }
     QGCDynamicObjectManager { id: _objMgrToolVisuals }
@@ -440,24 +450,9 @@ Item {
             anchorPoint.x:  dragHandle.width  * 0.5
             anchorPoint.y:  dragHandle.height * 0.5
             z:              _zorderDragHandle
-            sourceItem: Rectangle {
-                id:             dragHandle
-                width:          ScreenTools.defaultFontPixelHeight * 1.5
-                height:         width
-                radius:         width * 0.5
-                color:          Qt.rgba(1,1,1,0.8)
-                border.color:   Qt.rgba(0,0,0,0.25)
-                border.width:   1
-                QGCColoredImage {
-                    width:      parent.width
-                    height:     width
-                    color:      Qt.rgba(0,0,0,1)
-                    mipmap:     true
-                    fillMode:   Image.PreserveAspectFit
-                    source:     "/qmlimages/MapCenter.svg"
-                    sourceSize.height:  height
-                    anchors.centerIn:   parent
-                }
+            sourceItem: MapEditHandle {
+                id:   dragHandle
+                icon: "/qmlimages/MapCenter.svg"
             }
         }
     }
@@ -474,15 +469,7 @@ Item {
 
             property int polygonVertex
 
-            sourceItem: Rectangle {
-                id:             dragHandle
-                width:          ScreenTools.defaultFontPixelHeight * 1.5
-                height:         width
-                radius:         width * 0.5
-                color:          Qt.rgba(1,1,1,0.8)
-                border.color:   Qt.rgba(0,0,0,0.25)
-                border.width:   1
-            }
+            sourceItem: MapEditHandle { id: dragHandle }
         }
     }
 
@@ -587,45 +574,13 @@ Item {
             anchors.horizontalCenterOffset: mapControl.centerViewport.left + (mapControl.centerViewport.width / 2)
             y:                              mapControl.centerViewport.top
             availableWidth:                 mapControl.centerViewport.width
-
-            QGCButton {
-                _horizontalPadding: 0
-                text:               qsTr("Basic")
-                visible:            !mapPolygon.traceMode
-                onClicked:          _resetPolygon()
-            }
-
-            QGCButton {
-                _horizontalPadding: 0
-                text:               qsTr("Circular")
-                visible:            !mapPolygon.traceMode
-                onClicked:          _resetCircle()
-            }
-
-            QGCButton {
-                _horizontalPadding: 0
-                text:               mapPolygon.traceMode ? qsTr("Done Tracing") : qsTr("Trace")
-                onClicked: {
-                    if (mapPolygon.traceMode) {
-                        if (mapPolygon.count < 3) {
-                            _restorePreviousVertices()
-                        }
-                        mapPolygon.traceMode = false
-                    } else {
-                        _saveCurrentVertices()
-                        _circleMode = false
-                        mapPolygon.traceMode = true
-                        mapPolygon.clear();
-                    }
-                }
-            }
-
-            QGCButton {
-                _horizontalPadding: 0
-                text:               qsTr("Load KML/SHP...")
-                onClicked:          kmlOrSHPLoadDialog.openForLoad()
-                visible:            !mapPolygon.traceMode
-            }
+            caption:                        mapPolygon.traceMode ? _traceText : ""
+            tools: mapPolygon.traceMode
+                ? [ { text: qsTr("Done"), accent: true, action: _toggleTrace } ]
+                : [ { text: qsTr("Basic"),        action: _resetPolygon },
+                    { text: qsTr("Circular"),     action: _resetCircle },
+                    { text: qsTr("Trace"),        action: _toggleTrace },
+                    { text: qsTr("Load KML/SHP…"), action: kmlOrSHPLoadDialog.openForLoad } ]
         }
     }
 
@@ -662,13 +617,9 @@ Item {
             anchorPoint.y:  dragHandle.height / 2
             z:              QGroundControl.zOrderMapItems + 2
 
-            sourceItem: Rectangle {
-                id:         dragHandle
-                width:      ScreenTools.defaultFontPixelHeight * 1.5
-                height:     width
-                radius:     width / 2
-                color:      "white"
-                opacity:    interiorOpacity * .90
+            sourceItem: MapEditHandle {
+                id:      dragHandle
+                opacity: interiorOpacity
             }
         }
     }
