@@ -12,10 +12,6 @@ import QtQuick
 import QGroundControl
 import QGroundControl.Controls
 import QGroundControl.ScreenTools
-
-// Renders the user-defined on-screen controls from Settings > Fly View > Custom RC Controls.
-// CameraControlLayer owns the built-in camera/gimbal chrome and hands this layer the already
-// deduped, already-reserved-channel-filtered list to draw.
 Item {
     id: _root
 
@@ -51,8 +47,8 @@ Item {
             editKey:            "rcSlider" + modelData.channel
             settingsKeyPrefix:  "RcControl-slider" + modelData.channel
             hint:               _root.ghostHint
-            defaultX:           _root._margins + index * (rcSliderSlot.width + _root._stackGap)
-            defaultY:           _root._margins
+            defaultX:           _root.width - _root._margins - rcSliderSlot.width - index * (rcSliderSlot.width + _root._stackGap)
+            defaultY:           (_root.height - rcSliderSlot.height) / 2
 
             CameraEdgeSlider {
                 id:                     rcSlider
@@ -92,7 +88,7 @@ Item {
             settingsKeyPrefix:  "RcControl-button" + modelData.channel
             hint:               _root.ghostHint
             defaultX:           _root._margins + index * (rcButtonSlot.width + _root._stackGap)
-            defaultY:           _root.height - _root._margins - rcButtonSlot.height
+            defaultY:           (_root.height - rcButtonSlot.height) / 2
 
             Column {
                 id:      rcButtonColumn
@@ -134,11 +130,8 @@ Item {
             editKey:            "rcSwitch3" + modelData.channel
             settingsKeyPrefix:  "RcControl-switch3" + modelData.channel
             hint:               _root.ghostHint
-            defaultX:           _root._margins + index * (rcSwitch3Slot.width + _root._stackGap)
-            // 3x margin just to seed switches below where sliders default to (_margins) so
-            // they don't start stacked on first run - purely a starting spot, users drag
-            // controls wherever they want and the position persists from then on.
-            defaultY:           _root._margins * 3
+            defaultX:           _root.width - _root._margins - rcSwitch3Slot.width - index * (rcSwitch3Slot.width + _root._stackGap)
+            defaultY:           _root.height / 2 - _root._margins * 7 - rcSwitch3Slot.height
 
             Column {
                 id:      rcSwitch3Column
@@ -184,9 +177,7 @@ Item {
             settingsKeyPrefix:  "RcControl-momentary" + modelData.channel
             hint:               _root.ghostHint
             defaultX:           _root._margins + index * (rcMomentarySlot.width + _root._stackGap)
-            // 3x margin: mirrors the switch3 offset above so momentaries seed above the
-            // toggles' default row (_root.height - _margins) instead of on top of them.
-            defaultY:           _root.height - _root._margins * 3 - rcMomentarySlot.height
+            defaultY:           _root.height / 2 + _root._margins * 3
 
             Column {
                 id:      rcMomentaryColumn
@@ -214,10 +205,6 @@ Item {
                         target: QGroundControl.multiVehicleManager
                         function onActiveVehicleChanged() { rcMomentaryButton._release() }
                     }
-
-                    // Entering edit mode (triggered by this same long-press) disables this
-                    // button's own MouseArea mid-press, so no onReleased fires - force the
-                    // channel back down here instead of leaving it latched at max PWM.
                     Connections {
                         target: overlayRig
                         function onEditModeChanged() {

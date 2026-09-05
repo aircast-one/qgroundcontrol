@@ -27,8 +27,6 @@ import QGroundControl.FlightMap
 import QGroundControl.Palette
 import QGroundControl.ScreenTools
 import QGroundControl.Vehicle
-
-// This is the ui overlay layer for the widgets/tools for Fly View
 Item {
     id: _root
 
@@ -103,10 +101,6 @@ Item {
         property real rightEdgeTopInset:    width + _layoutMargin
         property real rightEdgeCenterInset: rightEdgeTopInset
     }
-
-    // Was anchored inside the top-right column: no jiggle, no badge, no collision, and no way
-    // to move the record button off whatever it happened to land on. It is a floating overlay
-    // panel like every other one, so it belongs in the rig.
     ArrangeableOverlayItem {
         id:                 photoVideoSlot
         overlayRig:         _root.overlayRig
@@ -116,11 +110,7 @@ Item {
         available:          photoVideoControlLoader.status === Loader.Ready
         z:                  QGroundControl.zOrderWidgets
         defaultX:           _root.width - photoVideoSlot.width - _layoutMargin
-        defaultY:           _layoutMargin + parentToolInsets.topEdgeRightInset +
-                                topRightColumnLayout.topEdgeRightInset
-
-        // A Loader so PhotoVideoControl is built only with an active vehicle, and does not
-        // have to null-check the mavlink camera everywhere.
+        defaultY:           instrumentPanelDragPosition.defaultY + instrumentPanel.height + _layoutMargin
         Loader {
             id:              photoVideoControlLoader
             objectName:      "photoVideoControl"
@@ -144,9 +134,6 @@ Item {
         visible:    QGroundControl.corePlugin.options.flyView.showInstrumentPanel && _showSingleVehicleUI &&
                         (overlayRig.editMode || !overlayRig.isHidden("instrumentPanel"))
         opacity:    overlayRig.isHidden("instrumentPanel") ? 0.35 : 1
-
-        // DJI corner: the compass lives bottom-left with the minimap, so it reports no
-        // right-edge insets any more.
         property real bottomEdgeRightInset: 0
         property real rightEdgeBottomInset: 0
 
@@ -173,7 +160,7 @@ Item {
             target:             instrumentPanel
             settingsKeyPrefix:  "InstrumentPanel"
             defaultX:           _root.width - instrumentPanel.width - _layoutMargin
-            defaultY:           _root.height - instrumentPanel.height - _layoutMargin
+            defaultY:           _layoutMargin + parentToolInsets.topEdgeRightInset
         }
 
         JiggleAnimation {
@@ -214,8 +201,6 @@ Item {
         guidedValueSlider:          _guidedValueSlider
         utmspSliderTrigger:         utmspActTrigger
     }
-
-    //-- Virtual Joystick
     Loader {
         id:                         virtualJoystickMultiTouch
         z:                          QGroundControl.zOrderTopMost + 1
@@ -239,8 +224,6 @@ Item {
                                                _bottomRightPanelsBottomInset + ScreenTools.defaultFontPixelHeight * 1.5
 
         property var  bottomLoaderMargin:      _pipViewMargin >= parent.height / 2 ? parent.height / 2 : _pipViewMargin
-
-        // Width is difficult to access directly hence this hack which may not work in all circumstances
         property real leftEdgeBottomInset:  visible ? bottomEdgeLeftInset + width/18 - ScreenTools.defaultFontPixelHeight*2 : 0
         property real rightEdgeBottomInset: visible ? bottomEdgeRightInset + width/18 - ScreenTools.defaultFontPixelHeight*2 : 0
         property real rootWidth:            _root.width
@@ -248,8 +231,6 @@ Item {
 
         onRootWidthChanged: virtualJoystickMultiTouch.status == Loader.Ready && visible ? virtualJoystickMultiTouch.item.uiTotalWidth = rootWidth : undefined
         onItemXChanged:     virtualJoystickMultiTouch.status == Loader.Ready && visible ? virtualJoystickMultiTouch.item.uiRealX = itemX : undefined
-
-        //Loader status logic
         onLoaded: {
             if (virtualJoystickMultiTouch.visible) {
                 virtualJoystickMultiTouch.item.calibration = true 
@@ -267,8 +248,6 @@ Item {
         Component.onCompleted:   overlayRig.registerMovable(toolStrip, toolStripDragPosition)
         Component.onDestruction: overlayRig.unregisterMovable(toolStrip)
         z:                      QGroundControl.zOrderWidgets
-        // Height of the column the strip may occupy. Deriving this from y instead would close
-        // a loop, because the dragged y is clamped against the strip's own height.
         maxHeight:              parent.height - (_toolsMargin + parentToolInsets.topEdgeLeftInset) -
                                     parentToolInsets.bottomEdgeLeftInset - _toolsMargin
         visible:                !QGroundControl.videoManager.fullScreen
@@ -322,10 +301,6 @@ Item {
             }
         }
     }
-
-    // Takeoff and land are their own arrangeable buttons rather than two rows in the tool
-    // strip: they are the two actions a pilot reaches for under time pressure, and where the
-    // thumb already is differs per airframe and per operator.
     component GuidedOverlayButton: ArrangeableOverlayItem {
         id: guidedSlot
 
@@ -334,11 +309,6 @@ Item {
         required property string glyph
         required property bool   actionable
         required property string buttonName
-
-        // Visible in edit mode whatever the vehicle is doing. Gating on `actionable` alone
-        // meant the takeoff button could only be arranged while the vehicle was ready to take
-        // off and the land button only while it was flying - never on the bench, which is
-        // where people arrange their layout.
         overlayRig: _root.overlayRig
         control:    guidedButton
         available:  actionable || _root.overlayRig.editMode
@@ -363,9 +333,6 @@ Item {
                 }
                 onHeld: _root.overlayRig.hold(guidedGlyph)
             }
-
-            // The tool strip labelled these; an unlabelled glyph for the two most consequential
-            // guided actions on the screen is not an improvement.
             QGCLabel {
                 anchors.horizontalCenter: parent.horizontalCenter
                 text:                     guidedSlot.title
@@ -379,8 +346,7 @@ Item {
 
     readonly property real _unavailableOpacity: 0.5
     readonly property real _guidedButtonX:      _toolsMargin + parentToolInsets.leftEdgeCenterInset
-    readonly property real _guidedButtonY:      _root.height - _toolsMargin -
-                                                    parentToolInsets.bottomEdgeLeftInset
+    readonly property real _guidedButtonY:      toolStripDragPosition.defaultY + toolStrip.height + _toolsMargin
 
     GuidedOverlayButton {
         id:                 takeoffSlot
@@ -392,11 +358,8 @@ Item {
         editKey:            "takeoffButton"
         settingsKeyPrefix:  "GuidedTakeoffButton"
         defaultX:           _guidedButtonX
-        defaultY:           _guidedButtonY - takeoffSlot.height
+        defaultY:           _guidedButtonY
     }
-
-    // Offset by its own height: the two are mutually exclusive today, so the rig never sees
-    // them as a pair to separate, and identical defaults would stack them the day both show.
     GuidedOverlayButton {
         id:                 landSlot
         action:             "actionLand"
@@ -407,7 +370,7 @@ Item {
         editKey:            "landButton"
         settingsKeyPrefix:  "GuidedLandButton"
         defaultX:           _guidedButtonX
-        defaultY:           _guidedButtonY - takeoffSlot.height - _toolsMargin - landSlot.height
+        defaultY:           _guidedButtonY + takeoffSlot.height + _toolsMargin
     }
 
     GripperMenu {
