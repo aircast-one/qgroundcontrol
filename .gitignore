@@ -136,3 +136,4 @@ libs/xz-embedded/
 # Qt-generated plugin import stub and CPM-fetched GPS drivers
 /src/QtLocationPlugin/QGCLocation_init.cpp
 /src/GPS/Drivers/
+.codex/

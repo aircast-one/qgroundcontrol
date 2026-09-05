@@ -20,21 +20,7 @@ QtObject {
     property Item fullBackdrop:    null
     property bool isDark:          true
 
-    // Any view other than the fly view registers the surface its own chrome floats over here.
-    // Without one, glass anywhere else fell through to the fly view's backdrop and frosted a
-    // blurred picture of a map the panel was not actually sitting on - stale, and offset by
-    // however far the two maps had drifted apart.
-    property var scopes: []
-
-    function addScope(source, backdrop) {
-        scopes = [...scopes.filter(scope => scope.source !== source), { source: source, backdrop: backdrop }]
-    }
-
-    function removeScope(source) {
-        scopes = scopes.filter(scope => scope.source !== source)
-    }
-
-    readonly property bool enabled: contentBackdrop !== null || fullBackdrop !== null || scopes.length > 0
+    readonly property bool enabled: contentBackdrop !== null || fullBackdrop !== null
 
     property int refreshHz: 10
 
@@ -74,8 +60,6 @@ QtObject {
         if (fullSource && _contains(fullSource, item)) {
             return contentBackdrop
         }
-        // Innermost registered scope wins, so a view nested inside another still frosts its own.
-        const scope = scopes.slice().reverse().find(candidate => candidate.source && _contains(candidate.source, item))
-        return scope ? scope.backdrop : fullBackdrop
+        return fullBackdrop
     }
 }
