@@ -144,6 +144,7 @@ public:
     Q_PROPERTY(QVariantList         rcChannelValues             READ rcChannelValues                                                NOTIFY rcChannelValuesChanged)
     Q_PROPERTY(bool                 flightModeSetAvailable      READ flightModeSetAvailable                                         CONSTANT)
     Q_PROPERTY(QStringList          flightModes                 READ flightModes                                                    NOTIFY flightModesChanged)
+    Q_PROPERTY(QStringList          advancedFlightModes         READ advancedFlightModes                                            NOTIFY flightModesChanged)
     Q_PROPERTY(QString              flightMode                  READ flightMode                 WRITE setFlightMode                 NOTIFY flightModeChanged)
     Q_PROPERTY(TrajectoryPoints*    trajectoryPoints            MEMBER _trajectoryPoints                                            CONSTANT)
     Q_PROPERTY(QmlObjectListModel*  cameraTriggerPoints         READ cameraTriggerPoints                                            CONSTANT)
@@ -487,6 +488,7 @@ public:
 
     bool flightModeSetAvailable             ();
     QStringList flightModes                 ();
+    QStringList advancedFlightModes         () const;
     QString flightMode                      () const;
     void setFlightMode                      (const QString& flightMode);
 

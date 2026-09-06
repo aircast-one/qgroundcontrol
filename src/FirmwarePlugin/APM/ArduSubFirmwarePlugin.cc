@@ -16,7 +16,6 @@ QGC_LOGGING_CATEGORY(APMSubmarineFactGroupLog, "qgc.firmwareplugin.apm.ardusubfi
 APMSubmarineFactGroup::APMSubmarineFactGroup(QObject *parent)
     : FactGroup(300, QStringLiteral(":/json/Vehicle/SubmarineFact.json"), parent)
 {
-    // qCDebug(APMSubmarineFactGroupLog) << Q_FUNC_INFO << this;
 
     _addFact(&_camTiltFact);
     _addFact(&_tetherTurnsFact);
@@ -41,7 +40,6 @@ APMSubmarineFactGroup::APMSubmarineFactGroup(QObject *parent)
 
 APMSubmarineFactGroup::~APMSubmarineFactGroup()
 {
-    // qCDebug(APMSubmarineFactGroupLog) << Q_FUNC_INFO << this;
 }
 
 QString ArduSubFirmwarePlugin::vehicleImageOutline(const Vehicle *vehicle) const
@@ -118,16 +116,15 @@ ArduSubFirmwarePlugin::ArduSubFirmwarePlugin(QObject *parent)
     });
 
     static FlightModeList availableFlightModes = {
-        // Mode Name                , Custom Mode                  CanBeSet  adv
-        { _manualFlightMode         , APMSubMode::MANUAL            , true , true },
-        { _stabilizeFlightMode      , APMSubMode::STABILIZE         , true , true },
+        { _manualFlightMode         , APMSubMode::MANUAL            , true , false },
+        { _stabilizeFlightMode      , APMSubMode::STABILIZE         , true , false },
         { _acroFlightMode           , APMSubMode::ACRO              , true , true },
-        { _altHoldFlightMode        , APMSubMode::ALT_HOLD          , true , true },
-        { _autoFlightMode           , APMSubMode::AUTO              , true , true },
-        { _guidedFlightMode         , APMSubMode::GUIDED            , true , true },
+        { _altHoldFlightMode        , APMSubMode::ALT_HOLD          , true , false },
+        { _autoFlightMode           , APMSubMode::AUTO              , true , false },
+        { _guidedFlightMode         , APMSubMode::GUIDED            , true , false },
         { _circleFlightMode         , APMSubMode::CIRCLE            , true , true },
-        { _surfaceFlightMode        , APMSubMode::SURFACE           , true , true },
-        { _posHoldFlightMode        , APMSubMode::POSHOLD           , true , true },
+        { _surfaceFlightMode        , APMSubMode::SURFACE           , true , false },
+        { _posHoldFlightMode        , APMSubMode::POSHOLD           , true , false },
         { _motorDetectionFlightMode , APMSubMode::MOTORDETECTION    , true , true },
         { _surftrakFlightMode       , APMSubMode::SURFTRAK          , true , true },
     };
@@ -222,7 +219,6 @@ ArduSubFirmwarePlugin::~ArduSubFirmwarePlugin()
 
 int ArduSubFirmwarePlugin::remapParamNameHigestMinorVersionNumber(int majorVersionNumber) const
 {
-    // Remapping supports up to 3.6
     return ((majorVersionNumber == 3) ? 6 : Vehicle::versionNotSetValue);
 }
 
@@ -247,7 +243,6 @@ bool ArduSubFirmwarePlugin::isCapable(const Vehicle *vehicle, FirmwareCapabiliti
 const QVariantList &ArduSubFirmwarePlugin::toolIndicators(const Vehicle *vehicle)
 {
     Q_UNUSED(vehicle);
-    //-- Sub specific list of indicators (Enter your modified list here)
     if (_toolIndicators.isEmpty()) {
         _toolIndicators = QVariantList({
             QVariant::fromValue(QUrl::fromUserInput("qrc:/qml/QGroundControl/Controls/BatteryIndicator.qml")),
@@ -260,7 +255,6 @@ const QVariantList &ArduSubFirmwarePlugin::toolIndicators(const Vehicle *vehicle
 const QVariantList& ArduSubFirmwarePlugin::modeIndicators(const Vehicle *vehicle)
 {
     Q_UNUSED(vehicle);
-    //-- Sub specific list of indicators (Enter your modified list here)
     if (_modeIndicators.isEmpty()) {
         _modeIndicators = QVariantList({
             QVariant::fromValue(QUrl::fromUserInput("qrc:/qml/QGroundControl/Toolbar/ModeIndicator.qml")),

@@ -36,21 +36,20 @@ ArduRoverFirmwarePlugin::ArduRoverFirmwarePlugin(QObject *parent)
     });
 
     static FlightModeList availableFlightModes = {
-        // Mode Name              , Custom Mode                CanBeSet  adv
-        { _manualFlightMode       , APMRoverMode::MANUAL       , true , true},
+        { _manualFlightMode       , APMRoverMode::MANUAL       , true , false},
         { _acroFlightMode         , APMRoverMode::ACRO         , true , true},
         { _learningFlightMode     , APMRoverMode::LEARNING     , true , true},
-        { _steeringFlightMode     , APMRoverMode::STEERING     , true , true},
-        { _holdFlightMode         , APMRoverMode::HOLD         , true , true},
-        { _loiterFlightMode       , APMRoverMode::LOITER       , true , true},
+        { _steeringFlightMode     , APMRoverMode::STEERING     , true , false},
+        { _holdFlightMode         , APMRoverMode::HOLD         , true , false},
+        { _loiterFlightMode       , APMRoverMode::LOITER       , true , false},
         { _followFlightMode       , APMRoverMode::FOLLOW       , true , true},
         { _simpleFlightMode       , APMRoverMode::SIMPLE       , true , true},
         { _dockFlightMode         , APMRoverMode::DOCK         , true , true},
         { _circleFlightMode       , APMRoverMode::CIRCLE       , true , true},
-        { _autoFlightMode         , APMRoverMode::AUTO         , true , true},
-        { _rtlFlightMode          , APMRoverMode::RTL          , true , true},
+        { _autoFlightMode         , APMRoverMode::AUTO         , true , false},
+        { _rtlFlightMode          , APMRoverMode::RTL          , true , false},
         { _smartRtlFlightMode     , APMRoverMode::SMART_RTL    , true , true},
-        { _guidedFlightMode       , APMRoverMode::GUIDED       , true , true},
+        { _guidedFlightMode       , APMRoverMode::GUIDED       , true , false},
         { _initializingFlightMode , APMRoverMode::INITIALIZING , true , true},
     };
     updateAvailableFlightModes(availableFlightModes);
@@ -72,7 +71,6 @@ ArduRoverFirmwarePlugin::~ArduRoverFirmwarePlugin()
 
 int ArduRoverFirmwarePlugin::remapParamNameHigestMinorVersionNumber(int majorVersionNumber) const
 {
-    // Remapping supports up to 3.5
     return ((majorVersionNumber == 3) ? 5 : Vehicle::versionNotSetValue);
 }
 

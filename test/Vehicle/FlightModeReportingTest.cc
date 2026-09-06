@@ -55,3 +55,18 @@ void FlightModeReportingTest::_renamingTheModeAnnouncesItEvenThoughTheModeBitsAr
     QCOMPARE(vehicle->customMode(), customModeBefore);
     QVERIFY(nameBefore != renamedTo);
 }
+
+void FlightModeReportingTest::_advancedModesAreASettableSubsetAndLeaveEverydayModesBehind()
+{
+    _connectMockLinkNoInitialConnectSequence();
+    Vehicle* const vehicle = MultiVehicleManager::instance()->activeVehicle();
+    QVERIFY(vehicle);
+
+    const QStringList all = vehicle->flightModes();
+    const QStringList advanced = vehicle->advancedFlightModes();
+    QVERIFY(!advanced.isEmpty());
+    QVERIFY(advanced.size() < all.size());
+    for (const QString &mode : advanced) {
+        QVERIFY2(all.contains(mode), qPrintable(mode));
+    }
+}

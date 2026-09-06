@@ -17,4 +17,5 @@ class FlightModeReportingTest : public UnitTest
 
 private slots:
     void _renamingTheModeAnnouncesItEvenThoughTheModeBitsAreUnchanged();
+    void _advancedModesAreASettableSubsetAndLeaveEverydayModesBehind();
 };

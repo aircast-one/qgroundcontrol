@@ -79,23 +79,22 @@ PX4FirmwarePlugin::PX4FirmwarePlugin()
     });
 
     static FlightModeList availableFlightModes = {
-        // Mode Name                Custom Mode                     CanBeSet  adv
-        { manualFlightModeName,     PX4CustomMode::MANUAL,          true,   true },
-        { stabilizedFlightModeName, PX4CustomMode::STABILIZED,      true,   true },
+        { manualFlightModeName,     PX4CustomMode::MANUAL,          true,   false },
+        { stabilizedFlightModeName, PX4CustomMode::STABILIZED,      true,   false },
         { acroFlightModeName,       PX4CustomMode::ACRO,            true,   true },
-        { rattitudeFlightModeName,  PX4CustomMode::RATTITUDE,       true,   false},
+        { rattitudeFlightModeName,  PX4CustomMode::RATTITUDE,       true,   true},
         { altCtlFlightModeName,     PX4CustomMode::ALTCTL,          true,   false},
         { offboardFlightModeName,   PX4CustomMode::OFFBOARD,        true,   true },
-        { simpleFlightModeName,     PX4CustomMode::SIMPLE,          false,  false},
+        { simpleFlightModeName,     PX4CustomMode::SIMPLE,          false,  true},
         { posCtlFlightModeName,     PX4CustomMode::POSCTL_POSCTL,   true,   false},
         { orbitFlightModeName,      PX4CustomMode::POSCTL_ORBIT,    false,  true },
-        { holdFlightModeName,       PX4CustomMode::AUTO_LOITER,     true,   true },
-        { missionFlightModeName,    PX4CustomMode::AUTO_MISSION,    true,   true },
-        { rtlFlightModeName,        PX4CustomMode::AUTO_RTL,        true,   true },
-        { landingFlightModeName,    PX4CustomMode::AUTO_LAND,       false,  true },
+        { holdFlightModeName,       PX4CustomMode::AUTO_LOITER,     true,   false },
+        { missionFlightModeName,    PX4CustomMode::AUTO_MISSION,    true,   false },
+        { rtlFlightModeName,        PX4CustomMode::AUTO_RTL,        true,   false },
+        { landingFlightModeName,    PX4CustomMode::AUTO_LAND,       false,  false },
         { preclandFlightModeName,   PX4CustomMode::AUTO_PRECLAND,   true,   true },
         { readyFlightModeName,      PX4CustomMode::AUTO_READY,      false,  false},
-        { rtgsFlightModeName,       PX4CustomMode::AUTO_RTGS,       false,  false},
+        { rtgsFlightModeName,       PX4CustomMode::AUTO_RTGS,       false,  true},
         { takeoffFlightModeName,    PX4CustomMode::AUTO_TAKEOFF,    false,  false},
     };
 
@@ -120,7 +119,6 @@ QStringList PX4FirmwarePlugin::flightModes(Vehicle* vehicle) const
             bool fw = (vehicle->fixedWing() && mode.fixedWing);
             bool mc = (vehicle->multiRotor() && mode.multiRotor);
 
-            // show all modes for generic, vtol, etc
             bool other = !vehicle->fixedWing() && !vehicle->multiRotor();
             if (fw || mc || other) {
                 flightModesList += mode.mode_name;
@@ -166,7 +164,6 @@ bool PX4FirmwarePlugin::setFlightMode(const QString& flightMode, uint8_t* base_m
 bool PX4FirmwarePlugin::isCapable(const Vehicle *vehicle, FirmwareCapabilities capabilities) const
 {
     int available = SetFlightModeCapability | PauseVehicleCapability | GuidedModeCapability;
-    //-- This is arbitrary until I find how to really tell if ROI is avaiable
     if (vehicle->multiRotor()) {
         available |= ROIModeCapability | ChangeHeadingCapability;
     }
@@ -186,8 +183,6 @@ void PX4FirmwarePlugin::initializeVehicle(Vehicle* vehicle)
 
 bool PX4FirmwarePlugin::sendHomePositionToVehicle(void) const
 {
-    // PX4 stack does not want home position sent in the first position.
-    // Subsequent sequence numbers must be adjusted.
     return false;
 }
 
@@ -326,9 +321,6 @@ void PX4FirmwarePlugin::_mavCommandResult(int vehicleId, int component, int comm
     }
 
     if (command == MAV_CMD_NAV_TAKEOFF && result == MAV_RESULT_ACCEPTED) {
-        // Now that we are in takeoff mode we can arm the vehicle which will cause it to takeoff.
-        // We specifically don't retry arming if it fails. This way we don't fight with the user if
-        // They are trying to disarm.
         disconnect(vehicle, &Vehicle::mavCommandResult, this, &PX4FirmwarePlugin::_mavCommandResult);
         if (!vehicle->armed()) {
             vehicle->setArmedShowError(true);
@@ -403,8 +395,6 @@ bool PX4FirmwarePlugin::fixedWingAirSpeedLimitsAvailable(Vehicle* vehicle) const
 
 void PX4FirmwarePlugin::guidedModeGotoLocation(Vehicle* vehicle, const QGeoCoordinate& gotoCoord, double forwardFlightLoiterRadius) const
 {
-    // PX4 doesn't support setting the forward flight loiter radius of
-    // MAV_CMD_DO_REPOSITION
     Q_UNUSED(forwardFlightLoiterRadius)
 
     if (qIsNaN(vehicle->altitudeAMSL()->rawValue().toDouble())) {
@@ -651,13 +641,11 @@ QString PX4FirmwarePlugin::stabilizedFlightMode() const
 
 bool PX4FirmwarePlugin::isGuidedMode(const Vehicle* vehicle) const
 {
-    // Not supported by generic vehicle
     return (vehicle->flightMode() == pauseFlightMode() || vehicle->flightMode() == takeOffFlightMode() || vehicle->flightMode() == landFlightMode());
 }
 
 bool PX4FirmwarePlugin::adjustIncomingMavlinkMessage(Vehicle* vehicle, mavlink_message_t* message)
 {
-    //-- Don't process messages to/from UDP Bridge. It doesn't suffer from these issues
     if (message->compid == MAV_COMP_ID_UDP_BRIDGE) {
         return true;
     }
@@ -776,10 +764,8 @@ QVariant PX4FirmwarePlugin::mainStatusIndicatorContentItem(const Vehicle*) const
 const QVariantList& PX4FirmwarePlugin::toolIndicators(const Vehicle* vehicle)
 {
     if (_toolIndicatorList.size() == 0) {
-        // First call the base class to get the standard QGC list
         _toolIndicatorList = FirmwarePlugin::toolIndicators(vehicle);
 
-        // Find the generic flight mode indicator and replace with the custom one
         for (int i=0; i<_toolIndicatorList.size(); i++) {
             if (_toolIndicatorList.at(i).toUrl().toString().contains("FlightModeIndicator.qml")) {
                 _toolIndicatorList[i] = QVariant::fromValue(QUrl::fromUserInput("qrc:/PX4/Indicators/PX4FlightModeIndicator.qml"));
@@ -787,7 +773,6 @@ const QVariantList& PX4FirmwarePlugin::toolIndicators(const Vehicle* vehicle)
             }
         }
 
-        // Find the generic battery indicator and replace with the custom one
         for (int i=0; i<_toolIndicatorList.size(); i++) {
             if (_toolIndicatorList.at(i).toUrl().toString().contains("BatteryIndicator.qml")) {
                 _toolIndicatorList[i] = QVariant::fromValue(QUrl::fromUserInput("qrc:/PX4/Indicators/PX4BatteryIndicator.qml"));
@@ -804,7 +789,6 @@ void PX4FirmwarePlugin::updateAvailableFlightModes(FlightModeList &modeList)
     for(auto &mode: modeList){
         PX4CustomMode::Mode cMode = static_cast<PX4CustomMode::Mode>(mode.custom_mode);
 
-        // Update Multi Rotor
         switch (cMode) {
         case PX4CustomMode::MANUAL            :
         case PX4CustomMode::STABILIZED        :
@@ -830,7 +814,6 @@ void PX4FirmwarePlugin::updateAvailableFlightModes(FlightModeList &modeList)
             break;
         }
 
-        // Update Fixed Wing
         switch (cMode){
         case PX4CustomMode::OFFBOARD          :
         case PX4CustomMode::SIMPLE            :

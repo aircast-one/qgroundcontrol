@@ -1655,6 +1655,17 @@ QStringList Vehicle::flightModes()
     return flightModes;
 }
 
+QStringList Vehicle::advancedFlightModes() const
+{
+    QStringList advanced;
+    for (const FirmwareFlightMode &mode : _firmwarePlugin->flightModeList()) {
+        if (mode.canBeSet && mode.advanced) {
+            advanced += mode.mode_name;
+        }
+    }
+    return advanced;
+}
+
 QString Vehicle::flightMode() const
 {
     return _firmwarePlugin->flightMode(_base_mode, _custom_mode);

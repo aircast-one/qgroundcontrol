@@ -30,18 +30,17 @@ QGC_LOGGING_CATEGORY(MockLinkVerboseLog, "qgc.comms.mocklink.mocklink:verbose")
 int MockLink::_nextVehicleSystemId = 128;
 
 QList<MockLink::FlightMode_t> MockLink::_availableFlightModes = {
-    // Mode Name                Standard Mode               Custom Mode                         CanBeSet    adv
-    { "Manual",                 0,                          PX4CustomMode::MANUAL,              true,       true },
-    { "Stabilized",             0,                          PX4CustomMode::STABILIZED,          true,       true },
+    { "Manual",                 0,                          PX4CustomMode::MANUAL,              true,       false },
+    { "Stabilized",             0,                          PX4CustomMode::STABILIZED,          true,       false },
     { "Acro",                   0,                          PX4CustomMode::ACRO,                true,       true },
     { "Altitude",               0,                          PX4CustomMode::ALTCTL,              true,       false},
     { "Offboard",               0,                          PX4CustomMode::OFFBOARD,            true,       true },
     { "Position",               0,                          PX4CustomMode::POSCTL_POSCTL,       true,       false},
     { "Orbit",                  0,                          PX4CustomMode::POSCTL_ORBIT,        false,      true },
-    { "Hold",                   0,                          PX4CustomMode::AUTO_LOITER,         true,       true },
-    { "Mission",                0,                          PX4CustomMode::AUTO_MISSION,        true,       true },
-    { "Return",                 0,                          PX4CustomMode::AUTO_RTL,            true,       true },
-    { "Land",                   MAV_STANDARD_MODE_LAND,     PX4CustomMode::AUTO_LAND,           false,      true },
+    { "Hold",                   0,                          PX4CustomMode::AUTO_LOITER,         true,       false },
+    { "Mission",                0,                          PX4CustomMode::AUTO_MISSION,        true,       false },
+    { "Return",                 0,                          PX4CustomMode::AUTO_RTL,            true,       false },
+    { "Land",                   MAV_STANDARD_MODE_LAND,     PX4CustomMode::AUTO_LAND,           false,      false },
     { "Precision Landing",      0,                          PX4CustomMode::AUTO_PRECLAND,       true,       true },
     { "Takeoff",                MAV_STANDARD_MODE_TAKEOFF,  PX4CustomMode::AUTO_TAKEOFF,        false,      false},
     { "MockLink Mode",          0,                          PX4CustomMode::RATTITUDE,           true,       false},
@@ -1931,7 +1930,7 @@ void MockLink::_sendAvailableMode(uint8_t modeIndexOneBased)
         modeIndexOneBased,
         availableMode.standard_mode,
         availableMode.custom_mode,
-        availableMode.canBeSet ? 0 : MAV_MODE_PROPERTY_NOT_USER_SELECTABLE,
+        (availableMode.canBeSet ? 0 : MAV_MODE_PROPERTY_NOT_USER_SELECTABLE) | (availableMode.advanced ? MAV_MODE_PROPERTY_ADVANCED : 0),
         availableMode.name);
     respondWithMavlinkMessage(msg);
 }

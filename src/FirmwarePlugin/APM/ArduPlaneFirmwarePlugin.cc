@@ -47,28 +47,27 @@ ArduPlaneFirmwarePlugin::ArduPlaneFirmwarePlugin(QObject *parent)
     });
 
     static FlightModeList availableFlightModes = {
-         // Mode Name              , Custom Mode                CanBeSet  adv
-        { _manualFlightMode       , APMPlaneMode::MANUAL        , true , true },
+        { _manualFlightMode       , APMPlaneMode::MANUAL        , true , false },
         { _circleFlightMode       , APMPlaneMode::CIRCLE        , true , true },
         { _stabilizeFlightMode    , APMPlaneMode::STABILIZE     , true , true },
         { _trainingFlightMode     , APMPlaneMode::TRAINING      , true , true },
         { _acroFlightMode         , APMPlaneMode::ACRO          , true , true },
-        { _flyByWireAFlightMode   , APMPlaneMode::FLY_BY_WIRE_A , true , true },
+        { _flyByWireAFlightMode   , APMPlaneMode::FLY_BY_WIRE_A , true , false },
         { _flyByWireBFlightMode   , APMPlaneMode::FLY_BY_WIRE_B , true , true },
-        { _cruiseFlightMode       , APMPlaneMode::CRUISE        , true , true },
+        { _cruiseFlightMode       , APMPlaneMode::CRUISE        , true , false },
         { _autoTuneFlightMode     , APMPlaneMode::AUTOTUNE      , true , true },
-        { _autoFlightMode         , APMPlaneMode::AUTO          , true , true },
-        { _rtlFlightMode          , APMPlaneMode::RTL           , true , true },
-        { _loiterFlightMode       , APMPlaneMode::LOITER        , true , true },
+        { _autoFlightMode         , APMPlaneMode::AUTO          , true , false },
+        { _rtlFlightMode          , APMPlaneMode::RTL           , true , false },
+        { _loiterFlightMode       , APMPlaneMode::LOITER        , true , false },
         { _takeoffFlightMode      , APMPlaneMode::TAKEOFF       , true , true },
         { _avoidADSBFlightMode    , APMPlaneMode::AVOID_ADSB    , true , true },
-        { _guidedFlightMode       , APMPlaneMode::GUIDED        , true , true },
+        { _guidedFlightMode       , APMPlaneMode::GUIDED        , true , false },
         { _initializingFlightMode , APMPlaneMode::INITIALIZING  , true , true },
         { _qStabilizeFlightMode   , APMPlaneMode::QSTABILIZE    , true , true },
         { _qHoverFlightMode       , APMPlaneMode::QHOVER        , true , true },
-        { _qLoiterFlightMode      , APMPlaneMode::QLOITER       , true , true },
-        { _qLandFlightMode        , APMPlaneMode::QLAND         , true , true },
-        { _qRTLFlightMode         , APMPlaneMode::QRTL          , true , true },
+        { _qLoiterFlightMode      , APMPlaneMode::QLOITER       , true , false },
+        { _qLandFlightMode        , APMPlaneMode::QLAND         , true , false },
+        { _qRTLFlightMode         , APMPlaneMode::QRTL          , true , false },
         { _qAutotuneFlightMode    , APMPlaneMode::QAUTOTUNE     , true , true },
         { _qAcroFlightMode        , APMPlaneMode::QACRO         , true , true },
         { _thermalFlightMode      , APMPlaneMode::THERMAL       , true , true },
@@ -99,7 +98,6 @@ ArduPlaneFirmwarePlugin::~ArduPlaneFirmwarePlugin()
 
 int ArduPlaneFirmwarePlugin::remapParamNameHigestMinorVersionNumber(int majorVersionNumber) const
 {
-    // Remapping supports up to 4.5
     return ((majorVersionNumber == 4) ? 5 : Vehicle::versionNotSetValue);
 }
 

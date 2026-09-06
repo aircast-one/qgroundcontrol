@@ -36,13 +36,89 @@ RowLayout {
     readonly property string _flightMode:   activeVehicle ? activeVehicle.flightMode : ""
     readonly property bool   _connecting:   activeVehicle && _flightMode === ""
     readonly property bool   _modeKnown:    activeVehicle && activeVehicle.flightModes.indexOf(_flightMode) >= 0
+    readonly property bool   _canSetMode:   activeVehicle && activeVehicle.flightModeSetAvailable
+
+    property string          _pendingMode:  ""
+    readonly property bool   _pending:      _pendingMode !== ""
+    readonly property string _shownMode:    _pending ? _pendingMode : _flightMode
+
+    readonly property int _mavCmdDoSetMode:   176
+    readonly property int _mavResultAccepted: 0
 
     readonly property var _modeGlyphs: [
-        { keywords: [ "return", "rtl", "land", "smart" ],                         icon: "/InstrumentValueIcons/home.svg" },
-        { keywords: [ "mission", "auto", "takeoff", "offboard", "follow" ],       icon: "/InstrumentValueIcons/play.svg" },
-        { keywords: [ "position", "loiter", "hold", "guided", "brake", "orbit" ], icon: "/InstrumentValueIcons/target.svg" },
-        { keywords: [ "manual", "stabil", "acro", "altitude", "alt", "sport" ],   icon: "/InstrumentValueIcons/hand-stop.svg" },
+        { keywords: [ "return", "rtl", "land", "smart", "surface", "dock" ],             icon: "/InstrumentValueIcons/home.svg" },
+        { keywords: [ "mission", "auto", "takeoff", "offboard", "follow", "zigzag" ],    icon: "/InstrumentValueIcons/play.svg" },
+        { keywords: [ "position", "loiter", "hold", "guided", "brake", "orbit", "circle" ], icon: "/InstrumentValueIcons/target.svg" },
+        { keywords: [ "manual", "stabil", "acro", "altitude", "alt", "sport", "fbw", "cruise", "steering", "rattitude", "training", "drift", "hover" ], icon: "/InstrumentValueIcons/joystick.svg" },
     ]
+
+    readonly property var _modeDescriptions: ({
+        "Stabilize":                qsTr("You fly it by hand, it only levels itself"),
+        "Stabilized":               qsTr("You fly it by hand, it only levels itself"),
+        "Manual":                   qsTr("Sticks go straight to the motors, no help"),
+        "Acro":                     qsTr("Sticks set rotation rate, no self-levelling"),
+        "Altitude Hold":            qsTr("Holds height, you steer"),
+        "Altitude":                 qsTr("Holds height, you steer"),
+        "Depth Hold":               qsTr("Holds depth, you steer"),
+        "Position Hold":            qsTr("Holds position and height, sticks nudge it"),
+        "Position":                 qsTr("Holds position and height, sticks nudge it"),
+        "Loiter":                   qsTr("Holds position and height, or circles it on a plane"),
+        "Hold":                     qsTr("Stops and holds where it is"),
+        "Brake":                    qsTr("Stops as fast as it can and holds"),
+        "Guided":                   qsTr("Flies to points you tap on the map"),
+        "Guided No GPS":            qsTr("Accepts attitude commands without a position fix"),
+        "Auto":                     qsTr("Flies the uploaded mission"),
+        "Mission":                  qsTr("Flies the uploaded mission"),
+        "RTL":                      qsTr("Climbs, returns home and lands"),
+        "Return":                   qsTr("Climbs, returns home and lands"),
+        "Smart RTL":                qsTr("Retraces its own path back home"),
+        "AutoRTL":                  qsTr("Follows the mission's landing sequence home"),
+        "Return to Groundstation":  qsTr("Returns to the ground station"),
+        "Land":                     qsTr("Lands straight down where it is"),
+        "Precision Land":           qsTr("Lands on the landing target"),
+        "Precision Landing":        qsTr("Lands on the landing target"),
+        "Takeoff":                  qsTr("Climbs to takeoff height and holds"),
+        "Circle":                   qsTr("Circles the point below it"),
+        "Orbit":                    qsTr("Circles a point you choose"),
+        "Follow":                   qsTr("Follows the ground station or a beacon"),
+        "Follow Me":                qsTr("Follows the ground station"),
+        "Drift":                    qsTr("Coordinated turns, like a plane"),
+        "Sport":                    qsTr("Rate control with height hold"),
+        "Flip":                     qsTr("Does one flip, then returns to the previous mode"),
+        "Throw":                    qsTr("Starts flying when thrown"),
+        "Autotune":                 qsTr("Tunes the controllers automatically, needs room"),
+        "Flow Hold":                qsTr("Holds position with optical flow, no GPS"),
+        "ZigZag":                   qsTr("Sweeps between two points you record"),
+        "SystemID":                 qsTr("Injects test signals for system identification"),
+        "AutoRotate":               qsTr("Helicopter autorotation after engine loss"),
+        "Avoid ADSB":               qsTr("Dodges ADS-B traffic automatically"),
+        "Turtle":                   qsTr("Flips itself upright after a crash"),
+        "Cruise":                   qsTr("Holds heading and height, sticks trim"),
+        "FBW A":                    qsTr("Sticks set bank and pitch, wings stay level"),
+        "FBW B":                    qsTr("Sticks set height and heading"),
+        "Training":                 qsTr("Manual with bank and pitch limits"),
+        "Thermal":                  qsTr("Circles rising air automatically"),
+        "Autoland":                 qsTr("Lands on the runway automatically"),
+        "Loiter to QLand":          qsTr("Circles, then lands as a quadcopter"),
+        "QuadPlane Stabilize":      qsTr("Hovers by hand, it only levels itself"),
+        "QuadPlane Hover":          qsTr("Hovers holding height, you steer"),
+        "QuadPlane Loiter":         qsTr("Hovers holding position and height"),
+        "QuadPlane Land":           qsTr("Lands as a quadcopter where it is"),
+        "QuadPlane RTL":            qsTr("Returns home and lands as a quadcopter"),
+        "QuadPlane AutoTune":       qsTr("Tunes the hover controllers automatically"),
+        "QuadPlane Acro":           qsTr("Rate control while hovering"),
+        "Steering":                 qsTr("Sticks set speed and turn rate"),
+        "Learning":                 qsTr("Records waypoints as you drive"),
+        "Simple":                   qsTr("Sticks steer relative to where you stand"),
+        "Dock":                     qsTr("Drives onto the docking target"),
+        "Surface":                  qsTr("Rises to the surface"),
+        "Surftrak":                 qsTr("Holds a set distance above the seabed"),
+        "Motor Detection":          qsTr("Works out motor order and direction"),
+        "Rattitude":                qsTr("Levels near centre, rate control at full stick"),
+        "Offboard":                 qsTr("Controlled by a companion computer"),
+        "Ready":                    qsTr("Armed and waiting on the ground"),
+        "Initializing":             qsTr("Booting, cannot fly yet"),
+    })
 
     function _modeIcon(mode) {
         const name = mode.toLowerCase()
@@ -50,34 +126,99 @@ RowLayout {
         return match ? match.icon : "/qmlimages/FlightModesComponentIcon.png"
     }
 
-    RowLayout {
-        Layout.fillWidth:   true
-        spacing:            ScreenTools.defaultFontPixelWidth
+    function _modeDescription(mode) {
+        return _modeDescriptions[mode] || ""
+    }
 
-        QGCColoredImage {
-            id:                 flightModeIcon
-            width:              ScreenTools.defaultFontPixelHeight
-            height:             ScreenTools.defaultFontPixelHeight
-            sourceSize.height:  height
-            fillMode:           Image.PreserveAspectFit
-            mipmap:             true
-            color:              qgcPal.toolbarText
-            source:             control._modeIcon(control._flightMode)
-            visible:            !control._connecting
+    function _requestMode(mode) {
+        if (mode !== _flightMode) {
+            _pendingMode = mode
+            pendingTimer.restart()
+        }
+        activeVehicle.flightMode = mode
+    }
+
+    function _settlePending() {
+        _pendingMode = ""
+        pendingTimer.stop()
+    }
+
+    Timer {
+        id:          pendingTimer
+        interval:    3000
+        onTriggered: control._pendingMode = ""
+    }
+
+    Connections {
+        target: control.activeVehicle
+
+        function onFlightModeChanged() { control._settlePending() }
+
+        function onMavCommandResult(vehicleId, targetComponent, command, ackResult, failureCode) {
+            if (command === control._mavCmdDoSetMode && ackResult !== control._mavResultAccepted) {
+                control._settlePending()
+            }
+        }
+    }
+
+    Item {
+        Layout.fillWidth:   true
+        Layout.fillHeight:  true
+        implicitWidth:      indicatorRow.implicitWidth
+        implicitHeight:     Math.max(indicatorRow.implicitHeight, ScreenTools.defaultFontPixelHeight * 2.5)
+
+        RowLayout {
+            id:             indicatorRow
+            anchors.fill:   parent
+            spacing:        ScreenTools.defaultFontPixelWidth
+
+            QGCColoredImage {
+                width:              ScreenTools.defaultFontPixelHeight
+                height:             ScreenTools.defaultFontPixelHeight
+                sourceSize.height:  height
+                fillMode:           Image.PreserveAspectFit
+                mipmap:             true
+                color:              qgcPal.toolbarText
+                source:             control._modeIcon(control._shownMode)
+                visible:            !control._connecting && !control._pending
+            }
+
+            QGCSpinner {
+                objectName: "flightModePending"
+                width:      ScreenTools.defaultFontPixelHeight
+                height:     width
+                color:      qgcPal.toolbarText
+                visible:    control._pending
+            }
+
+            QGCLabel {
+                objectName:         "flightModeLabel"
+                text:               !activeVehicle ? qsTr("N/A", "No data to display")
+                                    : control._connecting ? qsTr("Connecting…")
+                                    : control._shownMode
+                color:              control._connecting ? qgcPal.colorGrey : qgcPal.toolbarText
+                opacity:            control._pending ? 0.6 : 1
+                font.pointSize:     fontPointSize
+                Layout.alignment:   Qt.AlignCenter
+            }
+
+            QGCColoredImage {
+                width:              ScreenTools.defaultFontPixelHeight * 0.6
+                height:             width
+                sourceSize.height:  height
+                fillMode:           Image.PreserveAspectFit
+                mipmap:             true
+                color:              qgcPal.toolbarText
+                opacity:            0.7
+                source:             "/InstrumentValueIcons/cheveron-down.svg"
+                visible:            control._canSetMode && !control._connecting
+            }
         }
 
-        QGCLabel {
-            text:               !activeVehicle ? qsTr("N/A", "No data to display")
-                                : control._connecting ? qsTr("Connecting…")
-                                : control._flightMode
-            color:              control._connecting ? qgcPal.colorGrey : qgcPal.toolbarText
-            font.pointSize:     fontPointSize
-            Layout.alignment:   Qt.AlignCenter
-
-            MouseArea {
-                anchors.fill:   parent
-                onClicked:      mainWindow.showIndicatorDrawer(drawerComponent, control)
-            }
+        MouseArea {
+            anchors.fill:   parent
+            enabled:        control._canSetMode
+            onClicked:      mainWindow.showIndicatorDrawer(drawerComponent, control)
         }
     }
 
@@ -110,11 +251,15 @@ RowLayout {
             property var    flightModeSettings:       QGroundControl.settingsManager.flightModeSettings
             property var    hiddenFlightModesFact:    null
             property var    hiddenFlightModesList:    []
+            property bool   showAdvanced:             false
 
-            readonly property var _allModes:    activeVehicle ? activeVehicle.flightModes : []
-            readonly property var _returnModes: _allModes.filter((mode) => _isReturnMode(mode))
-            readonly property var _devModes:    _allModes.filter((mode) => _isDevMode(mode))
-            readonly property var _flightModes: _allModes.filter((mode) => !_isReturnMode(mode) && !_isDevMode(mode))
+            readonly property var _allModes:      activeVehicle ? activeVehicle.flightModes : []
+            readonly property var _advancedModes: activeVehicle ? activeVehicle.advancedFlightModes : []
+            readonly property var _returnModes:   _allModes.filter((mode) => _isReturnMode(mode))
+            readonly property var _devModes:      _allModes.filter((mode) => _isDevMode(mode))
+            readonly property var _flightModes:   _allModes.filter((mode) => !_isReturnMode(mode) && !_isDevMode(mode))
+            readonly property bool _moreAvailable: !showAdvanced && !control.editMode
+                                                   && _advancedModes.some((mode) => !_isHidden(mode) && mode !== control._flightMode)
 
             readonly property var _returnKeywords: [ "return", "rtl", "land" ]
 
@@ -131,6 +276,16 @@ RowLayout {
                 return hiddenFlightModesList.indexOf(mode) !== -1
             }
 
+            function _isAdvanced(mode) {
+                return _advancedModes.indexOf(mode) !== -1
+            }
+
+            function _isListed(mode) {
+                return control.editMode
+                    || mode === control._flightMode
+                    || (!_isHidden(mode) && (showAdvanced || !_isAdvanced(mode)))
+            }
+
             function _setHidden(mode, hidden) {
                 const remaining = hiddenFlightModesList.filter((item) => item !== mode)
                 hiddenFlightModesList = hidden ? [ ...remaining, mode ] : remaining
@@ -143,24 +298,15 @@ RowLayout {
             }
 
             Component.onCompleted: {
-                var hiddenFlightModesPropPrefix
-                if (activeVehicle.px4Firmware) {
-                    hiddenFlightModesPropPrefix = "px4HiddenFlightModes"
-                } else if (activeVehicle.apmFirmware) {
-                    hiddenFlightModesPropPrefix = "apmHiddenFlightModes"
-                } else {
-                    control.allowEditMode = false
-                }
-                if (control.allowEditMode) {
-                    var hiddenFlightModesProp = hiddenFlightModesPropPrefix + activeVehicle.vehicleClassInternalName()
-                    if (flightModeSettings.hasOwnProperty(hiddenFlightModesProp)) {
-                        hiddenFlightModesFact = flightModeSettings[hiddenFlightModesProp]
-                        if (hiddenFlightModesFact && hiddenFlightModesFact.value !== "") {
-                            hiddenFlightModesList = hiddenFlightModesFact.value.split(",")
-                        }
-                    } else {
-                        control.allowEditMode = false
-                    }
+                const hiddenFlightModesPropPrefix = activeVehicle.px4Firmware ? "px4HiddenFlightModes"
+                                                  : activeVehicle.apmFirmware ? "apmHiddenFlightModes"
+                                                  : ""
+                const hiddenFlightModesProp = hiddenFlightModesPropPrefix + activeVehicle.vehicleClassInternalName()
+                const editable = hiddenFlightModesPropPrefix !== "" && flightModeSettings.hasOwnProperty(hiddenFlightModesProp)
+                control.allowEditMode = editable
+                if (editable) {
+                    hiddenFlightModesFact = flightModeSettings[hiddenFlightModesProp]
+                    hiddenFlightModesList = hiddenFlightModesFact.value === "" ? [] : hiddenFlightModesFact.value.split(",")
                 }
             }
 
@@ -168,18 +314,20 @@ RowLayout {
                 delegate: RowLayout {
                     Layout.fillWidth:   true
                     spacing:            ScreenTools.defaultFontPixelWidth
-                    visible:            control.editMode || !modeColumn._isHidden(modelData)
+                    visible:            modeColumn._isListed(modelData)
 
                     OverlayMenuItem {
-                        text:       modelData
-                        checkable:  true
-                        checked:    modeColumn.activeVehicle && modeColumn.activeVehicle.flightMode === modelData
+                        Layout.fillWidth:   true
+                        text:               modelData
+                        icon:               control._modeIcon(modelData)
+                        description:        control._modeDescription(modelData)
+                        current:            modeColumn.activeVehicle && modeColumn.activeVehicle.flightMode === modelData
 
                         onClicked: {
                             if (control.editMode) {
                                 modeColumn._setHidden(modelData, !modeColumn._isHidden(modelData))
                             } else {
-                                modeColumn.activeVehicle.flightMode = modelData
+                                control._requestMode(modelData)
                                 mainWindow.closeIndicatorDrawer()
                             }
                         }
@@ -213,11 +361,20 @@ RowLayout {
 
             ModeSection { model: modeColumn._devModes }
 
-            OverlayMenuSeparator { visible: showAllModesItem.visible }
+            OverlayMenuSeparator { visible: moreModesItem.visible || showAllModesItem.visible }
+
+            OverlayMenuItem {
+                id:         moreModesItem
+                text:       qsTr("More modes")
+                icon:       "/InstrumentValueIcons/dots-horizontal-triple.svg"
+                visible:    modeColumn._moreAvailable
+                onClicked:  modeColumn.showAdvanced = true
+            }
 
             OverlayMenuItem {
                 id:         showAllModesItem
-                text:       qsTr("Show All Modes")
+                text:       qsTr("Show hidden modes")
+                icon:       "/InstrumentValueIcons/view-show.svg"
                 visible:    modeColumn.hiddenFlightModesList.length > 0 && !control.editMode
                 onClicked:  modeColumn._showAllModes()
             }

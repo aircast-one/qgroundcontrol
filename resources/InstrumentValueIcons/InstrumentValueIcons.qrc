@@ -226,6 +226,7 @@
 		<file alias="compose.svg">compose.svg</file>
 		<file alias="bookmark-outline.svg">bookmark-outline.svg</file>
 		<file alias="hand-stop.svg">hand-stop.svg</file>
+		<file alias="joystick.svg">joystick.svg</file>
 		<file alias="tag.svg">tag.svg</file>
 		<file alias="list-add.svg">list-add.svg</file>
 		<file alias="cheveron-up.svg">cheveron-up.svg</file>
