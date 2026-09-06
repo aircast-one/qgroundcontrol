@@ -34,6 +34,7 @@ private slots:
     void _momentarySwitchTogglesCheckedOnPressAndRelease();
     void _sliderOrientationCanBeHorizontal();
     void _rotateBadgeFlipsSliderOrientationAndPersistsIt();
+    void _malformedRcControlsSettingLeavesTheLayerEmptyAndIntact();
     void _addingAControlHighlightsItInTheFlyView();
     void _longPressHintHidesOnceEditModeIsDiscovered();
     void _momentarySwitchReleasesWhenEditModeInterruptsThePress();

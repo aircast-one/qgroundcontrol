@@ -176,6 +176,7 @@ ToolDrawerPage {
 
     QGCFlickable {
         id:                 buttonList
+        objectName:         "settingsList"
         visible:            !_stacked || !_pageOpen
         x:                  _inset + _horizontalMargin
         y:                  searchField.visible ? searchField.y + searchField.height + _verticalMargin
@@ -258,6 +259,7 @@ ToolDrawerPage {
 
     Loader {
         id:                     rightPanel
+        objectName:             "settingsPageLoader"
         visible:                !_stacked || _pageOpen
         anchors.leftMargin:     _stacked ? _inset + _horizontalMargin : _defaultTextWidth * 3
         anchors.rightMargin:    _stacked ? _inset + _horizontalMargin : _inset

@@ -36,28 +36,34 @@ Item {
 
     function _parseRcControls(json) {
         try {
-            return JSON.parse(json).filter((control) => control.channel > 0 && control.channel <= 18)
+            const parsed = JSON.parse(json)
+            if (Array.isArray(parsed)) {
+                return parsed
+            }
+            console.warn("CameraControlLayer: rcControls setting is not a list, ignoring:", json)
         } catch (e) {
-            return []
+            console.warn("CameraControlLayer: rcControls setting is not valid JSON, ignoring:", e.message)
         }
+        return []
     }
     function _firstControlPerFreeChannel(controls) {
         const reserved = [_tiltChannel, _panChannel, _zoomChannel, _lightChannel, _recordChannel]
         return controls.reduce((kept, control) =>
             reserved.includes(control.channel) || kept.some((c) => c.channel === control.channel) ? kept : [...kept, control], [])
     }
-    readonly property var _rcControls: _firstControlPerFreeChannel(_parseRcControls(_flyViewSettings.rcControls.rawValue))
+    readonly property var _rcControls: _firstControlPerFreeChannel(
+        _parseRcControls(_flyViewSettings.rcControls.rawValue).filter((control) => control.channel > 0 && control.channel <= 18))
     readonly property string _ghostHint: _hasVehicle ? "" : qsTr("Connect a vehicle to use this control")
 
     function _rotateSlider(channel) {
-        try {
-            const all = JSON.parse(_flyViewSettings.rcControls.rawValue)
-            _flyViewSettings.rcControls.rawValue = JSON.stringify(all.map((control) =>
-                control.channel === channel && control.type === "slider"
-                    ? Object.assign({}, control, { orientation: control.orientation === "horizontal" ? "vertical" : "horizontal" })
-                    : control))
-        } catch (e) {
+        const all = _parseRcControls(_flyViewSettings.rcControls.rawValue)
+        if (all.length === 0) {
+            return
         }
+        _flyViewSettings.rcControls.rawValue = JSON.stringify(all.map((control) =>
+            control.channel === channel && control.type === "slider"
+                ? Object.assign({}, control, { orientation: control.orientation === "horizontal" ? "vertical" : "horizontal" })
+                : control))
     }
 
     readonly property var  _gimbalController: _activeVehicle ? _activeVehicle.gimbalController : null

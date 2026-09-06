@@ -455,6 +455,29 @@ void CameraControlTest::_sliderOrientationCanBeHorizontal()
     restoreRcControls(settings, saved);
 }
 
+void CameraControlTest::_malformedRcControlsSettingLeavesTheLayerEmptyAndIntact()
+{
+    ChannelMappingScope mapping(0, 0, 0, 0);
+    FlyViewSettings* const settings = SettingsManager::instance()->flyViewSettings();
+    const QVariant saved = settings->rcControls()->rawValue();
+    const QString corrupt = QStringLiteral(R"([{"label":"Pan","channel":7,)");
+    settings->rcControls()->setRawValue(corrupt);
+
+    QQmlPropertyMap globals;
+    QQuickView view;
+    QVERIFY(loadLayer(view, globals));
+
+    QQuickItem* const layer = findItemByName(view.rootObject(), QStringLiteral("cameraControlLayer"));
+    QVERIFY(layer);
+    QCOMPARE(layer->property("_rcControls").toList().count(), 0);
+    QVERIFY(!findItemByName(view.rootObject(), QStringLiteral("rcControlSlider7")));
+
+    QVERIFY(QMetaObject::invokeMethod(layer, "_rotateSlider", Q_ARG(QVariant, QVariant(7))));
+    QCOMPARE(settings->rcControls()->rawValue().toString(), corrupt);
+
+    restoreRcControls(settings, saved);
+}
+
 void CameraControlTest::_rotateBadgeFlipsSliderOrientationAndPersistsIt()
 {
     ChannelMappingScope mapping(0, 0, 0, 0);
