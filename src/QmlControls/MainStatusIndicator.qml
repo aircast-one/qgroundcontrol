@@ -31,6 +31,12 @@ RowLayout {
     property real   _spacing:           ScreenTools.defaultFontPixelWidth / 2
     property bool   _healthAndArmingChecksSupported: _activeVehicle ? _activeVehicle.healthAndArmingCheckReport.supported : false
 
+    readonly property bool _noUserLinks: {
+        const configs = QGroundControl.linkManager.linkConfigurations
+        return !Array.from({ length: configs.count }, (_, i) => configs.get(i))
+                     .some((config) => !config.dynamic && !config.isAutoConnect)
+    }
+
     function dropMainStatusIndicator() {
         let overallStatusComponent = _activeVehicle ? overallStatusIndicatorPage : overallStatusOfflineIndicatorPage
         mainWindow.showIndicatorDrawer(overallStatusComponent, control)
@@ -62,7 +68,7 @@ RowLayout {
         property string _commLostText:      qsTr("Comms Lost")
         property string _readyToFlyText:    qsTr("Ready To Fly")
         property string _notReadyToFlyText: qsTr("Not Ready")
-        property string _disconnectedText:  qsTr("Not Connected")
+        property string _disconnectedText:  control._noUserLinks ? qsTr("Connect a Vehicle") : qsTr("Not Connected")
         property string _armedText:         qsTr("Armed")
         property string _flyingText:        qsTr("Flying")
         property string _landingText:       qsTr("Landing")

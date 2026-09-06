@@ -27,6 +27,7 @@ private slots:
     void _chipPerValueIsRendered();
     void _duplicateFactChipsKeepIndependentPositions();
     void _deleteColumnRemovesTargetedChip();
+    void _addedColumnPicksAnUnusedFact();
     void _resetLayoutNeedsTwoTaps();
     void _leavingEditModeDisarmsReset();
     void _labelStyleSurvivesReload();

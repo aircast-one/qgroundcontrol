@@ -109,6 +109,33 @@ Rectangle {
             font.bold:              true
         }
 
+        RowLayout {
+            Layout.alignment:    Qt.AlignHCenter
+            Layout.bottomMargin: _margins / 2
+            spacing:             _margins * 2
+            visible:             guidedValueSlider ? guidedValueSlider.visible : false
+
+            OverlayRoundButton {
+                objectName: "guidedValueDown"
+                text:       "−"
+                onClicked:  guidedValueSlider.step(-1)
+            }
+
+            QGCLabel {
+                objectName:          "guidedValueReadout"
+                horizontalAlignment: Text.AlignHCenter
+                font.pointSize:      ScreenTools.mediumFontPointSize
+                font.bold:           true
+                text:                guidedValueSlider ? guidedValueSlider.displayText + "  " + guidedValueSlider.valueString : ""
+            }
+
+            OverlayRoundButton {
+                objectName: "guidedValueUp"
+                text:       "+"
+                onClicked:  guidedValueSlider.step(1)
+            }
+        }
+
         QGCCheckBox {
             id:                 optionCheckBox
             Layout.alignment:   Qt.AlignHCenter

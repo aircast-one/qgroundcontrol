@@ -555,6 +555,7 @@ ApplicationWindow {
 
 
     function showIndicatorDrawer(drawerComponent, indicatorItem) {
+        flyView.guidedController.closeAll()
         indicatorDrawer.sourceComponent = drawerComponent
         indicatorDrawer.indicatorItem = indicatorItem
         indicatorDrawer.open()

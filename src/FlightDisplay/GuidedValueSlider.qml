@@ -54,6 +54,16 @@ Item {
 
     property real   _sliderValue:           _firstPixelValue - ((sliderFlickable.contentY + _indicatorCenterPos) * _sliderValuePerPixel)
 
+    readonly property string displayText: _displayText
+    readonly property string valueString: _clampedSliderValueString(_sliderValue) + " " + unitsString
+    readonly property string unitsString: _sliderType === GuidedValueSlider.Speed ?
+                                              QGroundControl.unitsConversion.appSettingsSpeedUnitsString :
+                                              QGroundControl.unitsConversion.appSettingsVerticalDistanceUnitsString
+
+    function step(delta) {
+        setCurrentValue(Math.min(Math.max(getOutputValue() + delta, _sliderMinVal), _sliderMaxVal))
+    }
+
     // Calculate the full range of the slider. We have been given a min/max but that is for clamping the selected slider values.
     // We need expand that range to take into account additional values that must be displayed above/below the value indicator
     // when it is at min/max.
@@ -168,7 +178,7 @@ Item {
                         width:      sliderContainer.width
                         height:     1
                         y:          _majorTickPixelHeight * index + _firstTickPixelOffset
-                        opacity:    tickValue < _sliderMinVal || tickValue > _sliderMaxVal ? 0.5 : 1
+                        visible:    tickValue >= _sliderMinVal && tickValue <= _sliderMaxVal
 
                         property real tickValue: _majorTickMaxValue - (_majorTickValueStep * index)
 
@@ -198,8 +208,7 @@ Item {
                         width:      _minorTickWidth
                         height:     1
                         color:      _qgcPal.text
-                        opacity:    tickValue < _sliderMinVal || tickValue > _sliderMaxVal ? 0.5 : 1
-                        visible:    index % 2 === 1
+                        visible:    index % 2 === 1 && tickValue >= _sliderMinVal && tickValue <= _sliderMaxVal
 
                         property real tickValue: _majorTickMaxValue - ((_majorTickValueStep  / 2) * index)
                     }
@@ -256,12 +265,8 @@ Item {
             anchors.verticalCenter: parent.verticalCenter
             horizontalAlignment:    Text.AlignRight
             verticalAlignment:      Text.AlignVCenter
-            text:                   _clampedSliderValueString(_sliderValue) + " " + unitsString
+            text:                   control.valueString
             font.pointSize:         ScreenTools.largeFontPointSize
-
-            property var unitsString: _sliderType === GuidedValueSlider.Speed ? 
-                                        QGroundControl.unitsConversion.appSettingsSpeedUnitsString : 
-                                            QGroundControl.unitsConversion.appSettingsVerticalDistanceUnitsString
         }
 
         QGCMouseArea {

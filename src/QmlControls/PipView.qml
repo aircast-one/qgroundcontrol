@@ -53,6 +53,9 @@ Item {
     property alias  _windowContentItem: window.contentItem
     property alias  _pipContentItem:    pipContent
     property bool   _isExpanded:        true
+    property bool   quiet:              false
+
+    onQuietChanged: _isExpanded = !quiet && QGroundControl.loadBoolGlobalSetting(_pipExpandedSettingsKey, true)
     property real   _pipSize:           parent ? parent.width * 0.2 : 0
     property real   _maxSize:           0.75
     property real   _minSize:           0.10
@@ -123,7 +126,7 @@ Item {
 
     function _initForItems() {
         _applyItemStates()
-        _setPipIsExpanded(QGroundControl.loadBoolGlobalSetting(_pipExpandedSettingsKey, true))
+        _isExpanded = !quiet && QGroundControl.loadBoolGlobalSetting(_pipExpandedSettingsKey, true)
     }
 
     function _swapPip() {

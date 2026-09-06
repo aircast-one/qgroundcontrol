@@ -276,6 +276,30 @@ void TelemetryChipsTest::_duplicateFactChipsKeepIndependentPositions()
     QVERIFY(QPointF(restoredA->x(), restoredA->y()) != QPointF(restoredB->x(), restoredB->y()));
 }
 
+void TelemetryChipsTest::_addedColumnPicksAnUnusedFact()
+{
+    ChipSettingsScope settingsScope;
+
+    TelemetryChipsTestMainWindow mainWindow;
+    QQuickView view;
+    QVERIFY(loadLayer(view, mainWindow));
+
+    FactValueGrid* const grid = view.rootObject()->findChild<FactValueGrid*>();
+    QVERIFY(grid);
+
+    const QStringList factNamesBefore = gridFactNames(grid);
+    QVERIFY(factNamesBefore.contains(QStringLiteral("AltitudeRelative")));
+
+    grid->appendColumn();
+    const QString firstAdded = gridFactNames(grid).last();
+    QVERIFY(!factNamesBefore.contains(firstAdded));
+
+    grid->appendColumn();
+    const QString secondAdded = gridFactNames(grid).last();
+    QVERIFY(!factNamesBefore.contains(secondAdded));
+    QVERIFY(secondAdded != firstAdded);
+}
+
 void TelemetryChipsTest::_deleteColumnRemovesTargetedChip()
 {
     ChipSettingsScope settingsScope;

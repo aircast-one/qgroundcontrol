@@ -406,6 +406,7 @@ Item {
 
     // Called when an action is about to be executed in order to confirm
     function confirmAction(actionCode, actionData, mapIndicator) {
+        mainWindow.closeIndicatorDrawer()
         var showImmediate = true
         closeAll()
         confirmDialog.action = actionCode

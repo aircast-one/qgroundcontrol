@@ -15,6 +15,9 @@
 #include "Vehicle.h"
 
 #include <QtCore/QSettings>
+#include <QtCore/QSet>
+
+#include <algorithm>
 #include <QtCore/QDir>
 
 QStringList FactValueGrid::_iconNames;
@@ -263,10 +266,26 @@ void FactValueGrid::deleteColumn(int index)
     }
 }
 
+QString FactValueGrid::_firstUnusedFactName() const
+{
+    static const QStringList preferred = { "AltitudeRelative", "GroundSpeed", "ClimbRate", "DistanceToHome", "FlightTime", "Heading", "AltitudeAMSL" };
+
+    QSet<QString> used;
+    for (int colIndex = 0; colIndex < _columns->count(); colIndex++) {
+        QmlObjectListModel* column = _columns->value<QmlObjectListModel*>(colIndex);
+        for (int rowIndex = 0; rowIndex < column->count(); rowIndex++) {
+            used.insert(column->value<InstrumentValueData*>(rowIndex)->factName());
+        }
+    }
+
+    const auto unused = std::find_if(preferred.cbegin(), preferred.cend(), [&used](const QString& name) { return !used.contains(name); });
+    return unused == preferred.cend() ? preferred.first() : *unused;
+}
+
 InstrumentValueData* FactValueGrid::_createNewInstrumentValueWorker(QObject* parent)
 {
     InstrumentValueData* value = new InstrumentValueData(this, parent);
-    value->setFact(InstrumentValueData::vehicleFactGroupName, "AltitudeRelative");
+    value->setFact(InstrumentValueData::vehicleFactGroupName, _firstUnusedFactName());
     value->setText(value->fact()->shortDescription());
     _connectSaveSignals(value);
     return value;

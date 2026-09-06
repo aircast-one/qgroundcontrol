@@ -244,6 +244,7 @@ Item {
             forceItem1Full:         !mainWindow.flyViewActive
             item1:                  mapControl
             item2:                  QGroundControl.videoManager.hasVideo ? videoControl : null
+            quiet:                  !_activeVehicle && !QGroundControl.videoManager.decoding
             show:                   mainWindow.flyViewActive && QGroundControl.videoManager.hasVideo && !QGroundControl.videoManager.fullScreen &&
                                         (videoControl.pipState.state === videoControl.pipState.pipState || mapControl.pipState.state === mapControl.pipState.pipState)
             z:                      QGroundControl.zOrderWidgets

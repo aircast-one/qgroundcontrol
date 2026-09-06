@@ -86,6 +86,7 @@ private slots:
 
 private:
     InstrumentValueData*    _createNewInstrumentValueWorker (QObject* parent);
+    QString                 _firstUnusedFactName            (void) const;
     void                    _saveSettings                   (void);
     void                    _connectSaveSignals             (InstrumentValueData* value);
     QString                 _pascalCase                     (const QString& text);
