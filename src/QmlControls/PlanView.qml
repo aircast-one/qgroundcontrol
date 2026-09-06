@@ -51,9 +51,9 @@ Item {
     readonly property real  _toolsMargin:               ScreenTools.defaultFontPixelWidth * 0.75
     // Derived, not branched. The width used to be an if/else that added 21.667 characters when
     // UTMSP was on - a number with no relationship to anything on screen.
-    readonly property bool  _narrow:                    height > width
-    readonly property real  _rightPanelWidth:           _narrow ? width - _panelMargin * 2
-                                                                  : Math.min(width / 3, ScreenTools.defaultFontPixelWidth * (_utmspEnabled ? 52 : 40))
+    readonly property bool  _narrow:                    panel.height > panel.width
+    readonly property real  _rightPanelWidth:           _narrow ? panel.width - _panelMargin * 2
+                                                                  : Math.min(panel.width / 3, ScreenTools.defaultFontPixelWidth * (_utmspEnabled ? 52 : 40))
     // Everything floats clear of the window edge by the same amount, so the map reads as one
     // surface with panels resting on it rather than as a set of docked regions butted together.
     readonly property real  _panelMargin:               ScreenTools.defaultFontPixelHeight * 0.9
@@ -1222,6 +1222,7 @@ Item {
         // be dismissed and does the dismissing.
         Item {
             id:                     terrainSheet
+            objectName:             "planTerrainSheet"
             anchors.left:           dock.right
             anchors.leftMargin:     _panelMargin
             anchors.right:          _narrow ? parent.right : rightPanel.left

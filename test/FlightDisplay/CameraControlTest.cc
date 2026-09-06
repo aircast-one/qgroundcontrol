@@ -35,20 +35,6 @@ static bool hasVisibleItemWithText(QQuickItem* item, const QString& text)
     return false;
 }
 
-static QQuickItem* findItemByName(QQuickItem* item, const QString& name)
-{
-    if (item->objectName() == name) {
-        return item;
-    }
-    const QList<QQuickItem*> children = item->childItems();
-    for (QQuickItem* child : children) {
-        if (QQuickItem* found = findItemByName(child, name)) {
-            return found;
-        }
-    }
-    return nullptr;
-}
-
 static QQuickItem* findVisibleItemWithProperty(QQuickItem* item, const char* name, const QVariant& value)
 {
     if (item->isVisible() && item->property(name).isValid() && item->property(name) == value) {

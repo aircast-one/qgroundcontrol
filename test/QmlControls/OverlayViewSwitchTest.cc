@@ -15,22 +15,6 @@ static bool load(QQuickView &view)
     return loadTestView(view, QStringLiteral("qrc:/unittest/OverlayViewSwitchTest.qml"));
 }
 
-// Repeater delegates are not QObject children of anything the view can reach, so findChild misses
-// them. The scene graph does hold them.
-static QQuickItem *findItemByName(QQuickItem *item, const QString &name)
-{
-    if (item->objectName() == name) {
-        return item;
-    }
-    const QList<QQuickItem*> children = item->childItems();
-    for (QQuickItem *const child : children) {
-        if (QQuickItem *const found = findItemByName(child, name)) {
-            return found;
-        }
-    }
-    return nullptr;
-}
-
 static QQuickItem *optionAt(const QQuickView &view, int index)
 {
     return findItemByName(view.rootObject(), QStringLiteral("viewSwitchOption%1").arg(index));

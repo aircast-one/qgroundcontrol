@@ -8,6 +8,7 @@ class PlanViewLayoutTest : public UnitTest
 
 private slots:
     void _narrowWindowStacksTheInspectorUnderTheDock();
+    void _narrowWindowGivesTheTerrainProfileItsOwnBand();
     void _wideWindowKeepsTheInspectorOnTheRight();
     void _rotatingBackRestoresTheSideInspector();
 };

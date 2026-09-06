@@ -75,6 +75,20 @@ inline bool storedPosition(const QString& key)
     return settings.value(key).toBool();
 }
 
+inline QQuickItem* findItemByName(QQuickItem* item, const QString& name)
+{
+    if (item->objectName() == name) {
+        return item;
+    }
+    const QList<QQuickItem*> children = item->childItems();
+    for (QQuickItem* const child : children) {
+        if (QQuickItem* const found = findItemByName(child, name)) {
+            return found;
+        }
+    }
+    return nullptr;
+}
+
 inline bool loadTestView(QQuickView& view, const QString& qmlResource)
 {
     view.engine()->addImportPath(QStringLiteral("qrc:/qml"));

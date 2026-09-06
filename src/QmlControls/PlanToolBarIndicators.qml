@@ -83,7 +83,9 @@ RowLayout {
                                               (uploadButton.visible ? uploadButton.Layout.preferredWidth + spacing : 0)
     readonly property bool _compact:          width < _fullRowWidth
 
-    readonly property real _nameWidth: Math.min(nameMetrics.width + ScreenTools.defaultFontPixelWidth * 4, ScreenTools.defaultFontPixelWidth * 28)
+    readonly property real _namePadding:  ScreenTools.defaultFontPixelWidth * 4
+    readonly property real _nameMaxWidth: ScreenTools.defaultFontPixelWidth * 28
+    readonly property real _nameWidth:    Math.min(nameMetrics.width + _namePadding, _nameMaxWidth)
 
     readonly property string _planName: {
         if (!_controllerValid) {
@@ -108,8 +110,9 @@ RowLayout {
         if (!_containsItems) {
             return qsTr("Empty plan")
         }
-        const state = _controllerDirty ? qsTr("Edited") : qsTr("Uploaded")
-        return _compact ? state + " · " + _missionPlannedDistanceText + " · " + items : state + " · " + items
+        const state  = _controllerDirty ? qsTr("Edited") : qsTr("Uploaded")
+        const figure = _compact && !isNaN(_missionPlannedDistance) ? " · " + _missionPlannedDistanceText : ""
+        return state + figure + " · " + items
     }
 
     function getMissionTime() {
@@ -204,9 +207,9 @@ RowLayout {
     // measured text rather than from the labels themselves - a label that elides to its own
     // container's width cannot also be what sets that width.
     OverlayCapsule {
+        objectName:             "planNameCapsule"
         Layout.preferredHeight: _capsuleHeight
-        Layout.preferredWidth:  Math.min(Math.max(nameMetrics.width, stateMetrics.width) + ScreenTools.defaultFontPixelWidth * 4,
-                                         ScreenTools.defaultFontPixelWidth * 28)
+        Layout.preferredWidth:  Math.min(Math.max(nameMetrics.width, stateMetrics.width) + _namePadding, _nameMaxWidth)
         Layout.minimumWidth:    _compact ? _compactNameWidth : Layout.preferredWidth
         visible:                _controllerValid
 

@@ -126,17 +126,15 @@ Popup {
         [ Dialog.Abort,     qsTr("Abort") ],
     ]
 
-    readonly property string _defaultAcceptText: {
-        const accept = _acceptLabels.find(e => buttons & e[0])
-        return accept ? accept[1] : ""
+    readonly property string _defaultAcceptText: _labelFor(_acceptLabels)
+    readonly property string _defaultRejectText: _labelFor(_rejectLabels)
+
+    function _labelFor(labels) {
+        const match = labels.find(e => buttons & e[0])
+        return match ? match[1] : ""
     }
 
     function setupDialogButtons(buttons) {
-        const accept = _acceptLabels.find(e => buttons & e[0])
-        const reject = _rejectLabels.find(e => buttons & e[0])
-        acceptButton.visible = accept !== undefined
-        rejectButton.visible = reject !== undefined
-        rejectButton.text    = reject ? reject[1] : ""
         closePolicy = (buttons & Dialog.Cancel) ? (Popup.NoAutoClose | Popup.CloseOnEscape) : Popup.NoAutoClose
     }
 
@@ -216,6 +214,8 @@ Popup {
             QGCButton {
                 id:                     rejectButton
                 Layout.minimumWidth:    ScreenTools.defaultFontPixelWidth * 10
+                visible:                root._defaultRejectText !== ""
+                text:                   root._defaultRejectText
                 onClicked:              _reject()
             }
 
@@ -223,6 +223,7 @@ Popup {
                 id:                     acceptButton
                 Layout.minimumWidth:    ScreenTools.defaultFontPixelWidth * 10
                 primary:                true
+                visible:                root._defaultAcceptText !== ""
                 text:                   root.acceptButtonTitle !== "" ? root.acceptButtonTitle : root._defaultAcceptText
                 onClicked:              _accept()
             }
