@@ -22,6 +22,9 @@
 #include <QtGui/QFontMetrics>
 #include <QtGui/QInputDevice>
 
+#include <atomic>
+#include <optional>
+
 #if defined(Q_OS_ANDROID)
 #include "AndroidInterface.h"
 #endif
@@ -32,14 +35,26 @@
 
 QGC_LOGGING_CATEGORY(ScreenToolsControllerLog, "qgc.qmlcontrols.screentoolscontroller")
 
+namespace {
+std::atomic<int> s_systemFontScaleMilli(0);
+std::optional<bool> s_fakeMobileOverride;
+QList<ScreenToolsController*>& instances()
+{
+    static QList<ScreenToolsController*> *const list = new QList<ScreenToolsController*>;
+    return *list;
+}
+}
+
 ScreenToolsController::ScreenToolsController(QObject *parent)
     : QObject(parent)
 {
+    instances().append(this);
     // qCDebug(ScreenToolsControllerLog) << Q_FUNC_INFO << this;
 }
 
 ScreenToolsController::~ScreenToolsController()
 {
+    instances().removeAll(this);
     // qCDebug(ScreenToolsControllerLog) << Q_FUNC_INFO << this;
 }
 
@@ -101,15 +116,34 @@ double ScreenToolsController::defaultFontDescent(int pointSize)
 #if !defined(Q_OS_ANDROID) && !defined(Q_OS_IOS)
 bool ScreenToolsController::fakeMobile()
 {
-    return qgcApp()->fakeMobile();
+    return s_fakeMobileOverride.value_or(qgcApp()->fakeMobile());
 }
 #endif
 
+void ScreenToolsController::setFakeMobile(bool fake)
+{
+    s_fakeMobileOverride = fake;
+}
+
 qreal ScreenToolsController::systemFontScale()
 {
+    if (s_systemFontScaleMilli == 0) {
 #if defined(Q_OS_ANDROID)
-    return AndroidInterface::systemFontScale();
+        s_systemFontScaleMilli = qRound(AndroidInterface::systemFontScale() * 1000);
 #else
-    return 1.0;
+        s_systemFontScaleMilli = 1000;
 #endif
+    }
+    return s_systemFontScaleMilli / 1000.0;
+}
+
+void ScreenToolsController::setSystemFontScale(qreal scale)
+{
+    const int milli = scale > 0 ? qRound(scale * 1000) : 1000;
+    if (s_systemFontScaleMilli.exchange(milli) == milli) {
+        return;
+    }
+    for (ScreenToolsController *const instance : std::as_const(instances())) {
+        QMetaObject::invokeMethod(instance, [instance] { emit instance->systemFontScaleChanged(); }, Qt::QueuedConnection);
+    }
 }

@@ -7,6 +7,7 @@ import java.lang.reflect.Method;
 import android.content.Context;
 import android.content.Intent;
 import android.content.pm.PackageManager;
+import android.content.res.Configuration;
 import android.net.Uri;
 import android.os.Build;
 import android.os.Bundle;
@@ -57,6 +58,12 @@ public class QGCActivity extends QtActivity {
         setupMulticastLock();
 
         QGCUsbSerialManager.initialize(this);
+    }
+
+    @Override
+    public void onConfigurationChanged(Configuration newConfig) {
+        super.onConfigurationChanged(newConfig);
+        nativeFontScaleChanged(newConfig.fontScale);
     }
 
     @Override
@@ -242,6 +249,7 @@ public class QGCActivity extends QtActivity {
     // Native C++ functions
     public native boolean nativeInit();
     public native void nativeDeepLink(final String url);
+    public native void nativeFontScaleChanged(final float scale);
     public native void qgcLogDebug(final String message);
     public native void qgcLogWarning(final String message);
 }

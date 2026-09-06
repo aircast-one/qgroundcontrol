@@ -103,7 +103,8 @@ Item {
 
     readonly property real minTouchMillimeters:     5   ///< Minimum touch size in millimeters
     readonly property real minTouchMobilePixels:    48
-    property real minTouchPixels:                   0   ///< Minimum touch size in pixels (calculatedd from minTouchMillimeters and realPixelDensity)
+    readonly property real minMobileSmallPointSize: 12
+    property real minTouchPixels:                   0   ///< Minimum touch size in pixels (calculated from minTouchMillimeters and realPixelDensity)
 
     // The implicit heights/widths for our custom control set
     property real implicitButtonWidth:              Math.round(defaultFontPixelWidth *  (isMobile ? 7.0 : 5.0))
@@ -138,6 +139,13 @@ Item {
         _setBasePointSize(_basePointSize)
     }
 
+    Connections {
+        target: ScreenToolsController
+        function onSystemFontScaleChanged() {
+            _setBasePointSize(_basePointSize)
+        }
+    }
+
     function printScreenStats() {
         console.log('ScreenTools: Screen.width: ' + Screen.width + ' Screen.height: ' + Screen.height + ' Screen.pixelDensity: ' + Screen.pixelDensity)
     }
@@ -152,9 +160,9 @@ Item {
         return ScreenToolsController.mouseY()
     }
 
-    /// \private
     property real _basePointSize: 10
 
+    /// \private
     function _setBasePointSize(pointSize) {
         _basePointSize          = pointSize
         const scaledPointSize   = pointSize * ScreenToolsController.systemFontScale
@@ -163,7 +171,8 @@ Item {
         defaultFontPixelHeight  = Math.round(_textMeasure.fontHeight/2.0)*2
         defaultFontPixelWidth   = Math.round(_textMeasure.fontWidth/2.0)*2
         defaultFontDescent      = ScreenToolsController.defaultFontDescent(defaultFontPointSize)
-        smallFontPointSize      = defaultFontPointSize  * _screenTools.smallFontPointRatio
+        smallFontPointSize      = ScreenToolsController.isMobile ? Math.max(defaultFontPointSize * _screenTools.smallFontPointRatio, minMobileSmallPointSize)
+                                                                 : defaultFontPointSize * _screenTools.smallFontPointRatio
         mediumFontPointSize     = defaultFontPointSize  * _screenTools.mediumFontPointRatio
         largeFontPointSize      = defaultFontPointSize  * _screenTools.largeFontPointRatio
         minTouchPixels          = Math.round(minTouchMillimeters * realPixelDensity)

@@ -18,6 +18,8 @@ target_sources(${CMAKE_PROJECT_NAME}
         PlanToolBarIndicatorsTest.h
         PlanViewLayoutTest.cc
         PlanViewLayoutTest.h
+        ScreenToolsTest.cc
+        ScreenToolsTest.h
         QuickInteractionTestHelpers.h
 )
 

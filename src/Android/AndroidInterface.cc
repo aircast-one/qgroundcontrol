@@ -10,6 +10,7 @@
 #include "AndroidInterface.h"
 #include "QGCApplication.h"
 #include "QGCLoggingCategory.h"
+#include "ScreenToolsController.h"
 
 #include <QtCore/QJniObject>
 #include <QtCore/QJniEnvironment>
@@ -63,7 +64,8 @@ void setNativeMethods()
     JNINativeMethod javaMethods[] {
         {"qgcLogDebug",   "(Ljava/lang/String;)V", reinterpret_cast<void *>(jniLogDebug)},
         {"qgcLogWarning", "(Ljava/lang/String;)V", reinterpret_cast<void *>(jniLogWarning)},
-        {"nativeDeepLink", "(Ljava/lang/String;)V", reinterpret_cast<void *>(jniDeepLink)}
+        {"nativeDeepLink", "(Ljava/lang/String;)V", reinterpret_cast<void *>(jniDeepLink)},
+        {"nativeFontScaleChanged", "(F)V", reinterpret_cast<void *>(jniFontScaleChanged)}
     };
 
     (void) AndroidInterface::cleanJavaException();
@@ -128,6 +130,13 @@ void jniDeepLink(JNIEnv *envA, jobject thizA, jstring urlA)
     }, Qt::QueuedConnection);
 }
 
+void jniFontScaleChanged(JNIEnv *envA, jobject thizA, jfloat scaleA)
+{
+    Q_UNUSED(envA);
+    Q_UNUSED(thizA);
+    ScreenToolsController::setSystemFontScale(scaleA);
+}
+
 QString getLaunchDeepLink()
 {
     const QJniObject activity = QNativeInterface::QAndroidApplication::context();
@@ -182,21 +191,27 @@ qreal systemFontScale()
 {
     const QJniObject context = QNativeInterface::QAndroidApplication::context();
     if (!context.isValid()) {
+        qCWarning(AndroidInterfaceLog) << "No Android context; assuming font scale 1.0";
         return 1.0;
     }
     const QJniObject resources = context.callObjectMethod("getResources", "()Landroid/content/res/Resources;");
     (void) cleanJavaException();
     if (!resources.isValid()) {
+        qCWarning(AndroidInterfaceLog) << "Resources unavailable; assuming font scale 1.0";
         return 1.0;
     }
     const QJniObject configuration = resources.callObjectMethod("getConfiguration", "()Landroid/content/res/Configuration;");
     (void) cleanJavaException();
     if (!configuration.isValid()) {
+        qCWarning(AndroidInterfaceLog) << "Configuration unavailable; assuming font scale 1.0";
         return 1.0;
     }
     const float scale = configuration.getField<jfloat>("fontScale");
-    (void) cleanJavaException();
-    return scale > 0 ? scale : 1.0;
+    if (cleanJavaException() || !(scale > 0)) {
+        qCWarning(AndroidInterfaceLog) << "Configuration.fontScale unreadable; assuming font scale 1.0";
+        return 1.0;
+    }
+    return scale;
 }
 
 QString getSDCardPath()

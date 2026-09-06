@@ -92,6 +92,7 @@
 #include "OverlayViewSwitchTest.h"
 #include "PlanToolBarIndicatorsTest.h"
 #include "PlanViewLayoutTest.h"
+#include "ScreenToolsTest.h"
 #include "OverlayRigTest.h"
 #include "PipRevealTest.h"
 #include "PipViewTest.h"
@@ -225,6 +226,7 @@ int runTests(bool stress, QStringView unitTestOptions)
     UT_REGISTER_TEST(OverlayViewSwitchTest)
     UT_REGISTER_TEST(PlanToolBarIndicatorsTest)
     UT_REGISTER_TEST(PlanViewLayoutTest)
+    UT_REGISTER_TEST(ScreenToolsTest)
     UT_REGISTER_TEST(OverlayRigTest)
     UT_REGISTER_TEST(PipRevealTest)
     UT_REGISTER_TEST(PipViewTest)

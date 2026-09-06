@@ -24,6 +24,7 @@ namespace AndroidInterface
     void jniLogDebug(JNIEnv *envA, jobject thizA, jstring messageA);
     void jniLogWarning(JNIEnv *envA, jobject thizA, jstring messageA);
     void jniDeepLink(JNIEnv *envA, jobject thizA, jstring urlA);
+    void jniFontScaleChanged(JNIEnv *envA, jobject thizA, jfloat scaleA);
     QString getLaunchDeepLink();
     qreal systemFontScale();
     bool checkStoragePermissions();
