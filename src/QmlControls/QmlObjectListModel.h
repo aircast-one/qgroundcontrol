@@ -54,7 +54,7 @@ public:
 
     QObject*    operator[]          (int i);
     const QObject* operator[]       (int i) const;
-    template<class T> T value       (int index) const { return qobject_cast<T>(_objectList[index]); }
+    template<class T> T value       (int index) const { return qobject_cast<T>(_objectList.value(index)); }
     QList<QObject*>* objectList     () { return &_objectList; }
 
     /// Calls deleteLater on all items and this itself.

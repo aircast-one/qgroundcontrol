@@ -51,13 +51,14 @@ Item {
     readonly property real  _toolsMargin:               ScreenTools.defaultFontPixelWidth * 0.75
     // Derived, not branched. The width used to be an if/else that added 21.667 characters when
     // UTMSP was on - a number with no relationship to anything on screen.
-    readonly property bool  _portrait:                  height > width
-    readonly property real  _rightPanelWidth:           _portrait ? width - _panelMargin * 2
+    readonly property bool  _narrow:                    height > width
+    readonly property real  _rightPanelWidth:           _narrow ? width - _panelMargin * 2
                                                                   : Math.min(width / 3, ScreenTools.defaultFontPixelWidth * (_utmspEnabled ? 52 : 40))
     // Everything floats clear of the window edge by the same amount, so the map reads as one
     // surface with panels resting on it rather than as a set of docked regions butted together.
     readonly property real  _panelMargin:               ScreenTools.defaultFontPixelHeight * 0.9
     readonly property real  _panelRadius:               ScreenTools.defaultFontPixelHeight * 1.3
+    readonly property Item  _bottomObstacle:            terrainSheet.visible ? terrainSheet : _narrow && rightPanel.visible ? rightPanel : null
 
     // The surface this view draws on, owned by whoever hosts it.
     property var    map
@@ -369,7 +370,7 @@ Item {
     PlanViewToolBar {
         id:                     planToolBar
         planMasterController:   _planMasterController
-        rightInset:             rightPanel.visible && !_portrait ? _rightPanelWidth + _panelMargin : 0
+        rightInset:             rightPanel.visible && !_narrow ? _rightPanelWidth + _panelMargin : 0
         z:                      QGroundControl.zOrderWidgets + 1
     }
 
@@ -466,10 +467,11 @@ Item {
 
         Column {
             id:                     dock
+            objectName:             "planDock"
             anchors.left:           parent.left
             anchors.leftMargin:     _panelMargin
             anchors.top:            parent.top
-            anchors.topMargin:      _portrait ? planToolBar.height + _panelMargin : (parent.height - height) / 2
+            anchors.topMargin:      _narrow ? planToolBar.height + _panelMargin : (parent.height - height) / 2
             spacing:                ScreenTools.defaultFontPixelHeight * 0.6
             z:                      QGroundControl.zOrderWidgets
 
@@ -874,9 +876,10 @@ Item {
         // runs behind it and the panel reads as resting on the plan rather than framing it.
         Item {
             id:                     rightPanel
+            objectName:             "planInspector"
             width:                  _rightPanelWidth
             anchors.top:            parent.top
-            anchors.topMargin:      _portrait ? _root.height - height - _panelMargin : _topInset
+            anchors.topMargin:      _narrow ? _root.height - height - _panelMargin : _topInset
             anchors.right:          parent.right
             anchors.rightMargin:    _panelMargin
             height:                 Math.min(_wantedHeight, _availableHeight)
@@ -886,9 +889,9 @@ Item {
             readonly property real _padding:  ScreenTools.defaultFontPixelHeight * 0.7
             readonly property real _topInset: planToolBar.height + _panelMargin
 
-            readonly property real _availableHeight: _portrait ? _root.height * 0.5
-                                                   : _root.height - _topInset - _panelMargin -
-                                                         (_terrainProfileOpen ? _terrainProfileHeight + _panelMargin : 0)
+            readonly property real _terrainInset:    _terrainProfileOpen ? _terrainProfileHeight + _panelMargin : 0
+            readonly property real _availableHeight: _narrow ? _root.height - dock.y - dock.height - _panelMargin * 2 - _terrainInset
+                                                             : _root.height - _topInset - _panelMargin - _terrainInset
 
             readonly property real _wantedHeight: (layerSelector.visible ? layerSelector.height + _padding : 0) +
                                                       _padding * 2 + _bodyHeight
@@ -1221,9 +1224,9 @@ Item {
             id:                     terrainSheet
             anchors.left:           dock.right
             anchors.leftMargin:     _panelMargin
-            anchors.right:          _portrait ? parent.right : rightPanel.left
+            anchors.right:          _narrow ? parent.right : rightPanel.left
             anchors.rightMargin:    _panelMargin
-            anchors.bottom:         _portrait && rightPanel.visible ? rightPanel.top : parent.bottom
+            anchors.bottom:         _narrow && rightPanel.visible ? rightPanel.top : parent.bottom
             anchors.bottomMargin:   _panelMargin
             height:                 _root._terrainProfileOpen ? _root._terrainProfileHeight : 0
             visible:                height > 0
@@ -1294,9 +1297,7 @@ Item {
         MapScale {
             id:                     mapScale
             anchors.margins:        _toolsMargin
-            anchors.bottom:         terrainSheet.visible              ? terrainSheet.top
-                                  : _portrait && rightPanel.visible ? rightPanel.top
-                                                                    : parent.bottom
+            anchors.bottom:         _bottomObstacle ? _bottomObstacle.top : parent.bottom
             anchors.bottomMargin:   terrainSheet.visible ? _panelMargin + licenseLabel.height : _panelMargin
             anchors.left:           dock.right
             anchors.leftMargin:     _panelMargin

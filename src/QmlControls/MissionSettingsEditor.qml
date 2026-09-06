@@ -147,21 +147,20 @@ Item {
             }
         }
 
-        Column {
+        ColumnLayout {
             Layout.fillWidth:   true
             spacing:            _margin
             visible:            !_simpleMissionStart
 
             CameraSection {
-                id:         cameraSection
-                width:      parent.width
-                checked:    !_waypointsOnlyMode && missionItem !== null && missionItem.cameraSection.settingsSpecified
-                visible:    _showCameraSection && missionItem !== null
+                id:                 cameraSection
+                Layout.fillWidth:   true
+                checked:            !_waypointsOnlyMode && missionItem !== null && missionItem.cameraSection.settingsSpecified
+                visible:            _showCameraSection && missionItem !== null
             }
 
             QGCLabel {
-                anchors.left:           parent.left
-                anchors.right:          parent.right
+                Layout.fillWidth:       true
                 text:                   qsTr("Camera commands above take effect immediately at mission start.")
                 wrapMode:               Text.WordWrap
                 font.pointSize:         ScreenTools.smallFontPointSize

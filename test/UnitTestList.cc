@@ -90,6 +90,7 @@
 #include "OverlayBackdropTest.h"
 #include "OverlaySegmentedControlTest.h"
 #include "OverlayViewSwitchTest.h"
+#include "PlanViewLayoutTest.h"
 #include "OverlayRigTest.h"
 #include "PipRevealTest.h"
 #include "PipViewTest.h"
@@ -221,6 +222,7 @@ int runTests(bool stress, QStringView unitTestOptions)
     UT_REGISTER_TEST(OverlayBackdropTest)
     UT_REGISTER_TEST(OverlaySegmentedControlTest)
     UT_REGISTER_TEST(OverlayViewSwitchTest)
+    UT_REGISTER_TEST(PlanViewLayoutTest)
     UT_REGISTER_TEST(OverlayRigTest)
     UT_REGISTER_TEST(PipRevealTest)
     UT_REGISTER_TEST(PipViewTest)

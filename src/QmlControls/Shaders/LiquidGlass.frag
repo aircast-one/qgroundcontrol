@@ -29,19 +29,19 @@ float sdRoundedBox(vec2 p, vec2 halfSize, float r)
 // for the content behind to stay perceptible.
 vec4 blurredSample(vec2 uv, vec2 texel)
 {
-    const float kStep = 1.0471976;
-    const float kHalfStep = 0.5235988;
+    const mat2 kRotate60 = mat2(0.5, 0.8660254, -0.8660254, 0.5);
+    const mat2 kRotate30 = mat2(0.8660254, 0.5, -0.5, 0.8660254);
 
+    vec2 ring1 = vec2(1.0, 0.0);
+    vec2 ring2 = kRotate30 * ring1;
     vec4 sum = texture(source, uv) * 3.0;
     float weight = 3.0;
     for (int i = 0; i < 6; ++i) {
-        float a1 = float(i) * kStep;
-        float a2 = a1 + kHalfStep;
-        vec2 ring1 = vec2(cos(a1), sin(a1));
-        vec2 ring2 = vec2(cos(a2), sin(a2));
         sum += texture(source, clamp(uv + ring1 * texel * blurRadius * 0.55, vec2(0.0), vec2(1.0))) * 2.0;
         sum += texture(source, clamp(uv + ring2 * texel * blurRadius, vec2(0.0), vec2(1.0)));
         weight += 3.0;
+        ring1 = kRotate60 * ring1;
+        ring2 = kRotate60 * ring2;
     }
     return sum / weight;
 }

@@ -77,7 +77,13 @@ RowLayout {
     property bool   _communicationLost: _activeVehicle ? _activeVehicle.vehicleLinkManager.communicationLost : false
     property color  _mainStatusBGColor: "transparent"
     property int    _statsPage:         0
-    readonly property bool _compact:    width < ScreenTools.defaultFontPixelWidth * 75
+    readonly property real _compactNameWidth: ScreenTools.defaultFontPixelWidth * 10
+    readonly property real _fullRowWidth:     viewSwitch.Layout.preferredWidth + statusIndicator.implicitWidth + _nameWidth + spacing * 2 +
+                                              (_containsItems ? statsRow.width + spacing : 0) +
+                                              (uploadButton.visible ? uploadButton.Layout.preferredWidth + spacing : 0)
+    readonly property bool _compact:          width < _fullRowWidth
+
+    readonly property real _nameWidth: Math.min(nameMetrics.width + ScreenTools.defaultFontPixelWidth * 4, ScreenTools.defaultFontPixelWidth * 28)
 
     readonly property string _planName: {
         if (!_controllerValid) {
@@ -102,8 +108,8 @@ RowLayout {
         if (!_containsItems) {
             return qsTr("Empty plan")
         }
-        const state = (_controllerDirty ? qsTr("Edited") : qsTr("Uploaded")) + " · " + items
-        return _compact ? state + " · " + _missionPlannedDistanceText : state
+        const state = _controllerDirty ? qsTr("Edited") : qsTr("Uploaded")
+        return _compact ? state + " · " + _missionPlannedDistanceText + " · " + items : state + " · " + items
     }
 
     function getMissionTime() {
@@ -190,6 +196,7 @@ RowLayout {
     // is context the plan needs - and something persisting across the switch is what makes this
     // read as one app changing mode rather than two that happen to share a map.
     MainStatusIndicator {
+        id:                     statusIndicator
         Layout.preferredHeight: _capsuleHeight
     }
 
@@ -200,7 +207,7 @@ RowLayout {
         Layout.preferredHeight: _capsuleHeight
         Layout.preferredWidth:  Math.min(Math.max(nameMetrics.width, stateMetrics.width) + ScreenTools.defaultFontPixelWidth * 4,
                                          ScreenTools.defaultFontPixelWidth * 28)
-        Layout.minimumWidth:    _compact ? ScreenTools.defaultFontPixelWidth * 10 : Layout.preferredWidth
+        Layout.minimumWidth:    _compact ? _compactNameWidth : Layout.preferredWidth
         visible:                _controllerValid
 
         TextMetrics { id: nameMetrics;  font: nameLabel.font;  text: _root._planName }
