@@ -16,41 +16,64 @@ import QGroundControl.Controls
 import QGroundControl.MultiVehicleManager
 import QGroundControl.ScreenTools
 import QGroundControl.Palette
-import QGroundControl.FactSystem
-import QGroundControl.FactControls
 
 ToolIndicatorPage {
     id:         control
-    showExpand: true
-    expandText: qsTr("Connection Settings")
+    showExpand: false
 
     property var    linkConfigs:            QGroundControl.linkManager.linkConfigurations
-    property bool   noLinks:                true
     property var    autoConnectSettings:    QGroundControl.settingsManager.autoConnectSettings
 
-    Component.onCompleted: {
-        for (var i = 0; i < linkConfigs.count; i++) {
-            var linkConfig = linkConfigs.get(i)
-            if (!linkConfig.dynamic && !linkConfig.isAutoConnect) {
-                noLinks = false
-                break
-            }
-        }
-    }
+    readonly property bool noLinks: !Array.from({ length: linkConfigs.count }, (_, i) => linkConfigs.get(i))
+                                          .some((config) => !config.dynamic)
 
     readonly property bool _watching: autoConnectSettings.autoConnectPixhawk.rawValue
                                    || autoConnectSettings.autoConnectSiKRadio.rawValue
                                    || autoConnectSettings.autoConnectUDP.rawValue
                                    || autoConnectSettings.autoConnectZeroConf.rawValue
 
+    readonly property string _watchedLinks: [
+        autoConnectSettings.autoConnectPixhawk.rawValue  ? qsTr("USB")       : "",
+        autoConnectSettings.autoConnectSiKRadio.rawValue ? qsTr("SiK radio") : "",
+        autoConnectSettings.autoConnectUDP.rawValue      ? qsTr("Wi‑Fi")     : "",
+        autoConnectSettings.autoConnectZeroConf.rawValue ? qsTr("local network")   : ""
+    ].filter((name) => name !== "").join(", ")
+
+    function _markup(name) { return name.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;") }
+
+    readonly property string _connectingLinkName: _markup(QGroundControl.linkManager.connectingLinkName)
+    readonly property var    _failedLink:         QGroundControl.linkManager.failedLink
+    readonly property string _failedLinkName:     _failedLink ? _markup(_failedLink.name) : ""
+    readonly property bool   _failedInSettings:   _failedLink ? _failedLink.lastErrorRemedy === LinkConfiguration.RemedyEditAddress : false
+    readonly property bool   _stalled:            QGroundControl.linkManager.connectingStalled
+    readonly property bool   _busy:               (_connectingLinkName !== "" && !_stalled) || (noLinks && _watching)
+
+    readonly property string _title: _connectingLinkName !== "" ? qsTr("Connecting…")
+                                   : _failedLinkName !== ""     ? qsTr("Connection Failed")
+                                                                : qsTr("Not Connected")
+
+    readonly property string _footnote: _connectingLinkName !== "" && _stalled ? qsTr("No telemetry from %1 yet. Check the port is the drone's MAVLink port.").arg(_connectingLinkName)
+                                      : _connectingLinkName !== ""             ? qsTr("Connecting to %1…").arg(_connectingLinkName)
+                                      : _failedLinkName !== "" && _failedInSettings ? qsTr("Couldn't connect to %1. <a href=\"settings\">Check its address in Connection Settings</a>.").arg(_failedLinkName)
+                                      : _failedLinkName !== ""                 ? qsTr("Couldn't connect to %1. Check the drone is powered on and on the same network, then tap it to retry.").arg(_failedLinkName)
+                                      : !_watching                             ? qsTr("Automatic connection is off.")
+                                      : noLinks                                ? qsTr("Looking for a vehicle on %1…").arg(_watchedLinks)
+                                                                               : qsTr("Auto-connect watches %1. Tap a link to connect.").arg(_watchedLinks)
+
+    onActiveVehicleChanged: {
+        if (activeVehicle) {
+            mainWindow.closeIndicatorDrawer()
+        }
+    }
+
     function openLinkSettings() {
-        mainWindow.showSettingsTool(qsTr("Comm Links"))
+        mainWindow.showCommLinkSettings()
         mainWindow.closeIndicatorDrawer()
     }
 
     contentComponent: Component {
         ColumnLayout {
-            spacing: ScreenTools.defaultFontPixelHeight * 0.75
+            spacing: 0
 
             readonly property real _margin: ScreenTools.defaultFontPixelWidth * 1.5
 
@@ -59,10 +82,11 @@ ToolIndicatorPage {
                 Layout.minimumWidth: ScreenTools.defaultFontPixelWidth * 28
                 Layout.leftMargin:  parent._margin
                 Layout.rightMargin: parent._margin
+                Layout.bottomMargin: ScreenTools.defaultFontPixelHeight * 0.25
                 spacing:            ScreenTools.defaultFontPixelHeight / 6
 
                 QGCLabel {
-                    text:           qsTr("Not Connected")
+                    text:           control._title
                     font.pointSize: ScreenTools.mediumFontPointSize
                     font.bold:      true
                 }
@@ -73,7 +97,7 @@ ToolIndicatorPage {
 
                     OverlayActivityRing {
                         width:          ScreenTools.defaultFontPixelHeight * 0.8
-                        visible:        control._watching
+                        visible:        control._busy
                         contentColor:   QGroundControl.globalPalette.colorGrey
                     }
 
@@ -82,9 +106,20 @@ ToolIndicatorPage {
                         Layout.fillWidth:   true
                         wrapMode:           Text.WordWrap
                         font.pointSize:     ScreenTools.smallFontPointSize
-                        color:              QGroundControl.globalPalette.colorGrey
-                        text:               control._watching ? qsTr("Looking for a vehicle…")
-                                                              : qsTr("Automatic connection is off.")
+                        color:              Qt.alpha(QGroundControl.globalPalette.text, 0.65)
+                        linkColor:          QGroundControl.globalPalette.text
+                        textFormat:         Text.StyledText
+                        text:               control._footnote
+                        onLinkActivated:    control.openLinkSettings()
+
+                        QGCMouseArea {
+                            objectName:             "connectionFootnoteTap"
+                            anchors.fill:           parent
+                            anchors.topMargin:      -Math.max(0, (ScreenTools.minTouchPixels - parent.height) / 2)
+                            anchors.bottomMargin:   anchors.topMargin
+                            enabled:                control._failedInSettings
+                            onClicked:              control.openLinkSettings()
+                        }
                     }
                 }
             }
@@ -94,6 +129,8 @@ ToolIndicatorPage {
                 Layout.fillWidth:   true
                 Layout.leftMargin:  parent._margin
                 Layout.rightMargin: parent._margin
+                Layout.topMargin:   ScreenTools.defaultFontPixelHeight * 0.5
+                Layout.bottomMargin: ScreenTools.defaultFontPixelHeight * 0.25
                 text:               qsTr("Add Link…")
                 primary:            true
                 visible:            noLinks
@@ -109,17 +146,16 @@ ToolIndicatorPage {
                     model: linkConfigs
 
                     delegate: OverlayMenuItem {
-                        text:       object.name
-                        checkable:  true
-                        checked:    object.link ? true : false
-                        visible:    !object.dynamic
-                        onClicked: {
-                            if (object.link) {
-                                return
-                            }
-                            QGroundControl.linkManager.createConnectedLink(object)
-                            mainWindow.closeIndicatorDrawer()
-                        }
+                        text:           object.link ? object.name : qsTr("Connect to %1").arg(object.name)
+                        description:    object.lastError !== "" ? object.summary + "\n" + object.lastError : object.summary
+                        detail:         object.lastError !== "" && !object.link ? qsTr("Retry") : ""
+                        current:        object.lastError !== ""
+                        checkable:      true
+                        busy:           !!object.link
+                        checked:        busy
+                        visible:        !object.dynamic
+                        onClicked:      object.link ? object.link.disconnect()
+                                                    : QGroundControl.linkManager.createConnectedLink(object)
                     }
                 }
             }
@@ -127,59 +163,11 @@ ToolIndicatorPage {
             OverlayMenuSeparator { Layout.fillWidth: true }
 
             OverlayMenuItem {
-                objectName:         "vehicleSetupItem"
+                objectName:         "connectionSettingsItem"
                 Layout.fillWidth:   true
-                icon:               "/InstrumentValueIcons/wrench.svg"
-                text:               qsTr("Vehicle Setup")
-                onClicked: {
-                    if (mainWindow.allowViewSwitch()) {
-                        mainWindow.closeIndicatorDrawer()
-                        mainWindow.showVehicleConfig()
-                    }
-                }
-            }
-        }
-    }
-
-    expandedComponent: Component {
-        ColumnLayout {
-            spacing: ScreenTools.defaultFontPixelHeight / 2
-
-            SettingsGroupLayout {
-                popoverStyle: true
-                LabelledButton {
-                    label:      qsTr("Communication Links")
-                    buttonText: qsTr("Configure")
-                    onClicked:  control.openLinkSettings()
-                }
-            }
-
-            SettingsGroupLayout {
-                popoverStyle: true
-                heading:        qsTr("AutoConnect")
-                visible:        autoConnectSettings.visible
-
-                Repeater {
-                    id: autoConnectRepeater
-
-                    model: [
-                        autoConnectSettings.autoConnectPixhawk,
-                        autoConnectSettings.autoConnectSiKRadio,
-                        autoConnectSettings.autoConnectLibrePilot,
-                        autoConnectSettings.autoConnectUDP,
-                        autoConnectSettings.autoConnectZeroConf,
-                        autoConnectSettings.autoConnectRTKGPS,
-                    ]
-
-                    property var names: [ qsTr("Pixhawk"), qsTr("SiK Radio"), qsTr("LibrePilot"), qsTr("UDP"), qsTr("Zero-Conf"), qsTr("RTK") ]
-
-                    FactCheckBoxSlider {
-                        Layout.fillWidth:   true
-                        text:               autoConnectRepeater.names[index]
-                        fact:               modelData
-                        visible:            modelData.visible
-                    }
-                }
+                reserveGutter:      true
+                text:               qsTr("Connection Settings")
+                onClicked:          control.openLinkSettings()
             }
         }
     }

@@ -30,7 +30,7 @@ FlightMap {
     planView:                   false
     zoomLevel:                  QGroundControl.flightMapZoom
     center:                     QGroundControl.flightMapPosition
-    panEnabled:                 !globals.overlayRigFlyView || !globals.overlayRigFlyView.editMode
+    panEnabled:                 !mainWindow.toolDrawerVisible && (!globals.overlayRigFlyView || !globals.overlayRigFlyView.editMode)
 
     property Item   pipView
     property Item   pipState:                   _pipState
@@ -194,7 +194,6 @@ FlightMap {
     PipState {
         id:         _pipState
         pipView:    _root.pipView
-        isDark:     _isFullWindowItemDark
     }
 
     Timer {
@@ -214,7 +213,6 @@ FlightMap {
         onTriggered:    updateMapToVehiclePosition()
     }
 
-    QGCMapPalette { id: mapPal; lightColors: isSatelliteMap }
 
     Connections {
         target:                 _missionController

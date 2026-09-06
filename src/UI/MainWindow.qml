@@ -72,6 +72,7 @@ ApplicationWindow {
     readonly property real windowChromeRightInset: windowChromeLoader.item ? windowChromeLoader.item.rightInset : 0
 
     readonly property bool glassBackdropVisible: flyView.visible && !toolDrawer.visible
+    readonly property bool toolDrawerVisible:    toolDrawer.visible
     readonly property bool flyViewBackdropVisible: flyView.visible
     readonly property real panelRadius: Math.round(ScreenTools.defaultFontPixelHeight * 1.6)
 
@@ -83,7 +84,6 @@ ApplicationWindow {
             windowChromeLoader.item.excludeFromDrag(item)
         }
     }
-
 
     QtObject {
         id: globals
@@ -102,14 +102,12 @@ ApplicationWindow {
 
     QGCPalette { id: qgcPal; colorGroupEnabled: true }
 
-
     signal armVehicleRequest
     signal forceArmVehicleRequest
     signal disarmVehicleRequest
     signal vtolTransitionToFwdFlightRequest
     signal vtolTransitionToMRFlightRequest
     signal showPreFlightChecklistIfNeeded
-
 
     function allowViewSwitch(previousValidationErrorCount = 0) {
         if (mainWindow.activeFocusControl instanceof FactTextField) {
@@ -128,6 +126,7 @@ ApplicationWindow {
     }
 
     function showTool(toolTitle, toolSource, toolIcon) {
+        closeIndicatorDrawer()
         toolDrawer.backIcon     = flyView.visible ? "/qmlimages/PaperPlane.svg" : "/qmlimages/Plan.svg"
         toolDrawer.toolTitle    = toolTitle
         toolDrawer.toolSource   = toolSource
@@ -156,13 +155,20 @@ ApplicationWindow {
         }
     }
 
-    function showSettingsTool(settingsPage = "") {
+    readonly property string commLinkSettingsUrl: "qrc:/qml/QGroundControl/AppSettings/LinkSettings.qml"
+    readonly property string videoSettingsUrl:    "qrc:/qml/QGroundControl/AppSettings/VideoSettings.qml"
+    readonly property string flyViewSettingsUrl:  "qrc:/qml/QGroundControl/AppSettings/FlyViewSettings.qml"
+
+    function showSettingsTool(settingsPageUrl = "") {
         showTool(qsTr("Settings"), "qrc:/qml/QGroundControl/Controls/AppSettings.qml", "/res/QGCLogoWhite")
-        if (settingsPage !== "") {
-            toolDrawerLoader.item.showSettingsPage(settingsPage)
+        if (settingsPageUrl !== "") {
+            toolDrawerLoader.item.showSettingsPage(settingsPageUrl)
         }
     }
 
+    function showCommLinkSettings() { showSettingsTool(commLinkSettingsUrl) }
+    function showVideoSettings()    { showSettingsTool(videoSettingsUrl) }
+    function showFlyViewSettings()  { showSettingsTool(flyViewSettingsUrl) }
 
     function showMessageDialog(dialogTitle, dialogText, buttons = Dialog.Ok, acceptFunction = null, closeFunction = null) {
         simpleMessageDialogComponent.createObject(mainWindow, { title: dialogTitle, text: dialogText, buttons: buttons, acceptFunction: acceptFunction, closeFunction: closeFunction }).open()
@@ -314,22 +320,41 @@ ApplicationWindow {
         id:             toolDrawer
         anchors.fill:   parent
         visible:        false
+        focus:          visible
         color:          floating ? Qt.rgba(0, 0, 0, 0.55) : qgcPal.window
+
+        Keys.onBackPressed: (event) => {
+            event.accepted = true
+            back()
+        }
+
+        function back() {
+            if (_tool && _tool.popPage()) {
+                return
+            }
+            if (mainWindow.allowViewSwitch()) {
+                visible = false
+            }
+        }
 
         property var backIcon
         property string toolTitle
         property alias toolSource:  toolDrawerLoader.source
         property var toolIcon
 
-        readonly property var  _tool:    toolDrawerLoader.item
-        readonly property real _toolWidth:  _tool && _tool.preferredWidth  > 0 ? _tool.preferredWidth  : 0
-        readonly property real _toolHeight: _tool && _tool.preferredHeight > 0 ? _tool.preferredHeight : 0
+        readonly property ToolDrawerPage _tool: toolDrawerLoader.item as ToolDrawerPage
+        readonly property real _sidebarWidth: _tool ? _tool.sidebarWidth  : 0
+        readonly property real _toolWidth:    _tool ? _tool.preferredWidth  : 0
+        readonly property real _toolHeight:   _tool ? _tool.preferredHeight : 0
         readonly property bool floating: _toolWidth > 0 && _toolHeight > 0
 
-        readonly property real _panelWidth:  Math.min(_toolWidth,
-                                                      width - ScreenTools.defaultFontPixelWidth * 4)
-        readonly property real _panelHeight: Math.min(_toolHeight + toolDrawerToolbar.height,
-                                                      height - ScreenTools.defaultFontPixelHeight * 2)
+        readonly property real _safeWidth:  Math.max(0, width - ScreenTools.safeAreaLeft - ScreenTools.safeAreaRight)
+        readonly property real _safeHeight: Math.max(0, height - ScreenTools.safeAreaTop - ScreenTools.safeAreaBottom)
+
+        readonly property real _panelWidth:  Math.max(0, Math.min(_toolWidth,
+                                                      _safeWidth - ScreenTools.defaultFontPixelWidth * 4))
+        readonly property real _panelHeight: Math.max(0, Math.min(_toolHeight + toolDrawerToolbar.height,
+                                                      _safeHeight - ScreenTools.defaultFontPixelHeight * 2))
 
         onVisibleChanged: {
             if (!toolDrawer.visible) {
@@ -345,8 +370,10 @@ ApplicationWindow {
             id:                 toolPanel
             objectName:         "toolPanel"
             anchors.centerIn:   parent
-            width:              toolDrawer.floating ? toolDrawer._panelWidth  : parent.width
-            height:             toolDrawer.floating ? toolDrawer._panelHeight : parent.height
+            anchors.horizontalCenterOffset: (ScreenTools.safeAreaLeft - ScreenTools.safeAreaRight) / 2
+            anchors.verticalCenterOffset:   (ScreenTools.safeAreaTop - ScreenTools.safeAreaBottom) / 2
+            width:              toolDrawer.floating ? toolDrawer._panelWidth  : toolDrawer._safeWidth
+            height:             toolDrawer.floating ? toolDrawer._panelHeight : toolDrawer._safeHeight
             color:              toolDrawer.floating ? "transparent" : qgcPal.window
             radius:             toolDrawer.floating ? mainWindow.panelRadius : 0
             clip:               true
@@ -391,44 +418,60 @@ ApplicationWindow {
             height:         ScreenTools.toolbarHeight
             color:          toolDrawer.floating ? "transparent" : qgcPal.toolbarBackground
 
-            RowLayout {
-                id:                 toolDrawerToolbarLayout
-                anchors.leftMargin: ScreenTools.defaultFontPixelWidth +
-                                        (toolDrawer.floating ? 0 : mainWindow.windowChromeLeftInset)
-                anchors.left:       parent.left
-                anchors.top:        parent.top
-                anchors.bottom:     parent.bottom
-                spacing:            ScreenTools.defaultFontPixelWidth
+            Rectangle {
+                anchors.left:   parent.left
+                anchors.top:    parent.top
+                anchors.bottom: parent.bottom
+                width:          toolDrawer._sidebarWidth
+                visible:        width > 0
+                color:          qgcPal.windowShadeDark
 
-                QGCColoredImage {
-                    Layout.preferredWidth:  ScreenTools.defaultFontPixelHeight
-                    Layout.preferredHeight: ScreenTools.defaultFontPixelHeight
-                    source:                 "/InstrumentValueIcons/cheveron-left.svg"
-                    sourceSize.height:      height
-                    color:                  qgcPal.colorBlue
-                }
-
-                QGCLabel {
-                    id:             toolbarDrawerText
-                    text:           toolDrawer._tool && toolDrawer._tool.pageTitle ? toolDrawer._tool.pageTitle : toolDrawer.toolTitle
-                    font.pointSize: ScreenTools.largeFontPointSize
-                    font.bold:      true
+                Rectangle {
+                    anchors.right:  parent.right
+                    anchors.top:    parent.top
+                    anchors.bottom: parent.bottom
+                    width:          1
+                    color:          Qt.alpha(qgcPal.text, 0.08)
                 }
             }
 
+            QGCColoredImage {
+                id:                     toolDrawerBackIcon
+                anchors.leftMargin:     ScreenTools.defaultFontPixelWidth +
+                                            (toolDrawer.floating ? 0 : mainWindow.windowChromeLeftInset)
+                anchors.left:           parent.left
+                anchors.verticalCenter: parent.verticalCenter
+                width:                  ScreenTools.defaultFontPixelHeight
+                height:                 ScreenTools.defaultFontPixelHeight
+                source:                 "/InstrumentValueIcons/cheveron-left.svg"
+                sourceSize.height:      height
+                color:                  qgcPal.colorBlue
+            }
+
+            QGCLabel {
+                id:                     toolbarDrawerText
+                anchors.left:           toolDrawer._sidebarWidth > 0 ?
+                                            parent.left : toolDrawerBackArea.right
+                anchors.leftMargin:     toolDrawer._sidebarWidth > 0 ?
+                                            toolDrawer._sidebarWidth + ScreenTools.defaultFontPixelWidth * 3 : 0
+                anchors.verticalCenter: parent.verticalCenter
+                text:                   toolDrawer._tool && toolDrawer._tool.pageTitle !== "" ?
+                                            toolDrawer._tool.pageTitle : toolDrawer.toolTitle
+                font.pointSize:         ScreenTools.largeFontPointSize
+                font.bold:              true
+            }
+
             QGCMouseArea {
-                anchors.fill:           toolDrawerToolbarLayout
+                id:                     toolDrawerBackArea
+                anchors.left:           parent.left
+                anchors.top:            parent.top
+                anchors.bottom:         parent.bottom
+                width:                  Math.max(ScreenTools.minTouchPixels,
+                                                 toolDrawerBackIcon.x + toolDrawerBackIcon.width +
+                                                     ScreenTools.defaultFontPixelWidth)
+                z:                      1
                 Component.onCompleted:  mainWindow.registerWindowDragExclusion(this)
-                onClicked: {
-                    if (!mainWindow.allowViewSwitch()) {
-                        return
-                    }
-                    const tool = toolDrawer._tool
-                    if (tool && tool.popPage && tool.popPage()) {
-                        return
-                    }
-                    toolDrawer.visible = false
-                }
+                onClicked:              toolDrawer.back()
             }
         }
 
@@ -456,7 +499,6 @@ ApplicationWindow {
         source:         "WindowChrome.qml"
         onLoaded:       mainWindow._windowDragExclusions.forEach(exclusion => item.excludeFromDrag(exclusion))
     }
-
 
     function showCriticalVehicleMessage(message) {
         closeIndicatorDrawer()
@@ -557,12 +599,11 @@ ApplicationWindow {
             }
         }
     }
-
-
     function showIndicatorDrawer(drawerComponent, indicatorItem) {
         flyView.guidedController.closeAll()
-        indicatorDrawer.sourceComponent = drawerComponent
-        indicatorDrawer.indicatorItem = indicatorItem
+        indicatorDrawer.sourceComponent         = drawerComponent
+        indicatorDrawer.indicatorItem           = indicatorItem
+        indicatorDrawerLoader.sourceComponent   = drawerComponent
         indicatorDrawer.open()
     }
 
@@ -592,6 +633,8 @@ ApplicationWindow {
         dim:            false
         focus:          true
         closePolicy:    Popup.CloseOnEscape | Popup.CloseOnPressOutside
+        contentWidth:   drawerContentColumn.implicitWidth
+        contentHeight:  drawerContentColumn.implicitHeight
 
         property var sourceComponent
         property var indicatorItem
@@ -599,6 +642,7 @@ ApplicationWindow {
 
         property bool _expanded:    false
         property real _margins:     ScreenTools.defaultFontPixelHeight / 4
+        readonly property real _maxContentWidth: mainWindow.contentItem.width - (2 * _margins) - (padding * 2)
 
         readonly property real _panelRadius: ScreenTools.defaultFontPixelHeight * 0.75
         readonly property real _innerRadius: Math.max(0, _panelRadius - padding)
@@ -610,26 +654,27 @@ ApplicationWindow {
             : Qt.point(x + width / 2, y)
         readonly property real _originX: Math.max(0, Math.min(width,  _sourceCentre.x - x))
         readonly property real _originY: Math.max(0, Math.min(height, _sourceCentre.y - y))
-        readonly property real _startScale: indicatorItem && width > 0
-            ? Math.max(0.12, Math.min(0.9, indicatorItem.width / width))
-            : 0.3
+        readonly property real _startScale: 0.94
         readonly property real _scale: _startScale + (1 - _startScale) * _morph
+        readonly property int  _enterMSecs: 220
+        readonly property int  _exitMSecs:  150
 
         enter: Transition {
             NumberAnimation { target: indicatorDrawer; property: "_morph"; from: 0; to: 1
-                              duration: 260; easing.type: Easing.OutCubic }
-            NumberAnimation { property: "opacity"; from: 0; to: 1; duration: 130 }
+                              duration: indicatorDrawer._enterMSecs; easing.type: Easing.OutQuint }
+            NumberAnimation { property: "opacity"; from: 0; to: 1
+                              duration: indicatorDrawer._enterMSecs; easing.type: Easing.OutQuint }
         }
 
         exit: Transition {
             NumberAnimation { target: indicatorDrawer; property: "_morph"; from: 1; to: 0
-                              duration: 170; easing.type: Easing.InCubic }
-            NumberAnimation { property: "opacity"; from: 1; to: 0; duration: 170 }
+                              duration: indicatorDrawer._exitMSecs; easing.type: Easing.InQuad }
+            NumberAnimation { property: "opacity"; from: 1; to: 0
+                              duration: indicatorDrawer._exitMSecs; easing.type: Easing.InQuad }
         }
 
         onOpened: {
-            _expanded                               = false;
-            indicatorDrawerLoader.sourceComponent   = indicatorDrawer.sourceComponent
+            _expanded = false
         }
         onClosed: {
             _expanded                               = false
@@ -665,6 +710,7 @@ ApplicationWindow {
 
             Rectangle {
                 id:             backgroundRect
+                objectName:     "drawerBackground"
                 anchors.fill:   parent
                 color:          "transparent"
                 radius:         indicatorDrawer._panelRadius
@@ -672,19 +718,19 @@ ApplicationWindow {
                 layer.effect:   OverlayShadowEffect { }
 
                 OverlayGlass {
-                    objectName:    "drawerGlass"
-                    anchors.fill:  parent
-                    radius:        parent.radius
-                    frosted:       false
-                    lightMaterial: false
+                    objectName:   "drawerGlass"
+                    anchors.fill: parent
+                    radius:       parent.radius
+                    material:     OverlayGlass.Panel
                 }
             }
 
         }
 
         contentItem: ColumnLayout {
+            id:      drawerContentColumn
             spacing: indicatorDrawer._margins
-            opacity: indicatorDrawer._morph * indicatorDrawer._morph
+            opacity: indicatorDrawer._morph
 
             transform: Scale {
                 origin.x: indicatorDrawer._originX - indicatorDrawer.padding
@@ -695,14 +741,17 @@ ApplicationWindow {
 
             QGCFlickable {
                 id:                 indicatorDrawerLoaderFlickable
+                objectName:         "drawerFlickable"
                 Layout.fillWidth:   true
-                implicitWidth:  Math.min(mainWindow.contentItem.width - (2 * indicatorDrawer._margins) - (indicatorDrawer.padding * 2), indicatorDrawerLoader.width)
+                implicitWidth:  Math.min(indicatorDrawer._maxContentWidth, indicatorDrawerLoader.width)
                 implicitHeight: Math.min(mainWindow.contentItem.height - ScreenTools.toolbarHeight - (2 * indicatorDrawer._margins) - (indicatorDrawer.padding * 2), indicatorDrawerLoader.height)
                 contentWidth:   indicatorDrawerLoader.width
                 contentHeight:  indicatorDrawerLoader.height
 
                 Loader {
-                    id: indicatorDrawerLoader
+                    id:         indicatorDrawerLoader
+                    objectName: "drawerLoader"
+                    width:      item ? Math.min(item.implicitWidth, indicatorDrawer._maxContentWidth) : 0
 
                     Binding {
                         target:     indicatorDrawerLoader.item
@@ -719,12 +768,14 @@ ApplicationWindow {
             }
 
             Rectangle {
+                objectName:             "drawerDetailsRow"
                 Layout.fillWidth:       true
-                Layout.preferredHeight: ScreenTools.defaultFontPixelHeight * 2
+                Layout.preferredHeight: ScreenTools.defaultFontPixelHeight * 1.9
+                Layout.topMargin:       ScreenTools.defaultFontPixelHeight * 0.35
                 implicitWidth:          detailsLabel.implicitWidth + detailsChevron.width + ScreenTools.defaultFontPixelWidth * 4
-                radius:                 indicatorDrawer._innerRadius
-                color:                  moreArea.containsMouse ? Qt.alpha(QGroundControl.globalPalette.text, 0.08)
-                                                               : "transparent"
+                radius:                 Math.round(ScreenTools.defaultFontPixelHeight * 0.85)
+                color:                  moreArea.containsMouse ? Qt.alpha(QGroundControl.globalPalette.text, 0.16)
+                                                               : QGroundControl.globalPalette.overlayCard
                 visible:                indicatorDrawerLoader.item &&
                                             indicatorDrawerLoader.item.showExpand && !indicatorDrawer._expanded
 
@@ -742,7 +793,7 @@ ApplicationWindow {
                     anchors.rightMargin:    ScreenTools.defaultFontPixelWidth * 1.5
                     anchors.verticalCenter: parent.verticalCenter
                     source:                 "/InstrumentValueIcons/cheveron-right.svg"
-                    color:                  QGroundControl.globalPalette.colorGrey
+                    color:                  Qt.alpha(QGroundControl.globalPalette.text, 0.5)
                     height:                 ScreenTools.defaultFontPixelHeight * 0.9
                     width:                  height
                     sourceSize.height:      height
@@ -759,7 +810,6 @@ ApplicationWindow {
             }
         }
     }
-
 
     function createrWindowedAnalyzePage(title, source) {
         var windowedPage = windowedAnalyzePage.createObject(mainWindow)

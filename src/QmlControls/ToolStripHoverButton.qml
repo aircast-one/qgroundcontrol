@@ -48,6 +48,7 @@ Button {
     property bool iconOnly:          false
     property bool editing:           false
     readonly property bool actionable: toolStripAction.enabled && !editing
+    readonly property real _disabledOpacity: 0.45
     readonly property real _captionSpacing: ScreenTools.defaultFontPixelHeight * 0.15
     readonly property real discSize:        iconOnly ? Math.max(ScreenTools.minTouchPixels, ScreenTools.defaultFontPixelHeight * 2.4) : width
     property real imageScale:        iconOnly ? 0.5 : (forceImageScale11 && (text == "") ? 0.8 : 0.6)
@@ -88,16 +89,17 @@ Button {
         anchors.horizontalCenter:   parent.horizontalCenter
         y:                          control.discSize + control._captionSpacing
         text:                       control.text
-        color:                      QGroundControl.globalPalette.text
-        opacity:                    toolStripAction.enabled ? 1 : 0.5
+        color:                      QGroundControl.globalPalette.overlayInk
+        opacity:                    toolStripAction.enabled ? 1 : control._disabledOpacity
         font.pointSize:             ScreenTools.smallFontPointSize
         style:                      Text.Outline
-        styleColor:                 "black"
+        styleColor:                 QGroundControl.globalPalette.overlayInkInverse
         visible:                    control.iconOnly && control.text !== ""
     }
 
     contentItem: Item {
         id:                         contentLayoutItem
+        opacity:                    control.actionable || control.editing ? 1 : control._disabledOpacity
         anchors.horizontalCenter:   parent.horizontalCenter
         anchors.top:                parent.top
         anchors.topMargin:          contentMargins
@@ -168,6 +170,7 @@ Button {
 
     background: Rectangle {
         id:             buttonBkRect
+        opacity:        control.actionable || control.editing ? 1 : control._disabledOpacity
         color:          (control.checked || control.pressed) ? bkCheckedColor
                             : control.glass ? "transparent"
                                             : ((control.actionable && control.hovered) ? bkHoverColor : bkColor)
