@@ -140,6 +140,7 @@ Item {
                 OverlaySegmentedControl {
                     id:         rcSwitch3
                     objectName: "rcControlSwitch3" + rcSwitch3Slot.modelData.channel
+                    glass:      true
                     width:      ScreenTools.defaultFontPixelWidth * 12
                     enabled:    !overlayRig.editMode && _root.hasVehicle
                     segments:   ["1", "2", "3"]

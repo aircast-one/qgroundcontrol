@@ -28,9 +28,6 @@ Button {
     checked:        toolStripAction.checked
     checkable:      toolStripAction.dropPanelComponent || modelData.checkable
 
-    layer.enabled:  iconOnly
-    layer.effect:   OverlayShadowEffect { }
-
     property var    toolStripAction:    undefined
     property var    dropPanel:          undefined
     property alias  radius:             buttonBkRect.radius
@@ -180,6 +177,8 @@ Button {
         anchors.top:    parent.top
         width:          control.iconOnly ? control.discSize : control.width
         height:         control.iconOnly ? control.discSize : control.height
+        layer.enabled:  control.iconOnly
+        layer.effect:   OverlayShadowEffect { }
 
         OverlayGlass {
             anchors.fill: parent

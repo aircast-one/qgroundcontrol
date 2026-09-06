@@ -18,11 +18,14 @@ Item {
 
     property var  segments:     []
     property int  currentIndex: 0
+    property bool glass:        false
 
     signal activated(int index)
 
     implicitHeight: ScreenTools.defaultFontPixelHeight * 2.1
     height:         implicitHeight
+    layer.enabled:  glass
+    layer.effect:   OverlayShadowEffect { }
 
     readonly property var  _qgcPal:       QGroundControl.globalPalette
     readonly property real _padding:      ScreenTools.defaultFontPixelHeight * 0.11
@@ -35,9 +38,16 @@ Item {
     Rectangle {
         anchors.fill: parent
         radius:       _root._trackRadius
+        visible:      !_root.glass
         color:        Qt.alpha(_root._qgcPal.window, 0.55)
         border.width: 1
         border.color: Qt.alpha(_root._qgcPal.text, 0.08)
+    }
+
+    OverlayGlass {
+        anchors.fill: parent
+        radius:       _root._trackRadius
+        visible:      _root.glass
     }
 
     Rectangle {
