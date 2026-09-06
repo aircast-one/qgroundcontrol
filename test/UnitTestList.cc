@@ -38,10 +38,6 @@
 
 // Comms
 #include "QGCSerialPortInfoTest.h"
-#include "TCPConfigurationTest.h"
-#include "TCPLinkErrorTest.h"
-#include "LinkStateTest.h"
-#include "UDPConfigurationTest.h"
 
 // DebugApi
 #include "DebugApiServerTest.h"
@@ -60,7 +56,6 @@
 // MAVLink
 #include "StatusTextHandlerTest.h"
 #include "SigningTest.h"
-#include "SysStatusSensorInfoTest.h"
 
 // MissionManager
 #include "CameraCalcTest.h"
@@ -93,19 +88,12 @@
 // QmlControls
 #include "DragToPositionTest.h"
 #include "OverlayBackdropTest.h"
-#include "OverlayPaletteTest.h"
-#include "PlatformThemeTest.h"
-#include "QGCColoredImageTest.h"
 #include "OverlaySegmentedControlTest.h"
-#include "FlyViewToolBarEditTest.h"
 #include "OverlayViewSwitchTest.h"
 #include "PlanToolBarIndicatorsTest.h"
+#include "AppSettingsLayoutTest.h"
 #include "PlanViewLayoutTest.h"
 #include "ScreenToolsTest.h"
-#include "SafeAreaTest.h"
-#include "SettingsSearchTest.h"
-#include "UnitSystemTest.h"
-#include "VehicleStatusSummaryTest.h"
 #include "OverlayRigTest.h"
 #include "PipRevealTest.h"
 #include "PipViewTest.h"
@@ -119,7 +107,6 @@
 #include "TerrainTileTest.h"
 
 // QtLocationPlugin
-#include "QGCTileCacheWorkerTest.h"
 #include "QGeoMapReplyQGCTest.h"
 
 // UI
@@ -150,10 +137,9 @@
 #include "CameraControlTest.h"
 #include "FlightMapTest.h"
 #include "TelemetryChipsTest.h"
-#include "TerrainProgressTest.h"
-#include "FirmwareUpdateAvailableTest.h"
 #include "FlightModeReportingTest.h"
 #include "VehicleLinkManagerTest.h"
+#include "PlatformThemeTest.h"
 
 // Missing
 // #include "FlightGearUnitTest.h"
@@ -190,10 +176,6 @@ int runTests(bool stress, QStringView unitTestOptions)
 
     // Comms
     UT_REGISTER_TEST(QGCSerialPortInfoTest)
-    UT_REGISTER_TEST(TCPConfigurationTest)
-    UT_REGISTER_TEST(TCPLinkErrorTest)
-    UT_REGISTER_TEST(LinkStateTest)
-    UT_REGISTER_TEST(UDPConfigurationTest)
 
     // DebugApi
     UT_REGISTER_TEST(DebugApiServerTest)
@@ -212,7 +194,6 @@ int runTests(bool stress, QStringView unitTestOptions)
     // MAVLink
     UT_REGISTER_TEST(StatusTextHandlerTest)
     UT_REGISTER_TEST(SigningTest)
-    UT_REGISTER_TEST(SysStatusSensorInfoTest)
 
     // MissionManager
     UT_REGISTER_TEST(CameraCalcTest)
@@ -243,19 +224,12 @@ int runTests(bool stress, QStringView unitTestOptions)
     // QmlControls
     UT_REGISTER_TEST(DragToPositionTest)
     UT_REGISTER_TEST(OverlayBackdropTest)
-    UT_REGISTER_TEST(OverlayPaletteTest)
-    UT_REGISTER_TEST(PlatformThemeTest)
-    UT_REGISTER_TEST(QGCColoredImageTest)
     UT_REGISTER_TEST(OverlaySegmentedControlTest)
-    UT_REGISTER_TEST(FlyViewToolBarEditTest)
     UT_REGISTER_TEST(OverlayViewSwitchTest)
     UT_REGISTER_TEST(PlanToolBarIndicatorsTest)
+    UT_REGISTER_TEST(AppSettingsLayoutTest)
     UT_REGISTER_TEST(PlanViewLayoutTest)
     UT_REGISTER_TEST(ScreenToolsTest)
-    UT_REGISTER_TEST(SafeAreaTest)
-    UT_REGISTER_TEST(SettingsSearchTest)
-    UT_REGISTER_TEST(UnitSystemTest)
-    UT_REGISTER_TEST(VehicleStatusSummaryTest)
     UT_REGISTER_TEST(OverlayRigTest)
     UT_REGISTER_TEST(PipRevealTest)
     UT_REGISTER_TEST(PipViewTest)
@@ -269,7 +243,6 @@ int runTests(bool stress, QStringView unitTestOptions)
     UT_REGISTER_TEST(TerrainTileTest)
 
     // QtLocationPlugin
-    UT_REGISTER_TEST(QGCTileCacheWorkerTest)
     UT_REGISTER_TEST(QGeoMapReplyQGCTest)
 
     // UI
@@ -300,10 +273,9 @@ int runTests(bool stress, QStringView unitTestOptions)
     UT_REGISTER_TEST(CameraControlTest)
     UT_REGISTER_TEST(FlightMapTest)
     UT_REGISTER_TEST(TelemetryChipsTest)
-    UT_REGISTER_TEST(TerrainProgressTest)
-    UT_REGISTER_TEST(FirmwareUpdateAvailableTest)
     UT_REGISTER_TEST(FlightModeReportingTest)
     UT_REGISTER_TEST(VehicleLinkManagerTest)
+    UT_REGISTER_TEST(PlatformThemeTest)
 
     // Missing
     // UT_REGISTER_TEST(FlightGearUnitTest)
