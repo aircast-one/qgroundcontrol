@@ -10,6 +10,8 @@ if(APPLE AND NOT IOS)
             QGCBridgeC.cc
             QGCBridgeC.h
             QGCEmbed.cc
+            QGCLinksC.cc
+            QGCLinksC.h
             QGCEntry.h
             QGCNativeDebugC.h
     )

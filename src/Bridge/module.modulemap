@@ -7,3 +7,8 @@ module QGCEntry {
     header "QGCEntry.h"
     export *
 }
+
+module QGCLinksC {
+    header "QGCLinksC.h"
+    export *
+}

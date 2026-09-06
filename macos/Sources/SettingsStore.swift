@@ -7,7 +7,9 @@ struct FactSection: Identifiable {
     var showsUnits: Bool { facts.contains { !$0.units.isEmpty } }
 }
 
-final class SettingsStore: ObservableObject {
+final class SettingsStore: ObservableObject, Probeable {
+    static let probeID = "settings"
+
     @Published private(set) var sections: [FactSection] = []
     @Published private(set) var loadError: String?
     @Published var selected: SettingsPage.ID?
@@ -72,5 +74,47 @@ final class SettingsStore: ObservableObject {
         Bridge.set(fact.path, value)
         cache.removeAll()
         refresh()
+    }
+}
+
+extension SettingsStore {
+    func probeState() -> [String: Any] {
+        [
+            "page": selected ?? "",
+            "search": search,
+            "pages": pages.map(\.id),
+            "sections": sections.map { section in
+                ["title": section.title,
+                 "facts": section.facts.map { ["name": $0.name, "title": $0.title,
+                                                "value": $0.stringValue, "units": $0.units,
+                                                "readOnly": $0.readOnly] }]
+            },
+        ]
+    }
+
+    func probeInvoke(action: String, args: [String: String]) -> [String: Any] {
+        switch action {
+        case "select":
+            guard let page = args["page"], pages.contains(where: { $0.id == page }) else {
+                return ["ok": false, "error": "no page \(args["page"] ?? "")", "pages": pages.map(\.id)]
+            }
+            selected = page
+            refresh()
+        case "search":
+            search = args["text"] ?? ""
+        case "set":
+            guard let name = args["name"], let value = args["value"] else {
+                return ["ok": false, "error": "set needs name and value"]
+            }
+            guard let fact = sections.flatMap(\.facts).first(where: { $0.name == name }) else {
+                return ["ok": false, "error": "no fact \(name) on this page"]
+            }
+            write(fact, Double(value) ?? value)
+        case "reload":
+            load()
+        default:
+            return ["ok": false, "error": "unknown action \(action)"]
+        }
+        return ["ok": true, "state": probeState()]
     }
 }

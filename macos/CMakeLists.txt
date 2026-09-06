@@ -13,7 +13,11 @@ add_library(QGCNativeUI STATIC
     Sources/SettingsPages.swift
     Sources/SettingsStore.swift
     Sources/SettingsWindow.swift
+    Sources/ConnectionsSection.swift
+    Sources/LinkConfigModel.swift
+    Sources/Links.swift
     Sources/NativeDebug.swift
+    Sources/NativeProbe.swift
     Sources/NativeWindow.swift
     Sources/QtHostWindow.swift
     Sources/Telemetry.swift

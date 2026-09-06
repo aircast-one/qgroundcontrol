@@ -16,7 +16,16 @@ struct SettingsSection: Identifiable {
 struct SettingsPage: Identifiable {
     let title: String
     let sections: [SettingsSection]
+    // Some pages need more than a fact form: links are objects with their own
+    // lifecycle, not settings.
+    let showsLinks: Bool
     var id: String { title }
+
+    init(title: String, sections: [SettingsSection], showsLinks: Bool = false) {
+        self.title = title
+        self.sections = sections
+        self.showsLinks = showsLinks
+    }
 
     static let all: [SettingsPage] = [
         SettingsPage(title: "General", sections: [
@@ -42,7 +51,7 @@ struct SettingsPage: Identifiable {
         ]),
         SettingsPage(title: "Connections", sections: [
             .init(title: "Auto Connect", group: "autoConnectSettings"),
-        ]),
+        ], showsLinks: true),
         SettingsPage(title: "MAVLink", sections: [
             .init(title: "MAVLink", group: "mavlinkSettings"),
             .init(title: "APM Stream Rates", group: "apmMavlinkStreamRateSettings"),

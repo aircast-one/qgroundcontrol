@@ -3,6 +3,7 @@ import SwiftUI
 
 struct SettingsView: View {
     @ObservedObject var store: SettingsStore
+    @ObservedObject var links: LinksStore
 
     var body: some View {
         HStack(spacing: 0) {
@@ -33,13 +34,16 @@ struct SettingsView: View {
     private var detail: some View {
         if let message = store.loadError {
             notice(message)
-        } else if store.sections.isEmpty {
+        } else if store.sections.isEmpty && !showsLinks {
             notice(store.search.isEmpty
                    ? "This page has no editable settings."
                    : "No setting matches “\(store.search)”.")
         } else {
             ScrollView {
                 VStack(alignment: .leading, spacing: 24) {
+                    if showsLinks {
+                        ConnectionsSection(store: links)
+                    }
                     ForEach(store.sections) { section in
                         VStack(alignment: .leading, spacing: 0) {
                             Text(section.title)
@@ -56,6 +60,11 @@ struct SettingsView: View {
                 .padding(20)
             }
         }
+    }
+
+    private var showsLinks: Bool {
+        store.search.trimmingCharacters(in: .whitespaces).isEmpty
+            && store.pages.first { $0.id == store.selected }?.showsLinks == true
     }
 
     private func notice(_ text: String) -> some View {
@@ -193,12 +202,23 @@ final class SettingsWindow: NSObject, NSWindowDelegate {
     static let shared = SettingsWindow()
 
     private let store = SettingsStore()
+    private let links = LinksStore()
+
+    override init() {
+        super.init()
+        NativeProbe.register(store)
+        NativeProbe.register(links)
+    }
     private var window: NSWindow?
 
     @objc func showFromMenu() {
         show()
     }
 
+    // Addressing the UI by identity rather than by synthesised clicks: a locked screen
+    // stops any window becoming key, so coordinate-driven input silently does nothing
+    // (and, worse, looks like it worked). This is the native counterpart of the
+    // existing /ui/click-by-objectName surface for QML.
     func show() {
         if let window {
             store.load()
@@ -214,7 +234,7 @@ final class SettingsWindow: NSObject, NSWindowDelegate {
         window.title = "Settings"
         window.isReleasedWhenClosed = false
         window.delegate = self
-        window.contentView = NSHostingView(rootView: SettingsView(store: store))
+        window.contentView = NSHostingView(rootView: SettingsView(store: store, links: links))
         window.center()
         window.makeKeyAndOrderFront(nil)
         self.window = window

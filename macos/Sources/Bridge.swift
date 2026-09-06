@@ -60,6 +60,17 @@ enum Bridge {
         return decode(raw)["ok"] as? Bool ?? false
     }
 
+    // Arguments starting with "@" are resolved by the bridge as object references,
+    // which is how a LinkConfiguration gets passed to LinkManager.
+    @discardableResult
+    static func invoke(_ path: String, _ args: [Any] = []) -> [String: Any] {
+        let argsJson = (try? JSONSerialization.data(withJSONObject: args))
+            .flatMap { String(data: $0, encoding: .utf8) } ?? "[]"
+        guard let raw = qgc_bridge_invoke(path, argsJson) else { return [:] }
+        defer { qgc_bridge_free(raw) }
+        return decode(raw)
+    }
+
     static func group(_ path: String) -> [String: Any] {
         json(path)
     }

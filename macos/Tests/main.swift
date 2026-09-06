@@ -58,6 +58,39 @@ if case let .number(_, minimum, maximum) = unbounded!.kind {
 
 expect(Fact(json: ["value": 1], groupPath: "g") == nil, "a fact without a name is rejected")
 
+// A live LinkInterface is reported by the bridge as a child, not a value; reading
+// json["link"] instead reports every connected link as disconnected.
+let liveLink = LinkConfig(index: 0, json: ["name": "sitl", "linkType": "TypeTcp",
+                                           "children": ["link"], "link": NSNull()])
+expect(liveLink.connected, "a link listed in children reads as connected")
+let deadLink = LinkConfig(index: 1, json: ["name": "sitl", "linkType": "TypeTcp",
+                                           "children": [], "link": NSNull()])
+expect(!deadLink.connected, "a link absent from children reads as disconnected")
+expect(liveLink.typeLabel, "TCP", "TypeTcp renders as TCP")
+expect(LinkConfig(index: 2, json: ["linkType": "TypeLogReplay"]).typeLabel, "Log Replay", "TypeLogReplay renders readably")
+
+// A TCP link with no host cannot connect; "TCP · :5760" hid that.
+expect(LinkConfig(index: 0, json: ["linkType": "TypeTcp", "host": "", "summary": ":5760"]).displaySummary,
+       "No host set", "hostless TCP link says so")
+expect(LinkConfig(index: 0, json: ["linkType": "TypeTcp", "host": "h", "summary": "h:5760"]).displaySummary,
+       "h:5760", "TCP link with a host keeps its summary")
+expect(LinkConfig(index: 0, json: ["linkType": "TypeUdp", "summary": "UDP port 14550"]).displaySummary,
+       "UDP port 14550", "UDP has no host and is not flagged")
+
+// UDP exposes localPort, TCP exposes port; reading only "port" reported UDP links as port 0.
+expect(String(LinkConfig(index: 0, json: ["linkType": "TypeUdp", "localPort": 14550]).port),
+       "14550", "UDP port comes from localPort")
+expect(String(LinkConfig(index: 0, json: ["linkType": "TypeTcp", "port": 5760]).port),
+       "5760", "TCP port comes from port")
+
+func expectEditing(_ type: String, _ want: LinkConfig.Editing, _ label: String) {
+    expect(LinkConfig(index: 0, json: ["linkType": type]).editing == want, label)
+}
+expectEditing("TypeTcp", .hostAndPort, "TCP edits host and port")
+expectEditing("TypeUdp", .portOnly, "UDP edits only its local port")
+expectEditing("TypeSerial", .serial, "serial edits device and baud")
+expectEditing("TypeMock", LinkConfig.Editing.none, "mock link has nothing to edit")
+
 if failures == 0 {
     print("all Swift checks passed")
     exit(0)
