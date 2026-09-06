@@ -30,6 +30,11 @@ enum class AnalyzePage(
     val description: String,
     val qml: String,
 ) {
+    LogDownload(
+        "Log Download",
+        "Download flight logs from the vehicle",
+        "",
+    ),
     Vibration(
         "Vibration",
         "Accelerometer vibration levels and clipping",
@@ -37,7 +42,7 @@ enum class AnalyzePage(
     ),
     MoreTools(
         "More analysis tools",
-        "Log download, MAVLink console and inspector",
+        "MAVLink console and inspector",
         ANALYZE_VIEW_QML,
     ),
     ;
@@ -95,6 +100,11 @@ fun AnalyzeScreen(
 
     Column(modifier.fillMaxSize()) {
         AnalyzeHeader(page.label) { onSelect(null) }
-        Surface(Modifier.weight(1f)) { VibrationScreen() }
+        Surface(Modifier.weight(1f)) {
+            when (page) {
+                AnalyzePage.LogDownload -> LogDownloadScreen()
+                else -> VibrationScreen()
+            }
+        }
     }
 }
