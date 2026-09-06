@@ -13,6 +13,9 @@
 
 // ADSB
 #include "ADSBTest.h"
+
+// Bridge
+#include "QGCBridgeCoreTest.h"
 #ifdef QGC_WFB_ENABLED
 #include "PacketRadioTest.h"
 #endif
@@ -167,6 +170,7 @@ int runTests(bool stress, QStringView unitTestOptions)
 {
     // ADSB
     UT_REGISTER_TEST(ADSBTest)
+    UT_REGISTER_TEST(QGCBridgeCoreTest)
 #ifdef QGC_WFB_ENABLED
     UT_REGISTER_TEST(PacketRadioTest)
 #endif

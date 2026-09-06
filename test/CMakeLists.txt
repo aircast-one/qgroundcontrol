@@ -37,6 +37,7 @@ function(add_qgc_test test_name)
 endfunction()
 
 add_subdirectory(ADSB)
+add_subdirectory(Bridge)
 if(CMAKE_SYSTEM_NAME STREQUAL "Darwin")
     add_subdirectory(PacketRadio)
 endif()
