@@ -102,7 +102,7 @@ public:
     Q_INVOKABLE QString cameraName(int index) const;
 
     void init(QQuickWindow *rootWindow);
-    Q_INVOKABLE void initForItem(QQuickItem *item) { init(item ? item->window() : nullptr); }
+    Q_INVOKABLE bool initForItem(QQuickItem *item) { init(item ? item->window() : nullptr); return _initialized; }
     void cleanup();
     bool autoStreamConfigured() const;
     bool decoding() const { return _decoding; }
