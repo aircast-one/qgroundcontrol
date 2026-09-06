@@ -187,6 +187,19 @@ void QGCBridgeCoreTest::_invokeConvertsArguments()
     QCOMPARE(numericArg.value(QStringLiteral("result")).toBool(), false);
 }
 
+void QGCBridgeCoreTest::_resolvesMavlinkInspectorRoot()
+{
+    const QJsonObject systems = readObject(QStringLiteral("mavlinkInspector.systems"));
+    QCOMPARE(systems.value(QStringLiteral("kind")).toString(), QStringLiteral("object"));
+    QVERIFY(systems.contains(QStringLiteral("elements")));
+    QCOMPARE(systems.value(QStringLiteral("count")).toInt(),
+             systems.value(QStringLiteral("elements")).toArray().count());
+
+    const QJsonObject names = readObject(QStringLiteral("mavlinkInspector.systemNames"));
+    QCOMPARE(names.value(QStringLiteral("kind")).toString(), QStringLiteral("value"));
+    QVERIFY(names.value(QStringLiteral("value")).isArray());
+}
+
 void QGCBridgeCoreTest::_resolvesMavlinkConsoleRoot()
 {
     const QJsonObject lines = readObject(QStringLiteral("mavlinkConsole.lines"));

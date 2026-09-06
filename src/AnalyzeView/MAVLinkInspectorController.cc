@@ -8,6 +8,8 @@
  ****************************************************************************/
 
 #include "MAVLinkInspectorController.h"
+
+#include <QtCore/qapplicationstatic.h>
 #include "MAVLinkChartController.h"
 #include "MAVLinkMessage.h"
 #include "MAVLinkProtocol.h"
@@ -21,6 +23,13 @@
 #include <QtQml/QQmlEngine>
 
 QGC_LOGGING_CATEGORY(MAVLinkInspectorControllerLog, "qgc.analyzeview.mavlinkinspectorcontroller")
+
+Q_APPLICATION_STATIC(MAVLinkInspectorController, _mavlinkInspectorControllerInstance);
+
+MAVLinkInspectorController *MAVLinkInspectorController::instance()
+{
+    return _mavlinkInspectorControllerInstance();
+}
 
 MAVLinkInspectorController::TimeScale_st::TimeScale_st(const QString &label_, uint32_t timeScale_)
     : label(label_)

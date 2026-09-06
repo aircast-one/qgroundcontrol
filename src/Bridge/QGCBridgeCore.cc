@@ -4,6 +4,7 @@
 #include "LinkManager.h"
 #include "LogDownloadController.h"
 #include "MAVLinkConsoleController.h"
+#include "MAVLinkInspectorController.h"
 #include "MultiVehicleManager.h"
 #include "QmlObjectListModel.h"
 #include "SettingsManager.h"
@@ -52,6 +53,9 @@ QObject *rootObject(const QString &name)
     }
     if (name == QLatin1String("mavlinkConsole")) {
         return MAVLinkConsoleController::instance();
+    }
+    if (name == QLatin1String("mavlinkInspector")) {
+        return MAVLinkInspectorController::instance();
     }
     return nullptr;
 }

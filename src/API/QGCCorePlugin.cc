@@ -98,7 +98,7 @@ const QVariantList &QGCCorePlugin::analyzePages()
             QUrl::fromUserInput(QStringLiteral("qrc:/qml/QGroundControl/AnalyzeView/MAVLinkConsolePage.qml")),
             QUrl::fromUserInput(QStringLiteral("qrc:/qmlimages/MAVLinkConsoleIcon.svg")))),
 #endif
-#ifndef QGC_DISABLE_MAVLINK_INSPECTOR
+#if !defined(QGC_DISABLE_MAVLINK_INSPECTOR) && !defined(Q_OS_ANDROID)
         QVariant::fromValue(new QmlComponentInfo(
             tr("MAVLink Inspector"),
             QUrl::fromUserInput(QStringLiteral("qrc:/qml/QGroundControl/AnalyzeView/MAVLinkInspectorPage.qml")),
