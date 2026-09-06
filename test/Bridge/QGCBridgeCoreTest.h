@@ -30,5 +30,6 @@ private slots:
     void _invokeReturnsValue();
     void _invokeConvertsArguments();
     void _rejectsUnknownPaths();
+    void _resolvesLogDownloadRoot();
     void _watchEmitsOnChange();
 };

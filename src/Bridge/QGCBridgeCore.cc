@@ -2,6 +2,7 @@
 
 #include "Fact.h"
 #include "LinkManager.h"
+#include "LogDownloadController.h"
 #include "MultiVehicleManager.h"
 #include "QmlObjectListModel.h"
 #include "SettingsManager.h"
@@ -44,6 +45,9 @@ QObject *rootObject(const QString &name)
     }
     if (name == QLatin1String("links")) {
         return LinkManager::instance();
+    }
+    if (name == QLatin1String("logDownload")) {
+        return LogDownloadController::instance();
     }
     return nullptr;
 }

@@ -187,6 +187,20 @@ void QGCBridgeCoreTest::_invokeConvertsArguments()
     QCOMPARE(numericArg.value(QStringLiteral("result")).toBool(), false);
 }
 
+void QGCBridgeCoreTest::_resolvesLogDownloadRoot()
+{
+    const QJsonObject root = readObject(QStringLiteral("logDownload"));
+    QCOMPARE(root.value(QStringLiteral("kind")).toString(), QStringLiteral("object"));
+    QVERIFY(root.contains(QStringLiteral("requestingList")));
+    QVERIFY(root.contains(QStringLiteral("downloadingLogs")));
+    QVERIFY(root.value(QStringLiteral("children")).toArray().contains(QStringLiteral("model")));
+
+    const QJsonObject model = readObject(QStringLiteral("logDownload.model"));
+    QCOMPARE(model.value(QStringLiteral("kind")).toString(), QStringLiteral("object"));
+    QVERIFY(model.contains(QStringLiteral("elements")));
+    QCOMPARE(model.value(QStringLiteral("count")).toInt(), model.value(QStringLiteral("elements")).toArray().count());
+}
+
 void QGCBridgeCoreTest::_rejectsUnknownPaths()
 {
     QCOMPARE(readObject(QStringLiteral("nosuchroot.thing")).value(QStringLiteral("kind")).toString(),
