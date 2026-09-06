@@ -28,6 +28,7 @@ Popup {
 
     property string title
     property var    buttons:                Dialog.Ok
+    property string acceptButtonTitle:      ""
     property alias  acceptButtonEnabled:    acceptButton.enabled
     property alias  rejectButtonEnabled:    rejectButton.enabled
     property var    dialogProperties
@@ -125,11 +126,15 @@ Popup {
         [ Dialog.Abort,     qsTr("Abort") ],
     ]
 
+    readonly property string _defaultAcceptText: {
+        const accept = _acceptLabels.find(e => buttons & e[0])
+        return accept ? accept[1] : ""
+    }
+
     function setupDialogButtons(buttons) {
         const accept = _acceptLabels.find(e => buttons & e[0])
         const reject = _rejectLabels.find(e => buttons & e[0])
         acceptButton.visible = accept !== undefined
-        acceptButton.text    = accept ? accept[1] : ""
         rejectButton.visible = reject !== undefined
         rejectButton.text    = reject ? reject[1] : ""
         closePolicy = (buttons & Dialog.Cancel) ? (Popup.NoAutoClose | Popup.CloseOnEscape) : Popup.NoAutoClose
@@ -218,6 +223,7 @@ Popup {
                 id:                     acceptButton
                 Layout.minimumWidth:    ScreenTools.defaultFontPixelWidth * 10
                 primary:                true
+                text:                   root.acceptButtonTitle !== "" ? root.acceptButtonTitle : root._defaultAcceptText
                 onClicked:              _accept()
             }
         }
