@@ -29,18 +29,12 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
-import kotlinx.coroutines.CoroutineScope
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.launch
 import org.json.JSONObject
 import one.aircast.android.bridge.Qgc
+import one.aircast.android.bridge.offMain
 import one.aircast.android.bridge.qgcBool
 import one.aircast.android.bridge.qgcPath
 import one.aircast.android.bridge.qgcString
-
-private fun CoroutineScope.offMain(block: () -> Unit) {
-    launch(Dispatchers.Default) { block() }
-}
 
 private const val LOG_ROOT = "logDownload"
 private const val LOG_MODEL = "logDownload.model"

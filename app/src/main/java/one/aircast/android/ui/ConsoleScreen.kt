@@ -29,19 +29,13 @@ import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
-import kotlinx.coroutines.CoroutineScope
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.launch
 import one.aircast.android.bridge.Qgc
+import one.aircast.android.bridge.offMain
 import one.aircast.android.bridge.qgcBool
 import one.aircast.android.bridge.qgcStrings
 
 private const val CONSOLE_ROOT = "mavlinkConsole"
 private const val CONSOLE_LINES = "mavlinkConsole.lines"
-
-private fun CoroutineScope.offMain(block: () -> Unit) {
-    launch(Dispatchers.Default) { block() }
-}
 
 internal fun visibleConsoleLines(lines: List<String>): List<String> =
     lines.dropLastWhile { it.isBlank() }

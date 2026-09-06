@@ -27,6 +27,7 @@ import androidx.compose.ui.unit.dp
 import java.util.Locale
 import org.json.JSONObject
 import one.aircast.android.bridge.Qgc
+import one.aircast.android.bridge.offMainDetached
 import one.aircast.android.bridge.qgcBool
 import one.aircast.android.bridge.qgcPath
 
@@ -75,7 +76,7 @@ internal fun parseInspectorFields(model: JSONObject?): List<InspectorField> {
 }
 
 private fun setMessageSelected(index: Int, selected: Boolean) {
-    Thread { Qgc.set("$INSPECTOR_MESSAGES.$index.selected", selected) }.start()
+    offMainDetached { Qgc.set("$INSPECTOR_MESSAGES.$index.selected", selected) }
 }
 
 internal fun formatRate(rateHz: Double): String =
