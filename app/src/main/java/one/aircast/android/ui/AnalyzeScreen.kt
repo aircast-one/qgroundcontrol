@@ -40,9 +40,14 @@ enum class AnalyzePage(
         "Accelerometer vibration levels and clipping",
         "",
     ),
+    Console(
+        "MAVLink Console",
+        "Shell over the vehicle link",
+        "",
+    ),
     MoreTools(
         "More analysis tools",
-        "MAVLink console and inspector",
+        "MAVLink inspector",
         ANALYZE_VIEW_QML,
     ),
     ;
@@ -103,6 +108,7 @@ fun AnalyzeScreen(
         Surface(Modifier.weight(1f)) {
             when (page) {
                 AnalyzePage.LogDownload -> LogDownloadScreen()
+                AnalyzePage.Console -> ConsoleScreen()
                 else -> VibrationScreen()
             }
         }
