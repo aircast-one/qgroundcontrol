@@ -286,11 +286,13 @@ void OverlayPhysics::step(qreal dt)
             order.append(it.key());
         }
     }
-    std::stable_sort(order.begin(), order.end(), [this](int a, int b) { return _mass(_bodies[a]) > _mass(_bodies[b]); });
+    std::stable_sort(order.begin(), order.end(), [this](int a, int b) {
+        const Body &first = _bodies[a];
+        const Body &second = _bodies[b];
+        return first.priority != second.priority ? first.priority > second.priority : _mass(first) > _mass(second);
+    });
 
-    const qreal tau = 2.0 / qMax(1.0, _damping);
-    const qreal fraction = 1.0 - std::exp(-dt / tau);
-    const qreal maxStep = _pull * tau * dt;
+    const qreal omega = qMax(1.0, _damping) / (2.0 * kDampingRatio);
     QMap<int, QPointF> before;
     for (const int id : order) {
         Body &body = _bodies[id];
@@ -302,19 +304,23 @@ void OverlayPhysics::step(qreal dt)
             continue;
         }
         const QPointF delta = body.target - body.pos;
-        const qreal distance = lengthOf(delta);
-        if (distance < kMinStep || !carry.isNull()) {
+        if (!carry.isNull() || (lengthOf(delta) < kMinStep && lengthOf(body.velocity) < kRestSpeed)) {
             body.pos = body.target;
+            body.velocity = QPointF();
             continue;
         }
-        body.pos += delta * (qMin(qMax(distance * fraction, kMinStep), maxStep) / distance);
+        body.velocity += (delta * (omega * omega) - body.velocity * (2.0 * kDampingRatio * omega)) * dt;
+        const qreal speed = lengthOf(body.velocity);
+        if (speed > kMaxSpeed) {
+            body.velocity *= kMaxSpeed / speed;
+        }
+        body.pos += body.velocity * dt;
     }
 
     for (const int id : order) {
         Body &body = _bodies[id];
         const QPointF moved = body.pos - before.value(id);
-        body.velocity = moved / dt;
-        const bool arrived = lengthOf(body.target - body.pos) <= kRestMotion;
+        const bool arrived = lengthOf(body.target - body.pos) <= kRestMotion && lengthOf(body.velocity) < kRestSpeed;
         if (arrived && lengthOf(moved) <= kRestMotion) {
             body.restSteps += 1;
         } else {
@@ -379,7 +385,7 @@ QString OverlayPhysics::describe(int id) const
         .arg(it->kind == Free ? QStringLiteral("dyn") : QStringLiteral("kin"));
 }
 
-QPointF OverlayPhysics::landing(int id, qreal homeX, qreal homeY) const
+QPointF OverlayPhysics::landing(int id, qreal homeX, qreal homeY, qreal w, qreal h) const
 {
     const auto it = _bodies.constFind(id);
     if (it == _bodies.constEnd()) {
@@ -388,13 +394,23 @@ QPointF OverlayPhysics::landing(int id, qreal homeX, qreal homeY) const
     Body probe = *it;
     probe.home = QPointF(homeX, homeY);
     probe.hasHome = true;
+    probe.size = QSizeF(w, h);
     QList<QRectF> obstacles;
     for (auto other = _bodies.constBegin(); other != _bodies.constEnd(); ++other) {
-        if (other.key() != id && (probe.group == 0 || probe.group != other->group)) {
-            obstacles.append(_rectsOf(*other, other->kind == Free ? other->target : other->pos));
+        if (other.key() != id && other->kind == Driven && (probe.group == 0 || probe.group != other->group)) {
+            obstacles.append(_rectsOf(*other));
         }
     }
     return _targetFor(probe, obstacles, QPointF());
+}
+
+void OverlayPhysics::touch(int id)
+{
+    auto it = _bodies.find(id);
+    if (it != _bodies.end()) {
+        it->priority = ++_touches;
+        _wakeFreeBodies();
+    }
 }
 
 QString OverlayPhysics::report() const
@@ -402,13 +418,15 @@ QString OverlayPhysics::report() const
     QStringList lines;
     for (auto it = _bodies.constBegin(); it != _bodies.constEnd(); ++it) {
         const Body &body = it.value();
-        QString line = QStringLiteral("#%1 %2 rect %3,%4 %5x%6 %7 target %8,%9")
+        QString line = QStringLiteral("#%1 %2 rect %3,%4 %5x%6 %7 target %8,%9 home %10,%11 priority %12")
             .arg(it.key())
             .arg(body.kind == Free ? QStringLiteral("free") : QStringLiteral("driven"))
             .arg(body.pos.x(), 0, 'f', 0).arg(body.pos.y(), 0, 'f', 0)
             .arg(body.size.width(), 0, 'f', 0).arg(body.size.height(), 0, 'f', 0)
             .arg(body.awake ? QStringLiteral("awake") : QStringLiteral("asleep"))
-            .arg(body.target.x(), 0, 'f', 0).arg(body.target.y(), 0, 'f', 0);
+            .arg(body.target.x(), 0, 'f', 0).arg(body.target.y(), 0, 'f', 0)
+            .arg(body.home.x(), 0, 'f', 0).arg(body.home.y(), 0, 'f', 0)
+            .arg(body.priority);
         for (const QRectF &part : body.parts) {
             const QRectF r = part.translated(body.pos);
             line += QStringLiteral(" +attached %1,%2 %3x%4").arg(r.x(), 0, 'f', 0).arg(r.y(), 0, 'f', 0).arg(r.width(), 0, 'f', 0).arg(r.height(), 0, 'f', 0);

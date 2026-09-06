@@ -42,7 +42,8 @@ public:
     Q_INVOKABLE bool    allAsleep() const;
     Q_INVOKABLE QString describe(int id) const;
     Q_INVOKABLE QString report() const;
-    Q_INVOKABLE QPointF landing(int id, qreal homeX, qreal homeY) const;
+    Q_INVOKABLE QPointF landing(int id, qreal homeX, qreal homeY, qreal w, qreal h) const;
+    Q_INVOKABLE void    touch(int id);
 
     qreal pull() const { return _pull; }
     qreal springRadius() const { return _springRadius; }
@@ -72,6 +73,7 @@ private:
         bool          hasHome = false;
         int           group = 0;
         bool          awake = true;
+        int           priority = 0;
         int           restSteps = 0;
         QVariantList  attachments;
         QList<QRectF> parts;
@@ -80,6 +82,9 @@ private:
     static constexpr qreal kMaxDriveSpeed = 3000.0;
     static constexpr qreal kLayoutJump    = 160.0;
     static constexpr qreal kMinStep       = 1.0;
+    static constexpr qreal kRestSpeed     = 20.0;
+    static constexpr qreal kMaxSpeed      = 4000.0;
+    static constexpr qreal kDampingRatio  = 0.85;
     static constexpr qreal kRestMotion    = 0.5;
     static constexpr int   kRestSteps     = 2;
     static constexpr qreal kGridStep      = 8.0;
@@ -99,6 +104,7 @@ private:
     QRectF           _bounds;
     QMap<int, Body>  _bodies;
     int              _nextId = 1;
+    int              _touches = 0;
 
     qreal _pull         = 9000;
     qreal _springRadius = 40;

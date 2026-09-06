@@ -32,6 +32,7 @@ private slots:
     void _crowdedItemsAllFindSeparatePlaces();
     void _droppedItemNeverSnapsBackToWhereItCameFrom();
     void _dropAlignsWithANeighboursEdge();
+    void _droppedItemTakesItsSlotAndTheNeighbourYields();
     void _overlapIsAnsweredOnTheChangeThatCausedIt();
     void _disturbedLayoutComesToRest();
     void _sweepingObstacleDoesNotFlingItemsAcrossTheWindow();

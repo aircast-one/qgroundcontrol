@@ -42,23 +42,53 @@ Item {
         topInset:   toolbar.height
     }
 
-    Rectangle {
-        objectName:   "overlayDropPreview"
-        x:            _overlayRig.dropPreview.x
-        y:            _overlayRig.dropPreview.y
-        width:        _overlayRig.dropPreview.width
-        height:       _overlayRig.dropPreview.height
-        z:            QGroundControl.zOrderWidgets - 1
-        radius:       ScreenTools.defaultFontPixelHeight * 0.6
-        color:        Qt.alpha(QGroundControl.globalPalette.text, 0.22)
-        border.width: 2
-        border.color: Qt.alpha(QGroundControl.globalPalette.text, 0.7)
-        visible:      opacity > 0
-        opacity:      _overlayRig.dropPreviewVisible ? 1 : 0
+    Item {
+        objectName: "overlayDropPreview"
+        x:          _overlayRig.dropPreview.x
+        y:          _overlayRig.dropPreview.y
+        width:      _overlayRig.dropPreview.width
+        height:     _overlayRig.dropPreview.height
+        z:          QGroundControl.zOrderWidgets - 1
+        visible:    opacity > 0
+        opacity:    _overlayRig.dropPreviewVisible ? 1 : 0
+
+        OverlayGlass {
+            anchors.fill: parent
+            radius:       _overlayRig.dropPreviewRadius
+            highlight:    true
+        }
 
         Behavior on x       { NumberAnimation { duration: 120; easing.type: Easing.OutCubic } }
         Behavior on y       { NumberAnimation { duration: 120; easing.type: Easing.OutCubic } }
         Behavior on opacity { NumberAnimation { duration: 150 } }
+    }
+
+    Rectangle {
+        objectName: "overlayGuideX"
+        x:          isNaN(_overlayRig.guideX) ? 0 : Math.round(_overlayRig.guideX)
+        y:          0
+        width:      1
+        height:     parent.height
+        z:          QGroundControl.zOrderWidgets + 1
+        color:      Qt.alpha(QGroundControl.globalPalette.text, 0.75)
+        visible:    opacity > 0
+        opacity:    !isNaN(_overlayRig.guideX) ? 1 : 0
+
+        Behavior on opacity { NumberAnimation { duration: 100 } }
+    }
+
+    Rectangle {
+        objectName: "overlayGuideY"
+        x:          0
+        y:          isNaN(_overlayRig.guideY) ? 0 : Math.round(_overlayRig.guideY)
+        width:      parent.width
+        height:     1
+        z:          QGroundControl.zOrderWidgets + 1
+        color:      Qt.alpha(QGroundControl.globalPalette.text, 0.75)
+        visible:    opacity > 0
+        opacity:    !isNaN(_overlayRig.guideY) ? 1 : 0
+
+        Behavior on opacity { NumberAnimation { duration: 100 } }
     }
 
     Shortcut {

@@ -697,9 +697,42 @@ void OverlayRigTest::_dropAlignsWithANeighboursEdge()
 
     QVERIFY(QMetaObject::invokeMethod(rig, "alignDrop", Q_RETURN_ARG(QVariant, landing),
                                       Q_ARG(QVariant, QVariant::fromValue(static_cast<QObject*>(left))),
-                                      Q_ARG(QVariant, 211.0), Q_ARG(QVariant, 615.0)));
-    const qreal grid = rig->property("_gap").toReal();
+                                      Q_ARG(QVariant, 750.0), Q_ARG(QVariant, 450.0)));
+    const qreal grid = rig->property("slotSize").toReal();
     const qreal margin = rig->property("edgeMargin").toReal();
-    QCOMPARE(std::fmod(landing.toPointF().x() - margin, grid), 0.0);
-    QCOMPARE(std::fmod(view.rootObject()->height() - margin - (landing.toPointF().y() + left->height()), grid), 0.0);
+    QVERIFY(grid > 0);
+    const auto onLattice = [&](qreal position, qreal extent, qreal size) {
+        return qFuzzyIsNull(std::fmod(position - margin, grid)) || qFuzzyIsNull(std::fmod(size - margin - (position + extent), grid));
+    };
+    QVERIFY2(onLattice(landing.toPointF().x(), left->width(), view.rootObject()->width()),
+             qPrintable(QStringLiteral("x=%1 is off the %2px lattice").arg(landing.toPointF().x()).arg(grid)));
+    QVERIFY2(onLattice(landing.toPointF().y(), left->height(), view.rootObject()->height()),
+             qPrintable(QStringLiteral("y=%1 is off the %2px lattice").arg(landing.toPointF().y()).arg(grid)));
+}
+
+void OverlayRigTest::_droppedItemTakesItsSlotAndTheNeighbourYields()
+{
+    QQuickView view;
+    QVERIFY(loadView(view));
+
+    QQuickItem *const passenger = view.rootObject()->findChild<QQuickItem*>("passengerItem");
+    QQuickItem *const right = view.rootObject()->findChild<QQuickItem*>("rightItem");
+    QObject *const passengerPosition = positionOf(view, "passengerPosition");
+    QObject *const rig = rigOf(view);
+    QVERIFY(passenger && right && passengerPosition && rig);
+    WAIT_SETTLED(rig, 3000);
+
+    const QPointF rightHome(right->x(), right->y());
+    passenger->setX(rightHome.x() + 3);
+    passenger->setY(rightHome.y() + 2);
+    QVERIFY(QMetaObject::invokeMethod(passengerPosition, "commit"));
+    QVERIFY(QMetaObject::invokeMethod(rig, "requestReflow"));
+    WAIT_SETTLED(rig, 5000);
+
+    QVERIFY2(QPointF(passenger->x(), passenger->y()) == homeOf(passengerPosition),
+             qPrintable(QStringLiteral("passenger rests at %1,%2, home %3,%4\n%5").arg(passenger->x()).arg(passenger->y())
+                            .arg(homeOf(passengerPosition).x()).arg(homeOf(passengerPosition).y()).arg(rig->property("worldReport").toString())));
+    QVERIFY2(!rectOf(passenger).intersects(rectOf(right)),
+             qPrintable(QStringLiteral("passenger %1,%2 still overlaps right %3,%4").arg(passenger->x()).arg(passenger->y()).arg(right->x()).arg(right->y())));
+    QVERIFY2(QPointF(right->x(), right->y()) != rightHome, "the neighbour did not make way for the dropped item");
 }

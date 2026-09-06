@@ -91,6 +91,8 @@ QtObject {
         target.y = Qt.binding(function() { return homeY + nudgeY })
     }
 
+    signal committed()
+
     function commit() {
         const x = target.x
         const y = target.y
@@ -100,9 +102,10 @@ QtObject {
         var snapY = Math.max(snapThreshold, target.height / 2)
         if (Math.abs(x - defaultX) < snapX && Math.abs(y - defaultY) < snapY) {
             reset()
-            return
+        } else {
+            moveTo(x, y)
         }
-        moveTo(x, y)
+        committed()
     }
 
     function _place(value, extent, size, snapToGrid) {

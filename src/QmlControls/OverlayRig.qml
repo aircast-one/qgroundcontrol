@@ -84,7 +84,7 @@ QtObject {
         damping:      2 * root._dampingFraction * root._omega
         friction:     root._friction
         restitution:  root._restitution
-        grid:         root._gap
+        grid:         root.slotSize
     }
     property real _wallsW: -1
     property real _wallsH: -1
@@ -199,15 +199,46 @@ QtObject {
 
         dragPosition.physicsActive = _physicsTimer.running
         dragPosition.aligner = (target, x, y) => root.alignDrop(target, x, y)
+        dragPosition.snapGrid = Qt.binding(() => root.slotSize)
+        dragPosition.committed.connect(() => root._releasePull(item))
+        const pull = _pullComponent.createObject(item)
+        item.transform = [...item.transform, pull]
+        _movables.find((entry) => entry.item === item).pull = pull
         requestReflow()
     }
+
+    readonly property Component _pullComponent: Component { Translate {} }
+
+    function _releasePull(item) {
+        const entry = _movables.find((candidate) => candidate.item === item)
+        if (entry && entry.pull) {
+            entry.pull.x = 0
+            entry.pull.y = 0
+        }
+        if (entry && entry.body) {
+            _physics.touch(entry.body)
+        }
+        guideX = NaN
+        guideY = NaN
+    }
+
+    property real slotSize: _gap
 
     readonly property real magnetRadius: _gap * 0.75
 
     property rect dropPreview:        Qt.rect(0, 0, 0, 0)
     property bool dropPreviewVisible: false
 
+    property real guideX: NaN
+    property real guideY: NaN
+    property real dropPreviewRadius: 0
+
     function alignDrop(item, x, y) {
+        const aligned = _align(item, x, y)
+        return Qt.point(aligned.x, aligned.y)
+    }
+
+    function _align(item, x, y) {
         const w = item.width
         const h = item.height
         const neighbours = _movables.map((entry) => entry.item)
@@ -218,29 +249,39 @@ QtObject {
                 return Qt.rect(at.x, at.y, other.width, other.height)
             })
         const xCandidates = neighbours
-            .map((r) => [r.x, r.x + r.width - w, r.x + r.width + edgeMargin, r.x - edgeMargin - w])
+            .map((r) => [{ at: r.x, guide: r.x }, { at: r.x + r.width - w, guide: r.x + r.width },
+                         { at: r.x + r.width + edgeMargin, guide: r.x + r.width }, { at: r.x - edgeMargin - w, guide: r.x }])
             .reduce((all, some) => all.concat(some), [])
         const yCandidates = neighbours
-            .map((r) => [r.y, r.y + r.height - h, r.y + r.height + edgeMargin, r.y - edgeMargin - h])
+            .map((r) => [{ at: r.y, guide: r.y }, { at: r.y + r.height - h, guide: r.y + r.height },
+                         { at: r.y + r.height + edgeMargin, guide: r.y + r.height }, { at: r.y - edgeMargin - h, guide: r.y }])
             .reduce((all, some) => all.concat(some), [])
-        return Qt.point(_alignAxis(x, w, item.parent.width, xCandidates),
-                        _alignAxis(y, h, item.parent.height, yCandidates))
+        const ax = _alignAxis(x, w, item.parent.width, xCandidates)
+        const ay = _alignAxis(y, h, item.parent.height, yCandidates)
+        return { x: ax.at, y: ay.at, guideX: ax.guide, guideY: ay.guide }
     }
 
     function _alignAxis(value, extent, size, candidates) {
         const low  = edgeMargin
         const high = Math.max(low, size - edgeMargin - extent)
         const nearFarEdge = value + extent / 2 > size / 2
-        const onGrid = nearFarEdge ? high - Math.round((high - value) / _gap) * _gap
-                                   : low + Math.round((value - low) / _gap) * _gap
-        const magnetic = candidates.filter((candidate) => Math.abs(candidate - value) <= magnetRadius)
-        const best = magnetic.length === 0 ? onGrid : magnetic.reduce((closest, candidate) =>
-            Math.abs(candidate - value) < Math.abs(closest - value) ? candidate : closest)
-        return Math.max(low, Math.min(best, high))
+        const onGrid = nearFarEdge ? high - Math.round((high - value) / slotSize) * slotSize
+                                   : low + Math.round((value - low) / slotSize) * slotSize
+        const magnetic = candidates.filter((candidate) => Math.abs(candidate.at - value) <= magnetRadius)
+        const best = magnetic.length === 0 ? { at: onGrid, guide: NaN } : magnetic.reduce((closest, candidate) =>
+            Math.abs(candidate.at - value) < Math.abs(closest.at - value) ? candidate : closest)
+        const at = Math.max(low, Math.min(best.at, high))
+        return { at: at, guide: at === best.at ? best.guide : NaN }
     }
 
     function unregisterMovable(item) {
-        _movables.filter((entry) => entry.item === item).forEach(_dropBody)
+        _movables.filter((entry) => entry.item === item).forEach((entry) => {
+            _dropBody(entry)
+            if (entry.pull) {
+                item.transform = item.transform.filter((transform) => transform !== entry.pull)
+                entry.pull.destroy()
+            }
+        })
         _unwatch(_movables, item)
         _movables = _movables.filter(function(entry) { return entry.item !== item })
         requestReflow()
@@ -344,9 +385,49 @@ QtObject {
         }
     }
 
+    function _radiusOf(item) {
+        if (item.radius !== undefined) {
+            return item.radius
+        }
+        if (item.control && item.control.radius !== undefined) {
+            return item.control.radius
+        }
+        return Math.min(item.width, item.height) * 0.3
+    }
+
+    readonly property real _pullEase: 0.35
+
+    function _pullToward(entry, dx, dy) {
+        if (!entry.pull) {
+            return
+        }
+        const wantX = Math.abs(dx) <= magnetRadius ? dx : 0
+        const wantY = Math.abs(dy) <= magnetRadius ? dy : 0
+        entry.pull.x += (wantX - entry.pull.x) * _pullEase
+        entry.pull.y += (wantY - entry.pull.y) * _pullEase
+    }
+
+    property string _guideKey: ""
+
+    function _showGuides(item, localX, localY) {
+        const gx = isNaN(localX) ? NaN : item.parent.mapToItem(viewport, localX, 0).x
+        const gy = isNaN(localY) ? NaN : item.parent.mapToItem(viewport, 0, localY).y
+        const key = (isNaN(gx) ? "" : Math.round(gx)) + "/" + (isNaN(gy) ? "" : Math.round(gy))
+        if (key !== _guideKey) {
+            if (!isNaN(gx) || !isNaN(gy)) {
+                QGroundControl.hapticFeedback()
+            }
+            _guideKey = key
+        }
+        guideX = gx
+        guideY = gy
+    }
+
     function _sleep() {
         _physicsTimer.stop()
         dropPreviewVisible = false
+        guideX = NaN
+        guideY = NaN
         _movables.forEach((entry) => {
             if (entry.dragPosition) {
                 entry.dragPosition.physicsActive = false
@@ -430,6 +511,13 @@ QtObject {
         const movableItems = _movables.map((entry) => entry.item)
         const bolted = (entry) => entry.owner && movableItems.indexOf(entry.owner) >= 0
 
+        const smallest = _movables.filter((entry) => entry.item && entry.item.visible && !entry.anchored)
+            .reduce((size, entry) => Math.min(size, entry.item.width, entry.item.height), Infinity)
+        const slot = Math.max(_gap, isFinite(smallest) ? Math.round(smallest) : _gap)
+        if (slot !== slotSize) {
+            slotSize = slot
+        }
+
         _statics.forEach((entry) => {
             if (!entry.item || !entry.item.visible || bolted(entry)) {
                 _dropBody(entry)
@@ -460,7 +548,9 @@ QtObject {
 
             const isHeld   = Math.abs(live.x - simulated.x) > 1 || Math.abs(live.y - simulated.y) > 1
             const driven   = isHeld || entry.anchored === true
-            const rect     = driven ? live : { x: simulated.x, y: simulated.y, w: home.w, h: home.h }
+            const carrying = isHeld && !entry.anchored
+            const rect     = carrying ? { x: live.x - edgeMargin, y: live.y - edgeMargin, w: live.w + edgeMargin * 2, h: live.h + edgeMargin * 2 }
+                           : driven   ? live : { x: simulated.x, y: simulated.y, w: home.w, h: home.h }
             const fresh    = _ensureBody(entry, driven ? OverlayPhysics.Driven : OverlayPhysics.Free, rect)
             const body     = _bodyRect(rect)
             const homeBody = _bodyRect(home)
@@ -476,13 +566,24 @@ QtObject {
 
             if (driven) {
                 held = held || isHeld
-                if (isHeld && !entry.anchored) {
+                let to = body
+                if (carrying) {
                     dragged = entry.item
+                    const aligned = _align(dragged, dragged.x, dragged.y)
+                    const home = dragged.parent.mapToItem(viewport, aligned.x, aligned.y)
+                    const land = _physics.landing(entry.body, home.x - _bodyMargin, home.y - _bodyMargin,
+                                                  live.w + _bodyMargin * 2, live.h + _bodyMargin * 2)
+                    to = { x: land.x - edgeMargin, y: land.y - edgeMargin }
+                    dropPreview = Qt.rect(land.x + _bodyMargin, land.y + _bodyMargin, dragged.width, dragged.height)
+                    dropPreviewRadius = _radiusOf(dragged)
+                    const landsOnSnap = Math.abs(land.x + _bodyMargin - home.x) < 1 && Math.abs(land.y + _bodyMargin - home.y) < 1
+                    _pullToward(entry, landsOnSnap ? aligned.x - dragged.x : 0, landsOnSnap ? aligned.y - dragged.y : 0)
+                    _showGuides(dragged, landsOnSnap ? aligned.guideX : NaN, landsOnSnap ? aligned.guideY : NaN)
                 }
                 if (fresh) {
-                    _physics.place(entry.body, body.x, body.y)
+                    _physics.place(entry.body, to.x, to.y)
                 } else {
-                    _physics.drive(entry.body, body.x, body.y, dt)
+                    _physics.drive(entry.body, to.x, to.y, dt)
                 }
                 if (entry.anchored && entry.dragPosition.displaced) {
                     entry.dragPosition.setNudge(0, 0)
@@ -497,14 +598,11 @@ QtObject {
             _physics.setHome(entry.body, homeBody.x, homeBody.y)
         })
 
-        if (dragged) {
-            const snapped = alignDrop(dragged, dragged.x, dragged.y)
-            const home = dragged.parent.mapToItem(viewport, snapped.x, snapped.y)
-            const entry = _movables.find((candidate) => candidate.item === dragged)
-            const landing = _physics.landing(entry.body, home.x - _bodyMargin, home.y - _bodyMargin)
-            dropPreview = Qt.rect(landing.x + _bodyMargin, landing.y + _bodyMargin, dragged.width, dragged.height)
-        }
         dropPreviewVisible = dragged !== null
+        if (!dragged) {
+            guideX = NaN
+            guideY = NaN
+        }
 
         if (integrate) {
             _physics.step(dt)
