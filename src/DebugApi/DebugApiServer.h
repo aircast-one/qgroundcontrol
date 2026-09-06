@@ -44,6 +44,7 @@ public:
 private:
     void _handleConnection(QTcpSocket *socket);
     QByteArray _route(const QString &path, const QUrlQuery &query);
+    QByteArray _bridgeJson(const QString &path, const QUrlQuery &query);
 #ifdef Q_OS_MACOS
     QByteArray _nativeJson(const QString &path, const QUrlQuery &query);
 #endif

@@ -6,6 +6,7 @@ extern "C" {
 
 char *qgc_native_windows(void);
 char *qgc_native_click(const char *window, double x, double y);
+char *qgc_native_type(const char *window, const char *text);
 char *qgc_native_menu(void);
 char *qgc_native_menu_invoke(const char *path);
 char *qgc_native_bridge_stats(void);

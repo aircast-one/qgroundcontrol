@@ -2,6 +2,22 @@ import AppKit
 import Foundation
 
 enum NativeDebug {
+    // Driving the wrong window silently is worse than refusing: the caller cannot tell
+    // a click that missed from one that landed somewhere unexpected.
+    private enum Resolved {
+        case found(NSWindow)
+        case failed(String)
+    }
+
+    private static func resolve(_ title: String) -> Resolved {
+        let matches = NSApp.windows.filter { $0.title == title && $0.isVisible }
+        switch matches.count {
+        case 1: return .found(matches[0])
+        case 0: return .failed("no visible window titled \(title)")
+        default: return .failed("\(matches.count) visible windows are titled \(title)")
+        }
+    }
+
     static func windows() -> [String: Any] {
         let screenHeight = NSScreen.screens.first?.frame.height ?? 0
         let entries = NSApp.windows.enumerated().map { index, window -> [String: Any] in
@@ -31,8 +47,10 @@ enum NativeDebug {
     // x/y are content-view coordinates with a top-left origin, which is how UI work is
     // described; CGEvent wants global display coordinates, also top-left.
     static func click(window title: String, x: Double, y: Double) -> [String: Any] {
-        guard let window = NSApp.windows.first(where: { $0.title == title }) else {
-            return ["ok": false, "error": "no window titled \(title)"]
+        let window: NSWindow
+        switch NativeDebug.resolve(title) {
+        case let .found(match): window = match
+        case let .failed(reason): return ["ok": false, "error": reason]
         }
         guard let content = window.contentView else {
             return ["ok": false, "error": "window has no content view"]
@@ -64,6 +82,35 @@ enum NativeDebug {
         }
 
         return ["ok": true, "screenPoint": ["x": Int(point.x.rounded()), "y": Int(point.y.rounded())]]
+    }
+
+    // Types into whatever has focus in the named window. CGEvent carries the text as a
+    // unicode string rather than keycodes, so layout and modifiers do not matter.
+    static func type(window title: String, text: String) -> [String: Any] {
+        let window: NSWindow
+        switch NativeDebug.resolve(title) {
+        case let .found(match): window = match
+        case let .failed(reason): return ["ok": false, "error": reason]
+        }
+        window.makeKeyAndOrderFront(nil)
+        NSApp.activate(ignoringOtherApps: true)
+        RunLoop.current.run(until: Date().addingTimeInterval(0.2))
+        guard window.isKeyWindow else {
+            return ["ok": false, "error": "window \(title) could not be raised"]
+        }
+
+        for character in text.unicodeScalars {
+            var unit = UInt16(truncatingIfNeeded: character.value)
+            for isDown in [true, false] {
+                guard let event = CGEvent(keyboardEventSource: nil, virtualKey: 0, keyDown: isDown) else {
+                    return ["ok": false, "error": "could not synthesise a key event"]
+                }
+                event.keyboardSetUnicodeString(stringLength: 1, unicodeString: &unit)
+                event.post(tap: .cghidEventTap)
+            }
+        }
+        RunLoop.current.run(until: Date().addingTimeInterval(0.2))
+        return ["ok": true, "typed": text]
     }
 
     static func menu() -> [String: Any] {
@@ -129,6 +176,12 @@ public func qgcNativeWindows() -> UnsafeMutablePointer<CChar>? {
 @_cdecl("qgc_native_click")
 public func qgcNativeClick(_ title: UnsafePointer<CChar>?, _ x: Double, _ y: Double) -> UnsafeMutablePointer<CChar>? {
     encode(NativeDebug.click(window: title.map { String(cString: $0) } ?? "", x: x, y: y))
+}
+
+@_cdecl("qgc_native_type")
+public func qgcNativeType(_ title: UnsafePointer<CChar>?, _ text: UnsafePointer<CChar>?) -> UnsafeMutablePointer<CChar>? {
+    encode(NativeDebug.type(window: title.map { String(cString: $0) } ?? "",
+                            text: text.map { String(cString: $0) } ?? ""))
 }
 
 @_cdecl("qgc_native_menu")

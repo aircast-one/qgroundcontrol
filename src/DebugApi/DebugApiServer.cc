@@ -41,6 +41,8 @@
 #include <QtCore/QUrl>
 #include <QtCore/QUrlQuery>
 
+#include "QGCBridgeCore.h"
+
 #ifdef Q_OS_MACOS
 #include "QGCBridgeC.h"
 #include "QGCNativeDebugC.h"
@@ -296,6 +298,9 @@ QByteArray DebugApiServer::_route(const QString &path, const QUrlQuery &query)
     }
     if (path == QStringLiteral("/screenshot")) {
         return _screenshotJson();
+    }
+    if (path.startsWith(QStringLiteral("/bridge/"))) {
+        return _bridgeJson(path, query);
     }
 #ifdef Q_OS_MACOS
     if (path.startsWith(QStringLiteral("/native/"))) {
@@ -1634,6 +1639,14 @@ QByteArray DebugApiServer::_nativeJson(const QString &path, const QUrlQuery &que
         }
         return take(qgc_native_menu_invoke(item.toUtf8().constData()));
     }
+    if (path == QStringLiteral("/native/type")) {
+        const QString window = query.queryItemValue(QStringLiteral("window"));
+        const QString text = query.queryItemValue(QStringLiteral("text"));
+        if (window.isEmpty()) {
+            return _errorJson(QStringLiteral("window is required"));
+        }
+        return take(qgc_native_type(window.toUtf8().constData(), text.toUtf8().constData()));
+    }
     if (path == QStringLiteral("/native/click")) {
         const QString window = query.queryItemValue(QStringLiteral("window"));
         bool xOk = false;
@@ -1649,3 +1662,44 @@ QByteArray DebugApiServer::_nativeJson(const QString &path, const QUrlQuery &que
     return _errorJson(QStringLiteral("unknown native route: %1").arg(path));
 }
 #endif
+
+QByteArray DebugApiServer::_bridgeJson(const QString &path, const QUrlQuery &query)
+{
+    const QString target = query.queryItemValue(QStringLiteral("path"));
+    if (target.isEmpty()) {
+        return _errorJson(QStringLiteral("path is required, e.g. path=settings.appSettings"));
+    }
+
+    if (path == QStringLiteral("/bridge/get")) {
+        return QGCBridgeCore::get(target).toUtf8();
+    }
+
+    // The bridge resolves any property or Q_INVOKABLE reachable from its roots, which
+    // includes vehicle.armed, emergencyStop, guidedModeRTL and startMission. Writing
+    // through it must sit behind the same gate as /vehicle/motortest rather than
+    // quietly routing around it.
+    if (!qEnvironmentVariableIsSet("QGC_DEBUG_API_ALLOW_ACTUATORS")) {
+        return _errorJson(QStringLiteral(
+            "bridge writes disabled; set QGC_DEBUG_API_ALLOW_ACTUATORS=1 (props off!)"));
+    }
+    if (path == QStringLiteral("/bridge/set")) {
+        if (!query.hasQueryItem(QStringLiteral("value"))) {
+            return _errorJson(QStringLiteral("value is required"));
+        }
+        // Take the value as a JSON literal when it parses as one (numbers, true, null),
+        // and as a plain string otherwise, so ?value=3 and ?value=Manual both work.
+        const QString raw = query.queryItemValue(QStringLiteral("value"));
+        const QJsonDocument literal = QJsonDocument::fromJson(QStringLiteral("[%1]").arg(raw).toUtf8());
+        const QJsonValue value = literal.isArray() ? literal.array().at(0) : QJsonValue(raw);
+        const QByteArray payload = QJsonDocument(QJsonObject{{"value", value}}).toJson(QJsonDocument::Compact);
+        return QGCBridgeCore::set(target, QString::fromUtf8(payload)).toUtf8();
+    }
+    if (path == QStringLiteral("/bridge/invoke")) {
+        const QString args = query.hasQueryItem(QStringLiteral("args"))
+            ? query.queryItemValue(QStringLiteral("args"))
+            : QStringLiteral("[]");
+        return QGCBridgeCore::invoke(target, args).toUtf8();
+    }
+
+    return _errorJson(QStringLiteral("unknown bridge route: %1").arg(path));
+}
