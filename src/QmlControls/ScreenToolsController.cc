@@ -22,6 +22,10 @@
 #include <QtGui/QFontMetrics>
 #include <QtGui/QInputDevice>
 
+#if defined(Q_OS_ANDROID)
+#include "AndroidInterface.h"
+#endif
+
 #if defined(Q_OS_IOS)
 #include <sys/utsname.h>
 #endif
@@ -100,3 +104,12 @@ bool ScreenToolsController::fakeMobile()
     return qgcApp()->fakeMobile();
 }
 #endif
+
+qreal ScreenToolsController::systemFontScale()
+{
+#if defined(Q_OS_ANDROID)
+    return AndroidInterface::systemFontScale();
+#else
+    return 1.0;
+#endif
+}

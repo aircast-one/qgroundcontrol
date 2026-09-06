@@ -25,6 +25,7 @@ namespace AndroidInterface
     void jniLogWarning(JNIEnv *envA, jobject thizA, jstring messageA);
     void jniDeepLink(JNIEnv *envA, jobject thizA, jstring urlA);
     QString getLaunchDeepLink();
+    qreal systemFontScale();
     bool checkStoragePermissions();
     QString getSDCardPath();
     void setKeepScreenOn(bool on);

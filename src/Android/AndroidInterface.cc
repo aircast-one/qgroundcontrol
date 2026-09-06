@@ -178,6 +178,27 @@ bool checkStoragePermissions()
     return hasPermission;
 }
 
+qreal systemFontScale()
+{
+    const QJniObject context = QNativeInterface::QAndroidApplication::context();
+    if (!context.isValid()) {
+        return 1.0;
+    }
+    const QJniObject resources = context.callObjectMethod("getResources", "()Landroid/content/res/Resources;");
+    (void) cleanJavaException();
+    if (!resources.isValid()) {
+        return 1.0;
+    }
+    const QJniObject configuration = resources.callObjectMethod("getConfiguration", "()Landroid/content/res/Configuration;");
+    (void) cleanJavaException();
+    if (!configuration.isValid()) {
+        return 1.0;
+    }
+    const float scale = configuration.getField<jfloat>("fontScale");
+    (void) cleanJavaException();
+    return scale > 0 ? scale : 1.0;
+}
+
 QString getSDCardPath()
 {
     if (!checkStoragePermissions()) {

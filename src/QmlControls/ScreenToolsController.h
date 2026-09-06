@@ -29,6 +29,7 @@ class ScreenToolsController : public QObject
     Q_PROPERTY(bool     isiOS               READ isiOS              CONSTANT)
     Q_PROPERTY(bool     isMobile            READ isMobile           CONSTANT)
     Q_PROPERTY(bool     fakeMobile          READ fakeMobile         CONSTANT)
+    Q_PROPERTY(qreal    systemFontScale     READ systemFontScale    CONSTANT)
     Q_PROPERTY(bool     isDebug             READ isDebug            CONSTANT)
     Q_PROPERTY(bool     isMacOS             READ isMacOS            CONSTANT)
     Q_PROPERTY(bool     isLinux             READ isLinux            CONSTANT)
@@ -49,6 +50,8 @@ public:
 
     // QFontMetrics::descent for default font
     Q_INVOKABLE static double defaultFontDescent(int pointSize);
+
+    static qreal systemFontScale();
 
 #if defined(Q_OS_ANDROID) || defined(Q_OS_IOS)
     static bool isMobile() { return true;  }

@@ -33,7 +33,7 @@ Item {
     property real defaultFontPointSize:     10
     property real platformFontPointSize:    10
 
-    readonly property real smallFontPointRatio:      0.75
+    readonly property real smallFontPointRatio:      ScreenToolsController.isMobile ? 0.86 : 0.75
     readonly property real mediumFontPointRatio:     1.25
     readonly property real largeFontPointRatio:      1.5
 
@@ -102,6 +102,7 @@ Item {
     property bool isSerialAvailable:                ScreenToolsController.isSerialAvailable
 
     readonly property real minTouchMillimeters:     5   ///< Minimum touch size in millimeters
+    readonly property real minTouchMobilePixels:    48
     property real minTouchPixels:                   0   ///< Minimum touch size in pixels (calculatedd from minTouchMillimeters and realPixelDensity)
 
     // The implicit heights/widths for our custom control set
@@ -134,7 +135,7 @@ Item {
     }
 
     onRealPixelDensityChanged: {
-        _setBasePointSize(defaultFontPointSize)
+        _setBasePointSize(_basePointSize)
     }
 
     function printScreenStats() {
@@ -152,9 +153,13 @@ Item {
     }
 
     /// \private
+    property real _basePointSize: 10
+
     function _setBasePointSize(pointSize) {
-        _textMeasure.font.pointSize = pointSize
-        defaultFontPointSize    = pointSize
+        _basePointSize          = pointSize
+        const scaledPointSize   = pointSize * ScreenToolsController.systemFontScale
+        _textMeasure.font.pointSize = scaledPointSize
+        defaultFontPointSize    = scaledPointSize
         defaultFontPixelHeight  = Math.round(_textMeasure.fontHeight/2.0)*2
         defaultFontPixelWidth   = Math.round(_textMeasure.fontWidth/2.0)*2
         defaultFontDescent      = ScreenToolsController.defaultFontDescent(defaultFontPointSize)
@@ -165,6 +170,9 @@ Item {
         if (minTouchPixels / Screen.height > 0.15) {
             // If using physical sizing takes up too much of the vertical real estate fall back to font based sizing
             minTouchPixels      = defaultFontPixelHeight * 3
+        }
+        if (ScreenToolsController.isMobile) {
+            minTouchPixels      = Math.max(minTouchPixels, minTouchMobilePixels)
         }
         toolbarHeight           = defaultFontPixelHeight * 3
         toolbarHeight           = toolbarHeight * QGroundControl.corePlugin.options.toolbarHeightMultiplier
