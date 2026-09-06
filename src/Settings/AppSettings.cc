@@ -12,11 +12,14 @@
 #include "QGCApplication.h"
 #include "QGCMAVLink.h"
 #include "LinkManager.h"
+#include "PlatformTheme.h"
 
 #ifdef Q_OS_ANDROID
 #include "AndroidInterface.h"
 #endif
 
+#include <QtGui/QGuiApplication>
+#include <QtGui/QStyleHints>
 #include <QtQml/QQmlEngine>
 #include <QtCore/QStandardPaths>
 #include <QtCore/QDir>
@@ -65,7 +68,9 @@ AppSettings::LanguageInfo_t AppSettings::_rgLanguageInfo[] = {
 DECLARE_SETTINGGROUP(App, "")
 {
     qmlRegisterUncreatableType<AppSettings>("QGroundControl.SettingsManager", 1, 0, "AppSettings", "Reference only");
-    QGCPalette::setGlobalTheme(indoorPalette()->rawValue().toBool() ? QGCPalette::Dark : QGCPalette::Light);
+    Q_ASSERT(indoorPalette()->enumValues().contains(QVariant(FollowSystemPalette)));
+    _applyPaletteTheme();
+    connect(qGuiApp->styleHints(), &QStyleHints::colorSchemeChanged, this, [this]() { _applyPaletteTheme(); });
 
     QSettings settings;
 
@@ -152,6 +157,7 @@ DECLARE_SETTINGSFACT(AppSettings, virtualJoystick)
 DECLARE_SETTINGSFACT(AppSettings, virtualJoystickAutoCenterThrottle)
 DECLARE_SETTINGSFACT(AppSettings, virtualJoystickLeftHandedMode)
 DECLARE_SETTINGSFACT(AppSettings, appFontPointSize)
+DECLARE_SETTINGSFACT(AppSettings, overlayGlassFrost)
 DECLARE_SETTINGSFACT(AppSettings, savePath)
 DECLARE_SETTINGSFACT(AppSettings, androidSaveToSDCard)
 DECLARE_SETTINGSFACT(AppSettings, useChecklist)
@@ -248,7 +254,20 @@ void AppSettings::_checkSavePathDirectories(void)
 
 void AppSettings::_indoorPaletteChanged(void)
 {
-    QGCPalette::setGlobalTheme(indoorPalette()->rawValue().toBool() ? QGCPalette::Dark : QGCPalette::Light);
+    _applyPaletteTheme();
+}
+
+void AppSettings::_applyPaletteTheme()
+{
+    const int setting = indoorPalette()->rawValue().toInt();
+    const bool dark = (setting == FollowSystemPalette)
+        ? (qGuiApp->styleHints()->colorScheme() == Qt::ColorScheme::Dark)
+        : (setting != 0);
+    QGCPalette::setGlobalTheme(dark ? QGCPalette::Dark : QGCPalette::Light);
+
+    PlatformTheme *platform = PlatformTheme::instance();
+    const PlatformTheme::Appearance appearance = dark ? PlatformTheme::DarkAppearance : PlatformTheme::LightAppearance;
+    platform->applySystemChrome(appearance, platform->tones(appearance));
 }
 
 QString AppSettings::missionSavePath(void)

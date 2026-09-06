@@ -18,7 +18,7 @@ Button {
 
     property bool   primary:        false                               ///< primary button for a group of buttons
     property bool   showBorder:     qgcPal.globalTheme === QGCPalette.Light
-    property real   backRadius:     height / 2
+    property real   backRadius:     ScreenTools.capsuleControls ? height / 2 : ScreenTools.buttonBorderRadius
     property real   heightFactor:   0.5
     property string iconSource:     ""
     property real   fontWeight:     Font.Normal // default for qml Text

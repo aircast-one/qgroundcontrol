@@ -16,6 +16,7 @@
 #include <QtCore/QJniEnvironment>
 #include <QtCore/QMetaObject>
 #include <QtCore/QUrl>
+#include <mutex>
 
 QGC_LOGGING_CATEGORY(AndroidInterfaceLog, "qgc.android.src.androidinterface")
 
@@ -65,6 +66,7 @@ void setNativeMethods()
         {"qgcLogDebug",   "(Ljava/lang/String;)V", reinterpret_cast<void *>(jniLogDebug)},
         {"qgcLogWarning", "(Ljava/lang/String;)V", reinterpret_cast<void *>(jniLogWarning)},
         {"nativeDeepLink", "(Ljava/lang/String;)V", reinterpret_cast<void *>(jniDeepLink)},
+        {"nativeSafeAreaInsets", "(IIII)V", reinterpret_cast<void *>(jniSafeAreaInsets)},
         {"nativeFontScaleChanged", "(F)V", reinterpret_cast<void *>(jniFontScaleChanged)}
     };
 
@@ -137,6 +139,14 @@ void jniFontScaleChanged(JNIEnv *envA, jobject thizA, jfloat scaleA)
     ScreenToolsController::setSystemFontScale(scaleA);
 }
 
+bool isEmbeddedHost()
+{
+    QJniEnvironment env;
+    const QJniObject context = QNativeInterface::QAndroidApplication::context();
+    const jclass qtActivityClass = env.findClass("org/qtproject/qt/android/bindings/QtActivity");
+    return context.isValid() && qtActivityClass && !env->IsInstanceOf(context.object(), qtActivityClass);
+}
+
 QString getLaunchDeepLink()
 {
     const QJniObject activity = QNativeInterface::QAndroidApplication::context();
@@ -171,7 +181,6 @@ QString getLaunchDeepLink()
 
 bool checkStoragePermissions()
 {
-    // Call the Java method to check and request storage permissions
     const bool hasPermission = QJniObject::callStaticMethod<jboolean>(
         kJniQGCActivityClassName, 
         "checkStoragePermissions", 
@@ -230,11 +239,100 @@ QString getSDCardPath()
     return result.toString();
 }
 
+QColor systemColor(const QString &resourceName)
+{
+    const QJniObject activity = QNativeInterface::QAndroidApplication::context();
+    if (!activity.isValid()) {
+        return QColor();
+    }
+
+    const QJniObject resources = activity.callObjectMethod("getResources", "()Landroid/content/res/Resources;");
+    if (!resources.isValid()) {
+        return QColor();
+    }
+
+    const jint resourceId = resources.callMethod<jint>(
+        "getIdentifier",
+        "(Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;)I",
+        QJniObject::fromString(resourceName).object<jstring>(),
+        QJniObject::fromString(QStringLiteral("color")).object<jstring>(),
+        QJniObject::fromString(QStringLiteral("android")).object<jstring>());
+    (void) cleanJavaException();
+
+    if (resourceId == 0) {
+        return QColor();
+    }
+
+    const jint argb = activity.callMethod<jint>("getColor", "(I)I", resourceId);
+    if (cleanJavaException()) {
+        return QColor();
+    }
+
+    return QColor::fromRgb(static_cast<QRgb>(static_cast<unsigned int>(argb)));
+}
+
+namespace {
+    struct SafeAreaInsets {
+        int left = 0;
+        int top = 0;
+        int right = 0;
+        int bottom = 0;
+        bool known = false;
+    };
+
+    std::mutex safeAreaMutex;
+    AndroidInterface::SafeAreaHandler safeAreaHandler;
+    SafeAreaInsets safeAreaInsets;
+}
+
+void setSafeAreaHandler(SafeAreaHandler handler)
+{
+    SafeAreaHandler replay;
+    SafeAreaInsets insets;
+    {
+        const std::lock_guard<std::mutex> lock(safeAreaMutex);
+        safeAreaHandler = std::move(handler);
+        insets = safeAreaInsets;
+        if (safeAreaHandler && insets.known) {
+            replay = safeAreaHandler;
+        }
+    }
+
+    if (replay) {
+        qCDebug(AndroidInterfaceLog) << "Replaying window insets to new handler";
+        replay(insets.left, insets.top, insets.right, insets.bottom);
+    }
+}
+
+void jniSafeAreaInsets(JNIEnv *envA, jobject thizA, jint leftA, jint topA, jint rightA, jint bottomA)
+{
+    Q_UNUSED(envA);
+    Q_UNUSED(thizA);
+
+    qCDebug(AndroidInterfaceLog) << "Window insets" << leftA << topA << rightA << bottomA;
+
+    SafeAreaHandler handler;
+    {
+        const std::lock_guard<std::mutex> lock(safeAreaMutex);
+        safeAreaInsets = SafeAreaInsets { leftA, topA, rightA, bottomA, true };
+        handler = safeAreaHandler;
+    }
+
+    if (handler) {
+        handler(leftA, topA, rightA, bottomA);
+    }
+}
+
+void setSystemBarAppearance(bool lightBars)
+{
+    QJniObject::callStaticMethod<void>(kJniQGCActivityClassName, "setSystemBarAppearance", "(Z)V", static_cast<jboolean>(lightBars));
+    (void) cleanJavaException();
+}
+
 void setKeepScreenOn(bool on)
 {
     Q_UNUSED(on);
 
-    //-- Screen is locked on while QGC is running on Android
 }
 
-} // namespace AndroidInterface
+}

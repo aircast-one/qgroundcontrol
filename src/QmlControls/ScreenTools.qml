@@ -8,28 +8,11 @@ import QGroundControl
 import QGroundControl.ScreenToolsController
 
 /*!
- The ScreenTools Singleton provides information on QGC's standard font metrics. It also provides information on screen
- size which can be used to adjust user interface for varying available screen real estate.
-
- QGC has four standard font sizes: default, small, medium and large. The QGC controls use the default font for display and you should use this font
- for most text within the system that is drawn using something other than a standard QGC control. The small font is smaller than the default font.
- The medium and large fonts are larger than the default font.
-
- Usage:
-
-        import QGroundControl.ScreenTools
-
-        Rectangle {
-            anchors.fill:       parent
-            anchors.margins:    ScreenTools.defaultFontPixelWidth
-            ...
-        }
 */
 Item {
     id: _screenTools
 
     //-- The point and pixel font size values are computed at runtime
-
     property real defaultFontPointSize:     10
     property real platformFontPointSize:    10
 
@@ -54,6 +37,11 @@ Item {
     property real smallFontPixelWidth:      defaultFontPixelWidth * smallFontPointRatio
 
     /// QFontMetrics::descent for default font at default point size
+    readonly property real safeAreaLeft:    ScreenToolsController.safeAreaLeft
+    readonly property real safeAreaTop:     ScreenToolsController.safeAreaTop
+    readonly property real safeAreaRight:   ScreenToolsController.safeAreaRight
+    readonly property real safeAreaBottom:  ScreenToolsController.safeAreaBottom
+
     property real defaultFontDescent:       0
 
     /// The default amount of space in between controls in a dialog
@@ -64,7 +52,6 @@ Item {
     property real largeFontPointSize:       10
 
     property real toolbarHeight:            0
-
 
     property real realPixelDensity: {
         //-- If a plugin defines it, just use what it tells us
@@ -96,8 +83,11 @@ Item {
     property bool isDebug:                          ScreenToolsController.isDebug
     property bool isMac:                            ScreenToolsController.isMacOS
     property bool isLinux:                          ScreenToolsController.isLinux
-    property bool isTinyScreen:                     (Screen.width / realPixelDensity) < 120 // 120mm
-    property bool isShortScreen:                    ((Screen.height / realPixelDensity) < 120) || (ScreenToolsController.isMobile && ((Screen.height / Screen.width) < 0.6))
+    readonly property real tinyScreenMillimeters:   120
+    readonly property real smallFontScreenMillimeters: 60
+
+    property bool isTinyScreen:                     (Screen.width / realPixelDensity) < tinyScreenMillimeters
+    property bool isShortScreen:                    ((Screen.height / realPixelDensity) < tinyScreenMillimeters) || (ScreenToolsController.isMobile && ((Screen.height / Screen.width) < 0.6))
     property bool isHugeScreen:                     (Screen.width / realPixelDensity) >= (23.5 * 25.4) // 27" monitor
     property bool isSerialAvailable:                ScreenToolsController.isSerialAvailable
 
@@ -118,15 +108,16 @@ Item {
     property real implicitComboBoxWidth:            Math.round(defaultFontPixelWidth *  (isMobile ? 7.0 : 5.0))
     property real comboBoxPadding:                  defaultFontPixelWidth
     property real implicitSliderHeight:             isMobile ? Math.max(defaultFontPixelHeight, minTouchPixels) : defaultFontPixelHeight
-    property real buttonBorderRadius:               Math.round(defaultFontPixelHeight * 0.4)
     // It's not possible to centralize an even number of pixels, checkBoxIndicatorSize should be an odd number to allow centralization
+    property real buttonBorderRadius:               Math.round(defaultFontPixelHeight * ScreenToolsController.controlRadiusRatio)
+
+    property bool capsuleControls:                  ScreenToolsController.capsuleControls
     property real checkBoxIndicatorSize:            2 * Math.floor(defaultFontPixelHeight * (isMobile ? 1.5 : 1.0) / 2) + 1
     property real radioButtonIndicatorSize:         checkBoxIndicatorSize
 
     readonly property string normalFontFamily:      ScreenToolsController.normalFontFamily
     readonly property string fixedFontFamily:       ScreenToolsController.fixedFontFamily
     /* This mostly works but for some reason, reflowWidths() in SetupView doesn't change size.
-       I've disabled (in release builds) until I figure out why. Changes require a restart for now.
     */
     Connections {
         target: QGroundControl.settingsManager.appSettings.appFontPointSize
@@ -210,7 +201,7 @@ Item {
                     } else {
                         platformFontPointSize = 14;
                     }
-                } else if((Screen.width / realPixelDensity) < 120) {
+                } else if((Screen.width / realPixelDensity) < smallFontScreenMillimeters) {
                     platformFontPointSize = 11;
                 // Other Android
                 } else {

@@ -22,6 +22,8 @@ class AppSettings : public SettingsGroup
 public:
     AppSettings(QObject* parent = nullptr);
 
+    static constexpr int FollowSystemPalette = 2;
+
     DEFINE_SETTING_NAME_GROUP()
 
     DEFINE_SETTINGFACT(offlineEditingFirmwareClass)
@@ -38,6 +40,7 @@ public:
     DEFINE_SETTINGFACT(virtualJoystickLeftHandedMode)
     DEFINE_SETTINGFACT(appFontPointSize)
     DEFINE_SETTINGFACT(indoorPalette)
+    DEFINE_SETTINGFACT(overlayGlassFrost)
     DEFINE_SETTINGFACT(savePath)
     DEFINE_SETTINGFACT(androidSaveToSDCard)
     DEFINE_SETTINGFACT(useChecklist)
@@ -122,6 +125,8 @@ private slots:
     void _qLocaleLanguageChanged();
 
 private:
+    void _applyPaletteTheme();
+
     static QLocale::Language _qLocaleLanguageEarlyAccess(void);
 
     static QList<QLocale::Language> _rgReleaseLanguages;

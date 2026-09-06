@@ -7,10 +7,6 @@
  *
  ****************************************************************************/
 
-
-/// @file
-///     @author Gus Grubba <gus@auterion.com>
-
 #pragma once
 
 #include <QtCore/QLoggingCategory>
@@ -19,12 +15,9 @@
 
 Q_DECLARE_LOGGING_CATEGORY(ScreenToolsControllerLog)
 
-/// This Qml control is used to return screen parameters
 class ScreenToolsController : public QObject
 {
     Q_OBJECT
-    // QML_ELEMENT
-    // TODO: Q_NAMESPACE
     Q_PROPERTY(bool     isAndroid           READ isAndroid          CONSTANT)
     Q_PROPERTY(bool     isiOS               READ isiOS              CONSTANT)
     Q_PROPERTY(bool     isMobile            READ isMobile           CONSTANT)
@@ -39,16 +32,20 @@ class ScreenToolsController : public QObject
     Q_PROPERTY(QString  iOSDevice           READ iOSDevice          CONSTANT)
     Q_PROPERTY(QString  fixedFontFamily     READ fixedFontFamily    CONSTANT)
     Q_PROPERTY(QString  normalFontFamily    READ normalFontFamily   CONSTANT)
+    Q_PROPERTY(qreal    controlRadiusRatio  READ controlRadiusRatio CONSTANT)
+    Q_PROPERTY(bool     capsuleControls     READ capsuleControls    CONSTANT)
+    Q_PROPERTY(qreal    safeAreaLeft        READ safeAreaLeft       NOTIFY safeAreaChanged)
+    Q_PROPERTY(qreal    safeAreaTop         READ safeAreaTop        NOTIFY safeAreaChanged)
+    Q_PROPERTY(qreal    safeAreaRight       READ safeAreaRight      NOTIFY safeAreaChanged)
+    Q_PROPERTY(qreal    safeAreaBottom      READ safeAreaBottom     NOTIFY safeAreaChanged)
 
 public:
     explicit ScreenToolsController(QObject *parent = nullptr);
     ~ScreenToolsController();
 
-    /// Returns current mouse position
     Q_INVOKABLE static int mouseX();
     Q_INVOKABLE static int mouseY();
 
-    // QFontMetrics::descent for default font
     Q_INVOKABLE static double defaultFontDescent(int pointSize);
 
     static qreal systemFontScale();
@@ -115,9 +112,19 @@ public:
 
     static bool hasTouch();
     static QString iOSDevice();
+    static qreal controlRadiusRatio();
+    static bool capsuleControls();
+
     static QString fixedFontFamily();
     static QString normalFontFamily();
 
+    static qreal safeAreaLeft();
+    static qreal safeAreaTop();
+    static qreal safeAreaRight();
+    static qreal safeAreaBottom();
+    static void setSafeAreaInsets(int left, int top, int right, int bottom);
+
 signals:
+    void safeAreaChanged();
     void systemFontScaleChanged();
 };

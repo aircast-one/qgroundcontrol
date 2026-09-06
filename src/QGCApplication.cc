@@ -31,7 +31,6 @@
 #include <QtGui/QFontDatabase>
 #include <QtGui/QIcon>
 #include <QtGui/QStyleHints>
-#include <QtNetwork/QHostInfo>
 #include <QtNetwork/QNetworkAccessManager>
 #include <QtNetwork/QNetworkProxyFactory>
 #include <QtNetwork/QNetworkReply>
@@ -40,6 +39,8 @@
 #include <QtQuick/QQuickImageProvider>
 #include <QtQuick/QQuickWindow>
 #include <QtQuickControls2/QQuickStyle>
+
+#include "PlatformTheme.h"
 
 #include <QtCore/private/qthread_p.h>
 
@@ -114,10 +115,11 @@ static QObject *mavlinkSingletonFactory(QQmlEngine*, QJSEngine*)
     return new QGCMAVLink();
 }
 
-QGCApplication::QGCApplication(int &argc, char *argv[], bool unitTesting, bool simpleBootTest)
+QGCApplication::QGCApplication(int &argc, char *argv[], bool unitTesting, bool simpleBootTest, bool embeddedHost)
     : QApplication(argc, argv)
     , _runningUnitTests(unitTesting)
     , _simpleBootTest(simpleBootTest)
+    , _embeddedHost(embeddedHost)
 {
     _msecsElapsedTime.start();
 
@@ -365,19 +367,23 @@ void QGCApplication::_initForNormalAppBoot()
 {
     _initVideo(); // GStreamer must be initialized before QmlEngine
 
-    QQuickStyle::setStyle("Basic");
+    QQuickStyle::setStyle(PlatformTheme::instance()->controlStyle());
     QGCCorePlugin::instance()->init();
     MAVLinkProtocol::instance()->init();
     MultiVehicleManager::instance()->init();
     _qmlAppEngine = QGCCorePlugin::instance()->createQmlApplicationEngine(this);
     QObject::connect(_qmlAppEngine, &QQmlApplicationEngine::objectCreationFailed, this, QCoreApplication::quit, Qt::QueuedConnection);
-    QGCCorePlugin::instance()->createRootWindow(_qmlAppEngine);
+    if (!_embeddedHost) {
+        QGCCorePlugin::instance()->createRootWindow(_qmlAppEngine);
+    }
 
     AudioOutput::instance()->init(SettingsManager::instance()->appSettings()->audioMuted());
     FollowMe::instance()->init();
     QGCPositionManager::instance()->init();
     LinkManager::instance()->init();
-    VideoManager::instance()->init(mainRootWindow());
+    if (!_embeddedHost) {
+        VideoManager::instance()->init(mainRootWindow());
+    }
 #ifdef QGC_WFB_ENABLED
     PacketRadioManager::instance()->init();
 #endif
@@ -915,18 +921,7 @@ void QGCApplication::_applyDeviceTelemetry(const QString &host, const QJsonObjec
         linkConfig = udpConfig;
     } else if (const quint16 tcpPort = serverPort(QStringLiteral("tcps"))) {
         TCPConfiguration *tcpConfig = new TCPConfiguration(linkName);
-        // TCPConfiguration stores a QHostAddress, so hostnames must be resolved here.
-        QString address = host;
-        if (QHostAddress(host).isNull()) {
-            const QList<QHostAddress> resolved = QHostInfo::fromName(host).addresses();
-            if (resolved.isEmpty()) {
-                qCWarning(QGCApplicationLog) << "Aircast device setup: could not resolve" << host;
-                delete tcpConfig;
-                return;
-            }
-            address = resolved.first().toString();
-        }
-        tcpConfig->setHost(address);
+        tcpConfig->setHost(host);
         tcpConfig->setPort(tcpPort);
         linkConfig = tcpConfig;
     } else {

@@ -7,23 +7,34 @@
  *
  ****************************************************************************/
 
-
-/// @file
-/// @author Gus Grubba <gus@auterion.com>
-
 #include "ScreenToolsController.h"
+#include "PlatformTheme.h"
+#if defined(Q_OS_IOS)
+#include "iOSSafeArea.h"
+#include <QtGui/QGuiApplication>
+#include <QtGui/QScreen>
+#include <QtGui/QWindow>
+#endif
 #include "QGCApplication.h"
 #include "QGCLoggingCategory.h"
 #include "SettingsManager.h"
+#ifdef Q_OS_ANDROID
+#include "AndroidInterface.h"
+#endif
 #include "AppSettings.h"
 
 #include <QtGui/QCursor>
 #include <QtGui/QFontDatabase>
 #include <QtGui/QFontMetrics>
+#include <QtGui/QGuiApplication>
 #include <QtGui/QInputDevice>
 
 #include <atomic>
 #include <optional>
+#include <QtCore/QMetaObject>
+#include <atomic>
+#include <algorithm>
+#include <QtCore/QList>
 
 #if defined(Q_OS_ANDROID)
 #include "AndroidInterface.h"
@@ -36,26 +47,73 @@
 QGC_LOGGING_CATEGORY(ScreenToolsControllerLog, "qgc.qmlcontrols.screentoolscontroller")
 
 namespace {
-std::atomic<int> s_systemFontScaleMilli(0);
-std::optional<bool> s_fakeMobileOverride;
-QList<ScreenToolsController*>& instances()
-{
-    static QList<ScreenToolsController*> *const list = new QList<ScreenToolsController*>;
-    return *list;
+    std::atomic<int> s_systemFontScaleMilli(0);
+    std::optional<bool> s_fakeMobileOverride;
+    QList<ScreenToolsController*> s_instances;
+    std::atomic<int> s_safeAreaLeft(0);
+    std::atomic<int> s_safeAreaTop(0);
+    std::atomic<int> s_safeAreaRight(0);
+    std::atomic<int> s_safeAreaBottom(0);
+
+    qreal toLogical(int devicePixels)
+    {
+        const qreal ratio = qGuiApp ? qGuiApp->devicePixelRatio() : 1.0;
+        return (ratio > 0.0) ? (devicePixels / ratio) : devicePixels;
+    }
 }
+
+qreal ScreenToolsController::safeAreaLeft() { return toLogical(s_safeAreaLeft); }
+qreal ScreenToolsController::safeAreaTop() { return toLogical(s_safeAreaTop); }
+qreal ScreenToolsController::safeAreaRight() { return toLogical(s_safeAreaRight); }
+qreal ScreenToolsController::safeAreaBottom() { return toLogical(s_safeAreaBottom); }
+
+void ScreenToolsController::setSafeAreaInsets(int left, int top, int right, int bottom)
+{
+    const int clampedLeft   = std::max(0, left);
+    const int clampedTop    = std::max(0, top);
+    const int clampedRight  = std::max(0, right);
+    const int clampedBottom = std::max(0, bottom);
+
+    const bool leftChanged   = s_safeAreaLeft.exchange(clampedLeft) != clampedLeft;
+    const bool topChanged    = s_safeAreaTop.exchange(clampedTop) != clampedTop;
+    const bool rightChanged  = s_safeAreaRight.exchange(clampedRight) != clampedRight;
+    const bool bottomChanged = s_safeAreaBottom.exchange(clampedBottom) != clampedBottom;
+
+    if (!(leftChanged || topChanged || rightChanged || bottomChanged) || !qGuiApp) {
+        return;
+    }
+
+    QMetaObject::invokeMethod(qGuiApp, []() {
+        for (ScreenToolsController *const controller : s_instances) {
+            emit controller->safeAreaChanged();
+        }
+    }, Qt::QueuedConnection);
 }
 
 ScreenToolsController::ScreenToolsController(QObject *parent)
     : QObject(parent)
 {
-    instances().append(this);
-    // qCDebug(ScreenToolsControllerLog) << Q_FUNC_INFO << this;
+#if defined(Q_OS_IOS)
+    iOSSafeArea::report();
+    connect(qGuiApp, &QGuiApplication::focusWindowChanged, this, [](QWindow *) { iOSSafeArea::report(); });
+    connect(qGuiApp->primaryScreen(), &QScreen::orientationChanged, this, [](Qt::ScreenOrientation) { iOSSafeArea::report(); });
+#endif
+    s_instances.append(this);
+#ifdef Q_OS_ANDROID
+    if (s_instances.count() == 1) {
+        AndroidInterface::setSafeAreaHandler(&ScreenToolsController::setSafeAreaInsets);
+    }
+#endif
 }
 
 ScreenToolsController::~ScreenToolsController()
 {
-    instances().removeAll(this);
-    // qCDebug(ScreenToolsControllerLog) << Q_FUNC_INFO << this;
+    s_instances.removeAll(this);
+#ifdef Q_OS_ANDROID
+    if (s_instances.isEmpty()) {
+        AndroidInterface::setSafeAreaHandler(nullptr);
+    }
+#endif
 }
 
 int ScreenToolsController::mouseX()
@@ -89,6 +147,16 @@ QString ScreenToolsController::iOSDevice()
 #endif
 }
 
+qreal ScreenToolsController::controlRadiusRatio()
+{
+    return PlatformTheme::instance()->shape().controlRadiusRatio;
+}
+
+bool ScreenToolsController::capsuleControls()
+{
+    return PlatformTheme::instance()->shape().capsuleControls;
+}
+
 QString ScreenToolsController::fixedFontFamily()
 {
     return QFontDatabase::systemFont(QFontDatabase::FixedFont).family();
@@ -101,11 +169,7 @@ QString ScreenToolsController::normalFontFamily()
         return QStringLiteral("NanumGothic");
     }
 
-#if defined(Q_OS_MACOS) || defined(Q_OS_IOS)
-    return QFontDatabase::systemFont(QFontDatabase::GeneralFont).family();
-#else
-    return QStringLiteral("Open Sans");
-#endif
+    return PlatformTheme::instance()->fontFamily();
 }
 
 double ScreenToolsController::defaultFontDescent(int pointSize)
@@ -143,7 +207,7 @@ void ScreenToolsController::setSystemFontScale(qreal scale)
     if (s_systemFontScaleMilli.exchange(milli) == milli) {
         return;
     }
-    for (ScreenToolsController *const instance : std::as_const(instances())) {
+    for (ScreenToolsController *const instance : std::as_const(s_instances)) {
         QMetaObject::invokeMethod(instance, [instance] { emit instance->systemFontScaleChanged(); }, Qt::QueuedConnection);
     }
 }
