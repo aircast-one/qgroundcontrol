@@ -22,6 +22,7 @@ import QGroundControl.AutoPilotPlugin
 
 RowLayout {
     id:         control
+    objectName: "flightModeControl"
     spacing:    0
 
     property bool   showIndicator:          true
@@ -39,11 +40,19 @@ RowLayout {
     readonly property bool   _canSetMode:   activeVehicle && activeVehicle.flightModeSetAvailable
 
     property string          _pendingMode:  ""
+    property string          _rejection:    ""
     readonly property bool   _pending:      _pendingMode !== ""
-    readonly property string _shownMode:    _pending ? _pendingMode : _flightMode
+    readonly property bool   _rejected:     _rejection !== ""
+    readonly property string _shownMode:    _rejected ? _rejection : _pending ? _pendingMode : _flightMode
 
     readonly property int _mavCmdDoSetMode:   176
     readonly property int _mavResultAccepted: 0
+
+    readonly property var _rejectionWording: ({
+        1: qsTr("%1 refused for now"),
+        2: qsTr("%1 denied"),
+        3: qsTr("%1 not supported"),
+    })
 
     readonly property var _modeGlyphs: [
         { keywords: [ "return", "rtl", "land", "smart", "surface", "dock" ],             icon: "/InstrumentValueIcons/home.svg" },
@@ -143,20 +152,35 @@ RowLayout {
         pendingTimer.stop()
     }
 
+    function _reject(wording) {
+        _rejection = wording.arg(_pendingMode)
+        _settlePending()
+        rejectionTimer.restart()
+    }
+
     Timer {
         id:          pendingTimer
         interval:    3000
-        onTriggered: control._pendingMode = ""
+        onTriggered: control._reject(qsTr("%1: no reply"))
+    }
+
+    Timer {
+        id:          rejectionTimer
+        interval:    2500
+        onTriggered: control._rejection = ""
     }
 
     Connections {
         target: control.activeVehicle
 
-        function onFlightModeChanged() { control._settlePending() }
+        function onFlightModeChanged() {
+            control._settlePending()
+            control._rejection = ""
+        }
 
         function onMavCommandResult(vehicleId, targetComponent, command, ackResult, failureCode) {
-            if (command === control._mavCmdDoSetMode && ackResult !== control._mavResultAccepted) {
-                control._settlePending()
+            if (control._pending && command === control._mavCmdDoSetMode && ackResult !== control._mavResultAccepted) {
+                control._reject(control._rejectionWording[ackResult] || qsTr("%1 failed"))
             }
         }
     }
@@ -196,7 +220,9 @@ RowLayout {
                 text:               !activeVehicle ? qsTr("N/A", "No data to display")
                                     : control._connecting ? qsTr("Connecting…")
                                     : control._shownMode
-                color:              control._connecting ? qgcPal.colorGrey : qgcPal.toolbarText
+                color:              control._connecting ? qgcPal.colorGrey
+                                    : control._rejected ? qgcPal.colorOrange
+                                    : qgcPal.toolbarText
                 opacity:            control._pending ? 0.6 : 1
                 font.pointSize:     fontPointSize
                 Layout.alignment:   Qt.AlignCenter
@@ -245,6 +271,7 @@ RowLayout {
 
         ColumnLayout {
             id:         modeColumn
+            objectName: "flightModeList"
             spacing:    ScreenTools.defaultFontPixelWidth / 4
 
             property var    activeVehicle:            QGroundControl.multiVehicleManager.activeVehicle
@@ -259,7 +286,9 @@ RowLayout {
             readonly property var _devModes:      _allModes.filter((mode) => _isDevMode(mode))
             readonly property var _flightModes:   _allModes.filter((mode) => !_isReturnMode(mode) && !_isDevMode(mode))
             readonly property bool _moreAvailable: !showAdvanced && !control.editMode
-                                                   && _advancedModes.some((mode) => !_isHidden(mode) && mode !== control._flightMode)
+                                                   && _allModes.some((mode) => (_isAdvanced(mode) || _isHidden(mode)) && mode !== control._flightMode)
+            readonly property int  _listedCount:   _allModes.filter((mode) => _isListed(mode)).length
+            readonly property bool _compact:       _listedCount * ScreenTools.defaultFontPixelHeight * 4.2 > mainWindow.height * 0.85
 
             readonly property var _returnKeywords: [ "return", "rtl", "land" ]
 
@@ -282,19 +311,29 @@ RowLayout {
 
             function _isListed(mode) {
                 return control.editMode
+                    || showAdvanced
                     || mode === control._flightMode
-                    || (!_isHidden(mode) && (showAdvanced || !_isAdvanced(mode)))
+                    || (!_isHidden(mode) && !_isAdvanced(mode))
+            }
+
+            function _needsConfirm(mode) {
+                return _isReturnMode(mode) && activeVehicle.armed && activeVehicle.flying
+            }
+
+            function _pick(mode) {
+                mainWindow.closeIndicatorDrawer()
+                if (_needsConfirm(mode)) {
+                    const guided = globals.guidedControllerFlyView
+                    guided.confirmAction(guided.actionSetFlightMode, mode)
+                } else {
+                    control._requestMode(mode)
+                }
             }
 
             function _setHidden(mode, hidden) {
                 const remaining = hiddenFlightModesList.filter((item) => item !== mode)
                 hiddenFlightModesList = hidden ? [ ...remaining, mode ] : remaining
                 hiddenFlightModesFact.value = hiddenFlightModesList.join(",")
-            }
-
-            function _showAllModes() {
-                hiddenFlightModesList = []
-                hiddenFlightModesFact.value = ""
             }
 
             Component.onCompleted: {
@@ -320,17 +359,12 @@ RowLayout {
                         Layout.fillWidth:   true
                         text:               modelData
                         icon:               control._modeIcon(modelData)
-                        description:        control._modeDescription(modelData)
+                        description:        modeColumn._compact ? "" : control._modeDescription(modelData)
                         current:            modeColumn.activeVehicle && modeColumn.activeVehicle.flightMode === modelData
+                        opacity:            modeColumn._isHidden(modelData) && !control.editMode ? 0.55 : 1
 
-                        onClicked: {
-                            if (control.editMode) {
-                                modeColumn._setHidden(modelData, !modeColumn._isHidden(modelData))
-                            } else {
-                                control._requestMode(modelData)
-                                mainWindow.closeIndicatorDrawer()
-                            }
-                        }
+                        onClicked:      control.editMode ? modeColumn._setHidden(modelData, !modeColumn._isHidden(modelData)) : modeColumn._pick(modelData)
+                        onPressAndHold: control.allowEditMode && modeColumn._setHidden(modelData, !modeColumn._isHidden(modelData))
                     }
 
                     QGCCheckBoxSlider {
@@ -361,7 +395,7 @@ RowLayout {
 
             ModeSection { model: modeColumn._devModes }
 
-            OverlayMenuSeparator { visible: moreModesItem.visible || showAllModesItem.visible }
+            OverlayMenuSeparator { visible: moreModesItem.visible }
 
             OverlayMenuItem {
                 id:         moreModesItem
@@ -369,14 +403,6 @@ RowLayout {
                 icon:       "/InstrumentValueIcons/dots-horizontal-triple.svg"
                 visible:    modeColumn._moreAvailable
                 onClicked:  modeColumn.showAdvanced = true
-            }
-
-            OverlayMenuItem {
-                id:         showAllModesItem
-                text:       qsTr("Show hidden modes")
-                icon:       "/InstrumentValueIcons/view-show.svg"
-                visible:    modeColumn.hiddenFlightModesList.length > 0 && !control.editMode
-                onClicked:  modeColumn._showAllModes()
             }
         }
     }
