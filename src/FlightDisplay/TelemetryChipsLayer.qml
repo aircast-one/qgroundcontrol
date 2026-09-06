@@ -15,9 +15,6 @@ import QGroundControl.Controls
 import QGroundControl.ScreenTools
 import QGroundControl.Templates as T
 
-// Telemetry as free-floating chips: every value is its own themed capsule that drags anywhere
-// and keeps its place. The fact/icon configuration reuses the FactValueGrid model, so existing
-// telemetry-bar settings (and the per-value edit dialog with its icon picker) carry over.
 Item {
     id: control
 
@@ -41,8 +38,6 @@ Item {
         height:   _chipHeight
     }
 
-    // A fresh settings group (not the old telemetry bar's): the DJI default set applies
-    // instead of any stored grid layout, and chip edits stay isolated from vehicle cards.
     T.HorizontalFactValueGrid {
         id:                     grid
         settingsGroup:          "TelemetryChips"
@@ -69,15 +64,9 @@ Item {
 
                 ChipCapsule {
                     id:         chip
-                    // Named so tools/ui-probe.py can see it. Without a name the overlap check
-                    // skips every chip, which is the one control most likely to end up under
-                    // the video rail. Keyed by uid for the same reason settingsKeyPrefix is:
-                    // a column index names a different chip once a column is deleted.
                     objectName: "telemetryChip-" + chip.instrumentValueData.uid
                     width:      chipRow.width + ScreenTools.defaultFontPixelWidth * 2.5
                     highlight:  control._editMode || chipMouseArea.containsMouse
-                    // Raised for as long as the rig holds it off something, so a chip parked
-                    // away from where it was put does not read as the place the user chose.
                     lifted:     chipDragHandler.active || (control._editMode && dragPosition.displaced)
 
                     readonly property var instrumentValueData:  object
@@ -119,9 +108,6 @@ Item {
                     DragToPosition {
                         id:                 dragPosition
                         target:             chip
-                        // Keyed by the value's own uid: neither a model index (which shifts
-                        // when a chip is deleted) nor the fact (two chips may show the same one)
-                        // identifies a chip uniquely.
                         settingsKeyPrefix:  "TelemetryChip-" + chip.instrumentValueData.uid
                         defaultX:           control._freeSpanCentre +
                                                 ((columnHolder.columnIndex - (grid.columns.count / 2)) * _slotWidth) +
@@ -189,6 +175,12 @@ Item {
         visible:                    control._editMode
 
         OverlayPill {
+            objectName: "editModeSizePill"
+            text:       qsTr("Size: %1").arg(grid.fontSizeNames[grid.fontSize])
+            onClicked:  grid.fontSize = (grid.fontSize + 1) % grid.fontSizeNames.length
+        }
+
+        OverlayPill {
             text:       qsTr("+ Add Value")
             onClicked: {
                 const column = grid.appendColumn()
@@ -197,15 +189,10 @@ Item {
             }
         }
 
-        // Arms rather than fires: one stray tap used to wipe every position and unhide
-        // everything, with no undo, from a button that sat right next to Done. The arm times
-        // out so a forgotten tap does not lie in wait.
         OverlayPill {
             id:         resetPill
             objectName: "editModeResetPill"
             text:       armed ? qsTr("Tap again to reset") : qsTr("Reset Layout")
-            // Leaving edit mode disarms: an arm left standing meant re-entering within the
-            // timeout put a single tap between the user and a wiped layout.
             onVisibleChanged: if (!visible) armed = false
             onClicked: {
                 if (armed) {

@@ -40,7 +40,6 @@ public:
     Q_PROPERTY(FontSize             fontSize        READ fontSize           WRITE setFontSize           NOTIFY fontSizeChanged)
     Q_PROPERTY(QStringList          fontSizeNames   MEMBER _fontSizeNames                               CONSTANT)
 
-    // The following properties should only be set at initial object creation time
     Q_PROPERTY(QString              settingsGroup           MEMBER _settingsGroup           NOTIFY settingsGroupChanged             REQUIRED)
     Q_PROPERTY(Vehicle *            specificVehicleForCard  MEMBER _specificVehicleForCard  NOTIFY specificVehicleForCardChanged    REQUIRED)   ///< null means track active vehicle, set to specific vehicle to track a single vehicle and share settings with other cards
 
@@ -61,7 +60,6 @@ public:
 
     void setFontSize(FontSize fontSize);
 
-    // Override from QQmlParserStatus
     void componentComplete(void) final;
 
 signals:
@@ -97,7 +95,6 @@ private:
     void                    _initForNewVehicle              (Vehicle* vehicle);
     void                    _deinitVehicle                  (Vehicle* vehicle);
 
-    // These are user facing string for the various enums.
     static       QStringList _iconNames;
     static const QStringList _fontSizeNames;
 
@@ -112,6 +109,7 @@ private:
     static constexpr const char* _textKey             = "text";
     static constexpr const char* _showUnitsKey        = "showUnits";
     static constexpr const char* _iconKey             = "icon";
+    static constexpr const char* _showIconKey         = "showIcon";
     static constexpr const char* _rangeTypeKey        = "rangeType";
     static constexpr const char* _rangeValuesKey      = "rangeValues";
     static constexpr const char* _rangeColorsKey      = "rangeColors";

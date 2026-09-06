@@ -25,8 +25,8 @@ ColumnLayout {
     property real   _tightDefaultFontHeight:    ScreenTools.defaultFontPixelHeight - _doubleDescent
     property var    _rgFontSizeTightHeights:    [ _tightDefaultFontHeight * _rgFontSizeRatios[0] + 2, _tightDefaultFontHeight * _rgFontSizeRatios[1] + 2, _tightDefaultFontHeight * _rgFontSizeRatios[2] + 2, _tightDefaultFontHeight * _rgFontSizeRatios[3] + 2 ]
     property real   _tightHeight:               _rgFontSizeTightHeights[instrumentValueData.factValueGrid.fontSize]
-    property bool   _iconVisible:               instrumentValueData.rangeType === InstrumentValueData.IconSelectRange || instrumentValueData.icon
-    property var    _color:                     instrumentValueData.isValidColor(instrumentValueData.currentColor) ? instrumentValueData.currentColor : qgcPal.text
+    property bool   _iconVisible:               instrumentValueData.rangeType === InstrumentValueData.IconSelectRange || instrumentValueData.showIcon
+    property var    _color:                     instrumentValueData.isValidColor(instrumentValueData.currentColor) ? instrumentValueData.currentColor : qgcPal.toolbarText
 
     QGCPalette { id: qgcPal; colorGroupEnabled: enabled }
 
@@ -46,13 +46,8 @@ ColumnLayout {
         readonly property string iconPrefix: "/InstrumentValueIcons/"
 
         function updateIcon() {
-            if (instrumentValueData.rangeType === InstrumentValueData.IconSelectRange) {
-                valueIcon.source = instrumentValueData.currentIcon != "" ? iconPrefix + instrumentValueData.currentIcon : "";
-            } else if (instrumentValueData.icon) {
-                valueIcon.source = instrumentValueData.icon != "" ? iconPrefix + instrumentValueData.icon : "";
-            } else {
-                valueIcon.source = ""
-            }
+            const icon = instrumentValueData.rangeType === InstrumentValueData.IconSelectRange ? instrumentValueData.currentIcon : instrumentValueData.icon
+            valueIcon.source = icon != "" ? iconPrefix + icon : ""
         }
 
         Connections {

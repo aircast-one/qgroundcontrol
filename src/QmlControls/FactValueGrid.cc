@@ -19,7 +19,6 @@
 
 QStringList FactValueGrid::_iconNames;
 
-// Important: The indices of these strings must match the FactValueGrid::FontSize enum
 const QStringList FactValueGrid::_fontSizeNames = {
     QT_TRANSLATE_NOOP("FactValueGrid", "Default"),
     QT_TRANSLATE_NOOP("FactValueGrid", "Small"),
@@ -49,7 +48,6 @@ void FactValueGrid::componentComplete(void)
         _vehicleCardInstanceList.append(this);
         _initForNewVehicle(_specificVehicleForCard);
     } else {
-        // We are not tracking a specific vehicle so we need to track the active vehicle or offline editing vehicle if not active vehicle
         auto multiVehicleManager = MultiVehicleManager::instance();
         connect(multiVehicleManager, &MultiVehicleManager::activeVehicleChanged, this, &FactValueGrid::_activeVehicleChanged);
         _activeVehicle = multiVehicleManager->activeVehicle();
@@ -130,6 +128,7 @@ void FactValueGrid::_saveValueData(QSettings& settings, InstrumentValueData* val
     settings.setValue(_textKey,         value->text());
     settings.setValue(_showUnitsKey,    value->showUnits());
     settings.setValue(_iconKey,         value->icon());
+    settings.setValue(_showIconKey,     value->showIcon());
     settings.setValue(_rangeTypeKey,    value->rangeType());
 
     if (value->rangeType() != InstrumentValueData::NoRangeInfo) {
@@ -156,8 +155,6 @@ void FactValueGrid::_saveValueData(QSettings& settings, InstrumentValueData* val
 
 void FactValueGrid::_loadValueData(QSettings& settings, InstrumentValueData* value)
 {
-    // A value stored before uids existed adopts the one generated at construction, which is
-    // then written back on the next save.
     const QString uid = settings.value(_uidKey).toString();
     if (!uid.isEmpty()) {
         value->setUid(uid);
@@ -171,6 +168,7 @@ void FactValueGrid::_loadValueData(QSettings& settings, InstrumentValueData* val
     value->setText      (settings.value(_textKey).toString());
     value->setShowUnits (settings.value(_showUnitsKey, true).toBool());
     value->setIcon      (settings.value(_iconKey).toString());
+    value->setShowIcon  (settings.value(_showIconKey, !value->icon().isEmpty()).toBool());
     value->setRangeType (settings.value(_rangeTypeKey, InstrumentValueData::NoRangeInfo).value<InstrumentValueData::RangeType>());
 
     if (value->rangeType() != InstrumentValueData::NoRangeInfo) {
@@ -198,6 +196,7 @@ void FactValueGrid::_connectSaveSignals(InstrumentValueData* value)
     connect(value, &InstrumentValueData::textChanged,           this, &FactValueGrid::_saveSettings);
     connect(value, &InstrumentValueData::showUnitsChanged,      this, &FactValueGrid::_saveSettings);
     connect(value, &InstrumentValueData::iconChanged,           this, &FactValueGrid::_saveSettings);
+    connect(value, &InstrumentValueData::showIconChanged,       this, &FactValueGrid::_saveSettings);
     connect(value, &InstrumentValueData::rangeTypeChanged,      this, &FactValueGrid::_saveSettings);
     connect(value, &InstrumentValueData::rangeValuesChanged,    this, &FactValueGrid::_saveSettings);
     connect(value, &InstrumentValueData::rangeColorsChanged,    this, &FactValueGrid::_saveSettings);
@@ -236,7 +235,6 @@ QmlObjectListModel* FactValueGrid::appendColumn(void)
     QmlObjectListModel* newList = new QmlObjectListModel(_columns);
     _columns->append(newList);
 
-    // If this is the first row then we automatically add the first column as well
     int cRowsToAdd = qMax(_rowCount, 1);
     for (int i=0; i<cRowsToAdd; i++) {
         newList->append(_createNewInstrumentValueWorker(newList));
@@ -308,8 +306,6 @@ void FactValueGrid::_saveSettings(void)
     }
     settings.endArray();
 
-    // If this settings change was set from a Vehicle card, this makes so the changes are
-    // immediately applied to the other Vehicle cards.
     if (_specificVehicleForCard) {
         for (FactValueGrid* obj : _vehicleCardInstanceList) {
             if (obj != this) {
@@ -337,7 +333,6 @@ void FactValueGrid::_resetFromSettings(void)
     QString     groupNameFormat("%1-%2");
 
     if (settings.childGroups().contains(_settingsKey())) {
-        // Load from settings
         settings.beginGroup(_settingsKey());
 
         int version = settings.value(_versionKey, 0).toInt();
@@ -348,7 +343,6 @@ void FactValueGrid::_resetFromSettings(void)
         }
         _fontSize = settings.value(_fontSizeKey, DefaultFontSize).value<FontSize>();
     
-        // Initial setup of empty items
         int cRows       = settings.value(_rowCountKey).toInt();
         int cModelLists = settings.beginReadArray(_columnsKey);
         if (cModelLists && cRows) {
@@ -361,7 +355,6 @@ void FactValueGrid::_resetFromSettings(void)
             }
         }
     
-        // Fill in the items from settings
         for (int colIndex=0; colIndex<cModelLists; colIndex++) {
             settings.setArrayIndex(colIndex);
             int cItems = settings.beginReadArray(_rowsKey);
@@ -375,7 +368,6 @@ void FactValueGrid::_resetFromSettings(void)
         }
         settings.endArray();
     } else {
-        // Default settings are added directly to this FactValueGrid
         QGCCorePlugin::instance()->factValueGridCreateDefaultSettings(this);
     }
 

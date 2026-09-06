@@ -23,7 +23,8 @@ import QGroundControl.Palette
 QGCPopupDialog {
     id:         root
     title:      qsTr("Telemetry Display")
-    buttons:    Dialog.Close
+    buttons:            Dialog.Ok
+    acceptButtonTitle:  qsTr("Done")
 
     property var instrumentValueData
 
@@ -38,218 +39,162 @@ QGCPopupDialog {
         id: noFactComponent
 
         QGCLabel {
-            text: qsTr("Valuec requires a connected vehicle for setup.")
+            text: qsTr("Values need a connected vehicle for setup.")
         }
     }
 
     Component {
         id: editorComponent
 
-        RowLayout {
-            spacing: ScreenTools.defaultFontPixelWidth
+        ColumnLayout {
+            spacing: ScreenTools.defaultFontPixelHeight / 2
 
-            ColumnLayout {
-                spacing: ScreenTools.defaultFontPixelHeight / 2
+            SettingsGroupLayout {
+                heading: qsTr("Telemetry")
 
-                SettingsGroupLayout {
-                    heading: qsTr("Telemetry")
-
-                    LabelledComboBox {
-                        id:                     factGroupCombo
-                        label:                  qsTr("Group")
-                        model:                  instrumentValueData.factGroupNames
-                        currentIndex:           instrumentValueData.factGroupNames.indexOf(instrumentValueData.factGroupName)
-                        onActivated: (index) => {
-                            instrumentValueData.setFact(currentText, "")
-                            instrumentValueData.icon = ""
-                            instrumentValueData.text = instrumentValueData.fact.shortDescription
-                        }
-                        Connections {
-                            target: instrumentValueData
-                            onFactGroupNameChanged: factGroupCombo.currentIndex = factGroupCombo.comboBox.find(instrumentValueData.factGroupName)
-                        }
+                LabelledComboBox {
+                    id:                     factGroupCombo
+                    label:                  qsTr("Group")
+                    model:                  instrumentValueData.factGroupNames
+                    currentIndex:           instrumentValueData.factGroupNames.indexOf(instrumentValueData.factGroupName)
+                    onActivated: (index) => {
+                        instrumentValueData.setFact(currentText, "")
+                        instrumentValueData.text = instrumentValueData.fact.shortDescription
                     }
-
-                    LabelledComboBox {
-                        id:                     factNamesCombo
-                        label:                  qsTr("Value")
-                        model:                  instrumentValueData.factValueNames
-                        currentIndex:           instrumentValueData.factValueNames.indexOf(instrumentValueData.factName)
-                        onActivated: (index) => {
-                            instrumentValueData.setFact(instrumentValueData.factGroupName, currentText)
-                            instrumentValueData.icon = ""
-                            instrumentValueData.text = instrumentValueData.fact.shortDescription
-                        }
-                        Connections {
-                            target: instrumentValueData
-                            onFactNameChanged: factNamesCombo.currentIndex = factNamesCombo.comboBox.find(instrumentValueData.factName)
-                        }
+                    Connections {
+                        target: instrumentValueData
+                        onFactGroupNameChanged: factGroupCombo.currentIndex = factGroupCombo.comboBox.find(instrumentValueData.factGroupName)
                     }
                 }
 
-                SettingsGroupLayout {
-                    heading: qsTr("Label")
-
-                    ColumnLayout {
-                        Layout.fillWidth:   true
-                        spacing:            ScreenTools.defaultFontPixelHeight / 2
-
-                        RowLayout {
-                            Layout.fillWidth:  true
-
-                            QGCRadioButton {
-                                id:                     iconRadio
-                                text:                   qsTr("Icon")
-                                Layout.fillWidth:       true
-                                Component.onCompleted:  checked = instrumentValueData.icon != ""
-                                onClicked: {
-                                    instrumentValueData.text = ""
-                                    instrumentValueData.icon = instrumentValueData.factValueGrid.iconNames[0]
-                                }
-                                ButtonGroup.group:      labelTypeGroup
-                                ButtonGroup { id: labelTypeGroup }
-                            }
-
-                            RowLayout {
-                                id:         iconOptionInputs
-                                Rectangle {
-                                    width:      height
-                                    height:     changeIconBtn.height
-                                    color:      qgcPal.windowShade
-                                    opacity:    iconRadio.checked ? 1 : .3
-
-                                    QGCColoredImage {
-                                        id:                 valueIcon
-                                        anchors.centerIn:   parent
-                                        height:             ScreenTools.defaultFontPixelHeight
-                                        width:              height
-                                        source:             "/InstrumentValueIcons/" + (instrumentValueData.icon ? instrumentValueData.icon : instrumentValueData.factValueGrid.iconNames[0])
-                                        sourceSize.height:  height
-                                        fillMode:           Image.PreserveAspectFit
-                                        mipmap:             true
-                                        smooth:             true
-                                        color:              valueIcon.status === Image.Error ? "red" : qgcPal.text
-                                    }
-                                }
-                                QGCButton {
-                                    id:         changeIconBtn
-                                    text:       qsTr("Change")
-                                    enabled:    iconRadio.checked
-                                    onClicked: {
-                                        var updateFunction = function(icon){ instrumentValueData.icon = icon }
-                                        iconPickerDialog.createObject(mainWindow, { iconNames: instrumentValueData.factValueGrid.iconNames, icon: instrumentValueData.icon, updateIconFunction: updateFunction }).open()
-                                    }
-                                }
-                            }
-                        }
-
-                        RowLayout {
-                            Layout.fillWidth: true
-
-                            QGCRadioButton {
-                                id:                     textRadio
-                                text:                   qsTr("Text")
-                                Layout.fillWidth:       true
-                                ButtonGroup.group:      labelTypeGroup
-                                Component.onCompleted:  checked = instrumentValueData.icon == ""
-                                onClicked: {
-                                    instrumentValueData.icon = ""
-                                    instrumentValueData.text = instrumentValueData.fact ? instrumentValueData.fact.shortDescription : qsTr("Label")
-                                }
-                            }
-
-                            QGCTextField {
-                                enabled:                textRadio.checked
-                                Layout.minimumWidth:    iconOptionInputs.width
-                                text:                   textRadio.checked 
-                                                            ? instrumentValueData.text
-                                                            : instrumentValueData.fact ? instrumentValueData.fact.shortDescription : qsTr("Label")
-                                onEditingFinished:      instrumentValueData.text = text 
-                            }
-                        }
+                LabelledComboBox {
+                    id:                     factNamesCombo
+                    label:                  qsTr("Value")
+                    model:                  instrumentValueData.factValueDescriptions
+                    currentIndex:           instrumentValueData.factValueNames.indexOf(instrumentValueData.factName)
+                    onActivated: (index) => {
+                        instrumentValueData.setFact(instrumentValueData.factGroupName, instrumentValueData.factValueNames[index])
+                        instrumentValueData.text = instrumentValueData.fact.shortDescription
                     }
-
-                    LabelledComboBox {
-                        label:          qsTr("Size") 
-                        model:          instrumentValueData.factValueGrid.fontSizeNames
-                        currentIndex:   instrumentValueData.factValueGrid.fontSize
-                        onActivated:    (index) => { instrumentValueData.factValueGrid.fontSize = index }
-                    }
-
-                    QGCCheckBoxSlider {
-                        Layout.fillWidth: true
-                        text:       qsTr("Show Units") 
-                        checked:    instrumentValueData.showUnits
-                        onClicked:  instrumentValueData.showUnits = checked
+                    Connections {
+                        target: instrumentValueData
+                        onFactNameChanged: factNamesCombo.currentIndex = instrumentValueData.factValueNames.indexOf(instrumentValueData.factName)
                     }
                 }
             }
 
             SettingsGroupLayout {
-                Layout.alignment:   Qt.AlignTop
-                heading:            qsTr("Value range")
+                heading: qsTr("Label")
 
-                ColumnLayout {
-                    Layout.fillWidth: true
-
-                    RowLayout {
-                        Layout.fillWidth:   true
-                        spacing:            ScreenTools.defaultFontPixelWidth * 2
-
-                        QGCLabel {
-                            Layout.fillWidth:       true
-                            text:                   qsTr("Type") 
+                OverlaySegmentedControl {
+                    Layout.fillWidth:   true
+                    segments:           [ qsTr("Icon"), qsTr("Text") ]
+                    currentIndex:       instrumentValueData.showIcon ? 0 : 1
+                    onActivated: (index) => {
+                        instrumentValueData.showIcon = index === 0
+                        if (instrumentValueData.showIcon && instrumentValueData.icon === "") {
+                            instrumentValueData.icon = instrumentValueData.factValueGrid.iconNames[0]
                         }
+                    }
+                }
 
-                        QGCComboBox {
-                            id:                 rangeTypeCombo
-                            model:              instrumentValueData.rangeTypeNames
-                            currentIndex:       instrumentValueData.rangeType
-                            sizeToContents:     true
-                            onActivated: (index) => { instrumentValueData.rangeType = index }
+                RowLayout {
+                    Layout.fillWidth:   true
+                    visible:            instrumentValueData.showIcon
+                    spacing:            ScreenTools.defaultFontPixelWidth * 2
+
+                    QGCLabel {
+                        Layout.fillWidth:   true
+                        text:               qsTr("Icon")
+                    }
+
+                    QGCColoredImage {
+                        id:                 valueIcon
+                        height:             ScreenTools.defaultFontPixelHeight
+                        width:              height
+                        source:             instrumentValueData.icon ? "/InstrumentValueIcons/" + instrumentValueData.icon : ""
+                        sourceSize.height:  height
+                        fillMode:           Image.PreserveAspectFit
+                        mipmap:             true
+                        smooth:             true
+                        color:              valueIcon.status === Image.Error ? "red" : qgcPal.text
+                    }
+
+                    QGCButton {
+                        text:       qsTr("Choose…")
+                        onClicked: {
+                            var updateFunction = function(icon){ instrumentValueData.icon = icon }
+                            iconPickerDialog.createObject(mainWindow, { iconNames: instrumentValueData.factValueGrid.iconNames, icon: instrumentValueData.icon, updateIconFunction: updateFunction }).open()
+                        }
+                    }
+                }
+
+                RowLayout {
+                    Layout.fillWidth:   true
+                    visible:            !instrumentValueData.showIcon
+                    spacing:            ScreenTools.defaultFontPixelWidth * 2
+
+                    QGCLabel {
+                        text:   qsTr("Text")
+                    }
+
+                    QGCTextField {
+                        Layout.fillWidth:   true
+                        text:               instrumentValueData.text
+                        onEditingFinished:  instrumentValueData.text = text
+                    }
+                }
+
+                QGCCheckBoxSlider {
+                    Layout.fillWidth: true
+                    text:       qsTr("Show Units")
+                    checked:    instrumentValueData.showUnits
+                    onClicked:  instrumentValueData.showUnits = checked
+                }
+            }
+
+            SettingsGroupLayout {
+                heading:        qsTr("Value Range")
+                description:    qsTr("Change the color, opacity or icon when the value crosses a threshold")
+
+                LabelledComboBox {
+                    label:          qsTr("Type")
+                    model:          instrumentValueData.rangeTypeNames
+                    currentIndex:   instrumentValueData.rangeType
+                    onActivated:    (index) => { instrumentValueData.rangeType = index }
+                }
+
+                Loader {
+                    id:                     rangeLoader
+                    visible:                sourceComponent
+                    Layout.alignment:       Qt.AlignHCenter
+                    Layout.preferredWidth:  item ? item.width : 0
+                    Layout.preferredHeight: item ? item.height : 0
+
+                    property var instrumentValueData: root.instrumentValueData
+
+                    function updateSourceComponent() {
+                        switch (instrumentValueData.rangeType) {
+                        case InstrumentValueData.NoRangeInfo:
+                            sourceComponent = undefined
+                            break
+                        case InstrumentValueData.ColorRange:
+                            sourceComponent = colorRangeDialog
+                            break
+                        case InstrumentValueData.OpacityRange:
+                            sourceComponent = opacityRangeDialog
+                            break
+                        case InstrumentValueData.IconSelectRange:
+                            sourceComponent = iconRangeDialog
+                            break
                         }
                     }
 
-                    Loader {
-                        id:                     rangeLoader
-                        visible:                sourceComponent
-                        Layout.columnSpan:      2
-                        Layout.alignment:       Qt.AlignHCenter
-                        Layout.margins:         ScreenTools.defaultFontPixelWidth
-                        Layout.preferredWidth:  item ? item.width : 0
-                        Layout.preferredHeight: item ? item.height : 0
+                    Component.onCompleted: updateSourceComponent()
 
-                        property var instrumentValueData: root.instrumentValueData
-
-                        function updateSourceComponent() {
-                            switch (instrumentValueData.rangeType) {
-                            case InstrumentValueData.NoRangeInfo:
-                                sourceComponent = undefined
-                                break
-                            case InstrumentValueData.ColorRange:
-                                sourceComponent = colorRangeDialog
-                                break
-                            case InstrumentValueData.OpacityRange:
-                                sourceComponent = opacityRangeDialog
-                                break
-                            case InstrumentValueData.IconSelectRange:
-                                sourceComponent = iconRangeDialog
-                                break
-                            }
-                        }
-
-                        Component.onCompleted: {
-                            updateSourceComponent()
-                            if (sourceComponent) {
-                                height = item.childrenRect.height
-                                width = item.childrenRect.width
-                            }
-                        }
-
-                        Connections {
-                            target:             instrumentValueData
-                            onRangeTypeChanged: rangeLoader.updateSourceComponent()
-                        }
+                    Connections {
+                        target:             instrumentValueData
+                        onRangeTypeChanged: rangeLoader.updateSourceComponent()
                     }
                 }
             }

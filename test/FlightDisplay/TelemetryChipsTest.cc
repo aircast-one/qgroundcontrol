@@ -18,10 +18,6 @@
 
 static const QString kChipKeyPrefix     = QStringLiteral("TelemetryChip-");
 
-// DragToPosition scopes every stored position by the size it was arranged at, so the keys
-// carry the layer's dimensions. Seeding the unscoped key stores a position no size will ever
-// look up, and the chip loads its default instead. Read off the view rather than written out,
-// so resizing the test QML cannot silently divorce the keys from the app that reads them.
 static QString chipSizeKey(const QQuickItem* root)
 {
     return QStringLiteral("%1x%2-").arg(qRound(root->width())).arg(qRound(root->height()));
@@ -52,8 +48,6 @@ static void clearChipGridSettings()
     }
 }
 
-// The layer keeps its grid layout and its chip positions in global settings, so a test that
-// leaves either behind changes what the next one loads.
 class ChipSettingsScope
 {
 public:
@@ -81,9 +75,6 @@ static QPointF storedChipPosition(const QString& sizeKey, const QString& uid)
                    chipSetting(sizeKey, uid, QStringLiteral("PositionY")).toReal());
 }
 
-// Chips animate from 0,0 to their default slot on load, so a position sampled right after the
-// view appears is mid-flight. Seeding a stored position gives the chip one exact resting place
-// to converge on instead.
 static void seedChipPosition(const QString& sizeKey, const QString& uid, const QPointF& pos)
 {
     QSettings settings;
@@ -91,8 +82,6 @@ static void seedChipPosition(const QString& sizeKey, const QString& uid, const Q
     settings.setValue(kChipKeyPrefix + uid + sizeKey + QStringLiteral("CustomPosition"), true);
     settings.setValue(kChipKeyPrefix + uid + sizeKey + QStringLiteral("PositionX"), QString::number(pos.x()));
     settings.setValue(kChipKeyPrefix + uid + sizeKey + QStringLiteral("PositionY"), QString::number(pos.y()));
-    // An arrangement is only found again if its size is on the roster; without this the
-    // lookup falls through to the shipped defaults exactly as if nothing had been stored.
     settings.setValue(kChipKeyPrefix + uid + QStringLiteral("Sizes"),
                       QString(sizeKey).chopped(1));
 }
@@ -103,8 +92,6 @@ static bool loadLayer(QQuickView& view, TelemetryChipsTestMainWindow& mainWindow
     return loadTestView(view, QStringLiteral("qrc:/unittest/TelemetryChipsTest.qml"));
 }
 
-// A chip owns the instrumentValueData property; the label and value inside it expose the same
-// property, so the walk stops at the outermost match rather than counting each chip three times.
 static void collectChips(QQuickItem* item, QList<QQuickItem*>& chips)
 {
     if (!item->isVisible()) {
@@ -193,14 +180,11 @@ void TelemetryChipsTest::_chipPerValueIsRendered()
         uids.append(chipUid(chip));
     }
 
-    // Every chip carries its own value, so no uid may repeat and none may be blank.
     QCOMPARE(uids, gridUids(grid));
     QVERIFY(!uids.contains(QString()));
     QCOMPARE(QSet<QString>(uids.begin(), uids.end()).count(), uids.count());
 }
 
-// Two chips may legitimately show the same fact. Keying their stored position by the fact made
-// them share one settings key, so dragging one moved the other on the next load.
 void TelemetryChipsTest::_duplicateFactChipsKeepIndependentPositions()
 {
     ChipSettingsScope settingsScope;
@@ -258,7 +242,6 @@ void TelemetryChipsTest::_duplicateFactChipsKeepIndependentPositions()
         QVERIFY(chipA);
         QVERIFY(chipB);
 
-        // Each chip found its own stored position, so the two never shared one key on load.
         QTRY_COMPARE(QPointF(chipA->x(), chipA->y()), seededA);
         QTRY_COMPARE(QPointF(chipB->x(), chipB->y()), seededB);
 
@@ -267,14 +250,10 @@ void TelemetryChipsTest::_duplicateFactChipsKeepIndependentPositions()
 
         QCOMPARE(QPointF(chipB->x(), chipB->y()), seededB);
 
-        // The write is debounced, so the settings still hold the seeded position for a moment
-        // after the drop. Reading straight away compares the seed against itself.
         QTRY_VERIFY(storedChipPosition(sizeKey, uidA) != seededA);
         droppedA = storedChipPosition(sizeKey, uidA);
         QVERIFY(chipSetting(sizeKey, uidA, QStringLiteral("CustomPosition")).toBool());
 
-        // The drop wrote only the dragged chip's key. The pre-fix key both chips shared must
-        // not exist at all.
         QCOMPARE(storedChipPosition(sizeKey, uidB), seededB);
         QVERIFY(!chipSetting(sizeKey, QStringLiteral("Vehicle-AltitudeRelative"),
                              QStringLiteral("CustomPosition")).isValid());
@@ -297,7 +276,6 @@ void TelemetryChipsTest::_duplicateFactChipsKeepIndependentPositions()
     QVERIFY(QPointF(restoredA->x(), restoredA->y()) != QPointF(restoredB->x(), restoredB->y()));
 }
 
-// The edit badge deletes the column it sits on, which is not necessarily the last one.
 void TelemetryChipsTest::_deleteColumnRemovesTargetedChip()
 {
     ChipSettingsScope settingsScope;
@@ -336,8 +314,6 @@ static QQuickItem *resetPillOf(QQuickItem *root)
     return root->findChild<QQuickItem*>(QStringLiteral("editModeResetPill"));
 }
 
-// Reset Layout wipes every stored position and unhides everything, with no undo, from a pill
-// the user reaches past on their way to Done. One tap must never be enough.
 void TelemetryChipsTest::_resetLayoutNeedsTwoTaps()
 {
     QQuickView view;
@@ -358,7 +334,6 @@ void TelemetryChipsTest::_resetLayoutNeedsTwoTaps()
     QCOMPARE(pill->property("text").toString(), idleText);
 }
 
-// An arm left standing put a single tap between a returning user and a wiped layout.
 void TelemetryChipsTest::_leavingEditModeDisarmsReset()
 {
     QQuickView view;
@@ -381,4 +356,38 @@ void TelemetryChipsTest::_leavingEditModeDisarmsReset()
     QCOMPARE(pill->property("text").toString(), idleText);
     QTest::mouseClick(&view, Qt::LeftButton, Qt::NoModifier, itemCenter(pill));
     QCOMPARE(view.rootObject()->property("resetCount").toInt(), 0);
+}
+
+void TelemetryChipsTest::_labelStyleSurvivesReload()
+{
+    ChipSettingsScope settingsScope;
+
+    TelemetryChipsTestMainWindow mainWindow;
+    QQuickView view;
+    QVERIFY(loadLayer(view, mainWindow));
+
+    FactValueGrid* const grid = view.rootObject()->findChild<FactValueGrid*>();
+    QVERIFY(grid);
+    QObject* const value = gridValue(grid, 0);
+    QVERIFY(value);
+    QCOMPARE(value->property("factValueDescriptions").toStringList().count(), value->property("factValueNames").toStringList().count());
+    QVERIFY(!value->property("factValueDescriptions").toStringList().contains(QString()));
+
+    const QString uid = value->property("uid").toString();
+    value->setProperty("text", QStringLiteral("Custom"));
+    value->setProperty("icon", QStringLiteral("adjust.svg"));
+    value->setProperty("showIcon", true);
+    QCOMPARE(value->property("text").toString(), QStringLiteral("Custom"));
+
+    TelemetryChipsTestMainWindow reloadedMainWindow;
+    QQuickView reloadedView;
+    QVERIFY(loadLayer(reloadedView, reloadedMainWindow));
+    FactValueGrid* const reloadedGrid = reloadedView.rootObject()->findChild<FactValueGrid*>();
+    QVERIFY(reloadedGrid);
+    QObject* const reloadedValue = gridValue(reloadedGrid, 0);
+    QVERIFY(reloadedValue);
+    QCOMPARE(reloadedValue->property("uid").toString(), uid);
+    QVERIFY(reloadedValue->property("showIcon").toBool());
+    QCOMPARE(reloadedValue->property("icon").toString(), QStringLiteral("adjust.svg"));
+    QCOMPARE(reloadedValue->property("text").toString(), QStringLiteral("Custom"));
 }

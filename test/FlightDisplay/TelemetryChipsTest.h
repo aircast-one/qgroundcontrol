@@ -11,8 +11,6 @@
 
 #include "UnitTest.h"
 
-// TelemetryChipsLayer talks to the application window to keep chip drags away from the
-// window-move gesture. The unit test has no window, so it supplies this instead.
 class TelemetryChipsTestMainWindow : public QObject
 {
     Q_OBJECT
@@ -31,4 +29,5 @@ private slots:
     void _deleteColumnRemovesTargetedChip();
     void _resetLayoutNeedsTwoTaps();
     void _leavingEditModeDisarmsReset();
+    void _labelStyleSurvivesReload();
 };

@@ -25,10 +25,6 @@ ColumnLayout {
 
     property bool   popoverStyle:       false
 
-    // A grouped-list card: the quiet small-caps heading of popoverStyle, but the rows sit on an
-    // inset surface instead of directly on the panel. Without it a group nested inside a panel
-    // has to draw its own box to look like a group at all, which is how a card ends up inside a
-    // card inside a card.
     property bool   cardStyle:          false
 
     readonly property bool _inset: showBorder || cardStyle
@@ -94,7 +90,7 @@ ColumnLayout {
         text:               description
         wrapMode:           Text.WordWrap
         font.pointSize:     ScreenTools.smallFontPointSize
-        color:              QGroundControl.globalPalette.colorGrey
+        color:              Qt.alpha(QGroundControl.globalPalette.text, 0.65)
         visible:            description !== ""
     }
 }

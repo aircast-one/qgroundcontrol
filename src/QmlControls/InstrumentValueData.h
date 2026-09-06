@@ -15,6 +15,7 @@
 #include <QtCore/QObject>
 
 class Vehicle;
+class FactGroup;
 class QmlObjectListModel;
 
 class InstrumentValueData : public QObject
@@ -33,14 +34,16 @@ public:
     explicit InstrumentValueData(FactValueGrid* factValueGrid, QObject* parent);
 
     Q_PROPERTY(FactValueGrid*       factValueGrid       MEMBER _factValueGrid                               CONSTANT)
-    Q_PROPERTY(QString              uid                 READ    uid                                         NOTIFY uidChanged)              ///< Stable identity across restarts; owns per-value UI state such as saved screen position
+    Q_PROPERTY(QString              uid                 READ    uid                                         NOTIFY uidChanged)
     Q_PROPERTY(QStringList          factGroupNames      READ    factGroupNames                              NOTIFY factGroupNamesChanged)
     Q_PROPERTY(QStringList          factValueNames      READ    factValueNames                              NOTIFY factValueNamesChanged)
+    Q_PROPERTY(QStringList          factValueDescriptions READ  factValueDescriptions                       NOTIFY factValueNamesChanged)
     Q_PROPERTY(QString              factGroupName       READ    factGroupName                               NOTIFY factGroupNameChanged)
     Q_PROPERTY(QString              factName            READ    factName                                    NOTIFY factNameChanged)
     Q_PROPERTY(Fact*                fact                READ    fact                                        NOTIFY factChanged)
     Q_PROPERTY(QString              text                READ    text                WRITE setText           NOTIFY textChanged)
-    Q_PROPERTY(QString              icon                READ    icon                WRITE setIcon           NOTIFY iconChanged)             ///< If !isEmpty icon will be show instead of label
+    Q_PROPERTY(QString              icon                READ    icon                WRITE setIcon           NOTIFY iconChanged)
+    Q_PROPERTY(bool                 showIcon            READ    showIcon            WRITE setShowIcon       NOTIFY showIconChanged)
     Q_PROPERTY(bool                 showUnits           READ    showUnits           WRITE setShowUnits      NOTIFY showUnitsChanged)
     Q_PROPERTY(QStringList          rangeTypeNames      MEMBER _rangeTypeNames                              CONSTANT)
     Q_PROPERTY(RangeType            rangeType           READ    rangeType           WRITE setRangeType      NOTIFY rangeTypeChanged)
@@ -61,6 +64,7 @@ public:
 
     QStringList     factGroupNames          (void) const;
     QStringList     factValueNames          (void) const;
+    QStringList     factValueDescriptions   (void) const;
     QString         uid                     (void) const { return _uid; }
     void            setUid                  (const QString& uid);
     QString         factGroupName           (void) const { return _factGroupName; }
@@ -69,6 +73,7 @@ public:
     QString         text                    (void) const { return _text; }
     bool            showUnits               (void) const { return _showUnits; }
     QString         icon                    (void) const { return _icon; }
+    bool            showIcon                (void) const { return _showIcon; }
     RangeType       rangeType               (void) const { return _rangeType; }
     QVariantList    rangeValues             (void) const { return _rangeValues; }
     QVariantList    rangeColors             (void) const { return _rangeColors; }
@@ -77,6 +82,7 @@ public:
     void            setText                 (const QString& text);
     void            setShowUnits            (bool showUnits);
     void            setIcon                 (const QString& icon);
+    void            setShowIcon             (bool showIcon);
     void            setRangeType            (RangeType rangeType);
     void            setRangeValues          (const QVariantList& rangeValues);
     void            setRangeColors          (const QVariantList& rangeColors);
@@ -93,6 +99,7 @@ signals:
     void textChanged            (QString text);
     void showUnitsChanged       (bool showUnits);
     void iconChanged            (const QString& icon);
+    void showIconChanged        (bool showIcon);
     void factGroupNamesChanged  (void);
     void factValueNamesChanged  (void);
     void rangeTypeChanged       (RangeType rangeType);
@@ -115,6 +122,7 @@ private:
     void _updateIcon            (void);
     void _updateOpacity         (void);
     void _setFactWorker         (void);
+    FactGroup* _currentFactGroup(void) const;
 
     FactValueGrid*          _factValueGrid =        nullptr;
     Vehicle*                _vehicle =              nullptr;
@@ -126,25 +134,17 @@ private:
     QString                 _text;
     bool                    _showUnits =            true;
     QString                 _icon;
+    bool                    _showIcon =             false;
     QColor                  _currentColor;
     double                  _currentOpacity =       1.0;
     QString                 _currentIcon;
 
-    // Ranges allow you to specifiy semantics to apply when a value is within a certain range.
-    // The limits for each section of the range are specified in _rangeValues. With the first
-    // element indicating a range from that value to -infinity and the last element indicating
-    // a range from the value to +infinity.
-    //
-    // The semantics to apply are defined by the _rangeType value. With the semantic lists having
-    // a specific value for each section of the range. There should be _rangeValues.count() + 2
-    // semantic values in the apppropriate list.
     RangeType           _rangeType =        NoRangeInfo;
-    QVariantList        _rangeValues;                       ///< double values which indicate range setpoints
-    QVariantList        _rangeColors;                       ///< QColor
-    QVariantList        _rangeIcons;                        ///< QString resource name
-    QVariantList        _rangeOpacities;                    /// double opacity value
+    QVariantList        _rangeValues;
+    QVariantList        _rangeColors;
+    QVariantList        _rangeIcons;
+    QVariantList        _rangeOpacities;
 
-    // These are user facing string for the various enums.
     static const QStringList _rangeTypeNames;
 
 };
