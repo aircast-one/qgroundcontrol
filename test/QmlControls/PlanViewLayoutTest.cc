@@ -1,5 +1,6 @@
 #include "PlanViewLayoutTest.h"
 #include "QuickInteractionTestHelpers.h"
+#include "ScreenToolsController.h"
 
 #include <QtQml/QQmlContext>
 #include <QtQml/QQmlPropertyMap>
@@ -11,6 +12,16 @@ struct Layout {
     QQuickItem *dock      = nullptr;
     QQuickItem *inspector = nullptr;
     qreal       margin    = 0;
+
+    qreal panelHeight() const { return inspector->parentItem()->height(); }
+    qreal panelWidth() const { return inspector->parentItem()->width(); }
+};
+
+class SafeAreaScope
+{
+public:
+    explicit SafeAreaScope(int top) { ScreenToolsController::setSafeAreaInsets(0, top, 0, 0); }
+    ~SafeAreaScope() { ScreenToolsController::setSafeAreaInsets(0, 0, 0, 0); }
 };
 
 QQuickItem *findItemByName(QQuickItem *item, const QString &name)
@@ -55,23 +66,34 @@ bool settled(const Layout &layout, std::function<bool()> condition)
     return QTest::qWaitFor([&layout, condition] { return layout.inspector->width() > 0 && condition(); });
 }
 
+bool inspectorOnTheRight(const Layout &layout)
+{
+    return layout.inspector->x() + layout.inspector->width() == layout.panelWidth() - layout.margin;
+}
+
+bool inspectorUnderTheDock(const Layout &layout)
+{
+    return layout.inspector->y() >= layout.dock->y() + layout.dock->height();
+}
+
 }
 
 void PlanViewLayoutTest::_narrowWindowStacksTheInspectorUnderTheDock()
 {
+    SafeAreaScope safeArea(80);
     QQmlPropertyMap globals;
     QQuickView view;
     Layout layout;
     QVERIFY(load(view, globals, layout));
 
-    const qreal rootWidth  = layout.planView->width();
-    const qreal rootHeight = layout.planView->height();
-    QVERIFY(rootHeight > rootWidth);
+    QVERIFY(ScreenToolsController::safeAreaTop() > 0);
+    QVERIFY(layout.planView->height() > layout.planView->width());
+    QVERIFY(layout.panelHeight() < layout.planView->height());
 
-    QVERIFY(settled(layout, [&] { return layout.inspector->y() >= layout.dock->y() + layout.dock->height(); }));
-    QCOMPARE(layout.inspector->width(), rootWidth - layout.margin * 2);
+    QVERIFY(settled(layout, [&] { return inspectorUnderTheDock(layout); }));
+    QCOMPARE(layout.inspector->width(), layout.panelWidth() - layout.margin * 2);
     QCOMPARE(layout.inspector->x(), layout.margin);
-    QCOMPARE(layout.inspector->y() + layout.inspector->height(), rootHeight - layout.margin);
+    QCOMPARE(layout.inspector->y() + layout.inspector->height(), layout.panelHeight() - layout.margin);
     QVERIFY(layout.dock->y() > 0);
 }
 
@@ -84,10 +106,10 @@ void PlanViewLayoutTest::_wideWindowKeepsTheInspectorOnTheRight()
 
     resize(view, 903, 428);
 
-    QVERIFY(settled(layout, [&] { return layout.inspector->x() + layout.inspector->width() == 903 - layout.margin; }));
+    QVERIFY(settled(layout, [&] { return inspectorOnTheRight(layout); }));
     QVERIFY(layout.inspector->width() < 903 / 2);
-    QVERIFY(layout.inspector->y() + layout.inspector->height() <= 428 - layout.margin);
-    QCOMPARE(layout.dock->y(), (428 - layout.dock->height()) / 2);
+    QVERIFY(layout.inspector->y() + layout.inspector->height() <= layout.panelHeight() - layout.margin);
+    QCOMPARE(layout.dock->y(), (layout.panelHeight() - layout.dock->height()) / 2);
 }
 
 void PlanViewLayoutTest::_rotatingBackRestoresTheSideInspector()
@@ -98,13 +120,13 @@ void PlanViewLayoutTest::_rotatingBackRestoresTheSideInspector()
     QVERIFY(load(view, globals, layout));
 
     resize(view, 903, 428);
-    QVERIFY(settled(layout, [&] { return layout.inspector->x() + layout.inspector->width() == 903 - layout.margin; }));
+    QVERIFY(settled(layout, [&] { return inspectorOnTheRight(layout); }));
 
     resize(view, 428, 903);
-    QVERIFY(settled(layout, [&] { return layout.inspector->y() >= layout.dock->y() + layout.dock->height(); }));
+    QVERIFY(settled(layout, [&] { return inspectorUnderTheDock(layout); }));
     QCOMPARE(layout.inspector->width(), 428 - layout.margin * 2);
 
     resize(view, 903, 428);
-    QVERIFY(settled(layout, [&] { return layout.inspector->x() + layout.inspector->width() == 903 - layout.margin; }));
-    QCOMPARE(layout.dock->y(), (428 - layout.dock->height()) / 2);
+    QVERIFY(settled(layout, [&] { return inspectorOnTheRight(layout); }));
+    QCOMPARE(layout.dock->y(), (layout.panelHeight() - layout.dock->height()) / 2);
 }

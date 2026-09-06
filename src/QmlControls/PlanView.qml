@@ -879,7 +879,7 @@ Item {
             objectName:             "planInspector"
             width:                  _rightPanelWidth
             anchors.top:            parent.top
-            anchors.topMargin:      _narrow ? _root.height - height - _panelMargin : _topInset
+            anchors.topMargin:      _narrow ? parent.height - height - _panelMargin : _topInset
             anchors.right:          parent.right
             anchors.rightMargin:    _panelMargin
             height:                 Math.min(_wantedHeight, _availableHeight)
@@ -890,8 +890,8 @@ Item {
             readonly property real _topInset: planToolBar.height + _panelMargin
 
             readonly property real _terrainInset:    _terrainProfileOpen ? _terrainProfileHeight + _panelMargin : 0
-            readonly property real _availableHeight: _narrow ? _root.height - dock.y - dock.height - _panelMargin * 2 - _terrainInset
-                                                             : _root.height - _topInset - _panelMargin - _terrainInset
+            readonly property real _availableHeight: _narrow ? parent.height - dock.y - dock.height - _panelMargin * 2 - _terrainInset
+                                                             : parent.height - _topInset - _panelMargin - _terrainInset
 
             readonly property real _wantedHeight: (layerSelector.visible ? layerSelector.height + _padding : 0) +
                                                       _padding * 2 + _bodyHeight
