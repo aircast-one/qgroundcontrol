@@ -18,7 +18,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Build
 import androidx.compose.material.icons.filled.Home
 import androidx.compose.material.icons.filled.Info
-import androidx.compose.material.icons.filled.List
+import androidx.compose.material.icons.automirrored.filled.List
 import androidx.compose.material.icons.filled.Place
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -45,6 +45,8 @@ import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.core.view.WindowCompat
 import one.aircast.android.bridge.Qgc
+import one.aircast.android.ui.AnalyzePage
+import one.aircast.android.ui.AnalyzeScreen
 import one.aircast.android.ui.FlightActions
 import one.aircast.android.ui.ParametersScreen
 import one.aircast.android.ui.SettingsScreen
@@ -61,14 +63,13 @@ private const val WAKE_LOCK_TAG = "Aircast:screen"
 private const val MULTICAST_LOCK_TAG = "Aircast"
 
 private const val SETUP_QML = "qrc:/qml/QGroundControl/VehicleSetup/SetupView.qml"
-private const val ANALYZE_QML = "qrc:/qml/QGroundControl/AnalyzeView/AnalyzeView.qml"
 
 enum class Tab(val label: String, val icon: ImageVector, val page: String, val tool: String) {
     Fly("Fly", Icons.Default.Home, "fly", ""),
     Plan("Plan", Icons.Default.Place, "plan", ""),
     Setup("Setup", Icons.Default.Build, "fly", SETUP_QML),
-    Params("Params", Icons.Default.List, "fly", ""),
-    Analyze("Analyze", Icons.Default.Info, "fly", ANALYZE_QML),
+    Params("Params", Icons.AutoMirrored.Filled.List, "fly", ""),
+    Analyze("Analyze", Icons.Default.Info, "fly", ""),
     Settings("Settings", Icons.Default.Settings, "fly", "");
 
     companion object {
@@ -156,6 +157,7 @@ fun AircastShell(quickView: QtQuickView) {
     var tab by remember { mutableStateOf(Tab.Fly) }
     var qmlReady by remember { mutableStateOf(false) }
     var controlsExpanded by remember { mutableStateOf(true) }
+    var analyzePage by remember { mutableStateOf<AnalyzePage?>(null) }
 
     DisposableEffect(quickView) {
         val listeners = mutableListOf<Int>()
@@ -171,9 +173,16 @@ fun AircastShell(quickView: QtQuickView) {
         onDispose { listeners.forEach { quickView.disconnectSignalListener(it) } }
     }
 
-    LaunchedEffect(tab, qmlReady) {
+    val openAnalyzePage = analyzePage
+    val toolSource = when {
+        tab != Tab.Analyze -> tab.tool
+        openAnalyzePage == null || openAnalyzePage.isNative -> ""
+        else -> openAnalyzePage.qml
+    }
+
+    LaunchedEffect(toolSource, tab, qmlReady) {
         if (!qmlReady) return@LaunchedEffect
-        quickView.setProperty("toolSource", tab.tool)
+        quickView.setProperty("toolSource", toolSource)
         quickView.setProperty("page", tab.page)
     }
 
@@ -213,6 +222,11 @@ fun AircastShell(quickView: QtQuickView) {
                 when (tab) {
                     Tab.Settings -> Surface(Modifier.fillMaxSize()) { SettingsScreen() }
                     Tab.Params -> Surface(Modifier.fillMaxSize()) { ParametersScreen() }
+                    Tab.Analyze -> AnalyzeScreen(
+                        page = analyzePage,
+                        onSelect = { analyzePage = it },
+                        modifier = Modifier.fillMaxSize(),
+                    )
                     else -> Unit
                 }
 

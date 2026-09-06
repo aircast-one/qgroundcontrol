@@ -35,6 +35,20 @@ fun qgcBool(path: String): State<Boolean> {
 }
 
 @Composable
+fun qgcDouble(path: String, fallback: Double = Double.NaN): State<Double> {
+    val value by qgcValue(path)
+    return remember(path, fallback) {
+        derivedStateOf {
+            when (val v = value) {
+                is Number -> v.toDouble()
+                is String -> v.toDoubleOrNull() ?: fallback
+                else -> fallback
+            }
+        }
+    }
+}
+
+@Composable
 fun qgcFacts(groupPath: String): State<List<Fact>> {
     val json by qgcPath(groupPath)
     return remember(groupPath) { derivedStateOf { Qgc.facts(groupPath, json) } }
