@@ -175,50 +175,5 @@ struct ConnectionsSection: View {
     }
 }
 
-struct LabelledField: View {
-    let label: String
-    let value: String
-    let commit: (String) -> Void
-
-    @State private var draft = ""
-    @FocusState private var editing: Bool
-
-    var body: some View {
-        HStack {
-            Text(label)
-                .foregroundColor(.secondary)
-                .frame(width: 60, alignment: .leading)
-            TextField("", text: $draft)
-                .onAppear { draft = value }
-                .onChange(of: value) { latest in if !editing { draft = latest } }
-                .focused($editing)
-                .onSubmit { commit(draft) }
-                .onChange(of: editing) { focused in if !focused { commit(draft) } }
-        }
-    }
-}
 
 
-struct LabelledPicker: View {
-    let label: String
-    let options: [(String, String)]
-    let selection: String
-    let commit: (String) -> Void
-
-    var body: some View {
-        HStack {
-            Text(label)
-                .foregroundColor(.secondary)
-                .frame(width: 60, alignment: .leading)
-            Picker("", selection: Binding(get: { selection }, set: commit)) {
-                if !options.contains(where: { $0.1 == selection }) {
-                    Text(selection.isEmpty ? "Not set" : selection).tag(selection)
-                }
-                ForEach(options, id: \.1) { option in
-                    Text(option.0).tag(option.1)
-                }
-            }
-            .labelsHidden()
-        }
-    }
-}

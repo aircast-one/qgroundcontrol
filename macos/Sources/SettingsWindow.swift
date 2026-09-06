@@ -67,14 +67,7 @@ struct SettingsView: View {
             && store.pages.first { $0.id == store.selected }?.showsLinks == true
     }
 
-    private func notice(_ text: String) -> some View {
-        VStack {
-            Spacer()
-            Text(text).foregroundColor(.secondary)
-            Spacer()
-        }
-        .frame(maxWidth: .infinity)
-    }
+    private func notice(_ text: String) -> some View { Notice(text: text) }
 }
 
 // NSSearchField rather than a TextField: it brings the magnifier, the clear button

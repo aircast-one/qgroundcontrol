@@ -91,6 +91,25 @@ expectEditing("TypeUdp", .portOnly, "UDP edits only its local port")
 expectEditing("TypeSerial", .serial, "serial edits device and baud")
 expectEditing("TypeMock", LinkConfig.Editing.none, "mock link has nothing to edit")
 
+// The thresholds are ArduPilot/PX4 flight guidance, not styling: getting them wrong
+// tells an operator a shaking airframe is fine.
+func expectSeverity(_ value: Double, _ want: VibrationReading.Severity, _ label: String) {
+    expect(VibrationReading.severity(value) == want, label)
+}
+expectSeverity(0, .normal, "zero vibration is normal")
+expectSeverity(29.9, .normal, "just under the warning threshold is normal")
+expectSeverity(30, .warning, "the warning threshold is inclusive")
+expectSeverity(59.9, .warning, "just under the danger threshold is a warning")
+expectSeverity(60, .danger, "the danger threshold is inclusive")
+expectSeverity(1000, .danger, "beyond the scale is still danger")
+
+// worst() drives the advice line, so it must track the highest axis, not the last one.
+expect(VibrationReading(x: 5, y: 65, z: 5, clipCounts: [], available: true).worst == .danger,
+       "one bad axis makes the whole reading dangerous")
+expect(VibrationReading(x: 5, y: 5, z: 35, clipCounts: [], available: true).worst == .warning,
+       "the worst axis wins")
+expect(!VibrationReading.unavailable.available, "the unavailable reading reports itself as such")
+
 if failures == 0 {
     print("all Swift checks passed")
     exit(0)

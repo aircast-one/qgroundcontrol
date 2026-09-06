@@ -7,6 +7,9 @@ enable_language(Swift)
 set_directory_properties(PROPERTIES COMPILE_DEFINITIONS "")
 
 add_library(QGCNativeUI STATIC
+    Sources/AnalyzeWindow.swift
+    Sources/Vibration.swift
+    Sources/VibrationReading.swift
     Sources/AppShell.swift
     Sources/Bridge.swift
     Sources/Fact.swift
@@ -14,6 +17,7 @@ add_library(QGCNativeUI STATIC
     Sources/SettingsStore.swift
     Sources/SettingsWindow.swift
     Sources/ConnectionsSection.swift
+    Sources/Controls.swift
     Sources/LinkConfigModel.swift
     Sources/Links.swift
     Sources/NativeDebug.swift

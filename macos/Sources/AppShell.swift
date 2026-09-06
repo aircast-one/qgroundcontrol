@@ -33,6 +33,9 @@ enum AppShell {
         windowMenu.addItem(withTitle: "Minimize", action: #selector(NSWindow.miniaturize(_:)), keyEquivalent: "m")
         windowMenu.addItem(withTitle: "Zoom", action: #selector(NSWindow.zoom(_:)), keyEquivalent: "")
         windowMenu.addItem(.separator())
+        let analyze = windowMenu.addItem(withTitle: "Analyze", action: #selector(AnalyzeWindow.showFromMenu), keyEquivalent: "a")
+        analyze.target = AnalyzeWindow.shared
+
         let telemetry = windowMenu.addItem(withTitle: "Native Telemetry", action: #selector(NativeWindow.showFromMenu), keyEquivalent: "t")
         telemetry.target = NativeWindow.shared
 
