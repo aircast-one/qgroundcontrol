@@ -404,6 +404,12 @@ QPointF OverlayPhysics::landing(int id, qreal homeX, qreal homeY, qreal w, qreal
     return _targetFor(probe, obstacles, QPointF());
 }
 
+QPointF OverlayPhysics::targetOf(int id) const
+{
+    const auto it = _bodies.constFind(id);
+    return it == _bodies.constEnd() ? QPointF() : (it->kind == Free ? it->target : it->pos);
+}
+
 void OverlayPhysics::touch(int id)
 {
     auto it = _bodies.find(id);

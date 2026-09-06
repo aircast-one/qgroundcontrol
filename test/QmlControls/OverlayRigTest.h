@@ -33,6 +33,7 @@ private slots:
     void _droppedItemNeverSnapsBackToWhereItCameFrom();
     void _dropAlignsWithANeighboursEdge();
     void _droppedItemTakesItsSlotAndTheNeighbourYields();
+    void _gapReadoutMarksTheGutterBesideANeighbour();
     void _overlapIsAnsweredOnTheChangeThatCausedIt();
     void _disturbedLayoutComesToRest();
     void _sweepingObstacleDoesNotFlingItemsAcrossTheWindow();

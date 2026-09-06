@@ -44,6 +44,7 @@ public:
     Q_INVOKABLE QString report() const;
     Q_INVOKABLE QPointF landing(int id, qreal homeX, qreal homeY, qreal w, qreal h) const;
     Q_INVOKABLE void    touch(int id);
+    Q_INVOKABLE QPointF targetOf(int id) const;
 
     qreal pull() const { return _pull; }
     qreal springRadius() const { return _springRadius; }

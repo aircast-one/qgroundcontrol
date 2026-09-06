@@ -736,3 +736,33 @@ void OverlayRigTest::_droppedItemTakesItsSlotAndTheNeighbourYields()
              qPrintable(QStringLiteral("passenger %1,%2 still overlaps right %3,%4").arg(passenger->x()).arg(passenger->y()).arg(right->x()).arg(right->y())));
     QVERIFY2(QPointF(right->x(), right->y()) != rightHome, "the neighbour did not make way for the dropped item");
 }
+
+void OverlayRigTest::_gapReadoutMarksTheGutterBesideANeighbour()
+{
+    QQuickView view;
+    QVERIFY(loadView(view));
+
+    QQuickItem *const left = view.rootObject()->findChild<QQuickItem*>("leftItem");
+    QQuickItem *const right = view.rootObject()->findChild<QQuickItem*>("rightItem");
+    QObject *const rightPosition = positionOf(view, "rightPosition");
+    QObject *const rig = rigOf(view);
+    QVERIFY(left && right && rightPosition && rig);
+    QVERIFY(moveTo(rightPosition, 503.0, 300.0));
+    WAIT_SETTLED(rig, 3000);
+
+    const qreal margin = rig->property("edgeMargin").toReal();
+    QVariant readouts;
+    QVERIFY(QMetaObject::invokeMethod(rig, "spacingReadoutsFor", Q_RETURN_ARG(QVariant, readouts),
+                                      Q_ARG(QVariant, QVariant::fromValue(static_cast<QObject*>(left))),
+                                      Q_ARG(QVariant, right->x() + right->width() + margin), Q_ARG(QVariant, right->y())));
+    const QVariantList list = readouts.toList();
+    QCOMPARE(list.size(), 1);
+    QCOMPARE(list.first().toMap().value("text").toInt(), qRound(margin));
+    QCOMPARE(list.first().toMap().value("x").toReal(), right->x() + right->width() + margin / 2);
+    QVERIFY(list.first().toMap().value("y").toReal() < right->y());
+
+    QVERIFY(QMetaObject::invokeMethod(rig, "spacingReadoutsFor", Q_RETURN_ARG(QVariant, readouts),
+                                      Q_ARG(QVariant, QVariant::fromValue(static_cast<QObject*>(left))),
+                                      Q_ARG(QVariant, right->x() + right->width() + margin + 30), Q_ARG(QVariant, right->y())));
+    QVERIFY(readouts.toList().isEmpty());
+}

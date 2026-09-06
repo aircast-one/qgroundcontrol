@@ -58,9 +58,47 @@ Item {
             highlight:    true
         }
 
+        ShaderEffectSource {
+            anchors.fill:  parent
+            sourceItem:    _overlayRig.dropPreviewVisible ? _overlayRig.draggedItem : null
+            live:          true
+            opacity:       0.55
+            layer.enabled: true
+            layer.effect:  MultiEffect {
+                blurEnabled: true
+                blur:        0.6
+                blurMax:     24
+                saturation:  -0.6
+            }
+        }
+
         Behavior on x       { NumberAnimation { duration: 120; easing.type: Easing.OutCubic } }
         Behavior on y       { NumberAnimation { duration: 120; easing.type: Easing.OutCubic } }
         Behavior on opacity { NumberAnimation { duration: 150 } }
+    }
+
+    Repeater {
+        model: _overlayRig.spacingReadouts
+
+        Rectangle {
+            required property var modelData
+            objectName: "overlaySpacingReadout"
+            x:          modelData.x - width / 2
+            y:          modelData.y - height / 2
+            width:      readoutLabel.implicitWidth + ScreenTools.defaultFontPixelHeight * 0.7
+            height:     ScreenTools.defaultFontPixelHeight * 1.1
+            radius:     height / 2
+            z:          QGroundControl.zOrderWidgets + 2
+            color:      Qt.alpha(QGroundControl.globalPalette.window, 0.9)
+
+            QGCLabel {
+                id:               readoutLabel
+                anchors.centerIn: parent
+                text:             parent.modelData.text
+                font.pointSize:   ScreenTools.smallFontPointSize
+                font.bold:        true
+            }
+        }
     }
 
     Rectangle {

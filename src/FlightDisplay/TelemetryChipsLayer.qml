@@ -166,7 +166,7 @@ Item {
                     }
 
                     QGCToolTip {
-                        visible:    chipMouseArea.containsMouse
+                        visible:    chipMouseArea.containsMouse && !chipDragHandler.active
                         text:       control._editMode ? qsTr("Click to edit value • Drag to move")
                                                       : qsTr("Right-click or hold to edit layout")
                     }

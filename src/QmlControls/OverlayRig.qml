@@ -232,6 +232,70 @@ QtObject {
     property real guideX: NaN
     property real guideY: NaN
     property real dropPreviewRadius: 0
+    property Item draggedItem: null
+    property var  spacingReadouts: []
+
+    function _neighboursOf(item) {
+        return _movables.map((entry) => entry.item)
+            .concat(_statics.filter((entry) => entry.owner !== item).map((entry) => entry.item))
+            .filter((other) => other && other !== item && other.visible && other.width > 0 && other.height > 0)
+            .map((other) => {
+                const at = other.parent.mapToItem(item.parent, other.x, other.y)
+                return Qt.rect(at.x, at.y, other.width, other.height)
+            })
+    }
+
+    function _settledNeighboursOf(item) {
+        const movables = _movables
+            .filter((entry) => entry.item && entry.item !== item && entry.item.visible && entry.item.width > 0 && entry.item.height > 0)
+            .map((entry) => {
+                const settled = entry.body && !entry.anchored ? _physics.targetOf(entry.body) : null
+                const at = settled ? viewport.mapToItem(item.parent, settled.x + _bodyMargin, settled.y + _bodyMargin)
+                                   : entry.item.parent.mapToItem(item.parent, entry.item.x, entry.item.y)
+                return Qt.rect(at.x, at.y, entry.item.width, entry.item.height)
+            })
+        const statics = _statics
+            .filter((entry) => entry.owner !== item && entry.item && entry.item.visible && entry.item.width > 0 && entry.item.height > 0)
+            .map((entry) => {
+                const at = entry.item.parent.mapToItem(item.parent, entry.item.x, entry.item.y)
+                return Qt.rect(at.x, at.y, entry.item.width, entry.item.height)
+            })
+        return movables.concat(statics)
+    }
+
+    function spacingReadoutsFor(item, x, y) {
+        const w = item.width
+        const h = item.height
+        const lift = ScreenTools.defaultFontPixelHeight * 0.9
+        const gutter = (gap) => Math.abs(gap - edgeMargin) <= 1
+        const readouts = []
+        _settledNeighboursOf(item).forEach((r) => {
+            if (r.y < y + h && r.y + r.height > y) {
+                const top = Math.max(r.y, y)
+                const rightGap = r.x - (x + w)
+                const leftGap = x - (r.x + r.width)
+                if (gutter(rightGap)) {
+                    readouts.push({ x: x + w + rightGap / 2, y: top - lift, text: Math.round(rightGap) })
+                } else if (gutter(leftGap)) {
+                    readouts.push({ x: x - leftGap / 2, y: top - lift, text: Math.round(leftGap) })
+                }
+            }
+            if (r.x < x + w && r.x + r.width > x) {
+                const left = Math.max(r.x, x)
+                const belowGap = r.y - (y + h)
+                const aboveGap = y - (r.y + r.height)
+                if (gutter(belowGap)) {
+                    readouts.push({ x: left - lift * 1.4, y: y + h + belowGap / 2, text: Math.round(belowGap) })
+                } else if (gutter(aboveGap)) {
+                    readouts.push({ x: left - lift * 1.4, y: y - aboveGap / 2, text: Math.round(aboveGap) })
+                }
+            }
+        })
+        return readouts.map((readout) => {
+            const at = item.parent.mapToItem(viewport, readout.x, readout.y)
+            return { x: at.x, y: at.y, text: readout.text }
+        })
+    }
 
     function alignDrop(item, x, y) {
         const aligned = _align(item, x, y)
@@ -241,13 +305,7 @@ QtObject {
     function _align(item, x, y) {
         const w = item.width
         const h = item.height
-        const neighbours = _movables.map((entry) => entry.item)
-            .concat(_statics.filter((entry) => entry.owner !== item).map((entry) => entry.item))
-            .filter((other) => other && other !== item && other.visible && other.width > 0 && other.height > 0)
-            .map((other) => {
-                const at = other.parent.mapToItem(item.parent, other.x, other.y)
-                return Qt.rect(at.x, at.y, other.width, other.height)
-            })
+        const neighbours = _neighboursOf(item)
         const xCandidates = neighbours
             .map((r) => [{ at: r.x, guide: r.x }, { at: r.x + r.width - w, guide: r.x + r.width },
                          { at: r.x + r.width + edgeMargin, guide: r.x + r.width }, { at: r.x - edgeMargin - w, guide: r.x }])
@@ -426,6 +484,8 @@ QtObject {
     function _sleep() {
         _physicsTimer.stop()
         dropPreviewVisible = false
+        draggedItem = null
+        spacingReadouts = []
         guideX = NaN
         guideY = NaN
         _movables.forEach((entry) => {
@@ -549,8 +609,7 @@ QtObject {
             const isHeld   = Math.abs(live.x - simulated.x) > 1 || Math.abs(live.y - simulated.y) > 1
             const driven   = isHeld || entry.anchored === true
             const carrying = isHeld && !entry.anchored
-            const rect     = carrying ? { x: live.x - edgeMargin, y: live.y - edgeMargin, w: live.w + edgeMargin * 2, h: live.h + edgeMargin * 2 }
-                           : driven   ? live : { x: simulated.x, y: simulated.y, w: home.w, h: home.h }
+            const rect     = driven ? live : { x: simulated.x, y: simulated.y, w: home.w, h: home.h }
             const fresh    = _ensureBody(entry, driven ? OverlayPhysics.Driven : OverlayPhysics.Free, rect)
             const body     = _bodyRect(rect)
             const homeBody = _bodyRect(home)
@@ -573,9 +632,11 @@ QtObject {
                     const home = dragged.parent.mapToItem(viewport, aligned.x, aligned.y)
                     const land = _physics.landing(entry.body, home.x - _bodyMargin, home.y - _bodyMargin,
                                                   live.w + _bodyMargin * 2, live.h + _bodyMargin * 2)
-                    to = { x: land.x - edgeMargin, y: land.y - edgeMargin }
+                    to = { x: land.x, y: land.y }
                     dropPreview = Qt.rect(land.x + _bodyMargin, land.y + _bodyMargin, dragged.width, dragged.height)
                     dropPreviewRadius = _radiusOf(dragged)
+                    const landLocal = viewport.mapToItem(dragged.parent, land.x + _bodyMargin, land.y + _bodyMargin)
+                    spacingReadouts = spacingReadoutsFor(dragged, landLocal.x, landLocal.y)
                     const landsOnSnap = Math.abs(land.x + _bodyMargin - home.x) < 1 && Math.abs(land.y + _bodyMargin - home.y) < 1
                     _pullToward(entry, landsOnSnap ? aligned.x - dragged.x : 0, landsOnSnap ? aligned.y - dragged.y : 0)
                     _showGuides(dragged, landsOnSnap ? aligned.guideX : NaN, landsOnSnap ? aligned.guideY : NaN)
@@ -599,9 +660,11 @@ QtObject {
         })
 
         dropPreviewVisible = dragged !== null
+        draggedItem = dragged
         if (!dragged) {
             guideX = NaN
             guideY = NaN
+            spacingReadouts = []
         }
 
         if (integrate) {
