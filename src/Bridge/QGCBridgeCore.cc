@@ -19,6 +19,8 @@
 #include <QtCore/QMetaProperty>
 #include <QtCore/QStringList>
 #include <QtCore/QThread>
+
+#include <optional>
 #include <QtCore/QTimer>
 
 namespace
@@ -410,10 +412,14 @@ void runOnQtThread(Fn &&fn)
     QMetaObject::invokeMethod(app, std::forward<Fn>(fn), Qt::BlockingQueuedConnection);
 }
 
-QVariant variantFromJsonText(const QString &text)
+std::optional<QVariant> variantFromJsonText(const QString &text)
 {
     const QJsonDocument document = QJsonDocument::fromJson(text.toUtf8());
-    return document.object().value(QStringLiteral("value")).toVariant();
+    const QJsonValue value = document.object().value(QStringLiteral("value"));
+    if (value.isUndefined()) {
+        return std::nullopt;
+    }
+    return value.toVariant();
 }
 
 } // namespace
@@ -430,9 +436,13 @@ QString get(const QString &path)
 
 QString set(const QString &path, const QString &valueJson)
 {
-    const QVariant value = variantFromJsonText(valueJson);
+    const std::optional<QVariant> value = variantFromJsonText(valueJson);
+    if (!value) {
+        return jsonToString(QJsonObject { { QStringLiteral("ok"), false } });
+    }
+
     QString result;
-    runOnQtThread([&result, &path, &value]() { result = jsonToString(writePath(path, value)); });
+    runOnQtThread([&result, &path, &value]() { result = jsonToString(writePath(path, *value)); });
     return result;
 }
 

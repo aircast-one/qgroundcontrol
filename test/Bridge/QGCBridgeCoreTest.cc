@@ -9,6 +9,7 @@
 
 #include "QGCBridgeCoreTest.h"
 #include "QGCBridgeCore.h"
+#include "MultiVehicleManager.h"
 
 #include "Fact.h"
 #include "SettingsManager.h"
@@ -185,6 +186,64 @@ void QGCBridgeCoreTest::_invokeConvertsArguments()
     const QJsonObject numericArg = callMethod(path, QJsonArray { 7 });
     QCOMPARE(numericArg.value(QStringLiteral("ok")).toBool(), true);
     QCOMPARE(numericArg.value(QStringLiteral("result")).toBool(), false);
+}
+
+void QGCBridgeCoreTest::_invokeReturnsAFactObject()
+{
+    const QJsonObject result = callMethod(
+        QStringLiteral("vehicles.offlineEditingVehicle.vehicle.getFact"),
+        QJsonArray { QStringLiteral("heading") });
+    QVERIFY(result.value(QStringLiteral("ok")).toBool());
+
+    const QJsonObject fact = result.value(QStringLiteral("result")).toObject();
+    QCOMPARE(fact.value(QStringLiteral("kind")).toString(), QStringLiteral("fact"));
+    QCOMPARE(fact.value(QStringLiteral("name")).toString(), QStringLiteral("heading"));
+}
+
+void QGCBridgeCoreTest::_invokeRejectsUnresolvableObjectReference()
+{
+    const QJsonObject result = callMethod(
+        QStringLiteral("vehicles.offlineEditingVehicle.vehicle.factExists"),
+        QJsonArray { QStringLiteral("@no.such.object") });
+    QVERIFY(!result.value(QStringLiteral("ok")).toBool());
+}
+
+void QGCBridgeCoreTest::_invokeRejectsTooManyArguments()
+{
+    const QJsonObject result = callMethod(
+        QStringLiteral("vehicles.offlineEditingVehicle.vehicle.getFact"),
+        QJsonArray { 1, 2, 3, 4, 5 });
+    QVERIFY(!result.value(QStringLiteral("ok")).toBool());
+}
+
+void QGCBridgeCoreTest::_accessorCallNeedsAQObjectReturn()
+{
+    const QJsonObject json = readObject(
+        QStringLiteral("vehicles.offlineEditingVehicle.vehicle.factExists(heading).anything"));
+    QCOMPARE(json.value(QStringLiteral("kind")).toString(), QStringLiteral("value"));
+    QVERIFY(json.value(QStringLiteral("value")).isNull());
+}
+
+void QGCBridgeCoreTest::_vehicleRootIsNullWithoutAnActiveVehicle()
+{
+    QVERIFY(!MultiVehicleManager::instance()->activeVehicle());
+    QCOMPARE(readObject(QStringLiteral("vehicle.armed")).value(QStringLiteral("kind")).toString(),
+             QStringLiteral("null"));
+}
+
+void QGCBridgeCoreTest::_setRejectsAPayloadWithoutAValue()
+{
+    Fact *const fact = SettingsManager::instance()->unitsSettings()->speedUnits();
+    const QVariant before = fact->cookedValue();
+
+    QJsonObject json = parse(QGCBridgeCore::set(
+        QString::fromLatin1(kSpeedUnits), QStringLiteral("{\"notValue\":1}")));
+    QVERIFY(!json.value(QStringLiteral("ok")).toBool());
+    QCOMPARE(fact->cookedValue(), before);
+
+    json = parse(QGCBridgeCore::set(QString::fromLatin1(kSpeedUnits), QStringLiteral("not json")));
+    QVERIFY(!json.value(QStringLiteral("ok")).toBool());
+    QCOMPARE(fact->cookedValue(), before);
 }
 
 void QGCBridgeCoreTest::_resolvesMavlinkInspectorRoot()

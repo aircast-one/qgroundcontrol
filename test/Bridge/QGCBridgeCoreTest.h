@@ -33,5 +33,11 @@ private slots:
     void _resolvesLogDownloadRoot();
     void _resolvesMavlinkConsoleRoot();
     void _resolvesMavlinkInspectorRoot();
+    void _invokeReturnsAFactObject();
+    void _invokeRejectsUnresolvableObjectReference();
+    void _invokeRejectsTooManyArguments();
+    void _accessorCallNeedsAQObjectReturn();
+    void _vehicleRootIsNullWithoutAnActiveVehicle();
+    void _setRejectsAPayloadWithoutAValue();
     void _watchEmitsOnChange();
 };
