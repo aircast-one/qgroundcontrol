@@ -66,6 +66,7 @@ public:
 
 private slots:
     // Overrides from TransectStyleComplexItem
+    int  entryPoint                 (void) const final { return 0; }
     void _rebuildTransectsPhase1    (void) final;
     void _recalcCameraShots         (void) final;
 };

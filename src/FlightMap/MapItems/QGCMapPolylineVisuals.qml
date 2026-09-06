@@ -20,21 +20,19 @@ import QGroundControl.Controls
 import QGroundControl.FlightMap
 import QGroundControl.ShapeFileHelper
 
-/// QGCMapPolyline map visuals
 Item {
     id: _root
 
-    property var    mapControl                  ///< Map control to place item in
-    property var    mapPolyline                 ///< QGCMapPolyline object
+    property var    mapControl
+    property var    mapPolyline
     property bool   interactive:    mapPolyline.interactive
     property int    lineWidth:      3
     property color  lineColor:      "#be781c"
 
     property var    _dragHandlesComponent
     property var    _splitHandlesComponent
-    property real   _zorderDragHandle:      QGroundControl.zOrderMapItems + 3   // Highest to prevent splitting when items overlap
+    property real   _zorderDragHandle:      QGroundControl.zOrderMapItems + 3
     property real   _zorderSplitHandle:     QGroundControl.zOrderMapItems + 2
-    property var    _savedVertices:         [ ]
 
     readonly property var _units: QGroundControl.unitsConversion
 
@@ -47,13 +45,12 @@ Item {
         if (mapPolyline.count < 2) {
             return ""
         }
-        const length = _units.metersToAppSettingsHorizontalDistanceUnits(_length())
-        return qsTr("Length %1 %2").arg(Number(length).toLocaleString(Qt.locale(), "f", length >= 100 ? 0 : 1)).arg(_units.appSettingsHorizontalDistanceUnitsString)
+        return qsTr("Length %1").arg(_units.formatMeasure(_units.metersToAppSettingsHorizontalDistanceUnits(_length()), _units.appSettingsHorizontalDistanceUnitsString))
     }
 
     function _traceCaption() {
-        return mapPolyline.count < 2 ? qsTr("Click the map to add points \u00B7 %1 of 2").arg(mapPolyline.count)
-                                     : qsTr("%1 points").arg(mapPolyline.count)
+        return mapPolyline.traceComplete ? qsTr("%1 points").arg(mapPolyline.count)
+                                         : qsTr("Click the map to add points \u00B7 %1 of %2").arg(mapPolyline.count).arg(mapPolyline.minVertexCount)
     }
 
     function _addCommonVisuals() {
@@ -68,7 +65,6 @@ Item {
         }
     }
 
-    /// Calculate the default/initial polyline
     function _defaultPolylineVertices() {
         var x = mapControl.centerViewport.x + (mapControl.centerViewport.width / 2)
         var yInset = mapControl.centerViewport.height / 4
@@ -77,29 +73,12 @@ Item {
         return [ topPointCoord, bottomPointCoord ]
     }
 
-    /// Reset polyline back to initial default
     function _resetPolyline() {
         mapPolyline.beginReset()
         mapPolyline.clear()
         var initialVertices = _defaultPolylineVertices()
         mapPolyline.appendVertex(initialVertices[0])
         mapPolyline.appendVertex(initialVertices[1])
-        mapPolyline.endReset()
-    }
-
-    function _saveCurrentVertices() {
-        _savedVertices = [ ]
-        for (var i=0; i<mapPolyline.count; i++) {
-            _savedVertices.push(mapPolyline.vertexCoordinate(i))
-        }
-    }
-
-    function _restorePreviousVertices() {
-        mapPolyline.beginReset()
-        mapPolyline.clear()
-        for (var i=0; i<_savedVertices.length; i++) {
-            mapPolyline.appendVertex(_savedVertices[i])
-        }
         mapPolyline.endReset()
     }
 
@@ -129,21 +108,6 @@ Item {
         }
     }
     Component.onDestruction: mapPolyline.traceMode = false
-
-    function _startTrace() {
-        _saveCurrentVertices()
-        mapPolyline.traceMode = true
-        mapPolyline.clear()
-    }
-
-    function _finishTrace() {
-        mapPolyline.traceMode = false
-    }
-
-    function _cancelTrace() {
-        _restorePreviousVertices()
-        mapPolyline.traceMode = false
-    }
 
     QGCDynamicObjectManager { id: _objMgrCommonVisuals }
     QGCDynamicObjectManager { id: _objMgrInteractiveVisuals }
@@ -259,7 +223,6 @@ Item {
         }
     }
 
-    // Control which is used to drag polygon vertices
     Component {
         id: dragAreaComponent
 
@@ -277,7 +240,6 @@ Item {
 
             onItemCoordinateChanged: {
                 if (_creationComplete) {
-                    // During component creation some bad coordinate values got through which screws up draw
                     mapPolyline.adjustVertex(polylineVertex, itemCoordinate)
                 }
             }
@@ -305,7 +267,6 @@ Item {
         }
     }
 
-    // Add all polygon vertex drag handles to the map
     Component {
         id: dragHandlesComponent
 
@@ -348,24 +309,24 @@ Item {
             z:                              QGroundControl.zOrderMapItems + 2
             availableWidth:                 mapControl.centerViewport.width
             caption:                        mapPolyline.traceMode ? _traceCaption() : _shapeCaption()
+            accentEnabled:                  mapPolyline.traceComplete
             tools: mapPolyline.traceMode
-                ? [ { text: qsTr("Cancel"), action: _cancelTrace },
-                    { text: qsTr("Done"), accent: true, enabled: mapPolyline.count >= 2, action: _finishTrace } ]
+                ? [ { text: qsTr("Cancel"), action: mapPolyline.cancelTrace },
+                    { text: qsTr("Done"), accent: true, action: mapPolyline.finishTrace } ]
                 : [ { text: qsTr("Line"),    action: _resetPolyline },
                     { separator: true },
-                    { text: qsTr("Trace"),   action: _startTrace },
+                    { text: qsTr("Trace"),   action: mapPolyline.beginTrace },
                     { text: qsTr("Import…"), action: kmlOrSHPLoadDialog.openForLoad } ]
         }
     }
 
-    // Mouse area to capture clicks for tracing a polyline
     Component {
         id:  traceMouseAreaComponent
 
         MouseArea {
             anchors.fill:       mapControl
             preventStealing:    true
-            z:                  QGroundControl.zOrderMapItems + 1   // Over item indicators
+            z:                  QGroundControl.zOrderMapItems + 1
 
             onClicked: (mouse) => {
                 if (mouse.button === Qt.LeftButton && _root.interactive) {

@@ -245,3 +245,33 @@ void QGCMapPolylineTest::_testSelectVertex()
     _mapPolyline->removeVertex(0);
     QVERIFY(_mapPolyline->selectedVertex() == (_mapPolyline->count() - 1));
 }
+
+void QGCMapPolylineTest::_testTrace()
+{
+    _mapPolyline->appendVertices(QList<QGeoCoordinate>({ _linePoints[0], _linePoints[1], _linePoints[2] }));
+    QCOMPARE(_mapPolyline->count(), 3);
+
+    _mapPolyline->beginTrace();
+    QVERIFY(_mapPolyline->traceMode());
+    QCOMPARE(_mapPolyline->count(), 0);
+    QVERIFY(!_mapPolyline->traceComplete());
+
+    _mapPolyline->appendVertex(_linePoints[0]);
+    QVERIFY(!_mapPolyline->traceComplete());
+
+    _mapPolyline->cancelTrace();
+    QVERIFY(!_mapPolyline->traceMode());
+    QCOMPARE(_mapPolyline->count(), 3);
+    for (int i = 0; i < 3; i++) {
+        QCOMPARE(_mapPolyline->vertexCoordinate(i), _linePoints[i]);
+    }
+
+    _mapPolyline->beginTrace();
+    _mapPolyline->appendVertex(_linePoints[0]);
+    _mapPolyline->appendVertex(_linePoints[1]);
+    QVERIFY(_mapPolyline->traceComplete());
+
+    _mapPolyline->finishTrace();
+    QVERIFY(!_mapPolyline->traceMode());
+    QCOMPARE(_mapPolyline->count(), 2);
+}

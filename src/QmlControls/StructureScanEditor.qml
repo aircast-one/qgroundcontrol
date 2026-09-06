@@ -37,7 +37,7 @@ Item {
     function polygonAdjustFinished() { }
 
     function _vertical(meters) {
-        return _units.metersToAppSettingsVerticalDistanceUnits(meters).toFixed(1) + " " + _units.appSettingsVerticalDistanceUnitsString
+        return _units.formatMeasure(_units.metersToAppSettingsVerticalDistanceUnits(meters), _units.appSettingsVerticalDistanceUnitsString)
     }
 
     QGCPalette { id: qgcPal; colorGroupEnabled: true }
@@ -115,7 +115,6 @@ Item {
                 CameraCalcGrid {
                     width:                  parent.width
                     cameraCalc:             missionItem.cameraCalc
-                    vehicleFlightIsFrontal: false
                     distanceToSurfaceLabel: qsTr("Scan distance")
                     frontalDistanceLabel:   qsTr("Layer height")
                     sideDistanceLabel:      qsTr("Trigger distance")
@@ -177,7 +176,8 @@ Item {
                     width: parent.width
 
                     PlanGroupRow {
-                        text:        qsTr("Rotate entry point")
+                        text:        qsTr("Entry vertex")
+                        value:       String(missionItem.entryVertex + 1)
                         showChevron: true
                         interactive: true
                         onClicked:   missionItem.rotateEntryPoint()

@@ -339,3 +339,36 @@ void QGCMapPolygonTest::_testSegmentSplit(void)
     QVERIFY(_mapPolygon->count() == 14);
     QVERIFY(_mapPolygon->selectedVertex() == _mapPolygon->count()-2);
 }
+
+void QGCMapPolygonTest::_testTrace(void)
+{
+    _mapPolygon->appendVertices(QVariantList({ QVariant::fromValue(_polyPoints[0]), QVariant::fromValue(_polyPoints[1]),
+                                               QVariant::fromValue(_polyPoints[2]), QVariant::fromValue(_polyPoints[3]) }));
+    QCOMPARE(_mapPolygon->count(), 4);
+
+    _mapPolygon->beginTrace();
+    QVERIFY(_mapPolygon->traceMode());
+    QCOMPARE(_mapPolygon->count(), 0);
+    QVERIFY(!_mapPolygon->traceComplete());
+
+    _mapPolygon->appendVertex(_polyPoints[0]);
+    _mapPolygon->appendVertex(_polyPoints[1]);
+    QVERIFY(!_mapPolygon->traceComplete());
+
+    _mapPolygon->cancelTrace();
+    QVERIFY(!_mapPolygon->traceMode());
+    QCOMPARE(_mapPolygon->count(), 4);
+    for (int i = 0; i < 4; i++) {
+        QCOMPARE(_mapPolygon->vertexCoordinate(i), _polyPoints[i]);
+    }
+
+    _mapPolygon->beginTrace();
+    _mapPolygon->appendVertex(_polyPoints[0]);
+    _mapPolygon->appendVertex(_polyPoints[1]);
+    _mapPolygon->appendVertex(_polyPoints[2]);
+    QVERIFY(_mapPolygon->traceComplete());
+
+    _mapPolygon->finishTrace();
+    QVERIFY(!_mapPolygon->traceMode());
+    QCOMPARE(_mapPolygon->count(), 3);
+}

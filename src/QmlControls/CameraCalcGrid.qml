@@ -20,7 +20,6 @@ Column {
     spacing: ScreenTools.defaultFontPixelHeight * 0.7
 
     property var    cameraCalc
-    property bool   vehicleFlightIsFrontal: true
     property string distanceToSurfaceLabel
     property string frontalDistanceLabel
     property string sideDistanceLabel

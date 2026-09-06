@@ -34,6 +34,7 @@ private slots:
     void _testDirty(void);
     void _testGridAngle(void);
     void _testEntryLocation(void);
+    void _testEntryPointProperty(void);
     void _testItemGeneration(void);
     void _testItemCount(void);
     void _testHoverCaptureItemGeneration(void);
@@ -45,6 +46,7 @@ private:
     void _testDirty(void);
     void _testGridAngle(void);
     void _testEntryLocation(void);
+    void _testEntryPointProperty(void);
     void _testItemGeneration(void);
     void _testHoverCaptureItemGeneration(void);
 #endif

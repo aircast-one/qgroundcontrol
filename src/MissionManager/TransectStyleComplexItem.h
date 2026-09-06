@@ -40,6 +40,7 @@ public:
     Q_PROPERTY(double           timeBetweenShots            READ timeBetweenShots                                   NOTIFY timeBetweenShotsChanged)
     Q_PROPERTY(double           coveredArea                 READ coveredArea                                        NOTIFY coveredAreaChanged)
     Q_PROPERTY(bool             hoverAndCaptureAllowed      READ hoverAndCaptureAllowed                             CONSTANT)
+    Q_PROPERTY(int              entryPoint                  READ entryPoint                                         NOTIFY entryPointChanged)
     Q_PROPERTY(QVariantList     visualTransectPoints        READ visualTransectPoints                               NOTIFY visualTransectPointsChanged)
 
     Q_PROPERTY(Fact*            terrainAdjustTolerance      READ terrainAdjustTolerance                             CONSTANT)
@@ -120,6 +121,7 @@ public:
     static constexpr const char* terrainAdjustMaxDescentRateName       = "TerrainAdjustMaxDescentRate";
 
 signals:
+    void entryPointChanged      (void);
     void cameraShotsChanged             (void);
     void timeBetweenShotsChanged        (void);
     void visualTransectPointsChanged    (void);
@@ -133,6 +135,9 @@ protected slots:
     void _polyPathTerrainData               (bool success, const QList<TerrainPathQuery::PathHeightInfo_t>& rgPathHeightInfo);
     void _missionItemCoordTerrainData       (bool success, QList<double> heights);
     void _rebuildTransects                  (void);
+
+public:
+    virtual int entryPoint(void) const = 0;
 
 protected:
     virtual void _rebuildTransectsPhase1    (void) = 0; ///< Rebuilds the _transects array

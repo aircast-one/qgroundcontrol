@@ -68,5 +68,13 @@ public:
     QString appSettingsSpeedUnitsString() { return FactMetaData::appSettingsSpeedUnitsString(); }
 
     Q_INVOKABLE double degreesToRadians(double degrees) { return qDegreesToRadians(degrees); }
+
+    Q_INVOKABLE QString formatMeasure(double value, const QString& units) const {
+        const QString number = QLocale().toString(value, 'f', value >= kWholeNumberFrom ? 0 : 1);
+        return number + QStringLiteral(" ") + QString(units).replace(QStringLiteral("^2"), QStringLiteral("\u00B2"));
+    }
     Q_INVOKABLE double radiansToDegrees(double radians) { return qRadiansToDegrees(radians); }
+
+private:
+    static constexpr double kWholeNumberFrom = 100;
 };

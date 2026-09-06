@@ -32,14 +32,13 @@ Item {
     property real            interiorOpacity     : 1
     property int             borderWidth         : 0
     property color           borderColor         : "black"
-    property var             _StoreCoordinates  : []
     property real            _zorderDragHandle   : QGroundControl.zOrderMapItems + 3
     property real            _zorderSplitHandle  : QGroundControl.zOrderMapItems + 2
     property real            _zorderCenterHandle : QGroundControl.zOrderMapItems + 1
 
     function _traceCaption() {
-        return mapPolygon.count < 3 ? qsTr("Click the map to add points \u00B7 %1 of 3").arg(mapPolygon.count)
-                                    : qsTr("%1 points").arg(mapPolygon.count)
+        return mapPolygon.traceComplete ? qsTr("%1 points").arg(mapPolygon.count)
+                                        : qsTr("Click the map to add points \u00B7 %1 of %2").arg(mapPolygon.count).arg(mapPolygon.minVertexCount)
     }
     property string          someParameter       : "defaultParameter"
     property real            radius              : ScreenTools.defaultFontPixelHeight * 4.44     //Automatic Geofence Radius
@@ -309,22 +308,6 @@ Item {
         }
     }
 
-    function _saveCurrentVertices() {
-        _StoreCoordinates = [ ]
-        for (var i=0; i<mapPolygon.count; i++) {
-            _StoreCoordinates.push(mapPolygon.vertexCoordinate(i))
-        }
-    }
-
-    function _restorePreviousVertices() {
-        mapPolygon.beginReset()
-        mapPolygon.clear()
-        for (var i=0; i<_StoreCoordinates.length; i++) {
-            mapPolygon.appendVertex(_StoreCoordinates[i])
-        }
-        mapPolygon.endReset()
-    }
-
     onInteractiveChanged: _handleInteractiveChanged()
 
 
@@ -344,21 +327,6 @@ Item {
         _handleInteractiveChanged()
     }
     Component.onDestruction: mapPolygon.traceMode = false
-
-    function _startTrace() {
-        _saveCurrentVertices()
-        mapPolygon.traceMode = true
-        mapPolygon.clear()
-    }
-
-    function _finishTrace() {
-        mapPolygon.traceMode = false
-    }
-
-    function _cancelTrace() {
-        _restorePreviousVertices()
-        mapPolygon.traceMode = false
-    }
 
     QGCDynamicObjectManager { id: _objMgrCommonVisuals }
     QGCDynamicObjectManager { id: _objMgrToolVisuals }
@@ -632,11 +600,12 @@ Item {
             y:                              mapControl.centerViewport.top
             availableWidth:                 mapControl.centerViewport.width
             caption:                        mapPolygon.traceMode ? _traceCaption() : ""
+            accentEnabled:                  mapPolygon.traceComplete
             tools: mapPolygon.traceMode
-                ? [ { text: qsTr("Cancel"), action: _cancelTrace },
-                    { text: qsTr("Done"), accent: true, enabled: mapPolygon.count >= 3, action: _finishTrace } ]
+                ? [ { text: qsTr("Cancel"), action: mapPolygon.cancelTrace },
+                    { text: qsTr("Done"), accent: true, action: mapPolygon.finishTrace } ]
                 : [ { text: qsTr("Automatic"), action: _resetPolygon },
-                    { text: qsTr("Manual"),    action: _startTrace } ]
+                    { text: qsTr("Manual"),    action: mapPolygon.beginTrace } ]
         }
     }
 

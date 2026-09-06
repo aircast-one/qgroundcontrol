@@ -44,6 +44,8 @@ public:
     Q_PROPERTY(bool                 isValid         READ isValid                                NOTIFY isValidChanged)
     Q_PROPERTY(bool                 empty           READ empty                                  NOTIFY isEmptyChanged)
     Q_PROPERTY(bool                 traceMode       READ traceMode      WRITE setTraceMode      NOTIFY traceModeChanged)
+    Q_PROPERTY(bool                 traceComplete   READ traceComplete                          NOTIFY countChanged)
+    Q_PROPERTY(int                  minVertexCount  READ minVertexCount                         CONSTANT)
     Q_PROPERTY(bool                 showAltColor    READ showAltColor   WRITE setShowAltColor   NOTIFY showAltColorChanged)
     Q_PROPERTY(int                  selectedVertex  READ selectedVertex WRITE selectVertex      NOTIFY selectedVertexChanged)
 
@@ -84,6 +86,10 @@ public:
     Q_INVOKABLE void beginReset (void);
     Q_INVOKABLE void endReset   (void);
 
+    Q_INVOKABLE void beginTrace (void);
+    Q_INVOKABLE void finishTrace(void);
+    Q_INVOKABLE void cancelTrace(void);
+
     /// Saves the polygon to the json object.
     ///     @param json Json object to save to
     void saveToJson(QJsonObject& json);
@@ -114,6 +120,8 @@ public:
     bool            isValid     (void) const { return _polygonModel.count() >= 3; }
     bool            empty       (void) const { return _polygonModel.count() == 0; }
     bool            traceMode   (void) const { return _traceMode; }
+    bool            traceComplete(void) const { return count() >= kMinVertexCount; }
+    int             minVertexCount(void) const { return kMinVertexCount; }
     bool            showAltColor(void) const { return _showAltColor; }
     int             selectedVertex()   const { return _selectedVertexIndex; }
 
@@ -165,6 +173,9 @@ private:
     bool                _ignoreCenterUpdates =  false;
     bool                _interactive =          false;
     bool                _traceMode =            false;
+    QList<QGeoCoordinate> _traceSavedVertices;
+
+    static constexpr int kMinVertexCount = 3;
     bool                _showAltColor =         false;
     int                 _selectedVertexIndex =  -1;
     bool                _deferredPathChanged =  false;

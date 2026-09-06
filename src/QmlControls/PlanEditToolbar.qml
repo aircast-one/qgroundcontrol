@@ -19,6 +19,7 @@ OverlayCapsule {
     property real   availableWidth
     property string caption: ""
     property var    tools:   []
+    property bool   accentEnabled: true
 
     width:  Math.min(toolsRow.width + _pad * 2, availableWidth)
     lifted: true
@@ -64,11 +65,12 @@ OverlayCapsule {
                 model: _root.tools
 
                 Item {
+                    id:         toolItem
                     objectName: "planEditTool" + index
 
                     readonly property bool _separator: modelData.separator === true
-                    readonly property bool _enabled:   modelData.enabled !== false
                     readonly property bool _accent:    modelData.accent === true
+                    readonly property bool _enabled:   !_accent || _root.accentEnabled
 
                     width:  _separator ? ScreenTools.defaultFontPixelWidth * 2
                                        : toolLabel.implicitWidth + ScreenTools.defaultFontPixelWidth * 3
@@ -76,7 +78,7 @@ OverlayCapsule {
 
                     Rectangle {
                         anchors.centerIn: parent
-                        visible:          parent._separator
+                        visible:          toolItem._separator
                         width:            1
                         height:           parent.height * 0.55
                         color:            Qt.alpha(_root.contentColor, 0.2)
@@ -84,7 +86,7 @@ OverlayCapsule {
 
                     Rectangle {
                         anchors.fill: parent
-                        visible:      !parent._separator
+                        visible:      !toolItem._separator
                         radius:       height / 2
                         color:        toolMouseArea.pressed       ? Qt.alpha(_root.contentColor, 0.18)
                                     : toolMouseArea.containsMouse ? Qt.alpha(_root.contentColor, 0.1)
@@ -95,17 +97,17 @@ OverlayCapsule {
                         QGCLabel {
                             id:               toolLabel
                             anchors.centerIn: parent
-                            text:             parent.parent._separator ? "" : modelData.text
-                            font.bold:        parent.parent._accent
-                            color:            !parent.parent._enabled ? Qt.alpha(_root.contentColor, 0.35)
-                                            : parent.parent._accent   ? _root._qgcPal.primaryButton
+                            text:             toolItem._separator ? "" : modelData.text
+                            font.bold:        toolItem._accent
+                            color:            !toolItem._enabled ? Qt.alpha(_root.contentColor, 0.35)
+                                            : toolItem._accent   ? _root._qgcPal.primaryButton
                                                                       : _root.contentColor
                         }
 
                         QGCMouseArea {
                             id:           toolMouseArea
                             anchors.fill: parent
-                            enabled:      parent.parent._enabled
+                            enabled:      toolItem._enabled
                             hoverEnabled: !ScreenTools.isMobile
                             onClicked:    modelData.action()
                         }

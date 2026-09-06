@@ -33,6 +33,7 @@ public:
     QGCMapPolyline* corridorPolyline(void) { return &_corridorPolyline; }
 
     Q_INVOKABLE void rotateEntryPoint(void);
+    int entryPoint(void) const final { return _entryPoint; }
 
     // Overrides from TransectStyleComplexItem
     QString patternName         (void) const final { return name; }

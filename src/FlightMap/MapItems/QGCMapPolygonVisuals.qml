@@ -21,12 +21,11 @@ import QGroundControl.Controls
 import QGroundControl.FlightMap
 import QGroundControl.ShapeFileHelper
 
-/// QGCMapPolygon map visuals
 Item {
     id: _root
 
-    property var    mapControl                                  ///< Map control to place item in
-    property var    mapPolygon                                  ///< QGCMapPolygon object
+    property var    mapControl
+    property var    mapPolygon
     property bool   interactive:        mapPolygon.interactive
     property color  interiorColor:      "transparent"
     property color  altColor:           "transparent"
@@ -39,13 +38,12 @@ Item {
     property bool   _circleRadiusDrag:          false
     property var    _circleRadiusDragCoord:     QtPositioning.coordinate()
     property bool   _editCircleRadius:          false
-    property var    _savedVertices:             [ ]
     property bool   _savedCircleMode
     property bool   _isVertexBeingDragged:      false
 
-    property real _zorderDragHandle:    QGroundControl.zOrderMapItems + 3   // Highest to prevent splitting when items overlap
+    property real _zorderDragHandle:    QGroundControl.zOrderMapItems + 3
     property real _zorderSplitHandle:   QGroundControl.zOrderMapItems + 2
-    property real _zorderCenterHandle:  QGroundControl.zOrderMapItems + 1   // Lowest such that drag or split takes precedence
+    property real _zorderCenterHandle:  QGroundControl.zOrderMapItems + 1
 
     readonly property var _units: QGroundControl.unitsConversion
 
@@ -54,12 +52,8 @@ Item {
         return path.reduce((sum, vertex, i) => sum + vertex.distanceTo(path[(i + 1) % path.length]), 0)
     }
 
-    function _measure(value, unit) {
-        return Number(value).toLocaleString(Qt.locale(), "f", value >= 100 ? 0 : 1) + " " + unit.replace("^2", "\u00B2")
-    }
-
     function _distanceText(meters) {
-        return _measure(_units.metersToAppSettingsHorizontalDistanceUnits(meters), _units.appSettingsHorizontalDistanceUnitsString)
+        return _units.formatMeasure(_units.metersToAppSettingsHorizontalDistanceUnits(meters), _units.appSettingsHorizontalDistanceUnitsString)
     }
 
     function _shapeCaption() {
@@ -69,12 +63,12 @@ Item {
         if (_circleMode) {
             return qsTr("Radius %1").arg(_distanceText(_circleRadius))
         }
-        return _measure(_units.squareMetersToAppSettingsAreaUnits(mapPolygon.area), _units.appSettingsAreaUnitsString) + " \u00B7 " + _distanceText(_perimeter())
+        return _units.formatMeasure(_units.squareMetersToAppSettingsAreaUnits(mapPolygon.area), _units.appSettingsAreaUnitsString) + " \u00B7 " + _distanceText(_perimeter())
     }
 
     function _traceCaption() {
-        return mapPolygon.count < 3 ? qsTr("Click the map to add points \u00B7 %1 of 3").arg(mapPolygon.count)
-                                    : qsTr("%1 points").arg(mapPolygon.count)
+        return mapPolygon.traceComplete ? qsTr("%1 points").arg(mapPolygon.count)
+                                        : qsTr("Click the map to add points \u00B7 %1 of %2").arg(mapPolygon.count).arg(mapPolygon.minVertexCount)
     }
 
     function addCommonVisuals() {
@@ -117,9 +111,7 @@ Item {
         }
     }
 
-    /// Calculate the default/initial 4 sided polygon
     function defaultPolygonVertices() {
-        // Initial polygon is inset to take 2/3rds space
         var rect = Qt.rect(mapControl.centerViewport.x, mapControl.centerViewport.y, mapControl.centerViewport.width, mapControl.centerViewport.height)
         rect.x += (rect.width * 0.25) / 2
         rect.y += (rect.height * 0.25) / 2
@@ -132,7 +124,6 @@ Item {
         var bottomLeftCoord =   mapControl.toCoordinate(Qt.point(rect.x, rect.y + rect.height),                            false /* clipToViewPort */)
         var bottomRightCoord =  mapControl.toCoordinate(Qt.point(rect.x + rect.width, rect.y + rect.height),               false /* clipToViewPort */)
 
-        // Initial polygon has max width and height of 3000 meters
         var halfWidthMeters =   Math.min(topLeftCoord.distanceTo(topRightCoord), 3000) / 2
         var halfHeightMeters =  Math.min(topLeftCoord.distanceTo(bottomLeftCoord), 3000) / 2
         topLeftCoord =      centerCoord.atDistanceAndAzimuth(halfWidthMeters, -90).atDistanceAndAzimuth(halfHeightMeters, 0)
@@ -143,7 +134,6 @@ Item {
         return [ topLeftCoord, topRightCoord, bottomRightCoord, bottomLeftCoord  ]
     }
 
-    /// Reset polygon back to initial default
     function _resetPolygon() {
         mapPolygon.beginReset()
         mapPolygon.clear()
@@ -169,7 +159,6 @@ Item {
         _circleMode = true
     }
 
-    /// Reset polygon to a circle which fits within initial polygon
     function _resetCircle() {
         var initialVertices = defaultPolygonVertices()
         var width = initialVertices[0].distanceTo(initialVertices[1])
@@ -188,24 +177,6 @@ Item {
             removeEditingVisuals()
             removeToolVisuals()
         }
-    }
-
-    function _saveCurrentVertices() {
-        _savedVertices = [ ]
-        _savedCircleMode = _circleMode
-        for (var i=0; i<mapPolygon.count; i++) {
-            _savedVertices.push(mapPolygon.vertexCoordinate(i))
-        }
-    }
-
-    function _restorePreviousVertices() {
-        mapPolygon.beginReset()
-        mapPolygon.clear()
-        for (var i=0; i<_savedVertices.length; i++) {
-            mapPolygon.appendVertex(_savedVertices[i])
-        }
-        mapPolygon.endReset()
-        _circleMode = _savedCircleMode
     }
 
     onInteractiveChanged: _handleInteractiveChanged()
@@ -236,19 +207,14 @@ Item {
     Component.onDestruction: mapPolygon.traceMode = false
 
     function _startTrace() {
-        _saveCurrentVertices()
+        _savedCircleMode = _circleMode
         _circleMode = false
-        mapPolygon.traceMode = true
-        mapPolygon.clear()
-    }
-
-    function _finishTrace() {
-        mapPolygon.traceMode = false
+        mapPolygon.beginTrace()
     }
 
     function _cancelTrace() {
-        _restorePreviousVertices()
-        mapPolygon.traceMode = false
+        mapPolygon.cancelTrace()
+        _circleMode = _savedCircleMode
     }
 
     QGCDynamicObjectManager { id: _objMgrCommonVisuals }
@@ -444,7 +410,6 @@ Item {
         }
     }
 
-    // Control which is used to drag polygon vertices
     Component {
         id: dragAreaComponent
 
@@ -464,7 +429,6 @@ Item {
 
             onItemCoordinateChanged: {
                 if (_creationComplete) {
-                    // During component creation some bad coordinate values got through which screws up draw
                     mapPolygon.adjustVertex(polygonVertex, itemCoordinate)
                 }
             }
@@ -503,7 +467,6 @@ Item {
         }
     }
 
-    // Add all polygon vertex drag handles to the map
     Component {
         id: dragHandlesComponent
 
@@ -541,8 +504,6 @@ Item {
             title:      qsTr("Edit Center Position")
             coordinate: mapPolygon.center
             onCoordinateChanged: {
-                // Prevent spamming signals on vertex changes by setting centerDrag = true when changing center position.
-                // This also fixes a bug where Qt gets confused by all the signalling and draws a bad visual.
                 mapPolygon.centerDrag = true
                 mapPolygon.center = coordinate
                 mapPolygon.centerDrag = false
@@ -605,9 +566,10 @@ Item {
             y:                              mapControl.centerViewport.top
             availableWidth:                 mapControl.centerViewport.width
             caption:                        mapPolygon.traceMode ? _traceCaption() : _shapeCaption()
+            accentEnabled:                  mapPolygon.traceComplete
             tools: mapPolygon.traceMode
                 ? [ { text: qsTr("Cancel"), action: _cancelTrace },
-                    { text: qsTr("Done"), accent: true, enabled: mapPolygon.count >= 3, action: _finishTrace } ]
+                    { text: qsTr("Done"), accent: true, action: mapPolygon.finishTrace } ]
                 : [ { text: qsTr("Rectangle"), action: _resetPolygon },
                     { text: qsTr("Circle"),    action: _resetCircle },
                     { separator: true },
@@ -616,14 +578,13 @@ Item {
         }
     }
 
-    // Mouse area to capture clicks for tracing a polygon
     Component {
         id:  traceMouseAreaComponent
 
         MouseArea {
             anchors.fill:       mapControl
             preventStealing:    true
-            z:                  QGroundControl.zOrderMapItems + 1   // Over item indicators
+            z:                  QGroundControl.zOrderMapItems + 1
 
             onClicked: (mouse) => {
                 if(_utmspEnabled){
@@ -664,7 +625,6 @@ Item {
         property var pendingCoord: undefined
 
         onTriggered: {
-            // re-build the circular polygon only once per event loop
             if (pendingCoord) {
                 var coord = pendingCoord
                 pendingCoord = undefined
@@ -684,7 +644,6 @@ Item {
                 var radius = mapPolygon.center.distanceTo(itemCoordinate)
 
                 if (Math.abs(radius - _circleRadius) > 0.1) {
-                    // De-bounced circular polygon re-drawing
                     radiusDragDebounceTimer.pendingCoord = itemCoordinate
                     radiusDragDebounceTimer.start()
                 }

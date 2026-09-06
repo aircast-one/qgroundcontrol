@@ -141,6 +141,7 @@ bool CorridorScanComplexItem::_loadWorker(const QJsonObject& complexObject, int 
     _corridorWidthFact.setRawValue(complexObject[corridorWidthName].toDouble());
 
     _entryPoint = complexObject[_jsonEntryPointKey].toInt();
+    emit entryPointChanged();
 
     _ignoreRecalc = false;
 
@@ -182,6 +183,7 @@ void CorridorScanComplexItem::rotateEntryPoint(void)
     if (_entryPoint > 3) {
         _entryPoint = 0;
     }
+    emit entryPointChanged();
 
     _rebuildTransects();
 }

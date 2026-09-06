@@ -435,6 +435,29 @@ void QGCMapPolyline::setTraceMode(bool traceMode)
     }
 }
 
+void QGCMapPolyline::beginTrace(void)
+{
+    _traceSavedVertices = coordinateList();
+    clear();
+    setTraceMode(true);
+}
+
+void QGCMapPolyline::finishTrace(void)
+{
+    setTraceMode(false);
+}
+
+void QGCMapPolyline::cancelTrace(void)
+{
+    beginReset();
+    clear();
+    for (const QGeoCoordinate& coordinate : std::as_const(_traceSavedVertices)) {
+        appendVertex(coordinate);
+    }
+    endReset();
+    setTraceMode(false);
+}
+
 void QGCMapPolyline::selectVertex(int index)
 {
     if(index == _selectedVertexIndex) return;   // do nothing

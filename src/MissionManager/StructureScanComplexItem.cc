@@ -509,6 +509,7 @@ void StructureScanComplexItem::rotateEntryPoint(void)
     if (_entryVertex >= _flightPolygon.count()) {
         _entryVertex = 0;
     }
+    emit entryVertexChanged();
     emit coordinateChanged(coordinate());
     emit exitCoordinateChanged(exitCoordinate());
 }

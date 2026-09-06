@@ -29,6 +29,7 @@ private slots:
     void _testVertexManipulation();
     void _testShapeLoad();
     void _testSelectVertex();
+    void _testTrace();
 
 private:
     QString _copyRes(const QTemporaryDir &tmpDir, const QString &name);

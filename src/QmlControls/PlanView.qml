@@ -1111,15 +1111,27 @@ Item {
                                     anchors.left:       parent.left
                                     anchors.leftMargin: ScreenTools.defaultFontPixelWidth * 1.5
                                     width:              parent.width - ScreenTools.defaultFontPixelWidth * 3
-                                    source:             _showItemDetail ? _currentPlanItem.editorQml : ""
                                     asynchronous:       true
 
                                     property var  masterController: _planMasterController
                                     property real availableWidth:   detailLoader.width
                                     property var  editorRoot:       detailLoader
-                                    property var  missionItem:      _currentPlanItem
-                                    // Complex editors and the camera sections they load read
-                                    // these from the scope their host used to provide.
+                                    property var  missionItem:      null
+
+                                    function reload() {
+                                        source      = ""
+                                        missionItem = _currentPlanItem
+                                        source      = _showItemDetail ? _currentPlanItem.editorQml : ""
+                                    }
+
+                                    Component.onCompleted: reload()
+
+                                    Connections {
+                                        target: _root
+                                        function on_CurrentPlanItemChanged() { detailLoader.reload() }
+                                        function on_ShowItemDetailChanged()  { detailLoader.reload() }
+                                    }
+
                                     property real _editFieldWidth:  Math.min(detailLoader.width - ScreenTools.defaultFontPixelWidth * 2,
                                                                              ScreenTools.defaultFontPixelWidth * 14)
                                     property real _margin:          ScreenTools.defaultFontPixelWidth / 2

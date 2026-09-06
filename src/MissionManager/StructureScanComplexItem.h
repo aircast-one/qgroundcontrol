@@ -40,6 +40,7 @@ public:
     Q_PROPERTY(Fact*            startFromTop                READ startFromTop                                               CONSTANT)
     Q_PROPERTY(double           bottomFlightAlt             READ bottomFlightAlt                                            NOTIFY bottomFlightAltChanged)
     Q_PROPERTY(double           topFlightAlt                READ topFlightAlt                                               NOTIFY topFlightAltChanged)
+    Q_PROPERTY(int              entryVertex                 READ entryVertex                                                NOTIFY entryVertexChanged)
     Q_PROPERTY(int              cameraShots                 READ cameraShots                                                NOTIFY cameraShotsChanged)
     Q_PROPERTY(double           timeBetweenShots            READ timeBetweenShots                                           NOTIFY timeBetweenShotsChanged)
     Q_PROPERTY(QGCMapPolygon*   structurePolygon            READ structurePolygon                                           CONSTANT)
@@ -61,6 +62,7 @@ public:
     QGCMapPolygon*  flightPolygon           (void) { return &_flightPolygon; }
 
     Q_INVOKABLE void rotateEntryPoint(void);
+    int entryVertex(void) const { return _entryVertex; }
 
     // Overrides from ComplexMissionItem
     QString patternName         (void) const final { return name; }
@@ -112,6 +114,7 @@ public:
     static constexpr const char* jsonComplexItemTypeValue =    "StructureScan";
 
 signals:
+    void entryVertexChanged     (void);
     void cameraShotsChanged             (int cameraShots);
     void timeBetweenShotsChanged        (void);
     void bottomFlightAltChanged         (void);

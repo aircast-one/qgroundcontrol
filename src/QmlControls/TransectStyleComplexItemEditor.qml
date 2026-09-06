@@ -27,8 +27,6 @@ Item {
     readonly property string _internalError: "Internal Error"
 
     property var    _missionItem:               missionItem
-    property real   _margin:                    ScreenTools.defaultFontPixelWidth / 2
-    property var    _vehicle:                   QGroundControl.multiVehicleManager.activeVehicle ? QGroundControl.multiVehicleManager.activeVehicle : QGroundControl.multiVehicleManager.offlineEditingVehicle
     property real   _cameraMinTriggerInterval:  _missionItem.cameraCalc.minTriggerInterval.rawValue
     property bool   _presetsAvailable:          _missionItem.presetNames.length !== 0
 
@@ -39,8 +37,8 @@ Item {
     }
 
     function polygonCaptureFinished(coordinates) {
-        for (var i=0; i<coordinates.length; i++) {
-            _missionItem.addPolygonCoordinate(coordinates[i])
+        for (const coordinate of coordinates) {
+            _missionItem.addPolygonCoordinate(coordinate)
         }
     }
 
@@ -125,7 +123,6 @@ Item {
                 CameraCalcGrid {
                     width:                  parent.width
                     cameraCalc:             _missionItem.cameraCalc
-                    vehicleFlightIsFrontal: true
                     distanceToSurfaceLabel: qsTr("Altitude")
                     frontalDistanceLabel:   qsTr("Trigger distance")
                     sideDistanceLabel:      qsTr("Spacing")
@@ -165,7 +162,7 @@ Item {
 
             TransectStyleComplexItemTerrainFollow {
                 width:       parent.width
-                spacing:     _margin
+                spacing:     ScreenTools.defaultFontPixelWidth / 2
                 visible:     tabBar.currentIndex === 2
                 missionItem: _missionItem
             }

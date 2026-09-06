@@ -20,13 +20,21 @@ PlanGroupRow {
 
     property alias fact:         field.fact
     property alias altitudeMode: field.altitudeMode
-    property alias field:        field
+
+    signal updated()
+
+    TextMetrics {
+        id:   fieldMetrics
+        font: field.font
+        text: field.text + " " + field.unitsLabel + " " + field.extraUnitsLabel
+    }
 
     AltitudeFactTextField {
         id:                     field
         anchors.verticalCenter: parent.verticalCenter
-        width:                  ScreenTools.defaultFontPixelWidth * 13
+        width:                  Math.max(ScreenTools.defaultFontPixelWidth * 13, fieldMetrics.width + ScreenTools.defaultFontPixelWidth * 4)
         showFrame:              false
         horizontalAlignment:    TextInput.AlignRight
+        onUpdated:              _root.updated()
     }
 }

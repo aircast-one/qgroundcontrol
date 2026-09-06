@@ -12,6 +12,7 @@
 #include "PlanViewSettings.h"
 #include "MultiSignalSpy.h"
 
+#include <QtTest/QSignalSpy>
 #include <QtTest/QTest>
 
 SurveyComplexItemTest::SurveyComplexItemTest(void)
@@ -161,6 +162,19 @@ void SurveyComplexItemTest::_testEntryLocation(void)
         _surveyItem->rotateEntryPoint();    // Rotate back for first entry point
         rgSeenEntryCoords.clear();
     }
+}
+
+void SurveyComplexItemTest::_testEntryPointProperty(void)
+{
+    QSignalSpy spy(_surveyItem, &TransectStyleComplexItem::entryPointChanged);
+    const int first = _surveyItem->entryPoint();
+
+    for (int rotateCount = 1; rotateCount <= 4; rotateCount++) {
+        _surveyItem->rotateEntryPoint();
+        QCOMPARE(spy.count(), rotateCount);
+        QCOMPARE(_surveyItem->entryPoint(), (first + rotateCount) % 4);
+    }
+    QCOMPARE(_surveyItem->entryPoint(), first);
 }
 
 void SurveyComplexItemTest::_testItemCount(void)

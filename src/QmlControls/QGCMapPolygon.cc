@@ -638,6 +638,29 @@ void QGCMapPolygon::setTraceMode(bool traceMode)
     }
 }
 
+void QGCMapPolygon::beginTrace(void)
+{
+    _traceSavedVertices = coordinateList();
+    clear();
+    setTraceMode(true);
+}
+
+void QGCMapPolygon::finishTrace(void)
+{
+    setTraceMode(false);
+}
+
+void QGCMapPolygon::cancelTrace(void)
+{
+    beginReset();
+    clear();
+    for (const QGeoCoordinate& coordinate : std::as_const(_traceSavedVertices)) {
+        appendVertex(coordinate);
+    }
+    endReset();
+    setTraceMode(false);
+}
+
 void QGCMapPolygon::setShowAltColor(bool showAltColor){
     if (showAltColor != _showAltColor) {
         _showAltColor = showAltColor;

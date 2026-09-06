@@ -15,8 +15,12 @@ TransectStyleComplexItemEditor {
     transectValuesHeaderName:       qsTr("Corridor")
     transectValuesComponent:        _transectValuesComponent
     presetsTransectValuesComponent: _transectValuesComponent
+    entryPointText:                 qsTr("Start from")
+    entryPointValue:                _entryNames[missionItem.entryPoint]
 
     property var _missionItem: missionItem
+
+    readonly property var _entryNames: [ qsTr("start"), qsTr("start, other side"), qsTr("end"), qsTr("end, other side") ]
 
     Component {
         id: _transectValuesComponent

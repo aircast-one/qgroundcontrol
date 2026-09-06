@@ -17,9 +17,10 @@ TransectStyleComplexItemEditor {
     transectValuesComponent:        _transectValuesComponent
     presetsTransectValuesComponent: _transectValuesComponent
     entryPointText:                 qsTr("Start from")
-    entryPointValue:                _entryNames[missionItem ? missionItem.entryPoint : 0] || ""
+    entryPointValue:                _entryNames[missionItem.entryPoint]
 
     property var _missionItem: missionItem
+    property var _vehicle:     QGroundControl.multiVehicleManager.activeVehicle ? QGroundControl.multiVehicleManager.activeVehicle : QGroundControl.multiVehicleManager.offlineEditingVehicle
 
     readonly property var _entryNames: [ qsTr("top left"), qsTr("top right"), qsTr("bottom left"), qsTr("bottom right") ]
 
@@ -30,8 +31,7 @@ TransectStyleComplexItemEditor {
             PlanFactRow {
                 text:      qsTr("Angle")
                 fact:      missionItem.gridAngle
-                onFactChanged: angleSlider.value = missionItem.gridAngle.value
-                field.onUpdated: angleSlider.value = missionItem.gridAngle.value
+                onUpdated: angleSlider.value = missionItem.gridAngle.value
             }
 
             Item {

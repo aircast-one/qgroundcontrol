@@ -35,6 +35,8 @@ public:
     Q_PROPERTY(bool                 isValid     READ isValid                                NOTIFY isValidChanged)
     Q_PROPERTY(bool                 empty       READ empty                                  NOTIFY isEmptyChanged)
     Q_PROPERTY(bool                 traceMode   READ traceMode      WRITE setTraceMode      NOTIFY traceModeChanged)
+    Q_PROPERTY(bool                 traceComplete READ traceComplete                        NOTIFY countChanged)
+    Q_PROPERTY(int                  minVertexCount READ minVertexCount                      CONSTANT)
     Q_PROPERTY(int              selectedVertex  READ selectedVertex WRITE selectVertex      NOTIFY selectedVertexChanged)
 
     Q_INVOKABLE void clear(void);
@@ -60,6 +62,10 @@ public:
 
     Q_INVOKABLE void beginReset (void);
     Q_INVOKABLE void endReset   (void);
+
+    Q_INVOKABLE void beginTrace (void);
+    Q_INVOKABLE void finishTrace(void);
+    Q_INVOKABLE void cancelTrace(void);
 
     /// Returns the path in a list of QGeoCoordinate's format
     QList<QGeoCoordinate> coordinateList(void) const;
@@ -93,6 +99,8 @@ public:
     bool            isValid     (void) const { return _polylineModel.count() >= 2; }
     bool            empty       (void) const { return _polylineModel.count() == 0; }
     bool            traceMode   (void) const { return _traceMode; }
+    bool            traceComplete(void) const { return count() >= kMinVertexCount; }
+    int             minVertexCount(void) const { return kMinVertexCount; }
     int             selectedVertex()   const { return _selectedVertexIndex; }
 
     QmlObjectListModel* qmlPathModel(void) { return &_polylineModel; }
@@ -132,5 +140,8 @@ private:
     bool                _dirty;
     bool                _interactive;
     bool                _traceMode = false;
+    QList<QGeoCoordinate> _traceSavedVertices;
+
+    static constexpr int kMinVertexCount = 2;
     int                 _selectedVertexIndex = -1;
 };
