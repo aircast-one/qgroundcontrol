@@ -154,6 +154,7 @@ Item {
 
             CameraSection {
                 id:         cameraSection
+                width:      parent.width
                 checked:    !_waypointsOnlyMode && missionItem !== null && missionItem.cameraSection.settingsSpecified
                 visible:    _showCameraSection && missionItem !== null
             }

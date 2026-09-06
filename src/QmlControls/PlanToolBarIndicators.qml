@@ -77,6 +77,7 @@ RowLayout {
     property bool   _communicationLost: _activeVehicle ? _activeVehicle.vehicleLinkManager.communicationLost : false
     property color  _mainStatusBGColor: "transparent"
     property int    _statsPage:         0
+    readonly property bool _compact:    width < ScreenTools.defaultFontPixelWidth * 75
 
     readonly property string _planName: {
         if (!_controllerValid) {
@@ -101,7 +102,8 @@ RowLayout {
         if (!_containsItems) {
             return qsTr("Empty plan")
         }
-        return (_controllerDirty ? qsTr("Edited") : qsTr("Uploaded")) + " · " + items
+        const state = (_controllerDirty ? qsTr("Edited") : qsTr("Uploaded")) + " · " + items
+        return _compact ? state + " · " + _missionPlannedDistanceText : state
     }
 
     function getMissionTime() {
@@ -198,7 +200,7 @@ RowLayout {
         Layout.preferredHeight: _capsuleHeight
         Layout.preferredWidth:  Math.min(Math.max(nameMetrics.width, stateMetrics.width) + ScreenTools.defaultFontPixelWidth * 4,
                                          ScreenTools.defaultFontPixelWidth * 28)
-        Layout.minimumWidth:    Layout.preferredWidth
+        Layout.minimumWidth:    _compact ? ScreenTools.defaultFontPixelWidth * 10 : Layout.preferredWidth
         visible:                _controllerValid
 
         TextMetrics { id: nameMetrics;  font: nameLabel.font;  text: _root._planName }
@@ -245,7 +247,7 @@ RowLayout {
         Layout.preferredHeight: _capsuleHeight
         Layout.preferredWidth:  statsRow.width
         Layout.minimumWidth:    Math.min(statsRow.width, _root.width * 0.45)
-        visible:                _containsItems
+        visible:                _containsItems && !_compact
         highlight:              statsMouseArea.containsMouse
         clip:                   true
 

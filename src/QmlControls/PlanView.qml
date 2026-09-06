@@ -51,7 +51,9 @@ Item {
     readonly property real  _toolsMargin:               ScreenTools.defaultFontPixelWidth * 0.75
     // Derived, not branched. The width used to be an if/else that added 21.667 characters when
     // UTMSP was on - a number with no relationship to anything on screen.
-    readonly property real  _rightPanelWidth:           Math.min(width / 3, ScreenTools.defaultFontPixelWidth * (_utmspEnabled ? 52 : 40))
+    readonly property bool  _portrait:                  height > width
+    readonly property real  _rightPanelWidth:           _portrait ? width - _panelMargin * 2
+                                                                  : Math.min(width / 3, ScreenTools.defaultFontPixelWidth * (_utmspEnabled ? 52 : 40))
     // Everything floats clear of the window edge by the same amount, so the map reads as one
     // surface with panels resting on it rather than as a set of docked regions butted together.
     readonly property real  _panelMargin:               ScreenTools.defaultFontPixelHeight * 0.9
@@ -367,7 +369,7 @@ Item {
     PlanViewToolBar {
         id:                     planToolBar
         planMasterController:   _planMasterController
-        rightInset:             rightPanel.visible ? _rightPanelWidth + _panelMargin : 0
+        rightInset:             rightPanel.visible && !_portrait ? _rightPanelWidth + _panelMargin : 0
         z:                      QGroundControl.zOrderWidgets + 1
     }
 
@@ -466,7 +468,8 @@ Item {
             id:                     dock
             anchors.left:           parent.left
             anchors.leftMargin:     _panelMargin
-            anchors.verticalCenter: parent.verticalCenter
+            anchors.top:            parent.top
+            anchors.topMargin:      _portrait ? planToolBar.height + _panelMargin : (parent.height - height) / 2
             spacing:                ScreenTools.defaultFontPixelHeight * 0.6
             z:                      QGroundControl.zOrderWidgets
 
@@ -873,16 +876,18 @@ Item {
             id:                     rightPanel
             width:                  _rightPanelWidth
             anchors.top:            parent.top
-            anchors.topMargin:      planToolBar.height + _panelMargin
+            anchors.topMargin:      _portrait ? _root.height - height - _panelMargin : _topInset
             anchors.right:          parent.right
             anchors.rightMargin:    _panelMargin
             height:                 Math.min(_wantedHeight, _availableHeight)
             z:                      QGroundControl.zOrderWidgets
             visible:                _editingLayer !== 0
 
-            readonly property real _padding: ScreenTools.defaultFontPixelHeight * 0.7
+            readonly property real _padding:  ScreenTools.defaultFontPixelHeight * 0.7
+            readonly property real _topInset: planToolBar.height + _panelMargin
 
-            readonly property real _availableHeight: _root.height - anchors.topMargin - _panelMargin -
+            readonly property real _availableHeight: _portrait ? _root.height * 0.5
+                                                   : _root.height - _topInset - _panelMargin -
                                                          (_terrainProfileOpen ? _terrainProfileHeight + _panelMargin : 0)
 
             readonly property real _wantedHeight: (layerSelector.visible ? layerSelector.height + _padding : 0) +
@@ -1216,9 +1221,9 @@ Item {
             id:                     terrainSheet
             anchors.left:           dock.right
             anchors.leftMargin:     _panelMargin
-            anchors.right:          rightPanel.left
+            anchors.right:          _portrait ? parent.right : rightPanel.left
             anchors.rightMargin:    _panelMargin
-            anchors.bottom:         parent.bottom
+            anchors.bottom:         _portrait && rightPanel.visible ? rightPanel.top : parent.bottom
             anchors.bottomMargin:   _panelMargin
             height:                 _root._terrainProfileOpen ? _root._terrainProfileHeight : 0
             visible:                height > 0
@@ -1289,7 +1294,9 @@ Item {
         MapScale {
             id:                     mapScale
             anchors.margins:        _toolsMargin
-            anchors.bottom:         terrainSheet.visible ? terrainSheet.top : parent.bottom
+            anchors.bottom:         terrainSheet.visible              ? terrainSheet.top
+                                  : _portrait && rightPanel.visible ? rightPanel.top
+                                                                    : parent.bottom
             anchors.bottomMargin:   terrainSheet.visible ? _panelMargin + licenseLabel.height : _panelMargin
             anchors.left:           dock.right
             anchors.leftMargin:     _panelMargin
