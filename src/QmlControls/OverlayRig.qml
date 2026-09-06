@@ -84,6 +84,7 @@ QtObject {
         damping:      2 * root._dampingFraction * root._omega
         friction:     root._friction
         restitution:  root._restitution
+        gutter:       Math.max(0, root.edgeMargin - 2 * root._bodyMargin)
     }
     property real _wallsW: -1
     property real _wallsH: -1

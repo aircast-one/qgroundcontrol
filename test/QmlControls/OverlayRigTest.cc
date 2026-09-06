@@ -15,6 +15,8 @@
 #include <algorithm>
 #include <cmath>
 
+static constexpr qreal kSettleTolerance = 1.0;
+
 static void clearTestSettings()
 {
     clearDragPositionSettings({"OverlayRigTest"});
@@ -334,6 +336,28 @@ void OverlayRigTest::_staticThatMovesPushesMovablesOutOfTheWay()
     QTRY_VERIFY_WITH_TIMEOUT(clearOfStatic(), 3000);
 }
 
+void OverlayRigTest::_pushedItemParksOnTheNeighbourGutter()
+{
+    QQuickView view;
+    QVERIFY(loadView(view));
+
+    QQuickItem *const left = view.rootObject()->findChild<QQuickItem*>("leftItem");
+    QQuickItem *const staticItem = view.rootObject()->findChild<QQuickItem*>("staticItem");
+    QObject *const rig = rigOf(view);
+    QVERIFY(left && staticItem && rig);
+    WAIT_SETTLED(rig, 3000);
+
+    staticItem->setX(left->x());
+    staticItem->setY(left->y());
+    WAIT_SETTLED(rig, 5000);
+
+    const QRectF item = rectOf(left);
+    const QRectF obstacle = rectOf(staticItem);
+    const qreal gap = qMax(qMax(obstacle.left() - item.right(), item.left() - obstacle.right()),
+                           qMax(obstacle.top() - item.bottom(), item.top() - obstacle.bottom()));
+    QCOMPARE(gap, rig->property("edgeMargin").toReal());
+}
+
 void OverlayRigTest::_displacedItemStaysAgainstWhatPushedIt()
 {
     QQuickView view;
@@ -576,7 +600,8 @@ void OverlayRigTest::_releasedItemStaysWhereItWasDropped()
         QTest::qWait(16);
         worst = std::max(worst, QLineF(dropped, QPointF(left->x(), left->y())).length());
     }
-    const qreal snapReach = std::hypot(rig->property("slotSize").toReal() / 2, rig->property("slotSize").toReal() / 2) + 1;
+    const qreal slot = rig->property("slotSize").toReal();
+    const qreal snapReach = std::hypot(slot, slot) / 2 + kSettleTolerance;
     QVERIFY2(worst < snapReach, qPrintable(QStringLiteral("strayed %1 px from the drop point (snap reach %2)").arg(worst).arg(snapReach)));
     WAIT_SETTLED(rig, 3000);
 }

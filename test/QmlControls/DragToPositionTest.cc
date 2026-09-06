@@ -217,7 +217,11 @@ void DragToPositionTest::_defaultHomeKeepsItsOwnLayoutOffTheGrid()
     QQuickItem* root = view.rootObject();
     QQuickItem* panel = root->findChild<QQuickItem*>("selectablePanel");
     QVERIFY(panel);
-    QVERIFY(dropGridOf(root) > 2);
+    const qreal grid = dropGridOf(root);
+    const qreal margin = dropMarginOf(root);
+    QVERIFY(grid > 0);
+    QVERIFY(std::fmod(10.0 - margin, grid) != 0.0);
+    QVERIFY(std::fmod(root->height() - margin - (380.0 + panel->height()), grid) != 0.0);
 
     QCOMPARE(panel->x(), 10.0);
     QCOMPARE(panel->y(), 380.0);

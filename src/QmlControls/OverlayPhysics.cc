@@ -224,10 +224,10 @@ QPointF OverlayPhysics::_targetFor(const Body &body, const QList<QRectF> &obstac
     QList<qreal> xs { footprint.left() };
     QList<qreal> ys { footprint.top() };
     for (const QRectF &r : obstacles) {
-        xs.append(r.right());
-        xs.append(r.left() - w);
-        ys.append(r.bottom());
-        ys.append(r.top() - h);
+        xs.append(r.right() + _gutter);
+        xs.append(r.left() - w - _gutter);
+        ys.append(r.bottom() + _gutter);
+        ys.append(r.top() - h - _gutter);
     }
 
     QPointF best = home;
@@ -428,3 +428,4 @@ void OverlayPhysics::setSpringRadius(qreal value) { if (!qFuzzyCompare(_springRa
 void OverlayPhysics::setDamping(qreal value)      { if (!qFuzzyCompare(_damping, value))      { _damping = value;      emit tuningChanged(); } }
 void OverlayPhysics::setFriction(qreal value)     { if (!qFuzzyCompare(_friction, value))     { _friction = value;     emit tuningChanged(); } }
 void OverlayPhysics::setRestitution(qreal value)  { if (!qFuzzyCompare(_restitution, value))  { _restitution = value;  emit tuningChanged(); } }
+void OverlayPhysics::setGutter(qreal value)       { if (!qFuzzyCompare(_gutter, value))       { _gutter = value;       _wakeFreeBodies(); emit tuningChanged(); } }

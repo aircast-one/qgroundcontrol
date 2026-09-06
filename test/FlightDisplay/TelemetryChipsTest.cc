@@ -14,6 +14,9 @@
 #include "QmlObjectListModel.h"
 
 #include <QtQml/QQmlContext>
+
+#include <algorithm>
+#include <cmath>
 #include <QtQuick/QQuickItem>
 
 static const QString kChipKeyPrefix     = QStringLiteral("TelemetryChip-");
@@ -414,4 +417,46 @@ void TelemetryChipsTest::_labelStyleSurvivesReload()
     QVERIFY(reloadedValue->property("showIcon").toBool());
     QCOMPARE(reloadedValue->property("icon").toString(), QStringLiteral("adjust.svg"));
     QCOMPARE(reloadedValue->property("text").toString(), QStringLiteral("Custom"));
+}
+
+void TelemetryChipsTest::_rowsKeepTheirPitchOnACoarseSlotGrid()
+{
+    ChipSettingsScope settingsScope;
+
+    TelemetryChipsTestMainWindow mainWindow;
+    QQuickView view;
+    QVERIFY(loadLayer(view, mainWindow));
+
+    FactValueGrid* const grid = view.rootObject()->findChild<FactValueGrid*>();
+    QVERIFY(grid);
+    if (grid->property("rowCount").toInt() < 2) {
+        grid->appendRow();
+    }
+    QTRY_COMPARE(chipsOf(view.rootObject()).count(), grid->columns()->count() * grid->property("rowCount").toInt());
+
+    QQuickItem* const layer = view.rootObject()->findChild<QQuickItem*>(QStringLiteral("telemetryChipsLayer"));
+    QVERIFY(layer);
+    const qreal pitch = layer->property("_chipHeight").toReal() + layer->property("_chipSpacing").toReal();
+    const qreal slot = 32;
+    QVERIFY(std::fmod(pitch, slot) != 0.0);
+    QVERIFY(QMetaObject::invokeMethod(view.rootObject(), "setSlotGrid", Q_ARG(QVariant, slot)));
+
+    const QList<QQuickItem*> chips = chipsOf(view.rootObject());
+    const auto inRow = [&](int row) {
+        QList<QQuickItem*> found;
+        std::copy_if(chips.cbegin(), chips.cend(), std::back_inserter(found),
+                     [row](QQuickItem* chip) { return chip->property("rowIndex").toInt() == row; });
+        return found;
+    };
+    const QList<QQuickItem*> topRow = inRow(0);
+    const QList<QQuickItem*> secondRow = inRow(1);
+    QVERIFY(!secondRow.isEmpty());
+    for (QQuickItem* lower : secondRow) {
+        const qreal centre = lower->x() + lower->width() / 2;
+        const auto above = std::min_element(topRow.cbegin(), topRow.cend(), [centre](QQuickItem* a, QQuickItem* b) {
+            return qAbs(a->x() + a->width() / 2 - centre) < qAbs(b->x() + b->width() / 2 - centre);
+        });
+        QVERIFY(above != topRow.cend());
+        QTRY_COMPARE(lower->y() - (*above)->y(), pitch);
+    }
 }

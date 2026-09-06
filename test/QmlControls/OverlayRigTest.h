@@ -26,6 +26,7 @@ private slots:
     void _registerMovableDoesNotDuplicate();
     void _ownedStaticPushesOthersButNotOwner();
     void _staticThatMovesPushesMovablesOutOfTheWay();
+    void _pushedItemParksOnTheNeighbourGutter();
     void _displacedItemStaysAgainstWhatPushedIt();
     void _itemSpringsBackWhenTheObstructionLeaves();
     void _itemFollowsAMovedHomeWhenTheObstructionLeaves();

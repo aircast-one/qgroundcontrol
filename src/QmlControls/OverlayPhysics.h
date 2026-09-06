@@ -17,6 +17,7 @@ class OverlayPhysics : public QObject
     Q_PROPERTY(qreal damping      READ damping      WRITE setDamping      NOTIFY tuningChanged)
     Q_PROPERTY(qreal friction     READ friction     WRITE setFriction     NOTIFY tuningChanged)
     Q_PROPERTY(qreal restitution  READ restitution  WRITE setRestitution  NOTIFY tuningChanged)
+    Q_PROPERTY(qreal gutter       READ gutter       WRITE setGutter       NOTIFY tuningChanged)
 
 public:
     enum Kind { Free, Driven };
@@ -50,12 +51,14 @@ public:
     qreal damping() const { return _damping; }
     qreal friction() const { return _friction; }
     qreal restitution() const { return _restitution; }
+    qreal gutter() const { return _gutter; }
 
     void setPull(qreal value);
     void setSpringRadius(qreal value);
     void setDamping(qreal value);
     void setFriction(qreal value);
     void setRestitution(qreal value);
+    void setGutter(qreal value);
 
 signals:
     void tuningChanged();
@@ -108,4 +111,5 @@ private:
     qreal _damping      = 6;
     qreal _friction     = 0.6;
     qreal _restitution  = 0.15;
+    qreal _gutter       = 0;
 };
