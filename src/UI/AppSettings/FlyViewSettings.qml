@@ -45,6 +45,15 @@ SettingsPage {
 
     QGCFileDialogController { id: fileController }
 
+    Component.onCompleted: {
+        if (QGroundControl.loadBoolGlobalSetting("scrollToRcControls", false)) {
+            QGroundControl.saveBoolGlobalSetting("scrollToRcControls", false)
+            // The layout hasn't settled yet at onCompleted - rcControlsGroup.y is still wrong
+            // until the ColumnLayout finishes polishing the page below it.
+            Qt.callLater(() => scrollToItem(rcControlsGroup))
+        }
+    }
+
     function mavlinkActionList() {
         var fileModel = fileController.getFiles(_settingsManager.appSettings.mavlinkActionsSavePath, "*.json")
         fileModel.unshift(qsTr("<None>"))
@@ -350,6 +359,25 @@ SettingsPage {
             _save(_controls.map((control, i) => i === index ? Object.assign({}, control, patch) : control))
         }
 
+        property var _removed: null
+
+        function _remove(index) {
+            _removed = { control: _controls[index], index: index }
+            _undoTimer.restart()
+            _save(_controls.filter((_, i) => i !== index))
+        }
+
+        function _undoRemove() {
+            _save([..._controls.slice(0, _removed.index), _removed.control, ..._controls.slice(_removed.index)])
+            _removed = null
+        }
+
+        Timer {
+            id:       _undoTimer
+            interval: 6000
+            onTriggered: rcControlsGroup._removed = null
+        }
+
         RowLayout {
             Layout.fillWidth:   true
             spacing:            ScreenTools.defaultFontPixelWidth
@@ -418,7 +446,7 @@ SettingsPage {
                     QGCButton {
                         objectName: "rcControlRemove" + rcControlRow.index
                         text:       qsTr("Remove")
-                        onClicked:  rcControlsGroup._save(rcControlsGroup._controls.filter((_, i) => i !== rcControlRow.index))
+                        onClicked:  rcControlsGroup._remove(rcControlRow.index)
                     }
                 }
 
@@ -435,11 +463,36 @@ SettingsPage {
             }
         }
 
+        RowLayout {
+            Layout.fillWidth:   true
+            spacing:            ScreenTools.defaultFontPixelWidth * 2
+            visible:            rcControlsGroup._removed !== null
+
+            QGCLabel {
+                objectName:         "rcControlUndoLabel"
+                Layout.fillWidth:   true
+                color:              QGroundControl.globalPalette.colorGrey
+                text:               rcControlsGroup._removed
+                                        ? qsTr("Removed %1.").arg(rcControlsGroup._removed.control.label || qsTr("CH%1").arg(rcControlsGroup._removed.control.channel))
+                                        : ""
+            }
+
+            QGCButton {
+                objectName: "rcControlUndoButton"
+                text:       qsTr("Undo")
+                onClicked:  rcControlsGroup._undoRemove()
+            }
+        }
+
         QGCButton {
             objectName: "rcControlsAddButton"
             text:       qsTr("Add Control")
-            onClicked:  rcControlsGroup._save([...rcControlsGroup._controls,
-                                               { label: "", channel: rcControlsGroup._firstFreeChannel(), type: "slider" }])
+            primary:    true
+            onClicked: {
+                const channel = rcControlsGroup._firstFreeChannel()
+                rcControlsGroup._save([...rcControlsGroup._controls, { label: "", channel: channel, type: "slider" }])
+                QGroundControl.saveGlobalSetting("rcControlJustAdded", String(channel))
+            }
         }
     }
 

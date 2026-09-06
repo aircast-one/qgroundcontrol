@@ -72,7 +72,7 @@ ToolDrawerPage {
     }
 
     function showSettingsPage(settingsPageUrl) {
-        const page = settingsPagesModel.pages().find(candidate => candidate.url === settingsPageUrl || candidate.name === settingsPageUrl)
+        const page = settingsPagesModel.pages().find(candidate => candidate.url === settingsPageUrl)
         if (!page) {
             console.warn("showSettingsPage: no settings page with url", settingsPageUrl)
             return
@@ -176,7 +176,6 @@ ToolDrawerPage {
 
     QGCFlickable {
         id:                 buttonList
-        objectName:         "settingsList"
         visible:            !_stacked || !_pageOpen
         x:                  _inset + _horizontalMargin
         y:                  searchField.visible ? searchField.y + searchField.height + _verticalMargin
@@ -259,7 +258,6 @@ ToolDrawerPage {
 
     Loader {
         id:                     rightPanel
-        objectName:             "settingsPageLoader"
         visible:                !_stacked || _pageOpen
         anchors.leftMargin:     _stacked ? _inset + _horizontalMargin : _defaultTextWidth * 3
         anchors.rightMargin:    _stacked ? _inset + _horizontalMargin : _inset

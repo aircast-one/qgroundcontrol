@@ -24,12 +24,14 @@ Item {
     width:  image.width
     height: image.height
 
+    readonly property bool _tinted: color.a > 0
+
     Image {
         id:                 image
         smooth:             true
         mipmap:             true
         antialiasing:       true
-        visible:            false
+        visible:            !_tinted
         fillMode:           Image.PreserveAspectFit
         anchors.fill:       parent
         sourceSize.height:  height
@@ -38,6 +40,8 @@ Item {
     ColorOverlay {
         anchors.fill:       image
         source:             image
-        color:              parent.color
+        visible:            _tinted
+        color:              Qt.rgba(parent.color.r, parent.color.g, parent.color.b, 1)
+        opacity:            parent.color.a
     }
 }

@@ -29,12 +29,14 @@ Item {
     property Item   fullContentItem:        _root.parent
     property bool   show:                   true
     property real   widthOverride:          0
-    readonly property real naturalWidth:    parent ? Math.min(Math.max(_pipSize, parent.width * _minSize), parent.width * _maxSize) : _pipSize
     property real   margin:                 0
 
     property bool   showActionButton:       false
     property string actionButtonText:       ""
     signal          actionButtonClicked()
+
+    readonly property bool coversHorizontalCentre: parent && visible && _isExpanded
+                                                       ? x < parent.width / 2 && x + width > parent.width / 2 : false
 
     readonly property alias hasCustomPosition: dragPosition.hasCustomPosition
     readonly property alias dragToPosition:    dragPosition
@@ -56,7 +58,13 @@ Item {
     property bool   quiet:              false
 
     onQuietChanged: _isExpanded = !quiet && QGroundControl.loadBoolGlobalSetting(_pipExpandedSettingsKey, true)
-    property real   _pipSize:           parent ? parent.width * 0.2 : 0
+    property real   _pipFraction:       0.2
+
+    readonly property int  revealDuration: 320
+    readonly property int  revealEasing:   Easing.OutCubic
+
+    readonly property real naturalWidth: parent ? parent.width * _pipFraction : 0
+    property real   _pixelSizeToMigrate: 0
     property real   _maxSize:           0.75
     property real   _minSize:           0.10
 
@@ -70,12 +78,37 @@ Item {
     }
 
     Component.onCompleted: {
-        var savedSize = parseFloat(QGroundControl.loadGlobalSetting(_pipSizeSettingsKey, "0"))
-        if (savedSize > 0) {
-            _pipSize = savedSize
-        }
+        _loadSize()
         _initForItems()
         _syncRig()
+    }
+
+    function _loadSize() {
+        const saved = parseFloat(QGroundControl.loadGlobalSetting(_pipSizeSettingsKey, "0"))
+        if (saved <= 0) {
+            return
+        }
+        if (saved <= _maxSize) {
+            _setFraction(saved)
+            return
+        }
+        _pixelSizeToMigrate = saved
+        _migratePixelSize()
+    }
+
+    function _migratePixelSize() {
+        if (_pixelSizeToMigrate <= 0 || !parent || parent.width <= 0) {
+            return
+        }
+        _setFraction(_pixelSizeToMigrate / parent.width)
+        _pixelSizeToMigrate = 0
+        QGroundControl.saveGlobalSetting(_pipSizeSettingsKey, _pipFraction.toString())
+    }
+
+    readonly property Connections _parentSizeWatcher: Connections {
+        target: _root.parent
+
+        function onWidthChanged() { _root._migratePixelSize() }
     }
 
     Component.onDestruction: if (overlayRig) overlayRig.unregisterMovable(_root)
@@ -99,7 +132,11 @@ Item {
         if (!parent) {
             return
         }
-        _pipSize = Math.max(parent.width * _minSize, Math.min(newWidth, parent.width * _maxSize))
+        _setFraction(newWidth / parent.width)
+    }
+
+    function _setFraction(fraction) {
+        _pipFraction = Math.max(_minSize, Math.min(fraction, _maxSize))
     }
 
     function showWindow() {
@@ -169,8 +206,6 @@ Item {
 
     readonly property real _previewRadius: ScreenTools.defaultFontPixelHeight * 0.75
 
-    readonly property int  _revealDuration: 320
-    readonly property int  _revealEasing:   Easing.OutCubic
     readonly property real _collapsedScale: 0.88
 
     Rectangle {
@@ -184,8 +219,8 @@ Item {
         layer.enabled:      true
         layer.effect:       OverlayShadowEffect { elevated: pipMouseArea.drag.active }
 
-        Behavior on opacity { NumberAnimation { duration: _revealDuration; easing.type: _revealEasing } }
-        Behavior on scale   { NumberAnimation { duration: _revealDuration; easing.type: _revealEasing } }
+        Behavior on opacity { NumberAnimation { duration: revealDuration; easing.type: revealEasing } }
+        Behavior on scale   { NumberAnimation { duration: revealDuration; easing.type: revealEasing } }
     }
 
     Item {
@@ -205,8 +240,8 @@ Item {
             maskSpreadAtMin:    1.0
         }
 
-        Behavior on opacity { NumberAnimation { duration: _revealDuration; easing.type: _revealEasing } }
-        Behavior on scale   { NumberAnimation { duration: _revealDuration; easing.type: _revealEasing } }
+        Behavior on opacity { NumberAnimation { duration: revealDuration; easing.type: revealEasing } }
+        Behavior on scale   { NumberAnimation { duration: revealDuration; easing.type: revealEasing } }
     }
 
     Item {
@@ -287,7 +322,7 @@ Item {
 
         QGCColoredImage {
             source:             "/InstrumentValueIcons/browser-window-new.svg"
-            color:              QGroundControl.globalPalette.text
+            color:              QGroundControl.globalPalette.overlayInk
             mipmap:             true
             fillMode:           Image.PreserveAspectFit
             anchors.centerIn:   parent
@@ -323,7 +358,7 @@ Item {
 
         QGCColoredImage {
             source:             "/InstrumentValueIcons/arrow-simple-right.svg"
-            color:              QGroundControl.globalPalette.text
+            color:              QGroundControl.globalPalette.overlayInk
             mipmap:             true
             fillMode:           Image.PreserveAspectFit
             anchors.centerIn:   parent
@@ -351,7 +386,7 @@ Item {
                     _root._resizeTo(_startWidth + mapToItem(null, mouse.x, mouse.y).x - _startSceneX)
                 }
             }
-            onReleased: QGroundControl.saveGlobalSetting(_root._pipSizeSettingsKey, _root._pipSize.toString())
+            onReleased: QGroundControl.saveGlobalSetting(_root._pipSizeSettingsKey, _root._pipFraction.toString())
         }
     }
 
@@ -371,7 +406,7 @@ Item {
                                 : (ScreenTools.isMobile || pipHover.hovered) ? 1 : 0
         scale:              pipToggleMouseArea.pressed ? 0.92 : 1
 
-        Behavior on opacity { NumberAnimation { duration: _revealDuration; easing.type: _revealEasing } }
+        Behavior on opacity { NumberAnimation { duration: revealDuration; easing.type: revealEasing } }
         Behavior on scale   { NumberAnimation { duration: 120; easing.type: Easing.OutCubic } }
 
         OverlayGlass {
@@ -382,7 +417,7 @@ Item {
         QGCColoredImage {
             objectName:         "pipToggleChevron"
             source:             "/InstrumentValueIcons/cheveron-left.svg"
-            color:              QGroundControl.globalPalette.text
+            color:              QGroundControl.globalPalette.overlayInk
             mipmap:             true
             fillMode:           Image.PreserveAspectFit
             anchors.centerIn:   parent
@@ -391,7 +426,7 @@ Item {
             sourceSize.height:  height
             rotation:           _isExpanded ? 0 : 180
 
-            Behavior on rotation { NumberAnimation { duration: _revealDuration; easing.type: _revealEasing } }
+            Behavior on rotation { NumberAnimation { duration: revealDuration; easing.type: revealEasing } }
         }
 
         MouseArea {

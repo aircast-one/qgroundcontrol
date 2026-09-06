@@ -17,7 +17,6 @@ class LinkManager;
 
 Q_DECLARE_LOGGING_CATEGORY(LinkInterfaceLog)
 
-/// The link interface defines the interface for all links used to communicate with the ground station application.
 class LinkInterface : public QObject
 {
     Q_OBJECT
@@ -27,11 +26,11 @@ class LinkInterface : public QObject
 public:
     virtual ~LinkInterface();
 
-    Q_INVOKABLE virtual void disconnect() = 0; // FIXME: This gets called 3x when closing link
+    Q_INVOKABLE virtual void disconnect() = 0;
 
     virtual bool isConnected() const = 0;
     virtual bool isLogReplay() const { return false; }
-    virtual bool isSecureConnection() const { return false; } ///< Returns true if the connection is secure (e.g. USB, wired ethernet)
+    virtual bool isSecureConnection() const { return false; }
 
     SharedLinkConfigurationPtr linkConfiguration() { return _config; }
     const SharedLinkConfigurationPtr linkConfiguration() const { return _config; }
@@ -50,14 +49,12 @@ signals:
     void bytesSent(LinkInterface *link, const QByteArray &data);
     void connected();
     void disconnected();
-    void communicationError(const QString &title, const QString &error);
+    void communicationError(const QString &title, const QString &error, LinkConfiguration::ErrorRemedy remedy = LinkConfiguration::RemedyRetry);
 
 protected:
-    /// Links are only created by LinkManager so constructor is not public
+
     explicit LinkInterface(SharedLinkConfigurationPtr &config, QObject *parent = nullptr);
 
-    /// Called by the LinkManager during LinkInterface construction instructing the link to setup channels.
-    /// Default implementation allocates a single channel. But some link types (such as MockLink) need more than one.
     virtual bool _allocateMavlinkChannel();
 
     virtual void _freeMavlinkChannel();
@@ -67,11 +64,11 @@ protected:
     SharedLinkConfigurationPtr _config;
 
 private slots:
-    /// Not thread safe if called directly, only writeBytesThreadSafe is thread safe
+
     virtual void _writeBytes(const QByteArray &bytes) = 0;
 
 private:
-    /// connect is private since all links should be created through LinkManager::createConnectedLink calls
+
     virtual bool _connect() = 0;
 
     uint8_t _mavlinkChannel = std::numeric_limits<uint8_t>::max();

@@ -27,6 +27,7 @@ RowLayout {
     QGCLabel { 
         id:                 _label
         Layout.fillWidth:   true 
+        elide:              Text.ElideRight
     }
 
     QGCButton {

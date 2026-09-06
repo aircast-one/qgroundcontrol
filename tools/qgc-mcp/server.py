@@ -94,12 +94,28 @@ def record(on: bool) -> dict:
 
 
 @mcp.tool()
-def wait_until(path: str, equals: str, timeout_s: int = 30, endpoint: str = "/status") -> dict:
-    """Poll an endpoint ("/status" or "/vehicle") until a dotted path (e.g.
-    "cameras.1.receiving", or "connected" with endpoint="/vehicle") stringifies to
-    `equals` (case-insensitive), or fail after timeout_s. Returns the final state."""
+def wait_until(path: str, equals: str, timeout_s: int = 30, endpoint: str = "/status",
+               object_name: str = "") -> dict:
+    """Poll until a value stringifies to `equals` (case-insensitive), or fail after timeout_s.
+
+    By default polls an endpoint ("/status" or "/vehicle") for a dotted path such as
+    "cameras.1.receiving", or "connected" with endpoint="/vehicle".
+
+    With object_name set, polls a QML property on that item instead and `path` is the property
+    name - so waiting for a panel to finish opening is wait_until("_morph", "1",
+    object_name="indicatorDrawer") rather than a sleep long enough to cover the worst case."""
     deadline = time.monotonic() + timeout_s
+    poll = 0.05 if object_name else 1
     while True:
+        if object_name:
+            status = _api(f"/ui/prop?name={quote(object_name)}&property={quote(path)}")
+            value = status.get("values", {}).get(path)
+            if str(value).lower() == equals.lower():
+                return status
+            if time.monotonic() > deadline:
+                raise RuntimeError(f"timeout: {object_name}.{path} is {value!r}, wanted {equals!r}")
+            time.sleep(poll)
+            continue
         status = _api(endpoint)
         value = status
         try:
@@ -111,14 +127,105 @@ def wait_until(path: str, equals: str, timeout_s: int = 30, endpoint: str = "/st
             return status
         if time.monotonic() > deadline:
             raise RuntimeError(f"timeout: {path} is {value!r}, wanted {equals!r}")
-        time.sleep(1)
+        time.sleep(poll)
 
 
 @mcp.tool()
-def ui_tree(filter: str = "") -> dict:
-    """List named QML items in the running app (objectName, class, scene geometry, visibility).
-    `filter` substring-matches objectName. Use to find click targets and assert UI state."""
-    return _api(f"/ui/tree?name={filter}")
+def ui_tree(filter: str = "", all: bool = False, visible_only: bool = False) -> dict:
+    """List QML items in the running app (objectName, class, scene geometry, visibility).
+    `filter` substring-matches objectName, or class name when all=True.
+
+    all=True also returns items with no objectName, reported by class. Use it when a click
+    lands on nothing and you need to find what is actually there - anything the author did
+    not think to name is invisible to the default listing, which is exactly when you need it."""
+    query = f"/ui/tree?name={quote(filter)}"
+    if all:
+        query += "&all=1"
+    if visible_only:
+        query += "&visible=1"
+    return _api(query)
+
+
+@mcp.tool()
+def ui_prop(object_name: str, properties: list[str]) -> dict:
+    """Read one or more QML properties from an item, as a single sample.
+
+    Returns {"t": <app timestamp>, "values": {...}}. Reading several properties in one call
+    matters whenever they change together: fetched over separate calls they drift apart by
+    however long each round trip took, which on a fast animation reads as two properties
+    disagreeing when they do not."""
+    if not properties:
+        raise ValueError("at least one property required")
+    return _api(f"/ui/prop?name={quote(object_name)}&property={quote(','.join(properties), safe=',')}")
+
+
+@mcp.tool()
+def ui_set_prop(object_name: str, property: str, value: str) -> dict:
+    """Write a QML property, coerced to the type the property already holds ("true", "2.5", text).
+
+    Use it to put the UI into a state that would otherwise take a scripted sequence of gestures
+    to reach. Fails rather than guessing if the value will not convert or the property is
+    read-only."""
+    return _api(f"/ui/setprop?name={quote(object_name)}&property={quote(property)}&value={quote(value)}")
+
+
+@mcp.tool()
+def ui_at(x: float, y: float) -> dict:
+    """List every QML item under a scene point, outermost first, with geometry and whether each
+    is enabled and accepts mouse buttons.
+
+    This is the tool for "the click did nothing": it says whether anything is there at all,
+    whether it is enabled, and which item would receive the press - which a screenshot cannot
+    tell you and a failed click looks identical to a broken control without."""
+    return _api(f"/ui/at?x={x}&y={y}")
+
+
+@mcp.tool()
+def ui_watch(object_name: str, properties: list[str], frames: int = 60,
+             interval_ms: int = 8, timeout_s: int = 15) -> dict:
+    """Stream property samples while the UI changes, and return them as a list.
+
+    Each sample carries the app's own timestamp and the frame number, and all the properties
+    are read at the same instant. Use it for anything that moves - animations, settling
+    layouts, values converging - where polling would sample each property a round trip apart
+    and report motion that is really measurement error."""
+    if not properties:
+        raise ValueError("at least one property required")
+    request = (f"GET /ui/watch?name={quote(object_name)}&property={quote(','.join(properties), safe=',')}"
+               f"&frames={frames}&interval={interval_ms} HTTP/1.1\r\n"
+               f"Host: localhost\r\nX-QGC-Debug-Api: 1\r\n\r\n")
+    try:
+        connection = socket.create_connection(("127.0.0.1", API_PORT), timeout=5)
+    except OSError as exc:
+        raise RuntimeError(f"debug api unreachable ({exc}); start the app with run_app") from exc
+
+    samples: list[dict] = []
+    with connection:
+        connection.sendall(request.encode())
+        connection.settimeout(0.5)
+        buffered = b""
+        head_done = False
+        deadline = time.monotonic() + timeout_s
+        while time.monotonic() < deadline:
+            try:
+                chunk = connection.recv(65536)
+            except socket.timeout:
+                continue
+            except OSError:
+                break
+            if not chunk:
+                break
+            buffered += chunk
+            if not head_done and b"\r\n\r\n" in buffered:
+                head, _, buffered = buffered.partition(b"\r\n\r\n")
+                if b" 200 " not in head.split(b"\r\n")[0]:
+                    raise RuntimeError(head.decode(errors="replace"))
+                head_done = True
+            while b"\n" in buffered:
+                line, _, buffered = buffered.partition(b"\n")
+                if line.strip():
+                    samples.append(json.loads(line))
+    return {"count": len(samples), "samples": samples}
 
 
 @mcp.tool()

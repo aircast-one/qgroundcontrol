@@ -150,7 +150,7 @@ Item {
                         radius:       _root._radius
                         color:        noSignal ? "transparent" : "black"
                         border.width: noSignal ? 0 : 1
-                        border.color: tileMouseArea.containsMouse ? Qt.alpha(_root._qgcPal.text, 0.6)
+                        border.color: tileMouseArea.containsMouse ? Qt.alpha(_root._qgcPal.overlayInk, 0.6)
                                                                   : _root._qgcPal.overlayBorder
                         visible:      place.shown
                         layer.enabled: true

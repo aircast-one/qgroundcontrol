@@ -20,13 +20,13 @@ import QtQml.Models
 import QGroundControl
 import QGroundControl.Controls
 import QGroundControl.Controllers
-import QGroundControl.Controls
 import QGroundControl.FactSystem
 import QGroundControl.FlightDisplay
 import QGroundControl.FlightMap
 import QGroundControl.Palette
 import QGroundControl.ScreenTools
 import QGroundControl.Vehicle
+
 Item {
     id: _root
 
@@ -78,7 +78,7 @@ Item {
         id:                     topRightPanel
         anchors.top:            parent.top
         anchors.right:          parent.right
-        anchors.topMargin:      _layoutMargin
+        anchors.topMargin:      _layoutMargin + parentToolInsets.topEdgeRightInset
         anchors.rightMargin:    _layoutMargin
         maximumHeight:          parent.height - (_bottomRightPanelsBottomInset + _margins * 5)
 
@@ -89,8 +89,10 @@ Item {
 
     FlyViewTopRightColumnLayout {
         id:                 topRightColumnLayout
+        overlayRig:         _root.overlayRig
         anchors.margins:    _layoutMargin
         anchors.top:        parent.top
+        anchors.topMargin:  _layoutMargin + parentToolInsets.topEdgeRightInset
         anchors.bottom:     parent.bottom
         anchors.bottomMargin: _layoutMargin + _bottomRightPanelsBottomInset
         anchors.right:      parent.right
@@ -103,7 +105,7 @@ Item {
     }
     ArrangeableOverlayItem {
         id:                 photoVideoSlot
-        overlayRig:         _root.overlayRig
+        rig:                _root.overlayRig
         control:            photoVideoControlLoader
         editKey:            "photoVideoControl"
         settingsKeyPrefix:  "PhotoVideoControl"
@@ -133,7 +135,7 @@ Item {
         overlayRig: _root.overlayRig
         visible:    QGroundControl.corePlugin.options.flyView.showInstrumentPanel && _showSingleVehicleUI &&
                         (overlayRig.editMode || !overlayRig.isHidden("instrumentPanel"))
-        opacity:    overlayRig.isHidden("instrumentPanel") ? 0.35 : 1
+        opacity:    overlayRig.isHidden("instrumentPanel") ? overlayRig.hiddenOpacity : 1
         property real bottomEdgeRightInset: 0
         property real rightEdgeBottomInset: 0
 
@@ -192,6 +194,7 @@ Item {
     readonly property real _bottomCenterWidgetClearance: ScreenTools.defaultFontPixelHeight * 8
 
     GuidedActionConfirm {
+        id:                         guidedActionConfirm
         objectName:                 "guidedActionConfirm"
         anchors.bottomMargin:       _toolsMargin + parentToolInsets.bottomEdgeCenterInset + _bottomCenterWidgetClearance
         anchors.bottom:             parent.bottom
@@ -200,6 +203,9 @@ Item {
         guidedController:           _guidedController
         guidedValueSlider:          _guidedValueSlider
         utmspSliderTrigger:         utmspActTrigger
+
+        Component.onCompleted:   overlayRig.registerStatic(guidedActionConfirm)
+        Component.onDestruction: overlayRig.unregisterStatic(guidedActionConfirm)
     }
     Loader {
         id:                         virtualJoystickMultiTouch
@@ -309,7 +315,7 @@ Item {
         required property string glyph
         required property bool   actionable
         required property string buttonName
-        overlayRig: _root.overlayRig
+        rig:        _root.overlayRig
         control:    guidedButton
         available:  actionable || _root.overlayRig.editMode
         z:          QGroundControl.zOrderWidgets
@@ -339,7 +345,7 @@ Item {
                 font.pointSize:           ScreenTools.smallFontPointSize
                 opacity:                  guidedSlot.actionable ? 1 : _unavailableOpacity
                 style:                    Text.Outline
-                styleColor:               "black"
+                styleColor:               QGroundControl.globalPalette.overlayInkInverse
             }
         }
     }
@@ -386,7 +392,7 @@ Item {
 
     ArrangeableOverlayItem {
         id:                 mapScaleSlot
-        overlayRig:         _root.overlayRig
+        rig:                _root.overlayRig
         control:            mapScale
         editKey:            "mapScale"
         settingsKeyPrefix:  "FlyViewMapScale"

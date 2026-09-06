@@ -53,6 +53,7 @@ public:
     QString             commandName         (void) const final { return tr("Corridor Scan"); }
     QString             abbreviation        (void) const final { return tr("C"); }
     ReadyForSaveState   readyForSaveState   (void) const final;
+    QString             readyForSaveMessage (void) const final;
     double              additionalTimeDelay (void) const final { return 0; }
 
     static const QString name;

@@ -54,14 +54,10 @@ Popup {
         layer.enabled: true
         layer.effect:  OverlayShadowEffect { elevated: true }
 
-        // Pinned dark. The material flag is global and follows the fly view's map type, so a
-        // street map turned every menu into a light panel while the rows kept drawing their
-        // light-on-dark text - white words on a white sheet.
         OverlayGlass {
-            anchors.fill:  parent
-            radius:        parent.radius
-            frosted:       false
-            lightMaterial: false
+            anchors.fill: parent
+            radius:       parent.radius
+            material:     OverlayGlass.Panel
         }
     }
 

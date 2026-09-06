@@ -25,6 +25,7 @@ OverlayCapsule {
     QGCLabel {
         id:                 pillLabel
         anchors.centerIn:   parent
+        color:              _root.contentColor
     }
 
     QGCMouseArea {

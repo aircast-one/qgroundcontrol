@@ -27,6 +27,7 @@ TransectStyleMapVisuals {
         mapControl:     map
         mapPolyline:    object.corridorPolyline
         interactive:    _currentItem && parent.interactive
+        defaultShapeWhenEmpty: object.wizardMode
         lineWidth:      3
         lineColor:      "#be781c"
         visible:        _currentItem

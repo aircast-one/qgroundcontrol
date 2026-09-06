@@ -73,6 +73,7 @@ Item {
         mapControl:         map
         mapPolygon:         _mapPolygon
         interactive:        polygonInteractive && _missionItem.isCurrentItem && _root.interactive
+        defaultShapeWhenEmpty: true
         borderWidth:        1
         borderColor:        "black"
         interiorColor:      QGroundControl.globalPalette.surveyPolygonInterior

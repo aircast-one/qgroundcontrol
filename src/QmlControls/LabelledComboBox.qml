@@ -28,6 +28,7 @@ RowLayout {
     QGCLabel {
         id:                 label  
         Layout.fillWidth:   true
+        elide:              Text.ElideRight
     }
 
     QGCComboBox {

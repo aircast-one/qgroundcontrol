@@ -18,10 +18,14 @@ import QGroundControl.Palette
 Rectangle {
     id:             root
     radius:         ScreenTools.defaultFontPixelWidth
-    color:          Qt.alpha(qgcPal.window, 0.92)
-    border.color:   Qt.alpha(qgcPal.text, 0.15)
-    border.width:   1
+    color:          "transparent"
     clip:           true
+
+    OverlayGlass {
+        anchors.fill: parent
+        radius:       root.radius
+        material:     OverlayGlass.Panel
+    }
 
     property var missionController
 

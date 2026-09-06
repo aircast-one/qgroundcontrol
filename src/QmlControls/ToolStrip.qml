@@ -96,9 +96,9 @@ Rectangle {
                     glass:              _root.roundButtons
                     bkColor:            _root.roundButtons ? _root._discColor : qgcPal.toolbarBackground
                     bkHoverColor:       _root.roundButtons ? Qt.rgba(_root._discColor.r, _root._discColor.g, _root._discColor.b, 1) : qgcPal.toolStripHoverColor
-                    bkCheckedColor:     _root.roundButtons ? qgcPal.text : qgcPal.buttonHighlight
-                    contentColor:       _root.roundButtons ? qgcPal.text : qgcPal.buttonText
-                    contentCheckedColor: _root.roundButtons ? qgcPal.window : qgcPal.buttonHighlightText
+                    bkCheckedColor:     _root.roundButtons ? qgcPal.overlayInk : qgcPal.buttonHighlight
+                    contentColor:       _root.roundButtons ? qgcPal.overlayInk : qgcPal.buttonText
+                    contentCheckedColor: _root.roundButtons ? qgcPal.overlayInkInverse : qgcPal.buttonHighlightText
                     borderColor:        _root.roundButtons ? qgcPal.overlayBorder : "transparent"
                     borderWidth:        _root.roundButtons ? 1 : 0
                     toolStripAction:    modelData

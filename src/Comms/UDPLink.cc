@@ -43,6 +43,7 @@ namespace {
 
 UDPConfiguration::UDPConfiguration(const QString &name, QObject *parent)
     : LinkConfiguration(name, parent)
+    , _localPort(static_cast<quint16>(SettingsManager::instance()->autoConnectSettings()->udpListenPort()->rawValue().toUInt()))
 {
 }
 

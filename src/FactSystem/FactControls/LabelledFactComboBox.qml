@@ -10,6 +10,7 @@
 import QtQuick
 import QtQuick.Layouts
 
+import QGroundControl
 import QGroundControl.Controls
 import QGroundControl.ScreenTools
 import QGroundControl.FactSystem
@@ -17,6 +18,7 @@ import QGroundControl.FactControls
 
 RowLayout {
     property alias label:                   label.text
+    property alias description:             descriptionLabel.text
     property alias fact:                    _comboBox.fact
     property alias indexModel:              _comboBox.indexModel
     property var   comboBox:                _comboBox
@@ -26,9 +28,24 @@ RowLayout {
 
     signal activated(int index)
 
-    QGCLabel {
-        id:                 label  
+    ColumnLayout {
         Layout.fillWidth:   true
+        spacing:            0
+
+        QGCLabel {
+            id:                 label
+            Layout.fillWidth:   true
+            elide:              Text.ElideRight
+        }
+
+        QGCLabel {
+            id:                 descriptionLabel
+            Layout.fillWidth:   true
+            visible:            text !== ""
+            wrapMode:           Text.WordWrap
+            font.pointSize:     ScreenTools.smallFontPointSize
+            color:              QGroundControl.globalPalette.colorGrey
+        }
     }
 
     FactComboBox {

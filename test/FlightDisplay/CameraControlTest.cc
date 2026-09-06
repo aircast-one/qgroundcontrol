@@ -15,6 +15,7 @@
 #include "VideoSettings.h"
 #include "SettingsManager.h"
 
+#include <QtCore/QSettings>
 #include <QtQml/QQmlContext>
 #include <QtQml/QQmlPropertyMap>
 #include <QtQuick/QQuickItem>
@@ -85,6 +86,34 @@ private:
     const QVariant _record;
 };
 
+class GlobalSettingScope
+{
+public:
+    explicit GlobalSettingScope(const QString& key)
+        : _key(key)
+    {
+        QSettings settings;
+        settings.beginGroup(QStringLiteral("QGCQml"));
+        _saved = settings.value(_key);
+        settings.remove(_key);
+    }
+
+    ~GlobalSettingScope()
+    {
+        QSettings settings;
+        settings.beginGroup(QStringLiteral("QGCQml"));
+        if (_saved.isValid()) {
+            settings.setValue(_key, _saved);
+        } else {
+            settings.remove(_key);
+        }
+    }
+
+private:
+    const QString _key;
+    QVariant       _saved;
+};
+
 static bool loadLayer(QQuickView& view, QQmlPropertyMap& globals)
 {
     globals.insert(QStringLiteral("activeVehicle"), QVariant());
@@ -122,6 +151,40 @@ void CameraControlTest::_mappedChannelsRevealTheirControls()
     QVERIFY(findVisibleItemWithProperty(view.rootObject(), "icon", QVariant(QStringLiteral("/qmlimages/CameraZoom.svg"))));
     QVERIFY(findVisibleItemWithProperty(view.rootObject(), "icon", QVariant(QStringLiteral("/qmlimages/CameraLight.svg"))));
 }
+void CameraControlTest::_rcSlidersAlternateEdgesClearOfTheCameraCluster()
+{
+    ChannelMappingScope mapping(0, 0, 0, 0);
+    FlyViewSettings* const settings = SettingsManager::instance()->flyViewSettings();
+    const QVariant saved = settings->rcControls()->rawValue();
+    settings->rcControls()->setRawValue(QStringLiteral(
+        R"([{"label":"First","channel":7,"type":"slider"},{"label":"Second","channel":8,"type":"slider"}])"));
+
+    QQmlPropertyMap globals;
+    QQuickView view;
+    QVERIFY(loadLayer(view, globals));
+
+    QQuickItem *const root = view.rootObject();
+    QQuickItem *const first = findItemByName(root, QStringLiteral("rcControlSlider7"));
+    QQuickItem *const second = findItemByName(root, QStringLiteral("rcControlSlider8"));
+    QVERIFY(first && second);
+    QTRY_VERIFY(first->width() > 0 && second->width() > 0);
+
+    QTRY_VERIFY(first->mapToScene(QPointF(0, 0)).x() > root->width() / 2);
+
+    const qreal firstLeft = first->mapToScene(QPointF(0, 0)).x();
+    const qreal secondLeft = second->mapToScene(QPointF(0, 0)).x();
+
+    QVERIFY(secondLeft < root->width() / 2);
+    QVERIFY(firstLeft + first->width() <= root->width());
+
+    QQuickItem *const shutter = findItemByName(root, QStringLiteral("cameraShutterButton"));
+    if (shutter && shutter->isVisible()) {
+        QVERIFY(firstLeft + first->width() <= shutter->mapToScene(QPointF(0, 0)).x() + 1);
+    }
+
+    restoreRcControls(settings, saved);
+}
+
 void CameraControlTest::_aimingIsIncrementalAndClamped()
 {
     ChannelMappingScope mapping(13, 14, 0, 0);
@@ -197,6 +260,93 @@ void CameraControlTest::_settingsFlagConflictingChannels()
     QCOMPARE(firstFree.toInt(), 1);
 
     restoreRcControls(settings, saved);
+}
+
+void CameraControlTest::_removingAControlOffersUndo()
+{
+    ChannelMappingScope mapping(0, 0, 0, 0);
+    FlyViewSettings* const settings = SettingsManager::instance()->flyViewSettings();
+    const QVariant saved = settings->rcControls()->rawValue();
+    settings->rcControls()->setRawValue(QStringLiteral(
+        R"([{"label":"Spray","channel":7,"type":"button"},{"label":"Pan","channel":8,"type":"slider"}])"));
+
+    QQmlPropertyMap globals;
+    globals.insert(QStringLiteral("activeVehicle"), QVariant());
+
+    QQuickView view;
+    view.engine()->rootContext()->setContextProperty(QStringLiteral("globals"), &globals);
+    QVERIFY(loadTestView(view, QStringLiteral("qrc:/unittest/CameraControlSettingsTest.qml")));
+
+    QQuickItem* const removeButton = findItemByName(view.rootObject(), QStringLiteral("rcControlRemove0"));
+    QVERIFY(removeButton);
+    QVERIFY(QMetaObject::invokeMethod(removeButton, "clicked"));
+    QVERIFY(!settings->rcControls()->rawValue().toString().contains(QStringLiteral("Spray")));
+
+    QQuickItem* const undoButton = findItemByName(view.rootObject(), QStringLiteral("rcControlUndoButton"));
+    QVERIFY(undoButton);
+    QVERIFY(undoButton->isVisible());
+    QVERIFY(QMetaObject::invokeMethod(undoButton, "clicked"));
+    QVERIFY(settings->rcControls()->rawValue().toString().contains(QStringLiteral("Spray")));
+
+    // Undo must restore the row at its original position (index 0), not append it at the end -
+    // otherwise every other row's position shifts under the user after a single mis-click.
+    QQuickItem* const restoredLabel = findItemByName(view.rootObject(), QStringLiteral("rcControlLabel0"));
+    QVERIFY(restoredLabel);
+    QCOMPARE(restoredLabel->property("text").toString(), QStringLiteral("Spray"));
+
+    restoreRcControls(settings, saved);
+}
+
+void CameraControlTest::_scrollToItemPositionsTheFlickableAtTheSection()
+{
+    QQmlPropertyMap globals;
+    globals.insert(QStringLiteral("activeVehicle"), QVariant());
+
+    QQuickView view;
+    view.engine()->rootContext()->setContextProperty(QStringLiteral("globals"), &globals);
+    QVERIFY(loadTestView(view, QStringLiteral("qrc:/unittest/CameraControlSettingsTest.qml")));
+
+    QQuickItem* const page = findItemByName(view.rootObject(), QStringLiteral("flyViewSettings"));
+    QVERIFY(page);
+    QQuickItem* const group = findItemByName(view.rootObject(), QStringLiteral("rcControlsGroup"));
+    QVERIFY(group);
+    QQuickItem* const flickable = findItemByName(view.rootObject(), QStringLiteral("settingsFlickable"));
+    QVERIFY(flickable);
+    QCOMPARE(flickable->property("contentY").toReal(), 0.0);
+
+    QVERIFY(QMetaObject::invokeMethod(page, "scrollToItem", Q_ARG(QVariant, QVariant::fromValue(group))));
+
+    // Custom RC Controls sits well down a long settings page - jumping to it should move the
+    // flickable well past the top, not leave the user to scroll there themselves.
+    QVERIFY(flickable->property("contentY").toReal() > 0.0);
+}
+
+void CameraControlTest::_pendingScrollFlagScrollsOnPageOpen()
+{
+    GlobalSettingScope scrollScope(QStringLiteral("scrollToRcControls"));
+
+    QSettings qsettings;
+    qsettings.beginGroup(QStringLiteral("QGCQml"));
+    qsettings.setValue(QStringLiteral("scrollToRcControls"), true);
+
+    QQmlPropertyMap globals;
+    globals.insert(QStringLiteral("activeVehicle"), QVariant());
+
+    QQuickView view;
+    view.engine()->rootContext()->setContextProperty(QStringLiteral("globals"), &globals);
+    QVERIFY(loadTestView(view, QStringLiteral("qrc:/unittest/CameraControlSettingsTest.qml")));
+
+    // The actual scroll is deferred behind Qt.callLater until the ColumnLayout settles - pump
+    // the event loop so that queued call has actually run before checking the result.
+    QCoreApplication::processEvents();
+    QCoreApplication::processEvents();
+
+    QQuickItem* const flickable = findItemByName(view.rootObject(), QStringLiteral("settingsFlickable"));
+    QVERIFY(flickable);
+    QVERIFY(flickable->property("contentY").toReal() > 0.0);
+
+    // Consumed once used, so simply reopening Settings later doesn't jump the user around.
+    QVERIFY(!qsettings.value(QStringLiteral("scrollToRcControls")).toBool());
 }
 
 void CameraControlTest::_customRcControlsAppearForTheirChannels()
@@ -302,6 +452,111 @@ void CameraControlTest::_sliderOrientationCanBeHorizontal()
     QVERIFY(slider);
     QVERIFY(!slider->property("vertical").toBool());
 
+    restoreRcControls(settings, saved);
+}
+
+void CameraControlTest::_rotateBadgeFlipsSliderOrientationAndPersistsIt()
+{
+    ChannelMappingScope mapping(0, 0, 0, 0);
+    FlyViewSettings* const settings = SettingsManager::instance()->flyViewSettings();
+    const QVariant saved = settings->rcControls()->rawValue();
+    settings->rcControls()->setRawValue(QStringLiteral(
+        R"([{"label":"Pan","channel":7,"type":"slider"}])"));
+
+    QQmlPropertyMap globals;
+    QQuickView view;
+    QVERIFY(loadLayer(view, globals));
+
+    QQuickItem* const layer = findItemByName(view.rootObject(), QStringLiteral("cameraControlLayer"));
+    QVERIFY(layer);
+    QObject* const overlayRig = layer->property("overlayRig").value<QObject*>();
+    QVERIFY(overlayRig);
+    overlayRig->setProperty("editMode", true);
+
+    QQuickItem* const slider = findItemByName(view.rootObject(), QStringLiteral("rcControlSlider7"));
+    QVERIFY(slider);
+    QVERIFY(slider->property("vertical").toBool());
+
+    QQuickItem* const rotateBadge = findItemByName(view.rootObject(), QStringLiteral("rcControlRotate7"));
+    QVERIFY(rotateBadge);
+    QVERIFY(rotateBadge->isVisible());
+    QVERIFY(QMetaObject::invokeMethod(rotateBadge, "activate"));
+    QCoreApplication::sendPostedEvents(nullptr, QEvent::DeferredDelete);
+
+    QVERIFY(settings->rcControls()->rawValue().toString().contains(QStringLiteral(R"("orientation":"horizontal")")));
+
+    QQuickItem* const rotatedSlider = findItemByName(view.rootObject(), QStringLiteral("rcControlSlider7"));
+    QVERIFY(rotatedSlider);
+    QVERIFY(!rotatedSlider->property("vertical").toBool());
+
+    overlayRig->setProperty("editMode", false);
+    restoreRcControls(settings, saved);
+}
+
+void CameraControlTest::_addingAControlHighlightsItInTheFlyView()
+{
+    GlobalSettingScope justAddedScope(QStringLiteral("rcControlJustAdded"));
+
+    ChannelMappingScope mapping(0, 0, 0, 0);
+    FlyViewSettings* const settings = SettingsManager::instance()->flyViewSettings();
+    const QVariant saved = settings->rcControls()->rawValue();
+    settings->rcControls()->setRawValue(QStringLiteral(
+        R"([{"label":"Pan","channel":7,"type":"slider"}])"));
+
+    QSettings qsettings;
+    qsettings.beginGroup(QStringLiteral("QGCQml"));
+    qsettings.setValue(QStringLiteral("rcControlJustAdded"), QStringLiteral("7"));
+
+    QQmlPropertyMap globals;
+    QQuickView view;
+    QVERIFY(loadLayer(view, globals));
+
+    QQuickItem* const rcLayer = findItemByName(view.rootObject(), QStringLiteral("rcControlsLayer"));
+    QVERIFY(rcLayer);
+    QCOMPARE(rcLayer->property("_justAddedChannel").toInt(), 7);
+
+    // Consumed once picked up, so revisiting the fly view later doesn't replay a stale pulse.
+    QCOMPARE(qsettings.value(QStringLiteral("rcControlJustAdded")).toString(), QString());
+
+    // Stop the highlight pulse before the Repeater tears the slider down: restoreRcControls
+    // flushes the deferred delete synchronously, and a NumberAnimation still mid-flight against
+    // an item that just got destroyed is exactly the crash the app hit in production.
+    rcLayer->setProperty("_justAddedChannel", -1);
+    restoreRcControls(settings, saved);
+}
+
+void CameraControlTest::_longPressHintHidesOnceEditModeIsDiscovered()
+{
+    GlobalSettingScope discoveredScope(QStringLiteral("rcControlEditModeDiscovered"));
+
+    ChannelMappingScope mapping(0, 0, 0, 0);
+    FlyViewSettings* const settings = SettingsManager::instance()->flyViewSettings();
+    const QVariant saved = settings->rcControls()->rawValue();
+    settings->rcControls()->setRawValue(QStringLiteral(
+        R"([{"label":"Pan","channel":7,"type":"slider"}])"));
+
+    QQmlPropertyMap globals;
+    QQuickView view;
+    QVERIFY(loadLayer(view, globals));
+
+    QQuickItem* const layer = findItemByName(view.rootObject(), QStringLiteral("cameraControlLayer"));
+    QVERIFY(layer);
+    QObject* const overlayRig = layer->property("overlayRig").value<QObject*>();
+    QVERIFY(overlayRig);
+
+    QQuickItem* const rcLayer = findItemByName(view.rootObject(), QStringLiteral("rcControlsLayer"));
+    QVERIFY(rcLayer);
+    QVERIFY(!rcLayer->property("_editModeDiscovered").toBool());
+
+    overlayRig->setProperty("editMode", true);
+
+    QVERIFY(rcLayer->property("_editModeDiscovered").toBool());
+
+    QSettings qsettings;
+    qsettings.beginGroup(QStringLiteral("QGCQml"));
+    QVERIFY(qsettings.value(QStringLiteral("rcControlEditModeDiscovered")).toBool());
+
+    overlayRig->setProperty("editMode", false);
     restoreRcControls(settings, saved);
 }
 

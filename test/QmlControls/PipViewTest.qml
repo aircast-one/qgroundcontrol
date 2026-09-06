@@ -45,6 +45,8 @@ Item {
     QtObject {
         id: stubOverlayRig
 
+        readonly property real hiddenOpacity: 0.35
+
         property bool editMode:    false
         property bool pipAnchored: false
 

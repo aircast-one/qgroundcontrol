@@ -1,6 +1,7 @@
 import QtQuick
 import QtQuick.Controls
 
+import QGroundControl
 import QGroundControl.ScreenTools
 import QGroundControl.Palette
 
@@ -9,21 +10,22 @@ import QGroundControl.Palette
 Rectangle {
     id:             _root
     implicitWidth:  label.contentWidth + (_diameter * 2.5) + (_border * 4)
-    implicitHeight: label.height * 2.5
-    radius:         height /2
-    color:          Qt.rgba(0, 0, 0, 0.35)
-    border.color:   Qt.rgba(qgcPal.text.r, qgcPal.text.g, qgcPal.text.b, 0.15)
-    border.width:   1
+    implicitHeight: Math.max(label.height * 2.6, ScreenTools.minTouchPixels)
+    radius:         height / 2
+    color:          Qt.tint(qgcPal.window, Qt.alpha(qgcPal.text, 0.30))
+    border.width:   0
 
     signal accept   ///< Action confirmed
 
     property string confirmText                         ///< Text for slider
+    property bool   destructive:   false                ///< Confirms something that cannot be undone
     property alias  fontPointSize: label.font.pointSize ///< Point size for text
 
-    property real _border:                      4   
+    property real _border:                      Math.round(ScreenTools.defaultFontPixelHeight * 0.2)
     property real _diameter:                    height - (_border * 2)
     property real _dragStartX:                  _border
     property real _dragStopX:                   _root.width - (_diameter + _border)
+    property real _travel:                      Math.max(0, Math.min(1, (slider.x - _dragStartX) / Math.max(1, _dragStopX - _dragStartX)))
 
     Keys.onSpacePressed: (event) => {
         if (visible && event.modifiers === Qt.NoModifier && !sliderDragArea.drag.active) {
@@ -47,23 +49,27 @@ Rectangle {
 
     QGCLabel {
         id:                         label
-        x:                          _diameter + _border
-        width:                      parent.width - x
+        x:                          0
+        width:                      parent.width
         anchors.verticalCenter:     parent.verticalCenter
         horizontalAlignment:        Text.AlignHCenter
         text:                       confirmText
         color:                      qgcPal.text
-        opacity:                    0.8
+        opacity:                    0.75 * (1 - _root._travel)
     }
 
     Rectangle {
-        id:         slider
-        x:          _border
-        y:          _border
-        height:     _diameter
-        width:      _diameter
-        radius:     _diameter / 2
-        color:      qgcPal.text
+        id:            slider
+        x:             _border
+        y:             _border
+        height:        _diameter
+        width:         _diameter
+        radius:        _diameter / 2
+        color:         _root.destructive ? qgcPal.colorRed : qgcPal.window
+        Behavior on x {
+            enabled: !sliderDragArea.drag.active && !sliderAnimation.running
+            NumberAnimation { duration: 220; easing.type: Easing.OutBack; easing.overshoot: 1.5 }
+        }
 
         QGCColoredImage {
             anchors.centerIn:       parent
@@ -73,7 +79,7 @@ Rectangle {
             fillMode:               Image.PreserveAspectFit
             smooth:                 true
             mipmap:                 true
-            color:                  qgcPal.window
+            color:                  _root.destructive ? "white" : qgcPal.text
             cache:                  false
             source:                 "/res/ArrowRight.svg"
         }
@@ -92,8 +98,8 @@ Rectangle {
         }
 
         function reset() {
-            slider.x = _border
             sliderAnimation.stop()
+            slider.x = _border
         }
     }
 

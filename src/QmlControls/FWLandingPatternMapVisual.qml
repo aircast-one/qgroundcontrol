@@ -486,7 +486,6 @@ Item {
             visible:        _missionItem.isCurrentItem
 
             sourceItem: HeightIndicator {
-                map:        _root.map
                 heightText: Math.floor(QGroundControl.unitsConversion.metersToAppSettingsVerticalDistanceUnits(_transitionAltitudeMeters)) +
                             QGroundControl.unitsConversion.appSettingsVerticalDistanceUnitsString + "<sup>*</sup>"
             }
@@ -518,7 +517,6 @@ Item {
             visible:        _missionItem.isCurrentItem
 
             sourceItem: HeightIndicator {
-                map:        _root.map
                 heightText: Math.floor(QGroundControl.unitsConversion.metersToAppSettingsVerticalDistanceUnits(_midSlopeAltitudeMeters)) +
                             QGroundControl.unitsConversion.appSettingsVerticalDistanceUnitsString + "<sup>*</sup>"
             }
@@ -558,7 +556,6 @@ Item {
             coordinate:     _missionItem.slopeStartCoordinate
 
             sourceItem: HeightIndicator {
-                map:        _root.map
                 heightText: _missionItem.finalApproachAltitude.value.toFixed(1) + QGroundControl.unitsConversion.appSettingsHorizontalDistanceUnitsString
             }
         }

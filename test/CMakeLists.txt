@@ -61,6 +61,9 @@ add_qgc_test(QGCCameraManagerTest)
 
 add_subdirectory(Comms)
 add_qgc_test(QGCSerialPortInfoTest)
+add_qgc_test(TCPConfigurationTest)
+add_qgc_test(TCPLinkErrorTest)
+add_qgc_test(UDPConfigurationTest)
 
 add_subdirectory(DebugApi)
 add_qgc_test(DebugApiServerTest)
@@ -79,6 +82,7 @@ add_qgc_test(GpsTest)
 add_subdirectory(MAVLink)
 add_qgc_test(StatusTextHandlerTest)
 add_qgc_test(SigningTest)
+add_qgc_test(SysStatusSensorInfoTest)
 
 add_subdirectory(MissionManager)
 add_qgc_test(CameraCalcTest)
@@ -117,9 +121,11 @@ add_qgc_test(VideoTileTest)
 
 add_subdirectory(QmlControls)
 add_qgc_test(DragToPositionTest)
+add_qgc_test(QGCColoredImageTest)
 add_qgc_test(OverlayRigTest)
 add_qgc_test(PipRevealTest)
 add_qgc_test(PipViewTest)
+add_qgc_test(VehicleStatusSummaryTest)
 
 add_subdirectory(Terrain)
 add_qgc_test(TerrainQueryTest)
@@ -146,6 +152,7 @@ add_qgc_test(GeoTest)
 add_qgc_test(ShapeTest)
 
 add_subdirectory(Vehicle)
+add_qgc_test(FirmwareUpdateAvailableTest)
 # Components
 add_qgc_test(ComponentInformationCacheTest)
 add_qgc_test(ComponentInformationTranslationTest)

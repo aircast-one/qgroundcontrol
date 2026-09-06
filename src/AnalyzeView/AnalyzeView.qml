@@ -17,12 +17,10 @@ import QGroundControl.Controls
 import QGroundControl.Controllers
 import QGroundControl.ScreenTools
 
-Rectangle {
+ToolDrawerPage {
     id:     _root
     color:  qgcPal.window
     z:      QGroundControl.zOrderTopMost
-
-    signal popout()
 
     readonly property real  _defaultTextHeight:     ScreenTools.defaultFontPixelHeight
     readonly property real  _defaultTextWidth:      ScreenTools.defaultFontPixelWidth

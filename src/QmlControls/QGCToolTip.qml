@@ -29,7 +29,7 @@ ToolTip {
         text:           control.text
         font.pointSize: ScreenTools.smallFontPointSize
         font.family:    ScreenTools.normalFontFamily
-        color:          control._qgcPal.text
+        color:          tipGlass.contentColor
         wrapMode:       Text.WordWrap
     }
 
@@ -40,6 +40,7 @@ ToolTip {
         radius:         height / 2
 
         OverlayGlass {
+            id:           tipGlass
             anchors.fill: parent
             radius:       parent.radius
         }

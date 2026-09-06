@@ -3,6 +3,7 @@
     #include "AndroidSerial.h"
 #endif
 #include "JoystickAndroid.h"
+#include "QGCBridge.h"
 #include "QGCLoggingCategory.h"
 
 #include <QtCore/QJniEnvironment>
@@ -21,6 +22,11 @@ extern "C"
 
     jobject gst_android_get_application_class_loader(void)
     {
+        if (!_class_loader) {
+            const QJniObject context = QNativeInterface::QAndroidApplication::context();
+            const QJniObject loader = context.callObjectMethod("getClassLoader", "()Ljava/lang/ClassLoader;");
+            _class_loader = QJniEnvironment()->NewGlobalRef(loader.object());
+        }
         return _class_loader;
     }
 }
@@ -103,6 +109,7 @@ jint JNI_OnLoad(JavaVM *vm, void *reserved)
     #endif
 
     AndroidInterface::setNativeMethods();
+    QGCBridge::setNativeMethods();
 
     #ifndef QGC_NO_SERIAL_LINK
         AndroidSerial::setNativeMethods();

@@ -28,7 +28,6 @@ import QGroundControl.ShapeFileHelper
 import QGroundControl.FlightDisplay
 import QGroundControl.UTMSP
 
-
 Item {
     id: _root
 
@@ -51,11 +50,11 @@ Item {
     readonly property real  _toolsMargin:               ScreenTools.defaultFontPixelWidth * 0.75
     // Derived, not branched. The width used to be an if/else that added 21.667 characters when
     // UTMSP was on - a number with no relationship to anything on screen.
+    // Everything floats clear of the window edge by the same amount, so the map reads as one
+    // surface with panels resting on it rather than as a set of docked regions butted together.
     readonly property bool  _narrow:                    panel.height > panel.width
     readonly property real  _rightPanelWidth:           _narrow ? panel.width - _panelMargin * 2
                                                                   : Math.min(panel.width / 3, ScreenTools.defaultFontPixelWidth * (_utmspEnabled ? 52 : 40))
-    // Everything floats clear of the window edge by the same amount, so the map reads as one
-    // surface with panels resting on it rather than as a set of docked regions butted together.
     readonly property real  _panelMargin:               ScreenTools.defaultFontPixelHeight * 0.9
     readonly property real  _panelRadius:               ScreenTools.defaultFontPixelHeight * 1.3
     readonly property Item  _bottomObstacle:            terrainSheet.visible ? terrainSheet : _narrow && rightPanel.visible ? rightPanel : null
@@ -109,7 +108,6 @@ Item {
         _addROIOnClick   = false
         _addWaypointMode = false
     }
-
 
     function mapCenter() {
         var coordinate = map.center
@@ -213,8 +211,12 @@ Item {
         }
 
         function waitingOnIncompleteDataMessage(save) {
-            var saveOrUpload = save ? qsTr("Save") : qsTr("Upload")
-            mainWindow.showMessageDialog(qsTr("Unable to %1").arg(saveOrUpload), qsTr("Plan has incomplete items. Complete all items and %1 again.").arg(saveOrUpload))
+            const saveOrUpload = save ? qsTr("Save") : qsTr("Upload")
+            const items        = _root.incompleteItems()
+            const list         = items.map((item) => "\n• " + qsTr("Item %1 · %2 — %3").arg(item.sequenceNumber).arg(item.commandName).arg(item.readyForSaveMessage)).join("")
+            _root.selectNextNotReady()
+            mainWindow.showMessageDialog(qsTr("Unable to %1").arg(saveOrUpload),
+                                         qsTr("These items still need a position or a value:") + list)
         }
 
         function waitingOnTerrainDataMessage(save) {
@@ -242,7 +244,16 @@ Item {
                     sendToVehicle()
                     break
                 case MissionController.SendToVehiclePreCheckStateActiveMission:
-                    mainWindow.showMessageDialog(qsTr("Send To Vehicle"), qsTr("Current mission must be paused prior to uploading a new Plan"))
+                    mainWindow.showMessageDialog(qsTr("Send To Vehicle"),
+                                                 qsTr("The vehicle is flying this mission. It has to be paused before a new Plan can be uploaded."),
+                                                 Dialog.Cancel | Dialog.Ok,
+                                                 function() {
+                                                     if (!globals.activeVehicle) {
+                                                         return
+                                                     }
+                                                     globals.activeVehicle.pauseVehicle()
+                                                     sendToVehicle()
+                                                 })
                     break
                 case MissionController.SendToVehiclePreCheckStateFirwmareVehicleMismatch:
                     mainWindow.showMessageDialog(qsTr("Plan Upload"),
@@ -301,7 +312,7 @@ Item {
 
     function insertSimpleItemAfterCurrent(coordinate) {
         var nextIndex = _missionController.currentPlanViewVIIndex + 1
-        _missionController.insertSimpleMissionItem(coordinate, nextIndex, true /* makeCurrentItem */)
+        _missionController.addWaypoint(coordinate, nextIndex, true /* makeCurrentItem */)
     }
 
     function insertROIAfterCurrent(coordinate) {
@@ -329,15 +340,16 @@ Item {
         _missionController.insertLandItem(mapCenter(), nextIndex, true /* makeCurrentItem */)
     }
 
+    function incompleteItems() {
+        return Array.from({ length: _missionController.visualItems.count },
+                          (unused, index) => _missionController.visualItems.get(index))
+                    .filter((item) => item.readyForSaveState === VisualMissionItem.NotReadyForSaveData)
+    }
 
     function selectNextNotReady() {
-        var foundCurrent = false
-        for (var i=0; i<_missionController.visualItems.count; i++) {
-            var vmi = _missionController.visualItems.get(i)
-            if (vmi.readyForSaveState === VisualMissionItem.NotReadyForSaveData) {
-                _missionController.setCurrentPlanViewSeqNum(vmi.sequenceNumber, true)
-                break
-            }
+        const next = incompleteItems()[0]
+        if (next) {
+            _missionController.setCurrentPlanViewSeqNum(next.sequenceNumber, true)
         }
     }
 
@@ -375,8 +387,12 @@ Item {
     }
 
     Item {
-        id:             panel
-        anchors.fill:   parent
+        id:                     panel
+        anchors.fill:           parent
+        anchors.topMargin:      ScreenTools.safeAreaTop
+        anchors.bottomMargin:   ScreenTools.safeAreaBottom
+        anchors.leftMargin:     ScreenTools.safeAreaLeft
+        anchors.rightMargin:    ScreenTools.safeAreaRight
 
         // The plan does not own a map. It used to build a second FlightMap showing the same
         // ground as the fly view's, which is why the two could drift apart and why glass here
@@ -465,6 +481,29 @@ Item {
             onTriggered: _resetGeofencePolygon = true
         }
 
+        OverlayCapsule {
+            id:                       placementHint
+            objectName:               "planPlacementHint"
+            anchors.top:              parent.top
+            anchors.topMargin:        _panelMargin * 3
+            anchors.horizontalCenter: parent.horizontalCenter
+            width:                    hintLabel.width + ScreenTools.defaultFontPixelWidth * 4
+            visible:                  opacity > 0
+            opacity:                  (_addWaypointMode || _addROIOnClick) ? 1 : 0
+            z:                        QGroundControl.zOrderWidgets
+
+            Behavior on opacity { NumberAnimation { duration: 150 } }
+
+            QGCLabel {
+                id:               hintLabel
+                anchors.centerIn: parent
+                color:            placementHint.contentColor
+                text:             _addROIOnClick                             ? qsTr("Click the map to place the region of interest")
+                                : _editingLayer === _layerRallyPoints        ? qsTr("Click the map to place a rally point")
+                                                                             : qsTr("Click the map to place a waypoint")
+            }
+        }
+
         Column {
             id:                     dock
             objectName:             "planDock"
@@ -482,7 +521,7 @@ Item {
             readonly property real  _cell:   Math.max(_icon, captionMetrics.width + ScreenTools.defaultFontPixelWidth * 2)
             readonly property real  _caption: captionMetrics.height
             readonly property real  _radius: ScreenTools.defaultFontPixelHeight * 0.7
-            readonly property color _ink:    OverlayBackdrop.isDark ? _qgcPal.text : _qgcPal.window
+            readonly property color _ink:    _qgcPal.overlayInk
 
             TextMetrics {
                 id:   captionMetrics
@@ -593,7 +632,8 @@ Item {
                     icon:    "/InstrumentValueIcons/pin.svg"
                     checked: _addWaypointMode
                     enabled: _editingLayer === _layerRallyPoints ? _rallyPointController.supported
-                                                                 : _missionController.flyThroughCommandsAllowed
+                                                                 : _missionController.flyThroughCommandsAllowed ||
+                                                                       _missionController.onlyInsertTakeoffValid
                     visible: _editingLayer === _layerMission || _editingLayer === _layerRallyPoints || _editingLayer === _layerUTMSP
                     onClicked: {
                         _addROIOnClick   = false
@@ -843,6 +883,23 @@ Item {
                     map.center = globals.activeVehicle.coordinate
                 }
             }
+
+            OverlayMenuItem {
+                text:    qsTr("My Location")
+                enabled: map.gcsPosition.isValid
+                onClicked: {
+                    centerMenu.close()
+                    map.center = map.gcsPosition
+                }
+            }
+
+            OverlayMenuItem {
+                text: qsTr("Coordinates…")
+                onClicked: {
+                    centerMenu.close()
+                    map.centerToSpecifiedLocation()
+                }
+            }
         }
 
         // The map's own look, one tap from the map - not three levels into application settings.
@@ -919,12 +976,10 @@ Item {
                     id:            panelGlass
                     anchors.fill:  parent
                     radius:        _panelRadius
-                    lightMaterial: false
                     // The shared glass tint is 45% opaque, which is right for a pill holding two
                     // words and far too thin under a panel of forms - over bright imagery the
                     // map reads straight through the labels. Same material, more of it.
-                    tint:         Qt.alpha(_qgcPal.window, 0.86)
-                    material:     OverlayGlass.Panel
+                    material:      OverlayGlass.Panel
                 }
             }
 
@@ -946,15 +1001,16 @@ Item {
                 currentIndex:        _layerIndex
                 onActivated: (index) => { _layerIndex = index }
 
-                options: _activeLayers.map(layer => ({
-                    text:    layer === _layerMission     ? qsTr("Mission")
-                           : layer === _layerGeoFence    ? qsTr("Fence")
-                           : layer === _layerRallyPoints ? qsTr("Rally")
-                                                         : qsTr("UTM-SP"),
-                    enabled: layer === _layerGeoFence    ? _geoFenceController.supported
-                           : layer === _layerRallyPoints ? _rallyPointController.supported
-                                                         : true
-                }))
+                onReselected: (index) => {
+                    if (_activeLayers[index] === _layerMission && _showItemDetail) {
+                        _missionController.setCurrentPlanViewSeqNum(0, true)
+                    }
+                }
+
+                options: _activeLayers.map(layer => layer === _layerMission     ? qsTr("Mission")
+                                                  : layer === _layerGeoFence    ? qsTr("Fence")
+                                                  : layer === _layerRallyPoints ? qsTr("Rally")
+                                                                                : qsTr("UTM-SP"))
             }
 
             Item {
@@ -982,12 +1038,26 @@ Item {
 
                     readonly property var _missionSettingsItem: (_visualItems && _visualItems.count > 0) ? _visualItems.get(0) : null
 
+                    function revealItem(item) {
+                        const pad    = ScreenTools.defaultFontPixelHeight
+                        const top    = item.mapToItem(missionColumn, 0, 0).y
+                        const bottom = top + item.height
+                        if (top < contentY) {
+                            contentY = Math.max(0, top - pad)
+                        } else if (bottom > contentY + height) {
+                            contentY = Math.min(Math.max(0, contentHeight - height), bottom - height + pad)
+                        }
+                    }
+
                     Column {
                         id:             missionColumn
                         anchors.left:   parent.left
                         anchors.right:  parent.right
                         spacing:        ScreenTools.defaultFontPixelHeight * 0.5
 
+                            // No explicit height: the loader takes its implicit height from the
+                            // editor it holds, so the column below it stays put as the editor
+                            // grows and shrinks with the vehicle's options.
                         QGCLabel {
                             text:           qsTr("ITEMS")
                             leftPadding:    ScreenTools.defaultFontPixelHeight / 2
@@ -1000,18 +1070,30 @@ Item {
                             id:    itemsCard
                             width: parent.width
 
+                            // Sequence 0 is the mission settings item, shown above as its own
+                            // section rather than as a row of this list, so the list starts at 1.
                             readonly property int _firstItemIndex: 1
 
                             Repeater {
                                 model: _visualItems
 
                                 MissionItemEditor {
+                                    id:               itemEditor
                                     map:              _root.map
                                     masterController: _planMasterController
                                     missionItem:      object
                                     width:            missionColumn.width
                                     visible:          index >= itemsCard._firstItemIndex
                                     firstRow:         index === itemsCard._firstItemIndex
+
+                                    Connections {
+                                        target: object
+                                        function onIsCurrentItemChanged() {
+                                            if (object.isCurrentItem && itemEditor.visible) {
+                                                missionItemEditor.revealItem(itemEditor)
+                                            }
+                                        }
+                                    }
                                     onClicked: (sequenceNumber) => { _missionController.setCurrentPlanViewSeqNum(object.sequenceNumber, false) }
                                     onRemove: {
                                         var removeVIIndex = index
@@ -1020,7 +1102,6 @@ Item {
                                             removeVIIndex--
                                         }
                                     }
-                                    onSelectNextNotReadyItem:   selectNextNotReady()
                                 }
                             }
 
@@ -1028,7 +1109,8 @@ Item {
                                 text:        qsTr("＋  Add waypoint")
                                 textColor:   _qgcPal.primaryButton
                                 interactive: true
-                                enabled:     _missionController.flyThroughCommandsAllowed
+                                enabled:     _missionController.flyThroughCommandsAllowed ||
+                                                 _missionController.onlyInsertTakeoffValid
                                 onClicked:   insertSimpleItemAfterCurrent(mapCenter())
                             }
                         }
@@ -1046,7 +1128,6 @@ Item {
                             property var  editorRoot:           missionSettingsLoader
                             property bool _noMissionItemsAdded: _visualItems.count === 1
                         }
-
                     }
                 }
 
@@ -1072,15 +1153,22 @@ Item {
 
                         QGCLabel {
                             id:                     backLabel
+                            objectName:             "planDetailBack"
                             anchors.left:           parent.left
                             anchors.verticalCenter: parent.verticalCenter
                             text:                   qsTr("‹  Items")
-                            color:                  _qgcPal.primaryButton
+                            font.pointSize:         ScreenTools.mediumFontPointSize
+                            color:                  backMouseArea.containsMouse ? Qt.alpha(_qgcPal.primaryButton, 0.7)
+                                                                                : _qgcPal.primaryButton
                         }
 
                         QGCMouseArea {
-                            anchors.fill:       backLabel
-                            anchors.margins:    -ScreenTools.defaultFontPixelWidth
+                            id:                 backMouseArea
+                            anchors.left:       parent.left
+                            anchors.top:        parent.top
+                            anchors.bottom:     parent.bottom
+                            width:              backLabel.width + ScreenTools.defaultFontPixelWidth * 3
+                            hoverEnabled:       !ScreenTools.isMobile
                             onClicked:          _missionController.setCurrentPlanViewSeqNum(0, true)
                         }
 
@@ -1124,6 +1212,8 @@ Item {
                                     property var  masterController: _planMasterController
                                     property real availableWidth:   detailLoader.width
                                     property var  editorRoot:       detailLoader
+                                    // Complex editors and the camera sections they load read
+                                    // these from the scope their host used to provide.
                                     property var  missionItem:      null
 
                                     function reload() {
@@ -1248,12 +1338,10 @@ Item {
                 OverlayGlass {
                     anchors.fill:  parent
                     radius:        _panelRadius
-                    lightMaterial: false
                     // The shared glass tint is 45% opaque, which is right for a pill holding two
                     // words and far too thin under a panel of forms - over bright imagery the
                     // map reads straight through the labels. Same material, more of it.
-                    tint:         Qt.alpha(_qgcPal.window, 0.86)
-                    material:     OverlayGlass.Panel
+                    material:      OverlayGlass.Panel
                 }
             }
 
@@ -1351,7 +1439,6 @@ Item {
                                                       UTMSPStateStorage.currentStateIndex = 0}})
     }
 
-
     function downloadClicked(title) {
         if (_planMasterController.dirty) {
             mainWindow.showMessageDialog(title,
@@ -1362,7 +1449,6 @@ Item {
             _planMasterController.loadFromVehicle()
         }
     }
-
 
     Connections {
         target: utmspEditor

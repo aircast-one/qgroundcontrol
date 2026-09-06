@@ -18,7 +18,9 @@ Item {
 
     property var  segments:     []
     property int  currentIndex: 0
-    property bool glass:        false
+
+    property color contentColor: QGroundControl.globalPalette.text
+    property bool  glass:        false
 
     signal activated(int index)
 
@@ -39,9 +41,9 @@ Item {
         anchors.fill: parent
         radius:       _root._trackRadius
         visible:      !_root.glass
-        color:        Qt.alpha(_root._qgcPal.window, 0.55)
+        color:        Qt.alpha(_root.contentColor, 0.10)
         border.width: 1
-        border.color: Qt.alpha(_root._qgcPal.text, 0.08)
+        border.color: Qt.alpha(_root.contentColor, 0.08)
     }
 
     OverlayGlass {
@@ -58,7 +60,7 @@ Item {
         height:  parent.height - _root._padding * 2
         radius:  _root._trackRadius - _root._padding
         visible: _root.segments.length > 0
-        color:   Qt.alpha(_root._qgcPal.text, 0.14)
+        color:   Qt.alpha(_root.contentColor, 0.14)
 
         Behavior on x { NumberAnimation { duration: 150; easing.type: Easing.OutCubic } }
     }
@@ -87,9 +89,9 @@ Item {
                     elide:               Text.ElideRight
                     text:                _root._textOf(modelData)
                     font.bold:           parent._isCurrent
-                    color:               !parent._isEnabled ? Qt.alpha(_root._qgcPal.text, 0.3)
-                                       : parent._isCurrent  ? _root._qgcPal.text
-                                                            : Qt.alpha(_root._qgcPal.text, 0.6)
+                    color:               !parent._isEnabled ? Qt.alpha(_root.contentColor, 0.3)
+                                       : parent._isCurrent  ? _root.contentColor
+                                                            : Qt.alpha(_root.contentColor, 0.6)
 
                     Behavior on color { ColorAnimation { duration: 120 } }
                 }

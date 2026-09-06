@@ -32,8 +32,7 @@ Item {
     property var    _scaleLengthsMeters:    [5, 10, 25, 50, 100, 150, 250, 500, 1000, 2000, 5000, 10000, 20000, 50000, 100000, 200000, 500000, 1000000, 2000000]
     property var    _scaleLengthsFeet:      [10, 25, 50, 100, 250, 500, 1000, 2000, 3000, 4000, 5280, 5280*2, 5280*5, 5280*10, 5280*25, 5280*50, 5280*100, 5280*250, 5280*500, 5280*1000]
     property bool   _zoomButtonsVisible:    zoomButtonsVisible && !ScreenTools.isMobile
-    property var    _color:                 mapControl.isSatelliteMap ? "white" : "black"
-
+    property var    _color:                 QGroundControl.globalPalette.overlayInk
     function formatDistanceMeters(meters) {
         var dist = Math.round(meters)
         if (dist > 1000 ){
@@ -146,7 +145,6 @@ Item {
 
     QGCMapLabel {
         id:                 scaleText
-        map:                mapControl
         font.bold:          true
         anchors.left:       parent.left
         anchors.right:      rightEnd.right

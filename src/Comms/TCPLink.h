@@ -13,7 +13,6 @@
 #include <QtCore/QLoggingCategory>
 #include <QtCore/QString>
 #include <QtNetwork/QAbstractSocket>
-#include <QtNetwork/QHostAddress>
 
 #include "LinkConfiguration.h"
 #include "LinkInterface.h"
@@ -22,8 +21,6 @@ class QTcpSocket;
 class QThread;
 
 Q_DECLARE_LOGGING_CATEGORY(TCPLinkLog)
-
-/*===========================================================================*/
 
 class TCPConfiguration : public LinkConfiguration
 {
@@ -43,22 +40,21 @@ public:
     void saveSettings(QSettings &settings, const QString &root) const override;
     QString settingsURL() const override { return QStringLiteral("TcpSettings.qml"); }
     QString settingsTitle() const override { return tr("TCP Link Settings"); }
+    QString summary() const override { return QStringLiteral("%1:%2").arg(host()).arg(_port); }
 
-    QString host() const { return _host.toString(); }
-    void setHost(const QString &host) { if (host != _host.toString()) { _host.setAddress(host); emit hostChanged(); } }
+    QString host() const { return _host; }
+    void setHost(const QString &host) { if (host != _host) { _host = host; emit hostChanged(); emit summaryChanged(); } }
     quint16 port() const { return _port; }
-    void setPort(quint16 port) { if (port != _port) { _port = port; emit portChanged(); } }
+    void setPort(quint16 port) { if (port != _port) { _port = port; emit portChanged(); emit summaryChanged(); } }
 
 signals:
     void hostChanged();
     void portChanged();
 
 private:
-    QHostAddress _host;
+    QString _host;
     quint16 _port = 5760;
 };
-
-/*===========================================================================*/
 
 class TCPWorker : public QObject
 {
@@ -73,7 +69,7 @@ public:
 signals:
     void connected();
     void disconnected();
-    void errorOccurred(const QString &errorString);
+    void errorOccurred(const QString &errorString, QAbstractSocket::SocketError socketError = QAbstractSocket::UnknownSocketError);
     void dataReceived(const QByteArray &data);
     void dataSent(const QByteArray &data);
 
@@ -96,8 +92,6 @@ private:
     bool _errorEmitted = false;
 };
 
-/*===========================================================================*/
-
 class TCPLink : public LinkInterface
 {
     Q_OBJECT
@@ -114,7 +108,7 @@ private slots:
     void _writeBytes(const QByteArray &bytes) override;
     void _onConnected();
     void _onDisconnected();
-    void _onErrorOccurred(const QString &errorString);
+    void _onErrorOccurred(const QString &errorString, QAbstractSocket::SocketError socketError);
     void _onDataReceived(const QByteArray &data);
     void _onDataSent(const QByteArray &data);
 

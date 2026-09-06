@@ -12,6 +12,7 @@
 #include <QtTest/QTest>
 #include <QtCore/QCoreApplication>
 #include <QtCore/QScopeGuard>
+#include <memory>
 #include <QtCore/QEventLoop>
 #include "LinkManager.h"
 #ifdef QT_DEBUG
@@ -31,6 +32,7 @@
 #include "VideoSettings.h"
 #include "Fact.h"
 
+#include <QtCore/QDateTime>
 #include <QtCore/QJsonArray>
 #include <QtCore/QJsonDocument>
 #include <QtCore/QJsonObject>
@@ -41,7 +43,9 @@
 #include <QtCore/QFile>
 #include <QtCore/QLoggingCategory>
 #include <QtCore/QMetaProperty>
+#include <QtCore/QPointer>
 #include <QtCore/QTextStream>
+#include <QtCore/QTimer>
 #include <QtGui/QKeySequence>
 #include <QtGui/QImage>
 #include <QtGui/QMouseEvent>
@@ -97,15 +101,31 @@ static QPointingDevice *_touchDevice()
 }
 
 DebugApiServer *DebugApiServer::_instance = nullptr;
+QQuickWindow *DebugApiServer::_testWindow = nullptr;
+
+void DebugApiServer::setWindowForTesting(QQuickWindow *window)
+{
+    _testWindow = window;
+}
+
+QQuickWindow *DebugApiServer::_targetWindow()
+{
+    return _testWindow ? _testWindow : qgcApp()->mainRootWindow();
+}
 
 void DebugApiServer::startIfConfigured(QObject *parent)
 {
+#ifndef QGC_ENABLE_DEBUG_API
+    Q_UNUSED(parent);
+    return;
+#else
     bool ok = false;
     const uint port = qEnvironmentVariableIntValue("QGC_DEBUG_API_PORT", &ok);
     if (!ok || port == 0 || port > 65535) {
         return;
     }
     start(static_cast<quint16>(port), parent);
+#endif
 }
 
 void DebugApiServer::start(quint16 port, QObject *parent)
@@ -125,7 +145,10 @@ DebugApiServer::DebugApiServer(quint16 port, QObject *parent)
         qCWarning(DebugApiServerLog) << "listen failed on port" << port << _server->errorString();
         return;
     }
-    qCDebug(DebugApiServerLog) << "debug api listening on 127.0.0.1:" << port;
+    // Deliberately the default category rather than DebugApiServerLog: this is an unauthenticated
+    // control surface for the aircraft, and the one line announcing it is open must not be
+    // something the usual per-category filtering can switch off.
+    qWarning("DEBUG API ENABLED - unauthenticated localhost control surface listening on 127.0.0.1:%u", port);
 
     (void) connect(MultiVehicleManager::instance(), &MultiVehicleManager::activeVehicleChanged, this, [this](Vehicle *vehicle) {
         // Re-activating a vehicle must not stack duplicate connections.
@@ -164,6 +187,12 @@ void DebugApiServer::_handleConnection(QTcpSocket *socket)
 {
     (void) connect(socket, &QTcpSocket::disconnected, socket, &QObject::deleteLater);
     (void) connect(socket, &QTcpSocket::readyRead, this, [this, socket]() {
+        // A streaming response owns the socket for the rest of its life; anything arriving after
+        // it started is not a second request to answer.
+        if (socket->property("streaming").toBool()) {
+            (void) socket->readAll();
+            return;
+        }
         socket->setProperty("request", socket->property("request").toByteArray() + socket->readAll());
         const QByteArray request = socket->property("request").toByteArray();
         constexpr int kMaxRequestBytes = 8192;
@@ -186,6 +215,17 @@ void DebugApiServer::_handleConnection(QTcpSocket *socket)
             statusLine = QByteArrayLiteral("HTTP/1.1 403 Forbidden");
         } else if (requestLine.size() >= 2 && requestLine.at(0) == "GET") {
             const QUrl url = QUrl::fromEncoded(requestLine.at(1));
+            if (url.path() == QStringLiteral("/ui/watch")) {
+                if (_startWatch(socket, QUrlQuery(url))) {
+                    return;
+                }
+                body = QByteArrayLiteral("{\"error\":\"watch needs name and property on an existing item\"}");
+                statusLine = QByteArrayLiteral("HTTP/1.1 400 Bad Request");
+                socket->write(statusLine + "\r\nContent-Type: application/json\r\nContent-Length: " +
+                              QByteArray::number(body.size()) + "\r\nConnection: close\r\n\r\n" + body);
+                socket->disconnectFromHost();
+                return;
+            }
             body = _route(url.path(), QUrlQuery(url));
             if (body.isEmpty()) {
                 statusLine = QByteArrayLiteral("HTTP/1.1 404 Not Found");
@@ -342,6 +382,12 @@ QByteArray DebugApiServer::_route(const QString &path, const QUrlQuery &query)
     if (path == QStringLiteral("/ui/prop")) {
         return _uiPropJson(query);
     }
+    if (path == QStringLiteral("/ui/setprop")) {
+        return _uiPropSetJson(query);
+    }
+    if (path == QStringLiteral("/ui/at")) {
+        return _uiAtJson(query);
+    }
     if (path == QStringLiteral("/ui/resize")) {
         return _uiResizeJson(query);
     }
@@ -379,13 +425,18 @@ static QQuickItem *_findVisibleItem(QQuickWindow *window, const QString &objectN
 
 QByteArray DebugApiServer::_uiTreeJson(const QUrlQuery &query)
 {
-    QQuickWindow *window = qgcApp()->mainRootWindow();
+    QQuickWindow *window = _targetWindow();
     if (!window) {
         return QJsonDocument(QJsonObject{{"error", "no main window"}}).toJson(QJsonDocument::Compact);
     }
 
     const QString filter = query.queryItemValue(QStringLiteral("name"));
-    constexpr int kMaxItems = 300;
+    // Without this only objectName'd items are reachable, and anything the author did not think
+    // to name is invisible to tooling - which is exactly when you need to find it, because you
+    // are looking for something you cannot address.
+    const bool includeUnnamed = query.queryItemValue(QStringLiteral("all")) == QStringLiteral("1");
+    const bool visibleOnly    = query.queryItemValue(QStringLiteral("visible")) == QStringLiteral("1");
+    const int kMaxItems = includeUnnamed ? 2000 : 300;
     QJsonArray items;
 
     QStringList namedAncestors;
@@ -395,7 +446,25 @@ QByteArray DebugApiServer::_uiTreeJson(const QUrlQuery &query)
         }
         const QString name = item->objectName();
         const bool named = !name.isEmpty();
-        if (named && (filter.isEmpty() || name.contains(filter, Qt::CaseInsensitive))) {
+        const QString className = QString::fromLatin1(item->metaObject()->className());
+        const bool matches = filter.isEmpty() ||
+                             name.contains(filter, Qt::CaseInsensitive) ||
+                             (includeUnnamed && className.contains(filter, Qt::CaseInsensitive));
+        if (includeUnnamed && matches && (!visibleOnly || item->isVisible())) {
+            const QPointF scenePos = item->mapToScene(QPointF(0, 0));
+            items.append(QJsonObject{
+                {"objectName", name},
+                {"namedAncestors", QJsonArray::fromStringList(namedAncestors)},
+                {"class", className},
+                {"depth", namedAncestors.size()},
+                {"x", scenePos.x()},
+                {"y", scenePos.y()},
+                {"width", item->width()},
+                {"height", item->height()},
+                {"visible", item->isVisible()},
+                {"enabled", item->isEnabled()},
+            });
+        } else if (!includeUnnamed && named && (filter.isEmpty() || name.contains(filter, Qt::CaseInsensitive))) {
             const QPointF scenePos = item->mapToScene(QPointF(0, 0));
             items.append(QJsonObject{
                 {"objectName", name},
@@ -473,7 +542,7 @@ QByteArray DebugApiServer::_uiClickJson(const QUrlQuery &query, bool doubleClick
         }
     }
 
-    QQuickWindow *window = qgcApp()->mainRootWindow();
+    QQuickWindow *window = _targetWindow();
     if (!window) {
         return _errorJson(QStringLiteral("no main window"));
     }
@@ -496,7 +565,7 @@ QByteArray DebugApiServer::_uiClickJson(const QUrlQuery &query, bool doubleClick
 
 QByteArray DebugApiServer::_uiDragJson(const QUrlQuery &query)
 {
-    QQuickWindow *window = qgcApp()->mainRootWindow();
+    QQuickWindow *window = _targetWindow();
     if (!window) {
         return _errorJson(QStringLiteral("no main window"));
     }
@@ -536,7 +605,7 @@ QByteArray DebugApiServer::_uiDragJson(const QUrlQuery &query)
 
 QByteArray DebugApiServer::_uiHoverJson(const QUrlQuery &query)
 {
-    QQuickWindow *window = qgcApp()->mainRootWindow();
+    QQuickWindow *window = _targetWindow();
     if (!window) {
         return _errorJson(QStringLiteral("no main window"));
     }
@@ -555,7 +624,7 @@ QByteArray DebugApiServer::_uiHoverJson(const QUrlQuery &query)
 
 QByteArray DebugApiServer::_uiTypeJson(const QUrlQuery &query)
 {
-    QQuickWindow *window = qgcApp()->mainRootWindow();
+    QQuickWindow *window = _targetWindow();
     if (!window) {
         return _errorJson(QStringLiteral("no main window"));
     }
@@ -575,7 +644,7 @@ QByteArray DebugApiServer::_uiTypeJson(const QUrlQuery &query)
 
 QByteArray DebugApiServer::_uiKeyJson(const QUrlQuery &query)
 {
-    QQuickWindow *window = qgcApp()->mainRootWindow();
+    QQuickWindow *window = _targetWindow();
     if (!window) {
         return _errorJson(QStringLiteral("no main window"));
     }
@@ -644,11 +713,6 @@ QByteArray DebugApiServer::_linkConnectJson(const QUrlQuery &query)
         name = QStringLiteral("debug-api %1:%2").arg(host).arg(port);
     }
 
-    const QHostAddress address(host);
-    if (address.isNull()) {
-        // No DNS here: a blocking lookup would freeze the GUI thread. Clients resolve first.
-        return _errorJson(QStringLiteral("host must be an IP address (resolve %1 client-side)").arg(host));
-    }
 
     LinkManager *linkManager = LinkManager::instance();
     LinkConfiguration *config = _findLinkConfiguration(name);
@@ -663,15 +727,16 @@ QByteArray DebugApiServer::_linkConnectJson(const QUrlQuery &query)
     if (!tcpConfig) {
         return _errorJson(QStringLiteral("link %1 exists but is not tcp").arg(name));
     }
-    tcpConfig->setHost(address.toString());
+    tcpConfig->setHost(host);
     tcpConfig->setPort(port);
+    linkManager->saveLinkConfigurationList();
 
     if (!config->link()) {
         linkManager->createConnectedLink(config);
     }
     return QJsonDocument(QJsonObject{
         {"name", name},
-        {"host", address.toString()},
+        {"host", host},
         {"port", port},
         {"connected", config->link() != nullptr},
     }).toJson(QJsonDocument::Compact);
@@ -724,7 +789,7 @@ QByteArray DebugApiServer::_videoSettingJson(const QUrlQuery &query)
 
 QByteArray DebugApiServer::_uiResizeJson(const QUrlQuery &query)
 {
-    QQuickWindow *window = qgcApp()->mainRootWindow();
+    QQuickWindow *window = _targetWindow();
     if (!window) {
         return _errorJson(QStringLiteral("no main window"));
     }
@@ -750,7 +815,7 @@ QByteArray DebugApiServer::_uiResizeJson(const QUrlQuery &query)
 
 QByteArray DebugApiServer::_uiPropJson(const QUrlQuery &query)
 {
-    QQuickWindow *window = qgcApp()->mainRootWindow();
+    QQuickWindow *window = _targetWindow();
     if (!window) {
         return _errorJson(QStringLiteral("no main window"));
     }
@@ -769,21 +834,221 @@ QByteArray DebugApiServer::_uiPropJson(const QUrlQuery &query)
         return _errorJson(QStringLiteral("item not found: %1").arg(name));
     }
 
-    const QVariant value = item->property(property.toLatin1().constData());
-    if (!value.isValid()) {
+    // Comma-separated properties are read in one pass, so a caller sampling an animation gets
+    // values from a single instant. Read one at a time over separate requests they drift apart
+    // by however long the round trip took, which on a fast easing curve is enough to make two
+    // properties that move together look like they disagree.
+    const QStringList names = property.split(QLatin1Char(','), Qt::SkipEmptyParts);
+    QJsonObject values;
+    for (const QString &entry : names) {
+        const QString trimmed = entry.trimmed();
+        if (trimmed.isEmpty()) {
+            continue;
+        }
+        const QVariant value = item->property(trimmed.toLatin1().constData());
+        if (!value.isValid()) {
+            return _errorJson(QStringLiteral("no such property: %1").arg(trimmed));
+        }
+        values.insert(trimmed, QJsonValue::fromVariant(value));
+    }
+    if (values.isEmpty()) {
+        return _errorJson(QStringLiteral("name and property required"));
+    }
+
+    QJsonObject result{
+        {"name", name},
+        {"t", QDateTime::currentMSecsSinceEpoch()},
+        {"values", values},
+    };
+    // Single-property callers keep the original shape.
+    if (values.size() == 1) {
+        result.insert(QStringLiteral("property"), values.begin().key());
+        result.insert(QStringLiteral("value"), values.begin().value());
+    }
+    return QJsonDocument(result).toJson(QJsonDocument::Compact);
+}
+
+bool DebugApiServer::_startWatch(QTcpSocket *socket, const QUrlQuery &query)
+{
+    QQuickWindow *window = _targetWindow();
+    if (!window) {
+        return false;
+    }
+
+    const QString name = query.queryItemValue(QStringLiteral("name"));
+    const QString property = query.queryItemValue(QStringLiteral("property"));
+    if (name.isEmpty() || property.isEmpty()) {
+        return false;
+    }
+
+    QObject *item = _findVisibleItem(window, name);
+    if (!item) {
+        item = window->findChild<QObject*>(name, Qt::FindChildrenRecursively);
+    }
+    if (!item) {
+        return false;
+    }
+
+    const QStringList properties = property.split(QLatin1Char(','), Qt::SkipEmptyParts);
+    bool okFrames = false;
+    const int wanted = query.queryItemValue(QStringLiteral("frames")).toInt(&okFrames);
+    const int frames = qBound(1, okFrames ? wanted : 120, 2000);
+
+    socket->setProperty("streaming", true);
+    socket->write("HTTP/1.1 200 OK\r\nContent-Type: application/x-ndjson\r\n"
+                  "Cache-Control: no-store\r\nConnection: close\r\n\r\n");
+
+    const auto remaining = std::make_shared<int>(frames);
+    QPointer<QObject> target(item);
+
+    bool okInterval = false;
+    const int askedInterval = query.queryItemValue(QStringLiteral("interval")).toInt(&okInterval);
+    const int interval = qBound(1, okInterval ? askedInterval : 8, 1000);
+
+    // A timer on the GUI thread rather than a render-loop signal: afterAnimating only arrives
+    // while the scene graph is actually drawing, so a window the compositor has decided not to
+    // repaint produces no samples at all - which is silence that looks exactly like a property
+    // that never changed. The timer samples whatever the property holds, drawn or not.
+    // Counted, not sampled on. Delivery stays on the timer so a window the compositor has parked
+    // still produces samples; the frame number rides along so a caller can tell two values read
+    // in the same frame from two read either side of one. If rendering stops, this stops
+    // advancing - which is a visible fact in the data rather than silence.
+    const auto frame = std::make_shared<qint64>(0);
+    (void) connect(window, &QQuickWindow::afterAnimating, socket, [frame]() { ++(*frame); });
+
+    QTimer *const ticker = new QTimer(socket);
+    ticker->setInterval(interval);
+    ticker->setTimerType(Qt::PreciseTimer);
+
+    (void) connect(ticker, &QTimer::timeout, socket, [socket, target, properties, remaining, frame]() {
+        if ((socket->state() != QAbstractSocket::ConnectedState) || target.isNull()) {
+            return;
+        }
+        QJsonObject values;
+        for (const QString &entry : properties) {
+            const QString trimmed = entry.trimmed();
+            values.insert(trimmed, QJsonValue::fromVariant(target->property(trimmed.toLatin1().constData())));
+        }
+        const QJsonObject sample{
+            {"t", QDateTime::currentMSecsSinceEpoch()},
+            {"frame", *frame},
+            {"values", values},
+        };
+        socket->write(QJsonDocument(sample).toJson(QJsonDocument::Compact) + "\n");
+        socket->flush();
+        if (--(*remaining) <= 0) {
+            socket->disconnectFromHost();
+        }
+    });
+    ticker->start();
+
+    return true;
+}
+
+// Everything under a scene point, outermost first. A synthetic click that "does nothing" is
+// otherwise indistinguishable from a broken control: this says whether anything is there at all,
+// whether it is visible and enabled, and which item would actually receive the press.
+QByteArray DebugApiServer::_uiAtJson(const QUrlQuery &query)
+{
+    QQuickWindow *window = _targetWindow();
+    if (!window) {
+        return _errorJson(QStringLiteral("no main window"));
+    }
+
+    bool okX = false;
+    bool okY = false;
+    const qreal x = query.queryItemValue(QStringLiteral("x")).toDouble(&okX);
+    const qreal y = query.queryItemValue(QStringLiteral("y")).toDouble(&okY);
+    if (!okX || !okY) {
+        return _errorJson(QStringLiteral("x and y required"));
+    }
+    const QPointF scenePoint(x, y);
+
+    QJsonArray hits;
+    std::function<void(QQuickItem*)> walk = [&](QQuickItem *item) {
+        if (!item->isVisible() || (item->width() <= 0) || (item->height() <= 0)) {
+            return;
+        }
+        const QPointF local = item->mapFromScene(scenePoint);
+        if (!item->contains(local)) {
+            return;
+        }
+        const QPointF scenePos = item->mapToScene(QPointF(0, 0));
+        hits.append(QJsonObject{
+            {"objectName", item->objectName()},
+            {"class", QString::fromLatin1(item->metaObject()->className())},
+            {"x", scenePos.x()},
+            {"y", scenePos.y()},
+            {"width", item->width()},
+            {"height", item->height()},
+            {"enabled", item->isEnabled()},
+            {"acceptedMouseButtons", static_cast<int>(item->acceptedMouseButtons())},
+            {"acceptTouchEvents", item->acceptTouchEvents()},
+        });
+        const QList<QQuickItem*> children = item->childItems();
+        for (QQuickItem *child : children) {
+            walk(child);
+        }
+    };
+    walk(window->contentItem());
+
+    return QJsonDocument(QJsonObject{
+        {"x", x},
+        {"y", y},
+        {"hits", hits},
+        {"count", hits.size()},
+    }).toJson(QJsonDocument::Compact);
+}
+
+// Writing a property is how a test reaches a state that would otherwise take a scripted sequence
+// of gestures to arrive at. The value is coerced to whatever type the property already holds, so
+// a caller passing "true" or "1.5" does not have to know Qt's type names.
+QByteArray DebugApiServer::_uiPropSetJson(const QUrlQuery &query)
+{
+    QQuickWindow *window = _targetWindow();
+    if (!window) {
+        return _errorJson(QStringLiteral("no main window"));
+    }
+
+    const QString name = query.queryItemValue(QStringLiteral("name"));
+    const QString property = query.queryItemValue(QStringLiteral("property"));
+    if (name.isEmpty() || property.isEmpty() || !query.hasQueryItem(QStringLiteral("value"))) {
+        return _errorJson(QStringLiteral("name, property and value required"));
+    }
+
+    QObject *item = _findVisibleItem(window, name);
+    if (!item) {
+        item = window->findChild<QObject*>(name, Qt::FindChildrenRecursively);
+    }
+    if (!item) {
+        return _errorJson(QStringLiteral("item not found: %1").arg(name));
+    }
+
+    const QByteArray propertyName = property.toLatin1();
+    const QVariant current = item->property(propertyName.constData());
+    if (!current.isValid()) {
         return _errorJson(QStringLiteral("no such property: %1").arg(property));
+    }
+
+    QVariant wanted(query.queryItemValue(QStringLiteral("value")));
+    if (!wanted.convert(current.metaType())) {
+        return _errorJson(QStringLiteral("cannot convert value to %1").arg(QString::fromLatin1(current.typeName())));
+    }
+    if (!item->setProperty(propertyName.constData(), wanted)) {
+        return _errorJson(QStringLiteral("property is not writable: %1").arg(property));
     }
 
     return QJsonDocument(QJsonObject{
         {"name", name},
         {"property", property},
-        {"value", QJsonValue::fromVariant(value)},
+        {"value", QJsonValue::fromVariant(item->property(propertyName.constData()))},
+        {"t", QDateTime::currentMSecsSinceEpoch()},
     }).toJson(QJsonDocument::Compact);
 }
 
 QByteArray DebugApiServer::_uiTapJson(const QUrlQuery &query)
 {
-    QQuickWindow *window = qgcApp()->mainRootWindow();
+    QQuickWindow *window = _targetWindow();
     if (!window) {
         return _errorJson(QStringLiteral("no main window"));
     }
@@ -803,7 +1068,7 @@ QByteArray DebugApiServer::_uiTapJson(const QUrlQuery &query)
 
 QByteArray DebugApiServer::_uiPinchJson(const QUrlQuery &query)
 {
-    QQuickWindow *window = qgcApp()->mainRootWindow();
+    QQuickWindow *window = _targetWindow();
     if (!window) {
         return _errorJson(QStringLiteral("no main window"));
     }
@@ -871,7 +1136,7 @@ static std::optional<QPointF> s_uiPressActiveAt;
 
 QByteArray DebugApiServer::_uiMouseStepJson(const QUrlQuery &query, QEvent::Type type)
 {
-    QQuickWindow *window = qgcApp()->mainRootWindow();
+    QQuickWindow *window = _targetWindow();
     if (!window) {
         return _errorJson(QStringLiteral("no main window"));
     }
@@ -959,7 +1224,7 @@ QByteArray DebugApiServer::_mockLinkJson(const QUrlQuery &query)
 
 QByteArray DebugApiServer::_uiDismissJson()
 {
-    QQuickWindow *window = qgcApp()->mainRootWindow();
+    QQuickWindow *window = _targetWindow();
     if (!window) {
         return _errorJson(QStringLiteral("no main window"));
     }
@@ -988,7 +1253,7 @@ QByteArray DebugApiServer::_uiDismissJson()
 
 QByteArray DebugApiServer::_screenshotJson()
 {
-    QQuickWindow *window = qgcApp()->mainRootWindow();
+    QQuickWindow *window = _targetWindow();
     if (!window) {
         return QJsonDocument(QJsonObject{{"error", "no main window"}}).toJson(QJsonDocument::Compact);
     }

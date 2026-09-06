@@ -49,6 +49,17 @@ Item {
     readonly property var _rcControls: _firstControlPerFreeChannel(_parseRcControls(_flyViewSettings.rcControls.rawValue))
     readonly property string _ghostHint: _hasVehicle ? "" : qsTr("Connect a vehicle to use this control")
 
+    function _rotateSlider(channel) {
+        try {
+            const all = JSON.parse(_flyViewSettings.rcControls.rawValue)
+            _flyViewSettings.rcControls.rawValue = JSON.stringify(all.map((control) =>
+                control.channel === channel && control.type === "slider"
+                    ? Object.assign({}, control, { orientation: control.orientation === "horizontal" ? "vertical" : "horizontal" })
+                    : control))
+        } catch (e) {
+        }
+    }
+
     readonly property var  _gimbalController: _activeVehicle ? _activeVehicle.gimbalController : null
     readonly property var  _activeGimbal:     _gimbalController ? _gimbalController.activeGimbal : null
     readonly property bool _hasGimbalManager: _activeGimbal !== null && _activeGimbal !== undefined
@@ -175,7 +186,7 @@ Item {
 
     ArrangeableOverlayItem {
         id:                 tiltSlot
-        overlayRig:         _root.overlayRig
+        rig:                _root.overlayRig
         control:            tiltSlider
         editKey:            "tiltSlider"
         settingsKeyPrefix:  "CameraTiltSlider"
@@ -216,7 +227,10 @@ Item {
                                        (recenterSlot.visible ? recenterSlot.height + _stackGap : 0) - _stackGap
     readonly property real _rcTop:   (_root.height - _rcHeights) / 2
     readonly property real _rcAxisX: _root.width - _margins - shutterSlot.width / 2
-    readonly property real rightClusterReservedWidth: _margins * 2 + Math.max(zoomSlot.width, shutterSlot.width)
+    readonly property real rightClusterReservedWidth: _rightClusterVisible
+                                                          ? _margins * 2 + Math.max(zoomSlot.width, shutterSlot.width) : 0
+    readonly property bool _rightClusterVisible: zoomSlot.visible || shutterSlot.visible || yawModeSlot.visible ||
+                                                     lightSlot.visible || recenterSlot.visible
     readonly property real _rcY1: _rcTop
     readonly property real _rcY2: _rcY1 + (zoomSlot.visible    ? zoomSlot.height    + _stackGap : 0)
     readonly property real _rcY3: _rcY2 + (shutterSlot.visible ? shutterSlot.height + _stackGap : 0)
@@ -225,7 +239,7 @@ Item {
 
     ArrangeableOverlayItem {
         id:                 zoomSlot
-        overlayRig:         _root.overlayRig
+        rig:                _root.overlayRig
         control:            zoomSlider
         editKey:            "zoomSlider"
         settingsKeyPrefix:  "Camera-zoomSlider"
@@ -252,7 +266,7 @@ Item {
 
     ArrangeableOverlayItem {
         id:                 shutterSlot
-        overlayRig:         _root.overlayRig
+        rig:                _root.overlayRig
         control:            shutterButton
         editKey:            "shutterButton"
         settingsKeyPrefix:  "Camera-shutterButton"
@@ -275,7 +289,7 @@ Item {
 
     ArrangeableOverlayItem {
         id:                 yawModeSlot
-        overlayRig:         _root.overlayRig
+        rig:                _root.overlayRig
         control:            yawModeColumn
         editKey:            "yawModeButton"
         settingsKeyPrefix:  "Camera-yawModeButton"
@@ -307,7 +321,7 @@ Item {
 
     ArrangeableOverlayItem {
         id:                 lightSlot
-        overlayRig:         _root.overlayRig
+        rig:                _root.overlayRig
         control:            lightColumn
         editKey:            "lightButton"
         settingsKeyPrefix:  "Camera-lightButton"
@@ -341,7 +355,7 @@ Item {
 
     ArrangeableOverlayItem {
         id:                 recenterSlot
-        overlayRig:         _root.overlayRig
+        rig:                _root.overlayRig
         control:            recenterColumn
         editKey:            "recenterButton"
         settingsKeyPrefix:  "Camera-recenterButton"
@@ -370,11 +384,14 @@ Item {
     }
 
     RcControlsLayer {
+        objectName:   "rcControlsLayer"
         anchors.fill: parent
+        rightInset:   _root.rightClusterReservedWidth
         overlayRig:   _root.overlayRig
         rcControls:   _root._rcControls
         hasVehicle:   _hasVehicle
         send:         _send
+        rotate:       _rotateSlider
         ghostHint:    _ghostHint
     }
 }

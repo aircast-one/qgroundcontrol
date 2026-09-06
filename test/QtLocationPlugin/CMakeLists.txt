@@ -1,5 +1,7 @@
 target_sources(${CMAKE_PROJECT_NAME}
     PRIVATE
+        QGCTileCacheWorkerTest.cc
+        QGCTileCacheWorkerTest.h
         QGeoMapReplyQGCTest.cc
         QGeoMapReplyQGCTest.h
 )

@@ -30,8 +30,6 @@ target_sources(${CMAKE_PROJECT_NAME}
         QGCImageProvider.h
         QGCMapCircle.cc
         QGCMapCircle.h
-        QGCMapPalette.cc
-        QGCMapPalette.h
         QGCMapPolygon.cc
         QGCMapPolygon.h
         QGCMapPolyline.cc
@@ -70,9 +68,8 @@ qt_add_qml_module(QGroundControlControlsModule
     VERSION 1.0
     RESOURCE_PREFIX /qml
     QML_FILES
-        AltModeDialog.qml
+        AltModeMenu.qml
         AppSettings.qml
-        ToolDrawerPage.qml
         APMSubMotorDisplay.qml
         AppMessages.qml
         ArrangeableOverlayItem.qml
@@ -104,6 +101,7 @@ qt_add_qml_module(QGroundControlControlsModule
         LabelledComboBox.qml
         LabelledFactMenu.qml
         LabelledLabel.qml
+        LabelledSlider.qml
         LogReplayStatusBar.qml
         MainWindowSavedState.qml
         MAVLinkChart.qml
@@ -115,6 +113,8 @@ qt_add_qml_module(QGroundControlControlsModule
         OverlayActivityCapsule.qml
         OverlayActivityRing.qml
         OverlayEditBadge.qml
+        OverlayEditSlot.qml
+        OverlayDisclosureRow.qml
         OverlayMenuItem.qml
         OverlayMenuSeparator.qml
         OverlayBackdrop.qml
@@ -218,6 +218,7 @@ qt_add_qml_module(QGroundControlControlsModule
         PlanEditMapItems.qml
         PlanGroupCard.qml
         PlanGroupRow.qml
+        ToolDrawerPage.qml
         PlanFactRow.qml
         PlanSectionLabel.qml
         PlanSwitchRow.qml
@@ -255,6 +256,7 @@ qt_add_qml_module(QGroundControlControlsModule
         GPSIndicator.qml
         GPSIndicatorPage.qml
         MainStatusIndicator.qml
+        VehicleStatusSummary.qml
         MainStatusIndicatorOfflinePage.qml
         PlanViewToolBar.qml
         RemoteIDIndicatorPage.qml

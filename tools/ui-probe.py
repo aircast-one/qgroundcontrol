@@ -63,19 +63,100 @@ def named_items(port):
 
 
 def cmd_shot(args):
-    _, shot = scene_scale(args.port)
+    scale, shot = scene_scale(args.port)
+    info = {"out": args.out, "scene": f"{shot['sceneWidth']}x{shot['sceneHeight']}",
+            "image": f"{shot['imageWidth']}x{shot['imageHeight']}",
+            "imageToScene": shot["imageToScene"]}
     if args.crop:
         left, top, width, height = (int(v) for v in args.crop.split(","))
+        if args.scene:
+            left, top, width, height = (int(v / scale) for v in (left, top, width, height))
+        # Clamped to the image. A crop running off the edge makes ffmpeg exit non-zero with
+        # nothing useful on stderr, and the usual cause is handing it scene coordinates - which
+        # are larger than the downscaled image every time.
+        imageW, imageH = int(shot["imageWidth"]), int(shot["imageHeight"])
+        left, top = max(0, min(left, imageW - 1)), max(0, min(top, imageH - 1))
+        width, height = max(1, min(width, imageW - left)), max(1, min(height, imageH - top))
+        zoom = max(1, min(4, round(700 / max(width, 1))))
         subprocess.run(
             ["ffmpeg", "-y", "-loglevel", "error", "-i", shot["imageFile"],
-             "-vf", f"crop={width}:{height}:{left}:{top},scale={width * 2}:{height * 2}",
+             "-vf", f"crop={width}:{height}:{left}:{top},scale={width * zoom}:{height * zoom}",
              args.out],
             check=True)
+        info["crop"] = f"{left},{top},{width},{height}"
+        info["zoom"] = zoom
     else:
         subprocess.run(["cp", shot["imageFile"], args.out], check=True)
-    print(json.dumps({"out": args.out, "scene": f"{shot['sceneWidth']}x{shot['sceneHeight']}",
-                      "image": f"{shot['imageWidth']}x{shot['imageHeight']}",
-                      "imageToScene": shot["imageToScene"]}))
+    print(json.dumps(info))
+
+
+def cmd_props(args):
+    print(json.dumps(call(args.port, "/ui/prop", name=args.name, property=",".join(args.property))))
+
+
+def cmd_setprop(args):
+    print(json.dumps(call(args.port, "/ui/setprop", name=args.name,
+                          property=args.property, value=args.value)))
+
+
+def cmd_at(args):
+    result = call(args.port, "/ui/at", x=round(args.x), y=round(args.y))
+    for hit in result.get("hits", []):
+        label = hit["objectName"] or f"({hit['class']})"
+        print(f"{label:<44} {hit['x']:7.0f},{hit['y']:<7.0f} {hit['width']:6.0f}x{hit['height']:<6.0f} "
+              f"enabled={hit['enabled']} buttons={hit['acceptedMouseButtons']}")
+    print(f"# {result['count']} items under {args.x},{args.y}")
+
+
+def cmd_tree(args):
+    params = {"all": "1"} if args.all else {}
+    if args.name:
+        params["name"] = args.name
+    if args.visible:
+        params["visible"] = "1"
+    tree = call(args.port, "/ui/tree", **params)
+    for item in tree.get("items", []):
+        label = item["objectName"] or f"({item['class']})"
+        print(f"{'  ' * item.get('depth', 0)}{label:<40} x={item['x']:.0f} y={item['y']:.0f} "
+              f"w={item['width']:.0f} h={item['height']:.0f} visible={item['visible']}")
+    if tree.get("truncated"):
+        print("# truncated")
+
+
+def cmd_watch(args):
+    """Stream property samples. Sampling on the server removes the round trip from the timing:
+    reading two properties over two requests lets them drift apart by however long the network
+    took, which on a fast easing curve reads as two properties disagreeing when they do not."""
+    import socket as _socket
+    request = (f"GET /ui/watch?name={args.name}&property={','.join(args.property)}"
+               f"&frames={args.frames}&interval={args.interval} HTTP/1.1\r\n"
+               f"Host: localhost\r\nX-QGC-Debug-Api: 1\r\n\r\n")
+    connection = _socket.create_connection(("127.0.0.1", args.port), timeout=10)
+    connection.sendall(request.encode())
+    connection.settimeout(0.5)
+    buffered = b""
+    deadline = time.time() + args.timeout
+    body_started = False
+    while time.time() < deadline:
+        try:
+            chunk = connection.recv(65536)
+        except _socket.timeout:
+            continue
+        except OSError:
+            break
+        if not chunk:
+            break
+        buffered += chunk
+        if not body_started and b"\r\n\r\n" in buffered:
+            head, _, buffered = buffered.partition(b"\r\n\r\n")
+            if b"200" not in head.split(b"\r\n")[0]:
+                sys.exit(head.decode(errors="replace"))
+            body_started = True
+        while b"\n" in buffered:
+            line, _, buffered = buffered.partition(b"\n")
+            if line.strip():
+                print(line.decode(errors="replace"), flush=True)
+    connection.close()
 
 
 def cmd_click(args):
@@ -210,7 +291,8 @@ def main():
 
     shot = sub.add_parser("shot", help="capture a screenshot")
     shot.add_argument("out")
-    shot.add_argument("--crop", help="image-space left,top,width,height")
+    shot.add_argument("--crop", help="left,top,width,height (image space unless --scene)")
+    shot.add_argument("--scene", action="store_true", help="treat --crop as scene coordinates")
     shot.set_defaults(func=cmd_shot)
 
     click = sub.add_parser("click", help="click, converting image coordinates when asked")
@@ -243,6 +325,36 @@ def main():
     check.add_argument("--absent", nargs="*", default=[], help="names that must not be visible")
     check.add_argument("--tolerance", type=float, default=12)
     check.set_defaults(func=cmd_assert)
+
+    props = sub.add_parser("props", help="read one or more properties in a single sample")
+    props.add_argument("name")
+    props.add_argument("property", nargs="+")
+    props.set_defaults(func=cmd_props)
+
+    setprop = sub.add_parser("setprop", help="write a property, coerced to its current type")
+    setprop.add_argument("name")
+    setprop.add_argument("property")
+    setprop.add_argument("value")
+    setprop.set_defaults(func=cmd_setprop)
+
+    at = sub.add_parser("at", help="list every item under a scene point, outermost first")
+    at.add_argument("x", type=float)
+    at.add_argument("y", type=float)
+    at.set_defaults(func=cmd_at)
+
+    tree = sub.add_parser("tree", help="dump the item tree, including unnamed items with --all")
+    tree.add_argument("--name", help="filter by objectName or class")
+    tree.add_argument("--all", action="store_true", help="include items with no objectName")
+    tree.add_argument("--visible", action="store_true", help="visible items only")
+    tree.set_defaults(func=cmd_tree)
+
+    watch = sub.add_parser("watch", help="stream NDJSON property samples timestamped by the app")
+    watch.add_argument("name")
+    watch.add_argument("property", nargs="+")
+    watch.add_argument("--frames", type=int, default=120)
+    watch.add_argument("--interval", type=int, default=8, help="milliseconds between samples")
+    watch.add_argument("--timeout", type=float, default=10)
+    watch.set_defaults(func=cmd_watch)
 
     args = parser.parse_args()
     try:

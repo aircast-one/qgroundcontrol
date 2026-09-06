@@ -14,7 +14,6 @@
 
 class LinkInterface;
 
-/// Interface holding link specific settings.
 class LinkConfiguration : public QObject
 {
     Q_OBJECT
@@ -28,6 +27,9 @@ class LinkConfiguration : public QObject
     Q_PROPERTY(QString          settingsURL     READ settingsURL                            CONSTANT)
     Q_PROPERTY(QString          settingsTitle   READ settingsTitle                          CONSTANT)
     Q_PROPERTY(bool             highLatency     READ isHighLatency  WRITE setHighLatency    NOTIFY highLatencyChanged)
+    Q_PROPERTY(QString          summary         READ summary                                NOTIFY summaryChanged)
+    Q_PROPERTY(QString          lastError       READ lastError                              NOTIFY lastErrorChanged)
+    Q_PROPERTY(ErrorRemedy      lastErrorRemedy READ lastErrorRemedy                        NOTIFY lastErrorChanged)
 
 public:
     LinkConfiguration(const QString &name, QObject *parent = nullptr);
@@ -40,89 +42,70 @@ public:
     LinkInterface *link() const { return _link.lock().get(); }
     void setLink(const std::shared_ptr<LinkInterface> link);
 
-    /// Is this a dynamic configuration?
-    ///     @return True if not persisted
+    virtual QString summary() const { return QString(); }
+
+    enum ErrorRemedy {
+        RemedyRetry,
+        RemedyEditAddress,
+    };
+    Q_ENUM(ErrorRemedy)
+
+    QString lastError() const { return _lastError; }
+    ErrorRemedy lastErrorRemedy() const { return _lastErrorRemedy; }
+    void setLastError(const QString &error, ErrorRemedy remedy = RemedyRetry);
+
     bool isDynamic() const { return _dynamic; }
 
-    /// Set if this is this a dynamic configuration. (decided at runtime)
     void setDynamic(bool dynamic = true);
 
-    /// Is this a forwarding link configuration?
-    ///     @return True if forwarding
     bool isForwarding() const { return _forwarding; }
 
-    /// Set if this is this a forwarding link configuration. (decided at runtime)
     void setForwarding(bool forwarding = true) { _forwarding = forwarding; };
 
     bool isAutoConnect() const { return _autoConnect; }
 
-    /// Set if this is this an Auto Connect configuration.
     virtual void setAutoConnect(bool autoc = true);
 
-    /// Is this a High Latency configuration?
-    ///     @return True if this is an High Latency configuration (link with large delays).
     bool isHighLatency() const { return _highLatency; }
 
-    /// Set if this is this an High Latency configuration.
     void setHighLatency(bool hl = false);
 
-    /// Copy instance data, When manipulating data, you create a copy of the configuration using the copy constructor,
-    /// edit it and then transfer its content to the original using this method.
-    ///     @param[in] source The source instance (the edited copy)
     virtual void copyFrom(const LinkConfiguration *source);
 
-    /// The link types supported by QGC
-    /// Any changes here MUST be reflected in LinkManager::linkTypeStrings()
     enum LinkType {
 #ifndef QGC_NO_SERIAL_LINK
-        TypeSerial,     ///< Serial Link
+        TypeSerial,
 #endif
-        TypeUdp,        ///< UDP Link
-        TypeTcp,        ///< TCP Link
+        TypeUdp,
+        TypeTcp,
 #ifdef QGC_ENABLE_BLUETOOTH
-        TypeBluetooth,  ///< Bluetooth Link
+        TypeBluetooth,
 #endif
 #ifdef QT_DEBUG
-        TypeMock,       ///< Mock Link for Unitesting
+        TypeMock,
 #endif
 #ifndef QGC_AIRLINK_DISABLED
         AirLink,
 #endif
         TypeLogReplay,
-        TypeLast        // Last type value (type >= TypeLast == invalid)
+        TypeLast
     };
     Q_ENUM(LinkType)
 
-    /// Connection type, pure virtual method returning one of the -TypeXxx types above.
-    ///     @return The type of links these settings belong to.
     virtual LinkType type() const = 0;
 
-    /// Load settings, Pure virtual method telling the instance to load its configuration.
-    ///     @param[in] settings The QSettings instance to use
-    ///     @param[in] root The root path of the setting.
     virtual void loadSettings(QSettings &settings, const QString &root) = 0;
 
-    /// Save settings, Pure virtual method telling the instance to save its configuration.
-    ///     @param[in] settings The QSettings instance to use
-    ///     @param[in] root The root path of the setting.
     virtual void saveSettings(QSettings &settings, const QString &root) const = 0;
 
-    /// Settings URL, Pure virtual method providing the URL for the (QML) settings dialog
     virtual QString settingsURL() const = 0;
 
-    /// Settings Title, Pure virtual method providing the Title for the (QML) settings dialog
     virtual QString settingsTitle() const = 0;
 
-    /// Configuration Factory to create new link configuration instance based on the given type.
-    ///     @return A new instance of the given type
     static LinkConfiguration *createSettings(int type, const QString &name);
 
-    /// Duplicate configuration instance. Helper method to create a new instance copy for editing.
-    ///     @return A new copy of the given settings instance
     static LinkConfiguration *duplicateSettings(const LinkConfiguration *source);
 
-    /// Root path for QSettings
-    ///     @return The root path of the settings.
     static QString settingsRoot() { return QStringLiteral("LinkConfigurations"); }
 
 signals:
@@ -131,15 +114,19 @@ signals:
     void dynamicChanged();
     void autoConnectChanged();
     void highLatencyChanged();
+    void lastErrorChanged();
+    void summaryChanged();
 
 protected:
-    std::weak_ptr<LinkInterface> _link; ///< Link currently using this configuration (if any)
+    std::weak_ptr<LinkInterface> _link;
 
 private:
     QString _name;
-    bool _dynamic = false;     ///< A connection added automatically and not persistent (unless it's edited).
-    bool _forwarding = false;  ///< Automatically added Mavlink forwarding connection
-    bool _autoConnect = false; ///< This connection is started automatically at boot
+    QString _lastError;
+    ErrorRemedy _lastErrorRemedy = RemedyRetry;
+    bool _dynamic = false;
+    bool _forwarding = false;
+    bool _autoConnect = false;
     bool _highLatency = false;
 };
 

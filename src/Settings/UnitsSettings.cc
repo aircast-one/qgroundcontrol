@@ -9,11 +9,31 @@
 
 #include "UnitsSettings.h"
 
+#include <algorithm>
+
 #include <QtQml/QQmlEngine>
+
+DECLARE_SETTINGSFACT(UnitsSettings, customUnits)
 
 DECLARE_SETTINGGROUP(Units, "Units")
 {
     qmlRegisterUncreatableType<UnitsSettings>("QGroundControl.SettingsManager", 1, 0, "UnitsSettings", "Reference only");
+}
+
+void UnitsSettings::_watchUnitSystemFacts()
+{
+    if (_unitSystemFactsWatched) {
+        return;
+    }
+    _unitSystemFactsWatched = true;
+
+    const QList<Fact*> systemFacts = {
+        horizontalDistanceUnits(), verticalDistanceUnits(), areaUnits(),
+        speedUnits(), temperatureUnits(), customUnits()
+    };
+    for (Fact *const fact : systemFacts) {
+        (void) connect(fact, &Fact::rawValueChanged, this, &UnitsSettings::unitSystemChanged);
+    }
 }
 
 DECLARE_SETTINGSFACT_NO_FUNC(UnitsSettings, horizontalDistanceUnits)
@@ -209,4 +229,64 @@ DECLARE_SETTINGSFACT_NO_FUNC(UnitsSettings, weightUnits)
         _weightUnitsFact = new SettingsFact(_settingsGroup, metaData, this);
     }
     return _weightUnitsFact;
+}
+
+namespace {
+    struct UnitSystemPreset {
+        UnitsSettings::HorizontalDistanceUnits  horizontal;
+        UnitsSettings::VerticalDistanceUnits    vertical;
+        UnitsSettings::AreaUnits                area;
+        UnitsSettings::SpeedUnits               speed;
+        UnitsSettings::TemperatureUnits         temperature;
+    };
+
+    constexpr UnitSystemPreset kUnitSystemPresets[] = {
+        { UnitsSettings::HorizontalDistanceUnitsMeters, UnitsSettings::VerticalDistanceUnitsMeters,
+          UnitsSettings::AreaUnitsSquareMeters, UnitsSettings::SpeedUnitsMetersPerSecond,
+          UnitsSettings::TemperatureUnitsCelsius },
+        { UnitsSettings::HorizontalDistanceUnitsFeet, UnitsSettings::VerticalDistanceUnitsFeet,
+          UnitsSettings::AreaUnitsSquareMiles, UnitsSettings::SpeedUnitsMilesPerHour,
+          UnitsSettings::TemperatureUnitsFarenheit }
+    };
+}
+
+int UnitsSettings::unitSystem()
+{
+    _watchUnitSystemFacts();
+
+    if (customUnits()->rawValue().toBool()) {
+        return UnitSystemCustom;
+    }
+
+    const auto matches = [this](const UnitSystemPreset &preset) {
+        return (horizontalDistanceUnits()->rawValue().toUInt() == preset.horizontal) &&
+               (verticalDistanceUnits()->rawValue().toUInt() == preset.vertical) &&
+               (areaUnits()->rawValue().toUInt() == preset.area) &&
+               (speedUnits()->rawValue().toUInt() == preset.speed) &&
+               (temperatureUnits()->rawValue().toUInt() == preset.temperature);
+    };
+
+    const auto *const found = std::find_if(std::begin(kUnitSystemPresets), std::end(kUnitSystemPresets), matches);
+    if (found == std::end(kUnitSystemPresets)) {
+        return UnitSystemCustom;
+    }
+    return static_cast<int>(std::distance(std::begin(kUnitSystemPresets), found));
+}
+
+void UnitsSettings::setUnitSystem(int system)
+{
+    _watchUnitSystemFacts();
+
+    customUnits()->setRawValue(system == UnitSystemCustom);
+
+    if ((system < 0) || (system >= static_cast<int>(std::size(kUnitSystemPresets)))) {
+        return;
+    }
+
+    const UnitSystemPreset &preset = kUnitSystemPresets[system];
+    horizontalDistanceUnits()->setRawValue(preset.horizontal);
+    verticalDistanceUnits()->setRawValue(preset.vertical);
+    areaUnits()->setRawValue(preset.area);
+    speedUnits()->setRawValue(preset.speed);
+    temperatureUnits()->setRawValue(preset.temperature);
 }

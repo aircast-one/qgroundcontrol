@@ -90,7 +90,7 @@ OverlayCapsule {
             width:                  switchRow.width + 6
             height:                 switchRow.height + 6
             radius:                 height / 2
-            color:                  Qt.rgba(0, 0, 0, 0.45)
+            color:                  Qt.alpha(_root._qgcPal.overlayInkInverse, 0.45)
             visible:                _root._thermal
 
             Row {
@@ -105,13 +105,13 @@ OverlayCapsule {
                         width:  segLabel.width + ScreenTools.defaultFontPixelWidth * 2
                         height: segLabel.height + ScreenTools.defaultFontPixelHeight * 0.4
                         radius: height / 2
-                        color:  modelData.on ? Qt.rgba(1, 1, 1, 0.92) : "transparent"
+                        color:  modelData.on ? Qt.alpha(_root._qgcPal.overlayInk, 0.92) : "transparent"
 
                         QGCLabel {
                             id:               segLabel
                             anchors.centerIn: parent
                             text:             modelData.label
-                            color:            modelData.on ? "black" : "white"
+                            color:            modelData.on ? _root._qgcPal.overlayInkInverse : _root._qgcPal.overlayInk
                             font.bold:        true
                             font.pointSize:   ScreenTools.smallFontPointSize
                         }

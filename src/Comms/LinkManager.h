@@ -11,6 +11,7 @@
 
 #include <QtCore/QList>
 #include <QtCore/QLoggingCategory>
+#include <QtCore/QPointer>
 #include <QtCore/QStringList>
 
 #include <limits>
@@ -45,6 +46,10 @@ class LinkManager : public QObject
     Q_PROPERTY(QmlObjectListModel *linkConfigurations READ _qmlLinkConfigurations CONSTANT)
     Q_PROPERTY(QStringList linkTypeStrings READ linkTypeStrings CONSTANT)
     Q_PROPERTY(bool mavlinkSupportForwardingEnabled READ mavlinkSupportForwardingEnabled NOTIFY mavlinkSupportForwardingEnabledChanged)
+    Q_PROPERTY(QString connectingLinkName READ connectingLinkName NOTIFY connectingLinkNameChanged)
+    Q_PROPERTY(LinkConfiguration *failedLink READ failedLink NOTIFY failedLinkChanged)
+    Q_PROPERTY(QString failedLinkName READ failedLinkName NOTIFY failedLinkChanged)
+    Q_PROPERTY(bool connectingStalled READ connectingStalled NOTIFY connectingStalledChanged)
 
 public:
     explicit LinkManager(QObject *parent = nullptr);
@@ -73,6 +78,11 @@ public:
     QmlObjectListModel *linkConfigurations() { return _qmlLinkConfigurations(); }
     QStringList linkTypeStrings() const;
     bool mavlinkSupportForwardingEnabled() const { return _mavlinkSupportForwardingEnabled; }
+    QString connectingLinkName() const;
+    LinkConfiguration *failedLink() const { return _failedLink.data(); }
+    QString failedLinkName() const { return _failedLink ? _failedLink->name() : QString(); }
+    bool connectingStalled() const { return _connectingStalled; }
+    void setConnectingStallMSecs(int msecs);
 
     void loadLinkConfigurationList();
     void saveLinkConfigurationList();
@@ -121,11 +131,16 @@ public:
 
 signals:
     void mavlinkSupportForwardingEnabledChanged();
+    void connectingLinkNameChanged();
+    void failedLinkChanged();
+    void connectingStalledChanged();
     void isBluetoothAvailableChanged();
 
 private slots:
     void _linkDisconnected();
-    void _communicationError(const QString &title, const QString &error);
+    void _communicationError(const QString &title, const QString &error, LinkConfiguration::ErrorRemedy remedy);
+    void _setFailedLink(LinkConfiguration *config);
+    void _setConnectingStalled(bool stalled);
 
 private:
     QmlObjectListModel *_qmlLinkConfigurations();
@@ -141,6 +156,7 @@ private:
 #endif
 
     QTimer *_portListTimer = nullptr;
+    QTimer *_connectingStallTimer = nullptr;
     QmlObjectListModel *_qmlConfigurations = nullptr;
     AutoConnectSettings *_autoConnectSettings = nullptr;
 
@@ -150,6 +166,8 @@ private:
     bool _mavlinkSupportForwardingEnabled = false;
     uint32_t _mavlinkChannelsUsedBitMask = 1;
     QString _connectionsSuspendedReason;            ///< User visible reason for suspension
+    QPointer<LinkConfiguration> _failedLink;
+    bool _connectingStalled = false;
 
     QList<SharedLinkInterfacePtr> _rgLinks;
     QList<SharedLinkConfigurationPtr> _rgLinkConfigs;
@@ -159,6 +177,7 @@ private:
     static constexpr const char *_mavlinkForwardingSupportLinkName = "MAVLink Support Forwarding Link";
 
     static constexpr int _autoconnectUpdateTimerMSecs = 1000;
+    int _connectingStallMSecs = 10000;
 #ifdef Q_OS_WIN
     // Have to manually let the bootloader go by on Windows to get a working connect
     static constexpr int _autoconnectConnectDelayMSecs = 6000;

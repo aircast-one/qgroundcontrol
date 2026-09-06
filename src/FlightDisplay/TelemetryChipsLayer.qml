@@ -25,12 +25,45 @@ Item {
     property real leftInset:  0
     property real rightInset: 0
 
-    readonly property real _freeSpanCentre: leftInset + (width - leftInset - rightInset) / 2
+    readonly property real _freeSpan:       Math.max(0, width - leftInset - rightInset)
+    readonly property real _freeSpanCentre: leftInset + _freeSpan / 2
 
-    readonly property real _chipHeight:   ScreenTools.defaultFontPixelHeight * 2.2
-    readonly property real _chipSpacing:  ScreenTools.defaultFontPixelWidth
-    readonly property real _slotWidth:    ScreenTools.defaultFontPixelWidth * 16
-    readonly property real _bottomMargin: ScreenTools.defaultFontPixelHeight * 4
+    property var _chipWidths: ({})
+
+    readonly property real _widestChip: {
+        const widths = Object.keys(_chipWidths).map((uid) => _chipWidths[uid])
+        return widths.length === 0 ? 0 : Math.max(...widths)
+    }
+
+    function _noteChipWidth(uid, width) {
+        if (_chipWidths[uid] === width) {
+            return
+        }
+        const next = Object.assign({}, _chipWidths)
+        next[uid] = width
+        _chipWidths = next
+    }
+
+    function _forgetChipWidth(uid) {
+        _chipWidths = Object.keys(_chipWidths)
+                            .filter((key) => key !== uid)
+                            .reduce((kept, key) => Object.assign({}, kept, { [key]: _chipWidths[key] }), {})
+    }
+
+    readonly property real _columnSpan:  Math.max(_slotWidth, _widestChip + _chipSpacing)
+    readonly property int  _bandColumns: Math.max(1, Math.floor(_freeSpan / _columnSpan))
+    readonly property int  _bandCount:   Math.ceil(grid.columns.count / _bandColumns)
+    readonly property real _bandHeight:  grid.rowCount * (_chipHeight + _chipSpacing)
+
+    function _bandOf(columnIndex)     { return Math.floor(columnIndex / _bandColumns) }
+    function _bandWidth(columnIndex)  { return Math.min(_bandColumns, grid.columns.count - _bandOf(columnIndex) * _bandColumns) }
+
+    readonly property bool _compact:      ScreenTools.isMobile
+    readonly property real _chipHeight:   ScreenTools.defaultFontPixelHeight * (_compact ? 1.7 : 2.2)
+    readonly property real _chipPadding:  ScreenTools.defaultFontPixelWidth  * (_compact ? 1.4 : 2.5)
+    readonly property real _chipSpacing:  ScreenTools.defaultFontPixelWidth  * (_compact ? 0.6 : 1)
+    readonly property real _slotWidth:    ScreenTools.defaultFontPixelWidth  * (_compact ? 12 : 16)
+    readonly property real _bottomMargin: ScreenTools.defaultFontPixelHeight * (_compact ? 1 : 4)
     readonly property int  _resetArmMSecs: 4000
     readonly property var  _qgcPal:       QGroundControl.globalPalette
 
@@ -65,19 +98,24 @@ Item {
                 ChipCapsule {
                     id:         chip
                     objectName: "telemetryChip-" + chip.instrumentValueData.uid
-                    width:      chipRow.width + ScreenTools.defaultFontPixelWidth * 2.5
+                    width:      chipRow.width + _chipPadding * 2
                     highlight:  control._editMode || chipMouseArea.containsMouse
                     lifted:     chipDragHandler.active || (control._editMode && dragPosition.displaced)
 
                     readonly property var instrumentValueData:  object
                     readonly property int rowIndex:             index
 
+                    onWidthChanged: control._noteChipWidth(chip.instrumentValueData.uid, width)
+
                     Component.onCompleted: {
                         mainWindow.registerWindowDragExclusion(chip)
                         overlayRig.registerMovable(chip, dragPosition)
                     }
 
-                    Component.onDestruction: overlayRig.unregisterMovable(chip)
+                    Component.onDestruction: {
+                        overlayRig.unregisterMovable(chip)
+                        control._forgetChipWidth(chip.instrumentValueData.uid)
+                    }
 
                     Behavior on x {
                         enabled: !chipDragHandler.active && dragPosition.settling
@@ -92,7 +130,7 @@ Item {
                     Row {
                         id:                 chipRow
                         anchors.centerIn:   parent
-                        spacing:            ScreenTools.defaultFontPixelWidth * 0.75
+                        spacing:            ScreenTools.defaultFontPixelWidth * (control._compact ? 0.5 : 0.75)
 
                         InstrumentValueLabel {
                             anchors.verticalCenter: parent.verticalCenter
@@ -110,9 +148,11 @@ Item {
                         target:             chip
                         settingsKeyPrefix:  "TelemetryChip-" + chip.instrumentValueData.uid
                         defaultX:           control._freeSpanCentre +
-                                                ((columnHolder.columnIndex - (grid.columns.count / 2)) * _slotWidth) +
-                                                (_slotWidth - chip.width) / 2
+                                                (((columnHolder.columnIndex % control._bandColumns) -
+                                                  (control._bandWidth(columnHolder.columnIndex) / 2)) * control._columnSpan) +
+                                                (control._columnSpan - chip.width) / 2
                         defaultY:           control.height - _bottomMargin -
+                                                ((control._bandCount - 1 - control._bandOf(columnHolder.columnIndex)) * control._bandHeight) -
                                                 ((grid.rowCount - chip.rowIndex) * (_chipHeight + _chipSpacing)) + _chipSpacing
                     }
 

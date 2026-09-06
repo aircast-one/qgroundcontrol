@@ -31,6 +31,32 @@ RowLayout {
     property real   _spacing:           ScreenTools.defaultFontPixelWidth / 2
     property bool   _healthAndArmingChecksSupported: _activeVehicle ? _activeVehicle.healthAndArmingCheckReport.supported : false
 
+    readonly property var _sysStatusSensors: (_activeVehicle && !_healthAndArmingChecksSupported) ? _activeVehicle.sysStatusSensorInfo : null
+    readonly property var _healthReport:     (_activeVehicle && _healthAndArmingChecksSupported)  ? _activeVehicle.healthAndArmingCheckReport : null
+    readonly property var _sensorNames:      _sysStatusSensors ? _sysStatusSensors.sensorNames    : []
+    readonly property var _sensorStatus:     _sysStatusSensors ? _sysStatusSensors.sensorStatus   : []
+    readonly property var _sensorHealthy:    _sysStatusSensors ? _sysStatusSensors.sensorHealthy  : []
+    readonly property var _sensorEnabled:    _sysStatusSensors ? _sysStatusSensors.sensorEnabled  : []
+
+    readonly property real _messageIconFloor: ScreenTools.defaultFontPixelWidth * 20
+
+    readonly property real minimumWidth: mainStatusLabel.Layout.minimumWidth
+    readonly property real legibleWidth: _messageIconFloor
+
+    readonly property color _statusColor: statusSummary.fault   ? qgcPal.colorRed
+                                        : statusSummary.caution ? qgcPal.colorOrange
+                                                                : qgcPal.text
+
+    VehicleStatusSummary {
+        id:                     statusSummary
+        sensorNames:            control._sensorNames
+        sensorHealthy:          control._sensorHealthy
+        sensorEnabled:          control._sensorEnabled
+        healthChecksSupported:  control._healthAndArmingChecksSupported
+        canArm:                 control._healthReport ? control._healthReport.canArm : true
+        hasWarningsOrErrors:    control._healthReport ? control._healthReport.hasWarningsOrErrors : false
+    }
+
     readonly property bool _noUserLinks: {
         const configs = QGroundControl.linkManager.linkConfigurations
         return !Array.from({ length: configs.count }, (_, i) => configs.get(i))
@@ -45,15 +71,26 @@ RowLayout {
     QGCLabel {
         id:                     mainStatusLabel
         Layout.fillHeight:      true
-        Layout.preferredWidth:  statusPill.width
+        Layout.fillWidth:       true
+        Layout.preferredWidth:  Math.ceil(statusMetrics.advanceWidth) + leftPadding + _iconSlot + control._pillPadding
+        Layout.maximumWidth:    Layout.preferredWidth
+        Layout.minimumWidth:    leftPadding + control._pillPadding
         leftPadding:            control._pillPadding
+        rightPadding:           (chevron.visible ? _iconSlot : _iconSlot - _chevronSlot) + control._pillPadding
         verticalAlignment:      Text.AlignVCenter
+        elide:                  Text.ElideRight
         text:                   mainStatusText()
-        color:                  qgcPal.toolbarText
+        color:                  statusSummary.nominal ? qgcPal.toolbarText : control._statusColor
         font.bold:              true
 
-        readonly property real _iconSlot: (vehicleMessagesIcon.visible ? vehicleMessagesIcon.width + ScreenTools.defaultFontPixelWidth : 0)
-                                          + chevron.width + ScreenTools.defaultFontPixelWidth
+        TextMetrics {
+            id:   statusMetrics
+            font: mainStatusLabel.font
+            text: mainStatusLabel.text
+        }
+
+        readonly property real _chevronSlot: chevron.width + ScreenTools.defaultFontPixelWidth
+        readonly property real _iconSlot:    (vehicleMessagesIcon.visible ? vehicleMessagesIcon.width + ScreenTools.defaultFontPixelWidth : 0) + _chevronSlot
 
         OverlayCapsule {
             id:                     statusPill
@@ -61,80 +98,43 @@ RowLayout {
             z:                      -1
             anchors.verticalCenter: parent.verticalCenter
             anchors.left:           parent.left
-            width:                  parent.contentWidth + parent._iconSlot + control._pillPadding * 2
+            width:                  parent.width
             height:                 parent.height
         }
 
         property string _commLostText:      qsTr("Comms Lost")
-        property string _readyToFlyText:    qsTr("Ready To Fly")
+        property string _readyToFlyText:    statusSummary.nominal ? qsTr("Ready to Fly") : qsTr("Not Fully Ready")
         property string _notReadyToFlyText: qsTr("Not Ready")
         property string _disconnectedText:  control._noUserLinks ? qsTr("Connect a Vehicle") : qsTr("Not Connected")
+        property string _connectingText:    qsTr("Connecting…")
+        property string _failedText:        qsTr("Can't Connect")
         property string _armedText:         qsTr("Armed")
         property string _flyingText:        qsTr("Flying")
         property string _landingText:       qsTr("Landing")
 
         function mainStatusText() {
-            var statusText
-            if (_activeVehicle) {
-                if (_communicationLost) {
-                    _mainStatusBGColor = "red"
-                    return mainStatusLabel._commLostText
-                }
-                if (_activeVehicle.armed) {
-                    _mainStatusBGColor = "green"
-
-                    if (_healthAndArmingChecksSupported) {
-                        if (_activeVehicle.healthAndArmingCheckReport.canArm) {
-                            if (_activeVehicle.healthAndArmingCheckReport.hasWarningsOrErrors) {
-                                _mainStatusBGColor = "yellow"
-                            }
-                        } else {
-                            _mainStatusBGColor = "red"
-                        }
-                    }
-
-                    if (_activeVehicle.flying) {
-                        return mainStatusLabel._flyingText
-                    } else if (_activeVehicle.landing) {
-                        return mainStatusLabel._landingText
-                    } else {
-                        return mainStatusLabel._armedText
-                    }
-                } else {
-                    if (_healthAndArmingChecksSupported) {
-                        if (_activeVehicle.healthAndArmingCheckReport.canArm) {
-                            if (_activeVehicle.healthAndArmingCheckReport.hasWarningsOrErrors) {
-                                _mainStatusBGColor = "yellow"
-                            } else {
-                                _mainStatusBGColor = "green"
-                            }
-                            return mainStatusLabel._readyToFlyText
-                        } else {
-                            _mainStatusBGColor = "red"
-                            return mainStatusLabel._notReadyToFlyText
-                        }
-                    } else if (_activeVehicle.readyToFlyAvailable) {
-                        if (_activeVehicle.readyToFly) {
-                            _mainStatusBGColor = "green"
-                            return mainStatusLabel._readyToFlyText
-                        } else {
-                            _mainStatusBGColor = "yellow"
-                            return mainStatusLabel._notReadyToFlyText
-                        }
-                    } else {
-                        if (_activeVehicle.allSensorsHealthy && _activeVehicle.autopilotPlugin.setupComplete) {
-                            _mainStatusBGColor = "green"
-                            return mainStatusLabel._readyToFlyText
-                        } else {
-                            _mainStatusBGColor = "yellow"
-                            return mainStatusLabel._notReadyToFlyText
-                        }
-                    }
-                }
-            } else {
-                _mainStatusBGColor = qgcPal.brandingPurple
-                return mainStatusLabel._disconnectedText
+            if (!_activeVehicle) {
+                return QGroundControl.linkManager.connectingLinkName !== "" ? mainStatusLabel._connectingText
+                     : QGroundControl.linkManager.failedLinkName !== ""     ? mainStatusLabel._failedText
+                                                                            : mainStatusLabel._disconnectedText
             }
+            if (_communicationLost) {
+                return mainStatusLabel._commLostText
+            }
+            if (_activeVehicle.armed) {
+                return _activeVehicle.flying  ? mainStatusLabel._flyingText
+                     : _activeVehicle.landing ? mainStatusLabel._landingText
+                                              : mainStatusLabel._armedText
+            }
+            if (_healthAndArmingChecksSupported) {
+                return _activeVehicle.healthAndArmingCheckReport.canArm ? mainStatusLabel._readyToFlyText
+                                                                        : mainStatusLabel._notReadyToFlyText
+            }
+            if (_activeVehicle.readyToFlyAvailable) {
+                return _activeVehicle.readyToFly ? mainStatusLabel._readyToFlyText : mainStatusLabel._notReadyToFlyText
+            }
+            return _activeVehicle.allSensorsHealthy && _activeVehicle.autopilotPlugin.setupComplete
+                        ? mainStatusLabel._readyToFlyText : mainStatusLabel._notReadyToFlyText
         }
 
         QGCColoredImage {
@@ -146,6 +146,7 @@ RowLayout {
             height:                 width
             source:                 "/InstrumentValueIcons/cheveron-down.svg"
             color:                  Qt.alpha(qgcPal.toolbarText, 0.6)
+            visible:                mainStatusLabel.width >= mainStatusLabel.Layout.preferredWidth - 0.5
             sourceSize.height:      height
             fillMode:               Image.PreserveAspectFit
             mipmap:                 true
@@ -162,18 +163,16 @@ RowLayout {
             color:                  getIconColor()
             sourceSize.width:       width
             fillMode:               Image.PreserveAspectFit
-            visible:                _activeVehicle && _activeVehicle.messageCount > 0
+            visible:                _activeVehicle && _activeVehicle.messageCount > 0 &&
+                                        mainStatusLabel.width > control._messageIconFloor
 
             function getIconColor() {
-                let iconColor = qgcPal.toolbarText
-                if (_activeVehicle) {
-                    if (_activeVehicle.messageTypeWarning) {
-                        iconColor = qgcPal.colorOrange
-                    } else if (_activeVehicle.messageTypeError) {
-                        iconColor = qgcPal.colorRed
-                    }
+                if (!_activeVehicle) {
+                    return qgcPal.toolbarText
                 }
-                return iconColor
+                return _activeVehicle.messageTypeWarning ? qgcPal.colorOrange
+                     : _activeVehicle.messageTypeError   ? qgcPal.colorRed
+                                                         : qgcPal.toolbarText
             }
         }
 
@@ -224,16 +223,25 @@ RowLayout {
 
         ColumnLayout {
             id:                     mainLayout
-            spacing:                ScreenTools.defaultFontPixelHeight * 0.75
+            spacing:                ScreenTools.defaultFontPixelHeight * 0.6
             Layout.minimumWidth:    ScreenTools.defaultFontPixelWidth * 36
 
-            readonly property var  _sensorNames:   _healthAndArmingChecksSupported ? [] : _activeVehicle.sysStatusSensorInfo.sensorNames
-            readonly property var  _sensorStatus:  _healthAndArmingChecksSupported ? [] : _activeVehicle.sysStatusSensorInfo.sensorStatus
-            readonly property var  _sensorHealthy: _healthAndArmingChecksSupported ? [] : _activeVehicle.sysStatusSensorInfo.sensorHealthy
-            readonly property var  _sensorIssues:  _sensorNames.filter((_, i) => !_sensorHealthy[i])
-            readonly property int  _checkIssues:   _healthAndArmingChecksSupported ? _activeVehicle.healthAndArmingCheckReport.problemsForCurrentMode.count : 0
-            readonly property bool _canArm:        _armed || !_healthAndArmingChecksSupported || _activeVehicle.healthAndArmingCheckReport.canArm
-            property bool          _showForceArm:  false
+            readonly property int  _checkIssues:    _healthAndArmingChecksSupported ? _activeVehicle.healthAndArmingCheckReport.problemsForCurrentMode.count : 0
+            readonly property bool _canArm:         _armed || !_healthAndArmingChecksSupported || _activeVehicle.healthAndArmingCheckReport.canArm
+            property bool          _showForceArm:   false
+            property bool          _showAllSensors: false
+            property bool          _showMessages:   false
+
+            readonly property color _badgeColor: statusSummary.fault   ? qgcPal.colorRed
+                                               : statusSummary.caution ? qgcPal.colorOrange
+                                                                       : qgcPal.colorGreen
+
+            function openVehicleSetup() {
+                if (mainWindow.allowViewSwitch()) {
+                    mainWindow.closeIndicatorDrawer()
+                    mainWindow.showVehicleConfig()
+                }
+            }
 
             readonly property string _summaryDetail: {
                 if (_armed) {
@@ -242,75 +250,51 @@ RowLayout {
                 if (_checkIssues > 0) {
                     return qsTr("%n check(s) need attention before arming.", "", _checkIssues)
                 }
-                if (_sensorIssues.length > 0) {
-                    return qsTr("%1 unavailable. Position modes and Return to Launch may not work.").arg(_sensorIssues.join(", "))
+                if (statusSummary.faults.length > 0) {
+                    return qsTr("%1 not working. Position modes and Return to Launch may not work.").arg(statusSummary.faultList)
+                }
+                if (statusSummary.disabled.length > 0) {
+                    return qsTr("%1 turned off. Everything else reports normal.").arg(statusSummary.disabledList)
                 }
                 return qsTr("All checks passed.")
             }
 
-            ColumnLayout {
+            RowLayout {
                 Layout.fillWidth:   true
-                spacing:            ScreenTools.defaultFontPixelHeight / 6
+                Layout.leftMargin:  ScreenTools.defaultFontPixelWidth * 1.5
+                Layout.rightMargin: ScreenTools.defaultFontPixelWidth * 1.5
+                spacing:            ScreenTools.defaultFontPixelWidth
 
-                QGCLabel {
-                    text:           mainStatusLabel.mainStatusText()
-                    font.pointSize: ScreenTools.mediumFontPointSize
-                    font.bold:      true
+                QGCColoredImage {
+                    Layout.alignment:       Qt.AlignTop
+                    Layout.topMargin:       ScreenTools.defaultFontPixelHeight * 0.2
+                    Layout.preferredHeight: ScreenTools.defaultFontPixelHeight * 1.15
+                    Layout.preferredWidth:  Layout.preferredHeight
+                    source:                 statusSummary.nominal ? "/InstrumentValueIcons/checkmark-outline.svg"
+                                                                  : "/InstrumentValueIcons/exclamation-outline.svg"
+                    color:                  mainLayout._badgeColor
+                    sourceSize.height:      height
+                    fillMode:               Image.PreserveAspectFit
+                    mipmap:                 true
                 }
 
-                QGCLabel {
+                ColumnLayout {
                     Layout.fillWidth:   true
-                    text:               mainLayout._summaryDetail
-                    color:              qgcPal.colorGrey
-                    wrapMode:           Text.WordWrap
-                    font.pointSize:     ScreenTools.smallFontPointSize
-                }
-            }
+                    spacing:            ScreenTools.defaultFontPixelHeight / 6
 
-            SettingsGroupLayout {
-                popoverStyle: true
-                heading:            qsTr("Vehicle Messages")
-                visible:            !vehicleMessageList.noMessages
-
-                VehicleMessageList { 
-                    id: vehicleMessageList
-                }
-            }
-
-            SettingsGroupLayout {
-                popoverStyle:       true
-                Layout.fillWidth:   true
-                heading:            qsTr("Sensors")
-                visible:            !_healthAndArmingChecksSupported
-
-                Repeater {
-                    model: mainLayout._sensorNames
-
-                    RowLayout {
-                        Layout.fillWidth:   true
-                        spacing:            ScreenTools.defaultFontPixelWidth * 2
-
-                        required property int    index
-                        required property string modelData
-
-                        QGCLabel { Layout.fillWidth: true; text: modelData }
-
-                        QGCLabel {
-                            text:   mainLayout._sensorStatus[index]
-                            color:  mainLayout._sensorHealthy[index] ? qgcPal.colorGrey : qgcPal.colorOrange
-                        }
+                    QGCLabel {
+                        text:           mainStatusLabel.mainStatusText()
+                        font.pointSize: ScreenTools.mediumFontPointSize
+                        font.bold:      true
                     }
-                }
-            }
 
-            SettingsGroupLayout {
-                popoverStyle: true
-                heading:            qsTr("Overall Status")
-                visible:            _healthAndArmingChecksSupported && _activeVehicle.healthAndArmingCheckReport.problemsForCurrentMode.count > 0
-
-                Repeater {
-                    model:      _activeVehicle ? _activeVehicle.healthAndArmingCheckReport.problemsForCurrentMode : null
-                    delegate:   listdelegate
+                    QGCLabel {
+                        Layout.fillWidth:   true
+                        text:               mainLayout._summaryDetail
+                        color:              Qt.alpha(qgcPal.text, 0.6)
+                        wrapMode:           Text.WordWrap
+                        font.pointSize:     ScreenTools.smallFontPointSize
+                    }
                 }
             }
 
@@ -319,6 +303,7 @@ RowLayout {
                 spacing:            ScreenTools.defaultFontPixelHeight / 3
 
                 SliderSwitch {
+                    objectName:         "armSlider"
                     Layout.fillWidth:   true
                     confirmText:        _armed ? qsTr("Slide to Disarm") : qsTr("Slide to Arm")
                     enabled:            mainLayout._canArm
@@ -330,11 +315,23 @@ RowLayout {
                 }
 
                 QGCLabel {
-                    Layout.alignment:   Qt.AlignHCenter
+                    Layout.fillWidth:       true
+                    Layout.leftMargin:      ScreenTools.defaultFontPixelWidth * 1.5
+                    Layout.rightMargin:     ScreenTools.defaultFontPixelWidth * 1.5
+                    wrapMode:               Text.WordWrap
+                    text:                   qsTr("Arming may be refused.")
+                    color:                  Qt.alpha(qgcPal.text, 0.6)
+                    font.pointSize:         ScreenTools.smallFontPointSize
+                    visible:                !_armed && !statusSummary.nominal && mainLayout._canArm && !mainLayout._showForceArm
+                }
+
+                QGCLabel {
+                    Layout.fillWidth:   true
+                    Layout.leftMargin:  ScreenTools.defaultFontPixelWidth * 1.5
                     text:               qsTr("Force Arm…")
-                    color:              qgcPal.colorOrange
+                    color:              qgcPal.colorBlue
                     font.pointSize:     ScreenTools.smallFontPointSize
-                    visible:            !_armed && !mainLayout._canArm && !mainLayout._showForceArm
+                    visible:            !_armed && !mainLayout._showForceArm && (!mainLayout._canArm || statusSummary.fault)
 
                     QGCMouseArea {
                         anchors.fill:   parent
@@ -353,18 +350,130 @@ RowLayout {
                 }
             }
 
-            OverlayMenuSeparator { Layout.fillWidth: true }
-
-            OverlayMenuItem {
-                objectName:         "vehicleSetupItem"
+            SettingsGroupLayout {
+                popoverStyle:       true
+                cardStyle:          true
+                insetContent:       false
+                showDividers:       false
                 Layout.fillWidth:   true
-                icon:               "/InstrumentValueIcons/wrench.svg"
-                text:               qsTr("Vehicle Setup")
-                onClicked: {
-                    if (mainWindow.allowViewSwitch()) {
-                        mainWindow.closeIndicatorDrawer()
-                        mainWindow.showVehicleConfig()
+                heading:            qsTr("Messages")
+                headingAction:      vehicleMessageList.visible ? qsTr("Clear") : ""
+                visible:            !vehicleMessageList.noMessages
+
+                onHeadingActionClicked: {
+                    _activeVehicle.clearMessages()
+                    vehicleMessageList.clear()
+                }
+
+                OverlayDisclosureRow {
+                    objectName: "messageDisclosure"
+                    text:       mainLayout._showMessages ? qsTr("Hide Messages") : qsTr("Show Messages")
+                    onClicked:  mainLayout._showMessages = !mainLayout._showMessages
+                }
+
+                VehicleMessageList {
+                    id:      vehicleMessageList
+                    visible: mainLayout._showMessages
+                }
+            }
+
+            SettingsGroupLayout {
+                popoverStyle:       true
+                cardStyle:          true
+                insetContent:       false
+                contentSpacing:     0
+                Layout.fillWidth:   true
+                heading:            qsTr("Sensors")
+                visible:            !_healthAndArmingChecksSupported && control._sensorNames.length > 0
+
+                Repeater {
+                    model: control._sensorNames
+
+                    Rectangle {
+                        Layout.fillWidth:       true
+                        Layout.preferredHeight: ScreenTools.defaultFontPixelHeight * 1.9
+                        radius:                 ScreenTools.defaultFontPixelHeight / 3
+                        color:                  sensorMouseArea.containsMouse ? Qt.alpha(qgcPal.text, 0.08) : "transparent"
+                        visible:                mainLayout._showAllSensors || !control._sensorHealthy[index]
+
+                        required property int    index
+                        required property string modelData
+
+                        readonly property bool _fault: control._sensorEnabled[index] && !control._sensorHealthy[index]
+
+                        RowLayout {
+                            id:                     sensorRow
+                            anchors.left:           parent.left
+                            anchors.leftMargin:     ScreenTools.defaultFontPixelWidth * 1.5
+                            anchors.right:          parent.right
+                            anchors.rightMargin:    ScreenTools.defaultFontPixelWidth * 1.5
+                            anchors.verticalCenter: parent.verticalCenter
+                            spacing:                ScreenTools.defaultFontPixelWidth
+
+                            QGCLabel {
+                                Layout.fillWidth:   true
+                                text:               modelData
+                                color:              _fault ? qgcPal.text : Qt.alpha(qgcPal.text, 0.7)
+                            }
+
+                            QGCLabel {
+                                text:   control._sensorStatus[index]
+                                color:  _fault ? qgcPal.colorRed : Qt.alpha(qgcPal.text, 0.5)
+                            }
+
+                            QGCColoredImage {
+                                Layout.preferredHeight: ScreenTools.defaultFontPixelHeight * 0.9
+                                Layout.preferredWidth:  Layout.preferredHeight
+                                source:                 "/InstrumentValueIcons/cheveron-right.svg"
+                                color:                  Qt.alpha(qgcPal.text, 0.4)
+                                sourceSize.height:      height
+                                fillMode:               Image.PreserveAspectFit
+                                mipmap:                 true
+                            }
+                        }
+
+                        QGCMouseArea {
+                            id:             sensorMouseArea
+                            anchors.fill:   parent
+                            hoverEnabled:   !ScreenTools.isMobile
+                            onClicked:      mainLayout.openVehicleSetup()
+                        }
                     }
+                }
+
+                OverlayDisclosureRow {
+                    objectName: "sensorDisclosure"
+                    visible:    statusSummary.normalCount > 0
+                    text:       mainLayout._showAllSensors ? qsTr("Show Less")
+                                                           : qsTr("Show %n More", "", statusSummary.normalCount)
+                    onClicked:  mainLayout._showAllSensors = !mainLayout._showAllSensors
+                }
+            }
+
+            SettingsGroupLayout {
+                popoverStyle:       true
+                heading:            qsTr("Overall Status")
+                visible:            _healthAndArmingChecksSupported && _activeVehicle.healthAndArmingCheckReport.problemsForCurrentMode.count > 0
+
+                Repeater {
+                    model:      _activeVehicle ? _activeVehicle.healthAndArmingCheckReport.problemsForCurrentMode : null
+                    delegate:   listdelegate
+                }
+            }
+
+            SettingsGroupLayout {
+                popoverStyle:       true
+                cardStyle:          true
+                insetContent:       false
+                showDividers:       false
+                Layout.fillWidth:   true
+
+                OverlayMenuItem {
+                    objectName:         "vehicleSetupItem"
+                    Layout.fillWidth:   true
+                    disclosure:         true
+                    text:               qsTr("Vehicle Setup")
+                    onClicked:          mainLayout.openVehicleSetup()
                 }
             }
 

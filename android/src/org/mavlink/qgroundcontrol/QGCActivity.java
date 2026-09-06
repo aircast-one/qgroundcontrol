@@ -60,6 +60,13 @@ public class QGCActivity extends QtActivity {
         setupMulticastLock();
 
         QGCUsbSerialManager.initialize(this);
+
+        QGCBridge.setHost(new QGCBridge.Host() {
+            @Override
+            public void setSystemBarAppearance(final boolean lightBars) {
+                QGCActivity.setSystemBarAppearance(lightBars);
+            }
+        });
     }
 
     @Override

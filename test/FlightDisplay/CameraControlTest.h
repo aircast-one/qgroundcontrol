@@ -18,6 +18,7 @@ class CameraControlTest : public UnitTest
 private slots:
     void _unmappedChannelsShowNoControls();
     void _mappedChannelsRevealTheirControls();
+    void _rcSlidersAlternateEdgesClearOfTheCameraCluster();
     void _aimingIsIncrementalAndClamped();
     void _rcFallbackUsedWhenNoGimbalManager();
     void _aimDragDrivesTheGimbal();
@@ -32,7 +33,13 @@ private slots:
     void _threePositionSwitchCyclesThroughPositions();
     void _momentarySwitchTogglesCheckedOnPressAndRelease();
     void _sliderOrientationCanBeHorizontal();
+    void _rotateBadgeFlipsSliderOrientationAndPersistsIt();
+    void _addingAControlHighlightsItInTheFlyView();
+    void _longPressHintHidesOnceEditModeIsDiscovered();
     void _momentarySwitchReleasesWhenEditModeInterruptsThePress();
+    void _removingAControlOffersUndo();
+    void _scrollToItemPositionsTheFlickableAtTheSection();
+    void _pendingScrollFlagScrollsOnPageOpen();
     void _settingsFlagConflictingChannels();
     void _overrideIndicatorLaysOutForTheToolbar();
 };

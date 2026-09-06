@@ -88,11 +88,12 @@ public:
     void saveSettings(QSettings &settings, const QString &root) const override;
     QString settingsURL() const override { return QStringLiteral("UdpSettings.qml"); }
     QString settingsTitle() const override { return tr("UDP Link Settings"); }
+    QString summary() const override { return tr("UDP port %1").arg(_localPort); }
 
     QStringList hostList() const { return _hostList; }
     QList<std::shared_ptr<UDPClient>> targetHosts() const { return _targetHosts; }
     quint16 localPort() const { return _localPort; }
-    void setLocalPort(quint16 port) { if (port != _localPort) { _localPort = port; emit localPortChanged(); } }
+    void setLocalPort(quint16 port) { if (port != _localPort) { _localPort = port; emit localPortChanged(); emit summaryChanged(); } }
 
 signals:
     void hostListChanged();

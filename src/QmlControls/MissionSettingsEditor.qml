@@ -44,7 +44,6 @@ Item {
 
     QGCPalette { id: qgcPal }
     QGCFileDialogController { id: fileController }
-    Component { id: altModeDialogComponent; AltModeDialog { } }
 
     Connections {
         target: _controllerVehicle
@@ -53,21 +52,6 @@ Item {
                 _missionController.globalAltitudeMode = QGroundControl.AltitudeModeCalcAboveTerrain
             }
         }
-    }
-
-    function _editAltitudeMode() {
-        const removeModes = _controllerVehicle.supportsTerrainFrame ? [] : [QGroundControl.AltitudeModeTerrainFrame]
-        const lockedModes = _noMissionItemsAdded
-                                ? []
-                                : [QGroundControl.AltitudeModeRelative,
-                                   QGroundControl.AltitudeModeAbsolute,
-                                   QGroundControl.AltitudeModeCalcAboveTerrain,
-                                   QGroundControl.AltitudeModeTerrainFrame]
-                                      .filter((mode) => mode !== _missionController.globalAltitudeMode)
-        altModeDialogComponent.createObject(mainWindow, {
-            rgRemoveModes:   [...removeModes, ...lockedModes],
-            updateAltModeFn: (altMode) => { _missionController.globalAltitudeMode = altMode }
-        }).open()
     }
 
     ColumnLayout {
@@ -84,6 +68,7 @@ Item {
             cardStyle:          true
 
             RowLayout {
+                id:                     altModeRow
                 Layout.fillWidth:       true
                 Layout.preferredHeight: ScreenTools.settingsRowHeight
                 spacing:                ScreenTools.defaultFontPixelWidth * 2
@@ -110,7 +95,21 @@ Item {
                 }
 
                 TapHandler {
-                    onTapped: valuesRect._editAltitudeMode()
+                    onTapped: altModeMenu.openFrom(altModeRow)
+                }
+
+                AltModeMenu {
+                    id:              altModeMenu
+                    objectName:      "missionAltModeMenu"
+                    currentAltMode:  _missionController.globalAltitudeMode
+                    rgRemoveModes:   _controllerVehicle.supportsTerrainFrame ? [] : [QGroundControl.AltitudeModeTerrainFrame]
+                    rgDisableModes:  _noMissionItemsAdded
+                                        ? []
+                                        : [QGroundControl.AltitudeModeRelative,
+                                           QGroundControl.AltitudeModeAbsolute,
+                                           QGroundControl.AltitudeModeCalcAboveTerrain,
+                                           QGroundControl.AltitudeModeTerrainFrame]
+                    updateAltModeFn: (altMode) => { _missionController.globalAltitudeMode = altMode }
                 }
             }
 

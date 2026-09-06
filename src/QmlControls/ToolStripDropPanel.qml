@@ -12,7 +12,6 @@ import QtQuick.Controls
 
 import QGroundControl
 import QGroundControl.ScreenTools
-import QGroundControl.Palette
 
 Item {
     id:         _root
@@ -29,9 +28,8 @@ Item {
     readonly property int dropUp:       3
     readonly property int dropDown:     4
 
-    readonly property real _arrowBaseHeight:    radius             // Height of vertical side of arrow
-    readonly property real _arrowPointWidth:    radius * 0.666     // Distance from vertical side to point
-    readonly property real _dropMargin:         ScreenTools.defaultFontPixelWidth
+    readonly property real _dropMargin:     ScreenTools.defaultFontPixelHeight * 0.4
+    readonly property real _panelRadius:    ScreenTools.defaultFontPixelHeight * 0.8
 
     property var    _dropEdgeTopPoint
     property alias  _dropDownComponent: panelLoader.sourceComponent
@@ -63,7 +61,7 @@ Item {
         var panelComponentWidth  = panelLoader.item.width
         var panelComponentHeight = panelLoader.item.height
 
-        dropDownItem.width  = panelComponentWidth  + (_dropMargin * 2) + _arrowPointWidth
+        dropDownItem.width  = panelComponentWidth  + (_dropMargin * 2)
         dropDownItem.height = panelComponentHeight + (_dropMargin * 2)
 
         dropDownItem.x = _dropEdgeTopPoint.x + _dropMargin
@@ -75,18 +73,7 @@ Item {
 
         // Adjust height to not exceed viewport bounds
         dropDownItem.height = Math.min(dropDownItem.height, _viewportMaxHeight - dropDownItem.y)
-
-        // Arrow points
-        arrowCanvas.arrowPoint.y = (_dropEdgeTopPoint.y + radius) - dropDownItem.y
-        arrowCanvas.arrowPoint.x = 0
-        arrowCanvas.arrowBase1.x = _arrowPointWidth
-        arrowCanvas.arrowBase1.y = arrowCanvas.arrowPoint.y - (_arrowBaseHeight / 2)
-        arrowCanvas.arrowBase2.x = arrowCanvas.arrowBase1.x
-        arrowCanvas.arrowBase2.y = arrowCanvas.arrowBase1.y + _arrowBaseHeight
-        arrowCanvas.requestPaint()
-    } // function - _calcPositions
-
-    QGCPalette { id: qgcPal }
+    }
 
     Component {
         // Overlay which is used to cancel the panel when the user clicks away
@@ -99,7 +86,6 @@ Item {
         }
     }
 
-    // This item is sized to hold the entirety of the drop panel including the arrow point
     Item {
         id: dropDownItem
 
@@ -107,50 +93,23 @@ Item {
             anchors.fill: parent
         }
 
-        Canvas {
-            id:             arrowCanvas
-            anchors.fill:   parent
+        Rectangle {
+            anchors.fill:  parent
+            color:         "transparent"
+            radius:        _panelRadius
+            layer.enabled: true
+            layer.effect:  OverlayShadowEffect { elevated: true }
 
-            property point arrowPoint: Qt.point(0, 0)
-            property point arrowBase1: Qt.point(0, 0)
-            property point arrowBase2: Qt.point(0, 0)
-
-            onPaint: {
-                var panelX = _arrowPointWidth
-                var panelY = 0
-                var panelWidth = parent.width - _arrowPointWidth
-                var panelHeight = parent.height
-
-                var context = getContext("2d")
-                context.reset()
-                context.beginPath()
-
-                context.moveTo(panelX, panelY)                              // top left
-                context.lineTo(panelX + panelWidth, panelY)                 // top right
-                context.lineTo(panelX + panelWidth, panelX + panelHeight)   // bottom right
-                context.lineTo(panelX, panelY + panelHeight)                // bottom left
-                context.lineTo(arrowBase2.x, arrowBase2.y)
-                context.lineTo(arrowPoint.x, arrowPoint.y)
-                context.lineTo(arrowBase1.x, arrowBase1.y)
-                context.lineTo(panelX, panelY)                              // top left
-
-                context.closePath()
-                context.fillStyle = toolStrip.roundButtons
-                                        ? qgcPal.overlayBackground
-                                        : qgcPal.windowShade
-                context.fill()
-                if (toolStrip.roundButtons) {
-                    context.strokeStyle = qgcPal.overlayBorder
-                    context.lineWidth = 1
-                    context.stroke()
-                }
+            OverlayGlass {
+                anchors.fill: parent
+                radius:       parent.radius
+                material:     OverlayGlass.Panel
             }
-        } // Canvas - arrowCanvas
+        }
 
         QGCFlickable {
             id:                 panelItemFlickable
             anchors.margins:    _dropMargin
-            anchors.leftMargin: _dropMargin + _arrowPointWidth
             anchors.fill:       parent
             flickableDirection: Flickable.VerticalFlick
             contentWidth:       panelLoader.width
@@ -165,5 +124,5 @@ Item {
                 property var dropPanel: _root
             }
         }
-    } // Item - dropDownItem
+    }
 }

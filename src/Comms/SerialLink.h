@@ -51,9 +51,10 @@ public:
     void saveSettings(QSettings &settings, const QString &root) const override;
     QString settingsURL() const override { return QStringLiteral("SerialSettings.qml"); }
     QString settingsTitle() const override { return tr("Serial Link Settings"); }
+    QString summary() const override { return tr("%1 at %2 baud").arg(_portDisplayName.isEmpty() ? _portName : _portDisplayName).arg(_baud); }
 
     qint32 baud() const { return _baud; }
-    void setBaud(qint32 baud) { if (baud != _baud) { _baud = baud; emit baudChanged(); } }
+    void setBaud(qint32 baud) { if (baud != _baud) { _baud = baud; emit baudChanged(); emit summaryChanged(); } }
 
     QSerialPort::DataBits dataBits() const { return _dataBits; }
     void setDataBits(QSerialPort::DataBits databits) { if (databits != _dataBits) { _dataBits = databits; emit dataBitsChanged(); } }
@@ -71,7 +72,7 @@ public:
     void setPortName(const QString &name);
 
     QString portDisplayName() const { return _portDisplayName; }
-    void setPortDisplayName(const QString &portDisplayName) { if (portDisplayName != _portDisplayName) { _portDisplayName = portDisplayName; emit portDisplayNameChanged(); } }
+    void setPortDisplayName(const QString &portDisplayName) { if (portDisplayName != _portDisplayName) { _portDisplayName = portDisplayName; emit portDisplayNameChanged(); emit summaryChanged(); } }
 
     bool usbDirect() const { return _usbDirect; }
     void setUsbDirect(bool usbDirect) { if (usbDirect != _usbDirect) { _usbDirect = usbDirect; emit usbDirectChanged(); } }

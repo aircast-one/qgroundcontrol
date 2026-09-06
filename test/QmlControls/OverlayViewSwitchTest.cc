@@ -39,8 +39,6 @@ void OverlayViewSwitchTest::_tapReportsTheOptionTapped()
     QCOMPARE(view.rootObject()->property("lastActivated").toInt(), 1);
 }
 
-// The switch reports; the owner decides. Assigning currentIndex from inside would overwrite the
-// binding the owner set it from, and the control would stop following the view it represents.
 void OverlayViewSwitchTest::_tapLeavesTheOwnersBindingIntact()
 {
     QQuickView view;
@@ -55,8 +53,6 @@ void OverlayViewSwitchTest::_tapLeavesTheOwnersBindingIntact()
     QCOMPARE(view.rootObject()->property("currentIndex").toInt(), 0);
 }
 
-// What makes it a switch rather than two buttons: the thumb is carried, and where it is let go
-// decides the outcome.
 void OverlayViewSwitchTest::_dragPastTheMidpointSwitches()
 {
     QQuickView view;
@@ -85,20 +81,17 @@ void OverlayViewSwitchTest::_dragShortOfTheMidpointSpringsBack()
     dragMouse(view, start, shortOfMidpoint);
 
     QCOMPARE(view.rootObject()->property("activatedCount").toInt(), 0);
-    // The thumb hands its x back to the resting binding, so it returns to the option it started on.
     QTRY_COMPARE(view.rootObject()->property("thumbX").toReal(), from->x());
 }
 
-void OverlayViewSwitchTest::_disabledOptionCannotBeReached()
+void OverlayViewSwitchTest::_tapOnTheCurrentOptionReportsReselectedNotActivated()
 {
     QQuickView view;
     QVERIFY(load(view));
-    view.rootObject()->setProperty("secondEnabled", false);
-    QTRY_VERIFY(optionAt(view, 1) && !optionAt(view, 1)->property("_isEnabled").toBool());
 
-    tapOption(view, 1);
-    QCOMPARE(view.rootObject()->property("activatedCount").toInt(), 0);
+    tapOption(view, 0);
 
-    dragMouse(view, itemCenter(optionAt(view, 0)), itemCenter(optionAt(view, 1)));
+    QCOMPARE(view.rootObject()->property("reselectedCount").toInt(), 1);
+    QCOMPARE(view.rootObject()->property("lastReselected").toInt(), 0);
     QCOMPARE(view.rootObject()->property("activatedCount").toInt(), 0);
 }

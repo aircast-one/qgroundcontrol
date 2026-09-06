@@ -26,21 +26,6 @@ Item {
     readonly property string _altModeText: QGroundControl.altitudeModeShortDescription(missionItem.altitudeMode)
 
     QGCPalette { id: qgcPal; colorGroupEnabled: enabled }
-    Component { id: altModeDialogComponent; AltModeDialog { } }
-
-    function _editAltitudeMode() {
-        if (!_globalAltModeIsMixed) {
-            return
-        }
-        const unsupported = _controllerVehicle.supportsTerrainFrame ? [] : [QGroundControl.AltitudeModeTerrainFrame]
-        const hidden = (!QGroundControl.corePlugin.options.showMissionAbsoluteAltitude &&
-                            missionItem.altitudeMode !== QGroundControl.AltitudeModeAbsolute)
-                                ? [QGroundControl.AltitudeModeAbsolute] : []
-        altModeDialogComponent.createObject(mainWindow, {
-            rgRemoveModes:   [...unsupported, ...hidden, QGroundControl.AltitudeModeMixed],
-            updateAltModeFn: (altMode) => { missionItem.altitudeMode = altMode }
-        }).open()
-    }
 
     ColumnLayout {
         id:                 editorColumn
@@ -48,17 +33,6 @@ Item {
         anchors.right:      parent.right
         anchors.top:        parent.top
         spacing:            _margin
-
-        QGCLabel {
-            Layout.fillWidth:   true
-            wrapMode:           Text.WordWrap
-            font.pointSize:     ScreenTools.smallFontPointSize
-            color:              qgcPal.colorGrey
-            text:               missionItem.rawEdit ?
-                                    qsTr("Provides advanced access to all commands/parameters. Be very careful!") :
-                                    missionItem.commandDescription
-            visible:            text !== ""
-        }
 
         ColumnLayout {
             Layout.fillWidth:   true
@@ -104,6 +78,7 @@ Item {
         SettingsGroupLayout {
             Layout.fillWidth:   true
             popoverStyle:       true
+            cardStyle:          true
             visible:            !missionItem.wizardMode && _specifiesAltitude
             description:        missionItem.isLandCommand
                                     ? qsTr("Altitude is the approximate ground altitude. Normally 0 when landing back at the launch location.")
@@ -119,6 +94,7 @@ Item {
             }
 
             RowLayout {
+                id:                     altModeRow
                 Layout.fillWidth:       true
                 Layout.preferredHeight: ScreenTools.settingsRowHeight
                 spacing:                ScreenTools.defaultFontPixelWidth * 2
@@ -148,7 +124,17 @@ Item {
 
                 TapHandler {
                     enabled:  _globalAltModeIsMixed
-                    onTapped: _root._editAltitudeMode()
+                    onTapped: altModeMenu.openFrom(altModeRow)
+                }
+
+                AltModeMenu {
+                    id:              altModeMenu
+                    objectName:      "itemAltModeMenu"
+                    currentAltMode:  missionItem.altitudeMode
+                    rgRemoveModes:   _controllerVehicle.supportsTerrainFrame
+                                        ? [QGroundControl.AltitudeModeMixed]
+                                        : [QGroundControl.AltitudeModeMixed, QGroundControl.AltitudeModeTerrainFrame]
+                    updateAltModeFn: (altMode) => { missionItem.altitudeMode = altMode }
                 }
             }
         }
@@ -156,16 +142,16 @@ Item {
         SettingsGroupLayout {
             Layout.fillWidth:   true
             popoverStyle:       true
+            cardStyle:          true
             visible:            !missionItem.wizardMode
 
             Repeater {
                 model: missionItem.comboboxFacts
 
-                LabelledFactComboBox {
+                LabelledFactMenu {
                     Layout.fillWidth:   true
                     label:              object.name
                     fact:               object
-                    indexModel:         false
                 }
             }
 
@@ -190,7 +176,7 @@ Item {
                     Layout.preferredHeight: ScreenTools.settingsRowHeight
                     spacing:                ScreenTools.defaultFontPixelWidth * 2
 
-                    QGCCheckBox {
+                    QGCCheckBoxSlider {
                         Layout.fillWidth:   true
                         Layout.alignment:   Qt.AlignVCenter
                         text:               object.name
@@ -216,7 +202,7 @@ Item {
                 spacing:                ScreenTools.defaultFontPixelWidth * 2
                 visible:                missionItem.speedSection.available
 
-                QGCCheckBox {
+                QGCCheckBoxSlider {
                     id:                 flightSpeedCheckbox
                     Layout.fillWidth:   true
                     Layout.alignment:   Qt.AlignVCenter
@@ -240,6 +226,20 @@ Item {
             Layout.fillWidth:   true
             checked:            missionItem.cameraSection.settingsSpecified
             visible:            missionItem.cameraSection.available && !missionItem.wizardMode
+        }
+
+        // What the command does, read as a footnote under the group it explains - the place
+        // every other explanatory line in this panel sits. Above the fields it was a paragraph
+        // wedged between the selected row and its own form.
+        QGCLabel {
+            Layout.fillWidth:   true
+            wrapMode:           Text.WordWrap
+            font.pointSize:     ScreenTools.smallFontPointSize
+            color:              qgcPal.colorGrey
+            text:               missionItem.rawEdit ?
+                                    qsTr("Provides advanced access to all commands/parameters. Be very careful!") :
+                                    missionItem.commandDescription
+            visible:            text !== ""
         }
     }
 }

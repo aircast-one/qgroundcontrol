@@ -18,7 +18,7 @@ Rectangle {
     width:      Math.max(ScreenTools.minTouchPixels, ScreenTools.defaultFontPixelHeight * _widthInFontHeights)
     height:     width * aspect
     radius:     Math.min(width, height) / 2
-    color:          checked ? qgcPal.text : "transparent"
+    color:          checked ? glass.contentColor : "transparent"
     layer.enabled: true
     layer.effect:  OverlayShadowEffect { elevated: _root.lifted }
 
@@ -36,7 +36,6 @@ Rectangle {
     property real   aspect:       1
     property real   iconRotation: 0
     property alias  backdrop:      glass.backdrop
-    property alias  lightMaterial: glass.lightMaterial
 
     signal clicked()
     signal held()
@@ -55,7 +54,7 @@ Rectangle {
     QGCColoredImage {
         anchors.centerIn:   parent
         source:             icon
-        color:              checked ? qgcPal.window : glass.contentColor
+        color:              checked ? glass.invertedColor : glass.contentColor
         height:             Math.min(parent.width, parent.height) * _glyphFraction
         width:              height
         sourceSize.height:  height
@@ -72,7 +71,7 @@ Rectangle {
         width:              parent.width - ScreenTools.defaultFontPixelWidth
         visible:            icon === ""
         text:               _root.text
-        color:              checked ? qgcPal.window : glass.contentColor
+        color:              checked ? glass.invertedColor : glass.contentColor
         font.pointSize:     ScreenTools.smallFontPointSize
         horizontalAlignment: Text.AlignHCenter
         elide:              Text.ElideRight

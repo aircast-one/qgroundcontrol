@@ -630,6 +630,17 @@ LandingComplexItem::ReadyForSaveState LandingComplexItem::readyForSaveState(void
     return _landingCoordSet && !_wizardMode ? ReadyForSave : NotReadyForSaveData;
 }
 
+QString LandingComplexItem::readyForSaveMessage(void) const
+{
+    if (!_landingCoordSet) {
+        return tr("Set the landing point");
+    }
+    if (_wizardMode) {
+        return tr("Finish the landing setup");
+    }
+    return VisualMissionItem::readyForSaveMessage();
+}
+
 void LandingComplexItem::setDirty(bool dirty)
 {
     if (_dirty != dirty) {

@@ -8,6 +8,7 @@
  ****************************************************************************/
 
 #include "AndroidInterface.h"
+#include "QGCBridge.h"
 #include "QGCApplication.h"
 #include "QGCLoggingCategory.h"
 #include "ScreenToolsController.h"
@@ -325,6 +326,10 @@ void jniSafeAreaInsets(JNIEnv *envA, jobject thizA, jint leftA, jint topA, jint 
 
 void setSystemBarAppearance(bool lightBars)
 {
+    if (QGCBridge::setSystemBarAppearance(lightBars)) {
+        return;
+    }
+
     QJniObject::callStaticMethod<void>(kJniQGCActivityClassName, "setSystemBarAppearance", "(Z)V", static_cast<jboolean>(lightBars));
     (void) cleanJavaException();
 }

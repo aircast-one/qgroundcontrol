@@ -16,14 +16,23 @@ import QGroundControl.ScreenTools
 OverlayCapsule {
     id: _root
 
-    property real   availableWidth
-    property string caption: ""
-    property var    tools:   []
+    property var    mapControl
+    property bool   centered: false
+    property string caption:  ""
+    property var    tools:    []
     property bool   accentEnabled: true
 
+    readonly property real availableWidth: mapControl.centerViewport.width
+
+    x:      centered ? _viewportOrigin.x + (availableWidth - width) / 2
+                     : _viewportOrigin.x + availableWidth - width
+    y:      _viewportOrigin.y
     width:  Math.min(toolsRow.width + _pad * 2, availableWidth)
     lifted: true
     z:      QGroundControl.zOrderMapItems + 2
+
+    readonly property point _viewportOrigin: mapControl.mapToItem(parent, mapControl.centerViewport.left,
+                                                                          mapControl.centerViewport.top)
 
     readonly property var  _qgcPal: QGroundControl.globalPalette
     readonly property real _pad:    ScreenTools.defaultFontPixelHeight * 0.25

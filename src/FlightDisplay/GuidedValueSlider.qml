@@ -186,7 +186,7 @@ Item {
                             id:     majorTick
                             width:  _majorTickWidth
                             height: 1
-                            color:  _qgcPal.text
+                            color:  _qgcPal.overlayInk
                         }
 
                         QGCLabel {
@@ -207,7 +207,7 @@ Item {
                         y:          _majorTickPixelHeight / 2 * index +  + _firstTickPixelOffset
                         width:      _minorTickWidth
                         height:     1
-                        color:      _qgcPal.text
+                        color:      _qgcPal.overlayInk
                         visible:    index % 2 === 1 && tickValue >= _sliderMinVal && tickValue <= _sliderMaxVal
 
                         property real tickValue: _majorTickMaxValue - ((_majorTickValueStep  / 2) * index)
@@ -242,8 +242,8 @@ Item {
 
         onPaint: {
             var ctx = getContext("2d")
-            ctx.strokeStyle = _qgcPal.text
-            ctx.fillStyle = _qgcPal.window
+            ctx.strokeStyle = _qgcPal.overlayInk
+            ctx.fillStyle = _qgcPal.overlayInkInverse
             ctx.lineWidth = 1
             ctx.beginPath()
             ctx.moveTo(0, indicatorHeight / 2)

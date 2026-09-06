@@ -188,6 +188,41 @@ void TelemetryChipsTest::_chipPerValueIsRendered()
     QCOMPARE(QSet<QString>(uids.begin(), uids.end()).count(), uids.count());
 }
 
+void TelemetryChipsTest::_narrowLayerWrapsChipsIntoRows()
+{
+    ChipSettingsScope settingsScope;
+
+    TelemetryChipsTestMainWindow mainWindow;
+    QQuickView view;
+    QVERIFY(loadLayer(view, mainWindow));
+
+    FactValueGrid* const grid = view.rootObject()->findChild<FactValueGrid*>();
+    QVERIFY(grid);
+    QTRY_COMPARE(chipsOf(view.rootObject()).count(), grid->columns()->count());
+
+    const QList<QQuickItem*> wideChips = chipsOf(view.rootObject());
+    qreal widest = 0;
+    for (QQuickItem* chip : wideChips) {
+        widest = qMax(widest, chip->width());
+    }
+    QVERIFY(widest > 0);
+
+    const qreal oneColumnWide = widest * 1.5;
+    view.rootObject()->setSize(QSizeF(oneColumnWide, 600));
+    view.resize(qRound(oneColumnWide), 600);
+
+    QTRY_VERIFY(!chipsOf(view.rootObject()).isEmpty() && chipsOf(view.rootObject()).first()->y() > 0);
+
+    const QList<QQuickItem*> chips = chipsOf(view.rootObject());
+    QSet<int> rows;
+    for (QQuickItem* chip : chips) {
+        QVERIFY(chip->x() >= 0);
+        QVERIFY(chip->x() + chip->width() <= view.rootObject()->width() + 1);
+        rows.insert(qRound(chip->y()));
+    }
+    QVERIFY(rows.count() > 1);
+}
+
 void TelemetryChipsTest::_duplicateFactChipsKeepIndependentPositions()
 {
     ChipSettingsScope settingsScope;
@@ -301,6 +336,54 @@ void TelemetryChipsTest::_addedColumnPicksAnUnusedFact()
     const QString secondAdded = gridFactNames(grid).last();
     QVERIFY(!factNamesBefore.contains(secondAdded));
     QVERIFY(secondAdded != firstAdded);
+}
+
+static QQuickItem* layerOf(QQuickView& view)
+{
+    return findItemByName(view.rootObject(), QStringLiteral("telemetryChipsLayer"));
+}
+
+static qreal widestChipWidth(QQuickItem* root)
+{
+    const QList<QQuickItem*> chips = chipsOf(root);
+    qreal widest = 0;
+    for (QQuickItem* chip : chips) {
+        widest = qMax(widest, chip->width());
+    }
+    return widest;
+}
+
+void TelemetryChipsTest::_deletingTheWidestChipReleasesItsColumnSpan()
+{
+    ChipSettingsScope settingsScope;
+
+    TelemetryChipsTestMainWindow mainWindow;
+    QQuickView view;
+    QVERIFY(loadLayer(view, mainWindow));
+
+    FactValueGrid* const grid = view.rootObject()->findChild<FactValueGrid*>();
+    QQuickItem* const layer = layerOf(view);
+    QVERIFY(grid && layer);
+    QTRY_COMPARE(chipsOf(view.rootObject()).count(), grid->columns()->count());
+    QTRY_VERIFY(widestChipWidth(view.rootObject()) > 0);
+
+    const QList<QQuickItem*> chips = chipsOf(view.rootObject());
+    int widestColumn = 0;
+    qreal widest = 0;
+    for (int i = 0; i < chips.count(); i++) {
+        if (chips.at(i)->width() > widest) {
+            widest = chips.at(i)->width();
+            widestColumn = i;
+        }
+    }
+    QTRY_COMPARE(layer->property("_widestChip").toReal(), widest);
+
+    grid->deleteColumn(widestColumn);
+
+    QTRY_COMPARE(chipsOf(view.rootObject()).count(), grid->columns()->count());
+    const qreal remainingWidest = widestChipWidth(view.rootObject());
+    QVERIFY(remainingWidest < widest);
+    QTRY_COMPARE(layer->property("_widestChip").toReal(), remainingWidest);
 }
 
 void TelemetryChipsTest::_deleteColumnRemovesTargetedChip()

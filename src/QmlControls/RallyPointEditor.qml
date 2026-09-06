@@ -153,7 +153,7 @@ Column {
         }
 
         PlanGroupRow {
-            text:        qsTr("＋  Add rally point")
+            text:        "＋  " + qsTr("Add Rally Point")
             textColor:   _root._qgcPal.primaryButton
             interactive: true
             onClicked:   controller.addPoint(_root.mapCenter)
@@ -165,7 +165,7 @@ Column {
         visible:    controller.supported && controller.points.count === 0
 
         PlanGroupRow {
-            text:        qsTr("＋  Add rally point")
+            text:        "＋  " + qsTr("Add Rally Point")
             textColor:   _root._qgcPal.primaryButton
             interactive: true
             onClicked:   controller.addPoint(_root.mapCenter)

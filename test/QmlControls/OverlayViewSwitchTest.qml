@@ -16,13 +16,12 @@ Item {
     width:  300
     height: 60
 
-    // Stands in for whatever the owner drives the switch from - in the main window, which view is
-    // up. The control must keep following it after the user has touched the control.
-    property int  backingIndex:   0
-    property bool secondEnabled:  true
+    property int  backingIndex:     0
 
-    property int  activatedCount: 0
-    property int  lastActivated:  -1
+    property int  activatedCount:   0
+    property int  lastActivated:    -1
+    property int  reselectedCount:  0
+    property int  lastReselected:   -1
 
     readonly property int  currentIndex: viewSwitch.currentIndex
     readonly property real thumbX:       thumb.x
@@ -35,14 +34,16 @@ Item {
         anchors.fill: parent
         currentIndex: root.backingIndex
 
-        options: [
-            qsTr("Fly"),
-            { text: qsTr("Plan"), enabled: root.secondEnabled }
-        ]
+        options: [ qsTr("Fly"), qsTr("Plan") ]
 
         onActivated: (index) => {
             root.activatedCount++
             root.lastActivated = index
+        }
+
+        onReselected: (index) => {
+            root.reselectedCount++
+            root.lastReselected = index
         }
     }
 }

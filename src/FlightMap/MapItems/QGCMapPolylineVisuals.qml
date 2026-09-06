@@ -26,6 +26,7 @@ Item {
     property var    mapControl
     property var    mapPolyline
     property bool   interactive:    mapPolyline.interactive
+    property bool   defaultShapeWhenEmpty: false
     property int    lineWidth:      3
     property color  lineColor:      "#be781c"
 
@@ -43,7 +44,7 @@ Item {
 
     function _shapeCaption() {
         if (mapPolyline.count < 2) {
-            return ""
+            return qsTr("Polyline Tools")
         }
         return qsTr("Length %1").arg(_units.formatMeasure(_units.metersToAppSettingsHorizontalDistanceUnits(_length()), _units.appSettingsHorizontalDistanceUnitsString))
     }
@@ -61,7 +62,8 @@ Item {
 
     function _addInteractiveVisuals() {
         if (_objMgrInteractiveVisuals.empty) {
-            _objMgrInteractiveVisuals.createObjects([ dragHandlesComponent, splitHandlesComponent, toolbarComponent ], mapControl)
+            _objMgrInteractiveVisuals.createObjects([ dragHandlesComponent, splitHandlesComponent ], mapControl)
+            _objMgrInteractiveVisuals.createObject(toolbarComponent, OverlayBackdrop.chromeLayer || mapControl, false)
         }
     }
 
@@ -82,13 +84,18 @@ Item {
         mapPolyline.endReset()
     }
 
-    onInteractiveChanged: {
+    function _handleInteractiveChanged() {
         if (interactive) {
+            if (defaultShapeWhenEmpty && mapPolyline.count === 0) {
+                _resetPolyline()
+            }
             _addInteractiveVisuals()
         } else {
             _objMgrInteractiveVisuals.destroyObjects()
         }
     }
+
+    onInteractiveChanged: _handleInteractiveChanged()
 
     Connections {
         target: mapPolyline
@@ -104,7 +111,7 @@ Item {
     Component.onCompleted: {
         _addCommonVisuals()
         if (interactive) {
-            _addInteractiveVisuals()
+            _handleInteractiveChanged()
         }
     }
     Component.onDestruction: mapPolyline.traceMode = false
@@ -303,11 +310,8 @@ Item {
         id: toolbarComponent
 
         PlanEditToolbar {
-            anchors.horizontalCenter:       mapControl.left
-            anchors.horizontalCenterOffset: mapControl.centerViewport.left + (mapControl.centerViewport.width / 2)
-            y:                              mapControl.centerViewport.top
+            mapControl:                     _root.mapControl
             z:                              QGroundControl.zOrderMapItems + 2
-            availableWidth:                 mapControl.centerViewport.width
             caption:                        mapPolyline.traceMode ? _traceCaption() : _shapeCaption()
             accentEnabled:                  mapPolyline.traceComplete
             tools: mapPolyline.traceMode

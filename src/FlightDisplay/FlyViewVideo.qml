@@ -28,7 +28,6 @@ Item {
     PipState {
         id:         videoPipState
         pipView:    _root.pipView
-        isDark:     true
 
         onWindowAboutToOpen: {
             QGroundControl.videoManager.stopVideo()

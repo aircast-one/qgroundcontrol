@@ -45,10 +45,13 @@ CheckBox {
             QGCColoredImage {
                 anchors.right:          parent.right
                 anchors.verticalCenter: parent.verticalCenter
-                width:                  parent.height / 2
+                width:                  parent.height / 3
                 height:                 width
-                source:                 "/qmlimages/arrow-down.png"
-                color:                  qgcPal.text
+                sourceSize.height:      height
+                fillMode:               Image.PreserveAspectFit
+                mipmap:                 true
+                source:                 "/res/DropArrow.svg"
+                color:                  Qt.alpha(qgcPal.text, 0.5)
                 visible:                !control.checked
             }
         }

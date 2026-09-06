@@ -20,9 +20,9 @@ Rectangle {
     property bool  frosted:   true
     property color accent:    "transparent"
     property alias backdrop:      glass.backdrop
-    property alias lightMaterial: glass.lightMaterial
 
-    readonly property color contentColor: glass.contentColor
+    readonly property color contentColor:  glass.contentColor
+    readonly property color invertedColor: glass.invertedColor
 
     readonly property var _qgcPal: QGroundControl.globalPalette
 
@@ -40,6 +40,6 @@ Rectangle {
         frosted:      _root.frosted
         // An accent tints the glass rather than covering it. Painting the accent on top threw
         // away the refraction and the rim and left a flat slab sitting on a glass panel.
-        tint:         _root.accent.a > 0 ? _root.accent : _qgcPal.overlayGlass
+        tint:         _root.accent.a > 0 ? _root.accent : glass.defaultTint
     }
 }

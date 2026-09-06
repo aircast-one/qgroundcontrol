@@ -147,7 +147,7 @@ Item {
 
                             QGCLabel {
                                 anchors.verticalCenter: parent.verticalCenter
-                                text:                   _setupComplete ? qsTr("Ready") : qsTr("Needs setup")
+                                text:                   _setupComplete ? qsTr("Setup complete") : qsTr("Needs setup")
                                 color:                  parent.parent._statusColor
                                 font.bold:              true
                             }
@@ -220,10 +220,11 @@ Item {
                                         spacing:                _fw
 
                                         Rectangle {
+                                            objectName:             "summaryTile" + modelData.name.replace(/\s/g, "")
                                             Layout.preferredWidth:  _tileSize
                                             Layout.preferredHeight: _tileSize
                                             radius:                 Math.round(_tileSize * 0.28)
-                                            color:                  setupView.tileColorFor(modelData.name)
+                                            color:                  setupView.componentColor(modelData)
 
                                             QGCColoredImage {
                                                 anchors.centerIn:   parent
@@ -231,7 +232,7 @@ Item {
                                                 height:             width
                                                 sourceSize.height:  height
                                                 fillMode:           Image.PreserveAspectFit
-                                                source:             modelData.iconResource
+                                                source:             setupView.componentIcon(modelData)
                                                 color:              "white"
                                             }
                                         }

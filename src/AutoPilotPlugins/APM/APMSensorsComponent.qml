@@ -38,14 +38,7 @@ SetupPage {
             readonly property string orientationHelpCal:    qsTr("Before calibrating make sure rotation settings are correct. ") + orientationHelpSet
             readonly property string compassRotationText:   qsTr("If the compass or GPS module is mounted in flight direction, leave the default value (None)")
 
-            readonly property string compassHelp:   qsTr("For Compass calibration you will need to rotate your vehicle through a number of positions.")
-            readonly property string gyroHelp:      qsTr("For Gyroscope calibration you will need to place your vehicle on a surface and leave it still.")
-            readonly property string accelHelp:     qsTr("For Accelerometer calibration you will need to place your vehicle on all six sides on a perfectly level surface and hold it still in each orientation for a few seconds.")
-            readonly property string levelHelp:     qsTr("To level the horizon you need to place the vehicle in its level flight position and press OK.")
 
-            readonly property string statusTextAreaDefaultText: qsTr("Start the individual calibration steps by clicking one of the buttons to the left.")
-
-            property string preCalibrationDialogHelp
 
             property string _postCalibrationDialogText
             property var    _postCalibrationDialogParams
@@ -68,7 +61,9 @@ SetupPage {
             readonly property int _calTypeCompass:  1
             readonly property int _calTypeAccel:    2
             readonly property int _calTypeSet:      3
-            readonly property int _buttonWidth:     ScreenTools.defaultFontPixelWidth * 15
+            readonly property int  _buttonWidth:               ScreenTools.defaultFontPixelWidth * 15
+            readonly property real _calColumnWidthFraction:    0.6
+            readonly property int  _calColumnButtonWidths:     3
 
             property bool   _orientationsDialogShowCompass: true
             property string _orientationDialogHelp:         orientationHelpSet
@@ -152,7 +147,7 @@ SetupPage {
 
                 property var rgCompassCalFitness: [ controller.compass1CalFitness, controller.compass2CalFitness, controller.compass3CalFitness ]
 
-                onResetStatusTextArea: statusLog.text = statusTextAreaDefaultText
+                onResetStatusTextArea: statusLog.text = ""
 
                 onWaitingForCancelChanged: {
                     if (controller.waitingForCancel) {
@@ -643,105 +638,121 @@ SetupPage {
             property string _calName
 
             component CalRow: PlanGroupRow {
-                property bool needsCalibration: false
+                property var    needsCalibration: undefined
+                property bool   blockedByAccel:   false
+                property string hint:             ""
 
                 objectName:  "calRow" + text.replace(/\s/g, "")
                 interactive: true
+                enabled:     !blockedByAccel
+                description: blockedByAccel ? qsTr("Calibrate Accelerometer first") : hint
                 onClicked:   _calName = text
 
-                Rectangle {
+                QGCLabel {
                     anchors.verticalCenter: parent.verticalCenter
-                    width:                  ScreenTools.defaultFontPixelHeight * 0.55
-                    height:                 width
-                    radius:                 width / 2
-                    color:                  qgcPal.colorRed
-                    visible:                needsCalibration
+                    text:                   needsCalibration ? qsTr("Not calibrated") : qsTr("Calibrated")
+                    color:                  needsCalibration ? qgcPal.colorOrange : Qt.alpha(qgcPal.text, 0.5)
+                    visible:                needsCalibration !== undefined && !blockedByAccel
                 }
             }
 
-            PlanGroupCard {
-                id:             calList
+            Column {
+                id:             calColumn
                 anchors.left:   parent.left
                 anchors.top:    parent.top
-                width:          _buttonWidth * 1.7
+                width:          Math.min(parent.width * _calColumnWidthFraction, _buttonWidth * _calColumnButtonWidths)
+                spacing:        _margins
 
-                CalRow {
-                    text:               qsTr("Accelerometer")
-                    needsCalibration:   accelCalNeeded
-                    onClicked: {
-                        showOrientationsDialog(_calTypeAccel)
-                        showSimpleAccelCalOption()
-                    }
+                QGCLabel {
+                    text:               qsTr("CALIBRATION")
+                    font.pointSize:     ScreenTools.smallFontPointSize
+                    font.letterSpacing: 0.5
+                    color:              qgcPal.colorGrey
+                    leftPadding:        ScreenTools.defaultFontPixelWidth * 1.5
                 }
 
-                CalRow {
-                    text:               qsTr("Compass")
-                    needsCalibration:   compassCalNeeded
-                    onClicked: {
-                        if (controller.accelSetupNeeded) {
-                            mainWindow.showMessageDialog(qsTr("Calibrate Compass"), qsTr("Accelerometer must be calibrated prior to Compass."))
-                        } else {
-                            showOrientationsDialog(_calTypeCompass)
+                PlanGroupCard {
+                    id:     calList
+                    width:  parent.width
+
+                    CalRow {
+                        text:               qsTr("Accelerometer")
+                        needsCalibration:   accelCalNeeded
+                        hint:               qsTr("Hold the vehicle still on all six sides")
+                        onClicked: {
+                            showOrientationsDialog(_calTypeAccel)
+                            showSimpleAccelCalOption()
                         }
                     }
-                }
 
-                CalRow {
-                    text: _levelHorizonText
+                    CalRow {
+                        text:               qsTr("Compass")
+                        needsCalibration:   compassCalNeeded
+                        blockedByAccel:     controller.accelSetupNeeded
+                        hint:               qsTr("Rotate the vehicle through several positions")
+                        onClicked:          showOrientationsDialog(_calTypeCompass)
+                    }
 
-                    readonly property string _levelHorizonText: qsTr("Level Horizon")
+                    CalRow {
+                        text: _levelHorizonText
 
-                    onClicked: {
-                        if (controller.accelSetupNeeded) {
-                            mainWindow.showMessageDialog(_levelHorizonText, qsTr("Accelerometer must be calibrated prior to Level Horizon."))
-                        } else {
+                        readonly property string _levelHorizonText: qsTr("Level Horizon")
+
+                        blockedByAccel: controller.accelSetupNeeded
+                        hint:           qsTr("Place the vehicle in its level flight position")
+
+                        onClicked: {
                             mainWindow.showMessageDialog(_levelHorizonText,
                                                          qsTr("To level the horizon you need to place the vehicle in its level flight position and press Ok."),
                                                          Dialog.Cancel | Dialog.Ok,
                                                          function() { controller.levelHorizon() })
                         }
                     }
-                }
 
-                CalRow {
-                    text:       qsTr("Gyro")
-                    visible:    globals.activeVehicle && (globals.activeVehicle.multiRotor | globals.activeVehicle.rover | globals.activeVehicle.sub)
-                    onClicked:  mainWindow.showMessageDialog(qsTr("Calibrate Gyro"),
-                                                             qsTr("For Gyroscope calibration you will need to place your vehicle on a surface and leave it still.\n\nClick Ok to start calibration."),
-                                                             Dialog.Cancel | Dialog.Ok,
-                                                             function() { controller.calibrateGyro() })
-                }
+                    CalRow {
+                        text:       qsTr("Gyro")
+                        hint:       qsTr("Place the vehicle on a surface and leave it still")
+                        visible:    globals.activeVehicle && (globals.activeVehicle.multiRotor | globals.activeVehicle.rover | globals.activeVehicle.sub)
+                        onClicked:  mainWindow.showMessageDialog(qsTr("Calibrate Gyro"),
+                                                                 qsTr("For Gyroscope calibration you will need to place your vehicle on a surface and leave it still.\n\nClick Ok to start calibration."),
+                                                                 Dialog.Cancel | Dialog.Ok,
+                                                                 function() { controller.calibrateGyro() })
+                    }
 
-                CalRow {
-                    text:       _calibratePressureText
-                    onClicked:  mainWindow.showMessageDialog(_calibratePressureText,
-                                                             qsTr("Pressure calibration will set the %1 to zero at the current pressure reading. %2").arg(_altText).arg(_helpTextFW),
-                                                             Dialog.Cancel | Dialog.Ok,
-                                                             function() { controller.calibratePressure() })
+                    CalRow {
+                        text:       _calibratePressureText
+                        hint:       globals.activeVehicle && globals.activeVehicle.fixedWing ? qsTr("Shield the airspeed sensor from the wind") : qsTr("Zeroes the altitude at the current pressure")
+                        onClicked:  mainWindow.showMessageDialog(_calibratePressureText,
+                                                                 qsTr("Pressure calibration will set the %1 to zero at the current pressure reading. %2").arg(_altText).arg(_helpTextFW),
+                                                                 Dialog.Cancel | Dialog.Ok,
+                                                                 function() { controller.calibratePressure() })
 
-                    readonly property string _altText:                  globals.activeVehicle.sub ? qsTr("depth") : qsTr("altitude")
-                    readonly property string _helpTextFW:               globals.activeVehicle.fixedWing ? qsTr("To calibrate the airspeed sensor shield it from the wind. Do not touch the sensor or obstruct any holes during the calibration.") : ""
-                    readonly property string _calibratePressureText:    globals.activeVehicle.fixedWing ? qsTr("Baro/Airspeed") : qsTr("Pressure")
-                }
+                        readonly property string _altText:                  globals.activeVehicle.sub ? qsTr("depth") : qsTr("altitude")
+                        readonly property string _helpTextFW:               globals.activeVehicle.fixedWing ? qsTr("To calibrate the airspeed sensor shield it from the wind. Do not touch the sensor or obstruct any holes during the calibration.") : ""
+                        readonly property string _calibratePressureText:    globals.activeVehicle.fixedWing ? qsTr("Baro/Airspeed") : qsTr("Pressure")
+                    }
 
-                CalRow {
-                    text:       qsTr("CompassMot")
-                    visible:    globals.activeVehicle ? globals.activeVehicle.supportsMotorInterference : false
-                    onClicked:  compassMotDialogComponent.createObject(mainWindow).open()
-                }
+                    CalRow {
+                        text:       qsTr("CompassMot")
+                        hint:       qsTr("Props off and reversed, vehicle secured")
+                        visible:    globals.activeVehicle ? globals.activeVehicle.supportsMotorInterference : false
+                        onClicked:  compassMotDialogComponent.createObject(mainWindow).open()
+                    }
 
-                CalRow {
-                    text:           qsTr("Sensor Settings")
-                    showChevron:    true
-                    onClicked:      showOrientationsDialog(_calTypeSet)
+                    CalRow {
+                        text:           qsTr("Sensor Settings")
+                        showChevron:    true
+                        onClicked:      showOrientationsDialog(_calTypeSet)
+                    }
                 }
             }
 
             Rectangle {
-                anchors.left:       calList.right
+                anchors.left:       calColumn.right
                 anchors.leftMargin: _margins * 2
                 anchors.right:      parent.right
                 anchors.top:        parent.top
+                visible:            statusTextArea.text !== ""
                 height:             Math.min(parent.height, Math.max(ScreenTools.defaultFontPixelHeight * 5, statusTextArea.contentHeight + _margins * 4))
                 radius:             ScreenTools.defaultFontPixelHeight * 0.9
                 color:              Qt.alpha(qgcPal.text, 0.055)
@@ -751,7 +762,7 @@ SetupPage {
                     anchors.fill:       parent
                     anchors.margins:    _margins
                     readOnly:           true
-                    text:               statusTextAreaDefaultText
+                    text:               ""
                     color:              qgcPal.text
                     background:         null
                 }

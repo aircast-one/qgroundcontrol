@@ -31,6 +31,12 @@ private slots:
     void _testEmptyVehiclePX4           (void);
     void _testGlobalAltMode             (void);
     void _testGimbalRecalc              (void);
+    void _testAddWaypointAPM            (void);
+    void _testAddWaypointPX4            (void);
+    void _testAddWaypointAtIndexAPM     (void);
+    void _testAddWaypointAtIndexPX4     (void);
+    void _testNewPatternStartsInWizardMode (void);
+    void _testPatternReadyMessageNamesItsOwnShape (void);
     void _testVehicleYawRecalc          (void);
 
 private:
@@ -43,6 +49,7 @@ private:
     void _initForFirmwareType(MAV_AUTOPILOT firmwareType);
     void _testEmptyVehicleWorker(MAV_AUTOPILOT firmwareType);
     void _testAddWaypointWorker(MAV_AUTOPILOT firmwareType);
+    void _testAddWaypointAtIndexWorker(MAV_AUTOPILOT firmwareType);
 #if 0
     void _testOfflineToOnlineWorker(MAV_AUTOPILOT firmwareType);
 #endif

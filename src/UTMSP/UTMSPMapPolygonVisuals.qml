@@ -73,7 +73,7 @@ Item {
     // Create a Toolbar for Polygon Visuals
     function addToolbarVisuals() {
         if (_objMgrToolVisuals.empty) {
-            var toolbar = _objMgrToolVisuals.createObject(toolbarComponent, mapControl)
+            var toolbar = _objMgrToolVisuals.createObject(toolbarComponent, OverlayBackdrop.chromeLayer || mapControl)
             toolbar.z = QGroundControl.zOrderWidgets
         }
     }
@@ -595,10 +595,8 @@ Item {
         id: toolbarComponent
 
         PlanEditToolbar {
-            anchors.horizontalCenter:       mapControl.left
-            anchors.horizontalCenterOffset: mapControl.centerViewport.left + (mapControl.centerViewport.width / 2)
-            y:                              mapControl.centerViewport.top
-            availableWidth:                 mapControl.centerViewport.width
+            mapControl:                     _root.mapControl
+            centered:                       true
             caption:                        mapPolygon.traceMode ? _traceCaption() : ""
             accentEnabled:                  mapPolygon.traceComplete
             tools: mapPolygon.traceMode

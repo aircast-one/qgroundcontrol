@@ -20,5 +20,5 @@ private slots:
     void _tapLeavesTheOwnersBindingIntact();
     void _dragPastTheMidpointSwitches();
     void _dragShortOfTheMidpointSpringsBack();
-    void _disabledOptionCannotBeReached();
+    void _tapOnTheCurrentOptionReportsReselectedNotActivated();
 };

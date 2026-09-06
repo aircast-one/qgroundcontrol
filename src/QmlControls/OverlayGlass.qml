@@ -18,20 +18,21 @@ Item {
     property real  radius:    height / 2
     property bool  highlight: false
     property bool  frosted:   true
-    property bool  lightMaterial: !OverlayBackdrop.isDark
-    property color tint:      lightMaterial ? _qgcPal.overlayGlassLight : _qgcPal.overlayGlass
-
-    readonly property color contentColor: lightMaterial ? _qgcPal.window : _qgcPal.text
+    property color tint:      defaultTint
+    readonly property color defaultTint:   _panel ? Qt.alpha(_qgcPal.window, 0.94) : _qgcPal.overlayGlass
+    readonly property color contentColor:  _panel ? _qgcPal.text   : _qgcPal.overlayInk
+    readonly property color invertedColor: _panel ? _qgcPal.window : _qgcPal.overlayInkInverse
 
     enum Material { Control, Panel }
 
     property int   material:  OverlayGlass.Control
-    property real  blurRadius: ScreenTools.defaultFontPixelHeight * 0.7
+    property real  blurRadius: ScreenTools.defaultFontPixelHeight * (_panel ? 1.0 : 0.7) * frost
     property Item  backdrop:  OverlayBackdrop.forItem(_root)
+    property real  frost: QGroundControl.settingsManager.appSettings.overlayGlassFrost.rawValue / 100
 
     readonly property bool _panel:   material === OverlayGlass.Panel
-    readonly property real _minTint: _panel ? 0.78 : 0.35
-    readonly property real _maxTint: _panel ? 0.95 : 0.85
+    readonly property real _minTint: (_panel ? 0.48 : 0.35) * frost
+    readonly property real _maxTint: (_panel ? 0.66 : 0.85) * frost
 
     readonly property bool active: frosted && _backdrop !== null
 
@@ -62,9 +63,9 @@ Item {
         anchors.fill: parent
         visible:      !_root.active
         radius:       _root.radius
-        color:        _root.lightMaterial ? _root._qgcPal.overlayGlassLight : _root._qgcPal.overlayBackground
+        color:        _root._panel ? _root._qgcPal.window : _root._qgcPal.overlayBackground
         border.width: 1
-        border.color: _root.highlight ? Qt.alpha(_root._qgcPal.text, 0.6) : _root._qgcPal.overlayBorder
+        border.color: _root.highlight ? Qt.alpha(_root.contentColor, 0.6) : _root._qgcPal.overlayBorder
     }
 
     ShaderEffectSource {
@@ -81,7 +82,9 @@ Item {
         }
     }
 
-    on_BackdropRectChanged: backdropCrop.scheduleUpdate()
+    on_BackdropRectChanged: OverlayBackdrop.refresh()
+
+    onActiveChanged: if (active) OverlayBackdrop.refresh()
 
     ShaderEffect {
         anchors.fill:   parent

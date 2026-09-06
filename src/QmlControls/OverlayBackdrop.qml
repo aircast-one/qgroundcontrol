@@ -18,9 +18,9 @@ QtObject {
     property Item contentBackdrop: null
     property Item fullSource:      null
     property Item fullBackdrop:    null
-    property bool isDark:          true
 
     readonly property bool enabled: contentBackdrop !== null || fullBackdrop !== null
+    readonly property Item chromeLayer: fullSource
 
     property int refreshHz: 10
 

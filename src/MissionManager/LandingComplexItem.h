@@ -108,6 +108,7 @@ public:
     void                applyNewAltitude            (double newAltitude) final;
     double              additionalTimeDelay         (void) const final { return 0; }
     ReadyForSaveState   readyForSaveState           (void) const final;
+    QString             readyForSaveMessage         (void) const final;
     bool                exitCoordinateSameAsEntry   (void) const final { return false; }
     void                setDirty                    (bool dirty) final;
     void                setCoordinate               (const QGeoCoordinate& coordinate) final { setFinalApproachCoordinate(coordinate); }

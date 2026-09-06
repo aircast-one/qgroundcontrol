@@ -70,12 +70,8 @@ RowLayout {
 
     property bool   _utmspEnabled:      QGroundControl.utmspSupported
 
-    // MainStatusIndicator reads these from whatever hosts it rather than declaring them, so a
-    // second host has to supply them too. It writes _mainStatusBGColor, so that one cannot be
-    // readonly.
-    property var    _activeVehicle:     QGroundControl.multiVehicleManager.activeVehicle
-    property bool   _communicationLost: _activeVehicle ? _activeVehicle.vehicleLinkManager.communicationLost : false
-    property color  _mainStatusBGColor: "transparent"
+    readonly property var  _activeVehicle:     QGroundControl.multiVehicleManager.activeVehicle
+    readonly property bool _communicationLost: _activeVehicle ? _activeVehicle.vehicleLinkManager.communicationLost : false
     property int    _statsPage:         0
     readonly property real _compactNameWidth: ScreenTools.defaultFontPixelWidth * 10
     readonly property real _fullRowWidth:     viewSwitch.Layout.preferredWidth + statusIndicator.implicitWidth + _nameWidth + spacing * 2 +
@@ -150,7 +146,7 @@ RowLayout {
             text:                     stat.label.toUpperCase()
             font.pointSize:           ScreenTools.smallFontPointSize
             font.bold:                true
-            color:                    Qt.alpha(_root._qgcPal.text, 0.45)
+            color:                    Qt.alpha(_root._qgcPal.overlayInk, 0.45)
         }
 
         QGCLabel {
@@ -166,7 +162,7 @@ RowLayout {
             anchors.verticalCenter: parent.verticalCenter
             width:                  1
             height:                 parent.height * 0.55
-            color:                  Qt.alpha(_root._qgcPal.text, 0.12)
+            color:                  Qt.alpha(_root._qgcPal.overlayInk, 0.12)
             visible:                stat.x > 0
         }
     }
@@ -175,6 +171,7 @@ RowLayout {
     // dissolve under it.
     OverlayCapsule {
         id:                     viewSwitch
+        visible:                !mainWindow.hostProvidesNavigation
         Layout.preferredHeight: _capsuleHeight
         Layout.preferredWidth:  viewSwitchControl.implicitWidth
         Layout.minimumWidth:    Layout.preferredWidth
@@ -183,6 +180,7 @@ RowLayout {
         OverlayViewSwitch {
             id:           viewSwitchControl
             objectName:   "planViewSwitch"
+            contentColor: viewSwitch.contentColor
             anchors.fill: parent
             options:      [qsTr("Fly"), qsTr("Plan")]
             currentIndex: mainWindow.flyViewActive ? 0 : 1
@@ -241,7 +239,7 @@ RowLayout {
                 elide:          Text.ElideRight
                 color:          !_controllerDirty && _containsItems && !_controllerSyncInProgress
                                     ? _qgcPal.colorGreen
-                                    : Qt.alpha(_qgcPal.text, 0.5)
+                                    : Qt.alpha(_qgcPal.overlayInk, 0.5)
             }
         }
     }
@@ -298,7 +296,7 @@ RowLayout {
         // a rendering fault; an action that cannot apply is simply not offered.
         visible:                !QGroundControl.corePlugin.options.disableVehicleConnection && !_controllerOffline
         clip:                   true
-        color:                  !_uploadEnabled  ? Qt.alpha(_qgcPal.text, 0.08)
+        color:                  !_uploadEnabled  ? Qt.alpha(_qgcPal.overlayInk, 0.08)
                               : _uploadedClean   ? _qgcPal.colorGreen
                                                  : _qgcPal.primaryButton
 
@@ -313,7 +311,7 @@ RowLayout {
             anchors.bottom: parent.bottom
             anchors.left:   parent.left
             width:          parent.width * _progressPct
-            color:          Qt.alpha("white", 0.28)
+            color:          Qt.alpha(_qgcPal.overlayInk, 0.28)
             visible:        _controllerSyncInProgress
         }
 
@@ -323,7 +321,7 @@ RowLayout {
             font.bold:          true
             color:              uploadButton._uploadEnabled || uploadButton._uploadedClean
                                     ? _qgcPal.primaryButtonText
-                                    : Qt.alpha(_qgcPal.text, 0.4)
+                                    : Qt.alpha(_qgcPal.overlayInk, 0.4)
             text:               _controllerSyncInProgress ? qsTr("Uploading…")
                               : uploadButton._uploadedClean ? qsTr("✓ Uploaded")
                                                             : qsTr("Upload")
@@ -331,7 +329,7 @@ RowLayout {
 
         QGCMouseArea {
             anchors.fill:   parent
-            enabled:        uploadButton._uploadEnabled && _controllerDirty
+            enabled:        uploadButton._uploadEnabled
             onClicked: {
                 if (_utmspEnabled) {
                     QGroundControl.utmspManager.utmspVehicle.triggerActivationStatusBar(true);

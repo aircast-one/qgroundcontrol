@@ -23,6 +23,7 @@ class QGCOptions;
 class QGeoPositionInfoSource;
 class QmlObjectListModel;
 class QQmlApplicationEngine;
+class QQmlEngine;
 class QQuickItem;
 class Vehicle;
 class VideoReceiver;
@@ -103,6 +104,13 @@ public:
     /// Allows the plugin to override or get access to the QmlApplicationEngine to do things like add import
     /// path or stuff things into the context prior to window creation.
     virtual QQmlApplicationEngine *createQmlApplicationEngine(QObject *parent);
+
+    Q_INVOKABLE void setupEmbeddedEngine(QObject *rootObject);
+
+private:
+    static void _setQmlContextProperties(QQmlEngine *qmlEngine);
+
+public:
 
     /// Allows the plugin to override the creation of the root (native) window.
     virtual void createRootWindow(QQmlApplicationEngine *qmlEngine);

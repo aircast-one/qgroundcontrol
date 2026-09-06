@@ -22,6 +22,9 @@ private slots:
     void _clickSwapsWithoutDrag();
     void _gripResizesAndPersists();
     void _resizeClampsToViewportFraction();
+    void _sizeKeepsItsShareWhenTheViewportNarrows();
+    void _legacyPixelSizeMigratesToAShare();
+    void _centreInsetOnlyAppliesWhileThePipStraddlesTheCentre();
     void _hoverRevealHoldsSteadyOverTheGrip();
     void _gripResizeOutsideEditModeDoesNotSwap();
     void _gripResizeDoesNotMoveThePanel();

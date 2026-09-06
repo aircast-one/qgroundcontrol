@@ -42,8 +42,6 @@ Item {
     readonly property string levelHelp:     qsTr("To level the horizon you need to place the vehicle in its level flight position and leave still.")
     readonly property string airspeedHelp:  qsTr("For Airspeed calibration you will need to keep your airspeed sensor out of any wind and then blow across the sensor. Do not touch the sensor or obstruct any holes during the calibration.")
 
-    readonly property string statusTextAreaDefaultText: qsTr("Start the individual calibration steps by clicking one of the buttons to the left.")
-
     property string preCalibrationDialogType
 
     property string preCalibrationDialogHelp
@@ -68,6 +66,8 @@ Item {
     property bool   _sensorsHaveFixedOrientation:       QGroundControl.corePlugin.options.sensorsHaveFixedOrientation
     property bool   _wifiReliableForCalibration:        QGroundControl.corePlugin.options.wifiReliableForCalibration
     property int    _buttonWidth:                       ScreenTools.defaultFontPixelWidth * 15
+    readonly property real _calColumnWidthFraction:     0.6
+    readonly property int  _calColumnButtonWidths:      3
     property string _calMagIdParamFormat:               "CAL_MAG#_ID"
     property string _calMagRotParamFormat:              "CAL_MAG#_ROT"
     property bool 	_allMagsDisabled:                   controller.parameterExists(-1, "SYS_HAS_MAG") ? controller.getParameterFact(-1, "SYS_HAS_MAG").value === 0 : false
@@ -149,7 +149,7 @@ Item {
         setOrientationsButton:      setOrientationsButton
         orientationCalAreaHelpText: orientationCalAreaHelpText
 
-        onResetStatusTextArea: statusLog.text = statusTextAreaDefaultText
+        onResetStatusTextArea: statusLog.text = ""
 
         onMagCalComplete: {
             setOrientationsButton.visible               = orientationsButtonVisible()
@@ -324,19 +324,21 @@ Item {
     property string _calName
 
     component CalRow: PlanGroupRow {
-        property bool needsCalibration: false
+        property var    needsCalibration: undefined
+        property string hint:             ""
+        property string blockedReason:    ""
 
         objectName:  "calRow" + text.replace(/\s/g, "")
         interactive: true
+        enabled:     blockedReason === ""
+        description: blockedReason === "" ? hint : blockedReason
         onClicked:   _calName = text
 
-        Rectangle {
+        QGCLabel {
             anchors.verticalCenter: parent.verticalCenter
-            width:                  ScreenTools.defaultFontPixelHeight * 0.55
-            height:                 width
-            radius:                 width / 2
-            color:                  qgcPal.colorRed
-            visible:                needsCalibration
+            text:                   needsCalibration ? qsTr("Not calibrated") : qsTr("Calibrated")
+            color:                  needsCalibration ? qgcPal.colorOrange : Qt.alpha(qgcPal.text, 0.5)
+            visible:                needsCalibration !== undefined && blockedReason === ""
         }
     }
 
@@ -344,8 +346,16 @@ Item {
         id:             calColumn
         anchors.left:   parent.left
         anchors.top:    parent.top
-        width:          _buttonWidth * 1.7
+        width:          Math.min(parent.width * _calColumnWidthFraction, _buttonWidth * _calColumnButtonWidths)
         spacing:        ScreenTools.defaultFontPixelHeight * 0.6
+
+        QGCLabel {
+            text:               qsTr("CALIBRATION")
+            font.pointSize:     ScreenTools.smallFontPointSize
+            font.letterSpacing: 0.5
+            color:              qgcPal.colorGrey
+            leftPadding:        ScreenTools.defaultFontPixelWidth * 1.5
+        }
 
         PlanGroupCard {
             width: parent.width
@@ -353,6 +363,7 @@ Item {
             CalRow {
                 id:                 compassButton
                 text:               qsTr("Compass")
+                hint:               qsTr("Rotate the vehicle through several positions")
                 needsCalibration:   cal_mag0_id.value === 0
                 visible:            !_allMagsDisabled && QGroundControl.corePlugin.options.showSensorCalibrationCompass && showSensorCalibrationCompass
                 onClicked: {
@@ -365,6 +376,7 @@ Item {
             CalRow {
                 id:                 gyroButton
                 text:               qsTr("Gyroscope")
+                hint:               qsTr("Place the vehicle on a surface and leave it still")
                 needsCalibration:   cal_gyro0_id.value === 0
                 visible:            QGroundControl.corePlugin.options.showSensorCalibrationGyro && showSensorCalibrationGyro
                 onClicked: {
@@ -377,6 +389,7 @@ Item {
             CalRow {
                 id:                 accelButton
                 text:               qsTr("Accelerometer")
+                hint:               qsTr("Hold the vehicle still on all six sides")
                 needsCalibration:   cal_acc0_id.value === 0
                 visible:            QGroundControl.corePlugin.options.showSensorCalibrationAccel && showSensorCalibrationAccel
                 onClicked: {
@@ -389,7 +402,9 @@ Item {
             CalRow {
                 id:         levelButton
                 text:       qsTr("Level Horizon")
-                enabled:    cal_acc0_id.value !== 0 && cal_gyro0_id.value !== 0
+                hint:       qsTr("Place the vehicle in its level flight position")
+                blockedReason: cal_acc0_id.value !== 0 && cal_gyro0_id.value !== 0 ?
+                                   "" : qsTr("Calibrate Accelerometer and Gyroscope first")
                 visible:    QGroundControl.corePlugin.options.showSensorCalibrationLevel && showSensorCalibrationLevel
                 onClicked: {
                     preCalibrationDialogType = "level"
@@ -401,6 +416,7 @@ Item {
             CalRow {
                 id:                 airspeedButton
                 text:               qsTr("Airspeed")
+                hint:               qsTr("Shield the airspeed sensor from the wind")
                 needsCalibration:   sens_dpres_off.value === 0
                 visible:            vehicleComponent.airspeedCalSupported &&
                                     QGroundControl.corePlugin.options.showSensorCalibrationAirspeed &&
@@ -449,6 +465,7 @@ Item {
         anchors.leftMargin: ScreenTools.defaultFontPixelHeight
         anchors.right:      parent.right
         anchors.top:        parent.top
+        visible:            statusTextArea.text !== ""
         height:             Math.min(parent.height, Math.max(ScreenTools.defaultFontPixelHeight * 5, statusTextArea.contentHeight + ScreenTools.defaultFontPixelHeight * 2))
         radius:             ScreenTools.defaultFontPixelHeight * 0.9
         color:              Qt.alpha(qgcPal.text, 0.055)
@@ -458,7 +475,7 @@ Item {
             anchors.fill:       parent
             anchors.margins:    ScreenTools.defaultFontPixelHeight / 2
             readOnly:           true
-            text:               statusTextAreaDefaultText
+            text:               ""
             color:              qgcPal.text
             background:         null
         }

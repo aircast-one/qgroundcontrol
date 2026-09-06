@@ -8,7 +8,6 @@ import QGroundControl.ScreenTools
 Item {
     id:             _joyRoot
 
-    property alias  lightColors:            mapPal.lightColors  ///< true: use light colors from QGCMapPalette for drawing
     property real   xAxis:                  0                   ///< Value range [-1,1], negative values left stick, positive values right stick
     property real   yAxis:                  0                   ///< Value range [-1,1], negative values down stick, positive values up stick
     property bool   yAxisPositiveRangeOnly: false               ///< true: value range [0,1], false: value range [-1,1]
@@ -27,8 +26,6 @@ Item {
     property real   stickPositionY:         !yAxisReCenter ? height : height / 2
     property bool   alredyCreated:          false
     
-    QGCMapPalette { id: mapPal }
-
     onStickPositionXChanged:            calculateXAxis()
     onStickPositionYChanged:            calculateYAxis()
     onYAxisPositiveRangeOnlyChanged:    calculateYAxis()

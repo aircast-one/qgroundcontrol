@@ -35,7 +35,6 @@ MapQuickItem {
 
     property var    _activeVehicle: QGroundControl.multiVehicleManager.activeVehicle
     property bool   _adsbVehicle:   vehicle ? false : true
-    property var    _map:           map
     property bool   _multiVehicle:  QGroundControl.multiVehicleManager.vehicles.count > 1
 
     Behavior on coordinate {
@@ -147,7 +146,6 @@ MapQuickItem {
             id:                         vehicleLabel
             anchors.top:                parent.bottom
             anchors.horizontalCenter:   parent.horizontalCenter
-            map:                        _map
             text:                       vehicleLabelText
             font.pointSize:             _adsbVehicle ? ScreenTools.defaultFontPointSize : ScreenTools.smallFontPointSize
             visible:                    _adsbVehicle ? !isNaN(altitude) : _multiVehicle

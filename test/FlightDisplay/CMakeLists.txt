@@ -6,6 +6,8 @@ target_sources(${CMAKE_PROJECT_NAME}
         FlightMapTest.h
         TelemetryChipsTest.cc
         TelemetryChipsTest.h
+        TerrainProgressTest.cc
+        TerrainProgressTest.h
         VideoTileTest.cc
         VideoTileTest.h
 )

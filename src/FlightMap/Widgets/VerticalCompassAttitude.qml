@@ -17,7 +17,7 @@ import QGroundControl.FlightMap
 import QGroundControl.Palette
 
 Rectangle {
-    width:  ScreenTools.defaultFontPixelHeight * 10
+    width:  Math.min(_defaultWidth, _maxWidth)
     height: _outerRadius * 4
     radius: _outerRadius
     color:  "transparent"
@@ -29,6 +29,9 @@ Rectangle {
 
     property real extraInset:           0
     property real extraValuesWidth:     _outerRadius
+
+    property real _defaultWidth: mainWindow.width * 0.22
+    property real _maxWidth:     ScreenTools.defaultFontPixelHeight * 10
 
     property real _outerMargin: (width * 0.05) / 2
     property real _outerRadius: width / 2

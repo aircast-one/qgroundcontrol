@@ -61,12 +61,15 @@ Q_APPLICATION_STATIC(LinkManager, _linkManagerInstance);
 LinkManager::LinkManager(QObject *parent)
     : QObject(parent)
     , _portListTimer(new QTimer(this))
+    , _connectingStallTimer(new QTimer(this))
     , _qmlConfigurations(new QmlObjectListModel(this))
 #ifndef QGC_NO_SERIAL_LINK
     , _nmeaSocket(new UdpIODevice(this))
 #endif
 {
-    // qCDebug(LinkManagerLog) << Q_FUNC_INFO << this;
+    _connectingStallTimer->setSingleShot(true);
+    _connectingStallTimer->setInterval(_connectingStallMSecs);
+    (void) connect(_connectingStallTimer, &QTimer::timeout, this, [this]() { _setConnectingStalled(true); });
 }
 
 LinkManager::~LinkManager()
@@ -170,6 +173,12 @@ bool LinkManager::createConnectedLink(SharedLinkConfigurationPtr &config)
 
     _rgLinks.append(link);
     config->setLink(link);
+    emit connectingLinkNameChanged();
+    _setFailedLink(nullptr);
+    if (!config->isDynamic()) {
+        _setConnectingStalled(false);
+        _connectingStallTimer->start();
+    }
 
     (void) connect(link.get(), &LinkInterface::communicationError, this, &LinkManager::_communicationError);
     (void) connect(link.get(), &LinkInterface::bytesReceived, MAVLinkProtocol::instance(), &MAVLinkProtocol::receiveBytes);
@@ -189,9 +198,54 @@ bool LinkManager::createConnectedLink(SharedLinkConfigurationPtr &config)
     return true;
 }
 
-void LinkManager::_communicationError(const QString &title, const QString &error)
+void LinkManager::_communicationError(const QString &title, const QString &error, LinkConfiguration::ErrorRemedy remedy)
 {
-    qgcApp()->showAppMessage(error, title);
+    const LinkInterface *link = qobject_cast<LinkInterface*>(sender());
+    const SharedLinkConfigurationPtr config = link ? link->linkConfiguration() : nullptr;
+    if (!config || config->isDynamic() || link->isConnected()) {
+        qgcApp()->showAppMessage(error, title);
+        return;
+    }
+    for (const SharedLinkConfigurationPtr &other : std::as_const(_rgLinkConfigs)) {
+        if (other != config) {
+            other->setLastError(QString());
+        }
+    }
+    config->setLastError(error, remedy);
+    _setFailedLink(config.get());
+}
+
+void LinkManager::_setFailedLink(LinkConfiguration *config)
+{
+    if (config != _failedLink) {
+        _failedLink = config;
+        emit failedLinkChanged();
+    }
+}
+
+void LinkManager::setConnectingStallMSecs(int msecs)
+{
+    _connectingStallMSecs = msecs;
+    _connectingStallTimer->setInterval(msecs);
+}
+
+void LinkManager::_setConnectingStalled(bool stalled)
+{
+    if (stalled != _connectingStalled) {
+        _connectingStalled = stalled;
+        emit connectingStalledChanged();
+    }
+}
+
+QString LinkManager::connectingLinkName() const
+{
+    for (const SharedLinkInterfacePtr &link : _rgLinks) {
+        const SharedLinkConfigurationPtr config = link->linkConfiguration();
+        if (config && !config->isDynamic()) {
+            return config->name();
+        }
+    }
+    return QString();
 }
 
 SharedLinkInterfacePtr LinkManager::mavlinkForwardingLink()
@@ -245,6 +299,11 @@ void LinkManager::_linkDisconnected()
         if (it->get() == link) {
             qCDebug(LinkManagerLog) << Q_FUNC_INFO << it->get()->linkConfiguration()->name() << it->use_count();
             (void) _rgLinks.erase(it);
+            emit connectingLinkNameChanged();
+            if (connectingLinkName().isEmpty()) {
+                _connectingStallTimer->stop();
+                _setConnectingStalled(false);
+            }
             return;
         }
     }
@@ -653,6 +712,9 @@ void LinkManager::createMavlinkForwardingSupportLink()
 
 void LinkManager::_removeConfiguration(const LinkConfiguration *config)
 {
+    if (config == _failedLink) {
+        _setFailedLink(nullptr);
+    }
     (void) _qmlConfigurations->removeOne(config);
 
     for (auto it = _rgLinkConfigs.begin(); it != _rgLinkConfigs.end(); ++it) {

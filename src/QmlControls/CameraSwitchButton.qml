@@ -25,6 +25,7 @@ Rectangle {
     readonly property var _qgcPal: QGroundControl.globalPalette
 
     OverlayGlass {
+        id:           glass
         anchors.fill: parent
         radius:       _root.radius
         highlight:    cameraMouseArea.containsMouse
@@ -47,14 +48,14 @@ Rectangle {
             sourceSize.height:      height
             source:                 "/qmlimages/camera.svg"
             fillMode:               Image.PreserveAspectFit
-            color:                  "white"
+            color:                  glass.contentColor
         }
 
         QGCLabel {
             id:                     cameraLabel
             anchors.verticalCenter: parent.verticalCenter
             text:                   _root.text
-            color:                  "white"
+            color:                  glass.contentColor
             font.pointSize:         ScreenTools.smallFontPointSize
         }
     }

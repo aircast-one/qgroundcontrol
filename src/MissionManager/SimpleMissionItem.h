@@ -128,6 +128,7 @@ public:
     void            applyNewAltitude            (double newAltitude) final;
     void            setMissionFlightStatus      (MissionController::MissionFlightStatus_t& missionFlightStatus) final;
     ReadyForSaveState readyForSaveState         (void) const final;
+    QString           readyForSaveMessage       (void) const final;
     double          additionalTimeDelay         (void) const final;
     bool            exitCoordinateSameAsEntry   (void) const final { return true; }
 

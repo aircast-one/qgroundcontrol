@@ -52,13 +52,17 @@ OverlayCapsule {
         height:             width
         fillMode:           Image.PreserveAspectFit
         sourceSize.height:  height
-        color:              QGroundControl.globalPalette.text
+        color:              _root.contentColor
         source:             _root.hidden ? "/InstrumentValueIcons/view-show.svg"
                                          : "/InstrumentValueIcons/view-hide.svg"
     }
 
+    // The badge is drawn small so it does not cover the control it sits on, but it is aimed at
+    // with a finger: the hit area grows out to the platform's minimum target while the visible
+    // capsule stays where it is.
     QGCMouseArea {
-        anchors.fill:   parent
+        anchors.fill:    parent
+        anchors.margins: -Math.max(0, (ScreenTools.minTouchPixels - parent.width) / 2)
         onClicked: {
             if (_root.rig && _root.editKey !== "") {
                 _root.rig.setHidden(_root.editKey, !_root.hidden)

@@ -101,30 +101,22 @@ T.ComboBox {
         highlighted:                control.highlightedIndex === index
     }
 
-    indicator: Rectangle {
+    indicator: Column {
         anchors.rightMargin:    Math.round(control.padding / 2)
         anchors.right:          parent.right
         anchors.verticalCenter: parent.verticalCenter
-        height:                 Math.round(ScreenTools.defaultFontPixelHeight * 1.1)
-        width:                  height
-        radius:                 height / 2
-        color:                  control.enabled ? qgcPal.colorBlue : qgcPal.windowShadeLight
+        spacing:                -Math.round(ScreenTools.defaultFontPixelHeight * 0.2)
 
-        Column {
-            anchors.centerIn:   parent
-            spacing:            -Math.round(parent.height * 0.18)
+        Repeater {
+            model: [ "/InstrumentValueIcons/cheveron-up.svg", "/InstrumentValueIcons/cheveron-down.svg" ]
 
-            Repeater {
-                model: [ "/InstrumentValueIcons/cheveron-up.svg", "/InstrumentValueIcons/cheveron-down.svg" ]
-
-                QGCColoredImage {
-                    source:             modelData
-                    color:              "white"
-                    height:             Math.round(ScreenTools.defaultFontPixelHeight * 0.55)
-                    width:              height
-                    sourceSize.height:  height
-                    fillMode:           Image.PreserveAspectFit
-                }
+            QGCColoredImage {
+                source:             modelData
+                color:              Qt.alpha(qgcPal.text, control.enabled ? 0.55 : 0.3)
+                height:             Math.round(ScreenTools.defaultFontPixelHeight * 0.5)
+                width:              height
+                sourceSize.height:  height
+                fillMode:           Image.PreserveAspectFit
             }
         }
     }
@@ -141,7 +133,7 @@ T.ComboBox {
         color:          qgcPal.button
         border.color:   qgcPal.buttonBorder
         border.width:   1
-        radius:         height / 2
+        radius:         ScreenTools.buttonBorderRadius
     }
 
     popup: T.Popup {

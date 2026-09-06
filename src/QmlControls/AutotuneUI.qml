@@ -25,6 +25,11 @@ ColumnLayout {
     property var  _autotuneManager: _activeVehicle.autotune
     property real _margins:         ScreenTools.defaultFontPixelHeight
 
+    readonly property string _blockedReason: _autotuneManager.autotuneInProgress ? ""
+                                           : _activeVehicle.landing             ? qsTr("Not while landing")
+                                           : !_activeVehicle.flying             ? qsTr("Take off first - auto-tuning runs in flight")
+                                                                                : ""
+
     QGCButton {
         id:        autotuneButton
         primary:   true
@@ -43,7 +48,7 @@ ColumnLayout {
                                                 function() { _autotuneManager.autotuneRequest() })
     }
 
-    QGCLabel { text: _autotuneManager.autotuneStatus }
+    QGCLabel { text: _blockedReason !== "" ? _blockedReason : _autotuneManager.autotuneStatus }
 
     ProgressBar {
         value: _autotuneManager.autotuneProgress

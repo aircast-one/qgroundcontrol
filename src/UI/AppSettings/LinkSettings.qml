@@ -40,11 +40,36 @@ SettingsPage {
 
             property var names: [ qsTr("Pixhawk"), qsTr("SiK Radio"), qsTr("LibrePilot"), qsTr("UDP"), qsTr("Zero-Conf"), qsTr("RTK") ]
 
-            FactCheckBoxSlider {
+            property var descriptions: [
+                qsTr("Flight controllers plugged in over USB."),
+                qsTr("Telemetry radios plugged in over USB."),
+                qsTr("LibrePilot boards plugged in over USB."),
+                qsTr("Vehicles broadcasting to this computer over the network."),
+                qsTr("Vehicles that announce themselves on the local network."),
+                qsTr("RTK base stations plugged in over USB.")
+            ]
+
+            RowLayout {
                 Layout.fillWidth:   true
-                text:               autoConnectRepeater.names[index]
-                fact:               modelData
+                spacing:            ScreenTools.defaultFontPixelWidth * 2
                 visible:            modelData.visible
+
+                ColumnLayout {
+                    Layout.fillWidth:   true
+                    spacing:            ScreenTools.defaultFontPixelHeight * 0.1
+
+                    QGCLabel { text: autoConnectRepeater.names[index] }
+
+                    QGCLabel {
+                        Layout.fillWidth:   true
+                        wrapMode:           Text.WordWrap
+                        font.pointSize:     ScreenTools.smallFontPointSize
+                        color:              QGroundControl.globalPalette.colorGrey
+                        text:               autoConnectRepeater.descriptions[index]
+                    }
+                }
+
+                FactCheckBoxSlider { fact: modelData }
             }
         }
     }
@@ -117,11 +142,17 @@ SettingsPage {
             model: _linkManager.linkConfigurations
 
             RowLayout {
+                id:                 linkRow
                 Layout.fillWidth:   true
                 visible:            !object.dynamic
 
+                readonly property bool _actionsVisible: ScreenTools.isMobile || linkRowHover.hovered
+
+                HoverHandler { id: linkRowHover }
+
                 QGCLabel {
                     Layout.fillWidth:   true
+                    elide:              Text.ElideRight
                     text:               object.name
                 }
                 QGCColoredImage {
@@ -133,7 +164,10 @@ SettingsPage {
                     smooth:                 true
                     color:                  qgcPalEdit.text
                     source:                 "/res/pencil.svg"
-                    enabled:                !object.link
+                    enabled:                linkRow._actionsVisible && !object.link
+                    opacity:                linkRow._actionsVisible ? 1 : 0
+
+                    Behavior on opacity { NumberAnimation { duration: 120 } }
 
                     QGCPalette {
                         id: qgcPalEdit
@@ -157,6 +191,10 @@ SettingsPage {
                     smooth:                 true
                     color:                  qgcPalDelete.text
                     source:                 "/res/TrashDelete.svg"
+                    enabled:                linkRow._actionsVisible
+                    opacity:                linkRow._actionsVisible ? 1 : 0
+
+                    Behavior on opacity { NumberAnimation { duration: 120 } }
 
                     QGCPalette {
                         id: qgcPalDelete
@@ -166,9 +204,9 @@ SettingsPage {
                     QGCMouseArea {
                         fillItem:   parent
                         onClicked:  mainWindow.showMessageDialog(
-                                        qsTr("Delete Link"), 
-                                        qsTr("Are you sure you want to delete '%1'?").arg(object.name), 
-                                        Dialog.Ok | Dialog.Cancel, 
+                                        qsTr("Delete Link"),
+                                        qsTr("Are you sure you want to delete '%1'?").arg(object.name),
+                                        Dialog.Ok | Dialog.Cancel,
                                         function () {
                                             _linkManager.removeConfiguration(object)
                                         })
@@ -206,7 +244,7 @@ SettingsPage {
             id:                     linkDialog
             title:                  originalConfig ? qsTr("Edit Link") : qsTr("Add Link")
             buttons:                Dialog.Save | Dialog.Cancel
-            acceptButtonEnabled:    nameField.text.trim() !== ""
+            acceptButtonTitle:      originalConfig && originalConfig.link ? qsTr("Save") : qsTr("Save & Connect")
 
             property var originalConfig
             property var editingConfig
@@ -214,14 +252,43 @@ SettingsPage {
             readonly property real _labelWidth:   ScreenTools.defaultFontPixelWidth * 14
             readonly property real _rowSpacing:   ScreenTools.defaultFontPixelWidth * 2
 
+            function _uniqueName(base) {
+                const taken = Array.from({ length: _linkManager.linkConfigurations.count },
+                                         (_, i) => _linkManager.linkConfigurations.get(i))
+                    .filter(config => config && config !== originalConfig)
+                    .map(config => config.name)
+                const candidates = [ base ].concat(
+                    Array.from({ length: taken.length }, (_, i) => qsTr("%1 (%2)").arg(base).arg(i + 2)))
+                return candidates.find(candidate => taken.indexOf(candidate) === -1)
+            }
+
+            function _suggestedName() {
+                const item = linkSettingsLoader.item
+                const suggested = item ? item.suggestedName() : ""
+                return _uniqueName(suggested !== "" ? suggested : _linkManager.linkTypeStrings[editingConfig.linkType])
+            }
+
+            function _resolvedName() {
+                const typed = nameField.text.trim()
+                return typed !== "" ? typed : _suggestedName()
+            }
+
             onAccepted: {
+                if (linkSettingsLoader.item.validate && !linkSettingsLoader.item.validate()) {
+                    preventClose = true
+                    return
+                }
                 linkSettingsLoader.item.saveSettings()
-                editingConfig.name = nameField.text.trim()
+                editingConfig.name = _resolvedName()
                 if (originalConfig) {
                     _linkManager.endConfigurationEditing(originalConfig, editingConfig)
+                    if (!originalConfig.link) {
+                        _linkManager.createConnectedLink(originalConfig)
+                    }
                 } else {
                     editingConfig.dynamic = false
                     _linkManager.endCreateConfiguration(editingConfig)
+                    _linkManager.createConnectedLink(editingConfig)
                 }
             }
 
@@ -280,14 +347,14 @@ SettingsPage {
 
                         QGCLabel {
                             Layout.preferredWidth:  linkDialog._labelWidth
-                            text:                   qsTr("Name")
+                            text:                   qsTr("Name (optional)")
                         }
 
                         QGCTextField {
                             id:                 nameField
                             Layout.fillWidth:   true
                             text:               editingConfig.name
-                            placeholderText:    qsTr("Name")
+                            placeholderText:    linkDialog._suggestedName()
                         }
                     }
 

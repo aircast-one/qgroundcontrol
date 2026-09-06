@@ -38,7 +38,6 @@
 #include "QGCFileDialogController.h"
 #include "RCChannelMonitorController.h"
 #include "ScreenToolsController.h"
-#include "QGCMapPalette.h"
 #include "QGCPalette.h"
 #include "QmlObjectListModel.h"
 #include "RCToParamDialogController.h"
@@ -99,7 +98,6 @@ void QGroundControlQmlGlobal::registerQmlTypes()
     qmlRegisterType<ParameterEditorController>          ("QGroundControl.Controllers",           1, 0, "ParameterEditorController");
     qmlRegisterType<QGCFileDialogController>            ("QGroundControl.Controllers",           1, 0, "QGCFileDialogController");
     qmlRegisterType<QGCMapCircle>                       ("QGroundControl.FlightMap",             1, 0, "QGCMapCircle");
-    qmlRegisterType<QGCMapPalette>                      ("QGroundControl.Palette",               1, 0, "QGCMapPalette");
     qmlRegisterType<QGCPalette>                         ("QGroundControl.Palette",               1, 0, "QGCPalette");
     qmlRegisterType<RCChannelMonitorController>         ("QGroundControl.Controllers",           1, 0, "RCChannelMonitorController");
     qmlRegisterType<RCToParamDialogController>          ("QGroundControl.Controllers",           1, 0, "RCToParamDialogController");

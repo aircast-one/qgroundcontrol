@@ -643,6 +643,17 @@ StructureScanComplexItem::ReadyForSaveState StructureScanComplexItem::readyForSa
     return _structurePolygon.isValid() && !_wizardMode ? ReadyForSave : NotReadyForSaveData;
 }
 
+QString StructureScanComplexItem::readyForSaveMessage(void) const
+{
+    if (!_structurePolygon.isValid()) {
+        return tr("Draw the outline");
+    }
+    if (_wizardMode) {
+        return tr("Finish drawing the outline");
+    }
+    return VisualMissionItem::readyForSaveMessage();
+}
+
 void StructureScanComplexItem::_updateWizardMode(void)
 {
     if (_structurePolygon.isValid() && !_structurePolygon.traceMode()) {

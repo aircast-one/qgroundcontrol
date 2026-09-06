@@ -29,6 +29,7 @@ RowLayout {
 
     QGCLabel {
         Layout.fillWidth:   true
+        elide:              Text.ElideRight
         Layout.alignment:   Qt.AlignVCenter
         text:               label
     }

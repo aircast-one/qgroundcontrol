@@ -116,6 +116,7 @@ ApplicationWindow {
         return globals.validationErrorCount <= previousValidationErrorCount
     }
     property bool flyViewActive: true
+    readonly property bool hostProvidesNavigation: false
 
     function showPlanView() {
         flyViewActive = false

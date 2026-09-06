@@ -10,9 +10,17 @@
 import QtQuick
 import QtQuick.Layouts
 
-// Hairline between two groups of overlay menu rows.
+import QGroundControl
+import QGroundControl.ScreenTools
+
+// A hairline between groups of menu rows. Sets destructive or state-changing entries apart from
+// the routine ones above them, so the last row is reached deliberately rather than by momentum.
 Rectangle {
-    Layout.fillWidth:   true
-    implicitHeight:     1
-    color:              Qt.rgba(1, 1, 1, 0.12)
+    Layout.fillWidth:       true
+    Layout.preferredHeight: 1
+    Layout.topMargin:       ScreenTools.defaultFontPixelHeight * 0.3
+    Layout.bottomMargin:    ScreenTools.defaultFontPixelHeight * 0.3
+    Layout.leftMargin:      ScreenTools.defaultFontPixelWidth * 1.5
+    Layout.rightMargin:     ScreenTools.defaultFontPixelWidth * 1.5
+    color:                  Qt.alpha(QGroundControl.globalPalette.text, 0.15)
 }

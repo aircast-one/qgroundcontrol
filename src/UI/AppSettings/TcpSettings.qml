@@ -26,11 +26,32 @@ GridLayout {
         subEditConfig.port = parseInt(portField.text)
     }
 
+    function validate() {
+        const port = Number(portField.text)
+        hostField.validationError = hostField.text.trim() === ""
+        portField.validationError = !(/^\d+$/.test(portField.text) && port > 0 && port < 65536)
+        return !hostField.validationError && !portField.validationError
+    }
+
+    function suggestedName() {
+        return hostField.text.trim() === "" ? qsTr("TCP") : qsTr("TCP %1:%2").arg(hostField.text.trim()).arg(portField.text)
+    }
+
     QGCLabel { text: qsTr("Server Address"); Layout.preferredWidth: _firstColumnWidth }
     QGCTextField {
         id:                     hostField
         Layout.preferredWidth:  _secondColumnWidth
+        inputMethodHints:       Qt.ImhNoAutoUppercase | Qt.ImhNoPredictiveText
         text:                   subEditConfig.host
+    }
+
+    QGCLabel {
+        Layout.columnSpan:  2
+        Layout.leftMargin:  _firstColumnWidth + _colSpacing
+        visible:        hostField.validationError
+        color:          QGroundControl.globalPalette.colorRed
+        font.pointSize: ScreenTools.smallFontPointSize
+        text:           qsTr("Enter the drone's IP address")
     }
 
     QGCLabel { text: qsTr("Port"); Layout.preferredWidth: _firstColumnWidth }
@@ -39,5 +60,14 @@ GridLayout {
         Layout.preferredWidth:  _secondColumnWidth
         text:                   subEditConfig.port.toString()
         inputMethodHints:       Qt.ImhFormattedNumbersOnly
+    }
+
+    QGCLabel {
+        Layout.columnSpan:  2
+        Layout.leftMargin:  _firstColumnWidth + _colSpacing
+        visible:        portField.validationError
+        color:          QGroundControl.globalPalette.colorRed
+        font.pointSize: ScreenTools.smallFontPointSize
+        text:           qsTr("Enter a port between 1 and 65535")
     }
 }

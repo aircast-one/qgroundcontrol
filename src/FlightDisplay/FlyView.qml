@@ -34,6 +34,7 @@ Item {
     property var planController:    _planController
     property var guidedController:  _guidedController
     property var overlayRig:        _overlayRig
+    property bool toolbarVisible:   true
 
     OverlayRig {
         id:         _overlayRig
@@ -143,12 +144,6 @@ Item {
     }
 
     property bool   _mainWindowIsMap:       mapControl.pipState.state === mapControl.pipState.fullState
-    property bool   _isFullWindowItemDark:  _mainWindowIsMap ? mapControl.isSatelliteMap : true
-    Binding {
-        target:     OverlayBackdrop
-        property:   "isDark"
-        value:      _root._isFullWindowItemDark
-    }
     Binding {
         target:     OverlayBackdrop
         property:   "sourceAnimating"
@@ -193,28 +188,38 @@ Item {
         id:                     _toolInsets
         leftEdgeBottomInset:    _pipView.leftEdgeBottomInset
         bottomEdgeLeftInset:    _pipView.bottomEdgeLeftInset
-        topEdgeLeftInset:       toolbar.height
-        topEdgeCenterInset:     toolbar.height
-        topEdgeRightInset:      toolbar.height
+        bottomEdgeCenterInset:  _pipView.bottomEdgeCenterInset
+        topEdgeLeftInset:       toolbar.height - ScreenTools.safeAreaTop
+        topEdgeCenterInset:     toolbar.height - ScreenTools.safeAreaTop
+        topEdgeRightInset:      toolbar.height - ScreenTools.safeAreaTop
     }
 
     FlyViewToolBar {
         id:                 toolbar
+        overlayRig:         _overlayRig
         z:                  QGroundControl.zOrderWidgets
-        visible:            !QGroundControl.videoManager.fullScreen && mainWindow.flyViewActive
+        visible:            _root.toolbarVisible && !QGroundControl.videoManager.fullScreen && mainWindow.flyViewActive
     }
 
     Item {
-        id:                 mapHolder
-        anchors.top:        parent.top
-        anchors.bottom:     parent.bottom
-        anchors.left:       parent.left
-        anchors.right:      parent.right
+        id:                     mapHolder
+        anchors.top:            parent.top
+        anchors.bottom:         parent.bottom
+        anchors.left:           parent.left
+        anchors.right:          parent.right
+        anchors.topMargin:      ScreenTools.safeAreaTop
+        anchors.bottomMargin:   ScreenTools.safeAreaBottom
+        anchors.leftMargin:     ScreenTools.safeAreaLeft
+        anchors.rightMargin:    ScreenTools.safeAreaRight
 
         Item {
-            id:             backdropContent
-            objectName:     "backdropContent"
-            anchors.fill:   parent
+            id:                     backdropContent
+            objectName:             "backdropContent"
+            anchors.fill:           parent
+            anchors.topMargin:      -ScreenTools.safeAreaTop
+            anchors.bottomMargin:   -ScreenTools.safeAreaBottom
+            anchors.leftMargin:     -ScreenTools.safeAreaLeft
+            anchors.rightMargin:    -ScreenTools.safeAreaRight
 
             FlyViewMap {
                 id:                     mapControl
@@ -257,6 +262,11 @@ Item {
 
             property real leftEdgeBottomInset: visible && expanded && !hasCustomPosition ? width + videoTilesLayer.dockExtent + _toolsMargin : 0
             property real bottomEdgeLeftInset: visible && expanded && !hasCustomPosition ? height + _toolsMargin : 0
+            property real bottomEdgeCenterInset: coversHorizontalCentre ? bottomEdgeLeftInset : 0
+
+            Behavior on leftEdgeBottomInset   { NumberAnimation { duration: _pipView.revealDuration; easing.type: _pipView.revealEasing } }
+            Behavior on bottomEdgeLeftInset   { NumberAnimation { duration: _pipView.revealDuration; easing.type: _pipView.revealEasing } }
+            Behavior on bottomEdgeCenterInset { NumberAnimation { duration: _pipView.revealDuration; easing.type: _pipView.revealEasing } }
 
             overlayRig:            _overlayRig
         }
@@ -275,6 +285,7 @@ Item {
             utmspActTrigger:        utmspSendActTrigger
             isViewer3DOpen:         viewer3DWindow.isOpen
         }
+
 
         FlyViewCustomLayer {
             id:                 customOverlay
@@ -439,6 +450,7 @@ Item {
         visible:        toolbar.visible
         z:              QGroundControl.zOrderWidgets
     }
+
     Rectangle {
         id:                         editModeDonePill
         objectName:                 "editModeDonePill"
@@ -476,7 +488,8 @@ Item {
                 text:                   qsTr("Add RC control…")
                 onClicked: {
                     _overlayRig.editMode = false
-                    mainWindow.showSettingsTool(qsTr("Fly View"))
+                    QGroundControl.saveBoolGlobalSetting("scrollToRcControls", true)
+                    mainWindow.showFlyViewSettings()
                 }
             }
 

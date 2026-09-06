@@ -17,7 +17,7 @@ Canvas {
 
     property real  progress:     -1
     property bool  done:         false
-    property color contentColor: QGroundControl.globalPalette.text
+    property color contentColor: QGroundControl.globalPalette.overlayInk
 
     readonly property var _qgcPal: QGroundControl.globalPalette
 

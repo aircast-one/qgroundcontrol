@@ -15,23 +15,23 @@ ColumnLayout {
     property var missionItem
 
     MouseArea {
+        id:                     distanceModeRow
         Layout.preferredWidth:  childrenRect.width
         Layout.preferredHeight: childrenRect.height
 
-        onClicked: {
-            var removeModes = []
-            var updateFunction = function(altMode){ missionItem.cameraCalc.distanceMode = altMode }
-            removeModes.push(QGroundControl.AltitudeModeMixed)
-            if (!missionItem.masterController.controllerVehicle.supportsTerrainFrame) {
-                removeModes.push(QGroundControl.AltitudeModeTerrainFrame)
-            }
-            if (!QGroundControl.corePlugin.options.showMissionAbsoluteAltitude || !_missionItem.cameraCalc.isManualCamera) {
-                removeModes.push(QGroundControl.AltitudeModeAbsolute)
-            }
-            altModeDialogComponent.createObject(mainWindow, { rgRemoveModes: removeModes, updateAltModeFn: updateFunction }).open()
-        }
+        onClicked: altModeMenu.openFrom(distanceModeRow)
 
-        Component { id: altModeDialogComponent; AltModeDialog { } }
+        AltModeMenu {
+            id:              altModeMenu
+            objectName:      "transectAltModeMenu"
+            currentAltMode:  missionItem.cameraCalc.distanceMode
+            rgRemoveModes:   [QGroundControl.AltitudeModeMixed,
+                              ...(missionItem.masterController.controllerVehicle.supportsTerrainFrame
+                                    ? [] : [QGroundControl.AltitudeModeTerrainFrame]),
+                              ...(missionItem.cameraCalc.isManualCamera
+                                    ? [] : [QGroundControl.AltitudeModeAbsolute])]
+            updateAltModeFn: (altMode) => { missionItem.cameraCalc.distanceMode = altMode }
+        }
 
         RowLayout {
             spacing: ScreenTools.defaultFontPixelWidth / 2

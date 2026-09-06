@@ -18,8 +18,12 @@ RowLayout {
     spacing: _colSpacing
 
     function saveSettings() {
-        console.log(logField.text)
         subEditConfig.filename = logField.text
+    }
+
+    function suggestedName() {
+        const name = logField.text.split("/").pop()
+        return name === "" ? qsTr("Log Replay") : name
     }
 
     QGCLabel { text: qsTr("Log File"); Layout.preferredWidth: _firstColumnWidth }

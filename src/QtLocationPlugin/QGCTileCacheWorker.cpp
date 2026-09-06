@@ -38,6 +38,8 @@ void QGCCacheWorker::stop()
 {
     QMutexLocker lock(&_taskQueueMutex);
     qDeleteAll(_taskQueue);
+    _taskQueue.clear();
+    _stopped = true;
     lock.unlock();
 
     if (isRunning()) {
@@ -47,6 +49,16 @@ void QGCCacheWorker::stop()
 
 bool QGCCacheWorker::enqueueTask(QGCMapTask *task)
 {
+    {
+        QMutexLocker lock(&_taskQueueMutex);
+        if (_stopped) {
+            lock.unlock();
+            task->setError(tr("Map Cache Shutting Down"));
+            task->deleteLater();
+            return false;
+        }
+    }
+
     if (!_valid && (task->type() != QGCMapTask::taskInit)) {
         task->setError(tr("Database Not Initialized"));
         task->deleteLater();
@@ -105,9 +117,11 @@ void QGCCacheWorker::run()
                     lock.relock();
                 }
             }
+        } else if (_stopped) {
+            break;
         } else {
             (void) _waitc.wait(lock.mutex(), 5000);
-            if (_taskQueue.isEmpty()) {
+            if (_stopped || _taskQueue.isEmpty()) {
                 break;
             }
         }

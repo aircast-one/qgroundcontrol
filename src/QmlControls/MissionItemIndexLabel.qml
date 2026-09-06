@@ -112,8 +112,14 @@ Canvas {
         anchors.verticalCenterOffset:   anchorPointY
         width:                          _indicatorRadius * 2
         height:                         width
-        color:                          root.color
         radius:                         _indicatorRadius
+        border.color:                   "white"
+        border.width:                   Math.max(1, _indicatorRadius * 0.12)
+
+        gradient: Gradient {
+            GradientStop { position: 0.0; color: Qt.lighter(root.color, 1.25) }
+            GradientStop { position: 1.0; color: root.color }
+        }
 
         QGCLabel {
             anchors.fill:           parent

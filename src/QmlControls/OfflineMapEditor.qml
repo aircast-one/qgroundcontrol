@@ -409,7 +409,6 @@ FlightMap {
 
                         QGCMapLabel {
                             anchors.centerIn:   parent
-                            map:                minZoomPreview
                             text:               qsTr("Min Zoom: %1").arg(sliderMinZoom.value)
                         }
                         MouseArea {
@@ -448,7 +447,6 @@ FlightMap {
 
                         QGCMapLabel {
                             anchors.centerIn:   parent
-                            map:                maxZoomPreview
                             text:               qsTr("Max Zoom: %1").arg(sliderMaxZoom.value)
                         }
                         MouseArea {

@@ -9,6 +9,7 @@
 
 import QtQuick
 
+import QGroundControl
 import QGroundControl.Controls
 import QGroundControl.ScreenTools
 
@@ -17,5 +18,6 @@ QGCLabel {
     anchors.horizontalCenter:   parent.horizontalCenter
     font.pointSize:             ScreenTools.smallFontPointSize
     style:                      Text.Outline
-    styleColor:                 "black"
+    color:                      QGroundControl.globalPalette.overlayInk
+    styleColor:                 QGroundControl.globalPalette.overlayInkInverse
 }

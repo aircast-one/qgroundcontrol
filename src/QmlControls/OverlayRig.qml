@@ -23,6 +23,8 @@ QtObject {
 
     readonly property int dragThreshold: editMode ? Application.styleHints.startDragDistance : 32767
 
+    readonly property real hiddenOpacity: 0.35
+
     readonly property Timer _holdPulse: Timer {
         interval:    700
         onTriggered: root.heldItem = null

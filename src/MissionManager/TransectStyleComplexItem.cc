@@ -673,6 +673,17 @@ TransectStyleComplexItem::ReadyForSaveState TransectStyleComplexItem::readyForSa
                 (terrainReady ? ReadyForSave : NotReadyForSaveTerrain);
 }
 
+QString TransectStyleComplexItem::readyForSaveMessage(void) const
+{
+    if (!_surveyAreaPolygon.isValid()) {
+        return tr("Draw the area");
+    }
+    if (_wizardMode) {
+        return tr("Finish drawing the area");
+    }
+    return VisualMissionItem::readyForSaveMessage();
+}
+
 void TransectStyleComplexItem::_adjustForAvailableTerrainData(void)
 {
     switch (_cameraCalc.distanceMode()) {

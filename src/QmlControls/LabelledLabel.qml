@@ -26,6 +26,7 @@ RowLayout {
     QGCLabel { 
         id:                 _labelLabel
         Layout.fillWidth:   true 
+        elide:              Text.ElideRight
         font.pointSize:     fontPointSize
     }
 

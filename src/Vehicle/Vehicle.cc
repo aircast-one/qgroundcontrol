@@ -3082,6 +3082,15 @@ void Vehicle::setFirmwareCustomVersion(int majorVersion, int minorVersion, int p
     emit firmwareCustomVersionChanged();
 }
 
+void Vehicle::setLatestStableFirmwareVersion(const QString &version)
+{
+    if (_latestStableFirmwareVersion == version) {
+        return;
+    }
+    _latestStableFirmwareVersion = version;
+    emit latestStableFirmwareVersionChanged();
+}
+
 QString Vehicle::firmwareVersionTypeString() const
 {
     return QGCMAVLink::firmwareVersionTypeToString(_firmwareVersionType);

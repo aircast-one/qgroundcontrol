@@ -1,9 +1,10 @@
 <svg xmlns="http://www.w3.org/2000/svg" xml:space="preserve" id="Layer_1" x="0" y="0" version="1.1" viewBox="0 0 72 72">
-    <style>
-        .st1{fill:#7f0036}
-    </style>
-    <path d="M35.5 2.118v51.573L1.118 70.882z" style="fill:#c72b27"/>
-    <path d="M35 4.236v49.146L2.236 69.764zM36 0 0 72l36-18z" class="st1"/>
-    <path d="M36.5 53.691V2.118l34.382 68.764z" style="fill:#ee3424"/>
-    <path d="m37 4.236 32.764 65.528L37 53.382zM36 0v54l36 18z" class="st1"/>
+    <defs>
+        <linearGradient id="heading" x1="0" y1="0" x2="0" y2="1">
+            <stop offset="0" stop-color="#FF6961"/>
+            <stop offset="1" stop-color="#FF3B30"/>
+        </linearGradient>
+    </defs>
+    <path fill="url(#heading)" stroke="#000000" stroke-opacity=".15" stroke-width="1.5" stroke-linejoin="round"
+          d="M33.88 8.53 Q36 4 38.12 8.53 L64.30 64.38 Q66 68 62.57 65.94 L36 50 L9.43 65.94 Q6 68 7.70 64.38 Z"/>
 </svg>

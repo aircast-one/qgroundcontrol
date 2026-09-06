@@ -56,7 +56,7 @@ void main()
     vec2  grad  = vec2(dFdx(d), dFdy(d));
     float glen  = length(grad);
     vec2  normal = glen > 0.0001 ? grad / glen : vec2(0.0);
-    float bend  = smoothstep(0.0, -max(radius, 1.0), d);
+    float bend  = smoothstep(-max(radius, 1.0), 0.0, d);
     vec2  uv    = clamp(qt_TexCoord0 - normal * bend * refraction / size, vec2(0.0), vec2(1.0));
 
     vec4  src      = blurRadius > 0.0 ? blurredSample(uv, 1.0 / size) : texture(source, uv);

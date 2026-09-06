@@ -15,6 +15,8 @@ Item {
     QtObject {
         id: stubOverlayRig
 
+        readonly property real hiddenOpacity: 0.35
+
         property bool editMode:   false
         property int  resetCount: 0
 

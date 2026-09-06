@@ -16,6 +16,9 @@
 #include "SettingsManager.h"
 #include "AppSettings.h"
 #include "PlanViewSettings.h"
+#include "CorridorScanComplexItem.h"
+#include "SurveyComplexItem.h"
+#include "StructureScanComplexItem.h"
 #include "MultiSignalSpy.h"
 
 #include <QtTest/QTest>
@@ -151,6 +154,85 @@ void MissionControllerTest::_setupVisualItemSignals(VisualMissionItem* visualIte
     _multiSpyMissionItem = new MultiSignalSpy();
     Q_CHECK_PTR(_multiSpyMissionItem);
     QCOMPARE(_multiSpyMissionItem->init(visualItem, _rgVisualItemSignals, _cVisualItemSignals), true);
+}
+
+void MissionControllerTest::_testAddWaypointWorker(MAV_AUTOPILOT firmwareType)
+{
+    _initForFirmwareType(firmwareType);
+
+    QCOMPARE(_missionController->visualItems()->count(), 1);
+
+    _missionController->addWaypoint(QGeoCoordinate(37.803784, -122.462276), -1);
+
+    QCOMPARE(_missionController->visualItems()->count(), 3);
+    QCOMPARE(qobject_cast<SimpleMissionItem*>(_missionController->visualItems()->get(1))->mavCommand(), MAV_CMD_NAV_TAKEOFF);
+    QCOMPARE(qobject_cast<SimpleMissionItem*>(_missionController->visualItems()->get(2))->mavCommand(), MAV_CMD_NAV_WAYPOINT);
+
+    _missionController->addWaypoint(QGeoCoordinate(37.804784, -122.462276), -1);
+
+    QCOMPARE(_missionController->visualItems()->count(), 4);
+    QCOMPARE(qobject_cast<SimpleMissionItem*>(_missionController->visualItems()->get(3))->mavCommand(), MAV_CMD_NAV_WAYPOINT);
+}
+
+void MissionControllerTest::_testAddWaypointAtIndexWorker(MAV_AUTOPILOT firmwareType)
+{
+    _initForFirmwareType(firmwareType);
+
+    _missionController->addWaypoint(QGeoCoordinate(37.803784, -122.462276), 1);
+
+    QCOMPARE(_missionController->visualItems()->count(), 3);
+    QCOMPARE(qobject_cast<SimpleMissionItem*>(_missionController->visualItems()->get(1))->mavCommand(), MAV_CMD_NAV_TAKEOFF);
+    QCOMPARE(qobject_cast<SimpleMissionItem*>(_missionController->visualItems()->get(2))->mavCommand(), MAV_CMD_NAV_WAYPOINT);
+}
+
+void MissionControllerTest::_testNewPatternStartsInWizardMode(void)
+{
+    _initForFirmwareType(MAV_AUTOPILOT_PX4);
+
+    VisualMissionItem* item = _missionController->insertComplexMissionItem(
+                CorridorScanComplexItem::name, QGeoCoordinate(37.803784, -122.462276), -1);
+
+    QVERIFY(item);
+    QVERIFY(item->wizardMode());
+}
+
+void MissionControllerTest::_testPatternReadyMessageNamesItsOwnShape(void)
+{
+    _initForFirmwareType(MAV_AUTOPILOT_PX4);
+
+    VisualMissionItem* corridor = _missionController->insertComplexMissionItem(
+                CorridorScanComplexItem::name, QGeoCoordinate(37.803784, -122.462276), -1);
+    VisualMissionItem* survey = _missionController->insertComplexMissionItem(
+                SurveyComplexItem::name, QGeoCoordinate(37.803784, -122.462276), -1);
+    VisualMissionItem* structure = _missionController->insertComplexMissionItem(
+                StructureScanComplexItem::name, QGeoCoordinate(37.803784, -122.462276), -1);
+
+    QCOMPARE(corridor->readyForSaveMessage(), QStringLiteral("Draw the corridor path"));
+    QCOMPARE(survey->readyForSaveMessage(), QStringLiteral("Draw the area"));
+    QCOMPARE(structure->readyForSaveMessage(), QStringLiteral("Draw the outline"));
+
+    QVERIFY(!corridor->readyForSaveMessage().isEmpty());
+    QCOMPARE(corridor->readyForSaveState(), VisualMissionItem::NotReadyForSaveData);
+}
+
+void MissionControllerTest::_testAddWaypointAtIndexAPM(void)
+{
+    _testAddWaypointAtIndexWorker(MAV_AUTOPILOT_ARDUPILOTMEGA);
+}
+
+void MissionControllerTest::_testAddWaypointAtIndexPX4(void)
+{
+    _testAddWaypointAtIndexWorker(MAV_AUTOPILOT_PX4);
+}
+
+void MissionControllerTest::_testAddWaypointAPM(void)
+{
+    _testAddWaypointWorker(MAV_AUTOPILOT_ARDUPILOTMEGA);
+}
+
+void MissionControllerTest::_testAddWaypointPX4(void)
+{
+    _testAddWaypointWorker(MAV_AUTOPILOT_PX4);
 }
 
 void MissionControllerTest::_testGimbalRecalc(void)

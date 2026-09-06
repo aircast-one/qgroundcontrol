@@ -378,6 +378,17 @@ CorridorScanComplexItem::ReadyForSaveState CorridorScanComplexItem::readyForSave
     return TransectStyleComplexItem::readyForSaveState();
 }
 
+QString CorridorScanComplexItem::readyForSaveMessage(void) const
+{
+    if (!_corridorPolyline.isValid()) {
+        return tr("Draw the corridor path");
+    }
+    if (_wizardMode) {
+        return tr("Finish drawing the corridor");
+    }
+    return VisualMissionItem::readyForSaveMessage();
+}
+
 double CorridorScanComplexItem::timeBetweenShots(void)
 {
     return _vehicleSpeed == 0 ? 0 : _cameraCalc.adjustedFootprintFrontal()->rawValue().toDouble() / _vehicleSpeed;

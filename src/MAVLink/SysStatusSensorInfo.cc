@@ -95,6 +95,15 @@ QVariantList SysStatusSensorInfo::sensorHealthy() const
     return rgHealthy;
 }
 
+QVariantList SysStatusSensorInfo::sensorEnabled() const
+{
+    QVariantList rgEnabled;
+    for (const auto &sensor : _orderedSensors()) {
+        rgEnabled.append(sensor.second.enabled);
+    }
+    return rgEnabled;
+}
+
 QStringList SysStatusSensorInfo::sensorStatus() const
 {
     QStringList rgStatus;

@@ -20,6 +20,7 @@
 #include "VehicleCameraControl.h"
 #include "VehicleComponent.h"
 
+#include <QtCore/QPointer>
 #include <QtCore/QRegularExpression>
 #include <QtCore/QThread>
 
@@ -330,9 +331,10 @@ void FirmwarePlugin::checkIfIsLatestStable(Vehicle *vehicle) const
     const QString versionFile = _getLatestVersionFileUrl(vehicle);
     qCDebug(FirmwarePluginLog) << "Downloading" << versionFile;
     QGCFileDownload *const downloader = new QGCFileDownload(nullptr);
-    (void) connect(downloader, &QGCFileDownload::downloadComplete, this, [vehicle, this](const QString &remoteFile, const QString &localFile, const QString &errorMsg) {
-        if (errorMsg.isEmpty()) {
-            _versionFileDownloadFinished(remoteFile, localFile, vehicle);
+    const QPointer<Vehicle> vehicleGuard(vehicle);
+    (void) connect(downloader, &QGCFileDownload::downloadComplete, this, [vehicleGuard, this](const QString &remoteFile, const QString &localFile, const QString &errorMsg) {
+        if (errorMsg.isEmpty() && !vehicleGuard.isNull()) {
+            _versionFileDownloadFinished(remoteFile, localFile, vehicleGuard);
         } else {
             qCDebug(FirmwarePluginLog) << "Failed to download the latest fw version file. Error:" << errorMsg;
         }
@@ -344,7 +346,7 @@ void FirmwarePlugin::checkIfIsLatestStable(Vehicle *vehicle) const
     }
 }
 
-void FirmwarePlugin::_versionFileDownloadFinished(const QString &remoteFile, const QString &localFile, const Vehicle *vehicle) const
+void FirmwarePlugin::_versionFileDownloadFinished(const QString &remoteFile, const QString &localFile, Vehicle *vehicle) const
 {
     qCDebug(FirmwarePluginLog) << "Download complete" << remoteFile << localFile;
     // Now read the version file and pull out the version string
@@ -374,10 +376,7 @@ void FirmwarePlugin::_versionFileDownloadFinished(const QString &remoteFile, con
 
     // Check if lower version than stable or same version but different type
     if ((currType == FIRMWARE_VERSION_TYPE_OFFICIAL) && (vehicle->versionCompare(version) < 0)) {
-        const QString currentVersionNumber = QStringLiteral("%1.%2.%3").arg(vehicle->firmwareMajorVersion())
-                                                                       .arg(vehicle->firmwareMinorVersion())
-                                                                       .arg(vehicle->firmwarePatchVersion());
-        qgcApp()->showAppMessage(tr("Vehicle is not running latest stable firmware! Running %1, latest stable is %2.").arg(currentVersionNumber, version));
+        vehicle->setLatestStableFirmwareVersion(version);
     }
 }
 

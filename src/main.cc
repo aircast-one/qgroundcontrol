@@ -182,7 +182,12 @@ int main(int argc, char *argv[])
 #endif // Q_OS_WIN
 #endif // QT_DEBUG
 
-    QGCApplication app(argc, argv, runUnitTests, simpleBootTest);
+    #ifdef Q_OS_ANDROID
+    const bool embeddedHost = AndroidInterface::isEmbeddedHost();
+#else
+    const bool embeddedHost = false;
+#endif
+    QGCApplication app(argc, argv, runUnitTests, simpleBootTest, embeddedHost);
 
     // Linux/Windows deliver a custom-scheme launch (aircast-qgc://...) as a
     // command-line argument. Stash it before init() so it applies at startup;

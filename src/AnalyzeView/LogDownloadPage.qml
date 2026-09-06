@@ -20,7 +20,12 @@ import QGroundControl.ScreenTools
 AnalyzePage {
     id: logDownloadPage
     pageComponent: pageComponent
-    pageDescription: qsTr("Log Download allows you to download binary log files from your vehicle. Click Refresh to get list of available logs.")
+    pageDescription: _vehicleConnected
+                         ? qsTr("Log Download allows you to download binary log files from your vehicle. Click Refresh to get list of available logs.")
+                         : qsTr("Connect a vehicle to download its binary log files.")
+
+    readonly property bool _vehicleConnected: !!QGroundControl.multiVehicleManager.activeVehicle &&
+                                                  !QGroundControl.multiVehicleManager.activeVehicle.isOfflineEditingVehicle
 
     Component {
         id: pageComponent
@@ -113,17 +118,9 @@ AnalyzePage {
 
                 QGCButton {
                     Layout.fillWidth: true
-                    enabled: !logDownloadController.requestingList && !logDownloadController.downloadingLogs
+                    enabled: logDownloadPage._vehicleConnected && !logDownloadController.requestingList && !logDownloadController.downloadingLogs
                     text: qsTr("Refresh")
-
-                    onClicked: {
-                        if (!QGroundControl.multiVehicleManager.activeVehicle || QGroundControl.multiVehicleManager.activeVehicle.isOfflineEditingVehicle) {
-                            mainWindow.showMessageDialog(qsTr("Log Refresh"), qsTr("You must be connected to a vehicle in order to download logs."))
-                            return
-                        }
-
-                        logDownloadController.refresh()
-                    }
+                    onClicked: logDownloadController.refresh()
                 }
 
                 QGCButton {

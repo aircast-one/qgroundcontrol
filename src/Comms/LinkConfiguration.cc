@@ -28,7 +28,6 @@ LinkConfiguration::LinkConfiguration(const QString &name, QObject *parent)
     : QObject(parent)
     , _name(name)
 {
-    // qCDebug(AudioOutputLog) << Q_FUNC_INFO << this;
 }
 
 LinkConfiguration::LinkConfiguration(const LinkConfiguration *copy, QObject *parent)
@@ -39,14 +38,12 @@ LinkConfiguration::LinkConfiguration(const LinkConfiguration *copy, QObject *par
     , _autoConnect(copy->isAutoConnect())
     , _highLatency(copy->isHighLatency())
 {
-    // qCDebug(AudioOutputLog) << Q_FUNC_INFO << this;
 
     Q_ASSERT(!_name.isEmpty());
 }
 
 LinkConfiguration::~LinkConfiguration()
 {
-    // qCDebug(AudioOutputLog) << Q_FUNC_INFO << this;
 }
 
 void LinkConfiguration::copyFrom(const LinkConfiguration *source)
@@ -157,8 +154,18 @@ void LinkConfiguration::setLink(const SharedLinkInterfacePtr link)
     if (link.get() != this->link()) {
         _link = link;
         emit linkChanged();
+        setLastError(QString());
 
         (void) connect(link.get(), &LinkInterface::disconnected, this, &LinkConfiguration::linkChanged, Qt::QueuedConnection);
+    }
+}
+
+void LinkConfiguration::setLastError(const QString &error, ErrorRemedy remedy)
+{
+    if (error != _lastError || remedy != _lastErrorRemedy) {
+        _lastError = error;
+        _lastErrorRemedy = remedy;
+        emit lastErrorChanged();
     }
 }
 

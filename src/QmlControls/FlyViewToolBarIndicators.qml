@@ -75,7 +75,7 @@ Row {
             height:     indicatorRow.height
             width:   visible ? (loader.item ? loader.item.width : 0) : 0
             z:       dragHandler.active ? 2 : 1
-            opacity: hidden ? 0.35 : 1
+            opacity: hidden && indicatorRow._overlayRig ? indicatorRow._overlayRig.hiddenOpacity : 1
             visible: loader.item && loader.item.showIndicator && (!hidden || indicatorRow._editMode)
 
             readonly property string key:    indicatorRow.keyOf(modelData)

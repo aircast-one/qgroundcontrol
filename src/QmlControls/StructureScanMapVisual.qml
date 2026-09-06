@@ -46,6 +46,7 @@ Item {
         mapControl:         map
         mapPolygon:         _structurePolygon
         interactive:        _missionItem.isCurrentItem && _root.interactive
+        defaultShapeWhenEmpty: _missionItem.wizardMode
         borderWidth:        1
         borderColor:        "black"
         interiorColor:      "green"

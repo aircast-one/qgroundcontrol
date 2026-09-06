@@ -28,6 +28,7 @@ class SysStatusSensorInfo : public QObject
     Q_PROPERTY(QStringList sensorNames  READ sensorNames    NOTIFY sensorInfoChanged)
     Q_PROPERTY(QStringList sensorStatus READ sensorStatus   NOTIFY sensorInfoChanged)
     Q_PROPERTY(QVariantList sensorHealthy READ sensorHealthy NOTIFY sensorInfoChanged)
+    Q_PROPERTY(QVariantList sensorEnabled READ sensorEnabled NOTIFY sensorInfoChanged)
 
 public:
     explicit SysStatusSensorInfo(QObject *parent = nullptr);
@@ -37,6 +38,7 @@ public:
     QStringList sensorNames() const;
     QStringList sensorStatus() const;
     QVariantList sensorHealthy() const;
+    QVariantList sensorEnabled() const;
 
 signals:
     void sensorInfoChanged();

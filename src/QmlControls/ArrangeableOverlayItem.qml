@@ -11,36 +11,28 @@ import QtQuick
 
 import QGroundControl.Controls
 
-// One draggable slot in an OverlayRig: sizes itself to `control`, carries the drag, the
-// persisted position, the edit-mode jiggle and the hide badge. Declare the control as a child
-// and point `control` at it - the slot has to own x/y, so the Behaviors cannot live on the
-// control itself.
-Item {
+OverlayEditSlot {
     id: root
 
-    required property var    overlayRig
     required property Item   control
-    required property string editKey
     required property string settingsKeyPrefix
 
-    property bool available:    true
     property string hint:       ""
     property real defaultX:     0
     property real defaultY:     0
 
+    lifted: dragging || held
+
     readonly property bool dragging: _dragHandler.active
-    readonly property bool held:     overlayRig.heldItem === root
+    readonly property bool held:     rig.heldItem === root
 
     readonly property int  _animationDuration:  350
     readonly property real _animationOvershoot: 2
-    readonly property real _hiddenOpacity:      0.35
 
     readonly property bool displaced: _position.displaced
 
     width:      control ? control.width : 0
     height:     control ? control.height : 0
-    visible:    available && (overlayRig.editMode || !overlayRig.isHidden(editKey))
-    opacity:    overlayRig.isHidden(editKey) ? _hiddenOpacity : 1
 
     Behavior on x {
         enabled: !root.dragging && _position.settling
@@ -70,25 +62,14 @@ Item {
 
     DragHandler {
         id:            _dragHandler
-        dragThreshold: root.overlayRig.dragThreshold
+        dragThreshold: root.rig.dragThreshold
 
         onActiveChanged: {
             if (!active) {
                 _position.commit()
-                root.overlayRig.requestReflow()
+                root.rig.requestReflow()
             }
         }
-    }
-
-    JiggleAnimation {
-        target:     root
-        lifted:     root.dragging || root.held
-        running:    root.overlayRig.editMode && root.visible
-    }
-
-    OverlayEditBadge {
-        rig:     root.overlayRig
-        editKey: root.editKey
     }
 
     HoverHandler { id: _hover }
@@ -99,6 +80,6 @@ Item {
         sourceComponent: QGCToolTip { visible: true; text: root.hint }
     }
 
-    Component.onCompleted:   overlayRig.registerMovable(root, _position)
-    Component.onDestruction: overlayRig.unregisterMovable(root)
+    Component.onCompleted:   rig.registerMovable(root, _position)
+    Component.onDestruction: rig.unregisterMovable(root)
 }

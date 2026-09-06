@@ -14,6 +14,7 @@
 #include <QtCore/QStringList>
 
 class PlanMasterController;
+class QQuickWindow;
 class QTcpServer;
 class QTcpSocket;
 class QUrlQuery;
@@ -35,6 +36,11 @@ public:
 
     quint16 serverPort() const;
 
+    /// Points the /ui/* endpoints at a window the caller owns. Unit tests have no QML application
+    /// engine, so mainRootWindow() is null and every endpoint that reads the scene can only be
+    /// exercised on its failure path. Pass nullptr to go back to the application's own window.
+    static void setWindowForTesting(QQuickWindow *window);
+
 private:
     void _handleConnection(QTcpSocket *socket);
     QByteArray _route(const QString &path, const QUrlQuery &query);
@@ -44,6 +50,13 @@ private:
     static QByteArray _uiPinchJson(const QUrlQuery &query);
     static QByteArray _uiTapJson(const QUrlQuery &query);
     static QByteArray _uiPropJson(const QUrlQuery &query);
+    static QByteArray _uiPropSetJson(const QUrlQuery &query);
+    static QByteArray _uiAtJson(const QUrlQuery &query);
+
+    /// Streams one NDJSON sample per animation tick until the frame budget runs out or the peer
+    /// hangs up. Polling for values that change every frame reads them a round trip apart;
+    /// sampling on the GUI thread's own animation tick reads them where they actually are.
+    static bool _startWatch(QTcpSocket *socket, const QUrlQuery &query);
     static QByteArray _uiResizeJson(const QUrlQuery &query);
     static QByteArray _mockLinkJson(const QUrlQuery &query);
     static QByteArray _uiDismissJson();
@@ -69,7 +82,12 @@ private:
     static QByteArray _linkDisconnectJson(const QUrlQuery &query);
     static QByteArray _videoSettingJson(const QUrlQuery &query);
 
+    /// The window the /ui/* endpoints act on: the test override when one is set, otherwise the
+    /// application's root window.
+    static QQuickWindow *_targetWindow();
+
     static DebugApiServer *_instance;
+    static QQuickWindow *_testWindow;
 
     QTcpServer *_server = nullptr;
     QMetaObject::Connection _messageConnection;

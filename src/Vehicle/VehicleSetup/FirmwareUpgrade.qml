@@ -46,6 +46,37 @@ SetupPage {
             readonly property string qgcUnplugText1:    qsTr("All %1 connections to vehicles must be ").arg(QGroundControl.appName) + highlightPrefix + qsTr(" disconnected ") + highlightSuffix + qsTr("prior to firmware upgrade.")
             readonly property string qgcUnplugText2:    highlightPrefix + "<big>" + qsTr("Please unplug your Pixhawk and/or Radio from USB.") + "</big>" + highlightSuffix
 
+            property string _runningVersion
+            property string _latestStable
+
+            readonly property string _updateAvailableText: _latestStable === "" ? "" :
+                                                            highlightPrefix +
+                                                            qsTr("Update available: this vehicle is running %1, latest stable is %2.").arg(_runningVersion).arg(_latestStable) +
+                                                            highlightSuffix + "<br><br>"
+
+            function _latchFirmwareVersions() {
+                const vehicle = globals.activeVehicle
+                if (!vehicle || vehicle.latestStableFirmwareVersion === "") {
+                    return
+                }
+                _runningVersion = "%1.%2.%3".arg(vehicle.firmwareMajorVersion)
+                                            .arg(vehicle.firmwareMinorVersion)
+                                            .arg(vehicle.firmwarePatchVersion)
+                _latestStable   = vehicle.latestStableFirmwareVersion
+            }
+
+            Component.onCompleted: _latchFirmwareVersions()
+
+            Connections {
+                target: globals
+                function onActiveVehicleChanged() { _latchFirmwareVersions() }
+            }
+
+            Connections {
+                target: globals.activeVehicle
+                function onLatestStableFirmwareVersionChanged() { _latchFirmwareVersions() }
+            }
+
             readonly property int _defaultFimwareTypePX4:   12
             readonly property int _defaultFimwareTypeAPM:   3
 
@@ -184,7 +215,10 @@ SetupPage {
                                     vehicleType = apmVehicleTypeCombo.currentIndex
                                 } else {
                                     if (controller.apmFirmwareNames.length === 0) {
-                                        mainWindow.showMessageDialog(firmwareSelectDialog.title, qsTr("Either firmware list is still downloading, or no firmware is available for current selection."))
+                                        mainWindow.showMessageDialog(firmwareSelectDialog.title,
+                                                                     controller.downloadingFirmwareList
+                                                                         ? qsTr("The firmware list is still downloading. Try again in a moment.")
+                                                                         : qsTr("No firmware is available for the current selection."))
                                         firmwareSelectDialog.preventClose = true
                                         return
                                     }
@@ -422,7 +456,7 @@ SetupPage {
                 readOnly:               true
                 font.pointSize:         ScreenTools.defaultFontPointSize
                 textFormat:             TextEdit.RichText
-                text:                   _singleFirmwareMode ? welcomeTextSingle : welcomeText
+                text:                   _updateAvailableText + (_singleFirmwareMode ? welcomeTextSingle : welcomeText)
                 color:                  qgcPal.text
 
                 background: Rectangle {

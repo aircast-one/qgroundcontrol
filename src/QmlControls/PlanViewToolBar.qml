@@ -39,11 +39,11 @@ Item {
     PlanToolBarIndicators {
         id:                     toolRow
         anchors.top:            parent.top
-        anchors.topMargin:      _margin
+        anchors.topMargin:      _margin + ScreenTools.safeAreaTop
         anchors.left:           parent.left
         anchors.right:          parent.right
-        anchors.leftMargin:     _margin + mainWindow.windowChromeLeftInset
-        anchors.rightMargin:    _margin + Math.max(mainWindow.windowChromeRightInset, _root.rightInset)
+        anchors.leftMargin:     _margin + ScreenTools.safeAreaLeft + mainWindow.windowChromeLeftInset
+        anchors.rightMargin:    _margin + ScreenTools.safeAreaRight + Math.max(mainWindow.windowChromeRightInset, _root.rightInset)
         planMasterController:   _root.planMasterController
     }
 }

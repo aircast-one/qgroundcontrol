@@ -19,10 +19,11 @@ Rectangle {
     property string text
     property string description
     property string value
-    property bool   showChevron:  false
-    property bool   interactive:  false
-    property bool   current:      false
-    property color  textColor:    QGroundControl.globalPalette.text
+    property bool   showChevron:    false
+    property bool   showSeparator:  y > 0
+    property bool   interactive:    false
+    property bool   current:        false
+    property color  textColor:      QGroundControl.globalPalette.text
 
     default property alias trailingItems: trailingRow.data
 
@@ -50,7 +51,7 @@ Rectangle {
         anchors.leftMargin: _root._hPad
         height:         1
         color:          Qt.alpha(_root._qgcPal.text, 0.09)
-        visible:        _root.y > 0
+        visible:        _root.showSeparator
     }
 
     Column {
@@ -73,7 +74,7 @@ Rectangle {
         QGCLabel {
             width:          parent.width
             text:           _root.description
-            color:          Qt.alpha(_root._qgcPal.text, 0.5)
+            color:          Qt.alpha(_root._qgcPal.text, _root.enabled ? 0.5 : 0.9)
             font.pointSize: ScreenTools.smallFontPointSize
             elide:          Text.ElideRight
             visible:        text !== ""
@@ -91,6 +92,7 @@ Rectangle {
             anchors.verticalCenter: parent.verticalCenter
             text:                   _root.value
             color:                  Qt.alpha(_root._qgcPal.text, 0.6)
+            font.family:            ScreenTools.fixedFontFamily
             visible:                text !== ""
         }
 

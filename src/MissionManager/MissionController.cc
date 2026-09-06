@@ -351,6 +351,25 @@ VisualMissionItem* MissionController::insertSimpleMissionItem(QGeoCoordinate coo
     return _insertSimpleMissionItemWorker(coordinate, MAV_CMD_NAV_WAYPOINT, visualItemIndex, makeCurrentItem);
 }
 
+bool MissionController::_takeoffRequiredBeforeWaypoint(void) const
+{
+    return _visualItems &&
+            _masterController->controllerVehicle()->takeoffVehicleSupported() &&
+            !_planViewSettings->takeoffItemNotRequired()->rawValue().toBool() &&
+            _visualItems->count() == 1;
+}
+
+VisualMissionItem* MissionController::addWaypoint(QGeoCoordinate coordinate, int visualItemIndex, bool makeCurrentItem)
+{
+    if (_takeoffRequiredBeforeWaypoint()) {
+        insertTakeoffItem(QGeoCoordinate(), visualItemIndex, false /* makeCurrentItem */);
+        if (visualItemIndex != -1) {
+            visualItemIndex++;
+        }
+    }
+    return insertSimpleMissionItem(coordinate, visualItemIndex, makeCurrentItem);
+}
+
 VisualMissionItem* MissionController::insertTakeoffItem(QGeoCoordinate /*coordinate*/, int visualItemIndex, bool makeCurrentItem)
 {
     int sequenceNumber = _nextSequenceNumber();
@@ -2393,8 +2412,7 @@ void MissionController::setCurrentPlanViewSeqNum(int sequenceNumber, bool force)
         _flyThroughCommandsAllowed =    true;
         _previousCoordinate =           QGeoCoordinate();
 
-        bool noItemsAddedYet = _visualItems->count() == 1;
-        if (_masterController->controllerVehicle()->takeoffVehicleSupported() && !_planViewSettings->takeoffItemNotRequired()->rawValue().toBool() && noItemsAddedYet) {
+        if (_takeoffRequiredBeforeWaypoint()) {
             _onlyInsertTakeoffValid = true;
         }
 

@@ -25,7 +25,9 @@ class TelemetryChipsTest : public UnitTest
 
 private slots:
     void _chipPerValueIsRendered();
+    void _narrowLayerWrapsChipsIntoRows();
     void _rowsKeepTheirPitchOnACoarseSlotGrid();
+    void _deletingTheWidestChipReleasesItsColumnSpan();
     void _duplicateFactChipsKeepIndependentPositions();
     void _deleteColumnRemovesTargetedChip();
     void _addedColumnPicksAnUnusedFact();

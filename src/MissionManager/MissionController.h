@@ -129,6 +129,8 @@ public:
     /// @return Newly created item
     Q_INVOKABLE VisualMissionItem* insertSimpleMissionItem(QGeoCoordinate coordinate, int visualItemIndex, bool makeCurrentItem = false);
 
+    Q_INVOKABLE VisualMissionItem* addWaypoint(QGeoCoordinate coordinate, int visualItemIndex, bool makeCurrentItem = false);
+
     /// Add a new takeoff item to the list
     ///     @param coordinate: Coordinate for item
     ///     @param visualItemIndex: index to insert at, -1 for end of list
@@ -325,6 +327,7 @@ private slots:
     void _managerRemoveAllComplete              (bool error);
     void _updateTimeout                         (void);
     void _complexBoundingBoxChanged             (void);
+    bool _takeoffRequiredBeforeWaypoint          (void) const;
     void _recalcAll                             (void);
     void _managerVehicleChanged                 (Vehicle* managerVehicle);
     void _forceRecalcOfAllowedBits              (void);

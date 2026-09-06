@@ -22,7 +22,7 @@ Rectangle {
     height:         width
     radius:         width / 2
     color:          "transparent"
-    border.color:   qgcPal.text
+    border.color:   qgcPal.overlayInk
     border.width:   Math.max(3, width / 16)
     layer.enabled: true
     layer.effect:  OverlayShadowEffect { elevated: _root.lifted }

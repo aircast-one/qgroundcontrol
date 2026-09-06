@@ -27,6 +27,10 @@ GridLayout {
     readonly property int _MAV_TYPE_FIXED_WING:         1
     readonly property int _MAV_TYPE_QUADROTOR:          2
 
+    function suggestedName() {
+        return qsTr("Mock Link")
+    }
+
     function saveSettings() {
         switch (firmwareTypeCombo.currentIndex) {
         case 0:

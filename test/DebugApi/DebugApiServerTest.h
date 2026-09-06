@@ -23,4 +23,14 @@ private slots:
     void _motorTestRefusedWithoutActuatorGate();
     void _uiClickRejectsUnknownButton();
     void _uiClickAcceptsLeftAndRightButton();
+    void _uiPropRequiresNameAndProperty();
+    void _uiSetPropRequiresValue();
+    void _uiAtRequiresCoordinates();
+    void _uiWatchRejectsMissingArguments();
+    void _uiPropReadsSeveralPropertiesInOneSample();
+    void _uiSetPropWritesAndCoerces();
+    void _uiAtReportsTheStackUnderAPoint();
+    void _uiTreeFindsUnnamedItemsOnlyWithAll();
+    void _uiWatchStreamsSamplesWhileAValueChanges();
+    void _uiWatchSurvivesConcurrentStreamsAndRequests();
 };

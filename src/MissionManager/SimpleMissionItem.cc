@@ -760,6 +760,14 @@ SimpleMissionItem::ReadyForSaveState SimpleMissionItem::readyForSaveState(void) 
     return terrainReady ? ReadyForSave : NotReadyForSaveTerrain;
 }
 
+QString SimpleMissionItem::readyForSaveMessage(void) const
+{
+    if (_wizardMode) {
+        return tr("Set its location");
+    }
+    return VisualMissionItem::readyForSaveMessage();
+}
+
 void SimpleMissionItem::_setDefaultsForCommand(void)
 {
     // First reset params 1-4 to 0, we leave 5-7 alone to preserve any previous location information on command change

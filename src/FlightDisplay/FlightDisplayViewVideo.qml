@@ -65,9 +65,14 @@ Item {
         Rectangle {
             id:             noVideo
             anchors.fill:   parent
-            color:          qgcPal.window
+            color:          "transparent"
             visible:        !(QGroundControl.videoManager.decoding)
 
+            OverlayGlass {
+                id:           noVideoGlass
+                anchors.fill: parent
+                radius:       0
+            }
 
             property string statusText: {
                 var statuses = QGroundControl.videoManager.cameraStatuses
@@ -162,7 +167,7 @@ Item {
                 QGCColoredImage {
                     anchors.horizontalCenter: parent.horizontalCenter
                     source:             "/InstrumentValueIcons/video-camera.svg"
-                    color:              qgcPal.text
+                    color:              noVideoGlass.contentColor
                     opacity:            0.25
                     height:             ScreenTools.defaultFontPixelHeight * 4
                     width:              height
@@ -180,7 +185,7 @@ Item {
                     // "No Video Signal" a spinner beside it says the opposite of the words.
                     QGCSpinner {
                         anchors.verticalCenter: parent.verticalCenter
-                        color:                  qgcPal.text
+                        color:                  noVideoGlass.contentColor
                         visible:                noVideo.connecting && noVideo.streamEnabled &&
                                                     !noVideo.prolonged
                     }
@@ -194,7 +199,7 @@ Item {
                         text:                   !noVideo.streamEnabled ? qsTr("Video off")
                                               : noVideo.prolonged      ? qsTr("No Video Signal")
                                                                        : noVideo.statusText
-                        color:                  qgcPal.text
+                        color:                  noVideoGlass.contentColor
                         font.pointSize:         ScreenTools.defaultFontPointSize
                     }
                 }
@@ -202,7 +207,7 @@ Item {
                 QGCLabel {
                     anchors.horizontalCenter:   parent.horizontalCenter
                     visible:                    noVideo.prolonged && noVideo.streamEnabled
-                    color:                      qgcPal.colorGrey
+                    color:                      Qt.alpha(noVideoGlass.contentColor, 0.6)
                     font.pointSize:             ScreenTools.smallFontPointSize
                     text: {
                         const what = noVideo.receivingData
@@ -220,7 +225,6 @@ Item {
                     OverlayPill {
                         objectName: "videoRetryButton"
                         anchors.verticalCenter: parent.verticalCenter
-                        frosted: false
                         accent:  qgcPal.colorBlue
                         text:    qsTr("Retry")
                         onClicked: {
@@ -233,9 +237,8 @@ Item {
                     OverlayPill {
                         objectName: "videoSettingsButton"
                         anchors.verticalCenter: parent.verticalCenter
-                        frosted:    false
                         text:       qsTr("Video Settings")
-                        onClicked:  mainWindow.showSettingsTool(qsTr("Video"))
+                        onClicked:  mainWindow.showVideoSettings()
                     }
                 }
             }

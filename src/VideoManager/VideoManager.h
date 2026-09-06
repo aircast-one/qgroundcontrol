@@ -16,6 +16,8 @@
 #include <QtCore/QRunnable>
 #include <QtCore/QSize>
 #include <QtCore/QStringList>
+#include <QtQuick/QQuickItem>
+#include <QtQuick/QQuickWindow>
 // #include <QtQmlIntegration/QtQmlIntegration>
 
 Q_DECLARE_LOGGING_CATEGORY(VideoManagerLog)
@@ -100,6 +102,7 @@ public:
     Q_INVOKABLE QString cameraName(int index) const;
 
     void init(QQuickWindow *rootWindow);
+    Q_INVOKABLE void initForItem(QQuickItem *item) { init(item ? item->window() : nullptr); }
     void cleanup();
     bool autoStreamConfigured() const;
     bool decoding() const { return _decoding; }

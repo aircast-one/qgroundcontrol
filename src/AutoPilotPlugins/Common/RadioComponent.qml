@@ -295,18 +295,6 @@ SetupPage {
                     spacing: 10
 
                     QGCButton {
-                        id:         skipButton
-                        text:       qsTr("Skip")
-                        onClicked:  controller.skipButtonClicked()
-                    }
-
-                    QGCButton {
-                        id:         cancelButton
-                        text:       qsTr("Cancel")
-                        onClicked:  controller.cancelButtonClicked()
-                    }
-
-                    QGCButton {
                         id:         nextButton
                         primary:    true
                         text:       qsTr("Calibrate")
@@ -330,6 +318,20 @@ SetupPage {
                                 controller.nextButtonClicked()
                             }
                         }
+                    }
+
+                    QGCButton {
+                        id:         skipButton
+                        text:       qsTr("Skip")
+                        visible:    enabled
+                        onClicked:  controller.skipButtonClicked()
+                    }
+
+                    QGCButton {
+                        id:         cancelButton
+                        text:       qsTr("Cancel")
+                        visible:    enabled
+                        onClicked:  controller.cancelButtonClicked()
                     }
                 } // Row - Buttons
 

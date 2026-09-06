@@ -10,8 +10,6 @@ import QGroundControl.Palette
 
 // Camera section for mission item editors
 Column {
-    anchors.left:   parent.left
-    anchors.right:  parent.right
     spacing:        _margin
 
     property alias buttonGroup:  cameraSectionHeader.buttonGroup

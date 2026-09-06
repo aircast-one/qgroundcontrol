@@ -1,16 +1,13 @@
 import QtQuick
 import QtQuick.Controls
 
+import QGroundControl
 import QGroundControl.Controls
 import QGroundControl.Palette
 
 /// Text control used for displaying text of Maps
 QGCLabel {
-    property var map
-
-    QGCMapPalette { id: mapPal; lightColors: map.isSatelliteMap }
-
-    color:      mapPal.text
+    color:      QGroundControl.globalPalette.overlayInk
     style:      Text.Outline
-    styleColor: mapPal.textOutline
+    styleColor: Qt.alpha(QGroundControl.globalPalette.overlayInkInverse, 0.75)
 }

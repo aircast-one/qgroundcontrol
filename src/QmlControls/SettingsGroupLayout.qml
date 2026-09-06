@@ -19,6 +19,7 @@ ColumnLayout {
     property string outerBorderColor    : defaultBorderColor
 
     property string heading
+    property string headingAction
     property string description
     property bool   showDividers:       true
     property bool   showBorder:         !popoverStyle
@@ -27,28 +28,53 @@ ColumnLayout {
 
     property bool   cardStyle:          false
 
-    readonly property bool _inset: showBorder || cardStyle
+    property bool insetContent: showBorder || cardStyle
+
+    signal headingActionClicked()
+
+    readonly property real _headingInset: popoverStyle ? ScreenTools.defaultFontPixelWidth * 1.5 : _margins
 
     property real _margins: ScreenTools.defaultFontPixelHeight / 2
 
-    QGCLabel {
-        Layout.leftMargin:  _margins
+    RowLayout {
+        Layout.fillWidth:   true
+        Layout.leftMargin:  _headingInset
+        Layout.rightMargin: _headingInset
         Layout.topMargin:   _margins
-        text:               popoverStyle ? heading.toUpperCase() : heading
-        font.pointSize:     popoverStyle ? ScreenTools.smallFontPointSize
-                                         : ScreenTools.defaultFontPointSize + 1
-        font.bold:          !popoverStyle
-        font.letterSpacing: popoverStyle ? 0.5 : 0
-        color:              popoverStyle ? QGroundControl.globalPalette.colorGrey
-                                         : QGroundControl.globalPalette.text
-        visible:            heading !== ""
+        spacing:            ScreenTools.defaultFontPixelWidth
+        visible:            heading !== "" || headingAction !== ""
+
+        QGCLabel {
+            Layout.fillWidth:   true
+            text:               heading
+            font.pointSize:     popoverStyle ? ScreenTools.smallFontPointSize
+                                             : ScreenTools.defaultFontPointSize + 1
+            font.bold:          !popoverStyle
+            color:              popoverStyle ? QGroundControl.globalPalette.colorGrey
+                                             : QGroundControl.globalPalette.text
+        }
+
+        QGCLabel {
+            text:           headingAction
+            font.pointSize: ScreenTools.smallFontPointSize
+            color:          QGroundControl.globalPalette.colorBlue
+            visible:        headingAction !== ""
+            leftPadding:    ScreenTools.defaultFontPixelWidth * 2
+            topPadding:     ScreenTools.defaultFontPixelHeight / 2
+            bottomPadding:  ScreenTools.defaultFontPixelHeight / 2
+
+            QGCMouseArea {
+                anchors.fill:   parent
+                onClicked:      control.headingActionClicked()
+            }
+        }
     }
 
     Rectangle {
         id:                 outerRect
         Layout.fillWidth:   true
-        implicitWidth:      _contentLayout.implicitWidth + (control._inset ? _margins * 2 : 0)
-        implicitHeight:     _contentLayout.implicitHeight + (control._inset ? _margins * 2: 0)
+        implicitWidth:      _contentLayout.implicitWidth + (control.insetContent ? _margins * 2 : 0)
+        implicitHeight:     _contentLayout.implicitHeight + (control.insetContent ? _margins * 2: 0)
         color:              cardStyle  ? QGroundControl.globalPalette.overlayCard
                           : showBorder ? QGroundControl.globalPalette.windowShade
                                        : "transparent"
@@ -60,8 +86,8 @@ ColumnLayout {
             model: showDividers? _contentLayout.children.length : 0
 
             Rectangle {
-                x:                  control._inset ? _margins : 0
-                y:                  _contentItem.y + _contentItem.height + (_contentLayout.spacing / 2) + (control._inset ? _margins : 0)
+                x:                  control.insetContent ? _margins : 0
+                y:                  _contentItem.y + _contentItem.height + (_contentLayout.spacing / 2) + (control.insetContent ? _margins : 0)
                 width:              parent.width - x
                 height:             1
                 color:              QGroundControl.globalPalette.groupBorder
@@ -75,9 +101,9 @@ ColumnLayout {
  
         ColumnLayout {
             id:                 _contentLayout
-            x:                  control._inset ? _margins : 0
-            y:                  control._inset ? _margins : 0
-            width:              parent.width - (control._inset ? _margins * 2 : 0)
+            x:                  control.insetContent ? _margins : 0
+            y:                  control.insetContent ? _margins : 0
+            width:              parent.width - (control.insetContent ? _margins * 2 : 0)
             spacing:            _margins
         }
     }

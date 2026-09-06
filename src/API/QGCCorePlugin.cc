@@ -243,10 +243,25 @@ QQmlApplicationEngine *QGCCorePlugin::createQmlApplicationEngine(QObject *parent
 #ifdef QGC_QWINDOWKIT
     QWK::registerTypes(qmlEngine);
 #endif
+    _setQmlContextProperties(qmlEngine);
+    return qmlEngine;
+}
+
+void QGCCorePlugin::_setQmlContextProperties(QQmlEngine *qmlEngine)
+{
     qmlEngine->rootContext()->setContextProperty(QStringLiteral("joystickManager"), JoystickManager::instance());
     qmlEngine->rootContext()->setContextProperty(QStringLiteral("debugMessageModel"), QGCLogging::instance());
     qmlEngine->rootContext()->setContextProperty(QStringLiteral("logDownloadController"), LogDownloadController::instance());
-    return qmlEngine;
+}
+
+void QGCCorePlugin::setupEmbeddedEngine(QObject *rootObject)
+{
+    QQmlEngine *const engine = qmlEngine(rootObject);
+    if (!engine) {
+        return;
+    }
+    engine->addImportPath(QStringLiteral("qrc:/qml"));
+    _setQmlContextProperties(engine);
 }
 
 void QGCCorePlugin::createRootWindow(QQmlApplicationEngine *qmlEngine)

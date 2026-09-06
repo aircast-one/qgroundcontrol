@@ -16,6 +16,7 @@ import QtQuick.Layouts
 import QGroundControl
 import QGroundControl.FactSystem
 import QGroundControl.FactControls
+import QGroundControl.SettingsManager
 import QGroundControl.Controls
 import QGroundControl.ScreenTools
 import QGroundControl.MultiVehicleManager
@@ -34,6 +35,8 @@ SettingsPage {
     property bool   _resetPending:              false
 
     readonly property var _scalePercents: [ 80, 90, 100, 110, 125, 150, 175, 200 ]
+
+    readonly property int _unitSystemIndex: _unitsSettings.unitSystem
 
     function _pointSizeForPercent(percent) {
         return Math.round(ScreenTools.platformFontPointSize * percent / 100)
@@ -57,10 +60,11 @@ SettingsPage {
         }
 
         LabelledFactComboBox {
-            label:      qsTr("Stream GCS Position")
-            fact:       _appSettings.followTarget
-            indexModel: false
-            visible:    _appSettings.followTarget.visible
+            label:          qsTr("Stream GCS Position")
+            description:    qsTr("Sends this device's location to the vehicle so it can follow you")
+            fact:           _appSettings.followTarget
+            indexModel:     false
+            visible:        _appSettings.followTarget.visible
         }
 
         FactCheckBoxSlider {
@@ -81,6 +85,19 @@ SettingsPage {
             fact:       _appSettings.indoorPalette
             indexModel: false
             visible:    _appSettings.indoorPalette.visible
+        }
+
+        LabelledSlider {
+            Layout.fillWidth:       true
+            label:                  qsTr("Glass Frost")
+            description:            qsTr("How much the map blurs behind panels and pills")
+            from:                   0
+            to:                     100
+            stepSize:               5
+            sliderPreferredWidth:   ScreenTools.defaultFontPixelWidth * 20
+            value:                  _appSettings.overlayGlassFrost.rawValue
+            visible:                _appSettings.overlayGlassFrost.visible
+            onMoved:                (v) => _appSettings.overlayGlassFrost.rawValue = v
         }
 
         LabelledComboBox {
@@ -179,6 +196,7 @@ SettingsPage {
     SettingsGroupLayout {
         Layout.fillWidth:   true
         heading:            qsTr("Files")
+        description:        qsTr("Missions, telemetry logs and map tiles are written here. Removable storage keeps them off the device.")
         visible:            (_appSavePath.visible && !ScreenTools.isMobile) || _androidSaveToSDCard.visible
 
         RowLayout {
@@ -226,8 +244,18 @@ SettingsPage {
         heading:            qsTr("Units")
         visible:            _unitsSettings.visible
 
+        LabelledComboBox {
+            label:          qsTr("Unit system")
+            model:          [ qsTr("Metric"), qsTr("Imperial"), qsTr("Custom") ]
+            currentIndex:   _unitSystemIndex
+            onActivated:    (index) => _unitsSettings.setUnitSystem(index)
+        }
+
         Repeater {
-            model: [ _unitsSettings.horizontalDistanceUnits, _unitsSettings.verticalDistanceUnits, _unitsSettings.areaUnits, _unitsSettings.speedUnits, _unitsSettings.temperatureUnits ]
+            model: _unitSystemIndex === UnitsSettings.UnitSystemCustom
+                       ? [ _unitsSettings.horizontalDistanceUnits, _unitsSettings.verticalDistanceUnits,
+                           _unitsSettings.areaUnits, _unitsSettings.speedUnits, _unitsSettings.temperatureUnits ]
+                       : []
 
             LabelledFactComboBox {
                 label:      modelData.shortDescription

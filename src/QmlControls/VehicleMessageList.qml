@@ -20,14 +20,19 @@ import QGroundControl.Palette
 
 TextArea {
     id:                     messageText
-    Layout.preferredWidth:  ScreenTools.defaultFontPixelWidth * 50
+    Layout.fillWidth:       true
+    Layout.preferredWidth:  ScreenTools.defaultFontPixelWidth * 40
     height:                 contentHeight
+    Layout.preferredHeight: implicitHeight
     readOnly:               true
     textFormat:             TextEdit.RichText
     color:                  qgcPal.text
     placeholderText:        qsTr("No Messages")
     placeholderTextColor:   qgcPal.text
     padding:                0
+    leftPadding:            ScreenTools.defaultFontPixelWidth * 1.5
+    rightPadding:           ScreenTools.defaultFontPixelWidth * 1.5
+    bottomPadding:          ScreenTools.defaultFontPixelHeight / 2
     wrapMode:               TextEdit.Wrap
 
     property bool noMessages: messageText.length === 0
@@ -79,34 +84,4 @@ TextArea {
         }
     }
 
-    Rectangle {
-        anchors.right:   parent.right
-        anchors.top:     parent.top
-        width:                      ScreenTools.defaultFontPixelHeight * 1.25
-        height:                     width
-        radius:                     width / 2
-        color:                      QGroundControl.globalPalette.button
-        border.color:               QGroundControl.globalPalette.buttonText
-        visible:                    !noMessages
-
-        QGCColoredImage {
-            anchors.margins:    ScreenTools.defaultFontPixelHeight * 0.25
-            anchors.centerIn:   parent
-            anchors.fill:       parent
-            sourceSize.height:  height
-            source:             "/res/TrashDelete.svg"
-            fillMode:           Image.PreserveAspectFit
-            mipmap:             true
-            smooth:             true
-            color:              qgcPal.text
-        }
-
-        QGCMouseArea {
-            fillItem: parent
-            onClicked: {
-                _activeVehicle.clearMessages()
-                mainWindow.closeIndicatorDrawer()
-            }
-        }
-    }
 }

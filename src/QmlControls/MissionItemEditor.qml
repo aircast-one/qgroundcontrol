@@ -33,7 +33,6 @@ Rectangle {
 
     signal clicked
     signal remove
-    signal selectNextNotReadyItem
 
     property var    _masterController:          masterController
     property var    _missionController:         _masterController.missionController
@@ -166,13 +165,13 @@ Rectangle {
                 anchors.left:           commandLabel.right
                 anchors.leftMargin:     ScreenTools.defaultFontPixelWidth * 0.4
                 anchors.verticalCenter: commandLabel.verticalCenter
-                height:                 ScreenTools.defaultFontPixelWidth
+                height:                 ScreenTools.defaultFontPixelHeight / 2
                 width:                  height
+                sourceSize.height:      height
                 fillMode:               Image.PreserveAspectFit
-                smooth:                 true
-                antialiasing:           true
+                mipmap:                 true
                 color:                  Qt.alpha(qgcPal.text, 0.5)
-                source:                 "/qmlimages/arrow-down.png"
+                source:                 "/res/DropArrow.svg"
                 visible:                commandPicker._editable
             }
 
@@ -204,9 +203,20 @@ Rectangle {
 
             // Altitude and leg length are the two numbers a planner scans a list for. In tabular
             // figures they line up down the column, so two rows can be compared without reading.
+            // An incomplete item had only a "?" seal to say so, which says that something is
+            // wrong but not what. The figures slot is empty on an item with no position, so the
+            // reason goes where the numbers would have been.
             QGCLabel {
                 anchors.verticalCenter: parent.verticalCenter
-                visible:                text !== ""
+                visible:                !_readyForSave
+                color:                  qgcPal.warningText
+                font.pointSize:         ScreenTools.smallFontPointSize
+                text:                   missionItem.readyForSaveMessage
+            }
+
+            QGCLabel {
+                anchors.verticalCenter: parent.verticalCenter
+                visible:                _readyForSave && text !== ""
                 color:                  Qt.alpha(qgcPal.text, _currentItem ? 0.85 : 0.6)
                 font.family:            ScreenTools.fixedFontFamily
                 font.pointSize:         ScreenTools.smallFontPointSize
@@ -224,43 +234,25 @@ Rectangle {
                 }
             }
 
+            // One button, not two. A trash can and a hamburger side by side put a destructive
+            // action a few pixels from a routine one, in a row that already carries a number, a
+            // name, a picker and two figures. Everything the row can do now lives behind this,
+            // with the destructive entry set apart at the bottom where it is reached deliberately.
             QGCColoredImage {
-                anchors.verticalCenter: parent.verticalCenter
-                height:                 _glyphSize
-                width:                  height
-                sourceSize.height:      height
-                fillMode:               Image.PreserveAspectFit
-                mipmap:                 true
-                smooth:                 true
-                color:                  qgcPal.text
-                visible:                _currentItem && missionItem.sequenceNumber !== 0 && !_isComplexItem
-                source:                 "/res/TrashDelete.svg"
-
-                QGCMouseArea {
-                    fillItem:   parent
-                    onClicked:  remove()
-                }
-            }
-
-            QGCColoredImage {
-                id:                     hamburger
+                id:                     moreButton
                 anchors.verticalCenter: parent.verticalCenter
                 width:                  _glyphSize
                 height:                 _glyphSize
                 sourceSize.height:      _glyphSize
-                source:                 "qrc:/qmlimages/Hamburger.svg"
+                fillMode:               Image.PreserveAspectFit
+                mipmap:                 true
+                source:                 "/InstrumentValueIcons/navigation-more.svg"
                 visible:                _currentItem && missionItem.sequenceNumber !== 0 && !_isComplexItem
-                color:                  qgcPal.text
+                color:                  Qt.alpha(qgcPal.text, 0.55)
 
                 QGCMouseArea {
-                    fillItem:   hamburger
-                    onClicked: (position) => {
-                        position = Qt.point(position.x, position.y)
-                        // For some strange reason using mainWindow in mapToItem doesn't work, so we use globals.parent instead which also gets us mainWindow
-                        position = mapToItem(globals.parent, position)
-                        var dropPanel = hamburgerMenuDropPanelComponent.createObject(mainWindow, { clickRect: Qt.rect(position.x, position.y, 0, 0) })
-                        dropPanel.open()
-                    }
+                    fillItem:   moreButton
+                    onClicked:  itemMenu.openFrom(moreButton)
                 }
             }
 
@@ -274,73 +266,73 @@ Rectangle {
         }
     }
 
-    Component {
-        id: hamburgerMenuDropPanelComponent
+    OverlayPopover {
+        id: itemMenu
 
-        DropPanel {
-            id: hamburgerMenuDropPanel
+        readonly property var _activeVehicle: QGroundControl.multiVehicleManager.activeVehicle
 
-            sourceComponent: Component {
-                ColumnLayout {
-                    spacing: ScreenTools.defaultFontPixelHeight / 2
+        OverlayMenuItem {
+            text:      qsTr("Move to Vehicle Position")
+            reserveGutter: true
+            enabled:   itemMenu._activeVehicle && missionItem.specifiesCoordinate
+            opacity:   enabled ? 1 : 0.45
+            onClicked: {
+                itemMenu.close()
+                missionItem.coordinate = itemMenu._activeVehicle.coordinate
+            }
+        }
 
-                    QGCButton {
-                        Layout.fillWidth:   true
-                        text:               qsTr("Move to vehicle position")
-                        enabled:            _activeVehicle && missionItem.specifiesCoordinate
+        OverlayMenuItem {
+            text:      qsTr("Move to Previous Item")
+            reserveGutter: true
+            enabled:   _missionController.previousCoordinate.isValid
+            opacity:   enabled ? 1 : 0.45
+            onClicked: {
+                itemMenu.close()
+                missionItem.coordinate = _missionController.previousCoordinate
+            }
+        }
 
-                        onClicked: {
-                            missionItem.coordinate = _activeVehicle.coordinate
-                            hamburgerMenuDropPanel.close()
-                        }
+        OverlayMenuItem {
+            text:      qsTr("Edit Position…")
+            reserveGutter: true
+            enabled:   missionItem.specifiesCoordinate
+            opacity:   enabled ? 1 : 0.45
+            onClicked: {
+                itemMenu.close()
+                editPositionDialog.createObject(mainWindow).open()
+            }
+        }
 
-                        property var _activeVehicle: QGroundControl.multiVehicleManager.activeVehicle
-                    }
+        OverlayMenuSeparator { visible: showAllValues.visible }
 
-                    QGCButton {
-                        Layout.fillWidth:   true
-                        text:               qsTr("Move to previous item position")
-                        enabled:            _missionController.previousCoordinate.isValid
-                        onClicked: {
-                            missionItem.coordinate = _missionController.previousCoordinate
-                            hamburgerMenuDropPanel.close()
-                        }
-                    }
-
-                    QGCButton {
-                        Layout.fillWidth:   true
-                        text:               qsTr("Edit position...")
-                        enabled:            missionItem.specifiesCoordinate
-                        onClicked: {
-                            editPositionDialog.createObject(mainWindow).open()
-                            hamburgerMenuDropPanel.close()
-                        }
-                    }
-
-                    Rectangle {
-                        Layout.fillWidth:       true
-                        Layout.preferredHeight: 1
-                        color:                  qgcPal.groupBorder
-                    }
-
-                    QGCCheckBoxSlider {
-                        Layout.fillWidth:   true
-                        text:               qsTr("Show all values")
-                        visible:            QGroundControl.corePlugin.showAdvancedUI
-                        checked:            missionItem.isSimpleItem ? missionItem.rawEdit : false
-                        enabled:            missionItem.isSimpleItem && !_waypointsOnlyMode
-
-                        onClicked: {
-                            missionItem.rawEdit = checked
-                            if (missionItem.rawEdit && !missionItem.friendlyEditAllowed) {
-                                missionItem.rawEdit = false
-                                checked = false
-                                mainWindow.showMessageDialog(qsTr("Mission Edit"), qsTr("You have made changes to the mission item which cannot be shown in Simple Mode"))
-                            }
-                            hamburgerMenuDropPanel.close()
-                        }
-                    }
+        OverlayMenuItem {
+            id:        showAllValues
+            text:      qsTr("Show All Values")
+            checkable: true
+            checked:   missionItem.isSimpleItem ? missionItem.rawEdit : false
+            visible:   QGroundControl.corePlugin.showAdvancedUI
+            enabled:   missionItem.isSimpleItem && !_waypointsOnlyMode
+            opacity:   enabled ? 1 : 0.45
+            onClicked: {
+                itemMenu.close()
+                missionItem.rawEdit = !missionItem.rawEdit
+                if (missionItem.rawEdit && !missionItem.friendlyEditAllowed) {
+                    missionItem.rawEdit = false
+                    mainWindow.showMessageDialog(qsTr("Mission Edit"), qsTr("You have made changes to the mission item which cannot be shown in Simple Mode"))
                 }
+            }
+        }
+
+        OverlayMenuSeparator { }
+
+        OverlayMenuItem {
+            text:      qsTr("Delete Waypoint")
+            reserveGutter: true
+            textColor: qgcPal.colorRed
+            onClicked: {
+                itemMenu.close()
+                remove()
             }
         }
     }

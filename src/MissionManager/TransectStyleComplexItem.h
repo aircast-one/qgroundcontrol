@@ -99,6 +99,7 @@ public:
     double              specifiedGimbalPitch        (void) final { return std::numeric_limits<double>::quiet_NaN(); }
     void                setMissionFlightStatus      (MissionController::MissionFlightStatus_t& missionFlightStatus) final;
     ReadyForSaveState   readyForSaveState         (void) const override;
+    QString             readyForSaveMessage       (void) const override;
     QString             commandDescription          (void) const override { return tr("Transect"); }
     QString             commandName                 (void) const override { return tr("Transect"); }
     QString             abbreviation                (void) const override { return tr("T"); }

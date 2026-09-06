@@ -80,6 +80,7 @@ public:
 
     Q_PROPERTY(PlanMasterController*    masterController    READ masterController                                                   CONSTANT)
     Q_PROPERTY(ReadyForSaveState        readyForSaveState   READ readyForSaveState                                                  NOTIFY readyForSaveStateChanged)
+    Q_PROPERTY(QString                  readyForSaveMessage READ readyForSaveMessage                                                NOTIFY readyForSaveStateChanged)
     Q_PROPERTY(VisualMissionItem*       parentItem          READ parentItem                        WRITE setParentItem              NOTIFY parentItemChanged)
     Q_PROPERTY(QmlObjectListModel*      childItems          READ childItems                                                         CONSTANT)
     Q_PROPERTY(QGCGeoBoundingCube*      boundingCube        READ boundingCube                                                       NOTIFY boundingCubeChanged)
@@ -171,6 +172,8 @@ public:
 
     /// @return Returns whether the item is ready for save and if not, why
     virtual ReadyForSaveState readyForSaveState(void) const { return ReadyForSave; }
+
+    virtual QString readyForSaveMessage(void) const;
 
     /// Save the item(s) in Json format
     ///     @param missionItems Current set of mission items, new items should be appended to the end

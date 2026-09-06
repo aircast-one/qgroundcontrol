@@ -80,7 +80,7 @@ Item {
         width:   _root.vertical ? _root._fillThick : _root._fillLen
         height:  _root.vertical ? _root._fillLen : _root._fillThick
         radius:  _root.centered ? _root._fillThick / 2 : _root._radius
-        color:   _root.centered ? qgcPal.colorBlue : qgcPal.text
+        color:   _root.centered ? qgcPal.colorBlue : qgcPal.overlayInk
         opacity: slider.pressed ? 1.0 : _root._fillOpacity
         visible: _root._fillLen > 0.5
 
@@ -106,7 +106,7 @@ Item {
         width:   _root.vertical ? _root.width * 0.42 : Math.max(2, ScreenTools.defaultFontPixelWidth / 4)
         height:  _root.vertical ? Math.max(2, ScreenTools.defaultFontPixelWidth / 4) : _root.height * 0.42
         radius:  Math.min(width, height) / 2
-        color:   qgcPal.text
+        color:   qgcPal.overlayInk
         opacity: 0.55
         visible: _root.centered
     }
@@ -114,7 +114,7 @@ Item {
     readonly property real _labelZone: ScreenTools.defaultFontPixelHeight * 2.2
     readonly property real _labelFrac: (_labelZone / 2) / Math.max(1, _axisLen)
     readonly property bool _labelOnFill: !centered && _fillLen > 0.5 && _fillLo <= _labelFrac && _labelFrac <= _fillHi
-    readonly property color _labelColor: _labelOnFill ? qgcPal.window : qgcPal.text
+    readonly property color _labelColor: _labelOnFill ? qgcPal.overlayInkInverse : qgcPal.overlayInk
 
     Item {
         id:         labelZone

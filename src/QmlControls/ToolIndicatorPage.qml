@@ -42,6 +42,7 @@ RowLayout {
     Loader {
         id:                 contentItemLoader
         Layout.alignment:   Qt.AlignTop
+        Layout.fillWidth:   true
         sourceComponent:    _loadPages ? contentComponent : undefined
 
         property var pageProperties: control.pageProperties

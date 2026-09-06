@@ -238,3 +238,16 @@ void VisualMissionItem::_amslExitAltChanged(void)
 {
     emit amslExitAltChanged(amslExitAlt());
 }
+
+QString VisualMissionItem::readyForSaveMessage(void) const
+{
+    switch (readyForSaveState()) {
+    case ReadyForSave:
+        return QString();
+    case NotReadyForSaveTerrain:
+        return tr("Waiting for terrain");
+    case NotReadyForSaveData:
+        return tr("Needs setup");
+    }
+    return QString();
+}

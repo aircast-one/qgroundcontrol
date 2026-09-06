@@ -1,7 +1,13 @@
 {
-    "version":      1,
-    "fileType":  "FactMetaData",
-    "QGC.MetaData.Facts":
-[
-]
+    "version": 1,
+    "fileType": "FactMetaData",
+    "QGC.MetaData.Facts": [
+        {
+            "name": "customUnits",
+            "shortDesc": "Choose each unit separately",
+            "longDesc": "If this option is enabled each measurement unit is chosen individually instead of following a metric or imperial preset.",
+            "type": "bool",
+            "default": false
+        }
+    ]
 }

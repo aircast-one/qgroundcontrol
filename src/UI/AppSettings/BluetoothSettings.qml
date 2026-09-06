@@ -22,6 +22,10 @@ ColumnLayout {
     function saveSettings() {
     }
 
+    function suggestedName() {
+        return subEditConfig.deviceName === "" ? qsTr("Bluetooth") : subEditConfig.deviceName
+    }
+
     GridLayout {
         columns:    2
         columnSpacing:  _colSpacing

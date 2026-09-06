@@ -13,6 +13,7 @@
 #include <QtCore/QSettings>
 
 static const qreal kMargin = 8;
+static const qreal kTestViewWidth = 800;
 
 static void clearPipSettings()
 {
@@ -212,6 +213,96 @@ void PipViewTest::_resizeClampsToViewportFraction()
     dragMouse(view, itemCenter(grip), itemCenter(grip) - QPoint(3000, 0), false);
     QTRY_VERIFY(pip->width() >= root->width() * minFraction - 1);
 }
+void PipViewTest::_sizeKeepsItsShareWhenTheViewportNarrows()
+{
+    clearPipSettings();
+    clearQmlGlobalSettings({"PIPSize"});
+
+    QQuickView view;
+    QVERIFY(loadView(view));
+    view.rootObject()->setProperty("editMode", true);
+
+    QQuickItem *const root = view.rootObject();
+    QQuickItem *const pip = pipOf(view);
+    QQuickItem *const grip = gripOf(view);
+    QVERIFY(pip && grip);
+    QTRY_VERIFY(grip->isVisible());
+
+    dragMouse(view, itemCenter(grip), itemCenter(grip) + QPoint(160, 0), false);
+    QTRY_VERIFY(pip->width() > root->width() * 0.2);
+    const qreal share = pip->width() / root->width();
+
+    const qreal narrowWidth = root->width() / 2;
+    root->setWidth(narrowWidth);
+    view.resize(qRound(narrowWidth), qRound(root->height()));
+
+    QTRY_VERIFY(qAbs(pip->width() / root->width() - share) < 0.01);
+    QVERIFY(pip->width() <= root->width() * pip->property("_maxSize").toReal() + 1);
+}
+
+static void seedPipSizeSetting(const QString& value)
+{
+    QSettings settings;
+    settings.beginGroup(QGroundControlQmlGlobal::kQmlGlobalKeyName);
+    settings.setValue(QStringLiteral("PIPSize"), value);
+}
+
+static QString storedPipSizeSetting()
+{
+    QSettings settings;
+    settings.beginGroup(QGroundControlQmlGlobal::kQmlGlobalKeyName);
+    return settings.value(QStringLiteral("PIPSize")).toString();
+}
+
+void PipViewTest::_legacyPixelSizeMigratesToAShare()
+{
+    clearPipSettings();
+    clearQmlGlobalSettings({"PIPSize"});
+
+    const qreal legacyPixels = kTestViewWidth * 0.3;
+    seedPipSizeSetting(QString::number(legacyPixels));
+
+    QQuickView view;
+    QVERIFY(loadView(view));
+    QCOMPARE(view.rootObject()->width(), kTestViewWidth);
+
+    QQuickItem *const pip = pipOf(view);
+    QVERIFY(pip);
+
+    QTRY_VERIFY(qAbs(pip->width() - legacyPixels) < 2);
+    QVERIFY(pip->width() < view.rootObject()->width() * pip->property("_maxSize").toReal());
+    QCOMPARE(storedPipSizeSetting().toDouble(), pip->property("_pipFraction").toDouble());
+    QVERIFY(storedPipSizeSetting().toDouble() <= 1);
+
+    clearQmlGlobalSettings({"PIPSize"});
+}
+
+void PipViewTest::_centreInsetOnlyAppliesWhileThePipStraddlesTheCentre()
+{
+    clearPipSettings();
+    clearQmlGlobalSettings({"PIPSize"});
+
+    QQuickView view;
+    QVERIFY(loadView(view));
+    QQuickItem *const root = view.rootObject();
+    QQuickItem *const pip = pipOf(view);
+    QVERIFY(pip);
+
+    QQuickItem *const grip = gripOf(view);
+    QVERIFY(grip);
+    view.rootObject()->setProperty("editMode", true);
+    QTRY_VERIFY(grip->isVisible());
+
+    QTRY_VERIFY(pip->width() > 0);
+    QVERIFY(pip->width() < root->width() / 2);
+    QCOMPARE(pip->property("coversHorizontalCentre").toBool(), false);
+
+    dragMouse(view, itemCenter(grip), itemCenter(grip) + QPoint(3000, 0), false);
+
+    QTRY_VERIFY(pip->width() > root->width() / 2);
+    QCOMPARE(pip->property("coversHorizontalCentre").toBool(), true);
+}
+
 void PipViewTest::_hoverRevealHoldsSteadyOverTheGrip()
 {
     clearPipSettings();

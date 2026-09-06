@@ -84,6 +84,7 @@ private:
     QMutex _taskQueueMutex;
     QQueue<QGCMapTask*> _taskQueue;
     QWaitCondition _waitc;
+    bool _stopped = false;
     QString _databasePath;
     quint32 _defaultCount = 0;
     quint32 _totalCount = 0;

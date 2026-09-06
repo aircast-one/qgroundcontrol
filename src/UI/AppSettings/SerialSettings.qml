@@ -22,6 +22,14 @@ ColumnLayout {
     function saveSettings() {
     }
 
+    function validate() {
+        return QGroundControl.linkManager.serialPorts.length > 0
+    }
+
+    function suggestedName() {
+        return subEditConfig.portDisplayName === "" ? qsTr("Serial") : subEditConfig.portDisplayName
+    }
+
     GridLayout {
         columns:        2
         rowSpacing:     _rowSpacing

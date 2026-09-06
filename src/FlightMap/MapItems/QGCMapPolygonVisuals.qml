@@ -27,6 +27,7 @@ Item {
     property var    mapControl
     property var    mapPolygon
     property bool   interactive:        mapPolygon.interactive
+    property bool   defaultShapeWhenEmpty: false
     property color  interiorColor:      "transparent"
     property color  altColor:           "transparent"
     property real   interiorOpacity:    1
@@ -58,7 +59,7 @@ Item {
 
     function _shapeCaption() {
         if (mapPolygon.count === 0) {
-            return ""
+            return qsTr("Polygon Tools")
         }
         if (_circleMode) {
             return qsTr("Radius %1").arg(_distanceText(_circleRadius))
@@ -96,7 +97,7 @@ Item {
 
     function addToolbarVisuals() {
         if (_objMgrToolVisuals.empty) {
-            var toolbar = _objMgrToolVisuals.createObject(toolbarComponent, mapControl)
+            var toolbar = _objMgrToolVisuals.createObject(toolbarComponent, OverlayBackdrop.chromeLayer || mapControl)
             toolbar.z = QGroundControl.zOrderWidgets
         }
     }
@@ -170,6 +171,9 @@ Item {
 
     function _handleInteractiveChanged() {
         if (interactive) {
+            if (defaultShapeWhenEmpty && mapPolygon.count === 0) {
+                _resetPolygon()
+            }
             addEditingVisuals()
             addToolbarVisuals()
         } else {
@@ -561,10 +565,7 @@ Item {
         id: toolbarComponent
 
         PlanEditToolbar {
-            anchors.horizontalCenter:       mapControl.left
-            anchors.horizontalCenterOffset: mapControl.centerViewport.left + (mapControl.centerViewport.width / 2)
-            y:                              mapControl.centerViewport.top
-            availableWidth:                 mapControl.centerViewport.width
+            mapControl:                     _root.mapControl
             caption:                        mapPolygon.traceMode ? _traceCaption() : _shapeCaption()
             accentEnabled:                  mapPolygon.traceComplete
             tools: mapPolygon.traceMode

@@ -18,10 +18,10 @@ import QGroundControl.Controls
 import QGroundControl.ScreenTools
 import QGroundControl.MultiVehicleManager
 
-Rectangle {
+ToolDrawerPage {
     id:         setupView
     objectName: "vehicleSetupView"
-    color:      "transparent"
+    color:      qgcPal.window
     z:          QGroundControl.zOrderTopMost
 
     DeadMouseArea {
@@ -32,20 +32,19 @@ Rectangle {
 
     readonly property real      _defaultTextHeight: ScreenTools.defaultFontPixelHeight
     readonly property real      _defaultTextWidth:  ScreenTools.defaultFontPixelWidth
-    readonly property real      _horizontalMargin:  _defaultTextWidth / 2
+    readonly property real      _horizontalMargin:  _defaultTextWidth * 1.25
     readonly property real      _verticalMargin:    _defaultTextHeight / 2
     readonly property real      _inset:             Math.round(_defaultTextHeight * 0.75)
-    readonly property real      _sidebarRadius:     mainWindow.panelRadius - _inset
     readonly property real      _sidebarWidth:      _defaultTextWidth * 26
     readonly property real      _sectionGap:        _defaultTextHeight * 0.75
-    readonly property string    _armedVehicleText:  qsTr("This operation cannot be performed while the vehicle is armed.")
 
-    property bool   _vehicleArmed:                  QGroundControl.multiVehicleManager.activeVehicle ? QGroundControl.multiVehicleManager.activeVehicle.armed : false
     property string _messagePanelText:              qsTr("missing message panel text")
+    property string _prerequisiteName:              ""
     property bool   _fullParameterVehicleAvailable: QGroundControl.multiVehicleManager.parameterReadyVehicleAvailable && !QGroundControl.multiVehicleManager.activeVehicle.parameterManager.missingParameters
     property var    _corePlugin:                    QGroundControl.corePlugin
-    property string _pageTitle
     property bool   _setupComplete:                 _fullParameterVehicleAvailable ? QGroundControl.multiVehicleManager.activeVehicle.autopilotPlugin.setupComplete : true
+    property string _latestStableFirmware:          QGroundControl.multiVehicleManager.activeVehicle ? QGroundControl.multiVehicleManager.activeVehicle.latestStableFirmwareVersion : ""
+    property bool   _firmwareUpdateAvailable:       _latestStableFirmware !== ""
     property bool   _parametersAvailable:           QGroundControl.multiVehicleManager.parameterReadyVehicleAvailable &&
                                                     !QGroundControl.multiVehicleManager.activeVehicle.usingHighLatencyLink &&
                                                     _corePlugin.showAdvancedUI
@@ -53,35 +52,55 @@ Rectangle {
     readonly property string _search:       searchField.text.trim().toLowerCase()
     readonly property bool   _hasTuning:    _fullParameterVehicleAvailable &&
                                             QGroundControl.multiVehicleManager.activeVehicle.autopilotPlugin.vehicleComponents
-                                                .some(component => isTuning(component.name) && component.setupSource.toString() !== "")
-    readonly property var    _tuningNames:  ["tuning", "camera", "lights", "follow me", "remote support"]
-    readonly property var    _tileColors:   ({
-        "summary":      "#8e8e93",
-        "firmware":     "#64d2ff",
-        "airframe":     "#ff9f0a",
-        "frame":        "#ff9f0a",
-        "sensors":      "#30d158",
-        "optical flow": "#30d158",
-        "radio":        "#0a84ff",
-        "flight modes": "#5e5ce6",
-        "power":        "#ff375f",
-        "motors":       "#bf5af2",
-        "actuators":    "#bf5af2",
-        "safety":       "#ff453a",
-        "tuning":       "#ac8e68",
-        "camera":       "#64d2ff",
-        "lights":       "#ffd60a",
-        "follow":       "#30d158",
-        "joystick":     "#8e8e93",
-        "parameters":   "#8e8e93"
+                                                .some(component => isTuning(component) && component.setupSource.toString() !== "")
+    sidebarWidth:    sidebar.width
+    preferredWidth:  ScreenTools.isMobile ? 0 : Math.max(_defaultTextWidth * 110, mainWindow.width * 0.82)
+    preferredHeight: ScreenTools.isMobile ? 0 : Math.max(_defaultTextHeight * 34, mainWindow.height * 0.86)
+
+    readonly property var    _componentStyles: ({
+        "/qmlimages/AirframeComponentIcon.png":    { icon: "/InstrumentValueIcons/box.svg",              color: "#ff9f0a" },
+        "/qmlimages/SubFrameComponentIcon.png":    { icon: "/InstrumentValueIcons/box.svg",              color: "#ff9f0a" },
+        "/res/helicoptericon.svg":                 { icon: "/InstrumentValueIcons/box.svg",              color: "#ff9f0a" },
+        "/qmlimages/RadioComponentIcon.png":       { icon: "/InstrumentValueIcons/radio.svg",            color: "#0a84ff" },
+        "/qmlimages/FlightModesComponentIcon.png": { icon: "/InstrumentValueIcons/swap.svg",             color: "#5e5ce6" },
+        "/qmlimages/SensorsComponentIcon.png":     { icon: "/InstrumentValueIcons/radar.svg",            color: "#30d158" },
+        "/qmlimages/PowerComponentIcon.png":       { icon: "/InstrumentValueIcons/bolt.svg",             color: "#ff375f" },
+        "/qmlimages/MotorComponentIcon.svg":       { icon: "/InstrumentValueIcons/refresh.svg",          color: "#bf5af2" },
+        "/qmlimages/SafetyComponentIcon.png":      { icon: "/InstrumentValueIcons/shield.svg",           color: "#ff453a" },
+        "/qmlimages/TuningComponentIcon.png":      { icon: "/InstrumentValueIcons/tuning.svg",           color: "#ac8e68" },
+        "/qmlimages/CameraComponentIcon.png":      { icon: "/InstrumentValueIcons/camera.svg",           color: "#64d2ff" },
+        "/qmlimages/LightsComponentIcon.png":      { icon: "/InstrumentValueIcons/light-bulb.svg",       color: "#ffd60a" },
+        "/qmlimages/FollowComponentIcon.png":      { icon: "/InstrumentValueIcons/location-current.svg", color: "#30d158" },
+        "/qmlimages/ForwardingSupportIcon.svg":    { icon: "/InstrumentValueIcons/network.svg",          color: "#8e8e93" },
+        "/qmlimages/wifi.svg":                     { icon: "/InstrumentValueIcons/network.svg",          color: "#8e8e93" }
     })
 
-    function tileColorFor(name) {
-        return _tileColors[name.toLowerCase()] || "#8e8e93"
+    readonly property var    _tuningResources: [
+        "/qmlimages/TuningComponentIcon.png",
+        "/qmlimages/CameraComponentIcon.png",
+        "/qmlimages/LightsComponentIcon.png",
+        "/qmlimages/FollowComponentIcon.png",
+        "/qmlimages/ForwardingSupportIcon.svg"
+    ]
+
+    readonly property string _fallbackTileColor: "#8e8e93"
+
+    function _componentStyle(component) {
+        return _componentStyles[String(component.iconResource)]
     }
 
-    function isTuning(name) {
-        return _tuningNames.indexOf(name.toLowerCase()) !== -1
+    function componentIcon(component) {
+        const style = _componentStyle(component)
+        return style ? style.icon : component.iconResource
+    }
+
+    function componentColor(component) {
+        const style = _componentStyle(component)
+        return style ? style.color : _fallbackTileColor
+    }
+
+    function isTuning(component) {
+        return _tuningResources.indexOf(String(component.iconResource)) !== -1
     }
 
     function matchesSearch(name) {
@@ -95,7 +114,7 @@ Rectangle {
     }
 
     function _showSummaryPanel() {
-        _pageTitle = ""
+        pageTitle = ""
         if (_fullParameterVehicleAvailable) {
             if (QGroundControl.multiVehicleManager.activeVehicle.autopilotPlugin.vehicleComponents.length === 0) {
                 panelLoader.loadComponent(noComponentsVehicleSummaryComponent)
@@ -113,7 +132,7 @@ Rectangle {
     function showPanel(button, qmlSource) {
         if (mainWindow.allowViewSwitch()) {
             button.checked = true
-            _pageTitle = button.text
+            pageTitle = button.text
             panelLoader.loadPage(qmlSource)
         }
     }
@@ -133,9 +152,10 @@ Rectangle {
         if (mainWindow.allowViewSwitch()) {
             var autopilotPlugin = QGroundControl.multiVehicleManager.activeVehicle.autopilotPlugin
             var prereq = autopilotPlugin.prerequisiteSetup(vehicleComponent)
-            _pageTitle = vehicleComponent.name
+            pageTitle = vehicleComponent.name
             if (prereq !== "") {
-                _messagePanelText = qsTr("%1 setup must be completed prior to %2 setup.").arg(prereq).arg(vehicleComponent.name)
+                _prerequisiteName = prereq
+                _messagePanelText = qsTr("%1 has to be set up before %2.").arg(prereq).arg(vehicleComponent.name)
                 panelLoader.loadComponent(messagePanelComponent)
             } else {
                 panelLoader.loadPage(vehicleComponent.setupSource, vehicleComponent)
@@ -144,10 +164,18 @@ Rectangle {
         }
     }
 
+    function showVehicleComponentNamed(name) {
+        const component = QGroundControl.multiVehicleManager.activeVehicle.autopilotPlugin
+                              .vehicleComponents.find((candidate) => candidate.name === name)
+        if (component) {
+            showVehicleComponentPanel(component)
+        }
+    }
+
     function showParametersPanel(searchText = "") {
         if (mainWindow.allowViewSwitch()) {
             parametersButton.checked = true
-            _pageTitle = parametersButton.text
+            pageTitle = parametersButton.text
             panelLoader.loadPage("qrc:/qml/QGroundControl/VehicleSetup/SetupParameterEditor.qml", undefined, { initialSearchText: searchText })
         }
     }
@@ -174,87 +202,186 @@ Rectangle {
     }
 
     component EmptyPanel: Item {
-        property alias text: emptyLabel.text
+        id: emptyPanelRoot
 
-        QGCLabel {
-            id:                     emptyLabel
-            anchors.margins:        _defaultTextWidth * 2
-            anchors.fill:           parent
-            verticalAlignment:      Text.AlignVCenter
-            horizontalAlignment:    Text.AlignHCenter
-            wrapMode:               Text.WordWrap
-            font.pointSize:         ScreenTools.mediumFontPointSize
-            color:                  Qt.alpha(qgcPal.text, 0.6)
-            onLinkActivated:        (link) => Qt.openUrlExternally(link)
+        property alias icon:     emptyIcon.source
+        property alias headline: emptyHeadline.text
+        property alias text:     emptyLabel.text
+        property alias actionText: emptyAction.text
+        property alias linkText:   emptyLink.text
+
+        signal actionClicked()
+        signal linkClicked()
+
+        ColumnLayout {
+            anchors.centerIn:   parent
+            anchors.margins:    _defaultTextWidth * 2
+            width:              Math.min(parent.width - _defaultTextWidth * 4, _defaultTextWidth * 44)
+            spacing:            _defaultTextHeight / 2
+
+            QGCColoredImage {
+                id:                     emptyIcon
+                Layout.alignment:       Qt.AlignHCenter
+                Layout.preferredWidth:  _defaultTextHeight * 3
+                Layout.preferredHeight: Layout.preferredWidth
+                visible:                source.toString() !== ""
+                color:                  Qt.alpha(qgcPal.text, 0.35)
+                fillMode:               Image.PreserveAspectFit
+                sourceSize.height:      height
+            }
+
+            QGCLabel {
+                id:                     emptyHeadline
+                Layout.fillWidth:       true
+                Layout.topMargin:       _defaultTextHeight / 2
+                visible:                text !== ""
+                horizontalAlignment:    Text.AlignHCenter
+                font.pointSize:         ScreenTools.mediumFontPointSize
+                font.bold:              true
+            }
+
+            QGCLabel {
+                id:                     emptyLabel
+                Layout.fillWidth:       true
+                horizontalAlignment:    Text.AlignHCenter
+                wrapMode:               Text.WordWrap
+                color:                  Qt.alpha(qgcPal.text, 0.6)
+                onLinkActivated:        (link) => Qt.openUrlExternally(link)
+            }
+
+            QGCButton {
+                id:                 emptyAction
+                Layout.alignment:   Qt.AlignHCenter
+                Layout.topMargin:   _defaultTextHeight / 2
+                primary:            true
+                visible:            text !== ""
+                onClicked:          emptyPanelRoot.actionClicked()
+            }
+
+            QGCLabel {
+                id:                 emptyLink
+                Layout.alignment:   Qt.AlignHCenter
+                Layout.topMargin:   _defaultTextHeight / 4
+                visible:            text !== ""
+                color:              qgcPal.colorBlue
+
+                QGCMouseArea {
+                    anchors.fill:       parent
+                    anchors.margins:    -_defaultTextHeight / 3
+                    onClicked:          emptyPanelRoot.linkClicked()
+                }
+            }
         }
     }
 
     Component {
         id: noComponentsVehicleSummaryComponent
         EmptyPanel {
-            text: qsTr("%1 does not currently support setup of your vehicle type. ").arg(QGroundControl.appName) +
-                  "If your vehicle is already configured you can still Fly."
+            icon:     "/InstrumentValueIcons/checkmark-outline.svg"
+            headline: qsTr("Nothing to Configure")
+            text:     qsTr("%1 doesn't support setup for this vehicle type. If it is already configured, you can still fly.").arg(QGroundControl.appName)
         }
     }
 
     Component {
         id: disconnectedVehicleSummaryComponent
         EmptyPanel {
-            text: qsTr("Vehicle settings and info will display after connecting your vehicle.") +
-                  (ScreenTools.isMobile || !_corePlugin.options.showFirmwareUpgrade ? "" : " Click Firmware on the left to upgrade your vehicle.")
+            icon:     "/InstrumentValueIcons/drone.svg"
+            headline: qsTr("No Vehicle Connected")
+            text:            qsTr("Connect a vehicle to see and change its settings.")
+            actionText:      qsTr("Set Up Connection")
+            onActionClicked: mainWindow.showCommLinkSettings()
+            linkText:        ScreenTools.isMobile || !_corePlugin.options.showFirmwareUpgrade ? "" : qsTr("Update firmware over USB")
+            onLinkClicked:   showPanel(firmwareButton, "qrc:/qml/QGroundControl/VehicleSetup/FirmwareUpgrade.qml")
         }
     }
 
     Component {
         id: missingParametersVehicleSummaryComponent
         EmptyPanel {
-            text: qsTr("You are currently connected to a vehicle but it did not return the full parameter list. ") +
-                  qsTr("As a result, the full set of vehicle setup options are not available.")
+            icon:     "/InstrumentValueIcons/exclamation-outline.svg"
+            headline: qsTr("Parameters Incomplete")
+            text:     qsTr("The vehicle didn't return its full parameter list, so some setup options are unavailable.")
         }
     }
 
     Component {
         id: messagePanelComponent
         EmptyPanel {
-            text: _messagePanelText
+            headline:        _prerequisiteName === "" ? "" : qsTr("%1 first").arg(_prerequisiteName)
+            text:            _messagePanelText
+            actionText:      _prerequisiteName === "" ? "" : qsTr("Set Up %1").arg(_prerequisiteName)
+            onActionClicked: showVehicleComponentNamed(_prerequisiteName)
         }
     }
 
-    OverlayGlass {
-        id:                     sidebarSlab
+    Rectangle {
+        id:                     sidebar
         anchors.left:           parent.left
         anchors.top:            parent.top
         anchors.bottom:         parent.bottom
-        anchors.margins:        _inset
         width:                  _sidebarWidth + _horizontalMargin * 2
-        radius:                 _sidebarRadius
-        frosted:                mainWindow.flyViewBackdropVisible
-        tint:                   QGroundControl.globalPalette.windowShade
-        material:               OverlayGlass.Panel
+        color:                  qgcPal.windowShadeDark
+
+        Rectangle {
+            anchors.right:      parent.right
+            anchors.top:        parent.top
+            anchors.bottom:     parent.bottom
+            width:              1
+            color:              Qt.alpha(qgcPal.text, 0.08)
+        }
     }
 
     QGCTextField {
         id:                 searchField
         objectName:         "setupSearchField"
-        anchors.top:        sidebarSlab.top
-        anchors.left:       sidebarSlab.left
-        anchors.right:      sidebarSlab.right
+        anchors.top:        sidebar.top
+        anchors.left:       sidebar.left
+        anchors.right:      sidebar.right
         anchors.margins:    _horizontalMargin
         anchors.topMargin:  _verticalMargin
-        placeholderText:    qsTr("Search")
+        leftPadding:        height * 0.8
         onAccepted: {
             if (_parametersAvailable && text.trim() !== "") {
                 showParametersPanel(text.trim())
             }
+        }
+
+        background: Rectangle {
+            radius:         height / 2
+            color:          Qt.alpha(qgcPal.text, searchField.activeFocus ? 0.14 : 0.08)
+            border.width:   searchField.activeFocus ? 1 : 0
+            border.color:   qgcPal.buttonHighlight
+        }
+
+        QGCLabel {
+            anchors.left:           parent.left
+            anchors.leftMargin:     searchField.leftPadding
+            anchors.verticalCenter: parent.verticalCenter
+            visible:                searchField.text === ""
+            text:                   qsTr("Search")
+            color:                  Qt.alpha(qgcPal.text, 0.5)
+        }
+
+        QGCColoredImage {
+            anchors.left:           parent.left
+            anchors.leftMargin:     parent.height * 0.28
+            anchors.verticalCenter: parent.verticalCenter
+            width:                  parent.height * 0.42
+            height:                 width
+            source:                 "/InstrumentValueIcons/search.svg"
+            color:                  Qt.alpha(qgcPal.text, 0.5)
+            fillMode:               Image.PreserveAspectFit
+            sourceSize.height:      height
         }
     }
 
     QGCFlickable {
         id:                 buttonScroll
         anchors.top:        searchField.bottom
-        anchors.bottom:     sidebarSlab.bottom
-        anchors.left:       sidebarSlab.left
-        anchors.right:      sidebarSlab.right
+        anchors.bottom:     sidebar.bottom
+        anchors.left:       sidebar.left
+        anchors.right:      sidebar.right
         anchors.margins:    _horizontalMargin
         anchors.topMargin:  _verticalMargin
         contentHeight:      buttonColumn.height + _verticalMargin
@@ -270,8 +397,8 @@ Rectangle {
                 id:                 summaryButton
                 objectName:         "setupSummaryButton"
                 Layout.fillWidth:   true
-                icon.source:        "/qmlimages/VehicleSummaryIcon.png"
-                tileColor:          tileColorFor(text)
+                icon.source:        "/InstrumentValueIcons/drone.svg"
+                tileColor:          "#8e8e93"
                 checked:            true
                 text:               qsTr("Summary")
                 badgeVisible:       !_setupComplete
@@ -282,18 +409,19 @@ Rectangle {
             SettingsButton {
                 id:                 firmwareButton
                 Layout.fillWidth:   true
-                icon.source:        "/qmlimages/FirmwareUpgradeIcon.png"
-                tileColor:          tileColorFor(text)
+                icon.source:        "/InstrumentValueIcons/cloud-upload.svg"
+                tileColor:          "#64d2ff"
                 visible:            !ScreenTools.isMobile && _corePlugin.options.showFirmwareUpgrade && matchesSearch(text)
                 text:               qsTr("Firmware")
+                badgeVisible:       _firmwareUpdateAvailable
                 onClicked:          showPanel(this, "qrc:/qml/QGroundControl/VehicleSetup/FirmwareUpgrade.qml")
             }
 
             SettingsButton {
                 Layout.fillWidth:   true
                 Layout.topMargin:   _sectionGap
-                icon.source:        "/qmlimages/SensorsComponentIcon.png"
-                tileColor:          tileColorFor(text)
+                icon.source:        "/InstrumentValueIcons/target.svg"
+                tileColor:          "#30d158"
                 visible:            (QGroundControl.multiVehicleManager.activeVehicle ? QGroundControl.multiVehicleManager.activeVehicle.flowImageIndex > 0 : false) && matchesSearch(text)
                 text:               qsTr("Optical Flow")
                 onClicked:          showPanel(this, "qrc:/qml/QGroundControl/VehicleSetup/OpticalFlowSensor.qml")
@@ -307,11 +435,11 @@ Rectangle {
                     objectName:         "setupComponent" + modelData.name.replace(/\s/g, "")
                     Layout.fillWidth:   true
                     Layout.topMargin:   index === 0 ? _sectionGap : 0
-                    icon.source:        modelData.iconResource
-                    tileColor:          tileColorFor(text)
+                    icon.source:        componentIcon(modelData)
+                    tileColor:          componentColor(modelData)
                     badgeVisible:       modelData.requiresSetup && !modelData.setupComplete
                     text:               modelData.name
-                    visible:            modelData.setupSource.toString() !== "" && !isTuning(modelData.name) && matchesSearch(text)
+                    visible:            modelData.setupSource.toString() !== "" && !isTuning(modelData) && matchesSearch(text)
                     onClicked:          showVehicleComponentPanel(modelData)
                 }
             }
@@ -328,11 +456,11 @@ Rectangle {
                 SettingsButton {
                     objectName:         "setupComponent" + modelData.name.replace(/\s/g, "")
                     Layout.fillWidth:   true
-                    icon.source:        modelData.iconResource
-                    tileColor:          tileColorFor(text)
+                    icon.source:        componentIcon(modelData)
+                    tileColor:          componentColor(modelData)
                     badgeVisible:       modelData.requiresSetup && !modelData.setupComplete
                     text:               modelData.name
-                    visible:            modelData.setupSource.toString() !== "" && isTuning(modelData.name) && matchesSearch(text)
+                    visible:            modelData.setupSource.toString() !== "" && isTuning(modelData) && matchesSearch(text)
                     onClicked:          showVehicleComponentPanel(modelData)
                 }
             }
@@ -341,8 +469,8 @@ Rectangle {
                 id:                 joystickButton
                 Layout.fillWidth:   true
                 Layout.topMargin:   _sectionGap
-                icon.source:        "/qmlimages/Joystick.png"
-                tileColor:          tileColorFor("joystick")
+                icon.source:        "/InstrumentValueIcons/dial-pad.svg"
+                tileColor:          "#8e8e93"
                 badgeVisible:       _activeJoystick ? !(_activeJoystick.calibrated || _buttonsOnly) : false
                 visible:            _fullParameterVehicleAvailable && joystickManager.joysticks.length !== 0 && matchesSearch(text)
                 text:               _forcedToButtonsOnly ? qsTr("Buttons") : qsTr("Joystick")
@@ -359,7 +487,7 @@ Rectangle {
                 Layout.fillWidth:   true
                 Layout.topMargin:   joystickButton.visible ? 0 : _sectionGap
                 icon.source:        "/InstrumentValueIcons/list.svg"
-                tileColor:          tileColorFor(text)
+                tileColor:          "#8e8e93"
                 visible:            _parametersAvailable && matchesSearch(text)
                 text:               qsTr("Parameters")
                 onClicked:          showParametersPanel()
@@ -367,27 +495,15 @@ Rectangle {
         }
     }
 
-    QGCLabel {
-        id:                     pageTitle
-        anchors.leftMargin:     _defaultTextWidth * 3
-        anchors.topMargin:      _inset
-        anchors.left:           sidebarSlab.right
-        anchors.top:            parent.top
-        text:                   _pageTitle
-        font.pointSize:         ScreenTools.largeFontPointSize
-        font.bold:              true
-        visible:                text !== ""
-    }
-
     Loader {
         id:                     panelLoader
         anchors.leftMargin:     _defaultTextWidth * 3
         anchors.rightMargin:    _inset
-        anchors.topMargin:      pageTitle.visible ? _verticalMargin : _inset
+        anchors.topMargin:      _inset
         anchors.bottomMargin:   _inset
-        anchors.left:           sidebarSlab.right
+        anchors.left:           sidebar.right
         anchors.right:          parent.right
-        anchors.top:            pageTitle.visible ? pageTitle.bottom : parent.top
+        anchors.top:            parent.top
         anchors.bottom:         parent.bottom
 
         function loadPage(source, vehicleComponent, properties = {}) {
