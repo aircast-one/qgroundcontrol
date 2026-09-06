@@ -55,6 +55,8 @@ Button {
     readonly property real discSize:        iconOnly ? Math.max(ScreenTools.minTouchPixels, ScreenTools.defaultFontPixelHeight * 2.4) : width
     property real imageScale:        iconOnly ? 0.5 : (forceImageScale11 && (text == "") ? 0.8 : 0.6)
     property real contentMargins:    iconOnly ? 0 : innerText.height * 0.1
+    readonly property real _imageWidth:  (iconOnly ? discSize : contentLayoutItem.width)  * imageScale
+    readonly property real _imageHeight: (iconOnly ? discSize : contentLayoutItem.height) * imageScale
 
     property color _currentContentColor:  (checked || pressed) ? contentCheckedColor : contentColor
     property color _currentContentColorSecondary:  (checked || pressed) ? qgcPal.buttonText : qgcPal.buttonHighlight
@@ -111,8 +113,8 @@ Button {
 
             Image {
                 id:                         innerImageColorful
-                height:                     contentLayoutItem.height * imageScale
-                width:                      contentLayoutItem.width  * imageScale
+                height:                     control._imageHeight
+                width:                      control._imageWidth
                 smooth:                     true
                 mipmap:                     true
                 fillMode:                   Image.PreserveAspectFit
@@ -126,8 +128,8 @@ Button {
 
             QGCColoredImage {
                 id:                         innerImage
-                height:                     contentLayoutItem.height * imageScale
-                width:                      contentLayoutItem.width  * imageScale
+                height:                     control._imageHeight
+                width:                      control._imageWidth
                 smooth:                     true
                 mipmap:                     true
                 color:                      _currentContentColor
@@ -141,8 +143,8 @@ Button {
                 QGCColoredImage {
                     id:                         innerImageSecondColor
                     source:                     modelData.alternateIconSource
-                    height:                     contentLayoutItem.height * imageScale
-                    width:                      contentLayoutItem.width  * imageScale
+                    height:                     control._imageHeight
+                    width:                      control._imageWidth
                     smooth:                     true
                     mipmap:                     true
                     color:                      _currentContentColorSecondary
