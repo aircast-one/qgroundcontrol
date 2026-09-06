@@ -91,6 +91,7 @@
 #include "OverlaySegmentedControlTest.h"
 #include "OverlayViewSwitchTest.h"
 #include "PlanToolBarIndicatorsTest.h"
+#include "AppSettingsLayoutTest.h"
 #include "PlanViewLayoutTest.h"
 #include "ScreenToolsTest.h"
 #include "OverlayRigTest.h"
@@ -225,6 +226,7 @@ int runTests(bool stress, QStringView unitTestOptions)
     UT_REGISTER_TEST(OverlaySegmentedControlTest)
     UT_REGISTER_TEST(OverlayViewSwitchTest)
     UT_REGISTER_TEST(PlanToolBarIndicatorsTest)
+    UT_REGISTER_TEST(AppSettingsLayoutTest)
     UT_REGISTER_TEST(PlanViewLayoutTest)
     UT_REGISTER_TEST(ScreenToolsTest)
     UT_REGISTER_TEST(OverlayRigTest)

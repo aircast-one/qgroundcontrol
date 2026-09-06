@@ -18,6 +18,7 @@
         <file alias="OverlaySegmentedControlTest.qml">QmlControls/OverlaySegmentedControlTest.qml</file>
         <file alias="OverlayViewSwitchTest.qml">QmlControls/OverlayViewSwitchTest.qml</file>
         <file alias="PlanToolBarIndicatorsTest.qml">QmlControls/PlanToolBarIndicatorsTest.qml</file>
+        <file alias="AppSettingsLayoutTest.qml">QmlControls/AppSettingsLayoutTest.qml</file>
         <file alias="PlanViewLayoutTest.qml">QmlControls/PlanViewLayoutTest.qml</file>
         <file alias="ScreenToolsTest.qml">QmlControls/ScreenToolsTest.qml</file>
         <file alias="PipViewTest.qml">QmlControls/PipViewTest.qml</file>

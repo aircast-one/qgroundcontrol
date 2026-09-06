@@ -20,14 +20,18 @@ Button {
     id:             control
     padding:        ScreenTools.defaultFontPixelWidth * 0.75
     hoverEnabled:   !ScreenTools.isMobile
-    autoExclusive:  true
+    autoExclusive:  !listStyle
     icon.color:     textColor
+    implicitHeight: Math.max(implicitContentHeight + topPadding + bottomPadding,
+                             listStyle ? ScreenTools.minTouchPixels : 0)
 
-    property color textColor:    checked || pressed ? qgcPal.buttonHighlightText : qgcPal.buttonText
-    property color tileColor:    "transparent"
-    property bool  badgeVisible: false
+    property color  textColor:    checked ? qgcPal.buttonHighlightText : qgcPal.buttonText
+    property color  tileColor:    "transparent"
+    property bool   badgeVisible: false
+    property string description:  ""
+    property bool   listStyle:    false
 
-    readonly property bool _hasTile: tileColor.a > 0
+    readonly property bool _hasTile: tileColor.a > 0 && !listStyle
     readonly property real _tileSize: Math.round(ScreenTools.defaultFontPixelHeight * 1.35)
 
     QGCPalette {
@@ -35,10 +39,57 @@ Button {
         colorGroupEnabled:  control.enabled
     }
 
+    onPressedChanged: {
+        if (pressed && listStyle) {
+            rippleAnimation.restart()
+        }
+    }
+
     background: Rectangle {
-        color:      qgcPal.buttonHighlight
-        opacity:    checked || pressed ? 1 : enabled && hovered ? .12 : 0
-        radius:     ScreenTools.buttonBorderRadius
+        color:  control.checked ? qgcPal.buttonHighlight
+                                : Qt.alpha(qgcPal.text, !control.enabled ? 0
+                                                      : control.pressed ? 0.14
+                                                      : control.hovered ? 0.07 : 0)
+        radius: control.listStyle ? 0 : ScreenTools.buttonBorderRadius * 1.6
+        clip:   control.listStyle
+
+        PointHandler {
+            id:         pressPoint
+            enabled:    control.listStyle
+        }
+
+        Rectangle {
+            id:         ripple
+            x:          pressPoint.point.position.x - width / 2
+            y:          pressPoint.point.position.y - height / 2
+            width:      0
+            height:     width
+            radius:     width / 2
+            color:      Qt.alpha(qgcPal.text, 0.16)
+            opacity:    0
+            visible:    control.listStyle
+        }
+
+        ParallelAnimation {
+            id: rippleAnimation
+
+            NumberAnimation {
+                target:     ripple
+                property:   "width"
+                from:       0
+                to:         control.width * 2
+                duration:   450
+                easing.type: Easing.OutCubic
+            }
+
+            NumberAnimation {
+                target:     ripple
+                property:   "opacity"
+                from:       1
+                to:         0
+                duration:   450
+            }
+        }
     }
 
     contentItem: RowLayout {
@@ -48,7 +99,7 @@ Button {
             Layout.preferredWidth:  _hasTile ? _tileSize : ScreenTools.defaultFontPixelHeight
             Layout.preferredHeight: Layout.preferredWidth
             radius:                 Math.round(_tileSize * 0.28)
-            color:                  control.tileColor
+            color:                  _hasTile ? control.tileColor : "transparent"
 
             QGCColoredImage {
                 anchors.centerIn:   parent
@@ -61,12 +112,27 @@ Button {
             }
         }
 
-        QGCLabel {
-            id:                     displayText
-            Layout.fillWidth:       true
-            text:                   control.text
-            color:                  control.textColor
-            horizontalAlignment:    QGCLabel.AlignLeft
+        ColumnLayout {
+            Layout.fillWidth:   true
+            spacing:            0
+
+            QGCLabel {
+                Layout.fillWidth:       true
+                text:                   control.text
+                color:                  control.textColor
+                elide:                  Text.ElideRight
+                horizontalAlignment:    QGCLabel.AlignLeft
+            }
+
+            QGCLabel {
+                Layout.fillWidth:       true
+                visible:                control.description !== ""
+                text:                   control.description
+                color:                  Qt.alpha(control.textColor, 0.6)
+                font.pointSize:         ScreenTools.smallFontPointSize
+                elide:                  Text.ElideRight
+                horizontalAlignment:    QGCLabel.AlignLeft
+            }
         }
 
         Rectangle {

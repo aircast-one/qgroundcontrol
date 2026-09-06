@@ -18,7 +18,7 @@ import QGroundControl.Controls
 import QGroundControl.ScreenTools
 import QGroundControl.AppSettings
 
-Rectangle {
+ToolDrawerPage {
     id:         settingsView
     objectName: "appSettingsView"
     color:      "transparent"
@@ -30,31 +30,54 @@ Rectangle {
     readonly property real _verticalMargin:     _defaultTextHeight / 2
     readonly property real _inset:              Math.round(_defaultTextHeight * 0.75)
     readonly property real _sidebarRadius:      mainWindow.panelRadius - _inset
-    readonly property real _buttonHeight:       ScreenTools.isTinyScreen ? ScreenTools.defaultFontPixelHeight * 3 : ScreenTools.defaultFontPixelHeight * 2
 
-    readonly property real preferredWidth:  sidebarSlab.width + _inset * 2 +
-                                                _defaultTextWidth * 4 + _pageWidth
-    readonly property real preferredHeight: Math.max(buttonColumn.height, _pageHeight) +
-                                                _inset * 4
+    readonly property bool _fullScreen: ScreenTools.isMobile
+    readonly property bool _stacked:    _fullScreen && mainWindow.height > mainWindow.width
+
+    preferredWidth:  _fullScreen ? 0
+                                 : sidebarSlab.width + _inset * 2 + _defaultTextWidth * 4 + _pageWidth
+    preferredHeight: _fullScreen ? 0
+                                 : Math.max(buttonColumn.height, _pageHeight) + _inset * 4
 
     readonly property var  _page:       rightPanel.item
     readonly property real _pageWidth:  _page && _page.contentWidth  > 0 ? _page.contentWidth
                                                                          : _defaultTextWidth * 60
     readonly property real _pageHeight: _page && _page.contentHeight > 0 ? _page.contentHeight : 0
 
-    property bool   _first: true
+    readonly property string _filter:   searchField.text.trim().toLowerCase()
+
+    readonly property int _matchCount: settingsPagesModel.matchCount(_filter)
+
     property string _pageTitle
+    property bool   _pageOpen: !_stacked
 
-    property bool _commingFromRIDSettings:  false
+    pageTitle: !_stacked ? "" : _pageOpen ? _pageTitle : qsTr("Settings")
 
-    function showSettingsPage(settingsPage) {
-        for (var i=0; i<buttonRepeater.count; i++) {
-            var button = buttonRepeater.itemAt(i)
-            if (button.text === settingsPage) {
-                button.clicked()
-                break
-            }
+    function popPage(): bool {
+        if (_stacked && _pageOpen) {
+            _pageOpen = false
+            return true
         }
+        return false
+    }
+
+    function openPage(url, name) {
+        if (mainWindow.allowViewSwitch()) {
+            if (rightPanel.source !== url) {
+                rightPanel.source = url
+            }
+            _pageTitle = name
+            _pageOpen = true
+        }
+    }
+
+    function showSettingsPage(settingsPageUrl) {
+        const page = settingsPagesModel.pages().find(candidate => candidate.url === settingsPageUrl || candidate.name === settingsPageUrl)
+        if (!page) {
+            console.warn("showSettingsPage: no settings page with url", settingsPageUrl)
+            return
+        }
+        openPage(page.url, page.name)
     }
 
     DeadMouseArea {
@@ -65,20 +88,19 @@ Rectangle {
 
     Component.onCompleted: {
         if (globals.commingFromRIDIndicator) {
-            rightPanel.source = "qrc:/qml/QGroundControl/AppSettings/RemoteIDSettings.qml"
-            _pageTitle = qsTr("Remote ID")
             globals.commingFromRIDIndicator = false
+            openPage("qrc:/qml/QGroundControl/AppSettings/RemoteIDSettings.qml", qsTr("Remote ID"))
         } else {
-            rightPanel.source =  "qrc:/qml/QGroundControl/AppSettings/GeneralSettings.qml"
+            rightPanel.source = "qrc:/qml/QGroundControl/AppSettings/GeneralSettings.qml"
             _pageTitle = qsTr("General")
         }
     }
-
 
     SettingsPagesModel { id: settingsPagesModel }
 
     OverlayGlass {
         id:                     sidebarSlab
+        visible:                !_stacked
         anchors.left:           parent.left
         anchors.top:            parent.top
         anchors.bottom:         parent.bottom
@@ -90,63 +112,120 @@ Rectangle {
         material:               OverlayGlass.Panel
     }
 
+    QGCTextField {
+        id:                 searchField
+        objectName:         "settingsSearchField"
+        visible:            _fullScreen && (!_stacked || !_pageOpen)
+        x:                  _inset + _horizontalMargin
+        y:                  _inset + _verticalMargin
+        width:              _stacked ? settingsView.width - x * 2 : buttonColumn.width
+        height:             ScreenTools.minTouchPixels
+        leftPadding:        height * 0.8
+        rightPadding:       height * 0.8
+        onVisibleChanged:   if (!visible) text = ""
+
+        background: Rectangle {
+            radius:         height / 2
+            color:          Qt.alpha(qgcPal.text, searchField.activeFocus ? 0.14 : 0.08)
+            border.width:   searchField.activeFocus ? 1 : 0
+            border.color:   qgcPal.buttonHighlight
+        }
+
+        QGCLabel {
+            anchors.left:           parent.left
+            anchors.leftMargin:     searchField.leftPadding
+            anchors.verticalCenter: parent.verticalCenter
+            visible:                searchField.text === ""
+            text:                   qsTr("Search settings")
+            color:                  Qt.alpha(qgcPal.text, 0.5)
+        }
+
+        QGCColoredImage {
+            anchors.left:           parent.left
+            anchors.leftMargin:     parent.height * 0.28
+            anchors.verticalCenter: parent.verticalCenter
+            width:                  parent.height * 0.42
+            height:                 width
+            source:                 "/InstrumentValueIcons/search.svg"
+            color:                  Qt.alpha(qgcPal.text, 0.5)
+            fillMode:               Image.PreserveAspectFit
+            sourceSize.height:      height
+        }
+
+        QGCColoredImage {
+            id:                     searchClear
+            objectName:             "settingsSearchClear"
+            anchors.right:          parent.right
+            anchors.rightMargin:    parent.height * 0.28
+            anchors.verticalCenter: parent.verticalCenter
+            width:                  parent.height * 0.36
+            height:                 width
+            visible:                searchField.text !== ""
+            source:                 "/res/XDelete.svg"
+            color:                  Qt.alpha(qgcPal.text, 0.5)
+            fillMode:               Image.PreserveAspectFit
+            sourceSize.height:      height
+
+            QGCMouseArea {
+                anchors.fill:       parent
+                anchors.margins:    -ScreenTools.defaultFontPixelWidth
+                onClicked:          searchField.text = ""
+            }
+        }
+    }
+
     QGCFlickable {
         id:                 buttonList
-        width:              buttonColumn.width
-        anchors.topMargin:  _verticalMargin
-        anchors.bottomMargin: _verticalMargin
-        anchors.top:        sidebarSlab.top
-        anchors.bottom:     sidebarSlab.bottom
-        anchors.leftMargin: _horizontalMargin
-        anchors.left:       sidebarSlab.left
+        objectName:         "settingsList"
+        visible:            !_stacked || !_pageOpen
+        x:                  _inset + _horizontalMargin
+        y:                  searchField.visible ? searchField.y + searchField.height + _verticalMargin
+                                                 : _inset + _verticalMargin
+        width:              _stacked ? settingsView.width - x * 2 : buttonColumn.width
+        height:             settingsView.height - y - (_inset + _verticalMargin)
         contentHeight:      buttonColumn.height + _verticalMargin
         flickableDirection: Flickable.VerticalFlick
         clip:               true
 
         ColumnLayout {
             id:         buttonColumn
-            spacing:    ScreenTools.defaultFontPixelHeight / 4
-
-            property real _maxButtonWidth: 0
+            width:      _stacked ? buttonList.width : implicitWidth
+            spacing:    _stacked ? 0 : ScreenTools.defaultFontPixelHeight / 4
 
             Repeater {
                 id:     buttonRepeater
                 model:  settingsPagesModel
 
-                SettingsButton {
-                    objectName:         "settingsPage" + name.replace(/\s/g, "")
+                ColumnLayout {
                     Layout.fillWidth:   true
-                    Layout.topMargin:   newSection && index > 0 ? _defaultTextHeight * 0.75 : 0
-                    text:               name
-                    icon.source:        iconUrl
-                    tileColor:          model.tileColor
-                    visible:            pageVisible()
+                    Layout.topMargin:   sectionHeader.visible ? _defaultTextHeight :
+                                            (!_stacked && newSection && index > 0 ? _defaultTextHeight * 0.75 : 0)
+                    spacing:            0
+                    visible:            settingsPagesModel.matches(model, _filter)
 
-                    onClicked: {
-                        if (mainWindow.allowViewSwitch()) {
-                            if (rightPanel.source !== url) {
-                                rightPanel.source = url
-                            }
-                            _pageTitle = name
-                            checked = true
-                        }
+                    QGCLabel {
+                        id:                 sectionHeader
+                        Layout.fillWidth:   true
+                        Layout.bottomMargin: _verticalMargin / 2
+                        Layout.leftMargin:  ScreenTools.defaultFontPixelWidth * 0.75
+                        visible:            _fullScreen && section !== "" && _filter === ""
+                        text:               section
+                        color:              qgcPal.primaryButton
+                        font.pointSize:     ScreenTools.smallFontPointSize
+                        font.bold:          true
                     }
 
-                    Component.onCompleted: {
-                        if (globals.commingFromRIDIndicator) {
-                            _commingFromRIDSettings = true
-                        }
-                        if(_first) {
-                            _first = false
-                            checked = true
-                        }
-                        if (_commingFromRIDSettings) {
-                            checked = false
-                            _commingFromRIDSettings = false
-                            if (modelData.url == "qrc:/qml/QGroundControl/AppSettings/RemoteIDSettings.qml") {
-                                checked = true
-                            }
-                        }
+                    SettingsButton {
+                        objectName:         "settingsPage" + name.replace(/\s/g, "")
+                        Layout.fillWidth:   true
+                        autoExclusive:      false
+                        listStyle:          _stacked
+                        text:               name
+                        description:        _stacked ? summary : ""
+                        icon.source:        iconUrl
+                        tileColor:          model.tileColor
+                        checked:            !_stacked && _pageTitle === name
+                        onClicked:          openPage(url, name)
                     }
                 }
             }
@@ -154,7 +233,21 @@ Rectangle {
     }
 
     QGCLabel {
-        id:                     pageTitle
+        id:                     noResults
+        objectName:             "settingsSearchNoResults"
+        visible:                searchField.visible && _filter !== "" && _matchCount === 0
+        x:                      buttonList.x
+        y:                      buttonList.y + _defaultTextHeight
+        width:                  buttonList.width
+        wrapMode:               Text.WordWrap
+        horizontalAlignment:    Text.AlignHCenter
+        color:                  Qt.alpha(qgcPal.text, 0.6)
+        text:                   qsTr("No settings match “%1”.").arg(searchField.text.trim())
+    }
+
+    QGCLabel {
+        id:                     pageTitleLabel
+        visible:                !_stacked
         anchors.leftMargin:     _defaultTextWidth * 3
         anchors.topMargin:      _inset
         anchors.left:           sidebarSlab.right
@@ -166,14 +259,15 @@ Rectangle {
 
     Loader {
         id:                     rightPanel
-        anchors.leftMargin:     _defaultTextWidth * 3
-        anchors.rightMargin:    _inset
+        objectName:             "settingsPageLoader"
+        visible:                !_stacked || _pageOpen
+        anchors.leftMargin:     _stacked ? _inset + _horizontalMargin : _defaultTextWidth * 3
+        anchors.rightMargin:    _stacked ? _inset + _horizontalMargin : _inset
         anchors.topMargin:      _verticalMargin
         anchors.bottomMargin:   _inset
-        anchors.left:           sidebarSlab.right
+        anchors.left:           _stacked ? parent.left : sidebarSlab.right
         anchors.right:          parent.right
-        anchors.top:            pageTitle.bottom
+        anchors.top:            _stacked ? parent.top : pageTitleLabel.bottom
         anchors.bottom:         parent.bottom
     }
 }
-

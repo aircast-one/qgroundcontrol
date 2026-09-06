@@ -7,7 +7,6 @@
  *
  ****************************************************************************/
 
-
 import QtQuick
 import QtQuick.Controls
 import QtQuick.Dialogs
@@ -26,13 +25,19 @@ Item {
 
     default property alias contentItem: mainLayout.data
 
-    // What the host needs to size a floating panel around this page.
-    readonly property real contentWidth:  mainLayout.width
+    readonly property real contentWidth:  mainLayout.implicitWidth
     readonly property real contentHeight: mainLayout.height
 
-    readonly property real _minContentWidth: ScreenTools.defaultFontPixelWidth * 50
+    readonly property real _readableMaxWidth: ScreenTools.defaultFontPixelWidth * 120
+
+    function scrollToItem(item) {
+        _flickable.contentY = Math.max(0, Math.min(item.mapToItem(mainLayout, 0, 0).y,
+                                                     _flickable.contentHeight - _flickable.height))
+    }
 
     QGCFlickable {
+        id:             _flickable
+        objectName:     "settingsFlickable"
         anchors.fill:   parent
         contentWidth:   mainLayout.width
         contentHeight:  mainLayout.height
@@ -40,12 +45,7 @@ Item {
         ColumnLayout {
             id:         mainLayout
             x:          0
-            // No upper cap. implicitWidth is already the natural width of the content - nothing
-            // in here stretches to fill - so a cap does not prevent over-wide rows, it clips
-            // pages that are legitimately wide. Remote ID is two columns and lost its second
-            // one to exactly that. The host clamps the panel to the window instead, and this
-            // Flickable scrolls whatever does not fit.
-            width:      Math.max(implicitWidth, _minContentWidth)
+            width:      Math.min(_flickable.width, _readableMaxWidth)
             spacing:    ScreenTools.defaultFontPixelHeight
         }
     }

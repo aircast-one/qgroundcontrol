@@ -410,7 +410,7 @@ ApplicationWindow {
 
                 QGCLabel {
                     id:             toolbarDrawerText
-                    text:           toolDrawer.toolTitle
+                    text:           toolDrawer._tool && toolDrawer._tool.pageTitle ? toolDrawer._tool.pageTitle : toolDrawer.toolTitle
                     font.pointSize: ScreenTools.largeFontPointSize
                     font.bold:      true
                 }
@@ -420,9 +420,14 @@ ApplicationWindow {
                 anchors.fill:           toolDrawerToolbarLayout
                 Component.onCompleted:  mainWindow.registerWindowDragExclusion(this)
                 onClicked: {
-                    if (mainWindow.allowViewSwitch()) {
-                        toolDrawer.visible = false
+                    if (!mainWindow.allowViewSwitch()) {
+                        return
                     }
+                    const tool = toolDrawer._tool
+                    if (tool && tool.popPage && tool.popPage()) {
+                        return
+                    }
+                    toolDrawer.visible = false
                 }
             }
         }

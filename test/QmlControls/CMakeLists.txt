@@ -16,6 +16,8 @@ target_sources(${CMAKE_PROJECT_NAME}
         PipViewTest.h
         PlanToolBarIndicatorsTest.cc
         PlanToolBarIndicatorsTest.h
+        AppSettingsLayoutTest.cc
+        AppSettingsLayoutTest.h
         PlanViewLayoutTest.cc
         PlanViewLayoutTest.h
         ScreenToolsTest.cc

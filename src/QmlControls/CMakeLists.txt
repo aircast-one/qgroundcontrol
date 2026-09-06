@@ -72,6 +72,7 @@ qt_add_qml_module(QGroundControlControlsModule
     QML_FILES
         AltModeDialog.qml
         AppSettings.qml
+        ToolDrawerPage.qml
         APMSubMotorDisplay.qml
         AppMessages.qml
         ArrangeableOverlayItem.qml
