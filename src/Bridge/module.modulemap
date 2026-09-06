@@ -1,0 +1,4 @@
+module QGCBridgeC {
+    header "QGCBridgeC.h"
+    export *
+}

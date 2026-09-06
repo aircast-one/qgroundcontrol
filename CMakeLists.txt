@@ -565,6 +565,10 @@ if(CMAKE_SYSTEM_NAME STREQUAL "Darwin")
 endif()
 
 add_subdirectory(src)
+
+if(MACOS)
+    add_subdirectory(macos)
+endif()
 if(QGC_BUILD_TESTING)
     add_subdirectory(test)
 endif()

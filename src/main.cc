@@ -13,6 +13,8 @@
 
 #ifdef Q_OS_MACOS
     #include <QtCore/QProcessEnvironment>
+    #include <QtCore/QTimer>
+    #include "QGCNativeUI.h"
 #endif
 
 #include "QGCApplication.h"
@@ -78,6 +80,7 @@ int main(int argc, char *argv[])
     QString systemIdStr = QString();
     bool hasSystemId = false;
     bool bypassRunGuard = false;
+    bool nativeWindow = false;
 
     bool stressUnitTests = false;       // Stress test unit tests
     bool quietWindowsAsserts = false;   // Don't let asserts pop dialog boxes
@@ -91,6 +94,9 @@ int main(int argc, char *argv[])
         { "--allow-multiple",       &bypassRunGuard,        nullptr },
 #endif
         { "--system-id",            &hasSystemId,           &systemIdStr },
+#ifdef Q_OS_MACOS
+        { "--native-window",        &nativeWindow,          nullptr },
+#endif
         { "--simple-boot-test",     &simpleBootTest,        nullptr },
         // Add additional command line option flags here
     };
@@ -227,6 +233,14 @@ int main(int argc, char *argv[])
             qDebug() << "Not setting MAVLink System ID. It must be between 0 and 255. Invalid system ID value:" << systemIdStr;
         }
     }
+
+#ifdef Q_OS_MACOS
+    if (nativeWindow) {
+        QTimer::singleShot(0, &app, []() { qgc_native_window_show(); });
+    }
+#else
+    Q_UNUSED(nativeWindow);
+#endif
 
     int exitCode = 0;
 
