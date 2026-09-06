@@ -1,5 +1,56 @@
 # Native macOS Migration — Implementation Plan
 
+> **The phase plan below is not yet safe to execute.** A file-level inventory
+> (`tools/macos/qml-inventory.py`) contradicts the sizing it was built on. Read
+> "What the inventory found" before scheduling any of it.
+
+## What the inventory found
+
+Phase sizes in this plan were estimated by eye. Measured, they are wrong:
+
+| | plan said | actual |
+|---|---|---|
+| Settings | ~2k | 5,703 (`UI/AppSettings`) |
+| Plan | ~12k | 4,608 (`FlightMap` + editors) |
+| Fly | ~14k | 9,012 (`FlightDisplay`) |
+| Vehicle Setup | ~15k | 14,993 |
+
+Worse, `QmlControls/` is not the design system this plan calls it. It holds
+`PlanView.qml` (1,467 lines), `MissionItemEditor.qml`, `GeoFenceEditor.qml` and the
+mission-item editors alongside the actual reusable controls. "25k evaporates" is false.
+
+The real constraint is the reference graph. Assigning every QML file to the **last** view
+group that reaches it gives the earliest phase it can be deleted in:
+
+| deletable in | files | lines |
+|---|---|---|
+| 1 Settings | 6 | 628 |
+| 2 Analyze | 6 | 1,218 |
+| 3 Setup | 87 | 16,275 |
+| 4 Plan | 8 | 907 |
+| 5 Fly | 315 | 47,459 |
+| not statically reached | 44 | 5,609 |
+
+**Two thirds of the QML can only be deleted in the final phase**, because 175 files
+(27,949 lines) are shared across view groups. Phases 1-4 together retire 26%.
+
+Three consequences:
+
+- The ground rule "a view is not converted until its QML is deleted" is unachievable for
+  phases 1-4. Their QML has to stay alive for the Fly view.
+- Risk-ascending order concentrates two thirds of the work in the last phase, which is also
+  the safety-critical one. All schedule risk lands where it is least affordable.
+- The 44 unreached files are **not** dead code. Mission item editors are loaded from C++
+  `editorQml` properties (`RallyPointController`, `GeoFenceController`), so a static scan
+  cannot see them. They need a separate runtime inventory before they can be scheduled.
+
+Still missing before this counts as rigorous: a dynamic-load inventory; a map of which of the
+1,672 bridge properties each view actually needs and which are unreachable through the path
+resolver; a test strategy for the SwiftUI side (78 suites cover C++/QML today, none cover
+native); per-view parity specs rather than one-line gates; and validated throughput, of which
+Phase 0 is the single data point.
+
+
 Goal: replace QGC's Qt Quick UI with native SwiftUI on macOS, **one view at a time, in a shipping
 app**, keeping the C++ flight core untouched.
 
@@ -53,6 +104,38 @@ Qt keeps its `NSApplicationDelegate` deliberately: `QGCApplication::event` depen
 CMake cannot mix Swift and C++ in one target, so making `main.swift` the literal entry point needs
 QGC built as a library rather than an executable — the Phase 1 restructure. The trampoline delivers
 the same ownership without it, so that restructure is now only a packaging decision.
+
+**Qt now renders inside a native window.** `qgc_embed_main_window` takes the `NSView` behind a
+Swift-owned `NSWindow` and reparents the root `QQuickWindow` onto it with
+`QWindow::fromWinId` + `setParent`. No QML changed. Verified: the full Fly view renders inside a
+native titled window, resizing the `NSWindow` drives Qt's scene (1400x900 to 1000x700 followed
+exactly), and synthetic AppKit clicks reach QML. Qt's own `NSWindow` survives as an invisible 0x0
+shell, which `/native/windows` reports at index 0.
+
+**Native observability.** The Qt debug API gained a `/native/*` surface, backed by Swift through
+`QGCNativeDebugC.h`, because verifying any of the above through accessibility scripting and
+screen-coordinate arithmetic was slow and wrong often enough to matter:
+
+| Route | Gives you |
+|---|---|
+| `/native/windows` | titles, CGWindowIDs, capture rects (top-left origin), `hostsQt` |
+| `/native/click` | click by content-view coordinate; raises the window first |
+| `/native/menu` | the menu bar as a tree |
+| `/native/menu/invoke` | fire an item by `"Window/Native Telemetry"` |
+| `/native/bridge` | bridge call count, last, worst and mean milliseconds |
+
+`tools/qgc-mcp/server.py` wraps these as `native_windows`, `native_screenshot`, `native_click`,
+`native_menu`, `native_menu_invoke` and `bridge_stats`. `native_screenshot` captures by CGWindowID
+via `screencapture -l`, so it gets the right window even when it is buried — a screen-rectangle
+crop does not, and picks up whatever is in front. It captures Qt's render surface correctly.
+
+Per-call bridge cost measured this way is **0.009 ms mean, 0.135 ms worst over 7,640 calls** — the
+earlier 1.15 ms figure was ten paths per tick, not one call.
+
+**Universal builds are blocked.** `swiftc` accepts one `-target`, so `CMAKE_OSX_ARCHITECTURES`
+holding both arm64 and x86_64 cannot produce one Swift library. `macos/CMakeLists.txt` fails loudly
+on that rather than silently emitting a single-arch library, so the release CI's universal build
+needs one Swift library per architecture `lipo`'d together before it can ship. Phase 1 work.
 
 Open at Phase 1: the Swift moves to an `aircast-macos` repo once qgroundcontrol exposes QGC as a
 library target, mirroring how `aircast-android` consumes `AircastQGC.aar`. The C bridge header stays

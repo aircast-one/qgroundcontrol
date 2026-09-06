@@ -9,7 +9,7 @@ enum AppShell {
 
         if CommandLine.arguments.contains("--native-window") {
             installMenuBar()
-            NativeWindow.shared.show()
+            QtHostWindow.shared.show()
         }
 
         let exitCode = qgc_run()
@@ -23,7 +23,7 @@ enum AppShell {
     private static func installMenuBar() {
         let appName = ProcessInfo.processInfo.processName
 
-        let appMenu = NSMenu()
+        let appMenu = NSMenu(title: appName)
         appMenu.addItem(withTitle: "About \(appName)", action: #selector(NSApplication.orderFrontStandardAboutPanel(_:)), keyEquivalent: "")
         appMenu.addItem(.separator())
         appMenu.addItem(withTitle: "Hide \(appName)", action: #selector(NSApplication.hide(_:)), keyEquivalent: "h")
@@ -36,9 +36,12 @@ enum AppShell {
         let telemetry = windowMenu.addItem(withTitle: "Native Telemetry", action: #selector(NativeWindow.showFromMenu), keyEquivalent: "t")
         telemetry.target = NativeWindow.shared
 
+        // The menu bar shows a submenu's own title, so an untitled carrier item still
+        // renders correctly but is invisible to lookup by name. Title both.
         let bar = NSMenu()
         for menu in [appMenu, windowMenu] {
             let item = NSMenuItem()
+            item.title = menu.title
             item.submenu = menu
             bar.addItem(item)
         }

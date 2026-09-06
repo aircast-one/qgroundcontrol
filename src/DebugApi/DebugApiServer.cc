@@ -40,6 +40,11 @@
 #include <QtCore/QStandardPaths>
 #include <QtCore/QUrl>
 #include <QtCore/QUrlQuery>
+
+#ifdef Q_OS_MACOS
+#include "QGCBridgeC.h"
+#include "QGCNativeDebugC.h"
+#endif
 #include <QtCore/QFile>
 #include <QtCore/QLoggingCategory>
 #include <QtCore/QMetaProperty>
@@ -292,6 +297,11 @@ QByteArray DebugApiServer::_route(const QString &path, const QUrlQuery &query)
     if (path == QStringLiteral("/screenshot")) {
         return _screenshotJson();
     }
+#ifdef Q_OS_MACOS
+    if (path.startsWith(QStringLiteral("/native/"))) {
+        return _nativeJson(path, query);
+    }
+#endif
     if (path == QStringLiteral("/vehicle")) {
         return _vehicleJson();
     }
@@ -1598,3 +1608,44 @@ QByteArray DebugApiServer::_statusJson()
     };
     return QJsonDocument(status).toJson(QJsonDocument::Compact);
 }
+
+#ifdef Q_OS_MACOS
+QByteArray DebugApiServer::_nativeJson(const QString &path, const QUrlQuery &query)
+{
+    const auto take = [](char *owned) {
+        const QByteArray json = owned ? QByteArray(owned) : QByteArray("{}");
+        qgc_bridge_free(owned);
+        return json;
+    };
+
+    if (path == QStringLiteral("/native/windows")) {
+        return take(qgc_native_windows());
+    }
+    if (path == QStringLiteral("/native/menu")) {
+        return take(qgc_native_menu());
+    }
+    if (path == QStringLiteral("/native/bridge")) {
+        return take(qgc_native_bridge_stats());
+    }
+    if (path == QStringLiteral("/native/menu/invoke")) {
+        const QString item = query.queryItemValue(QStringLiteral("path"));
+        if (item.isEmpty()) {
+            return _errorJson(QStringLiteral("path is required, e.g. path=Window/Native Telemetry"));
+        }
+        return take(qgc_native_menu_invoke(item.toUtf8().constData()));
+    }
+    if (path == QStringLiteral("/native/click")) {
+        const QString window = query.queryItemValue(QStringLiteral("window"));
+        bool xOk = false;
+        bool yOk = false;
+        const double x = query.queryItemValue(QStringLiteral("x")).toDouble(&xOk);
+        const double y = query.queryItemValue(QStringLiteral("y")).toDouble(&yOk);
+        if (window.isEmpty() || !xOk || !yOk) {
+            return _errorJson(QStringLiteral("window, x and y are required"));
+        }
+        return take(qgc_native_click(window.toUtf8().constData(), x, y));
+    }
+
+    return _errorJson(QStringLiteral("unknown native route: %1").arg(path));
+}
+#endif

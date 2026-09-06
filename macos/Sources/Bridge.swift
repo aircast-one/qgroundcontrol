@@ -9,7 +9,39 @@ enum Bridge {
         static let absent = Reading(text: "—", units: "")
     }
 
+    enum Stats {
+        private(set) static var calls = 0
+        private(set) static var lastMillis = 0.0
+        private(set) static var worstMillis = 0.0
+        private(set) static var totalMillis = 0.0
+
+        static func record(_ millis: Double) {
+            calls += 1
+            lastMillis = millis
+            worstMillis = max(worstMillis, millis)
+            totalMillis += millis
+        }
+
+        static func reset() {
+            calls = 0
+            lastMillis = 0
+            worstMillis = 0
+            totalMillis = 0
+        }
+
+        static var snapshot: [String: Any] {
+            [
+                "calls": calls,
+                "lastMillis": lastMillis,
+                "worstMillis": worstMillis,
+                "meanMillis": calls > 0 ? totalMillis / Double(calls) : 0,
+            ]
+        }
+    }
+
     private static func json(_ path: String) -> [String: Any] {
+        let started = DispatchTime.now().uptimeNanoseconds
+        defer { Stats.record(Double(DispatchTime.now().uptimeNanoseconds - started) / 1_000_000) }
         guard let raw = qgc_bridge_get(path) else { return [:] }
         defer { qgc_bridge_free(raw) }
         return decode(raw)

@@ -34,6 +34,7 @@ TEST_APP = TEST_BUILD / "Debug/AircastQGC.app/Contents/MacOS/AircastQGC"
 APP = RELEASE_APP if RELEASE_APP.exists() else TEST_APP
 LOG_FILE = Path("/tmp/aircast-qgc-mcp.log")
 API_PORT = 8777
+TMP_DIR = os.environ.get("TMPDIR", "/tmp")
 ANDROID_PKG = "org.mavlink.qgroundcontrol"
 
 mcp = FastMCP("aircast-qgc")
@@ -520,6 +521,65 @@ def build(target: str = "release") -> str:
     output = result.stdout + result.stderr
     errors = "\n".join(line for line in output.splitlines() if "error" in line.lower() or "FAILED" in line)
     return f"build failed:\n{errors or output[-2000:]}"
+
+
+@mcp.tool()
+def native_windows() -> list[dict]:
+    """AppKit windows of the running macOS app: title, CGWindowID, frame, and whether the
+    window hosts the embedded Qt scene. Use this instead of guessing screen coordinates."""
+    return _api("/native/windows").get("windows", [])
+
+
+@mcp.tool()
+def native_screenshot(window: str = "") -> Image:
+    """Screenshot one AppKit window by title, captured by window id so it works even when the
+    window is behind others. Omit `window` to take the one hosting Qt. For the Qt scene's own
+    render surface use `screenshot` instead."""
+    windows = _api("/native/windows").get("windows", [])
+    visible = [w for w in windows if w.get("visible")]
+    if window:
+        matches = [w for w in visible if w.get("title") == window]
+    else:
+        matches = [w for w in visible if w.get("hostsQt")] or visible
+    if not matches:
+        titles = ", ".join(repr(w.get("title", "")) for w in visible) or "none"
+        raise RuntimeError(f"no visible window {window!r}; visible windows: {titles}")
+
+    target = Path(TMP_DIR) / f"qgc-native-{matches[0]['number']}.png"
+    subprocess.run(
+        ["screencapture", "-x", "-o", "-l", str(matches[0]["number"]), str(target)],
+        check=True,
+        capture_output=True,
+    )
+    if not target.exists():
+        raise RuntimeError("screencapture produced no file; is Screen Recording permitted?")
+    return Image(path=str(target))
+
+
+@mcp.tool()
+def native_click(window: str, x: float, y: float) -> dict:
+    """Click an AppKit window at content-view coordinates with a top-left origin. Raises the
+    window first, so it works when the window is buried."""
+    return _api(f"/native/click?window={quote(window)}&x={x}&y={y}")
+
+
+@mcp.tool()
+def native_menu() -> list[dict]:
+    """The app's menu bar as a tree of titles, key equivalents and enabled state."""
+    return _api("/native/menu").get("menu", [])
+
+
+@mcp.tool()
+def native_menu_invoke(path: str) -> dict:
+    """Fire a menu item by slash-separated title path, e.g. "Window/Native Telemetry"."""
+    return _api(f"/native/menu/invoke?path={quote(path)}")
+
+
+@mcp.tool()
+def bridge_stats() -> dict:
+    """Round-trip statistics for the Swift-to-Qt reflection bridge: call count, last, worst
+    and mean milliseconds."""
+    return _api("/native/bridge")
 
 
 @mcp.tool()

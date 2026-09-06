@@ -44,6 +44,9 @@ public:
 private:
     void _handleConnection(QTcpSocket *socket);
     QByteArray _route(const QString &path, const QUrlQuery &query);
+#ifdef Q_OS_MACOS
+    QByteArray _nativeJson(const QString &path, const QUrlQuery &query);
+#endif
     static QByteArray _statusJson();
     static QByteArray _screenshotJson();
     static QByteArray _uiMouseStepJson(const QUrlQuery &query, QEvent::Type type);
