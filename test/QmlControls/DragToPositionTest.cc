@@ -207,3 +207,18 @@ void DragToPositionTest::_dropsSnapToTheGridFromTheNearestEdge()
     QCOMPARE(std::fmod(root->width() - margin - (panel->x() + panel->width()), grid), 0.0);
     QCOMPARE(std::fmod(root->height() - margin - (panel->y() + panel->height()), grid), 0.0);
 }
+
+void DragToPositionTest::_defaultHomeKeepsItsOwnLayoutOffTheGrid()
+{
+    clearDragPositionSettings({"TestSelectable"});
+
+    QQuickView view;
+    QVERIFY(loadView(view));
+    QQuickItem* root = view.rootObject();
+    QQuickItem* panel = root->findChild<QQuickItem*>("selectablePanel");
+    QVERIFY(panel);
+    QVERIFY(dropGridOf(root) > 2);
+
+    QCOMPARE(panel->x(), 10.0);
+    QCOMPARE(panel->y(), 380.0);
+}

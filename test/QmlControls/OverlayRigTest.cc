@@ -576,7 +576,8 @@ void OverlayRigTest::_releasedItemStaysWhereItWasDropped()
         QTest::qWait(16);
         worst = std::max(worst, QLineF(dropped, QPointF(left->x(), left->y())).length());
     }
-    QVERIFY2(worst < 24, qPrintable(QStringLiteral("strayed %1 px from the drop point").arg(worst)));
+    const qreal snapReach = std::hypot(rig->property("slotSize").toReal() / 2, rig->property("slotSize").toReal() / 2) + 1;
+    QVERIFY2(worst < snapReach, qPrintable(QStringLiteral("strayed %1 px from the drop point (snap reach %2)").arg(worst).arg(snapReach)));
     WAIT_SETTLED(rig, 3000);
 }
 

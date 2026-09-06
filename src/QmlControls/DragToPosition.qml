@@ -80,11 +80,9 @@ QtObject {
     }
 
     readonly property real homeX: !target || !target.parent ? defaultX
-                                : _customPos ? _clampToParent(_customX, target.parent.width - target.width)
-                                             : _snap(defaultX, target.width, target.parent.width)
+                                : _clampToParent(_customPos ? _customX : defaultX, target.parent.width - target.width)
     readonly property real homeY: !target || !target.parent ? defaultY
-                                : _customPos ? _clampToParent(_customY, target.parent.height - target.height)
-                                             : _snap(defaultY, target.height, target.parent.height)
+                                : _clampToParent(_customPos ? _customY : defaultY, target.parent.height - target.height)
 
     function _bindPosition() {
         target.x = Qt.binding(function() { return homeX + nudgeX })

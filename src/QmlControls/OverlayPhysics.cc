@@ -210,24 +210,6 @@ QPointF OverlayPhysics::_carryOn(const Body &body) const
     return carry;
 }
 
-QPointF OverlayPhysics::_snapped(const Body &body, const QPointF &at) const
-{
-    if (_grid <= 0 || _bounds.isNull()) {
-        return at;
-    }
-    const QRectF footprint = _footprint(body, at);
-    const auto axis = [this](qreal low, qreal high, qreal pos, qreal extent) {
-        const qreal maxPos = qMax(low, high - extent);
-        const bool nearFarEdge = pos + (extent / 2) > (low + high) / 2;
-        const qreal snapped = nearFarEdge ? maxPos - std::round((maxPos - pos) / _grid) * _grid
-                                          : low + std::round((pos - low) / _grid) * _grid;
-        return qBound(low, snapped, maxPos);
-    };
-    return QPointF(axis(_bounds.left(), _bounds.right(), footprint.left(), footprint.width()),
-                   axis(_bounds.top(), _bounds.bottom(), footprint.top(), footprint.height()))
-           + (at - footprint.topLeft());
-}
-
 QPointF OverlayPhysics::_targetFor(const Body &body, const QList<QRectF> &obstacles, const QPointF &carry) const
 {
     const QPointF home = _clampToWalls(body, body.home);
@@ -271,8 +253,7 @@ QPointF OverlayPhysics::_targetFor(const Body &body, const QList<QRectF> &obstac
             }
         }
     }
-    const QPointF aligned = _snapped(body, best);
-    return _clear(body, aligned, obstacles) ? aligned : best;
+    return best;
 }
 
 void OverlayPhysics::step(qreal dt)
@@ -447,4 +428,3 @@ void OverlayPhysics::setSpringRadius(qreal value) { if (!qFuzzyCompare(_springRa
 void OverlayPhysics::setDamping(qreal value)      { if (!qFuzzyCompare(_damping, value))      { _damping = value;      emit tuningChanged(); } }
 void OverlayPhysics::setFriction(qreal value)     { if (!qFuzzyCompare(_friction, value))     { _friction = value;     emit tuningChanged(); } }
 void OverlayPhysics::setRestitution(qreal value)  { if (!qFuzzyCompare(_restitution, value))  { _restitution = value;  emit tuningChanged(); } }
-void OverlayPhysics::setGrid(qreal value)         { if (!qFuzzyCompare(_grid, value))         { _grid = value;         _wakeFreeBodies(); emit tuningChanged(); } }

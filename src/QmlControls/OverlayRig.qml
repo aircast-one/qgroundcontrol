@@ -84,7 +84,6 @@ QtObject {
         damping:      2 * root._dampingFraction * root._omega
         friction:     root._friction
         restitution:  root._restitution
-        grid:         root.slotSize
     }
     property real _wallsW: -1
     property real _wallsH: -1
