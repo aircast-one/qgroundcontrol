@@ -66,7 +66,7 @@ Rectangle {
     Component.onCompleted: {
         mainWindow.registerWindowDragExclusion(viewButtonRow)
         mainWindow.registerWindowDragExclusion(toolIndicators)
-        mainWindow.registerWindowDragExclusion(overflowButton)
+        mainWindow.registerWindowDragExclusion(toolButtonRow)
     }
 
     RowLayout {
@@ -156,20 +156,31 @@ Rectangle {
         }
     }
 
-    OverlayRoundButton {
-        id:                             overflowButton
-        objectName:                     "toolSelectButton"
+    Row {
+        id:                             toolButtonRow
         anchors.right:                  parent.right
         anchors.rightMargin:            mainWindow.windowChromeRightInset + ScreenTools.defaultFontPixelWidth * 3
         anchors.verticalCenter:         parent.verticalCenter
         anchors.verticalCenterOffset:   _topInset / 2
-        icon:                           "/InstrumentValueIcons/dots-horizontal-triple.svg"
-        onClicked:                      mainWindow.showToolSelectDialog(overflowButton)
+        spacing:                        ScreenTools.defaultFontPixelWidth
+
+        OverlayRoundButton {
+            objectName: "analyzeButton"
+            icon:       "/InstrumentValueIcons/chart-bar.svg"
+            onClicked:  if (mainWindow.allowViewSwitch()) mainWindow.showAnalyzeTool()
+        }
+
+        OverlayRoundButton {
+            objectName: "settingsButton"
+            icon:       "/InstrumentValueIcons/cog.svg"
+            visible:    !QGroundControl.corePlugin.options.combineSettingsAndSetup
+            onClicked:  if (mainWindow.allowViewSwitch()) mainWindow.showSettingsTool()
+        }
     }
 
     FlyViewToolBarIndicators {
         id:                             toolIndicators
-        anchors.right:                  overflowButton.left
+        anchors.right:                  toolButtonRow.left
         anchors.rightMargin:            ScreenTools.defaultFontPixelWidth * 2
         anchors.verticalCenter:         parent.verticalCenter
         anchors.verticalCenterOffset:   _topInset / 2

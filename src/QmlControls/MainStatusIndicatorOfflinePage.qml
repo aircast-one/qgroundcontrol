@@ -123,6 +123,21 @@ ToolIndicatorPage {
                     }
                 }
             }
+
+            OverlayMenuSeparator { Layout.fillWidth: true }
+
+            OverlayMenuItem {
+                objectName:         "vehicleSetupItem"
+                Layout.fillWidth:   true
+                icon:               "/InstrumentValueIcons/wrench.svg"
+                text:               qsTr("Vehicle Setup")
+                onClicked: {
+                    if (mainWindow.allowViewSwitch()) {
+                        mainWindow.closeIndicatorDrawer()
+                        mainWindow.showVehicleConfig()
+                    }
+                }
+            }
         }
     }
 
