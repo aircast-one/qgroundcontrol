@@ -67,6 +67,54 @@ QObject *listElement(QObject *object, const QString &segment)
     return model->get(index);
 }
 
+QObject *callSegment(QObject *object, const QString &segment)
+{
+    if (!segment.endsWith(QLatin1Char(')'))) {
+        return nullptr;
+    }
+
+    const int open = segment.indexOf(QLatin1Char('('));
+    if (open <= 0) {
+        return nullptr;
+    }
+
+    const QByteArray methodName = segment.left(open).toUtf8();
+    const QString argText = segment.mid(open + 1, segment.size() - open - 2);
+    const QStringList args = argText.isEmpty() ? QStringList() : argText.split(QLatin1Char(','));
+    if (args.size() > kMaxInvokeArgs) {
+        return nullptr;
+    }
+
+    const QMetaObject *const meta = object->metaObject();
+    for (int i = 0; i < meta->methodCount(); ++i) {
+        const QMetaMethod method = meta->method(i);
+        if ((method.name() != methodName) || (method.parameterCount() != args.size())) {
+            continue;
+        }
+        if (!(method.returnMetaType().flags() & QMetaType::PointerToQObject)) {
+            continue;
+        }
+
+        QVariant values[kMaxInvokeArgs];
+        QGenericArgument generic[kMaxInvokeArgs];
+        for (int arg = 0; arg < args.size(); ++arg) {
+            values[arg] = args.at(arg);
+            if (!values[arg].convert(method.parameterMetaType(arg))) {
+                return nullptr;
+            }
+            generic[arg] = QGenericArgument(method.parameterMetaType(arg).name(), values[arg].constData());
+        }
+
+        QObject *returned = nullptr;
+        const bool ok = method.invoke(object, Qt::DirectConnection,
+                                      QGenericReturnArgument(method.returnMetaType().name(), &returned),
+                                      generic[0], generic[1], generic[2], generic[3]);
+        return ok ? returned : nullptr;
+    }
+
+    return nullptr;
+}
+
 Resolved resolve(const QString &path)
 {
     const QStringList parts = path.split(QLatin1Char('.'), Qt::SkipEmptyParts);
@@ -78,6 +126,10 @@ Resolved resolve(const QString &path)
     for (int i = 1; object && (i < parts.size()); ++i) {
         if (QObject *const element = listElement(object, parts.at(i))) {
             object = element;
+            continue;
+        }
+        if (QObject *const called = callSegment(object, parts.at(i))) {
+            object = called;
             continue;
         }
         const QVariant value = object->property(parts.at(i).toUtf8().constData());
@@ -250,9 +302,30 @@ QJsonObject invokePath(const QString &path, const QJsonArray &args)
             generic[arg] = QGenericArgument(method.parameterMetaType(arg).name(), values[arg].constData());
         }
 
+        const QMetaType returnType = method.returnMetaType();
+        if (returnType.id() == QMetaType::Void) {
+            const bool ok = method.invoke(resolved.object, Qt::DirectConnection,
+                                          generic[0], generic[1], generic[2], generic[3]);
+            return QJsonObject { { QStringLiteral("ok"), ok } };
+        }
+
+        QVariant returned(returnType);
         const bool ok = method.invoke(resolved.object, Qt::DirectConnection,
+                                      QGenericReturnArgument(returnType.name(), returned.data()),
                                       generic[0], generic[1], generic[2], generic[3]);
-        return QJsonObject { { QStringLiteral("ok"), ok } };
+        if (!ok) {
+            return QJsonObject { { QStringLiteral("ok"), false } };
+        }
+
+        QJsonObject result { { QStringLiteral("ok"), true } };
+        if (Fact *const fact = qobject_cast<Fact *>(returned.value<QObject *>())) {
+            result.insert(QStringLiteral("result"), factJson(fact));
+        } else if (QObject *const object = returned.value<QObject *>()) {
+            result.insert(QStringLiteral("result"), objectJson(object));
+        } else {
+            result.insert(QStringLiteral("result"), QJsonValue::fromVariant(returned));
+        }
+        return result;
     }
 
     return QJsonObject { { QStringLiteral("ok"), false } };
