@@ -50,6 +50,7 @@ import one.aircast.android.ui.AnalyzeScreen
 import one.aircast.android.ui.FlightActions
 import one.aircast.android.ui.ParametersScreen
 import one.aircast.android.ui.SettingsScreen
+import one.aircast.android.ui.SetupScreen
 import one.aircast.android.ui.StatusStrip
 import one.aircast.android.ui.VehicleTitle
 import org.mavlink.qgroundcontrol.QGCBridge
@@ -62,12 +63,11 @@ private const val QML_LIBRARY = "AircastQGC"
 private const val WAKE_LOCK_TAG = "Aircast:screen"
 private const val MULTICAST_LOCK_TAG = "Aircast"
 
-private const val SETUP_QML = "qrc:/qml/QGroundControl/VehicleSetup/SetupView.qml"
 
 enum class Tab(val label: String, val icon: ImageVector, val page: String, val tool: String) {
     Fly("Fly", Icons.Default.Home, "fly", ""),
     Plan("Plan", Icons.Default.Place, "plan", ""),
-    Setup("Setup", Icons.Default.Build, "fly", SETUP_QML),
+    Setup("Setup", Icons.Default.Build, "fly", ""),
     Params("Params", Icons.AutoMirrored.Filled.List, "fly", ""),
     Analyze("Analyze", Icons.Default.Info, "fly", ""),
     Settings("Settings", Icons.Default.Settings, "fly", "");
@@ -215,6 +215,7 @@ fun AircastShell(quickView: QtQuickView) {
                 when (tab) {
                     Tab.Settings -> Surface(Modifier.fillMaxSize()) { SettingsScreen() }
                     Tab.Params -> Surface(Modifier.fillMaxSize()) { ParametersScreen() }
+                    Tab.Setup -> Surface(Modifier.fillMaxSize()) { SetupScreen() }
                     Tab.Analyze -> AnalyzeScreen(
                         page = analyzePage,
                         onSelect = { analyzePage = it },
