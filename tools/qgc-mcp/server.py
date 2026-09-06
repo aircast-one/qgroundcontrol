@@ -557,9 +557,30 @@ def native_screenshot(window: str = "") -> Image:
 
 
 @mcp.tool()
+def native_probe(id: str = "", action: str = "", **args: str) -> dict:
+    """Drive the native macOS UI by identity rather than by synthesised clicks.
+
+    This is the only thing that works when the screen is locked: no window can become
+    key, so clicks land nowhere (and look like they passed). Screenshots keep working.
+
+    Omit `id` to list probes and see whether the screen is locked. Give `id` alone to
+    read that probe's state. Give `id` and `action` plus keyword arguments to drive it,
+    e.g. native_probe("settings", "select", page="Connections") or
+    native_probe("links", "connect", index="4")."""
+    query = "&".join(
+        f"{quote(str(k))}={quote(str(v))}"
+        for k, v in (("id", id), ("action", action), *args.items())
+        if v != ""
+    )
+    return _api(f"/native/probe?{query}" if query else "/native/probe")
+
+
+@mcp.tool()
 def native_click(window: str, x: float, y: float) -> dict:
-    """Click an AppKit window at content-view coordinates with a top-left origin. Raises the
-    window first, so it works when the window is buried."""
+    """Click an AppKit window at content-view coordinates with a top-left origin.
+
+    Refuses when the screen is locked, because a window that cannot become key cannot
+    receive the click. Use native_probe there instead."""
     return _api(f"/native/click?window={quote(window)}&x={x}&y={y}")
 
 

@@ -11,9 +11,9 @@ root="$(cd "$(dirname "$0")/../.." && pwd)"
 app="$root/build-test/Debug/AircastQGC.app/Contents/MacOS/AircastQGC"
 log=/tmp/qgc-build.log
 
-cmake --build "$root/build-test" > "$log" 2>&1 || { grep -E 'error:|FAILED' "$log" | tail -20; exit 1; }
-if grep -qE 'error:|FAILED' "$log"; then grep -E 'error:|FAILED' "$log" | tail -20; exit 1; fi
-
+# Stop the old instance before building: the deploy step rewrites load commands with
+# install_name_tool, which intermittently fails with "cannot rename ... (No such file
+# or directory)" when the binary is still mapped by a running process.
 # Only ever kill our own Debug build; other sessions run the Release build.
 pkill -9 -f 'build-test/Debug/AircastQGC.app' 2>/dev/null || true
 for _ in $(seq 1 30); do
@@ -24,6 +24,9 @@ if lsof -nP -iTCP:"$port" -sTCP:LISTEN >/dev/null 2>&1; then
     echo "port $port still held by: $(lsof -nP -iTCP:"$port" -sTCP:LISTEN | tail -1)" >&2
     exit 1
 fi
+
+cmake --build "$root/build-test" > "$log" 2>&1 || { grep -E 'error:|FAILED' "$log" | tail -20; exit 1; }
+if grep -qE 'error:|FAILED' "$log"; then grep -E 'error:|FAILED' "$log" | tail -20; exit 1; fi
 
 QGC_DEBUG_API_PORT="$port" nohup "$app" --allow-multiple --native-window > /tmp/qgc-app.log 2>&1 &
 pid=$!

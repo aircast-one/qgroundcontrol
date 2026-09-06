@@ -1639,6 +1639,19 @@ QByteArray DebugApiServer::_nativeJson(const QString &path, const QUrlQuery &que
         }
         return take(qgc_native_menu_invoke(item.toUtf8().constData()));
     }
+    if (path == QStringLiteral("/native/probe")) {
+        QJsonObject args;
+        const auto items = query.queryItems();
+        for (const auto &item : items) {
+            if ((item.first != QStringLiteral("id")) && (item.first != QStringLiteral("action"))) {
+                args.insert(item.first, item.second);
+            }
+        }
+        const QByteArray id = query.queryItemValue(QStringLiteral("id")).toUtf8();
+        const QByteArray action = query.queryItemValue(QStringLiteral("action")).toUtf8();
+        const QByteArray argsJson = QJsonDocument(args).toJson(QJsonDocument::Compact);
+        return take(qgc_native_probe(id.constData(), action.constData(), argsJson.constData()));
+    }
     if (path == QStringLiteral("/native/type")) {
         const QString window = query.queryItemValue(QStringLiteral("window"));
         const QString text = query.queryItemValue(QStringLiteral("text"));

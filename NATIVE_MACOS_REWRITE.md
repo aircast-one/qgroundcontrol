@@ -132,6 +132,20 @@ crop does not, and picks up whatever is in front. It captures Qt's render surfac
 Per-call bridge cost measured this way is **0.009 ms mean, 0.135 ms worst over 7,640 calls** — the
 earlier 1.15 ms figure was ten paths per tick, not one call.
 
+**Driving the native UI in tests.** Synthesised input does not work when the screen is
+locked: no window can become key, so a click either lands on the wrong window or is
+swallowed, and both look like a pass. Screenshots by CGWindowID keep working. So the
+native UI is driven by *identity*, the counterpart of QGC's objectName-addressed `/ui/*`
+surface for QML:
+
+- `/native/probe` lists the registered probes and reports `screenIsLocked`.
+- `/native/probe?id=settings` reads a probe's state; `&action=select&page=Connections`
+  drives it. Same for `id=links` with connect/disconnect/create/remove/add/edit.
+- A store conforms to `Probeable` and registers itself; view state a test needs to reach
+  belongs in the store rather than in `@State`, precisely so the probe can reach it.
+- `/native/click` and `/native/type` still exist for an unlocked screen, and now refuse
+  with an explanation when the screen is locked instead of failing mysteriously.
+
 **Universal builds are blocked.** `swiftc` accepts one `-target`, so `CMAKE_OSX_ARCHITECTURES`
 holding both arm64 and x86_64 cannot produce one Swift library. `macos/CMakeLists.txt` fails loudly
 on that rather than silently emitting a single-arch library, so the release CI's universal build
