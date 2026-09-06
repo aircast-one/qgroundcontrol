@@ -1,11 +1,9 @@
+
 import QtQuick
 import QtQuick.Controls
-import QtQuick.Dialogs
-import QtQuick.Layouts
 
 import QGroundControl
 import QGroundControl.ScreenTools
-import QGroundControl.Vehicle
 import QGroundControl.Controls
 import QGroundControl.FactSystem
 import QGroundControl.FactControls
@@ -18,83 +16,76 @@ TransectStyleComplexItemEditor {
     transectValuesHeaderName:       qsTr("Transects")
     transectValuesComponent:        _transectValuesComponent
     presetsTransectValuesComponent: _transectValuesComponent
-    entryPointText:                 qsTr("Start from %1").arg(_entryNames[missionItem.entryPoint])
+    entryPointText:                 qsTr("Start from")
+    entryPointValue:                _entryNames[missionItem ? missionItem.entryPoint : 0] || ""
 
-
-    property real   _margin:        ScreenTools.defaultFontPixelWidth / 2
-    property var    _missionItem:   missionItem
+    property var _missionItem: missionItem
 
     readonly property var _entryNames: [ qsTr("top left"), qsTr("top right"), qsTr("bottom left"), qsTr("bottom right") ]
 
     Component {
         id: _transectValuesComponent
 
-        GridLayout {
-            Layout.fillWidth:   true
-            columnSpacing:      _margin
-            rowSpacing:         _margin
-            columns:            2
-
-            QGCLabel { text: qsTr("Angle") }
-            FactTextField {
-                fact:                   missionItem.gridAngle
-                Layout.fillWidth:       true
-                onUpdated:              angleSlider.value = missionItem.gridAngle.value
+        PlanGroupCard {
+            PlanFactRow {
+                text:      qsTr("Angle")
+                fact:      missionItem.gridAngle
+                onFactChanged: angleSlider.value = missionItem.gridAngle.value
+                field.onUpdated: angleSlider.value = missionItem.gridAngle.value
             }
 
-            QGCSlider {
-                id:                     angleSlider
-                from:           0
-                to:           359
-                stepSize:               1
-                tickmarksEnabled:       false
-                Layout.fillWidth:       true
-                Layout.columnSpan:      2
-                Layout.preferredHeight: ScreenTools.defaultFontPixelHeight * 1.5
-                onValueChanged:         missionItem.gridAngle.value = value
-                Component.onCompleted:  value = missionItem.gridAngle.value
-                live: true
+            Item {
+                width:  parent.width
+                height: ScreenTools.defaultFontPixelHeight * 2
+
+                QGCSlider {
+                    id:                     angleSlider
+                    anchors.left:           parent.left
+                    anchors.right:          parent.right
+                    anchors.leftMargin:     ScreenTools.defaultFontPixelWidth * 1.5
+                    anchors.rightMargin:    ScreenTools.defaultFontPixelWidth * 1.5
+                    anchors.verticalCenter: parent.verticalCenter
+                    from:                   0
+                    to:                     359
+                    stepSize:               1
+                    tickmarksEnabled:       false
+                    live:                   true
+                    onValueChanged:         missionItem.gridAngle.value = value
+                    Component.onCompleted:  value = missionItem.gridAngle.value
+                }
             }
 
-            QGCLabel {
-                text:       qsTr("Turnaround dist")
-                visible:    !forPresets
-            }
-            FactTextField {
-                Layout.fillWidth:   true
-                fact:               missionItem.turnAroundDistance
-                visible:            !forPresets
+            PlanFactRow {
+                text:    qsTr("Turnaround distance")
+                fact:    missionItem.turnAroundDistance
+                visible: !forPresets
             }
 
-            FactCheckBox {
-                Layout.columnSpan:  2
-                text:               qsTr("Hover to capture each image")
-                fact:               missionItem.hoverAndCapture
-                enabled:            missionItem.cameraCalc.distanceMode === QGroundControl.AltitudeModeRelative || missionItem.cameraCalc.distanceMode === QGroundControl.AltitudeModeAbsolute
-                visible:            !forPresets && missionItem.hoverAndCaptureAllowed
+            PlanSwitchRow {
+                text:    qsTr("Hover to capture each image")
+                fact:    missionItem.hoverAndCapture
+                enabled: missionItem.cameraCalc.distanceMode === QGroundControl.AltitudeModeRelative || missionItem.cameraCalc.distanceMode === QGroundControl.AltitudeModeAbsolute
+                visible: !forPresets && missionItem.hoverAndCaptureAllowed
             }
 
-            FactCheckBox {
-                Layout.columnSpan:  2
-                text:               qsTr("Refly at 90\u00B0 for a cross grid")
-                fact:               missionItem.refly90Degrees
-                enabled:            missionItem.cameraCalc.distanceMode !== QGroundControl.AltitudeModeCalcAboveTerrain
-                visible:            !forPresets
+            PlanSwitchRow {
+                text:    qsTr("Refly at 90° for a cross grid")
+                fact:    missionItem.refly90Degrees
+                enabled: missionItem.cameraCalc.distanceMode !== QGroundControl.AltitudeModeCalcAboveTerrain
+                visible: !forPresets
             }
 
-            FactCheckBox {
-                Layout.columnSpan:  2
-                text:               qsTr("Images in turnarounds")
-                fact:               missionItem.cameraTriggerInTurnAround
-                enabled:            missionItem.hoverAndCaptureAllowed ? !missionItem.hoverAndCapture.rawValue : true
-                visible:            !forPresets
+            PlanSwitchRow {
+                text:    qsTr("Images in turnarounds")
+                fact:    missionItem.cameraTriggerInTurnAround
+                enabled: missionItem.hoverAndCaptureAllowed ? !missionItem.hoverAndCapture.rawValue : true
+                visible: !forPresets
             }
 
-            FactCheckBox {
-                Layout.columnSpan:  2
-                text:               qsTr("Fly alternate transects")
-                fact:               missionItem.flyAlternateTransects
-                visible:            !forPresets && (_vehicle ? (_vehicle.fixedWing || _vehicle.vtol) : false)
+            PlanSwitchRow {
+                text:    qsTr("Fly alternate transects")
+                fact:    missionItem.flyAlternateTransects
+                visible: !forPresets && (_vehicle ? (_vehicle.fixedWing || _vehicle.vtol) : false)
             }
         }
     }

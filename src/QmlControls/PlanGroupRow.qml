@@ -91,7 +91,6 @@ Rectangle {
             anchors.verticalCenter: parent.verticalCenter
             text:                   _root.value
             color:                  Qt.alpha(_root._qgcPal.text, 0.6)
-            font.family:            ScreenTools.fixedFontFamily
             visible:                text !== ""
         }
 

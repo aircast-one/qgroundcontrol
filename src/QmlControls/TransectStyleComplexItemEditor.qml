@@ -1,40 +1,38 @@
+
 import QtQuick
 import QtQuick.Controls
-import QtQuick.Dialogs
 import QtQuick.Layouts
 
 import QGroundControl
 import QGroundControl.ScreenTools
-import QGroundControl.Vehicle
 import QGroundControl.Controls
 import QGroundControl.FactSystem
 import QGroundControl.FactControls
 import QGroundControl.Palette
 import QGroundControl.FlightMap
 
-Rectangle {
-    id:         _root
-    height:     childrenRect.y + childrenRect.height + _margin
-    width:      availableWidth
-    color:      qgcPal.windowShadeDark
-    radius:     _radius
+Item {
+    id:     _root
+    height: editorColumn.height
+    width:  availableWidth
 
     property bool   transectAreaDefinitionComplete: true
     property string transectAreaDefinitionHelp:     _internalError
     property string transectValuesHeaderName:       _internalError
     property var    transectValuesComponent:        undefined
     property var    presetsTransectValuesComponent: undefined
-    property string entryPointText:                 qsTr("Rotate Entry Point")
+    property string entryPointText:                 qsTr("Rotate entry point")
+    property string entryPointValue:                ""
 
     readonly property string _internalError: "Internal Error"
 
     property var    _missionItem:               missionItem
     property real   _margin:                    ScreenTools.defaultFontPixelWidth / 2
-    property real   _fieldWidth:                ScreenTools.defaultFontPixelWidth * 10.5
     property var    _vehicle:                   QGroundControl.multiVehicleManager.activeVehicle ? QGroundControl.multiVehicleManager.activeVehicle : QGroundControl.multiVehicleManager.offlineEditingVehicle
     property real   _cameraMinTriggerInterval:  _missionItem.cameraCalc.minTriggerInterval.rawValue
-    property string _doneAdjusting:             qsTr("Done")
     property bool   _presetsAvailable:          _missionItem.presetNames.length !== 0
+
+    readonly property real _gap: ScreenTools.defaultFontPixelHeight * 0.7
 
     function polygonCaptureStarted() {
         _missionItem.clearPolygon()
@@ -55,281 +53,262 @@ Rectangle {
 
     QGCPalette { id: qgcPal; colorGroupEnabled: true }
 
-    ColumnLayout {
-        id:                 editorColumn
-        anchors.margins:    _margin
-        anchors.top:        parent.top
-        anchors.left:       parent.left
-        anchors.right:      parent.right
+    Column {
+        id:            editorColumn
+        anchors.left:  parent.left
+        anchors.right: parent.right
+        spacing:       _root._gap
 
-        QGCLabel {
-            id:                     transectAreaDefinitionCompleteLabel
-            Layout.fillWidth:       true
-            wrapMode:               Text.WordWrap
-            horizontalAlignment:    Text.AlignHCenter
-            text:                   transectAreaDefinitionHelp
-            visible:                !transectAreaDefinitionComplete || _missionItem.wizardMode
-        }
+        PlanGroupCard {
+            width:   parent.width
+            visible: !transectAreaDefinitionComplete || _missionItem.wizardMode
 
-        ColumnLayout {
-            Layout.fillWidth:   true
-            spacing:            _margin
-            visible:            transectAreaDefinitionComplete && !_missionItem.wizardMode
-
-            TransectStyleComplexItemTabBar {
-                id:                 tabBar
-                Layout.fillWidth:   true
-            }
-
-            ColumnLayout {
-                Layout.fillWidth:   true
-                spacing:            _margin
-                visible:            tabBar.currentIndex === 0
+            Item {
+                width:  parent.width
+                height: helpLabel.implicitHeight + ScreenTools.defaultFontPixelHeight
 
                 QGCLabel {
-                    Layout.fillWidth:   true
-                    text:               qsTr("WARNING: Photo interval is below minimum interval (%1 secs) supported by camera.").arg(_cameraMinTriggerInterval.toFixed(1))
-                    wrapMode:           Text.WordWrap
-                    color:              qgcPal.warningText
-                    visible:            _missionItem.cameraShots > 0 && _cameraMinTriggerInterval !== 0 && _cameraMinTriggerInterval > _missionItem.timeBetweenShots
+                    id:                     helpLabel
+                    anchors.left:           parent.left
+                    anchors.right:          parent.right
+                    anchors.leftMargin:     ScreenTools.defaultFontPixelWidth * 1.5
+                    anchors.rightMargin:    ScreenTools.defaultFontPixelWidth * 1.5
+                    anchors.verticalCenter: parent.verticalCenter
+                    wrapMode:               Text.WordWrap
+                    color:                  Qt.alpha(qgcPal.text, 0.7)
+                    text:                   transectAreaDefinitionHelp
+                }
+            }
+        }
+
+        Column {
+            width:   parent.width
+            spacing: _root._gap
+            visible: transectAreaDefinitionComplete && !_missionItem.wizardMode
+
+            TransectStyleComplexItemTabBar {
+                id:    tabBar
+                width: parent.width
+            }
+
+            Column {
+                width:   parent.width
+                spacing: _root._gap
+                visible: tabBar.currentIndex === 0
+
+                PlanGroupCard {
+                    width:   parent.width
+                    visible: _missionItem.cameraShots > 0 && _cameraMinTriggerInterval !== 0 && _cameraMinTriggerInterval > _missionItem.timeBetweenShots
+
+                    PlanGroupRow {
+                        text:        qsTr("Photo interval too short")
+                        description: qsTr("The camera needs at least %1 s between photos").arg(_cameraMinTriggerInterval.toFixed(1))
+                        textColor:   qgcPal.warningText
+                    }
                 }
 
-                Item {
-                    objectName:       "transectCameraRow"
-                    Layout.fillWidth: true
-                    implicitHeight:   cameraRow.implicitHeight + _margin * 2
+                PlanGroupCard {
+                    width: parent.width
 
-                    RowLayout {
-                        id:                     cameraRow
-                        anchors.left:           parent.left
-                        anchors.right:          parent.right
-                        anchors.verticalCenter: parent.verticalCenter
-                        spacing:                _margin
-
-                        QGCLabel { text: qsTr("Camera") }
-
-                        QGCLabel {
-                            Layout.fillWidth:    true
-                            horizontalAlignment: Text.AlignRight
-                            elide:               Text.ElideRight
-                            color:               qgcPal.primaryButton
-                            text:                _missionItem.cameraCalc.isManualCamera || _missionItem.cameraCalc.isCustomCamera
-                                                     ? _missionItem.cameraCalc.cameraBrand
-                                                     : _missionItem.cameraCalc.cameraBrand + " " + _missionItem.cameraCalc.cameraModel
-                        }
-
-                        QGCLabel {
-                            text:  "\u203A"
-                            color: qgcPal.primaryButton
-                        }
-                    }
-
-                    QGCMouseArea {
-                        anchors.fill: parent
-                        onClicked:    tabBar.currentIndex = 1
+                    PlanGroupRow {
+                        objectName:  "transectCameraRow"
+                        text:        qsTr("Camera")
+                        value:       _missionItem.cameraCalc.isManualCamera ? qsTr("Manual")
+                                   : _missionItem.cameraCalc.isCustomCamera ? qsTr("Custom")
+                                                                            : _missionItem.cameraCalc.cameraBrand + " " + _missionItem.cameraCalc.cameraModel
+                        showChevron: true
+                        interactive: true
+                        onClicked:   tabBar.currentIndex = 1
                     }
                 }
 
                 CameraCalcGrid {
-                    Layout.fillWidth:               true
-                    cameraCalc:                     _missionItem.cameraCalc
-                    vehicleFlightIsFrontal:         true
-                    distanceToSurfaceLabel:         qsTr("Altitude")
-                    frontalDistanceLabel:           qsTr("Trigger Dist")
-                    sideDistanceLabel:              qsTr("Spacing")
+                    width:                  parent.width
+                    cameraCalc:             _missionItem.cameraCalc
+                    vehicleFlightIsFrontal: true
+                    distanceToSurfaceLabel: qsTr("Altitude")
+                    frontalDistanceLabel:   qsTr("Trigger distance")
+                    sideDistanceLabel:      qsTr("Spacing")
                 }
 
-                SectionHeader {
-                    id:                 transectValuesHeader
-                    Layout.fillWidth:   true
-                    text:               transectValuesHeaderName
-                }
+                PlanSectionLabel { text: transectValuesHeaderName.toUpperCase() }
 
                 Loader {
-                    Layout.fillWidth:   true
-                    visible:            transectValuesHeader.checked
-                    sourceComponent:    transectValuesComponent
+                    width:           parent.width
+                    sourceComponent: transectValuesComponent
 
                     property bool forPresets: false
                 }
 
-                QGCButton {
-                    Layout.alignment:   Qt.AlignHCenter
-                    text:               entryPointText
-                    onClicked:          _missionItem.rotateEntryPoint()
-                    visible:            transectValuesHeader.checked
+                PlanGroupCard {
+                    width: parent.width
+
+                    PlanGroupRow {
+                        text:        entryPointText
+                        value:       entryPointValue
+                        showChevron: true
+                        interactive: true
+                        onClicked:   _missionItem.rotateEntryPoint()
+                    }
                 }
 
-                SectionHeader {
-                    id:                 statsHeader
-                    Layout.fillWidth:   true
-                    text:               qsTr("Statistics")
-                }
+                PlanSectionLabel { text: qsTr("STATISTICS") }
 
-                TransectStyleComplexItemStats {
-                    Layout.fillWidth:   true
-                    visible:            statsHeader.checked
-                }
+                TransectStyleComplexItemStats { width: parent.width }
             }
 
             CameraCalcCamera {
-                Layout.fillWidth:   true
-                visible:            tabBar.currentIndex === 1
-                cameraCalc:         _missionItem.cameraCalc
+                width:      parent.width
+                visible:    tabBar.currentIndex === 1
+                cameraCalc: _missionItem.cameraCalc
             }
 
             TransectStyleComplexItemTerrainFollow {
-                Layout.fillWidth:   true
-                spacing:            _margin
-                visible:            tabBar.currentIndex === 2
-                missionItem:        _missionItem
+                width:       parent.width
+                spacing:     _margin
+                visible:     tabBar.currentIndex === 2
+                missionItem: _missionItem
             }
 
-            ColumnLayout {
-                Layout.fillWidth:   true
-                spacing:            _margin
-                visible:            tabBar.currentIndex === 3
+            Column {
+                width:   parent.width
+                spacing: _root._gap
+                visible: tabBar.currentIndex === 3
 
-                QGCLabel {
-                    Layout.fillWidth:   true
-                    text:               qsTr("Presets")
-                    wrapMode:           Text.WordWrap
-                }
+                PlanGroupCard {
+                    width: parent.width
 
-                QGCComboBox {
-                    id:                 presetCombo
-                    Layout.fillWidth:   true
-                    model:              _missionItem.presetNames
-                }
+                    PlanGroupRow {
+                        text: qsTr("Preset")
 
-                RowLayout {
-                    Layout.fillWidth:   true
-
-                    QGCButton {
-                        Layout.fillWidth:   true
-                        text:               qsTr("Apply Preset")
-                        enabled:            _missionItem.presetNames.length != 0
-                        onClicked:          _missionItem.loadPreset(presetCombo.textAt(presetCombo.currentIndex))
-                    }
-
-                    QGCButton {
-                        Layout.fillWidth:   true
-                        text:               qsTr("Delete Preset")
-                        enabled:            _missionItem.presetNames.length != 0
-                        onClicked:          deletePresetDialog.createObject(mainWindow, { presetName: presetCombo.textAt(presetCombo.currentIndex) }).open()
-
-                        Component {
-                            id: deletePresetDialog
-
-                            QGCSimpleMessageDialog {
-                                title:      qsTr("Delete Preset")
-                                text:       qsTr("Are you sure you want to delete '%1' preset?").arg(presetName)
-                                buttons:    Dialog.Yes | Dialog.No
-
-                                property string presetName
-
-                                onAccepted: { _missionItem.deletePreset(presetName) }
-                            }
+                        QGCComboBox {
+                            id:                     presetCombo
+                            anchors.verticalCenter: parent.verticalCenter
+                            width:                  ScreenTools.defaultFontPixelWidth * 20
+                            model:                  _missionItem.presetNames
                         }
                     }
+
+                    PlanGroupRow {
+                        text:        qsTr("Apply preset")
+                        textColor:   qgcPal.primaryButton
+                        interactive: true
+                        enabled:     _presetsAvailable
+                        onClicked:   _missionItem.loadPreset(presetCombo.textAt(presetCombo.currentIndex))
+                    }
+
+                    PlanGroupRow {
+                        text:        qsTr("Delete preset")
+                        textColor:   qgcPal.colorRed
+                        interactive: true
+                        enabled:     _presetsAvailable
+                        onClicked:   deletePresetDialog.createObject(mainWindow, { presetName: presetCombo.textAt(presetCombo.currentIndex) }).open()
+                    }
                 }
 
-                Item { height: ScreenTools.defaultFontPixelHeight; width: 1 }
+                PlanGroupCard {
+                    width: parent.width
 
-                QGCButton {
-                    Layout.alignment:   Qt.AlignCenter
-                    Layout.fillWidth:   true
-                    text:               qsTr("Save Settings As New Preset")
-                    onClicked:          savePresetDialog.createObject(mainWindow).open()
+                    PlanGroupRow {
+                        text:        qsTr("Save settings as new preset")
+                        textColor:   qgcPal.primaryButton
+                        interactive: true
+                        onClicked:   savePresetDialog.createObject(mainWindow).open()
+                    }
                 }
 
-                SectionHeader {
-                    id:                 presectsTransectValuesHeader
-                    Layout.fillWidth:   true
-                    text:               transectValuesHeaderName
-                    visible:            !!presetsTransectValuesComponent
+                PlanSectionLabel {
+                    text:    transectValuesHeaderName.toUpperCase()
+                    visible: !!presetsTransectValuesComponent
                 }
 
                 Loader {
-                    Layout.fillWidth:   true
-                    visible:            presectsTransectValuesHeader.checked && !!presetsTransectValuesComponent
-                    sourceComponent:    presetsTransectValuesComponent
+                    width:           parent.width
+                    visible:         !!presetsTransectValuesComponent
+                    sourceComponent: presetsTransectValuesComponent
 
                     property bool forPresets: true
                 }
 
-                SectionHeader {
-                    id:                 presetsStatsHeader
-                    Layout.fillWidth:   true
-                    text:               qsTr("Statistics")
-                }
+                PlanSectionLabel { text: qsTr("STATISTICS") }
 
-                TransectStyleComplexItemStats {
-                    Layout.fillWidth:   true
-                    visible:            presetsStatsHeader.checked
-                }
+                TransectStyleComplexItemStats { width: parent.width }
             }
         }
+    }
 
-        Component {
-            id: savePresetDialog
+    Component {
+        id: deletePresetDialog
 
-            QGCPopupDialog {
-                id:         popupDialog
-                title:      qsTr("Save Preset")
-                buttons:    Dialog.Save | Dialog.Cancel
+        QGCSimpleMessageDialog {
+            title:      qsTr("Delete Preset")
+            text:       qsTr("Are you sure you want to delete '%1' preset?").arg(presetName)
+            buttons:    Dialog.Yes | Dialog.No
 
-                onAccepted: {
-                    if (presetNameField.text != "") {
-                        _missionItem.savePreset(presetNameField.text.trim())
-                    } else {
-                        preventClose = true
+            property string presetName
+
+            onAccepted: { _missionItem.deletePreset(presetName) }
+        }
+    }
+
+    Component {
+        id: savePresetDialog
+
+        QGCPopupDialog {
+            id:         popupDialog
+            title:      qsTr("Save Preset")
+            buttons:    Dialog.Save | Dialog.Cancel
+
+            onAccepted: {
+                if (presetNameField.text != "") {
+                    _missionItem.savePreset(presetNameField.text.trim())
+                } else {
+                    preventClose = true
+                }
+            }
+
+            ColumnLayout {
+                width:      ScreenTools.defaultFontPixelWidth * 30
+                spacing:    ScreenTools.defaultFontPixelHeight
+
+                QGCLabel {
+                    Layout.fillWidth:   true
+                    text:               qsTr("Save the current settings as a named preset.")
+                    wrapMode:           Text.WordWrap
+                }
+
+                QGCLabel {
+                    text: qsTr("Preset Name")
+                }
+
+                QGCTextField {
+                    id:                 presetNameField
+                    Layout.fillWidth:   true
+                    placeholderText:    qsTr("Enter preset name")
+
+                    Component.onCompleted:  validateText(presetNameField.text)
+                    onTextChanged:          validateText(text)
+
+                    function validateText(text) {
+                        if (text.trim() === "") {
+                            nameError.text = qsTr("Preset name cannot be blank.")
+                            popupDialog.acceptButtonEnabled = false
+                        } else if (text.includes("/")) {
+                            nameError.text = qsTr("Preset name cannot include the \"/\" character.")
+                            popupDialog.acceptButtonEnabled = false
+                        } else {
+                            nameError.text = ""
+                            popupDialog.acceptButtonEnabled = true
+                        }
                     }
                 }
 
-                ColumnLayout {
-                    width:      ScreenTools.defaultFontPixelWidth * 30
-                    spacing:    ScreenTools.defaultFontPixelHeight
-
-                    QGCLabel {
-                        Layout.fillWidth:   true
-                        text:               qsTr("Save the current settings as a named preset.")
-                        wrapMode:           Text.WordWrap
-                    }
-
-                    QGCLabel {
-                        text: qsTr("Preset Name")
-                    }
-
-                    QGCTextField {
-                        id:                 presetNameField
-                        Layout.fillWidth:   true
-                        placeholderText:    qsTr("Enter preset name")
-
-                        Component.onCompleted:  validateText(presetNameField.text)
-                        onTextChanged:          validateText(text)
-
-                        function validateText(text) {
-                            if (text.trim() === "") {
-                                nameError.text = qsTr("Preset name cannot be blank.")
-                                popupDialog.acceptButtonEnabled = false
-                            } else if (text.includes("/")) {
-                                nameError.text = qsTr("Preset name cannot include the \"/\" character.")
-                                popupDialog.acceptButtonEnabled = false
-                            } else {
-                                nameError.text = ""
-                                popupDialog.acceptButtonEnabled = true
-                            }
-                        }
-                    }
-
-                    QGCLabel {
-                        id:                 nameError
-                        Layout.fillWidth:   true
-                        wrapMode:           Text.WordWrap
-                        color:              QGroundControl.globalPalette.warningText
-                        visible:            text !== ""
-                    }
+                QGCLabel {
+                    id:                 nameError
+                    Layout.fillWidth:   true
+                    wrapMode:           Text.WordWrap
+                    color:              QGroundControl.globalPalette.warningText
+                    visible:            text !== ""
                 }
             }
         }

@@ -217,6 +217,9 @@ qt_add_qml_module(QGroundControlControlsModule
         PlanEditMapItems.qml
         PlanGroupCard.qml
         PlanGroupRow.qml
+        PlanFactRow.qml
+        PlanSectionLabel.qml
+        PlanSwitchRow.qml
         PlanToolBarIndicators.qml
         PlanView.qml
         RallyPointEditor.qml

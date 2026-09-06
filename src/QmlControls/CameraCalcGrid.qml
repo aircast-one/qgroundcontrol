@@ -1,161 +1,99 @@
+/****************************************************************************
+ *
+ * (c) 2009-2020 QGROUNDCONTROL PROJECT <http://www.qgroundcontrol.org>
+ *
+ * QGroundControl is licensed according to the terms in the file
+ * COPYING.md in the root of the source code directory.
+ *
+ ****************************************************************************/
+
 import QtQuick
-import QtQuick.Controls
 import QtQuick.Layouts
 
 import QGroundControl
 import QGroundControl.ScreenTools
 import QGroundControl.Controls
+import QGroundControl.FactSystem
 import QGroundControl.FactControls
-import QGroundControl.Palette
 
 Column {
-    spacing: _margin
+    spacing: ScreenTools.defaultFontPixelHeight * 0.7
 
     property var    cameraCalc
-    property bool   vehicleFlightIsFrontal:         true
+    property bool   vehicleFlightIsFrontal: true
     property string distanceToSurfaceLabel
     property string frontalDistanceLabel
     property string sideDistanceLabel
 
-    property real   _margin:            ScreenTools.defaultFontPixelWidth / 2
-    property real   _fieldWidth:        ScreenTools.defaultFontPixelWidth * 10.5
-    property var    _vehicle:           QGroundControl.multiVehicleManager.activeVehicle ? QGroundControl.multiVehicleManager.activeVehicle : QGroundControl.multiVehicleManager.offlineEditingVehicle
-    property bool   _cameraComboFilled: false
+    PlanGroupCard {
+        width:   parent.width
+        visible: !cameraCalc.isManualCamera
 
-    readonly property int _gridTypeManual:          0
-    readonly property int _gridTypeCustomCamera:    1
-    readonly property int _gridTypeCamera:          2
+        PlanFactRow {
+            text: qsTr("Front overlap")
+            fact: cameraCalc.frontalOverlap
+        }
 
-    QGCPalette { id: qgcPal; colorGroupEnabled: true }
+        PlanFactRow {
+            text: qsTr("Side overlap")
+            fact: cameraCalc.sideOverlap
+        }
 
-    Column {
-        anchors.left:   parent.left
-        anchors.right:  parent.right
-        spacing:        _margin
-        visible:        !cameraCalc.isManualCamera
+        PlanGroupRow {
+            text: qsTr("Set by")
 
-        RowLayout {
-            anchors.left:   parent.left
-            anchors.right:  parent.right
-            spacing:        _margin
-            Item { Layout.fillWidth: true }
-            QGCLabel {
-                Layout.preferredWidth:  _root._fieldWidth
-                text:                   qsTr("Front Lap")
-            }
-            QGCLabel {
-                Layout.preferredWidth:  _root._fieldWidth
-                text:                   qsTr("Side Lap")
+            OverlaySegmentedControl {
+                anchors.verticalCenter: parent.verticalCenter
+                width:                  ScreenTools.defaultFontPixelWidth * 20
+                height:                 ScreenTools.defaultFontPixelHeight * 1.8
+                segments:               [ distanceToSurfaceLabel, qsTr("Ground res") ]
+                currentIndex:           cameraCalc.valueSetIsDistance.value ? 0 : 1
+                onActivated:            (index) => cameraCalc.valueSetIsDistance.value = index === 0 ? 1 : 0
             }
         }
 
-        RowLayout {
-            anchors.left:   parent.left
-            anchors.right:  parent.right
-            spacing:        _margin
-            QGCLabel { text: qsTr("Overlap"); Layout.fillWidth: true }
-            FactTextField {
-                Layout.preferredWidth:  _root._fieldWidth
-                fact:                   cameraCalc.frontalOverlap
-            }
-            FactTextField {
-                Layout.preferredWidth:  _root._fieldWidth
-                fact:                   cameraCalc.sideOverlap
-            }
+        PlanFactRow {
+            text:         distanceToSurfaceLabel
+            fact:         cameraCalc.distanceToSurface
+            altitudeMode: cameraCalc.distanceMode
+            visible:      !!cameraCalc.valueSetIsDistance.value
         }
 
-        QGCLabel {
-            wrapMode:               Text.WordWrap
-            text:                   qsTr("Select one:")
-            Layout.preferredWidth:  parent.width
-            Layout.columnSpan:      2
+        PlanFactRow {
+            text:    qsTr("Ground resolution")
+            fact:    cameraCalc.imageDensity
+            visible: !cameraCalc.valueSetIsDistance.value
         }
 
-        GridLayout {
-            anchors.left:   parent.left
-            anchors.right:  parent.right
-            columnSpacing:  _margin
-            rowSpacing:     _margin
-            columns:        2
+        PlanGroupRow {
+            text:  frontalDistanceLabel
+            value: cameraCalc.adjustedFootprintFrontal.valueString + " " + cameraCalc.adjustedFootprintFrontal.units
+        }
 
-            QGCRadioButton {
-                id:                     fixedDistanceRadio
-                leftPadding:            0
-                text:                   distanceToSurfaceLabel
-                checked:                !!cameraCalc.valueSetIsDistance.value
-                onClicked:              cameraCalc.valueSetIsDistance.value = 1
-            }
-
-            AltitudeFactTextField {
-                fact:                       cameraCalc.distanceToSurface
-                altitudeMode:               cameraCalc.distanceMode
-                enabled:                    fixedDistanceRadio.checked
-                Layout.fillWidth:           true
-            }
-
-            QGCRadioButton {
-                id:                     fixedImageDensityRadio
-                leftPadding:            0
-                text:                   qsTr("Grnd Res")
-                checked:                !cameraCalc.valueSetIsDistance.value
-                onClicked:              cameraCalc.valueSetIsDistance.value = 0
-            }
-
-            FactTextField {
-                fact:                   cameraCalc.imageDensity
-                enabled:                fixedImageDensityRadio.checked
-                Layout.fillWidth:       true
-            }
-
-            QGCLabel {
-                text:  frontalDistanceLabel
-                color: Qt.alpha(qgcPal.text, 0.6)
-            }
-            QGCLabel {
-                Layout.fillWidth:    true
-                horizontalAlignment: Text.AlignRight
-                text:                cameraCalc.adjustedFootprintFrontal.valueString + " " + cameraCalc.adjustedFootprintFrontal.units
-                color:               Qt.alpha(qgcPal.text, 0.6)
-            }
-
-            QGCLabel {
-                text:  sideDistanceLabel
-                color: Qt.alpha(qgcPal.text, 0.6)
-            }
-            QGCLabel {
-                Layout.fillWidth:    true
-                horizontalAlignment: Text.AlignRight
-                text:                cameraCalc.adjustedFootprintSide.valueString + " " + cameraCalc.adjustedFootprintSide.units
-                color:               Qt.alpha(qgcPal.text, 0.6)
-            }
+        PlanGroupRow {
+            text:  sideDistanceLabel
+            value: cameraCalc.adjustedFootprintSide.valueString + " " + cameraCalc.adjustedFootprintSide.units
         }
     }
 
-    GridLayout {
-        anchors.left:   parent.left
-        anchors.right:  parent.right
-        columnSpacing:  _margin
-        rowSpacing:     _margin
-        columns:        2
-        visible:        cameraCalc.isManualCamera
+    PlanGroupCard {
+        width:   parent.width
+        visible: cameraCalc.isManualCamera
 
-        QGCLabel { text: distanceToSurfaceLabel }
-        AltitudeFactTextField {
-            fact:                       cameraCalc.distanceToSurface
-            altitudeMode:               cameraCalc.distanceMode
-            Layout.fillWidth:           true
+        PlanFactRow {
+            text:         distanceToSurfaceLabel
+            fact:         cameraCalc.distanceToSurface
+            altitudeMode: cameraCalc.distanceMode
         }
 
-        QGCLabel { text: frontalDistanceLabel }
-        FactTextField {
-            Layout.fillWidth:   true
-            fact:               cameraCalc.adjustedFootprintFrontal
+        PlanFactRow {
+            text: frontalDistanceLabel
+            fact: cameraCalc.adjustedFootprintFrontal
         }
 
-        QGCLabel { text: sideDistanceLabel }
-        FactTextField {
-            Layout.fillWidth:   true
-            fact:               cameraCalc.adjustedFootprintSide
+        PlanFactRow {
+            text: sideDistanceLabel
+            fact: cameraCalc.adjustedFootprintSide
         }
     }
 }

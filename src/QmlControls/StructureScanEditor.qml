@@ -1,32 +1,23 @@
+
 import QtQuick
-import QtQuick.Controls
-import QtQuick.Dialogs
-import QtQuick.Layouts
 
 import QGroundControl
 import QGroundControl.ScreenTools
-import QGroundControl.Vehicle
 import QGroundControl.Controls
+import QGroundControl.FactSystem
 import QGroundControl.FactControls
 import QGroundControl.Palette
 import QGroundControl.FlightMap
 
-// Editor for Survery mission items
-Rectangle {
-    id:         _root
-    height:     visible ? (editorColumn.height + (_margin * 2)) : 0
-    width:      availableWidth
-    color:      qgcPal.windowShadeDark
-    radius:     _radius
+Item {
+    id:     _root
+    height: editorColumn.height
+    width:  availableWidth
 
-    // The following properties must be available up the hierarchy chain
-    //property real   availableWidth    ///< Width for control
-    //property var    missionItem       ///< Mission Item for editor
+    property real _cameraMinTriggerInterval: missionItem.cameraCalc.minTriggerInterval.rawValue
 
-    property real   _margin:                    ScreenTools.defaultFontPixelWidth / 2
-    property real   _fieldWidth:                ScreenTools.defaultFontPixelWidth * 10.5
-    property var    _vehicle:                   QGroundControl.multiVehicleManager.activeVehicle ? QGroundControl.multiVehicleManager.activeVehicle : QGroundControl.multiVehicleManager.offlineEditingVehicle
-    property real   _cameraMinTriggerInterval:  missionItem.cameraCalc.minTriggerInterval.rawValue
+    readonly property real _gap:   ScreenTools.defaultFontPixelHeight * 0.7
+    readonly property var  _units: QGroundControl.unitsConversion
 
     function polygonCaptureStarted() {
         missionItem.clearPolygon()
@@ -45,180 +36,172 @@ Rectangle {
     function polygonAdjustStarted() { }
     function polygonAdjustFinished() { }
 
+    function _vertical(meters) {
+        return _units.metersToAppSettingsVerticalDistanceUnits(meters).toFixed(1) + " " + _units.appSettingsVerticalDistanceUnitsString
+    }
+
     QGCPalette { id: qgcPal; colorGroupEnabled: true }
 
-    ColumnLayout {
-        id:                 editorColumn
-        anchors.margins:    _margin
-        anchors.top:        parent.top
-        anchors.left:       parent.left
-        anchors.right:      parent.right
+    Column {
+        id:            editorColumn
+        anchors.left:  parent.left
+        anchors.right: parent.right
+        spacing:       _root._gap
 
-        QGCLabel {
-                id:                 wizardLabel
-                Layout.fillWidth:   true
-                wrapMode:           Text.WordWrap
-                horizontalAlignment:    Text.AlignHCenter
-                text:               qsTr("Use the Polygon Tools to create the polygon which outlines the structure.")
-                visible:        !missionItem.structurePolygon.isValid || missionItem.wizardMode
-            }
+        PlanGroupCard {
+            width:   parent.width
+            visible: !missionItem.structurePolygon.isValid || missionItem.wizardMode
 
-        ColumnLayout {
-            Layout.fillWidth:   true
-            spacing:        _margin
-            visible:        !wizardLabel.visible
-
-            QGCTabBar {
-                id:             tabBar
-                Layout.fillWidth:   true
-
-                Component.onCompleted: currentIndex = 0
-
-                QGCTabButton { text: qsTr("Grid") }
-                QGCTabButton { text: qsTr("Camera") }
-            }
-
-            ColumnLayout {
-                Layout.fillWidth:   true
-                spacing:            _margin
-                visible:            tabBar.currentIndex == 0
+            Item {
+                width:  parent.width
+                height: helpLabel.implicitHeight + ScreenTools.defaultFontPixelHeight
 
                 QGCLabel {
-                    Layout.fillWidth:   true
-                    text:           qsTr("Note: Polygon respresents structure surface not vehicle flight path.")
-                    wrapMode:       Text.WordWrap
-                    font.pointSize: ScreenTools.smallFontPointSize
+                    id:                     helpLabel
+                    anchors.left:           parent.left
+                    anchors.right:          parent.right
+                    anchors.leftMargin:     ScreenTools.defaultFontPixelWidth * 1.5
+                    anchors.rightMargin:    ScreenTools.defaultFontPixelWidth * 1.5
+                    anchors.verticalCenter: parent.verticalCenter
+                    wrapMode:               Text.WordWrap
+                    color:                  Qt.alpha(qgcPal.text, 0.7)
+                    text:                   qsTr("Draw the structure outline with the Polygon Tools, at the top of the map.")
+                }
+            }
+        }
+
+        Column {
+            width:   parent.width
+            spacing: _root._gap
+            visible: missionItem.structurePolygon.isValid && !missionItem.wizardMode
+
+            OverlaySegmentedControl {
+                id:          tabBar
+                width:       parent.width
+                segments:    [ qsTr("Grid"), qsTr("Camera") ]
+                onActivated: (index) => currentIndex = index
+            }
+
+            Column {
+                width:   parent.width
+                spacing: _root._gap
+                visible: tabBar.currentIndex === 0
+
+                PlanGroupCard {
+                    width:   parent.width
+                    visible: missionItem.cameraShots > 0 && _cameraMinTriggerInterval !== 0 && _cameraMinTriggerInterval > missionItem.timeBetweenShots
+
+                    PlanGroupRow {
+                        text:        qsTr("Photo interval too short")
+                        description: qsTr("The camera needs at least %1 s between photos").arg(_cameraMinTriggerInterval.toFixed(1))
+                        textColor:   qgcPal.warningText
+                    }
                 }
 
-                QGCLabel {
-                    Layout.fillWidth:   true
-                    text:           qsTr("WARNING: Photo interval is below minimum interval (%1 secs) supported by camera.").arg(_cameraMinTriggerInterval.toFixed(1))
-                    wrapMode:       Text.WordWrap
-                    color:          qgcPal.warningText
-                    visible:        missionItem.cameraShots > 0 && _cameraMinTriggerInterval !== 0 && _cameraMinTriggerInterval > missionItem.timeBetweenShots
+                PlanGroupCard {
+                    width: parent.width
+
+                    PlanGroupRow {
+                        text:        qsTr("Camera")
+                        value:       missionItem.cameraCalc.isManualCamera ? qsTr("Manual")
+                                   : missionItem.cameraCalc.isCustomCamera ? qsTr("Custom")
+                                                                           : missionItem.cameraCalc.cameraBrand + " " + missionItem.cameraCalc.cameraModel
+                        showChevron: true
+                        interactive: true
+                        onClicked:   tabBar.currentIndex = 1
+                    }
                 }
 
                 CameraCalcGrid {
-                    Layout.fillWidth:   true
-                    cameraCalc:                     missionItem.cameraCalc
-                    vehicleFlightIsFrontal:         false
-                    distanceToSurfaceLabel:         qsTr("Scan Distance")
-                    frontalDistanceLabel:           qsTr("Layer Height")
-                    sideDistanceLabel:              qsTr("Trigger Distance")
+                    width:                  parent.width
+                    cameraCalc:             missionItem.cameraCalc
+                    vehicleFlightIsFrontal: false
+                    distanceToSurfaceLabel: qsTr("Scan distance")
+                    frontalDistanceLabel:   qsTr("Layer height")
+                    sideDistanceLabel:      qsTr("Trigger distance")
                 }
 
-                SectionHeader {
-                    id:             scanHeader
-                    Layout.fillWidth:   true
-                    text:           qsTr("Scan")
+                QGCLabel {
+                    width:          parent.width
+                    leftPadding:    ScreenTools.defaultFontPixelHeight / 2
+                    rightPadding:   ScreenTools.defaultFontPixelHeight / 2
+                    wrapMode:       Text.WordWrap
+                    font.pointSize: ScreenTools.smallFontPointSize
+                    color:          Qt.alpha(qgcPal.text, 0.5)
+                    text:           qsTr("The polygon outlines the structure's surface, not the flight path.")
                 }
 
-                ColumnLayout {
-                    Layout.fillWidth:   true
-                    spacing:        _margin
-                    visible:        scanHeader.checked
+                PlanSectionLabel { text: qsTr("SCAN") }
 
-                    GridLayout {
-                        Layout.fillWidth:   true
-                        columnSpacing:  _margin
-                        rowSpacing:     _margin
-                        columns:        2
+                PlanGroupCard {
+                    width: parent.width
 
-                        FactComboBox {
-                            fact:               missionItem.startFromTop
-                            indexModel:         true
-                            model:              [ qsTr("Start Scan From Bottom"), qsTr("Start Scan From Top") ]
-                            Layout.columnSpan:  2
-                            Layout.fillWidth:   true
-                        }
+                    PlanGroupRow {
+                        text: qsTr("Start from")
 
-                        QGCLabel {
-                            text:       qsTr("Structure Height")
-                        }
-                        FactTextField {
-                            fact:               missionItem.structureHeight
-                            Layout.fillWidth:   true
-                        }
-
-                        QGCLabel { text: qsTr("Scan Bottom Alt") }
-                        AltitudeFactTextField {
-                            fact:               missionItem.scanBottomAlt
-                            altitudeMode:       QGroundControl.AltitudeModeRelative
-                            Layout.fillWidth:   true
-                        }
-
-                        QGCLabel { text: qsTr("Entrance/Exit Alt") }
-                        AltitudeFactTextField {
-                            fact:               missionItem.entranceAlt
-                            altitudeMode:       QGroundControl.AltitudeModeRelative
-                            Layout.fillWidth:   true
-                        }
-
-                        QGCLabel {
-                            text:       qsTr("Gimbal Pitch")
-                            visible:    missionItem.cameraCalc.isManualCamera
-                        }
-                        FactTextField {
-                            fact:               missionItem.gimbalPitch
-                            Layout.fillWidth:   true
-                            visible:            missionItem.cameraCalc.isManualCamera
+                        OverlaySegmentedControl {
+                            anchors.verticalCenter: parent.verticalCenter
+                            width:                  ScreenTools.defaultFontPixelWidth * 20
+                            height:                 ScreenTools.defaultFontPixelHeight * 1.8
+                            segments:               [ qsTr("Bottom"), qsTr("Top") ]
+                            currentIndex:           missionItem.startFromTop.value ? 1 : 0
+                            onActivated:            (index) => missionItem.startFromTop.value = index
                         }
                     }
 
-                    Item {
-                        height: ScreenTools.defaultFontPixelHeight / 2
-                        width:  1
+                    PlanFactRow {
+                        text: qsTr("Structure height")
+                        fact: missionItem.structureHeight
                     }
 
-                    QGCButton {
-                        text:       qsTr("Rotate entry point")
-                        onClicked:  missionItem.rotateEntryPoint()
+                    PlanFactRow {
+                        text:         qsTr("Scan bottom altitude")
+                        fact:         missionItem.scanBottomAlt
+                        altitudeMode: QGroundControl.AltitudeModeRelative
                     }
-                } // Column - Scan
 
-                SectionHeader {
-                    id:             statsHeader
-                    Layout.fillWidth:   true
-                    text:           qsTr("Statistics")
+                    PlanFactRow {
+                        text:         qsTr("Entrance and exit altitude")
+                        fact:         missionItem.entranceAlt
+                        altitudeMode: QGroundControl.AltitudeModeRelative
+                    }
+
+                    PlanFactRow {
+                        text:    qsTr("Gimbal pitch")
+                        fact:    missionItem.gimbalPitch
+                        visible: missionItem.cameraCalc.isManualCamera
+                    }
                 }
 
-                Grid {
-                    columns:        2
-                    columnSpacing:  ScreenTools.defaultFontPixelWidth
-                    visible:        statsHeader.checked
+                PlanGroupCard {
+                    width: parent.width
 
-                    QGCLabel { text: qsTr("Layers") }
-                    QGCLabel { text: missionItem.layers.valueString }
-
-                    QGCLabel { text: qsTr("Layer Height") }
-                    QGCLabel { text: missionItem.cameraCalc.adjustedFootprintFrontal.valueString + " " + QGroundControl.unitsConversion.appSettingsHorizontalDistanceUnitsString }
-
-                    QGCLabel { text: qsTr("Top Layer Alt") }
-                    QGCLabel { text: QGroundControl.unitsConversion.metersToAppSettingsVerticalDistanceUnits(missionItem.topFlightAlt).toFixed(1) + " " + QGroundControl.unitsConversion.appSettingsHorizontalDistanceUnitsString }
-
-                    QGCLabel { text: qsTr("Bottom Layer Alt") }
-                    QGCLabel { text: QGroundControl.unitsConversion.metersToAppSettingsVerticalDistanceUnits(missionItem.bottomFlightAlt).toFixed(1) + " " + QGroundControl.unitsConversion.appSettingsHorizontalDistanceUnitsString }
-
-                    QGCLabel { text: qsTr("Photo Count") }
-                    QGCLabel { text: missionItem.cameraShots }
-
-                    QGCLabel { text: qsTr("Photo Interval") }
-                    QGCLabel { text: missionItem.timeBetweenShots.toFixed(1) + " " + qsTr("secs") }
-
-                    QGCLabel { text: qsTr("Trigger Distance") }
-                    QGCLabel { text: missionItem.cameraCalc.adjustedFootprintSide.valueString + " " + QGroundControl.unitsConversion.appSettingsHorizontalDistanceUnitsString }
+                    PlanGroupRow {
+                        text:        qsTr("Rotate entry point")
+                        showChevron: true
+                        interactive: true
+                        onClicked:   missionItem.rotateEntryPoint()
+                    }
                 }
-            } // Grid Column
 
-            ColumnLayout {
-                Layout.fillWidth:   true
-                spacing:            _margin
-                visible:            tabBar.currentIndex == 1
+                PlanSectionLabel { text: qsTr("STATISTICS") }
 
-                CameraCalcCamera {
-                    Layout.fillWidth:   true
-                    cameraCalc: missionItem.cameraCalc
+                PlanGroupCard {
+                    width: parent.width
+
+                    PlanGroupRow { text: qsTr("Layers");                value: missionItem.layers.valueString }
+                    PlanGroupRow { text: qsTr("Layer height");          value: missionItem.cameraCalc.adjustedFootprintFrontal.valueString + " " + missionItem.cameraCalc.adjustedFootprintFrontal.units }
+                    PlanGroupRow { text: qsTr("Top layer altitude");    value: _root._vertical(missionItem.topFlightAlt) }
+                    PlanGroupRow { text: qsTr("Bottom layer altitude"); value: _root._vertical(missionItem.bottomFlightAlt) }
+                    PlanGroupRow { text: qsTr("Photos");                value: String(missionItem.cameraShots) }
+                    PlanGroupRow { text: qsTr("Photo interval");        value: qsTr("%1 s").arg(missionItem.timeBetweenShots.toFixed(1)) }
                 }
+            }
+
+            CameraCalcCamera {
+                width:      parent.width
+                visible:    tabBar.currentIndex === 1
+                cameraCalc: missionItem.cameraCalc
             }
         }
     }
