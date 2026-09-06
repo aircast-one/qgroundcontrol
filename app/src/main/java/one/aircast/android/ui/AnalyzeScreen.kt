@@ -23,36 +23,27 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 
-private const val ANALYZE_VIEW_QML = "qrc:/qml/QGroundControl/AnalyzeView/AnalyzeView.qml"
-
 enum class AnalyzePage(
     val label: String,
     val description: String,
-    val qml: String,
 ) {
     LogDownload(
         "Log Download",
         "Download flight logs from the vehicle",
-        "",
     ),
     Vibration(
         "Vibration",
         "Accelerometer vibration levels and clipping",
-        "",
     ),
     Console(
         "MAVLink Console",
         "Shell over the vehicle link",
-        "",
     ),
-    MoreTools(
-        "More analysis tools",
-        "MAVLink inspector",
-        ANALYZE_VIEW_QML,
+    Inspector(
+        "MAVLink Inspector",
+        "Live message rates and field values",
     ),
     ;
-
-    val isNative get() = qml.isEmpty()
 }
 
 @Composable
@@ -99,16 +90,13 @@ fun AnalyzeScreen(
         return
     }
 
-    if (!page.isNative) {
-        return
-    }
-
     Column(modifier.fillMaxSize()) {
         AnalyzeHeader(page.label) { onSelect(null) }
         Surface(Modifier.weight(1f)) {
             when (page) {
                 AnalyzePage.LogDownload -> LogDownloadScreen()
                 AnalyzePage.Console -> ConsoleScreen()
+                AnalyzePage.Inspector -> InspectorScreen()
                 else -> VibrationScreen()
             }
         }

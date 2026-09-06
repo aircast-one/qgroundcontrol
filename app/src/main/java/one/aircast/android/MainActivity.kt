@@ -173,16 +173,9 @@ fun AircastShell(quickView: QtQuickView) {
         onDispose { listeners.forEach { quickView.disconnectSignalListener(it) } }
     }
 
-    val openAnalyzePage = analyzePage
-    val toolSource = when {
-        tab != Tab.Analyze -> tab.tool
-        openAnalyzePage == null || openAnalyzePage.isNative -> ""
-        else -> openAnalyzePage.qml
-    }
-
-    LaunchedEffect(toolSource, tab, qmlReady) {
+    LaunchedEffect(tab, qmlReady) {
         if (!qmlReady) return@LaunchedEffect
-        quickView.setProperty("toolSource", toolSource)
+        quickView.setProperty("toolSource", tab.tool)
         quickView.setProperty("page", tab.page)
     }
 
