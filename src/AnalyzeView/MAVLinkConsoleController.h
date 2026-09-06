@@ -27,6 +27,7 @@ class MAVLinkConsoleController : public QStringListModel
     // QML_ELEMENT
     Q_MOC_INCLUDE("Vehicle.h")
     Q_PROPERTY(QString text READ _getText CONSTANT)
+    Q_PROPERTY(QStringList lines READ lines NOTIFY linesChanged)
 
     class CommandHistory
     {
@@ -45,6 +46,10 @@ public:
     explicit MAVLinkConsoleController(QObject *parent = nullptr);
     ~MAVLinkConsoleController();
 
+    static MAVLinkConsoleController *instance();
+
+    QStringList lines() const { return stringList(); }
+
     Q_INVOKABLE void sendCommand(const QString &command);
     Q_INVOKABLE QString historyUp(const QString &current) { return _history.up(current); }
     Q_INVOKABLE QString historyDown(const QString &current) { return _history.down(current); }
@@ -53,6 +58,9 @@ public:
     ///     @param command_pre prefix to data from clipboard
     ///     @return last line of the clipboard data
     Q_INVOKABLE QString handleClipboard(const QString &command_pre);
+
+signals:
+    void linesChanged();
 
 private slots:
     void _setActiveVehicle(Vehicle *vehicle);

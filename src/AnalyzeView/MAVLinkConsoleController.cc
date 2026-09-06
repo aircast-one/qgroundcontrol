@@ -14,10 +14,18 @@
 #include "QGCPalette.h"
 #include "Vehicle.h"
 
+#include <QtCore/qapplicationstatic.h>
 #include <QtGui/QGuiApplication>
 #include <QtGui/QClipboard>
 
 QGC_LOGGING_CATEGORY(MAVLinkConsoleControllerLog, "qgc.analyzeview.mavlinkconsolecontroller")
+
+Q_APPLICATION_STATIC(MAVLinkConsoleController, _mavlinkConsoleControllerInstance);
+
+MAVLinkConsoleController *MAVLinkConsoleController::instance()
+{
+    return _mavlinkConsoleControllerInstance();
+}
 
 MAVLinkConsoleController::MAVLinkConsoleController(QObject *parent)
     : QStringListModel(parent)
@@ -26,6 +34,11 @@ MAVLinkConsoleController::MAVLinkConsoleController(QObject *parent)
     qCDebug(MAVLinkConsoleControllerLog) << this;
 
     (void) connect(MultiVehicleManager::instance(), &MultiVehicleManager::activeVehicleChanged, this, &MAVLinkConsoleController::_setActiveVehicle);
+
+    (void) connect(this, &QAbstractItemModel::dataChanged, this, &MAVLinkConsoleController::linesChanged);
+    (void) connect(this, &QAbstractItemModel::rowsInserted, this, &MAVLinkConsoleController::linesChanged);
+    (void) connect(this, &QAbstractItemModel::rowsRemoved, this, &MAVLinkConsoleController::linesChanged);
+    (void) connect(this, &QAbstractItemModel::modelReset, this, &MAVLinkConsoleController::linesChanged);
 
     _setActiveVehicle(MultiVehicleManager::instance()->activeVehicle());
 }

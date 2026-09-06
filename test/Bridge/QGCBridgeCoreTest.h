@@ -31,5 +31,6 @@ private slots:
     void _invokeConvertsArguments();
     void _rejectsUnknownPaths();
     void _resolvesLogDownloadRoot();
+    void _resolvesMavlinkConsoleRoot();
     void _watchEmitsOnChange();
 };

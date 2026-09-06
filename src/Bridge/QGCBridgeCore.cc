@@ -3,6 +3,7 @@
 #include "Fact.h"
 #include "LinkManager.h"
 #include "LogDownloadController.h"
+#include "MAVLinkConsoleController.h"
 #include "MultiVehicleManager.h"
 #include "QmlObjectListModel.h"
 #include "SettingsManager.h"
@@ -48,6 +49,9 @@ QObject *rootObject(const QString &name)
     }
     if (name == QLatin1String("logDownload")) {
         return LogDownloadController::instance();
+    }
+    if (name == QLatin1String("mavlinkConsole")) {
+        return MAVLinkConsoleController::instance();
     }
     return nullptr;
 }

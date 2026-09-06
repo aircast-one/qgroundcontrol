@@ -92,10 +92,12 @@ const QVariantList &QGCCorePlugin::analyzePages()
             QUrl::fromUserInput(QStringLiteral("qrc:/qml/QGroundControl/AnalyzeView/GeoTagPage.qml")),
             QUrl::fromUserInput(QStringLiteral("qrc:/qmlimages/GeoTagIcon.svg")))),
 #endif
+#ifndef Q_OS_ANDROID
         QVariant::fromValue(new QmlComponentInfo(
             tr("MAVLink Console"),
             QUrl::fromUserInput(QStringLiteral("qrc:/qml/QGroundControl/AnalyzeView/MAVLinkConsolePage.qml")),
             QUrl::fromUserInput(QStringLiteral("qrc:/qmlimages/MAVLinkConsoleIcon.svg")))),
+#endif
 #ifndef QGC_DISABLE_MAVLINK_INSPECTOR
         QVariant::fromValue(new QmlComponentInfo(
             tr("MAVLink Inspector"),

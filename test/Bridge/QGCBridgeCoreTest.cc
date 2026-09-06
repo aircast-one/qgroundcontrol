@@ -187,6 +187,24 @@ void QGCBridgeCoreTest::_invokeConvertsArguments()
     QCOMPARE(numericArg.value(QStringLiteral("result")).toBool(), false);
 }
 
+void QGCBridgeCoreTest::_resolvesMavlinkConsoleRoot()
+{
+    const QJsonObject lines = readObject(QStringLiteral("mavlinkConsole.lines"));
+    QCOMPARE(lines.value(QStringLiteral("kind")).toString(), QStringLiteral("value"));
+    QVERIFY(lines.value(QStringLiteral("value")).isArray());
+
+    const QJsonObject sent = callMethod(
+        QStringLiteral("mavlinkConsole.sendCommand"),
+        QJsonArray { QStringLiteral("help") });
+    QVERIFY(sent.value(QStringLiteral("ok")).toBool());
+
+    const QJsonObject recalled = callMethod(
+        QStringLiteral("mavlinkConsole.historyUp"),
+        QJsonArray { QString() });
+    QVERIFY(recalled.value(QStringLiteral("ok")).toBool());
+    QCOMPARE(recalled.value(QStringLiteral("result")).toString(), QStringLiteral("help"));
+}
+
 void QGCBridgeCoreTest::_resolvesLogDownloadRoot()
 {
     const QJsonObject root = readObject(QStringLiteral("logDownload"));
