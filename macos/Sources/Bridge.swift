@@ -51,6 +51,19 @@ enum Bridge {
         format(json(path))
     }
 
+    @discardableResult
+    static func set(_ path: String, _ value: Any) -> Bool {
+        let payload = (try? JSONSerialization.data(withJSONObject: ["value": value]))
+            .flatMap { String(data: $0, encoding: .utf8) } ?? "{}"
+        guard let raw = qgc_bridge_set(path, payload) else { return false }
+        defer { qgc_bridge_free(raw) }
+        return decode(raw)["ok"] as? Bool ?? false
+    }
+
+    static func group(_ path: String) -> [String: Any] {
+        json(path)
+    }
+
     static func watch(_ paths: [String]) {
         qgc_bridge_watch(paths.joined(separator: ","))
     }

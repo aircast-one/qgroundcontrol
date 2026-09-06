@@ -9,6 +9,10 @@ set_directory_properties(PROPERTIES COMPILE_DEFINITIONS "")
 add_library(QGCNativeUI STATIC
     Sources/AppShell.swift
     Sources/Bridge.swift
+    Sources/Fact.swift
+    Sources/SettingsPages.swift
+    Sources/SettingsStore.swift
+    Sources/SettingsWindow.swift
     Sources/NativeDebug.swift
     Sources/NativeWindow.swift
     Sources/QtHostWindow.swift

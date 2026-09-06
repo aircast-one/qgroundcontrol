@@ -36,6 +36,9 @@ enum AppShell {
         let telemetry = windowMenu.addItem(withTitle: "Native Telemetry", action: #selector(NativeWindow.showFromMenu), keyEquivalent: "t")
         telemetry.target = NativeWindow.shared
 
+        let settings = appMenu.insertItem(withTitle: "Settings…", action: #selector(SettingsWindow.showFromMenu), keyEquivalent: ",", at: 1)
+        settings.target = SettingsWindow.shared
+
         // The menu bar shows a submenu's own title, so an untitled carrier item still
         // renders correctly but is invisible to lookup by name. Title both.
         let bar = NSMenu()
