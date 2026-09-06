@@ -5,12 +5,11 @@ enum Bridge {
     struct Reading {
         let text: String
         let units: String
-        let missing: Bool
 
-        static let absent = Reading(text: "—", units: "", missing: true)
+        static let absent = Reading(text: "—", units: "")
     }
 
-    static func json(_ path: String) -> [String: Any] {
+    private static func json(_ path: String) -> [String: Any] {
         guard let raw = qgc_bridge_get(path) else { return [:] }
         defer { qgc_bridge_free(raw) }
         return decode(raw)
@@ -18,15 +17,6 @@ enum Bridge {
 
     static func read(_ path: String) -> Reading {
         format(json(path))
-    }
-
-    @discardableResult
-    static func invoke(_ path: String, _ args: [Any] = []) -> [String: Any] {
-        let argsJson = (try? JSONSerialization.data(withJSONObject: args))
-            .flatMap { String(data: $0, encoding: .utf8) } ?? "[]"
-        guard let raw = qgc_bridge_invoke(path, argsJson) else { return [:] }
-        defer { qgc_bridge_free(raw) }
-        return decode(raw)
     }
 
     static func watch(_ paths: [String]) {
@@ -52,11 +42,11 @@ enum Bridge {
             let text = json["enumOrValueString"] as? String
                 ?? json["valueString"] as? String
                 ?? describe(json["value"])
-            return Reading(text: text, units: units, missing: false)
+            return Reading(text: text, units: units)
         case "value":
-            return Reading(text: describe(json["value"]), units: "", missing: false)
+            return Reading(text: describe(json["value"]), units: "")
         case "object":
-            return Reading(text: "<object>", units: "", missing: false)
+            return Reading(text: "<object>", units: "")
         default:
             return .absent
         }

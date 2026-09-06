@@ -102,7 +102,6 @@ int qgc_start(int argc, char *argv[])
     QString systemIdStr = QString();
     bool hasSystemId = false;
     bool bypassRunGuard = false;
-    bool nativeWindow = false;
 
     bool stressUnitTests = false;       // Stress test unit tests
     bool quietWindowsAsserts = false;   // Don't let asserts pop dialog boxes
@@ -116,9 +115,6 @@ int qgc_start(int argc, char *argv[])
         { "--allow-multiple",       &bypassRunGuard,        nullptr },
 #endif
         { "--system-id",            &hasSystemId,           &systemIdStr },
-#ifdef Q_OS_MACOS
-        { "--native-window",        &nativeWindow,          nullptr },
-#endif
         { "--simple-boot-test",     &simpleBootTest,        nullptr },
         // Add additional command line option flags here
     };
@@ -256,8 +252,6 @@ int qgc_start(int argc, char *argv[])
             qDebug() << "Not setting MAVLink System ID. It must be between 0 and 255. Invalid system ID value:" << systemIdStr;
         }
     }
-
-    Q_UNUSED(nativeWindow);
 
     g_runtime.runUnitTests = runUnitTests;
     g_runtime.stressUnitTests = stressUnitTests;

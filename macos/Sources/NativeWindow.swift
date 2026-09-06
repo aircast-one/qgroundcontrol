@@ -39,8 +39,3 @@ final class NativeWindow: NSObject, NSWindowDelegate {
         window = nil
     }
 }
-
-@_cdecl("qgc_native_window_show")
-public func qgcNativeWindowShow() {
-    NativeWindow.shared.show()
-}
