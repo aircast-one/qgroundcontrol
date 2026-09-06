@@ -49,9 +49,13 @@ object Qgc {
         QGCBridge.set(path, JSONObject().put("value", value).toString())
     }
 
-    fun invoke(path: String, vararg args: Any?): Boolean {
+    fun invoke(path: String, vararg args: Any?): Boolean = call(path, *args)?.optBoolean("ok") ?: false
+
+    fun invokeResult(path: String, vararg args: Any?): Any? = call(path, *args)?.opt("result")
+
+    private fun call(path: String, vararg args: Any?): JSONObject? {
         val array = JSONArray().apply { args.forEach { put(it) } }
-        return runCatching { JSONObject(QGCBridge.invoke(path, array.toString())).optBoolean("ok") }.getOrDefault(false)
+        return runCatching { JSONObject(QGCBridge.invoke(path, array.toString())) }.getOrNull()
     }
 
     fun facts(groupPath: String, json: JSONObject?): List<Fact> {

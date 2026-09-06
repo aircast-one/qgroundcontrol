@@ -10,6 +10,7 @@ import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
@@ -17,6 +18,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Build
 import androidx.compose.material.icons.filled.Home
 import androidx.compose.material.icons.filled.Info
+import androidx.compose.material.icons.filled.List
 import androidx.compose.material.icons.filled.Place
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -44,7 +46,9 @@ import androidx.compose.ui.viewinterop.AndroidView
 import androidx.core.view.WindowCompat
 import one.aircast.android.bridge.Qgc
 import one.aircast.android.ui.FlightActions
+import one.aircast.android.ui.ParametersScreen
 import one.aircast.android.ui.SettingsScreen
+import one.aircast.android.ui.StatusStrip
 import one.aircast.android.ui.VehicleTitle
 import org.mavlink.qgroundcontrol.QGCBridge
 import org.mavlink.qgroundcontrol.QGCUsbSerialManager
@@ -63,6 +67,7 @@ enum class Tab(val label: String, val icon: ImageVector, val page: String, val t
     Fly("Fly", Icons.Default.Home, "fly", ""),
     Plan("Plan", Icons.Default.Place, "plan", ""),
     Setup("Setup", Icons.Default.Build, "fly", SETUP_QML),
+    Params("Params", Icons.Default.List, "fly", ""),
     Analyze("Analyze", Icons.Default.Info, "fly", ANALYZE_QML),
     Settings("Settings", Icons.Default.Settings, "fly", "");
 
@@ -70,7 +75,8 @@ enum class Tab(val label: String, val icon: ImageVector, val page: String, val t
         fun from(destination: String) = when (destination.lowercase()) {
             "fly" -> Fly
             "plan" -> Plan
-            "setup", "parameters" -> Setup
+            "setup" -> Setup
+            "parameters" -> Params
             "analyze" -> Analyze
             else -> Settings
         }
@@ -174,6 +180,7 @@ fun AircastShell(quickView: QtQuickView) {
     MaterialTheme(colorScheme = darkColorScheme()) {
         Scaffold(
             topBar = {
+              Column {
                 TopAppBar(
                     title = { VehicleTitle() },
                     actions = {
@@ -184,6 +191,8 @@ fun AircastShell(quickView: QtQuickView) {
                         }
                     },
                 )
+                StatusStrip()
+              }
             },
             bottomBar = {
                 NavigationBar {
@@ -201,8 +210,10 @@ fun AircastShell(quickView: QtQuickView) {
             Box(Modifier.padding(padding).fillMaxSize()) {
                 AndroidView(factory = { quickView }, modifier = Modifier.fillMaxSize())
 
-                if (tab == Tab.Settings) {
-                    Surface(Modifier.fillMaxSize()) { SettingsScreen() }
+                when (tab) {
+                    Tab.Settings -> Surface(Modifier.fillMaxSize()) { SettingsScreen() }
+                    Tab.Params -> Surface(Modifier.fillMaxSize()) { ParametersScreen() }
+                    else -> Unit
                 }
 
                 AnimatedVisibility(
