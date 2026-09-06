@@ -77,6 +77,25 @@ QObject *listElement(QObject *object, const QString &segment)
     return model->get(index);
 }
 
+QObject *variantListElement(const QVariant &value, const QString &segment)
+{
+    if (value.typeId() != QMetaType::QVariantList) {
+        return nullptr;
+    }
+
+    bool isIndex = false;
+    const int index = segment.toInt(&isIndex);
+    if (!isIndex) {
+        return nullptr;
+    }
+
+    const QVariantList list = value.toList();
+    if ((index < 0) || (index >= list.size())) {
+        return nullptr;
+    }
+    return list.at(index).value<QObject *>();
+}
+
 QObject *callSegment(QObject *object, const QString &segment)
 {
     if (!segment.endsWith(QLatin1Char(')'))) {
@@ -147,6 +166,13 @@ Resolved resolve(const QString &path)
         if (child) {
             object = child;
             continue;
+        }
+        if ((i + 1) < parts.size()) {
+            if (QObject *const element = variantListElement(value, parts.at(i + 1))) {
+                object = element;
+                ++i;
+                continue;
+            }
         }
         return Resolved { object, parts.mid(i).join(QLatin1Char('.')) };
     }

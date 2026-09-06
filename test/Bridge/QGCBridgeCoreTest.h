@@ -39,5 +39,6 @@ private slots:
     void _accessorCallNeedsAQObjectReturn();
     void _vehicleRootIsNullWithoutAnActiveVehicle();
     void _setRejectsAPayloadWithoutAValue();
+    void _indexesAVariantListOfObjects();
     void _watchEmitsOnChange();
 };

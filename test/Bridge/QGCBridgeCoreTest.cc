@@ -231,6 +231,30 @@ void QGCBridgeCoreTest::_vehicleRootIsNullWithoutAnActiveVehicle()
              QStringLiteral("null"));
 }
 
+void QGCBridgeCoreTest::_indexesAVariantListOfObjects()
+{
+    const QString pluginPath = QStringLiteral("vehicles.offlineEditingVehicle.autopilotPlugin");
+    if (readObject(pluginPath).value(QStringLiteral("kind")).toString() == QStringLiteral("null")) {
+        QSKIP("no autopilot plugin on the offline editing vehicle");
+    }
+
+    const QString listPath = pluginPath + QStringLiteral(".vehicleComponents");
+    const QJsonArray components = readObject(listPath).value(QStringLiteral("value")).toArray();
+    if (components.isEmpty()) {
+        QSKIP("the offline editing vehicle exposes no vehicle components");
+    }
+
+    const QJsonObject first = readObject(listPath + QStringLiteral(".0"));
+    QCOMPARE(first.value(QStringLiteral("kind")).toString(), QStringLiteral("object"));
+
+    const QJsonObject name = readObject(listPath + QStringLiteral(".0.name"));
+    QCOMPARE(name.value(QStringLiteral("kind")).toString(), QStringLiteral("value"));
+    QVERIFY(!name.value(QStringLiteral("value")).toString().isEmpty());
+
+    const QJsonObject past = readObject(listPath + QStringLiteral(".9999.name"));
+    QVERIFY(past.value(QStringLiteral("value")).isNull());
+}
+
 void QGCBridgeCoreTest::_setRejectsAPayloadWithoutAValue()
 {
     Fact *const fact = SettingsManager::instance()->unitsSettings()->speedUnits();
