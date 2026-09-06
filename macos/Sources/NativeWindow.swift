@@ -7,6 +7,10 @@ final class NativeWindow: NSObject, NSWindowDelegate {
     private let telemetry = Telemetry()
     private var window: NSWindow?
 
+    @objc func showFromMenu() {
+        show()
+    }
+
     func show() {
         if let window {
             window.makeKeyAndOrderFront(nil)

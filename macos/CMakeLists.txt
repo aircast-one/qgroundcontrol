@@ -5,6 +5,7 @@ endif()
 enable_language(Swift)
 
 add_library(QGCNativeUI STATIC
+    Sources/AppShell.swift
     Sources/Bridge.swift
     Sources/NativeWindow.swift
     Sources/Telemetry.swift

@@ -2,3 +2,8 @@ module QGCBridgeC {
     header "QGCBridgeC.h"
     export *
 }
+
+module QGCEntry {
+    header "QGCEntry.h"
+    export *
+}

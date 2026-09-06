@@ -9,6 +9,7 @@ if(APPLE AND NOT IOS)
         PRIVATE
             QGCBridgeC.cc
             QGCBridgeC.h
+            QGCEntry.h
     )
 endif()
 

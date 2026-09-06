@@ -13,9 +13,12 @@
 
 #ifdef Q_OS_MACOS
     #include <QtCore/QProcessEnvironment>
-    #include <QtCore/QTimer>
     #include "QGCNativeUI.h"
 #endif
+
+#include <memory>
+
+#include "QGCEntry.h"
 
 #include "QGCApplication.h"
 #include "QGCLogging.h"
@@ -73,7 +76,26 @@ int WindowsCrtReportHook(int reportType, char* message, int* returnValue)
  * @return exit code, 0 for normal exit and !=0 for error cases
  */
 
-int main(int argc, char *argv[])
+namespace
+{
+
+struct Runtime
+{
+    std::unique_ptr<QGCApplication> app;
+#if !defined(Q_OS_ANDROID) && !defined(Q_OS_IOS)
+    std::unique_ptr<RunGuard> guard;
+#endif
+    bool runUnitTests = false;
+    bool stressUnitTests = false;
+    bool simpleBootTest = false;
+    QString unitTestOptions;
+};
+
+Runtime g_runtime;
+
+} // namespace
+
+int qgc_start(int argc, char *argv[])
 {
     bool runUnitTests = false;
     bool simpleBootTest = false;
@@ -110,8 +132,8 @@ int main(int argc, char *argv[])
     // not be able to run at the same time
     const QString runguardString = QStringLiteral("%1 RunGuardKey").arg(QGC_APP_NAME);
 
-    RunGuard guard(runguardString);
-    if (!bypassRunGuard && !guard.tryToRun()) {
+    g_runtime.guard = std::make_unique<RunGuard>(runguardString);
+    if (!bypassRunGuard && !g_runtime.guard->tryToRun()) {
         QApplication errorApp(argc, argv);
         QMessageBox::critical(nullptr, QObject::tr("Error"),
             QObject::tr("A second instance of %1 is already running. Please close the other instance and try again.").arg(QGC_APP_NAME)
@@ -193,7 +215,8 @@ int main(int argc, char *argv[])
 #else
     const bool embeddedHost = false;
 #endif
-    QGCApplication app(argc, argv, runUnitTests, simpleBootTest, embeddedHost);
+    g_runtime.app = std::make_unique<QGCApplication>(argc, argv, runUnitTests, simpleBootTest, embeddedHost);
+    QGCApplication &app = *g_runtime.app;
 
     // Linux/Windows deliver a custom-scheme launch (aircast-qgc://...) as a
     // command-line argument. Stash it before init() so it applies at startup;
@@ -234,19 +257,23 @@ int main(int argc, char *argv[])
         }
     }
 
-#ifdef Q_OS_MACOS
-    if (nativeWindow) {
-        QTimer::singleShot(0, &app, []() { qgc_native_window_show(); });
-    }
-#else
     Q_UNUSED(nativeWindow);
-#endif
 
+    g_runtime.runUnitTests = runUnitTests;
+    g_runtime.stressUnitTests = stressUnitTests;
+    g_runtime.simpleBootTest = simpleBootTest;
+    g_runtime.unitTestOptions = unitTestOptions;
+
+    return 0;
+}
+
+int qgc_run(void)
+{
     int exitCode = 0;
 
 #ifdef QGC_UNITTEST_BUILD
-    if (runUnitTests) {
-        exitCode = runTests(stressUnitTests, unitTestOptions);
+    if (g_runtime.runUnitTests) {
+        exitCode = runTests(g_runtime.stressUnitTests, g_runtime.unitTestOptions);
     } else
 #endif
     {
@@ -254,14 +281,35 @@ int main(int argc, char *argv[])
             AndroidInterface::checkStoragePermissions();
         #endif
 
-        if (!simpleBootTest) {
-            exitCode = app.exec();
+        if (!g_runtime.simpleBootTest) {
+            exitCode = g_runtime.app->exec();
         }
     }
 
-    app.shutdown();
-
-    qDebug() << "Exiting main";
-
     return exitCode;
 }
+
+void qgc_shutdown(void)
+{
+    g_runtime.app->shutdown();
+    qDebug() << "Exiting main";
+}
+
+#ifdef Q_OS_MACOS
+int main(int argc, char *argv[])
+{
+    return qgc_macos_main(argc, argv);
+}
+#else
+int main(int argc, char *argv[])
+{
+    const int startCode = qgc_start(argc, argv);
+    if (startCode != 0) {
+        return startCode;
+    }
+
+    const int exitCode = qgc_run();
+    qgc_shutdown();
+    return exitCode;
+}
+#endif

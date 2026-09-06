@@ -40,6 +40,20 @@ What landed:
 
 Run it: `QGC_DEBUG_API_PORT=8778 build-test/Debug/AircastQGC.app/Contents/MacOS/AircastQGC --allow-multiple --native-window`
 
+Since then, the ownership inversion landed too: `src/main.cc` splits into `qgc_start` / `qgc_run` /
+`qgc_shutdown` (declared in `src/Bridge/QGCEntry.h`), and on macOS `main()` is a three-line
+trampoline into Swift's `AppShell.run`, which sequences all three and owns the menu bar. Verified:
+the running app's menu bar is `Apple · Aircast QGC · Window`, with the Window menu carrying the
+native telemetry item — Qt builds no such menu. The unflagged path is unchanged and still launches
+the normal app.
+
+Qt keeps its `NSApplicationDelegate` deliberately: `QGCApplication::event` depends on it for the
+`QFileOpenEvent` deep links. That delegate is the last thing to move, at Phase 6.
+
+CMake cannot mix Swift and C++ in one target, so making `main.swift` the literal entry point needs
+QGC built as a library rather than an executable — the Phase 1 restructure. The trampoline delivers
+the same ownership without it, so that restructure is now only a packaging decision.
+
 Open at Phase 1: the Swift moves to an `aircast-macos` repo once qgroundcontrol exposes QGC as a
 library target, mirroring how `aircast-android` consumes `AircastQGC.aar`. The C bridge header stays
 here permanently — it is the macOS `QGCBridge.java`.
