@@ -139,15 +139,11 @@ SetupPage {
 
             APMSensorsComponentController {
                 id:                         controller
-                statusLog:                  statusTextArea
-                progressBar:                progressBar
-                nextButton:                 nextButton
-                cancelButton:               cancelButton
-                orientationCalAreaHelpText: orientationCalAreaHelpText
+                onStatusTextAppended: (text) => statusTextArea.append(text)
 
                 property var rgCompassCalFitness: [ controller.compass1CalFitness, controller.compass2CalFitness, controller.compass3CalFitness ]
 
-                onResetStatusTextArea: statusLog.text = ""
+                onResetStatusTextArea: statusTextArea.text = ""
 
                 onWaitingForCancelChanged: {
                     if (controller.waitingForCancel) {
@@ -769,18 +765,20 @@ SetupPage {
             }
 
             SetupSheet {
-                open:   cancelButton.enabled
+                open:   controller.cancelEnabled
                 title:  _calName !== "" ? qsTr("Calibrating %1").arg(_calName) : qsTr("Calibrating")
 
                 SetupProgressBar {
                     id:                 progressBar
                     Layout.fillWidth:   true
+                    value:              controller.calProgress
                 }
 
                 QGCLabel {
                     id:                 orientationCalAreaHelpText
                     Layout.fillWidth:   true
                     wrapMode:           Text.WordWrap
+                    text:               controller.orientationHelpText
                     visible:            text !== ""
                 }
 
@@ -853,13 +851,13 @@ SetupPage {
                         id:         nextButton
                         text:       qsTr("Next")
                         primary:    true
-                        enabled:    false
+                        enabled:    controller.nextEnabled
                         onClicked:  controller.nextClicked()
                     },
                     QGCButton {
                         id:         cancelButton
                         text:       qsTr("Cancel")
-                        enabled:    false
+                        enabled:    controller.cancelEnabled
                         onClicked:  controller.cancelCalibration()
                     }
                 ]

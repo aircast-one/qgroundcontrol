@@ -14,7 +14,6 @@
 
 #include <QtCore/QLoggingCategory>
 #include <QtCore/QObject>
-#include <QtQuick/QQuickItem>
 
 Q_DECLARE_LOGGING_CATEGORY(APMSensorsComponentControllerLog)
 Q_DECLARE_LOGGING_CATEGORY(APMSensorsComponentControllerVerboseLog)
@@ -26,12 +25,11 @@ class LinkInterface;
 class APMSensorsComponentController : public FactPanelController
 {
     Q_OBJECT
-    Q_PROPERTY(QQuickItem* statusLog                        MEMBER _statusLog)
-    Q_PROPERTY(QQuickItem* progressBar                      MEMBER _progressBar)
+    Q_PROPERTY(qreal   calProgress          READ calProgress            NOTIFY calProgressChanged)
+    Q_PROPERTY(bool    nextEnabled          READ nextEnabled            NOTIFY nextEnabledChanged)
+    Q_PROPERTY(bool    cancelEnabled        READ cancelEnabled          NOTIFY cancelEnabledChanged)
+    Q_PROPERTY(QString orientationHelpText  READ orientationHelpText    NOTIFY orientationHelpTextChanged)
 
-    Q_PROPERTY(QQuickItem* nextButton                       MEMBER _nextButton)
-    Q_PROPERTY(QQuickItem* cancelButton                     MEMBER _cancelButton)
-    Q_PROPERTY(QQuickItem* orientationCalAreaHelpText       MEMBER _orientationCalAreaHelpText)
 
     Q_PROPERTY(bool compassSetupNeeded                      READ compassSetupNeeded                         NOTIFY setupNeededChanged)
     Q_PROPERTY(bool accelSetupNeeded                        READ accelSetupNeeded                           NOTIFY setupNeededChanged)
@@ -80,6 +78,11 @@ public:
     explicit APMSensorsComponentController(QObject *parent = nullptr);
     ~APMSensorsComponentController();
 
+    qreal calProgress() const { return _calProgress; }
+    bool nextEnabled() const { return _nextEnabled; }
+    bool cancelEnabled() const { return _cancelEnabled; }
+    QString orientationHelpText() const { return _orientationHelpText; }
+
     Q_INVOKABLE void calibrateCompass();
     Q_INVOKABLE void calibrateAccel(bool doSimpleAccelCal);
     Q_INVOKABLE void calibrateCompassNorth(float lat, float lon, int mask);
@@ -103,6 +106,11 @@ public:
     double compass3CalFitness() const { return _rgCompassCalFitness[2]; }
 
 signals:
+    void calProgressChanged();
+    void nextEnabledChanged();
+    void cancelEnabledChanged();
+    void orientationHelpTextChanged();
+    void statusTextAppended(const QString &text);
     void showGyroCalAreaChanged();
     void showOrientationCalAreaChanged();
     void orientationCalSidesDoneChanged();
@@ -125,6 +133,11 @@ private slots:
     void _handleTextMessage(int sysid, int componentid, int severity, const QString &text, const QString &description);
     void _mavlinkMessageReceived(LinkInterface *link, const mavlink_message_t &message);
     void _mavCommandResult(int vehicleId, int component, int command, int result, int failureCode);
+
+    void _setCalProgress(qreal progress);
+    void _setNextEnabled(bool enabled);
+    void _setCancelEnabled(bool enabled);
+    void _setOrientationHelpText(const QString &text);
 
 private:
     void _startLogCalibration();
@@ -153,11 +166,10 @@ private:
 
     APMSensorsComponent *_sensorsComponent = nullptr;
 
-    QQuickItem *_statusLog = nullptr;
-    QQuickItem *_progressBar = nullptr;
-    QQuickItem *_nextButton = nullptr;
-    QQuickItem *_cancelButton = nullptr;
-    QQuickItem *_orientationCalAreaHelpText = nullptr;
+    qreal _calProgress = 0.0;
+    bool _nextEnabled = false;
+    bool _cancelEnabled = false;
+    QString _orientationHelpText;
 
     bool _showOrientationCalArea = false;
 
