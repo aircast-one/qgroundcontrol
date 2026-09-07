@@ -13,6 +13,8 @@ add_library(QGCNativeUI STATIC
     Sources/ParameterModel.swift
     Sources/Parameters.swift
     Sources/VehicleSetupWindow.swift
+    Sources/SensorHealth.swift
+    Sources/Sensors.swift
     Sources/AppShell.swift
     Sources/Bridge.swift
     Sources/Fact.swift

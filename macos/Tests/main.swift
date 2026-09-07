@@ -131,6 +131,31 @@ expect(Parameter(name: "FORMAT", componentId: 1, json: [:]).group, "FORMAT", "an
 expect(Parameter(name: "ATC_ANG_PIT_P", componentId: 1, json: [:]).path,
        "vehicle.parameterManager.getParameter(1,ATC_ANG_PIT_P)", "path calls getParameter")
 
+// A disabled sensor also reports unhealthy. Treating that as a fault would put
+// Geofence and Logging beside a failed GPS and cry wolf before every flight.
+expect(SensorHealth(name: "Geofence", enabled: false, healthy: false).state == .disabled,
+       "a disabled sensor is not a fault")
+expect(SensorHealth(name: "GPS", enabled: true, healthy: false).state == .unhealthy,
+       "an enabled sensor that is unhealthy is a fault")
+expect(SensorHealth(name: "Gyro", enabled: true, healthy: true).state == .healthy,
+       "an enabled healthy sensor is healthy")
+
+let parsed = SensorHealth.from(json: [
+    "sensorNames": ["GPS", "Gyro", "Logging"],
+    "sensorEnabled": [true, true, false],
+    "sensorHealthy": [false, true, false]])
+expect(String(parsed.count), "3", "all three sensors parse")
+
+// Faults first: the operator is looking for what is wrong.
+let ordered = SensorHealth.ordered(parsed)
+expect(ordered.map(\.name).joined(separator: ","), "GPS,Gyro,Logging", "faults sort ahead of healthy, disabled last")
+
+// Mismatched array lengths mean a malformed payload; inventing sensors would be worse.
+expect(SensorHealth.from(json: ["sensorNames": ["GPS", "Gyro"],
+                                "sensorEnabled": [true],
+                                "sensorHealthy": [true]]).isEmpty,
+       "a ragged payload yields nothing rather than guessing")
+
 if failures == 0 {
     print("all Swift checks passed")
     exit(0)

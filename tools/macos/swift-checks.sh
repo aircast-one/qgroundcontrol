@@ -15,6 +15,7 @@ swiftc -Onone -o "$out" \
     "$root/macos/Sources/LinkConfigModel.swift" \
     "$root/macos/Sources/VibrationReading.swift" \
     "$root/macos/Sources/ParameterModel.swift" \
+    "$root/macos/Sources/SensorHealth.swift" \
     "$root/macos/Tests/main.swift"
 
 "$out"

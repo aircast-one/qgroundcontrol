@@ -86,11 +86,79 @@ struct ParametersView: View {
     }
 }
 
+struct SensorsView: View {
+    @ObservedObject var store: SensorsStore
+
+    var body: some View {
+        ScrollView {
+            VStack(alignment: .leading, spacing: 20) {
+                if !store.status.isEmpty {
+                    Notice(text: store.status).frame(height: 200)
+                } else {
+                    summary
+                    SectionCard(title: "Sensors") {
+                        VStack(spacing: 0) {
+                            ForEach(Array(store.sensors.enumerated()), id: \.element.id) { index, sensor in
+                                if index > 0 { Divider() }
+                                row(sensor)
+                            }
+                        }
+                    }
+                }
+            }
+            .padding(20)
+        }
+        .onAppear(perform: store.start)
+        .onDisappear(perform: store.stop)
+    }
+
+    private var summary: some View {
+        HStack(spacing: 8) {
+            Circle()
+                .fill(store.failing.isEmpty ? Color.green : Color.red)
+                .frame(width: 9, height: 9)
+            Text(store.failing.isEmpty
+                 ? "All enabled sensors are reporting healthy."
+                 : "\(store.failing.count) sensor\(store.failing.count == 1 ? "" : "s") reporting a fault: \(store.failing.map(\.name).joined(separator: ", "))")
+                .foregroundColor(store.failing.isEmpty ? .secondary : .red)
+        }
+    }
+
+    private func row(_ sensor: SensorHealth) -> some View {
+        HStack {
+            Text(sensor.name)
+                .foregroundColor(sensor.state == .disabled ? .secondary : .primary)
+            Spacer()
+            Text(label(sensor.state))
+                .font(.caption)
+                .foregroundColor(colour(sensor.state))
+        }
+        .padding(.vertical, 6)
+    }
+
+    private func label(_ state: SensorHealth.State) -> String {
+        switch state {
+        case .healthy: return "Healthy"
+        case .unhealthy: return "Fault"
+        case .disabled: return "Not enabled"
+        }
+    }
+
+    private func colour(_ state: SensorHealth.State) -> Color {
+        switch state {
+        case .healthy: return .green
+        case .unhealthy: return .red
+        case .disabled: return .secondary
+        }
+    }
+}
+
 struct VehicleSetupView: View {
     @ObservedObject var parameters: ParametersStore
-    @State private var page: String? = "Parameters"
+    @ObservedObject var sensors: SensorsStore
+    @State private var page: String? = "Sensors"
 
-    private let pages = ["Parameters"]
+    private let pages = ["Sensors", "Parameters"]
 
     var body: some View {
         HStack(spacing: 0) {
@@ -100,7 +168,11 @@ struct VehicleSetupView: View {
             .listStyle(.sidebar)
             .frame(width: 190)
             Divider()
-            ParametersView(store: parameters)
+            if page == "Parameters" {
+                ParametersView(store: parameters)
+            } else {
+                SensorsView(store: sensors)
+            }
         }
         .frame(minWidth: 760, minHeight: 500)
     }
@@ -110,11 +182,13 @@ final class VehicleSetupWindow: NSObject, NSWindowDelegate {
     static let shared = VehicleSetupWindow()
 
     private let parameters = ParametersStore()
+    private let sensors = SensorsStore()
     private var window: NSWindow?
 
     override init() {
         super.init()
         NativeProbe.register(parameters)
+        NativeProbe.register(sensors)
     }
 
     @objc func showFromMenu() {
@@ -135,13 +209,14 @@ final class VehicleSetupWindow: NSObject, NSWindowDelegate {
         window.title = "Vehicle Setup"
         window.isReleasedWhenClosed = false
         window.delegate = self
-        window.contentView = NSHostingView(rootView: VehicleSetupView(parameters: parameters))
+        window.contentView = NSHostingView(rootView: VehicleSetupView(parameters: parameters, sensors: sensors))
         window.center()
         window.makeKeyAndOrderFront(nil)
         self.window = window
     }
 
     func windowWillClose(_ notification: Notification) {
+        sensors.stop()
         window = nil
     }
 }
