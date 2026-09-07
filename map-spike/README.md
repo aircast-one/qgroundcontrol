@@ -169,7 +169,10 @@ underneath is caught by validating the selection against the plan each poll.
 `loadFromFile` return bool, so the `result` field of the invoke is the answer in both directions —
 read that, not `ok`, which only says the method ran. This changed in qgroundcontrol `25e313267`;
 before it they returned void and `plan.currentPlanFile` was the only way to tell a success from a
-failure. An AAR built earlier still has the old behaviour.
+failure. An AAR built earlier still has the old behaviour. Measured against the AAR that carries it:
+a writable save gave `result=true` with the path recorded, an unwritable one `result=false` with it
+empty, and a missing file and a non-plan file both gave `result=false`. `ok` was true in all five,
+so it still only says the method ran.
 
 `currentPlanFile` is still worth reading after a save, for the path it actually wrote rather than to
 find out whether it wrote: a filename with no dot gains `.plan`, so `/…/probe-plan` lands at
