@@ -322,6 +322,40 @@ func checkTilePyramid() {
 
 checkTilePyramid()
 
+func checkVehicleReadiness() {
+    let complete = VehicleComponentInfo(json: ["name": "Radio", "setupComplete": true, "requiresSetup": true])!
+    let missing = VehicleComponentInfo(json: ["name": "Sensors", "setupComplete": false, "requiresSetup": true])!
+    let optional = VehicleComponentInfo(json: ["name": "Camera", "setupComplete": false, "requiresSetup": false])!
+
+    expect(!complete.needsAttention, "a complete component needs no attention")
+    expect(missing.needsAttention, "an incomplete required component needs attention")
+    expect(!optional.needsAttention, "an incomplete optional component is not a blocker")
+    expect(VehicleComponentInfo(json: ["setupComplete": true]) == nil, "a nameless component is dropped")
+
+    let healthy = VehicleReadiness(connected: true, components: [complete, optional], sensorFaults: [])
+    expect(healthy.ready, "setup complete with healthy sensors is ready")
+    expect(healthy.headline, "Ready to fly", "and says so")
+
+    let faulty = VehicleReadiness(connected: true, components: [complete, optional],
+                                  sensorFaults: ["Gyro", "Accelerometer"])
+    expect(!faulty.ready, "a sensor fault is never ready, however complete the setup")
+    expect(faulty.headline, "2 sensors reporting a fault", "the headline names the fault, not readiness")
+    expect(faulty.detail, "Gyro, Accelerometer", "and says which sensors")
+
+    let unset = VehicleReadiness(connected: true, components: [complete, missing], sensorFaults: [])
+    expect(!unset.ready, "an incomplete required component is not ready")
+    expect(unset.headline, "1 component needs setup", "the headline counts outstanding components")
+
+    let offline = VehicleReadiness(connected: false, components: [], sensorFaults: [])
+    expect(!offline.ready, "no vehicle is never ready")
+    expect(offline.headline, "No vehicle connected", "and says why")
+
+    let bare = VehicleReadiness(connected: true, components: [], sensorFaults: [])
+    expect(!bare.ready, "a vehicle reporting no components is not declared ready")
+}
+
+checkVehicleReadiness()
+
 if failures == 0 {
     print("all Swift checks passed")
     exit(0)

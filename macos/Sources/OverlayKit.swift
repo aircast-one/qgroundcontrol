@@ -170,3 +170,55 @@ struct EmptyStateRow: View {
             .padding(.vertical, Overlay.unit * 0.7)
     }
 }
+
+struct Tile: View {
+    let symbol: String
+    let colour: Color
+
+    var body: some View {
+        RoundedRectangle(cornerRadius: 6, style: .continuous)
+            .fill(colour)
+            .frame(width: 22, height: 22)
+            .overlay(
+                Image(systemName: symbol)
+                    .font(.system(size: 12, weight: .semibold))
+                    .foregroundColor(.white))
+    }
+}
+
+struct StatusPill: View {
+    let text: String
+    let good: Bool
+
+    var body: some View {
+        HStack(spacing: 5) {
+            Image(systemName: good ? "checkmark.circle.fill" : "exclamationmark.triangle.fill")
+            Text(text)
+        }
+        .font(.callout.weight(.medium))
+        .foregroundColor(good ? .green : .orange)
+        .padding(.horizontal, Overlay.step)
+        .padding(.vertical, 4)
+        .background((good ? Color.green : Color.orange).opacity(0.15))
+        .clipShape(Capsule())
+    }
+}
+
+struct SidebarRow: View {
+    let title: String
+    let symbol: String
+    let colour: Color
+    var badge = false
+
+    var body: some View {
+        HStack(spacing: Overlay.step) {
+            Tile(symbol: symbol, colour: colour)
+            Text(title)
+            Spacer(minLength: 0)
+            if badge {
+                Circle().fill(Color.red).frame(width: 8, height: 8)
+            }
+        }
+        .padding(.vertical, 1)
+    }
+}

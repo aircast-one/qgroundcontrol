@@ -202,6 +202,8 @@ Resolved resolve(const QString &path)
     return Resolved { object, QString() };
 }
 
+QJsonObject objectJson(QObject *object);
+
 QJsonValue variantJson(const QVariant &value)
 {
     if (value.canConvert<QGeoCoordinate>()) {
@@ -219,6 +221,10 @@ QJsonValue variantJson(const QVariant &value)
         QJsonArray array;
         const QVariantList list = value.toList();
         for (const QVariant &element : list) {
+            if (QObject *const child = element.value<QObject *>()) {
+                array.append(objectJson(child));
+                continue;
+            }
             array.append(variantJson(element));
         }
         return array;

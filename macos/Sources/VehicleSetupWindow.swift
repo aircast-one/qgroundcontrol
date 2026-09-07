@@ -305,32 +305,186 @@ struct FlightModesView: View {
     }
 }
 
-struct VehicleSetupView: View {
-    @ObservedObject var parameters: ParametersStore
+struct SetupSummaryView: View {
+    @ObservedObject var store: VehicleComponentsStore
     @ObservedObject var sensors: SensorsStore
     @ObservedObject var selection: PageSelection
 
-    private let pages = ["Sensors", "Safety", "Flight Modes", "Parameters"]
+    private var readiness: VehicleReadiness {
+        store.readiness(sensorFaults: sensors.failing.map(\.name))
+    }
+
+    var body: some View {
+        ScrollView {
+            VStack(alignment: .leading, spacing: Overlay.unit * 1.25) {
+                hero
+
+                if !store.outstanding.isEmpty {
+                    VStack(alignment: .leading, spacing: 0) {
+                        SectionLabel(text: "Needs setup")
+                        GroupCard {
+                            ForEach(store.outstanding) { component in
+                                GroupRow(title: component.name,
+                                         description: "Not configured on this vehicle",
+                                         showSeparator: component.id != store.outstanding.first?.id,
+                                         leading: { Tile(symbol: "exclamationmark", colour: .red) })
+                            }
+                        }
+                    }
+                }
+
+                VStack(alignment: .leading, spacing: 0) {
+                    SectionLabel(text: "Components")
+                    GroupCard {
+                        if store.components.isEmpty {
+                            EmptyStateRow(text: store.connected
+                                ? "This vehicle reports no setup components."
+                                : "Connect a vehicle to see what it needs.")
+                        } else {
+                            ForEach(store.components) { component in
+                                let opens = SetupPage.all.contains(component.name)
+                                let faulted = component.name == "Sensors" && !sensors.failing.isEmpty
+                                let good = component.setupComplete && !faulted
+                                GroupRow(title: component.name,
+                                         value: !component.setupComplete ? "Needs setup"
+                                             : faulted ? "Reporting a fault" : "",
+                                         showSeparator: component.id != store.components.first?.id,
+                                         leading: {
+                                             Tile(symbol: SetupPage.symbol(for: component.name),
+                                                  colour: SetupPage.colour(for: component.name))
+                                         },
+                                         trailing: {
+                                             HStack(spacing: 6) {
+                                                 Image(systemName: good
+                                                     ? "checkmark.circle.fill" : "exclamationmark.circle.fill")
+                                                     .foregroundColor(good ? .green : .orange)
+                                                 if opens {
+                                                     Text("\u{203A}")
+                                                         .font(.title3)
+                                                         .foregroundColor(Overlay.chevron)
+                                                 }
+                                             }
+                                         })
+                                    .contentShape(Rectangle())
+                                    .onTapGesture { if opens { selection.page = component.name } }
+                            }
+                        }
+                    }
+                }
+            }
+            .padding(Overlay.unit * 1.25)
+            .frame(maxWidth: 640, alignment: .leading)
+        }
+        .onAppear {
+            store.reload()
+            sensors.start()
+        }
+    }
+
+    private var hero: some View {
+        GroupCard {
+            HStack(spacing: Overlay.unit) {
+                Tile(symbol: "airplane", colour: .accentColor)
+                    .scaleEffect(1.6)
+                    .frame(width: 44, height: 44)
+                VStack(alignment: .leading, spacing: 4) {
+                    Text(readiness.headline).font(.title3.weight(.semibold))
+                    Text(readiness.detail).font(.callout).foregroundColor(.secondary)
+                }
+                Spacer(minLength: 0)
+                StatusPill(text: readiness.ready ? "Ready" : "Check", good: readiness.ready)
+            }
+            .padding(Overlay.unit)
+        }
+    }
+}
+
+enum SetupPage {
+    static let all = ["Summary", "Sensors", "Flight Modes", "Safety", "Parameters"]
+
+    static func symbol(for page: String) -> String {
+        switch page {
+        case "Summary": return "airplane"
+        case "Sensors": return "gauge"
+        case "Flight Modes": return "slider.horizontal.3"
+        case "Safety": return "shield.fill"
+        case "Parameters": return "list.bullet"
+        case "Radio": return "antenna.radiowaves.left.and.right"
+        case "Frame": return "square.on.square"
+        case "Power": return "bolt.fill"
+        case "Motors": return "fan.fill"
+        case "Camera": return "camera.fill"
+        case "Tuning": return "dial.min"
+        default: return "gearshape.fill"
+        }
+    }
+
+    static func colour(for page: String) -> Color {
+        switch page {
+        case "Summary": return .accentColor
+        case "Sensors": return .teal
+        case "Flight Modes": return .indigo
+        case "Safety": return .orange
+        case "Parameters": return .gray
+        case "Radio": return .purple
+        case "Power": return .green
+        default: return .blue
+        }
+    }
+}
+
+struct VehicleSetupView: View {
+    @ObservedObject var parameters: ParametersStore
+    @ObservedObject var sensors: SensorsStore
+    @ObservedObject var components: VehicleComponentsStore
+    @ObservedObject var selection: PageSelection
 
     var body: some View {
         HStack(spacing: 0) {
-            List(pages, id: \.self, selection: Binding(
+            List(selection: Binding(
                 get: { Optional(selection.page) },
                 set: { selection.page = $0 ?? selection.page })
-            ) { name in
-                Text(name).tag(name)
+            ) {
+                Section("Vehicle") {
+                    row("Summary")
+                }
+                Section("Setup") {
+                    row("Sensors", badge: !sensors.failing.isEmpty)
+                    row("Flight Modes")
+                    row("Safety")
+                }
+                Section("Advanced") {
+                    row("Parameters")
+                }
             }
             .listStyle(.sidebar)
-            .frame(width: 190)
+            .frame(width: 210)
+
             Divider()
-            switch selection.page {
-            case "Parameters": ParametersView(store: parameters)
-            case "Safety": SafetyView(store: parameters)
-            case "Flight Modes": FlightModesView(store: parameters)
-            default: SensorsView(store: sensors)
-            }
+
+            content
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
         }
-        .frame(minWidth: 760, minHeight: 500)
+        .frame(minWidth: 860, minHeight: 560)
+        .onAppear(perform: components.reload)
+    }
+
+    private func row(_ name: String, badge: Bool = false) -> some View {
+        SidebarRow(title: name,
+                   symbol: SetupPage.symbol(for: name),
+                   colour: SetupPage.colour(for: name),
+                   badge: badge)
+            .tag(name)
+    }
+
+    @ViewBuilder private var content: some View {
+        switch selection.page {
+        case "Parameters": ParametersView(store: parameters)
+        case "Safety": SafetyView(store: parameters)
+        case "Flight Modes": FlightModesView(store: parameters)
+        case "Sensors": SensorsView(store: sensors)
+        default: SetupSummaryView(store: components, sensors: sensors, selection: selection)
+        }
     }
 }
 
@@ -339,13 +493,15 @@ final class VehicleSetupWindow: NSObject, NSWindowDelegate {
 
     private let parameters = ParametersStore()
     private let sensors = SensorsStore()
-    private let selection = PageSelection(owner: "vehicleSetup", pages: ["Sensors", "Safety", "Flight Modes", "Parameters"])
+    private let components = VehicleComponentsStore()
+    private let selection = PageSelection(owner: "vehicleSetup", pages: SetupPage.all)
     private var window: NSWindow?
 
     override init() {
         super.init()
         NativeProbe.register(parameters)
         NativeProbe.register(sensors)
+        NativeProbe.register(components)
         NativeProbe.register(selection, as: selection.identifier)
     }
 
@@ -367,7 +523,8 @@ final class VehicleSetupWindow: NSObject, NSWindowDelegate {
         window.title = "Vehicle Setup"
         window.isReleasedWhenClosed = false
         window.delegate = self
-        window.contentView = NSHostingView(rootView: VehicleSetupView(parameters: parameters, sensors: sensors, selection: selection))
+        window.contentView = NSHostingView(rootView: VehicleSetupView(
+            parameters: parameters, sensors: sensors, components: components, selection: selection))
         window.center()
         window.makeKeyAndOrderFront(nil)
         self.window = window
