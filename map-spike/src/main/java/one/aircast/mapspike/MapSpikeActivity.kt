@@ -365,7 +365,7 @@ internal fun MapSpikeScreen(mapStyle: String) {
                 // Actions for what is selected live on their own line. They used
                 // to sit at the end of the row above, where they scrolled out of
                 // sight and read as missing.
-                val survey = surveyList.firstOrNull()
+                val survey = selectedSurvey(selected, surveyList)
                 val waypoint = (selected as? MapHit.Waypoint)
                     ?.let { hit -> items.firstOrNull { it.index == hit.index } }
                 val fenceHit = selected as? MapHit.FenceVertex

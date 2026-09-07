@@ -25,3 +25,9 @@ fun selectionSurvives(
     is MapHit.Circle -> circles.any { it.index == selected.index }
     is MapHit.CircleCentre -> circles.any { it.index == selected.index }
 }
+
+// Rotate used to act on the first survey in the plan whatever was selected, so
+// with two surveys it turned the wrong grid. Every other control on that row
+// follows the selection and this one has to as well.
+fun selectedSurvey(selected: MapHit?, surveys: List<Survey>): Survey? =
+    (selected as? MapHit.SurveyVertex)?.let { hit -> surveys.firstOrNull { it.index == hit.item } }

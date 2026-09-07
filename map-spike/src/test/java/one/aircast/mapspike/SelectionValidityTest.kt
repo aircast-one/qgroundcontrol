@@ -1,6 +1,8 @@
 package one.aircast.mapspike
 
+import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
+import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
@@ -51,5 +53,29 @@ class SelectionValidityTest {
 
         assertTrue(selectionSurvives(MapHit.Rally(3), emptyList(), emptyList(), emptyList(), rally, emptyList()))
         assertFalse(selectionSurvives(MapHit.Rally(4), emptyList(), emptyList(), emptyList(), rally, emptyList()))
+    }
+}
+
+class SelectedSurveyTest {
+    private fun survey(index: Int) =
+        Survey(index, listOf(TrackPoint(41.0, 44.0)), emptyList(), 0)
+
+    private val surveys = listOf(survey(1), survey(4))
+
+    @Test
+    fun `the selected survey is the one acted on, not the first`() {
+        assertEquals(4, selectedSurvey(MapHit.SurveyVertex(4, 0), surveys)!!.index)
+        assertEquals(1, selectedSurvey(MapHit.SurveyVertex(1, 0), surveys)!!.index)
+    }
+
+    @Test
+    fun `nothing selected means no survey to act on`() {
+        assertNull(selectedSurvey(null, surveys))
+        assertNull(selectedSurvey(MapHit.Waypoint(1), surveys))
+    }
+
+    @Test
+    fun `a selection naming a survey that is gone yields nothing`() {
+        assertNull(selectedSurvey(MapHit.SurveyVertex(9, 0), surveys))
     }
 }

@@ -314,6 +314,11 @@ touch an altitude. The field refuses what does not parse and anything below the 
 sending it, and keeps a half-typed number — "4" on the way to "47" is not a reason to throw the edit
 away.
 
+**Every control on the selection row must follow the selection.** Rotate did not: it acted on
+`surveys.first()` whatever was picked, so with two surveys it turned the wrong grid, and it appeared
+whenever any survey existed rather than when one was selected. Easy to miss because with a single
+survey the two are the same thing.
+
 **A survey's height is not an altitude fact.** It is `cameraCalc.distanceToSurface` — the camera's
 distance to the surface, which is what the survey editor labels Altitude. `cameraCalc` is a child
 object, so it needs its own read, and that read happens when a survey is selected rather than every
