@@ -42,6 +42,9 @@ enum AppShell {
         let analyze = windowMenu.addItem(withTitle: "Analyze", action: #selector(AnalyzeWindow.showFromMenu), keyEquivalent: "a")
         analyze.target = AnalyzeWindow.shared
 
+        let fly = windowMenu.addItem(withTitle: "Fly", action: #selector(FlyWindow.showFromMenu), keyEquivalent: "f")
+        fly.target = FlyWindow.shared
+
         let telemetry = windowMenu.addItem(withTitle: "Native Telemetry", action: #selector(NativeWindow.showFromMenu), keyEquivalent: "t")
         telemetry.target = NativeWindow.shared
 

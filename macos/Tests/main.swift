@@ -546,6 +546,50 @@ func checkMissionItemKinds() {
 
 checkMissionItemKinds()
 
+func checkFlyTelemetry() {
+    var reading = FlyTelemetry()
+    expect(reading.batteryLevel == .unknown, "no battery reading is unknown, not good")
+    expect(reading.gpsLevel == .unknown, "no gps reading is unknown, not good")
+    expect(reading.batteryText, "\u{2014}", "and shows nothing rather than a number")
+    expect(reading.stateText, "Disarmed", "a vehicle that is not armed reads as disarmed")
+
+    reading.batteryPercent = 100
+    reading.batteryVolts = 12.6
+    expect(reading.batteryLevel == .good, "a full battery is good")
+    expect(reading.batteryText, "100% \u{00B7} 12.6 V", "and reads as percent and volts")
+
+    reading.batteryPercent = 20
+    expect(reading.batteryLevel == .warning, "a fifth of a battery is a warning")
+    reading.batteryPercent = 10
+    expect(reading.batteryLevel == .critical, "a tenth of a battery is critical")
+
+    reading.gpsLock = 6
+    reading.satellites = 10
+    expect(reading.gpsLevel == .good, "an RTK fix is good")
+    expect(reading.gpsText, "RTK fixed \u{00B7} 10 sats", "and names the fix and the count")
+    reading.gpsLock = 2
+    expect(reading.gpsLevel == .warning, "a 2D fix is not enough to trust a position")
+    reading.gpsLock = 0
+    expect(reading.gpsLevel == .critical, "no fix is critical")
+    expect(reading.gpsText, "No fix \u{00B7} 10 sats", "and says so plainly")
+
+    reading.armed = true
+    expect(reading.stateText, "Armed", "an armed vehicle on the ground reads as armed")
+    reading.flying = true
+    expect(reading.stateText, "Flying", "and as flying once it is airborne")
+
+    expect(FlyTelemetry.metres(nil), "\u{2014}", "a missing altitude shows nothing")
+    expect(FlyTelemetry.metres(Double.nan), "\u{2014}", "and so does a NaN")
+    expect(FlyTelemetry.speed(3.26), "3.3 m/s", "speed reads to one decimal")
+    expect(FlyTelemetry.metres(-0.0), "0.0 m", "a vehicle on the ground does not report minus zero")
+    expect(FlyTelemetry.metres(-0.04), "0.0 m", "nor does one a few centimetres below its launch point")
+    expect(FlyTelemetry.speed(-0.02), "0.0 m/s", "nor does a stationary one")
+    expect(FlyTelemetry.metres(-12.5), "-12.5 m", "a real negative altitude keeps its sign")
+    expect(FlyTelemetry.degrees(91.6), "92\u{00B0}", "heading reads whole degrees")
+}
+
+checkFlyTelemetry()
+
 if failures == 0 {
     print("all Swift checks passed")
     exit(0)
