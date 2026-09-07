@@ -155,24 +155,82 @@ struct VibrationView: View {
     }
 }
 
+struct LogDownloadView: View {
+    @ObservedObject var store: LogDownloadStore
+
+    var body: some View {
+        SetupPageBody(title: "Log Download",
+                      note: store.savePath.isEmpty
+                          ? "Flight logs stored on the vehicle."
+                          : "Flight logs stored on the vehicle. Downloads are saved to \(store.savePath).") {
+            GroupCard {
+                if !store.status.isEmpty {
+                    EmptyStateRow(text: store.status)
+                } else if store.logs.isEmpty {
+                    EmptyStateRow(text: store.requestingList
+                        ? "Asking the vehicle for its logs\u{2026}"
+                        : "No logs listed yet. Refresh to ask the vehicle.")
+                } else {
+                    ForEach(Array(store.logs.enumerated()), id: \.element.id) { index, entry in
+                        GroupRow(title: "Log \(entry.id)",
+                                 description: entry.time,
+                                 value: entry.status == "Available" ? entry.sizeText
+                                     : "\(entry.sizeText) \u{00B7} \(entry.status)",
+                                 showSeparator: index > 0,
+                                 leading: {
+                                     Tile(symbol: "doc.text.fill",
+                                          colour: entry.received ? .gray : .accentColor)
+                                 },
+                                 trailing: {
+                                     Button("Download") { store.download(entry) }
+                                         .disabled(store.downloading)
+                                 })
+                    }
+                }
+            }
+
+            HStack(spacing: Overlay.step) {
+                Button("Refresh", action: store.refresh)
+                    .disabled(store.requestingList || store.downloading)
+                if store.downloading || store.requestingList {
+                    ProgressView().controlSize(.small)
+                    Button("Cancel", action: store.cancel)
+                }
+                Spacer()
+            }
+        }
+        .onAppear(perform: store.reload)
+    }
+}
+
 struct AnalyzeView: View {
     @ObservedObject var vibration: VibrationStore
-    @State private var page: String? = "Vibration"
+    @ObservedObject var logs: LogDownloadStore
+    @ObservedObject var selection: PageSelection
 
-    private let pages = ["Vibration"]
+    static let pages = ["Vibration", "Log Download"]
 
     var body: some View {
         HStack(spacing: 0) {
-            List(pages, id: \.self, selection: $page) { name in
-                SidebarRow(title: name, symbol: "waveform.path.ecg", colour: .pink)
+            List(AnalyzeView.pages, id: \.self, selection: Binding(
+                get: { Optional(selection.page) },
+                set: { selection.page = $0 ?? selection.page })
+            ) { name in
+                SidebarRow(title: name,
+                           symbol: name == "Vibration" ? "waveform.path.ecg" : "doc.text.fill",
+                           colour: name == "Vibration" ? .pink : .indigo)
                     .tag(name)
             }
             .listStyle(.sidebar)
             .frame(width: 200)
             Divider()
-            VibrationView(store: vibration)
+            if selection.page == "Log Download" {
+                LogDownloadView(store: logs)
+            } else {
+                VibrationView(store: vibration)
+            }
         }
-        .frame(minWidth: 640, minHeight: 440)
+        .frame(minWidth: 720, minHeight: 460)
     }
 }
 
@@ -180,11 +238,15 @@ final class AnalyzeWindow: NSObject, NSWindowDelegate {
     static let shared = AnalyzeWindow()
 
     private let vibration = VibrationStore()
+    private let logs = LogDownloadStore()
+    private let selection = PageSelection(owner: "analyze", pages: AnalyzeView.pages)
     private var window: NSWindow?
 
     override init() {
         super.init()
         NativeProbe.register(vibration)
+        NativeProbe.register(logs)
+        NativeProbe.register(selection, as: selection.identifier)
     }
 
     @objc func showFromMenu() {
@@ -205,7 +267,7 @@ final class AnalyzeWindow: NSObject, NSWindowDelegate {
         window.title = "Analyze"
         window.isReleasedWhenClosed = false
         window.delegate = self
-        window.contentView = NSHostingView(rootView: AnalyzeView(vibration: vibration))
+        window.contentView = NSHostingView(rootView: AnalyzeView(vibration: vibration, logs: logs, selection: selection))
         window.center()
         window.makeKeyAndOrderFront(nil)
         self.window = window

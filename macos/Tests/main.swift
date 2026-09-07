@@ -399,6 +399,25 @@ func checkMissionItemRemoval() {
 
 checkMissionItemRemoval()
 
+func checkLogEntry() {
+    let entry = LogEntry(json: [
+        "id": 3, "size": 898330, "status": "Available", "received": true,
+        "time": "2026-09-07T16:29:00.000",
+    ])
+    expect(entry != nil, "a log entry parses from what the controller reports")
+    expect(entry?.sizeText == "877.3 KB", "size reads in KB with a decimal point, not a comma")
+    expect(entry?.id == 3, "the id is kept for downloading")
+    expect(entry?.time.contains("2026") == true, "the timestamp is rendered, not passed through raw")
+
+    expect(LogEntry.humanSize(0), "0 bytes", "an empty log reads as bytes")
+    expect(LogEntry.humanSize(512), "512 bytes", "under a kilobyte stays in bytes")
+    expect(LogEntry.humanSize(1024 * 1024 * 3), "3.0 MB", "megabytes read as megabytes")
+    expect(LogEntry.humanTime("not a date"), "not a date", "an unparseable time is shown as sent")
+    expect(LogEntry(json: ["size": 10]) == nil, "an entry without an id is dropped")
+}
+
+checkLogEntry()
+
 if failures == 0 {
     print("all Swift checks passed")
     exit(0)
