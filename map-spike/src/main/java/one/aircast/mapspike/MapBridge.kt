@@ -67,6 +67,27 @@ fun mapString(path: String): State<String> {
 }
 
 @Composable
+fun mapInt(path: String, fallback: Int = -1): State<Int> {
+    val json by mapPath(path)
+    return remember(path, fallback) {
+        derivedStateOf {
+            when (val value = json?.opt("value")) {
+                is Number -> value.toInt()
+                is String -> value.toIntOrNull() ?: fallback
+                else -> fallback
+            }
+        }
+    }
+}
+
+// The number of elements a list model holds, without reading the elements.
+@Composable
+fun mapCount(path: String): State<Int> {
+    val json by mapPath(path)
+    return remember(path) { derivedStateOf { json?.optJSONArray("elements")?.length() ?: 0 } }
+}
+
+@Composable
 fun mapBool(path: String): State<Boolean> {
     val json by mapPath(path)
     return remember(path) {

@@ -76,6 +76,8 @@ private fun MapSpikeScreen(mapStyle: String) {
     val latitude by mapDouble("vehicle.latitude")
     val longitude by mapDouble("vehicle.longitude")
     val mode by mapString("vehicle.flightMode")
+    val vehicleId by mapInt("vehicle.id")
+    val vehicleCount by mapCount("vehicles.vehicles")
 
     // Placing something needs a position. The vehicle's is the useful one, but
     // the map centre lets the spike be driven with no vehicle connected.
@@ -151,8 +153,12 @@ private fun MapSpikeScreen(mapStyle: String) {
                 Text(
                     when {
                         !ready -> "Bridge not running (start the main app first)"
-                        available -> "Vehicle: ${mode.ifBlank { "connected" }}"
-                        else -> "No vehicle"
+                        !available -> "No vehicle"
+                        // With more than one vehicle connected, everything here
+                        // follows whichever is active, and that changes on its own.
+                        vehicleCount > 1 ->
+                            "Vehicle $vehicleId of $vehicleCount · ${mode.ifBlank { "connected" }}"
+                        else -> "Vehicle $vehicleId · ${mode.ifBlank { "connected" }}"
                     },
                     style = MaterialTheme.typography.titleSmall,
                 )
