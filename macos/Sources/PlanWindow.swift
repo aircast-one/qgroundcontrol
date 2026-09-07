@@ -480,7 +480,8 @@ struct PlanView: View {
                        select: mission.select(sequence:),
                        adding: mission.arming != nil,
                        add: mission.addWaypoint(latitude:longitude:),
-                       move: mission.move(sequence:latitude:longitude:))
+                       move: mission.move(sequence:latitude:longitude:),
+                       surveys: mission.surveyAreas)
                 .ignoresSafeArea()
 
             HStack {

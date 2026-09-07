@@ -531,13 +531,24 @@ func checkUnplacedCommands() {
 checkUnplacedCommands()
 
 func checkMissionItemKinds() {
-    expect(MissionItemKind.allCases.count == 4, "the add menu offers four kinds of item")
+    expect(MissionItemKind.allCases.count == 5, "the add menu offers five kinds of item")
+    expect(MissionItemKind.survey.complexName == "Survey", "a survey inserts by name as a complex item")
+    expect(MissionItemKind.waypoint.complexName == nil, "a waypoint is not a complex item")
+    expect(MissionItemKind.survey.placementHint, "Click the map to place a survey area.",
+           "the hint says area rather than survey")
+
+    let area = MissionItemKind.defaultArea(latitude: -35.363, longitude: 149.165)
+    expect(area.count == 4, "a new survey gets a four cornered area rather than an empty one")
+    expect(area[0].latitude < -35.363 && area[2].latitude > -35.363, "the area straddles the point")
+    expect(area[0].longitude < 149.165 && area[2].longitude > 149.165, "on both axes")
+    let span = (area[2].latitude - area[0].latitude) * 111_320
+    expect(abs(span - 2 * MissionItemKind.defaultAreaMetres) < 1, "and is the intended size across")
     expect(MissionItemKind.waypoint.invokable, "insertSimpleMissionItem", "a waypoint inserts a simple item")
     expect(MissionItemKind.takeoff.invokable, "insertTakeoffItem", "takeoff has its own insert")
     expect(MissionItemKind.land.invokable, "insertLandItem", "land has its own insert")
     expect(MissionItemKind.roi.invokable, "insertROIMissionItem", "a region of interest has its own insert")
     expect(MissionItemKind(rawValue: "takeoff") == .takeoff, "a kind round-trips through its raw value")
-    expect(MissionItemKind(rawValue: "survey") == nil, "an unknown kind is not invented")
+    expect(MissionItemKind(rawValue: "corridor") == nil, "an unknown kind is not invented")
     expect(MissionItemKind.roi.placementHint, "Click the map to place a region of interest.",
            "the hint reads as English rather than a lowercased title")
     expect(MissionItemKind.takeoff.placementHint, "Click the map to place a takeoff.",

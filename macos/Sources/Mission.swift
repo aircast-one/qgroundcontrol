@@ -106,10 +106,37 @@ final class MissionStore: ObservableObject, Probeable {
 
     func addWaypoint(latitude: Double, longitude: Double) {
         let kind = arming ?? .waypoint
-        Bridge.invoke("plan.missionController.\(kind.invokable)",
-                      [["latitude": latitude, "longitude": longitude], items.count, true])
+        let index = items.count
+
+        if let complex = kind.complexName {
+            Bridge.invoke("plan.missionController.\(kind.invokable)",
+                          [complex, ["latitude": latitude, "longitude": longitude], index, true])
+            seedArea(at: index, latitude: latitude, longitude: longitude)
+        } else {
+            Bridge.invoke("plan.missionController.\(kind.invokable)",
+                          [["latitude": latitude, "longitude": longitude], index, true])
+        }
+
         arming = nil
         reload()
+    }
+
+    private func seedArea(at index: Int, latitude: Double, longitude: Double) {
+        let polygon = "plan.missionController.visualItems.\(index).surveyAreaPolygon"
+        MissionItemKind.defaultArea(latitude: latitude, longitude: longitude).forEach { corner in
+            Bridge.invoke("\(polygon).appendVertex",
+                          [["latitude": corner.latitude, "longitude": corner.longitude]])
+        }
+    }
+
+    private func surveyPolygon(of item: MissionItem) -> [GeoPoint] {
+        guard item.isSurveyItem else { return [] }
+        let polygon = Bridge.group("plan.missionController.visualItems.\(item.index).surveyAreaPolygon")
+        return ((polygon["path"] as? [Any]) ?? []).compactMap(GeoPoint.init(json:))
+    }
+
+    var surveyAreas: [[GeoPoint]] {
+        items.filter(\.isSurveyItem).map(surveyPolygon).filter { $0.count >= 3 }
     }
 
     var terrain: TerrainProfile {
@@ -270,6 +297,7 @@ final class MissionStore: ObservableObject, Probeable {
          "planFile": planFile, "planName": planName,
          "canUndo": canUndo, "canRedo": canRedo,
          "commands": commands.map(\.name),
+         "surveys": surveyAreas.map(\.count),
          "facts": selectedFacts.map { ["name": $0.name, "value": $0.value, "units": $0.units] },
          "terrain": ["points": terrain.points.count, "usable": terrain.usable,
                      "collision": terrain.hasCollision,

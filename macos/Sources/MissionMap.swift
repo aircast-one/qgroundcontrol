@@ -39,6 +39,8 @@ final class FencePolygon: MKPolygon {
     var inclusion = true
 }
 
+final class SurveyPolygon: MKPolygon {}
+
 final class FenceCircle: MKCircle {
     var inclusion = true
 }
@@ -63,6 +65,7 @@ struct MissionMap: NSViewRepresentable {
     let adding: Bool
     let add: (Double, Double) -> Void
     let move: (Int, Double, Double) -> Void
+    var surveys: [[GeoPoint]] = []
 
     func makeNSView(context: Context) -> MKMapView {
         let map = MKMapView()
@@ -104,6 +107,11 @@ struct MissionMap: NSViewRepresentable {
         map.addAnnotations(rally.map(RallyAnnotation.init(point:)))
         shapes.compactMap(MissionMap.overlay(for:)).forEach { map.addOverlay($0, level: .aboveLabels) }
 
+        surveys.filter { $0.count >= 3 }.forEach { area in
+            var corners = area.map { CLLocationCoordinate2D(latitude: $0.latitude, longitude: $0.longitude) }
+            map.addOverlay(SurveyPolygon(coordinates: &corners, count: corners.count), level: .aboveLabels)
+        }
+
         if placed.count > 1 {
             var coordinates = placed.map(\.coordinate)
             map.addOverlay(MKPolyline(coordinates: &coordinates, count: coordinates.count),
@@ -116,6 +124,7 @@ struct MissionMap: NSViewRepresentable {
             "annotations": map.annotations.count,
             "rally": rally.count,
             "fenceOverlays": map.overlays.filter { $0 is FencePolygon || $0 is FenceCircle }.count,
+            "surveyOverlays": map.overlays.filter { $0 is SurveyPolygon }.count,
             "overlays": map.overlays.count,
             "framed": context.coordinator.lastFrame != nil,
             "centre": ["lat": map.centerCoordinate.latitude, "lon": map.centerCoordinate.longitude],
@@ -132,6 +141,9 @@ struct MissionMap: NSViewRepresentable {
                 }
             }
             + shapes.flatMap(\.framingPoints).map {
+                CLLocationCoordinate2D(latitude: $0.latitude, longitude: $0.longitude)
+            }
+            + surveys.flatMap { $0 }.map {
                 CLLocationCoordinate2D(latitude: $0.latitude, longitude: $0.longitude)
             }
 
@@ -281,6 +293,13 @@ struct MissionMap: NSViewRepresentable {
             MissionMap.rendererKinds.insert(String(describing: type(of: overlay)))
             if let tiles = overlay as? CachedTileOverlay {
                 return MKTileOverlayRenderer(tileOverlay: tiles)
+            }
+            if let survey = overlay as? SurveyPolygon {
+                let renderer = MKPolygonRenderer(polygon: survey)
+                renderer.strokeColor = .controlAccentColor
+                renderer.fillColor = NSColor.controlAccentColor.withAlphaComponent(0.12)
+                renderer.lineWidth = 2
+                return renderer
             }
             if let polygon = overlay as? FencePolygon {
                 return Coordinator.fenceRenderer(MKPolygonRenderer(polygon: polygon),

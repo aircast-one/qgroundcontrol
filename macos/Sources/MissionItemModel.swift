@@ -18,6 +18,7 @@ struct MissionItem: Identifiable {
     let commandId: Int
     let isSimpleItem: Bool
     let specifiesCoordinate: Bool
+    let isSurveyItem: Bool
 
     var id: Int { sequence }
 
@@ -48,6 +49,7 @@ struct MissionItem: Identifiable {
         commandId = (json["command"] as? NSNumber)?.intValue ?? 0
         isSimpleItem = (json["isSimpleItem"] as? NSNumber)?.boolValue ?? false
         specifiesCoordinate = (json["specifiesCoordinate"] as? NSNumber)?.boolValue ?? true
+        isSurveyItem = (json["isSurveyItem"] as? NSNumber)?.boolValue ?? false
 
         let coordinate = json["coordinate"] as? [String: Any]
         latitude = (coordinate?["latitude"] as? NSNumber)?.doubleValue
