@@ -116,9 +116,47 @@ private val FLIGHT_MODES_PX4 = listOf(
     ),
 )
 
+private val POWER_APM = listOf(
+    ParameterSection("Battery 1", listOf("BATT_MONITOR", "BATT_CAPACITY")),
+    ParameterSection(
+        "Battery 1 sensor calibration",
+        listOf(
+            "BATT_VOLT_PIN", "BATT_CURR_PIN", "BATT_VOLT_MULT",
+            "BATT_AMP_PERVLT", "BATT_AMP_OFFSET",
+        ),
+        "Measured with a multimeter during calibration. The calibration wizard is " +
+            "not here yet, so these are the raw values it would write.",
+    ),
+    ParameterSection("Battery 2", listOf("BATT2_MONITOR", "BATT2_CAPACITY")),
+    ParameterSection(
+        "Battery 2 sensor calibration",
+        listOf(
+            "BATT2_VOLT_PIN", "BATT2_CURR_PIN", "BATT2_VOLT_MULT",
+            "BATT2_AMP_PERVLT", "BATT2_AMP_OFFSET",
+        ),
+    ),
+)
+
+private val POWER_PX4 = listOf(
+    ParameterSection(
+        "Battery",
+        listOf(
+            "BAT_N_CELLS", "BAT_V_CHARGED", "BAT_V_EMPTY", "BAT_CAPACITY",
+            "BAT1_N_CELLS", "BAT1_V_CHARGED", "BAT1_V_EMPTY", "BAT1_CAPACITY",
+        ),
+    ),
+    ParameterSection(
+        "Sensor calibration",
+        listOf("BAT_V_DIV", "BAT_A_PER_V", "BAT1_V_DIV", "BAT1_A_PER_V"),
+        "Measured during calibration. The calibration wizard is not here yet, so " +
+            "these are the raw values it would write.",
+    ),
+)
+
 internal fun setupSectionsFor(componentName: String, isPx4: Boolean): List<ParameterSection>? =
     when (componentName) {
         "Safety" -> if (isPx4) SAFETY_PX4 else SAFETY_APM
+        "Power" -> if (isPx4) POWER_PX4 else POWER_APM
         "Flight Modes" -> if (isPx4) FLIGHT_MODES_PX4 else FLIGHT_MODES_APM
         "Lights" -> if (isPx4) null else LIGHTS_APM
         "Camera" -> if (isPx4) null else CAMERA_APM

@@ -81,6 +81,16 @@ class ParameterFormTest {
     }
 
     @Test
+    fun `power covers both batteries on ardupilot and both naming eras on px4`() {
+        val apm = setupSectionsFor("Power", isPx4 = false)!!
+        val px4 = setupSectionsFor("Power", isPx4 = true)!!
+        assertEquals(true, apm.any { it.names.contains("BATT_MONITOR") })
+        assertEquals(true, apm.any { it.names.contains("BATT2_MONITOR") })
+        assertEquals(true, px4.first().names.containsAll(listOf("BAT_N_CELLS", "BAT1_N_CELLS")))
+        assertEquals(false, apm.any { it.names.contains("BAT_N_CELLS") })
+    }
+
+    @Test
     fun `components without a native form report none`() {
         assertNull(setupSectionsFor("Sensors", isPx4 = false))
         assertNull(setupSectionsFor("Radio", isPx4 = true))
