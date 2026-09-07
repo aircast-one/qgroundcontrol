@@ -24,6 +24,7 @@ SettingsPage {
 
     SettingsGroupLayout {
         heading:        qsTr("Auto Connect")
+        description:    qsTr("QGroundControl watches for these and connects on its own when one shows up.")
         visible:        _autoConnectSettings.visible
 
         Repeater {
@@ -40,33 +41,15 @@ SettingsPage {
 
             property var names: [ qsTr("Pixhawk"), qsTr("SiK Radio"), qsTr("LibrePilot"), qsTr("UDP"), qsTr("Zero-Conf"), qsTr("RTK") ]
 
-            property var descriptions: [
-                qsTr("Flight controllers plugged in over USB."),
-                qsTr("Telemetry radios plugged in over USB."),
-                qsTr("LibrePilot boards plugged in over USB."),
-                qsTr("Vehicles broadcasting to this computer over the network."),
-                qsTr("Vehicles that announce themselves on the local network."),
-                qsTr("RTK base stations plugged in over USB.")
-            ]
-
             RowLayout {
                 Layout.fillWidth:   true
                 spacing:            ScreenTools.defaultFontPixelWidth * 2
                 visible:            modelData.visible
 
-                ColumnLayout {
+                QGCLabel {
                     Layout.fillWidth:   true
-                    spacing:            ScreenTools.defaultFontPixelHeight * 0.1
-
-                    QGCLabel { text: autoConnectRepeater.names[index] }
-
-                    QGCLabel {
-                        Layout.fillWidth:   true
-                        wrapMode:           Text.WordWrap
-                        font.pointSize:     ScreenTools.smallFontPointSize
-                        color:              QGroundControl.globalPalette.colorGrey
-                        text:               autoConnectRepeater.descriptions[index]
-                    }
+                    elide:              Text.ElideRight
+                    text:               autoConnectRepeater.names[index]
                 }
 
                 FactCheckBoxSlider { fact: modelData }
@@ -136,7 +119,8 @@ SettingsPage {
     }
 
     SettingsGroupLayout {
-        heading: qsTr("Links")
+        heading:     qsTr("Links")
+        description: qsTr("Tap a link to connect.")
 
         Repeater {
             model: _linkManager.linkConfigurations
@@ -144,16 +128,39 @@ SettingsPage {
             RowLayout {
                 id:                 linkRow
                 Layout.fillWidth:   true
+                Layout.preferredHeight: ScreenTools.settingsRowHeight
                 visible:            !object.dynamic
 
                 readonly property bool _actionsVisible: ScreenTools.isMobile || linkRowHover.hovered
 
                 HoverHandler { id: linkRowHover }
 
+                TapHandler {
+                    onTapped: {
+                        if (object.link) {
+                            object.link.disconnect()
+                        } else {
+                            _linkManager.createConnectedLink(object)
+                        }
+                    }
+                }
+
                 QGCLabel {
                     Layout.fillWidth:   true
                     elide:              Text.ElideRight
                     text:               object.name
+                    color:              object.link ? QGroundControl.globalPalette.colorBlue
+                                                    : QGroundControl.globalPalette.text
+                }
+
+                QGCColoredImage {
+                    height:             ScreenTools.defaultFontPixelHeight
+                    width:              height
+                    sourceSize.height:  height
+                    fillMode:           Image.PreserveAspectFit
+                    visible:            object.link
+                    color:              QGroundControl.globalPalette.colorBlue
+                    source:             "/InstrumentValueIcons/checkmark.svg"
                 }
                 QGCColoredImage {
                     height:                 ScreenTools.minTouchPixels
@@ -212,27 +219,23 @@ SettingsPage {
                                         })
                     }
                 }
-                QGCButton {
-                    text:       object.link ? qsTr("Disconnect") : qsTr("Connect")
-                    onClicked: {
-                        if (object.link) {
-                            object.link.disconnect()
-                        } else {
-                            _linkManager.createConnectedLink(object)
-                        }
-                    }
-                }
             }
         }
 
-        LabelledButton {
-            objectName: "addLinkButton"
-            label:      ""
-            buttonText: qsTr("Add Link…")
+        QGCLabel {
+            objectName:             "addLinkButton"
+            Layout.fillWidth:       true
+            Layout.preferredHeight: ScreenTools.settingsRowHeight
+            verticalAlignment:      Text.AlignVCenter
+            color:                  QGroundControl.globalPalette.colorBlue
+            text:                   qsTr("Add Link…")
 
-            onClicked: {
-                var editingConfig = _linkManager.createConfiguration(ScreenTools.isSerialAvailable ? LinkConfiguration.TypeSerial : LinkConfiguration.TypeUdp, "")
-                linkDialogComponent.createObject(mainWindow, { editingConfig: editingConfig, originalConfig: null }).open()
+            QGCMouseArea {
+                anchors.fill: parent
+                onClicked: {
+                    var editingConfig = _linkManager.createConfiguration(ScreenTools.isSerialAvailable ? LinkConfiguration.TypeSerial : LinkConfiguration.TypeUdp, "")
+                    linkDialogComponent.createObject(mainWindow, { editingConfig: editingConfig, originalConfig: null }).open()
+                }
             }
         }
     }

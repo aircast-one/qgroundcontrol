@@ -44,6 +44,7 @@
 #include "TCPConfigurationTest.h"
 #include "TCPLinkErrorTest.h"
 #include "LinkStateTest.h"
+#include "LinkDuplicateConnectTest.h"
 #include "UDPConfigurationTest.h"
 
 // DebugApi
@@ -197,6 +198,7 @@ int runTests(bool stress, QStringView unitTestOptions)
     UT_REGISTER_TEST(TCPConfigurationTest)
     UT_REGISTER_TEST(TCPLinkErrorTest)
     UT_REGISTER_TEST(LinkStateTest)
+    UT_REGISTER_TEST(LinkDuplicateConnectTest)
     UT_REGISTER_TEST(UDPConfigurationTest)
 
     // DebugApi

@@ -125,6 +125,16 @@ void LinkManager::createConnectedLink(const LinkConfiguration *config)
 
 bool LinkManager::createConnectedLink(SharedLinkConfigurationPtr &config)
 {
+    // A configuration owns at most one link. Without this, connecting an already
+    // connected configuration builds a second LinkInterface for it, and a single
+    // disconnect then leaves the other alive: the vehicle stays up while the UI has
+    // already reported the link closed, and config->link() keeps returning a live
+    // link forever.
+    if (config->link()) {
+        qCDebug(LinkManagerLog) << Q_FUNC_INFO << config->name() << "is already connected";
+        return true;
+    }
+
     SharedLinkInterfacePtr link = nullptr;
 
     switch(config->type()) {

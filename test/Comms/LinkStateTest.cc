@@ -57,11 +57,16 @@ void LinkStateTest::_stallFiresWhileNothingAnswersAndClearsOnDisconnect()
     QVERIFY(silent.listen(QHostAddress::LocalHost));
     const SharedLinkConfigurationPtr config = addLocalTcpConfig(QStringLiteral("stalled"), silent.serverPort());
 
-    LinkManager::instance()->setConnectingStallMSecs(50);
+    // The stall timer starts when connecting starts, not when the socket is up, and
+    // connectAndWaitForLink polls for the connection. A 50ms threshold therefore
+    // expires during the connect itself on anything but an idle machine, so the
+    // "not stalled yet" assertion below fired spuriously. The threshold has to
+    // comfortably outlast a loopback connect for that assertion to mean anything.
+    LinkManager::instance()->setConnectingStallMSecs(1500);
     QSignalSpy stalledChanged(LinkManager::instance(), &LinkManager::connectingStalledChanged);
     connectAndWaitForLink(config);
     QVERIFY(!LinkManager::instance()->connectingStalled());
-    QTRY_VERIFY_WITH_TIMEOUT(LinkManager::instance()->connectingStalled(), 5000);
+    QTRY_VERIFY_WITH_TIMEOUT(LinkManager::instance()->connectingStalled(), 10000);
     QCOMPARE(stalledChanged.count(), 1);
 
     config->link()->disconnect();

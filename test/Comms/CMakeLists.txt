@@ -8,6 +8,8 @@ target_sources(${CMAKE_PROJECT_NAME}
         TCPLinkErrorTest.h
         LinkStateTest.cc
         LinkStateTest.h
+        LinkDuplicateConnectTest.cc
+        LinkDuplicateConnectTest.h
         UDPConfigurationTest.cc
         UDPConfigurationTest.h
 )

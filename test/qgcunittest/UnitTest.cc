@@ -243,3 +243,4 @@ QGeoCoordinate UnitTest::changeCoordinateValue(const QGeoCoordinate &coordinate)
 {
     return coordinate.atDistanceAndAzimuth(1, 0);
 }
+

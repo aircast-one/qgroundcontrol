@@ -8,6 +8,7 @@
  ****************************************************************************/
 
 #include "AircastDeviceSetupTest.h"
+#include "LinkInterface.h"
 #include "LinkManager.h"
 #include "QGCApplication.h"
 #include "QmlObjectListModel.h"
@@ -99,7 +100,19 @@ QList<LinkConfiguration*> _aircastLinkConfigs()
 void _removeAircastLinkConfigs()
 {
     for (LinkConfiguration *config : _aircastLinkConfigs()) {
+        // The setup deep link connects the configuration it creates.
+        // removeConfiguration does not tear down a connection that is still in
+        // progress, so without this the link outlives the test and later suites --
+        // VehicleLinkManagerTest opens by asserting the link list is empty -- fail
+        // in a way that looks like flakiness because it depends on suite order.
+        if (LinkInterface *const link = config->link()) {
+            link->disconnect();
+        }
         LinkManager::instance()->removeConfiguration(config);
+    }
+
+    for (int attempt = 0; (attempt < 50) && !LinkManager::instance()->links().isEmpty(); ++attempt) {
+        QTest::qWait(20);
     }
 }
 
