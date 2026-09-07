@@ -7,6 +7,9 @@ final class FlyStore: ObservableObject, Probeable {
     @Published private(set) var connected = false
     @Published private(set) var position: VehicleMarker?
     @Published private(set) var messages: [VehicleMessage] = []
+    @Published private(set) var unhealthyBits: Int?
+    @Published private(set) var ticked: Set<String> = []
+    @Published var showingChecklist = false
 
     private var poll: Timer?
 
@@ -30,6 +33,7 @@ final class FlyStore: ObservableObject, Probeable {
             if telemetry != FlyTelemetry() { telemetry = FlyTelemetry() }
             if position != nil { position = nil }
             if !messages.isEmpty { messages = [] }
+            if unhealthyBits != nil { unhealthyBits = nil }
             return
         }
 
@@ -65,6 +69,9 @@ final class FlyStore: ObservableObject, Probeable {
 
         let heard = VehicleMessage.parse((vehicle["formattedMessages"] as? String) ?? "")
         if heard != messages { messages = heard }
+
+        let bits = (vehicle["sensorsUnhealthyBits"] as? NSNumber)?.intValue
+        if bits != unhealthyBits { unhealthyBits = bits }
     }
 
     private static func facts(_ object: [String: Any]) -> [String: Double] {
@@ -77,6 +84,22 @@ final class FlyStore: ObservableObject, Probeable {
 
     var latestMessages: [VehicleMessage] { Array(messages.prefix(FlyStore.messageLimit)) }
 
+    var checklist: [PreflightGroup] {
+        Preflight.groups(lock: telemetry.gpsLock, satellites: telemetry.satellites,
+                         batteryPercent: telemetry.batteryPercent, unhealthyBits: unhealthyBits)
+    }
+
+    func toggle(_ check: PreflightCheck) {
+        guard !check.blocked else { return }
+        ticked = ticked.contains(check.name)
+            ? ticked.subtracting([check.name])
+            : ticked.union([check.name])
+    }
+
+    func resetChecklist() {
+        ticked = []
+    }
+
     static let messageLimit = 6
 
     func probeState() -> [String: Any] {
@@ -87,12 +110,28 @@ final class FlyStore: ObservableObject, Probeable {
          "battery": telemetry.batteryText, "gps": telemetry.gpsText,
          "placed": position != nil,
          "worstMessage": VehicleMessage.worst(latestMessages).rawValue,
+         "checklistOpen": showingChecklist,
+         "checklistProgress": Preflight.progress(checklist, ticked: ticked),
+         "checklistReady": Preflight.ready(checklist, ticked: ticked),
+         "checklistBlocked": checklist.flatMap(\.checks).filter(\.blocked).map(\.name),
          "messages": latestMessages.map { ["time": $0.time, "text": $0.text, "level": $0.level.rawValue] }]
     }
 
     func probeInvoke(action: String, args: [String: String]) -> [String: Any] {
-        guard action == "refresh" else { return ["ok": false, "error": "unknown action \(action)"] }
-        refresh()
+        switch action {
+        case "refresh": refresh()
+        case "checklist": showingChecklist = args["open"] != "0"
+        case "resetChecklist": resetChecklist()
+        case "tick":
+            guard let check = checklist.flatMap(\.checks).first(where: { $0.name == args["check"] ?? "" }) else {
+                return ["ok": false, "error": "no check named \(args["check"] ?? "")"]
+            }
+            guard !check.blocked else {
+                return ["ok": false, "error": "\(check.name) is blocked: \(check.reason)"]
+            }
+            toggle(check)
+        default: return ["ok": false, "error": "unknown action \(action)"]
+        }
         return ["ok": true, "state": probeState()]
     }
 }

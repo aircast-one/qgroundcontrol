@@ -31,6 +31,7 @@ struct FlyPanel: View {
             .padding(Overlay.gutter)
             .frame(width: 300)
         }
+        .sheet(isPresented: $fly.showingChecklist) { checklistSheet }
     }
 
     private var header: some View {
@@ -42,6 +43,9 @@ struct FlyPanel: View {
                     .font(.callout).foregroundColor(.secondary)
             }
             Spacer(minLength: 0)
+            Button("Checklist") { fly.showingChecklist = true }
+                .controlSize(.small)
+                .disabled(!fly.connected)
             if fly.telemetry.armed {
                 Text("ARMED")
                     .font(.caption.weight(.bold))
@@ -53,6 +57,68 @@ struct FlyPanel: View {
             }
         }
         .padding(.horizontal, 2)
+    }
+
+    private var checklistSheet: some View {
+        VStack(alignment: .leading, spacing: Overlay.unit * 0.75) {
+            HStack {
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("Pre-flight checklist").font(.title3.weight(.semibold))
+                    Text(Preflight.progress(fly.checklist, ticked: fly.ticked))
+                        .font(.callout).foregroundColor(.secondary)
+                }
+                Spacer()
+                if Preflight.ready(fly.checklist, ticked: fly.ticked) {
+                    StatusPill(text: "Ready", good: true)
+                }
+            }
+
+            ScrollView {
+                VStack(alignment: .leading, spacing: Overlay.unit * 0.75) {
+                    ForEach(fly.checklist) { group in
+                        VStack(alignment: .leading, spacing: 0) {
+                            SectionLabel(text: group.name)
+                            GroupCard {
+                                ForEach(Array(group.checks.enumerated()), id: \.element.id) { row, check in
+                                    checkRow(check, showSeparator: row > 0)
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+            .frame(height: 400)
+
+            Divider()
+
+            HStack {
+                Button("Reset", action: fly.resetChecklist)
+                Spacer()
+                Button("Done") { fly.showingChecklist = false }
+                    .keyboardShortcut(.defaultAction)
+            }
+        }
+        .padding(Overlay.unit)
+        .frame(width: 460)
+    }
+
+    private func checkRow(_ check: PreflightCheck, showSeparator: Bool) -> some View {
+        GroupRow(title: check.name,
+                 description: check.reason,
+                 showSeparator: showSeparator,
+                 titleLines: 1,
+                 leading: {
+                     Image(systemName: check.blocked
+                         ? "exclamationmark.octagon.fill"
+                         : (fly.ticked.contains(check.name) ? "checkmark.circle.fill" : "circle"))
+                         .foregroundColor(check.blocked
+                             ? Overlay.vehicle
+                             : (fly.ticked.contains(check.name) ? .green : .secondary))
+                 },
+                 trailing: { EmptyView() })
+            .contentShape(Rectangle())
+            .onTapGesture { fly.toggle(check) }
+            .help(check.blocked ? "Fix this before it can be checked off" : check.prompt)
     }
 
     private var messages: some View {

@@ -993,6 +993,45 @@ func checkVehicleMessages() {
 
 checkVehicleMessages()
 
+func checkPreflight() {
+    expect(Preflight.gps(lock: 6, satellites: 10).verdict == .passing,
+           "an RTK fix with ten satellites passes")
+    expect(Preflight.gps(lock: 2, satellites: 20).verdict == .failing("Waiting for 3D lock."),
+           "satellites do not make up for a missing 3D lock")
+    expect(Preflight.gps(lock: 3, satellites: 5).verdict
+               == .overridable("Only 5 satellites; 9 wanted."),
+           "a thin constellation is the operator's call, not a block")
+    expect(Preflight.gps(lock: 3, satellites: 1).verdict
+               == .overridable("Only 1 satellite; 9 wanted."), "and one satellite is singular")
+    expect(Preflight.gps(lock: nil, satellites: nil).blocked, "no vehicle blocks the GPS check")
+
+    expect(Preflight.battery(percent: 100).verdict == .passing, "a full pack passes")
+    expect(Preflight.battery(percent: 39).blocked, "below forty percent blocks; it cannot be waved through")
+    expect(Preflight.battery(percent: 40).verdict == .passing, "exactly forty is allowed")
+    expect(Preflight.battery(percent: nil).blocked, "no battery reading blocks too")
+
+    expect(Preflight.sensors(unhealthyBits: 0).verdict == .passing, "no unhealthy bits passes")
+    expect(Preflight.sensors(unhealthyBits: 268435456).verdict == .passing,
+           "a bit outside the mask is not one of the sensors this check covers")
+    expect(Preflight.sensors(unhealthyBits: 268435488).verdict == .failing("GPS unhealthy."),
+           "the live SITL case: GPS unhealthy alongside a bit we ignore")
+    expect(Preflight.sensors(unhealthyBits: 3).verdict == .failing("Gyro, Accelerometer unhealthy."),
+           "several sensors are all named")
+
+    let groups = Preflight.groups(lock: 6, satellites: 10, batteryPercent: 100, unhealthyBits: 0)
+    expect(Preflight.total(groups) == 9, "the multirotor list is nine checks long")
+    expect(Preflight.progress(groups, ticked: []), "0 of 9 checked", "and starts at none")
+    expect(!Preflight.ready(groups, ticked: []), "an untouched list is not ready")
+
+    let every = Set(groups.flatMap(\.checks).map(\.name))
+    expect(Preflight.ready(groups, ticked: every), "ticking every check is ready")
+    expect(Preflight.progress(groups, ticked: every), "9 of 9 checked", "and says so")
+    expect(!Preflight.ready(groups, ticked: every.subtracting(["Payload"])),
+           "one missing check is not ready")
+}
+
+checkPreflight()
+
 if failures == 0 {
     print("all Swift checks passed")
     exit(0)
