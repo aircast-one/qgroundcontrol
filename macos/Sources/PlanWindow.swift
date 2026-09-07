@@ -35,9 +35,18 @@ struct MissionView: View {
                 ProgressView().controlSize(.small)
                 Text("Reading from vehicle…").font(.caption).foregroundColor(.secondary)
             }
+            if store.dirty {
+                Text("Unsent changes")
+                    .font(.caption)
+                    .padding(.horizontal, 6).padding(.vertical, 2)
+                    .background(Color.orange.opacity(0.18))
+                    .cornerRadius(3)
+            }
             Spacer()
             Button("Read from Vehicle", action: store.downloadFromVehicle)
                 .disabled(store.syncing)
+            Button("Send to Vehicle", action: store.uploadToVehicle)
+                .disabled(store.syncing || !store.connected || store.items.isEmpty)
         }
         .padding(10)
     }
@@ -82,11 +91,52 @@ struct MissionView: View {
             Text(item.positionText)
                 .font(.caption.monospacedDigit())
                 .foregroundColor(item.hasPosition ? .secondary : Color.secondary.opacity(0.5))
-            Text(item.altitudeText)
-                .font(.body.monospacedDigit())
-                .frame(width: 70, alignment: .trailing)
+            if item.specifiesAltitude {
+                AltitudeField(metres: item.altitude, commit: { store.setAltitude(of: item, metres: $0) })
+            } else {
+                Text(item.altitudeText)
+                    .font(.body.monospacedDigit())
+                    .frame(width: 70, alignment: .trailing)
+            }
         }
         .padding(.vertical, 8)
+    }
+}
+
+struct AltitudeField: View {
+    let metres: Double?
+    let commit: (Double) -> Void
+
+    @State private var draft = ""
+    @FocusState private var editing: Bool
+
+    var body: some View {
+        HStack(spacing: 4) {
+            TextField("", text: $draft)
+                .multilineTextAlignment(.trailing)
+                .font(.body.monospacedDigit())
+                .frame(width: 56)
+                .focused($editing)
+                .onAppear { draft = AltitudeField.text(metres) }
+                .onChange(of: metres) { latest in if !editing { draft = AltitudeField.text(latest) } }
+                .onSubmit(send)
+                .onChange(of: editing) { focused in if !focused { send() } }
+            Text("m").font(.caption).foregroundColor(.secondary)
+        }
+    }
+
+    private func send() {
+        guard let value = Double(draft.trimmingCharacters(in: .whitespaces)), value.isFinite else {
+            draft = AltitudeField.text(metres)
+            return
+        }
+        guard value != metres else { return }
+        commit(value)
+    }
+
+    private static func text(_ metres: Double?) -> String {
+        guard let metres, metres.isFinite else { return "" }
+        return String(format: "%.1f", metres)
     }
 }
 

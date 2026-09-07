@@ -1,6 +1,7 @@
 import Foundation
 
 struct MissionItem: Identifiable {
+    let index: Int
     let sequence: Int
     let command: String
     let description: String
@@ -8,18 +9,19 @@ struct MissionItem: Identifiable {
     let longitude: Double?
     let altitude: Double?
     let isCurrent: Bool
+    let specifiesAltitude: Bool
 
     var id: Int { sequence }
 
     var hasPosition: Bool { latitude != nil && longitude != nil }
 
-    // Waypoint altitude lives in the item's Altitude fact, not in the coordinate:
-    // the coordinate's altitude is NaN for most commands, which arrives as null.
-    init(json: [String: Any]) {
+    init(json: [String: Any], index: Int) {
+        self.index = index
         sequence = (json["sequenceNumber"] as? NSNumber)?.intValue ?? 0
         command = (json["commandName"] as? String) ?? ""
         description = (json["commandDescription"] as? String) ?? ""
         isCurrent = (json["isCurrentItem"] as? NSNumber)?.boolValue ?? false
+        specifiesAltitude = (json["specifiesAltitude"] as? NSNumber)?.boolValue ?? false
 
         let coordinate = json["coordinate"] as? [String: Any]
         latitude = (coordinate?["latitude"] as? NSNumber)?.doubleValue

@@ -9,6 +9,8 @@ final class MissionStore: ObservableObject, Probeable {
     @Published private(set) var status = ""
     @Published private(set) var syncing = false
     @Published private(set) var vehiclePosition: (latitude: Double, longitude: Double)?
+    @Published private(set) var dirty = false
+    @Published private(set) var connected = false
 
     func reload() {
         let controller = Bridge.group("plan.missionController")
@@ -19,8 +21,12 @@ final class MissionStore: ObservableObject, Probeable {
         }
 
         let model = Bridge.group("plan.missionController.visualItems")
-        items = ((model["elements"] as? [[String: Any]]) ?? []).map(MissionItem.init(json:))
-        syncing = (Bridge.group("plan")["syncInProgress"] as? NSNumber)?.boolValue ?? false
+        items = ((model["elements"] as? [[String: Any]]) ?? [])
+            .enumerated().map { MissionItem(json: $0.element, index: $0.offset) }
+        let plan = Bridge.group("plan")
+        syncing = (plan["syncInProgress"] as? NSNumber)?.boolValue ?? false
+        dirty = (plan["dirty"] as? NSNumber)?.boolValue ?? false
+        connected = Bridge.group("vehicle")["kind"] as? String == "object"
         status = items.isEmpty ? "This plan has no items." : ""
 
         let coordinate = Bridge.group("vehicle")["coordinate"] as? [String: Any]
@@ -32,11 +38,20 @@ final class MissionStore: ObservableObject, Probeable {
         }
     }
 
-    // Reading the mission back from the vehicle is the only way to be sure what it is
-    // actually going to fly, as opposed to what was last edited here.
     func downloadFromVehicle() {
         Bridge.invoke("plan.loadFromVehicle")
         syncing = true
+        reload()
+    }
+
+    func uploadToVehicle() {
+        Bridge.invoke("plan.sendToVehicle")
+        syncing = true
+        reload()
+    }
+
+    func setAltitude(of item: MissionItem, metres: Double) {
+        _ = Bridge.set("plan.missionController.visualItems.\(item.index).altitude", metres)
         reload()
     }
 
@@ -91,6 +106,7 @@ final class MissionStore: ObservableObject, Probeable {
 
     func probeState() -> [String: Any] {
         ["count": items.count, "syncing": syncing, "status": status,
+         "dirty": dirty, "connected": connected,
          "tiles": ["exact": CachedTileOverlay.served,
                    "fromParent": CachedTileOverlay.fromParent,
                    "fromChildren": CachedTileOverlay.fromChildren,
@@ -120,6 +136,18 @@ final class MissionStore: ObservableObject, Probeable {
                                z: Int(args["z"] ?? "") ?? 0,
                                type: args["type"] ?? CachedTileOverlay.currentMapType(),
                                includeData: args["data"] != nil)
+        case "upload":
+            uploadToVehicle()
+            for _ in 0..<150 where syncing {
+                RunLoop.current.run(until: Date().addingTimeInterval(0.1))
+                syncing = (Bridge.group("plan")["syncInProgress"] as? NSNumber)?.boolValue ?? false
+            }
+            reload()
+        case "setAltitude":
+            guard let target = items.first(where: { $0.index == Int(args["index"] ?? "") ?? -1 }) else {
+                return ["ok": false, "error": "no item at that index"]
+            }
+            setAltitude(of: target, metres: Double(args["metres"] ?? "") ?? 0)
         case "download":
             downloadFromVehicle()
             for _ in 0..<100 where syncing {
