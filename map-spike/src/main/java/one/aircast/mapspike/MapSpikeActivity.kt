@@ -99,6 +99,8 @@ private fun MapSpikeScreen(mapStyle: String) {
     val longitude by mapDouble("vehicle.longitude")
     val heading by mapDouble("vehicle.heading")
     val home by mapCoordinate("vehicle.homePosition")
+    val missionDistance by mapDouble("plan.missionController.missionTotalDistance")
+    val missionTime by mapDouble("plan.missionController.missionTime")
     val mode by mapString("vehicle.flightMode")
     val vehicleId by mapInt("vehicle.id")
     val vehicleCount by mapCount("vehicles.vehicles")
@@ -217,6 +219,9 @@ private fun MapSpikeScreen(mapStyle: String) {
                         append("Items ${items.size} · fences ${fences.size + circles.size}")
                         append(" · rally ${rally.size}")
                         append(" · survey ${surveyList.sumOf { it.transects.size }} pts")
+                        missionSummary(missionDistance, missionTime)
+                            .takeIf { it.isNotEmpty() }
+                            ?.let { append(" · $it") }
                         (selected as? MapHit.Waypoint)?.let { hit ->
                             val item = items.firstOrNull { it.index == hit.index }
                             item?.altitude?.takeIf { !it.isNaN() }?.let {
