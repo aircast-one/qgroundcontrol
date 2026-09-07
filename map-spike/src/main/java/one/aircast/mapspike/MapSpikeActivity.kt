@@ -3,15 +3,15 @@ package one.aircast.mapspike
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
-import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
+import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.rememberScrollState
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Switch
@@ -52,6 +52,7 @@ class MapSpikeActivity : ComponentActivity() {
     }
 }
 
+@OptIn(ExperimentalLayoutApi::class)
 @Composable
 internal fun MapSpikeScreen(mapStyle: String) {
     var follow by remember { mutableStateOf(true) }
@@ -214,8 +215,11 @@ internal fun MapSpikeScreen(mapStyle: String) {
                     )
                 }
 
-                Row(
-                    Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()),
+                // Wrapping beats scrolling here: a scrolled row cut a button off
+                // mid-word at the right edge, which reads as a rendering fault
+                // rather than an invitation to scroll.
+                FlowRow(
+                    Modifier.fillMaxWidth(),
                     horizontalArrangement = Arrangement.spacedBy(4.dp),
                 ) {
                     TextButton(onClick = {

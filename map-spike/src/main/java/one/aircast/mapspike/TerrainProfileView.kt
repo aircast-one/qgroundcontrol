@@ -47,20 +47,25 @@ private fun pathOf(points: List<Offset>): Path = Path().apply {
 
 @Composable
 fun TerrainProfileView(profile: TerrainProfile, modifier: Modifier = Modifier) {
+    // Screen is the scarcest thing on a phone, and before anything is planned
+    // the profile has nothing to say. Nothing planned shows nothing at all; a
+    // plan that simply carries no altitudes gets one line rather than a panel.
+    if (profile.points.isEmpty()) {
+        return
+    }
+    if (!profile.drawable) {
+        Text(
+            "Plan a route with altitudes to see a profile.",
+            modifier.fillMaxWidth().padding(vertical = 4.dp),
+            style = MaterialTheme.typography.labelSmall,
+        )
+        return
+    }
+
     Surface(
         modifier.fillMaxWidth().height(110.dp),
         color = MaterialTheme.colorScheme.surface.copy(alpha = 0.88f),
     ) {
-        if (!profile.drawable) {
-            Box(Modifier.fillMaxWidth(), contentAlignment = Alignment.Center) {
-                Text(
-                    "No profile. Plan a route with altitudes.",
-                    style = MaterialTheme.typography.bodySmall,
-                )
-            }
-            return@Surface
-        }
-
         Box {
             Canvas(Modifier.fillMaxWidth().height(110.dp).padding(8.dp)) {
                 val terrain = profileOffsets(profile, size.width, size.height) { it.terrain }

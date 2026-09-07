@@ -160,21 +160,35 @@ fun VehicleMap(
         MapView(context)
     }
 
+    // A MapView holds native resources and frees them only on onDestroy. As its
+    // own activity that always arrived. Hosted as a tab the composable can leave
+    // composition while the activity lives on, so leaving has to wind the view
+    // down itself or every visit to the tab strands a map.
     val lifecycleOwner = LocalLifecycleOwner.current
     DisposableEffect(lifecycleOwner, mapView) {
+        var started = false
+        var resumed = false
+        var destroyed = false
         val observer = LifecycleEventObserver { _, event ->
             when (event) {
                 Lifecycle.Event.ON_CREATE -> mapView.onCreate(null)
-                Lifecycle.Event.ON_START -> mapView.onStart()
-                Lifecycle.Event.ON_RESUME -> mapView.onResume()
-                Lifecycle.Event.ON_PAUSE -> mapView.onPause()
-                Lifecycle.Event.ON_STOP -> mapView.onStop()
-                Lifecycle.Event.ON_DESTROY -> mapView.onDestroy()
+                Lifecycle.Event.ON_START -> { mapView.onStart(); started = true }
+                Lifecycle.Event.ON_RESUME -> { mapView.onResume(); resumed = true }
+                Lifecycle.Event.ON_PAUSE -> { mapView.onPause(); resumed = false }
+                Lifecycle.Event.ON_STOP -> { mapView.onStop(); started = false }
+                Lifecycle.Event.ON_DESTROY -> { mapView.onDestroy(); destroyed = true }
                 else -> Unit
             }
         }
         lifecycleOwner.lifecycle.addObserver(observer)
-        onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
+        onDispose {
+            lifecycleOwner.lifecycle.removeObserver(observer)
+            if (!destroyed) {
+                if (resumed) mapView.onPause()
+                if (started) mapView.onStop()
+                mapView.onDestroy()
+            }
+        }
     }
 
     DisposableEffect(mapView, mapStyle) {
