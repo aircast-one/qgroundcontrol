@@ -229,6 +229,15 @@ QJsonValue variantJson(const QVariant &value)
             : QJsonValue();
     }
 
+    switch (value.metaType().id()) {
+    case QMetaType::UChar:
+    case QMetaType::SChar:
+    case QMetaType::Char:
+        return QJsonValue(value.toInt());
+    default:
+        break;
+    }
+
     if (value.metaType().id() == QMetaType::QVariantList) {
         QJsonArray array;
         const QVariantList list = value.toList();
