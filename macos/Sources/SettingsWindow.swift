@@ -4,6 +4,7 @@ import SwiftUI
 struct SettingsView: View {
     @ObservedObject var store: SettingsStore
     @ObservedObject var links: LinksStore
+    @ObservedObject var video: VideoStore
 
     var body: some View {
         HStack(spacing: 0) {
@@ -48,6 +49,9 @@ struct SettingsView: View {
                 if showsLinks {
                     ConnectionsSection(store: links)
                 }
+                if showsVideoSources {
+                    videoSources
+                }
                 ForEach(store.sections) { section in
                     VStack(alignment: .leading, spacing: 0) {
                         SectionLabel(text: section.title)
@@ -78,6 +82,49 @@ struct SettingsView: View {
     private var showsLinks: Bool {
         store.search.trimmingCharacters(in: .whitespaces).isEmpty
             && store.pages.first { $0.id == store.selected }?.showsLinks == true
+    }
+
+    private var showsVideoSources: Bool {
+        store.search.trimmingCharacters(in: .whitespaces).isEmpty
+            && store.pages.first { $0.id == store.selected }?.showsVideoSources == true
+    }
+
+    private var videoSources: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            SectionLabel(text: "Cameras")
+            GroupCard {
+                ForEach(Array(video.sources.enumerated()), id: \.element.id) { row, source in
+                    GroupRow(title: source.title,
+                             description: source.enabled
+                                 ? (source.misconfigured
+                                     ? "\(source.source) \u{00B7} no address"
+                                     : source.source)
+                                 : source.source,
+                             showSeparator: row > 0,
+                             trailing: {
+                                 HStack(spacing: Overlay.step) {
+                                     if VideoSources.repairs(source) != nil {
+                                         Button("Use name") { video.repair(source) }
+                                             .fixedSize()
+                                             .help("The address was typed into this camera's name; move it to the address")
+                                     }
+                                     ValueField(value: source.url, units: "") { entered in
+                                         var replacement = source
+                                         replacement.url = entered
+                                         video.write(replacement)
+                                     }
+                                     .frame(width: 200)
+                                     .disabled(!source.enabled)
+                                 }
+                             })
+                }
+            }
+            Text("A camera needs an address before it can show anything.")
+                .font(.caption).foregroundColor(.secondary)
+                .padding(.horizontal, Overlay.horizontalPadding)
+                .padding(.top, Overlay.unit * 0.35)
+        }
+        .onAppear(perform: video.loadSources)
     }
 
     private var showsAbout: Bool {
@@ -224,6 +271,7 @@ final class SettingsWindow: NSObject, NSWindowDelegate {
 
     private let store = SettingsStore()
     private let links = LinksStore()
+    private let video = VideoStore.shared
 
     override init() {
         super.init()
@@ -251,7 +299,7 @@ final class SettingsWindow: NSObject, NSWindowDelegate {
         window.title = "Settings"
         window.isReleasedWhenClosed = false
         window.delegate = self
-        window.contentView = NSHostingView(rootView: SettingsView(store: store, links: links))
+        window.contentView = NSHostingView(rootView: SettingsView(store: store, links: links, video: video))
         window.center()
         window.makeKeyAndOrderFront(nil)
         self.window = window

@@ -12,14 +12,16 @@ struct SettingsPage: Identifiable {
     let sections: [SettingsSection]
     let showsLinks: Bool
     let showsAbout: Bool
+    let showsVideoSources: Bool
     var id: String { title }
 
     init(title: String, sections: [SettingsSection], showsLinks: Bool = false,
-         showsAbout: Bool = false) {
+         showsAbout: Bool = false, showsVideoSources: Bool = false) {
         self.title = title
         self.sections = sections
         self.showsLinks = showsLinks
         self.showsAbout = showsAbout
+        self.showsVideoSources = showsVideoSources
     }
 
     static let all: [SettingsPage] = [
@@ -38,7 +40,7 @@ struct SettingsPage: Identifiable {
         ]),
         SettingsPage(title: "Video", sections: [
             .init(title: "Video", group: "videoSettings"),
-        ]),
+        ], showsVideoSources: true),
         SettingsPage(title: "Maps", sections: [
             .init(title: "Maps", group: "mapsSettings"),
             .init(title: "Flight Map", group: "flightMapSettings"),

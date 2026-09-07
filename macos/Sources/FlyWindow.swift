@@ -494,7 +494,7 @@ final class FlyWindow: NSObject, NSWindowDelegate {
     private let mission = MissionStore()
     private let instruments = InstrumentsStore()
     private let guided = GuidedStore()
-    private let video = VideoStore()
+    private let video = VideoStore.shared
     private var window: NSWindow?
 
     override init() {

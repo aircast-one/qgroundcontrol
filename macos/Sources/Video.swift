@@ -4,9 +4,37 @@ import QGCVideoC
 final class VideoStore: ObservableObject, Probeable {
     static let probeID = "video"
 
+    static let shared = VideoStore()
+
     @Published private(set) var status = VideoStatus.unavailable
 
+    @Published private(set) var sources: [VideoSource] = []
+    @Published private(set) var sourceTypes: [String] = []
+
     private var askedForNative = false
+
+    private static let sourcesPath = "settings.videoSettings.extraVideoSources"
+
+    func loadSources() {
+        let fact = Bridge.group(VideoStore.sourcesPath)
+        let listed = VideoSources.decode((fact["valueString"] as? String) ?? "")
+        if listed != sources { sources = listed }
+
+        let types = ((Bridge.group("settings.videoSettings.videoSource")["enumStrings"] as? [String]) ?? [])
+            .filter { !$0.isEmpty }
+        if types != sourceTypes { sourceTypes = types }
+    }
+
+    func write(_ replacement: VideoSource) {
+        let updated = VideoSources.replacing(sources, at: replacement.slot, with: replacement)
+        _ = Bridge.set(VideoStore.sourcesPath, VideoSources.encode(updated))
+        loadSources()
+    }
+
+    func repair(_ source: VideoSource) {
+        guard let repaired = VideoSources.repairs(source) else { return }
+        write(repaired)
+    }
 
     func useNativeRendering() {
         guard !askedForNative, qgc_video_available() else { return }
@@ -62,12 +90,34 @@ final class VideoStore: ObservableObject, Probeable {
                                           "connecting": $0.connecting] },
          "nativeAvailable": qgc_video_available(), "nativeRunning": nativeRunning,
          "nativeRequested": askedForNative,
+         "sources": sources.map { ["slot": $0.slot, "name": $0.name, "source": $0.source,
+                                   "url": $0.url, "summary": $0.summary,
+                                   "misconfigured": $0.misconfigured] },
          "nativeFrames": nativeFrames, "nativeSize": nativeSize, "nativeError": nativeError]
     }
 
     func probeInvoke(action: String, args: [String: String]) -> [String: Any] {
         switch action {
-        case "refresh": refresh()
+        case "refresh":
+            refresh()
+            loadSources()
+        case "setSourceUrl":
+            guard let slot = Int(args["slot"] ?? ""),
+                  let existing = sources.first(where: { $0.slot == slot }) else {
+                return ["ok": false, "error": "no source slot \(args["slot"] ?? "")"]
+            }
+            var replacement = existing
+            replacement.url = args["url"] ?? ""
+            write(replacement)
+        case "repairSource":
+            guard let slot = Int(args["slot"] ?? ""),
+                  let existing = sources.first(where: { $0.slot == slot }) else {
+                return ["ok": false, "error": "no source slot \(args["slot"] ?? "")"]
+            }
+            guard VideoSources.repairs(existing) != nil else {
+                return ["ok": false, "error": "slot \(slot) has nothing to repair"]
+            }
+            repair(existing)
         case "startNative":
             guard let pipeline = args["pipeline"], !pipeline.isEmpty else {
                 return ["ok": false, "error": "startNative needs a pipeline"]

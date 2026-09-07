@@ -966,6 +966,50 @@ func checkVideoStatus() {
 
 checkVideoStatus()
 
+func checkVideoSources() {
+    let live = "[{\"name\":\"\",\"source\":\"RTSP Video Stream\",\"url\":\"\"},"
+        + "{\"name\":\"0.0.0.0:5691\",\"source\":\"UDP h.264 Video Stream\",\"url\":\"\"},"
+        + "{\"name\":\"\",\"source\":\"Video Stream Disabled\",\"url\":\"\"}]"
+
+    let sources = VideoSources.decode(live)
+    expect(sources.count == 3, "every configured slot is read")
+    expect(sources[0].title, "Camera 1", "an unnamed slot is named by its number")
+    expect(sources[1].title, "0.0.0.0:5691", "a named one keeps its name")
+    expect(!sources[2].enabled, "a disabled slot is off")
+    expect(sources[2].summary, "Off", "and says so rather than complaining about an address")
+    expect(sources[0].misconfigured, "an enabled slot with no address cannot work")
+    expect(!sources[2].misconfigured, "a disabled one is not misconfigured, just off")
+    expect(sources[1].summary, "No address", "which is what the row reports")
+
+    expect(VideoSources.decode("not json").isEmpty, "a corrupt setting yields no slots, not a crash")
+    expect(VideoSources.decode("").isEmpty, "nor does an empty one")
+
+    expect(VideoSources.looksLikeAddress("0.0.0.0:5691"), "a host and port is an address")
+    expect(VideoSources.looksLikeAddress("rtsp://camera/live"), "so is a URL")
+    expect(!VideoSources.looksLikeAddress("Front camera"), "a human name is not")
+    expect(!VideoSources.looksLikeAddress("nose:cam"), "nor is a colon without a port number")
+    expect(!VideoSources.looksLikeAddress(""), "nor is nothing")
+
+    let repaired = VideoSources.repairs(sources[1])
+    expect(repaired?.url ?? "", "0.0.0.0:5691",
+           "an address typed into the name is offered as the address")
+    expect(repaired?.name ?? "?", "", "and stops being the name")
+    expect(VideoSources.repairs(sources[0]) == nil,
+           "a slot with no address anywhere has nothing to move")
+    expect(VideoSources.repairs(sources[2]) == nil, "and a disabled slot is left alone")
+
+    var fixed = sources[1]
+    fixed.url = "0.0.0.0:5691"
+    let updated = VideoSources.replacing(sources, at: 1, with: fixed)
+    expect(updated.count == 3, "replacing a slot keeps the others")
+    expect(updated[1].url, "0.0.0.0:5691", "and changes the one asked for")
+    expect(updated[0].url, "", "leaving its neighbours alone")
+    expect(VideoSources.encode(updated).contains("0.0.0.0:5691"),
+           "the encoded setting carries the address back to the vehicle settings")
+}
+
+checkVideoSources()
+
 func checkLogReplayLink() {
     let empty = LinkConfig(index: 0, json: ["linkType": "TypeLogReplay", "name": "Replay"])
     expect(empty.editing == .logFile, "a log replay link is edited by choosing a file")

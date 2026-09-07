@@ -37,6 +37,7 @@ add_library(QGCNativeUI STATIC
     Sources/CalibrationModel.swift
     Sources/RadioModel.swift
     Sources/VideoModel.swift
+    Sources/VideoSourceModel.swift
     Sources/Video.swift
     Sources/VideoSurface.swift
     Sources/Radio.swift
