@@ -331,13 +331,13 @@ void PlanMasterController::sendToVehicle(void)
     }
 }
 
-void PlanMasterController::loadFromFile(const QString& filename)
+bool PlanMasterController::loadFromFile(const QString& filename)
 {
     QString errorString;
     QString errorMessage = tr("Error loading Plan file (%1). %2").arg(filename).arg("%1");
 
     if (filename.isEmpty()) {
-        return;
+        return false;
     }
 
     QFileInfo fileInfo(filename);
@@ -346,7 +346,7 @@ void PlanMasterController::loadFromFile(const QString& filename)
     if (!file.open(QIODevice::ReadOnly | QIODevice::Text)) {
         errorString = file.errorString() + QStringLiteral(" ") + filename;
         qgcApp()->showAppMessage(errorMessage.arg(errorString));
-        return;
+        return false;
     }
 
     bool success = false;
@@ -368,7 +368,7 @@ void PlanMasterController::loadFromFile(const QString& filename)
 
         if (!JsonHelper::isJsonFile(bytes, jsonDoc, errorString)) {
             qgcApp()->showAppMessage(errorMessage.arg(errorString));
-            return;
+            return false;
         }
 
         if (!_loadFromJson(jsonDoc.object(), errorString)) {
@@ -388,6 +388,8 @@ void PlanMasterController::loadFromFile(const QString& filename)
     if (!offline()) {
         setDirty(true);
     }
+
+    return success;
 }
 
 bool PlanMasterController::_loadFromJson(QJsonObject json, QString& errorString)
@@ -543,18 +545,19 @@ QJsonDocument PlanMasterController::saveToJson()
     return QJsonDocument(planJson);
 }
 
-void
+bool
 PlanMasterController::saveToCurrent()
 {
-    if(!_currentPlanFile.isEmpty()) {
-        saveToFile(_currentPlanFile);
+    if (_currentPlanFile.isEmpty()) {
+        return false;
     }
+    return saveToFile(_currentPlanFile);
 }
 
-void PlanMasterController::saveToFile(const QString& filename)
+bool PlanMasterController::saveToFile(const QString& filename)
 {
     if (filename.isEmpty()) {
-        return;
+        return false;
     }
 
     QString planFilename = filename;
@@ -564,16 +567,25 @@ void PlanMasterController::saveToFile(const QString& filename)
 
     QFile file(planFilename);
 
+    bool saved = false;
     if (!file.open(QIODevice::WriteOnly | QIODevice::Text)) {
         qgcApp()->showAppMessage(tr("Plan save error %1 : %2").arg(filename).arg(file.errorString()));
         _currentPlanFile.clear();
         emit currentPlanFileChanged();
     } else {
-        QJsonDocument saveDoc = saveToJson();
-        file.write(saveDoc.toJson());
-        if(_currentPlanFile != planFilename) {
-            _currentPlanFile = planFilename;
+        const QByteArray plan = saveToJson().toJson();
+        if (file.write(plan) != plan.size()) {
+            qgcApp()->showAppMessage(tr("Plan save error %1 : %2").arg(filename).arg(file.errorString()));
+            file.close();
+            (void) file.remove();
+            _currentPlanFile.clear();
             emit currentPlanFileChanged();
+        } else {
+            saved = true;
+            if(_currentPlanFile != planFilename) {
+                _currentPlanFile = planFilename;
+                emit currentPlanFileChanged();
+            }
         }
     }
 
@@ -581,6 +593,8 @@ void PlanMasterController::saveToFile(const QString& filename)
     if (offline()) {
         setDirty(false);
     }
+
+    return saved;
 }
 
 void PlanMasterController::saveToKml(const QString& filename)

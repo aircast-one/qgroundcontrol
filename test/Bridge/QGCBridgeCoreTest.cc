@@ -15,7 +15,10 @@
 #include "SettingsManager.h"
 #include "UnitsSettings.h"
 
+#include <QtCore/QDir>
 #include <QtCore/QElapsedTimer>
+#include <QtCore/QFile>
+#include <QtCore/QStandardPaths>
 #include <QtCore/QJsonArray>
 #include <QtCore/QJsonDocument>
 #include <QtCore/QJsonObject>
@@ -560,4 +563,58 @@ void QGCBridgeCoreTest::_planStartsWithItsSettingsItemAndNoVehicle()
         "visualItems reported %1 elements with no vehicle; MissionController::_init "
         "adds exactly one settings item to a started controller")
         .arg(elements.size())));
+}
+
+void QGCBridgeCoreTest::_planSaveReportsWhetherItWrote()
+{
+    const QString writable = QDir(QStandardPaths::writableLocation(
+        QStandardPaths::TempLocation)).filePath(QStringLiteral("qgcbridge-plan"));
+    QFile::remove(writable + QStringLiteral(".plan"));
+
+    const QJsonObject wrote = parse(QGCBridgeCore::invoke(
+        QStringLiteral("plan.saveToFile"),
+        QStringLiteral("[\"%1\"]").arg(writable)));
+    QCOMPARE(wrote.value(QStringLiteral("result")).toBool(), true);
+
+    QVERIFY2(QFile::exists(writable + QStringLiteral(".plan")),
+             "saveToFile appends its own extension when the name carries none");
+
+    const QJsonObject current = parse(QGCBridgeCore::get(QStringLiteral("plan.currentPlanFile")));
+    QCOMPARE(current.value(QStringLiteral("value")).toString(), writable + QStringLiteral(".plan"));
+
+    const QJsonObject refused = parse(QGCBridgeCore::invoke(
+        QStringLiteral("plan.saveToFile"),
+        QStringLiteral("[\"/no/such/directory/plan.plan\"]")));
+    QCOMPARE(refused.value(QStringLiteral("result")).toBool(), false);
+
+    QFile::remove(writable + QStringLiteral(".plan"));
+}
+
+void QGCBridgeCoreTest::_aRefusedLoadLeavesTheExistingPlanAlone()
+{
+    const auto itemCount = []() {
+        return parse(QGCBridgeCore::get(QStringLiteral("plan.missionController.visualItems")))
+            .value(QStringLiteral("elements")).toArray().size();
+    };
+
+    QGCBridgeCore::invoke(QStringLiteral("plan.missionController.insertSimpleMissionItem"),
+                          QStringLiteral("[{\"latitude\":47.4,\"longitude\":8.5,\"altitude\":30}, 1]"));
+    const int planned = itemCount();
+    QVERIFY2(planned > 1, qPrintable(QStringLiteral(
+        "expected a planned item on top of the settings item, saw %1").arg(planned)));
+
+    const QString rubbish = QDir(QStandardPaths::writableLocation(
+        QStandardPaths::TempLocation)).filePath(QStringLiteral("not-a-plan.plan"));
+    QFile file(rubbish);
+    QVERIFY(file.open(QIODevice::WriteOnly | QIODevice::Text));
+    file.write("{\"fileType\":\"NotAPlan\",\"version\":99}");
+    file.close();
+
+    const QJsonObject refused = parse(QGCBridgeCore::invoke(
+        QStringLiteral("plan.loadFromFile"), QStringLiteral("[\"%1\"]").arg(rubbish)));
+    QCOMPARE(refused.value(QStringLiteral("result")).toBool(), false);
+
+    QCOMPARE(itemCount(), planned);
+
+    QFile::remove(rubbish);
 }

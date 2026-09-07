@@ -30,6 +30,8 @@ private slots:
     void _watchFromAnotherThreadDoesNotBlockTheCaller();
     void _writesAnObjectPropertyFromAnAtPath();
     void _planStartsWithItsSettingsItemAndNoVehicle();
+    void _planSaveReportsWhetherItWrote();
+    void _aRefusedLoadLeavesTheExistingPlanAlone();
     void _resolvesAccessorCall();
     void _writesThroughAccessorCall();
     void _invokeReturnsValue();
