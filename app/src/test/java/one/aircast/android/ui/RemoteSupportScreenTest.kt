@@ -25,7 +25,22 @@ class RemoteSupportScreenTest {
 
     @Test
     fun `a component with neither a form nor a custom page stays closed`() {
-        assertEquals(false, hasNativeSetupPage("Sensors", isPx4 = false))
+        assertEquals(false, hasNativeSetupPage("Motors", isPx4 = false))
         assertEquals(false, hasNativeSetupPage("Motors", isPx4 = true))
+        assertEquals(false, hasNativeSetupPage("Radio", isPx4 = false))
+    }
+
+    @Test
+    fun `sensor calibration opens for arducopter only`() {
+        assertEquals(true, hasNativeSetupPage(SENSORS, isPx4 = false))
+        assertEquals(false, hasNativeSetupPage(SENSORS, isPx4 = true))
+    }
+
+    @Test
+    fun `no calibration offered here spins a motor`() {
+        assertEquals(
+            emptyList<String>(),
+            CALIBRATIONS.map { it.method }.filter { it == "calibrateMotorInterference" },
+        )
     }
 }

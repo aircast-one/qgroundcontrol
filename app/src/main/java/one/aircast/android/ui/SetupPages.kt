@@ -199,6 +199,9 @@ internal fun setupSectionsFor(componentName: String, isPx4: Boolean): List<Param
     }
 
 internal const val REMOTE_SUPPORT = "Remote Support"
+internal const val SENSORS = "Sensors"
 
 internal fun hasNativeSetupPage(componentName: String, isPx4: Boolean) =
-    componentName == REMOTE_SUPPORT || setupSectionsFor(componentName, isPx4) != null
+    componentName == REMOTE_SUPPORT ||
+        (componentName == SENSORS && !isPx4) ||
+        setupSectionsFor(componentName, isPx4) != null
