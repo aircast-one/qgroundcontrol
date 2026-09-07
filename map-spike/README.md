@@ -6,7 +6,19 @@ A native map for the Android frontend: MapLibre in Compose, driven entirely thro
 Phase 4 of `NATIVE_ANDROID_REWRITE.md`. This module exists to answer whether a native map can
 replace the QML one, and the answer is yes.
 
-## Running it
+## Hosting it in the app
+
+`:app` already depends on this module. Drop the map into the app's own navigation with
+
+```kotlin
+PlanMapScreen()
+```
+
+It sets itself up on first use and survives being entered again, which matters because MapLibre has
+to be initialised before the tile source replaces the HTTP client and that client may only be
+replaced once. The activity below is the standalone harness and now calls the same composable.
+
+## Running it standalone
 
 The spike is an Activity of its own, deliberately outside the app's navigation so it cannot
 disturb the shipping tabs:

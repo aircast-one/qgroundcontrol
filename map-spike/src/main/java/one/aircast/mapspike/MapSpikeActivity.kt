@@ -41,12 +41,9 @@ private const val FAILURE_MESSAGE_MS = 2500L
 class MapSpikeActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        MapBridge.start()
-        org.maplibre.android.MapLibre.getInstance(this)
-        val style = installQgcTileSource(this)
         setContent {
             MaterialTheme(colorScheme = darkColorScheme()) {
-                Surface(Modifier.fillMaxSize()) { MapSpikeScreen(style) }
+                PlanMapScreen()
             }
         }
     }
@@ -65,7 +62,7 @@ fun homeLabel(home: TrackPoint?, latitude: Double, longitude: Double): String {
 }
 
 @Composable
-private fun MapSpikeScreen(mapStyle: String) {
+internal fun MapSpikeScreen(mapStyle: String) {
     var follow by remember { mutableStateOf(true) }
     var fitRequest by remember { mutableStateOf(0) }
     var items by remember { mutableStateOf<List<MissionItem>>(emptyList()) }
