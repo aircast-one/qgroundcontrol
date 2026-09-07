@@ -129,11 +129,11 @@ ListModel {
     }
 
     ListElement {
-        name: qsTr("Comm Links")
+        name: qsTr("Connections")
         summary: qsTr("Auto connect, NMEA GPS, links")
         //: Comma-separated search terms for this settings page. Translate the words a
         //: user would type to look for these settings; keep product names as-is.
-        keywords: qsTr("auto, connect, nmea, gps, device, baudrate, udp, port, serial, tcp, bluetooth, link, type, options, connection")
+        keywords: qsTr("auto, connect, nmea, gps, device, baudrate, udp, port, serial, tcp, bluetooth, link, type, options, connection, comm links")
         section: ""
         url: "qrc:/qml/QGroundControl/AppSettings/LinkSettings.qml"
         iconUrl: "qrc:/InstrumentValueIcons/usb.svg"

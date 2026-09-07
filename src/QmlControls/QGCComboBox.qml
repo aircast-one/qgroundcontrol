@@ -32,6 +32,7 @@ T.ComboBox {
 
     property bool   centeredLabel:  false
     property bool   sizeToContents: false
+    property bool   plain:          false
     property string alternateText:  ""
 
     property real   _popupWidth:    width
@@ -108,12 +109,13 @@ T.ComboBox {
         spacing:                -Math.round(ScreenTools.defaultFontPixelHeight * 0.2)
 
         Repeater {
-            model: [ "/InstrumentValueIcons/cheveron-up.svg", "/InstrumentValueIcons/cheveron-down.svg" ]
+            model: control.plain ? [ "/InstrumentValueIcons/cheveron-right.svg" ]
+                                 : [ "/InstrumentValueIcons/cheveron-up.svg", "/InstrumentValueIcons/cheveron-down.svg" ]
 
             QGCColoredImage {
                 source:             modelData
                 color:              Qt.alpha(qgcPal.text, control.enabled ? 0.55 : 0.3)
-                height:             Math.round(ScreenTools.defaultFontPixelHeight * 0.5)
+                height:             Math.round(ScreenTools.defaultFontPixelHeight * (control.plain ? 0.7 : 0.5))
                 width:              height
                 sourceSize.height:  height
                 fillMode:           Image.PreserveAspectFit
@@ -126,13 +128,13 @@ T.ComboBox {
         anchors.horizontalCenter:   centeredLabel ? parent.horizontalCenter : undefined
         text:                       control.alternateText === "" ? control.currentText : control.alternateText
         font:                       control.font
-        color:                      qgcPal.buttonText
+        color:                      control.plain ? qgcPal.colorGrey : qgcPal.buttonText
     }
 
     background: Rectangle {
-        color:          qgcPal.button
+        color:          control.plain ? "transparent" : qgcPal.button
         border.color:   qgcPal.buttonBorder
-        border.width:   1
+        border.width:   control.plain ? 0 : 1
         radius:         ScreenTools.buttonBorderRadius
     }
 

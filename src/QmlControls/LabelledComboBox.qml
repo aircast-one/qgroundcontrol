@@ -35,6 +35,7 @@ RowLayout {
         id:                     _comboBox
         Layout.preferredWidth:  comboBoxPreferredWidth
         sizeToContents:         true
+        plain:                  true
         onActivated: (index) => { parent.activated(index) }
     }
 }
