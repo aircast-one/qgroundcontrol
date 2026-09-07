@@ -27,6 +27,7 @@ swiftc -Onone -o "$out" \
     "$root/macos/Sources/CameraChoiceModel.swift" \
     "$root/macos/Sources/AltitudeModeModel.swift" \
     "$root/macos/Sources/PlanSummaryModel.swift" \
+    "$root/macos/Sources/MissionVehicleModel.swift" \
     "$root/macos/Sources/TerrainProfileModel.swift" \
     "$root/macos/Sources/MapFraming.swift" \
     "$root/macos/Sources/FenceRallyModel.swift" \

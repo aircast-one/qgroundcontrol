@@ -319,6 +319,10 @@ struct PlanInspector: View {
                 factCard(group, facts)
             }
         }
+
+        if showsMissionSettings, mission.vehicle.showsAnything {
+            vehicleCard
+        }
     }
 
     // A plain waypoint has no settings of its own, but it still flies at a height
@@ -354,6 +358,44 @@ struct PlanInspector: View {
                         mission.setDefaultAltitude($0)
                     }
                 })
+            }
+        }
+    }
+
+    private var vehicleCard: some View {
+        VStack(alignment: .leading, spacing: Overlay.unit * 0.35) {
+            SectionLabel(text: "Vehicle")
+            GroupCard {
+                if !mission.vehicle.firmware.isEmpty {
+                    GroupRow(title: "Firmware", value: mission.vehicle.firmware, showSeparator: false)
+                }
+                if !mission.vehicle.type.isEmpty {
+                    GroupRow(title: "Type", value: mission.vehicle.type,
+                             showSeparator: !mission.vehicle.firmware.isEmpty)
+                }
+                if mission.vehicle.showsCruiseSpeed {
+                    GroupRow(title: "Cruise speed", showSeparator: mission.vehicle.isDescribed, trailing: {
+                        ValueField(value: mission.cruiseSpeed, units: "m/s") {
+                            mission.setCruiseSpeed($0)
+                        }
+                    })
+                }
+                if mission.vehicle.showsHoverSpeed {
+                    GroupRow(title: "Hover speed",
+                             showSeparator: mission.vehicle.isDescribed || mission.vehicle.showsCruiseSpeed,
+                             trailing: {
+                        ValueField(value: mission.hoverSpeed, units: "m/s") {
+                            mission.setHoverSpeed($0)
+                        }
+                    })
+                }
+            }
+            if mission.vehicle.showsCruiseSpeed || mission.vehicle.showsHoverSpeed {
+                Text("Speeds only estimate how long the mission takes. They do not change how fast the vehicle flies.")
+                    .font(.caption)
+                    .foregroundColor(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+                    .padding(.horizontal, Overlay.horizontalPadding)
             }
         }
     }

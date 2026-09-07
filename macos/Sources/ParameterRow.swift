@@ -19,7 +19,11 @@ struct ValueField: View {
                 .onAppear { draft = value }
                 .onChange(of: value) { latest in if !editing { draft = latest } }
                 .onSubmit(send)
-                .onChange(of: editing) { focused in if !focused { send() } }
+                .onChange(of: editing) { focused in
+                    guard !focused else { return }
+                    send()
+                    draft = value
+                }
             if !units.isEmpty {
                 Text(units).font(.caption).foregroundColor(.secondary).fixedSize()
             }

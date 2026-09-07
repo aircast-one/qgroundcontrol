@@ -756,6 +756,27 @@ func checkPlanSummary() {
 
 checkPlanSummary()
 
+func checkMissionVehicle() {
+    let copter = MissionVehicle(firmware: "ArduPilot", type: "Quadrotor", multiRotor: true, vtol: false)
+    expect(copter.showsHoverSpeed, "a multirotor hovers between waypoints")
+    expect(!copter.showsCruiseSpeed, "and never cruises, so asking a cruise speed would be noise")
+
+    let plane = MissionVehicle(firmware: "PX4 Pro", type: "Fixed Wing", multiRotor: false, vtol: false)
+    expect(plane.showsCruiseSpeed, "a plane cruises")
+    expect(!plane.showsHoverSpeed, "and cannot hover")
+
+    let vtol = MissionVehicle(firmware: "PX4 Pro", type: "VTOL", multiRotor: false, vtol: true)
+    expect(vtol.showsCruiseSpeed, "a VTOL does both")
+    expect(vtol.showsHoverSpeed, "so it needs both speeds")
+
+    expect(copter.isDescribed, "a named firmware and type describe the vehicle")
+    expect(!MissionVehicle.unknown.isDescribed, "an unknown vehicle describes nothing")
+    expect(MissionVehicle.unknown.showsAnything,
+           "even unknown, a cruise speed is still worth asking for the time estimate")
+}
+
+checkMissionVehicle()
+
 if failures == 0 {
     print("all Swift checks passed")
     exit(0)

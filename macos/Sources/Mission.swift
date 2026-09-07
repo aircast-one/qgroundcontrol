@@ -22,6 +22,9 @@ final class MissionStore: ObservableObject, Probeable {
     @Published private(set) var globalAltitudeMode = ""
     @Published private(set) var defaultAltitude = ""
     @Published private(set) var summary = PlanSummary.empty
+    @Published private(set) var vehicle = MissionVehicle.unknown
+    @Published private(set) var cruiseSpeed = ""
+    @Published private(set) var hoverSpeed = ""
     @Published private(set) var planFile = ""
 
     private var undoPoll: Timer?
@@ -50,6 +53,15 @@ final class MissionStore: ObservableObject, Probeable {
             seconds: (controller["missionTime"] as? NSNumber)?.doubleValue ?? 0,
             maxTelemetryMetres: (controller["missionMaxTelemetry"] as? NSNumber)?.doubleValue ?? 0)
         defaultAltitude = (Bridge.group("settings.appSettings.defaultMissionItemAltitude")["valueString"] as? String) ?? ""
+
+        let controllerVehicle = Bridge.group("plan.controllerVehicle")
+        vehicle = MissionVehicle(
+            firmware: (controllerVehicle["firmwareTypeString"] as? String) ?? "",
+            type: (controllerVehicle["vehicleTypeString"] as? String) ?? "",
+            multiRotor: (controllerVehicle["multiRotor"] as? NSNumber)?.boolValue ?? false,
+            vtol: (controllerVehicle["vtol"] as? NSNumber)?.boolValue ?? false)
+        cruiseSpeed = (Bridge.group("settings.appSettings.offlineEditingCruiseSpeed")["valueString"] as? String) ?? ""
+        hoverSpeed = (Bridge.group("settings.appSettings.offlineEditingHoverSpeed")["valueString"] as? String) ?? ""
         canUndo = (plan["canUndo"] as? NSNumber)?.boolValue ?? false
         canRedo = (plan["canRedo"] as? NSNumber)?.boolValue ?? false
         loadCommands()
@@ -222,6 +234,22 @@ final class MissionStore: ObservableObject, Probeable {
         reload()
     }
 
+    func setCruiseSpeed(_ value: String) {
+        setSpeed("offlineEditingCruiseSpeed", value)
+    }
+
+    func setHoverSpeed(_ value: String) {
+        setSpeed("offlineEditingHoverSpeed", value)
+    }
+
+    private func setSpeed(_ setting: String, _ value: String) {
+        guard let speed = Double(value), speed.isFinite else { return }
+        let path = "settings.appSettings.\(setting)"
+        let slowest = (Bridge.group(path)["min"] as? NSNumber)?.doubleValue ?? 1
+        _ = Bridge.set(path, max(speed, slowest))
+        reload()
+    }
+
     func setItemAltitudeMode(_ raw: String) {
         guard let item = items.first(where: \.isCurrent), AltitudeMode.isChoice(raw) else { return }
         _ = Bridge.set("plan.missionController.visualItems.\(item.index).altitudeMode", raw)
@@ -367,6 +395,9 @@ final class MissionStore: ObservableObject, Probeable {
          "surveys": surveyAreas.map(\.count),
          "distanceMode": distanceMode, "itemAltitudeMode": itemAltitudeMode,
          "globalAltitudeMode": globalAltitudeMode, "defaultAltitude": defaultAltitude,
+         "vehicle": ["firmware": vehicle.firmware, "type": vehicle.type,
+                     "cruiseSpeed": vehicle.showsCruiseSpeed ? cruiseSpeed : "",
+                     "hoverSpeed": vehicle.showsHoverSpeed ? hoverSpeed : ""],
          "summary": ["distance": summary.distanceText, "duration": summary.durationText,
                      "telemetry": summary.telemetryText, "hasFlight": summary.hasFlight],
          "camera": ["brand": camera.brand, "model": camera.model,
@@ -448,6 +479,10 @@ final class MissionStore: ObservableObject, Probeable {
             setGlobalAltitudeMode(args["value"] ?? "")
         case "setDefaultAltitude":
             setDefaultAltitude(args["value"] ?? "")
+        case "setCruiseSpeed":
+            setCruiseSpeed(args["value"] ?? "")
+        case "setHoverSpeed":
+            setHoverSpeed(args["value"] ?? "")
         case "setItemAltitudeMode":
             setItemAltitudeMode(args["value"] ?? "")
         case "setDistanceMode":
