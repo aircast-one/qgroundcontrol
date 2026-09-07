@@ -218,6 +218,54 @@ struct PowerView: View {
     }
 }
 
+struct TuningView: View {
+    @ObservedObject var store: ParametersStore
+
+    var body: some View {
+        SetupPageBody(title: "Tuning",
+                      note: "The gains that decide how the vehicle answers the sticks. Change one thing at a time and fly it.") {
+            if store.loading {
+                GroupCard { EmptyStateRow(text: "Reading parameters from the vehicle\u{2026}") }
+            } else if sections.isEmpty {
+                GroupCard {
+                    EmptyStateRow(text: "This vehicle reports none of the tuning parameters this page knows about.")
+                }
+            } else {
+                ForEach(sections, id: \.section.id) { entry in
+                    VStack(alignment: .leading, spacing: 0) {
+                        SectionLabel(text: entry.section.title)
+                        GroupCard {
+                            ForEach(Array(entry.names.enumerated()), id: \.element) { index, name in
+                                if let parameter = store.parameter(named: name) {
+                                    ParameterRow(parameter: parameter, showSeparator: index > 0) {
+                                        store.write(parameter, $0)
+                                    }
+                                }
+                            }
+                        }
+                        Text(entry.section.note)
+                            .font(.caption).foregroundColor(.secondary)
+                            .fixedSize(horizontal: false, vertical: true)
+                            .padding(.horizontal, Overlay.horizontalPadding)
+                            .padding(.top, Overlay.unit * 0.35)
+                    }
+                }
+
+                Text("AutoTune and in-flight tuning are flown, not configured, and stay in the Qt view.")
+                    .font(.caption)
+                    .foregroundColor(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+                    .padding(.horizontal, Overlay.horizontalPadding)
+            }
+        }
+        .onAppear(perform: store.load)
+    }
+
+    private var sections: [(section: SetupSection, names: [String])] {
+        SetupSection.present(SetupSection.tuning, in: Set(store.parameters.map(\.name)))
+    }
+}
+
 struct FrameView: View {
     @ObservedObject var store: ParametersStore
     @ObservedObject var frame: FrameStore
@@ -445,7 +493,7 @@ struct SetupSummaryView: View {
 }
 
 enum SetupPage {
-    static let all = ["Summary", "Sensors", "Frame", "Flight Modes", "Safety", "Power", "Parameters"]
+    static let all = ["Summary", "Sensors", "Frame", "Flight Modes", "Safety", "Power", "Tuning", "Parameters"]
 
     static func symbol(for page: String) -> String {
         switch page {
@@ -501,6 +549,7 @@ struct VehicleSetupView: View {
                     row("Flight Modes")
                     row("Safety")
                     row("Power")
+                    row("Tuning")
                 }
                 Section("Advanced") {
                     row("Parameters")
@@ -532,6 +581,7 @@ struct VehicleSetupView: View {
         case "Safety": SafetyView(store: parameters)
         case "Power": PowerView(store: parameters, power: power)
         case "Frame": FrameView(store: parameters, frame: frame)
+        case "Tuning": TuningView(store: parameters)
         case "Flight Modes": FlightModesView(store: parameters)
         case "Sensors": SensorsView(store: sensors)
         default: SetupSummaryView(store: components, sensors: sensors, selection: selection)

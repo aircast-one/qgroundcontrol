@@ -51,6 +51,31 @@ struct SetupSection: Identifiable {
             parameters: ["FRAME_CLASS", "FRAME_TYPE"]),
     ]
 
+    static let tuning: [SetupSection] = [
+        SetupSection(
+            title: "Angle gains",
+            note: "How hard the controller leans to reach the angle the stick asks for.",
+            parameters: ["ATC_ANG_RLL_P", "ATC_ANG_PIT_P", "ATC_ANG_YAW_P"]),
+        SetupSection(
+            title: "Rate gains",
+            note: "How hard it works to hold that rate once it is turning. Raise until the vehicle is crisp, then back off before it oscillates.",
+            parameters: ["ATC_RAT_RLL_P", "ATC_RAT_RLL_I", "ATC_RAT_RLL_D",
+                         "ATC_RAT_PIT_P", "ATC_RAT_PIT_I", "ATC_RAT_PIT_D",
+                         "ATC_RAT_YAW_P", "ATC_RAT_YAW_I"]),
+        SetupSection(
+            title: "Climb",
+            note: "How aggressively the vehicle chases a change in height.",
+            parameters: ["PSC_ACCZ_P", "PSC_ACCZ_I"]),
+        SetupSection(
+            title: "Stick feel",
+            note: "How long the vehicle takes to follow the stick. Shorter is crisper, longer is softer.",
+            parameters: ["ATC_INPUT_TC"]),
+        SetupSection(
+            title: "Motor thrust",
+            note: "Minimum thrust should sit above spin-while-armed, or the vehicle cannot move once it is armed.",
+            parameters: ["MOT_SPIN_ARM", "MOT_SPIN_MIN", "MOT_THST_HOVER"]),
+    ]
+
     static func present(_ sections: [SetupSection], in available: Set<String>) -> [(section: SetupSection, names: [String])] {
         sections.compactMap { section in
             let names = section.parameters.filter(available.contains)

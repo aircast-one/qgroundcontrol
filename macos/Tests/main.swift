@@ -910,6 +910,26 @@ func checkFrameSetup() {
 
 checkFrameSetup()
 
+func checkTuningSections() {
+    let everything = Set(SetupSection.tuning.flatMap(\.parameters))
+    let all = SetupSection.present(SetupSection.tuning, in: everything)
+    expect(all.count == SetupSection.tuning.count, "a full firmware shows every tuning section")
+    expect(all.map(\.section.title).joined(separator: ","),
+           "Angle gains,Rate gains,Climb,Stick feel,Motor thrust",
+           "in the order a tuner works through them")
+
+    let ratesOnly = SetupSection.present(SetupSection.tuning, in: ["ATC_RAT_YAW_P", "PSC_ACCZ_P"])
+    expect(ratesOnly.map(\.section.title).joined(separator: ","), "Rate gains,Climb",
+           "sections with nothing present are dropped, not shown empty")
+    expect(ratesOnly[0].names.joined(separator: ","), "ATC_RAT_YAW_P",
+           "and each keeps only the parameters this firmware has")
+
+    expect(everything.contains("MOT_THST_HOVER"), "hover thrust is part of tuning, not of power")
+    expect(!everything.contains("AUTOTUNE_AXES"), "autotune is flown, so it is not on this page")
+}
+
+checkTuningSections()
+
 if failures == 0 {
     print("all Swift checks passed")
     exit(0)
