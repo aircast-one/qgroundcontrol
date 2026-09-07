@@ -6,7 +6,7 @@ shipping app**, keeping the C++ flight core untouched.
 Sibling of `NATIVE_MACOS_REWRITE.md`. One core, two bridges, two native apps. Every path the Compose
 UI needs is added to `QGCBridgeCore`, never to a platform head.
 
-## Status — Phases 0 to 2 built and verified on device
+## Status — Phases 0 to 3 built; Phase 5 part-built; hardware gates unmet
 
 Built and run on a OnePlus 6 (LineageOS 22.2, Android 15) on 2026-09-06 against a MAVLink vehicle.
 `aircast-android` is a Kotlin/Compose app that owns the Activity, the navigation and the chrome, with
@@ -35,7 +35,37 @@ What landed, native:
 - **Activity duties** — wake lock, multicast lock, font scale, safe area, deep links, USB serial,
   system bar appearance, all moved out of `QGCActivity` into Kotlin.
 
-Still QML, hosted under native tabs: Fly (map + video), Plan, Vehicle Setup, Analyze.
+Still QML, hosted under native tabs: Fly (map + video), Plan.
+
+### Since that gate — Phase 3 done, Phase 5 started
+
+Vehicle Setup and Analyze are now native too; see the Phase 3 status below for
+what is built and what is deferred.
+
+Phase 5 has been started from the parts that do not need the Phase 4 map:
+
+- **Guided actions confirm before they fire.** Arm, Takeoff, Land and RTL each
+  open a confirmation naming what the aircraft will do, over a control that only
+  fires past 90% of its travel. Verified on device: a tap and a short nudge leave
+  the vehicle disarmed, a full slide arms it.
+- **Commands the vehicle would refuse are not offered.** The availability rules
+  in `GuidedActionsController.qml` are ported natively from Vehicle properties,
+  so Land and RTL grey out on a grounded disarmed vehicle.
+- **The aircraft can say why it will not arm.** `prearmError` and the status
+  text log surface in a banner and a readable message list.
+- **Telemetry and the status strip read from fact metadata** rather than
+  hardcoded names, units and thresholds.
+- QML's own guided buttons are gated off behind `hostProvidesGuidedActions` so
+  the two heads do not both offer Takeoff.
+
+**Not started:** the Phase 4 map is a working spike in `aircast-android/map-spike`
+(MapLibre, QGC's tile cache, mission editing, geofence and rally, vertex drag) but
+nothing in the app imports it, so the Plan tab is still QML. Video, joystick and
+the Phase 6 host teardown are untouched; the AAR is still 78 MB because
+`QtQuickView` still hosts Fly and Plan.
+
+**Every hardware gate from Phase 3 onward is unmet.** Everything above was
+verified against ArduCopter SITL and a OnePlus 6, never a real airframe.
 
 ## Three measurements that set the architecture
 
