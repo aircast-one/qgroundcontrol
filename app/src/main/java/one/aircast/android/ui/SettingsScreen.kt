@@ -22,7 +22,6 @@ import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
-import androidx.compose.material3.ListItem
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Switch
@@ -45,10 +44,11 @@ import one.aircast.android.bridge.qgcFacts
 data class SettingsGroup(val path: String, val title: String)
 
 const val LINKS_GROUP_PATH = "links"
+const val UNITS_GROUP_PATH = "settings.unitsSettings"
 
 val SETTINGS_GROUPS = listOf(
     SettingsGroup(LINKS_GROUP_PATH, "Comm Links"),
-    SettingsGroup("settings.unitsSettings", "Units"),
+    SettingsGroup(UNITS_GROUP_PATH, "Units"),
     SettingsGroup("settings.videoSettings", "Video"),
     SettingsGroup("settings.flyViewSettings", "Fly View"),
     SettingsGroup("settings.planViewSettings", "Plan View"),
@@ -66,10 +66,7 @@ fun SettingsScreen(modifier: Modifier = Modifier) {
     if (current == null) {
         LazyColumn(modifier.fillMaxSize()) {
             items(SETTINGS_GROUPS) { entry ->
-                ListItem(
-                    headlineContent = { Text(entry.title) },
-                    modifier = Modifier.clickable { group = entry },
-                )
+                SetupRow(title = entry.title, onClick = { group = entry })
                 HorizontalDivider()
             }
         }
@@ -83,6 +80,8 @@ fun SettingsScreen(modifier: Modifier = Modifier) {
         }
         if (current.path == LINKS_GROUP_PATH) {
             LinksScreen(Modifier.fillMaxSize())
+        } else if (current.path == UNITS_GROUP_PATH) {
+            UnitsPage(Modifier.fillMaxSize())
         } else {
             FactList(current.path, Modifier.fillMaxSize())
         }
@@ -110,7 +109,12 @@ internal fun enumLabel(fact: Fact): String =
     fact.enumStrings.getOrNull(fact.enumIndex) ?: fact.valueString
 
 @Composable
-internal fun FactRow(fact: Fact, onWrite: () -> Unit = {}) {
+internal fun FactRow(
+    fact: Fact,
+    title: String = fact.title,
+    subtitle: String = fact.units,
+    onWrite: () -> Unit = {},
+) {
     Row(
         Modifier
             .fillMaxWidth()
@@ -121,16 +125,18 @@ internal fun FactRow(fact: Fact, onWrite: () -> Unit = {}) {
     ) {
         Column(Modifier.weight(1f)) {
             Text(
-                text = fact.title,
+                text = title,
                 style = MaterialTheme.typography.bodyLarge,
                 maxLines = 3,
                 overflow = TextOverflow.Ellipsis,
             )
-            if (fact.units.isNotBlank()) {
+            if (subtitle.isNotBlank()) {
                 Text(
-                    text = fact.units,
+                    text = subtitle,
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    maxLines = 2,
+                    overflow = TextOverflow.Ellipsis,
                 )
             }
         }
@@ -149,7 +155,7 @@ internal fun FactRow(fact: Fact, onWrite: () -> Unit = {}) {
                         offMainDetached { Qgc.set(fact.path, checked); onWrite() }
                     },
                 )
-                fact.isEnum -> EnumPicker(fact, onWrite)
+                fact.isEnum && !fact.valueIsOffTheEnumList -> EnumPicker(fact, onWrite)
                 else -> FactTextField(fact, onWrite)
             }
         }
