@@ -40,7 +40,7 @@ if [[ ! -d "$clone" ]] || [[ "$app/Contents/MacOS/AircastQGC" -nt "$clone/Conten
 fi
 
 "$clone/Contents/MacOS/QGCSuite" --allow-multiple \
-    ${suite:+--unittest:$suite} ${suite:---unittest} > "$log" 2>&1 || true
+    ${suite:+--unittest:$suite} ${suite:---unittest} 2>&1 | head -c 200000000 > "$log" || true
 
 pass=$(grep -c '^PASS' "$log" || true)
 fail=$(grep -c '^FAIL' "$log" || true)
