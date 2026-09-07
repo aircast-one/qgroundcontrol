@@ -94,10 +94,7 @@ object SurveyBridge {
         if (name.isBlank()) {
             return false
         }
-        val count = PlanBridge.rawItemCount()
-        if (count <= 0) {
-            return false
-        }
+        val count = PlanBridge.rawItemCount()?.takeIf { it > 0 } ?: return false
 
         val args = "[\"$name\", ${coordinate(latitude, longitude)}, $count]"
         val inserted = runCatching {
@@ -108,14 +105,17 @@ object SurveyBridge {
             return false
         }
 
-        val index = PlanBridge.rawItemCount() - 1
-        listOf(
+        // Re-read rather than reuse the count: the insert added an item. A failed
+        // read here would have made the index -1 and quietly produced a survey
+        // with no area, so it refuses instead. The corners report whether they
+        // landed, because a survey missing them is not a survey that worked.
+        val index = (PlanBridge.rawItemCount()?.takeIf { it > 0 } ?: return false) - 1
+        return listOf(
             latitude + halfSize to longitude - halfSize,
             latitude + halfSize to longitude + halfSize,
             latitude - halfSize to longitude + halfSize,
             latitude - halfSize to longitude - halfSize,
-        ).forEach { (cornerLat, cornerLon) -> appendAreaVertex(index, cornerLat, cornerLon) }
-        return true
+        ).all { (cornerLat, cornerLon) -> appendAreaVertex(index, cornerLat, cornerLon) }
     }
 
     fun appendAreaVertex(itemIndex: Int, latitude: Double, longitude: Double): Boolean =

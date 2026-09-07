@@ -74,15 +74,17 @@ object PlanBridge {
     // settings item and can hold items that carry no coordinate. Counting only the
     // ones drawn on the map gives an index past the end, and MissionController
     // walks off the list rather than refusing it.
-    fun rawItemCount(): Int =
+    // Null when the plan could not be read at all. Folding that into 0 made a
+    // failed call indistinguishable from an empty plan, and they need opposite
+    // responses: an empty plan is a thing to add to, a failed read is a thing to
+    // stop on. A started controller always holds at least the settings item, so
+    // a genuine 0 does not occur and a 0 was always a failure wearing a count.
+    fun rawItemCount(): Int? =
         runCatching { JSONObject(QGCBridge.get(PLAN_ITEMS)).optJSONArray("elements")?.length() }
-            .getOrNull() ?: 0
+            .getOrNull()
 
     fun appendWaypoint(latitude: Double, longitude: Double): Boolean {
-        val count = rawItemCount()
-        if (count <= 0) {
-            return false
-        }
+        val count = rawItemCount()?.takeIf { it > 0 } ?: return false
         return invoke(
             "$PLAN_ROOT.missionController.insertSimpleMissionItem",
             "[{\"latitude\":$latitude,\"longitude\":$longitude,\"altitude\":0}, $count]",
@@ -90,10 +92,7 @@ object PlanBridge {
     }
 
     private fun appendAt(method: String, latitude: Double, longitude: Double): Boolean {
-        val count = rawItemCount()
-        if (count <= 0) {
-            return false
-        }
+        val count = rawItemCount()?.takeIf { it > 0 } ?: return false
         return invoke(
             "$PLAN_ROOT.missionController.$method",
             "[{\"latitude\":$latitude,\"longitude\":$longitude,\"altitude\":0}, $count]",
