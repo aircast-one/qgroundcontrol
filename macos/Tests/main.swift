@@ -1075,6 +1075,39 @@ func checkVehicleWarning() {
 
 checkVehicleWarning()
 
+func checkInstrumentValues() {
+    let facts: [[String: Any]] = [
+        ["name": "altitudeRelative", "valueString": "12.3", "units": "m", "shortDescription": "Alt (Rel)"],
+        ["name": "airSpeedSetpoint", "valueString": "0.024", "units": "", "shortDescription": ""],
+    ]
+
+    let altitude = InstrumentValue.resolve(.vehicle("altitudeRelative"), in: facts)
+    expect(altitude.label, "Alt (Rel)", "the vehicle's own description names the reading")
+    expect(altitude.value, "12.3", "and its formatted value is shown as the vehicle formats it")
+    expect(altitude.units, "m", "with the units beside it")
+    expect(!altitude.missing, "a fact that is present is not missing")
+
+    let undescribed = InstrumentValue.resolve(.vehicle("airSpeedSetpoint"), in: facts)
+    expect(undescribed.label, "Air Speed Setpoint",
+           "a fact with no description falls back to its name, split into words")
+
+    let absent = InstrumentValue.resolve(.vehicle("nothingHere"), in: facts)
+    expect(absent.missing, "a fact this firmware does not report reads as missing")
+    expect(absent.label, "Nothing Here", "but is still named, so the slot is not blank")
+
+    expect(InstrumentValue.label(for: "gps"), "Gps", "a single lowercase word is capitalised")
+    expect(InstrumentValue.label(for: "altitudeAMSL"), "Altitude A M S L",
+           "runs of capitals split; the vehicle's own description is preferred for a reason")
+
+    expect(InstrumentSelection.vehicle("heading").path, "vehicle",
+           "the vehicle's own facts come from the vehicle itself")
+    expect(InstrumentSelection(group: "gps", factName: "count").path, "vehicle.gps",
+           "a named group is a child of it")
+    expect(InstrumentSelection.defaults.count == 6, "six readings are shown before anyone configures it")
+}
+
+checkInstrumentValues()
+
 if failures == 0 {
     print("all Swift checks passed")
     exit(0)

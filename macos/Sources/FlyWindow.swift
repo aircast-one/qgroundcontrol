@@ -10,14 +10,6 @@ struct FlyPanel: View {
                 header
 
                 GroupCard {
-                    GroupRow(title: "Altitude", value: FlyTelemetry.metres(fly.telemetry.altitude),
-                             showSeparator: false)
-                    GroupRow(title: "Ground speed", value: FlyTelemetry.speed(fly.telemetry.groundSpeed))
-                    GroupRow(title: "Climb", value: FlyTelemetry.speed(fly.telemetry.climbRate))
-                    GroupRow(title: "Heading", value: FlyTelemetry.degrees(fly.telemetry.heading))
-                }
-
-                GroupCard {
                     GroupRow(title: "Battery", value: fly.telemetry.batteryText, showSeparator: false,
                              leading: { dot(fly.telemetry.batteryLevel) })
                     GroupRow(title: "GPS", value: fly.telemetry.gpsText,
@@ -167,9 +159,42 @@ struct FlyPanel: View {
     }
 }
 
+struct InstrumentBar: View {
+    @ObservedObject var instruments: InstrumentsStore
+
+    var body: some View {
+        GlassPanel {
+            HStack(alignment: .top, spacing: Overlay.unit) {
+                ForEach(instruments.values) { value in
+                    VStack(alignment: .leading, spacing: 1) {
+                        Text(value.label)
+                            .font(.caption2)
+                            .foregroundColor(.secondary)
+                            .lineLimit(1)
+                        HStack(alignment: .firstTextBaseline, spacing: 3) {
+                            Text(value.value)
+                                .font(.title3.monospacedDigit())
+                                .foregroundColor(value.missing ? .secondary : .primary)
+                            if !value.units.isEmpty {
+                                Text(value.units)
+                                    .font(.caption)
+                                    .foregroundColor(.secondary)
+                            }
+                        }
+                    }
+                    .fixedSize()
+                }
+            }
+            .padding(.horizontal, Overlay.unit * 0.9)
+            .padding(.vertical, Overlay.unit * 0.6)
+        }
+    }
+}
+
 struct FlyView: View {
     @ObservedObject var fly: FlyStore
     @ObservedObject var mission: MissionStore
+    @ObservedObject var instruments: InstrumentsStore
 
     private var warningBanner: some View {
         GlassPanel {
@@ -207,13 +232,24 @@ struct FlyView: View {
             FlyPanel(fly: fly)
                 .padding(Overlay.unit)
                 .frame(maxWidth: .infinity, alignment: .trailing)
+
+            if !instruments.values.isEmpty {
+                InstrumentBar(instruments: instruments)
+                    .padding(Overlay.unit)
+                    .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottomLeading)
+            }
         }
         .frame(minWidth: 820, minHeight: 600)
         .onAppear {
             mission.reload()
             fly.start()
+            instruments.refresh()
         }
-        .onDisappear(perform: fly.stop)
+        .onDisappear {
+            fly.stop()
+            instruments.clear()
+        }
+        .onChange(of: fly.telemetry) { _ in instruments.refresh() }
     }
 }
 
@@ -222,11 +258,13 @@ final class FlyWindow: NSObject, NSWindowDelegate {
 
     private let fly = FlyStore()
     private let mission = MissionStore()
+    private let instruments = InstrumentsStore()
     private var window: NSWindow?
 
     override init() {
         super.init()
         NativeProbe.register(fly)
+        NativeProbe.register(instruments)
     }
 
     @objc func showFromMenu() {
@@ -248,7 +286,7 @@ final class FlyWindow: NSObject, NSWindowDelegate {
         window.titlebarAppearsTransparent = true
         window.isReleasedWhenClosed = false
         window.delegate = self
-        window.contentView = NSHostingView(rootView: FlyView(fly: fly, mission: mission))
+        window.contentView = NSHostingView(rootView: FlyView(fly: fly, mission: mission, instruments: instruments))
         window.center()
         window.makeKeyAndOrderFront(nil)
         self.window = window
