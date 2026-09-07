@@ -31,17 +31,17 @@ object MapBridge {
         }
     }
 
-    // The watcher polls and diffs every watched path at 200 ms and stops only
-    // when told to watch nothing. Left alone, walking away from the tab leaves
-    // QGC doing that work for a map nobody is looking at.
+    // This used to tell the bridge to watch nothing, which stopped the 200 ms
+    // poll for a map nobody was looking at. That was right while this module was
+    // the only client. It is not: QGCBridgeCore::watch replaces the watcher's
+    // whole path list, so clearing it wiped the paths the app's other screens
+    // had registered and froze their telemetry. Local state only until the
+    // bridge grows a per-client registry, at which point this releases just
+    // this client's paths.
     @Synchronized
     fun release() {
-        if (watched.isEmpty()) {
-            return
-        }
         watched.clear()
         _values.value = emptyMap()
-        runCatching { QGCBridge.watch("") }
     }
 
     // A watch registered before Qt has its natives in place throws, and the path

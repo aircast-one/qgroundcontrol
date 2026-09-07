@@ -84,6 +84,14 @@ never ranges. The insert index addresses the whole visual item list, which opens
 item and can hold items carrying no coordinate, so counting only what is drawn gives the wrong
 number.
 
+**This module is not the bridge's only client any more.** `QGCBridgeCore::watch` replaces the
+watcher's entire path list and `setEventListener` is a single slot, so arming watches here drops
+whatever the app's other screens registered, and taking the listener stops their events being
+delivered at all. Correct for an activity that owned the process; wrong the moment the map became a
+tab beside them. The bridge is growing a per-client registry that watches the union and supports
+more than one listener. Until it lands, do not add direct `QGCBridge.watch` or `setEventListener`
+calls here, and treat the ones that exist as borrowed.
+
 **Let the bridge off the hook.** A watch registered before Qt has its natives in place throws. If
 the path stays in the watched set nothing ever retries it, and the screen reports a dead bridge at
 one that came up a second later. Watches are released when the map goes away too, because the
