@@ -15,9 +15,13 @@
 #include "SettingsManager.h"
 #include "UnitsSettings.h"
 
+#include <QtCore/QElapsedTimer>
 #include <QtCore/QJsonArray>
 #include <QtCore/QJsonDocument>
 #include <QtCore/QJsonObject>
+#include <QtCore/QThread>
+
+#include <atomic>
 #include <QtTest/QTest>
 
 namespace
@@ -487,4 +491,38 @@ void QGCBridgeCoreTest::_factCarriesWhatQGCKnowsAboutItsRange()
     QCOMPARE(announce.value(QStringLiteral("minIsDefaultForType")).toBool(), true);
     QCOMPARE(announce.value(QStringLiteral("maxIsDefaultForType")).toBool(), false);
     QCOMPARE(announce.value(QStringLiteral("maxString")).toString(), QStringLiteral("100"));
+}
+
+void QGCBridgeCoreTest::_watchFromAnotherThreadDoesNotBlockTheCaller()
+{
+    QStringList paths;
+    QGCBridgeCore::setEventHandler([&paths](const QString &path, const QString &) {
+        paths.append(path);
+    });
+    QGCBridgeCore::watch(QStringList());
+
+    QElapsedTimer elapsed;
+    std::atomic_bool finished { false };
+    qint64 callMSecs = -1;
+
+    QThread *const worker = QThread::create([&elapsed, &finished, &callMSecs]() {
+        elapsed.start();
+        QGCBridgeCore::watch(QStringList { QString::fromLatin1(kSpeedUnits) });
+        callMSecs = elapsed.elapsed();
+        finished = true;
+    });
+
+    worker->start();
+    QTRY_VERIFY_WITH_TIMEOUT(finished.load(), 3000);
+    worker->wait();
+    delete worker;
+
+    QVERIFY2(callMSecs >= 0, "the worker never recorded a duration");
+    QVERIFY2(callMSecs < 100, qPrintable(QStringLiteral(
+        "watch blocked the calling thread for %1ms; it posts and must not wait").arg(callMSecs)));
+
+    QTRY_VERIFY_WITH_TIMEOUT(!paths.isEmpty(), 3000);
+    QCOMPARE(paths.first(), QString::fromLatin1(kSpeedUnits));
+
+    QGCBridgeCore::watch(QStringList());
 }

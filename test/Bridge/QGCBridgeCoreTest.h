@@ -27,6 +27,7 @@ private slots:
     void _resolvesListIndex();
     void _invokesFactValidateAndReturnsQGCsOwnError();
     void _factCarriesWhatQGCKnowsAboutItsRange();
+    void _watchFromAnotherThreadDoesNotBlockTheCaller();
     void _resolvesAccessorCall();
     void _writesThroughAccessorCall();
     void _invokeReturnsValue();
