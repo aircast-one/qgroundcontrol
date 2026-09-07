@@ -18,6 +18,7 @@ swiftc -Onone -o "$out" \
     "$root/macos/Sources/SensorHealth.swift" \
     "$root/macos/Sources/SafetySections.swift" \
     "$root/macos/Sources/Probeable.swift" \
+    "$root/macos/Sources/FlightModePositions.swift" \
     "$root/macos/Sources/PageSelection.swift" \
     "$root/macos/Tests/main.swift"
 

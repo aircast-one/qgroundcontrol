@@ -58,6 +58,11 @@ final class ParametersStore: ObservableObject, Probeable {
         }
     }
 
+    // The vehicle's live mode, used to mark which switch position is active.
+    var currentFlightMode: String {
+        (Bridge.group("vehicle")["flightMode"] as? String) ?? ""
+    }
+
     func parameter(named name: String) -> Parameter? {
         parameters.first { $0.name == name }
     }

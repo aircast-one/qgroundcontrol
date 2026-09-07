@@ -220,12 +220,97 @@ struct SafetyView: View {
     }
 }
 
+struct FlightModesView: View {
+    @ObservedObject var store: ParametersStore
+    @State private var editing: Int?
+
+    var body: some View {
+        ScrollView {
+            VStack(alignment: .leading, spacing: 24) {
+                if store.loading {
+                    Notice(text: "Reading parameters from the vehicle…").frame(height: 200)
+                } else if positions.isEmpty {
+                    Notice(text: "This vehicle does not report a six-position mode switch.")
+                        .frame(height: 200)
+                } else {
+                    if let channel = store.parameter(named: FlightModePosition.channelParameter) {
+                        SectionCard(title: "Mode switch") {
+                            VStack(alignment: .leading, spacing: 0) {
+                                Text("Which transmitter channel selects the flight mode.")
+                                    .font(.caption).foregroundColor(.secondary)
+                                    .padding(.bottom, 8)
+                                MetricRow(label: channel.description.isEmpty ? channel.name : channel.description,
+                                          value: channel.value, units: "")
+                            }
+                        }
+                    }
+
+                    SectionCard(title: "Switch positions") {
+                        VStack(alignment: .leading, spacing: 0) {
+                            Text("The mode each position of that switch selects, with the PWM band the firmware uses for it.")
+                                .font(.caption).foregroundColor(.secondary)
+                                .padding(.bottom, 8)
+                            ForEach(positions) { position in
+                                if position.index > 1 { Divider() }
+                                row(position)
+                            }
+                        }
+                    }
+                }
+            }
+            .padding(20)
+        }
+        .onAppear(perform: store.load)
+    }
+
+    private var positions: [FlightModePosition] {
+        FlightModePosition.present(in: Set(store.parameters.map(\.name)))
+    }
+
+    @ViewBuilder
+    private func row(_ position: FlightModePosition) -> some View {
+        if let parameter = store.parameter(named: position.parameter) {
+            HStack(alignment: .firstTextBaseline, spacing: 12) {
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("Position \(position.index)")
+                    Text(position.pwmRange)
+                        .font(.caption).foregroundColor(.secondary)
+                }
+                .frame(width: 130, alignment: .leading)
+
+                Spacer()
+
+                if editing == position.index {
+                    LabelledField(label: "", value: parameter.value) {
+                        store.write(parameter, $0)
+                        editing = nil
+                    }
+                    .frame(width: 180)
+                } else {
+                    // The active mode is what the operator is checking against the
+                    // switch in their hand, so it is called out rather than inferred.
+                    if parameter.value == store.currentFlightMode {
+                        Text("now")
+                            .font(.caption2)
+                            .padding(.horizontal, 5).padding(.vertical, 1)
+                            .background(Color.accentColor.opacity(0.18))
+                            .cornerRadius(3)
+                    }
+                    Text(parameter.value)
+                    Button("Edit") { editing = position.index }
+                }
+            }
+            .padding(.vertical, 8)
+        }
+    }
+}
+
 struct VehicleSetupView: View {
     @ObservedObject var parameters: ParametersStore
     @ObservedObject var sensors: SensorsStore
     @ObservedObject var selection: PageSelection
 
-    private let pages = ["Sensors", "Safety", "Parameters"]
+    private let pages = ["Sensors", "Safety", "Flight Modes", "Parameters"]
 
     var body: some View {
         HStack(spacing: 0) {
@@ -241,6 +326,7 @@ struct VehicleSetupView: View {
             switch selection.page {
             case "Parameters": ParametersView(store: parameters)
             case "Safety": SafetyView(store: parameters)
+            case "Flight Modes": FlightModesView(store: parameters)
             default: SensorsView(store: sensors)
             }
         }
@@ -253,7 +339,7 @@ final class VehicleSetupWindow: NSObject, NSWindowDelegate {
 
     private let parameters = ParametersStore()
     private let sensors = SensorsStore()
-    private let selection = PageSelection(owner: "vehicleSetup", pages: ["Sensors", "Safety", "Parameters"])
+    private let selection = PageSelection(owner: "vehicleSetup", pages: ["Sensors", "Safety", "Flight Modes", "Parameters"])
     private var window: NSWindow?
 
     override init() {

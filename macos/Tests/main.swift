@@ -183,6 +183,19 @@ expect((nav.probeInvoke(action: "select", args: ["page": "Nope"])["ok"] as? Bool
 expect(nav.page, "Safety", "a refused selection leaves the page alone")
 expect((nav.probeInvoke(action: "wat", args: [:])["ok"] as? Bool) == false, "unknown actions are refused")
 
+// The PWM bands are firmware constants, not parameters: an operator matching a
+// transmitter switch to a mode cannot see them anywhere else.
+expect(String(FlightModePosition.all.count), "6", "ArduPilot maps six switch positions")
+expect(FlightModePosition.all.first!.pwmRange, "up to 1230", "the first band is open-ended below")
+expect(FlightModePosition.all.last!.pwmRange, "1750 and above", "the last band is open-ended above")
+expect(FlightModePosition.all.map(\.parameter).joined(separator: ","),
+       "FLTMODE1,FLTMODE2,FLTMODE3,FLTMODE4,FLTMODE5,FLTMODE6", "positions map to FLTMODE1..6 in order")
+
+// A firmware that names them differently gets nothing rather than six broken rows.
+expect(FlightModePosition.present(in: ["FLTMODE1", "FLTMODE3"]).map(\.index).map(String.init).joined(separator: ","),
+       "1,3", "only reported positions appear")
+expect(FlightModePosition.present(in: []).isEmpty, "a vehicle without them shows no positions")
+
 if failures == 0 {
     print("all Swift checks passed")
     exit(0)
