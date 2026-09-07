@@ -2,6 +2,7 @@ package one.aircast.mapspike
 
 import android.content.Context
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
@@ -39,6 +40,10 @@ fun PlanMapScreen(modifier: Modifier = Modifier) {
     // Fills what the caller gives it rather than sizing itself, so a host can
     // put it in a Column under its own header and hand it a weight. Colours come
     // from the app's theme; wrapping one here would ignore the user's setting.
+    DisposableEffect(Unit) {
+        onDispose { MapBridge.release() }
+    }
+
     Surface(modifier, color = MaterialTheme.colorScheme.surface) {
         MapSpikeScreen(style)
     }

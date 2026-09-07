@@ -31,17 +31,46 @@ object MapBridge {
         }
     }
 
+    // The watcher polls and diffs every watched path at 200 ms and stops only
+    // when told to watch nothing. Left alone, walking away from the tab leaves
+    // QGC doing that work for a map nobody is looking at.
+    @Synchronized
+    fun release() {
+        if (watched.isEmpty()) {
+            return
+        }
+        watched.clear()
+        _values.value = emptyMap()
+        runCatching { QGCBridge.watch("") }
+    }
+
+    // A watch registered before Qt has its natives in place throws, and the path
+    // has to come back out of the set or nothing ever retries it: the screen
+    // would go on reporting a dead bridge at a bridge that came up seconds later.
     @Synchronized
     fun watch(path: String) {
-        if (!watched.add(path)) return
+        if (!watched.add(path)) {
+            return
+        }
         runCatching { QGCBridge.watch(watched.joinToString(",")) }
-            .onFailure { _bridgeReady.value = false }
+            .onSuccess { _bridgeReady.value = true }
+            .onFailure {
+                watched.remove(path)
+                _bridgeReady.value = false
+            }
+    }
+
+    // A read that comes back is proof the bridge is alive, whatever an earlier
+    // failed watch concluded.
+    fun markReachable() {
+        _bridgeReady.value = true
     }
 }
 
 @Composable
 fun mapPath(path: String): State<JSONObject?> {
-    LaunchedEffect(path) { MapBridge.watch(path) }
+    val ready by MapBridge.bridgeReady.collectAsState()
+    LaunchedEffect(path, ready) { MapBridge.watch(path) }
     val values by MapBridge.values.collectAsState()
     return remember(path) { derivedStateOf { values[path] } }
 }

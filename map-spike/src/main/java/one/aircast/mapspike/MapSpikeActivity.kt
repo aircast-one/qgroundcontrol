@@ -104,6 +104,9 @@ internal fun MapSpikeScreen(mapStyle: String) {
     suspend fun refresh() {
         withContext(Dispatchers.Default) {
             val plan = PlanBridge.rawItems()
+            if (plan != null) {
+                MapBridge.markReachable()
+            }
             val nextItems = missionItems(plan)
             val nextFences = FenceBridge.polygons()
             val nextRally = FenceBridge.rally()

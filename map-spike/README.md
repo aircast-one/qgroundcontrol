@@ -36,6 +36,11 @@ adb shell am start -n one.aircast.android/.MainActivity          # boots Qt
 adb shell am start -n one.aircast.android/one.aircast.mapspike.MapSpikeActivity
 ```
 
+`am start -S` force-stops the whole package, so using it on the spike activity kills Qt seconds
+after the main app booted it. Use it on `MainActivity` if you want a clean restart, never on the
+spike. The symptom is "Bridge not running" and `No implementation found for QGCBridge.get` in
+logcat, which reads like a broken bridge rather than a test harness shooting Qt.
+
 **The main app has to start first.** Launching the spike alone never boots Qt, so the bridge
 natives are unregistered and every call throws. The header says so when that happens.
 
@@ -76,6 +81,11 @@ end walks off the list and takes the process down, tombstone and all. The bridge
 never ranges. The insert index addresses the whole visual item list, which opens with a settings
 item and can hold items carrying no coordinate, so counting only what is drawn gives the wrong
 number.
+
+**Let the bridge off the hook.** A watch registered before Qt has its natives in place throws. If
+the path stays in the watched set nothing ever retries it, and the screen reports a dead bridge at
+one that came up a second later. Watches are released when the map goes away too, because the
+watcher polls and diffs every path at 200 ms and stops only when told to watch nothing.
 
 **Poll only while something is watching.** Every poll is a blocking trip into the Qt thread. As its
 own activity the screen stopped polling when it went away; hosted as a tab it stays composed while
