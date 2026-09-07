@@ -41,12 +41,17 @@ internal fun factFromParameter(name: String, json: JSONObject): Fact? =
         null
     }
 
+
 private fun readSections(sections: List<ParameterSection>): List<ParameterRows> =
     sections.mapNotNull { section ->
         val facts = section.names.mapNotNull { name ->
             factFromParameter(name, Qgc.get(parameterPath(name)))
         }
-        if (facts.isEmpty()) null else ParameterRows(section.title, facts, section.note)
+        if (facts.isEmpty()) {
+            null
+        } else {
+            ParameterRows(section.title, facts, section.note)
+        }
     }
 
 @Composable

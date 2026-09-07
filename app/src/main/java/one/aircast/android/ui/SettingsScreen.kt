@@ -103,6 +103,9 @@ fun FactList(groupPath: String, modifier: Modifier = Modifier) {
     }
 }
 
+internal fun enumLabel(fact: Fact): String =
+    fact.enumStrings.getOrNull(fact.enumIndex) ?: fact.valueString
+
 @Composable
 internal fun FactRow(fact: Fact, onWrite: () -> Unit = {}) {
     Row(
@@ -125,7 +128,7 @@ internal fun FactRow(fact: Fact, onWrite: () -> Unit = {}) {
         Box(Modifier.weight(1f), contentAlignment = Alignment.CenterEnd) {
             when {
                 fact.readOnly -> Text(
-                    text = fact.valueString,
+                    text = enumLabel(fact),
                     style = MaterialTheme.typography.bodyMedium,
                     maxLines = 2,
                     overflow = TextOverflow.Ellipsis,
@@ -146,7 +149,7 @@ internal fun FactRow(fact: Fact, onWrite: () -> Unit = {}) {
 @Composable
 private fun EnumPicker(fact: Fact, onWrite: () -> Unit) {
     var expanded by remember { mutableStateOf(false) }
-    val label = fact.enumStrings.getOrNull(fact.enumIndex) ?: fact.valueString
+    val label = enumLabel(fact)
 
     Column {
         TextButton(onClick = { expanded = true }) {
@@ -164,7 +167,10 @@ private fun EnumPicker(fact: Fact, onWrite: () -> Unit) {
                     text = { Text(option) },
                     onClick = {
                         expanded = false
-                        offMainDetached { Qgc.set("${fact.path}.enumIndex", index); onWrite() }
+                        offMainDetached {
+                            Qgc.set("${fact.path}.enumIndex", index)
+                            onWrite()
+                        }
                     },
                 )
             }
