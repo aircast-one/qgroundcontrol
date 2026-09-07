@@ -77,6 +77,11 @@ never ranges. The insert index addresses the whole visual item list, which opens
 item and can hold items carrying no coordinate, so counting only what is drawn gives the wrong
 number.
 
+**Poll only while something is watching.** Every poll is a blocking trip into the Qt thread. As its
+own activity the screen stopped polling when it went away; hosted as a tab it stays composed while
+the app is in the background, so the loop is gated on the lifecycle. Measured on the phone: ten
+polls in seven seconds in the foreground, none at all backgrounded, ten again on resume.
+
 **Never call the bridge from the main thread.** Calls block on the Qt thread. Touch handlers and
 button callbacks all go through a background dispatcher.
 

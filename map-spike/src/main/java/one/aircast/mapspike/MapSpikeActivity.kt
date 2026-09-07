@@ -29,6 +29,9 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.layout.onGloballyPositioned
+import androidx.compose.ui.platform.LocalLifecycleOwner
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.repeatOnLifecycle
 import androidx.compose.ui.unit.dp
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
@@ -117,10 +120,16 @@ internal fun MapSpikeScreen(mapStyle: String) {
         }
     }
 
-    LaunchedEffect(Unit) {
-        while (true) {
-            refresh()
-            delay(PLAN_POLL_MS)
+    // Every poll is a blocking trip into the Qt thread. Hosted as a tab the
+    // screen stays composed while the app is in the background, so an ungated
+    // loop would go on paying that for a map nobody is looking at.
+    val lifecycleOwner = LocalLifecycleOwner.current
+    LaunchedEffect(lifecycleOwner) {
+        lifecycleOwner.lifecycle.repeatOnLifecycle(Lifecycle.State.STARTED) {
+            while (true) {
+                refresh()
+                delay(PLAN_POLL_MS)
+            }
         }
     }
 
