@@ -176,11 +176,21 @@ private val TUNING_APM = listOf(
     ParameterSection("Vertical position", listOf("PSC_ACCZ_P", "PSC_ACCZ_I")),
 )
 
+private val FRAME_APM = listOf(
+    ParameterSection(
+        "Airframe",
+        listOf("FRAME_CLASS", "FRAME_TYPE"),
+        "Changing the class or type changes how the motors are numbered and which " +
+            "way they spin. Re-check motor order and direction afterwards, before flying.",
+    ),
+)
+
 internal fun setupSectionsFor(componentName: String, isPx4: Boolean): List<ParameterSection>? =
     when (componentName) {
         "Safety" -> if (isPx4) SAFETY_PX4 else SAFETY_APM
         "Power" -> if (isPx4) POWER_PX4 else POWER_APM
         "Tuning" -> if (isPx4) null else TUNING_APM
+        "Frame" -> if (isPx4) null else FRAME_APM
         "Flight Modes" -> if (isPx4) FLIGHT_MODES_PX4 else FLIGHT_MODES_APM
         "Lights" -> if (isPx4) null else LIGHTS_APM
         "Camera" -> if (isPx4) null else CAMERA_APM

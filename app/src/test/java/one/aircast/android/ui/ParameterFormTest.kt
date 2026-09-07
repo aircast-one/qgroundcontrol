@@ -100,6 +100,14 @@ class ParameterFormTest {
     }
 
     @Test
+    fun `frame is the two ardupilot frame parameters and warns about motor order`() {
+        assertNull(setupSectionsFor("Frame", isPx4 = true))
+        val frame = setupSectionsFor("Frame", isPx4 = false)!!.single()
+        assertEquals(listOf("FRAME_CLASS", "FRAME_TYPE"), frame.names)
+        assertEquals(true, frame.note.contains("motor order"))
+    }
+
+    @Test
     fun `components without a native form report none`() {
         assertNull(setupSectionsFor("Sensors", isPx4 = false))
         assertNull(setupSectionsFor("Radio", isPx4 = true))
