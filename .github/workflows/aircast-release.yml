@@ -388,6 +388,19 @@ jobs:
         with:
           name: qgc-macos
           path: out/*.dmg
+      - name: Collect SDK
+        working-directory: ${{ runner.temp }}/shadow_build_dir
+        run: |
+          V="${{ needs.setup.outputs.version }}"
+          SHORT="${V#aircast-}"
+          cmake --install . --config Release --component sdk --prefix sdk
+          mkdir -p sdk/bundle
+          cp -R staging/AircastQGC.app/Contents/Frameworks staging/AircastQGC.app/Contents/PlugIns staging/AircastQGC.app/Contents/Resources sdk/bundle/
+          tar -cf - -C sdk . | zstd -T0 -3 > "${{ github.workspace }}/out/AircastQGC-sdk-$SHORT.tar.zst"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: qgc-macos-sdk
+          path: out/*.tar.zst
 
   build-windows:
     needs: setup

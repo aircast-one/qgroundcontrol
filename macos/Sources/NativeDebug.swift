@@ -1,5 +1,6 @@
 import AppKit
 import Foundation
+import QGCNativeDebugC
 
 enum NativeDebug {
     // Driving the wrong window silently is worse than refusing: the caller cannot tell
@@ -192,24 +193,20 @@ private func encode(_ value: [String: Any]) -> UnsafeMutablePointer<CChar>? {
     return strdup(String(data: data, encoding: .utf8) ?? "{}")
 }
 
-@_cdecl("qgc_native_windows")
-public func qgcNativeWindows() -> UnsafeMutablePointer<CChar>? {
+private func qgcNativeWindows() -> UnsafeMutablePointer<CChar>? {
     encode(NativeDebug.windows())
 }
 
-@_cdecl("qgc_native_click")
-public func qgcNativeClick(_ title: UnsafePointer<CChar>?, _ x: Double, _ y: Double) -> UnsafeMutablePointer<CChar>? {
+private func qgcNativeClick(_ title: UnsafePointer<CChar>?, _ x: Double, _ y: Double) -> UnsafeMutablePointer<CChar>? {
     encode(NativeDebug.click(window: title.map { String(cString: $0) } ?? "", x: x, y: y))
 }
 
-@_cdecl("qgc_native_type")
-public func qgcNativeType(_ title: UnsafePointer<CChar>?, _ text: UnsafePointer<CChar>?) -> UnsafeMutablePointer<CChar>? {
+private func qgcNativeType(_ title: UnsafePointer<CChar>?, _ text: UnsafePointer<CChar>?) -> UnsafeMutablePointer<CChar>? {
     encode(NativeDebug.type(window: title.map { String(cString: $0) } ?? "",
                             text: text.map { String(cString: $0) } ?? ""))
 }
 
-@_cdecl("qgc_native_probe")
-public func qgcNativeProbe(_ id: UnsafePointer<CChar>?, _ action: UnsafePointer<CChar>?,
+private func qgcNativeProbe(_ id: UnsafePointer<CChar>?, _ action: UnsafePointer<CChar>?,
                            _ argsJson: UnsafePointer<CChar>?) -> UnsafeMutablePointer<CChar>? {
     let raw = argsJson.map { String(cString: $0) } ?? "{}"
     let decoded = (try? JSONSerialization.jsonObject(with: Data(raw.utf8))) as? [String: Any] ?? [:]
@@ -219,17 +216,28 @@ public func qgcNativeProbe(_ id: UnsafePointer<CChar>?, _ action: UnsafePointer<
         args: decoded.mapValues { "\($0)" }))
 }
 
-@_cdecl("qgc_native_menu")
-public func qgcNativeMenu() -> UnsafeMutablePointer<CChar>? {
+private func qgcNativeMenu() -> UnsafeMutablePointer<CChar>? {
     encode(NativeDebug.menu())
 }
 
-@_cdecl("qgc_native_menu_invoke")
-public func qgcNativeMenuInvoke(_ path: UnsafePointer<CChar>?) -> UnsafeMutablePointer<CChar>? {
+private func qgcNativeMenuInvoke(_ path: UnsafePointer<CChar>?) -> UnsafeMutablePointer<CChar>? {
     encode(NativeDebug.invokeMenu(path: path.map { String(cString: $0) } ?? ""))
 }
 
-@_cdecl("qgc_native_bridge_stats")
-public func qgcNativeBridgeStats() -> UnsafeMutablePointer<CChar>? {
+private func qgcNativeBridgeStats() -> UnsafeMutablePointer<CChar>? {
     encode(NativeDebug.bridgeStats())
+}
+
+extension NativeDebug {
+    static func install() {
+        var hooks = QGCNativeDebugHooks(
+            windows: qgcNativeWindows,
+            click: qgcNativeClick,
+            type: qgcNativeType,
+            probe: qgcNativeProbe,
+            menu: qgcNativeMenu,
+            menu_invoke: qgcNativeMenuInvoke,
+            bridge_stats: qgcNativeBridgeStats)
+        qgc_native_debug_install(&hooks)
+    }
 }

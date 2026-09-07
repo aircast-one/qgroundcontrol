@@ -303,11 +303,36 @@ endif()
 #               QGroundControl Target
 #######################################################
 
-qt_add_executable(${CMAKE_PROJECT_NAME}
-    WIN32
-    MACOSX_BUNDLE
-    ${QGC_RESOURCES}
-)
+if(MACOS)
+    qt_add_library(${CMAKE_PROJECT_NAME} SHARED ${QGC_RESOURCES})
+    set(QGC_APP_TARGET ${CMAKE_PROJECT_NAME}App)
+    qt_add_executable(${QGC_APP_TARGET} MACOSX_BUNDLE src/main.cc)
+    get_filename_component(QGC_QT_LIB_DIR "${Qt6_DIR}/../.." ABSOLUTE)
+    set_target_properties(${QGC_APP_TARGET}
+        PROPERTIES
+            OUTPUT_NAME ${CMAKE_PROJECT_NAME}
+            BUILD_RPATH "@executable_path/../Frameworks;${QGC_QT_LIB_DIR}"
+            INSTALL_RPATH "@executable_path/../Frameworks"
+    )
+    target_link_libraries(${QGC_APP_TARGET} PRIVATE ${CMAKE_PROJECT_NAME})
+    qt_add_qml_module(${QGC_APP_TARGET}
+        URI AircastQGCApp
+        VERSION 1.0
+        RESOURCE_PREFIX /app
+        NO_PLUGIN
+    )
+    add_custom_command(TARGET ${QGC_APP_TARGET} POST_BUILD
+        COMMAND ${CMAKE_COMMAND} -E make_directory $<TARGET_BUNDLE_CONTENT_DIR:${QGC_APP_TARGET}>/Frameworks
+        COMMAND ${CMAKE_COMMAND} -E copy_if_different $<TARGET_FILE:${CMAKE_PROJECT_NAME}> $<TARGET_BUNDLE_CONTENT_DIR:${QGC_APP_TARGET}>/Frameworks/
+        VERBATIM)
+else()
+    qt_add_executable(${CMAKE_PROJECT_NAME}
+        WIN32
+        MACOSX_BUNDLE
+        ${QGC_RESOURCES}
+    )
+    set(QGC_APP_TARGET ${CMAKE_PROJECT_NAME})
+endif()
 
 if(WIN32)
     # CPMAddPackage(
@@ -371,7 +396,7 @@ elseif(APPLE)
         set(CMAKE_XCODE_ATTRIBUTE_CODE_SIGN_ENTITLEMENTS "${QGC_MACOS_ENTITLEMENTS_PATH}")
     endif()
 
-    set_target_properties(${CMAKE_PROJECT_NAME}
+    set_target_properties(${QGC_APP_TARGET}
         PROPERTIES
             MACOSX_BUNDLE TRUE
             MACOSX_BUNDLE_INFO_PLIST "${QGC_MACOS_PLIST_PATH}"
@@ -389,10 +414,10 @@ elseif(APPLE)
         set(MACOSX_BUNDLE_ICON_FILE "macx.icns")
         set(app_icon_macos "${QGC_MACOS_ICON_PATH}/${MACOSX_BUNDLE_ICON_FILE}")
         set_source_files_properties(${app_icon_macos} PROPERTIES MACOSX_PACKAGE_LOCATION "Resources")
-        target_sources(${CMAKE_PROJECT_NAME} PRIVATE ${app_icon_macos})
+        target_sources(${QGC_APP_TARGET} PRIVATE ${app_icon_macos})
 
         set_source_files_properties(${QGC_MACOS_ENTITLEMENTS_PATH} PROPERTIES MACOSX_PACKAGE_LOCATION "Resources")
-        target_sources(${CMAKE_PROJECT_NAME} PRIVATE ${QGC_MACOS_ENTITLEMENTS_PATH})
+        target_sources(${QGC_APP_TARGET} PRIVATE ${QGC_MACOS_ENTITLEMENTS_PATH})
     elseif(IOS)
         enable_language(OBJC)
 
@@ -556,10 +581,11 @@ if(CMAKE_SYSTEM_NAME STREQUAL "Darwin")
     target_link_libraries(${CMAKE_PROJECT_NAME} PRIVATE wfblink)
     target_compile_definitions(${CMAKE_PROJECT_NAME} PRIVATE QGC_WFB_ENABLED)
 
-    add_custom_command(TARGET ${CMAKE_PROJECT_NAME} POST_BUILD
+    add_custom_command(TARGET ${QGC_APP_TARGET} POST_BUILD
         COMMAND ${CMAKE_COMMAND}
-            -DAPP_BUNDLE=$<TARGET_BUNDLE_DIR:${CMAKE_PROJECT_NAME}>
-            -DAPP_BINARY=$<TARGET_FILE:${CMAKE_PROJECT_NAME}>
+            -DAPP_BUNDLE=$<TARGET_BUNDLE_DIR:${QGC_APP_TARGET}>
+            -DAPP_BINARY=$<TARGET_FILE:${QGC_APP_TARGET}>
+            -DDEP_BINARY=$<TARGET_BUNDLE_CONTENT_DIR:${QGC_APP_TARGET}>/Frameworks/$<TARGET_FILE_NAME:${CMAKE_PROJECT_NAME}>
             -P ${CMAKE_SOURCE_DIR}/cmake/BundleWfbDylibs.cmake
         VERBATIM)
 endif()

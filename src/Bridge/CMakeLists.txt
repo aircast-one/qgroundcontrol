@@ -2,6 +2,8 @@ target_sources(${CMAKE_PROJECT_NAME}
     PRIVATE
         QGCBridgeCore.cc
         QGCBridgeCore.h
+        QGCEntry.cc
+        QGCEntry.h
 )
 
 if(APPLE AND NOT IOS)
@@ -14,7 +16,7 @@ if(APPLE AND NOT IOS)
             QGCLinksC.h
             QGCMapTileC.cc
             QGCMapTileC.h
-            QGCEntry.h
+            QGCNativeDebugC.cc
             QGCNativeDebugC.h
     )
 endif()

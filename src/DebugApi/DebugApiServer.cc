@@ -1617,6 +1617,10 @@ QByteArray DebugApiServer::_statusJson()
 #ifdef Q_OS_MACOS
 QByteArray DebugApiServer::_nativeJson(const QString &path, const QUrlQuery &query)
 {
+    const QGCNativeDebugHooks *const native = qgc_native_debug_hooks();
+    if (!native) {
+        return _errorJson(QStringLiteral("this build has no native UI installed"));
+    }
     const auto take = [](char *owned) {
         const QByteArray json = owned ? QByteArray(owned) : QByteArray("{}");
         qgc_bridge_free(owned);
@@ -1624,20 +1628,20 @@ QByteArray DebugApiServer::_nativeJson(const QString &path, const QUrlQuery &que
     };
 
     if (path == QStringLiteral("/native/windows")) {
-        return take(qgc_native_windows());
+        return take(native->windows());
     }
     if (path == QStringLiteral("/native/menu")) {
-        return take(qgc_native_menu());
+        return take(native->menu());
     }
     if (path == QStringLiteral("/native/bridge")) {
-        return take(qgc_native_bridge_stats());
+        return take(native->bridge_stats());
     }
     if (path == QStringLiteral("/native/menu/invoke")) {
         const QString item = query.queryItemValue(QStringLiteral("path"));
         if (item.isEmpty()) {
             return _errorJson(QStringLiteral("path is required, e.g. path=Window/Native Telemetry"));
         }
-        return take(qgc_native_menu_invoke(item.toUtf8().constData()));
+        return take(native->menu_invoke(item.toUtf8().constData()));
     }
     if (path == QStringLiteral("/native/probe")) {
         QJsonObject args;
@@ -1652,7 +1656,7 @@ QByteArray DebugApiServer::_nativeJson(const QString &path, const QUrlQuery &que
         const QByteArray id = query.queryItemValue(QStringLiteral("id"), QUrl::FullyDecoded).toUtf8();
         const QByteArray action = query.queryItemValue(QStringLiteral("action"), QUrl::FullyDecoded).toUtf8();
         const QByteArray argsJson = QJsonDocument(args).toJson(QJsonDocument::Compact);
-        return take(qgc_native_probe(id.constData(), action.constData(), argsJson.constData()));
+        return take(native->probe(id.constData(), action.constData(), argsJson.constData()));
     }
     if (path == QStringLiteral("/native/type")) {
         const QString window = query.queryItemValue(QStringLiteral("window"));
@@ -1660,7 +1664,7 @@ QByteArray DebugApiServer::_nativeJson(const QString &path, const QUrlQuery &que
         if (window.isEmpty()) {
             return _errorJson(QStringLiteral("window is required"));
         }
-        return take(qgc_native_type(window.toUtf8().constData(), text.toUtf8().constData()));
+        return take(native->type(window.toUtf8().constData(), text.toUtf8().constData()));
     }
     if (path == QStringLiteral("/native/click")) {
         const QString window = query.queryItemValue(QStringLiteral("window"));
@@ -1671,7 +1675,7 @@ QByteArray DebugApiServer::_nativeJson(const QString &path, const QUrlQuery &que
         if (window.isEmpty() || !xOk || !yOk) {
             return _errorJson(QStringLiteral("window, x and y are required"));
         }
-        return take(qgc_native_click(window.toUtf8().constData(), x, y));
+        return take(native->click(window.toUtf8().constData(), x, y));
     }
 
     return _errorJson(QStringLiteral("unknown native route: %1").arg(path));

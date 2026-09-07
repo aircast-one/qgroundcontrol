@@ -2,6 +2,18 @@ if(NOT MACOS)
     return()
 endif()
 
+option(QGC_NATIVE_UI "Build the in-tree Swift UI into the macOS app" ON)
+
+list(LENGTH CMAKE_OSX_ARCHITECTURES QGC_SWIFT_ARCH_COUNT)
+if(QGC_NATIVE_UI AND QGC_SWIFT_ARCH_COUNT GREATER 1)
+    message(STATUS "macos/: Swift cannot target ${CMAKE_OSX_ARCHITECTURES} in one library; building the universal app without the in-tree native UI")
+    set(QGC_NATIVE_UI OFF)
+endif()
+
+if(NOT QGC_NATIVE_UI)
+    return()
+endif()
+
 enable_language(Swift)
 
 set_directory_properties(PROPERTIES COMPILE_DEFINITIONS "")
@@ -70,11 +82,6 @@ set_target_properties(QGCNativeUI PROPERTIES
 # objects claim the host OS and the linker warns that they outrun the app's 12.0
 # floor. One -target per architecture is all swiftc accepts, so a universal build
 # needs one Swift library per arch lipo'd together - not wired up yet.
-list(LENGTH CMAKE_OSX_ARCHITECTURES QGC_SWIFT_ARCH_COUNT)
-if(QGC_SWIFT_ARCH_COUNT GREATER 1)
-    message(FATAL_ERROR "macos/: Swift cannot target ${CMAKE_OSX_ARCHITECTURES} in one library. Build per-arch and lipo, or drop to a single architecture.")
-endif()
-
 if(CMAKE_OSX_ARCHITECTURES)
     set(QGC_SWIFT_ARCH ${CMAKE_OSX_ARCHITECTURES})
 else()
@@ -103,11 +110,12 @@ execute_process(
 get_filename_component(QGC_SWIFT_TOOLCHAIN "${QGC_SWIFTC_PATH}" DIRECTORY)
 get_filename_component(QGC_SWIFT_TOOLCHAIN "${QGC_SWIFT_TOOLCHAIN}" DIRECTORY)
 
-target_link_directories(${CMAKE_PROJECT_NAME} PRIVATE "${QGC_SWIFT_TOOLCHAIN}/lib/swift/macosx")
+target_link_directories(${QGC_APP_TARGET} PRIVATE "${QGC_SWIFT_TOOLCHAIN}/lib/swift/macosx")
 
-target_include_directories(${CMAKE_PROJECT_NAME} PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
+target_include_directories(${QGC_APP_TARGET} PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
+target_compile_definitions(${QGC_APP_TARGET} PRIVATE QGC_NATIVE_UI)
 
-target_link_libraries(${CMAKE_PROJECT_NAME}
+target_link_libraries(${QGC_APP_TARGET}
     PRIVATE
         QGCNativeUI
         "-framework AppKit"

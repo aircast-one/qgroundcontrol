@@ -31,9 +31,9 @@ add_custom_target(check
 function(add_qgc_test test_name)
     add_test(
         NAME ${test_name}
-        COMMAND $<TARGET_FILE:${PROJECT_NAME}> --unittest:${test_name}
+        COMMAND $<TARGET_FILE:${QGC_APP_TARGET}> --unittest:${test_name}
     )
-    add_dependencies(check ${PROJECT_NAME})
+    add_dependencies(check ${QGC_APP_TARGET})
 endfunction()
 
 add_subdirectory(ADSB)

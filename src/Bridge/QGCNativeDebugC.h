@@ -4,13 +4,18 @@
 extern "C" {
 #endif
 
-char *qgc_native_windows(void);
-char *qgc_native_click(const char *window, double x, double y);
-char *qgc_native_type(const char *window, const char *text);
-char *qgc_native_probe(const char *id, const char *action, const char *args_json);
-char *qgc_native_menu(void);
-char *qgc_native_menu_invoke(const char *path);
-char *qgc_native_bridge_stats(void);
+typedef struct QGCNativeDebugHooks {
+    char *(*windows)(void);
+    char *(*click)(const char *window, double x, double y);
+    char *(*type)(const char *window, const char *text);
+    char *(*probe)(const char *id, const char *action, const char *args_json);
+    char *(*menu)(void);
+    char *(*menu_invoke)(const char *path);
+    char *(*bridge_stats)(void);
+} QGCNativeDebugHooks;
+
+void qgc_native_debug_install(const QGCNativeDebugHooks *hooks);
+const QGCNativeDebugHooks *qgc_native_debug_hooks(void);
 
 #ifdef __cplusplus
 }

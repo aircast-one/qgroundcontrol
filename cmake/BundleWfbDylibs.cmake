@@ -6,8 +6,11 @@ set(staging_dir "${APP_BUNDLE}/Contents/Frameworks/.wfb-staging")
 file(REMOVE_RECURSE "${staging_dir}")
 file(MAKE_DIRECTORY "${staging_dir}")
 
+if(NOT DEP_BINARY)
+    set(DEP_BINARY "${APP_BINARY}")
+endif()
 execute_process(
-    COMMAND otool -L "${APP_BINARY}"
+    COMMAND otool -L "${DEP_BINARY}"
     OUTPUT_VARIABLE otool_output
     OUTPUT_STRIP_TRAILING_WHITESPACE)
 
@@ -52,7 +55,7 @@ foreach(line IN LISTS otool_lines)
 
     file(RENAME "${staged}" "${frameworks_dir}/${dep_name}")
 
-    execute_process(COMMAND install_name_tool -change "${dep}" "@rpath/${dep_name}" "${APP_BINARY}")
+    execute_process(COMMAND install_name_tool -change "${dep}" "@rpath/${dep_name}" "${DEP_BINARY}")
     message(STATUS "wfb bundling: embedded ${dep_name}")
 endforeach()
 

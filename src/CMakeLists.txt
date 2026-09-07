@@ -1,11 +1,14 @@
 target_sources(${CMAKE_PROJECT_NAME}
     PRIVATE
-        main.cc
         CmdLineOptParser.cc
         CmdLineOptParser.h
         QGCApplication.cc
         QGCApplication.h
 )
+
+if(NOT MACOS)
+    target_sources(${CMAKE_PROJECT_NAME} PRIVATE main.cc)
+endif()
 
 if(NOT ANDROID AND NOT IOS)
     target_sources(${CMAKE_PROJECT_NAME}

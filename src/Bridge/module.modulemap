@@ -17,3 +17,8 @@ module QGCMapTileC {
     header "QGCMapTileC.h"
     export *
 }
+
+module QGCNativeDebugC {
+    header "QGCNativeDebugC.h"
+    export *
+}

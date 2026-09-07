@@ -4,6 +4,7 @@ import QGCEntry
 
 enum AppShell {
     static func run(_ argc: Int32, _ argv: UnsafeMutablePointer<UnsafeMutablePointer<CChar>?>) -> Int32 {
+        NativeDebug.install()
         let startCode = qgc_start(argc, argv)
         guard startCode == 0 else { return startCode }
 

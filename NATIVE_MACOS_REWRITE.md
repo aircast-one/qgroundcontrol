@@ -109,9 +109,15 @@ the normal app.
 Qt keeps its `NSApplicationDelegate` deliberately: `QGCApplication::event` depends on it for the
 `QFileOpenEvent` deep links. That delegate is the last thing to move, at Phase 6.
 
-CMake cannot mix Swift and C++ in one target, so making `main.swift` the literal entry point needs
-QGC built as a library rather than an executable — the Phase 1 restructure. The trampoline delivers
-the same ownership without it, so that restructure is now only a packaging decision.
+**QGC is a library on macOS (2026-09-07).** The project target `AircastQGC` builds
+`libAircastQGC.dylib` — every subdirectory still adds its sources to that name — and a thin
+`AircastQGCApp` executable target (one file, `src/main.cc`) links it and produces the same
+`AircastQGC.app`. The dylib is copied into `Contents/Frameworks` after every link and the app's only
+rpath is `@executable_path/../Frameworks`, so a cloned bundle stays self-contained and a relink of
+the core never invalidates a running clone. `qgc_start` / `qgc_run` / `qgc_shutdown` moved from
+`main.cc` into `src/Bridge/QGCEntry.cc`, compiled into the core on every platform; `main()` is all
+that is left outside it. Build the app with `cmake --build <dir> --target AircastQGCApp` (or no
+target); `--target AircastQGC` now builds only the core.
 
 **Qt now renders inside a native window.** `qgc_embed_main_window` takes the `NSView` behind a
 Swift-owned `NSWindow` and reparents the root `QQuickWindow` onto it with
@@ -162,14 +168,23 @@ surface for QML:
 - `/native/click` and `/native/type` still exist for an unlocked screen, and now refuse
   with an explanation when the screen is locked instead of failing mysteriously.
 
-**Universal builds are blocked.** `swiftc` accepts one `-target`, so `CMAKE_OSX_ARCHITECTURES`
-holding both arm64 and x86_64 cannot produce one Swift library. `macos/CMakeLists.txt` fails loudly
-on that rather than silently emitting a single-arch library, so the release CI's universal build
-needs one Swift library per architecture `lipo`'d together before it can ship. Phase 1 work.
+**The in-tree Swift is optional.** `QGC_NATIVE_UI` (default ON) builds `macos/Sources` into the app
+and defines `QGC_NATIVE_UI` for `main.cc`, which then trampolines into `AppShell.run`; OFF gives the
+plain Qt app. A universal configure (`x86_64;arm64`) turns it OFF with a status message instead of
+failing, so the production release build ships again. Per-arch Swift plus `lipo` is not needed here:
+the Swift's universal build belongs to the app repo's Xcode project.
 
-Open at Phase 1: the Swift moves to an `aircast-macos` repo once qgroundcontrol exposes QGC as a
-library target, mirroring how `aircast-android` consumes `AircastQGC.aar`. The C bridge header stays
-here permanently — it is the macOS `QGCBridge.java`.
+**The SDK artifact exists.** `cmake --install <dir> --component sdk --prefix <out>` installs
+`lib/libAircastQGC.dylib` and `include/AircastQGC/` with the bridge C headers and `module.modulemap`.
+The release CI uploads `qgc-macos-sdk`: that prefix plus the deployed bundle's `Frameworks`,
+`PlugIns` and `Resources` (Qt, GStreamer, wfb and the QML modules, already relinked by
+`macdeployqt`), which is everything an `aircast-macos` app has to embed.
+
+Open: the `aircast-macos` repo itself. It consumes the SDK tarball, owns the bundle, Info.plist,
+entitlements, icon, menus and signing, and pins a QGC version; `macos/Sources/*.swift` moves there
+when it exists. The C bridge headers stay here permanently — they are the macOS `QGCBridge.java`.
+`aircast-android` should move from its relative path into `build-android/` to the same published
+artifact model at the same time.
 
 ---
 
@@ -433,7 +448,9 @@ stream-owned C file instead of growing these), `src/Bridge/module.modulemap`, `t
 ### Session mechanics
 
 - **Own build tree.** `build-<stream>` under the repo, never `build-test` or `build-aircast`; those
-  two belong to E for probes and releases. A rebuild into a tree another session is running from
+  two belong to E for probes and releases. Configure with `-DSDL_CCACHE=OFF` while the brew `ccache`
+  is broken. Build the app with `--target AircastQGCApp` or no target; `--target AircastQGC` is
+  only the core dylib and leaves the bundle stale. A rebuild into a tree another session is running from
   kills that instance with `Code Signature Invalid`.
 - **Own ports and bundle name.** Debug API ports 79A0–79E9 by stream letter (A: 7900–7919, B:
   7920–7939, C: 7940–7959, D: 7960–7979, E: 7980–7999). Probe from a renamed clone

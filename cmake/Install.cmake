@@ -1,7 +1,7 @@
 include(InstallRequiredSystemLibraries)
 
 install(
-    TARGETS ${CMAKE_PROJECT_NAME}
+    TARGETS ${QGC_APP_TARGET}
     LIBRARY DESTINATION ${CMAKE_INSTALL_LIBDIR}
     RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR}
     ARCHIVE DESTINATION ${CMAKE_INSTALL_LIBDIR}
@@ -23,7 +23,7 @@ if(Qt6_VERSION VERSION_GREATER_EQUAL 6.7.0)
 endif()
 
 qt_generate_deploy_qml_app_script(
-    TARGET ${CMAKE_PROJECT_NAME}
+    TARGET ${QGC_APP_TARGET}
     OUTPUT_SCRIPT deploy_script
     ${EXTRA_DEPLOY_QML_APP_SCRIPT_OPTIONS}
     MACOS_BUNDLE_POST_BUILD
@@ -74,6 +74,19 @@ elseif(WIN32)
     install(CODE "set(QGC_WINDOWS_INSTALLER_SCRIPT ${CMAKE_SOURCE_DIR}/deploy/windows/nullsoft_installer.nsi)")
     install(SCRIPT "${CMAKE_SOURCE_DIR}/cmake/CreateWinInstaller.cmake")
 elseif(MACOS)
+    install(TARGETS ${CMAKE_PROJECT_NAME} LIBRARY DESTINATION lib COMPONENT sdk EXCLUDE_FROM_ALL)
+    install(
+        FILES
+            ${CMAKE_SOURCE_DIR}/src/Bridge/QGCEntry.h
+            ${CMAKE_SOURCE_DIR}/src/Bridge/QGCBridgeC.h
+            ${CMAKE_SOURCE_DIR}/src/Bridge/QGCLinksC.h
+            ${CMAKE_SOURCE_DIR}/src/Bridge/QGCMapTileC.h
+            ${CMAKE_SOURCE_DIR}/src/Bridge/QGCNativeDebugC.h
+            ${CMAKE_SOURCE_DIR}/src/Bridge/module.modulemap
+        DESTINATION include/${CMAKE_PROJECT_NAME}
+        COMPONENT sdk
+        EXCLUDE_FROM_ALL
+    )
     install(CODE "set(QGC_STAGING_BUNDLE_PATH \"${CMAKE_BINARY_DIR}/staging/${CMAKE_PROJECT_NAME}.app\")")
     if(QGC_MACOS_SIGN_WITH_IDENTITY)
         message(STATUS "QGC: Signing Bundle using signing identity")
