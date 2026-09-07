@@ -292,10 +292,16 @@ struct PlanInspector: View {
     @ViewBuilder private var details: some View {
         ForEach([ItemFact.cameraGroup, ItemFact.itemGroup], id: \.self) { group in
             let facts = mission.selectedFacts.filter { $0.group == group }
-            if !facts.isEmpty {
+            if !facts.isEmpty || showsAltitudeMode(in: group) {
                 factCard(group, facts)
             }
         }
+    }
+
+    // A plain waypoint has no settings of its own, but it still flies at a height
+    // measured from something, and that is worth saying.
+    private func showsAltitudeMode(in group: String) -> Bool {
+        group == ItemFact.itemGroup && AltitudeMode.isChoice(mission.itemAltitudeMode)
     }
 
     @ViewBuilder private func factCard(_ group: String, _ facts: [ItemFact]) -> some View {
@@ -341,9 +347,23 @@ struct PlanInspector: View {
                         }
                     }
 
+                    if showsAltitudeMode(in: group) {
+                        GroupRow(title: "Altitude mode", showSeparator: false, trailing: {
+                            Picker("", selection: Binding(
+                                get: { mission.itemAltitudeMode },
+                                set: { mission.setItemAltitudeMode($0) })
+                            ) {
+                                ForEach(AltitudeMode.choices) { Text($0.title).tag($0.raw) }
+                            }
+                            .labelsHidden()
+                            .frame(maxWidth: 170)
+                        })
+                    }
+
                     ForEach(Array(facts.enumerated()), id: \.element.id) { index, fact in
                         GroupRow(title: fact.title,
-                                 showSeparator: index > 0 || group == ItemFact.cameraGroup,
+                                 showSeparator: index > 0 || group == ItemFact.cameraGroup
+                                     || showsAltitudeMode(in: group),
                                  titleLines: 2,
                                  trailing: {
                                      if fact.isBool {
