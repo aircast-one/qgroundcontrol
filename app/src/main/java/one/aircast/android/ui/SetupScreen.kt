@@ -230,7 +230,7 @@ fun SetupScreen(modifier: Modifier = Modifier) {
                         !openable -> SetupState.Unavailable
                         else -> SetupState.Neutral
                     },
-                    onClick = if (openable) {
+                    onClick = if (blocked == null && openable) {
                         { openComponent = component }
                     } else {
                         null
