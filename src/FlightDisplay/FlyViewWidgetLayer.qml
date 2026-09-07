@@ -317,7 +317,7 @@ Item {
         required property string buttonName
         rig:        _root.overlayRig
         control:    guidedButton
-        available:  actionable || _root.overlayRig.editMode
+        available:  !mainWindow.hostProvidesGuidedActions && (actionable || _root.overlayRig.editMode)
         z:          QGroundControl.zOrderWidgets
 
         Column {

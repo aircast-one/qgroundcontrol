@@ -25,6 +25,7 @@ Item {
     readonly property bool  flyViewBackdropVisible: !toolLoader.active
     readonly property bool  flyViewActive:          page !== "plan"
     readonly property bool  hostProvidesNavigation: true
+    readonly property bool  hostProvidesGuidedActions: true
     readonly property string activeVehicleText:     globals.activeVehicle ? globals.activeVehicle.flightMode : qsTr("No vehicle")
 
     signal navigateRequest(string destination)

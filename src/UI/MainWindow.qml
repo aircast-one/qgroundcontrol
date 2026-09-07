@@ -117,6 +117,7 @@ ApplicationWindow {
     }
     property bool flyViewActive: true
     readonly property bool hostProvidesNavigation: false
+    readonly property bool hostProvidesGuidedActions: false
 
     function showPlanView() {
         flyViewActive = false
