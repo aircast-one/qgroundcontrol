@@ -26,6 +26,7 @@ private slots:
     void _writesEnumIndex();
     void _resolvesListIndex();
     void _invokesFactValidateAndReturnsQGCsOwnError();
+    void _factCarriesWhatQGCKnowsAboutItsRange();
     void _resolvesAccessorCall();
     void _writesThroughAccessorCall();
     void _invokeReturnsValue();

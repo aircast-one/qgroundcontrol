@@ -125,6 +125,10 @@ def test_an_unknown_exit_code_still_reports_the_number():
     assert "binary exited 1" in text, text
 
 
+def test_staleness_watches_the_library_the_app_actually_loads():
+    assert runner.built_artifact() == runner.BUNDLE_LIB, runner.built_artifact()
+
+
 def test_expected_suites_reads_the_real_list():
     names = runner.expected_suites()
     assert len(names) > 50, len(names)

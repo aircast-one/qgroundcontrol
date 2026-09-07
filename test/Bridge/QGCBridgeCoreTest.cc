@@ -457,3 +457,34 @@ void QGCBridgeCoreTest::_invokesFactValidateAndReturnsQGCsOwnError()
     QVERIFY2(!notANumber.value(QStringLiteral("result")).toString().isEmpty(),
              "a non-numeric value was reported as valid");
 }
+
+void QGCBridgeCoreTest::_factCarriesWhatQGCKnowsAboutItsRange()
+{
+    const QJsonObject group = QJsonDocument::fromJson(
+        QGCBridgeCore::get(QStringLiteral("settings.appSettings")).toUtf8()).object();
+    const QJsonArray facts = group.value(QStringLiteral("facts")).toArray();
+    QVERIFY2(!facts.isEmpty(), "app settings reported no facts");
+
+    QJsonObject announce;
+    for (const QJsonValue &value : facts) {
+        if (value.toObject().value(QStringLiteral("name")).toString()
+            == QStringLiteral("batteryPercentRemainingAnnounce")) {
+            announce = value.toObject();
+            break;
+        }
+    }
+    QVERIFY2(!announce.isEmpty(), "batteryPercentRemainingAnnounce was not reported");
+
+    for (const QString &key : { QStringLiteral("minString"), QStringLiteral("maxString"),
+                                QStringLiteral("minIsDefaultForType"),
+                                QStringLiteral("maxIsDefaultForType"),
+                                QStringLiteral("defaultValueString"),
+                                QStringLiteral("vehicleRebootRequired"),
+                                QStringLiteral("qgcRebootRequired") }) {
+        QVERIFY2(announce.contains(key), qPrintable(QStringLiteral("fact is missing %1").arg(key)));
+    }
+
+    QCOMPARE(announce.value(QStringLiteral("minIsDefaultForType")).toBool(), true);
+    QCOMPARE(announce.value(QStringLiteral("maxIsDefaultForType")).toBool(), false);
+    QCOMPARE(announce.value(QStringLiteral("maxString")).toString(), QStringLiteral("100"));
+}

@@ -14,6 +14,8 @@ from pathlib import Path
 REPO = Path(__file__).resolve().parents[1]
 TEST_BUILD = REPO / "build-test"
 TEST_APP = TEST_BUILD / "Debug/AircastQGC.app/Contents/MacOS/AircastQGC"
+TEST_LIB = TEST_BUILD / "Debug/libAircastQGC.dylib"
+BUNDLE_LIB = TEST_BUILD / "Debug/AircastQGC.app/Contents/Frameworks/libAircastQGC.dylib"
 SUITE_NAME = f"QGCSuite{os.getpid()}"
 STAGE_ROOT = Path(os.environ.get("TMPDIR", "/tmp"))
 STAGE = STAGE_ROOT / f"qgc-testrun-{os.getpid()}"
@@ -44,13 +46,33 @@ def port_contention():
             f"and any mav_bridge first.")
 
 
+def sync_bundle_library():
+    if not (TEST_LIB.exists() and BUNDLE_LIB.exists()):
+        return
+    if TEST_LIB.stat().st_mtime > BUNDLE_LIB.stat().st_mtime:
+        shutil.copy2(TEST_LIB, BUNDLE_LIB)
+        subprocess.run(["codesign", "--force", "--sign", "-", "--timestamp=none",
+                        str(TEST_APP.parents[2])], capture_output=True)
+
+
+def built_artifact():
+    if BUNDLE_LIB.exists():
+        return BUNDLE_LIB
+    if TEST_LIB.exists():
+        return TEST_LIB
+    return TEST_APP
+
+
 def staleness():
-    if not TEST_APP.exists():
-        return f"{TEST_APP} does not exist - build it first"
+    sync_bundle_library()
+    artifact = built_artifact()
+    if not artifact.exists():
+        return f"{artifact} does not exist - build it first"
     newest = newest_source_mtime()
-    if TEST_APP.stat().st_mtime < newest:
-        age = newest - TEST_APP.stat().st_mtime
-        return f"binary is {age / 60:.1f} min older than the newest source - rebuild before trusting this"
+    if artifact.stat().st_mtime < newest:
+        age = newest - artifact.stat().st_mtime
+        return (f"{artifact.name} is {age / 60:.1f} min older than the newest source - "
+                f"rebuild before trusting this")
     return None
 
 
@@ -75,7 +97,8 @@ def sweep_old_clones():
 
 
 def refresh_clone():
-    if CLONE_BIN.exists() and CLONE_BIN.stat().st_mtime >= TEST_APP.stat().st_mtime:
+    source_mtime = max(TEST_APP.stat().st_mtime, TEST_LIB.stat().st_mtime if TEST_LIB.exists() else 0)
+    if CLONE_BIN.exists() and CLONE_BIN.stat().st_mtime >= source_mtime:
         return CLONE_BIN
     sweep_old_clones()
     shutil.rmtree(STAGE, ignore_errors=True)
@@ -89,11 +112,21 @@ def refresh_clone():
     return CLONE_BIN
 
 
+QT_FRAMEWORKS = Path("/Users/pavliha/Qt/6.8.3/macos/lib")
+
+
+def run_environment():
+    env = dict(os.environ)
+    if QT_FRAMEWORKS.exists():
+        env["DYLD_FRAMEWORK_PATH"] = str(QT_FRAMEWORKS)
+    return env
+
+
 def run_suite(name):
     binary = refresh_clone()
     args = [str(binary), "--allow-multiple", f"--unittest:{name}" if name else "--unittest"]
     started = time.monotonic()
-    proc = subprocess.run(args, capture_output=True, text=True, timeout=3600)
+    proc = subprocess.run(args, capture_output=True, text=True, timeout=3600, env=run_environment())
     return proc.stdout + proc.stderr, time.monotonic() - started, proc.returncode
 
 
