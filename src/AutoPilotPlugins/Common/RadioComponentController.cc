@@ -937,7 +937,7 @@ void RadioComponentController::_setHelpImage(const char *imageFile)
 int RadioComponentController::rollChannelRCValue()
 {
     if (_rgFunctionChannelMapping[rcCalFunctionRoll] != _chanMax) {
-        return _rcRawValue[rcCalFunctionRoll];
+        return _rcRawValue[_rgFunctionChannelMapping[rcCalFunctionRoll]];
     } else {
         return 1500;
     }
@@ -946,7 +946,7 @@ int RadioComponentController::rollChannelRCValue()
 int RadioComponentController::pitchChannelRCValue()
 {
     if (_rgFunctionChannelMapping[rcCalFunctionPitch] != _chanMax) {
-        return _rcRawValue[rcCalFunctionPitch];
+        return _rcRawValue[_rgFunctionChannelMapping[rcCalFunctionPitch]];
     } else {
         return 1500;
     }
@@ -955,7 +955,7 @@ int RadioComponentController::pitchChannelRCValue()
 int RadioComponentController::yawChannelRCValue()
 {
     if (_rgFunctionChannelMapping[rcCalFunctionYaw] != _chanMax) {
-        return _rcRawValue[rcCalFunctionYaw];
+        return _rcRawValue[_rgFunctionChannelMapping[rcCalFunctionYaw]];
     } else {
         return 1500;
     }
@@ -964,7 +964,7 @@ int RadioComponentController::yawChannelRCValue()
 int RadioComponentController::throttleChannelRCValue()
 {
     if (_rgFunctionChannelMapping[rcCalFunctionThrottle] != _chanMax) {
-        return _rcRawValue[rcCalFunctionThrottle];
+        return _rcRawValue[_rgFunctionChannelMapping[rcCalFunctionThrottle]];
     } else {
         return 1500;
     }
