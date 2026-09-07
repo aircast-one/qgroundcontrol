@@ -74,6 +74,14 @@ internal fun MapSpikeScreen(mapStyle: String) {
 
     // A bridge call that fails returns false rather than throwing, so without
     // this a refused operation looks exactly like one that worked.
+    fun say(message: String) {
+        busy = message
+        scope.launch {
+            delay(FAILURE_MESSAGE_MS)
+            busy = null
+        }
+    }
+
     fun onBridge(label: String? = null, work: () -> Boolean) {
         busy = label
         scope.launch {
@@ -91,6 +99,8 @@ internal fun MapSpikeScreen(mapStyle: String) {
     val latitude by mapDouble("vehicle.latitude")
     val longitude by mapDouble("vehicle.longitude")
     val planDirty by mapBool("plan.dirty")
+    val planOffline by mapBool("plan.offline")
+    val planSyncing by mapBool("plan.syncInProgress")
     val missionDistance by mapDouble("plan.missionController.missionTotalDistance")
     val missionTime by mapDouble("plan.missionController.missionTime")
     val mode by mapString("vehicle.flightMode")
@@ -238,16 +248,26 @@ internal fun MapSpikeScreen(mapStyle: String) {
                     horizontalArrangement = Arrangement.spacedBy(4.dp),
                 ) {
                     TextButton(onClick = {
-                        if (loadStep(planDirty, loadArmed) == LoadStep.Confirm) {
-                            loadArmed = true
-                        } else {
-                            loadArmed = false
-                            onBridge("Loading from vehicle") { PlanBridge.loadFromVehicle() }
+                        val refusal = syncRefusal(
+                            vehicleSyncState(planOffline, planSyncing), "load from",
+                        )
+                        when {
+                            refusal != null -> say(refusal)
+                            loadStep(planDirty, loadArmed) == LoadStep.Confirm -> loadArmed = true
+                            else -> {
+                                loadArmed = false
+                                onBridge("Loading from vehicle") { PlanBridge.loadFromVehicle() }
+                            }
                         }
                     }) { Text(if (loadArmed) "Discard & load" else "Load") }
 
                     TextButton(onClick = {
-                        onBridge("Sending to vehicle") { PlanBridge.sendToVehicle() }
+                        val refusal = syncRefusal(
+                            vehicleSyncState(planOffline, planSyncing), "send to",
+                        )
+                        if (refusal != null) say(refusal) else {
+                            onBridge("Sending to vehicle") { PlanBridge.sendToVehicle() }
+                        }
                     }) { Text("Send") }
 
                     TextButton(onClick = {

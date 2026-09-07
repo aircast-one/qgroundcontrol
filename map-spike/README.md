@@ -110,6 +110,13 @@ poll, from a median of 66 ms to 32 ms on an 84 point survey. Each call serialise
 subtree to JSON and blocks the Qt thread while it does, so the cost is in the trip, not the
 parsing.
 
+**`ok` means the method ran, not that it did anything.** The bridge reports success when it found
+and invoked a `Q_INVOKABLE`, and a method that decides internally to do nothing still returns `ok`.
+`sendToVehicle` with no vehicle, or while a sync is already running, logs a warning and returns, so
+a map that trusted `ok` would report an upload that never happened. `plan.offline` and
+`plan.syncInProgress` are the properties that actually answer it. Any void call worth trusting
+needs a property to confirm it landed.
+
 **Loading from the vehicle throws work away.** It overwrites whatever is drawn and there is no
 undo, so QGC asks first when the plan has unsent changes. `plan.dirty` says when that is, and Load
 here asks the same question rather than being the one place that discards a survey silently.
