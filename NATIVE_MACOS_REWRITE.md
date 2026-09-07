@@ -390,3 +390,59 @@ fallback.
 - **Android.** Stays Qt-cored with the Compose frontend already in flight.
 - **UTMSP** (2.7k QML). Niche EU compliance. Decide keep-or-drop at Phase 4; this is the cheapest
   moment to drop it.
+
+---
+
+## Work split across parallel sessions (2026-09-07)
+
+Five sessions work this repo at once. Yesterday they all edited `macos/Sources` and the bridge
+together; today one commit sweeps another's staged files and the shared Debug build tree is relinked
+under a running probe. This section fixes ownership so the plan above can be executed in parallel
+without that. A session states its stream in its first message and stays inside it.
+
+### Streams and ownership
+
+Ownership is by path. A stream edits only what it owns; anything else goes through a request to the
+owning stream (a note in that stream's section below, or a one-line issue in the commit message).
+
+| Stream | Scope (plan phase) | Owns | Gate it drives |
+|---|---|---|---|
+| **A · Shell & shipping** | Phase 1 structure, Phase 6 prep | root `CMakeLists.txt`, `macos/CMakeLists.txt`, `src/main.cc`, `src/Bridge/QGCEntry.h`, `src/Bridge/QGCEmbed.cc`, `macos/Sources/AppShell.swift`, `macos/Sources/QtHostWindow.swift`, `macos/Sources/NativeWindow.swift`, `.github/workflows/aircast-release.yml`, `Makefile` release targets, the **Status** section of this document | QGC as a library target; per-arch Swift libraries lipo'd in the release CI; `aircast-macos` repo scaffold; `make release.*` producing a notarized universal bundle |
+| **B · Plan** | Phase 4 | `macos/Sources/{PlanWindow,Mission,MissionMap,MissionItem*,MissionCommandModel,ItemFactModel,MapFraming,TilePyramid,CachedTileOverlay,FenceRally*,TerrainProfileModel}.swift`, `src/Bridge/QGCMapTileC.*`, `src/MissionManager/` | the 200+ waypoint survey planned, uploaded, flown and downloaded byte-identical (HW) |
+| **C · Fly & video** | Phase 5 | `macos/Sources/{FlyWindow,Telemetry,TelemetryView,FlightModePositions}.swift`, new `macos/Sources/Video*.swift` and `Joystick*.swift`, a new `src/Bridge/QGCFlyC.*` for guided actions, `src/VideoManager/` appsink path, `src/Joystick/` | every guided action verified on PX4 and ArduPilot; sub-200 ms glass-to-glass on WHEP; 30-minute flight with flat memory (HW) |
+| **D · Setup, Analyze, Settings** | Phases 1 (settings), 2, 3 | `macos/Sources/{SettingsWindow,SettingsPages,SettingsStore,AnalyzeWindow,LogDownload,LogEntryModel,Vibration*,VehicleSetupWindow,Parameters,ParameterModel,ParameterRow,Sensors,SensorHealth,SafetySections,VehicleComponent*,ConnectionsSection,LinkConfigModel,Links,Fact}.swift`, `src/Bridge/QGCLinksC.*`, `src/AutoPilotPlugins/`, `src/Settings/`, `src/Comms/` | full parameter tree loads and writes on PX4 and ArduPilot; calibrations complete on real hardware; log download from real hardware with chart values matching the Qt build (HW) |
+| **E · Qt frontends & QA** | not a migration phase | everything under `src/FlightDisplay/`, `src/QmlControls/`, `src/UI/`, `src/PlanView/`, `android/`, `test/`, `tools/`, `macos/Tests/`, `macos/Sources/{NativeProbe,Probeable,NativeDebug}.swift`, `src/Bridge/QGCNativeDebugC.h` | Android, Linux and Windows keep shipping on Qt; the probe and unit harnesses stay green; the hardware gates above are run and recorded here |
+
+Shared files, edited by more than one stream, are **append-only and committed within the hour**:
+`macos/CMakeLists.txt` source list (A owns the file; B, C, D append their own `.swift` lines),
+`src/Bridge/CMakeLists.txt`, `src/Bridge/QGCBridgeCore.*` and `QGCBridgeC.*` (add a new
+stream-owned C file instead of growing these), `src/Bridge/module.modulemap`, `test/UnitTestList.cc`,
+`test/*/CMakeLists.txt`. Never leave a shared file dirty across a build.
+
+### Corrections to the plan above
+
+- **`src/UI/preferences/` does not exist; the settings QML is `src/UI/AppSettings/`, and it cannot be
+  deleted** while Linux, Windows and the Qt-hosted Android path still ship from this tree. Phase 1's
+  "delete" becomes "macOS stops loading it". Same for every later "evaporation" of QML: the QML stays
+  for the other platforms until they have their own plan.
+- **Phase order was not kept.** Streams B, C and D run in parallel from here; A's library target and
+  universal build are the only items that gate shipping and therefore come first inside A.
+- **Hardware gates have not been run for any phase past 0.** SITL verification does not close a
+  phase. E records each hardware gate run in this document with date, firmware and result.
+
+### Session mechanics
+
+- **Own build tree.** `build-<stream>` under the repo, never `build-test` or `build-aircast`; those
+  two belong to E for probes and releases. A rebuild into a tree another session is running from
+  kills that instance with `Code Signature Invalid`.
+- **Own ports and bundle name.** Debug API ports 79A0–79E9 by stream letter (A: 7900–7919, B:
+  7920–7939, C: 7940–7959, D: 7960–7979, E: 7980–7999). Probe from a renamed clone
+  (`<Stream>Run.app`, binary renamed, `CFBundleExecutable` updated). Never `pkill -f AircastQGC`.
+- **Own settings.** A probe that changes a stored preference restores it before exit.
+- **Private index commits.** `GIT_INDEX_FILE=$scratch/<stream>.index git read-tree HEAD`, stage only
+  owned files, `git commit`, `git push fork main`. Rebase on a moved HEAD, never force-push.
+- **Commit small, commit often.** A stream's uncommitted work is invisible to the others and gets
+  built into their trees by accident; anything that compiles and passes its suite lands.
+- **Tests run from a renamed clone with `--allow-multiple`**, one suite at a time while another
+  session's instance holds mock links; a full-suite failure in `VehicleLinkManagerTest` or a
+  `SysStatusSensorInfoTest` mismatch is checked alone before it is reported.
