@@ -56,7 +56,7 @@ private fun MapSpikeScreen(mapStyle: String) {
     var items by remember { mutableStateOf<List<MissionItem>>(emptyList()) }
     var fences by remember { mutableStateOf<List<FencePolygon>>(emptyList()) }
     var rally by remember { mutableStateOf<List<RallyPoint>>(emptyList()) }
-    var selected by remember { mutableStateOf<Int?>(null) }
+    var selected by remember { mutableStateOf<MapHit?>(null) }
     var busy by remember { mutableStateOf<String?>(null) }
     val scope = rememberCoroutineScope()
 
@@ -103,7 +103,14 @@ private fun MapSpikeScreen(mapStyle: String) {
             rallyPoints = rally,
             editable = true,
             onAdd = { lat, lon -> onBridge { PlanBridge.appendWaypoint(lat, lon) } },
-            onMove = { index, lat, lon -> onBridge { PlanBridge.moveItem(index, lat, lon) } },
+            onMove = { hit, lat, lon ->
+                onBridge {
+                    when (hit) {
+                        is MapHit.Waypoint -> PlanBridge.moveItem(hit.index, lat, lon)
+                        is MapHit.FenceVertex -> FenceBridge.adjustVertex(hit.polygon, hit.vertex, lat, lon)
+                    }
+                }
+            },
             onWaypointSelected = { selected = it },
         )
 
@@ -172,11 +179,11 @@ private fun MapSpikeScreen(mapStyle: String) {
                         onBridge("Adding rally") { FenceBridge.addRallyPoint(latitude, longitude) }
                     }) { Text("Rally") }
 
-                    selected?.let { index ->
+                    (selected as? MapHit.Waypoint)?.let { hit ->
                         TextButton(onClick = {
-                            onBridge { PlanBridge.removeItem(index) }
+                            onBridge { PlanBridge.removeItem(hit.index) }
                             selected = null
-                        }) { Text("Delete #$index") }
+                        }) { Text("Delete #${hit.index}") }
                     }
                 }
             }

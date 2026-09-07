@@ -143,3 +143,41 @@ fun renderFences(style: Style, polygons: List<FencePolygon>, rally: List<RallyPo
     (style.getSource(FENCE_SOURCE) as? GeoJsonSource)?.setGeoJson(fenceFeatures(polygons))
     (style.getSource(RALLY_SOURCE) as? GeoJsonSource)?.setGeoJson(rallyFeatures(rally))
 }
+
+const val FENCE_HANDLE_SOURCE = "aircast-fence-handles"
+const val FENCE_HANDLE_LAYER = "aircast-fence-handle-layer"
+
+const val POLYGON_INDEX_PROPERTY = "polygonIndex"
+const val VERTEX_INDEX_PROPERTY = "vertexIndex"
+
+fun installFenceHandleLayer(style: Style) {
+    if (style.getSource(FENCE_HANDLE_SOURCE) != null) {
+        return
+    }
+    style.addSource(GeoJsonSource(FENCE_HANDLE_SOURCE))
+    style.addLayer(
+        CircleLayer(FENCE_HANDLE_LAYER, FENCE_HANDLE_SOURCE).withProperties(
+            PropertyFactory.circleColor("#FFFFFF"),
+            PropertyFactory.circleRadius(7f),
+            PropertyFactory.circleStrokeColor("#1565C0"),
+            PropertyFactory.circleStrokeWidth(3f),
+        ),
+    )
+}
+
+fun fenceHandleFeatures(polygons: List<FencePolygon>): FeatureCollection {
+    val features = polygons.flatMap { polygon ->
+        polygon.vertices.mapIndexed { vertex, point ->
+            Feature.fromGeometry(Point.fromLngLat(point.longitude, point.latitude)).apply {
+                addNumberProperty(POLYGON_INDEX_PROPERTY, polygon.index)
+                addNumberProperty(VERTEX_INDEX_PROPERTY, vertex)
+            }
+        }
+    }
+    return FeatureCollection.fromFeatures(features)
+}
+
+fun renderFenceHandles(style: Style, polygons: List<FencePolygon>) {
+    (style.getSource(FENCE_HANDLE_SOURCE) as? GeoJsonSource)
+        ?.setGeoJson(fenceHandleFeatures(polygons))
+}

@@ -75,6 +75,12 @@ object FenceBridge {
 
     fun clearFences(): Boolean = invoke("$FENCE_ROOT.clearAllInteractive")
 
+    fun adjustVertex(polygon: Int, vertex: Int, latitude: Double, longitude: Double): Boolean =
+        invoke(
+            "$FENCE_POLYGONS.$polygon.adjustVertex",
+            "[$vertex, {\"latitude\":$latitude,\"longitude\":$longitude,\"altitude\":0}]",
+        )
+
     private fun point(value: TrackPoint) =
         "{\"latitude\":${value.latitude},\"longitude\":${value.longitude},\"altitude\":0}"
 

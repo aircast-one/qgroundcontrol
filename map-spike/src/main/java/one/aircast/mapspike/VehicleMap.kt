@@ -105,8 +105,8 @@ fun VehicleMap(
     rallyPoints: List<RallyPoint> = emptyList(),
     editable: Boolean = false,
     onAdd: (Double, Double) -> Unit = { _, _ -> },
-    onMove: (Int, Double, Double) -> Unit = { _, _, _ -> },
-    onWaypointSelected: (Int?) -> Unit = {},
+    onMove: (MapHit, Double, Double) -> Unit = { _, _, _ -> },
+    onWaypointSelected: (MapHit?) -> Unit = {},
 ) {
     val latitude by mapDouble("vehicle.latitude")
     val longitude by mapDouble("vehicle.longitude")
@@ -150,6 +150,7 @@ fun VehicleMap(
                 installLayers(loadedStyle)
                 installFenceLayers(loadedStyle)
                 installMissionLayers(loadedStyle)
+                installFenceHandleLayer(loadedStyle)
                 if (editable) {
                     attachMissionEditing(
                         mapView, loaded, loadedStyle,
@@ -188,6 +189,7 @@ fun VehicleMap(
     LaunchedEffect(style, missionItems, fencePolygons, rallyPoints) {
         val currentStyle = style ?: return@LaunchedEffect
         renderFences(currentStyle, fencePolygons, rallyPoints)
+        renderFenceHandles(currentStyle, fencePolygons)
         renderMission(currentStyle, missionItems)
     }
 
