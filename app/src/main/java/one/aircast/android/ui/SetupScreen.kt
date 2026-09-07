@@ -1,5 +1,7 @@
 package one.aircast.android.ui
 
+import androidx.activity.compose.BackHandler
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -24,6 +26,12 @@ import kotlinx.coroutines.withContext
 import one.aircast.android.bridge.Qgc
 import one.aircast.android.bridge.qgcBool
 import one.aircast.android.bridge.qgcString
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
+import androidx.compose.foundation.layout.Row
+import androidx.compose.ui.Alignment
 
 private const val PLUGIN = "vehicle.autopilotPlugin"
 private const val COMPONENTS = "vehicle.autopilotPlugin.vehicleComponents"
@@ -74,9 +82,13 @@ fun SetupScreen(modifier: Modifier = Modifier) {
     val hasVehicle by qgcBool("vehicles.activeVehicleAvailable")
     val parametersReady by qgcBool("vehicle.parameterManager.parametersReady")
     val setupComplete by qgcBool("$PLUGIN.setupComplete")
+    val isPx4 by qgcBool("vehicle.px4Firmware")
     val vehicleType by qgcString("vehicle.vehicleTypeString")
     val firmwareType by qgcString("vehicle.firmwareTypeString")
     var components by remember { mutableStateOf(emptyList<SetupComponent>()) }
+    var openComponent by remember { mutableStateOf<SetupComponent?>(null) }
+
+    BackHandler(enabled = openComponent != null) { openComponent = null }
 
     LaunchedEffect(hasVehicle, parametersReady, setupComplete) {
         components = if (hasVehicle && parametersReady) {
@@ -93,6 +105,25 @@ fun SetupScreen(modifier: Modifier = Modifier) {
 
     if (!parametersReady) {
         SetupNotice("Loading parameters from the vehicle.", modifier)
+        return
+    }
+
+    val open = openComponent
+    val openSections = open?.let { setupSectionsFor(it.name, isPx4) }
+    if (open != null && openSections != null) {
+        Column(modifier.fillMaxSize()) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                IconButton(onClick = { openComponent = null }) {
+                    Icon(Icons.AutoMirrored.Filled.ArrowBack, "Back to Setup")
+                }
+                Text(open.name, style = MaterialTheme.typography.titleMedium)
+            }
+            HorizontalDivider()
+            ParameterForm(openSections, Modifier.weight(1f))
+        }
         return
     }
 
@@ -117,19 +148,27 @@ fun SetupScreen(modifier: Modifier = Modifier) {
         }
 
         Text(
-            text = "Setup pages are still being moved over. Edit any parameter from the Params tab.",
+            text = "Only pages marked Open are moved over so far. " +
+                "Edit any parameter from the Params tab meanwhile.",
             style = MaterialTheme.typography.bodySmall,
             modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp),
         )
 
         LazyColumn(Modifier.fillMaxSize()) {
             items(components, key = { it.index }) { component ->
+                val sections = setupSectionsFor(component.name, isPx4)
                 ListItem(
+                    modifier = if (sections == null) {
+                        Modifier
+                    } else {
+                        Modifier.clickable { openComponent = component }
+                    },
                     headlineContent = { Text(component.name) },
                     supportingContent = { Text(component.description) },
                     trailingContent = {
                         Text(
                             text = when {
+                                sections != null -> "Open"
                                 !component.requiresSetup -> ""
                                 component.setupComplete -> "Ready"
                                 else -> "Needs setup"

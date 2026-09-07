@@ -65,6 +65,8 @@ object Qgc {
         }
     }
 
+    fun factAt(path: String, json: JSONObject): Fact = fact("", json).copy(path = path)
+
     fun fact(groupPath: String, json: JSONObject): Fact {
         val name = json.optString("name")
         val enums = json.optJSONArray("enumStrings")

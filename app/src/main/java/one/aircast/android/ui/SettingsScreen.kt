@@ -2,6 +2,7 @@ package one.aircast.android.ui
 
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
@@ -31,9 +32,11 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import one.aircast.android.bridge.Fact
 import one.aircast.android.bridge.Qgc
+import one.aircast.android.bridge.offMainDetached
 import one.aircast.android.bridge.qgcFacts
 
 data class SettingsGroup(val path: String, val title: String)
@@ -101,39 +104,58 @@ fun FactList(groupPath: String, modifier: Modifier = Modifier) {
 }
 
 @Composable
-private fun FactRow(fact: Fact) {
+internal fun FactRow(fact: Fact, onWrite: () -> Unit = {}) {
     Row(
         Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp),
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.SpaceBetween,
     ) {
         Column(Modifier.weight(1f)) {
-            Text(fact.title, style = MaterialTheme.typography.bodyLarge)
+            Text(
+                text = fact.title,
+                style = MaterialTheme.typography.bodyLarge,
+                maxLines = 3,
+                overflow = TextOverflow.Ellipsis,
+            )
             if (fact.units.isNotBlank()) {
                 Text(fact.units, style = MaterialTheme.typography.bodySmall)
             }
         }
 
-        when {
-            fact.readOnly -> Text(fact.valueString, style = MaterialTheme.typography.bodyMedium)
-            fact.isBool -> Switch(
-                checked = fact.boolValue,
-                onCheckedChange = { Qgc.set(fact.path, it) },
-            )
-            fact.isEnum -> EnumPicker(fact)
-            else -> FactTextField(fact)
+        Box(Modifier.weight(1f), contentAlignment = Alignment.CenterEnd) {
+            when {
+                fact.readOnly -> Text(
+                    text = fact.valueString,
+                    style = MaterialTheme.typography.bodyMedium,
+                    maxLines = 2,
+                    overflow = TextOverflow.Ellipsis,
+                )
+                fact.isBool -> Switch(
+                    checked = fact.boolValue,
+                    onCheckedChange = { checked ->
+                        offMainDetached { Qgc.set(fact.path, checked); onWrite() }
+                    },
+                )
+                fact.isEnum -> EnumPicker(fact, onWrite)
+                else -> FactTextField(fact, onWrite)
+            }
         }
     }
 }
 
 @Composable
-private fun EnumPicker(fact: Fact) {
+private fun EnumPicker(fact: Fact, onWrite: () -> Unit) {
     var expanded by remember { mutableStateOf(false) }
     val label = fact.enumStrings.getOrNull(fact.enumIndex) ?: fact.valueString
 
     Column {
         TextButton(onClick = { expanded = true }) {
-            Text(label)
+            Text(
+                text = label,
+                maxLines = 2,
+                overflow = TextOverflow.Ellipsis,
+                modifier = Modifier.weight(1f, fill = false),
+            )
             Icon(Icons.Default.KeyboardArrowDown, null)
         }
         DropdownMenu(expanded = expanded, onDismissRequest = { expanded = false }) {
@@ -142,7 +164,7 @@ private fun EnumPicker(fact: Fact) {
                     text = { Text(option) },
                     onClick = {
                         expanded = false
-                        Qgc.set("${fact.path}.enumIndex", index)
+                        offMainDetached { Qgc.set("${fact.path}.enumIndex", index); onWrite() }
                     },
                 )
             }
@@ -151,19 +173,20 @@ private fun EnumPicker(fact: Fact) {
 }
 
 @Composable
-private fun FactTextField(fact: Fact) {
+private fun FactTextField(fact: Fact, onWrite: () -> Unit) {
     var editing by remember(fact.path) { mutableStateOf<String?>(null) }
 
     OutlinedTextField(
         value = editing ?: fact.valueString,
         onValueChange = { editing = it },
         singleLine = true,
-        modifier = Modifier.width(160.dp),
+        modifier = Modifier.fillMaxWidth(),
         trailingIcon = {
             if (editing != null && editing != fact.valueString) {
                 TextButton(onClick = {
-                    Qgc.set(fact.path, editing)
+                    val committed = editing
                     editing = null
+                    offMainDetached { Qgc.set(fact.path, committed); onWrite() }
                 }) { Text("Set") }
             }
         },

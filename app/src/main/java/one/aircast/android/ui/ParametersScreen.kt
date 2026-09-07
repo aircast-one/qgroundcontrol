@@ -35,7 +35,7 @@ private const val PARAMETER_MANAGER = "vehicle.parameterManager"
 private const val DEFAULT_COMPONENT = -1
 private const val MAX_ROWS = 60
 
-private fun parameterPath(name: String) = "$PARAMETER_MANAGER.getParameter($DEFAULT_COMPONENT,$name)"
+internal fun parameterPath(name: String) = "$PARAMETER_MANAGER.getParameter($DEFAULT_COMPONENT,$name)"
 
 @Composable
 fun ParametersScreen(modifier: Modifier = Modifier) {
