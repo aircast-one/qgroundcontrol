@@ -195,7 +195,12 @@ final class MissionStore: ObservableObject, Probeable {
     func probeState() -> [String: Any] {
         ["count": items.count, "syncing": syncing, "status": status,
          "dirty": dirty, "connected": connected,
-         "tiles": ["exact": CachedTileOverlay.served,
+         "renderers": ["calls": MissionMap.rendererCalls,
+                       "kinds": MissionMap.rendererKinds.sorted()],
+         "tiles": ["requested": CachedTileOverlay.requested,
+                   "secondsSinceRequest": CachedTileOverlay.lastRequest
+                       .map { Int(Date().timeIntervalSince($0)) } ?? -1,
+                   "exact": CachedTileOverlay.served,
                    "fromParent": CachedTileOverlay.fromParent,
                    "fromChildren": CachedTileOverlay.fromChildren,
                    "missed": CachedTileOverlay.missed],

@@ -189,6 +189,8 @@ struct MissionMap: NSViewRepresentable {
     func makeCoordinator() -> Coordinator { Coordinator(select: select) }
 
     static var lastRender: [String: [String: Any]] = [:]
+    static var rendererCalls = 0
+    static var rendererKinds: Set<String> = []
 
     final class Coordinator: NSObject, MKMapViewDelegate {
         let select: (Int) -> Void
@@ -243,6 +245,8 @@ struct MissionMap: NSViewRepresentable {
         var tilesMissing = 0
 
         func mapView(_ mapView: MKMapView, rendererFor overlay: MKOverlay) -> MKOverlayRenderer {
+            MissionMap.rendererCalls += 1
+            MissionMap.rendererKinds.insert(String(describing: type(of: overlay)))
             if let tiles = overlay as? CachedTileOverlay {
                 return MKTileOverlayRenderer(tileOverlay: tiles)
             }

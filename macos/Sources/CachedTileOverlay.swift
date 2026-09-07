@@ -19,6 +19,8 @@ final class CachedTileOverlay: MKTileOverlay {
         return String(cString: raw)
     }
 
+    static var lastRequest: Date?
+    static var requested = 0
     static var served = 0
     static var fromParent = 0
     static var fromChildren = 0
@@ -26,6 +28,8 @@ final class CachedTileOverlay: MKTileOverlay {
 
     override func loadTile(at path: MKTileOverlayPath,
                            result: @escaping (Data?, Error?) -> Void) {
+        CachedTileOverlay.requested += 1
+        CachedTileOverlay.lastRequest = Date()
         let tile = TileAddress(x: path.x, y: path.y, z: path.z)
         fetch(tile) { data in
             if let data {
