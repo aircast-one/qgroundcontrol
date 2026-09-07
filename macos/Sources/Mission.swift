@@ -113,7 +113,7 @@ final class MissionStore: ObservableObject, Probeable {
                    "missed": CachedTileOverlay.missed],
          "placed": items.filter(\.hasPosition).count,
          "vehiclePlaced": vehiclePosition != nil,
-         "map": MissionMap.lastRender["mission"] ?? [:],
+         "map": MissionMap.lastRender["plan"] ?? [:],
          "items": items.prefix(8).map {
              ["seq": $0.sequence, "command": $0.command,
               "position": $0.positionText, "altitude": $0.altitudeText]

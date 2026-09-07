@@ -1,108 +1,6 @@
 import AppKit
 import SwiftUI
 
-struct MissionView: View {
-    @ObservedObject var store: MissionStore
-    @ObservedObject var fenceRally: FenceRallyStore
-
-    var body: some View {
-        VStack(spacing: 0) {
-            header
-            Divider()
-            if !store.status.isEmpty {
-                Notice(text: store.status)
-            } else {
-                VSplitView {
-                    MissionMap(owner: "mission", items: store.items, vehicle: store.vehiclePosition,
-                               shapes: fenceRally.shapes, rallyPoints: fenceRally.rallyPoints)
-                        .frame(minHeight: 220)
-                    list
-                        .frame(minHeight: 120)
-                }
-            }
-        }
-        .onAppear {
-            store.reload()
-            fenceRally.reload()
-        }
-    }
-
-    private var header: some View {
-        HStack {
-            Text("\(store.items.count) item\(store.items.count == 1 ? "" : "s")")
-                .foregroundColor(.secondary)
-            if store.syncing {
-                ProgressView().controlSize(.small)
-                Text("Reading from vehicle…").font(.caption).foregroundColor(.secondary)
-            }
-            if store.dirty {
-                Text("Unsent changes")
-                    .font(.caption)
-                    .padding(.horizontal, 6).padding(.vertical, 2)
-                    .background(Color.orange.opacity(0.18))
-                    .cornerRadius(3)
-            }
-            Spacer()
-            Button("Read from Vehicle", action: store.downloadFromVehicle)
-                .disabled(store.syncing)
-            Button("Send to Vehicle", action: store.uploadToVehicle)
-                .disabled(store.syncing || !store.connected || store.items.isEmpty)
-        }
-        .padding(10)
-    }
-
-    private var list: some View {
-        ScrollView {
-            LazyVStack(alignment: .leading, spacing: 0) {
-                ForEach(store.items) { item in
-                    Divider()
-                    row(item)
-                }
-            }
-            .padding(.horizontal, 14)
-        }
-    }
-
-    private func row(_ item: MissionItem) -> some View {
-        HStack(alignment: .firstTextBaseline, spacing: 12) {
-            Text("\(item.sequence)")
-                .font(.body.monospacedDigit())
-                .foregroundColor(.secondary)
-                .frame(width: 28, alignment: .trailing)
-
-            VStack(alignment: .leading, spacing: 2) {
-                HStack(spacing: 6) {
-                    Text(item.command)
-                    if item.isCurrent {
-                        Text("current")
-                            .font(.caption2)
-                            .padding(.horizontal, 5).padding(.vertical, 1)
-                            .background(Color.accentColor.opacity(0.18))
-                            .cornerRadius(3)
-                    }
-                }
-                if !item.description.isEmpty {
-                    Text(item.description)
-                        .font(.caption).foregroundColor(.secondary)
-                }
-            }
-
-            Spacer()
-            Text(item.positionText)
-                .font(.caption.monospacedDigit())
-                .foregroundColor(item.hasPosition ? .secondary : Color.secondary.opacity(0.5))
-            if item.specifiesAltitude {
-                AltitudeField(metres: item.altitude, commit: { store.setAltitude(of: item, metres: $0) })
-            } else {
-                Text(item.altitudeText)
-                    .font(.body.monospacedDigit())
-                    .frame(width: 70, alignment: .trailing)
-            }
-        }
-        .padding(.vertical, 8)
-    }
-}
-
 struct AltitudeField: View {
     let metres: Double?
     let commit: (Double) -> Void
@@ -111,11 +9,12 @@ struct AltitudeField: View {
     @FocusState private var editing: Bool
 
     var body: some View {
-        HStack(spacing: 4) {
+        HStack(spacing: 2) {
             TextField("", text: $draft)
+                .textFieldStyle(.plain)
                 .multilineTextAlignment(.trailing)
                 .font(.body.monospacedDigit())
-                .frame(width: 56)
+                .frame(width: 46)
                 .focused($editing)
                 .onAppear { draft = AltitudeField.text(metres) }
                 .onChange(of: metres) { latest in if !editing { draft = AltitudeField.text(latest) } }
@@ -123,6 +22,10 @@ struct AltitudeField: View {
                 .onChange(of: editing) { focused in if !focused { send() } }
             Text("m").font(.caption).foregroundColor(.secondary)
         }
+        .padding(.horizontal, 6)
+        .padding(.vertical, 2)
+        .background(Color.primary.opacity(editing ? 0.10 : 0.06))
+        .cornerRadius(6)
     }
 
     private func send() {
@@ -136,145 +39,211 @@ struct AltitudeField: View {
 
     private static func text(_ metres: Double?) -> String {
         guard let metres, metres.isFinite else { return "" }
-        return String(format: "%.1f", metres)
+        return String(format: "%.0f", metres)
     }
 }
 
-struct FenceRallyView: View {
-    @ObservedObject var store: FenceRallyStore
-
-    var body: some View {
-        VStack(spacing: 0) {
-            header
-            Divider()
-            if !store.status.isEmpty {
-                Notice(text: store.status)
-            } else {
-                VSplitView {
-                    MissionMap(owner: "fence", items: [], vehicle: nil,
-                               shapes: store.shapes, rallyPoints: store.rallyPoints)
-                        .frame(minHeight: 200)
-                    ScrollView {
-                        VStack(alignment: .leading, spacing: 22) {
-                            SectionCard(title: "Geofence") { fenceBody }
-                            SectionCard(title: "Rally Points") { rallyBody }
-                        }
-                        .padding(16)
-                        .frame(maxWidth: .infinity, alignment: .leading)
-                    }
-                    .frame(minHeight: 160)
-                }
-            }
-        }
-        .onAppear(perform: store.reload)
-    }
-
-    private var header: some View {
-        HStack {
-            Text(summary).foregroundColor(.secondary)
-            if store.syncing {
-                ProgressView().controlSize(.small)
-                Text("Reading from vehicle\u{2026}").font(.caption).foregroundColor(.secondary)
-            }
-            Spacer()
-            Button("Read from Vehicle", action: store.downloadFromVehicle)
-                .disabled(store.syncing)
-        }
-        .padding(10)
-    }
-
-    private var summary: String {
-        let fence = store.shapes.count
-        let rally = store.rallyPoints.count
-        return "\(fence) fence shape\(fence == 1 ? "" : "s") \u{00B7} \(rally) rally point\(rally == 1 ? "" : "s")"
-    }
-
-    @ViewBuilder private var fenceBody: some View {
-        if store.connected && !store.fenceSupported {
-            Text("This vehicle's firmware does not support geofences.")
-                .foregroundColor(.secondary)
-        } else if store.shapes.isEmpty {
-            Text(store.connected
-                ? "No geofence is set. The vehicle will not be stopped at any boundary."
-                : "No geofence in this plan.")
-                .foregroundColor(.secondary)
-        } else {
-            VStack(alignment: .leading, spacing: 0) {
-                if let breach = store.breachReturn {
-                    Divider()
-                    MetricRow(label: "Breach return", value: breach.positionText,
-                              units: breach.altitudeText)
-                }
-                ForEach(store.shapes) { shape in
-                    Divider()
-                    HStack(alignment: .firstTextBaseline, spacing: 12) {
-                        VStack(alignment: .leading, spacing: 2) {
-                            Text(shape.kindText)
-                            Text(shape.detailText).font(.caption).foregroundColor(.secondary)
-                        }
-                        Spacer()
-                        Text(shape.centreText)
-                            .font(.caption.monospacedDigit()).foregroundColor(.secondary)
-                    }
-                    .padding(.vertical, 8)
-                }
-            }
-        }
-    }
-
-    @ViewBuilder private var rallyBody: some View {
-        if store.connected && !store.rallySupported {
-            Text("This vehicle's firmware does not support rally points.")
-                .foregroundColor(.secondary)
-        } else if store.rallyPoints.isEmpty {
-            Text(store.connected
-                ? "No rally points. On a failsafe the vehicle returns to its launch point."
-                : "No rally points in this plan.")
-                .foregroundColor(.secondary)
-        } else {
-            VStack(alignment: .leading, spacing: 0) {
-                ForEach(store.rallyPoints) { point in
-                    Divider()
-                    HStack(alignment: .firstTextBaseline, spacing: 12) {
-                        Text("\(point.id + 1)")
-                            .font(.body.monospacedDigit()).foregroundColor(.secondary)
-                            .frame(width: 28, alignment: .trailing)
-                        Text(point.positionText).font(.caption.monospacedDigit())
-                        Spacer()
-                        Text(point.altitudeText).font(.body.monospacedDigit())
-                    }
-                    .padding(.vertical, 8)
-                }
-            }
-        }
-    }
-}
-
-struct PlanView: View {
+struct PlanInspector: View {
     @ObservedObject var mission: MissionStore
     @ObservedObject var fenceRally: FenceRallyStore
     @ObservedObject var selection: PageSelection
 
-    private let pages = ["Mission", "Fence & Rally"]
+    static let pages = ["Mission", "Fence", "Rally"]
 
     var body: some View {
-        HStack(spacing: 0) {
-            List(pages, id: \.self, selection: Binding(
-                get: { Optional(selection.page) },
-                set: { selection.page = $0 ?? selection.page })
-            ) { name in
-                Text(name).tag(name)
+        GlassPanel {
+            VStack(alignment: .leading, spacing: Overlay.gutter) {
+                summary
+
+                Picker("", selection: Binding(
+                    get: { selection.page },
+                    set: { selection.page = $0 })
+                ) {
+                    ForEach(PlanInspector.pages, id: \.self) { Text($0).tag($0) }
+                }
+                .pickerStyle(.segmented)
+                .labelsHidden()
+
+                ScrollView {
+                    VStack(alignment: .leading, spacing: Overlay.gutter) { page }
+                }
+                .frame(height: contentHeight)
+
+                actions
             }
-            .listStyle(.sidebar)
-            .frame(width: 170)
-            Divider()
-            if selection.page == "Mission" {
-                MissionView(store: mission, fenceRally: fenceRally)
-            } else {
-                FenceRallyView(store: fenceRally)
+            .padding(Overlay.gutter)
+            .frame(width: 320)
+        }
+    }
+
+    private var rowCount: Int {
+        switch selection.page {
+        case "Fence": return max(fenceRally.shapes.count, 1)
+        case "Rally": return max(fenceRally.rallyPoints.count, 1)
+        default: return max(mission.items.count, 1)
+        }
+    }
+
+    private var contentHeight: CGFloat {
+        min(CGFloat(rowCount) * Overlay.rowMinHeight + Overlay.unit * 0.5, 420)
+    }
+
+    private var summary: some View {
+        HStack(spacing: Overlay.step) {
+            Text("\(mission.items.count) item\(mission.items.count == 1 ? "" : "s")")
+            if !fenceRally.shapes.isEmpty {
+                dot(Overlay.fence)
+                Text("\(fenceRally.shapes.count) fence")
+            }
+            if !fenceRally.rallyPoints.isEmpty {
+                dot(Overlay.rally)
+                Text("\(fenceRally.rallyPoints.count) rally")
+            }
+            Spacer(minLength: 0)
+            if mission.dirty {
+                Text("Unsent")
+                    .font(.caption.weight(.semibold))
+                    .foregroundColor(Overlay.fence)
             }
         }
-        .frame(minWidth: 820, minHeight: 620)
+        .font(.callout)
+        .foregroundColor(.secondary)
+        .padding(.horizontal, 2)
+    }
+
+    private func dot(_ colour: Color) -> some View {
+        Circle().fill(colour).frame(width: 7, height: 7)
+    }
+
+    @ViewBuilder private var page: some View {
+        switch selection.page {
+        case "Fence": fence
+        case "Rally": rally
+        default: missionItems
+        }
+    }
+
+    private var missionItems: some View {
+        GroupCard {
+            if mission.items.isEmpty {
+                EmptyStateRow(text: mission.status.isEmpty ? "This plan has no items." : mission.status)
+            } else {
+                ForEach(mission.items) { item in
+                    GroupRow(
+                        title: item.command,
+                        description: "",
+                        showSeparator: item.index > 0,
+                        current: item.isCurrent,
+                        leading: {
+                            Seal(label: "\(item.sequence)",
+                                 colour: item.isLaunch ? Overlay.launch : Overlay.mission)
+                        },
+                        trailing: {
+                            if item.specifiesAltitude {
+                                AltitudeField(metres: item.altitude,
+                                              commit: { mission.setAltitude(of: item, metres: $0) })
+                            } else {
+                                Text(item.altitudeText)
+                                    .font(.body.monospacedDigit())
+                                    .foregroundColor(Overlay.value)
+                            }
+                        })
+                }
+            }
+        }
+    }
+
+    private var fence: some View {
+        GroupCard {
+            if fenceRally.shapes.isEmpty {
+                EmptyStateRow(text: fenceRally.connected && !fenceRally.fenceSupported
+                    ? "This vehicle's firmware does not support geofences."
+                    : fenceRally.connected
+                        ? "No geofence. Nothing will stop the vehicle leaving the area."
+                        : "No geofence in this plan.")
+            } else {
+                ForEach(fenceRally.shapes) { shape in
+                    GroupRow(
+                        title: shape.kindText,
+                        description: shape.detailText,
+                        showSeparator: shape.id > 0,
+                        leading: {
+                            Seal(label: shape.inclusion ? "IN" : "OUT",
+                                 colour: Overlay.fence, rounded: true)
+                        })
+                }
+            }
+        }
+    }
+
+    private var rally: some View {
+        GroupCard {
+            if fenceRally.rallyPoints.isEmpty {
+                EmptyStateRow(text: fenceRally.connected && !fenceRally.rallySupported
+                    ? "This vehicle's firmware does not support rally points."
+                    : fenceRally.connected
+                        ? "No rally points. On a failsafe the vehicle returns to launch."
+                        : "No rally points in this plan.")
+            } else {
+                ForEach(fenceRally.rallyPoints) { point in
+                    GroupRow(
+                        title: "Rally \(point.id + 1)",
+                        value: point.altitudeText,
+                        showSeparator: point.id > 0,
+                        leading: { Seal(label: "\(point.id + 1)", colour: Overlay.rally) })
+                }
+            }
+        }
+    }
+
+    private var actions: some View {
+        HStack(spacing: Overlay.step) {
+            Button("Download", action: reload)
+                .disabled(mission.syncing || !mission.connected)
+            Spacer()
+            if mission.syncing {
+                ProgressView().controlSize(.small)
+            }
+            Button("Upload", action: mission.uploadToVehicle)
+                .buttonStyle(.borderedProminent)
+                .disabled(mission.syncing || !mission.connected || mission.items.isEmpty)
+        }
+    }
+
+    private func reload() {
+        mission.downloadFromVehicle()
+        fenceRally.reload()
+    }
+}
+
+struct PlanView: View {
+    static let mapPadding = NSEdgeInsets(top: 56, left: 24, bottom: 40, right: 372)
+
+    @ObservedObject var mission: MissionStore
+    @ObservedObject var fenceRally: FenceRallyStore
+    @ObservedObject var selection: PageSelection
+
+    var body: some View {
+        ZStack(alignment: .topLeading) {
+            MissionMap(owner: "plan", items: mission.items, vehicle: mission.vehiclePosition,
+                       shapes: fenceRally.shapes, rallyPoints: fenceRally.rallyPoints,
+                       padding: PlanView.mapPadding)
+                .ignoresSafeArea()
+
+            HStack {
+                Spacer()
+                VStack {
+                    PlanInspector(mission: mission, fenceRally: fenceRally, selection: selection)
+                    Spacer(minLength: 0)
+                }
+            }
+            .padding(Overlay.unit)
+        }
+        .frame(minWidth: 860, minHeight: 620)
+        .onAppear {
+            mission.reload()
+            fenceRally.reload()
+        }
     }
 }
 
@@ -283,7 +252,7 @@ final class PlanWindow: NSObject, NSWindowDelegate {
 
     private let mission = MissionStore()
     private let fenceRally = FenceRallyStore()
-    private let selection = PageSelection(owner: "plan", pages: ["Mission", "Fence & Rally"])
+    private let selection = PageSelection(owner: "plan", pages: PlanInspector.pages)
     private var window: NSWindow?
 
     override init() {
@@ -304,14 +273,16 @@ final class PlanWindow: NSObject, NSWindowDelegate {
         }
 
         let window = NSWindow(
-            contentRect: NSRect(x: 0, y: 0, width: 840, height: 520),
-            styleMask: [.titled, .closable, .miniaturizable, .resizable],
+            contentRect: NSRect(x: 0, y: 0, width: 980, height: 660),
+            styleMask: [.titled, .closable, .miniaturizable, .resizable, .fullSizeContentView],
             backing: .buffered,
             defer: false)
         window.title = "Plan"
+        window.titlebarAppearsTransparent = true
         window.isReleasedWhenClosed = false
         window.delegate = self
-        window.contentView = NSHostingView(rootView: PlanView(mission: mission, fenceRally: fenceRally, selection: selection))
+        window.contentView = NSHostingView(
+            rootView: PlanView(mission: mission, fenceRally: fenceRally, selection: selection))
         window.center()
         window.makeKeyAndOrderFront(nil)
         self.window = window

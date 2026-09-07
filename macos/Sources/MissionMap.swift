@@ -8,6 +8,7 @@ final class MissionAnnotation: NSObject, MKAnnotation {
     let subtitle: String?
     let sequence: Int
     let isCurrent: Bool
+    let isLaunch: Bool
 
     init(item: MissionItem, latitude: Double, longitude: Double) {
         coordinate = CLLocationCoordinate2D(latitude: latitude, longitude: longitude)
@@ -15,6 +16,7 @@ final class MissionAnnotation: NSObject, MKAnnotation {
         subtitle = item.altitudeText == "—" ? nil : item.altitudeText
         sequence = item.sequence
         isCurrent = item.isCurrent
+        isLaunch = item.isLaunch
     }
 }
 
@@ -54,6 +56,7 @@ struct MissionMap: NSViewRepresentable {
     let vehicle: (latitude: Double, longitude: Double)?
     let shapes: [FenceShape]
     let rallyPoints: [RallyPointRow]
+    let padding: NSEdgeInsets
 
     func makeNSView(context: Context) -> MKMapView {
         let map = MKMapView()
@@ -127,12 +130,12 @@ struct MissionMap: NSViewRepresentable {
                     guard let map, map.bounds.width > 0,
                           frame != context.coordinator.lastFrame else { return }
                     context.coordinator.lastFrame = frame
-                    map.setRegion(MissionMap.region(frame), animated: false)
+                    map.setVisibleMapRect(MissionMap.rect(frame), edgePadding: padding, animated: false)
                 }
                 return
             }
             context.coordinator.lastFrame = frame
-            map.setRegion(MissionMap.region(frame), animated: false)
+            map.setVisibleMapRect(MissionMap.rect(frame), edgePadding: padding, animated: false)
         }
 
         MissionMap.lastRender[owner]?["centre"] =
@@ -159,13 +162,17 @@ struct MissionMap: NSViewRepresentable {
         return polygon
     }
 
-    static func region(_ frame: MapFrame) -> MKCoordinateRegion {
-        MKCoordinateRegion(
-            center: CLLocationCoordinate2D(latitude: frame.centreLatitude,
-                                           longitude: frame.centreLongitude),
-            span: MKCoordinateSpan(latitudeDelta: frame.latitudeDelta,
-                                   longitudeDelta: frame.longitudeDelta))
+    static func rect(_ frame: MapFrame) -> MKMapRect {
+        let north = MKMapPoint(CLLocationCoordinate2D(
+            latitude: frame.centreLatitude + frame.latitudeDelta / 2,
+            longitude: frame.centreLongitude - frame.longitudeDelta / 2))
+        let south = MKMapPoint(CLLocationCoordinate2D(
+            latitude: frame.centreLatitude - frame.latitudeDelta / 2,
+            longitude: frame.centreLongitude + frame.longitudeDelta / 2))
+        return MKMapRect(x: min(north.x, south.x), y: min(north.y, south.y),
+                         width: abs(south.x - north.x), height: abs(south.y - north.y))
     }
+
 
     func makeCoordinator() -> Coordinator { Coordinator() }
 
@@ -197,7 +204,7 @@ struct MissionMap: NSViewRepresentable {
         }
 
         static func fenceRenderer(_ renderer: MKOverlayPathRenderer, inclusion: Bool) -> MKOverlayRenderer {
-            let colour: NSColor = inclusion ? .systemGreen : .systemRed
+            let colour = NSColor.systemOrange
             renderer.strokeColor = colour
             renderer.fillColor = colour.withAlphaComponent(0.12)
             renderer.lineWidth = 2
@@ -211,7 +218,7 @@ struct MissionMap: NSViewRepresentable {
                 view.annotation = rally
                 view.canShowCallout = true
                 view.glyphText = "R"
-                view.markerTintColor = .systemPurple
+                view.markerTintColor = .systemGreen
                 return view
             }
 
@@ -230,7 +237,7 @@ struct MissionMap: NSViewRepresentable {
             view.annotation = item
             view.canShowCallout = true
             view.glyphText = String(item.sequence)
-            view.markerTintColor = item.isCurrent ? .systemGreen : .controlAccentColor
+            view.markerTintColor = item.isLaunch ? .systemGreen : .controlAccentColor
             return view
         }
 

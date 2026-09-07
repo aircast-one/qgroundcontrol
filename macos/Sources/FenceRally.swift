@@ -60,7 +60,7 @@ final class FenceRallyStore: ObservableObject, Probeable {
          "connected": connected,
          "breachReturn": breachReturn?.positionText ?? "none",
          "status": status, "syncing": syncing,
-         "map": MissionMap.lastRender["fence"] ?? [:],
+         "map": MissionMap.lastRender["plan"] ?? [:],
          "fence": shapes.prefix(8).map {
              ["kind": $0.kindText, "detail": $0.detailText, "centre": $0.centreText,
               "vertices": $0.vertices.count]
