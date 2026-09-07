@@ -6,6 +6,7 @@ final class MissionStore: ObservableObject, Probeable {
     @Published private(set) var items: [MissionItem] = []
     @Published private(set) var status = ""
     @Published private(set) var syncing = false
+    @Published private(set) var vehiclePosition: (latitude: Double, longitude: Double)?
 
     func reload() {
         let controller = Bridge.group("plan.missionController")
@@ -19,6 +20,14 @@ final class MissionStore: ObservableObject, Probeable {
         items = ((model["elements"] as? [[String: Any]]) ?? []).map(MissionItem.init(json:))
         syncing = (Bridge.group("plan")["syncInProgress"] as? NSNumber)?.boolValue ?? false
         status = items.isEmpty ? "This plan has no items." : ""
+
+        let coordinate = Bridge.group("vehicle")["coordinate"] as? [String: Any]
+        if let latitude = (coordinate?["latitude"] as? NSNumber)?.doubleValue,
+           let longitude = (coordinate?["longitude"] as? NSNumber)?.doubleValue {
+            vehiclePosition = (latitude, longitude)
+        } else {
+            vehiclePosition = nil
+        }
     }
 
     // Reading the mission back from the vehicle is the only way to be sure what it is
@@ -31,6 +40,9 @@ final class MissionStore: ObservableObject, Probeable {
 
     func probeState() -> [String: Any] {
         ["count": items.count, "syncing": syncing, "status": status,
+         "placed": items.filter(\.hasPosition).count,
+         "vehiclePlaced": vehiclePosition != nil,
+         "map": MissionMap.lastRender,
          "items": items.prefix(8).map {
              ["seq": $0.sequence, "command": $0.command,
               "position": $0.positionText, "altitude": $0.altitudeText]

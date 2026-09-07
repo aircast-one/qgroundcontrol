@@ -11,7 +11,14 @@ struct MissionView: View {
             if !store.status.isEmpty {
                 Notice(text: store.status)
             } else {
-                list
+                // The map answers "where does this go", the list answers "what does it
+                // do"; a mission needs both and neither replaces the other.
+                VSplitView {
+                    MissionMap(items: store.items, vehicle: store.vehiclePosition)
+                        .frame(minHeight: 220)
+                    list
+                        .frame(minHeight: 120)
+                }
             }
         }
         .onAppear(perform: store.reload)
@@ -101,7 +108,7 @@ struct PlanView: View {
             Divider()
             MissionView(store: mission)
         }
-        .frame(minWidth: 780, minHeight: 480)
+        .frame(minWidth: 820, minHeight: 620)
     }
 }
 

@@ -18,6 +18,7 @@ add_library(QGCNativeUI STATIC
     Sources/SafetySections.swift
     Sources/SensorHealth.swift
     Sources/Sensors.swift
+    Sources/MissionMap.swift
     Sources/Mission.swift
     Sources/MissionItemModel.swift
     Sources/PlanWindow.swift
@@ -92,4 +93,5 @@ target_link_libraries(${CMAKE_PROJECT_NAME}
         QGCNativeUI
         "-framework AppKit"
         "-framework SwiftUI"
+        "-framework MapKit"
 )
