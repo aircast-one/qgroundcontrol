@@ -41,4 +41,6 @@ private slots:
     void _setRejectsAPayloadWithoutAValue();
     void _indexesAVariantListOfObjects();
     void _watchEmitsOnChange();
+    void _watchReplacesItsPreviousPaths();
+    void _watchStopsWhenGivenNoPaths();
 };

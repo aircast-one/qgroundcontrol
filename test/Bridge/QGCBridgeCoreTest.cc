@@ -325,6 +325,57 @@ void QGCBridgeCoreTest::_rejectsUnknownPaths()
     QCOMPARE(writeValue(QString::fromLatin1(kUnitsGroup), 1).value(QStringLiteral("ok")).toBool(), false);
 }
 
+void QGCBridgeCoreTest::_watchReplacesItsPreviousPaths()
+{
+    QStringList paths;
+    QGCBridgeCore::setEventHandler([&paths](const QString &path, const QString &) {
+        paths.append(path);
+    });
+
+    QGCBridgeCore::watch(QStringList { QString::fromLatin1(kSpeedUnits) });
+    QTRY_VERIFY_WITH_TIMEOUT(paths.contains(QString::fromLatin1(kSpeedUnits)), 3000);
+
+    QGCBridgeCore::watch(QStringList { QStringLiteral("vehicles.activeVehicleAvailable") });
+    QTRY_VERIFY_WITH_TIMEOUT(
+        paths.contains(QStringLiteral("vehicles.activeVehicleAvailable")), 3000);
+
+    paths.clear();
+
+    Fact *const fact = SettingsManager::instance()->unitsSettings()->speedUnits();
+    const QVariant original = fact->cookedValue();
+    fact->setCookedValue(original.toInt() == 0 ? 1 : 0);
+    QTest::qWait(1000);
+    fact->setCookedValue(original);
+    QTest::qWait(1000);
+
+    QVERIFY2(!paths.contains(QString::fromLatin1(kSpeedUnits)),
+             "a replaced path kept reporting after the watch list changed");
+}
+
+void QGCBridgeCoreTest::_watchStopsWhenGivenNoPaths()
+{
+    QStringList paths;
+    QGCBridgeCore::setEventHandler([&paths](const QString &path, const QString &) {
+        paths.append(path);
+    });
+
+    QGCBridgeCore::watch(QStringList { QString::fromLatin1(kSpeedUnits) });
+    QTRY_VERIFY_WITH_TIMEOUT(!paths.isEmpty(), 3000);
+
+    QGCBridgeCore::watch(QStringList());
+    QTest::qWait(500);
+    paths.clear();
+
+    Fact *const fact = SettingsManager::instance()->unitsSettings()->speedUnits();
+    const QVariant original = fact->cookedValue();
+    fact->setCookedValue(original.toInt() == 0 ? 1 : 0);
+    QTest::qWait(1000);
+    fact->setCookedValue(original);
+    QTest::qWait(1000);
+
+    QVERIFY2(paths.isEmpty(), "an emptied watch list kept reporting");
+}
+
 void QGCBridgeCoreTest::_watchEmitsOnChange()
 {
     QStringList paths;
