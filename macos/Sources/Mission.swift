@@ -1,4 +1,5 @@
 import Foundation
+import QGCMapTileC
 
 final class MissionStore: ObservableObject, Probeable {
     static let probeID = "mission"
@@ -38,6 +39,30 @@ final class MissionStore: ObservableObject, Probeable {
         reload()
     }
 
+    private final class TileProbe {
+        var bytes = 0
+        var answered = false
+    }
+
+    private func fetchTile(x: Int, y: Int, z: Int, type: String) -> [String: Any] {
+        let probe = TileProbe()
+        let box = Unmanaged.passRetained(probe).toOpaque()
+
+        qgc_map_tile_fetch(type, Int32(x), Int32(y), Int32(z), { bytes, length, context in
+            guard let context else { return }
+            let probe = Unmanaged<TileProbe>.fromOpaque(context).takeRetainedValue()
+            probe.bytes = Int(length)
+            probe.answered = true
+        }, box)
+
+        for _ in 0..<100 where !probe.answered {
+            RunLoop.current.run(until: Date().addingTimeInterval(0.05))
+        }
+
+        return ["ok": probe.answered, "type": type, "x": x, "y": y, "z": z,
+                "bytes": probe.bytes, "cached": probe.bytes > 0]
+    }
+
     func probeState() -> [String: Any] {
         ["count": items.count, "syncing": syncing, "status": status,
          "placed": items.filter(\.hasPosition).count,
@@ -52,6 +77,13 @@ final class MissionStore: ObservableObject, Probeable {
     func probeInvoke(action: String, args: [String: String]) -> [String: Any] {
         switch action {
         case "reload": reload()
+        case "tile":
+            // MapKit never calls loadTile while it cannot render, so the cache path is
+            // exercised directly against a tile known to be in QGC's database.
+            return fetchTile(x: Int(args["x"] ?? "") ?? 0,
+                             y: Int(args["y"] ?? "") ?? 0,
+                             z: Int(args["z"] ?? "") ?? 0,
+                             type: args["type"] ?? CachedTileOverlay.currentMapType())
         case "download":
             downloadFromVehicle()
             for _ in 0..<100 where syncing {

@@ -18,6 +18,7 @@ add_library(QGCNativeUI STATIC
     Sources/SafetySections.swift
     Sources/SensorHealth.swift
     Sources/Sensors.swift
+    Sources/CachedTileOverlay.swift
     Sources/MissionMap.swift
     Sources/Mission.swift
     Sources/MissionItemModel.swift

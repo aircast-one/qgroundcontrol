@@ -34,6 +34,14 @@ struct MissionMap: NSViewRepresentable {
     func makeNSView(context: Context) -> MKMapView {
         let map = MKMapView()
         map.delegate = context.coordinator
+
+        // Draw QGC's own cached imagery when there is any; Apple's tiles are the
+        // fallback, and are useless without a network connection.
+        let mapType = CachedTileOverlay.currentMapType()
+        if !mapType.isEmpty {
+            context.coordinator.overlay = CachedTileOverlay(mapType: mapType)
+            map.addOverlay(context.coordinator.overlay!, level: .aboveLabels)
+        }
         map.showsCompass = true
         map.showsScale = true
         map.isPitchEnabled = false
@@ -42,7 +50,9 @@ struct MissionMap: NSViewRepresentable {
 
     func updateNSView(_ map: MKMapView, context: Context) {
         map.removeAnnotations(map.annotations)
-        map.removeOverlays(map.overlays)
+        // Keep the tile overlay: it is not derived from the mission and rebuilding it
+        // every update would discard every tile the map has drawn.
+        map.overlays.filter { !($0 is CachedTileOverlay) }.forEach(map.removeOverlay)
 
         let placed = items.compactMap { item -> MissionAnnotation? in
             guard let latitude = item.latitude, let longitude = item.longitude else { return nil }
@@ -71,6 +81,8 @@ struct MissionMap: NSViewRepresentable {
             "framed": context.coordinator.hasFramed,
             "centre": ["lat": map.centerCoordinate.latitude, "lon": map.centerCoordinate.longitude],
             "spanLat": map.region.span.latitudeDelta,
+            "tileOverlay": context.coordinator.overlay != nil,
+            "mapType": CachedTileOverlay.currentMapType(),
             "size": ["w": Double(map.bounds.width), "h": Double(map.bounds.height)],
         ]
 
@@ -97,8 +109,14 @@ struct MissionMap: NSViewRepresentable {
 
     final class Coordinator: NSObject, MKMapViewDelegate {
         var hasFramed = false
+        var overlay: CachedTileOverlay?
+        var tilesServed = 0
+        var tilesMissing = 0
 
         func mapView(_ mapView: MKMapView, rendererFor overlay: MKOverlay) -> MKOverlayRenderer {
+            if let tiles = overlay as? CachedTileOverlay {
+                return MKTileOverlayRenderer(tileOverlay: tiles)
+            }
             guard let line = overlay as? MKPolyline else { return MKOverlayRenderer(overlay: overlay) }
             let renderer = MKPolylineRenderer(polyline: line)
             renderer.strokeColor = .controlAccentColor

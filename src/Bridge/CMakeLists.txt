@@ -12,6 +12,8 @@ if(APPLE AND NOT IOS)
             QGCEmbed.cc
             QGCLinksC.cc
             QGCLinksC.h
+            QGCMapTileC.cc
+            QGCMapTileC.h
             QGCEntry.h
             QGCNativeDebugC.h
     )

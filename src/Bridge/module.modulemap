@@ -12,3 +12,8 @@ module QGCLinksC {
     header "QGCLinksC.h"
     export *
 }
+
+module QGCMapTileC {
+    header "QGCMapTileC.h"
+    export *
+}
