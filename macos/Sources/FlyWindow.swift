@@ -262,10 +262,118 @@ struct InstrumentBar: View {
     }
 }
 
+struct SlideToConfirm: View {
+    let title: String
+    let destructive: Bool
+    let confirm: () -> Void
+
+    @State private var offset: CGFloat = 0
+
+    private static let knob: CGFloat = 38
+    private static let track: CGFloat = 260
+
+    var body: some View {
+        ZStack(alignment: .leading) {
+            Capsule()
+                .fill(Color.primary.opacity(0.12))
+            Text(title)
+                .font(.callout.weight(.medium))
+                .foregroundColor(.secondary)
+                .frame(maxWidth: .infinity)
+            Circle()
+                .fill(destructive ? Overlay.vehicle : Color.accentColor)
+                .overlay(Image(systemName: "chevron.right.2").foregroundColor(.white))
+                .frame(width: SlideToConfirm.knob, height: SlideToConfirm.knob)
+                .offset(x: offset)
+                .gesture(
+                    DragGesture()
+                        .onChanged { drag in
+                            offset = min(max(0, drag.translation.width), SlideToConfirm.limit)
+                        }
+                        .onEnded { _ in
+                            if offset >= SlideToConfirm.limit { confirm() }
+                            offset = 0
+                        })
+        }
+        .frame(width: SlideToConfirm.track, height: SlideToConfirm.knob)
+    }
+
+    static var limit: CGFloat { track - knob }
+}
+
+struct GuidedConfirm: View {
+    @ObservedObject var guided: GuidedStore
+
+    var body: some View {
+        if let action = guided.pending {
+            GlassPanel {
+                VStack(spacing: Overlay.unit * 0.6) {
+                    Text(action.title)
+                        .font(.title3.weight(.semibold))
+                        .foregroundColor(action.destructive ? Overlay.vehicle : .primary)
+                    Text(action.prompt)
+                        .font(.callout)
+                        .foregroundColor(.secondary)
+                        .multilineTextAlignment(.center)
+                        .fixedSize(horizontal: false, vertical: true)
+                    SlideToConfirm(title: "Slide to \(action.title.lowercased())",
+                                   destructive: action.destructive,
+                                   confirm: guided.confirm)
+                    Button("Cancel", action: guided.cancel)
+                        .keyboardShortcut(.cancelAction)
+                }
+                .padding(Overlay.unit)
+                .frame(width: 320)
+            }
+        }
+    }
+}
+
+struct GuidedStrip: View {
+    @ObservedObject var guided: GuidedStore
+
+    static func explain(_ offer: GuidedAction.Offer, _ action: GuidedAction) -> String {
+        if case .blocked(let reason) = offer { return reason }
+        return action.prompt
+    }
+
+    var body: some View {
+        GlassPanel {
+            VStack(spacing: Overlay.step) {
+                ForEach(guided.actions) { action in
+                    let offer = guided.offer(action)
+                    let blocked = offer != .ready
+                    Button {
+                        guided.ask(action)
+                    } label: {
+                        VStack(spacing: 2) {
+                            Image(systemName: action.symbol)
+                                .font(.system(size: 18))
+                            Text(action.title)
+                                .font(.caption2)
+                                .lineLimit(1)
+                        }
+                        .foregroundColor(action.destructive ? Overlay.vehicle : .primary)
+                        .opacity(blocked ? 0.35 : 1)
+                        .frame(width: 68)
+                        .padding(.vertical, 5)
+                        .contentShape(Rectangle())
+                    }
+                    .buttonStyle(.plain)
+                    .disabled(blocked)
+                    .help(GuidedStrip.explain(offer, action))
+                }
+            }
+            .padding(Overlay.step)
+        }
+    }
+}
+
 struct FlyView: View {
     @ObservedObject var fly: FlyStore
     @ObservedObject var mission: MissionStore
     @ObservedObject var instruments: InstrumentsStore
+    @ObservedObject var guided: GuidedStore
 
     private var warningBanner: some View {
         GlassPanel {
@@ -309,18 +417,31 @@ struct FlyView: View {
                     .padding(Overlay.unit)
                     .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottomLeading)
             }
+
+            if !guided.actions.isEmpty {
+                GuidedStrip(guided: guided)
+                    .padding(Overlay.unit)
+                    .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .leading)
+            }
+
+            GuidedConfirm(guided: guided)
+                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .center)
         }
         .frame(minWidth: 820, minHeight: 600)
         .onAppear {
             mission.reload()
             fly.start()
             instruments.refresh()
+            guided.refresh(prearmClear: !fly.warning.showing)
         }
         .onDisappear {
             fly.stop()
             instruments.clear()
         }
-        .onChange(of: fly.telemetry) { _ in instruments.refresh() }
+        .onChange(of: fly.telemetry) { _ in
+            instruments.refresh()
+            guided.refresh(prearmClear: !fly.warning.showing)
+        }
     }
 }
 
@@ -330,12 +451,14 @@ final class FlyWindow: NSObject, NSWindowDelegate {
     private let fly = FlyStore()
     private let mission = MissionStore()
     private let instruments = InstrumentsStore()
+    private let guided = GuidedStore()
     private var window: NSWindow?
 
     override init() {
         super.init()
         NativeProbe.register(fly)
         NativeProbe.register(instruments)
+        NativeProbe.register(guided)
     }
 
     @objc func showFromMenu() {
@@ -357,7 +480,7 @@ final class FlyWindow: NSObject, NSWindowDelegate {
         window.titlebarAppearsTransparent = true
         window.isReleasedWhenClosed = false
         window.delegate = self
-        window.contentView = NSHostingView(rootView: FlyView(fly: fly, mission: mission, instruments: instruments))
+        window.contentView = NSHostingView(rootView: FlyView(fly: fly, mission: mission, instruments: instruments, guided: guided))
         window.center()
         window.makeKeyAndOrderFront(nil)
         self.window = window

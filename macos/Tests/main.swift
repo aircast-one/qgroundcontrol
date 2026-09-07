@@ -1181,6 +1181,86 @@ func checkInstrumentStorage() {
 
 checkInstrumentStorage()
 
+func checkGuidedActions() {
+    func names(_ state: GuidedState) -> String {
+        GuidedAction.available(in: state).map(\.rawValue).joined(separator: ",")
+    }
+    func offers(_ state: GuidedState, _ action: GuidedAction) -> Bool {
+        GuidedAction.available(in: state).contains(action)
+    }
+
+    expect(names(GuidedState()), "", "with no vehicle nothing can be commanded")
+
+    var idle = GuidedState()
+    idle.connected = true
+    idle.guidedSupported = true
+    idle.takeoffSupported = true
+    idle.pauseSupported = true
+    idle.flightMode = "Guided"
+    idle.rtlMode = "RTL"
+    idle.landMode = "Land"
+    idle.missionMode = "Auto"
+    expect(names(idle), "", "a vehicle that will not arm is offered nothing to do")
+
+    expect(GuidedAction.offered(in: idle).map(\.rawValue).joined(separator: ","), "arm,takeoff",
+           "the actions are still shown while prearm fails, so the operator can see they exist")
+    expect(GuidedAction.arm.offer(in: idle) == .blocked(GuidedAction.prearmReason),
+           "and say why they cannot be used")
+
+    idle.readyToArm = true
+    expect(names(idle), "arm,takeoff", "once it can arm, arming and taking off are offered")
+    expect(GuidedAction.arm.offer(in: idle) == .ready, "and are ready")
+
+    var withMission = idle
+    withMission.missionAvailable = true
+    withMission.missionItemCount = 3
+    expect(names(withMission), "arm,takeoff,startMission",
+           "a loaded mission adds starting it, but only on the ground")
+
+    var armed = withMission
+    armed.armed = true
+    expect(names(armed), "takeoff,startMission,land,disarm,emergencyStop",
+           "an armed vehicle on the ground can be disarmed and stopped, and is not offered arming again")
+
+    var flying = armed
+    flying.flying = true
+    expect(names(flying), "continueMission,pause,land,rtl,emergencyStop",
+           "in the air it can continue, hold, land, return or be stopped, but never disarmed")
+
+    var flyingUnready = flying
+    flyingUnready.readyToArm = false
+    expect(names(flyingUnready), "continueMission,pause,land,rtl,emergencyStop",
+           "a failing prearm never withholds getting a flying vehicle back down")
+
+    var returning = flying
+    returning.flightMode = "RTL"
+    expect(!offers(returning, .rtl), "a vehicle already returning is not offered return")
+    expect(returning.missionActive, "and counts as flying a mission")
+    expect(!offers(returning, .continueMission), "so continuing is withheld")
+
+    var landing = flying
+    landing.flightMode = "Land"
+    expect(!offers(landing, .land), "a vehicle already landing is not offered land")
+
+    var plane = flying
+    plane.fixedWing = true
+    expect(!offers(plane, .land), "a fixed wing is not offered a guided land")
+    expect(offers(plane, .rtl), "but can still be sent home")
+
+    var midMission = flying
+    midMission.currentMissionIndex = 1
+    expect(offers(midMission, .continueMission),
+           "with items left, the rest of the mission can be continued")
+    midMission.currentMissionIndex = 2
+    expect(!offers(midMission, .continueMission),
+           "at the last item there is nothing left to continue")
+
+    expect(GuidedAction.emergencyStop.destructive, "the emergency stop is marked destructive")
+    expect(!GuidedAction.rtl.destructive, "returning home is not")
+}
+
+checkGuidedActions()
+
 if failures == 0 {
     print("all Swift checks passed")
     exit(0)

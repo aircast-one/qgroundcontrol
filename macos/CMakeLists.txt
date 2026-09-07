@@ -65,6 +65,8 @@ add_library(QGCNativeUI STATIC
     Sources/VehicleWarningModel.swift
     Sources/InstrumentModel.swift
     Sources/Instruments.swift
+    Sources/GuidedActionsModel.swift
+    Sources/GuidedActions.swift
     Sources/Frame.swift
     Sources/OverlayKit.swift
     Sources/AppShell.swift

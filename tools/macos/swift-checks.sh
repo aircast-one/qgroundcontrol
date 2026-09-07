@@ -36,6 +36,7 @@ swiftc -Onone -o "$out" \
     "$root/macos/Sources/PreflightModel.swift" \
     "$root/macos/Sources/VehicleWarningModel.swift" \
     "$root/macos/Sources/InstrumentModel.swift" \
+    "$root/macos/Sources/GuidedActionsModel.swift" \
     "$root/macos/Sources/TerrainProfileModel.swift" \
     "$root/macos/Sources/MapFraming.swift" \
     "$root/macos/Sources/FenceRallyModel.swift" \

@@ -1,0 +1,130 @@
+import Foundation
+
+struct GuidedState: Equatable {
+    var connected = false
+    var armed = false
+    var flying = false
+    var guidedSupported = false
+    var takeoffSupported = false
+    var pauseSupported = false
+    var fixedWing = false
+    var readyToArm = false
+    var flightMode = ""
+    var rtlMode = ""
+    var landMode = ""
+    var missionMode = ""
+    var missionAvailable = false
+    var missionItemCount = 0
+    var currentMissionIndex = -1
+
+    var inRTL: Bool { !rtlMode.isEmpty && flightMode == rtlMode }
+    var inLand: Bool { !landMode.isEmpty && flightMode == landMode }
+    var inMission: Bool { !missionMode.isEmpty && flightMode == missionMode }
+    var missionActive: Bool { armed && (inLand || inRTL || inMission) }
+    var hasMoreMission: Bool { currentMissionIndex < missionItemCount - 1 }
+}
+
+enum GuidedAction: String, CaseIterable, Identifiable {
+    case arm
+    case takeoff
+    case startMission
+    case continueMission
+    case pause
+    case land
+    case rtl
+    case disarm
+    case emergencyStop
+
+    var id: String { rawValue }
+
+    var title: String {
+        switch self {
+        case .arm: return "Arm"
+        case .takeoff: return "Takeoff"
+        case .startMission: return "Start Mission"
+        case .continueMission: return "Continue Mission"
+        case .pause: return "Pause"
+        case .land: return "Land"
+        case .rtl: return "Return"
+        case .disarm: return "Disarm"
+        case .emergencyStop: return "Emergency Stop"
+        }
+    }
+
+    var symbol: String {
+        switch self {
+        case .arm: return "bolt.circle"
+        case .takeoff: return "arrow.up.circle"
+        case .startMission: return "play.circle"
+        case .continueMission: return "forward.circle"
+        case .pause: return "pause.circle"
+        case .land: return "arrow.down.circle"
+        case .rtl: return "house.circle"
+        case .disarm: return "bolt.slash.circle"
+        case .emergencyStop: return "exclamationmark.octagon"
+        }
+    }
+
+    var destructive: Bool { self == .emergencyStop }
+
+    var prompt: String {
+        switch self {
+        case .arm: return "Arm the vehicle. Propellers will be live."
+        case .takeoff: return "Take off and climb to the mission altitude."
+        case .startMission: return "Fly the mission from the beginning."
+        case .continueMission: return "Fly the rest of the mission from the current item."
+        case .pause: return "Hold position where it is."
+        case .land: return "Land where it is."
+        case .rtl: return "Fly home and land."
+        case .disarm: return "Disarm the vehicle."
+        case .emergencyStop: return "Stop the motors immediately. The vehicle will fall."
+        }
+    }
+
+    enum Offer: Equatable {
+        case hidden
+        case ready
+        case blocked(String)
+    }
+
+    static let prearmReason = "Prearm checks are failing"
+
+    func shown(in state: GuidedState) -> Bool {
+        guard state.connected else { return false }
+        switch self {
+        case .arm: return !state.armed
+        case .disarm: return state.armed && !state.flying
+        case .rtl: return state.armed && state.guidedSupported && state.flying && !state.inRTL
+        case .takeoff: return state.takeoffSupported && !state.flying
+        case .land: return state.guidedSupported && state.armed && !state.fixedWing && !state.inLand
+        case .startMission: return state.missionAvailable && !state.missionActive && !state.flying
+        case .continueMission:
+            return state.missionAvailable && !state.missionActive && state.armed
+                && state.flying && state.hasMoreMission
+        case .pause: return state.armed && state.pauseSupported && state.flying
+        case .emergencyStop: return state.armed
+        }
+    }
+
+    var needsPrearm: Bool {
+        self == .arm || self == .takeoff || self == .startMission
+    }
+
+    func offer(in state: GuidedState) -> Offer {
+        guard shown(in: state) else { return .hidden }
+        if needsPrearm, !state.readyToArm { return .blocked(GuidedAction.prearmReason) }
+        return .ready
+    }
+
+    func available(in state: GuidedState) -> Bool {
+        offer(in: state) == .ready
+    }
+
+    static func offered(in state: GuidedState) -> [GuidedAction] {
+        allCases.filter { $0.shown(in: state) }
+    }
+
+    static func available(in state: GuidedState) -> [GuidedAction] {
+        allCases.filter { $0.available(in: state) }
+    }
+}
