@@ -6,23 +6,17 @@ import Foundation
 // pass. Screenshots by window id keep working. So the supported way to drive the native
 // UI in tests is by identity — read state, invoke a named action — which is the direct
 // counterpart of QGC's objectName-addressed /ui/* surface for QML.
-protocol Probeable: AnyObject {
-    static var probeID: String { get }
-    func probeState() -> [String: Any]
-    func probeInvoke(action: String, args: [String: String]) -> [String: Any]
-}
-
-extension Probeable {
-    func probeInvoke(action: String, args: [String: String]) -> [String: Any] {
-        ["ok": false, "error": "\(Self.probeID) has no actions"]
-    }
-}
-
 enum NativeProbe {
     private static var registry: [String: Probeable] = [:]
 
     static func register(_ target: Probeable) {
         registry[type(of: target).probeID] = target
+    }
+
+    // Windows each have their own page selection, so they cannot share one type-level
+    // key the way a singleton store does.
+    static func register(_ target: Probeable, as id: String) {
+        registry[id] = target
     }
 
     static var screenIsLocked: Bool {

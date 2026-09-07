@@ -156,6 +156,33 @@ expect(SensorHealth.from(json: ["sensorNames": ["GPS", "Gyro"],
                                 "sensorHealthy": [true]]).isEmpty,
        "a ragged payload yields nothing rather than guessing")
 
+// A section listing parameters the firmware does not have would imply settings the
+// operator cannot change; an empty section is dropped entirely.
+let copterLike: Set<String> = ["FS_THR_ENABLE", "FS_THR_VALUE", "RTL_ALT", "ARMING_CHECK"]
+let present = SafetySection.present(in: copterLike)
+expect(present.map(\.section.title).joined(separator: ","),
+       "Failsafe,Return to Launch,Arming", "only sections with present parameters survive")
+expect(present.first!.names.joined(separator: ","), "FS_THR_ENABLE,FS_THR_VALUE",
+       "a section keeps only the parameters this vehicle has")
+expect(SafetySection.present(in: []).isEmpty, "a vehicle with none of them gets no sections")
+expect(SafetySection.present(in: ["RTL_ALT"]).count == 1, "one parameter is enough to keep its section")
+
+// Order is the authored order, not whatever the vehicle happens to report.
+expect(SafetySection.all.map(\.title).first!, "Failsafe", "failsafe leads the page")
+
+// Page selection is probe-driven because a locked screen cannot deliver a sidebar
+// click; it must reject a page that does not exist rather than blanking the window.
+let nav = PageSelection(owner: "vehicleSetup", pages: ["Sensors", "Safety", "Parameters"])
+expect(nav.page, "Sensors", "selection starts on the first page")
+expect(nav.identifier, "vehicleSetup.pages", "each window gets its own probe key")
+expect((nav.probeInvoke(action: "select", args: ["page": "Safety"])["ok"] as? Bool) == true,
+       "selecting a known page succeeds")
+expect(nav.page, "Safety", "the selection actually moved")
+expect((nav.probeInvoke(action: "select", args: ["page": "Nope"])["ok"] as? Bool) == false,
+       "an unknown page is refused")
+expect(nav.page, "Safety", "a refused selection leaves the page alone")
+expect((nav.probeInvoke(action: "wat", args: [:])["ok"] as? Bool) == false, "unknown actions are refused")
+
 if failures == 0 {
     print("all Swift checks passed")
     exit(0)

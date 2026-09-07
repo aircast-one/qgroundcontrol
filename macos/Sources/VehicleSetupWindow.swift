@@ -153,25 +153,95 @@ struct SensorsView: View {
     }
 }
 
+struct SafetyView: View {
+    @ObservedObject var store: ParametersStore
+    @State private var editing: String?
+
+    var body: some View {
+        ScrollView {
+            VStack(alignment: .leading, spacing: 24) {
+                if store.loading {
+                    Notice(text: "Reading parameters from the vehicle…").frame(height: 200)
+                } else if sections.isEmpty {
+                    Notice(text: "This vehicle reports none of the safety parameters this page knows about.")
+                        .frame(height: 200)
+                } else {
+                    ForEach(sections, id: \.section.id) { entry in
+                        SectionCard(title: entry.section.title) {
+                            VStack(alignment: .leading, spacing: 0) {
+                                Text(entry.section.note)
+                                    .font(.caption)
+                                    .foregroundColor(.secondary)
+                                    .padding(.bottom, 8)
+                                ForEach(Array(entry.names.enumerated()), id: \.element) { index, name in
+                                    if index > 0 { Divider() }
+                                    if let parameter = store.parameter(named: name) {
+                                        row(parameter)
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+            .padding(20)
+        }
+        .onAppear(perform: store.load)
+    }
+
+    private var sections: [(section: SafetySection, names: [String])] {
+        SafetySection.present(in: Set(store.parameters.map(\.name)))
+    }
+
+    private func row(_ parameter: Parameter) -> some View {
+        HStack(alignment: .firstTextBaseline, spacing: 12) {
+            VStack(alignment: .leading, spacing: 2) {
+                Text(parameter.description.isEmpty ? parameter.name : parameter.description)
+                Text(parameter.name)
+                    .font(.caption.monospaced())
+                    .foregroundColor(.secondary)
+            }
+            Spacer()
+            if editing == parameter.id {
+                LabelledField(label: "", value: parameter.value) {
+                    store.write(parameter, $0)
+                    editing = nil
+                }
+                .frame(width: 150)
+            } else {
+                Text(parameter.value).font(.body.monospacedDigit())
+                Text(parameter.units)
+                    .font(.caption).foregroundColor(.secondary)
+                    .frame(width: 40, alignment: .leading)
+                Button("Edit") { editing = parameter.id }
+            }
+        }
+        .padding(.vertical, 7)
+    }
+}
+
 struct VehicleSetupView: View {
     @ObservedObject var parameters: ParametersStore
     @ObservedObject var sensors: SensorsStore
-    @State private var page: String? = "Sensors"
+    @ObservedObject var selection: PageSelection
 
-    private let pages = ["Sensors", "Parameters"]
+    private let pages = ["Sensors", "Safety", "Parameters"]
 
     var body: some View {
         HStack(spacing: 0) {
-            List(pages, id: \.self, selection: $page) { name in
+            List(pages, id: \.self, selection: Binding(
+                get: { Optional(selection.page) },
+                set: { selection.page = $0 ?? selection.page })
+            ) { name in
                 Text(name).tag(name)
             }
             .listStyle(.sidebar)
             .frame(width: 190)
             Divider()
-            if page == "Parameters" {
-                ParametersView(store: parameters)
-            } else {
-                SensorsView(store: sensors)
+            switch selection.page {
+            case "Parameters": ParametersView(store: parameters)
+            case "Safety": SafetyView(store: parameters)
+            default: SensorsView(store: sensors)
             }
         }
         .frame(minWidth: 760, minHeight: 500)
@@ -183,12 +253,14 @@ final class VehicleSetupWindow: NSObject, NSWindowDelegate {
 
     private let parameters = ParametersStore()
     private let sensors = SensorsStore()
+    private let selection = PageSelection(owner: "vehicleSetup", pages: ["Sensors", "Safety", "Parameters"])
     private var window: NSWindow?
 
     override init() {
         super.init()
         NativeProbe.register(parameters)
         NativeProbe.register(sensors)
+        NativeProbe.register(selection, as: selection.identifier)
     }
 
     @objc func showFromMenu() {
@@ -209,7 +281,7 @@ final class VehicleSetupWindow: NSObject, NSWindowDelegate {
         window.title = "Vehicle Setup"
         window.isReleasedWhenClosed = false
         window.delegate = self
-        window.contentView = NSHostingView(rootView: VehicleSetupView(parameters: parameters, sensors: sensors))
+        window.contentView = NSHostingView(rootView: VehicleSetupView(parameters: parameters, sensors: sensors, selection: selection))
         window.center()
         window.makeKeyAndOrderFront(nil)
         self.window = window

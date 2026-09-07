@@ -58,6 +58,10 @@ final class ParametersStore: ObservableObject, Probeable {
         }
     }
 
+    func parameter(named name: String) -> Parameter? {
+        parameters.first { $0.name == name }
+    }
+
     func refilter() {
         let needle = search.trimmingCharacters(in: .whitespaces).lowercased()
         visible = parameters.filter { parameter in
