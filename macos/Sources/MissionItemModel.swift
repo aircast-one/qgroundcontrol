@@ -17,10 +17,16 @@ struct MissionItem: Identifiable {
     let terrainCollision: Bool
     let commandId: Int
     let isSimpleItem: Bool
+    let specifiesCoordinate: Bool
 
     var id: Int { sequence }
 
-    var hasPosition: Bool { latitude != nil && longitude != nil }
+    // A command with no position of its own still reports a coordinate, and it is
+    // 0,0 -- which put the Gulf of Guinea in the bounding box the map framed to.
+    var hasPosition: Bool {
+        guard specifiesCoordinate, let latitude, let longitude else { return false }
+        return latitude != 0 || longitude != 0
+    }
 
     var canRemove: Bool { sequence > 0 }
 
@@ -41,6 +47,7 @@ struct MissionItem: Identifiable {
         terrainCollision = (json["terrainCollision"] as? NSNumber)?.boolValue ?? false
         commandId = (json["command"] as? NSNumber)?.intValue ?? 0
         isSimpleItem = (json["isSimpleItem"] as? NSNumber)?.boolValue ?? false
+        specifiesCoordinate = (json["specifiesCoordinate"] as? NSNumber)?.boolValue ?? true
 
         let coordinate = json["coordinate"] as? [String: Any]
         latitude = (coordinate?["latitude"] as? NSNumber)?.doubleValue
@@ -56,7 +63,7 @@ struct MissionItem: Identifiable {
     }
 
     var positionText: String {
-        guard let latitude, let longitude else { return "—" }
+        guard hasPosition, let latitude, let longitude else { return "—" }
         return String(format: "%.6f, %.6f", latitude, longitude)
     }
 

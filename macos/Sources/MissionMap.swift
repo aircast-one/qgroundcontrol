@@ -89,7 +89,9 @@ struct MissionMap: NSViewRepresentable {
         map.overlays.filter { !($0 is CachedTileOverlay) }.forEach(map.removeOverlay)
 
         let placed = items.compactMap { item -> MissionAnnotation? in
-            guard let latitude = item.latitude, let longitude = item.longitude else { return nil }
+            guard item.hasPosition, let latitude = item.latitude, let longitude = item.longitude else {
+                return nil
+            }
             return MissionAnnotation(item: item, latitude: latitude, longitude: longitude)
         }
         map.addAnnotations(placed)
@@ -133,21 +135,28 @@ struct MissionMap: NSViewRepresentable {
                 CLLocationCoordinate2D(latitude: $0.latitude, longitude: $0.longitude)
             }
 
-        let frame = MapFrame(latitudes: framable.map(\.latitude),
-                             longitudes: framable.map(\.longitude))
+        // A plan can hold nothing with a position at all -- every item a Delay, or an
+        // empty plan -- and framing nothing left the map on MapKit's default view of the
+        // whole world. The vehicle is the next best thing to look at.
+        let anchored = framable.isEmpty
+            ? vehicle.map { [CLLocationCoordinate2D(latitude: $0.latitude, longitude: $0.longitude)] } ?? []
+            : framable
 
-        if !framable.isEmpty, frame != context.coordinator.lastFrame {
+        let frame = MapFrame(latitudes: anchored.map(\.latitude),
+                             longitudes: anchored.map(\.longitude))
+
+        if !anchored.isEmpty, frame != context.coordinator.lastFrame {
             guard map.bounds.width > 0 else {
                 DispatchQueue.main.async { [weak map] in
                     guard let map, map.bounds.width > 0,
                           frame != context.coordinator.lastFrame else { return }
                     context.coordinator.lastFrame = frame
-                    map.setVisibleMapRect(MissionMap.rect(frame), edgePadding: padding, animated: false)
+                    map.setRegion(MissionMap.region(frame, padding: padding, in: map.bounds.size), animated: false)
                 }
                 return
             }
             context.coordinator.lastFrame = frame
-            map.setVisibleMapRect(MissionMap.rect(frame), edgePadding: padding, animated: false)
+            map.setRegion(MissionMap.region(frame, padding: padding, in: map.bounds.size), animated: false)
         }
 
         MissionMap.lastRender[owner]?["centre"] =
@@ -172,6 +181,29 @@ struct MissionMap: NSViewRepresentable {
         let polygon = FencePolygon(coordinates: &coordinates, count: coordinates.count)
         polygon.inclusion = shape.inclusion
         return polygon
+    }
+
+    // setVisibleMapRect with edgePadding silently left the map on its default view of
+    // the world. setRegion always takes, so the inspector is accounted for by widening
+    // the span by the fraction of the view it covers and shifting the centre by half of
+    // what it hides.
+    static func region(_ frame: MapFrame, padding: NSEdgeInsets, in size: CGSize) -> MKCoordinateRegion {
+        let width = max(size.width, 1)
+        let height = max(size.height, 1)
+        let visibleWidth = max(width - padding.left - padding.right, 1)
+        let visibleHeight = max(height - padding.top - padding.bottom, 1)
+
+        let longitudeDelta = frame.longitudeDelta * width / visibleWidth
+        let latitudeDelta = frame.latitudeDelta * height / visibleHeight
+
+        return MKCoordinateRegion(
+            center: CLLocationCoordinate2D(
+                latitude: frame.centreLatitude
+                    + latitudeDelta * (padding.top - padding.bottom) / (2 * height),
+                longitude: frame.centreLongitude
+                    + longitudeDelta * (padding.right - padding.left) / (2 * width)),
+            span: MKCoordinateSpan(latitudeDelta: min(latitudeDelta, 90),
+                                   longitudeDelta: min(longitudeDelta, 180)))
     }
 
     static func rect(_ frame: MapFrame) -> MKMapRect {

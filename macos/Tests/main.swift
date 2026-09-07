@@ -231,6 +231,9 @@ func checkMapFraming() {
     let single = MapFrame(latitudes: [-35.36], longitudes: [149.16])
     expect(single.latitudeDelta == MapFrame.minimumDelta, "one waypoint still gets a minimum span")
     expect(single.longitudeDelta == MapFrame.minimumDelta, "one waypoint still gets a minimum longitude span")
+    expect(abs(single.centreLatitude - -35.36) < 1e-9, "and is centred on that waypoint")
+    expect(abs(single.centreLongitude - 149.16) < 1e-9, "on both axes")
+    expect(single.isUsable, "a single point is a usable frame, not a reason to show the whole world")
 
     let empty = MapFrame(latitudes: [], longitudes: [])
     expect(empty.isUsable, "no waypoints yields a usable region rather than NaN")
@@ -502,6 +505,30 @@ func checkItemFacts() {
 }
 
 checkItemFacts()
+
+func checkUnplacedCommands() {
+    let delay = MissionItem(json: [
+        "sequenceNumber": 1, "commandName": "Delay", "isSimpleItem": true,
+        "specifiesCoordinate": false,
+        "coordinate": ["latitude": 0, "longitude": 0],
+    ], index: 1)
+    expect(!delay.hasPosition, "a command with no position of its own is not placed at 0,0")
+    expect(delay.positionText, "\u{2014}", "and shows nothing rather than the Gulf of Guinea")
+
+    let waypoint = MissionItem(json: [
+        "sequenceNumber": 2, "commandName": "Waypoint", "specifiesCoordinate": true,
+        "coordinate": ["latitude": -35.363, "longitude": 149.165],
+    ], index: 2)
+    expect(waypoint.hasPosition, "a waypoint with a real coordinate is placed")
+
+    let nullIsland = MissionItem(json: [
+        "sequenceNumber": 3, "commandName": "Waypoint", "specifiesCoordinate": true,
+        "coordinate": ["latitude": 0, "longitude": 0],
+    ], index: 3)
+    expect(!nullIsland.hasPosition, "an unset coordinate is not a position even when the command wants one")
+}
+
+checkUnplacedCommands()
 
 if failures == 0 {
     print("all Swift checks passed")
