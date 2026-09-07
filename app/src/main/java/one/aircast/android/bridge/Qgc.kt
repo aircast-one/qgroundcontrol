@@ -47,7 +47,7 @@ object Qgc {
     val values: StateFlow<Map<String, JSONObject>> = _values.asStateFlow()
 
     fun start() {
-        QGCBridge.setEventListener { path, json ->
+        QGCBridge.setEventListener(CLIENT) { path, json ->
             _values.value = _values.value + (path to runCatching { JSONObject(json) }.getOrDefault(JSONObject()))
         }
     }
@@ -66,7 +66,9 @@ object Qgc {
         return result
     }
 
-    internal var sendWatch: (String) -> Unit = { QGCBridge.watch(it) }
+    private const val CLIENT = "app"
+
+    internal var sendWatch: (String) -> Unit = { QGCBridge.watch(CLIENT, it) }
 
     internal fun forgetWatchesForTest() {
         watched.clear()
