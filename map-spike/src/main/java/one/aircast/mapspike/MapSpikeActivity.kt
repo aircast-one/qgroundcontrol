@@ -56,11 +56,13 @@ private fun MapSpikeScreen(mapStyle: String) {
     var items by remember { mutableStateOf<List<MissionItem>>(emptyList()) }
     var fences by remember { mutableStateOf<List<FencePolygon>>(emptyList()) }
     var rally by remember { mutableStateOf<List<RallyPoint>>(emptyList()) }
+    var circles by remember { mutableStateOf<List<FenceCircle>>(emptyList()) }
     var surveyList by remember { mutableStateOf<List<Survey>>(emptyList()) }
     var profile by remember { mutableStateOf(TerrainProfile(emptyList())) }
     var selected by remember { mutableStateOf<MapHit?>(null) }
     var busy by remember { mutableStateOf<String?>(null) }
     val scope = rememberCoroutineScope()
+    var centre by remember { mutableStateOf<TrackPoint?>(null) }
 
     fun onBridge(label: String? = null, work: () -> Unit) {
         busy = label
@@ -75,17 +77,26 @@ private fun MapSpikeScreen(mapStyle: String) {
     val longitude by mapDouble("vehicle.longitude")
     val mode by mapString("vehicle.flightMode")
 
+    // Placing something needs a position. The vehicle's is the useful one, but
+    // the map centre lets the spike be driven with no vehicle connected.
+    fun placeAt(): TrackPoint? = when {
+        isPlottable(latitude, longitude) -> TrackPoint(latitude, longitude)
+        else -> centre?.takeIf { isPlottable(it.latitude, it.longitude) }
+    }
+
     suspend fun refresh() {
         withContext(Dispatchers.Default) {
             val nextItems = PlanBridge.items()
             val nextFences = FenceBridge.polygons()
             val nextRally = FenceBridge.rally()
+            val nextCircles = FenceBridge.circles()
             val nextSurveys = SurveyBridge.surveys()
             val nextProfile = TerrainBridge.profile()
             withContext(Dispatchers.Main) {
                 items = nextItems
                 fences = nextFences
                 rally = nextRally
+                circles = nextCircles
                 surveyList = nextSurveys
                 profile = nextProfile
             }
@@ -106,6 +117,7 @@ private fun MapSpikeScreen(mapStyle: String) {
             follow = follow,
             missionItems = items,
             fencePolygons = fences,
+            fenceCircles = circles,
             rallyPoints = rally,
             surveys = surveyList,
             editable = true,
@@ -120,6 +132,7 @@ private fun MapSpikeScreen(mapStyle: String) {
                 }
             },
             onWaypointSelected = { selected = it },
+            onCentreChanged = { centre = it },
         )
 
         TerrainProfileView(
@@ -160,7 +173,7 @@ private fun MapSpikeScreen(mapStyle: String) {
                 }
 
                 Text(
-                    busy ?: "Items ${items.size} · fences ${fences.size} · rally ${rally.size} · " +
+                    busy ?: "Items ${items.size} · fences ${fences.size + circles.size} · rally ${rally.size} · " +
                         "survey ${surveyList.sumOf { it.transects.size }} pts",
                     style = MaterialTheme.typography.bodySmall,
                 )
@@ -178,23 +191,41 @@ private fun MapSpikeScreen(mapStyle: String) {
                     }) { Text("Send") }
 
                     TextButton(onClick = {
+                        val at = placeAt()
                         onBridge("Adding fence") {
-                            val centre = TrackPoint(latitude, longitude)
-                            if (isPlottable(centre.latitude, centre.longitude)) {
+                            at?.let {
                                 FenceBridge.addInclusionPolygon(
-                                    TrackPoint(centre.latitude + 0.002, centre.longitude - 0.002),
-                                    TrackPoint(centre.latitude - 0.002, centre.longitude + 0.002),
+                                    TrackPoint(it.latitude + 0.002, it.longitude - 0.002),
+                                    TrackPoint(it.latitude - 0.002, it.longitude + 0.002),
                                 )
                             }
                         }
                     }) { Text("Fence") }
 
                     TextButton(onClick = {
-                        onBridge("Adding survey") { SurveyBridge.insertSurvey(latitude, longitude) }
+                        val at = placeAt()
+                        onBridge("Adding survey") {
+                            at?.let { SurveyBridge.insertSurvey(it.latitude, it.longitude) }
+                        }
                     }) { Text("Survey") }
 
                     TextButton(onClick = {
-                        onBridge("Adding rally") { FenceBridge.addRallyPoint(latitude, longitude) }
+                        val at = placeAt()
+                        onBridge("Adding circle") {
+                            at?.let {
+                                FenceBridge.addInclusionCircle(
+                                    TrackPoint(it.latitude + 0.002, it.longitude - 0.002),
+                                    TrackPoint(it.latitude - 0.002, it.longitude + 0.002),
+                                )
+                            }
+                        }
+                    }) { Text("Circle") }
+
+                    TextButton(onClick = {
+                        val at = placeAt()
+                        onBridge("Adding rally") {
+                            at?.let { FenceBridge.addRallyPoint(it.latitude, it.longitude) }
+                        }
                     }) { Text("Rally") }
 
                     (selected as? MapHit.Waypoint)?.let { hit ->

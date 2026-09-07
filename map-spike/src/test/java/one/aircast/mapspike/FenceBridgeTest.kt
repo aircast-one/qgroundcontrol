@@ -54,17 +54,27 @@ class FenceBridgeTest {
         assertEquals(0, polygons.size)
     }
 
-    @Test
-    fun `circles need a centre and a positive radius`() {
-        val good = """{"inclusion":true,"center":${vertex(41.0, 44.0)},"radius":{"value":120.0}}"""
-        val noRadius = """{"inclusion":true,"center":${vertex(41.0, 44.0)},"radius":{"value":0.0}}"""
-        val noCentre = """{"inclusion":true,"radius":{"value":120.0}}"""
+    private fun radiusFact(value: Double) = """{"name":"Radius","value":$value}"""
 
-        val circles = fenceCircles(model(good, noRadius, noCentre))
+    @Test
+    fun `a circle reads its radius from the fact list`() {
+        val good = """{"inclusion":true,"center":${vertex(41.0, 44.0)},"facts":[${radiusFact(136.0)}]}"""
+
+        val circles = fenceCircles(model(good))
 
         assertEquals(1, circles.size)
-        assertEquals(120.0, circles.single().radius, 1e-9)
+        assertEquals(136.0, circles.single().radius, 1e-9)
         assertTrue(circles.single().inclusion)
+    }
+
+    @Test
+    fun `circles without a centre or a usable radius are dropped`() {
+        val noRadius = """{"inclusion":true,"center":${vertex(41.0, 44.0)},"facts":[${radiusFact(0.0)}]}"""
+        val noFacts = """{"inclusion":true,"center":${vertex(41.0, 44.0)}}"""
+        val noCentre = """{"inclusion":true,"facts":[${radiusFact(120.0)}]}"""
+        val otherFact = """{"center":${vertex(41.0, 44.0)},"facts":[{"name":"Altitude","value":50.0}]}"""
+
+        assertEquals(0, fenceCircles(model(noRadius, noFacts, noCentre, otherFact)).size)
     }
 
     @Test

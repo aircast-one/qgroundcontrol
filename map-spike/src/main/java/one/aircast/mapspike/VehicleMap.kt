@@ -102,12 +102,14 @@ fun VehicleMap(
     follow: Boolean = true,
     missionItems: List<MissionItem> = emptyList(),
     fencePolygons: List<FencePolygon> = emptyList(),
+    fenceCircles: List<FenceCircle> = emptyList(),
     rallyPoints: List<RallyPoint> = emptyList(),
     surveys: List<Survey> = emptyList(),
     editable: Boolean = false,
     onAdd: (Double, Double) -> Unit = { _, _ -> },
     onMove: (MapHit, Double, Double) -> Unit = { _, _, _ -> },
     onWaypointSelected: (MapHit?) -> Unit = {},
+    onCentreChanged: (TrackPoint) -> Unit = {},
 ) {
     val latitude by mapDouble("vehicle.latitude")
     val longitude by mapDouble("vehicle.longitude")
@@ -142,6 +144,10 @@ fun VehicleMap(
     DisposableEffect(mapView, mapStyle) {
         mapView.getMapAsync { loaded ->
             map = loaded
+            loaded.addOnCameraIdleListener {
+                val target = loaded.cameraPosition.target ?: return@addOnCameraIdleListener
+                onCentreChanged(TrackPoint(target.latitude, target.longitude))
+            }
             val builder = if (mapStyle.trimStart().startsWith("{")) {
                 Style.Builder().fromJson(mapStyle)
             } else {
@@ -188,10 +194,11 @@ fun VehicleMap(
         }
     }
 
-    LaunchedEffect(style, missionItems, fencePolygons, rallyPoints, surveys) {
+    LaunchedEffect(style, missionItems, fencePolygons, fenceCircles, rallyPoints, surveys) {
         val currentStyle = style ?: return@LaunchedEffect
+        val rings = fencePolygons + circlesAsPolygons(fenceCircles)
         renderSurveys(currentStyle, surveys)
-        renderFences(currentStyle, fencePolygons, rallyPoints)
+        renderFences(currentStyle, rings, rallyPoints)
         renderVertexHandles(currentStyle, fencePolygons, surveys)
         renderMission(currentStyle, missionItems)
     }

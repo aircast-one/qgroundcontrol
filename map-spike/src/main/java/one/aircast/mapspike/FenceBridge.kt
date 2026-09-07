@@ -36,13 +36,24 @@ fun fencePolygons(json: JSONObject?): List<FencePolygon> {
     }
 }
 
+// A circle's radius is a Fact in the object's fact list, not a plain field.
+private fun factValue(element: JSONObject, name: String): Double {
+    val facts = element.optJSONArray("facts") ?: return Double.NaN
+    for (index in 0 until facts.length()) {
+        val fact = facts.optJSONObject(index) ?: continue
+        if (fact.optString("name").equals(name, ignoreCase = true)) {
+            return fact.optDouble("value", Double.NaN)
+        }
+    }
+    return Double.NaN
+}
+
 fun fenceCircles(json: JSONObject?): List<FenceCircle> {
     val list = elements(json) ?: return emptyList()
     return (0 until list.length()).mapNotNull { index ->
         val element = list.optJSONObject(index) ?: return@mapNotNull null
         val centre = coordinate(element.optJSONObject("center")) ?: return@mapNotNull null
-        val radius = element.optJSONObject("radius")?.optDouble("value", Double.NaN)
-            ?: element.optDouble("radius", Double.NaN)
+        val radius = factValue(element, "Radius")
         if (radius.isNaN() || radius <= 0.0) return@mapNotNull null
         FenceCircle(index, element.optBoolean("inclusion", true), centre, radius)
     }
@@ -70,6 +81,9 @@ object FenceBridge {
             "[${point(topLeft)}, ${point(bottomRight)}]",
         )
 
+    fun addInclusionCircle(topLeft: TrackPoint, bottomRight: TrackPoint): Boolean =
+        invoke("$FENCE_ROOT.addInclusionCircle", "[${point(topLeft)}, ${point(bottomRight)}]")
+
     fun addRallyPoint(latitude: Double, longitude: Double): Boolean =
         invoke("$RALLY_ROOT.addPoint", "[{\"latitude\":$latitude,\"longitude\":$longitude,\"altitude\":0}]")
 
@@ -90,3 +104,41 @@ object FenceBridge {
     private fun invoke(path: String, args: String = "[]"): Boolean =
         runCatching { JSONObject(QGCBridge.invoke(path, args)).optBoolean("ok") }.getOrDefault(false)
 }
+
+private const val EARTH_RADIUS_M = 6_371_000.0
+private const val CIRCLE_SEGMENTS = 48
+
+// MapLibre's circle layer is sized in screen pixels, so a fence circle has to
+// become a ring on the ground or it would keep its size as the map zooms.
+fun circleRing(
+    centre: TrackPoint,
+    radiusMetres: Double,
+    segments: Int = CIRCLE_SEGMENTS,
+): List<TrackPoint> {
+    if (radiusMetres <= 0.0 || segments < 3) {
+        return emptyList()
+    }
+
+    val angular = radiusMetres / EARTH_RADIUS_M
+    val lat = Math.toRadians(centre.latitude)
+    val lon = Math.toRadians(centre.longitude)
+
+    return (0 until segments).map { step ->
+        val bearing = 2 * Math.PI * step / segments
+        val pointLat = kotlin.math.asin(
+            kotlin.math.sin(lat) * kotlin.math.cos(angular) +
+                kotlin.math.cos(lat) * kotlin.math.sin(angular) * kotlin.math.cos(bearing),
+        )
+        val pointLon = lon + kotlin.math.atan2(
+            kotlin.math.sin(bearing) * kotlin.math.sin(angular) * kotlin.math.cos(lat),
+            kotlin.math.cos(angular) - kotlin.math.sin(lat) * kotlin.math.sin(pointLat),
+        )
+        TrackPoint(Math.toDegrees(pointLat), Math.toDegrees(pointLon))
+    }
+}
+
+fun circlesAsPolygons(circles: List<FenceCircle>): List<FencePolygon> =
+    circles.mapNotNull { circle ->
+        val ring = circleRing(circle.centre, circle.radius)
+        if (ring.size < 3) null else FencePolygon(circle.index, circle.inclusion, ring)
+    }
