@@ -7,6 +7,14 @@ Phase 4 of `NATIVE_ANDROID_REWRITE.md`. It began as a spike asking whether a nat
 replace the QML one. It does: `:app` hosts it as the Plan tab. The module name has outlived the
 question it was named after, and renaming it would touch `:app`, so it stands for now.
 
+## Where things live
+
+`PlanMapContent.kt` holds `MapSpikeScreen`, the composable both routes render. `PlanMap.kt` holds
+`PlanMapScreen`, the entry point the app calls. `MapSpikeActivity.kt` holds only the harness
+activity. That split exists because the shared screen used to live in the activity file, and a
+reader who greps for a symbol, finds it in `MapSpikeActivity.kt` and concludes it is harness-only is
+reasoning correctly from a filename that was lying.
+
 ## Hosting it in the app
 
 `:app` already depends on this module. Drop the map into the app's own navigation with
