@@ -27,16 +27,18 @@ class MapSpikeActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         MapBridge.start()
+        org.maplibre.android.MapLibre.getInstance(this)
+        val style = installQgcTileSource(this)
         setContent {
             MaterialTheme(colorScheme = darkColorScheme()) {
-                Surface(Modifier.fillMaxSize()) { MapSpikeScreen() }
+                Surface(Modifier.fillMaxSize()) { MapSpikeScreen(style) }
             }
         }
     }
 }
 
 @Composable
-private fun MapSpikeScreen() {
+private fun MapSpikeScreen(mapStyle: String) {
     var follow by remember { mutableStateOf(true) }
     val mission = remember { MissionModel() }
     var missionRevision by remember { mutableStateOf(0) }
@@ -50,6 +52,7 @@ private fun MapSpikeScreen() {
     Box(Modifier.fillMaxSize()) {
         VehicleMap(
             modifier = Modifier.fillMaxSize(),
+            mapStyle = mapStyle,
             follow = follow,
             mission = mission,
             missionRevision = missionRevision,
