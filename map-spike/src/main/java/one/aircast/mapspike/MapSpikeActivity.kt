@@ -43,22 +43,10 @@ class MapSpikeActivity : ComponentActivity() {
         super.onCreate(savedInstanceState)
         setContent {
             MaterialTheme(colorScheme = darkColorScheme()) {
-                PlanMapScreen()
+                PlanMapScreen(Modifier.fillMaxSize())
             }
         }
     }
-}
-
-// Distance home is what a pilot actually wants off a home position, and it
-// doubles as the only visible sign of one when the vehicle is sitting on it.
-fun homeLabel(home: TrackPoint?, latitude: Double, longitude: Double): String {
-    if (home == null) {
-        return " · no home"
-    }
-    if (!isPlottable(latitude, longitude)) {
-        return " · home set"
-    }
-    return " · %.0f m home".format(metresBetween(home, TrackPoint(latitude, longitude)))
 }
 
 @Composable
@@ -76,7 +64,7 @@ internal fun MapSpikeScreen(mapStyle: String) {
     val scope = rememberCoroutineScope()
     var centre by remember { mutableStateOf<TrackPoint?>(null) }
     var zoom by remember { mutableStateOf(0.0) }
-    var headerHeightPx by remember { mutableStateOf(0) }
+    var controlsHeightPx by remember { mutableStateOf(0) }
 
     // A bridge call that fails returns false rather than throwing, so without
     // this a refused operation looks exactly like one that worked.
@@ -94,11 +82,8 @@ internal fun MapSpikeScreen(mapStyle: String) {
         }
     }
 
-    val available by mapBool("vehicles.activeVehicleAvailable")
     val latitude by mapDouble("vehicle.latitude")
     val longitude by mapDouble("vehicle.longitude")
-    val heading by mapDouble("vehicle.heading")
-    val home by mapCoordinate("vehicle.homePosition")
     val missionDistance by mapDouble("plan.missionController.missionTotalDistance")
     val missionTime by mapDouble("plan.missionController.missionTime")
     val mode by mapString("vehicle.flightMode")
@@ -171,87 +156,54 @@ internal fun MapSpikeScreen(mapStyle: String) {
                 centre = at
                 zoom = level
             },
-            compassTopMarginPx = headerHeightPx,
+            bottomInsetPx = controlsHeightPx,
             fitRequest = fitRequest,
             onFitFailed = { onBridge("Fitting the plan") { false } },
         )
 
-        TerrainProfileView(
-            profile,
-            Modifier.align(Alignment.BottomCenter).padding(8.dp),
-        )
+        Column(
+            Modifier.align(Alignment.TopStart).padding(8.dp),
+        ) {
+            Surface(
+                color = MaterialTheme.colorScheme.surface.copy(alpha = 0.88f),
+                shape = MaterialTheme.shapes.small,
+            ) {
+                val ready by MapBridge.bridgeReady.collectAsState()
+                Text(
+                    busy ?: if (!ready) {
+                        "Bridge not running (start the main app first)"
+                    } else {
+                        planSummary(
+                            items, fences, circles, rally, surveyList,
+                            missionDistance, missionTime, selected,
+                        )
+                    },
+                    Modifier.padding(horizontal = 10.dp, vertical = 6.dp),
+                    style = MaterialTheme.typography.bodySmall,
+                )
+            }
 
-        centre?.let { at ->
-            ScaleBarView(
-                at.latitude,
-                zoom,
-                Modifier.align(Alignment.BottomStart).padding(start = 12.dp, bottom = 132.dp),
-            )
+            centre?.let { at ->
+                ScaleBarView(at.latitude, zoom, Modifier.padding(start = 4.dp, top = 8.dp))
+            }
         }
 
         Surface(
-            Modifier.align(Alignment.TopCenter).fillMaxWidth().padding(8.dp)
-                .onGloballyPositioned { headerHeightPx = it.size.height },
+            Modifier.align(Alignment.BottomCenter).fillMaxWidth()
+                .onGloballyPositioned { controlsHeightPx = it.size.height },
             color = MaterialTheme.colorScheme.surface.copy(alpha = 0.88f),
         ) {
-            Column(Modifier.padding(12.dp)) {
-                val ready by MapBridge.bridgeReady.collectAsState()
-                Text(
-                    when {
-                        !ready -> "Bridge not running (start the main app first)"
-                        !available -> "No vehicle"
-                        // With more than one vehicle connected, everything here
-                        // follows whichever is active, and that changes on its own.
-                        vehicleCount > 1 ->
-                            "Vehicle $vehicleId of $vehicleCount · ${mode.ifBlank { "connected" }}"
-                        else -> "Vehicle $vehicleId · ${mode.ifBlank { "connected" }}"
-                    },
-                    style = MaterialTheme.typography.titleSmall,
-                )
-                Text(
-                    if (latitude.isNaN() || longitude.isNaN()) {
-                        "No position"
-                    } else {
-                        "%.6f, %.6f".format(latitude, longitude) +
-                            (if (heading.isNaN()) "" else " · %.0f°".format(heading)) +
-                            homeLabel(home, latitude, longitude)
-                    },
-                    style = MaterialTheme.typography.bodySmall,
-                )
+            Column(Modifier.padding(horizontal = 8.dp, vertical = 4.dp)) {
+                TerrainProfileView(profile)
 
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Switch(checked = follow, onCheckedChange = { follow = it })
                     Text(
-                        "Follow vehicle",
+                        "Follow",
                         Modifier.padding(start = 8.dp),
                         style = MaterialTheme.typography.bodySmall,
                     )
                 }
-
-                Text(
-                    busy ?: buildString {
-                        append("Items ${items.size} · fences ${fences.size + circles.size}")
-                        append(" · rally ${rally.size}")
-                        append(" · survey ${surveyList.sumOf { it.transects.size }} pts")
-                        missionSummary(missionDistance, missionTime)
-                            .takeIf { it.isNotEmpty() }
-                            ?.let { append(" · $it") }
-                        (selected as? MapHit.Waypoint)?.let { hit ->
-                            val item = items.firstOrNull { it.index == hit.index }
-                            item?.altitude?.takeIf { !it.isNaN() }?.let {
-                                append(" · #${hit.index} at ${it.toInt()} m")
-                            }
-                        }
-                        val shown = (selected as? MapHit.Circle)?.index
-                            ?: (selected as? MapHit.CircleCentre)?.index
-                        shown?.let { index ->
-                            circles.firstOrNull { it.index == index }?.let {
-                                append(" · circle ${it.radius.toInt()} m")
-                            }
-                        }
-                    },
-                    style = MaterialTheme.typography.bodySmall,
-                )
 
                 Row(
                     Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()),

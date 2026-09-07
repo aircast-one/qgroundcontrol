@@ -37,21 +37,3 @@ class HomePositionTest {
     }
 }
 
-class HomeLabelTest {
-    @Test
-    fun `distance home is shown once both positions are known`() {
-        val label = homeLabel(TrackPoint(-35.363262, 149.165237), -35.364262, 149.165237)
-
-        assertEquals(" · 111 m home", label)
-    }
-
-    @Test
-    fun `no home position says so rather than showing a distance`() {
-        assertEquals(" · no home", homeLabel(null, -35.36, 149.16))
-    }
-
-    @Test
-    fun `a home with no vehicle position still reports itself`() {
-        assertEquals(" · home set", homeLabel(TrackPoint(-35.36, 149.16), Double.NaN, Double.NaN))
-    }
-}

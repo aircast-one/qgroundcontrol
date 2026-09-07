@@ -11,12 +11,20 @@ replace the QML one, and the answer is yes.
 `:app` already depends on this module. Drop the map into the app's own navigation with
 
 ```kotlin
-PlanMapScreen()
+PlanMapScreen(Modifier.weight(1f))
 ```
+
+It fills the modifier it is given rather than sizing itself, so a host can put it in a `Column` under
+its own header. Colours come from the app's `MaterialTheme`; the module wraps none of its own.
 
 It sets itself up on first use and survives being entered again, which matters because MapLibre has
 to be initialised before the tile source replaces the HTTP client and that client may only be
-replaced once. The activity below is the standalone harness and now calls the same composable.
+replaced once. Only a style backed by QGC's tiles is remembered, so entering the tab before QGC has
+opened its cache does not pin the OpenStreetMap fallback for the life of the process.
+
+The map paints no vehicle name, mode or telemetry, on the assumption the host shell already does.
+What it does show is what nothing else can: the plan, what it costs, and what is selected. The
+activity below is the standalone harness and calls the same composable.
 
 ## Running it standalone
 
@@ -98,6 +106,11 @@ ground, or it keeps its size as the map zooms. See `circleRing`.
 **Android's edge gestures eat drags.** A drag beginning near the screen edge becomes a back
 gesture, and the touch handler never sees the release that re-enables the map's own gestures, so
 panning stays dead. Starting a touch on empty map restores them.
+
+**The logo and attribution are not decoration.** MapLibre puts them bottom left, under any control
+panel placed there, and showing them is a licence condition. Their margins have to follow the
+panel's measured height, which means reading it after layout: read once while the map loads and the
+height is still zero.
 
 **Drag by a handle, never by a fill.** A fence wide enough to cover the screen would otherwise
 swallow every pan. Circles get a centre handle for this reason.

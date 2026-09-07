@@ -56,7 +56,7 @@ private const val MAX_TRAIL_POINTS = 500
 const val TRAIL_BREAK_DEGREES = 0.5
 private const val MIN_FIT_SPAN_DEGREES = 1e-5
 private const val FIT_PADDING_PIXELS = 80
-private const val COMPASS_EDGE_MARGIN_PX = 24
+private const val LOGO_EDGE_MARGIN_PX = 16
 
 const val DEMO_STYLE_URL = "https://demotiles.maplibre.org/style.json"
 
@@ -141,7 +141,7 @@ fun VehicleMap(
     onMove: (MapHit, Double, Double) -> Unit = { _, _, _ -> },
     onWaypointSelected: (MapHit?) -> Unit = {},
     onCentreChanged: (TrackPoint, Double) -> Unit = { _, _ -> },
-    compassTopMarginPx: Int = 0,
+    bottomInsetPx: Int = 0,
     fitRequest: Int = 0,
     onFitFailed: () -> Unit = {},
 ) {
@@ -241,12 +241,14 @@ fun VehicleMap(
         }
     }
 
-    // MapLibre puts the compass in the top right, behind the panel, so it was
-    // there the whole time and never once visible. The panel measures itself
-    // after the map loads, so this has to follow the height rather than read it
-    // once while it is still zero.
-    LaunchedEffect(map, compassTopMarginPx) {
-        map?.uiSettings?.setCompassMargins(0, compassTopMarginPx, COMPASS_EDGE_MARGIN_PX, 0)
+    // MapLibre's logo and attribution sit at the bottom left, under the control
+    // panel, and attribution is a licence condition rather than decoration. The
+    // panel measures itself after the map loads, so this follows its height
+    // instead of reading it once while it is still zero.
+    LaunchedEffect(map, bottomInsetPx) {
+        val settings = map?.uiSettings ?: return@LaunchedEffect
+        settings.setLogoMargins(LOGO_EDGE_MARGIN_PX, 0, 0, bottomInsetPx + LOGO_EDGE_MARGIN_PX)
+        settings.setAttributionMargins(LOGO_EDGE_MARGIN_PX, 0, 0, bottomInsetPx + LOGO_EDGE_MARGIN_PX)
     }
 
     LaunchedEffect(fitRequest) {

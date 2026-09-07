@@ -1,7 +1,6 @@
 package one.aircast.mapspike
 
 import android.content.Context
-import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
@@ -17,12 +16,19 @@ import org.maplibre.android.MapLibre
 // single time and reused.
 private var installedStyle: String? = null
 
+// Only a style backed by QGC's own tiles is worth keeping. Entering the tab
+// before QGC has opened its cache falls back to OSM, and remembering that would
+// pin the fallback for the life of the process even once the cache is there.
 @Synchronized
 private fun planMapStyle(context: Context): String =
     installedStyle ?: run {
         MapBridge.start()
         MapLibre.getInstance(context)
-        installQgcTileSource(context).also { installedStyle = it }
+        installQgcTileSource(context).also {
+            if (it != OSM_RASTER_STYLE) {
+                installedStyle = it
+            }
+        }
     }
 
 @Composable
@@ -30,7 +36,10 @@ fun PlanMapScreen(modifier: Modifier = Modifier) {
     val context = LocalContext.current
     val style = remember(context) { planMapStyle(context) }
 
-    Surface(modifier.fillMaxSize(), color = MaterialTheme.colorScheme.surface) {
+    // Fills what the caller gives it rather than sizing itself, so a host can
+    // put it in a Column under its own header and hand it a weight. Colours come
+    // from the app's theme; wrapping one here would ignore the user's setting.
+    Surface(modifier, color = MaterialTheme.colorScheme.surface) {
         MapSpikeScreen(style)
     }
 }
