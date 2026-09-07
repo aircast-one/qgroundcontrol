@@ -58,3 +58,40 @@ class PlanStatusTest {
         assertEquals("mission.plan · unsaved changes", planStatusText("mission.plan", dirty = true))
     }
 }
+
+class PlanActionsTest {
+    @Test
+    fun `an empty plan cannot be saved over a real one`() {
+        val can = planActions(syncing = false, containsItems = false, hasMissionItems = false)
+        assertEquals(false, can.save)
+        assertEquals(false, can.exportKml)
+    }
+
+    @Test
+    fun `opening stays available on an empty plan, because that is how you get one`() {
+        assertEquals(true, planActions(false, containsItems = false, hasMissionItems = false).open)
+    }
+
+    @Test
+    fun `nothing is offered while a sync is in progress`() {
+        val can = planActions(syncing = true, containsItems = true, hasMissionItems = true)
+        assertEquals(false, can.open)
+        assertEquals(false, can.save)
+        assertEquals(false, can.exportKml)
+    }
+
+    @Test
+    fun `a fence-only plan saves but exports no KML, because saveToKml writes only the mission`() {
+        val can = planActions(syncing = false, containsItems = true, hasMissionItems = false)
+        assertEquals(true, can.save)
+        assertEquals(false, can.exportKml)
+    }
+
+    @Test
+    fun `a plan with mission items offers everything`() {
+        val can = planActions(syncing = false, containsItems = true, hasMissionItems = true)
+        assertEquals(true, can.open)
+        assertEquals(true, can.save)
+        assertEquals(true, can.exportKml)
+    }
+}

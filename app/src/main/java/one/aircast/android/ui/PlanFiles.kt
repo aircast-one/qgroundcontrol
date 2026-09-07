@@ -19,12 +19,23 @@ import java.io.File
 private const val PLAN_ROOT = "plan"
 private const val OPEN_CACHE = "opened.plan"
 private const val SAVE_CACHE = "saving.plan"
+private const val KML_CACHE = "export.kml"
 
 internal const val PLAN_MIME = "*/*"
 
 internal val PLAN_OPEN_TYPES = arrayOf(PLAN_MIME)
 
 internal const val DEFAULT_PLAN_NAME = "mission.plan"
+internal const val DEFAULT_KML_NAME = "mission.kml"
+
+data class PlanActions(val open: Boolean, val save: Boolean, val exportKml: Boolean)
+
+internal fun planActions(syncing: Boolean, containsItems: Boolean, hasMissionItems: Boolean) =
+    PlanActions(
+        open = !syncing,
+        save = !syncing && containsItems,
+        exportKml = !syncing && hasMissionItems,
+    )
 
 internal const val READY_FOR_SAVE = 0
 internal const val NOT_READY_TERRAIN = 1
@@ -48,6 +59,7 @@ class PlanFileActions(
     val open: () -> Unit,
     val saveAs: () -> Unit,
     val save: () -> Unit,
+    val exportKml: () -> Unit,
     val documentName: () -> String?,
 )
 
@@ -149,11 +161,33 @@ fun rememberPlanFileActions(onResult: (String) -> Unit = {}): PlanFileActions {
         }
     }
 
+    fun exportKmlTo(target: Uri) {
+        scope.launch {
+            val message = withContext(Dispatchers.Default) {
+                val staged = File(context.cacheDir, KML_CACHE)
+                staged.delete()
+                Qgc.invoke("$PLAN_ROOT.saveToKml", staged.absolutePath)
+                if (staged.length() == 0L) {
+                    return@withContext "The plan could not be exported."
+                }
+                if (!copyOut(context, staged, target)) {
+                    return@withContext "The KML was written but could not be copied out."
+                }
+                null
+            }
+            onResult(message ?: "KML exported.")
+        }
+    }
+
+    val kmlCreator = rememberLauncherForActivityResult(
+        ActivityResultContracts.CreateDocument(PLAN_MIME),
+    ) { uri -> uri?.let { exportKmlTo(it) } }
+
     val creator = rememberLauncherForActivityResult(
         ActivityResultContracts.CreateDocument(PLAN_MIME),
     ) { uri -> uri?.let { writeTo(it) } }
 
-    return remember(opener, creator) {
+    return remember(opener, creator, kmlCreator) {
         PlanFileActions(
             open = { opener.launch(PLAN_OPEN_TYPES) },
             saveAs = { guarded { creator.launch(name.value ?: DEFAULT_PLAN_NAME) } },
@@ -163,6 +197,7 @@ fun rememberPlanFileActions(onResult: (String) -> Unit = {}): PlanFileActions {
                     if (target == null) creator.launch(DEFAULT_PLAN_NAME) else writeTo(target)
                 }
             },
+            exportKml = { guarded { kmlCreator.launch(DEFAULT_KML_NAME) } },
             documentName = { name.value },
         )
     }
