@@ -4,7 +4,6 @@ import android.content.Intent
 import android.content.res.Configuration
 import android.net.wifi.WifiManager
 import android.os.Bundle
-import android.os.PowerManager
 import android.view.WindowManager
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
@@ -64,7 +63,6 @@ private const val QML_LIBRARY = "AircastQGC"
 private const val QML_DEFAULT_PAGE = "fly"
 private const val QML_DEFAULT_TOOL_SOURCE = ""
 
-private const val WAKE_LOCK_TAG = "Aircast:screen"
 private const val MULTICAST_LOCK_TAG = "Aircast"
 
 
@@ -89,7 +87,6 @@ enum class Tab(val label: String, val icon: ImageVector, val page: String, val t
 }
 
 class MainActivity : ComponentActivity(), QGCBridge.Host {
-    private var wakeLock: PowerManager.WakeLock? = null
     private var multicastLock: WifiManager.MulticastLock? = null
     private lateinit var quickView: QtQuickView
 
@@ -100,7 +97,6 @@ class MainActivity : ComponentActivity(), QGCBridge.Host {
         Qgc.start()
         QGCUsbSerialManager.initialize(this)
 
-        acquireWakeLock()
         acquireMulticastLock()
         window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
 
@@ -136,14 +132,7 @@ class MainActivity : ComponentActivity(), QGCBridge.Host {
     override fun onDestroy() {
         runCatching { QGCUsbSerialManager.cleanup(this) }
         multicastLock?.takeIf { it.isHeld }?.release()
-        wakeLock?.takeIf { it.isHeld }?.release()
         super.onDestroy()
-    }
-
-    private fun acquireWakeLock() {
-        val manager = getSystemService(PowerManager::class.java) ?: return
-        wakeLock = manager.newWakeLock(PowerManager.SCREEN_BRIGHT_WAKE_LOCK, WAKE_LOCK_TAG)
-            .also { runCatching { it.acquire() } }
     }
 
     private fun acquireMulticastLock() {
