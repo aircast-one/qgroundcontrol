@@ -69,6 +69,14 @@ in `PlanBridge.kt` is the one lookup for all of them.
 `children`. Reading the item gives you no polygon at all; it needs its own read at
 `…visualItems.N.surveyAreaPolygon`.
 
+**Nothing here starts the plan controller, and something has to.** QGC's `PlanView.qml` calls
+`_planMasterController.start()` when it loads; this module never does. The QML plan view is still
+alive under the native one, so it has already been called and the map works. When the Phase 6 host
+teardown removes that view, the call goes with it and the plan controller is never started. Note
+that `start()` does an unguarded `connect()` to `activeVehicleChanged`, so whoever takes it over
+must call it exactly once — calling it on every visit to the tab duplicates the connection each
+time.
+
 **A plan item can exist without being on the map.** Inserting a takeoff puts a real item in the
 plan, but on a copter it specifies no coordinate of its own, so nothing is drawn and the item
 count does not move. Counting drawn markers to decide whether a bridge call worked reports a
