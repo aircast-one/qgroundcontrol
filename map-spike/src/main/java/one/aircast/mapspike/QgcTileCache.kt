@@ -22,7 +22,9 @@ fun qgcCacheFile(context: Context): File =
 
 class QgcTileCache(private val database: SQLiteDatabase) : AutoCloseable {
 
-    fun providers(): List<TileProvider> {
+    fun providers(): List<TileProvider> = runCatching { readProviders() }.getOrDefault(emptyList())
+
+    private fun readProviders(): List<TileProvider> {
         val sql = "SELECT substr(hash,1,10) AS prefix, type, format, COUNT(*) AS n " +
             "FROM Tiles GROUP BY prefix, type, format ORDER BY n DESC"
         return database.rawQuery(sql, null).use { cursor ->
@@ -41,11 +43,15 @@ class QgcTileCache(private val database: SQLiteDatabase) : AutoCloseable {
         }
     }
 
-    fun tile(prefix: String, z: Int, x: Int, y: Int): ByteArray? {
+    // QGroundControl writes this database while we read it. A read-only
+    // connection cannot roll back a journal it finds mid-write, and the throw
+    // lands on OkHttp's thread where it takes the process down. A missing tile
+    // is the right answer to that.
+    fun tile(prefix: String, z: Int, x: Int, y: Int): ByteArray? = runCatching {
         val hash = tileHash(prefix, z, x, y)
-        return database.rawQuery("SELECT tile FROM Tiles WHERE hash = ? LIMIT 1", arrayOf(hash))
+        database.rawQuery("SELECT tile FROM Tiles WHERE hash = ? LIMIT 1", arrayOf(hash))
             .use { cursor -> if (cursor.moveToFirst()) cursor.getBlob(0) else null }
-    }
+    }.getOrNull()
 
     override fun close() {
         database.close()

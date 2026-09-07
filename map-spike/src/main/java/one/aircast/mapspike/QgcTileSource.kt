@@ -45,11 +45,12 @@ class QgcTileInterceptor(
             return chain.proceed(request)
         }
 
-        val match = TILE_PATH.find(request.url.encodedPath)
-        val tile = match?.let { result ->
-            val (z, x, y) = result.destructured
-            cache.tile(prefix, z.toInt(), x.toInt(), y.toInt())
-        }
+        val tile = runCatching {
+            TILE_PATH.find(request.url.encodedPath)?.let { result ->
+                val (z, x, y) = result.destructured
+                cache.tile(prefix, z.toInt(), x.toInt(), y.toInt())
+            }
+        }.getOrNull()
 
         return Response.Builder()
             .request(request)

@@ -103,6 +103,7 @@ fun VehicleMap(
     missionItems: List<MissionItem> = emptyList(),
     fencePolygons: List<FencePolygon> = emptyList(),
     rallyPoints: List<RallyPoint> = emptyList(),
+    surveys: List<Survey> = emptyList(),
     editable: Boolean = false,
     onAdd: (Double, Double) -> Unit = { _, _ -> },
     onMove: (MapHit, Double, Double) -> Unit = { _, _, _ -> },
@@ -148,6 +149,7 @@ fun VehicleMap(
             }
             loaded.setStyle(builder) { loadedStyle ->
                 installLayers(loadedStyle)
+                installSurveyLayers(loadedStyle)
                 installFenceLayers(loadedStyle)
                 installMissionLayers(loadedStyle)
                 installFenceHandleLayer(loadedStyle)
@@ -186,8 +188,9 @@ fun VehicleMap(
         }
     }
 
-    LaunchedEffect(style, missionItems, fencePolygons, rallyPoints) {
+    LaunchedEffect(style, missionItems, fencePolygons, rallyPoints, surveys) {
         val currentStyle = style ?: return@LaunchedEffect
+        renderSurveys(currentStyle, surveys)
         renderFences(currentStyle, fencePolygons, rallyPoints)
         renderFenceHandles(currentStyle, fencePolygons)
         renderMission(currentStyle, missionItems)

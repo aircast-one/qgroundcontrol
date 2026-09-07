@@ -56,6 +56,7 @@ private fun MapSpikeScreen(mapStyle: String) {
     var items by remember { mutableStateOf<List<MissionItem>>(emptyList()) }
     var fences by remember { mutableStateOf<List<FencePolygon>>(emptyList()) }
     var rally by remember { mutableStateOf<List<RallyPoint>>(emptyList()) }
+    var surveyList by remember { mutableStateOf<List<Survey>>(emptyList()) }
     var selected by remember { mutableStateOf<MapHit?>(null) }
     var busy by remember { mutableStateOf<String?>(null) }
     val scope = rememberCoroutineScope()
@@ -78,10 +79,12 @@ private fun MapSpikeScreen(mapStyle: String) {
             val nextItems = PlanBridge.items()
             val nextFences = FenceBridge.polygons()
             val nextRally = FenceBridge.rally()
+            val nextSurveys = SurveyBridge.surveys()
             withContext(Dispatchers.Main) {
                 items = nextItems
                 fences = nextFences
                 rally = nextRally
+                surveyList = nextSurveys
             }
         }
     }
@@ -101,6 +104,7 @@ private fun MapSpikeScreen(mapStyle: String) {
             missionItems = items,
             fencePolygons = fences,
             rallyPoints = rally,
+            surveys = surveyList,
             editable = true,
             onAdd = { lat, lon -> onBridge { PlanBridge.appendWaypoint(lat, lon) } },
             onMove = { hit, lat, lon ->
@@ -147,7 +151,8 @@ private fun MapSpikeScreen(mapStyle: String) {
                 }
 
                 Text(
-                    busy ?: "Items ${items.size} · fences ${fences.size} · rally ${rally.size}",
+                    busy ?: "Items ${items.size} · fences ${fences.size} · rally ${rally.size} · " +
+                        "survey ${surveyList.sumOf { it.transects.size }} pts",
                     style = MaterialTheme.typography.bodySmall,
                 )
 
@@ -174,6 +179,10 @@ private fun MapSpikeScreen(mapStyle: String) {
                             }
                         }
                     }) { Text("Fence") }
+
+                    TextButton(onClick = {
+                        onBridge("Adding survey") { SurveyBridge.insertSurvey(latitude, longitude) }
+                    }) { Text("Survey") }
 
                     TextButton(onClick = {
                         onBridge("Adding rally") { FenceBridge.addRallyPoint(latitude, longitude) }
