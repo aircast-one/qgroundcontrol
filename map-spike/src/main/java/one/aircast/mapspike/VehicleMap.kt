@@ -94,6 +94,14 @@ fun vehicleFeature(latitude: Double, longitude: Double, heading: Double): Featur
         }
     }
 
+// The plan is re-read from the bridge every poll, so it comes back on its own.
+// A flown trail cannot: it is accumulated over time and nothing can replay it.
+// Scoped to a composition it was lost on every tab switch, which is the one
+// piece of state here that has to outlive the screen showing it.
+object VehicleTrail {
+    val track = VehicleTrack()
+}
+
 class VehicleTrack(private val limit: Int = MAX_TRAIL_POINTS) {
     private val points = ArrayDeque<TrackPoint>()
 
@@ -152,7 +160,7 @@ fun VehicleMap(
 
     var map by remember { mutableStateOf<MapLibreMap?>(null) }
     var style by remember { mutableStateOf<Style?>(null) }
-    val track = remember { VehicleTrack() }
+    val track = VehicleTrail.track
 
     val context = androidx.compose.ui.platform.LocalContext.current
     val mapView = remember {

@@ -89,6 +89,13 @@ the path stays in the watched set nothing ever retries it, and the screen report
 one that came up a second later. Watches are released when the map goes away too, because the
 watcher polls and diffs every path at 200 ms and stops only when told to watch nothing.
 
+**A tab does not own the process, an activity nearly did.** Three things here assumed otherwise and
+all three were real bugs once the map became a tab: the poll ran on forever, the MapView was never
+destroyed, and the watches were never released. The reverse case is the flown trail, which is
+accumulated over time and cannot be re-read from the bridge, so it is the one piece of state that
+has to outlive the screen rather than die with it. Anything else added here should be sorted into
+one of those two piles deliberately.
+
 **Poll only while something is watching.** Every poll is a blocking trip into the Qt thread. As its
 own activity the screen stopped polling when it went away; hosted as a tab it stays composed while
 the app is in the background, so the loop is gated on the lifecycle. Measured on the phone: ten
