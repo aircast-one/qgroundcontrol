@@ -436,3 +436,24 @@ void QGCBridgeCoreTest::_watchEmitsOnChange()
 
     fact->setCookedValue(original);
 }
+
+void QGCBridgeCoreTest::_invokesFactValidateAndReturnsQGCsOwnError()
+{
+    const QString path = QStringLiteral("settings.appSettings.batteryPercentRemainingAnnounce.validate");
+
+    const QJsonObject inRange = QJsonDocument::fromJson(
+        QGCBridgeCore::invoke(path, QStringLiteral("[\"50\", false]")).toUtf8()).object();
+    QVERIFY2(inRange.value(QStringLiteral("ok")).toBool(), "validate was not reachable through the bridge");
+    QCOMPARE(inRange.value(QStringLiteral("result")).toString(), QString());
+
+    const QJsonObject tooHigh = QJsonDocument::fromJson(
+        QGCBridgeCore::invoke(path, QStringLiteral("[\"9999\", false]")).toUtf8()).object();
+    QVERIFY2(tooHigh.value(QStringLiteral("ok")).toBool(), "validate was not reachable through the bridge");
+    QVERIFY2(!tooHigh.value(QStringLiteral("result")).toString().isEmpty(),
+             "a value above the fact maximum was reported as valid");
+
+    const QJsonObject notANumber = QJsonDocument::fromJson(
+        QGCBridgeCore::invoke(path, QStringLiteral("[\"abc\", false]")).toUtf8()).object();
+    QVERIFY2(!notANumber.value(QStringLiteral("result")).toString().isEmpty(),
+             "a non-numeric value was reported as valid");
+}
