@@ -252,26 +252,26 @@ internal fun MapSpikeScreen(mapStyle: String) {
                 ) {
                     TextButton(onClick = {
                         val refusal = syncRefusal(
-                            vehicleSyncState(planOffline, planSyncing), "load from",
+                            vehicleSyncState(planOffline, planSyncing), "download from",
                         )
                         when {
                             refusal != null -> say(refusal)
                             loadStep(planDirty, loadArmed) == LoadStep.Confirm -> loadArmed = true
                             else -> {
                                 loadArmed = false
-                                onBridge("Loading from vehicle") { PlanBridge.loadFromVehicle() }
+                                onBridge("Downloading from vehicle") { PlanBridge.loadFromVehicle() }
                             }
                         }
-                    }) { Text(if (loadArmed) "Discard & load" else "Load") }
+                    }) { Text(if (loadArmed) "Discard & download" else "Download") }
 
                     TextButton(onClick = {
                         val refusal = syncRefusal(
-                            vehicleSyncState(planOffline, planSyncing), "send to",
+                            vehicleSyncState(planOffline, planSyncing), "upload to",
                         )
                         if (refusal != null) say(refusal) else {
-                            onBridge("Sending to vehicle") { PlanBridge.sendToVehicle() }
+                            onBridge("Uploading to vehicle") { PlanBridge.sendToVehicle() }
                         }
-                    }) { Text("Send") }
+                    }) { Text("Upload") }
 
                     TextButton(onClick = {
                         val at = placeAt()

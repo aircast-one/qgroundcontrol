@@ -274,6 +274,15 @@ down, so a failed tile read yields no tile instead.
 
 Falls back to OpenStreetMap when the cache is empty. That style is for development only.
 
+## Naming
+
+The vehicle sync buttons are `Download` and `Upload`, which is what QGC calls them — "Download from
+Vehicle" and "Upload" in `PlanView.qml`. They used to be `Load` and `Send`. That mattered once the
+app's Plan tab grew an `Open / Save / Save as` row above the map: `Load` beside `Open` reads as two
+ways to do one thing, when one moves a plan to and from the aircraft and the other to and from a
+file. Taking QGC's vocabulary rather than inventing keeps the two pairs distinct without anyone
+having to learn a local dialect.
+
 ## Scripting the controls
 
 The control panel is anchored to the bottom and grows with what the plan contains, so every button
