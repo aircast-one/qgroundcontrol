@@ -218,6 +218,78 @@ struct PowerView: View {
     }
 }
 
+struct FrameView: View {
+    @ObservedObject var store: ParametersStore
+    @ObservedObject var frame: FrameStore
+
+    var body: some View {
+        SetupPageBody(title: "Frame",
+                      note: "Which airframe this is, and what the firmware made of it.") {
+            if store.loading {
+                GroupCard { EmptyStateRow(text: "Reading parameters from the vehicle\u{2026}") }
+            } else if sections.isEmpty {
+                GroupCard {
+                    EmptyStateRow(text: "This vehicle does not report a frame class.")
+                }
+            } else {
+                if needsFrameClass {
+                    Label("No airframe is selected. The vehicle will not arm until one is.",
+                          systemImage: "exclamationmark.triangle.fill")
+                        .font(.callout)
+                        .foregroundColor(.orange)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+
+                ForEach(sections, id: \.section.id) { entry in
+                    VStack(alignment: .leading, spacing: 0) {
+                        SectionLabel(text: entry.section.title)
+                        GroupCard {
+                            ForEach(Array(entry.names.enumerated()), id: \.element) { index, name in
+                                if let parameter = store.parameter(named: name) {
+                                    ParameterRow(parameter: parameter, showSeparator: index > 0) {
+                                        store.write(parameter, $0)
+                                    }
+                                }
+                            }
+                        }
+                        Text(entry.section.note)
+                            .font(.caption).foregroundColor(.secondary)
+                            .fixedSize(horizontal: false, vertical: true)
+                            .padding(.horizontal, Overlay.horizontalPadding)
+                            .padding(.top, Overlay.unit * 0.35)
+                    }
+                }
+            }
+
+            VStack(alignment: .leading, spacing: 0) {
+                SectionLabel(text: "What the vehicle reports")
+                GroupCard {
+                    if frame.setup.known {
+                        GroupRow(title: "Vehicle type", value: frame.setup.vehicleTypeText,
+                                 showSeparator: false)
+                        GroupRow(title: "Motors", value: frame.setup.motorText)
+                    } else {
+                        EmptyStateRow(text: "No vehicle is connected.")
+                    }
+                }
+            }
+        }
+        .onAppear {
+            store.load()
+            frame.start()
+        }
+        .onDisappear(perform: frame.stop)
+    }
+
+    private var sections: [(section: SetupSection, names: [String])] {
+        SetupSection.present(SetupSection.frame, in: Set(store.parameters.map(\.name)))
+    }
+
+    private var needsFrameClass: Bool {
+        FrameSetup.needsFrameClass(store.parameter(named: "FRAME_CLASS")?.selectedOption?.raw)
+    }
+}
+
 struct FlightModesView: View {
     @ObservedObject var store: ParametersStore
 
@@ -373,7 +445,7 @@ struct SetupSummaryView: View {
 }
 
 enum SetupPage {
-    static let all = ["Summary", "Sensors", "Flight Modes", "Safety", "Power", "Parameters"]
+    static let all = ["Summary", "Sensors", "Frame", "Flight Modes", "Safety", "Power", "Parameters"]
 
     static func symbol(for page: String) -> String {
         switch page {
@@ -411,6 +483,7 @@ struct VehicleSetupView: View {
     @ObservedObject var sensors: SensorsStore
     @ObservedObject var components: VehicleComponentsStore
     @ObservedObject var power: PowerStore
+    @ObservedObject var frame: FrameStore
     @ObservedObject var selection: PageSelection
 
     var body: some View {
@@ -424,6 +497,7 @@ struct VehicleSetupView: View {
                 }
                 Section("Setup") {
                     row("Sensors", badge: !sensors.failing.isEmpty)
+                    row("Frame")
                     row("Flight Modes")
                     row("Safety")
                     row("Power")
@@ -457,6 +531,7 @@ struct VehicleSetupView: View {
         case "Parameters": ParametersView(store: parameters)
         case "Safety": SafetyView(store: parameters)
         case "Power": PowerView(store: parameters, power: power)
+        case "Frame": FrameView(store: parameters, frame: frame)
         case "Flight Modes": FlightModesView(store: parameters)
         case "Sensors": SensorsView(store: sensors)
         default: SetupSummaryView(store: components, sensors: sensors, selection: selection)
@@ -471,6 +546,7 @@ final class VehicleSetupWindow: NSObject, NSWindowDelegate {
     private let sensors = SensorsStore()
     private let components = VehicleComponentsStore()
     private let power = PowerStore()
+    private let frame = FrameStore()
     private let selection = PageSelection(owner: "vehicleSetup", pages: SetupPage.all)
     private var window: NSWindow?
 
@@ -480,6 +556,7 @@ final class VehicleSetupWindow: NSObject, NSWindowDelegate {
         NativeProbe.register(sensors)
         NativeProbe.register(components)
         NativeProbe.register(power)
+        NativeProbe.register(frame)
         NativeProbe.register(selection, as: selection.identifier)
     }
 
@@ -503,7 +580,7 @@ final class VehicleSetupWindow: NSObject, NSWindowDelegate {
         window.delegate = self
         window.contentView = NSHostingView(rootView: VehicleSetupView(
             parameters: parameters, sensors: sensors, components: components,
-            power: power, selection: selection))
+            power: power, frame: frame, selection: selection))
         window.center()
         window.makeKeyAndOrderFront(nil)
         self.window = window

@@ -889,6 +889,27 @@ func checkPowerSections() {
 
 checkPowerSections()
 
+func checkFrameSetup() {
+    expect(!FrameSetup.unknown.known, "no vehicle reports no frame")
+    let quad = FrameSetup(vehicleType: "Quadrotor", motorCount: 4)
+    expect(quad.known, "a reported type and motor count is a frame")
+    expect(quad.motorText, "4 motors", "motors are counted")
+    expect(FrameSetup(vehicleType: "Single", motorCount: 1).motorText, "1 motor",
+           "and one of them is singular")
+    expect(FrameSetup(vehicleType: "Quadrotor", motorCount: 0).motorText, "—",
+           "a vehicle that reports no motors says nothing rather than zero")
+
+    expect(FrameSetup.needsFrameClass("0"), "frame class 0 is no airframe at all")
+    expect(!FrameSetup.needsFrameClass("1"), "any other class is a chosen airframe")
+    expect(!FrameSetup.needsFrameClass(nil), "a firmware without the parameter is not misconfigured")
+
+    let present = SetupSection.present(SetupSection.frame, in: ["FRAME_CLASS"])
+    expect(present.count == 1, "the airframe section survives a firmware with no FRAME_TYPE")
+    expect(present[0].names.joined(separator: ","), "FRAME_CLASS", "showing only what is there")
+}
+
+checkFrameSetup()
+
 if failures == 0 {
     print("all Swift checks passed")
     exit(0)

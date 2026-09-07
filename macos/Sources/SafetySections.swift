@@ -44,6 +44,13 @@ struct SetupSection: Identifiable {
                          "BATT2_AMP_OFFSET", "BATT2_VOLT_PIN", "BATT2_CURR_PIN", "BATT2_ARM_VOLT"]),
     ]
 
+    static let frame: [SetupSection] = [
+        SetupSection(
+            title: "Airframe",
+            note: "The class picks the layout, the type picks how its arms are oriented. A change to the class takes effect after the vehicle reboots.",
+            parameters: ["FRAME_CLASS", "FRAME_TYPE"]),
+    ]
+
     static func present(_ sections: [SetupSection], in available: Set<String>) -> [(section: SetupSection, names: [String])] {
         sections.compactMap { section in
             let names = section.parameters.filter(available.contains)
