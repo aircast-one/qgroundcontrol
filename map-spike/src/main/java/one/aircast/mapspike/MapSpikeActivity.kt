@@ -14,6 +14,7 @@ import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.darkColorScheme
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -37,6 +38,9 @@ class MapSpikeActivity : ComponentActivity() {
 @Composable
 private fun MapSpikeScreen() {
     var follow by remember { mutableStateOf(true) }
+    val mission = remember { MissionModel() }
+    var missionRevision by remember { mutableStateOf(0) }
+    var selectedWaypoint by remember { mutableStateOf<Int?>(null) }
 
     val available by mapBool("vehicles.activeVehicleAvailable")
     val latitude by mapDouble("vehicle.latitude")
@@ -44,15 +48,27 @@ private fun MapSpikeScreen() {
     val mode by mapString("vehicle.flightMode")
 
     Box(Modifier.fillMaxSize()) {
-        VehicleMap(modifier = Modifier.fillMaxSize(), follow = follow)
+        VehicleMap(
+            modifier = Modifier.fillMaxSize(),
+            follow = follow,
+            mission = mission,
+            missionRevision = missionRevision,
+            onMissionChanged = { missionRevision++ },
+            onWaypointSelected = { selectedWaypoint = it },
+        )
 
         Surface(
             Modifier.align(Alignment.TopCenter).fillMaxWidth().padding(8.dp),
             color = MaterialTheme.colorScheme.surface.copy(alpha = 0.85f),
         ) {
             Column(Modifier.padding(12.dp)) {
+                val ready by MapBridge.bridgeReady.collectAsState()
                 Text(
-                    if (available) "Vehicle: ${mode.ifBlank { "connected" }}" else "No vehicle",
+                    when {
+                        !ready -> "Bridge not running (start the main app first)"
+                        available -> "Vehicle: ${mode.ifBlank { "connected" }}"
+                        else -> "No vehicle"
+                    },
                     style = MaterialTheme.typography.titleSmall,
                 )
                 Text(
@@ -64,6 +80,18 @@ private fun MapSpikeScreen() {
                     style = MaterialTheme.typography.bodySmall,
                 )
                 Row(follow) { follow = it }
+                Text(
+                    "Waypoints: ${mission.size.also { missionRevision }} " +
+                        "· long-press to add, drag to move, tap to select",
+                    style = MaterialTheme.typography.bodySmall,
+                )
+                selectedWaypoint?.let { id ->
+                    androidx.compose.material3.TextButton(onClick = {
+                        mission.remove(id)
+                        selectedWaypoint = null
+                        missionRevision++
+                    }) { Text("Delete selected waypoint") }
+                }
             }
         }
     }

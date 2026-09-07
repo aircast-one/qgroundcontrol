@@ -19,16 +19,23 @@ object MapBridge {
 
     val values: StateFlow<Map<String, JSONObject>> = _values.asStateFlow()
 
+    private val _bridgeReady = MutableStateFlow(false)
+    val bridgeReady: StateFlow<Boolean> = _bridgeReady.asStateFlow()
+
     fun start() {
-        QGCBridge.setEventListener { path, json ->
-            _values.value = _values.value + (path to runCatching { JSONObject(json) }.getOrDefault(JSONObject()))
+        runCatching {
+            QGCBridge.setEventListener { path, json ->
+                _values.value = _values.value + (path to runCatching { JSONObject(json) }.getOrDefault(JSONObject()))
+            }
+            _bridgeReady.value = true
         }
     }
 
     @Synchronized
     fun watch(path: String) {
         if (!watched.add(path)) return
-        QGCBridge.watch(watched.joinToString(","))
+        runCatching { QGCBridge.watch(watched.joinToString(",")) }
+            .onFailure { _bridgeReady.value = false }
     }
 }
 

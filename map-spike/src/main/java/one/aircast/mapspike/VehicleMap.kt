@@ -36,6 +36,23 @@ private const val MAX_TRAIL_POINTS = 500
 
 const val DEMO_STYLE_URL = "https://demotiles.maplibre.org/style.json"
 
+// Demo only. Production points at QGC's existing SQLite tile cache.
+const val OSM_RASTER_STYLE = """
+{
+  "version": 8,
+  "sources": {
+    "osm": {
+      "type": "raster",
+      "tiles": ["https://tile.openstreetmap.org/{z}/{x}/{y}.png"],
+      "tileSize": 256,
+      "attribution": "(c) OpenStreetMap contributors"
+    }
+  },
+  "glyphs": "https://demotiles.maplibre.org/font/{fontstack}/{range}.pbf",
+  "layers": [ { "id": "osm", "type": "raster", "source": "osm" } ]
+}
+"""
+
 data class TrackPoint(val latitude: Double, val longitude: Double)
 
 fun isPlottable(latitude: Double, longitude: Double): Boolean =
@@ -69,8 +86,12 @@ class VehicleTrack(private val limit: Int = MAX_TRAIL_POINTS) {
 @Composable
 fun VehicleMap(
     modifier: Modifier = Modifier,
-    styleUrl: String = DEMO_STYLE_URL,
+    mapStyle: String = OSM_RASTER_STYLE,
     follow: Boolean = true,
+    mission: MissionModel? = null,
+    missionRevision: Int = 0,
+    onMissionChanged: () -> Unit = {},
+    onWaypointSelected: (Int?) -> Unit = {},
 ) {
     val latitude by mapDouble("vehicle.latitude")
     val longitude by mapDouble("vehicle.longitude")
@@ -102,11 +123,28 @@ fun VehicleMap(
         onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
     }
 
-    DisposableEffect(mapView, styleUrl) {
+    DisposableEffect(mapView, mapStyle) {
         mapView.getMapAsync { loaded ->
             map = loaded
-            loaded.setStyle(Style.Builder().fromUri(styleUrl)) { loadedStyle ->
+            val builder = if (mapStyle.trimStart().startsWith("{")) {
+                Style.Builder().fromJson(mapStyle)
+            } else {
+                Style.Builder().fromUri(mapStyle)
+            }
+            loaded.setStyle(builder) { loadedStyle ->
                 installLayers(loadedStyle)
+                if (mission != null) {
+                    installMissionLayers(loadedStyle)
+                    renderMission(loadedStyle, mission)
+                    attachMissionEditing(
+                        mapView, loaded, loadedStyle, mission,
+                        onChanged = {
+                            renderMission(loadedStyle, mission)
+                            onMissionChanged()
+                        },
+                        onSelected = onWaypointSelected,
+                    )
+                }
                 style = loadedStyle
             }
         }
@@ -131,6 +169,13 @@ fun VehicleMap(
                 .target(LatLng(latitude, longitude))
                 .zoom(map?.cameraPosition?.zoom?.takeIf { it > 1.0 } ?: DEFAULT_ZOOM)
                 .build()
+        }
+    }
+
+    LaunchedEffect(style, missionRevision) {
+        val currentStyle = style ?: return@LaunchedEffect
+        if (mission != null) {
+            renderMission(currentStyle, mission)
         }
     }
 
