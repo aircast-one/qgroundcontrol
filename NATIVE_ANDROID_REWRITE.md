@@ -272,6 +272,25 @@ Android file layer:
 - **`saveToCurrent` and `dirty` carry Save versus Save As**, which is what keeps
   a single silently-overwritten slot from being the design.
 
+**Landed** (`aircast-android` edf764c): `PlanFiles.kt` and `PlanTab.kt`. Open,
+Save and Save as verified on the OnePlus 6 against a real document — the written
+file is valid plan JSON, reopening it loads, and Save writes back to the opened
+document (`ACTION_OPEN_DOCUMENT` does grant write; confirmed by mtime, not by the
+success notice).
+
+Two corrections to the paragraph above:
+
+- **`saveToCurrent` is the wrong call under SAF.** `currentPlanFile` is the cache
+  path the shell handed to `saveToFile`, not the user's document, so
+  `saveToCurrent` would write to cache and never reach their file. Save versus
+  Save As is carried by whether the shell is holding a document URI.
+- **`CreateDocument` must be given a wildcard MIME.** Naming it
+  `application/json` makes DocumentsUI append `.json`, and `mission.plan.json`
+  does not match the `*.plan` filter desktop QGC opens with.
+
+Still open: `dirty` is unused, so nothing warns a pilot leaving the tab with
+unsaved edits, and `saveToKml` has no affordance.
+
 ## Phase 5 — Fly and video · 7 weeks
 
 Safety-critical, deliberately last.
