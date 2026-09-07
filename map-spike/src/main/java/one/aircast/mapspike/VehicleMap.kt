@@ -276,8 +276,14 @@ fun VehicleMap(
     LaunchedEffect(fitRequest) {
         if (fitRequest == 0) return@LaunchedEffect
         val currentMap = map ?: return@LaunchedEffect
+        // Fit means show me what matters. With nothing planned that is the
+        // aircraft, which is also the way back when a zoom has lost it.
         val bounds = planBounds(
-            planPoints(missionItems, fencePolygons, fenceCircles, rallyPoints, surveys),
+            fitPoints(
+                planPoints(missionItems, fencePolygons, fenceCircles, rallyPoints, surveys),
+                latitude,
+                longitude,
+            ),
         ) ?: return@LaunchedEffect onFitFailed()
 
         // A plan of one point has no extent, so bounds would be a zero-sized box

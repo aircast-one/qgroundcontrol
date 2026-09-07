@@ -64,3 +64,28 @@ class PlanBoundsTest {
         assertEquals(0.0, bounds.spanDegrees, 1e-9)
     }
 }
+
+class FitPointsTest {
+    private fun item(latitude: Double, longitude: Double) =
+        MissionItem(0, 1, latitude, longitude, "Waypoint", false, Double.NaN)
+
+    @Test
+    fun `a plan is framed on its own terms`() {
+        val plan = planPoints(items = listOf(item(41.0, 44.0), item(41.5, 44.5)))
+
+        assertEquals(plan, fitPoints(plan, -35.36, 149.16))
+    }
+
+    @Test
+    fun `an empty plan falls back to the aircraft`() {
+        val points = fitPoints(emptyList(), -35.36, 149.16)
+
+        assertEquals(listOf(TrackPoint(-35.36, 149.16)), points)
+    }
+
+    @Test
+    fun `with no plan and no position there is nothing to frame`() {
+        assertTrue(fitPoints(emptyList(), Double.NaN, Double.NaN).isEmpty())
+        assertTrue(fitPoints(emptyList(), 0.0, 0.0).isEmpty())
+    }
+}
