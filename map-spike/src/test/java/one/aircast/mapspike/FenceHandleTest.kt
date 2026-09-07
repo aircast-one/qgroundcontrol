@@ -66,4 +66,33 @@ class FenceHandleTest {
     fun `nothing to edit means no handles`() {
         assertEquals(0, vertexHandleFeatures(emptyList(), emptyList()).features()?.size)
     }
+
+    @Test
+    fun `a circle gets one handle at its centre`() {
+        val features = vertexHandleFeatures(
+            emptyList(),
+            emptyList(),
+            listOf(FenceCircle(2, true, TrackPoint(41.0, 44.0), 150.0)),
+        )
+        val handle = features.features()!!.single()
+
+        assertEquals(HANDLE_KIND_CIRCLE, handle.getStringProperty(HANDLE_KIND_PROPERTY))
+        assertEquals(2, handle.getNumberProperty(POLYGON_INDEX_PROPERTY).toInt())
+        assertEquals(0, handle.getNumberProperty(VERTEX_INDEX_PROPERTY).toInt())
+    }
+
+    @Test
+    fun `all three kinds of handle coexist and stay distinguishable`() {
+        val features = vertexHandleFeatures(
+            listOf(polygon(0, 41.0 to 44.0, 41.0 to 44.1, 41.1 to 44.1)),
+            listOf(survey(0, 42.0 to 45.0, 42.0 to 45.1, 42.1 to 45.1)),
+            listOf(FenceCircle(0, true, TrackPoint(43.0, 46.0), 150.0)),
+        )
+        val kinds = features.features()!!.map { it.getStringProperty(HANDLE_KIND_PROPERTY) }
+
+        assertEquals(7, features.features()?.size)
+        assertEquals(3, kinds.count { it == HANDLE_KIND_FENCE })
+        assertEquals(3, kinds.count { it == HANDLE_KIND_SURVEY })
+        assertEquals(1, kinds.count { it == HANDLE_KIND_CIRCLE })
+    }
 }

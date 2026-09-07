@@ -81,6 +81,12 @@ object FenceBridge {
             JSONObject(QGCBridge.set("$RALLY_POINTS.$index.coordinate", value)).optBoolean("ok")
         }.getOrDefault(false)
 
+    fun moveCircle(index: Int, latitude: Double, longitude: Double): Boolean =
+        runCatching {
+            val value = "{\"value\":{\"latitude\":$latitude,\"longitude\":$longitude,\"altitude\":0}}"
+            JSONObject(QGCBridge.set("$FENCE_CIRCLES.$index.center", value)).optBoolean("ok")
+        }.getOrDefault(false)
+
     fun setCircleRadius(index: Int, metres: Double): Boolean =
         runCatching {
             JSONObject(QGCBridge.set("$FENCE_CIRCLES.$index.radius", "{\"value\":$metres}"))

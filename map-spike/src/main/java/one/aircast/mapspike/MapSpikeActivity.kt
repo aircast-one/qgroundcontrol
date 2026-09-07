@@ -131,7 +131,8 @@ private fun MapSpikeScreen(mapStyle: String) {
                         is MapHit.FenceVertex -> FenceBridge.adjustVertex(hit.polygon, hit.vertex, lat, lon)
                         is MapHit.SurveyVertex -> SurveyBridge.adjustAreaVertex(hit.item, hit.vertex, lat, lon)
                         is MapHit.Rally -> FenceBridge.moveRallyPoint(hit.index, lat, lon)
-                        // A circle moves by its centre, which is not a handle yet.
+                        is MapHit.CircleCentre -> FenceBridge.moveCircle(hit.index, lat, lon)
+                        // Tapping the fill selects a circle; its centre handle moves it.
                         is MapHit.Circle -> Unit
                     }
                 }
@@ -192,8 +193,10 @@ private fun MapSpikeScreen(mapStyle: String) {
                                 append(" · #${hit.index} at ${it.toInt()} m")
                             }
                         }
-                        (selected as? MapHit.Circle)?.let { hit ->
-                            circles.firstOrNull { it.index == hit.index }?.let {
+                        val shown = (selected as? MapHit.Circle)?.index
+                            ?: (selected as? MapHit.CircleCentre)?.index
+                        shown?.let { index ->
+                            circles.firstOrNull { it.index == index }?.let {
                                 append(" · circle ${it.radius.toInt()} m")
                             }
                         }
@@ -262,8 +265,9 @@ private fun MapSpikeScreen(mapStyle: String) {
                 val fenceHit = selected as? MapHit.FenceVertex
                 val surveyHit = selected as? MapHit.SurveyVertex
                 val rallyHit = selected as? MapHit.Rally
-                val circleHit = selected as? MapHit.Circle
-                val circle = circleHit?.let { hit -> circles.firstOrNull { it.index == hit.index } }
+                val circleIndex = (selected as? MapHit.Circle)?.index
+                    ?: (selected as? MapHit.CircleCentre)?.index
+                val circle = circleIndex?.let { index -> circles.firstOrNull { it.index == index } }
 
                 if (survey != null || waypoint != null || fenceHit != null ||
                     rallyHit != null || circle != null

@@ -176,6 +176,7 @@ const val HANDLE_KIND_PROPERTY = "handleKind"
 
 const val HANDLE_KIND_FENCE = "fence"
 const val HANDLE_KIND_SURVEY = "survey"
+const val HANDLE_KIND_CIRCLE = "circle"
 
 fun installFenceHandleLayer(style: Style) {
     if (style.getSource(FENCE_HANDLE_SOURCE) != null) {
@@ -203,18 +204,27 @@ private fun handleFeatures(kind: String, owner: Int, vertices: List<TrackPoint>)
 
 // Fence and survey handles share one source. They behave identically under the
 // finger, and only the path they write differs.
+// A circle gets one handle at its centre rather than being dragged by its fill.
+// A fence large enough to fill the screen would otherwise swallow every pan.
 fun vertexHandleFeatures(
     polygons: List<FencePolygon>,
     surveys: List<Survey>,
+    circles: List<FenceCircle> = emptyList(),
 ): FeatureCollection {
     val fence = polygons.flatMap { handleFeatures(HANDLE_KIND_FENCE, it.index, it.vertices) }
     val survey = surveys.flatMap { handleFeatures(HANDLE_KIND_SURVEY, it.index, it.area) }
-    return FeatureCollection.fromFeatures(fence + survey)
+    val centres = circles.flatMap { handleFeatures(HANDLE_KIND_CIRCLE, it.index, listOf(it.centre)) }
+    return FeatureCollection.fromFeatures(fence + survey + centres)
 }
 
-fun renderVertexHandles(style: Style, polygons: List<FencePolygon>, surveys: List<Survey>) {
+fun renderVertexHandles(
+    style: Style,
+    polygons: List<FencePolygon>,
+    surveys: List<Survey>,
+    circles: List<FenceCircle> = emptyList(),
+) {
     (style.getSource(FENCE_HANDLE_SOURCE) as? GeoJsonSource)
-        ?.setGeoJson(vertexHandleFeatures(polygons, surveys))
+        ?.setGeoJson(vertexHandleFeatures(polygons, surveys, circles))
 }
 
 const val SURVEY_AREA_SOURCE = "aircast-survey-area"

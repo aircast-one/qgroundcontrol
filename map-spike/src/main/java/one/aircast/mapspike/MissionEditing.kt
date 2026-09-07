@@ -21,6 +21,8 @@ sealed interface MapHit {
     data class Rally(val index: Int) : MapHit
 
     data class Circle(val index: Int) : MapHit
+
+    data class CircleCentre(val index: Int) : MapHit
 }
 
 // Fence handles win a tie. They sit on the fence outline, which a waypoint can
@@ -35,6 +37,7 @@ fun hitTest(map: MapLibreMap, x: Float, y: Float): MapHit? {
         if (owner != null && vertex != null) {
             return when (kind) {
                 HANDLE_KIND_SURVEY -> MapHit.SurveyVertex(owner, vertex)
+                HANDLE_KIND_CIRCLE -> MapHit.CircleCentre(owner)
                 else -> MapHit.FenceVertex(owner, vertex)
             }
         }
