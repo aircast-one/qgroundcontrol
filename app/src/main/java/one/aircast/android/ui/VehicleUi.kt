@@ -117,6 +117,8 @@ fun FlightActions(modifier: Modifier = Modifier) {
     }
 
     Column(modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+        VehicleMessageBanner()
+
         FlightModePicker()
 
         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
