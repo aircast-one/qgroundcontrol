@@ -94,8 +94,8 @@ private val FLIGHT_MODES_APM = listOf(
     ParameterSection(
         "Mode slots",
         (1..6).map { "FLTMODE$it" },
-        "ArduPilot mode numbers, not names. This firmware does not publish the " +
-            "names, so check them against the ArduPilot mode list before changing one.",
+        "ArduPilot only publishes mode names for the first slot. The rest are raw " +
+            "mode numbers, so check them against the ArduPilot mode list before changing one.",
     ),
     ParameterSection("Options", listOf("SIMPLE", "SUPER_SIMPLE", "INITIAL_MODE")),
 )

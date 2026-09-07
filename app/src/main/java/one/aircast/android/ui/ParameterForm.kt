@@ -17,13 +17,10 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.delay
 import kotlinx.coroutines.withContext
 import org.json.JSONObject
 import one.aircast.android.bridge.Fact
 import one.aircast.android.bridge.Qgc
-
-private val METADATA_SETTLE_DELAYS_MS = listOf(1_000L, 2_000L, 4_000L)
 
 internal data class ParameterSection(
     val title: String,
@@ -64,14 +61,6 @@ internal fun ParameterForm(
     LaunchedEffect(sections, reloads) {
         rows = withContext(Dispatchers.Default) { readSections(sections) }
         loaded = true
-
-        METADATA_SETTLE_DELAYS_MS.forEach { wait ->
-            delay(wait)
-            val settled = withContext(Dispatchers.Default) { readSections(sections) }
-            if (settled != rows) {
-                rows = settled
-            }
-        }
     }
 
     if (!loaded) {
