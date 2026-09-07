@@ -62,6 +62,7 @@ add_library(QGCNativeUI STATIC
     Sources/FrameSetupModel.swift
     Sources/VehicleMessageModel.swift
     Sources/PreflightModel.swift
+    Sources/VehicleWarningModel.swift
     Sources/Frame.swift
     Sources/OverlayKit.swift
     Sources/AppShell.swift

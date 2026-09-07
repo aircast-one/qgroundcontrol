@@ -171,16 +171,42 @@ struct FlyView: View {
     @ObservedObject var fly: FlyStore
     @ObservedObject var mission: MissionStore
 
+    private var warningBanner: some View {
+        GlassPanel {
+            HStack(alignment: .top, spacing: Overlay.step) {
+                Image(systemName: "exclamationmark.triangle.fill")
+                    .foregroundColor(.orange)
+                VStack(alignment: .leading, spacing: 3) {
+                    ForEach(fly.warning.lines, id: \.self) { line in
+                        Text(line)
+                            .font(.callout.weight(.medium))
+                            .fixedSize(horizontal: false, vertical: true)
+                    }
+                }
+            }
+            .padding(.horizontal, Overlay.unit * 0.9)
+            .padding(.vertical, Overlay.unit * 0.6)
+        }
+        .frame(maxWidth: 380)
+    }
+
     var body: some View {
-        ZStack(alignment: .topTrailing) {
+        ZStack(alignment: .top) {
             MissionMap(owner: "fly", items: mission.items, vehicle: fly.position,
                        shapes: [], rallyPoints: [],
                        padding: NSEdgeInsets(top: 56, left: 24, bottom: 40, right: 352),
                        select: { _ in }, adding: false, add: { _, _ in }, move: { _, _, _ in })
                 .ignoresSafeArea()
 
+            if fly.warning.showing {
+                warningBanner
+                    .padding(.top, Overlay.unit)
+                    .transition(.opacity)
+            }
+
             FlyPanel(fly: fly)
                 .padding(Overlay.unit)
+                .frame(maxWidth: .infinity, alignment: .trailing)
         }
         .frame(minWidth: 820, minHeight: 600)
         .onAppear {

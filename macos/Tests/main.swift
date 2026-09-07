@@ -1032,6 +1032,49 @@ func checkPreflight() {
 
 checkPreflight()
 
+func checkVehicleWarning() {
+    expect(!VehicleWarning.none.showing, "nothing wrong shows nothing")
+
+    let disconnected = VehicleWarning.assess(
+        connected: false, requiresGpsFix: true, hasCoordinate: false, armed: false,
+        prearmError: "PreArm: GPS 1: not healthy", healthReportSupported: false)
+    expect(!disconnected.showing, "with no vehicle there is nothing to warn about")
+
+    let live = VehicleWarning.assess(
+        connected: true, requiresGpsFix: true, hasCoordinate: true, armed: false,
+        prearmError: "PreArm: GPS 1: not healthy", healthReportSupported: false)
+    expect(live.lines.joined(separator: "|"), "PreArm: GPS 1: not healthy",
+           "the live SITL case: a prearm refusal is shown as the vehicle worded it")
+
+    let flying = VehicleWarning.assess(
+        connected: true, requiresGpsFix: true, hasCoordinate: true, armed: true,
+        prearmError: "PreArm: GPS 1: not healthy", healthReportSupported: false)
+    expect(!flying.showing, "an armed vehicle is past prearm, so the refusal is stale")
+
+    let px4 = VehicleWarning.assess(
+        connected: true, requiresGpsFix: true, hasCoordinate: true, armed: false,
+        prearmError: "PreArm: GPS 1: not healthy", healthReportSupported: true)
+    expect(!px4.showing, "firmware with its own arming report owns the message instead")
+
+    let lost = VehicleWarning.assess(
+        connected: true, requiresGpsFix: true, hasCoordinate: false, armed: false,
+        prearmError: "", healthReportSupported: false)
+    expect(lost.lines.joined(separator: "|"), VehicleWarning.noGpsLockText,
+           "a vehicle that needs GPS and has no position says so")
+
+    let both = VehicleWarning.assess(
+        connected: true, requiresGpsFix: true, hasCoordinate: false, armed: false,
+        prearmError: "PreArm: GPS 1: not healthy", healthReportSupported: false)
+    expect(both.lines.count == 2, "both faults are listed rather than one hiding the other")
+
+    let noGpsNeeded = VehicleWarning.assess(
+        connected: true, requiresGpsFix: false, hasCoordinate: false, armed: false,
+        prearmError: "", healthReportSupported: false)
+    expect(!noGpsNeeded.showing, "a vehicle that needs no GPS is not missing one")
+}
+
+checkVehicleWarning()
+
 if failures == 0 {
     print("all Swift checks passed")
     exit(0)

@@ -8,6 +8,7 @@ final class FlyStore: ObservableObject, Probeable {
     @Published private(set) var position: VehicleMarker?
     @Published private(set) var messages: [VehicleMessage] = []
     @Published private(set) var unhealthyBits: Int?
+    @Published private(set) var warning = VehicleWarning.none
     @Published private(set) var ticked: Set<String> = []
     @Published var showingChecklist = false
 
@@ -34,6 +35,7 @@ final class FlyStore: ObservableObject, Probeable {
             if position != nil { position = nil }
             if !messages.isEmpty { messages = [] }
             if unhealthyBits != nil { unhealthyBits = nil }
+            if warning != .none { warning = .none }
             return
         }
 
@@ -72,6 +74,16 @@ final class FlyStore: ObservableObject, Probeable {
 
         let bits = (vehicle["sensorsUnhealthyBits"] as? NSNumber)?.intValue
         if bits != unhealthyBits { unhealthyBits = bits }
+
+        let health = Bridge.group("vehicle.healthAndArmingCheckReport")
+        let assessed = VehicleWarning.assess(
+            connected: true,
+            requiresGpsFix: (vehicle["requiresGpsFix"] as? NSNumber)?.boolValue ?? false,
+            hasCoordinate: placed != nil,
+            armed: reading.armed,
+            prearmError: (vehicle["prearmError"] as? String) ?? "",
+            healthReportSupported: (health["supported"] as? NSNumber)?.boolValue ?? false)
+        if assessed != warning { warning = assessed }
     }
 
     private static func facts(_ object: [String: Any]) -> [String: Double] {
@@ -110,6 +122,7 @@ final class FlyStore: ObservableObject, Probeable {
          "battery": telemetry.batteryText, "gps": telemetry.gpsText,
          "placed": position != nil,
          "worstMessage": VehicleMessage.worst(latestMessages).rawValue,
+         "warnings": warning.lines,
          "checklistOpen": showingChecklist,
          "checklistProgress": Preflight.progress(checklist, ticked: ticked),
          "checklistReady": Preflight.ready(checklist, ticked: ticked),
