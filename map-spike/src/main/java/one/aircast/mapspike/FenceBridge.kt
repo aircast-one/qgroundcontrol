@@ -75,7 +75,14 @@ object FenceBridge {
     fun addRallyPoint(latitude: Double, longitude: Double): Boolean =
         invoke("$RALLY_ROOT.addPoint", "[{\"latitude\":$latitude,\"longitude\":$longitude,\"altitude\":0}]")
 
-    fun clearFences(): Boolean = invoke("$FENCE_ROOT.clearAllInteractive")
+    fun deletePolygon(index: Int): Boolean = invoke("$FENCE_ROOT.deletePolygon", "[$index]")
+
+    fun deleteCircle(index: Int): Boolean = invoke("$FENCE_ROOT.deleteCircle", "[$index]")
+
+    // removePoint takes the point itself, so the bridge's object reference form
+    // hands it the one at that index rather than a copy.
+    fun removeRallyPoint(index: Int): Boolean =
+        invoke("$RALLY_ROOT.removePoint", "[\"@$RALLY_POINTS.$index\"]")
 
     fun adjustVertex(polygon: Int, vertex: Int, latitude: Double, longitude: Double): Boolean =
         invoke(

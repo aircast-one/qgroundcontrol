@@ -128,6 +128,8 @@ private fun MapSpikeScreen(mapStyle: String) {
                         is MapHit.Waypoint -> PlanBridge.moveItem(hit.index, lat, lon)
                         is MapHit.FenceVertex -> FenceBridge.adjustVertex(hit.polygon, hit.vertex, lat, lon)
                         is MapHit.SurveyVertex -> SurveyBridge.adjustAreaVertex(hit.item, hit.vertex, lat, lon)
+                        // A rally point has no drag path of its own yet.
+                        is MapHit.Rally -> Unit
                     }
                 }
             },
@@ -245,8 +247,11 @@ private fun MapSpikeScreen(mapStyle: String) {
                 val survey = surveyList.firstOrNull()
                 val waypoint = (selected as? MapHit.Waypoint)
                     ?.let { hit -> items.firstOrNull { it.index == hit.index } }
+                val fenceHit = selected as? MapHit.FenceVertex
+                val surveyHit = selected as? MapHit.SurveyVertex
+                val rallyHit = selected as? MapHit.Rally
 
-                if (survey != null || waypoint != null) {
+                if (survey != null || waypoint != null || fenceHit != null || rallyHit != null) {
                     Row(
                         Modifier.fillMaxWidth(),
                         horizontalArrangement = Arrangement.spacedBy(4.dp),
@@ -279,6 +284,28 @@ private fun MapSpikeScreen(mapStyle: String) {
                                 selected = null
                             }) { Text("Delete #${item.index}") }
                         }
+
+                        fenceHit?.let { hit ->
+                            TextButton(onClick = {
+                                onBridge { FenceBridge.deletePolygon(hit.polygon) }
+                                selected = null
+                            }) { Text("Delete fence") }
+                        }
+
+                        surveyHit?.let { hit ->
+                            TextButton(onClick = {
+                                onBridge { PlanBridge.removeItem(hit.item) }
+                                selected = null
+                            }) { Text("Delete survey") }
+                        }
+
+                        rallyHit?.let { hit ->
+                            TextButton(onClick = {
+                                onBridge { FenceBridge.removeRallyPoint(hit.index) }
+                                selected = null
+                            }) { Text("Delete rally") }
+                        }
+
                     }
                 }
             }

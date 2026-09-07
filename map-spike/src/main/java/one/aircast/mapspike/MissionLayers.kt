@@ -134,9 +134,15 @@ fun fenceFeatures(polygons: List<FencePolygon>): FeatureCollection {
     return FeatureCollection.fromFeatures(features)
 }
 
+const val RALLY_INDEX_PROPERTY = "rallyIndex"
+
 fun rallyFeatures(points: List<RallyPoint>): FeatureCollection =
     FeatureCollection.fromFeatures(
-        points.map { Feature.fromGeometry(Point.fromLngLat(it.longitude, it.latitude)) },
+        points.map { point ->
+            Feature.fromGeometry(Point.fromLngLat(point.longitude, point.latitude)).apply {
+                addNumberProperty(RALLY_INDEX_PROPERTY, point.index)
+            }
+        },
     )
 
 fun renderFences(style: Style, polygons: List<FencePolygon>, rally: List<RallyPoint>) {

@@ -17,6 +17,8 @@ sealed interface MapHit {
     data class FenceVertex(val polygon: Int, val vertex: Int) : MapHit
 
     data class SurveyVertex(val item: Int, val vertex: Int) : MapHit
+
+    data class Rally(val index: Int) : MapHit
 }
 
 // Fence handles win a tie. They sit on the fence outline, which a waypoint can
@@ -34,6 +36,10 @@ fun hitTest(map: MapLibreMap, x: Float, y: Float): MapHit? {
                 else -> MapHit.FenceVertex(owner, vertex)
             }
         }
+    }
+
+    map.queryRenderedFeatures(box, RALLY_LAYER).firstOrNull()?.let { feature ->
+        feature.getNumberProperty(RALLY_INDEX_PROPERTY)?.toInt()?.let { return MapHit.Rally(it) }
     }
 
     return map.queryRenderedFeatures(box, MISSION_DOT_LAYER, MISSION_LAYER)
