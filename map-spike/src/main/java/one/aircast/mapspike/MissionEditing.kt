@@ -9,6 +9,7 @@ import org.maplibre.android.maps.MapView
 import org.maplibre.android.maps.Style
 
 private const val HIT_RADIUS_PX = 44f
+private const val DRAG_WRITE_INTERVAL_MS = 120L
 private const val TAP_SLOP_PX = 20f
 
 sealed interface MapHit {
@@ -71,6 +72,7 @@ fun attachMissionEditing(
     var downX = 0f
     var downY = 0f
     var moved = false
+    var lastWriteAt = 0L
 
     // Long press adds. It never deletes, because a slow drag begins with a long
     // press and deleting the waypoint the user meant to move is unrecoverable.
@@ -105,7 +107,15 @@ fun attachMissionEditing(
                 ) {
                     moved = true
                 }
-                if (moved) {
+                // Every write is a blocking trip into the Qt thread, and a drag
+                // delivers touch moves far faster than those can complete. Writing
+                // one per event floods the bridge with overlapping calls whose
+                // order is not guaranteed, so the item can settle somewhere the
+                // finger never was. Intermediate positions are dropped instead;
+                // the release below always writes the real one.
+                val now = event.eventTime
+                if (moved && now - lastWriteAt >= DRAG_WRITE_INTERVAL_MS) {
+                    lastWriteAt = now
                     val target = map.projection.fromScreenLocation(PointF(event.x, event.y))
                     onMove(hit, target.latitude, target.longitude)
                 }
@@ -119,7 +129,10 @@ fun attachMissionEditing(
                 if (hit == null) {
                     false
                 } else {
-                    if (!moved) {
+                    if (moved) {
+                        val target = map.projection.fromScreenLocation(PointF(event.x, event.y))
+                        onMove(hit, target.latitude, target.longitude)
+                    } else {
                         onSelected(hit)
                         view.performClick()
                     }
