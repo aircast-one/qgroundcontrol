@@ -42,6 +42,7 @@ private const val VEHICLE_HEADING_LAYER = "aircast-vehicle-heading-layer"
 private const val VEHICLE_ARROW_IMAGE = "aircast-vehicle-arrow"
 
 const val HEADING_PROPERTY = "heading"
+const val STALE_PROPERTY = "stale"
 private const val TRAIL_SOURCE = "aircast-trail"
 private const val HOME_SOURCE = "aircast-home"
 private const val HOME_LAYER = "aircast-home-layer"
@@ -57,6 +58,7 @@ const val TRAIL_BREAK_DEGREES = 0.5
 private const val MIN_FIT_SPAN_DEGREES = 1e-5
 private const val FIT_PADDING_PIXELS = 80
 private const val LOGO_EDGE_MARGIN_PX = 16
+private const val STALE_COLOUR = "#9E9E9E"
 
 const val DEMO_STYLE_URL = "https://demotiles.maplibre.org/style.json"
 
@@ -86,9 +88,14 @@ fun isPlottable(latitude: Double, longitude: Double): Boolean =
 
 // A vehicle that has gone away has no position, and leaving its last one on the
 // map draws an aircraft that is not there, which is worse than drawing nothing.
-fun vehicleFeatures(latitude: Double, longitude: Double, heading: Double): FeatureCollection =
+fun vehicleFeatures(
+    latitude: Double,
+    longitude: Double,
+    heading: Double,
+    stale: Boolean = false,
+): FeatureCollection =
     if (isPlottable(latitude, longitude)) {
-        FeatureCollection.fromFeatures(listOf(vehicleFeature(latitude, longitude, heading)))
+        FeatureCollection.fromFeatures(listOf(vehicleFeature(latitude, longitude, heading, stale)))
     } else {
         FeatureCollection.fromFeatures(emptyList())
     }
@@ -96,8 +103,14 @@ fun vehicleFeatures(latitude: Double, longitude: Double, heading: Double): Featu
 // Heading only means something once the vehicle reports it. Without it the
 // feature carries no heading property and the arrow layer filters itself out,
 // leaving the plain position dot.
-fun vehicleFeature(latitude: Double, longitude: Double, heading: Double): Feature =
+fun vehicleFeature(
+    latitude: Double,
+    longitude: Double,
+    heading: Double,
+    stale: Boolean = false,
+): Feature =
     Feature.fromGeometry(Point.fromLngLat(longitude, latitude)).apply {
+        addBooleanProperty(STALE_PROPERTY, stale)
         if (!heading.isNaN()) {
             addNumberProperty(HEADING_PROPERTY, ((heading % 360) + 360) % 360)
         }
@@ -166,6 +179,7 @@ fun VehicleMap(
     val longitude by mapDouble("vehicle.longitude")
     val heading by mapDouble("vehicle.heading")
     val home by mapCoordinate("vehicle.homePosition")
+    val linkLost by mapBool("vehicle.vehicleLinkManager.communicationLost")
 
     var map by remember { mutableStateOf<MapLibreMap?>(null) }
     var style by remember { mutableStateOf<Style?>(null) }
@@ -249,11 +263,11 @@ fun VehicleMap(
     // spot changes heading without moving, and the arrow was never redrawn for it.
     // The old early return also skipped the markers whenever the position was
     // unchanged or unusable, so a vehicle that disconnected stayed on the map.
-    LaunchedEffect(style, latitude, longitude, heading, home) {
+    LaunchedEffect(style, latitude, longitude, heading, home, linkLost) {
         val currentStyle = style ?: return@LaunchedEffect
 
         (currentStyle.getSource(VEHICLE_SOURCE) as? GeoJsonSource)
-            ?.setGeoJson(vehicleFeatures(latitude, longitude, heading))
+            ?.setGeoJson(vehicleFeatures(latitude, longitude, heading, linkLost))
 
         (currentStyle.getSource(HOME_SOURCE) as? GeoJsonSource)?.setGeoJson(
             home?.let { Feature.fromGeometry(Point.fromLngLat(it.longitude, it.latitude)) }
@@ -373,7 +387,12 @@ private fun installVehicleLayer(style: Style) {
         style.addSource(GeoJsonSource(VEHICLE_SOURCE))
         style.addLayer(
             CircleLayer(VEHICLE_LAYER, VEHICLE_SOURCE).withProperties(
-                PropertyFactory.circleColor("#E53935"),
+                PropertyFactory.circleColor(
+                    Expression.switchCase(
+                        Expression.get(STALE_PROPERTY), Expression.literal(STALE_COLOUR),
+                        Expression.literal("#E53935"),
+                    ),
+                ),
                 PropertyFactory.circleRadius(9f),
                 PropertyFactory.circleStrokeColor("#FFFFFF"),
                 PropertyFactory.circleStrokeWidth(2f),
@@ -385,6 +404,12 @@ private fun installVehicleLayer(style: Style) {
                 PropertyFactory.iconImage(VEHICLE_ARROW_IMAGE),
                 PropertyFactory.iconRotate(Expression.get(HEADING_PROPERTY)),
                 PropertyFactory.iconRotationAlignment(Property.ICON_ROTATION_ALIGNMENT_MAP),
+                PropertyFactory.iconOpacity(
+                    Expression.switchCase(
+                        Expression.get(STALE_PROPERTY), Expression.literal(0.4f),
+                        Expression.literal(1.0f),
+                    ),
+                ),
                 PropertyFactory.iconAllowOverlap(true),
                 PropertyFactory.iconIgnorePlacement(true),
             ).withFilter(Expression.has(HEADING_PROPERTY)),

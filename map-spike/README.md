@@ -80,6 +80,11 @@ plan, but on a copter it specifies no coordinate of its own, so nothing is drawn
 count does not move. Counting drawn markers to decide whether a bridge call worked reports a
 working call as a failure. The raw element count is the one that answers that question.
 
+**Mission Start is in the terrain profile too, and it sets the floor.** It carries its own planned
+altitude, usually 0, so a survey flown at one height still spans 0 to that height rather than being
+flat. A genuinely flat profile needs every item at the same altitude, which is rare, so the flat
+case is worth handling but is not the common survey case.
+
 **Mission Start is drawn like a waypoint but is not one.** The settings item takes a coordinate
 once the plan has something in it, so it appears as a numbered dot at the planned launch point.
 It is coloured apart from the waypoints for that reason.
@@ -102,10 +107,14 @@ one that came up a second later. Watches are released when the map goes away too
 watcher polls and diffs every path at 200 ms and stops only when told to watch nothing.
 
 **Draw what the values say, not what movement says.** The vehicle marker used to be redrawn only
-when the position changed, behind an early return. A vehicle rotating on the spot never updated its
-arrow, and a vehicle that went away kept its last marker on screen, drawing an aircraft that was not
-there. The effect is keyed on everything it draws, and an unusable position clears the marker
-rather than skipping the update.
+when the position changed, behind an early return, so a vehicle rotating on the spot never updated
+its arrow. The effect is keyed on everything it draws.
+
+**A lost link does not make the position unusable.** QGC keeps the `Vehicle` and its last known
+coordinate after heartbeats stop, so `isPlottable` stays true and the marker keeps drawing a live
+looking aircraft at a place it may have left. Clearing on an unusable position is right but never
+fires for this; `vehicle.vehicleLinkManager.communicationLost` is what actually answers it, and the
+marker goes hollow rather than vanishing, because the last known position is still worth seeing.
 
 **A tab does not own the process, an activity nearly did.** Three things here assumed otherwise and
 all three were real bugs once the map became a tab: the poll ran on forever, the MapView was never
