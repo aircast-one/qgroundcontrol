@@ -92,8 +92,6 @@ final class MissionStore: ObservableObject, Probeable {
         reload()
     }
 
-    // Snapshots are taken by a timer in the controller rather than per edit, so the
-    // stacks only catch up a beat after a change.
     func startEditing() {
         _ = Bridge.set("plan.undoTracking", true)
         undoPoll?.invalidate()
@@ -109,9 +107,6 @@ final class MissionStore: ObservableObject, Probeable {
         _ = Bridge.set("plan.undoTracking", false)
     }
 
-    // Assigning a @Published value republishes even when it has not changed, and this
-    // runs every second: the plan view re-rendered on every tick, which tore down and
-    // rebuilt every annotation and overlay on the map before any of them could draw.
     private func refreshUndo() {
         let plan = Bridge.group("plan")
         let undo = (plan["canUndo"] as? NSNumber)?.boolValue ?? false
@@ -195,8 +190,6 @@ final class MissionStore: ObservableObject, Probeable {
                 list: list)
         }
 
-        // A complex item keeps its settings as its own properties rather than in the
-        // fact lists a simple item uses.
         let calc = item.isSimpleItem
             ? [:]
             : Bridge.group("plan.missionController.visualItems.\(item.index).cameraCalc")
@@ -421,8 +414,6 @@ final class MissionStore: ObservableObject, Probeable {
         switch action {
         case "reload": reload()
         case "tile":
-            // MapKit never calls loadTile while it cannot render, so the cache path is
-            // exercised directly against a tile known to be in QGC's database.
             return fetchTile(x: Int(args["x"] ?? "") ?? 0,
                              y: Int(args["y"] ?? "") ?? 0,
                              z: Int(args["z"] ?? "") ?? 0,

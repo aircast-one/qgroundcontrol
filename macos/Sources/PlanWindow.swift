@@ -21,8 +21,6 @@ struct AltitudeField: View {
                 .onChange(of: metres) { latest in if !editing { draft = AltitudeField.text(latest) } }
                 .onSubmit(send)
                 .onChange(of: editing) { focused in if !focused { send() } }
-            // Without this the unit is the first thing squeezed out when the row also
-            // carries a command picker and a delete button, leaving a bare number.
             Text("m").font(.caption).foregroundColor(.secondary).fixedSize()
         }
         .padding(.horizontal, 6)
@@ -177,8 +175,6 @@ struct PlanInspector: View {
                 .frame(height: min(max(contentHeight, Overlay.rowMinHeight),
                                    PlanInspector.maximumContentHeight))
                 .overlay(alignment: .bottom) {
-                    // A long list is cut mid-row at the panel's limit, which reads as
-                    // broken rather than as more to scroll to.
                     if contentHeight > PlanInspector.maximumContentHeight {
                         LinearGradient(colors: [.clear, Color(nsColor: .windowBackgroundColor)],
                                        startPoint: .top, endPoint: .bottom)
@@ -325,14 +321,10 @@ struct PlanInspector: View {
         }
     }
 
-    // A plain waypoint has no settings of its own, but it still flies at a height
-    // measured from something, and that is worth saying.
     private func showsAltitudeMode(in group: String) -> Bool {
         group == ItemFact.itemGroup && AltitudeMode.isChoice(mission.itemAltitudeMode)
     }
 
-    // The mission's own settings belong to the item that starts it, which is where QGC
-    // keeps them and the only row that otherwise has nothing to show.
     private var showsMissionSettings: Bool {
         mission.items.first(where: \.isCurrent)?.sequence == 0
             && AltitudeMode.isMissionChoice(mission.globalAltitudeMode)
