@@ -30,6 +30,7 @@ import org.maplibre.android.style.layers.PropertyFactory
 import org.maplibre.android.style.layers.SymbolLayer
 import org.maplibre.android.style.sources.GeoJsonSource
 import org.maplibre.geojson.Feature
+import org.maplibre.geojson.FeatureCollection
 import org.maplibre.geojson.LineString
 import org.maplibre.geojson.Point
 
@@ -40,6 +41,9 @@ private const val VEHICLE_ARROW_IMAGE = "aircast-vehicle-arrow"
 
 const val HEADING_PROPERTY = "heading"
 private const val TRAIL_SOURCE = "aircast-trail"
+private const val HOME_SOURCE = "aircast-home"
+private const val HOME_LAYER = "aircast-home-layer"
+private const val HOME_LABEL_LAYER = "aircast-home-label-layer"
 private const val TRAIL_LAYER = "aircast-trail-layer"
 
 private const val DEFAULT_ZOOM = 16.0
@@ -135,6 +139,7 @@ fun VehicleMap(
     val latitude by mapDouble("vehicle.latitude")
     val longitude by mapDouble("vehicle.longitude")
     val heading by mapDouble("vehicle.heading")
+    val home by mapCoordinate("vehicle.homePosition")
 
     var map by remember { mutableStateOf<MapLibreMap?>(null) }
     var style by remember { mutableStateOf<Style?>(null) }
@@ -206,6 +211,12 @@ fun VehicleMap(
         (currentStyle.getSource(VEHICLE_SOURCE) as? GeoJsonSource)
             ?.setGeoJson(vehicleFeature(latitude, longitude, heading))
 
+        (currentStyle.getSource(HOME_SOURCE) as? GeoJsonSource)?.setGeoJson(
+            home?.let { Feature.fromGeometry(Point.fromLngLat(it.longitude, it.latitude)) }
+                ?.let { FeatureCollection.fromFeatures(listOf(it)) }
+                ?: FeatureCollection.fromFeatures(emptyList()),
+        )
+
         if (track.size >= 2) {
             val line = LineString.fromLngLats(track.points().map { Point.fromLngLat(it.longitude, it.latitude) })
             (currentStyle.getSource(TRAIL_SOURCE) as? GeoJsonSource)
@@ -238,6 +249,28 @@ private fun installLayers(style: Style) {
             LineLayer(TRAIL_LAYER, TRAIL_SOURCE).withProperties(
                 PropertyFactory.lineColor("#4FC3F7"),
                 PropertyFactory.lineWidth(3f),
+            ),
+        )
+    }
+
+    if (style.getSource(HOME_SOURCE) == null) {
+        style.addSource(GeoJsonSource(HOME_SOURCE))
+        style.addLayer(
+            CircleLayer(HOME_LAYER, HOME_SOURCE).withProperties(
+                PropertyFactory.circleColor("#43A047"),
+                PropertyFactory.circleRadius(12f),
+                PropertyFactory.circleStrokeColor("#FFFFFF"),
+                PropertyFactory.circleStrokeWidth(2f),
+            ),
+        )
+        style.addLayer(
+            SymbolLayer(HOME_LABEL_LAYER, HOME_SOURCE).withProperties(
+                PropertyFactory.textField("H"),
+                PropertyFactory.textFont(arrayOf("Noto Sans Regular")),
+                PropertyFactory.textSize(14f),
+                PropertyFactory.textColor("#FFFFFF"),
+                PropertyFactory.textAllowOverlap(true),
+                PropertyFactory.textIgnorePlacement(true),
             ),
         )
     }

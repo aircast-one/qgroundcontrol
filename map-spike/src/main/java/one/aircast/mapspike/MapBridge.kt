@@ -87,6 +87,21 @@ fun mapCount(path: String): State<Int> {
     return remember(path) { derivedStateOf { json?.optJSONArray("elements")?.length() ?: 0 } }
 }
 
+// A coordinate the vehicle has not established yet still arrives with
+// latitude and longitude of zero, so the validity flag decides, not the numbers.
+fun coordinateOf(json: JSONObject?): TrackPoint? {
+    val coordinate = json?.takeIf { it.optBoolean("valid") } ?: return null
+    val latitude = coordinate.optDouble("latitude", Double.NaN)
+    val longitude = coordinate.optDouble("longitude", Double.NaN)
+    return if (isPlottable(latitude, longitude)) TrackPoint(latitude, longitude) else null
+}
+
+@Composable
+fun mapCoordinate(path: String): State<TrackPoint?> {
+    val json by mapPath(path)
+    return remember(path) { derivedStateOf { coordinateOf(json) } }
+}
+
 @Composable
 fun mapBool(path: String): State<Boolean> {
     val json by mapPath(path)

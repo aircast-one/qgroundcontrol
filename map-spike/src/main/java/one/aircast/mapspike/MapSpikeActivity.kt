@@ -51,6 +51,18 @@ class MapSpikeActivity : ComponentActivity() {
     }
 }
 
+// Distance home is what a pilot actually wants off a home position, and it
+// doubles as the only visible sign of one when the vehicle is sitting on it.
+fun homeLabel(home: TrackPoint?, latitude: Double, longitude: Double): String {
+    if (home == null) {
+        return " · no home"
+    }
+    if (!isPlottable(latitude, longitude)) {
+        return " · home set"
+    }
+    return " · %.0f m home".format(metresBetween(home, TrackPoint(latitude, longitude)))
+}
+
 @Composable
 private fun MapSpikeScreen(mapStyle: String) {
     var follow by remember { mutableStateOf(true) }
@@ -85,6 +97,7 @@ private fun MapSpikeScreen(mapStyle: String) {
     val latitude by mapDouble("vehicle.latitude")
     val longitude by mapDouble("vehicle.longitude")
     val heading by mapDouble("vehicle.heading")
+    val home by mapCoordinate("vehicle.homePosition")
     val mode by mapString("vehicle.flightMode")
     val vehicleId by mapInt("vehicle.id")
     val vehicleCount by mapCount("vehicles.vehicles")
@@ -181,7 +194,8 @@ private fun MapSpikeScreen(mapStyle: String) {
                         "No position"
                     } else {
                         "%.6f, %.6f".format(latitude, longitude) +
-                            if (heading.isNaN()) "" else " · %.0f°".format(heading)
+                            (if (heading.isNaN()) "" else " · %.0f°".format(heading)) +
+                            homeLabel(home, latitude, longitude)
                     },
                     style = MaterialTheme.typography.bodySmall,
                 )
