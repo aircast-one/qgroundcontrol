@@ -89,9 +89,37 @@ private val FLIGHT_BEHAVIOR_PX4 = listOf(
     ),
 )
 
+private val FLIGHT_MODES_APM = listOf(
+    ParameterSection("Mode switch channel", listOf("FLTMODE_CH")),
+    ParameterSection(
+        "Mode slots",
+        (1..6).map { "FLTMODE$it" },
+        "ArduPilot mode numbers, not names. This firmware does not publish the " +
+            "names, so check them against the ArduPilot mode list before changing one.",
+    ),
+    ParameterSection("Options", listOf("SIMPLE", "SUPER_SIMPLE", "INITIAL_MODE")),
+)
+
+private val FLIGHT_MODES_PX4 = listOf(
+    ParameterSection("Mode switch channel", listOf("RC_MAP_FLTMODE")),
+    ParameterSection(
+        "Mode slots",
+        (1..6).map { "COM_FLTMODE$it" },
+        "PX4 mode numbers. Check them against the PX4 mode list before changing one.",
+    ),
+    ParameterSection(
+        "Single function switches",
+        listOf(
+            "RC_MAP_RETURN_SW", "RC_MAP_KILL_SW", "RC_MAP_ARM_SW",
+            "RC_MAP_LOITER_SW", "RC_MAP_OFFB_SW", "RC_MAP_GEAR_SW", "RC_MAP_TRANS_SW",
+        ),
+    ),
+)
+
 internal fun setupSectionsFor(componentName: String, isPx4: Boolean): List<ParameterSection>? =
     when (componentName) {
         "Safety" -> if (isPx4) SAFETY_PX4 else SAFETY_APM
+        "Flight Modes" -> if (isPx4) FLIGHT_MODES_PX4 else FLIGHT_MODES_APM
         "Lights" -> if (isPx4) null else LIGHTS_APM
         "Camera" -> if (isPx4) null else CAMERA_APM
         "Flight Behavior" -> if (isPx4) FLIGHT_BEHAVIOR_PX4 else null

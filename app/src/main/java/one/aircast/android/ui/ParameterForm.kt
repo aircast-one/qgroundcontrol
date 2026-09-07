@@ -17,14 +17,25 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.withContext
 import org.json.JSONObject
 import one.aircast.android.bridge.Fact
 import one.aircast.android.bridge.Qgc
 
-internal data class ParameterSection(val title: String, val names: List<String>)
+private val METADATA_SETTLE_DELAYS_MS = listOf(1_000L, 2_000L, 4_000L)
 
-internal data class ParameterRows(val title: String, val facts: List<Fact>)
+internal data class ParameterSection(
+    val title: String,
+    val names: List<String>,
+    val note: String = "",
+)
+
+internal data class ParameterRows(
+    val title: String,
+    val facts: List<Fact>,
+    val note: String,
+)
 
 internal fun factFromParameter(name: String, json: JSONObject): Fact? =
     if (json.optString("kind") == "fact") {
@@ -38,7 +49,7 @@ private fun readSections(sections: List<ParameterSection>): List<ParameterRows> 
         val facts = section.names.mapNotNull { name ->
             factFromParameter(name, Qgc.get(parameterPath(name)))
         }
-        if (facts.isEmpty()) null else ParameterRows(section.title, facts)
+        if (facts.isEmpty()) null else ParameterRows(section.title, facts, section.note)
     }
 
 @Composable
@@ -53,6 +64,14 @@ internal fun ParameterForm(
     LaunchedEffect(sections, reloads) {
         rows = withContext(Dispatchers.Default) { readSections(sections) }
         loaded = true
+
+        METADATA_SETTLE_DELAYS_MS.forEach { wait ->
+            delay(wait)
+            val settled = withContext(Dispatchers.Default) { readSections(sections) }
+            if (settled != rows) {
+                rows = settled
+            }
+        }
     }
 
     if (!loaded) {
@@ -75,6 +94,16 @@ internal fun ParameterForm(
                         .fillMaxWidth()
                         .padding(horizontal = 16.dp, vertical = 12.dp),
                 )
+                if (section.note.isNotBlank()) {
+                    Text(
+                        text = section.note,
+                        style = MaterialTheme.typography.bodySmall,
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(horizontal = 16.dp)
+                            .padding(bottom = 12.dp),
+                    )
+                }
                 HorizontalDivider()
             }
             items(section.facts.size, key = { section.facts[it].path }) { index ->

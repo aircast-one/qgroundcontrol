@@ -70,6 +70,17 @@ class ParameterFormTest {
     }
 
     @Test
+    fun `flight modes offer six slots on both firmwares`() {
+        val apm = setupSectionsFor("Flight Modes", isPx4 = false)!!
+        val px4 = setupSectionsFor("Flight Modes", isPx4 = true)!!
+        assertEquals(listOf("FLTMODE1", "FLTMODE6"), apm[1].names.let { listOf(it.first(), it.last()) })
+        assertEquals(6, apm[1].names.size)
+        assertEquals(listOf("COM_FLTMODE1", "COM_FLTMODE6"), px4[1].names.let { listOf(it.first(), it.last()) })
+        assertEquals("FLTMODE_CH", apm[0].names.single())
+        assertEquals("RC_MAP_FLTMODE", px4[0].names.single())
+    }
+
+    @Test
     fun `components without a native form report none`() {
         assertNull(setupSectionsFor("Sensors", isPx4 = false))
         assertNull(setupSectionsFor("Radio", isPx4 = true))
