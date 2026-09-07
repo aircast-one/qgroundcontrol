@@ -196,6 +196,15 @@ A failed load is not destructive. With a survey in the plan, loading a missing f
 file that exists but is not a plan both left the item count untouched, so opening the wrong document
 costs nothing but the attempt.
 
+**What the plan file affordances have to do, taken from `PlanView.qml` rather than invented.** Save
+and Save As are both enabled on `containsItems && !syncInProgress`. Save reuses the existing file
+when there is one — `currentPlanFile != ""` means call `saveToCurrent()`, otherwise it behaves as
+Save As and asks for a destination. That branch is the whole reason a one-slot design is avoidable:
+`currentPlanFile` is what makes Save mean "again, where I said before". `dirty` says whether there
+is anything to save; `containsItems` says whether there is a plan at all, and they are not the same
+question. Export KML is a separate action, not a third choice in a Save dialog, because it writes a
+format nothing here can reopen.
+
 **Loading from the vehicle throws work away.** It overwrites whatever is drawn and there is no
 undo, so QGC asks first when the plan has unsent changes. `plan.dirty` says when that is, and Load
 here asks the same question rather than being the one place that discards a survey silently.
