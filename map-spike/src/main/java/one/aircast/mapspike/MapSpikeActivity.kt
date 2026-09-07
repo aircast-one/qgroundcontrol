@@ -116,6 +116,7 @@ internal fun MapSpikeScreen(mapStyle: String) {
 
     suspend fun refresh() {
         withContext(Dispatchers.Default) {
+            MapBridge.refresh()
             val plan = PlanBridge.rawItems()
             if (plan != null) {
                 MapBridge.markReachable()

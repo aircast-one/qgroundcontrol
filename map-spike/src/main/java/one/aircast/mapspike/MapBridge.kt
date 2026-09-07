@@ -22,46 +22,43 @@ object MapBridge {
     private val _bridgeReady = MutableStateFlow(false)
     val bridgeReady: StateFlow<Boolean> = _bridgeReady.asStateFlow()
 
-    fun start() {
-        runCatching {
-            QGCBridge.setEventListener { path, json ->
-                _values.value = _values.value + (path to runCatching { JSONObject(json) }.getOrDefault(JSONObject()))
-            }
-            _bridgeReady.value = true
-        }
-    }
-
-    // This used to tell the bridge to watch nothing, which stopped the 200 ms
-    // poll for a map nobody was looking at. That was right while this module was
-    // the only client. It is not: QGCBridgeCore::watch replaces the watcher's
-    // whole path list, so clearing it wiped the paths the app's other screens
-    // had registered and froze their telemetry. Local state only until the
-    // bridge grows a per-client registry, at which point this releases just
-    // this client's paths.
+    // Reads, not watches. QGCBridgeCore::watch replaces the watcher's whole path
+    // list and setEventListener is a single slot, so a second client of the
+    // bridge cannot arm either without silently disarming the first. get() has
+    // no such shared state, and the screen already polls, so the map takes its
+    // values from the same pass. Costs latency, buys not breaking the app's
+    // other screens.
     @Synchronized
     fun release() {
         watched.clear()
         _values.value = emptyMap()
     }
 
-    // A watch registered before Qt has its natives in place throws, and the path
-    // has to come back out of the set or nothing ever retries it: the screen
-    // would go on reporting a dead bridge at a bridge that came up seconds later.
     @Synchronized
     fun watch(path: String) {
-        if (!watched.add(path)) {
-            return
-        }
-        runCatching { QGCBridge.watch(watched.joinToString(",")) }
-            .onSuccess { _bridgeReady.value = true }
-            .onFailure {
-                watched.remove(path)
-                _bridgeReady.value = false
-            }
+        watched.add(path)
     }
 
-    // A read that comes back is proof the bridge is alive, whatever an earlier
-    // failed watch concluded.
+    @Synchronized
+    private fun paths(): List<String> = watched.toList()
+
+    // Driven by the screen's own poll so there is one cadence and one place that
+    // decides the map is talking to a live bridge.
+    fun refresh() {
+        val reachable = paths().fold(false) { any, path ->
+            val json = runCatching { JSONObject(QGCBridge.get(path)) }.getOrNull()
+            if (json == null) {
+                any
+            } else {
+                _values.value = _values.value + (path to json)
+                true
+            }
+        }
+        if (reachable) {
+            markReachable()
+        }
+    }
+
     fun markReachable() {
         _bridgeReady.value = true
     }
@@ -69,8 +66,7 @@ object MapBridge {
 
 @Composable
 fun mapPath(path: String): State<JSONObject?> {
-    val ready by MapBridge.bridgeReady.collectAsState()
-    LaunchedEffect(path, ready) { MapBridge.watch(path) }
+    LaunchedEffect(path) { MapBridge.watch(path) }
     val values by MapBridge.values.collectAsState()
     return remember(path) { derivedStateOf { values[path] } }
 }
