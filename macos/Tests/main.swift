@@ -954,6 +954,45 @@ func checkCameraSections() {
 
 checkCameraSections()
 
+func checkVehicleMessages() {
+    let live = "<font style=\"<#E>\">[23:24:17.897 ] Critical: PreArm: GPS 1: not healthy</font><br/>"
+        + "<font style=\"<#N>\">[23:23:26.733 ] Info: Frame: QUAD/PLUS</font><br/>"
+        + "<font style=\"<#I>\">[23:23:26.733 ] Warning: something odd</font><br/>"
+
+    let parsed = VehicleMessage.parse(live)
+    expect(parsed.count == 3, "every message in the run is read, newest first")
+    expect(parsed[0].text, "PreArm: GPS 1: not healthy",
+           "the tags and the severity word go; the dot already says the level")
+    expect(VehicleMessage.withoutSeverity("PreArm: GPS 1: not healthy"), "PreArm: GPS 1: not healthy",
+           "a message whose first word merely ends in a colon keeps all of it")
+    expect(VehicleMessage.withoutSeverity("EMERGENCY: falling"), "falling",
+           "every severity QGC emits is stripped, not just the common ones")
+    expect(VehicleMessage.withoutSeverity("no colon at all"), "no colon at all",
+           "and a message without a colon is untouched")
+    expect(parsed[0].time, "23:24:17", "the stamp keeps the clock and drops the milliseconds")
+    expect(parsed[0].level == .error, "a critical message is an error")
+    expect(parsed[1].level == .normal, "an info message is not")
+    expect(parsed[2].level == .warning, "and a warning is its own level")
+
+    expect(VehicleMessage.parse("").isEmpty, "a vehicle that has said nothing has no messages")
+    expect(VehicleMessage.parse("<font style=\"<#N>\"></font><br/>").isEmpty,
+           "an empty message is dropped rather than shown blank")
+
+    let bare = VehicleMessage.parse("<font style=\"<#N>\">no stamp here</font><br/>")
+    expect(bare.count == 1, "a message without a stamp is still a message")
+    expect(bare[0].text, "no stamp here", "and keeps all of its text")
+    expect(VehicleMessage.parse("<font style=\"<#N>\">Info: unstamped</font><br/>")[0].text, "unstamped",
+           "a message with no stamp still loses its severity word")
+    expect(bare[0].time, "", "with no time to show")
+
+    expect(VehicleMessage.worst(parsed) == .error, "the worst of a run is what the panel reports")
+    expect(VehicleMessage.worst([]) == .normal, "silence is not a fault")
+    expect(VehicleMessage.worst(Array(parsed.dropFirst())) == .warning,
+           "without the error, a warning is the worst")
+}
+
+checkVehicleMessages()
+
 if failures == 0 {
     print("all Swift checks passed")
     exit(0)

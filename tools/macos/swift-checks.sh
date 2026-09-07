@@ -32,6 +32,7 @@ swiftc -Onone -o "$out" \
     "$root/macos/Sources/MavlinkInspectorModel.swift" \
     "$root/macos/Sources/BatteryReadingModel.swift" \
     "$root/macos/Sources/FrameSetupModel.swift" \
+    "$root/macos/Sources/VehicleMessageModel.swift" \
     "$root/macos/Sources/TerrainProfileModel.swift" \
     "$root/macos/Sources/MapFraming.swift" \
     "$root/macos/Sources/FenceRallyModel.swift" \

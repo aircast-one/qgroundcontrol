@@ -60,6 +60,7 @@ add_library(QGCNativeUI STATIC
     Sources/BatteryReadingModel.swift
     Sources/Power.swift
     Sources/FrameSetupModel.swift
+    Sources/VehicleMessageModel.swift
     Sources/Frame.swift
     Sources/OverlayKit.swift
     Sources/AppShell.swift

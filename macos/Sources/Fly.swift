@@ -6,6 +6,7 @@ final class FlyStore: ObservableObject, Probeable {
     @Published private(set) var telemetry = FlyTelemetry()
     @Published private(set) var connected = false
     @Published private(set) var position: VehicleMarker?
+    @Published private(set) var messages: [VehicleMessage] = []
 
     private var poll: Timer?
 
@@ -28,6 +29,7 @@ final class FlyStore: ObservableObject, Probeable {
             if connected { connected = false }
             if telemetry != FlyTelemetry() { telemetry = FlyTelemetry() }
             if position != nil { position = nil }
+            if !messages.isEmpty { messages = [] }
             return
         }
 
@@ -60,6 +62,9 @@ final class FlyStore: ObservableObject, Probeable {
         if !connected { connected = true }
         if reading != telemetry { telemetry = reading }
         if placed != position { position = placed }
+
+        let heard = VehicleMessage.parse((vehicle["formattedMessages"] as? String) ?? "")
+        if heard != messages { messages = heard }
     }
 
     private static func facts(_ object: [String: Any]) -> [String: Double] {
@@ -70,13 +75,19 @@ final class FlyStore: ObservableObject, Probeable {
         }
     }
 
+    var latestMessages: [VehicleMessage] { Array(messages.prefix(FlyStore.messageLimit)) }
+
+    static let messageLimit = 6
+
     func probeState() -> [String: Any] {
         ["connected": connected, "mode": telemetry.mode, "state": telemetry.stateText,
          "altitude": FlyTelemetry.metres(telemetry.altitude),
          "groundSpeed": FlyTelemetry.speed(telemetry.groundSpeed),
          "heading": FlyTelemetry.degrees(telemetry.heading),
          "battery": telemetry.batteryText, "gps": telemetry.gpsText,
-         "placed": position != nil]
+         "placed": position != nil,
+         "worstMessage": VehicleMessage.worst(latestMessages).rawValue,
+         "messages": latestMessages.map { ["time": $0.time, "text": $0.text, "level": $0.level.rawValue] }]
     }
 
     func probeInvoke(action: String, args: [String: String]) -> [String: Any] {

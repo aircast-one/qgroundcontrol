@@ -23,6 +23,10 @@ struct FlyPanel: View {
                     GroupRow(title: "GPS", value: fly.telemetry.gpsText,
                              leading: { dot(fly.telemetry.gpsLevel) })
                 }
+
+                if fly.connected {
+                    messages
+                }
             }
             .padding(Overlay.gutter)
             .frame(width: 300)
@@ -49,6 +53,36 @@ struct FlyPanel: View {
             }
         }
         .padding(.horizontal, 2)
+    }
+
+    private var messages: some View {
+        VStack(alignment: .leading, spacing: Overlay.unit * 0.3) {
+            SectionLabel(text: "From the vehicle")
+            GroupCard {
+                if fly.latestMessages.isEmpty {
+                    EmptyStateRow(text: "Nothing said yet.")
+                } else {
+                    ForEach(Array(fly.latestMessages.enumerated()), id: \.element.id) { row, message in
+                        GroupRow(title: message.text,
+                                 description: message.time,
+                                 showSeparator: row > 0,
+                                 titleLines: 2,
+                                 leading: { Circle()
+                                     .fill(FlyPanel.colour(message.level))
+                                     .frame(width: 7, height: 7) },
+                                 trailing: { EmptyView() })
+                    }
+                }
+            }
+        }
+    }
+
+    static func colour(_ level: VehicleMessage.Level) -> Color {
+        switch level {
+        case .error: return Overlay.vehicle
+        case .warning: return .orange
+        case .normal: return .secondary
+        }
     }
 
     private func dot(_ level: FlyTelemetry.Level) -> some View {
