@@ -112,21 +112,11 @@ def refresh_clone():
     return CLONE_BIN
 
 
-QT_FRAMEWORKS = Path("/Users/pavliha/Qt/6.8.3/macos/lib")
-
-
-def run_environment():
-    env = dict(os.environ)
-    if QT_FRAMEWORKS.exists():
-        env["DYLD_FRAMEWORK_PATH"] = str(QT_FRAMEWORKS)
-    return env
-
-
 def run_suite(name):
     binary = refresh_clone()
     args = [str(binary), "--allow-multiple", f"--unittest:{name}" if name else "--unittest"]
     started = time.monotonic()
-    proc = subprocess.run(args, capture_output=True, text=True, timeout=3600, env=run_environment())
+    proc = subprocess.run(args, capture_output=True, text=True, timeout=3600)
     return proc.stdout + proc.stderr, time.monotonic() - started, proc.returncode
 
 
