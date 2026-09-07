@@ -40,6 +40,7 @@ import kotlinx.coroutines.withContext
 
 private const val PLAN_POLL_MS = 700L
 private const val FAILURE_MESSAGE_MS = 2500L
+private const val CONFIRM_TIMEOUT_MS = 5000L
 
 class MapSpikeActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -57,6 +58,7 @@ class MapSpikeActivity : ComponentActivity() {
 internal fun MapSpikeScreen(mapStyle: String) {
     var follow by remember { mutableStateOf(true) }
     var fitRequest by remember { mutableStateOf(0) }
+    var loadArmed by remember { mutableStateOf(false) }
     var items by remember { mutableStateOf<List<MissionItem>>(emptyList()) }
     var fences by remember { mutableStateOf<List<FencePolygon>>(emptyList()) }
     var rally by remember { mutableStateOf<List<RallyPoint>>(emptyList()) }
@@ -88,6 +90,7 @@ internal fun MapSpikeScreen(mapStyle: String) {
 
     val latitude by mapDouble("vehicle.latitude")
     val longitude by mapDouble("vehicle.longitude")
+    val planDirty by mapBool("plan.dirty")
     val missionDistance by mapDouble("plan.missionController.missionTotalDistance")
     val missionTime by mapDouble("plan.missionController.missionTime")
     val mode by mapString("vehicle.flightMode")
@@ -121,6 +124,15 @@ internal fun MapSpikeScreen(mapStyle: String) {
                 surveyList = nextSurveys
                 profile = nextProfile
             }
+        }
+    }
+
+    // An armed Load that stays armed is a trap: the next stray tap discards the
+    // plan. It goes back to asking on its own.
+    LaunchedEffect(loadArmed) {
+        if (loadArmed) {
+            delay(CONFIRM_TIMEOUT_MS)
+            loadArmed = false
         }
     }
 
@@ -226,8 +238,13 @@ internal fun MapSpikeScreen(mapStyle: String) {
                     horizontalArrangement = Arrangement.spacedBy(4.dp),
                 ) {
                     TextButton(onClick = {
-                        onBridge("Loading from vehicle") { PlanBridge.loadFromVehicle() }
-                    }) { Text("Load") }
+                        if (loadStep(planDirty, loadArmed) == LoadStep.Confirm) {
+                            loadArmed = true
+                        } else {
+                            loadArmed = false
+                            onBridge("Loading from vehicle") { PlanBridge.loadFromVehicle() }
+                        }
+                    }) { Text(if (loadArmed) "Discard & load" else "Load") }
 
                     TextButton(onClick = {
                         onBridge("Sending to vehicle") { PlanBridge.sendToVehicle() }

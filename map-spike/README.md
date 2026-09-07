@@ -110,6 +110,10 @@ poll, from a median of 66 ms to 32 ms on an 84 point survey. Each call serialise
 subtree to JSON and blocks the Qt thread while it does, so the cost is in the trip, not the
 parsing.
 
+**Loading from the vehicle throws work away.** It overwrites whatever is drawn and there is no
+undo, so QGC asks first when the plan has unsent changes. `plan.dirty` says when that is, and Load
+here asks the same question rather than being the one place that discards a survey silently.
+
 **`clearAllInteractive` does not clear anything stored.** It ends an interactive edit. A button
 built on it reports success and changes nothing. `deletePolygon` is the real path.
 

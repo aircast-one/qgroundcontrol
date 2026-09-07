@@ -69,7 +69,6 @@ object PlanBridge {
 
     fun sendToVehicle() = invoke("$PLAN_ROOT.sendToVehicle")
 
-    fun removeAll() = invoke("$PLAN_ROOT.removeAllFromVehicle")
 
     // The insert index addresses the whole visual item list, which starts with a
     // settings item and can hold items that carry no coordinate. Counting only the
