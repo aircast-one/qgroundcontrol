@@ -788,6 +788,60 @@ func checkSurveyStats() {
 
 checkSurveyStats()
 
+func checkCalibration() {
+    expect(!Calibration.read(["kind": "value"]).connected,
+           "with no controller there is nothing to calibrate")
+
+    expect(Calibration.property("UpsideDown", "InProgress"), "orientationCalUpsideDownSideInProgress",
+           "the side properties are derived from the key, matching what the controller exposes")
+    expect(Calibration.property("Down", "Done"), "orientationCalDownSideDone", "for every suffix")
+
+    let idle = Calibration.read(["kind": "object", "calProgress": 0])
+    expect(idle.connected, "an idle controller is still connected")
+    expect(!idle.busy, "and not busy")
+    expect(idle.visibleSides.isEmpty, "with no sides to show")
+    expect(idle.needsAttention, "", "and nothing demanding attention")
+
+    let needy = Calibration.read(["kind": "object", "accelSetupNeeded": true,
+                                  "compassSetupNeeded": true])
+    expect(needy.needsAttention, "The accelerometer and compass both need calibrating.",
+           "both outstanding calibrations are named together")
+    expect(Calibration.read(["kind": "object", "accelSetupNeeded": true]).needsAttention,
+           "The accelerometer needs calibrating.", "and one on its own reads singly")
+
+    let running: [String: Any] = [
+        "kind": "object", "calibrationInProgress": true, "calProgress": 33.4,
+        "showOrientationCalArea": true, "nextEnabled": true, "cancelEnabled": true,
+        "orientationHelpText": "Hold still", "statusText": "Rotate the vehicle",
+        "orientationCalDownSideVisible": true, "orientationCalDownSideDone": true,
+        "orientationCalLeftSideVisible": true, "orientationCalLeftSideInProgress": true,
+        "orientationCalLeftSideRotate": true,
+        "orientationCalRightSideVisible": true,
+    ]
+    let live = Calibration.read(running)
+    expect(live.busy, "a running calibration is busy")
+    expect(live.progressText, "33%", "progress is whole percent")
+    expect(live.visibleSides.map(\.title).joined(separator: ","), "Level,Left side,Right side",
+           "only the sides this calibration asks for are shown, in the vehicle's order")
+    expect(live.sides[0].stage == .done, "a finished side is done")
+    expect(live.sides[2].stage == .inProgress, "the one being held is in progress")
+    expect(live.sides[3].stage == .waiting, "and one not yet reached is waiting")
+    expect(live.sides[2].symbol, "arrow.triangle.2.circlepath",
+           "a side that must be rotated says so rather than showing a plain arrow")
+
+    let cancelling = Calibration.read(["kind": "object", "waitingForCancel": true])
+    expect(cancelling.busy, "a calibration being cancelled is still busy, so nothing else can start")
+
+    expect(CalibrationRoutine.accelerometer.invocation, "sensorsCal.calibrateAccel",
+           "each routine names the controller method it calls")
+    expect(CalibrationRoutine.accelerometer.arguments.count == 1,
+           "the accelerometer takes its simple-calibration flag")
+    expect(CalibrationRoutine.gyro.arguments.isEmpty, "the others take none")
+    expect(CalibrationRoutine.allCases.count == 5, "five routines are offered")
+}
+
+checkCalibration()
+
 func checkMissionVehicle() {
     let copter = MissionVehicle(firmware: "ArduPilot", type: "Quadrotor", multiRotor: true, vtol: false)
     expect(copter.showsHoverSpeed, "a multirotor hovers between waypoints")

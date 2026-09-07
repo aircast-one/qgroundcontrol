@@ -80,6 +80,10 @@ struct SensorsView: View {
                              })
                 }
 
+                if store.calibration.connected {
+                    calibration
+                }
+
                 VStack(alignment: .leading, spacing: 0) {
                     SectionLabel(text: "Reported sensors")
                     GroupCard {
@@ -98,6 +102,81 @@ struct SensorsView: View {
         }
         .onAppear(perform: store.start)
         .onDisappear(perform: store.stop)
+    }
+
+    @ViewBuilder private var calibration: some View {
+        VStack(alignment: .leading, spacing: Overlay.unit * 0.35) {
+            SectionLabel(text: "Calibration")
+
+            if !store.calibration.needsAttention.isEmpty {
+                Label(store.calibration.needsAttention, systemImage: "exclamationmark.triangle.fill")
+                    .font(.callout)
+                    .foregroundColor(.orange)
+                    .fixedSize(horizontal: false, vertical: true)
+                    .padding(.bottom, Overlay.unit * 0.3)
+            }
+
+            GroupCard {
+                ForEach(Array(CalibrationRoutine.allCases.enumerated()), id: \.element.id) { row, routine in
+                    GroupRow(title: routine.title,
+                             description: routine.explanation,
+                             showSeparator: row > 0,
+                             trailing: {
+                                 Button("Start") { store.start(routine) }
+                                     .disabled(store.calibration.busy)
+                             })
+                }
+            }
+
+            if store.calibration.busy {
+                VStack(alignment: .leading, spacing: Overlay.unit * 0.4) {
+                    if !store.calibration.helpText.isEmpty {
+                        Text(store.calibration.helpText)
+                            .font(.callout)
+                            .fixedSize(horizontal: false, vertical: true)
+                    }
+
+                    HStack(spacing: Overlay.step) {
+                        ProgressView(value: store.calibration.progress, total: 100)
+                            .frame(maxWidth: 260)
+                        Text(store.calibration.progressText)
+                            .font(.callout.monospacedDigit())
+                            .foregroundColor(.secondary)
+                        Spacer()
+                        Button("Next", action: store.next)
+                            .disabled(!store.calibration.nextEnabled)
+                        Button("Cancel", action: store.cancelCalibration)
+                            .disabled(!store.calibration.cancelEnabled)
+                    }
+
+                    if store.calibration.showsSides {
+                        HStack(spacing: Overlay.unit) {
+                            ForEach(store.calibration.visibleSides) { side in
+                                VStack(spacing: 3) {
+                                    Image(systemName: side.symbol)
+                                        .font(.system(size: 17))
+                                        .foregroundColor(side.stage == .done ? .green
+                                            : (side.stage == .inProgress ? .accentColor : .secondary))
+                                    Text(side.title)
+                                        .font(.caption2)
+                                        .foregroundColor(.secondary)
+                                }
+                            }
+                            Spacer()
+                        }
+                    }
+                }
+                .padding(.top, Overlay.unit * 0.4)
+            }
+
+            if !store.calibration.statusText.isEmpty {
+                Text(store.calibration.statusText)
+                    .font(.caption.monospaced())
+                    .foregroundColor(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+                    .padding(.top, Overlay.unit * 0.3)
+            }
+        }
     }
 
     static func label(_ state: SensorHealth.State) -> String {
