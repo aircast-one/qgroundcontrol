@@ -1108,6 +1108,44 @@ func checkInstrumentValues() {
 
 checkInstrumentValues()
 
+func checkInstrumentGroups() {
+    let read: [(group: String, json: [String: Any])] = [
+        ("", ["facts": [["name": "heading", "shortDescription": "Heading"],
+                        ["name": "airSpeedSetpoint", "shortDescription": ""]]]),
+        ("rpm", ["kind": "value"]),
+        ("gps", ["facts": [["name": "lat", "shortDescription": "Latitude"]]]),
+        ("batteries.0", ["facts": [["name": "voltage", "shortDescription": "Voltage"]]]),
+    ]
+
+    let groups = InstrumentGroup.assemble(read)
+    expect(groups.map(\.title).joined(separator: ","), "Vehicle,Gps,Battery 1",
+           "a child carrying no facts is dropped, so rpm never reaches the picker")
+    expect(groups[0].facts.map(\.label).joined(separator: ","), "Heading,Air Speed Setpoint",
+           "a fact with no description falls back to its split name")
+    expect(groups[0].facts.map(\.name).joined(separator: ","), "heading,airSpeedSetpoint",
+           "while the name stays exactly as the vehicle reports it")
+
+    expect(InstrumentGroup.title(for: ""), "Vehicle", "the vehicle's own facts are titled for it")
+    expect(InstrumentGroup.title(for: "batteries.0"), "Battery 1",
+           "an indexed battery reads as a battery, not as a path")
+    expect(InstrumentGroup.title(for: "estimatorStatus"), "Estimator Status",
+           "and a plain group is split into words")
+
+    expect(InstrumentGroup.assemble([("gps", ["facts": [["shortDescription": "no name"]]])]).isEmpty,
+           "a fact with no name is not offered, so an empty group is dropped entirely")
+
+    let aliased: [(group: String, json: [String: Any])] = [
+        ("", ["facts": [["name": "heading"]]]),
+        ("vehicle", ["facts": [["name": "heading"]]]),
+        ("gps", ["facts": [["name": "lat"], ["name": "lon"]]]),
+        ("gps2", ["facts": [["name": "lat"], ["name": "lon"]]]),
+    ]
+    expect(InstrumentGroup.assemble(aliased).map(\.title).joined(separator: ","), "Vehicle,Gps,Gps2",
+           "the vehicle lists itself among its children, so that one alias goes; two GPS units share a schema and both stay")
+}
+
+checkInstrumentGroups()
+
 if failures == 0 {
     print("all Swift checks passed")
     exit(0)

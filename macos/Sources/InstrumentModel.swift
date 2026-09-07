@@ -24,6 +24,49 @@ struct InstrumentSelection: Equatable, Identifiable {
     ]
 }
 
+struct InstrumentFact: Identifiable, Equatable {
+    let name: String
+    let label: String
+
+    var id: String { name }
+}
+
+struct InstrumentGroup: Identifiable, Equatable {
+    let group: String
+    let title: String
+    let facts: [InstrumentFact]
+
+    var id: String { group }
+
+    static let vehicleTitle = "Vehicle"
+
+    static func title(for group: String) -> String {
+        guard !group.isEmpty else { return vehicleTitle }
+        if group == "batteries.0" { return "Battery 1" }
+        return InstrumentValue.label(for: group)
+    }
+
+    static func facts(in json: [String: Any]) -> [InstrumentFact] {
+        ((json["facts"] as? [[String: Any]]) ?? []).compactMap { fact in
+            guard let name = fact["name"] as? String, !name.isEmpty else { return nil }
+            let described = (fact["shortDescription"] as? String) ?? ""
+            return InstrumentFact(name: name,
+                                  label: described.isEmpty ? InstrumentValue.label(for: name) : described)
+        }
+    }
+
+    static let vehicleAlias = "vehicle"
+
+    static func assemble(_ read: [(group: String, json: [String: Any])]) -> [InstrumentGroup] {
+        read.compactMap { entry in
+            guard entry.group != vehicleAlias else { return nil }
+            let listed = facts(in: entry.json)
+            guard !listed.isEmpty else { return nil }
+            return InstrumentGroup(group: entry.group, title: title(for: entry.group), facts: listed)
+        }
+    }
+}
+
 struct InstrumentValue: Identifiable, Equatable {
     let selection: InstrumentSelection
     let label: String

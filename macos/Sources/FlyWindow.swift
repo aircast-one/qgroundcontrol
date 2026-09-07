@@ -165,7 +165,7 @@ struct InstrumentBar: View {
     var body: some View {
         GlassPanel {
             HStack(alignment: .top, spacing: Overlay.unit) {
-                ForEach(instruments.values) { value in
+                ForEach(Array(instruments.values.enumerated()), id: \.element.id) { slot, value in
                     VStack(alignment: .leading, spacing: 1) {
                         Text(value.label)
                             .font(.caption2)
@@ -183,11 +183,76 @@ struct InstrumentBar: View {
                         }
                     }
                     .fixedSize()
+                    .contentShape(Rectangle())
+                    .contextMenu {
+                        Button("Change reading\u{2026}") { instruments.edit(slot: slot) }
+                    }
                 }
             }
             .padding(.horizontal, Overlay.unit * 0.9)
             .padding(.vertical, Overlay.unit * 0.6)
         }
+        .sheet(isPresented: $instruments.showingEditor) { editor }
+    }
+
+    private var editor: some View {
+        VStack(alignment: .leading, spacing: Overlay.unit * 0.75) {
+            VStack(alignment: .leading, spacing: 2) {
+                Text("Change reading").font(.title3.weight(.semibold))
+                Text(instruments.editingLabel)
+                    .font(.callout).foregroundColor(.secondary)
+            }
+
+            HStack(alignment: .top, spacing: Overlay.unit) {
+                GroupCard {
+                    ScrollView {
+                        VStack(spacing: 0) {
+                            ForEach(Array(instruments.groups.enumerated()), id: \.element.id) { row, group in
+                                Button {
+                                    instruments.chosenGroup = group.group
+                                } label: {
+                                    GroupRow(title: group.title,
+                                             value: "\(group.facts.count)",
+                                             showSeparator: row > 0,
+                                             current: group.group == instruments.chosenGroup)
+                                }
+                                .buttonStyle(.plain)
+                            }
+                        }
+                    }
+                }
+                .frame(width: 210, height: 320)
+
+                GroupCard {
+                    ScrollView {
+                        VStack(spacing: 0) {
+                            ForEach(Array(instruments.chosenFacts.enumerated()), id: \.element.id) { row, fact in
+                                Button {
+                                    instruments.assign(group: instruments.chosenGroup, factName: fact.name)
+                                } label: {
+                                    GroupRow(title: fact.label,
+                                             description: fact.name,
+                                             showSeparator: row > 0)
+                                }
+                                .buttonStyle(.plain)
+                            }
+                        }
+                    }
+                }
+                .frame(maxWidth: .infinity)
+                .frame(height: 320)
+            }
+
+            Divider()
+
+            HStack {
+                Spacer()
+                Button("Cancel", action: instruments.cancelEdit)
+                    .keyboardShortcut(.cancelAction)
+            }
+        }
+        .padding(Overlay.unit)
+        .frame(width: 560)
     }
 }
 
