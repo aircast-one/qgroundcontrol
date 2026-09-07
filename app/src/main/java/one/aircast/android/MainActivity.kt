@@ -51,6 +51,7 @@ import one.aircast.android.ui.FlightActions
 import one.aircast.android.ui.ParametersScreen
 import one.aircast.android.ui.SettingsScreen
 import one.aircast.android.ui.SetupScreen
+import one.aircast.mapspike.PlanMapScreen
 import one.aircast.android.ui.StatusStrip
 import one.aircast.android.ui.VehicleTitle
 import org.mavlink.qgroundcontrol.QGCBridge
@@ -235,6 +236,9 @@ fun AircastShell(quickView: QtQuickView) {
                     Tab.Settings -> Surface(Modifier.fillMaxSize()) { SettingsScreen() }
                     Tab.Params -> Surface(Modifier.fillMaxSize()) { ParametersScreen() }
                     Tab.Setup -> Surface(Modifier.fillMaxSize()) { SetupScreen() }
+                    Tab.Plan -> Surface(Modifier.fillMaxSize()) {
+                        PlanMapScreen(Modifier.fillMaxSize())
+                    }
                     Tab.Analyze -> AnalyzeScreen(
                         page = analyzePage,
                         onSelect = { analyzePage = it },
