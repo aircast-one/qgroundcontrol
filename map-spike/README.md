@@ -306,6 +306,14 @@ follows, which the tab shows by changing its plan status from "New plan" to "Uns
 enabling Save. That status is a label, not a command — the tab has no New Plan action, and Open is
 the only thing there that replaces a plan wholesale.
 
+## Altitude
+
+A selected waypoint gets a typed field as well as the ten metre steps. Steps alone cannot reach a
+particular height without a run of taps, and reaching a particular height is the usual reason to
+touch an altitude. The field refuses what does not parse and anything below the ground rather than
+sending it, and keeps a half-typed number — "4" on the way to "47" is not a reason to throw the edit
+away.
+
 ## Naming
 
 The vehicle sync buttons are `Download` and `Upload`, which is what QGC calls them — "Download from

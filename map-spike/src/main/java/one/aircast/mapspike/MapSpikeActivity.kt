@@ -12,7 +12,11 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.text.KeyboardActions
+import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
@@ -32,6 +36,8 @@ import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.repeatOnLifecycle
+import androidx.compose.ui.text.input.ImeAction
+import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
@@ -374,16 +380,47 @@ internal fun MapSpikeScreen(mapStyle: String) {
 
                         waypoint?.let { item ->
                             if (!item.altitude.isNaN()) {
+                                // Stepping by ten is fine for a nudge and hopeless for
+                                // reaching a particular height, which is the usual reason
+                                // to touch an altitude at all.
+                                var typed by remember(item.index) {
+                                    mutableStateOf(altitudeFieldText(item.altitude))
+                                }
+                                OutlinedTextField(
+                                    value = typed,
+                                    onValueChange = { typed = it },
+                                    label = { Text("Alt m") },
+                                    singleLine = true,
+                                    keyboardOptions = KeyboardOptions(
+                                        keyboardType = KeyboardType.Number,
+                                        imeAction = ImeAction.Done,
+                                    ),
+                                    keyboardActions = KeyboardActions(
+                                        onDone = {
+                                            val metres = parsedAltitude(typed)
+                                            if (metres == null) {
+                                                say("Not an altitude")
+                                            } else {
+                                                onBridge("Setting altitude") {
+                                                    PlanBridge.setAltitude(item.index, metres)
+                                                }
+                                            }
+                                        },
+                                    ),
+                                    modifier = Modifier.width(120.dp),
+                                    textStyle = MaterialTheme.typography.bodySmall,
+                                )
+
                                 TextButton(onClick = {
                                     onBridge { PlanBridge.setAltitude(item.index, item.altitude + 10.0) }
-                                }) { Text("Alt +10") }
+                                }) { Text("+10") }
 
                                 TextButton(
                                     enabled = item.altitude >= 10.0,
                                     onClick = {
                                         onBridge { PlanBridge.setAltitude(item.index, item.altitude - 10.0) }
                                     },
-                                ) { Text("Alt -10") }
+                                ) { Text("-10") }
                             }
 
                             TextButton(onClick = {
