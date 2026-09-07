@@ -345,7 +345,10 @@ QJsonObject writePath(const QString &path, const QVariant &value)
 {
     const Resolved resolved = resolve(path);
     if (!resolved.object) {
-        return QJsonObject { { QStringLiteral("ok"), false } };
+        return QJsonObject {
+            { QStringLiteral("ok"), false },
+            { QStringLiteral("reason"), QStringLiteral("%1 does not resolve").arg(path) },
+        };
     }
 
     if (resolved.property.isEmpty()) {
@@ -363,8 +366,32 @@ QJsonObject writePath(const QString &path, const QVariant &value)
         return QJsonObject { { QStringLiteral("ok"), true } };
     }
 
-    const bool ok = resolved.object->setProperty(resolved.property.toUtf8().constData(), value);
-    return QJsonObject { { QStringLiteral("ok"), ok } };
+    const QByteArray name = resolved.property.toUtf8();
+    const QMetaObject *const meta = resolved.object->metaObject();
+    const int index = meta->indexOfProperty(name.constData());
+    if (index < 0) {
+        return QJsonObject {
+            { QStringLiteral("ok"), false },
+            { QStringLiteral("reason"), QStringLiteral("no property %1 on %2")
+                  .arg(resolved.property, QString::fromUtf8(meta->className())) },
+        };
+    }
+    if (!meta->property(index).isWritable()) {
+        return QJsonObject {
+            { QStringLiteral("ok"), false },
+            { QStringLiteral("reason"), QStringLiteral("%1 on %2 has no WRITE accessor")
+                  .arg(resolved.property, QString::fromUtf8(meta->className())) },
+        };
+    }
+
+    const bool ok = resolved.object->setProperty(name.constData(), value);
+    if (ok) {
+        return QJsonObject { { QStringLiteral("ok"), true } };
+    }
+    return QJsonObject {
+        { QStringLiteral("ok"), false },
+        { QStringLiteral("reason"), QStringLiteral("%1 rejected the value").arg(resolved.property) },
+    };
 }
 
 QJsonObject invokePath(const QString &path, const QJsonArray &args)

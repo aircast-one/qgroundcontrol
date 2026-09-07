@@ -273,6 +273,23 @@ void QGCBridgeCoreTest::_indexesAVariantListOfObjects()
     QVERIFY(past.value(QStringLiteral("value")).isNull());
 }
 
+void QGCBridgeCoreTest::_writeSaysWhyItFailed()
+{
+    const QJsonObject unknownPath = parse(QGCBridgeCore::set(
+        QStringLiteral("settings.nope.nothing"), QStringLiteral("{\"value\":1}")));
+    QVERIFY(!unknownPath.value(QStringLiteral("ok")).toBool());
+    const QString missing = unknownPath.value(QStringLiteral("reason")).toString();
+    QVERIFY2(missing.contains(QStringLiteral("no property")), qPrintable(missing));
+    QVERIFY2(missing.contains(QStringLiteral("nothing")), qPrintable(missing));
+
+    const QJsonObject readOnly = parse(QGCBridgeCore::set(
+        QStringLiteral("vehicles.activeVehicleAvailable"), QStringLiteral("{\"value\":true}")));
+    QVERIFY(!readOnly.value(QStringLiteral("ok")).toBool());
+    const QString reason = readOnly.value(QStringLiteral("reason")).toString();
+    QVERIFY2(reason.contains(QStringLiteral("WRITE")) || reason.contains(QStringLiteral("no property")),
+             qPrintable(reason));
+}
+
 void QGCBridgeCoreTest::_setRejectsAPayloadWithoutAValue()
 {
     Fact *const fact = SettingsManager::instance()->unitsSettings()->speedUnits();

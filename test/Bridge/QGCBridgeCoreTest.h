@@ -41,6 +41,7 @@ private slots:
     void _sensorsCalRootIsNullWithoutAnApmVehicle();
     void _radioCalRootIsNullWithoutAnActiveVehicle();
     void _setRejectsAPayloadWithoutAValue();
+    void _writeSaysWhyItFailed();
     void _indexesAVariantListOfObjects();
     void _watchEmitsOnChange();
     void _watchReplacesItsPreviousPaths();

@@ -25,6 +25,16 @@ def newest_source_mtime():
     return max((p.stat().st_mtime for p in files), default=0.0)
 
 
+def port_contention():
+    held = subprocess.run(["lsof", "-nP", "-iUDP:14550"], capture_output=True, text=True)
+    holders = [line.split()[0] for line in held.stdout.splitlines()[1:] if line.split()]
+    if not holders:
+        return None
+    return (f"UDP 14550 is held by {', '.join(sorted(set(holders)))} - the link suites cannot "
+            f"bind and will report false failures. Stop SITL (docker stop aircast-sitl) "
+            f"and any mav_bridge first.")
+
+
 def staleness():
     if not TEST_APP.exists():
         return f"{TEST_APP} does not exist - build it first"
@@ -123,8 +133,11 @@ def record(summary, verdicts):
     return entry
 
 
-def report(summary, verdicts, history, stale):
+def report(summary, verdicts, history, stale, contention=None):
     lines = []
+    if contention:
+        lines.append(f"WARNING: {contention}")
+        lines.append("")
     if stale:
         lines.append(f"STALE BINARY: {stale}")
         lines.append("")
@@ -185,6 +198,7 @@ def main():
               or "  no flakes recorded")
         return 0
 
+    contention = port_contention()
     stale = staleness()
     if stale and not args.allow_stale:
         print(f"STALE BINARY: {stale}", file=sys.stderr)
@@ -198,7 +212,7 @@ def main():
                 else classify(summary["failures"], args.repeats, verbose=True))
 
     entry = record(summary, verdicts) if not args.suite else None
-    print(report(summary, verdicts, history, stale))
+    print(report(summary, verdicts, history, stale, contention))
     if entry:
         print(f"\nrecorded to {HISTORY.relative_to(REPO)}")
 

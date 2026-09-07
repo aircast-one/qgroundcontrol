@@ -40,12 +40,25 @@ regression, or waving one away as "just a flake", have both wasted real time. A
 four of the last six runs rather than leaving you to remember. The file lives in
 the build directory and is not committed.
 
-## Known unstable suites
+## Stop SITL before a full run
 
-`VehicleLinkManagerTest` and `LinkStateTest` both wait on connection timeouts.
-`VehicleLinkManagerTest::_highLatencyLinkTest` has been measured failing roughly
-one isolated run in three, so it is `UNSTABLE`, not merely load-sensitive — a
-full-run failure there is not automatically noise.
+`LinkStateTest` and `VehicleLinkManagerTest` bind UDP 14550. So does the SITL
+container (`-p 14550-14555:14550/udp`). With SITL up, those suites report
+failures that have nothing to do with your change, and a long full run can die
+partway through.
+
+    docker stop aircast-sitl        # and kill any mav_bridge
+    python3 tools/run-tests.py
+    docker run -d --rm --platform linux/amd64 --name aircast-sitl \
+      -p 5760-5765:5760-5765 -p 14550-14555:14550-14555/udp \
+      ghcr.io/pavliha/aircast-sitl:latest
+
+The runner checks UDP 14550 before starting and prints a warning naming the
+holder, but it does not refuse to run — sometimes you only want a suite that
+does not touch links.
+
+With the port free the whole suite passes: 573 tests, 80 suites, no failures.
+Every "flake" previously blamed on machine load was this.
 
 ## Testing the runner
 
