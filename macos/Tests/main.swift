@@ -499,6 +499,26 @@ func checkItemFacts() {
     expect(facts.count == 2, "a fact with no name is dropped")
     expect(facts[0].id, "textFieldFacts.0", "a fact is addressed by its list and position")
     expect(facts[1].id, "textFieldFacts.1", "positions follow the order the controller reported")
+
+    let owned = ItemFact.owned([
+        ["name": "Grid angle", "property": "gridAngle", "valueString": "0", "units": "deg"],
+        ["name": "Refly", "property": "refly90Degrees", "valueString": "false", "readOnly": true],
+        ["name": "No property", "valueString": "1"],
+    ])
+    expect(owned.count == 2, "a fact with no property is not addressable and is dropped")
+    expect(owned[0].id, "gridAngle", "an item's own fact is addressed by its property")
+    expect(!owned[0].readOnly, "an editable fact is editable")
+    expect(owned[1].readOnly, "a read-only fact says so")
+    expect(owned[0].title, "Grid angle", "a described fact shows its description")
+
+    let identifiers = ItemFact.owned([
+        ["name": "TurnAroundDistanceMultiRotor", "property": "turnAroundDistance", "valueString": "10"],
+        ["name": "HoverAndCapture", "property": "hoverAndCapture", "valueString": "false", "typeIsBool": true],
+    ])
+    expect(identifiers[0].title != "TurnAroundDistanceMultiRotor",
+           "an undescribed fact is not shown as a raw identifier")
+    expect(identifiers[1].isBool, "a boolean fact is a toggle, not a text field")
+    expect(!identifiers[0].isBool, "a numeric fact is not")
     expect(facts[0].options.isEmpty, "a plain fact offers no options")
     expect(facts[1].options.count == 2, "an enum fact offers its choices")
     expect(facts[0].units, "secs", "units come through for the editor to show")

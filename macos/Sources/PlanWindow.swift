@@ -293,13 +293,22 @@ struct PlanInspector: View {
                 SectionLabel(text: "Details")
                 GroupCard {
                     ForEach(Array(mission.selectedFacts.enumerated()), id: \.element.id) { index, fact in
-                        GroupRow(title: fact.name,
+                        GroupRow(title: fact.title,
                                  showSeparator: index > 0,
+                                 titleLines: 2,
                                  trailing: {
-                                     if fact.options.isEmpty {
+                                     if fact.isBool {
+                                         Toggle("", isOn: Binding(
+                                             get: { fact.value == "true" },
+                                             set: { mission.setFact(fact, to: $0 ? "true" : "false") })
+                                         )
+                                         .labelsHidden()
+                                         .disabled(fact.readOnly)
+                                     } else if fact.options.isEmpty {
                                          ValueField(value: fact.value, units: fact.units) {
                                              mission.setFact(fact, to: $0)
                                          }
+                                         .disabled(fact.readOnly)
                                      } else {
                                          Picker("", selection: Binding(
                                              get: { fact.value },

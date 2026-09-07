@@ -160,16 +160,22 @@ final class MissionStore: ObservableObject, Probeable {
             selectedFacts = []
             return
         }
-        selectedFacts = ItemFact.lists.flatMap { list in
+        let listed = ItemFact.lists.flatMap { list in
             ItemFact.from(
                 (Bridge.group("plan.missionController.visualItems.\(item.index).\(list)")["elements"] as? [Any]) ?? [],
                 list: list)
         }
+
+        // A complex item keeps its settings as its own properties rather than in the
+        // fact lists a simple item uses.
+        selectedFacts = listed.isEmpty && !item.isSimpleItem
+            ? ItemFact.owned((Bridge.group("plan.missionController.visualItems.\(item.index)")["facts"] as? [Any]) ?? [])
+            : listed
     }
 
     func setFact(_ fact: ItemFact, to value: String) {
         guard let item = items.first(where: \.isCurrent) else { return }
-        _ = Bridge.set("plan.missionController.visualItems.\(item.index).\(fact.list).\(fact.position)",
+        _ = Bridge.set("plan.missionController.visualItems.\(item.index).\(fact.pathSuffix)",
                        Double(value) ?? value)
         reload()
     }

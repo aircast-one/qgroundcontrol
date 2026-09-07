@@ -84,6 +84,7 @@ struct GroupRow<Leading: View, Trailing: View>: View {
     var value = ""
     var showSeparator = true
     var current = false
+    var titleLines = 1
     @ViewBuilder var leading: Leading
     @ViewBuilder var trailing: Trailing
 
@@ -101,7 +102,9 @@ struct GroupRow<Leading: View, Trailing: View>: View {
 
                 VStack(alignment: .leading, spacing: Overlay.unit * 0.1) {
                     if !title.isEmpty {
-                        Text(title).lineLimit(1)
+                        Text(title)
+                            .lineLimit(titleLines)
+                            .fixedSize(horizontal: false, vertical: titleLines > 1)
                     }
                     if !description.isEmpty {
                         Text(description)
@@ -130,10 +133,10 @@ struct GroupRow<Leading: View, Trailing: View>: View {
 
 extension GroupRow where Leading == EmptyView {
     init(title: String, description: String = "", value: String = "",
-         showSeparator: Bool = true, current: Bool = false,
+         showSeparator: Bool = true, current: Bool = false, titleLines: Int = 1,
          @ViewBuilder trailing: () -> Trailing) {
         self.init(title: title, description: description, value: value,
-                  showSeparator: showSeparator, current: current,
+                  showSeparator: showSeparator, current: current, titleLines: titleLines,
                   leading: { EmptyView() }, trailing: trailing)
     }
 }

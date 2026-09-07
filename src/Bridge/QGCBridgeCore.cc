@@ -284,7 +284,11 @@ QJsonObject objectJson(QObject *object)
 
         QObject *const child = value.value<QObject *>();
         if (Fact *const fact = qobject_cast<Fact *>(child)) {
-            facts.append(factJson(fact));
+            // Without the property it came from, a fact can be read and never written:
+            // its name is a label, not a path segment.
+            QJsonObject described = factJson(fact);
+            described.insert(QStringLiteral("property"), QString::fromLatin1(property.name()));
+            facts.append(described);
             continue;
         }
         if (child) {
