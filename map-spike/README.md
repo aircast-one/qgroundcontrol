@@ -3,8 +3,9 @@
 A native map for the Android frontend: MapLibre in Compose, driven entirely through
 `QGCBridgeCore`, on tiles from QGroundControl's own cache.
 
-Phase 4 of `NATIVE_ANDROID_REWRITE.md`. This module exists to answer whether a native map can
-replace the QML one, and the answer is yes.
+Phase 4 of `NATIVE_ANDROID_REWRITE.md`. It began as a spike asking whether a native map could
+replace the QML one. It does: `:app` hosts it as the Plan tab. The module name has outlived the
+question it was named after, and renaming it would touch `:app`, so it stands for now.
 
 ## Hosting it in the app
 
@@ -28,8 +29,9 @@ activity below is the standalone harness and calls the same composable.
 
 ## Running it standalone
 
-The spike is an Activity of its own, deliberately outside the app's navigation so it cannot
-disturb the shipping tabs:
+The map ships inside the app's Plan tab. The activity is a harness for working on the module
+without going through the app's navigation, and both routes render the same composable, so
+whatever the harness shows is what the tab shows:
 
 ```
 adb shell am start -n one.aircast.android/.MainActivity          # boots Qt
