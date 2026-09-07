@@ -101,6 +101,12 @@ the path stays in the watched set nothing ever retries it, and the screen report
 one that came up a second later. Watches are released when the map goes away too, because the
 watcher polls and diffs every path at 200 ms and stops only when told to watch nothing.
 
+**Draw what the values say, not what movement says.** The vehicle marker used to be redrawn only
+when the position changed, behind an early return. A vehicle rotating on the spot never updated its
+arrow, and a vehicle that went away kept its last marker on screen, drawing an aircraft that was not
+there. The effect is keyed on everything it draws, and an unusable position clears the marker
+rather than skipping the update.
+
 **A tab does not own the process, an activity nearly did.** Three things here assumed otherwise and
 all three were real bugs once the map became a tab: the poll ran on forever, the MapView was never
 destroyed, and the watches were never released. The reverse case is the flown trail, which is

@@ -84,6 +84,15 @@ fun isPlottable(latitude: Double, longitude: Double): Boolean =
         !(latitude == 0.0 && longitude == 0.0) &&
         latitude in -90.0..90.0 && longitude in -180.0..180.0
 
+// A vehicle that has gone away has no position, and leaving its last one on the
+// map draws an aircraft that is not there, which is worse than drawing nothing.
+fun vehicleFeatures(latitude: Double, longitude: Double, heading: Double): FeatureCollection =
+    if (isPlottable(latitude, longitude)) {
+        FeatureCollection.fromFeatures(listOf(vehicleFeature(latitude, longitude, heading)))
+    } else {
+        FeatureCollection.fromFeatures(emptyList())
+    }
+
 // Heading only means something once the vehicle reports it. Without it the
 // feature carries no heading property and the arrow layer filters itself out,
 // leaving the plain position dot.
@@ -236,12 +245,15 @@ fun VehicleMap(
         onDispose { }
     }
 
-    LaunchedEffect(style, latitude, longitude) {
+    // Keyed on the values it draws, not just position: a vehicle rotating on the
+    // spot changes heading without moving, and the arrow was never redrawn for it.
+    // The old early return also skipped the markers whenever the position was
+    // unchanged or unusable, so a vehicle that disconnected stayed on the map.
+    LaunchedEffect(style, latitude, longitude, heading, home) {
         val currentStyle = style ?: return@LaunchedEffect
-        if (!track.add(latitude, longitude)) return@LaunchedEffect
 
         (currentStyle.getSource(VEHICLE_SOURCE) as? GeoJsonSource)
-            ?.setGeoJson(vehicleFeature(latitude, longitude, heading))
+            ?.setGeoJson(vehicleFeatures(latitude, longitude, heading))
 
         (currentStyle.getSource(HOME_SOURCE) as? GeoJsonSource)?.setGeoJson(
             home?.let { Feature.fromGeometry(Point.fromLngLat(it.longitude, it.latitude)) }
@@ -249,13 +261,13 @@ fun VehicleMap(
                 ?: FeatureCollection.fromFeatures(emptyList()),
         )
 
-        if (track.size >= 2) {
+        if (track.add(latitude, longitude) && track.size >= 2) {
             val line = LineString.fromLngLats(track.points().map { Point.fromLngLat(it.longitude, it.latitude) })
             (currentStyle.getSource(TRAIL_SOURCE) as? GeoJsonSource)
                 ?.setGeoJson(Feature.fromGeometry(line))
         }
 
-        if (follow) {
+        if (follow && isPlottable(latitude, longitude)) {
             map?.cameraPosition = CameraPosition.Builder()
                 .target(LatLng(latitude, longitude))
                 .zoom(map?.cameraPosition?.zoom?.takeIf { it > 1.0 } ?: DEFAULT_ZOOM)
