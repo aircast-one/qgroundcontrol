@@ -213,6 +213,21 @@ private fun EnumPicker(fact: Fact, onWrite: () -> Unit) {
     }
 }
 
+internal fun factConstraintNote(fact: Fact): String? {
+    val parts = listOfNotNull(
+        fact.minString.takeIf { it.isNotBlank() && !fact.minIsDefaultForType }?.let { "Min $it" },
+        fact.maxString.takeIf { it.isNotBlank() && !fact.maxIsDefaultForType }?.let { "Max $it" },
+        fact.defaultValueString.takeIf { it.isNotBlank() }?.let { "Default $it" },
+    )
+    return parts.takeIf { it.isNotEmpty() }?.joinToString(" · ")
+}
+
+internal fun factRebootNote(fact: Fact): String? = when {
+    fact.vehicleRebootRequired -> "Reboot the vehicle for this to take effect."
+    fact.qgcRebootRequired -> "Restart Aircast for this to take effect."
+    else -> null
+}
+
 internal fun validationMessage(result: Any?): String? =
     (result as? String)?.takeIf { it.isNotBlank() }
 
@@ -259,6 +274,22 @@ private fun FactTextField(fact: Fact, onWrite: () -> Unit) {
                 text = it,
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.error,
+            )
+        }
+        if (rejection == null) {
+            factConstraintNote(fact)?.let {
+                Text(
+                    text = it,
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
+        }
+        factRebootNote(fact)?.let {
+            Text(
+                text = it,
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.tertiary,
             )
         }
     }

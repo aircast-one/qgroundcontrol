@@ -22,6 +22,13 @@ data class Fact(
     val isBool: Boolean,
     val isString: Boolean,
     val readOnly: Boolean,
+    val minString: String = "",
+    val maxString: String = "",
+    val minIsDefaultForType: Boolean = true,
+    val maxIsDefaultForType: Boolean = true,
+    val defaultValueString: String = "",
+    val vehicleRebootRequired: Boolean = false,
+    val qgcRebootRequired: Boolean = false,
 ) {
     val title: String = description.ifBlank { name }
     val isEnum: Boolean = enumStrings.isNotEmpty()
@@ -117,6 +124,13 @@ object Qgc {
             isBool = json.optBoolean("typeIsBool"),
             isString = json.optBoolean("typeIsString"),
             readOnly = json.optBoolean("readOnly"),
+            minString = json.optString("minString"),
+            maxString = json.optString("maxString"),
+            minIsDefaultForType = json.optBoolean("minIsDefaultForType", true),
+            maxIsDefaultForType = json.optBoolean("maxIsDefaultForType", true),
+            defaultValueString = json.optString("defaultValueString"),
+            vehicleRebootRequired = json.optBoolean("vehicleRebootRequired"),
+            qgcRebootRequired = json.optBoolean("qgcRebootRequired"),
         )
     }
 }

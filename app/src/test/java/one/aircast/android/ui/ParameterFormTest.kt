@@ -1,5 +1,6 @@
 package one.aircast.android.ui
 
+import one.aircast.android.bridge.Fact
 import org.json.JSONObject
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull
@@ -136,5 +137,61 @@ class ParameterFormTest {
     fun `a non-string result is not treated as an error`() {
         assertNull(validationMessage(false))
         assertNull(validationMessage(0))
+    }
+
+    private fun ranged(
+        min: String = "", max: String = "",
+        minDefault: Boolean = true, maxDefault: Boolean = true,
+        default: String = "",
+        vehicleReboot: Boolean = false, qgcReboot: Boolean = false,
+    ) = Fact(
+        path = "p", name = "p", description = "", units = "", valueString = "1",
+        value = 1, enumStrings = emptyList(), enumIndex = 0,
+        isBool = false, isString = false, readOnly = false,
+        minString = min, maxString = max,
+        minIsDefaultForType = minDefault, maxIsDefaultForType = maxDefault,
+        defaultValueString = default,
+        vehicleRebootRequired = vehicleReboot, qgcRebootRequired = qgcReboot,
+    )
+
+    @Test
+    fun `a limit that is only the type's own limit is not shown`() {
+        assertNull(factConstraintNote(ranged(min = "0", max = "4294967295")))
+    }
+
+    @Test
+    fun `a real constraint is shown`() {
+        assertEquals("Max 100", factConstraintNote(ranged(max = "100", maxDefault = false)))
+    }
+
+    @Test
+    fun `min max and default read together`() {
+        assertEquals(
+            "Min 6 · Max 48 · Default 14",
+            factConstraintNote(
+                ranged(min = "6", max = "48", minDefault = false, maxDefault = false, default = "14"),
+            ),
+        )
+    }
+
+    @Test
+    fun `a vehicle reboot is named ahead of an app restart`() {
+        assertEquals(
+            "Reboot the vehicle for this to take effect.",
+            factRebootNote(ranged(vehicleReboot = true, qgcReboot = true)),
+        )
+    }
+
+    @Test
+    fun `an app restart is named when only that is required`() {
+        assertEquals(
+            "Restart Aircast for this to take effect.",
+            factRebootNote(ranged(qgcReboot = true)),
+        )
+    }
+
+    @Test
+    fun `a parameter needing no restart says nothing`() {
+        assertNull(factRebootNote(ranged()))
     }
 }
