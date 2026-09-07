@@ -147,6 +147,23 @@ verb. `input swipe x y x y 900` is a long press.
 **Never call the bridge from the main thread.** Calls block on the Qt thread. Touch handlers and
 button callbacks all go through a background dispatcher.
 
+**The poll cost is linear in surveys, and the headroom is real but finite.** A poll is four blocking
+calls plus one per survey — the whole plan, three fence reads, and `surveyAreaPolygon` each — plus
+parsing the plan JSON. Measured on the handset against the 700 ms interval, medians of five:
+
+| surveys | transects | poll |
+|---|---|---|
+| 0 | 0 | ~5 ms |
+| 1 | 88 | ~55 ms |
+| 3 | 268 | ~62 ms |
+| 6 | 536 | ~94 ms |
+| 9 | 804 | ~164 ms |
+
+Roughly 18 ms per survey, so a realistic plan of a few surveys costs well under a fifth of the
+interval, and it would take somewhere around thirty five surveys to saturate the poll. Variance is
+wide — 53 to 130 ms at six surveys — so a single reading means little and only medians are worth
+quoting.
+
 **Read a list once and parse it many times.** Mission items, surveys and the terrain profile all
 come out of the same item list. Fetching it once per poll instead of once per consumer halved the
 poll, from a median of 66 ms to 32 ms on an 84 point survey. Each call serialises the whole
