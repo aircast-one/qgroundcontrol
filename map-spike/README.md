@@ -165,16 +165,20 @@ vehicle replaces the plan wholesale, so the altitude and delete controls would h
 whatever now sat at that index. Deletes clear it themselves; every other way the plan can change
 underneath is caught by validating the selection against the plan each poll.
 
-**Plan files report success only through `currentPlanFile`.** `saveToFile` and `loadFromFile` both
-return void, so `ok` is true whether they worked or not. Measured, all four cases: an unwritable
-save path and a missing load path each came back `ok=true`, exactly like the ones that worked, and
-`plan.currentPlanFile` was the only difference — empty after a failure, holding the path after a
-success. A failed load is not destructive: with a survey in the plan, loading a missing file and
-loading a file that exists but is not a plan both left the item count untouched, so opening the
-wrong document costs nothing but the attempt. The saved path is also not the path passed: a filename with no dot gets `.plan` appended,
-so `/…/probe-plan` was written as `/…/probe-plan.plan`. Anything copying a saved plan back out has
-to use `currentPlanFile` rather than the path it asked for, or it will look for a file that is not
-there.
+**Plan files report success in the invoke result.** `saveToFile`, `saveToCurrent` and
+`loadFromFile` return bool, so the `result` field of the invoke is the answer in both directions —
+read that, not `ok`, which only says the method ran. This changed in qgroundcontrol `25e313267`;
+before it they returned void and `plan.currentPlanFile` was the only way to tell a success from a
+failure. An AAR built earlier still has the old behaviour.
+
+`currentPlanFile` is still worth reading after a save, for the path it actually wrote rather than to
+find out whether it wrote: a filename with no dot gains `.plan`, so `/…/probe-plan` lands at
+`/…/probe-plan.plan`. Anything copying a saved plan back out has to use what it reports rather than
+the path it asked for.
+
+A failed load is not destructive. With a survey in the plan, loading a missing file and loading a
+file that exists but is not a plan both left the item count untouched, so opening the wrong document
+costs nothing but the attempt.
 
 **Loading from the vehicle throws work away.** It overwrites whatever is drawn and there is no
 undo, so QGC asks first when the plan has unsent changes. `plan.dirty` says when that is, and Load
