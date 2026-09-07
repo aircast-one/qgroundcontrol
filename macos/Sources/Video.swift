@@ -6,6 +6,15 @@ final class VideoStore: ObservableObject, Probeable {
 
     @Published private(set) var status = VideoStatus.unavailable
 
+    private var askedForNative = false
+
+    func useNativeRendering() {
+        guard !askedForNative, qgc_video_available() else { return }
+        askedForNative = true
+        Bridge.invoke("video.setNativeRendering", [true])
+        refresh()
+    }
+
     func refresh() {
         let read = VideoStatus.read(Bridge.group("video"))
         if read != status { status = read }
@@ -52,6 +61,7 @@ final class VideoStore: ObservableObject, Probeable {
          "cameras": status.cameras.map { ["title": $0.title, "status": $0.status,
                                           "connecting": $0.connecting] },
          "nativeAvailable": qgc_video_available(), "nativeRunning": nativeRunning,
+         "nativeRequested": askedForNative,
          "nativeFrames": nativeFrames, "nativeSize": nativeSize, "nativeError": nativeError]
     }
 

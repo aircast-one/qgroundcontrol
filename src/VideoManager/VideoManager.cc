@@ -611,6 +611,15 @@ QQuickItem *VideoManager::_widgetForCamera(int cameraIndex) const
     return _tileWidgets.value(slot, nullptr);
 }
 
+void VideoManager::setNativeRendering(bool nativeRendering)
+{
+    if (_nativeRendering == nativeRendering) {
+        return;
+    }
+    _nativeRendering = nativeRendering;
+    _rebindWidgets();
+}
+
 void VideoManager::_rebindWidgets()
 {
     for (VideoReceiver *receiver : std::as_const(_videoReceivers)) {
@@ -622,8 +631,17 @@ void VideoManager::_rebindWidgets()
             continue;
         }
         receiver->setWidget(desired);
+        if (_nativeRendering && !desired && !receiver->sink()) {
+            void *nativeSink = QGCCorePlugin::instance()->createNativeVideoSink(receiver);
+            if (nativeSink) {
+                receiver->setSink(nativeSink);
+                if (receiver->started()) {
+                    receiver->startDecoding(nativeSink);
+                }
+            }
+            continue;
+        }
         if (receiver->sink()) {
-            // Re-point the existing sink at the new item: decoding continues uninterrupted.
             QGCCorePlugin::instance()->setVideoSinkWidget(receiver->sink(), desired);
         } else if (desired) {
             void *sink = QGCCorePlugin::instance()->createVideoSink(desired, receiver);
@@ -1060,6 +1078,12 @@ void VideoManager::_initVideoReceiver(VideoReceiver *receiver, QQuickWindow *win
         switch (status) {
         case VideoReceiver::STATUS_OK:
             receiver->setStarted(true);
+            if (_nativeRendering && !receiver->sink() && !receiver->isThermal()) {
+                void *nativeSink = QGCCorePlugin::instance()->createNativeVideoSink(receiver);
+                if (nativeSink) {
+                    receiver->setSink(nativeSink);
+                }
+            }
             if (receiver->sink()) {
                 receiver->startDecoding(receiver->sink());
             }

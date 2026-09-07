@@ -295,6 +295,16 @@ void *QGCCorePlugin::createVideoSink(QQuickItem *widget, QObject *parent)
     return nullptr;
 #endif
 }
+void *QGCCorePlugin::createNativeVideoSink(QObject *parent)
+{
+#ifdef QGC_GST_STREAMING
+    return GStreamer::createNativeSink(parent);
+#else
+    Q_UNUSED(parent);
+    return nullptr;
+#endif
+}
+
 void QGCCorePlugin::setVideoSinkWidget(void *sink, QQuickItem *widget)
 {
 #ifdef QGC_GST_STREAMING

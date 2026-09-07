@@ -74,6 +74,7 @@ public:
     Q_INVOKABLE void stopRecording();
     Q_INVOKABLE void stopVideo();
     Q_INVOKABLE void setActiveVideoSource(int index);
+    Q_INVOKABLE void setNativeRendering(bool nativeRendering);
     Q_INVOKABLE void switchActiveVideoSource();
 
     /// Number of picture-in-picture tile slots available for simultaneous multi-view.
@@ -151,6 +152,9 @@ private slots:
     void _videoSourceChanged();
 
 private:
+    bool _nativeRendering = false;
+
+
     friend class VideoManagerTest;
 
     void _initVideoReceiver(VideoReceiver *receiver, QQuickWindow *window);

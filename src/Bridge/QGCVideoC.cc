@@ -54,6 +54,53 @@ GstFlowReturn onNewSample(GstAppSink *appsink, gpointer)
 
 } // namespace
 
+bool qgc_video_attach_appsink(void *appsink)
+{
+#ifdef QGC_GST_STREAMING
+    if (!appsink) {
+        lastError = "no appsink given";
+        return false;
+    }
+
+    GstAppSink *const adopted = GST_APP_SINK(appsink);
+    GstCaps *const caps = gst_caps_new_simple("video/x-raw", "format", G_TYPE_STRING, "BGRA", nullptr);
+    gst_app_sink_set_caps(adopted, caps);
+    gst_caps_unref(caps);
+    gst_app_sink_set_max_buffers(adopted, 1);
+    gst_app_sink_set_drop(adopted, TRUE);
+
+    GstAppSinkCallbacks callbacks = {};
+    callbacks.new_sample = onNewSample;
+    gst_app_sink_set_callbacks(adopted, &callbacks, nullptr, nullptr);
+
+    {
+        const std::lock_guard<std::mutex> lock(frameMutex);
+        latestFrame.clear();
+        frameWidth = 0;
+        frameHeight = 0;
+        frameStride = 0;
+        frameCount = 0;
+    }
+
+    lastError.clear();
+    return true;
+#else
+    (void)appsink;
+    lastError = "this build has no GStreamer";
+    return false;
+#endif
+}
+
+void qgc_video_detach_appsink(void)
+{
+    const std::lock_guard<std::mutex> lock(frameMutex);
+    latestFrame.clear();
+    frameWidth = 0;
+    frameHeight = 0;
+    frameStride = 0;
+    frameCount = 0;
+}
+
 bool qgc_video_available(void)
 {
 #ifdef QGC_GST_STREAMING

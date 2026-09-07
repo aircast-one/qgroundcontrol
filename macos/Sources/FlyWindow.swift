@@ -471,6 +471,7 @@ struct FlyView: View {
             fly.start()
             instruments.refresh()
             guided.refresh(prearmClear: !fly.warning.showing)
+            video.useNativeRendering()
             video.refresh()
         }
         .onDisappear {

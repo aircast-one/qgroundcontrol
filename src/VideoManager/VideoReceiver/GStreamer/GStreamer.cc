@@ -8,6 +8,7 @@
  ****************************************************************************/
 
 #include "GStreamer.h"
+#include "QGCVideoC.h"
 #include "AppSettings.h"
 #include "GstVideoReceiver.h"
 #include "QGCLoggingCategory.h"
@@ -518,6 +519,42 @@ void *createVideoSink(QQuickItem *widget, QObject *parent)
     }
 
     return videoSinkBin;
+}
+
+void *createNativeSink(QObject *parent)
+{
+    Q_UNUSED(parent);
+
+    GError *error = nullptr;
+    GstElement *const bin = gst_parse_bin_from_description(
+        "videoconvert ! appsink name=nativesink sync=false", TRUE, &error);
+    if (!bin) {
+        qCCritical(GStreamerLog) << "native sink bin failed" << (error ? error->message : "");
+        if (error) {
+            g_error_free(error);
+        }
+        return nullptr;
+    }
+    if (error) {
+        g_error_free(error);
+    }
+
+    GstElement *const appsink = gst_bin_get_by_name(GST_BIN(bin), "nativesink");
+    if (!appsink) {
+        qCCritical(GStreamerLog) << "native sink bin has no appsink";
+        gst_object_unref(bin);
+        return nullptr;
+    }
+
+    const bool attached = qgc_video_attach_appsink(appsink);
+    gst_object_unref(appsink);
+    if (!attached) {
+        qCCritical(GStreamerLog) << "native sink could not be attached";
+        gst_object_unref(bin);
+        return nullptr;
+    }
+
+    return bin;
 }
 
 void setVideoSinkWidget(void *sink, QQuickItem *widget)
