@@ -165,6 +165,14 @@ vehicle replaces the plan wholesale, so the altitude and delete controls would h
 whatever now sat at that index. Deletes clear it themselves; every other way the plan can change
 underneath is caught by validating the selection against the plan each poll.
 
+**Saving a plan reports success either way.** `saveToFile` returns void, so `ok` is true whether it
+wrote the file or failed to open it. Measured: a good path and an unwritable one both came back
+`ok=true`, and only `plan.currentPlanFile` told them apart — set to the written path on success,
+empty on failure. It is also not the path you passed: a filename with no dot gets `.plan` appended,
+so `/…/probe-plan` was written as `/…/probe-plan.plan`. Anything copying the result out afterwards
+has to use `currentPlanFile` rather than the path it asked for, or it will look for a file that is
+not there.
+
 **Loading from the vehicle throws work away.** It overwrites whatever is drawn and there is no
 undo, so QGC asks first when the plan has unsent changes. `plan.dirty` says when that is, and Load
 here asks the same question rather than being the one place that discards a survey silently.
