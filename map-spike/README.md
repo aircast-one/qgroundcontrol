@@ -236,6 +236,13 @@ is anything to save; `containsItems` says whether there is a plan at all, and th
 question. Export KML is a separate action, not a third choice in a Save dialog, because it writes a
 format nothing here can reopen.
 
+**A clear cannot live in here.** The host owns the opened document, and `removeAll` does not touch
+it — nor QGC's `currentPlanFile` unless the controller is offline. So a clear invoked from inside
+the map empties the plan while the shell still names the user's file and keeps Save enabled, and the
+next Save writes a blank plan over their mission and reports success. `PlanMapScreen` takes
+`onClear` and shows the button only when the host supplies one, because the dependency runs app to
+map and nothing in here can reach the document reference.
+
 **Clear is local, where QGC's is not.** `PlanView.qml`'s Clear Mission calls `removeAllFromVehicle`
 and wipes the aircraft as well as the controller, behind a modal confirmation and coloured red.
 `Clear` here calls `removeAll`, which empties the controller only, because starting a plan over is

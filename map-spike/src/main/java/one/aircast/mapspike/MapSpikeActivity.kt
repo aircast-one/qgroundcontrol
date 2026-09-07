@@ -57,7 +57,10 @@ class MapSpikeActivity : ComponentActivity() {
         super.onCreate(savedInstanceState)
         setContent {
             MaterialTheme(colorScheme = darkColorScheme()) {
-                PlanMapScreen(Modifier.fillMaxSize())
+                PlanMapScreen(
+                    Modifier.fillMaxSize(),
+                    onClear = { PlanBridge.clearPlan() },
+                )
             }
         }
     }
@@ -65,7 +68,7 @@ class MapSpikeActivity : ComponentActivity() {
 
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
-internal fun MapSpikeScreen(mapStyle: String) {
+internal fun MapSpikeScreen(mapStyle: String, onClear: (() -> Unit)? = null) {
     var follow by remember { mutableStateOf(true) }
     var fitRequest by remember { mutableStateOf(0) }
     var loadArmed by remember { mutableStateOf(false) }
@@ -353,15 +356,21 @@ internal fun MapSpikeScreen(mapStyle: String) {
                         fitRequest += 1
                     }) { Text("Fit") }
 
-                    TextButton(onClick = {
-                        if (!clearArmed) {
-                            clearArmed = true
-                        } else {
-                            clearArmed = false
-                            selected = null
-                            onBridge("Clearing the plan") { PlanBridge.clearPlan() }
-                        }
-                    }) { Text(if (clearArmed) "Clear everything" else "Clear") }
+                    // Only offered when the host supplies one. Clearing the plan
+                    // from in here would empty it behind a shell that still holds
+                    // the opened document, leaving the next Save to write a blank
+                    // plan over the user's file and report success.
+                    onClear?.let { clear ->
+                        TextButton(onClick = {
+                            if (!clearArmed) {
+                                clearArmed = true
+                            } else {
+                                clearArmed = false
+                                selected = null
+                                clear()
+                            }
+                        }) { Text(if (clearArmed) "Clear everything" else "Clear") }
+                    }
 
                 }
 

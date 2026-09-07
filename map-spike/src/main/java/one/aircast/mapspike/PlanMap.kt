@@ -33,7 +33,11 @@ private fun planMapStyle(context: Context): String =
     }
 
 @Composable
-fun PlanMapScreen(modifier: Modifier = Modifier) {
+// onClear is null unless the host supplies one, because clearing has to go
+// through whatever owns the opened document. The dependency runs app to map, so
+// a clear living in here cannot reach that reference and would leave the shell
+// naming a file whose plan is gone.
+fun PlanMapScreen(modifier: Modifier = Modifier, onClear: (() -> Unit)? = null) {
     val context = LocalContext.current
     val style = remember(context) { planMapStyle(context) }
 
@@ -45,6 +49,6 @@ fun PlanMapScreen(modifier: Modifier = Modifier) {
     }
 
     Surface(modifier, color = MaterialTheme.colorScheme.surface) {
-        MapSpikeScreen(style)
+        MapSpikeScreen(style, onClear)
     }
 }
