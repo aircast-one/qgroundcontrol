@@ -75,6 +75,12 @@ object FenceBridge {
     fun addRallyPoint(latitude: Double, longitude: Double): Boolean =
         invoke("$RALLY_ROOT.addPoint", "[{\"latitude\":$latitude,\"longitude\":$longitude,\"altitude\":0}]")
 
+    fun moveRallyPoint(index: Int, latitude: Double, longitude: Double): Boolean =
+        runCatching {
+            val value = "{\"value\":{\"latitude\":$latitude,\"longitude\":$longitude,\"altitude\":0}}"
+            JSONObject(QGCBridge.set("$RALLY_POINTS.$index.coordinate", value)).optBoolean("ok")
+        }.getOrDefault(false)
+
     fun deletePolygon(index: Int): Boolean = invoke("$FENCE_ROOT.deletePolygon", "[$index]")
 
     fun deleteCircle(index: Int): Boolean = invoke("$FENCE_ROOT.deleteCircle", "[$index]")
