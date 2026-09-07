@@ -10,6 +10,9 @@ add_library(QGCNativeUI STATIC
     Sources/AnalyzeWindow.swift
     Sources/Vibration.swift
     Sources/VibrationReading.swift
+    Sources/ParameterModel.swift
+    Sources/Parameters.swift
+    Sources/VehicleSetupWindow.swift
     Sources/AppShell.swift
     Sources/Bridge.swift
     Sources/Fact.swift

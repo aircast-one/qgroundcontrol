@@ -17,7 +17,7 @@ struct SettingsView: View {
 
     private var sidebar: some View {
         VStack(spacing: 0) {
-            SearchField(text: $store.search)
+            SearchField(text: $store.search, placeholder: "Search settings")
                 .padding(8)
             List(store.pages, selection: $store.selected) { page in
                 Text(page.title).tag(page.id)
@@ -74,10 +74,11 @@ struct SettingsView: View {
 // and the Escape-to-clear behaviour macOS users already expect.
 struct SearchField: NSViewRepresentable {
     @Binding var text: String
+    var placeholder = "Search"
 
     func makeNSView(context: Context) -> NSSearchField {
         let field = NSSearchField()
-        field.placeholderString = "Search settings"
+        field.placeholderString = placeholder
         field.delegate = context.coordinator
         return field
     }

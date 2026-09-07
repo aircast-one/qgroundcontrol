@@ -110,6 +110,27 @@ expect(VibrationReading(x: 5, y: 5, z: 35, clipCounts: [], available: true).wors
        "the worst axis wins")
 expect(!VibrationReading.unavailable.available, "the unavailable reading reports itself as such")
 
+// QGC appends "Unknown: N" to enumStrings when a value is outside the enum and points
+// enumIndex at it; showing that instead of the number is a regression in readability.
+let outsideEnum = Parameter(name: "ACRO_RP_RATE_TC", componentId: 1, json: [
+    "enumIndex": 5, "valueString": "0.00", "units": "s",
+    "enumStrings": ["Very Soft", "Soft", "Medium", "Crisp", "Very Crisp", "Unknown: 0"]])
+expect(outsideEnum.value, "0.00", "a value outside its enum shows the number")
+
+let insideEnum = Parameter(name: "ACRO_RP_EXPO", componentId: 1, json: [
+    "enumIndex": 2, "valueString": "0.30", "enumStrings": ["Low", "Med", "High"]])
+expect(insideEnum.value, "High", "a value inside its enum shows the label")
+
+let noEnum = Parameter(name: "ACRO_BAL_ROLL", componentId: 1, json: [
+    "enumIndex": -1, "valueString": "1.0"])
+expect(noEnum.value, "1.0", "a plain numeric parameter shows its value")
+
+expect(Parameter(name: "ATC_ANG_PIT_P", componentId: 1, json: [:]).group, "ATC", "group is the prefix")
+expect(Parameter(name: "SCHED_LOOP_RATE", componentId: 1, json: [:]).group, "SCHED", "group stops at the first underscore")
+expect(Parameter(name: "FORMAT", componentId: 1, json: [:]).group, "FORMAT", "an ungrouped parameter is its own group")
+expect(Parameter(name: "ATC_ANG_PIT_P", componentId: 1, json: [:]).path,
+       "vehicle.parameterManager.getParameter(1,ATC_ANG_PIT_P)", "path calls getParameter")
+
 if failures == 0 {
     print("all Swift checks passed")
     exit(0)
