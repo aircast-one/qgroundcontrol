@@ -24,6 +24,7 @@ swiftc -Onone -o "$out" \
     "$root/macos/Sources/FlyTelemetryModel.swift" \
     "$root/macos/Sources/VehicleMarkerModel.swift" \
     "$root/macos/Sources/ItemFactModel.swift" \
+    "$root/macos/Sources/CameraChoiceModel.swift" \
     "$root/macos/Sources/TerrainProfileModel.swift" \
     "$root/macos/Sources/MapFraming.swift" \
     "$root/macos/Sources/FenceRallyModel.swift" \

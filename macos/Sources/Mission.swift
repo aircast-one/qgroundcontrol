@@ -16,6 +16,7 @@ final class MissionStore: ObservableObject, Probeable {
     @Published private(set) var canRedo = false
     @Published private(set) var commands: [MissionCommand] = []
     @Published private(set) var selectedFacts: [ItemFact] = []
+    @Published private(set) var camera = CameraChoice.empty
     @Published private(set) var planFile = ""
 
     private var undoPoll: Timer?
@@ -170,12 +171,25 @@ final class MissionStore: ObservableObject, Probeable {
 
         // A complex item keeps its settings as its own properties rather than in the
         // fact lists a simple item uses.
-        let camera = item.isSimpleItem ? [] : ItemFact.camera(
-            (Bridge.group("plan.missionController.visualItems.\(item.index).cameraCalc")["facts"] as? [Any]) ?? [])
+        let calc = item.isSimpleItem
+            ? [:]
+            : Bridge.group("plan.missionController.visualItems.\(item.index).cameraCalc")
+        camera = CameraChoice(json: calc)
 
-        selectedFacts = camera + (listed.isEmpty && !item.isSimpleItem
+        let cameraFacts = item.isSimpleItem ? [] : ItemFact.camera(
+            (calc["facts"] as? [Any]) ?? [])
+
+        selectedFacts = cameraFacts + (listed.isEmpty && !item.isSimpleItem
             ? ItemFact.owned((Bridge.group("plan.missionController.visualItems.\(item.index)")["facts"] as? [Any]) ?? [])
             : listed)
+    }
+
+    func setCamera(brand: String? = nil, model: String? = nil) {
+        guard let item = items.first(where: \.isCurrent) else { return }
+        let path = "plan.missionController.visualItems.\(item.index).cameraCalc"
+        if let brand { _ = Bridge.set("\(path).cameraBrand", brand) }
+        if let model { _ = Bridge.set("\(path).cameraModel", model) }
+        reload()
     }
 
     func setFact(_ fact: ItemFact, to value: String) {
@@ -309,6 +323,9 @@ final class MissionStore: ObservableObject, Probeable {
          "canUndo": canUndo, "canRedo": canRedo,
          "commands": commands.map(\.name),
          "surveys": surveyAreas.map(\.count),
+         "camera": ["brand": camera.brand, "model": camera.model,
+                    "brands": camera.brands.count, "models": camera.models.count,
+                    "describes": camera.describes],
          "facts": selectedFacts.map {
              ["name": $0.name, "value": $0.value, "units": $0.units, "group": $0.group, "path": $0.pathSuffix]
          },
@@ -381,6 +398,10 @@ final class MissionStore: ObservableObject, Probeable {
                 return ["ok": false, "error": "\(target.command) cannot change its command"]
             }
             setCommand(of: target, to: Int(args["command"] ?? "") ?? 0)
+        case "setCameraBrand":
+            setCamera(brand: args["value"] ?? "")
+        case "setCameraModel":
+            setCamera(model: args["value"] ?? "")
         case "setFact":
             guard let fact = selectedFacts.first(where: { $0.name == args["name"] }) else {
                 return ["ok": false, "error": "the selected item has no fact named \(args["name"] ?? "")"]

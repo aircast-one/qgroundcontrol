@@ -671,6 +671,37 @@ func checkVehicleMarker() {
 
 checkVehicleMarker()
 
+func checkCameraChoice() {
+    let known = CameraChoice(json: [
+        "cameraBrand": "Canon", "cameraModel": "S100 PowerShot",
+        "cameraBrandList": ["Manual (no camera specs)", "Custom Camera", "Canon", "GoPro"],
+        "cameraModelList": ["S100 PowerShot", "EOS-M 22mm"],
+    ])
+    expect(known.canChooseBrand, "several brands can be chosen between")
+    expect(known.canChooseModel, "and several models")
+    expect(known.describes, "Canon S100 PowerShot", "the camera reads as brand and model")
+
+    let manual = CameraChoice(json: [
+        "cameraBrand": "Manual (no camera specs)", "cameraModel": "",
+        "cameraBrandList": ["Manual (no camera specs)", "Canon"],
+        "cameraModelList": [],
+    ])
+    expect(!manual.canChooseModel, "a brand with no models offers no model picker")
+    expect(manual.describes, "Manual (no camera specs)", "and reads as just the brand")
+
+    let single = CameraChoice(json: [
+        "cameraBrand": "GoPro", "cameraModel": "Hero 4",
+        "cameraBrandList": ["GoPro"], "cameraModelList": ["Hero 4"],
+    ])
+    expect(!single.canChooseBrand, "one brand is not a choice")
+    expect(!single.canChooseModel, "nor is the one model already selected")
+
+    expect(CameraChoice.empty.describes, "No camera", "an item with no camera says so")
+    expect(!CameraChoice.empty.canChooseBrand, "and offers nothing to pick")
+}
+
+checkCameraChoice()
+
 if failures == 0 {
     print("all Swift checks passed")
     exit(0)

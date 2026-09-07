@@ -47,6 +47,7 @@ add_library(QGCNativeUI STATIC
     Sources/MissionCommandModel.swift
     Sources/MissionItemKind.swift
     Sources/ItemFactModel.swift
+    Sources/CameraChoiceModel.swift
     Sources/TerrainProfileModel.swift
     Sources/PlanWindow.swift
     Sources/OverlayKit.swift

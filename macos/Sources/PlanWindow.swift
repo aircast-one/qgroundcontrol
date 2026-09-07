@@ -302,9 +302,34 @@ struct PlanInspector: View {
         VStack(alignment: .leading, spacing: 0) {
             SectionLabel(text: group)
             GroupCard {
+                    if group == ItemFact.cameraGroup, mission.camera.canChooseBrand {
+                        GroupRow(title: "Camera", showSeparator: false, trailing: {
+                            Picker("", selection: Binding(
+                                get: { mission.camera.brand },
+                                set: { mission.setCamera(brand: $0) })
+                            ) {
+                                ForEach(mission.camera.brands, id: \.self) { Text($0).tag($0) }
+                            }
+                            .labelsHidden()
+                            .frame(maxWidth: 170)
+                        })
+                        if mission.camera.canChooseModel {
+                            GroupRow(title: "Model", trailing: {
+                                Picker("", selection: Binding(
+                                    get: { mission.camera.model },
+                                    set: { mission.setCamera(model: $0) })
+                                ) {
+                                    ForEach(mission.camera.models, id: \.self) { Text($0).tag($0) }
+                                }
+                                .labelsHidden()
+                                .frame(maxWidth: 170)
+                            })
+                        }
+                    }
+
                     ForEach(Array(facts.enumerated()), id: \.element.id) { index, fact in
                         GroupRow(title: fact.title,
-                                 showSeparator: index > 0,
+                                 showSeparator: index > 0 || group == ItemFact.cameraGroup,
                                  titleLines: 2,
                                  trailing: {
                                      if fact.isBool {
