@@ -27,7 +27,11 @@ internal data class ParameterSection(val title: String, val names: List<String>)
 internal data class ParameterRows(val title: String, val facts: List<Fact>)
 
 internal fun factFromParameter(name: String, json: JSONObject): Fact? =
-    if (json.optString("kind") == "fact") Qgc.factAt(parameterPath(name), json) else null
+    if (json.optString("kind") == "fact") {
+        Qgc.factAt(parameterPath(name), json).copy(name = name)
+    } else {
+        null
+    }
 
 private fun readSections(sections: List<ParameterSection>): List<ParameterRows> =
     sections.mapNotNull { section ->

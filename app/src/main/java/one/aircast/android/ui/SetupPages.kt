@@ -55,8 +55,45 @@ private val SAFETY_PX4 = listOf(
     ),
 )
 
+private val LIGHTS_APM = listOf(
+    ParameterSection(
+        "Light channels",
+        (5..16).map { "SERVO${it}_FUNCTION" },
+    ),
+    ParameterSection(
+        "Brightness steps",
+        listOf("JS_LIGHTS_STEPS", "JS_LIGHTS_STEP", "BRD_PWM_COUNT"),
+    ),
+)
+
+private val CAMERA_APM = listOf(
+    ParameterSection("Gimbal", listOf("MNT_TYPE", "MNT1_TYPE", "MNT_DEFLT_MODE")),
+    ParameterSection(
+        "Angle limits",
+        listOf(
+            "MNT_ANGMIN_PAN", "MNT_ANGMAX_PAN",
+            "MNT_ANGMIN_ROL", "MNT_ANGMAX_ROL",
+            "MNT_ANGMIN_TIL", "MNT_ANGMAX_TIL",
+        ),
+    ),
+    ParameterSection("Neutral angles", listOf("MNT_NEUTRAL_X", "MNT_NEUTRAL_Y", "MNT_NEUTRAL_Z")),
+    ParameterSection("Retract angles", listOf("MNT_RETRACT_X", "MNT_RETRACT_Y", "MNT_RETRACT_Z")),
+    ParameterSection("Stabilisation", listOf("MNT_STAB_PAN", "MNT_STAB_ROLL", "MNT_STAB_TILT")),
+    ParameterSection("RC input", listOf("MNT_RC_IN_PAN", "MNT_RC_IN_ROLL", "MNT_RC_IN_TILT")),
+)
+
+private val FLIGHT_BEHAVIOR_PX4 = listOf(
+    ParameterSection(
+        "Responsiveness",
+        listOf("SYS_VEHICLE_RESP", "MPC_XY_VEL_ALL", "MPC_Z_VEL_ALL"),
+    ),
+)
+
 internal fun setupSectionsFor(componentName: String, isPx4: Boolean): List<ParameterSection>? =
     when (componentName) {
         "Safety" -> if (isPx4) SAFETY_PX4 else SAFETY_APM
+        "Lights" -> if (isPx4) null else LIGHTS_APM
+        "Camera" -> if (isPx4) null else CAMERA_APM
+        "Flight Behavior" -> if (isPx4) FLIGHT_BEHAVIOR_PX4 else null
         else -> null
     }

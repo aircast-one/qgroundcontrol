@@ -22,6 +22,20 @@ class ParameterFormTest {
     }
 
     @Test
+    fun `a parameter with no description is labelled by its name`() {
+        val json = JSONObject("""{"kind":"fact","name":"","shortDescription":"","valueString":"0"}""")
+        val fact = factFromParameter("MNT_ANGMIN_PAN", json)!!
+        assertEquals("MNT_ANGMIN_PAN", fact.name)
+        assertEquals("MNT_ANGMIN_PAN", fact.title)
+    }
+
+    @Test
+    fun `a description still wins over the name`() {
+        val json = JSONObject("""{"kind":"fact","name":"RTL_ALT","shortDescription":"Return altitude"}""")
+        assertEquals("Return altitude", factFromParameter("RTL_ALT", json)!!.title)
+    }
+
+    @Test
     fun `a parameter the vehicle does not have is skipped`() {
         assertNull(factFromParameter("NOPE", JSONObject("""{"kind":"value","value":null}""")))
         assertNull(factFromParameter("NOPE", JSONObject("""{"kind":"null"}""")))
@@ -35,6 +49,24 @@ class ParameterFormTest {
         assertEquals(true, apm.any { it.names.contains("FS_THR_ENABLE") })
         assertEquals(true, px4.any { it.names.contains("NAV_RCL_ACT") })
         assertEquals(false, apm.any { it.names.contains("NAV_RCL_ACT") })
+    }
+
+    @Test
+    fun `camera and lights are ardupilot only, flight behavior is px4 only`() {
+        assertEquals(null, setupSectionsFor("Camera", isPx4 = true))
+        assertEquals(null, setupSectionsFor("Lights", isPx4 = true))
+        assertEquals(null, setupSectionsFor("Flight Behavior", isPx4 = false))
+        assertEquals(true, setupSectionsFor("Camera", isPx4 = false)!!.isNotEmpty())
+        assertEquals(true, setupSectionsFor("Lights", isPx4 = false)!!.isNotEmpty())
+        assertEquals(true, setupSectionsFor("Flight Behavior", isPx4 = true)!!.isNotEmpty())
+    }
+
+    @Test
+    fun `light channels cover every servo output the page offers`() {
+        val channels = setupSectionsFor("Lights", isPx4 = false)!!.first().names
+        assertEquals(12, channels.size)
+        assertEquals("SERVO5_FUNCTION", channels.first())
+        assertEquals("SERVO16_FUNCTION", channels.last())
     }
 
     @Test
