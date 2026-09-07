@@ -3,18 +3,18 @@ import SwiftUI
 
 struct ParametersView: View {
     @ObservedObject var store: ParametersStore
-    @State private var editing: String?
 
     var body: some View {
         VStack(spacing: 0) {
-            header
+            filters
             Divider()
             if store.loading {
-                Notice(text: "Reading parameters from the vehicle…")
+                EmptyStateRow(text: "Reading parameters from the vehicle\u{2026}")
+                    .frame(maxHeight: .infinity)
             } else if !store.status.isEmpty {
-                Notice(text: store.status)
+                EmptyStateRow(text: store.status).frame(maxHeight: .infinity)
             } else if store.visible.isEmpty {
-                Notice(text: "No parameter matches this filter.")
+                EmptyStateRow(text: "No parameter matches this filter.").frame(maxHeight: .infinity)
             } else {
                 list
             }
@@ -22,13 +22,11 @@ struct ParametersView: View {
         .onAppear(perform: store.load)
     }
 
-    private var header: some View {
-        HStack(spacing: 10) {
+    private var filters: some View {
+        HStack(spacing: Overlay.step) {
             Picker("", selection: $store.group) {
                 Text("All groups").tag("")
-                ForEach(store.groups, id: \.self) { group in
-                    Text(group).tag(group)
-                }
+                ForEach(store.groups, id: \.self) { Text($0).tag($0) }
             }
             .labelsHidden()
             .frame(width: 150)
@@ -36,53 +34,25 @@ struct ParametersView: View {
             SearchField(text: $store.search, placeholder: "Search parameters")
 
             Text("\(store.visible.count) of \(store.parameters.count)")
-                .font(.caption)
-                .foregroundColor(.secondary)
+                .font(.caption).foregroundColor(.secondary)
                 .frame(width: 110, alignment: .trailing)
         }
-        .padding(10)
+        .padding(Overlay.unit * 0.75)
     }
 
     private var list: some View {
         ScrollView {
-            LazyVStack(alignment: .leading, spacing: 0) {
-                ForEach(store.visible) { parameter in
-                    Divider()
-                    row(parameter)
+            LazyVStack(spacing: 0) {
+                ForEach(Array(store.visible.enumerated()), id: \.element.id) { index, parameter in
+                    ParameterRow(parameter: parameter, showSeparator: index > 0) {
+                        store.write(parameter, $0)
+                    }
                 }
             }
-            .padding(.horizontal, 14)
+            .background(Overlay.card)
+            .clipShape(RoundedRectangle(cornerRadius: Overlay.cardRadius))
+            .padding(Overlay.unit)
         }
-    }
-
-    private func row(_ parameter: Parameter) -> some View {
-        HStack(alignment: .firstTextBaseline, spacing: 12) {
-            VStack(alignment: .leading, spacing: 2) {
-                Text(parameter.name).font(.body.monospaced())
-                if !parameter.description.isEmpty {
-                    Text(parameter.description)
-                        .font(.caption)
-                        .foregroundColor(.secondary)
-                }
-            }
-            Spacer()
-            if editing == parameter.id {
-                LabelledField(label: "", value: parameter.value) {
-                    store.write(parameter, $0)
-                    editing = nil
-                }
-                .frame(width: 150)
-            } else {
-                Text(parameter.value)
-                    .font(.body.monospacedDigit())
-                Text(parameter.units)
-                    .font(.caption)
-                    .foregroundColor(.secondary)
-                    .frame(width: 40, alignment: .leading)
-                Button("Edit") { editing = parameter.id }
-            }
-        }
-        .padding(.vertical, 7)
     }
 }
 
@@ -90,53 +60,47 @@ struct SensorsView: View {
     @ObservedObject var store: SensorsStore
 
     var body: some View {
-        ScrollView {
-            VStack(alignment: .leading, spacing: 20) {
-                if !store.status.isEmpty {
-                    Notice(text: store.status).frame(height: 200)
-                } else {
-                    summary
-                    SectionCard(title: "Sensors") {
-                        VStack(spacing: 0) {
-                            ForEach(Array(store.sensors.enumerated()), id: \.element.id) { index, sensor in
-                                if index > 0 { Divider() }
-                                row(sensor)
-                            }
+        SetupPageBody(title: "Sensors",
+                      note: "What the vehicle reports about its own hardware, live.") {
+            if !store.status.isEmpty {
+                GroupCard { EmptyStateRow(text: store.status) }
+            } else {
+                GroupCard {
+                    GroupRow(title: store.failing.isEmpty
+                                ? "All enabled sensors are healthy"
+                                : "\(store.failing.count) sensor\(store.failing.count == 1 ? "" : "s") reporting a fault",
+                             description: store.failing.isEmpty
+                                ? ""
+                                : store.failing.map(\.name).joined(separator: ", "),
+                             showSeparator: false,
+                             leading: {
+                                 Image(systemName: store.failing.isEmpty
+                                     ? "checkmark.circle.fill" : "exclamationmark.triangle.fill")
+                                     .foregroundColor(store.failing.isEmpty ? .green : .orange)
+                             })
+                }
+
+                VStack(alignment: .leading, spacing: 0) {
+                    SectionLabel(text: "Reported sensors")
+                    GroupCard {
+                        ForEach(Array(store.sensors.enumerated()), id: \.element.id) { index, sensor in
+                            GroupRow(title: sensor.name,
+                                     showSeparator: index > 0,
+                                     trailing: {
+                                         Text(SensorsView.label(sensor.state))
+                                             .font(.callout)
+                                             .foregroundColor(SensorsView.colour(sensor.state))
+                                     })
                         }
                     }
                 }
             }
-            .padding(20)
         }
         .onAppear(perform: store.start)
         .onDisappear(perform: store.stop)
     }
 
-    private var summary: some View {
-        HStack(spacing: 8) {
-            Circle()
-                .fill(store.failing.isEmpty ? Color.green : Color.red)
-                .frame(width: 9, height: 9)
-            Text(store.failing.isEmpty
-                 ? "All enabled sensors are reporting healthy."
-                 : "\(store.failing.count) sensor\(store.failing.count == 1 ? "" : "s") reporting a fault: \(store.failing.map(\.name).joined(separator: ", "))")
-                .foregroundColor(store.failing.isEmpty ? .secondary : .red)
-        }
-    }
-
-    private func row(_ sensor: SensorHealth) -> some View {
-        HStack {
-            Text(sensor.name)
-                .foregroundColor(sensor.state == .disabled ? .secondary : .primary)
-            Spacer()
-            Text(label(sensor.state))
-                .font(.caption)
-                .foregroundColor(colour(sensor.state))
-        }
-        .padding(.vertical, 6)
-    }
-
-    private func label(_ state: SensorHealth.State) -> String {
+    static func label(_ state: SensorHealth.State) -> String {
         switch state {
         case .healthy: return "Healthy"
         case .unhealthy: return "Fault"
@@ -144,10 +108,10 @@ struct SensorsView: View {
         }
     }
 
-    private func colour(_ state: SensorHealth.State) -> Color {
+    static func colour(_ state: SensorHealth.State) -> Color {
         switch state {
         case .healthy: return .green
-        case .unhealthy: return .red
+        case .unhealthy: return .orange
         case .disabled: return .secondary
         }
     }
@@ -155,36 +119,36 @@ struct SensorsView: View {
 
 struct SafetyView: View {
     @ObservedObject var store: ParametersStore
-    @State private var editing: String?
 
     var body: some View {
-        ScrollView {
-            VStack(alignment: .leading, spacing: 24) {
-                if store.loading {
-                    Notice(text: "Reading parameters from the vehicle…").frame(height: 200)
-                } else if sections.isEmpty {
-                    Notice(text: "This vehicle reports none of the safety parameters this page knows about.")
-                        .frame(height: 200)
-                } else {
-                    ForEach(sections, id: \.section.id) { entry in
-                        SectionCard(title: entry.section.title) {
-                            VStack(alignment: .leading, spacing: 0) {
-                                Text(entry.section.note)
-                                    .font(.caption)
-                                    .foregroundColor(.secondary)
-                                    .padding(.bottom, 8)
-                                ForEach(Array(entry.names.enumerated()), id: \.element) { index, name in
-                                    if index > 0 { Divider() }
-                                    if let parameter = store.parameter(named: name) {
-                                        row(parameter)
+        SetupPageBody(title: "Safety",
+                      note: "What the vehicle does when something goes wrong.") {
+            if store.loading {
+                GroupCard { EmptyStateRow(text: "Reading parameters from the vehicle\u{2026}") }
+            } else if sections.isEmpty {
+                GroupCard {
+                    EmptyStateRow(text: "This vehicle reports none of the safety parameters this page knows about.")
+                }
+            } else {
+                ForEach(sections, id: \.section.id) { entry in
+                    VStack(alignment: .leading, spacing: 0) {
+                        SectionLabel(text: entry.section.title)
+                        GroupCard {
+                            ForEach(Array(entry.names.enumerated()), id: \.element) { index, name in
+                                if let parameter = store.parameter(named: name) {
+                                    ParameterRow(parameter: parameter, showSeparator: index > 0) {
+                                        store.write(parameter, $0)
                                     }
                                 }
                             }
                         }
+                        Text(entry.section.note)
+                            .font(.caption).foregroundColor(.secondary)
+                            .padding(.horizontal, Overlay.horizontalPadding)
+                            .padding(.top, Overlay.unit * 0.35)
                     }
                 }
             }
-            .padding(20)
         }
         .onAppear(perform: store.load)
     }
@@ -192,116 +156,65 @@ struct SafetyView: View {
     private var sections: [(section: SafetySection, names: [String])] {
         SafetySection.present(in: Set(store.parameters.map(\.name)))
     }
-
-    private func row(_ parameter: Parameter) -> some View {
-        HStack(alignment: .firstTextBaseline, spacing: 12) {
-            VStack(alignment: .leading, spacing: 2) {
-                Text(parameter.description.isEmpty ? parameter.name : parameter.description)
-                Text(parameter.name)
-                    .font(.caption.monospaced())
-                    .foregroundColor(.secondary)
-            }
-            Spacer()
-            if editing == parameter.id {
-                LabelledField(label: "", value: parameter.value) {
-                    store.write(parameter, $0)
-                    editing = nil
-                }
-                .frame(width: 150)
-            } else {
-                Text(parameter.value).font(.body.monospacedDigit())
-                Text(parameter.units)
-                    .font(.caption).foregroundColor(.secondary)
-                    .frame(width: 40, alignment: .leading)
-                Button("Edit") { editing = parameter.id }
-            }
-        }
-        .padding(.vertical, 7)
-    }
 }
 
 struct FlightModesView: View {
     @ObservedObject var store: ParametersStore
-    @State private var editing: Int?
 
     var body: some View {
-        ScrollView {
-            VStack(alignment: .leading, spacing: 24) {
-                if store.loading {
-                    Notice(text: "Reading parameters from the vehicle…").frame(height: 200)
-                } else if positions.isEmpty {
-                    Notice(text: "This vehicle does not report a six-position mode switch.")
-                        .frame(height: 200)
-                } else {
-                    if let channel = store.parameter(named: FlightModePosition.channelParameter) {
-                        SectionCard(title: "Mode switch") {
-                            VStack(alignment: .leading, spacing: 0) {
-                                Text("Which transmitter channel selects the flight mode.")
-                                    .font(.caption).foregroundColor(.secondary)
-                                    .padding(.bottom, 8)
-                                MetricRow(label: channel.description.isEmpty ? channel.name : channel.description,
-                                          value: channel.value, units: "")
+        SetupPageBody(title: "Flight Modes",
+                      note: "Which mode each position of the transmitter switch selects.") {
+            if store.loading {
+                GroupCard { EmptyStateRow(text: "Reading parameters from the vehicle\u{2026}") }
+            } else if positions.isEmpty {
+                GroupCard { EmptyStateRow(text: "This vehicle does not report a six-position mode switch.") }
+            } else {
+                if let channel = store.parameter(named: FlightModePosition.channelParameter) {
+                    VStack(alignment: .leading, spacing: 0) {
+                        SectionLabel(text: "Mode switch")
+                        GroupCard {
+                            ParameterRow(parameter: channel, showSeparator: false) {
+                                store.write(channel, $0)
                             }
                         }
                     }
+                }
 
-                    SectionCard(title: "Switch positions") {
-                        VStack(alignment: .leading, spacing: 0) {
-                            Text("The mode each position of that switch selects, with the PWM band the firmware uses for it.")
-                                .font(.caption).foregroundColor(.secondary)
-                                .padding(.bottom, 8)
-                            ForEach(positions) { position in
-                                if position.index > 1 { Divider() }
-                                row(position)
+                VStack(alignment: .leading, spacing: 0) {
+                    SectionLabel(text: "Switch positions")
+                    GroupCard {
+                        ForEach(positions, id: \.index) { position in
+                            if let parameter = store.parameter(named: position.parameter) {
+                                let active = parameter.value == store.currentFlightMode
+                                GroupRow(title: "Position \(position.index)",
+                                         showSeparator: position.index > 1,
+                                         leading: {
+                                             Seal(label: "\(position.index)",
+                                                  colour: active ? Overlay.launch : Overlay.mission)
+                                         },
+                                         trailing: {
+                                             HStack(spacing: Overlay.step) {
+                                                 if active {
+                                                     Text("Active")
+                                                         .font(.caption.weight(.semibold))
+                                                         .foregroundColor(.green)
+                                                 }
+                                                 ParameterEditor(parameter: parameter) {
+                                                     store.write(parameter, $0)
+                                                 }
+                                             }
+                                         })
                             }
                         }
                     }
                 }
             }
-            .padding(20)
         }
         .onAppear(perform: store.load)
     }
 
     private var positions: [FlightModePosition] {
         FlightModePosition.present(in: Set(store.parameters.map(\.name)))
-    }
-
-    @ViewBuilder
-    private func row(_ position: FlightModePosition) -> some View {
-        if let parameter = store.parameter(named: position.parameter) {
-            HStack(alignment: .firstTextBaseline, spacing: 12) {
-                VStack(alignment: .leading, spacing: 2) {
-                    Text("Position \(position.index)")
-                    Text(position.pwmRange)
-                        .font(.caption).foregroundColor(.secondary)
-                }
-                .frame(width: 130, alignment: .leading)
-
-                Spacer()
-
-                if editing == position.index {
-                    LabelledField(label: "", value: parameter.value) {
-                        store.write(parameter, $0)
-                        editing = nil
-                    }
-                    .frame(width: 180)
-                } else {
-                    // The active mode is what the operator is checking against the
-                    // switch in their hand, so it is called out rather than inferred.
-                    if parameter.value == store.currentFlightMode {
-                        Text("now")
-                            .font(.caption2)
-                            .padding(.horizontal, 5).padding(.vertical, 1)
-                            .background(Color.accentColor.opacity(0.18))
-                            .cornerRadius(3)
-                    }
-                    Text(parameter.value)
-                    Button("Edit") { editing = position.index }
-                }
-            }
-            .padding(.vertical, 8)
-        }
     }
 }
 

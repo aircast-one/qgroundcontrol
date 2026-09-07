@@ -2,6 +2,9 @@
 
 #include "QGCBridgeCore.h"
 
+#include <QtCore/QCoreApplication>
+#include <QtCore/QThread>
+
 #include <cstdlib>
 #include <cstring>
 
@@ -14,26 +17,52 @@ char *duplicate(const QString &text)
     return strdup(utf8.constData());
 }
 
+// QObject properties, QStrings and Facts are not thread safe, and Swift calls this ABI
+// from whatever queue it likes -- the parameter load reads ~1400 facts off the main
+// thread. Reading them beside the running Qt thread corrupted refcounts and crashed in
+// Swift long afterwards, so every call is marshalled onto the thread Qt owns.
+template <typename Fn>
+QString onQtThread(Fn body)
+{
+    QCoreApplication *const app = QCoreApplication::instance();
+    if (!app || QThread::currentThread() == app->thread()) {
+        return body();
+    }
+
+    QString result;
+    QMetaObject::invokeMethod(app, [&] { result = body(); }, Qt::BlockingQueuedConnection);
+    return result;
+}
+
 } // namespace
 
 char *qgc_bridge_get(const char *path)
 {
-    return duplicate(QGCBridgeCore::get(QString::fromUtf8(path)));
+    const QString copied = QString::fromUtf8(path);
+    return duplicate(onQtThread([&] { return QGCBridgeCore::get(copied); }));
 }
 
 char *qgc_bridge_set(const char *path, const char *value_json)
 {
-    return duplicate(QGCBridgeCore::set(QString::fromUtf8(path), QString::fromUtf8(value_json)));
+    const QString copiedPath = QString::fromUtf8(path);
+    const QString copiedValue = QString::fromUtf8(value_json);
+    return duplicate(onQtThread([&] { return QGCBridgeCore::set(copiedPath, copiedValue); }));
 }
 
 char *qgc_bridge_invoke(const char *path, const char *args_json)
 {
-    return duplicate(QGCBridgeCore::invoke(QString::fromUtf8(path), QString::fromUtf8(args_json)));
+    const QString copiedPath = QString::fromUtf8(path);
+    const QString copiedArgs = QString::fromUtf8(args_json);
+    return duplicate(onQtThread([&] { return QGCBridgeCore::invoke(copiedPath, copiedArgs); }));
 }
 
 void qgc_bridge_watch(const char *paths_csv)
 {
-    QGCBridgeCore::watch(QString::fromUtf8(paths_csv).split(QLatin1Char(','), Qt::SkipEmptyParts));
+    const QString copied = QString::fromUtf8(paths_csv);
+    (void) onQtThread([&] {
+        QGCBridgeCore::watch(copied.split(QLatin1Char(','), Qt::SkipEmptyParts));
+        return QString();
+    });
 }
 
 void qgc_bridge_set_event_handler(QGCBridgeEventFn handler)

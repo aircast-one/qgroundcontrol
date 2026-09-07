@@ -11,6 +11,7 @@ add_library(QGCNativeUI STATIC
     Sources/Vibration.swift
     Sources/VibrationReading.swift
     Sources/ParameterModel.swift
+    Sources/ParameterRow.swift
     Sources/Parameters.swift
     Sources/VehicleSetupWindow.swift
     Sources/VehicleComponentModel.swift

@@ -356,6 +356,40 @@ func checkVehicleReadiness() {
 
 checkVehicleReadiness()
 
+func checkParameterOptions() {
+    let mode = Parameter(name: "FLTMODE1", componentId: 1, json: [
+        "units": "", "shortDescription": "Flight mode 1",
+        "enumIndex": 2, "enumStrings": ["Stabilize", "Acro", "AltHold"],
+        "enumValues": [0, 1, 2], "valueString": "2",
+    ])
+    expect(mode.value, "AltHold", "an enum parameter shows its label")
+    expect(mode.options.count == 3, "and keeps every option it can be set to")
+    expect(mode.selectedOption?.raw == "2", "the selected option carries the raw value to write")
+
+    let unknown = Parameter(name: "FLTMODE2", componentId: 1, json: [
+        "enumIndex": 3, "enumStrings": ["Stabilize", "Acro", "AltHold", "Unknown: 9"],
+        "enumValues": [0, 1, 2, 9], "valueString": "9",
+    ])
+    expect(unknown.value, "9", "a value outside the enum shows the number, not Unknown")
+    expect(unknown.options.count == 3, "the synthetic Unknown entry is not offered as a choice")
+
+    let plain = Parameter(name: "WPNAV_SPEED", componentId: 1, json: [
+        "units": "cm/s", "valueString": "500", "enumIndex": -1,
+    ])
+    expect(plain.options.isEmpty, "a numeric parameter offers no options")
+    expect(plain.value, "500", "and shows its value")
+    expect(plain.group, "WPNAV", "the group is the prefix before the first underscore")
+
+    let mismatched = Parameter(name: "X_Y", componentId: 1, json: [
+        "enumStrings": ["A", "B"], "enumValues": [0], "valueString": "0", "enumIndex": 0,
+    ])
+    expect(mismatched.options.isEmpty, "labels without matching values are not offered")
+
+    expect(Parameter.rawText(NSNumber(value: 2.0)), "2", "a whole enum value writes without a decimal point")
+}
+
+checkParameterOptions()
+
 if failures == 0 {
     print("all Swift checks passed")
     exit(0)

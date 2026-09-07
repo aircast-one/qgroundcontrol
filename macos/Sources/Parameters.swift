@@ -29,36 +29,20 @@ final class ParametersStore: ObservableObject, Probeable {
         loading = true
         status = ""
 
-        // ~1400 bridge reads. Each one marshals to the Qt thread on its own, so this
-        // belongs off the main thread: run inline and the "loading" state never gets a
-        // chance to render, which is the same as lying about it.
-        let component = componentId
-        DispatchQueue.global(qos: .userInitiated).async { [weak self] in
-            let names = (Bridge.invoke("vehicle.parameterManager.parameterNames",
-                                       [component])["result"] as? [String]) ?? []
-            let loaded = names.compactMap { name -> Parameter? in
-                let json = Bridge.group("vehicle.parameterManager.getParameter(\(component),\(name))")
-                guard json["kind"] as? String == "fact" else { return nil }
-                return Parameter(name: name, componentId: component, json: json)
-            }
-            DispatchQueue.main.async {
-                guard let self else { return }
-                self.parameters = loaded
-                self.loading = false
-                self.status = loaded.isEmpty ? "This vehicle reported no parameters." : ""
-                self.refilter()
-            }
+        let names = (Bridge.invoke("vehicle.parameterManager.parameterNames",
+                                   [componentId])["result"] as? [String]) ?? []
+        let loaded = names.compactMap { name -> Parameter? in
+            let json = Bridge.group("vehicle.parameterManager.getParameter(\(componentId),\(name))")
+            guard json["kind"] as? String == "fact" else { return nil }
+            return Parameter(name: name, componentId: componentId, json: json)
         }
+
+        parameters = loaded
+        loading = false
+        status = loaded.isEmpty ? "This vehicle reported no parameters." : ""
+        refilter()
     }
 
-    // The probe drives this synchronously, so it needs to wait for the async load.
-    private func waitForLoad() {
-        for _ in 0..<200 where loading {
-            RunLoop.current.run(until: Date().addingTimeInterval(0.05))
-        }
-    }
-
-    // The vehicle's live mode, used to mark which switch position is active.
     var currentFlightMode: String {
         (Bridge.group("vehicle")["flightMode"] as? String) ?? ""
     }
@@ -77,8 +61,6 @@ final class ParametersStore: ObservableObject, Probeable {
         }
     }
 
-    // Writes go to the vehicle immediately, which is how QGC's parameter editor
-    // behaves; the value is read back because a Fact clamps out-of-range input.
     func write(_ parameter: Parameter, _ value: String) {
         Bridge.set(parameter.path, Double(value) ?? value)
         let json = Bridge.group(parameter.path)
@@ -101,7 +83,6 @@ final class ParametersStore: ObservableObject, Probeable {
         switch action {
         case "load":
             load()
-            waitForLoad()
         case "search": search = args["text"] ?? ""
         case "group": group = args["name"] ?? ""
         case "set":

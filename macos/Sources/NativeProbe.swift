@@ -1,11 +1,6 @@
 import AppKit
 import Foundation
 
-// Driving a locked screen through synthesised input does not work: no window can become
-// key, so clicks either go to the wrong place or are swallowed, and both look like a
-// pass. Screenshots by window id keep working. So the supported way to drive the native
-// UI in tests is by identity — read state, invoke a named action — which is the direct
-// counterpart of QGC's objectName-addressed /ui/* surface for QML.
 enum NativeProbe {
     private static var registry: [String: Probeable] = [:]
 
@@ -13,8 +8,6 @@ enum NativeProbe {
         registry[type(of: target).probeID] = target
     }
 
-    // Windows each have their own page selection, so they cannot share one type-level
-    // key the way a singleton store does.
     static func register(_ target: Probeable, as id: String) {
         registry[id] = target
     }
@@ -24,25 +17,35 @@ enum NativeProbe {
         return (session["CGSSessionScreenIsLocked"] as? NSNumber)?.boolValue ?? false
     }
 
+    private static func onMain<T>(_ body: () -> T) -> T {
+        Thread.isMainThread ? body() : DispatchQueue.main.sync(execute: body)
+    }
+
     static func tree() -> [String: Any] {
-        [
-            "screenIsLocked": screenIsLocked,
-            "probes": registry.keys.sorted(),
-            "state": registry.mapValues { $0.probeState() },
-        ]
+        onMain {
+            [
+                "screenIsLocked": screenIsLocked,
+                "probes": registry.keys.sorted(),
+                "state": registry.mapValues { $0.probeState() },
+            ]
+        }
     }
 
     static func state(of id: String) -> [String: Any] {
-        guard let target = registry[id] else {
-            return ["ok": false, "error": "no probe \(id)", "probes": registry.keys.sorted()]
+        onMain {
+            guard let target = registry[id] else {
+                return ["ok": false, "error": "no probe \(id)", "probes": registry.keys.sorted()]
+            }
+            return ["ok": true, "state": target.probeState()]
         }
-        return ["ok": true, "state": target.probeState()]
     }
 
     static func invoke(id: String, action: String, args: [String: String]) -> [String: Any] {
-        guard let target = registry[id] else {
-            return ["ok": false, "error": "no probe \(id)", "probes": registry.keys.sorted()]
+        onMain {
+            guard let target = registry[id] else {
+                return ["ok": false, "error": "no probe \(id)", "probes": registry.keys.sorted()]
+            }
+            return target.probeInvoke(action: action, args: args)
         }
-        return target.probeInvoke(action: action, args: args)
     }
 }

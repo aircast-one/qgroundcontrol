@@ -1,5 +1,12 @@
 import Foundation
 
+struct ParameterOption: Identifiable, Equatable {
+    let label: String
+    let raw: String
+
+    var id: String { raw }
+}
+
 struct Parameter: Identifiable {
     static let unknownEnumPrefix = "Unknown: "
 
@@ -8,15 +15,11 @@ struct Parameter: Identifiable {
     let value: String
     let units: String
     let description: String
+    let options: [ParameterOption]
 
     var id: String { "\(componentId)/\(name)" }
-    // getParameter is reachable as a path segment, so a parameter needs no root of
-    // its own: the bridge resolves the method call and returns the Fact behind it.
     var path: String { "vehicle.parameterManager.getParameter(\(componentId),\(name))" }
 
-    // A parameter's group is the prefix before the first underscore: ATC_ANG_PIT_P
-    // belongs to ATC. It is how ArduPilot and PX4 documentation is organised, and how
-    // an operator narrows 1390 parameters to the dozen they care about.
     var group: String {
         guard let underscore = name.firstIndex(of: "_") else { return name }
         return String(name[name.startIndex..<underscore])
@@ -28,16 +31,33 @@ struct Parameter: Identifiable {
         units = (json["units"] as? String) ?? ""
         description = (json["shortDescription"] as? String) ?? ""
 
-        // When a value falls outside its enum, QGC appends a synthetic "Unknown: N"
-        // entry and points enumIndex at it. Faithfully showing that turns a perfectly
-        // ordinary 0-second time constant into "Unknown: 0"; the number is better.
         let enumIndex = (json["enumIndex"] as? NSNumber)?.intValue ?? -1
         let enums = (json["enumStrings"] as? [String]) ?? []
+        let raws = (json["enumValues"] as? [Any]) ?? []
+        options = enums.count == raws.count
+            ? zip(enums, raws)
+                .filter { !$0.0.hasPrefix(Parameter.unknownEnumPrefix) }
+                .map { ParameterOption(label: $0.0, raw: Parameter.rawText($0.1)) }
+            : []
         let plain = (json["valueString"] as? String) ?? ""
         if enumIndex >= 0, enumIndex < enums.count, !enums[enumIndex].hasPrefix(Parameter.unknownEnumPrefix) {
             value = enums[enumIndex]
         } else {
             value = plain
         }
+    }
+}
+
+extension Parameter {
+    static func rawText(_ value: Any) -> String {
+        guard let number = value as? NSNumber else { return "\(value)" }
+        let double = number.doubleValue
+        return double == double.rounded() && abs(double) < 1e15
+            ? String(Int(double))
+            : String(double)
+    }
+
+    var selectedOption: ParameterOption? {
+        options.first { $0.label == value }
     }
 }
