@@ -281,8 +281,9 @@ Verified in place, not only in the harness: the app's header and status strip si
 nav. No duplicated vehicle readout and no collision between the chip and the row.
 
 Editing here reaches the host. A long press adds a waypoint through the bridge and `plan.dirty`
-follows, which the tab shows by changing its label from "New plan" to "Unsaved plan" and enabling
-Save. So the map is what makes the tab's unsaved-changes state reachable at all.
+follows, which the tab shows by changing its plan status from "New plan" to "Unsaved plan" and
+enabling Save. That status is a label, not a command — the tab has no New Plan action, and Open is
+the only thing there that replaces a plan wholesale.
 
 ## Naming
 
