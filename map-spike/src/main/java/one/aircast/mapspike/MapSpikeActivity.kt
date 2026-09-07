@@ -218,15 +218,6 @@ private fun MapSpikeScreen(mapStyle: String) {
                         }
                     }) { Text("Survey") }
 
-                    surveyList.firstOrNull()?.let { survey ->
-                        TextButton(onClick = {
-                            val next = (if (survey.gridAngle.isNaN()) 0.0 else survey.gridAngle) + 30.0
-                            onBridge("Rotating grid") {
-                                SurveyBridge.setGridAngle(survey.index, next % 360.0)
-                            }
-                        }) { Text("Rotate") }
-                    }
-
                     TextButton(onClick = {
                         val at = placeAt()
                         onBridge("Adding circle") {
@@ -246,27 +237,48 @@ private fun MapSpikeScreen(mapStyle: String) {
                         }
                     }) { Text("Rally") }
 
-                    (selected as? MapHit.Waypoint)?.let { hit ->
-                        val item = items.firstOrNull { it.index == hit.index }
-                        val altitude = item?.altitude ?: Double.NaN
+                }
 
-                        if (!altitude.isNaN()) {
+                // Actions for what is selected live on their own line. They used
+                // to sit at the end of the row above, where they scrolled out of
+                // sight and read as missing.
+                val survey = surveyList.firstOrNull()
+                val waypoint = (selected as? MapHit.Waypoint)
+                    ?.let { hit -> items.firstOrNull { it.index == hit.index } }
+
+                if (survey != null || waypoint != null) {
+                    Row(
+                        Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(4.dp),
+                    ) {
+                        survey?.let {
                             TextButton(onClick = {
-                                onBridge { PlanBridge.setAltitude(hit.index, altitude + 10.0) }
-                            }) { Text("Alt +10") }
-
-                            TextButton(
-                                enabled = altitude >= 10.0,
-                                onClick = {
-                                    onBridge { PlanBridge.setAltitude(hit.index, altitude - 10.0) }
-                                },
-                            ) { Text("Alt -10") }
+                                val next = (if (it.gridAngle.isNaN()) 0.0 else it.gridAngle) + 30.0
+                                onBridge("Rotating grid") {
+                                    SurveyBridge.setGridAngle(it.index, next % 360.0)
+                                }
+                            }) { Text("Rotate") }
                         }
 
-                        TextButton(onClick = {
-                            onBridge { PlanBridge.removeItem(hit.index) }
-                            selected = null
-                        }) { Text("Delete #${hit.index}") }
+                        waypoint?.let { item ->
+                            if (!item.altitude.isNaN()) {
+                                TextButton(onClick = {
+                                    onBridge { PlanBridge.setAltitude(item.index, item.altitude + 10.0) }
+                                }) { Text("Alt +10") }
+
+                                TextButton(
+                                    enabled = item.altitude >= 10.0,
+                                    onClick = {
+                                        onBridge { PlanBridge.setAltitude(item.index, item.altitude - 10.0) }
+                                    },
+                                ) { Text("Alt -10") }
+                            }
+
+                            TextButton(onClick = {
+                                onBridge { PlanBridge.removeItem(item.index) }
+                                selected = null
+                            }) { Text("Delete #${item.index}") }
+                        }
                     }
                 }
             }
