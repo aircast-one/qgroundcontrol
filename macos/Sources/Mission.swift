@@ -12,6 +12,10 @@ final class MissionStore: ObservableObject, Probeable {
     @Published private(set) var dirty = false
     @Published private(set) var connected = false
     @Published var addingWaypoint = false
+    @Published private(set) var canUndo = false
+    @Published private(set) var canRedo = false
+
+    private var undoPoll: Timer?
 
     func reload() {
         let controller = Bridge.group("plan.missionController")
@@ -27,6 +31,8 @@ final class MissionStore: ObservableObject, Probeable {
         let plan = Bridge.group("plan")
         syncing = (plan["syncInProgress"] as? NSNumber)?.boolValue ?? false
         dirty = (plan["dirty"] as? NSNumber)?.boolValue ?? false
+        canUndo = (plan["canUndo"] as? NSNumber)?.boolValue ?? false
+        canRedo = (plan["canRedo"] as? NSNumber)?.boolValue ?? false
         connected = Bridge.group("vehicle")["kind"] as? String == "object"
         status = items.isEmpty ? "This plan has no items." : ""
 
@@ -48,6 +54,40 @@ final class MissionStore: ObservableObject, Probeable {
     func uploadToVehicle() {
         Bridge.invoke("plan.sendToVehicle")
         syncing = true
+        reload()
+    }
+
+    // Snapshots are taken by a timer in the controller rather than per edit, so the
+    // stacks only catch up a beat after a change.
+    func startEditing() {
+        _ = Bridge.set("plan.undoTracking", true)
+        undoPoll?.invalidate()
+        undoPoll = Timer.scheduledTimer(withTimeInterval: 1, repeats: true) { [weak self] _ in
+            self?.refreshUndo()
+        }
+        refreshUndo()
+    }
+
+    func stopEditing() {
+        undoPoll?.invalidate()
+        undoPoll = nil
+        _ = Bridge.set("plan.undoTracking", false)
+    }
+
+    private func refreshUndo() {
+        let plan = Bridge.group("plan")
+        canUndo = (plan["canUndo"] as? NSNumber)?.boolValue ?? false
+        canRedo = (plan["canRedo"] as? NSNumber)?.boolValue ?? false
+        dirty = (plan["dirty"] as? NSNumber)?.boolValue ?? false
+    }
+
+    func undo() {
+        Bridge.invoke("plan.undo")
+        reload()
+    }
+
+    func redo() {
+        Bridge.invoke("plan.redo")
         reload()
     }
 
@@ -141,6 +181,7 @@ final class MissionStore: ObservableObject, Probeable {
          "map": MissionMap.lastRender["plan"] ?? [:],
          "selected": items.first(where: \.isCurrent)?.sequence ?? -1,
          "addingWaypoint": addingWaypoint,
+         "canUndo": canUndo, "canRedo": canRedo,
          "items": items.prefix(8).map {
              ["seq": $0.sequence, "command": $0.command, "selected": $0.isCurrent,
               "position": $0.positionText, "altitude": $0.altitudeText]
@@ -176,6 +217,12 @@ final class MissionStore: ObservableObject, Probeable {
                 return ["ok": false, "error": "addWaypoint needs latitude and longitude"]
             }
             addWaypoint(latitude: latitude, longitude: longitude)
+        case "undo":
+            undo()
+        case "redo":
+            redo()
+        case "editing":
+            args["on"] == "0" ? stopEditing() : startEditing()
         case "arm":
             addingWaypoint = args["on"] != "0"
         case "select":

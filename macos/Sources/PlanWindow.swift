@@ -225,6 +225,22 @@ struct PlanInspector: View {
             .help(mission.addingWaypoint ? "Stop adding waypoints" : "Add a waypoint by clicking the map")
             .disabled(mission.syncing)
 
+            Button {
+                mission.undo()
+            } label: {
+                Image(systemName: "arrow.uturn.backward")
+            }
+            .help("Undo the last change to this plan")
+            .disabled(!mission.canUndo || mission.syncing)
+
+            Button {
+                mission.redo()
+            } label: {
+                Image(systemName: "arrow.uturn.forward")
+            }
+            .help("Redo the change that was undone")
+            .disabled(!mission.canRedo || mission.syncing)
+
             Button("Download", action: reload)
                 .disabled(mission.syncing || !mission.connected)
             Spacer()
@@ -273,6 +289,7 @@ struct PlanView: View {
         .onAppear {
             mission.reload()
             fenceRally.reload()
+            mission.startEditing()
         }
     }
 }
@@ -319,6 +336,7 @@ final class PlanWindow: NSObject, NSWindowDelegate {
     }
 
     func windowWillClose(_ notification: Notification) {
+        mission.stopEditing()
         window = nil
     }
 }
