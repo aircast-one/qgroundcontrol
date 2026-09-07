@@ -67,6 +67,12 @@ object PlanBridge {
 
     fun loadFromVehicle() = invoke("$PLAN_ROOT.loadFromVehicle")
 
+    // The controller only. QGC's Clear Mission calls removeAllFromVehicle and
+    // wipes the aircraft as well, behind a modal confirmation. Starting a plan
+    // over is the local intent and does not need to touch the vehicle; Upload is
+    // there for anyone who does want the empty plan flown.
+    fun clearPlan() = invoke("$PLAN_ROOT.removeAll")
+
     fun sendToVehicle() = invoke("$PLAN_ROOT.sendToVehicle")
 
 

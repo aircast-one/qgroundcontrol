@@ -222,6 +222,13 @@ is anything to save; `containsItems` says whether there is a plan at all, and th
 question. Export KML is a separate action, not a third choice in a Save dialog, because it writes a
 format nothing here can reopen.
 
+**Clear is local, where QGC's is not.** `PlanView.qml`'s Clear Mission calls `removeAllFromVehicle`
+and wipes the aircraft as well as the controller, behind a modal confirmation and coloured red.
+`Clear` here calls `removeAll`, which empties the controller only, because starting a plan over is
+the local intent and Upload already exists for anyone who wants the empty plan flown. A deliberate
+divergence: it makes the destructive half opt-in rather than the default, and it keeps the action
+inside what a two-tap confirm can honestly carry.
+
 **Loading from the vehicle throws work away.** It overwrites whatever is drawn and there is no
 undo, so QGC asks first when the plan has unsent changes. `plan.dirty` says when that is, and Load
 here asks the same question rather than being the one place that discards a survey silently.

@@ -59,6 +59,7 @@ internal fun MapSpikeScreen(mapStyle: String) {
     var follow by remember { mutableStateOf(true) }
     var fitRequest by remember { mutableStateOf(0) }
     var loadArmed by remember { mutableStateOf(false) }
+    var clearArmed by remember { mutableStateOf(false) }
     var items by remember { mutableStateOf<List<MissionItem>>(emptyList()) }
     var fences by remember { mutableStateOf<List<FencePolygon>>(emptyList()) }
     var rally by remember { mutableStateOf<List<RallyPoint>>(emptyList()) }
@@ -146,6 +147,13 @@ internal fun MapSpikeScreen(mapStyle: String) {
         if (loadArmed) {
             delay(CONFIRM_TIMEOUT_MS)
             loadArmed = false
+        }
+    }
+
+    LaunchedEffect(clearArmed) {
+        if (clearArmed) {
+            delay(CONFIRM_TIMEOUT_MS)
+            clearArmed = false
         }
     }
 
@@ -322,6 +330,16 @@ internal fun MapSpikeScreen(mapStyle: String) {
                         follow = false
                         fitRequest += 1
                     }) { Text("Fit") }
+
+                    TextButton(onClick = {
+                        if (!clearArmed) {
+                            clearArmed = true
+                        } else {
+                            clearArmed = false
+                            selected = null
+                            onBridge("Clearing the plan") { PlanBridge.clearPlan() }
+                        }
+                    }) { Text(if (clearArmed) "Clear everything" else "Clear") }
 
                 }
 
