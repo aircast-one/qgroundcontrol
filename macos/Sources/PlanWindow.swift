@@ -1,5 +1,6 @@
 import AppKit
 import SwiftUI
+import UniformTypeIdentifiers
 
 struct AltitudeField: View {
     let metres: Double?
@@ -191,6 +192,8 @@ struct PlanInspector: View {
 
     private var summary: some View {
         HStack(spacing: Overlay.step) {
+            Text(mission.planName)
+                .foregroundColor(.primary)
             Text("\(mission.items.count) item\(mission.items.count == 1 ? "" : "s")")
             if !fenceRally.shapes.isEmpty {
                 dot(Overlay.fence)
@@ -359,6 +362,19 @@ struct PlanInspector: View {
 
     private var actions: some View {
         HStack(spacing: Overlay.step) {
+            Menu {
+                Button("Open\u{2026}", action: openPlan)
+                Button("Save As\u{2026}", action: savePlanAs)
+                Divider()
+                Button("Clear", action: mission.removeAll)
+            } label: {
+                Image(systemName: "folder")
+            }
+            .menuStyle(.borderlessButton)
+            .menuIndicator(.hidden)
+            .frame(width: 26)
+            .help("Open, save or clear this plan")
+
             if mission.arming == nil {
                 Menu {
                     ForEach(MissionItemKind.allCases) { kind in
@@ -427,12 +443,30 @@ struct PlanInspector: View {
         mission.downloadFromVehicle()
         fenceRally.reload()
     }
+
+    private func openPlan() {
+        let panel = NSOpenPanel()
+        panel.allowedContentTypes = PlanView.planTypes
+        panel.allowsMultipleSelection = false
+        guard panel.runModal() == .OK, let file = panel.url else { return }
+        mission.load(from: file)
+        fenceRally.reload()
+    }
+
+    private func savePlanAs() {
+        let panel = NSSavePanel()
+        panel.allowedContentTypes = PlanView.planTypes
+        panel.nameFieldStringValue = "\(mission.planName).plan"
+        guard panel.runModal() == .OK, let file = panel.url else { return }
+        mission.save(to: file)
+    }
 }
 
 struct PlanView: View {
     @AppStorage("plan.showTerrain") private var showTerrain = true
 
     static let mapPadding = NSEdgeInsets(top: 56, left: 24, bottom: 40, right: 372)
+    static let planTypes = [UTType(filenameExtension: "plan")].compactMap { $0 }
 
     @ObservedObject var mission: MissionStore
     @ObservedObject var fenceRally: FenceRallyStore

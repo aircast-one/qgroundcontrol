@@ -1641,14 +1641,16 @@ QByteArray DebugApiServer::_nativeJson(const QString &path, const QUrlQuery &que
     }
     if (path == QStringLiteral("/native/probe")) {
         QJsonObject args;
-        const auto items = query.queryItems();
+        // PrettyDecoded leaves %2F encoded, so a probe argument holding a path arrived
+        // as %2Ftmp%2F... and the app wrote a file by that literal name.
+        const auto items = query.queryItems(QUrl::FullyDecoded);
         for (const auto &item : items) {
             if ((item.first != QStringLiteral("id")) && (item.first != QStringLiteral("action"))) {
                 args.insert(item.first, item.second);
             }
         }
-        const QByteArray id = query.queryItemValue(QStringLiteral("id")).toUtf8();
-        const QByteArray action = query.queryItemValue(QStringLiteral("action")).toUtf8();
+        const QByteArray id = query.queryItemValue(QStringLiteral("id"), QUrl::FullyDecoded).toUtf8();
+        const QByteArray action = query.queryItemValue(QStringLiteral("action"), QUrl::FullyDecoded).toUtf8();
         const QByteArray argsJson = QJsonDocument(args).toJson(QJsonDocument::Compact);
         return take(qgc_native_probe(id.constData(), action.constData(), argsJson.constData()));
     }

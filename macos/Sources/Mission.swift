@@ -16,6 +16,7 @@ final class MissionStore: ObservableObject, Probeable {
     @Published private(set) var canRedo = false
     @Published private(set) var commands: [MissionCommand] = []
     @Published private(set) var selectedFacts: [ItemFact] = []
+    @Published private(set) var planFile = ""
 
     private var undoPoll: Timer?
 
@@ -33,6 +34,7 @@ final class MissionStore: ObservableObject, Probeable {
         let plan = Bridge.group("plan")
         syncing = (plan["syncInProgress"] as? NSNumber)?.boolValue ?? false
         dirty = (plan["dirty"] as? NSNumber)?.boolValue ?? false
+        planFile = (plan["currentPlanFile"] as? String) ?? ""
         canUndo = (plan["canUndo"] as? NSNumber)?.boolValue ?? false
         canRedo = (plan["canRedo"] as? NSNumber)?.boolValue ?? false
         loadCommands()
@@ -158,6 +160,25 @@ final class MissionStore: ObservableObject, Probeable {
         reload()
     }
 
+    func save(to file: URL) {
+        Bridge.invoke("plan.saveToFile", [file.path])
+        reload()
+    }
+
+    func load(from file: URL) {
+        Bridge.invoke("plan.loadFromFile", [file.path])
+        reload()
+    }
+
+    func removeAll() {
+        Bridge.invoke("plan.removeAll")
+        reload()
+    }
+
+    var planName: String {
+        planFile.isEmpty ? "Untitled" : URL(fileURLWithPath: planFile).deletingPathExtension().lastPathComponent
+    }
+
     func select(_ item: MissionItem) {
         guard !item.isCurrent else { return }
         Bridge.invoke("plan.missionController.setCurrentPlanViewSeqNum", [item.sequence, true])
@@ -246,6 +267,7 @@ final class MissionStore: ObservableObject, Probeable {
          "map": MissionMap.lastRender["plan"] ?? [:],
          "selected": items.first(where: \.isCurrent)?.sequence ?? -1,
          "arming": arming?.rawValue ?? "",
+         "planFile": planFile, "planName": planName,
          "canUndo": canUndo, "canRedo": canRedo,
          "commands": commands.map(\.name),
          "facts": selectedFacts.map { ["name": $0.name, "value": $0.value, "units": $0.units] },
@@ -323,6 +345,14 @@ final class MissionStore: ObservableObject, Probeable {
                 return ["ok": false, "error": "the selected item has no fact named \(args["name"] ?? "")"]
             }
             setFact(fact, to: args["value"] ?? "")
+        case "save":
+            guard let path = args["path"] else { return ["ok": false, "error": "save needs a path"] }
+            save(to: URL(fileURLWithPath: path))
+        case "load":
+            guard let path = args["path"] else { return ["ok": false, "error": "load needs a path"] }
+            load(from: URL(fileURLWithPath: path))
+        case "removeAll":
+            removeAll()
         case "select":
             select(sequence: Int(args["sequence"] ?? "") ?? -1)
         case "remove":
