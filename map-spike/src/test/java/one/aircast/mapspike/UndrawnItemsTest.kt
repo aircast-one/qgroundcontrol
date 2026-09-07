@@ -20,14 +20,14 @@ class UndrawnItemsTest {
 
     @Test
     fun `a plan of simple items hides nothing`() {
-        assertTrue(undrawnComplexItems(plan(simple(), simple()), emptyList()).isEmpty())
+        assertTrue(undrawnComplexItems(plan(simple(), simple()), emptyList(), emptyList()).isEmpty())
     }
 
     @Test
     fun `a survey that is drawn is not reported`() {
         val json = plan(simple(), complex("Survey", survey = true))
 
-        assertTrue(undrawnComplexItems(json, listOf(survey(1))).isEmpty())
+        assertTrue(undrawnComplexItems(json, emptyList(), listOf(survey(1))).isEmpty())
     }
 
     @Test
@@ -36,7 +36,7 @@ class UndrawnItemsTest {
 
         assertEquals(
             listOf("Corridor Scan", "Structure Scan"),
-            undrawnComplexItems(json, emptyList()),
+            undrawnComplexItems(json, emptyList(), emptyList()),
         )
     }
 
@@ -44,14 +44,22 @@ class UndrawnItemsTest {
     fun `a survey the map failed to draw is reported rather than hidden`() {
         val json = plan(complex("Survey", survey = true))
 
-        assertEquals(listOf("Survey"), undrawnComplexItems(json, emptyList()))
+        assertEquals(listOf("Survey"), undrawnComplexItems(json, emptyList(), emptyList()))
+    }
+
+    @Test
+    fun `a complex item that is drawn as a marker is not reported`() {
+        val json = plan(complex("Mission Start"), simple())
+        val drawn = listOf(MissionItem(0, 1, 41.0, 44.0, "Mission Start", false, Double.NaN))
+
+        assertTrue(undrawnComplexItems(json, drawn, emptyList()).isEmpty())
     }
 
     @Test
     fun `repeats are named once`() {
         val json = plan(complex("Corridor Scan"), complex("Corridor Scan"))
 
-        assertEquals(listOf("Corridor Scan"), undrawnComplexItems(json, emptyList()))
+        assertEquals(listOf("Corridor Scan"), undrawnComplexItems(json, emptyList(), emptyList()))
     }
 
     @Test

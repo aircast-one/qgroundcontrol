@@ -324,8 +324,9 @@ away.
 **Say when the map is not showing the whole plan.** A plan can hold complex items this map cannot
 draw — corridor and structure scans, landing patterns — and opening a file is where they arrive.
 They still count in the distance and still upload to the aircraft, so drawing part of a plan without
-saying so is the dangerous half. Anything with `isSimpleItem` false that did not become a drawn
-survey is named in the chip. The check defaults to "simple" when the property is missing, so a
+saying so is the dangerous half. Complex is not the same as undrawn — Mission Start is a complex
+item and is drawn as a numbered marker — so the test is whether anything on the map came from that
+element, not what kind of element it is. The check defaults to "simple" when the property is missing, so a
 serialisation change makes it stop detecting rather than start crying wolf.
 
 **Every control on the selection row must follow the selection.** Rotate did not: it acted on
