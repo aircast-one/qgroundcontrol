@@ -6,6 +6,7 @@
 #include "MAVLinkConsoleController.h"
 #include "APMSensorsComponentController.h"
 #include "MAVLinkInspectorController.h"
+#include "RadioComponentController.h"
 #include "MultiVehicleManager.h"
 #include "PlanMasterController.h"
 #include "QmlObjectListModel.h"
@@ -76,6 +77,9 @@ QObject *rootObject(const QString &name)
     }
     if (name == QLatin1String("sensorsCal")) {
         return APMSensorsComponentController::forActiveVehicle();
+    }
+    if (name == QLatin1String("radioCal")) {
+        return RadioComponentController::forActiveVehicle();
     }
     return nullptr;
 }

@@ -49,6 +49,8 @@ public:
     RadioComponentController(QObject *parent = nullptr);
     ~RadioComponentController();
 
+    static RadioComponentController *forActiveVehicle();
+
     enum BindModes {
         DSM2,
         DSMX7,

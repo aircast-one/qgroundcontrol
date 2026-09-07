@@ -231,6 +231,15 @@ void QGCBridgeCoreTest::_vehicleRootIsNullWithoutAnActiveVehicle()
              QStringLiteral("null"));
 }
 
+void QGCBridgeCoreTest::_radioCalRootIsNullWithoutAnActiveVehicle()
+{
+    QVERIFY(!MultiVehicleManager::instance()->activeVehicle());
+    QCOMPARE(readObject(QStringLiteral("radioCal.channelCount")).value(QStringLiteral("kind")).toString(),
+             QStringLiteral("null"));
+    QCOMPARE(readObject(QStringLiteral("radioCal")).value(QStringLiteral("kind")).toString(),
+             QStringLiteral("null"));
+}
+
 void QGCBridgeCoreTest::_sensorsCalRootIsNullWithoutAnApmVehicle()
 {
     QVERIFY(!MultiVehicleManager::instance()->activeVehicle());

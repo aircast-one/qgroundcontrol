@@ -9,11 +9,14 @@
 
 #include "RadioComponentController.h"
 #include "Fact.h"
+#include "MultiVehicleManager.h"
 #include "ParameterManager.h"
 #include "QGCApplication.h"
 #include "QGCLoggingCategory.h"
 #include "Vehicle.h"
 
+#include <QtCore/QCoreApplication>
+#include <QtCore/QPointer>
 #include <QtCore/QSettings>
 
 QGC_LOGGING_CATEGORY(RadioComponentControllerLog, "qgc.autopilotplugins.common.radiocomponentcontroller")
@@ -47,6 +50,27 @@ RadioComponentController::RadioComponentController(QObject *parent)
     _loadSettings();
 
     _resetInternalCalibrationValues();
+}
+
+RadioComponentController *RadioComponentController::forActiveVehicle()
+{
+    static QPointer<RadioComponentController> controller;
+    static QPointer<Vehicle> boundVehicle;
+
+    Vehicle *const activeVehicle = MultiVehicleManager::instance()->activeVehicle();
+    if (!activeVehicle) {
+        delete controller;
+        boundVehicle.clear();
+        return nullptr;
+    }
+
+    if (!controller || (boundVehicle != activeVehicle)) {
+        delete controller;
+        controller = new RadioComponentController(QCoreApplication::instance());
+        boundVehicle = activeVehicle;
+    }
+
+    return controller;
 }
 
 RadioComponentController::~RadioComponentController()
