@@ -3,12 +3,13 @@ import MapKit
 import SwiftUI
 
 final class MissionAnnotation: NSObject, MKAnnotation {
-    let coordinate: CLLocationCoordinate2D
+    @objc dynamic var coordinate: CLLocationCoordinate2D
     let title: String?
     let subtitle: String?
     let sequence: Int
     let isCurrent: Bool
     let isLaunch: Bool
+    let canMove: Bool
 
     init(item: MissionItem, latitude: Double, longitude: Double) {
         coordinate = CLLocationCoordinate2D(latitude: latitude, longitude: longitude)
@@ -17,6 +18,7 @@ final class MissionAnnotation: NSObject, MKAnnotation {
         sequence = item.sequence
         isCurrent = item.isCurrent
         isLaunch = item.isLaunch
+        canMove = item.canRemove
     }
 }
 
@@ -60,6 +62,7 @@ struct MissionMap: NSViewRepresentable {
     let select: (Int) -> Void
     let adding: Bool
     let add: (Double, Double) -> Void
+    let move: (Int, Double, Double) -> Void
 
     func makeNSView(context: Context) -> MKMapView {
         let map = MKMapView()
@@ -71,6 +74,7 @@ struct MissionMap: NSViewRepresentable {
             map.addOverlay(context.coordinator.overlay!, level: .aboveRoads)
         }
         context.coordinator.add = add
+        context.coordinator.move = move
         map.showsCompass = true
         map.showsScale = true
         map.isPitchEnabled = false
@@ -79,6 +83,7 @@ struct MissionMap: NSViewRepresentable {
 
     func updateNSView(_ map: MKMapView, context: Context) {
         context.coordinator.add = add
+        context.coordinator.move = move
         context.coordinator.arm(adding, on: map)
         map.removeAnnotations(map.annotations)
         map.overlays.filter { !($0 is CachedTileOverlay) }.forEach(map.removeOverlay)
@@ -188,6 +193,7 @@ struct MissionMap: NSViewRepresentable {
     final class Coordinator: NSObject, MKMapViewDelegate {
         let select: (Int) -> Void
         var add: (Double, Double) -> Void = { _, _ in }
+        var move: (Int, Double, Double) -> Void = { _, _, _ in }
         var lastFrame: MapFrame?
         private var placer: NSClickGestureRecognizer?
 
@@ -219,6 +225,13 @@ struct MissionMap: NSViewRepresentable {
             let point = recognizer.location(in: map)
             let coordinate = map.convert(point, toCoordinateFrom: map)
             add(coordinate.latitude, coordinate.longitude)
+        }
+
+        func mapView(_ mapView: MKMapView, annotationView view: MKAnnotationView,
+                     didChange newState: MKAnnotationView.DragState,
+                     fromOldState oldState: MKAnnotationView.DragState) {
+            guard newState == .ending, let item = view.annotation as? MissionAnnotation else { return }
+            move(item.sequence, item.coordinate.latitude, item.coordinate.longitude)
         }
 
         func mapView(_ mapView: MKMapView, didSelect view: MKAnnotationView) {
@@ -281,6 +294,7 @@ struct MissionMap: NSViewRepresentable {
                 ?? MKMarkerAnnotationView(annotation: item, reuseIdentifier: "item")
             view.annotation = item
             view.canShowCallout = true
+            view.isDraggable = item.canMove
             view.glyphText = String(item.sequence)
             view.markerTintColor = item.isLaunch ? .systemGreen : .controlAccentColor
             view.displayPriority = item.isCurrent ? .required : .defaultHigh

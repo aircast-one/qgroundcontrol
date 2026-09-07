@@ -379,7 +379,8 @@ struct PlanView: View {
                        padding: PlanView.mapPadding,
                        select: mission.select(sequence:),
                        adding: mission.addingWaypoint,
-                       add: mission.addWaypoint(latitude:longitude:))
+                       add: mission.addWaypoint(latitude:longitude:),
+                       move: mission.move(sequence:latitude:longitude:))
                 .ignoresSafeArea()
 
             HStack {

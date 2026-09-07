@@ -74,11 +74,18 @@ final class MissionStore: ObservableObject, Probeable {
         _ = Bridge.set("plan.undoTracking", false)
     }
 
+    // Assigning a @Published value republishes even when it has not changed, and this
+    // runs every second: the plan view re-rendered on every tick, which tore down and
+    // rebuilt every annotation and overlay on the map before any of them could draw.
     private func refreshUndo() {
         let plan = Bridge.group("plan")
-        canUndo = (plan["canUndo"] as? NSNumber)?.boolValue ?? false
-        canRedo = (plan["canRedo"] as? NSNumber)?.boolValue ?? false
-        dirty = (plan["dirty"] as? NSNumber)?.boolValue ?? false
+        let undo = (plan["canUndo"] as? NSNumber)?.boolValue ?? false
+        let redo = (plan["canRedo"] as? NSNumber)?.boolValue ?? false
+        let unsent = (plan["dirty"] as? NSNumber)?.boolValue ?? false
+
+        if undo != canUndo { canUndo = undo }
+        if redo != canRedo { canRedo = redo }
+        if unsent != dirty { dirty = unsent }
     }
 
     func undo() {
@@ -105,6 +112,13 @@ final class MissionStore: ObservableObject, Probeable {
                          terrainAltitude: $0.terrainAltitude,
                          collision: $0.terrainCollision)
         })
+    }
+
+    func move(sequence: Int, latitude: Double, longitude: Double) {
+        guard let item = items.first(where: { $0.sequence == sequence }), item.canRemove else { return }
+        _ = Bridge.set("plan.missionController.visualItems.\(item.index).coordinate",
+                       ["latitude": latitude, "longitude": longitude])
+        reload()
     }
 
     func select(_ item: MissionItem) {
@@ -239,6 +253,19 @@ final class MissionStore: ObservableObject, Probeable {
             args["on"] == "0" ? stopEditing() : startEditing()
         case "arm":
             addingWaypoint = args["on"] != "0"
+        case "move":
+            guard let latitude = Double(args["latitude"] ?? ""),
+                  let longitude = Double(args["longitude"] ?? "") else {
+                return ["ok": false, "error": "move needs latitude and longitude"]
+            }
+            let sequence = Int(args["sequence"] ?? "") ?? -1
+            guard let target = items.first(where: { $0.sequence == sequence }) else {
+                return ["ok": false, "error": "no item with that sequence"]
+            }
+            guard target.canRemove else {
+                return ["ok": false, "error": "\(target.command) cannot be moved"]
+            }
+            move(sequence: sequence, latitude: latitude, longitude: longitude)
         case "select":
             select(sequence: Int(args["sequence"] ?? "") ?? -1)
         case "remove":

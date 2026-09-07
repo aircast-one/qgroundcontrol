@@ -384,6 +384,27 @@ QJsonObject writePath(const QString &path, const QVariant &value)
         };
     }
 
+    // A coordinate arrives as a JSON object, and QVariantMap converts to nothing the
+    // property will take, so dragging a waypoint had no way to write where it landed.
+    const QMetaType target = meta->property(index).metaType();
+    if (target.id() == qMetaTypeId<QGeoCoordinate>() && value.canConvert<QVariantMap>()) {
+        const QVariantMap point = value.toMap();
+        if (!point.contains(QStringLiteral("latitude")) || !point.contains(QStringLiteral("longitude"))) {
+            return QJsonObject {
+                { QStringLiteral("ok"), false },
+                { QStringLiteral("reason"), QStringLiteral("%1 needs latitude and longitude").arg(resolved.property) },
+            };
+        }
+        const QGeoCoordinate coordinate(point.value(QStringLiteral("latitude")).toDouble(),
+                                        point.value(QStringLiteral("longitude")).toDouble(),
+                                        point.value(QStringLiteral("altitude")).toDouble());
+        const bool placed = resolved.object->setProperty(name.constData(), QVariant::fromValue(coordinate));
+        return QJsonObject {
+            { QStringLiteral("ok"), placed },
+            { QStringLiteral("reason"), placed ? QString() : QStringLiteral("%1 rejected the coordinate").arg(resolved.property) },
+        };
+    }
+
     const bool ok = resolved.object->setProperty(name.constData(), value);
     if (ok) {
         return QJsonObject { { QStringLiteral("ok"), true } };
