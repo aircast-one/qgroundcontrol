@@ -14,6 +14,32 @@ struct InstrumentSelection: Equatable, Identifiable {
         InstrumentSelection(group: vehicleGroup, factName: factName)
     }
 
+    static let separator: Character = "/"
+
+    var stored: String { "\(group)\(InstrumentSelection.separator)\(factName)" }
+
+    static func decode(_ stored: String) -> InstrumentSelection? {
+        guard let slash = stored.firstIndex(of: separator) else { return nil }
+        let factName = String(stored[stored.index(after: slash)...])
+        guard !factName.isEmpty else { return nil }
+        return InstrumentSelection(group: String(stored[stored.startIndex..<slash]), factName: factName)
+    }
+
+    static func decode(_ stored: [String]) -> [InstrumentSelection] {
+        stored.compactMap(decode)
+    }
+
+    static func restore(_ stored: [String]?) -> [InstrumentSelection] {
+        guard let stored, !stored.isEmpty else { return defaults }
+        let listed = decode(stored)
+        return listed.isEmpty ? defaults : listed
+    }
+
+    static func firstUnused(in used: [InstrumentSelection]) -> InstrumentSelection {
+        let taken = Set(used.map(\.id))
+        return defaults.first { !taken.contains($0.id) } ?? defaults[0]
+    }
+
     static let defaults: [InstrumentSelection] = [
         .vehicle("altitudeRelative"),
         .vehicle("groundSpeed"),

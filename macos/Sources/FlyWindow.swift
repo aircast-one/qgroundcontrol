@@ -186,6 +186,12 @@ struct InstrumentBar: View {
                     .contentShape(Rectangle())
                     .contextMenu {
                         Button("Change reading\u{2026}") { instruments.edit(slot: slot) }
+                        Button("Add reading") { instruments.addSlot() }
+                            .disabled(!instruments.canAdd)
+                        Button("Remove this reading") { instruments.removeSlot(slot) }
+                            .disabled(!instruments.canRemove)
+                        Divider()
+                        Button("Reset to defaults") { instruments.resetSlots() }
                     }
                 }
             }

@@ -1146,6 +1146,41 @@ func checkInstrumentGroups() {
 
 checkInstrumentGroups()
 
+func checkInstrumentStorage() {
+    expect(InstrumentSelection.vehicle("heading").stored, "/heading",
+           "a vehicle fact stores with an empty group")
+    expect(InstrumentSelection(group: "batteries.0", factName: "voltage").stored,
+           "batteries.0/voltage", "a group keeps the dots in its own name")
+
+    expect(InstrumentSelection.decode("wind/speed")?.group ?? "?", "wind", "and reads back")
+    expect(InstrumentSelection.decode("wind/speed")?.factName ?? "?", "speed", "both halves")
+    expect(InstrumentSelection.decode("/heading")?.group ?? "?", "",
+           "an empty group survives the round trip")
+    expect(InstrumentSelection.decode("batteries.0/voltage")?.factName ?? "?", "voltage",
+           "splitting on the first slash keeps a dotted group intact")
+    expect(InstrumentSelection.decode("noslash") == nil, "a stored value with no slash is not a selection")
+    expect(InstrumentSelection.decode("wind/") == nil, "nor is one naming no fact")
+
+    expect(InstrumentSelection.restore(nil).count == 6, "nothing stored falls back to the defaults")
+    expect(InstrumentSelection.restore([]).count == 6, "so does an empty list")
+    expect(InstrumentSelection.restore(["junk", "also junk"]).count == 6,
+           "so does a stored list that decodes to nothing, rather than an empty bar")
+    expect(InstrumentSelection.restore(["wind/speed"]).count == 1,
+           "one good entry is honoured on its own")
+    expect(InstrumentSelection.restore(["wind/speed", "junk"]).map(\.stored).joined(separator: ","),
+           "wind/speed", "and a partly damaged list keeps what still reads")
+
+    let used = [InstrumentSelection.vehicle("altitudeRelative"), .vehicle("groundSpeed")]
+    expect(InstrumentSelection.firstUnused(in: used).factName, "climbRate",
+           "a new slot takes the first default not already shown")
+    expect(InstrumentSelection.firstUnused(in: InstrumentSelection.defaults).factName,
+           "altitudeRelative", "and falls back to the first once every default is used")
+    expect(InstrumentSelection.firstUnused(in: []).factName, "altitudeRelative",
+           "an empty bar starts from the first")
+}
+
+checkInstrumentStorage()
+
 if failures == 0 {
     print("all Swift checks passed")
     exit(0)
