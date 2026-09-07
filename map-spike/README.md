@@ -274,6 +274,16 @@ down, so a failed tile read yields no tile instead.
 
 Falls back to OpenStreetMap when the cache is empty. That style is for development only.
 
+## Seen in the app's Plan tab
+
+Verified in place, not only in the harness: the app's header and status strip sit above, then its
+`Open / Save / Save as` row, then this map with its chip, scale bar, controls and profile, then the
+nav. No duplicated vehicle readout and no collision between the chip and the row.
+
+Editing here reaches the host. A long press adds a waypoint through the bridge and `plan.dirty`
+follows, which the tab shows by changing its label from "New plan" to "Unsaved plan" and enabling
+Save. So the map is what makes the tab's unsaved-changes state reachable at all.
+
 ## Naming
 
 The vehicle sync buttons are `Download` and `Upload`, which is what QGC calls them — "Download from
