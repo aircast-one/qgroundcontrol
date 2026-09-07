@@ -153,6 +153,19 @@ poll, from a median of 66 ms to 32 ms on an 84 point survey. Each call serialise
 subtree to JSON and blocks the Qt thread while it does, so the cost is in the trip, not the
 parsing.
 
+**Most of the editing calls cannot report failure at all.** Nine of the ten methods this module
+invokes return void — `addInclusionPolygon`, `addInclusionCircle`, `addPoint`, `adjustVertex`,
+`appendVertex`, `deletePolygon`, `deleteCircle`, `removePoint`, `removeVisualItem`. For those `ok`
+is true whenever the method was found and its arguments converted, so a call that bounds-checks a
+stale index and quietly does nothing looks exactly like one that worked, and the panel says so.
+Only `insertComplexMissionItem` returns anything, a pointer.
+
+That is survivable here for one reason worth keeping in mind if this code is reused elsewhere: the
+map re-reads the plan every poll and draws it, so the screen shows what actually happened within a
+few hundred milliseconds even when the message does not. The state being visible is the effect
+check. A headless caller of these same paths would have no such luxury and would need to confirm
+each one by reading back.
+
 **`ok` means the method ran, not that it did anything.** The bridge reports success when it found
 and invoked a `Q_INVOKABLE`, and a method that decides internally to do nothing still returns `ok`.
 `sendToVehicle` with no vehicle, or while a sync is already running, logs a warning and returns, so
