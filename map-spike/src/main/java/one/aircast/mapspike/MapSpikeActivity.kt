@@ -28,6 +28,7 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.unit.dp
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
@@ -77,6 +78,8 @@ private fun MapSpikeScreen(mapStyle: String) {
     var busy by remember { mutableStateOf<String?>(null) }
     val scope = rememberCoroutineScope()
     var centre by remember { mutableStateOf<TrackPoint?>(null) }
+    var zoom by remember { mutableStateOf(0.0) }
+    var headerHeightPx by remember { mutableStateOf(0) }
 
     // A bridge call that fails returns false rather than throwing, so without
     // this a refused operation looks exactly like one that worked.
@@ -167,7 +170,11 @@ private fun MapSpikeScreen(mapStyle: String) {
             },
             onWaypointSelected = { selected = it },
             selectedWaypoint = (selected as? MapHit.Waypoint)?.index,
-            onCentreChanged = { centre = it },
+            onCentreChanged = { at, level ->
+                centre = at
+                zoom = level
+            },
+            compassTopMarginPx = headerHeightPx,
             fitRequest = fitRequest,
             onFitFailed = { onBridge("Fitting the plan") { false } },
         )
@@ -177,8 +184,17 @@ private fun MapSpikeScreen(mapStyle: String) {
             Modifier.align(Alignment.BottomCenter).padding(8.dp),
         )
 
+        centre?.let { at ->
+            ScaleBarView(
+                at.latitude,
+                zoom,
+                Modifier.align(Alignment.BottomStart).padding(start = 12.dp, bottom = 132.dp),
+            )
+        }
+
         Surface(
-            Modifier.align(Alignment.TopCenter).fillMaxWidth().padding(8.dp),
+            Modifier.align(Alignment.TopCenter).fillMaxWidth().padding(8.dp)
+                .onGloballyPositioned { headerHeightPx = it.size.height },
             color = MaterialTheme.colorScheme.surface.copy(alpha = 0.88f),
         ) {
             Column(Modifier.padding(12.dp)) {

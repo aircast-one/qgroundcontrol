@@ -56,6 +56,7 @@ private const val MAX_TRAIL_POINTS = 500
 const val TRAIL_BREAK_DEGREES = 0.5
 private const val MIN_FIT_SPAN_DEGREES = 1e-5
 private const val FIT_PADDING_PIXELS = 80
+private const val COMPASS_EDGE_MARGIN_PX = 24
 
 const val DEMO_STYLE_URL = "https://demotiles.maplibre.org/style.json"
 
@@ -139,7 +140,8 @@ fun VehicleMap(
     onAdd: (Double, Double) -> Unit = { _, _ -> },
     onMove: (MapHit, Double, Double) -> Unit = { _, _, _ -> },
     onWaypointSelected: (MapHit?) -> Unit = {},
-    onCentreChanged: (TrackPoint) -> Unit = {},
+    onCentreChanged: (TrackPoint, Double) -> Unit = { _, _ -> },
+    compassTopMarginPx: Int = 0,
     fitRequest: Int = 0,
     onFitFailed: () -> Unit = {},
 ) {
@@ -182,7 +184,7 @@ fun VehicleMap(
             // already is too, or nothing can be placed until the user pans.
             fun reportCentre() {
                 val target = loaded.cameraPosition.target ?: return
-                onCentreChanged(TrackPoint(target.latitude, target.longitude))
+                onCentreChanged(TrackPoint(target.latitude, target.longitude), loaded.cameraPosition.zoom)
             }
             reportCentre()
             loaded.addOnCameraIdleListener { reportCentre() }
@@ -237,6 +239,14 @@ fun VehicleMap(
                 .zoom(map?.cameraPosition?.zoom?.takeIf { it > 1.0 } ?: DEFAULT_ZOOM)
                 .build()
         }
+    }
+
+    // MapLibre puts the compass in the top right, behind the panel, so it was
+    // there the whole time and never once visible. The panel measures itself
+    // after the map loads, so this has to follow the height rather than read it
+    // once while it is still zero.
+    LaunchedEffect(map, compassTopMarginPx) {
+        map?.uiSettings?.setCompassMargins(0, compassTopMarginPx, COMPASS_EDGE_MARGIN_PX, 0)
     }
 
     LaunchedEffect(fitRequest) {
