@@ -1,4 +1,5 @@
 import Foundation
+import MapKit
 import QGCMapTileC
 
 final class MissionStore: ObservableObject, Probeable {
@@ -39,6 +40,31 @@ final class MissionStore: ObservableObject, Probeable {
         reload()
     }
 
+    private func overlayTile(x: Int, y: Int, z: Int, type: String, includeData: Bool) -> [String: Any] {
+        let before = (CachedTileOverlay.served, CachedTileOverlay.fromParent,
+                      CachedTileOverlay.fromChildren, CachedTileOverlay.missed)
+        let overlay = CachedTileOverlay(mapType: type)
+        var tileData: Data?
+        var answered = false
+
+        overlay.loadTile(at: MKTileOverlayPath(x: x, y: y, z: z, contentScaleFactor: 1)) { data, _ in
+            tileData = data
+            answered = true
+        }
+
+        for _ in 0..<200 where !answered {
+            RunLoop.current.run(until: Date().addingTimeInterval(0.05))
+        }
+
+        let source = CachedTileOverlay.served > before.0 ? "exact"
+            : CachedTileOverlay.fromParent > before.1 ? "parent"
+            : CachedTileOverlay.fromChildren > before.2 ? "children"
+            : "miss"
+        return ["ok": answered, "x": x, "y": y, "z": z, "type": type,
+                "bytes": tileData?.count ?? 0, "source": source,
+                "base64": includeData ? (tileData?.base64EncodedString() ?? "") : ""]
+    }
+
     private final class TileProbe {
         var bytes = 0
         var answered = false
@@ -65,6 +91,10 @@ final class MissionStore: ObservableObject, Probeable {
 
     func probeState() -> [String: Any] {
         ["count": items.count, "syncing": syncing, "status": status,
+         "tiles": ["exact": CachedTileOverlay.served,
+                   "fromParent": CachedTileOverlay.fromParent,
+                   "fromChildren": CachedTileOverlay.fromChildren,
+                   "missed": CachedTileOverlay.missed],
          "placed": items.filter(\.hasPosition).count,
          "vehiclePlaced": vehiclePosition != nil,
          "map": MissionMap.lastRender["mission"] ?? [:],
@@ -84,6 +114,12 @@ final class MissionStore: ObservableObject, Probeable {
                              y: Int(args["y"] ?? "") ?? 0,
                              z: Int(args["z"] ?? "") ?? 0,
                              type: args["type"] ?? CachedTileOverlay.currentMapType())
+        case "overlayTile":
+            return overlayTile(x: Int(args["x"] ?? "") ?? 0,
+                               y: Int(args["y"] ?? "") ?? 0,
+                               z: Int(args["z"] ?? "") ?? 0,
+                               type: args["type"] ?? CachedTileOverlay.currentMapType(),
+                               includeData: args["data"] != nil)
         case "download":
             downloadFromVehicle()
             for _ in 0..<100 where syncing {

@@ -283,6 +283,45 @@ func checkFenceGeometry() {
 
 checkFenceGeometry()
 
+func checkTilePyramid() {
+    let tile = TileAddress(x: 59492, y: 37374, z: 16)
+
+    guard let parent = TilePyramid.parent(of: tile, depth: 1) else {
+        return expect(false, "a tile above zoom 0 has a parent")
+    }
+    expect(parent == TileAddress(x: 29746, y: 18687, z: 15), "the parent halves both axes")
+    expect(TilePyramid.parent(of: TileAddress(x: 0, y: 0, z: 0), depth: 1) == nil,
+           "zoom 0 has no parent to fall back to")
+
+    guard let crop = TilePyramid.crop(of: tile, within: parent) else {
+        return expect(false, "a tile crops within its own parent")
+    }
+    expect(crop.size == 0.5, "one level up crops half the parent")
+    expect(crop.x == 0 || crop.x == 0.5, "the crop lands on a half boundary")
+
+    guard let grandparent = TilePyramid.parent(of: tile, depth: 2),
+          let deepCrop = TilePyramid.crop(of: tile, within: grandparent) else {
+        return expect(false, "a tile crops within its grandparent")
+    }
+    expect(deepCrop.size == 0.25, "two levels up crops a quarter of the parent")
+
+    let stranger = TileAddress(x: 5, y: 5, z: 15)
+    expect(TilePyramid.crop(of: tile, within: stranger) == nil,
+           "a tile that is not descended from a parent has no crop in it")
+    expect(TilePyramid.crop(of: parent, within: tile) == nil,
+           "a parent does not crop within its own child")
+
+    let children = TilePyramid.children(of: tile)
+    expect(children.count == 4, "a tile has four children one level down")
+    expect(children.allSatisfy { $0.z == tile.z + 1 }, "every child is one zoom deeper")
+    expect(children.allSatisfy { TilePyramid.parent(of: $0, depth: 1) == tile },
+           "every child resolves back to the tile it came from")
+    expect(Set(children.map(TilePyramid.quadrant(of:)).map { "\($0.column),\($0.row)" }).count == 4,
+           "the four children occupy four distinct quadrants")
+}
+
+checkTilePyramid()
+
 if failures == 0 {
     print("all Swift checks passed")
     exit(0)
