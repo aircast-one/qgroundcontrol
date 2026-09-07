@@ -173,8 +173,17 @@ private fun MapSpikeScreen(mapStyle: String) {
                 }
 
                 Text(
-                    busy ?: "Items ${items.size} · fences ${fences.size + circles.size} · rally ${rally.size} · " +
-                        "survey ${surveyList.sumOf { it.transects.size }} pts",
+                    busy ?: buildString {
+                        append("Items ${items.size} · fences ${fences.size + circles.size}")
+                        append(" · rally ${rally.size}")
+                        append(" · survey ${surveyList.sumOf { it.transects.size }} pts")
+                        (selected as? MapHit.Waypoint)?.let { hit ->
+                            val item = items.firstOrNull { it.index == hit.index }
+                            item?.altitude?.takeIf { !it.isNaN() }?.let {
+                                append(" · #${hit.index} at ${it.toInt()} m")
+                            }
+                        }
+                    },
                     style = MaterialTheme.typography.bodySmall,
                 )
 
@@ -238,6 +247,22 @@ private fun MapSpikeScreen(mapStyle: String) {
                     }) { Text("Rally") }
 
                     (selected as? MapHit.Waypoint)?.let { hit ->
+                        val item = items.firstOrNull { it.index == hit.index }
+                        val altitude = item?.altitude ?: Double.NaN
+
+                        if (!altitude.isNaN()) {
+                            TextButton(onClick = {
+                                onBridge { PlanBridge.setAltitude(hit.index, altitude + 10.0) }
+                            }) { Text("Alt +10") }
+
+                            TextButton(
+                                enabled = altitude >= 10.0,
+                                onClick = {
+                                    onBridge { PlanBridge.setAltitude(hit.index, altitude - 10.0) }
+                                },
+                            ) { Text("Alt -10") }
+                        }
+
                         TextButton(onClick = {
                             onBridge { PlanBridge.removeItem(hit.index) }
                             selected = null

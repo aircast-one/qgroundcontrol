@@ -6,6 +6,20 @@ import org.mavlink.qgroundcontrol.QGCBridge
 const val PLAN_ROOT = "plan"
 const val PLAN_ITEMS = "$PLAN_ROOT.missionController.visualItems"
 
+// Several of QGroundControl's settings arrive as Facts in an object's fact
+// list rather than as plain fields: a circle's radius, a survey's grid angle,
+// an item's altitude.
+fun factValue(element: JSONObject, name: String): Double {
+    val facts = element.optJSONArray("facts") ?: return Double.NaN
+    for (index in 0 until facts.length()) {
+        val fact = facts.optJSONObject(index) ?: continue
+        if (fact.optString("name").equals(name, ignoreCase = true)) {
+            return fact.optDouble("value", Double.NaN)
+        }
+    }
+    return Double.NaN
+}
+
 data class MissionItem(
     val index: Int,
     val sequence: Int,
@@ -13,6 +27,7 @@ data class MissionItem(
     val longitude: Double,
     val command: String,
     val current: Boolean,
+    val altitude: Double = Double.NaN,
 )
 
 // A mission item only sits on the map when it specifies a coordinate; takeoff
@@ -36,6 +51,7 @@ fun missionItems(json: JSONObject?): List<MissionItem> {
             longitude = longitude,
             command = element.optString("commandName"),
             current = element.optBoolean("isCurrentItem"),
+            altitude = factValue(element, "Altitude"),
         )
     }
 }
@@ -68,6 +84,12 @@ object PlanBridge {
             "[{\"latitude\":$latitude,\"longitude\":$longitude,\"altitude\":0}, $count]",
         )
     }
+
+    fun setAltitude(index: Int, metres: Double): Boolean =
+        runCatching {
+            JSONObject(QGCBridge.set("$PLAN_ITEMS.$index.altitude", "{\"value\":$metres}"))
+                .optBoolean("ok")
+        }.getOrDefault(false)
 
     fun removeItem(index: Int): Boolean =
         invoke("$PLAN_ROOT.missionController.removeVisualItem", "[$index]")

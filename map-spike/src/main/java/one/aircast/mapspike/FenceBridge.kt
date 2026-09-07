@@ -36,18 +36,6 @@ fun fencePolygons(json: JSONObject?): List<FencePolygon> {
     }
 }
 
-// A circle's radius is a Fact in the object's fact list, not a plain field.
-private fun factValue(element: JSONObject, name: String): Double {
-    val facts = element.optJSONArray("facts") ?: return Double.NaN
-    for (index in 0 until facts.length()) {
-        val fact = facts.optJSONObject(index) ?: continue
-        if (fact.optString("name").equals(name, ignoreCase = true)) {
-            return fact.optDouble("value", Double.NaN)
-        }
-    }
-    return Double.NaN
-}
-
 fun fenceCircles(json: JSONObject?): List<FenceCircle> {
     val list = elements(json) ?: return emptyList()
     return (0 until list.length()).mapNotNull { index ->

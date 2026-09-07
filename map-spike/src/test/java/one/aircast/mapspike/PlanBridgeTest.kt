@@ -82,4 +82,22 @@ class PlanBridgeTest {
         assertEquals(0, missionItems(JSONObject("""{"kind":"object","elements":[]}""")).size)
         assertEquals(0, missionItems(JSONObject("""{"kind":"null"}""")).size)
     }
+
+    @Test
+    fun `an item reads its altitude from the fact list`() {
+        val withAltitude = """{"specifiesCoordinate":true,"coordinate":{"latitude":41.0,"longitude":44.0},""" +
+            """"facts":[{"name":"Altitude","value":75.0}]}"""
+
+        assertEquals(75.0, missionItems(model(withAltitude)).single().altitude, 1e-9)
+    }
+
+    @Test
+    fun `an item with no altitude fact reports it as unknown`() {
+        val plain = """{"specifiesCoordinate":true,"coordinate":{"latitude":41.0,"longitude":44.0}}"""
+        val otherFact = """{"specifiesCoordinate":true,"coordinate":{"latitude":41.0,"longitude":44.0},""" +
+            """"facts":[{"name":"Radius","value":5.0}]}"""
+
+        assertTrue(missionItems(model(plain)).single().altitude.isNaN())
+        assertTrue(missionItems(model(otherFact)).single().altitude.isNaN())
+    }
 }
