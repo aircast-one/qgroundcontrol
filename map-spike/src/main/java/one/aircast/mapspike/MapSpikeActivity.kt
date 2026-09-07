@@ -57,6 +57,7 @@ private fun MapSpikeScreen(mapStyle: String) {
     var fences by remember { mutableStateOf<List<FencePolygon>>(emptyList()) }
     var rally by remember { mutableStateOf<List<RallyPoint>>(emptyList()) }
     var surveyList by remember { mutableStateOf<List<Survey>>(emptyList()) }
+    var profile by remember { mutableStateOf(TerrainProfile(emptyList())) }
     var selected by remember { mutableStateOf<MapHit?>(null) }
     var busy by remember { mutableStateOf<String?>(null) }
     val scope = rememberCoroutineScope()
@@ -80,11 +81,13 @@ private fun MapSpikeScreen(mapStyle: String) {
             val nextFences = FenceBridge.polygons()
             val nextRally = FenceBridge.rally()
             val nextSurveys = SurveyBridge.surveys()
+            val nextProfile = TerrainBridge.profile()
             withContext(Dispatchers.Main) {
                 items = nextItems
                 fences = nextFences
                 rally = nextRally
                 surveyList = nextSurveys
+                profile = nextProfile
             }
         }
     }
@@ -116,6 +119,11 @@ private fun MapSpikeScreen(mapStyle: String) {
                 }
             },
             onWaypointSelected = { selected = it },
+        )
+
+        TerrainProfileView(
+            profile,
+            Modifier.align(Alignment.BottomCenter).padding(8.dp),
         )
 
         Surface(

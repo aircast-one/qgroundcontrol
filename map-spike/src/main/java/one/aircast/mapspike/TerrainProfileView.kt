@@ -1,0 +1,94 @@
+package one.aircast.mapspike
+
+import androidx.compose.foundation.Canvas
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.padding
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Surface
+import androidx.compose.material3.Text
+import androidx.compose.runtime.Composable
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.Path
+import androidx.compose.ui.unit.dp
+
+private val TERRAIN_COLOUR = Color(0xFF8D6E63)
+private val PLANNED_COLOUR = Color(0xFF4FC3F7)
+
+internal fun profileOffsets(
+    profile: TerrainProfile,
+    width: Float,
+    height: Float,
+    value: (ProfilePoint) -> Double?,
+): List<Offset> {
+    if (!profile.drawable || width <= 0f || height <= 0f) {
+        return emptyList()
+    }
+    val span = profile.highest - profile.lowest
+    val distance = profile.distance.takeIf { it > 0.0 } ?: return emptyList()
+
+    return profile.points.mapNotNull { point ->
+        val height1 = value(point) ?: return@mapNotNull null
+        val x = (point.distance / distance * width).toFloat()
+        val y = height - ((height1 - profile.lowest) / span * height).toFloat()
+        Offset(x, y)
+    }
+}
+
+private fun pathOf(points: List<Offset>): Path = Path().apply {
+    points.forEachIndexed { index, offset ->
+        if (index == 0) moveTo(offset.x, offset.y) else lineTo(offset.x, offset.y)
+    }
+}
+
+@Composable
+fun TerrainProfileView(profile: TerrainProfile, modifier: Modifier = Modifier) {
+    Surface(
+        modifier.fillMaxWidth().height(110.dp),
+        color = MaterialTheme.colorScheme.surface.copy(alpha = 0.88f),
+    ) {
+        if (!profile.drawable) {
+            Box(Modifier.fillMaxWidth(), contentAlignment = Alignment.Center) {
+                Text(
+                    "No profile. Plan a route with altitudes.",
+                    style = MaterialTheme.typography.bodySmall,
+                )
+            }
+            return@Surface
+        }
+
+        Box {
+            Canvas(Modifier.fillMaxWidth().height(110.dp).padding(8.dp)) {
+                val terrain = profileOffsets(profile, size.width, size.height) { it.terrain }
+                val planned = profileOffsets(profile, size.width, size.height) { it.planned }
+
+                if (terrain.size >= 2) {
+                    val ground = pathOf(terrain).apply {
+                        lineTo(size.width, size.height)
+                        lineTo(0f, size.height)
+                        close()
+                    }
+                    drawPath(ground, TERRAIN_COLOUR.copy(alpha = 0.45f))
+                    drawPath(pathOf(terrain), TERRAIN_COLOUR, style = androidx.compose.ui.graphics.drawscope.Stroke(3f))
+                }
+                if (planned.size >= 2) {
+                    drawPath(pathOf(planned), PLANNED_COLOUR, style = androidx.compose.ui.graphics.drawscope.Stroke(3f))
+                }
+            }
+
+            Text(
+                "${profile.lowest.toInt()}–${profile.highest.toInt()} m AMSL · " +
+                    "${(profile.distance / 1000).format2()} km" +
+                    if (profile.hasTerrain) "" else " · ground height unknown",
+                style = MaterialTheme.typography.labelSmall,
+                modifier = Modifier.align(Alignment.TopStart).padding(8.dp),
+            )
+        }
+    }
+}
+
+private fun Double.format2(): String = "%.2f".format(this)
