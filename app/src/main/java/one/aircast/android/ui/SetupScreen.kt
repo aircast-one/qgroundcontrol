@@ -25,6 +25,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import one.aircast.android.bridge.Qgc
 import one.aircast.android.bridge.qgcBool
+import one.aircast.android.bridge.qgcDouble
 import one.aircast.android.bridge.qgcString
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
@@ -35,6 +36,22 @@ import androidx.compose.ui.Alignment
 
 private const val PLUGIN = "vehicle.autopilotPlugin"
 private const val COMPONENTS = "vehicle.autopilotPlugin.vehicleComponents"
+
+internal fun firmwareSummary(
+    firmwareType: String,
+    major: Int,
+    minor: Int,
+    patch: Int,
+    versionType: String,
+): String {
+    val version = if (major < 0) "" else "$major.$minor.$patch"
+    val suffix = versionType.takeIf { it.isNotBlank() && !it.equals("Official", true) }
+    return listOfNotNull(
+        firmwareType.takeIf { it.isNotBlank() },
+        version.takeIf { it.isNotEmpty() },
+        suffix,
+    ).joinToString(" ")
+}
 
 internal data class SetupComponent(
     val index: Int,
@@ -83,6 +100,11 @@ fun SetupScreen(modifier: Modifier = Modifier) {
     val parametersReady by qgcBool("vehicle.parameterManager.parametersReady")
     val setupComplete by qgcBool("$PLUGIN.setupComplete")
     val isPx4 by qgcBool("vehicle.px4Firmware")
+    val vehicleId by qgcDouble("vehicle.id")
+    val major by qgcDouble("vehicle.firmwareMajorVersion", -1.0)
+    val minor by qgcDouble("vehicle.firmwareMinorVersion", 0.0)
+    val patch by qgcDouble("vehicle.firmwarePatchVersion", 0.0)
+    val versionType by qgcString("vehicle.firmwareVersionTypeString")
     val vehicleType by qgcString("vehicle.vehicleTypeString")
     val firmwareType by qgcString("vehicle.firmwareTypeString")
     var components by remember { mutableStateOf(emptyList<SetupComponent>()) }
@@ -132,19 +154,50 @@ fun SetupScreen(modifier: Modifier = Modifier) {
     }
 
     Column(modifier.fillMaxSize()) {
+        val firmware = firmwareSummary(
+            firmwareType,
+            major.toInt(),
+            minor.toInt(),
+            patch.toInt(),
+            versionType,
+        )
+        val needSetup = components.filter { it.needsAttention }
+
         ListItem(
             headlineContent = { Text(vehicleType.ifBlank { "Vehicle" }) },
             supportingContent = {
                 Text(
-                    if (setupComplete) {
-                        "$firmwareType · ready to fly"
-                    } else {
-                        "$firmwareType · needs setup"
-                    },
+                    listOfNotNull(
+                        firmware.takeIf { it.isNotBlank() },
+                        if (vehicleId > 0) "MAV ${vehicleId.toInt()}" else null,
+                        if (setupComplete) "ready to fly" else "needs setup",
+                    ).joinToString(" · "),
                 )
             },
         )
         HorizontalDivider()
+
+        if (needSetup.isNotEmpty()) {
+            Text(
+                text = "Needs setup before flight",
+                style = MaterialTheme.typography.titleSmall,
+                modifier = Modifier.padding(horizontal = 16.dp, vertical = 12.dp),
+            )
+            needSetup.forEach { component ->
+                ListItem(
+                    headlineContent = { Text(component.name) },
+                    supportingContent = { Text(component.description) },
+                    trailingContent = {
+                        Text(
+                            text = "Needs setup",
+                            style = MaterialTheme.typography.labelMedium,
+                            color = MaterialTheme.colorScheme.error,
+                        )
+                    },
+                )
+                HorizontalDivider()
+            }
+        }
 
         if (components.isEmpty()) {
             SetupNotice("This vehicle reports no setup components.")
