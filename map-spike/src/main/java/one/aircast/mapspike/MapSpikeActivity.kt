@@ -130,6 +130,9 @@ internal fun MapSpikeScreen(mapStyle: String) {
                 items = nextItems
                 fences = nextFences
                 rally = nextRally
+                if (!selectionSurvives(selected, nextItems, nextFences, nextCircles, nextRally, nextSurveys)) {
+                    selected = null
+                }
                 circles = nextCircles
                 surveyList = nextSurveys
                 profile = nextProfile
