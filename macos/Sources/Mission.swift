@@ -50,6 +50,23 @@ final class MissionStore: ObservableObject, Probeable {
         reload()
     }
 
+    func select(_ item: MissionItem) {
+        guard !item.isCurrent else { return }
+        Bridge.invoke("plan.missionController.setCurrentPlanViewSeqNum", [item.sequence, true])
+        reload()
+    }
+
+    func select(sequence: Int) {
+        guard let item = items.first(where: { $0.sequence == sequence }) else { return }
+        select(item)
+    }
+
+    func remove(_ item: MissionItem) {
+        guard item.canRemove else { return }
+        Bridge.invoke("plan.missionController.removeVisualItem", [item.index])
+        reload()
+    }
+
     func setAltitude(of item: MissionItem, metres: Double) {
         _ = Bridge.set("plan.missionController.visualItems.\(item.index).altitude", metres)
         reload()
@@ -114,8 +131,9 @@ final class MissionStore: ObservableObject, Probeable {
          "placed": items.filter(\.hasPosition).count,
          "vehiclePlaced": vehiclePosition != nil,
          "map": MissionMap.lastRender["plan"] ?? [:],
+         "selected": items.first(where: \.isCurrent)?.sequence ?? -1,
          "items": items.prefix(8).map {
-             ["seq": $0.sequence, "command": $0.command,
+             ["seq": $0.sequence, "command": $0.command, "selected": $0.isCurrent,
               "position": $0.positionText, "altitude": $0.altitudeText]
          }]
     }
@@ -143,6 +161,16 @@ final class MissionStore: ObservableObject, Probeable {
                 syncing = (Bridge.group("plan")["syncInProgress"] as? NSNumber)?.boolValue ?? false
             }
             reload()
+        case "select":
+            select(sequence: Int(args["sequence"] ?? "") ?? -1)
+        case "remove":
+            guard let target = items.first(where: { $0.sequence == Int(args["sequence"] ?? "") ?? -1 }) else {
+                return ["ok": false, "error": "no item with that sequence"]
+            }
+            guard target.canRemove else {
+                return ["ok": false, "error": "\(target.command) cannot be removed"]
+            }
+            remove(target)
         case "setAltitude":
             guard let target = items.first(where: { $0.index == Int(args["index"] ?? "") ?? -1 }) else {
                 return ["ok": false, "error": "no item at that index"]

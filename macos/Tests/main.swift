@@ -390,6 +390,15 @@ func checkParameterOptions() {
 
 checkParameterOptions()
 
+func checkMissionItemRemoval() {
+    let home = MissionItem(json: ["sequenceNumber": 0, "commandName": "Mission Start"], index: 0)
+    let waypoint = MissionItem(json: ["sequenceNumber": 1, "commandName": "Waypoint"], index: 1)
+    expect(!home.canRemove, "the mission start is not a waypoint an operator can delete")
+    expect(waypoint.canRemove, "a waypoint can be deleted")
+}
+
+checkMissionItemRemoval()
+
 if failures == 0 {
     print("all Swift checks passed")
     exit(0)

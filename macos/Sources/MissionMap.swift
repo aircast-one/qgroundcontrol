@@ -57,6 +57,7 @@ struct MissionMap: NSViewRepresentable {
     let shapes: [FenceShape]
     let rallyPoints: [RallyPointRow]
     let padding: NSEdgeInsets
+    let select: (Int) -> Void
 
     func makeNSView(context: Context) -> MKMapView {
         let map = MKMapView()
@@ -174,12 +175,22 @@ struct MissionMap: NSViewRepresentable {
     }
 
 
-    func makeCoordinator() -> Coordinator { Coordinator() }
+    func makeCoordinator() -> Coordinator { Coordinator(select: select) }
 
     static var lastRender: [String: [String: Any]] = [:]
 
     final class Coordinator: NSObject, MKMapViewDelegate {
+        let select: (Int) -> Void
         var lastFrame: MapFrame?
+
+        init(select: @escaping (Int) -> Void) {
+            self.select = select
+        }
+
+        func mapView(_ mapView: MKMapView, didSelect view: MKAnnotationView) {
+            guard let item = view.annotation as? MissionAnnotation else { return }
+            select(item.sequence)
+        }
         var overlay: CachedTileOverlay?
         var tilesServed = 0
         var tilesMissing = 0
@@ -238,6 +249,8 @@ struct MissionMap: NSViewRepresentable {
             view.canShowCallout = true
             view.glyphText = String(item.sequence)
             view.markerTintColor = item.isLaunch ? .systemGreen : .controlAccentColor
+            view.displayPriority = item.isCurrent ? .required : .defaultHigh
+            view.zPriority = item.isCurrent ? .max : .defaultUnselected
             return view
         }
 

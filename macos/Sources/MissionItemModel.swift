@@ -16,6 +16,8 @@ struct MissionItem: Identifiable {
 
     var hasPosition: Bool { latitude != nil && longitude != nil }
 
+    var canRemove: Bool { sequence > 0 }
+
     init(json: [String: Any], index: Int) {
         self.index = index
         sequence = (json["sequenceNumber"] as? NSNumber)?.intValue ?? 0

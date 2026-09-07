@@ -131,7 +131,6 @@ struct PlanInspector: View {
                 ForEach(mission.items) { item in
                     GroupRow(
                         title: item.command,
-                        description: "",
                         showSeparator: item.index > 0,
                         current: item.isCurrent,
                         leading: {
@@ -139,15 +138,29 @@ struct PlanInspector: View {
                                  colour: item.isLaunch ? Overlay.launch : Overlay.mission)
                         },
                         trailing: {
-                            if item.specifiesAltitude {
-                                AltitudeField(metres: item.altitude,
-                                              commit: { mission.setAltitude(of: item, metres: $0) })
-                            } else {
-                                Text(item.altitudeText)
-                                    .font(.body.monospacedDigit())
-                                    .foregroundColor(Overlay.value)
+                            HStack(spacing: Overlay.step) {
+                                if item.specifiesAltitude {
+                                    AltitudeField(metres: item.altitude,
+                                                  commit: { mission.setAltitude(of: item, metres: $0) })
+                                } else {
+                                    Text(item.altitudeText)
+                                        .font(.body.monospacedDigit())
+                                        .foregroundColor(Overlay.value)
+                                }
+                                if item.isCurrent && item.canRemove {
+                                    Button {
+                                        mission.remove(item)
+                                    } label: {
+                                        Image(systemName: "trash")
+                                    }
+                                    .buttonStyle(.borderless)
+                                    .foregroundColor(.red)
+                                    .help("Remove this item from the plan")
+                                }
                             }
                         })
+                        .contentShape(Rectangle())
+                        .onTapGesture { mission.select(item) }
                 }
             }
         }
@@ -227,7 +240,8 @@ struct PlanView: View {
         ZStack(alignment: .topLeading) {
             MissionMap(owner: "plan", items: mission.items, vehicle: mission.vehiclePosition,
                        shapes: fenceRally.shapes, rallyPoints: fenceRally.rallyPoints,
-                       padding: PlanView.mapPadding)
+                       padding: PlanView.mapPadding,
+                       select: mission.select(sequence:))
                 .ignoresSafeArea()
 
             HStack {
