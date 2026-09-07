@@ -257,6 +257,18 @@ down, so a failed tile read yields no tile instead.
 
 Falls back to OpenStreetMap when the cache is empty. That style is for development only.
 
+## Scripting the controls
+
+The control panel is anchored to the bottom and grows with what the plan contains, so every button
+moves when the plan changes. With an empty plan `Survey` sits at y=2027 on a 1080x2280 screen; add
+one survey and the terrain profile and selection row appear beneath it and the same button is at
+y=1906. A script that reuses a coordinate after changing the plan taps empty space and reports
+nothing wrong, which is how a measurement of six surveys turned out to be six taps into a gap and
+one survey. Screenshot between steps and locate the button each time.
+
+`input swipe` cannot drive a drag; `input draganddrop` can, and `input swipe x y x y 900` is a long
+press.
+
 ## Tests
 
 ```
