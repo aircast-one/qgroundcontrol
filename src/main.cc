@@ -287,6 +287,10 @@ void qgc_shutdown(void)
 {
     g_runtime.app->shutdown();
     qDebug() << "Exiting main";
+    g_runtime.app.reset();
+#if !defined(Q_OS_ANDROID) && !defined(Q_OS_IOS)
+    g_runtime.guard.reset();
+#endif
 }
 
 #ifdef Q_OS_MACOS
