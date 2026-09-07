@@ -125,13 +125,25 @@ fun installFenceLayers(style: Style) {
     }
 }
 
-fun fenceFeatures(polygons: List<FencePolygon>): FeatureCollection {
-    val features = polygons.map { polygon ->
-        val ring = polygon.vertices.map { Point.fromLngLat(it.longitude, it.latitude) }
-        val closed = if (ring.first() == ring.last()) ring else ring + ring.first()
-        Feature.fromGeometry(Polygon.fromLngLats(listOf(closed)))
+const val CIRCLE_INDEX_PROPERTY = "circleIndex"
+
+private fun ringFeature(vertices: List<TrackPoint>): Feature {
+    val ring = vertices.map { Point.fromLngLat(it.longitude, it.latitude) }
+    val closed = if (ring.first() == ring.last()) ring else ring + ring.first()
+    return Feature.fromGeometry(Polygon.fromLngLats(listOf(closed)))
+}
+
+// A circle carries its index so tapping its ring can find it again. A polygon
+// needs no tag: it is selected by one of its vertex handles.
+fun fenceFeatures(
+    polygons: List<FencePolygon>,
+    circles: List<FencePolygon> = emptyList(),
+): FeatureCollection {
+    val polygonFeatures = polygons.map { ringFeature(it.vertices) }
+    val circleFeatures = circles.map { circle ->
+        ringFeature(circle.vertices).apply { addNumberProperty(CIRCLE_INDEX_PROPERTY, circle.index) }
     }
-    return FeatureCollection.fromFeatures(features)
+    return FeatureCollection.fromFeatures(polygonFeatures + circleFeatures)
 }
 
 const val RALLY_INDEX_PROPERTY = "rallyIndex"
@@ -145,8 +157,13 @@ fun rallyFeatures(points: List<RallyPoint>): FeatureCollection =
         },
     )
 
-fun renderFences(style: Style, polygons: List<FencePolygon>, rally: List<RallyPoint>) {
-    (style.getSource(FENCE_SOURCE) as? GeoJsonSource)?.setGeoJson(fenceFeatures(polygons))
+fun renderFences(
+    style: Style,
+    polygons: List<FencePolygon>,
+    rally: List<RallyPoint>,
+    circles: List<FencePolygon> = emptyList(),
+) {
+    (style.getSource(FENCE_SOURCE) as? GeoJsonSource)?.setGeoJson(fenceFeatures(polygons, circles))
     (style.getSource(RALLY_SOURCE) as? GeoJsonSource)?.setGeoJson(rallyFeatures(rally))
 }
 

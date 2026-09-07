@@ -81,6 +81,12 @@ object FenceBridge {
             JSONObject(QGCBridge.set("$RALLY_POINTS.$index.coordinate", value)).optBoolean("ok")
         }.getOrDefault(false)
 
+    fun setCircleRadius(index: Int, metres: Double): Boolean =
+        runCatching {
+            JSONObject(QGCBridge.set("$FENCE_CIRCLES.$index.radius", "{\"value\":$metres}"))
+                .optBoolean("ok")
+        }.getOrDefault(false)
+
     fun deletePolygon(index: Int): Boolean = invoke("$FENCE_ROOT.deletePolygon", "[$index]")
 
     fun deleteCircle(index: Int): Boolean = invoke("$FENCE_ROOT.deleteCircle", "[$index]")
