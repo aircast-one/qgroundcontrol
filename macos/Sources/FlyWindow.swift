@@ -7,7 +7,8 @@ struct FlyPanel: View {
 
     var body: some View {
         GlassPanel {
-            VStack(alignment: .leading, spacing: Overlay.gutter) {
+            ScrollView {
+              VStack(alignment: .leading, spacing: Overlay.gutter) {
                 header
 
                 GroupCard {
@@ -17,6 +18,10 @@ struct FlyPanel: View {
                              leading: { dot(fly.telemetry.gpsLevel) })
                 }
 
+                if video.camera.present {
+                    cameraCard
+                }
+
                 if video.status.available {
                     videoCard
                 }
@@ -24,10 +29,12 @@ struct FlyPanel: View {
                 if fly.connected {
                     messages
                 }
+              }
+              .padding(Overlay.gutter)
             }
-            .padding(Overlay.gutter)
             .frame(width: 300)
         }
+        .frame(maxHeight: .infinity, alignment: .top)
         .sheet(isPresented: $fly.showingChecklist) { checklistSheet }
     }
 
@@ -116,6 +123,44 @@ struct FlyPanel: View {
             .contentShape(Rectangle())
             .onTapGesture { fly.toggle(check) }
             .help(check.blocked ? "Fix this before it can be checked off" : check.prompt)
+    }
+
+    private var cameraCard: some View {
+        VStack(alignment: .leading, spacing: Overlay.unit * 0.3) {
+            SectionLabel(text: "Camera")
+            GroupCard {
+                GroupRow(title: video.camera.title,
+                         description: video.camera.stateText,
+                         showSeparator: false,
+                         leading: {
+                             Image(systemName: video.camera.isRecording
+                                 ? "record.circle.fill" : "camera.fill")
+                                 .foregroundColor(video.camera.isRecording ? Overlay.vehicle : .secondary)
+                         },
+                         trailing: { EmptyView() })
+                if video.camera.hasModes {
+                    GroupRow(title: "Mode", trailing: {
+                        Picker("", selection: Binding(
+                            get: { video.camera.mode },
+                            set: { video.setCameraMode(photo: $0 == CameraControl.photoMode) })
+                        ) {
+                            Text("Photo").tag(CameraControl.photoMode)
+                            Text("Video").tag(CameraControl.videoMode)
+                        }
+                        .pickerStyle(.segmented)
+                        .labelsHidden()
+                        .frame(width: 140)
+                    })
+                }
+                GroupRow(title: "Storage", value: video.camera.storageText)
+            }
+            if !video.camera.modeKnown {
+                Text("The camera has not said which mode it is in.")
+                    .font(.caption).foregroundColor(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+                    .padding(.horizontal, Overlay.horizontalPadding)
+            }
+        }
     }
 
     private var videoCard: some View {

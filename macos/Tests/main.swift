@@ -1010,6 +1010,62 @@ func checkVideoSources() {
 
 checkVideoSources()
 
+func checkCameraControl() {
+    expect(!CameraControl.read(["kind": "value"]).present, "no camera object means no camera")
+    expect(!CameraControl.read(["kind": "object", "modelName": ""]).present,
+           "nor does an object that will not name itself")
+
+    let live: [String: Any] = [
+        "kind": "object", "modelName": "Simulated Camera", "vendor": "QGroundControl",
+        "cameraMode": "CAM_MODE_UNDEFINED", "photoCaptureStatus": "PHOTO_CAPTURE_IDLE",
+        "videoCaptureStatus": "VIDEO_CAPTURE_STATUS_STOPPED", "recordTimeStr": "00:00:00",
+        "storageStatus": "STORAGE_NOT_SUPPORTED", "storageFreeStr": "",
+        "capturesPhotos": true, "capturesVideo": true, "hasModes": true, "batteryRemaining": -1,
+    ]
+    let camera = CameraControl.read(live)
+    expect(camera.present, "the live SITL camera is present")
+    expect(camera.title, "Simulated Camera", "and is named by its model")
+    expect(camera.stateText, "Idle", "an idle camera is idle")
+    expect(camera.modeText, "Not set", "an undefined mode is not guessed at")
+    expect(!camera.modeKnown, "and is known to be unknown, so the page can say so")
+    expect(camera.storageText, "Not reported",
+           "a camera that does not support storage reporting says that, not zero bytes")
+    expect(camera.batteryText, "", "a camera with no battery reading shows nothing at all")
+
+    var recording = camera
+    recording.videoStatus = CameraControl.recording
+    recording.recordTime = "00:01:24"
+    expect(recording.isRecording, "a running video capture is recording")
+    expect(recording.stateText, "Recording 00:01:24", "and shows how long it has been going")
+
+    var shooting = camera
+    shooting.photoStatus = CameraControl.takingPhoto
+    expect(shooting.stateText, "Taking a photo", "a photo in progress says so")
+
+    var photoMode = camera
+    photoMode.mode = CameraControl.photoMode
+    expect(photoMode.modeText, "Photo", "a set mode is named")
+    expect(photoMode.canPhoto, "and photo mode can take photos")
+    expect(!photoMode.canRecord, "but not record video")
+
+    var videoMode = camera
+    videoMode.mode = CameraControl.videoMode
+    expect(videoMode.canRecord, "video mode can record")
+    expect(!videoMode.canPhoto, "but not shoot stills")
+
+    var modeless = camera
+    modeless.hasModes = false
+    modeless.mode = CameraControl.undefinedMode
+    expect(modeless.canPhoto, "a camera with no modes can do both")
+    expect(modeless.canRecord, "without being told which it is in")
+
+    let named = CameraControl.read(["kind": "object", "modelName": "Sim", "vendor": "QGC",
+                                    "storageStatus": "STORAGE_READY", "storageFreeStr": "1.2 GB"])
+    expect(named.storageText, "1.2 GB", "a camera that reports storage shows what is free")
+}
+
+checkCameraControl()
+
 func checkLogReplayLink() {
     let empty = LinkConfig(index: 0, json: ["linkType": "TypeLogReplay", "name": "Replay"])
     expect(empty.editing == .logFile, "a log replay link is edited by choosing a file")

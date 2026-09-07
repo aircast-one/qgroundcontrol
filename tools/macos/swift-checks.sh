@@ -21,6 +21,7 @@ swiftc -Onone -o "$out" \
     "$root/macos/Sources/RadioModel.swift" \
     "$root/macos/Sources/VideoModel.swift" \
     "$root/macos/Sources/VideoSourceModel.swift" \
+    "$root/macos/Sources/CameraControlModel.swift" \
     "$root/macos/Sources/SafetySections.swift" \
     "$root/macos/Sources/Probeable.swift" \
     "$root/macos/Sources/MissionItemModel.swift" \

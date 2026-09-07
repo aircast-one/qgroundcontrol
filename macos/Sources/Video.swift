@@ -8,6 +8,8 @@ final class VideoStore: ObservableObject, Probeable {
 
     @Published private(set) var status = VideoStatus.unavailable
 
+    @Published private(set) var camera = CameraControl.absent
+    @Published private(set) var cameraLabels: [String] = []
     @Published private(set) var sources: [VideoSource] = []
     @Published private(set) var sourceTypes: [String] = []
 
@@ -47,6 +49,23 @@ final class VideoStore: ObservableObject, Probeable {
         let read = VideoStatus.read(Bridge.group("video"))
         if read != status { status = read }
         pollNative()
+        loadCamera()
+    }
+
+    func loadCamera() {
+        let manager = Bridge.group("vehicle.cameraManager")
+        let labels = (manager["cameraLabels"] as? [String]) ?? []
+        if labels != cameraLabels { cameraLabels = labels }
+
+        let read = CameraControl.read(Bridge.group("vehicle.cameraManager.currentCameraInstance"))
+        if read != camera { camera = read }
+    }
+
+    func setCameraMode(photo: Bool) {
+        guard camera.present, camera.hasModes else { return }
+        Bridge.invoke(photo ? "vehicle.cameraManager.currentCameraInstance.setCameraModePhoto"
+                            : "vehicle.cameraManager.currentCameraInstance.setCameraModeVideo")
+        loadCamera()
     }
 
     func clear() {
@@ -90,6 +109,9 @@ final class VideoStore: ObservableObject, Probeable {
                                           "connecting": $0.connecting] },
          "nativeAvailable": qgc_video_available(), "nativeRunning": nativeRunning,
          "nativeRequested": askedForNative,
+         "camera": ["present": camera.present, "title": camera.title, "mode": camera.modeText,
+                    "state": camera.stateText, "storage": camera.storageText,
+                    "recording": camera.isRecording, "labels": cameraLabels],
          "sources": sources.map { ["slot": $0.slot, "name": $0.name, "source": $0.source,
                                    "url": $0.url, "summary": $0.summary,
                                    "misconfigured": $0.misconfigured] },
