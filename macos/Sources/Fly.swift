@@ -5,7 +5,7 @@ final class FlyStore: ObservableObject, Probeable {
 
     @Published private(set) var telemetry = FlyTelemetry()
     @Published private(set) var connected = false
-    @Published private(set) var position: (latitude: Double, longitude: Double)?
+    @Published private(set) var position: VehicleMarker?
 
     private var poll: Timer?
 
@@ -52,13 +52,14 @@ final class FlyStore: ObservableObject, Probeable {
         reading.batteryVolts = batteryFacts["voltage"]
 
         let coordinate = vehicle["coordinate"] as? [String: Any]
-        let latitude = (coordinate?["latitude"] as? NSNumber)?.doubleValue
-        let longitude = (coordinate?["longitude"] as? NSNumber)?.doubleValue
-        let placed = latitude.flatMap { latitude in longitude.map { (latitude, $0) } }
+        let placed = VehicleMarker(
+            latitude: (coordinate?["latitude"] as? NSNumber)?.doubleValue,
+            longitude: (coordinate?["longitude"] as? NSNumber)?.doubleValue,
+            heading: reading.heading)
 
         if !connected { connected = true }
         if reading != telemetry { telemetry = reading }
-        if placed?.0 != position?.0 || placed?.1 != position?.1 { position = placed }
+        if placed != position { position = placed }
     }
 
     private static func facts(_ object: [String: Any]) -> [String: Double] {

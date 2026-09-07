@@ -8,7 +8,7 @@ final class MissionStore: ObservableObject, Probeable {
     @Published private(set) var items: [MissionItem] = []
     @Published private(set) var status = ""
     @Published private(set) var syncing = false
-    @Published private(set) var vehiclePosition: (latitude: Double, longitude: Double)?
+    @Published private(set) var vehiclePosition: VehicleMarker?
     @Published private(set) var dirty = false
     @Published private(set) var connected = false
     @Published var arming: MissionItemKind?
@@ -42,13 +42,15 @@ final class MissionStore: ObservableObject, Probeable {
         connected = Bridge.group("vehicle")["kind"] as? String == "object"
         status = items.isEmpty ? "This plan has no items." : ""
 
-        let coordinate = Bridge.group("vehicle")["coordinate"] as? [String: Any]
-        if let latitude = (coordinate?["latitude"] as? NSNumber)?.doubleValue,
-           let longitude = (coordinate?["longitude"] as? NSNumber)?.doubleValue {
-            vehiclePosition = (latitude, longitude)
-        } else {
-            vehiclePosition = nil
-        }
+        let vehicle = Bridge.group("vehicle")
+        let coordinate = vehicle["coordinate"] as? [String: Any]
+        let heading = ((vehicle["facts"] as? [[String: Any]]) ?? [])
+            .first { ($0["name"] as? String) == "heading" }
+            .flatMap { ($0["value"] as? NSNumber)?.doubleValue }
+        vehiclePosition = VehicleMarker(
+            latitude: (coordinate?["latitude"] as? NSNumber)?.doubleValue,
+            longitude: (coordinate?["longitude"] as? NSNumber)?.doubleValue,
+            heading: heading)
     }
 
     func downloadFromVehicle() {

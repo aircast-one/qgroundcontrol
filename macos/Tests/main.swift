@@ -621,6 +621,42 @@ func checkFlyTelemetry() {
 
 checkFlyTelemetry()
 
+func checkVehicleMarker() {
+    expect(VehicleMarker(latitude: nil, longitude: 149.16, heading: 0) == nil,
+           "a marker needs both halves of a coordinate")
+    expect(VehicleMarker(latitude: Double.nan, longitude: 149.16, heading: 0) == nil,
+           "and they have to be numbers")
+
+    guard let north = VehicleMarker(latitude: -35.36, longitude: 149.16, heading: 0) else {
+        return expect(false, "a real coordinate makes a marker")
+    }
+    expect(north.rotationRadians == 0, "a heading of north does not rotate the marker")
+    expect(north.hasHeading, "and it knows it has a heading")
+
+    guard let east = VehicleMarker(latitude: -35.36, longitude: 149.16, heading: 90),
+          let west = VehicleMarker(latitude: -35.36, longitude: 149.16, heading: 270) else {
+        return expect(false, "east and west make markers")
+    }
+    expect(abs(east.rotationRadians + .pi / 2) < 1e-9,
+           "a heading runs clockwise while the layer rotates anticlockwise, so east is negative")
+    expect(abs(west.rotationRadians + 3 * .pi / 2) < 1e-9, "and west is three quarters the other way")
+
+    guard let wrapped = VehicleMarker(latitude: -35.36, longitude: 149.16, heading: 450),
+          let negative = VehicleMarker(latitude: -35.36, longitude: 149.16, heading: -90) else {
+        return expect(false, "out of range headings make markers")
+    }
+    expect(abs(wrapped.rotationRadians - east.rotationRadians) < 1e-9, "450 degrees is 90")
+    expect(abs(negative.rotationRadians - west.rotationRadians) < 1e-9, "and -90 is 270")
+
+    guard let headless = VehicleMarker(latitude: -35.36, longitude: 149.16, heading: nil) else {
+        return expect(false, "a vehicle without a heading still has a position")
+    }
+    expect(!headless.hasHeading, "a vehicle reporting no heading is drawn as a dot")
+    expect(headless.rotationRadians == 0, "and is not rotated to an invented direction")
+}
+
+checkVehicleMarker()
+
 if failures == 0 {
     print("all Swift checks passed")
     exit(0)

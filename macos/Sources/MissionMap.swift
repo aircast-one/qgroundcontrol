@@ -48,16 +48,20 @@ final class FenceCircle: MKCircle {
 final class VehicleAnnotation: NSObject, MKAnnotation {
     let coordinate: CLLocationCoordinate2D
     let title: String? = "Vehicle"
+    let rotation: Double
+    let hasHeading: Bool
 
-    init(latitude: Double, longitude: Double) {
-        coordinate = CLLocationCoordinate2D(latitude: latitude, longitude: longitude)
+    init(marker: VehicleMarker) {
+        coordinate = CLLocationCoordinate2D(latitude: marker.latitude, longitude: marker.longitude)
+        rotation = marker.rotationRadians
+        hasHeading = marker.hasHeading
     }
 }
 
 struct MissionMap: NSViewRepresentable {
     let owner: String
     let items: [MissionItem]
-    let vehicle: (latitude: Double, longitude: Double)?
+    let vehicle: VehicleMarker?
     let shapes: [FenceShape]
     let rallyPoints: [RallyPointRow]
     let padding: NSEdgeInsets
@@ -100,7 +104,7 @@ struct MissionMap: NSViewRepresentable {
         map.addAnnotations(placed)
 
         if let vehicle {
-            map.addAnnotation(VehicleAnnotation(latitude: vehicle.latitude, longitude: vehicle.longitude))
+            map.addAnnotation(VehicleAnnotation(marker: vehicle))
         }
 
         let rally = rallyPoints.filter { $0.latitude != nil && $0.longitude != nil }
@@ -339,8 +343,10 @@ struct MissionMap: NSViewRepresentable {
                 let view = mapView.dequeueReusableAnnotationView(withIdentifier: "vehicle")
                     ?? MKAnnotationView(annotation: vehicle, reuseIdentifier: "vehicle")
                 view.annotation = vehicle
-                view.image = Coordinator.vehicleImage
+                view.image = vehicle.hasHeading ? Coordinator.vehicleArrow : Coordinator.vehicleDot
                 view.canShowCallout = true
+                view.wantsLayer = true
+                view.layer?.transform = CATransform3DMakeRotation(vehicle.rotation, 0, 0, 1)
                 return view
             }
 
@@ -357,7 +363,29 @@ struct MissionMap: NSViewRepresentable {
             return view
         }
 
-        private static let vehicleImage: NSImage = {
+        // A dot says where the vehicle is; an arrow also says which way it is facing,
+        // which is what an operator is looking for. The dot stays for the case where
+        // the vehicle reports no heading at all.
+        private static let vehicleArrow: NSImage = {
+            let size = NSSize(width: 20, height: 20)
+            let image = NSImage(size: size)
+            image.lockFocus()
+            let arrow = NSBezierPath()
+            arrow.move(to: NSPoint(x: 10, y: 19))
+            arrow.line(to: NSPoint(x: 3, y: 1))
+            arrow.line(to: NSPoint(x: 10, y: 6))
+            arrow.line(to: NSPoint(x: 17, y: 1))
+            arrow.close()
+            NSColor.systemRed.setFill()
+            arrow.fill()
+            NSColor.white.setStroke()
+            arrow.lineWidth = 1.5
+            arrow.stroke()
+            image.unlockFocus()
+            return image
+        }()
+
+        private static let vehicleDot: NSImage = {
             let size = NSSize(width: 14, height: 14)
             let image = NSImage(size: size)
             image.lockFocus()
