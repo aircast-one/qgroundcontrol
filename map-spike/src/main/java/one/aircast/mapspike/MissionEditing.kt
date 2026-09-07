@@ -28,10 +28,31 @@ sealed interface MapHit {
 
 // Fence handles win a tie. They sit on the fence outline, which a waypoint can
 // easily overlap, and a handle is the smaller target of the two.
+// queryRenderedFeatures returns everything the box touches in source order, so
+// firstOrNull picks by list position rather than by distance. Where markers sit
+// close together — a launch point and the first waypoint routinely do — that
+// grabs whichever was drawn first, and the wrong item moves. Fills are exempt:
+// being inside one is not a matter of degree.
+private fun nearest(
+    map: MapLibreMap,
+    features: List<org.maplibre.geojson.Feature>,
+    x: Float,
+    y: Float,
+): org.maplibre.geojson.Feature? = features.minByOrNull { feature ->
+    val point = feature.geometry() as? org.maplibre.geojson.Point
+        ?: return@minByOrNull Float.MAX_VALUE
+    val screen = map.projection.toScreenLocation(
+        org.maplibre.android.geometry.LatLng(point.latitude(), point.longitude()),
+    )
+    val dx = screen.x - x
+    val dy = screen.y - y
+    dx * dx + dy * dy
+}
+
 fun hitTest(map: MapLibreMap, x: Float, y: Float): MapHit? {
     val box = RectF(x - HIT_RADIUS_PX, y - HIT_RADIUS_PX, x + HIT_RADIUS_PX, y + HIT_RADIUS_PX)
 
-    map.queryRenderedFeatures(box, FENCE_HANDLE_LAYER).firstOrNull()?.let { feature ->
+    nearest(map, map.queryRenderedFeatures(box, FENCE_HANDLE_LAYER), x, y)?.let { feature ->
         val owner = feature.getNumberProperty(POLYGON_INDEX_PROPERTY)?.toInt()
         val vertex = feature.getNumberProperty(VERTEX_INDEX_PROPERTY)?.toInt()
         val kind = feature.getStringProperty(HANDLE_KIND_PROPERTY)
@@ -44,7 +65,7 @@ fun hitTest(map: MapLibreMap, x: Float, y: Float): MapHit? {
         }
     }
 
-    map.queryRenderedFeatures(box, RALLY_LAYER).firstOrNull()?.let { feature ->
+    nearest(map, map.queryRenderedFeatures(box, RALLY_LAYER), x, y)?.let { feature ->
         feature.getNumberProperty(RALLY_INDEX_PROPERTY)?.toInt()?.let { return MapHit.Rally(it) }
     }
 
@@ -52,8 +73,7 @@ fun hitTest(map: MapLibreMap, x: Float, y: Float): MapHit? {
         feature.getNumberProperty(CIRCLE_INDEX_PROPERTY)?.toInt()?.let { return MapHit.Circle(it) }
     }
 
-    return map.queryRenderedFeatures(box, MISSION_DOT_LAYER, MISSION_LAYER)
-        .firstOrNull()
+    return nearest(map, map.queryRenderedFeatures(box, MISSION_DOT_LAYER, MISSION_LAYER), x, y)
         ?.getNumberProperty(WAYPOINT_ID_PROPERTY)
         ?.toInt()
         ?.let { MapHit.Waypoint(it) }
