@@ -6,11 +6,13 @@
 #include "MAVLinkConsoleController.h"
 #include "MAVLinkInspectorController.h"
 #include "MultiVehicleManager.h"
+#include "PlanMasterController.h"
 #include "QmlObjectListModel.h"
 #include "SettingsManager.h"
 #include "Vehicle.h"
 
 #include <QtCore/QCoreApplication>
+#include <QtPositioning/QGeoCoordinate>
 #include <QtCore/QHash>
 #include <QtCore/QJsonArray>
 #include <QtCore/QJsonDocument>
@@ -49,6 +51,18 @@ QObject *rootObject(const QString &name)
     }
     if (name == QLatin1String("links")) {
         return LinkManager::instance();
+    }
+    if (name == QLatin1String("plan")) {
+        // Native frontends have no QML view to own a plan controller, so the bridge
+        // keeps one. Created on first use because start() begins syncing with the
+        // vehicle, which is not wanted until something actually asks for the mission.
+        static PlanMasterController *plan = nullptr;
+        if (!plan) {
+            plan = new PlanMasterController(QCoreApplication::instance());
+            plan->setFlyView(false);
+            plan->start();
+        }
+        return plan;
     }
     if (name == QLatin1String("logDownload")) {
         return LogDownloadController::instance();
@@ -224,6 +238,21 @@ QJsonObject objectJson(QObject *object)
         }
 
         const QVariant value = property.read(object);
+
+        // QGeoCoordinate has no QJsonValue conversion, so every coordinate on every
+        // object came through as null. It is the one thing a mission is made of.
+        if (value.canConvert<QGeoCoordinate>()) {
+            const QGeoCoordinate coordinate = value.value<QGeoCoordinate>();
+            json.insert(QString::fromLatin1(property.name()), coordinate.isValid()
+                ? QJsonValue(QJsonObject {
+                      { QStringLiteral("latitude"), coordinate.latitude() },
+                      { QStringLiteral("longitude"), coordinate.longitude() },
+                      { QStringLiteral("altitude"), coordinate.altitude() },
+                  })
+                : QJsonValue());
+            continue;
+        }
+
         QObject *const child = value.value<QObject *>();
         if (Fact *const fact = qobject_cast<Fact *>(child)) {
             facts.append(factJson(fact));
@@ -268,6 +297,17 @@ QJsonObject readPath(const QString &path)
     const QVariant value = resolved.object->property(resolved.property.toUtf8().constData());
     if (Fact *const fact = qobject_cast<Fact *>(value.value<QObject *>())) {
         return factJson(fact);
+    }
+
+    if (value.canConvert<QGeoCoordinate>()) {
+        const QGeoCoordinate coordinate = value.value<QGeoCoordinate>();
+        return QJsonObject {
+            { QStringLiteral("kind"), QStringLiteral("coordinate") },
+            { QStringLiteral("valid"), coordinate.isValid() },
+            { QStringLiteral("latitude"), coordinate.latitude() },
+            { QStringLiteral("longitude"), coordinate.longitude() },
+            { QStringLiteral("altitude"), coordinate.altitude() },
+        };
     }
 
     return QJsonObject {
