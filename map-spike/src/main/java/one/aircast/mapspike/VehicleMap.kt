@@ -1,4 +1,4 @@
-package one.aircast.android.map
+package one.aircast.mapspike
 
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
@@ -12,7 +12,6 @@ import androidx.compose.ui.platform.LocalLifecycleOwner
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
-import one.aircast.android.bridge.qgcDouble
 import org.maplibre.android.MapLibre
 import org.maplibre.android.camera.CameraPosition
 import org.maplibre.android.geometry.LatLng
@@ -73,8 +72,8 @@ fun VehicleMap(
     styleUrl: String = DEMO_STYLE_URL,
     follow: Boolean = true,
 ) {
-    val latitude by qgcDouble("vehicle.latitude")
-    val longitude by qgcDouble("vehicle.longitude")
+    val latitude by mapDouble("vehicle.latitude")
+    val longitude by mapDouble("vehicle.longitude")
 
     var map by remember { mutableStateOf<MapLibreMap?>(null) }
     var style by remember { mutableStateOf<Style?>(null) }

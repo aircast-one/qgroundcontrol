@@ -15,3 +15,4 @@ dependencyResolutionManagement {
 }
 rootProject.name = "aircast-android"
 include(":app")
+include(":map-spike")

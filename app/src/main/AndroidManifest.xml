@@ -45,9 +45,5 @@
                 android:resource="@xml/device_filter" />
         </activity>
 
-        <activity
-            android:name=".map.MapSpikeActivity"
-            android:exported="true"
-            android:label="Map Spike" />
     </application>
 </manifest>

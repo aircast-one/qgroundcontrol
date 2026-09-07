@@ -1,4 +1,4 @@
-package one.aircast.android.map
+package one.aircast.mapspike
 
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse

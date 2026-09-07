@@ -1,4 +1,4 @@
-package one.aircast.android.map
+package one.aircast.mapspike
 
 import android.os.Bundle
 import androidx.activity.ComponentActivity
@@ -21,15 +21,11 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
-import one.aircast.android.bridge.Qgc
-import one.aircast.android.bridge.qgcBool
-import one.aircast.android.bridge.qgcDouble
-import one.aircast.android.bridge.qgcString
 
 class MapSpikeActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        Qgc.start()
+        MapBridge.start()
         setContent {
             MaterialTheme(colorScheme = darkColorScheme()) {
                 Surface(Modifier.fillMaxSize()) { MapSpikeScreen() }
@@ -42,10 +38,10 @@ class MapSpikeActivity : ComponentActivity() {
 private fun MapSpikeScreen() {
     var follow by remember { mutableStateOf(true) }
 
-    val available by qgcBool("vehicles.activeVehicleAvailable")
-    val latitude by qgcDouble("vehicle.latitude")
-    val longitude by qgcDouble("vehicle.longitude")
-    val mode by qgcString("vehicle.flightMode")
+    val available by mapBool("vehicles.activeVehicleAvailable")
+    val latitude by mapDouble("vehicle.latitude")
+    val longitude by mapDouble("vehicle.longitude")
+    val mode by mapString("vehicle.flightMode")
 
     Box(Modifier.fillMaxSize()) {
         VehicleMap(modifier = Modifier.fillMaxSize(), follow = follow)
