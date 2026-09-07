@@ -29,13 +29,16 @@ fun niceDistance(metres: Double): Double {
         ?: magnitude
 }
 
-private fun scaleLabel(metres: Double): String =
-    if (metres >= 1000) {
+// Zoomed all the way in a bar can span half a metre, and truncating that to a
+// whole number labels it 0 m, which reads as a broken map rather than a close one.
+private fun scaleLabel(metres: Double): String = when {
+    metres >= 1000 -> {
         val km = metres / 1000
         if (abs(km - km.toInt()) < 1e-9) "${km.toInt()} km" else "%.1f km".format(km)
-    } else {
-        "${metres.toInt()} m"
     }
+    metres < 1 -> "%.1f m".format(metres)
+    else -> "${metres.toInt()} m"
+}
 
 fun mapScale(latitude: Double, zoom: Double, maxPixels: Double): MapScale? {
     val perPixel = metresPerPixel(latitude, zoom)
