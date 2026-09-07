@@ -314,6 +314,13 @@ touch an altitude. The field refuses what does not parse and anything below the 
 sending it, and keeps a half-typed number — "4" on the way to "47" is not a reason to throw the edit
 away.
 
+**Say when the map is not showing the whole plan.** A plan can hold complex items this map cannot
+draw — corridor and structure scans, landing patterns — and opening a file is where they arrive.
+They still count in the distance and still upload to the aircraft, so drawing part of a plan without
+saying so is the dangerous half. Anything with `isSimpleItem` false that did not become a drawn
+survey is named in the chip. The check defaults to "simple" when the property is missing, so a
+serialisation change makes it stop detecting rather than start crying wolf.
+
 **Every control on the selection row must follow the selection.** Rotate did not: it acted on
 `surveys.first()` whatever was picked, so with two surveys it turned the wrong grid, and it appeared
 whenever any survey existed rather than when one was selected. Easy to miss because with a single
