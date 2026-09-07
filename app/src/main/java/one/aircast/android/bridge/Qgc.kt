@@ -1,5 +1,6 @@
 package one.aircast.android.bridge
 
+import android.util.Log
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -26,6 +27,8 @@ data class Fact(
 }
 
 object Qgc {
+    private const val TAG = "QgcBridge"
+
     private val watched = linkedSetOf<String>()
     private val _values = MutableStateFlow<Map<String, JSONObject>>(emptyMap())
 
@@ -45,11 +48,21 @@ object Qgc {
 
     fun get(path: String): JSONObject = runCatching { JSONObject(QGCBridge.get(path)) }.getOrDefault(JSONObject())
 
-    fun set(path: String, value: Any?) {
-        QGCBridge.set(path, JSONObject().put("value", value).toString())
+    fun set(path: String, value: Any?): Boolean {
+        val reply = runCatching {
+            JSONObject(QGCBridge.set(path, JSONObject().put("value", value).toString()))
+        }.getOrNull()
+        if (reply?.optBoolean("ok") == true) return true
+        val reason = reply?.optString("reason").orEmpty().ifBlank { "the bridge rejected the write" }
+        Log.w(TAG, "set $path failed: $reason")
+        return false
     }
 
-    fun invoke(path: String, vararg args: Any?): Boolean = call(path, *args)?.optBoolean("ok") ?: false
+    fun invoke(path: String, vararg args: Any?): Boolean {
+        val ok = call(path, *args)?.optBoolean("ok") ?: false
+        if (!ok) Log.w(TAG, "invoke $path failed")
+        return ok
+    }
 
     fun invokeResult(path: String, vararg args: Any?): Any? = call(path, *args)?.opt("result")
 
