@@ -9,6 +9,8 @@ import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.AlertDialog
@@ -292,68 +294,51 @@ fun SensorsScreen(modifier: Modifier = Modifier) {
         return
     }
 
-    Column(
-        modifier = modifier
-            .fillMaxSize()
-            .verticalScroll(rememberScrollState()),
+    LazyColumn(
+        modifier = modifier.fillMaxSize(),
     ) {
-        Text(
-            text = "Calibrate the vehicle where it will fly, away from metal and with " +
-                "the propellers off.",
-            style = MaterialTheme.typography.bodySmall,
-            modifier = Modifier.padding(16.dp),
-        )
+        item(key = "header") { SectionHeader("Calibration") }
 
-        if (lastResult.isNotBlank()) {
-            Card(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(horizontal = 16.dp)
-                    .padding(bottom = 16.dp),
-            ) {
-                Column(
-                    modifier = Modifier.padding(12.dp),
-                    verticalArrangement = Arrangement.spacedBy(4.dp),
-                ) {
-                    Text("Last calibration", style = MaterialTheme.typography.labelLarge)
-                    Text(
-                        text = lastResult,
-                        style = MaterialTheme.typography.bodySmall,
-                        fontFamily = FontFamily.Monospace,
-                    )
-                }
-            }
-        }
-
-        HorizontalDivider()
-
-        CALIBRATIONS.forEach { calibration ->
+        items(CALIBRATIONS, key = { it.name }) { calibration ->
             val needed = when (calibration.name) {
                 "Accelerometer" -> accelNeeded
                 "Compass" -> compassNeeded
-                else -> false
+                else -> null
             }
-            ListItem(
-                modifier = Modifier.clickable { pending = calibration },
-                headlineContent = { Text(calibration.name) },
-                supportingContent = { Text(calibration.instruction) },
-                trailingContent = {
-                    Text(
-                        text = if (needed) "Not calibrated" else "",
-                        style = MaterialTheme.typography.labelMedium,
-                        color = MaterialTheme.colorScheme.error,
-                    )
+            SetupRow(
+                title = calibration.name,
+                status = when (needed) {
+                    true -> "Not calibrated"
+                    false -> "Calibrated"
+                    null -> ""
                 },
+                state = when (needed) {
+                    true -> SetupState.NeedsAttention
+                    false -> SetupState.Done
+                    null -> SetupState.Neutral
+                },
+                onClick = { pending = calibration },
             )
-            HorizontalDivider()
         }
 
-        Text(
-            text = "CompassMot and the motor test are not carried over: they spin the " +
-                "propellers and need someone watching the vehicle. Use QGroundControl " +
-                "on a computer for those.",
-            style = MaterialTheme.typography.bodySmall,
-            modifier = Modifier.padding(16.dp),
-        )
+        if (lastResult.isNotBlank()) {
+            item(key = "last") {
+                SectionHeader("Last calibration")
+                Text(
+                    text = lastResult,
+                    style = MaterialTheme.typography.bodyMedium,
+                    fontFamily = FontFamily.Monospace,
+                    modifier = Modifier.padding(horizontal = 20.dp),
+                )
+            }
+        }
+
+        item(key = "footnote") {
+            FootNote(
+                "Calibrate where the aircraft will fly, away from metal, with the " +
+                    "propellers off. CompassMot and the motor test stay on the desktop: " +
+                    "they spin the propellers and need someone watching the aircraft.",
+            )
+        }
     }
 }
