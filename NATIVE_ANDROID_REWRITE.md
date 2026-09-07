@@ -325,6 +325,18 @@ the menu items are disabled on an empty plan and enable when a waypoint is
 added, which is what proves the nested property path resolves rather than
 merely reading false.
 
+**New plan and Clear mission** (`c03ed83`) complete the file menu. The trap
+worth recording: `removeAll` clears `currentPlanFile` only when the controller
+is offline, and the SAF document URI the Android shell holds is a separate thing
+that no C++ path would ever clear. Any command that empties the plan must tell
+the shell to forget the document, or the next Save writes a blank plan over the
+user's mission and reports success. This is why a clear belonging to the map
+module cannot stay inside it — the dependency runs app to map, so a clear there
+has to be a callback the app supplies.
+
+`Clear mission` is verified disabled with no vehicle; its enabled state needs a
+live one and is not yet proven.
+
 ## Phase 5 — Fly and video · 7 weeks
 
 Safety-critical, deliberately last.
