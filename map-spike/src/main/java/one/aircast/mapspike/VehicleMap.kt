@@ -34,6 +34,10 @@ private const val TRAIL_LAYER = "aircast-trail-layer"
 private const val DEFAULT_ZOOM = 16.0
 private const val MAX_TRAIL_POINTS = 500
 
+// No aircraft covers this between samples. A jump this large means the active
+// vehicle changed, and joining the two tracks draws a line across the world.
+const val TRAIL_BREAK_DEGREES = 0.5
+
 const val DEMO_STYLE_URL = "https://demotiles.maplibre.org/style.json"
 
 // Demo only. Production points at QGC's existing SQLite tile cache.
@@ -68,8 +72,12 @@ class VehicleTrack(private val limit: Int = MAX_TRAIL_POINTS) {
             return false
         }
         val point = TrackPoint(latitude, longitude)
-        if (points.lastOrNull() == point) {
+        val last = points.lastOrNull()
+        if (last == point) {
             return false
+        }
+        if (last != null && isJump(last, point)) {
+            points.clear()
         }
         points.addLast(point)
         while (points.size > limit) {
@@ -77,6 +85,10 @@ class VehicleTrack(private val limit: Int = MAX_TRAIL_POINTS) {
         }
         return true
     }
+
+    private fun isJump(from: TrackPoint, to: TrackPoint): Boolean =
+        kotlin.math.abs(from.latitude - to.latitude) > TRAIL_BREAK_DEGREES ||
+            kotlin.math.abs(from.longitude - to.longitude) > TRAIL_BREAK_DEGREES
 
     fun points(): List<TrackPoint> = points.toList()
 
@@ -89,6 +101,8 @@ fun VehicleMap(
     mapStyle: String = OSM_RASTER_STYLE,
     follow: Boolean = true,
     missionItems: List<MissionItem> = emptyList(),
+    fencePolygons: List<FencePolygon> = emptyList(),
+    rallyPoints: List<RallyPoint> = emptyList(),
     editable: Boolean = false,
     onAdd: (Double, Double) -> Unit = { _, _ -> },
     onMove: (Int, Double, Double) -> Unit = { _, _, _ -> },
@@ -134,6 +148,7 @@ fun VehicleMap(
             }
             loaded.setStyle(builder) { loadedStyle ->
                 installLayers(loadedStyle)
+                installFenceLayers(loadedStyle)
                 installMissionLayers(loadedStyle)
                 if (editable) {
                     attachMissionEditing(
@@ -170,8 +185,9 @@ fun VehicleMap(
         }
     }
 
-    LaunchedEffect(style, missionItems) {
+    LaunchedEffect(style, missionItems, fencePolygons, rallyPoints) {
         val currentStyle = style ?: return@LaunchedEffect
+        renderFences(currentStyle, fencePolygons, rallyPoints)
         renderMission(currentStyle, missionItems)
     }
 

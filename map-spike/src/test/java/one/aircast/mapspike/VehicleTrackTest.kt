@@ -59,10 +59,30 @@ class VehicleTrackTest {
     @Test
     fun `a long flight drops the oldest fixes`() {
         val track = VehicleTrack(limit = 3)
-        (1..5).forEach { step -> track.add(41.0 + step, 44.0) }
+        (1..5).forEach { step -> track.add(41.0 + step * 0.01, 44.0) }
 
         assertEquals(3, track.size)
-        assertEquals(TrackPoint(44.0, 44.0), track.points().first())
-        assertEquals(TrackPoint(46.0, 44.0), track.points().last())
+        assertEquals(TrackPoint(41.03, 44.0), track.points().first())
+        assertEquals(TrackPoint(41.05, 44.0), track.points().last())
+    }
+
+    @Test
+    fun `switching vehicle starts a new track instead of joining them`() {
+        val track = VehicleTrack()
+        track.add(41.0, 44.0)
+        track.add(41.001, 44.001)
+
+        track.add(-35.36, 149.16)
+
+        assertEquals(1, track.size)
+        assertEquals(TrackPoint(-35.36, 149.16), track.points().single())
+    }
+
+    @Test
+    fun `normal flight movement never breaks the track`() {
+        val track = VehicleTrack()
+        (0..20).forEach { step -> track.add(41.0 + step * 0.001, 44.0 + step * 0.001) }
+
+        assertEquals(21, track.size)
     }
 }

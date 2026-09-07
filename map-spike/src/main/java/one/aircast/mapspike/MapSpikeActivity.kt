@@ -54,6 +54,8 @@ class MapSpikeActivity : ComponentActivity() {
 private fun MapSpikeScreen(mapStyle: String) {
     var follow by remember { mutableStateOf(true) }
     var items by remember { mutableStateOf<List<MissionItem>>(emptyList()) }
+    var fences by remember { mutableStateOf<List<FencePolygon>>(emptyList()) }
+    var rally by remember { mutableStateOf<List<RallyPoint>>(emptyList()) }
     var selected by remember { mutableStateOf<Int?>(null) }
     var busy by remember { mutableStateOf<String?>(null) }
     val scope = rememberCoroutineScope()
@@ -72,7 +74,16 @@ private fun MapSpikeScreen(mapStyle: String) {
     val mode by mapString("vehicle.flightMode")
 
     suspend fun refresh() {
-        items = withContext(Dispatchers.Default) { PlanBridge.items() }
+        withContext(Dispatchers.Default) {
+            val nextItems = PlanBridge.items()
+            val nextFences = FenceBridge.polygons()
+            val nextRally = FenceBridge.rally()
+            withContext(Dispatchers.Main) {
+                items = nextItems
+                fences = nextFences
+                rally = nextRally
+            }
+        }
     }
 
     LaunchedEffect(Unit) {
@@ -88,6 +99,8 @@ private fun MapSpikeScreen(mapStyle: String) {
             mapStyle = mapStyle,
             follow = follow,
             missionItems = items,
+            fencePolygons = fences,
+            rallyPoints = rally,
             editable = true,
             onAdd = { lat, lon -> onBridge { PlanBridge.appendWaypoint(lat, lon) } },
             onMove = { index, lat, lon -> onBridge { PlanBridge.moveItem(index, lat, lon) } },
@@ -127,7 +140,7 @@ private fun MapSpikeScreen(mapStyle: String) {
                 }
 
                 Text(
-                    busy ?: "Mission items: ${items.size} · long-press to add, drag to move",
+                    busy ?: "Items ${items.size} · fences ${fences.size} · rally ${rally.size}",
                     style = MaterialTheme.typography.bodySmall,
                 )
 
@@ -142,6 +155,22 @@ private fun MapSpikeScreen(mapStyle: String) {
                     TextButton(onClick = {
                         onBridge("Sending to vehicle") { PlanBridge.sendToVehicle() }
                     }) { Text("Send") }
+
+                    TextButton(onClick = {
+                        onBridge("Adding fence") {
+                            val centre = TrackPoint(latitude, longitude)
+                            if (isPlottable(centre.latitude, centre.longitude)) {
+                                FenceBridge.addInclusionPolygon(
+                                    TrackPoint(centre.latitude + 0.002, centre.longitude - 0.002),
+                                    TrackPoint(centre.latitude - 0.002, centre.longitude + 0.002),
+                                )
+                            }
+                        }
+                    }) { Text("Fence") }
+
+                    TextButton(onClick = {
+                        onBridge("Adding rally") { FenceBridge.addRallyPoint(latitude, longitude) }
+                    }) { Text("Rally") }
 
                     selected?.let { index ->
                         TextButton(onClick = {

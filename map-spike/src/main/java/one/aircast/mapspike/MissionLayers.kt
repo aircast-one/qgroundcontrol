@@ -2,6 +2,7 @@ package one.aircast.mapspike
 
 import org.maplibre.android.maps.Style
 import org.maplibre.android.style.layers.CircleLayer
+import org.maplibre.android.style.layers.FillLayer
 import org.maplibre.android.style.layers.LineLayer
 import org.maplibre.android.style.layers.PropertyFactory
 import org.maplibre.android.style.layers.SymbolLayer
@@ -10,6 +11,7 @@ import org.maplibre.geojson.Feature
 import org.maplibre.geojson.FeatureCollection
 import org.maplibre.geojson.LineString
 import org.maplibre.geojson.Point
+import org.maplibre.geojson.Polygon
 
 const val MISSION_SOURCE = "aircast-mission"
 const val MISSION_LAYER = "aircast-mission-layer"
@@ -85,4 +87,59 @@ fun renderMission(style: Style, items: List<MissionItem>) {
     } else {
         pathSource.setGeoJson(path)
     }
+}
+
+const val FENCE_SOURCE = "aircast-fence"
+const val FENCE_FILL_LAYER = "aircast-fence-fill"
+const val FENCE_LINE_LAYER = "aircast-fence-line"
+const val RALLY_SOURCE = "aircast-rally"
+const val RALLY_LAYER = "aircast-rally-layer"
+
+fun installFenceLayers(style: Style) {
+    if (style.getSource(FENCE_SOURCE) == null) {
+        style.addSource(GeoJsonSource(FENCE_SOURCE))
+        style.addLayer(
+            FillLayer(FENCE_FILL_LAYER, FENCE_SOURCE).withProperties(
+                PropertyFactory.fillColor("#42A5F5"),
+                PropertyFactory.fillOpacity(0.15f),
+            ),
+        )
+        style.addLayer(
+            LineLayer(FENCE_LINE_LAYER, FENCE_SOURCE).withProperties(
+                PropertyFactory.lineColor("#42A5F5"),
+                PropertyFactory.lineWidth(2.5f),
+            ),
+        )
+    }
+
+    if (style.getSource(RALLY_SOURCE) == null) {
+        style.addSource(GeoJsonSource(RALLY_SOURCE))
+        style.addLayer(
+            CircleLayer(RALLY_LAYER, RALLY_SOURCE).withProperties(
+                PropertyFactory.circleColor("#66BB6A"),
+                PropertyFactory.circleRadius(10f),
+                PropertyFactory.circleStrokeColor("#1B5E20"),
+                PropertyFactory.circleStrokeWidth(2f),
+            ),
+        )
+    }
+}
+
+fun fenceFeatures(polygons: List<FencePolygon>): FeatureCollection {
+    val features = polygons.map { polygon ->
+        val ring = polygon.vertices.map { Point.fromLngLat(it.longitude, it.latitude) }
+        val closed = if (ring.first() == ring.last()) ring else ring + ring.first()
+        Feature.fromGeometry(Polygon.fromLngLats(listOf(closed)))
+    }
+    return FeatureCollection.fromFeatures(features)
+}
+
+fun rallyFeatures(points: List<RallyPoint>): FeatureCollection =
+    FeatureCollection.fromFeatures(
+        points.map { Feature.fromGeometry(Point.fromLngLat(it.longitude, it.latitude)) },
+    )
+
+fun renderFences(style: Style, polygons: List<FencePolygon>, rally: List<RallyPoint>) {
+    (style.getSource(FENCE_SOURCE) as? GeoJsonSource)?.setGeoJson(fenceFeatures(polygons))
+    (style.getSource(RALLY_SOURCE) as? GeoJsonSource)?.setGeoJson(rallyFeatures(rally))
 }
