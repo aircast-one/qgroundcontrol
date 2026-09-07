@@ -20,6 +20,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import kotlinx.coroutines.delay
+import one.aircast.android.bridge.qgcBool
 import one.aircast.mapspike.PlanMapScreen
 
 private const val NOTICE_MILLIS = 4000L
@@ -28,6 +29,7 @@ private const val NOTICE_MILLIS = 4000L
 fun PlanTab(modifier: Modifier = Modifier) {
     var notice by remember { mutableStateOf<String?>(null) }
     val files = rememberPlanFileActions { notice = it }
+    val dirty by qgcBool("plan.dirty")
 
     LaunchedEffect(notice) {
         if (notice != null) {
@@ -46,7 +48,7 @@ fun PlanTab(modifier: Modifier = Modifier) {
             TextButton(onClick = files.save) { Text("Save") }
             TextButton(onClick = files.saveAs) { Text("Save as") }
             Text(
-                text = notice ?: files.documentName() ?: "Unsaved plan",
+                text = notice ?: planStatusText(files.documentName(), dirty),
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                 maxLines = 1,

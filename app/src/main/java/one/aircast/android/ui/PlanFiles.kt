@@ -26,12 +26,33 @@ internal val PLAN_OPEN_TYPES = arrayOf(PLAN_MIME)
 
 internal const val DEFAULT_PLAN_NAME = "mission.plan"
 
+internal const val READY_FOR_SAVE = 0
+internal const val NOT_READY_TERRAIN = 1
+internal const val NOT_READY_DATA = 2
+
+internal fun saveBlockedReason(state: Int?): String? = when (state) {
+    READY_FOR_SAVE -> null
+    NOT_READY_TERRAIN -> "Waiting on terrain data. Saving now would store wrong altitudes."
+    NOT_READY_DATA -> "Some items still need a position or a value."
+    else -> "The plan could not be checked for saving."
+}
+
+internal fun planStatusText(name: String?, dirty: Boolean): String = when {
+    name == null && !dirty -> "New plan"
+    name == null -> "Unsaved plan"
+    dirty -> "$name \u00b7 unsaved changes"
+    else -> name
+}
+
 class PlanFileActions(
     val open: () -> Unit,
     val saveAs: () -> Unit,
     val save: () -> Unit,
     val documentName: () -> String?,
 )
+
+private fun planReadyForSave(): Int? =
+    (Qgc.invokeResult("$PLAN_ROOT.readyForSaveState") as? Number)?.toInt()
 
 internal fun planLoad(path: String): Boolean =
     Qgc.invokeResult("$PLAN_ROOT.loadFromFile", path) == true
@@ -74,6 +95,13 @@ fun rememberPlanFileActions(onResult: (String) -> Unit = {}): PlanFileActions {
         document.value = uri
         scope.launch {
             name.value = withContext(Dispatchers.IO) { displayName(context, uri) }
+        }
+    }
+
+    fun guarded(action: () -> Unit) {
+        scope.launch {
+            val blocked = withContext(Dispatchers.Default) { saveBlockedReason(planReadyForSave()) }
+            if (blocked == null) action() else onResult(blocked)
         }
     }
 
@@ -128,10 +156,12 @@ fun rememberPlanFileActions(onResult: (String) -> Unit = {}): PlanFileActions {
     return remember(opener, creator) {
         PlanFileActions(
             open = { opener.launch(PLAN_OPEN_TYPES) },
-            saveAs = { creator.launch(name.value ?: DEFAULT_PLAN_NAME) },
+            saveAs = { guarded { creator.launch(name.value ?: DEFAULT_PLAN_NAME) } },
             save = {
-                val target = document.value
-                if (target == null) creator.launch(DEFAULT_PLAN_NAME) else writeTo(target)
+                guarded {
+                    val target = document.value
+                    if (target == null) creator.launch(DEFAULT_PLAN_NAME) else writeTo(target)
+                }
             },
             documentName = { name.value },
         )
