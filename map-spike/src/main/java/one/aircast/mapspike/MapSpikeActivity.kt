@@ -66,6 +66,7 @@ fun homeLabel(home: TrackPoint?, latitude: Double, longitude: Double): String {
 @Composable
 private fun MapSpikeScreen(mapStyle: String) {
     var follow by remember { mutableStateOf(true) }
+    var fitRequest by remember { mutableStateOf(0) }
     var items by remember { mutableStateOf<List<MissionItem>>(emptyList()) }
     var fences by remember { mutableStateOf<List<FencePolygon>>(emptyList()) }
     var rally by remember { mutableStateOf<List<RallyPoint>>(emptyList()) }
@@ -164,6 +165,8 @@ private fun MapSpikeScreen(mapStyle: String) {
             },
             onWaypointSelected = { selected = it },
             onCentreChanged = { centre = it },
+            fitRequest = fitRequest,
+            onFitFailed = { onBridge("Fitting the plan") { false } },
         )
 
         TerrainProfileView(
@@ -276,6 +279,10 @@ private fun MapSpikeScreen(mapStyle: String) {
                             at != null && FenceBridge.addRallyPoint(at.latitude, at.longitude)
                         }
                     }) { Text("Rally") }
+                    TextButton(onClick = {
+                        follow = false
+                        fitRequest += 1
+                    }) { Text("Fit") }
 
                 }
 

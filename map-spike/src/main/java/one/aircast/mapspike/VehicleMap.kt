@@ -18,7 +18,9 @@ import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import org.maplibre.android.MapLibre
 import org.maplibre.android.camera.CameraPosition
+import org.maplibre.android.camera.CameraUpdateFactory
 import org.maplibre.android.geometry.LatLng
+import org.maplibre.android.geometry.LatLngBounds
 import org.maplibre.android.maps.MapLibreMap
 import org.maplibre.android.maps.MapView
 import org.maplibre.android.maps.Style
@@ -52,6 +54,8 @@ private const val MAX_TRAIL_POINTS = 500
 // No aircraft covers this between samples. A jump this large means the active
 // vehicle changed, and joining the two tracks draws a line across the world.
 const val TRAIL_BREAK_DEGREES = 0.5
+private const val MIN_FIT_SPAN_DEGREES = 1e-5
+private const val FIT_PADDING_PIXELS = 80
 
 const val DEMO_STYLE_URL = "https://demotiles.maplibre.org/style.json"
 
@@ -135,6 +139,8 @@ fun VehicleMap(
     onMove: (MapHit, Double, Double) -> Unit = { _, _, _ -> },
     onWaypointSelected: (MapHit?) -> Unit = {},
     onCentreChanged: (TrackPoint) -> Unit = {},
+    fitRequest: Int = 0,
+    onFitFailed: () -> Unit = {},
 ) {
     val latitude by mapDouble("vehicle.latitude")
     val longitude by mapDouble("vehicle.longitude")
@@ -190,6 +196,7 @@ fun VehicleMap(
                 installFenceLayers(loadedStyle)
                 installMissionLayers(loadedStyle)
                 installFenceHandleLayer(loadedStyle)
+                installVehicleLayer(loadedStyle)
                 if (editable) {
                     attachMissionEditing(
                         mapView, loaded, loadedStyle,
@@ -229,6 +236,33 @@ fun VehicleMap(
                 .zoom(map?.cameraPosition?.zoom?.takeIf { it > 1.0 } ?: DEFAULT_ZOOM)
                 .build()
         }
+    }
+
+    LaunchedEffect(fitRequest) {
+        if (fitRequest == 0) return@LaunchedEffect
+        val currentMap = map ?: return@LaunchedEffect
+        val bounds = planBounds(
+            planPoints(missionItems, fencePolygons, fenceCircles, rallyPoints, surveys),
+        ) ?: return@LaunchedEffect onFitFailed()
+
+        // A plan of one point has no extent, so bounds would be a zero-sized box
+        // that MapLibre cannot frame. Centring on it at a sane zoom is the fit.
+        if (bounds.spanDegrees < MIN_FIT_SPAN_DEGREES) {
+            currentMap.animateCamera(
+                CameraUpdateFactory.newLatLngZoom(
+                    LatLng(bounds.centre.latitude, bounds.centre.longitude),
+                    DEFAULT_ZOOM,
+                ),
+            )
+            return@LaunchedEffect
+        }
+
+        currentMap.animateCamera(
+            CameraUpdateFactory.newLatLngBounds(
+                LatLngBounds.from(bounds.north, bounds.east, bounds.south, bounds.west),
+                FIT_PADDING_PIXELS,
+            ),
+        )
     }
 
     LaunchedEffect(style, missionItems, fencePolygons, fenceCircles, rallyPoints, surveys) {
@@ -275,6 +309,13 @@ private fun installLayers(style: Style) {
         )
     }
 
+}
+
+// The aircraft is installed after every plan layer so nothing can bury it.
+// Waypoints, rally points and home all land on the same spot as the vehicle
+// when a plan is built where it stands, and the one marker that must stay
+// visible is the one showing where the aircraft actually is.
+private fun installVehicleLayer(style: Style) {
     if (style.getSource(VEHICLE_SOURCE) == null) {
         style.addSource(GeoJsonSource(VEHICLE_SOURCE))
         style.addLayer(
