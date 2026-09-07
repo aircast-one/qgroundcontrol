@@ -1,12 +1,12 @@
+import AppKit
 import Foundation
 import QGCLinksC
+import UniformTypeIdentifiers
 
 final class LinksStore: ObservableObject, Probeable {
     static let probeID = "links"
 
     @Published private(set) var links: [LinkConfig] = []
-    // View state a test needs to reach lives in the store, not in @State: the probe
-    // drives stores, and a locked screen means it cannot click the button instead.
     @Published var adding = false
     @Published var editingIndex: Int?
     @Published private(set) var connectingName = ""
@@ -25,8 +25,6 @@ final class LinksStore: ObservableObject, Probeable {
             .map { LinkConfig(index: $0.offset, json: $0.element) }
     }
 
-    // Connection state changes asynchronously after connect/disconnect, so the list
-    // polls while it is on screen rather than lying until the next reopen.
     func startPolling() {
         guard timer == nil else { return }
         reload()
@@ -62,7 +60,6 @@ final class LinksStore: ObservableObject, Probeable {
         return ok
     }
 
-    // LinkManager exposes the type list; index is the LinkType enum value.
     var linkTypes: [String] {
         (Bridge.group("links")["linkTypeStrings"] as? [String]) ?? []
     }
@@ -75,6 +72,22 @@ final class LinksStore: ObservableObject, Probeable {
     func rename(_ link: LinkConfig, to name: String) {
         guard !name.trimmingCharacters(in: .whitespaces).isEmpty else { return }
         Bridge.set("\(link.path).name", name)
+        reload()
+    }
+
+    func chooseLogFile(_ link: LinkConfig) {
+        let panel = NSOpenPanel()
+        panel.title = "Select a telemetry log to replay"
+        panel.canChooseDirectories = false
+        panel.allowedContentTypes = ["tlog", "log"].compactMap { UTType(filenameExtension: $0) }
+        panel.allowsOtherFileTypes = true
+        guard panel.runModal() == .OK, let url = panel.url else { return }
+        setLogFile(link, url.path)
+    }
+
+    func setLogFile(_ link: LinkConfig, _ path: String) {
+        guard !path.isEmpty else { return }
+        Bridge.set("\(link.path).filename", path)
         reload()
     }
 

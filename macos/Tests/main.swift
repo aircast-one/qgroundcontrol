@@ -842,6 +842,49 @@ func checkCalibration() {
 
 checkCalibration()
 
+func checkAbout() {
+    expect(AboutInfo.version(short: "5.4", build: "5.4.7"), "5.4 (5.4.7)",
+           "a build that differs from the version is shown in brackets")
+    expect(AboutInfo.version(short: "5.4", build: "5.4"), "5.4",
+           "a build that matches is not repeated")
+    expect(AboutInfo.version(short: "5.4", build: ""), "5.4", "a missing build is simply absent")
+    expect(AboutInfo.version(short: "", build: "5.4.7"), "5.4.7",
+           "and a bundle with only a build still names one")
+    expect(AboutInfo.version(short: "", build: ""), "unknown",
+           "a bundle with neither says so rather than showing an empty row")
+
+    let read = AboutInfo.read(["CFBundleName": "Aircast QGC",
+                               "CFBundleShortVersionString": "5.4", "CFBundleVersion": "5.4.7"])
+    expect(read.versionText, "5.4 (5.4.7)", "the bundle is read as the app was built")
+    expect(AboutInfo.read(nil).name, "Aircast QGC", "a missing dictionary still names the app")
+
+    expect(HelpLink.all.count == 4, "the four QGC help destinations are offered")
+    expect(HelpLink.all[0].host, "docs.qgroundcontrol.com",
+           "each shows its host rather than a full URL")
+    expect(HelpLink(name: "x", url: "http://discuss.px4.io/c/qgroundcontrol").host,
+           "discuss.px4.io", "for http as well as https, and the path is dropped")
+}
+
+checkAbout()
+
+func checkLogReplayLink() {
+    let empty = LinkConfig(index: 0, json: ["linkType": "TypeLogReplay", "name": "Replay"])
+    expect(empty.editing == .logFile, "a log replay link is edited by choosing a file")
+    expect(empty.displaySummary, "No log chosen",
+           "and says so rather than showing an empty summary")
+
+    let chosen = LinkConfig(index: 0, json: ["linkType": "TypeLogReplay", "name": "Replay",
+                                             "filename": "/Users/pilot/logs/flight.tlog",
+                                             "summary": "Log Replay"])
+    expect(chosen.logFileName, "flight.tlog", "the row shows the log's name, not its whole path")
+    expect(chosen.displaySummary, "Log Replay", "and the summary is left to the link once set")
+
+    let tcp = LinkConfig(index: 0, json: ["linkType": "TypeTcp", "host": "1.2.3.4"])
+    expect(tcp.editing == .hostAndPort, "other link types are unaffected")
+}
+
+checkLogReplayLink()
+
 func checkMissionVehicle() {
     let copter = MissionVehicle(firmware: "ArduPilot", type: "Quadrotor", multiRotor: true, vtol: false)
     expect(copter.showsHoverSpeed, "a multirotor hovers between waypoints")

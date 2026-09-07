@@ -1,11 +1,5 @@
 import Foundation
 
-// QGC's QML settings are hand-authored pages, not one page per storage group:
-// GeneralSettings.qml alone composes appSettings, unitsSettings and brandImageSettings
-// under Appearance/Files/Units headings. Mirroring that page list keeps the operator's
-// mental model; driving the sidebar straight off the C++ groups would expose the
-// storage schema instead. Sections map whole groups, so nothing here invents a
-// per-fact assignment that could drift from the metadata.
 struct SettingsSection: Identifiable {
     let title: String
     let group: String
@@ -16,15 +10,16 @@ struct SettingsSection: Identifiable {
 struct SettingsPage: Identifiable {
     let title: String
     let sections: [SettingsSection]
-    // Some pages need more than a fact form: links are objects with their own
-    // lifecycle, not settings.
     let showsLinks: Bool
+    let showsAbout: Bool
     var id: String { title }
 
-    init(title: String, sections: [SettingsSection], showsLinks: Bool = false) {
+    init(title: String, sections: [SettingsSection], showsLinks: Bool = false,
+         showsAbout: Bool = false) {
         self.title = title
         self.sections = sections
         self.showsLinks = showsLinks
+        self.showsAbout = showsAbout
     }
 
     static let all: [SettingsPage] = [
@@ -78,5 +73,6 @@ struct SettingsPage: Identifiable {
         SettingsPage(title: "3D Viewer", sections: [
             .init(title: "3D Viewer", group: "viewer3DSettings"),
         ]),
+        SettingsPage(title: "About", sections: [], showsAbout: true),
     ]
 }

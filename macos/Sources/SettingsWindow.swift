@@ -37,6 +37,8 @@ struct SettingsView: View {
     private var detail: some View {
         if let message = store.loadError {
             notice(message)
+        } else if showsAbout {
+            SetupPageBody(title: pageTitle) { about }
         } else if store.sections.isEmpty && !showsLinks {
             notice(store.search.isEmpty
                    ? "This page has no editable settings."
@@ -78,11 +80,43 @@ struct SettingsView: View {
             && store.pages.first { $0.id == store.selected }?.showsLinks == true
     }
 
+    private var showsAbout: Bool {
+        store.search.trimmingCharacters(in: .whitespaces).isEmpty
+            && store.pages.first { $0.id == store.selected }?.showsAbout == true
+    }
+
+    private var about: some View {
+        let info = AboutInfo.read(Bundle.main.infoDictionary)
+        return VStack(alignment: .leading, spacing: Overlay.unit * 0.9) {
+            VStack(alignment: .leading, spacing: 0) {
+                SectionLabel(text: "Version")
+                GroupCard {
+                    GroupRow(title: info.name, value: info.versionText, showSeparator: false)
+                }
+            }
+
+            VStack(alignment: .leading, spacing: 0) {
+                SectionLabel(text: "Help")
+                GroupCard {
+                    ForEach(Array(HelpLink.all.enumerated()), id: \.element.id) { row, link in
+                        GroupRow(title: link.name,
+                                 description: link.host,
+                                 showSeparator: row > 0,
+                                 trailing: {
+                                     Button("Open") {
+                                         guard let url = URL(string: link.url) else { return }
+                                         NSWorkspace.shared.open(url)
+                                     }
+                                 })
+                    }
+                }
+            }
+        }
+    }
+
     private func notice(_ text: String) -> some View { Notice(text: text) }
 }
 
-// NSSearchField rather than a TextField: it brings the magnifier, the clear button
-// and the Escape-to-clear behaviour macOS users already expect.
 struct SearchField: NSViewRepresentable {
     @Binding var text: String
     var placeholder = "Search"
@@ -174,8 +208,6 @@ struct FactControl: View {
         case .text:
             write(draft)
         case .number:
-            // Reject junk locally rather than sending it and silently getting the old
-            // value back; restore what is actually stored so the field never lies.
             guard let number = Double(draft.replacingOccurrences(of: ",", with: ".")) else {
                 draft = fact.stringValue
                 return
@@ -204,10 +236,6 @@ final class SettingsWindow: NSObject, NSWindowDelegate {
         show()
     }
 
-    // Addressing the UI by identity rather than by synthesised clicks: a locked screen
-    // stops any window becoming key, so coordinate-driven input silently does nothing
-    // (and, worse, looks like it worked). This is the native counterpart of the
-    // existing /ui/click-by-objectName surface for QML.
     func show() {
         if let window {
             store.load()
@@ -229,8 +257,6 @@ final class SettingsWindow: NSObject, NSWindowDelegate {
         self.window = window
     }
 
-    // Facts are cached per group, so anything changed elsewhere in the app (QML, a
-    // vehicle, another window) would otherwise show stale until reopened.
     func windowDidBecomeKey(_ notification: Notification) {
         store.load()
     }

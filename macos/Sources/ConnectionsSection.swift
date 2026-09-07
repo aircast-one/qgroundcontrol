@@ -36,8 +36,6 @@ struct ConnectionsSection: View {
         .onDisappear(perform: store.stopPolling)
     }
 
-    // Without this an operator with a new vehicle cannot get connected at all: every
-    // other control here edits a link that already exists.
     private var addForm: some View {
         VStack(alignment: .leading, spacing: 10) {
             Picker("Type", selection: $newType) {
@@ -74,8 +72,6 @@ struct ConnectionsSection: View {
             addError = "Give the link a name."
             return
         }
-        // Int("banana") ?? 0 would have created a link on port 0 and failed silently
-        // at connect time, far from the mistake.
         guard let port = Int(newPort), (1...65535).contains(port) else {
             addError = "Port must be between 1 and 65535."
             return
@@ -137,6 +133,18 @@ struct ConnectionsSection: View {
                 portField(link)
             case .portOnly:
                 portField(link)
+            case .logFile:
+                HStack(spacing: Overlay.step) {
+                    Text("Log file")
+                        .frame(width: 96, alignment: .leading)
+                    Text(link.filename.isEmpty ? "No log chosen" : link.logFileName)
+                        .foregroundColor(link.filename.isEmpty ? .secondary : Overlay.value)
+                        .lineLimit(1)
+                        .truncationMode(.middle)
+                        .help(link.filename)
+                    Spacer()
+                    Button("Choose\u{2026}") { store.chooseLogFile(link) }
+                }
             case .serial:
                 LabelledPicker(label: "Port",
                                options: store.serialPorts.map { ($0.label, $0.device) },
@@ -162,8 +170,6 @@ struct ConnectionsSection: View {
                         store.remove(link)
                     }
                 } else {
-                    // Deleting a link an operator relies on is not recoverable, so it
-                    // asks first rather than relying on an undo that does not exist.
                     Button("Delete Link…") { confirmingRemoval = link.id }
                         .disabled(link.connected)
                         .help(link.connected ? "Disconnect before deleting" : "")
