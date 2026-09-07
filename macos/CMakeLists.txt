@@ -53,6 +53,8 @@ add_library(QGCNativeUI STATIC
     Sources/PlanWindow.swift
     Sources/PlanSummaryModel.swift
     Sources/MissionVehicleModel.swift
+    Sources/GeoTagModel.swift
+    Sources/GeoTag.swift
     Sources/OverlayKit.swift
     Sources/AppShell.swift
     Sources/Bridge.swift

@@ -206,12 +206,94 @@ struct LogDownloadView: View {
     }
 }
 
+struct GeoTagView: View {
+    @ObservedObject var store: GeoTagStore
+
+    private var home: String { NSHomeDirectory() }
+
+    var body: some View {
+        SetupPageBody(title: "Geotag Images",
+                      note: "Writes the position from a flight log into the images a survey took, so they carry where they were shot.") {
+            GroupCard {
+                pathRow("Flight log", value: store.job.logFile,
+                        placeholder: "No log chosen", separator: false,
+                        choose: store.chooseLogFile)
+                pathRow("Image folder", value: store.job.imageDirectory,
+                        placeholder: "No folder chosen", separator: true,
+                        choose: store.chooseImageDirectory)
+                pathRow("Save to", value: store.job.saveDirectory,
+                        placeholder: store.job.imageDirectory.isEmpty
+                            ? "A TAGGED folder beside your images"
+                            : shorten(store.job.destination),
+                        separator: true,
+                        choose: store.chooseSaveDirectory)
+            }
+
+            if !store.job.errorMessage.isEmpty {
+                Label(store.job.errorMessage, systemImage: "exclamationmark.triangle.fill")
+                    .font(.callout)
+                    .foregroundColor(store.job.failed ? .red : .orange)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+
+            HStack(spacing: Overlay.unit * 0.75) {
+                if store.job.busy {
+                    Button("Cancel", action: store.cancel)
+                    ProgressView(value: store.job.progress, total: 100)
+                        .frame(maxWidth: 220)
+                    Text(store.job.progressText)
+                        .font(.callout.monospacedDigit())
+                        .foregroundColor(.secondary)
+                } else {
+                    Button(store.job.failed ? "Try Again" : "Start Tagging", action: store.start)
+                        .keyboardShortcut(.defaultAction)
+                        .disabled(!store.job.canStart)
+                    if store.job.finished {
+                        Label("Tagged", systemImage: "checkmark.circle.fill")
+                            .font(.callout)
+                            .foregroundColor(.green)
+                    }
+                }
+                Spacer()
+            }
+        }
+        .onAppear(perform: store.reload)
+    }
+
+    private func shorten(_ path: String) -> String {
+        GeoTagJob.shortPath(path, home: home)
+    }
+
+    private func pathRow(_ title: String, value: String, placeholder: String,
+                         separator: Bool, choose: @escaping () -> Void) -> some View {
+        GroupRow(title: title, showSeparator: separator, trailing: {
+            HStack(spacing: Overlay.step) {
+                Text(value.isEmpty ? placeholder : shorten(value))
+                    .font(.callout)
+                    .foregroundColor(value.isEmpty ? .secondary : Overlay.value)
+                    .lineLimit(1)
+                    .truncationMode(.middle)
+                    .frame(maxWidth: 320, alignment: .trailing)
+                    .help(value.isEmpty ? placeholder : value)
+                Button("Choose\u{2026}", action: choose)
+                    .disabled(store.job.busy)
+            }
+        })
+    }
+}
+
 struct AnalyzeView: View {
     @ObservedObject var vibration: VibrationStore
     @ObservedObject var logs: LogDownloadStore
+    @ObservedObject var geoTag: GeoTagStore
     @ObservedObject var selection: PageSelection
 
-    static let pages = ["Vibration", "Log Download"]
+    static let pages = ["Vibration", "Log Download", "Geotag Images"]
+
+    static let symbols = ["Vibration": "waveform.path.ecg", "Log Download": "doc.text.fill",
+                          "Geotag Images": "mappin.and.ellipse"]
+    static let colours: [String: Color] = ["Vibration": .pink, "Log Download": .indigo,
+                                           "Geotag Images": .teal]
 
     var body: some View {
         HStack(spacing: 0) {
@@ -220,17 +302,17 @@ struct AnalyzeView: View {
                 set: { selection.page = $0 ?? selection.page })
             ) { name in
                 SidebarRow(title: name,
-                           symbol: name == "Vibration" ? "waveform.path.ecg" : "doc.text.fill",
-                           colour: name == "Vibration" ? .pink : .indigo)
+                           symbol: AnalyzeView.symbols[name] ?? "doc.text.fill",
+                           colour: AnalyzeView.colours[name] ?? .indigo)
                     .tag(name)
             }
             .listStyle(.sidebar)
             .frame(width: 200)
             Divider()
-            if selection.page == "Log Download" {
-                LogDownloadView(store: logs)
-            } else {
-                VibrationView(store: vibration)
+            switch selection.page {
+            case "Log Download": LogDownloadView(store: logs)
+            case "Geotag Images": GeoTagView(store: geoTag)
+            default: VibrationView(store: vibration)
             }
         }
         .frame(minWidth: 720, minHeight: 460)
@@ -242,6 +324,7 @@ final class AnalyzeWindow: NSObject, NSWindowDelegate {
 
     private let vibration = VibrationStore()
     private let logs = LogDownloadStore()
+    private let geoTag = GeoTagStore()
     private let selection = PageSelection(owner: "analyze", pages: AnalyzeView.pages)
     private var window: NSWindow?
 
@@ -249,6 +332,7 @@ final class AnalyzeWindow: NSObject, NSWindowDelegate {
         super.init()
         NativeProbe.register(vibration)
         NativeProbe.register(logs)
+        NativeProbe.register(geoTag)
         NativeProbe.register(selection, as: selection.identifier)
     }
 
@@ -270,7 +354,7 @@ final class AnalyzeWindow: NSObject, NSWindowDelegate {
         window.title = "Analyze"
         window.isReleasedWhenClosed = false
         window.delegate = self
-        window.contentView = NSHostingView(rootView: AnalyzeView(vibration: vibration, logs: logs, selection: selection))
+        window.contentView = NSHostingView(rootView: AnalyzeView(vibration: vibration, logs: logs, geoTag: geoTag, selection: selection))
         window.center()
         window.makeKeyAndOrderFront(nil)
         self.window = window

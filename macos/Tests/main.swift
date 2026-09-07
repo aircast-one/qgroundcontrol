@@ -787,6 +787,64 @@ func checkEraseWarning() {
 
 checkEraseWarning()
 
+func checkGeoTagJob() {
+    var job = GeoTagJob()
+    expect(!job.canStart, "with neither a log nor images there is nothing to tag")
+    expect(job.destination, "", "and nowhere to put the result")
+
+    job.imageDirectory = "/Users/pilot/Survey"
+    expect(!job.canStart, "images alone carry no positions")
+    expect(job.destination, "/Users/pilot/Survey/TAGGED",
+           "without a chosen folder the tagged images sit beside the originals")
+
+    job.logFile = "/Users/pilot/logs/flight.ulg"
+    expect(job.canStart, "a log and images are all it needs")
+
+    job.saveDirectory = "/Volumes/Card/out"
+    expect(job.destination, "/Volumes/Card/out", "a chosen folder wins over the default")
+
+    expect(GeoTagJob.abbreviate("/Users/pilot/Survey", home: "/Users/pilot"), "~/Survey",
+           "a path under home reads from home")
+    expect(GeoTagJob.abbreviate("/Users/pilot", home: "/Users/pilot"), "~", "home itself is ~")
+    expect(GeoTagJob.abbreviate("/Volumes/Card", home: "/Users/pilot"), "/Volumes/Card",
+           "a path elsewhere is left alone")
+    expect(GeoTagJob.abbreviate("/Users/pilotage/x", home: "/Users/pilot"), "/Users/pilotage/x",
+           "a longer name that merely starts with home is not under it")
+
+    expect(GeoTagJob.shortPath("/Users/pilot/Survey", home: "/Users/pilot"), "~/Survey",
+           "a short path is shown whole")
+    expect(GeoTagJob.shortPath("/Users/pilot/2026/kyiv/survey", home: "/Users/pilot"),
+           "\u{2026}/kyiv/survey", "a deep one keeps the two components that identify it")
+    expect(GeoTagJob.shortPath("/Volumes/Card/dcim/100MSDCF/a.jpg", home: "/Users/pilot"),
+           "\u{2026}/100MSDCF/a.jpg", "off home too")
+
+    job.progress = 100
+    job.running = false
+    expect(job.finished, "a finished run has reached the end and stopped")
+    job.running = true
+    expect(!job.finished, "a running one has not")
+
+    var failing = GeoTagJob()
+    failing.logFile = "/a.ulg"
+    failing.imageDirectory = "/images"
+    failing.running = true
+    failing.progress = 20
+    expect(failing.busy, "a running job with nothing wrong is busy")
+    expect(!failing.failed, "and has not failed")
+
+    failing.errorMessage = "Geotagging failed."
+    expect(!failing.busy, "an error stops it being busy, however the worker thread lingers")
+    expect(failing.failed, "and marks it failed, so the button can offer another go")
+
+    var warned = GeoTagJob()
+    warned.imageDirectory = "/images"
+    warned.errorMessage = "Images have already been tagged."
+    expect(!warned.failed, "a warning before the run is not a failure")
+    expect(!warned.busy, "nor is it busy")
+}
+
+checkGeoTagJob()
+
 if failures == 0 {
     print("all Swift checks passed")
     exit(0)
