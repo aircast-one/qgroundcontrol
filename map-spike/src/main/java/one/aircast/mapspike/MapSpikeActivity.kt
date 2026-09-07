@@ -115,6 +115,7 @@ private fun MapSpikeScreen(mapStyle: String) {
                     when (hit) {
                         is MapHit.Waypoint -> PlanBridge.moveItem(hit.index, lat, lon)
                         is MapHit.FenceVertex -> FenceBridge.adjustVertex(hit.polygon, hit.vertex, lat, lon)
+                        is MapHit.SurveyVertex -> SurveyBridge.adjustAreaVertex(hit.item, hit.vertex, lat, lon)
                     }
                 }
             },

@@ -149,6 +149,10 @@ const val FENCE_HANDLE_LAYER = "aircast-fence-handle-layer"
 
 const val POLYGON_INDEX_PROPERTY = "polygonIndex"
 const val VERTEX_INDEX_PROPERTY = "vertexIndex"
+const val HANDLE_KIND_PROPERTY = "handleKind"
+
+const val HANDLE_KIND_FENCE = "fence"
+const val HANDLE_KIND_SURVEY = "survey"
 
 fun installFenceHandleLayer(style: Style) {
     if (style.getSource(FENCE_HANDLE_SOURCE) != null) {
@@ -165,21 +169,29 @@ fun installFenceHandleLayer(style: Style) {
     )
 }
 
-fun fenceHandleFeatures(polygons: List<FencePolygon>): FeatureCollection {
-    val features = polygons.flatMap { polygon ->
-        polygon.vertices.mapIndexed { vertex, point ->
-            Feature.fromGeometry(Point.fromLngLat(point.longitude, point.latitude)).apply {
-                addNumberProperty(POLYGON_INDEX_PROPERTY, polygon.index)
-                addNumberProperty(VERTEX_INDEX_PROPERTY, vertex)
-            }
+private fun handleFeatures(kind: String, owner: Int, vertices: List<TrackPoint>) =
+    vertices.mapIndexed { vertex, point ->
+        Feature.fromGeometry(Point.fromLngLat(point.longitude, point.latitude)).apply {
+            addStringProperty(HANDLE_KIND_PROPERTY, kind)
+            addNumberProperty(POLYGON_INDEX_PROPERTY, owner)
+            addNumberProperty(VERTEX_INDEX_PROPERTY, vertex)
         }
     }
-    return FeatureCollection.fromFeatures(features)
+
+// Fence and survey handles share one source. They behave identically under the
+// finger, and only the path they write differs.
+fun vertexHandleFeatures(
+    polygons: List<FencePolygon>,
+    surveys: List<Survey>,
+): FeatureCollection {
+    val fence = polygons.flatMap { handleFeatures(HANDLE_KIND_FENCE, it.index, it.vertices) }
+    val survey = surveys.flatMap { handleFeatures(HANDLE_KIND_SURVEY, it.index, it.area) }
+    return FeatureCollection.fromFeatures(fence + survey)
 }
 
-fun renderFenceHandles(style: Style, polygons: List<FencePolygon>) {
+fun renderVertexHandles(style: Style, polygons: List<FencePolygon>, surveys: List<Survey>) {
     (style.getSource(FENCE_HANDLE_SOURCE) as? GeoJsonSource)
-        ?.setGeoJson(fenceHandleFeatures(polygons))
+        ?.setGeoJson(vertexHandleFeatures(polygons, surveys))
 }
 
 const val SURVEY_AREA_SOURCE = "aircast-survey-area"

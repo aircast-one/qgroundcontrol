@@ -15,6 +15,8 @@ sealed interface MapHit {
     data class Waypoint(val index: Int) : MapHit
 
     data class FenceVertex(val polygon: Int, val vertex: Int) : MapHit
+
+    data class SurveyVertex(val item: Int, val vertex: Int) : MapHit
 }
 
 // Fence handles win a tie. They sit on the fence outline, which a waypoint can
@@ -23,10 +25,14 @@ fun hitTest(map: MapLibreMap, x: Float, y: Float): MapHit? {
     val box = RectF(x - HIT_RADIUS_PX, y - HIT_RADIUS_PX, x + HIT_RADIUS_PX, y + HIT_RADIUS_PX)
 
     map.queryRenderedFeatures(box, FENCE_HANDLE_LAYER).firstOrNull()?.let { feature ->
-        val polygon = feature.getNumberProperty(POLYGON_INDEX_PROPERTY)?.toInt()
+        val owner = feature.getNumberProperty(POLYGON_INDEX_PROPERTY)?.toInt()
         val vertex = feature.getNumberProperty(VERTEX_INDEX_PROPERTY)?.toInt()
-        if (polygon != null && vertex != null) {
-            return MapHit.FenceVertex(polygon, vertex)
+        val kind = feature.getStringProperty(HANDLE_KIND_PROPERTY)
+        if (owner != null && vertex != null) {
+            return when (kind) {
+                HANDLE_KIND_SURVEY -> MapHit.SurveyVertex(owner, vertex)
+                else -> MapHit.FenceVertex(owner, vertex)
+            }
         }
     }
 
@@ -63,6 +69,9 @@ fun attachMissionEditing(
             MotionEvent.ACTION_DOWN -> {
                 val hit = hitTest(map, event.x, event.y)
                 if (hit == null) {
+                    // A drag the system steals never delivers its release, which
+                    // would otherwise leave the map's own gestures switched off.
+                    map.uiSettings.setAllGesturesEnabled(true)
                     false
                 } else {
                     dragging = hit
