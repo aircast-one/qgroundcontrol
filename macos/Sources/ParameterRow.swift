@@ -21,7 +21,7 @@ struct ValueField: View {
                 .onSubmit(send)
                 .onChange(of: editing) { focused in if !focused { send() } }
             if !units.isEmpty {
-                Text(units).font(.caption).foregroundColor(.secondary)
+                Text(units).font(.caption).foregroundColor(.secondary).fixedSize()
             }
         }
         .padding(.horizontal, 6)

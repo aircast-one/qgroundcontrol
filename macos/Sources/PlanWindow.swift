@@ -21,7 +21,9 @@ struct AltitudeField: View {
                 .onChange(of: metres) { latest in if !editing { draft = AltitudeField.text(latest) } }
                 .onSubmit(send)
                 .onChange(of: editing) { focused in if !focused { send() } }
-            Text("m").font(.caption).foregroundColor(.secondary)
+            // Without this the unit is the first thing squeezed out when the row also
+            // carries a command picker and a delete button, leaving a bare number.
+            Text("m").font(.caption).foregroundColor(.secondary).fixedSize()
         }
         .padding(.horizontal, 6)
         .padding(.vertical, 2)
@@ -290,6 +292,10 @@ struct PlanInspector: View {
     }
 
     @ViewBuilder private var details: some View {
+        if showsMissionSettings {
+            missionCard
+        }
+
         ForEach([ItemFact.cameraGroup, ItemFact.itemGroup], id: \.self) { group in
             let facts = mission.selectedFacts.filter { $0.group == group }
             if !facts.isEmpty || showsAltitudeMode(in: group) {
@@ -302,6 +308,37 @@ struct PlanInspector: View {
     // measured from something, and that is worth saying.
     private func showsAltitudeMode(in group: String) -> Bool {
         group == ItemFact.itemGroup && AltitudeMode.isChoice(mission.itemAltitudeMode)
+    }
+
+    // The mission's own settings belong to the item that starts it, which is where QGC
+    // keeps them and the only row that otherwise has nothing to show.
+    private var showsMissionSettings: Bool {
+        mission.items.first(where: \.isCurrent)?.sequence == 0
+            && AltitudeMode.isMissionChoice(mission.globalAltitudeMode)
+    }
+
+    private var missionCard: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            SectionLabel(text: "Mission")
+            GroupCard {
+                GroupRow(title: "Altitude mode", showSeparator: false, trailing: {
+                    Picker("", selection: Binding(
+                        get: { mission.globalAltitudeMode },
+                        set: { mission.setGlobalAltitudeMode($0) })
+                    ) {
+                        ForEach(AltitudeMode.missionChoices) { Text($0.title).tag($0.raw) }
+                    }
+                    .labelsHidden()
+                    .frame(maxWidth: 170)
+                })
+
+                GroupRow(title: "Altitude for new items", trailing: {
+                    ValueField(value: mission.defaultAltitude, units: "m") {
+                        mission.setDefaultAltitude($0)
+                    }
+                })
+            }
+        }
     }
 
     @ViewBuilder private func factCard(_ group: String, _ facts: [ItemFact]) -> some View {

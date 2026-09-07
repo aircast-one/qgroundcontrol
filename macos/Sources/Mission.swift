@@ -19,6 +19,8 @@ final class MissionStore: ObservableObject, Probeable {
     @Published private(set) var camera = CameraChoice.empty
     @Published private(set) var distanceMode = ""
     @Published private(set) var itemAltitudeMode = ""
+    @Published private(set) var globalAltitudeMode = ""
+    @Published private(set) var defaultAltitude = ""
     @Published private(set) var planFile = ""
 
     private var undoPoll: Timer?
@@ -38,6 +40,8 @@ final class MissionStore: ObservableObject, Probeable {
         syncing = (plan["syncInProgress"] as? NSNumber)?.boolValue ?? false
         dirty = (plan["dirty"] as? NSNumber)?.boolValue ?? false
         planFile = (plan["currentPlanFile"] as? String) ?? ""
+        globalAltitudeMode = (Bridge.group("plan.missionController")["globalAltitudeMode"] as? String) ?? ""
+        defaultAltitude = (Bridge.group("settings.appSettings.defaultMissionItemAltitude")["valueString"] as? String) ?? ""
         canUndo = (plan["canUndo"] as? NSNumber)?.boolValue ?? false
         canRedo = (plan["canRedo"] as? NSNumber)?.boolValue ?? false
         loadCommands()
@@ -198,6 +202,18 @@ final class MissionStore: ObservableObject, Probeable {
         reload()
     }
 
+    func setGlobalAltitudeMode(_ raw: String) {
+        guard AltitudeMode.isMissionChoice(raw) else { return }
+        _ = Bridge.set("plan.missionController.globalAltitudeMode", raw)
+        reload()
+    }
+
+    func setDefaultAltitude(_ value: String) {
+        guard let metres = Double(value), metres.isFinite else { return }
+        _ = Bridge.set("settings.appSettings.defaultMissionItemAltitude", metres)
+        reload()
+    }
+
     func setItemAltitudeMode(_ raw: String) {
         guard let item = items.first(where: \.isCurrent), AltitudeMode.isChoice(raw) else { return }
         _ = Bridge.set("plan.missionController.visualItems.\(item.index).altitudeMode", raw)
@@ -342,6 +358,7 @@ final class MissionStore: ObservableObject, Probeable {
          "commands": commands.map(\.name),
          "surveys": surveyAreas.map(\.count),
          "distanceMode": distanceMode, "itemAltitudeMode": itemAltitudeMode,
+         "globalAltitudeMode": globalAltitudeMode, "defaultAltitude": defaultAltitude,
          "camera": ["brand": camera.brand, "model": camera.model,
                     "brands": camera.brands.count, "models": camera.models.count,
                     "describes": camera.describes],
@@ -417,6 +434,10 @@ final class MissionStore: ObservableObject, Probeable {
                 return ["ok": false, "error": "\(target.command) cannot change its command"]
             }
             setCommand(of: target, to: Int(args["command"] ?? "") ?? 0)
+        case "setGlobalAltitudeMode":
+            setGlobalAltitudeMode(args["value"] ?? "")
+        case "setDefaultAltitude":
+            setDefaultAltitude(args["value"] ?? "")
         case "setItemAltitudeMode":
             setItemAltitudeMode(args["value"] ?? "")
         case "setDistanceMode":

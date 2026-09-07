@@ -718,6 +718,12 @@ func checkAltitudeMode() {
     expect(AltitudeMode.usesTerrain("AltitudeModeCalcAboveTerrain"), "so does calculated above terrain")
     expect(!AltitudeMode.usesTerrain("AltitudeModeRelative"), "relative does not")
     expect(!AltitudeMode.usesTerrain("AltitudeModeAbsolute"), "nor does absolute")
+
+    expect(AltitudeMode.missionChoices.count == 5, "a mission offers one more mode than a survey")
+    expect(AltitudeMode.isMissionChoice("AltitudeModeMixed"), "a mission can be mixed")
+    expect(!AltitudeMode.isChoice("AltitudeModeMixed"), "one survey cannot")
+    expect(AltitudeMode.title(for: "AltitudeModeMixed"), "Mixed (per item)",
+           "mixed says that each item carries its own frame")
 }
 
 checkAltitudeMode()

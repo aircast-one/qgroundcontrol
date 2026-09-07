@@ -15,8 +15,18 @@ struct AltitudeMode: Identifiable, Equatable {
         AltitudeMode(raw: "AltitudeModeTerrainFrame", title: "Follow terrain"),
     ]
 
+    // A mission can be mixed -- each item measured from its own frame -- which is not a
+    // thing one survey can be.
+    static let mixed = AltitudeMode(raw: "AltitudeModeMixed", title: "Mixed (per item)")
+
+    static var missionChoices: [AltitudeMode] { choices + [mixed] }
+
+    static func isMissionChoice(_ raw: String) -> Bool {
+        missionChoices.contains { $0.raw == raw }
+    }
+
     static func title(for raw: String) -> String {
-        choices.first { $0.raw == raw }?.title ?? raw
+        missionChoices.first { $0.raw == raw }?.title ?? raw
     }
 
     static func isChoice(_ raw: String) -> Bool {
