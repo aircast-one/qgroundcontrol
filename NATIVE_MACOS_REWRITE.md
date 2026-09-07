@@ -1,8 +1,9 @@
 # Native macOS Migration — Implementation Plan
 
-> **The phase plan below is not yet safe to execute.** A file-level inventory
-> (`tools/macos/qml-inventory.py`) contradicts the sizing it was built on. Read
-> "What the inventory found" before scheduling any of it.
+> **Ordering decided: shared layer first.** The inventory below showed two thirds of the
+> QML trapped behind the final, safety-critical phase under a risk-ascending order. That
+> tail is unmanageable, so the reusable controls are converted first and later phases
+> compose rather than block. Phases are re-sized on measured numbers.
 
 ## What the inventory found
 
@@ -34,7 +35,14 @@ group that reaches it gives the earliest phase it can be deleted in:
 **Two thirds of the QML can only be deleted in the final phase**, because 175 files
 (27,949 lines) are shared across view groups. Phases 1-4 together retire 26%.
 
-Three consequences:
+**The decision this forced.** Risk-ascending ordering would have put 47,459 of the 72,096
+lines in the last phase, which is also the one where a mistake hurts someone. That is the
+wrong place to concentrate schedule risk, so the shared control layer converts first:
+`macos/Sources/Controls.swift` holds the label/value arrangements every view composes
+from, and each feature since has been built on it rather than growing its own. Controls
+are the least safety-critical thing to get wrong and the thing everything else waits on.
+
+Three consequences of the graph:
 
 - The ground rule "a view is not converted until its QML is deleted" is unachievable for
   phases 1-4. Their QML has to stay alive for the Fly view.
@@ -131,6 +139,14 @@ crop does not, and picks up whatever is in front. It captures Qt's render surfac
 
 Per-call bridge cost measured this way is **0.009 ms mean, 0.135 ms worst over 7,640 calls** — the
 earlier 1.15 ms figure was ten paths per tick, not one call.
+
+**Correction to an earlier note.** A previous commit recorded that a disconnected link
+keeps reporting connected, and called it parity with QML. That was wrong. `_link` is a
+`std::weak_ptr`, so it clears within about two seconds once the last owner releases. What
+was actually happening: `LinkManager::createConnectedLink` had no guard against a
+configuration that already owns a link, so connecting twice built two, and one disconnect
+left the other alive. Fixed in `LinkManager`, where it protects QML, Compose and SwiftUI
+alike, and covered by `LinkDuplicateConnectTest`.
 
 **Driving the native UI in tests.** Synthesised input does not work when the screen is
 locked: no window can become key, so a click either lands on the wrong window or is

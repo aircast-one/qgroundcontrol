@@ -17,20 +17,29 @@ suite="${2:-}"
 
 pkill -9 -x QGCSuite 2>/dev/null || true
 
-for _ in $(seq 1 30); do
+# Waiting for a completely idle machine never converges here (Spotlight and parallel
+# sessions keep it around 4-6), so settle for "not thrashing" and move on.
+for _ in $(seq 1 12); do
     load=$(sysctl -n vm.loadavg | awk '{print int($2)}')
-    [[ "$load" -lt 4 ]] && break
+    [[ "$load" -lt 8 ]] && break
     sleep 10
 done
 echo "starting with load $(sysctl -n vm.loadavg | awk '{print $2}')"
 
-rm -rf "$stage"; mkdir -p "$stage"
-cp -Rc "$root/build-test/Debug/AircastQGC.app" "$stage/QGCSuite.app"
-mv "$stage/QGCSuite.app/Contents/MacOS/AircastQGC" "$stage/QGCSuite.app/Contents/MacOS/QGCSuite"
-/usr/libexec/PlistBuddy -c "Set :CFBundleExecutable QGCSuite" "$stage/QGCSuite.app/Contents/Info.plist" >/dev/null
-codesign --force --sign - --timestamp=none "$stage/QGCSuite.app" 2>/dev/null
+# Refresh one clone in place rather than making a new one per run. `codesign --force`
+# breaks APFS reflink dedup, so every clone is a full physical copy of a ~100MB bundle;
+# recreating it each run filled the disk hard enough to block every tool.
+app="$root/build-test/Debug/AircastQGC.app"
+clone="$stage/QGCSuite.app"
+if [[ ! -d "$clone" ]] || [[ "$app/Contents/MacOS/AircastQGC" -nt "$clone/Contents/MacOS/QGCSuite" ]]; then
+    rm -rf "$stage"; mkdir -p "$stage"
+    cp -Rc "$app" "$clone"
+    mv "$clone/Contents/MacOS/AircastQGC" "$clone/Contents/MacOS/QGCSuite"
+    /usr/libexec/PlistBuddy -c "Set :CFBundleExecutable QGCSuite" "$clone/Contents/Info.plist" >/dev/null
+    codesign --force --sign - --timestamp=none "$clone" 2>/dev/null
+fi
 
-"$stage/QGCSuite.app/Contents/MacOS/QGCSuite" --allow-multiple \
+"$clone/Contents/MacOS/QGCSuite" --allow-multiple \
     ${suite:+--unittest:$suite} ${suite:---unittest} > "$log" 2>&1 || true
 
 pass=$(grep -c '^PASS' "$log" || true)
