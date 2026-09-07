@@ -3,6 +3,12 @@ package org.mavlink.qgroundcontrol;
 import android.os.Handler;
 import android.os.Looper;
 
+import java.util.ArrayList;
+import java.util.LinkedHashMap;
+import java.util.LinkedHashSet;
+import java.util.List;
+import java.util.Map;
+
 public final class QGCBridge {
     public interface Host {
         void setSystemBarAppearance(boolean lightBars);
@@ -12,9 +18,12 @@ public final class QGCBridge {
         void onEvent(String path, String json);
     }
 
+    private static final String DEFAULT_CLIENT = "default";
+
     private static final Handler MAIN = new Handler(Looper.getMainLooper());
     private static volatile Host host = null;
-    private static volatile EventListener eventListener = null;
+    private static final Map<String, EventListener> listeners = new LinkedHashMap<>();
+    private static final Map<String, String> watchedByClient = new LinkedHashMap<>();
 
     private QGCBridge() {
     }
@@ -24,7 +33,34 @@ public final class QGCBridge {
     }
 
     public static void setEventListener(final EventListener listener) {
-        eventListener = listener;
+        setEventListener(DEFAULT_CLIENT, listener);
+    }
+
+    public static synchronized void setEventListener(final String client, final EventListener listener) {
+        if (listener == null) {
+            listeners.remove(client);
+        } else {
+            listeners.put(client, listener);
+        }
+    }
+
+    public static void watch(final String paths) {
+        watch(DEFAULT_CLIENT, paths);
+    }
+
+    public static synchronized void watch(final String client, final String paths) {
+        watchedByClient.put(client, paths == null ? "" : paths);
+
+        final LinkedHashSet<String> union = new LinkedHashSet<>();
+        for (final String set : watchedByClient.values()) {
+            for (final String path : set.split(",")) {
+                final String trimmed = path.trim();
+                if (!trimmed.isEmpty()) {
+                    union.add(trimmed);
+                }
+            }
+        }
+        nativeWatch(String.join(",", union));
     }
 
     public static native String get(String path);
@@ -33,7 +69,7 @@ public final class QGCBridge {
 
     public static native String invoke(String path, String jsonArgs);
 
-    public static native void watch(String paths);
+    private static native void nativeWatch(String paths);
 
     public static native void notifyFontScale(float scale);
 
@@ -55,14 +91,19 @@ public final class QGCBridge {
     }
 
     public static void onEvent(final String path, final String json) {
-        final EventListener current = eventListener;
-        if (current == null) {
-            return;
+        final List<EventListener> current;
+        synchronized (QGCBridge.class) {
+            if (listeners.isEmpty()) {
+                return;
+            }
+            current = new ArrayList<>(listeners.values());
         }
         MAIN.post(new Runnable() {
             @Override
             public void run() {
-                current.onEvent(path, json);
+                for (final EventListener listener : current) {
+                    listener.onEvent(path, json);
+                }
             }
         });
     }

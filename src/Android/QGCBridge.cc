@@ -77,7 +77,7 @@ void setNativeMethods()
         { "get", "(Ljava/lang/String;)Ljava/lang/String;", reinterpret_cast<void *>(jniGet) },
         { "set", "(Ljava/lang/String;Ljava/lang/String;)Ljava/lang/String;", reinterpret_cast<void *>(jniSet) },
         { "invoke", "(Ljava/lang/String;Ljava/lang/String;)Ljava/lang/String;", reinterpret_cast<void *>(jniInvoke) },
-        { "watch", "(Ljava/lang/String;)V", reinterpret_cast<void *>(jniWatch) },
+        { "nativeWatch", "(Ljava/lang/String;)V", reinterpret_cast<void *>(jniWatch) },
         { "notifyFontScale", "(F)V", reinterpret_cast<void *>(jniNotifyFontScale) },
         { "notifySafeAreaInsets", "(IIII)V", reinterpret_cast<void *>(jniNotifySafeAreaInsets) },
         { "notifyDeepLink", "(Ljava/lang/String;)V", reinterpret_cast<void *>(jniNotifyDeepLink) },
