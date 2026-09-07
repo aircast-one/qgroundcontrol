@@ -98,9 +98,17 @@ fun FactList(groupPath: String, modifier: Modifier = Modifier) {
     }
 
     LazyColumn(modifier) {
-        items(facts, key = { it.path }) { fact ->
-            FactRow(fact)
-            HorizontalDivider()
+        sectionedFacts(groupPath, facts).forEach { (title, members) ->
+            if (title.isNotBlank()) {
+                item(key = "head$title") { SectionHeader(title) }
+            }
+            items(members, key = { it.path }) { fact ->
+                FactRow(fact)
+                HorizontalDivider()
+            }
+        }
+        desktopOnlyNote(facts)?.let { note ->
+            item(key = "desktoponly") { FootNote(note) }
         }
     }
 }
