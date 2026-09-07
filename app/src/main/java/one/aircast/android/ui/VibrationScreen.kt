@@ -202,8 +202,9 @@ fun VibrationScreen(modifier: Modifier = Modifier) {
         }
 
         Text(
-            text = "Below 30 is healthy, 30 to 60 needs attention, above 60 is unsafe to fly.",
+            text = "Under 30 healthy · 30-60 watch · over 60 unsafe",
             style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
         )
 
         HorizontalDivider()

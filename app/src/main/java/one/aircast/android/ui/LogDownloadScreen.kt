@@ -14,12 +14,14 @@ import androidx.compose.material3.Button
 import androidx.compose.material3.Checkbox
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.LinearProgressIndicator
+import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.ListItem
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -121,6 +123,9 @@ private fun Message(text: String, modifier: Modifier = Modifier) {
     )
 }
 
+internal fun shouldAutoRefreshLogs(hasVehicle: Boolean, hasEntries: Boolean, busy: Boolean) =
+    hasVehicle && !hasEntries && !busy
+
 @Composable
 fun LogDownloadScreen(modifier: Modifier = Modifier) {
     val hasVehicle by qgcBool("vehicles.activeVehicleAvailable")
@@ -150,6 +155,12 @@ fun LogDownloadScreen(modifier: Modifier = Modifier) {
         )
     }
 
+    LaunchedEffect(hasVehicle) {
+        if (shouldAutoRefreshLogs(hasVehicle, entries.isNotEmpty(), busy)) {
+            offMain { Qgc.invoke("$LOG_ROOT.refresh") }
+        }
+    }
+
     Column(modifier.fillMaxSize()) {
         Row(
             modifier = Modifier
@@ -170,11 +181,6 @@ fun LogDownloadScreen(modifier: Modifier = Modifier) {
 
             if (busy) {
                 OutlinedButton(onClick = { scope.offMain { Qgc.invoke("$LOG_ROOT.cancel") } }) { Text("Cancel") }
-            } else {
-                OutlinedButton(
-                    onClick = { confirmErase = true },
-                    enabled = entries.isNotEmpty(),
-                ) { Text("Erase all") }
             }
         }
 
@@ -211,13 +217,24 @@ fun LogDownloadScreen(modifier: Modifier = Modifier) {
 
         when {
             listing && entries.isEmpty() -> Message("Asking the vehicle for its log list.")
-            entries.isEmpty() -> Message("No logs listed yet. Tap Refresh to ask the vehicle.")
+            entries.isEmpty() -> Message("This vehicle reports no flight logs.")
             else -> LazyColumn(Modifier.weight(1f)) {
                 items(entries, key = { it.index }) { entry ->
                     LogRow(entry, enabled = !busy) { checked ->
                         scope.offMain { Qgc.set("$LOG_MODEL.${entry.index}.selected", checked) }
                     }
                     HorizontalDivider()
+                }
+                item(key = "erase") {
+                    if (!busy) {
+                        TextButton(
+                            onClick = { confirmErase = true },
+                            colors = ButtonDefaults.textButtonColors(
+                                contentColor = MaterialTheme.colorScheme.error,
+                            ),
+                            modifier = Modifier.padding(horizontal = 12.dp),
+                        ) { Text("Erase all logs from the vehicle") }
+                    }
                 }
             }
         }

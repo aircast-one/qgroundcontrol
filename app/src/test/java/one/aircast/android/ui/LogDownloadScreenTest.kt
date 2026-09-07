@@ -47,4 +47,16 @@ class LogDownloadScreenTest {
     fun `an empty time reads as unknown`() {
         assertEquals("Unknown date", formatLogTime(""))
     }
+
+    @Test
+    fun `logs are fetched on arrival only when there is nothing to show and nothing running`() {
+        assertEquals(true, shouldAutoRefreshLogs(hasVehicle = true, hasEntries = false, busy = false))
+        assertEquals(false, shouldAutoRefreshLogs(hasVehicle = false, hasEntries = false, busy = false))
+    }
+
+    @Test
+    fun `arriving back mid-download does not restart the listing`() {
+        assertEquals(false, shouldAutoRefreshLogs(hasVehicle = true, hasEntries = false, busy = true))
+        assertEquals(false, shouldAutoRefreshLogs(hasVehicle = true, hasEntries = true, busy = false))
+    }
 }
