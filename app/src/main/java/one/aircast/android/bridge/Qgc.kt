@@ -66,10 +66,23 @@ object Qgc {
         return result
     }
 
+    internal var sendWatch: (String) -> Unit = { QGCBridge.watch(it) }
+
+    internal fun forgetWatchesForTest() {
+        watched.clear()
+    }
+
     @Synchronized
     fun watch(paths: Collection<String>) {
-        if (!watched.addAll(paths)) return
-        timed("watch") { QGCBridge.watch(watched.joinToString(",")) }
+        val added = paths.filterNot { it in watched }
+        if (added.isEmpty()) return
+
+        watched.addAll(added)
+        val sent = runCatching { timed("watch") { sendWatch(watched.joinToString(",")) } }
+        if (sent.isFailure) {
+            watched.removeAll(added.toSet())
+            Log.w(TAG, "watch failed for $added, will retry: ${sent.exceptionOrNull()}")
+        }
     }
 
     fun get(path: String): JSONObject =

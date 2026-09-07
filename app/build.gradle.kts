@@ -5,6 +5,10 @@ plugins {
 }
 
 android {
+    testOptions {
+        unitTests.isReturnDefaultValues = true
+    }
+
     namespace = "one.aircast.android"
     compileSdk = 34
 
