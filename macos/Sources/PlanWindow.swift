@@ -309,6 +309,10 @@ struct PlanInspector: View {
             missionCard
         }
 
+        if mission.surveyStats.describes {
+            surveyCard
+        }
+
         ForEach([ItemFact.cameraGroup, ItemFact.itemGroup], id: \.self) { group in
             let facts = mission.selectedFacts.filter { $0.group == group }
             if !facts.isEmpty || showsAltitudeMode(in: group) {
@@ -350,6 +354,25 @@ struct PlanInspector: View {
                         mission.setDefaultAltitude($0)
                     }
                 })
+            }
+        }
+    }
+
+    private var surveyCard: some View {
+        VStack(alignment: .leading, spacing: Overlay.unit * 0.35) {
+            SectionLabel(text: "Survey")
+            GroupCard {
+                GroupRow(title: "Photos", value: mission.surveyStats.shotsText, showSeparator: false)
+                GroupRow(title: "Between shots", value: mission.surveyStats.intervalText)
+                GroupRow(title: "Area covered", value: mission.surveyStats.areaText)
+                GroupRow(title: "Each photo covers", value: mission.surveyStats.footprintText)
+            }
+            if !mission.surveyStats.warning.isEmpty {
+                Label(mission.surveyStats.warning, systemImage: "exclamationmark.triangle.fill")
+                    .font(.caption)
+                    .foregroundColor(.orange)
+                    .fixedSize(horizontal: false, vertical: true)
+                    .padding(.horizontal, Overlay.horizontalPadding)
             }
         }
     }

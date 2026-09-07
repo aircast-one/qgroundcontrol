@@ -756,6 +756,38 @@ func checkPlanSummary() {
 
 checkPlanSummary()
 
+func checkSurveyStats() {
+    expect(!SurveyStats.none.describes, "an item that is not a survey describes nothing")
+
+    let live = SurveyStats(shots: 1043, secondsBetweenShots: 0.8446969696969697,
+                           areaSquareMetres: 89999.17662726832, footprintSide: 15.20,
+                           footprintFrontal: 6.76, minimumInterval: 0)
+    expect(live.describes, "a real survey does")
+    expect(live.shotsText, "1043", "the photo count is whole")
+    expect(live.intervalText, "0.84 s", "the interval is to a hundredth, as the camera is set")
+    expect(live.areaText, "9.0 ha", "nine hectares reads as hectares, not ninety thousand metres")
+    expect(live.footprintText, "15.2 \u{00D7} 6.8 m", "and each photo's ground footprint is given")
+    expect(!live.tooFast, "a camera with no stated minimum is never too fast")
+
+    expect(SurveyStats.area(500), "500 m\u{00B2}", "a small plot stays in square metres")
+    expect(SurveyStats.area(10_000), "1.0 ha", "a hectare is the switch")
+    expect(SurveyStats.area(2_500_000), "2.50 km\u{00B2}", "and a large one reads in square kilometres")
+    expect(SurveyStats.area(0), "\u{2014}", "no area is not zero area")
+    expect(SurveyStats.interval(0), "\u{2014}", "nor is no interval")
+
+    let strained = SurveyStats(shots: 1043, secondsBetweenShots: 0.84, areaSquareMetres: 1,
+                               footprintSide: 1, footprintFrontal: 1, minimumInterval: 2)
+    expect(strained.tooFast, "a camera that needs two seconds cannot shoot every 0.84")
+    expect(strained.warning.contains("2.00 s"), "and the warning names what the camera needs")
+    expect(strained.warning.contains("0.84 s"), "alongside what the survey asks for")
+
+    let stationary = SurveyStats(shots: 0, secondsBetweenShots: 0, areaSquareMetres: 0,
+                                 footprintSide: 0, footprintFrontal: 0, minimumInterval: 2)
+    expect(!stationary.tooFast, "a survey that takes no photos cannot outrun the camera")
+}
+
+checkSurveyStats()
+
 func checkMissionVehicle() {
     let copter = MissionVehicle(firmware: "ArduPilot", type: "Quadrotor", multiRotor: true, vtol: false)
     expect(copter.showsHoverSpeed, "a multirotor hovers between waypoints")

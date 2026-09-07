@@ -16,6 +16,7 @@ final class MissionStore: ObservableObject, Probeable {
     @Published private(set) var canRedo = false
     @Published private(set) var commands: [MissionCommand] = []
     @Published private(set) var selectedFacts: [ItemFact] = []
+    @Published private(set) var surveyStats = SurveyStats.none
     @Published private(set) var camera = CameraChoice.empty
     @Published private(set) var distanceMode = ""
     @Published private(set) var itemAltitudeMode = ""
@@ -153,6 +154,32 @@ final class MissionStore: ObservableObject, Probeable {
         }
     }
 
+    private func loadSurveyStats(for item: MissionItem, calc: [String: Any]) {
+        guard item.isSurveyItem else {
+            if surveyStats != .none { surveyStats = .none }
+            return
+        }
+
+        let survey = Bridge.group("plan.missionController.visualItems.\(item.index)")
+        func number(_ json: [String: Any], _ key: String) -> Double {
+            (json[key] as? NSNumber)?.doubleValue ?? 0
+        }
+        func factValue(_ json: [String: Any], _ property: String) -> Double {
+            let facts = (json["facts"] as? [[String: Any]]) ?? []
+            let match = facts.first { $0["property"] as? String == property }
+            return (match?["value"] as? NSNumber)?.doubleValue ?? 0
+        }
+
+        let read = SurveyStats(
+            shots: (survey["cameraShots"] as? NSNumber)?.intValue ?? 0,
+            secondsBetweenShots: number(survey, "timeBetweenShots"),
+            areaSquareMetres: number(survey, "coveredArea"),
+            footprintSide: factValue(calc, "adjustedFootprintSide"),
+            footprintFrontal: factValue(calc, "adjustedFootprintFrontal"),
+            minimumInterval: factValue(calc, "minTriggerInterval"))
+        if read != surveyStats { surveyStats = read }
+    }
+
     private func surveyPolygon(of item: MissionItem) -> [GeoPoint] {
         guard item.isSurveyItem else { return [] }
         let polygon = Bridge.group("plan.missionController.visualItems.\(item.index).surveyAreaPolygon")
@@ -182,6 +209,7 @@ final class MissionStore: ObservableObject, Probeable {
     private func loadSelectedFacts() {
         guard let item = items.first(where: \.isCurrent) else {
             selectedFacts = []
+            if surveyStats != .none { surveyStats = .none }
             return
         }
         let listed = ItemFact.lists.flatMap { list in
@@ -194,6 +222,7 @@ final class MissionStore: ObservableObject, Probeable {
             ? [:]
             : Bridge.group("plan.missionController.visualItems.\(item.index).cameraCalc")
         camera = CameraChoice(json: calc)
+        loadSurveyStats(for: item, calc: calc)
         distanceMode = (calc["distanceMode"] as? String) ?? ""
         itemAltitudeMode = item.specifiesAltitude
             ? (Bridge.group("plan.missionController.visualItems.\(item.index)")["altitudeMode"] as? String) ?? ""
@@ -386,6 +415,9 @@ final class MissionStore: ObservableObject, Probeable {
          "canUndo": canUndo, "canRedo": canRedo,
          "commands": commands.map(\.name),
          "surveys": surveyAreas.map(\.count),
+         "surveyStats": ["shots": surveyStats.shotsText, "interval": surveyStats.intervalText,
+                         "area": surveyStats.areaText, "footprint": surveyStats.footprintText,
+                         "warning": surveyStats.warning],
          "distanceMode": distanceMode, "itemAltitudeMode": itemAltitudeMode,
          "globalAltitudeMode": globalAltitudeMode, "defaultAltitude": defaultAltitude,
          "vehicle": ["firmware": vehicle.firmware, "type": vehicle.type,
