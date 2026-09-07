@@ -98,6 +98,15 @@ final class MissionStore: ObservableObject, Probeable {
         reload()
     }
 
+    var terrain: TerrainProfile {
+        TerrainProfile(points: items.filter(\.hasPosition).map {
+            TerrainPoint(distance: $0.distanceFromStart,
+                         missionAltitude: $0.amslAltitude ?? 0,
+                         terrainAltitude: $0.terrainAltitude,
+                         collision: $0.terrainCollision)
+        })
+    }
+
     func select(_ item: MissionItem) {
         guard !item.isCurrent else { return }
         Bridge.invoke("plan.missionController.setCurrentPlanViewSeqNum", [item.sequence, true])
@@ -182,6 +191,11 @@ final class MissionStore: ObservableObject, Probeable {
          "selected": items.first(where: \.isCurrent)?.sequence ?? -1,
          "addingWaypoint": addingWaypoint,
          "canUndo": canUndo, "canRedo": canRedo,
+         "terrain": ["points": terrain.points.count, "usable": terrain.usable,
+                     "collision": terrain.hasCollision,
+                     "unknown": terrain.unknownTerrain,
+                     "distance": terrain.totalDistance,
+                     "min": terrain.minAltitude, "max": terrain.maxAltitude],
          "items": items.prefix(8).map {
              ["seq": $0.sequence, "command": $0.command, "selected": $0.isCurrent,
               "position": $0.positionText, "altitude": $0.altitudeText]

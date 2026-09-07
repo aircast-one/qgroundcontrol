@@ -418,6 +418,47 @@ func checkLogEntry() {
 
 checkLogEntry()
 
+func checkTerrainProfile() {
+    let profile = TerrainProfile(points: [
+        TerrainPoint(distance: 0, missionAltitude: 585, terrainAltitude: 585, collision: false),
+        TerrainPoint(distance: 300, missionAltitude: 627, terrainAltitude: 590, collision: false),
+        TerrainPoint(distance: 570, missionAltitude: 627, terrainAltitude: 640, collision: true),
+    ])
+    expect(profile.usable, "three placed points make a profile")
+    expect(profile.hasCollision, "a point below terrain is a collision")
+    expect(profile.unknownTerrain == 0, "every point here has terrain")
+    expect(profile.totalDistance == 570, "the profile spans the furthest point")
+    expect(profile.minAltitude < 585, "the band leaves room below the lowest altitude")
+    expect(profile.maxAltitude > 640, "and above the highest")
+
+    expect(profile.x(profile.points[2], width: 100) == 100, "the last point sits at the right edge")
+    expect(profile.x(profile.points[0], width: 100) == 0, "the first sits at the left")
+    let top = profile.y(profile.maxAltitude, height: 50)
+    let bottom = profile.y(profile.minAltitude, height: 50)
+    expect(abs(top) < 0.001, "the highest altitude maps to the top of the plot")
+    expect(abs(bottom - 50) < 0.001, "the lowest maps to the bottom")
+
+    let flat = TerrainProfile(points: [
+        TerrainPoint(distance: 0, missionAltitude: 100, terrainAltitude: 100, collision: false),
+        TerrainPoint(distance: 10, missionAltitude: 100, terrainAltitude: 100, collision: false),
+    ])
+    expect(flat.usable, "a flat mission over flat ground still plots")
+    expect(flat.maxAltitude > flat.minAltitude, "and is given a band rather than zero range")
+
+    let unknown = TerrainProfile(points: [
+        TerrainPoint(distance: 0, missionAltitude: 100, terrainAltitude: nil, collision: false),
+        TerrainPoint(distance: 5, missionAltitude: 100, terrainAltitude: 90, collision: false),
+    ])
+    expect(unknown.unknownTerrain == 1, "a point with no terrain data is counted")
+    expect(!unknown.groundKnown, "a partly known ground is not drawn as if it were the ground")
+    expect(profile.groundKnown, "a fully known ground is drawn")
+
+    expect(!TerrainProfile.empty.usable, "an empty profile is not drawn")
+    expect(TerrainProfile(points: []).totalDistance == 0, "no points span no distance")
+}
+
+checkTerrainProfile()
+
 if failures == 0 {
     print("all Swift checks passed")
     exit(0)

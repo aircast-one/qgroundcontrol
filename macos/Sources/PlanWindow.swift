@@ -43,7 +43,101 @@ struct AltitudeField: View {
     }
 }
 
+struct TerrainProfileSheet: View {
+    let profile: TerrainProfile
+
+    var body: some View {
+        GlassPanel {
+            VStack(alignment: .leading, spacing: Overlay.step) {
+                HStack {
+                    Text("Terrain").font(.callout.weight(.semibold))
+                    if profile.hasCollision {
+                        Text("Mission is below terrain")
+                            .font(.caption.weight(.semibold))
+                            .foregroundColor(Overlay.vehicle)
+                    } else if profile.unknownTerrain > 0 {
+                        Text("\(profile.unknownTerrain) point\(profile.unknownTerrain == 1 ? "" : "s") without terrain data")
+                            .font(.caption)
+                            .foregroundColor(.secondary)
+                    }
+                    Spacer()
+                    Text(String(format: "%.0f m", profile.totalDistance))
+                        .font(.caption.monospacedDigit())
+                        .foregroundColor(.secondary)
+                }
+
+                plot.frame(height: 90)
+
+                HStack {
+                    Text(String(format: "%.0f m", profile.minAltitude))
+                    Spacer()
+                    Text(String(format: "%.0f m", profile.maxAltitude))
+                }
+                .font(.caption2.monospacedDigit())
+                .foregroundColor(.secondary)
+            }
+            .padding(Overlay.gutter)
+            .frame(width: 460)
+        }
+    }
+
+    private var plot: some View {
+        GeometryReader { geometry in
+            let width = geometry.size.width
+            let height = geometry.size.height
+
+            ZStack {
+                if profile.groundKnown {
+                    ground(width: width, height: height)
+                        .fill(Overlay.launch.opacity(0.25))
+                    ground(width: width, height: height)
+                        .stroke(Overlay.launch, lineWidth: 1.5)
+                }
+
+                route(width: width, height: height)
+                    .stroke(Overlay.mission, style: StrokeStyle(lineWidth: 2, lineJoin: .round))
+
+                ForEach(Array(profile.points.enumerated()), id: \.offset) { _, point in
+                    if point.collision {
+                        Circle()
+                            .fill(Overlay.vehicle)
+                            .frame(width: 7, height: 7)
+                            .position(x: profile.x(point, width: width),
+                                      y: profile.y(point.missionAltitude, height: height))
+                    }
+                }
+            }
+        }
+    }
+
+    private func route(width: Double, height: Double) -> Path {
+        Path { path in
+            profile.points.enumerated().forEach { index, point in
+                let location = CGPoint(x: profile.x(point, width: width),
+                                       y: profile.y(point.missionAltitude, height: height))
+                index == 0 ? path.move(to: location) : path.addLine(to: location)
+            }
+        }
+    }
+
+    private func ground(width: Double, height: Double) -> Path {
+        let known = profile.points.filter { $0.terrainAltitude != nil }
+        return Path { path in
+            known.enumerated().forEach { index, point in
+                let location = CGPoint(x: profile.x(point, width: width),
+                                       y: profile.y(point.terrainAltitude ?? 0, height: height))
+                index == 0 ? path.move(to: location) : path.addLine(to: location)
+            }
+            guard let last = known.last, let first = known.first else { return }
+            path.addLine(to: CGPoint(x: profile.x(last, width: width), y: height))
+            path.addLine(to: CGPoint(x: profile.x(first, width: width), y: height))
+            path.closeSubpath()
+        }
+    }
+}
+
 struct PlanInspector: View {
+    @Binding var showTerrain: Bool
     @ObservedObject var mission: MissionStore
     @ObservedObject var fenceRally: FenceRallyStore
     @ObservedObject var selection: PageSelection
@@ -241,8 +335,18 @@ struct PlanInspector: View {
             .help("Redo the change that was undone")
             .disabled(!mission.canRedo || mission.syncing)
 
-            Button("Download", action: reload)
-                .disabled(mission.syncing || !mission.connected)
+            Button {
+                showTerrain.toggle()
+            } label: {
+                Image(systemName: "chart.xyaxis.line")
+            }
+            .help(showTerrain ? "Hide the terrain profile" : "Show the terrain profile")
+
+            Button(action: reload) {
+                Image(systemName: "arrow.down.to.line")
+            }
+            .help("Read the plan from the vehicle")
+            .disabled(mission.syncing || !mission.connected)
             Spacer()
             if mission.syncing {
                 ProgressView().controlSize(.small)
@@ -260,6 +364,8 @@ struct PlanInspector: View {
 }
 
 struct PlanView: View {
+    @AppStorage("plan.showTerrain") private var showTerrain = true
+
     static let mapPadding = NSEdgeInsets(top: 56, left: 24, bottom: 40, right: 372)
 
     @ObservedObject var mission: MissionStore
@@ -279,11 +385,23 @@ struct PlanView: View {
             HStack {
                 Spacer()
                 VStack {
-                    PlanInspector(mission: mission, fenceRally: fenceRally, selection: selection)
+                    PlanInspector(showTerrain: $showTerrain, mission: mission,
+                                  fenceRally: fenceRally, selection: selection)
                     Spacer(minLength: 0)
                 }
             }
             .padding(Overlay.unit)
+
+            if showTerrain, mission.terrain.usable {
+                VStack {
+                    Spacer()
+                    HStack {
+                        TerrainProfileSheet(profile: mission.terrain)
+                        Spacer()
+                    }
+                }
+                .padding(Overlay.unit)
+            }
         }
         .frame(minWidth: 860, minHeight: 620)
         .onAppear {
