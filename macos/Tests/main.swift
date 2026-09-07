@@ -486,6 +486,23 @@ func checkMissionCommands() {
 
 checkMissionCommands()
 
+func checkItemFacts() {
+    let facts = ItemFact.from([
+        ["name": "Delay", "valueString": "45", "units": "secs"],
+        ["name": "Mode", "valueString": "Hold", "units": "", "enumStrings": ["Hold", "Continue"]],
+        ["valueString": "12"],
+    ], list: "textFieldFacts")
+
+    expect(facts.count == 2, "a fact with no name is dropped")
+    expect(facts[0].id, "textFieldFacts.0", "a fact is addressed by its list and position")
+    expect(facts[1].id, "textFieldFacts.1", "positions follow the order the controller reported")
+    expect(facts[0].options.isEmpty, "a plain fact offers no options")
+    expect(facts[1].options.count == 2, "an enum fact offers its choices")
+    expect(facts[0].units, "secs", "units come through for the editor to show")
+}
+
+checkItemFacts()
+
 if failures == 0 {
     print("all Swift checks passed")
     exit(0)

@@ -15,6 +15,7 @@ final class MissionStore: ObservableObject, Probeable {
     @Published private(set) var canUndo = false
     @Published private(set) var canRedo = false
     @Published private(set) var commands: [MissionCommand] = []
+    @Published private(set) var selectedFacts: [ItemFact] = []
 
     private var undoPoll: Timer?
 
@@ -35,6 +36,7 @@ final class MissionStore: ObservableObject, Probeable {
         canUndo = (plan["canUndo"] as? NSNumber)?.boolValue ?? false
         canRedo = (plan["canRedo"] as? NSNumber)?.boolValue ?? false
         loadCommands()
+        loadSelectedFacts()
         connected = Bridge.group("vehicle")["kind"] as? String == "object"
         status = items.isEmpty ? "This plan has no items." : ""
 
@@ -120,6 +122,25 @@ final class MissionStore: ObservableObject, Probeable {
         guard let item = items.first(where: { $0.sequence == sequence }), item.canRemove else { return }
         _ = Bridge.set("plan.missionController.visualItems.\(item.index).coordinate",
                        ["latitude": latitude, "longitude": longitude])
+        reload()
+    }
+
+    private func loadSelectedFacts() {
+        guard let item = items.first(where: \.isCurrent) else {
+            selectedFacts = []
+            return
+        }
+        selectedFacts = ItemFact.lists.flatMap { list in
+            ItemFact.from(
+                (Bridge.group("plan.missionController.visualItems.\(item.index).\(list)")["elements"] as? [Any]) ?? [],
+                list: list)
+        }
+    }
+
+    func setFact(_ fact: ItemFact, to value: String) {
+        guard let item = items.first(where: \.isCurrent) else { return }
+        _ = Bridge.set("plan.missionController.visualItems.\(item.index).\(fact.list).\(fact.position)",
+                       Double(value) ?? value)
         reload()
     }
 
@@ -226,6 +247,7 @@ final class MissionStore: ObservableObject, Probeable {
          "addingWaypoint": addingWaypoint,
          "canUndo": canUndo, "canRedo": canRedo,
          "commands": commands.map(\.name),
+         "facts": selectedFacts.map { ["name": $0.name, "value": $0.value, "units": $0.units] },
          "terrain": ["points": terrain.points.count, "usable": terrain.usable,
                      "collision": terrain.hasCollision,
                      "unknown": terrain.unknownTerrain,
@@ -295,6 +317,11 @@ final class MissionStore: ObservableObject, Probeable {
                 return ["ok": false, "error": "\(target.command) cannot change its command"]
             }
             setCommand(of: target, to: Int(args["command"] ?? "") ?? 0)
+        case "setFact":
+            guard let fact = selectedFacts.first(where: { $0.name == args["name"] }) else {
+                return ["ok": false, "error": "the selected item has no fact named \(args["name"] ?? "")"]
+            }
+            setFact(fact, to: args["value"] ?? "")
         case "select":
             select(sequence: Int(args["sequence"] ?? "") ?? -1)
         case "remove":

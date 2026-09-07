@@ -185,7 +185,8 @@ struct PlanInspector: View {
     }
 
     private var contentHeight: CGFloat {
-        min(CGFloat(rowCount) * Overlay.rowMinHeight + Overlay.unit * 0.5, 420)
+        let rows = rowCount + (selection.page == "Mission" ? mission.selectedFacts.count : 0)
+        return min(CGFloat(rows) * Overlay.rowMinHeight + Overlay.unit * 1.5, 460)
     }
 
     private var summary: some View {
@@ -219,7 +220,9 @@ struct PlanInspector: View {
         switch selection.page {
         case "Fence": fence
         case "Rally": rally
-        default: missionItems
+        default:
+            missionItems
+            details
         }
     }
 
@@ -276,6 +279,36 @@ struct PlanInspector: View {
                         })
                         .contentShape(Rectangle())
                         .onTapGesture { mission.select(item) }
+                }
+            }
+        }
+    }
+
+    @ViewBuilder private var details: some View {
+        if !mission.selectedFacts.isEmpty {
+            VStack(alignment: .leading, spacing: 0) {
+                SectionLabel(text: "Details")
+                GroupCard {
+                    ForEach(Array(mission.selectedFacts.enumerated()), id: \.element.id) { index, fact in
+                        GroupRow(title: fact.name,
+                                 showSeparator: index > 0,
+                                 trailing: {
+                                     if fact.options.isEmpty {
+                                         ValueField(value: fact.value, units: fact.units) {
+                                             mission.setFact(fact, to: $0)
+                                         }
+                                     } else {
+                                         Picker("", selection: Binding(
+                                             get: { fact.value },
+                                             set: { mission.setFact(fact, to: $0) })
+                                         ) {
+                                             ForEach(fact.options, id: \.self) { Text($0).tag($0) }
+                                         }
+                                         .labelsHidden()
+                                         .frame(maxWidth: 150)
+                                     }
+                                 })
+                    }
                 }
             }
         }

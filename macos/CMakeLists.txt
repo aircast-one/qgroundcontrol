@@ -32,6 +32,7 @@ add_library(QGCNativeUI STATIC
     Sources/FenceRallyModel.swift
     Sources/MissionItemModel.swift
     Sources/MissionCommandModel.swift
+    Sources/ItemFactModel.swift
     Sources/TerrainProfileModel.swift
     Sources/PlanWindow.swift
     Sources/OverlayKit.swift
