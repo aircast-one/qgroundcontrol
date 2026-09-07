@@ -17,6 +17,7 @@ final class MissionStore: ObservableObject, Probeable {
     @Published private(set) var commands: [MissionCommand] = []
     @Published private(set) var selectedFacts: [ItemFact] = []
     @Published private(set) var camera = CameraChoice.empty
+    @Published private(set) var distanceMode = ""
     @Published private(set) var planFile = ""
 
     private var undoPoll: Timer?
@@ -175,6 +176,7 @@ final class MissionStore: ObservableObject, Probeable {
             ? [:]
             : Bridge.group("plan.missionController.visualItems.\(item.index).cameraCalc")
         camera = CameraChoice(json: calc)
+        distanceMode = (calc["distanceMode"] as? String) ?? ""
 
         let cameraFacts = item.isSimpleItem ? [] : ItemFact.camera(
             (calc["facts"] as? [Any]) ?? [])
@@ -189,6 +191,12 @@ final class MissionStore: ObservableObject, Probeable {
         let path = "plan.missionController.visualItems.\(item.index).cameraCalc"
         if let brand { _ = Bridge.set("\(path).cameraBrand", brand) }
         if let model { _ = Bridge.set("\(path).cameraModel", model) }
+        reload()
+    }
+
+    func setDistanceMode(_ raw: String) {
+        guard let item = items.first(where: \.isCurrent), AltitudeMode.isChoice(raw) else { return }
+        _ = Bridge.set("plan.missionController.visualItems.\(item.index).cameraCalc.distanceMode", raw)
         reload()
     }
 
@@ -323,6 +331,7 @@ final class MissionStore: ObservableObject, Probeable {
          "canUndo": canUndo, "canRedo": canRedo,
          "commands": commands.map(\.name),
          "surveys": surveyAreas.map(\.count),
+         "distanceMode": distanceMode,
          "camera": ["brand": camera.brand, "model": camera.model,
                     "brands": camera.brands.count, "models": camera.models.count,
                     "describes": camera.describes],
@@ -398,6 +407,8 @@ final class MissionStore: ObservableObject, Probeable {
                 return ["ok": false, "error": "\(target.command) cannot change its command"]
             }
             setCommand(of: target, to: Int(args["command"] ?? "") ?? 0)
+        case "setDistanceMode":
+            setDistanceMode(args["value"] ?? "")
         case "setCameraBrand":
             setCamera(brand: args["value"] ?? "")
         case "setCameraModel":

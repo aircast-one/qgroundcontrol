@@ -702,6 +702,26 @@ func checkCameraChoice() {
 
 checkCameraChoice()
 
+func checkAltitudeMode() {
+    expect(AltitudeMode.choices.count == 4, "a survey offers four altitude modes")
+    expect(!AltitudeMode.isChoice("AltitudeModeMixed"), "mixed belongs to a whole mission, not a survey")
+    expect(!AltitudeMode.isChoice("AltitudeModeNone"), "none means the distance is not about the ground")
+    expect(AltitudeMode.isChoice("AltitudeModeTerrainFrame"), "terrain frame is a survey mode")
+
+    expect(AltitudeMode.title(for: "AltitudeModeTerrainFrame"), "Follow terrain",
+           "the mode reads as what it does, not as its enum name")
+    expect(AltitudeMode.title(for: "AltitudeModeRelative"), "Relative to launch", "same for relative")
+    expect(AltitudeMode.title(for: "SomethingNew"), "SomethingNew",
+           "an unknown mode is shown as sent rather than hidden")
+
+    expect(AltitudeMode.usesTerrain("AltitudeModeTerrainFrame"), "terrain frame uses the terrain settings")
+    expect(AltitudeMode.usesTerrain("AltitudeModeCalcAboveTerrain"), "so does calculated above terrain")
+    expect(!AltitudeMode.usesTerrain("AltitudeModeRelative"), "relative does not")
+    expect(!AltitudeMode.usesTerrain("AltitudeModeAbsolute"), "nor does absolute")
+}
+
+checkAltitudeMode()
+
 if failures == 0 {
     print("all Swift checks passed")
     exit(0)

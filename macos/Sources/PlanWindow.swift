@@ -313,6 +313,7 @@ struct PlanInspector: View {
                             .labelsHidden()
                             .frame(maxWidth: 170)
                         })
+
                         if mission.camera.canChooseModel {
                             GroupRow(title: "Model", trailing: {
                                 Picker("", selection: Binding(
@@ -320,6 +321,19 @@ struct PlanInspector: View {
                                     set: { mission.setCamera(model: $0) })
                                 ) {
                                     ForEach(mission.camera.models, id: \.self) { Text($0).tag($0) }
+                                }
+                                .labelsHidden()
+                                .frame(maxWidth: 170)
+                            })
+                        }
+
+                        if AltitudeMode.isChoice(mission.distanceMode) {
+                            GroupRow(title: "Altitude mode", trailing: {
+                                Picker("", selection: Binding(
+                                    get: { mission.distanceMode },
+                                    set: { mission.setDistanceMode($0) })
+                                ) {
+                                    ForEach(AltitudeMode.choices) { Text($0.title).tag($0.raw) }
                                 }
                                 .labelsHidden()
                                 .frame(maxWidth: 170)
