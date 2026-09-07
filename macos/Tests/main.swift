@@ -777,6 +777,16 @@ func checkMissionVehicle() {
 
 checkMissionVehicle()
 
+func checkEraseWarning() {
+    expect(LogEntry.eraseWarning(1).contains("The one log"),
+           "one log does not read as \"All 1 log\"")
+    expect(LogEntry.eraseWarning(3).contains("All 3 logs"), "several logs are counted")
+    expect(LogEntry.eraseWarning(1).contains("gone for good"), "the warning says the loss is permanent")
+    expect(LogEntry.eraseWarning(3).contains("gone for good"), "however many there are")
+}
+
+checkEraseWarning()
+
 if failures == 0 {
     print("all Swift checks passed")
     exit(0)

@@ -19,12 +19,16 @@ struct LogEntry: Identifiable, Equatable {
         time = LogEntry.humanTime((object["time"] as? String) ?? "")
     }
 
+    static func eraseWarning(_ count: Int) -> String {
+        count == 1
+            ? "The one log on the vehicle will be deleted. If you have not downloaded it, it is gone for good."
+            : "All \(count) logs will be deleted from the vehicle. Anything you have not downloaded is gone for good."
+    }
+
     static func from(_ elements: [Any]) -> [LogEntry] {
         elements.compactMap(LogEntry.init(json:))
     }
 
-    // QGC's own sizeStr is locale-formatted with a comma decimal separator, which reads
-    // as a thousands separator here.
     static func humanSize(_ bytes: Int) -> String {
         let units = ["bytes", "KB", "MB", "GB"]
         let step = bytes <= 0 ? 0 : min(Int(log(Double(bytes)) / log(1024)), units.count - 1)

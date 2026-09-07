@@ -2,7 +2,6 @@ import AppKit
 import SwiftUI
 
 struct VibrationBar: View {
-    // Height of the value + label rows beneath each bar.
     static let captionHeight = 42.0
 
     let label: String
@@ -51,8 +50,6 @@ struct VibrationBar: View {
     }
 }
 
-// Two unlabelled red lines are just decoration; the numbers are the whole point of the
-// page, so the scale states them.
 struct VibrationScale: View {
     private let marks = [VibrationReading.scaleMaximum, VibrationReading.dangerLevel,
                          VibrationReading.warningLevel, 0.0]
@@ -71,8 +68,6 @@ struct VibrationScale: View {
             }
         }
         .frame(width: 22)
-        // The bars sit above a value row and a label row; the scale has to skip both
-        // to line its marks up with the bar itself.
         .padding(.bottom, VibrationBar.captionHeight)
     }
 }
@@ -197,9 +192,17 @@ struct LogDownloadView: View {
                     Button("Cancel", action: store.cancel)
                 }
                 Spacer()
+                Button("Erase All\u{2026}", action: store.askToEraseAll)
+                    .disabled(!store.canErase)
             }
         }
         .onAppear(perform: store.reload)
+        .alert("Erase every log on the vehicle?", isPresented: $store.confirmingErase) {
+            Button("Cancel", role: .cancel) { }
+            Button("Erase All", role: .destructive, action: store.eraseAll)
+        } message: {
+            Text(LogEntry.eraseWarning(store.logs.count))
+        }
     }
 }
 

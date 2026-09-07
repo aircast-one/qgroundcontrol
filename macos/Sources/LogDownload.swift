@@ -8,6 +8,7 @@ final class LogDownloadStore: ObservableObject, Probeable {
     @Published private(set) var downloading = false
     @Published private(set) var status = ""
     @Published private(set) var savePath = ""
+    @Published var confirmingErase = false
 
     func reload() {
         let controller = Bridge.group("logDownload")
@@ -43,9 +44,23 @@ final class LogDownloadStore: ObservableObject, Probeable {
         reload()
     }
 
+    func askToEraseAll() {
+        guard canErase else { return }
+        confirmingErase = true
+    }
+
+    func eraseAll() {
+        confirmingErase = false
+        Bridge.invoke("logDownload.eraseAll")
+        reload()
+    }
+
+    var canErase: Bool { !logs.isEmpty && !requestingList && !downloading }
+
     func probeState() -> [String: Any] {
         ["count": logs.count, "requestingList": requestingList, "savePath": savePath,
-         "downloading": downloading, "status": status,
+         "downloading": downloading, "status": status, "canErase": canErase,
+         "confirmingErase": confirmingErase,
          "logs": logs.prefix(8).map {
              ["id": $0.id, "size": $0.sizeText, "status": $0.status, "time": $0.time]
          }]
@@ -56,6 +71,18 @@ final class LogDownloadStore: ObservableObject, Probeable {
         case "reload": reload()
         case "refresh": refresh()
         case "cancel": cancel()
+        case "askToEraseAll":
+            guard canErase else {
+                return ["ok": false, "error": "there is nothing to erase, or the vehicle is busy"]
+            }
+            askToEraseAll()
+        case "eraseAll":
+            guard confirmingErase else {
+                return ["ok": false, "error": "erasing every log needs confirming first"]
+            }
+            eraseAll()
+        case "cancelErase":
+            confirmingErase = false
         case "download":
             guard let entry = logs.first(where: { $0.id == Int(args["log"] ?? "") ?? -1 }) else {
                 return ["ok": false, "error": "no log numbered \(args["log"] ?? "")"]
