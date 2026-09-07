@@ -420,6 +420,40 @@ QJsonObject writePath(const QString &path, const QVariant &value)
     // A coordinate arrives as a JSON object, and QVariantMap converts to nothing the
     // property will take, so dragging a waypoint had no way to write where it landed.
     const QMetaType target = meta->property(index).metaType();
+    if (target.flags().testFlag(QMetaType::PointerToQObject)) {
+        const QString reference = value.toString();
+        if (!reference.startsWith(QLatin1Char('@'))) {
+            return QJsonObject {
+                { QStringLiteral("ok"), false },
+                { QStringLiteral("reason"), QStringLiteral("%1 takes an object, so the value must be "
+                                                           "an @path").arg(resolved.property) },
+            };
+        }
+        const Resolved referent = resolve(reference.mid(1));
+        if (!referent.object || !referent.property.isEmpty()) {
+            return QJsonObject {
+                { QStringLiteral("ok"), false },
+                { QStringLiteral("reason"), QStringLiteral("%1 does not resolve").arg(reference.mid(1)) },
+            };
+        }
+        const QByteArray expected = QByteArray(target.name()).chopped(1);
+        if (!referent.object->inherits(expected.constData())) {
+            return QJsonObject {
+                { QStringLiteral("ok"), false },
+                { QStringLiteral("reason"), QStringLiteral("%1 is a %2, not a %3")
+                      .arg(reference.mid(1), QString::fromUtf8(referent.object->metaObject()->className()),
+                           QString::fromUtf8(expected)) },
+            };
+        }
+        QObject *pointer = referent.object;
+        const bool linked = resolved.object->setProperty(name.constData(), QVariant(target, &pointer));
+        return QJsonObject {
+            { QStringLiteral("ok"), linked },
+            { QStringLiteral("reason"), linked ? QString()
+                  : QStringLiteral("%1 rejected the object").arg(resolved.property) },
+        };
+    }
+
     if (target.id() == qMetaTypeId<QGeoCoordinate>() && value.canConvert<QVariantMap>()) {
         const QVariantMap point = value.toMap();
         if (!point.contains(QStringLiteral("latitude")) || !point.contains(QStringLiteral("longitude"))) {

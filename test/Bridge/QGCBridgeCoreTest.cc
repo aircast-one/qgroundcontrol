@@ -526,3 +526,26 @@ void QGCBridgeCoreTest::_watchFromAnotherThreadDoesNotBlockTheCaller()
 
     QGCBridgeCore::watch(QStringList());
 }
+
+void QGCBridgeCoreTest::_writesAnObjectPropertyFromAnAtPath()
+{
+    const QString target = QStringLiteral("vehicles.activeVehicle");
+
+    const QJsonObject plain = parse(QGCBridgeCore::set(
+        target, QStringLiteral("{\"value\": 7}")));
+    QCOMPARE(plain.value(QStringLiteral("ok")).toBool(), false);
+    QVERIFY2(plain.value(QStringLiteral("reason")).toString().contains(QStringLiteral("@path")),
+             qPrintable(plain.value(QStringLiteral("reason")).toString()));
+
+    const QJsonObject missing = parse(QGCBridgeCore::set(
+        target, QStringLiteral("{\"value\": \"@no.such.thing\"}")));
+    QCOMPARE(missing.value(QStringLiteral("ok")).toBool(), false);
+    QVERIFY2(missing.value(QStringLiteral("reason")).toString().contains(QStringLiteral("does not resolve")),
+             qPrintable(missing.value(QStringLiteral("reason")).toString()));
+
+    const QJsonObject wrongType = parse(QGCBridgeCore::set(
+        target, QStringLiteral("{\"value\": \"@settings.unitsSettings\"}")));
+    QCOMPARE(wrongType.value(QStringLiteral("ok")).toBool(), false);
+    QVERIFY2(wrongType.value(QStringLiteral("reason")).toString().contains(QStringLiteral("not a")),
+             qPrintable(wrongType.value(QStringLiteral("reason")).toString()));
+}

@@ -28,6 +28,7 @@ private slots:
     void _invokesFactValidateAndReturnsQGCsOwnError();
     void _factCarriesWhatQGCKnowsAboutItsRange();
     void _watchFromAnotherThreadDoesNotBlockTheCaller();
+    void _writesAnObjectPropertyFromAnAtPath();
     void _resolvesAccessorCall();
     void _writesThroughAccessorCall();
     void _invokeReturnsValue();
