@@ -91,6 +91,15 @@ class ParameterFormTest {
     }
 
     @Test
+    fun `tuning is ardupilot only and warns on the rate gains`() {
+        assertNull(setupSectionsFor("Tuning", isPx4 = true))
+        val apm = setupSectionsFor("Tuning", isPx4 = false)!!
+        val rates = apm.first { it.title == "Rate gains" }
+        assertEquals(true, rates.names.contains("ATC_RAT_RLL_P"))
+        assertEquals(true, rates.note.contains("small steps"))
+    }
+
+    @Test
     fun `components without a native form report none`() {
         assertNull(setupSectionsFor("Sensors", isPx4 = false))
         assertNull(setupSectionsFor("Radio", isPx4 = true))

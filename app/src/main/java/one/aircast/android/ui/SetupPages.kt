@@ -153,10 +153,34 @@ private val POWER_PX4 = listOf(
     ),
 )
 
+private val TUNING_APM = listOf(
+    ParameterSection(
+        "Feel",
+        listOf("ATC_INPUT_TC"),
+        "Higher is softer on the sticks, lower is sharper.",
+    ),
+    ParameterSection(
+        "Attitude gains",
+        listOf("ATC_ANG_RLL_P", "ATC_ANG_PIT_P", "ATC_ANG_YAW_P"),
+    ),
+    ParameterSection(
+        "Rate gains",
+        listOf(
+            "ATC_RAT_RLL_P", "ATC_RAT_RLL_I", "ATC_RAT_RLL_D",
+            "ATC_RAT_PIT_P", "ATC_RAT_PIT_I", "ATC_RAT_PIT_D",
+            "ATC_RAT_YAW_P", "ATC_RAT_YAW_I",
+        ),
+        "Change these in small steps and test fly between changes. Autotune is " +
+            "not carried over yet, so nothing here will retune the aircraft for you.",
+    ),
+    ParameterSection("Vertical position", listOf("PSC_ACCZ_P", "PSC_ACCZ_I")),
+)
+
 internal fun setupSectionsFor(componentName: String, isPx4: Boolean): List<ParameterSection>? =
     when (componentName) {
         "Safety" -> if (isPx4) SAFETY_PX4 else SAFETY_APM
         "Power" -> if (isPx4) POWER_PX4 else POWER_APM
+        "Tuning" -> if (isPx4) null else TUNING_APM
         "Flight Modes" -> if (isPx4) FLIGHT_MODES_PX4 else FLIGHT_MODES_APM
         "Lights" -> if (isPx4) null else LIGHTS_APM
         "Camera" -> if (isPx4) null else CAMERA_APM
