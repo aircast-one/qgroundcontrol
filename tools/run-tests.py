@@ -13,7 +13,9 @@ REPO = Path(__file__).resolve().parents[1]
 TEST_BUILD = REPO / "build-test"
 TEST_APP = TEST_BUILD / "Debug/AircastQGC.app/Contents/MacOS/AircastQGC"
 HISTORY = REPO / "build-test/test-history.jsonl"
+UNIT_TEST_LIST = REPO / "test/UnitTestList.cc"
 
+REGISTER_RE = re.compile(r"^\s*UT_REGISTER_TEST\((\w+)\)", re.M)
 RESULT_RE = re.compile(r"^(PASS|FAIL!|SKIP|QFATAL|XFAIL)\s*:\s*(\w+)::(\w+)\(\)")
 TOTALS_RE = re.compile(r"^Totals:\s*(\d+) passed, (\d+) failed, (\d+) skipped, (\d+) blacklisted, (\d+)ms")
 
@@ -45,11 +47,25 @@ def staleness():
     return None
 
 
+def expected_suites():
+    if not UNIT_TEST_LIST.exists():
+        return []
+    return REGISTER_RE.findall(UNIT_TEST_LIST.read_text())
+
+
+def missing_suites(summary):
+    expected = expected_suites()
+    if not expected:
+        return []
+    ran = set(summary["suites"])
+    return [name for name in expected if name not in ran]
+
+
 def run_suite(name):
     args = [str(TEST_APP), "--allow-multiple", f"--unittest:{name}" if name else "--unittest"]
     started = time.monotonic()
     proc = subprocess.run(args, capture_output=True, text=True, timeout=3600)
-    return proc.stdout + proc.stderr, time.monotonic() - started
+    return proc.stdout + proc.stderr, time.monotonic() - started, proc.returncode
 
 
 def parse(output):
@@ -115,7 +131,7 @@ def flake_rate(history, suite):
     return len(flaked), len(seen)
 
 
-def record(summary, verdicts):
+def record(summary, verdicts, incomplete=False):
     HISTORY.parent.mkdir(parents=True, exist_ok=True)
     entry = {
         "at": datetime.now(timezone.utc).isoformat(timespec="seconds"),
@@ -127,14 +143,23 @@ def record(summary, verdicts):
         "unstable": [s for s, v in verdicts.items() if v["verdict"] == "UNSTABLE"],
         "real": [s for s, v in verdicts.items() if v["verdict"] == "REAL"],
         "durations": summary["durations"],
+        "incomplete": incomplete,
     }
     with HISTORY.open("a") as handle:
         handle.write(json.dumps(entry) + "\n")
     return entry
 
 
-def report(summary, verdicts, history, stale, contention=None):
+def report(summary, verdicts, history, stale, contention=None, missing=(), exit_code=0):
     lines = []
+    if missing:
+        lines.append(f"INCOMPLETE RUN - {len(missing)} of {len(missing) + len(summary['suites'])} "
+                     f"suites never ran (binary exited {exit_code}).")
+        lines.append(f"  stopped after: {summary['suites'][-1] if summary['suites'] else 'nothing'}")
+        lines.append(f"  did not run: {', '.join(missing[:6])}"
+                     + (f" and {len(missing) - 6} more" if len(missing) > 6 else ""))
+        lines.append("  do not read the totals below as a pass.")
+        lines.append("")
     if contention:
         lines.append(f"WARNING: {contention}")
         lines.append("")
@@ -205,17 +230,20 @@ def main():
         print("rebuild, or pass --allow-stale to run anyway", file=sys.stderr)
         return 2
 
-    output, _ = run_suite(args.suite)
+    output, _, exit_code = run_suite(args.suite)
     summary = parse(output)
+    missing = [] if args.suite else missing_suites(summary)
 
     verdicts = ({} if args.no_retry or not summary["failures"]
                 else classify(summary["failures"], args.repeats, verbose=True))
 
-    entry = record(summary, verdicts) if not args.suite else None
-    print(report(summary, verdicts, history, stale, contention))
+    entry = record(summary, verdicts, bool(missing)) if not args.suite else None
+    print(report(summary, verdicts, history, stale, contention, missing, exit_code))
     if entry:
         print(f"\nrecorded to {HISTORY.relative_to(REPO)}")
 
+    if missing:
+        return 3
     return 1 if any(v["verdict"] == "REAL" for v in verdicts.values()) else 0
 
 

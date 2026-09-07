@@ -91,6 +91,32 @@ def test_report_says_pass_when_only_load_flakes():
     assert "LOAD FLAKES" in text, text
 
 
+def test_missing_suites_are_named_from_the_registered_list():
+    summary = {"suites": ["ADSBTest", "LinkStateTest"]}
+    original = runner.expected_suites
+    runner.expected_suites = lambda: ["ADSBTest", "LinkStateTest", "VideoManagerTest", "GeoTest"]
+    try:
+        assert runner.missing_suites(summary) == ["VideoManagerTest", "GeoTest"]
+    finally:
+        runner.expected_suites = original
+
+
+def test_report_refuses_to_call_a_truncated_run_a_pass():
+    summary = {"passed": 222, "failed": 0, "skipped": 0,
+               "suites": ["ADSBTest", "ParameterManagerTest"], "durations": {}}
+    text = runner.report(summary, {}, [], None, None,
+                         missing=["VideoManagerTest", "GeoTest"], exit_code=1)
+    assert text.startswith("INCOMPLETE RUN"), text
+    assert "ParameterManagerTest" in text, text
+    assert "do not read the totals below as a pass" in text, text
+
+
+def test_expected_suites_reads_the_real_list():
+    names = runner.expected_suites()
+    assert len(names) > 50, len(names)
+    assert "ADSBTest" in names, names[:5]
+
+
 def main():
     tests = [value for name, value in sorted(globals().items())
              if name.startswith("test_") and callable(value)]

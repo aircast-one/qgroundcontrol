@@ -35,6 +35,20 @@ timeouts and fail when the machine is loaded. Reading a full-run failure as a
 regression, or waving one away as "just a flake", have both wasted real time. A
 `LOAD FLAKE` verdict is reported but does not fail the run; `REAL` does.
 
+**It knows what a complete run looks like.** The suite has been observed dying
+partway through — exit 1, no crash report, output stopping mid-suite. A
+truncated run still ends in a plausible-looking "222 passed, 0 failed", which
+has twice been reported as green. The runner now reads the active
+`UT_REGISTER_TEST` entries out of `test/UnitTestList.cc`, compares them against
+the suites that actually reported, and leads with
+
+    INCOMPLETE RUN - 47 of 80 suites never ran (binary exited 1).
+      stopped after: ParameterManagerTest
+      did not run: ...
+      do not read the totals below as a pass.
+
+Exit code is `3` for an incomplete run, distinct from `1` for a real failure.
+
 **It keeps history.** Each full run appends a line to
 `build-test/test-history.jsonl`, so `--history` can tell you a suite has flaked
 four of the last six runs rather than leaving you to remember. The file lives in
