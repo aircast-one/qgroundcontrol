@@ -1,6 +1,7 @@
 package one.aircast.mapspike
 
 import org.maplibre.android.maps.Style
+import org.maplibre.android.style.expressions.Expression
 import org.maplibre.android.style.layers.CircleLayer
 import org.maplibre.android.style.layers.FillLayer
 import org.maplibre.android.style.layers.LineLayer
@@ -21,6 +22,30 @@ const val MISSION_PATH_LAYER = "aircast-mission-path-layer"
 
 const val WAYPOINT_ID_PROPERTY = "waypointId"
 private const val WAYPOINT_LABEL_PROPERTY = "label"
+const val WAYPOINT_COLOUR_PROPERTY = "waypointColour"
+
+const val TAKEOFF_COLOUR = "#43A047"
+const val LAND_COLOUR = "#E53935"
+const val RETURN_COLOUR = "#5C6BC0"
+const val LOITER_COLOUR = "#26A69A"
+const val START_COLOUR = "#7E57C2"
+const val WAYPOINT_COLOUR = "#FFB300"
+
+// The command name is what the plan actually reports, and a plan reads wrong
+// when a takeoff, a landing and a return all draw as the same amber dot.
+// Mission Start is the planned launch point rather than somewhere the aircraft
+// flies to, so it is the one that most needs telling apart from a waypoint.
+fun waypointColour(command: String): String {
+    val name = command.lowercase()
+    return when {
+        name.contains("mission start") -> START_COLOUR
+        name.contains("takeoff") -> TAKEOFF_COLOUR
+        name.contains("land") -> LAND_COLOUR
+        name.contains("return") || name.contains("rtl") -> RETURN_COLOUR
+        name.contains("loiter") || name.contains("orbit") -> LOITER_COLOUR
+        else -> WAYPOINT_COLOUR
+    }
+}
 
 fun installMissionLayers(style: Style) {
     if (style.getSource(MISSION_PATH_SOURCE) == null) {
@@ -38,7 +63,7 @@ fun installMissionLayers(style: Style) {
         style.addSource(GeoJsonSource(MISSION_SOURCE))
         style.addLayer(
             CircleLayer(MISSION_DOT_LAYER, MISSION_SOURCE).withProperties(
-                PropertyFactory.circleColor("#FFB300"),
+                PropertyFactory.circleColor(Expression.get(WAYPOINT_COLOUR_PROPERTY)),
                 PropertyFactory.circleRadius(13f),
                 PropertyFactory.circleStrokeColor("#37474F"),
                 PropertyFactory.circleStrokeWidth(2f),
@@ -64,6 +89,7 @@ fun missionFeatures(items: List<MissionItem>): FeatureCollection {
         Feature.fromGeometry(Point.fromLngLat(item.longitude, item.latitude)).apply {
             addNumberProperty(WAYPOINT_ID_PROPERTY, item.index)
             addStringProperty(WAYPOINT_LABEL_PROPERTY, item.sequence.toString())
+            addStringProperty(WAYPOINT_COLOUR_PROPERTY, waypointColour(item.command))
         }
     }
     return FeatureCollection.fromFeatures(features)

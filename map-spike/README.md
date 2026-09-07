@@ -42,6 +42,15 @@ in `PlanBridge.kt` is the one lookup for all of them.
 `children`. Reading the item gives you no polygon at all; it needs its own read at
 `…visualItems.N.surveyAreaPolygon`.
 
+**A plan item can exist without being on the map.** Inserting a takeoff puts a real item in the
+plan, but on a copter it specifies no coordinate of its own, so nothing is drawn and the item
+count does not move. Counting drawn markers to decide whether a bridge call worked reports a
+working call as a failure. The raw element count is the one that answers that question.
+
+**Mission Start is drawn like a waypoint but is not one.** The settings item takes a coordinate
+once the plan has something in it, so it appears as a numbered dot at the planned launch point.
+It is coloured apart from the waypoints for that reason.
+
 **A bad index is a segfault, not an exception.** `insertSimpleMissionItem` with an index past the
 end walks off the list and takes the process down, tombstone and all. The bridge validates types,
 never ranges. The insert index addresses the whole visual item list, which opens with a settings

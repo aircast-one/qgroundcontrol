@@ -285,6 +285,18 @@ private fun MapSpikeScreen(mapStyle: String) {
                         }
                     }) { Text("Rally") }
                     TextButton(onClick = {
+                        val at = placeAt()
+                        onBridge("Adding a takeoff") {
+                            at != null && PlanBridge.appendTakeoff(at.latitude, at.longitude)
+                        }
+                    }) { Text("Takeoff") }
+                    TextButton(onClick = {
+                        val at = placeAt()
+                        onBridge("Adding a landing") {
+                            at != null && PlanBridge.appendLanding(at.latitude, at.longitude)
+                        }
+                    }) { Text("Land") }
+                    TextButton(onClick = {
                         follow = false
                         fitRequest += 1
                     }) { Text("Fit") }

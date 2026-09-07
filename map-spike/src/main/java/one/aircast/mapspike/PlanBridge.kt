@@ -90,6 +90,23 @@ object PlanBridge {
         )
     }
 
+    private fun appendAt(method: String, latitude: Double, longitude: Double): Boolean {
+        val count = rawItemCount()
+        if (count <= 0) {
+            return false
+        }
+        return invoke(
+            "$PLAN_ROOT.missionController.$method",
+            "[{\"latitude\":$latitude,\"longitude\":$longitude,\"altitude\":0}, $count]",
+        )
+    }
+
+    fun appendTakeoff(latitude: Double, longitude: Double): Boolean =
+        appendAt("insertTakeoffItem", latitude, longitude)
+
+    fun appendLanding(latitude: Double, longitude: Double): Boolean =
+        appendAt("insertLandItem", latitude, longitude)
+
     fun setAltitude(index: Int, metres: Double): Boolean =
         runCatching {
             JSONObject(QGCBridge.set("$PLAN_ITEMS.$index.altitude", "{\"value\":$metres}"))
