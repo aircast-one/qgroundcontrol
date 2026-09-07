@@ -10,6 +10,7 @@
 #pragma once
 
 #include <QtCore/QLoggingCategory>
+#include <QtCore/QVariant>
 #include <QtCore/QElapsedTimer>
 
 #include "FactPanelController.h"
@@ -23,6 +24,7 @@ class RadioComponentController : public FactPanelController
     Q_OBJECT
     Q_PROPERTY(int minChannelCount MEMBER _chanMinimum CONSTANT)
     Q_PROPERTY(int channelCount READ channelCount NOTIFY channelCountChanged)
+    Q_PROPERTY(QVariantList rcValues READ rcValues NOTIFY rcValuesChanged)
     Q_PROPERTY(QString statusText READ statusText NOTIFY statusTextChanged)
     Q_PROPERTY(QString nextText READ nextText NOTIFY nextTextChanged)
     Q_PROPERTY(bool nextEnabled READ nextEnabled NOTIFY nextEnabledChanged)
@@ -82,6 +84,7 @@ public:
     bool throttleChannelReversed();
 
     int channelCount() const { return _chanCount; }
+    QVariantList rcValues() const;
 
     QString statusText() const { return _statusText; }
     QString nextText() const { return _nextText; }
@@ -100,6 +103,7 @@ signals:
     void skipEnabledChanged();
 
     void channelCountChanged(int channelCount);
+    void rcValuesChanged();
     void channelRCValueChanged(int channel, int rcValue);
 
     void rollChannelMappedChanged(bool mapped);

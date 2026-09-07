@@ -68,6 +68,17 @@ RadioComponentController *RadioComponentController::forActiveVehicle()
         delete controller;
         controller = new RadioComponentController(QCoreApplication::instance());
         boundVehicle = activeVehicle;
+
+        ParameterManager *const parameterManager = activeVehicle->parameterManager();
+        (void) QObject::connect(parameterManager, &ParameterManager::parametersReadyChanged,
+                                controller, [](bool ready) {
+            if (ready && controller) {
+                controller->start();
+            }
+        });
+        if (parameterManager->parametersReady()) {
+            controller->start();
+        }
     }
 
     return controller;
@@ -211,6 +222,16 @@ void RadioComponentController::_setupCurrentState()
     _setSkipEnabled(state->skipFn != nullptr);
 }
 
+QVariantList RadioComponentController::rcValues() const
+{
+    QVariantList values;
+    values.reserve(_chanCount);
+    for (int channel = 0; channel < _chanCount; channel++) {
+        values.append(_rcRawValue[channel]);
+    }
+    return values;
+}
+
 void RadioComponentController::_rcChannelsChanged(int channelCount, int pwmValues[QGCMAVLink::maxRcChannels])
 {
     // Below is a hack that's needed by ELRS
@@ -231,6 +252,7 @@ void RadioComponentController::_rcChannelsChanged(int channelCount, int pwmValue
 
             _rcRawValue[channel] = channelValue;
             emit channelRCValueChanged(channel, channelValue);
+            emit rcValuesChanged();
 
             // Signal attitude rc values to Qml if mapped
             if (_rgChannelInfo[channel].function != rcCalFunctionMax) {
