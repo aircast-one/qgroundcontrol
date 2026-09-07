@@ -128,11 +128,14 @@ own activity the screen stopped polling when it went away; hosted as a tab it st
 the app is in the background, so the loop is gated on the lifecycle. Measured on the phone: ten
 polls in seven seconds in the foreground, none at all backgrounded, ten again on resume.
 
-**A drag delivers touches faster than the bridge can answer.** Writing a move per touch event
-floods the bridge with overlapping blocking calls whose completion order is not guaranteed, so the
-item can settle somewhere the finger never was. Intermediate positions are dropped on an interval
-and the release always writes the real one, which keeps the final position exact whatever the
-throttle skipped.
+**A drag may deliver touches faster than the bridge can answer — unconfirmed.** Writing a move per
+touch event would flood the bridge with overlapping blocking calls whose completion order is not
+guaranteed, letting the item settle somewhere the finger never was. Intermediate positions are
+dropped on an interval and the release always writes the real one, so the final position is exact
+whatever the throttle skipped, which is worth having either way. The rate claim itself is reasoned
+and not measured: a synthetic swipe produced no move, no pan and no selection change, which is
+three outcomes it cannot be at once, so the harness is suspect before the code is. Everything else
+on this page was observed.
 
 **Never call the bridge from the main thread.** Calls block on the Qt thread. Touch handlers and
 button callbacks all go through a background dispatcher.
