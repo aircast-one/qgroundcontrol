@@ -60,6 +60,9 @@ import org.qtproject.qt.android.QtQuickView
 
 private const val QML_URI = "qrc:/qml/QGroundControl/MainWindow/AndroidHost.qml"
 private const val QML_LIBRARY = "AircastQGC"
+private const val QML_DEFAULT_PAGE = "fly"
+private const val QML_DEFAULT_TOOL_SOURCE = ""
+
 private const val WAKE_LOCK_TAG = "Aircast:screen"
 private const val MULTICAST_LOCK_TAG = "Aircast"
 
@@ -173,10 +176,26 @@ fun AircastShell(quickView: QtQuickView) {
         onDispose { listeners.forEach { quickView.disconnectSignalListener(it) } }
     }
 
+    var appliedTool by remember { mutableStateOf(QML_DEFAULT_TOOL_SOURCE) }
+    var appliedPage by remember { mutableStateOf(QML_DEFAULT_PAGE) }
+
     LaunchedEffect(tab, qmlReady) {
         if (!qmlReady) return@LaunchedEffect
-        quickView.setProperty("toolSource", tab.tool)
-        quickView.setProperty("page", tab.page)
+        if (appliedTool != tab.tool) {
+            quickView.setProperty("toolSource", tab.tool)
+            appliedTool = tab.tool
+        }
+        if (appliedPage != tab.page) {
+            quickView.setProperty("page", tab.page)
+            appliedPage = tab.page
+        }
+    }
+
+    DisposableEffect(Unit) {
+        onDispose {
+            appliedTool = QML_DEFAULT_TOOL_SOURCE
+            appliedPage = QML_DEFAULT_PAGE
+        }
     }
 
     MaterialTheme(colorScheme = darkColorScheme()) {
