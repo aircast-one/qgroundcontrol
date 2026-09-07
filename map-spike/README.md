@@ -110,6 +110,20 @@ watcher polls and diffs every path at 200 ms and stops only when told to watch n
 when the position changed, behind an early return, so a vehicle rotating on the spot never updated
 its arrow. The effect is keyed on everything it draws.
 
+**Losing heartbeats is not losing the vehicle, and it catches you twice.** QGC keeps the `Vehicle`
+after the link goes quiet, so nothing that keys on the vehicle disappearing fires. That is why
+clearing the marker on an unusable position never triggers, and it is also why the plan survives:
+`PlanMasterController::_activeVehicleChanged` clears a clean plan with `removeAll()` when the active
+vehicle becomes null, but stopping a vehicle does not make it null. Measured: an uploaded plan of
+two items and 88 transects was still there eighty seconds after the vehicle stopped sending.
+
+**What that handler does, from source and not reproduced.** In the plan view, on an actual vehicle
+change: a dirty plan emits `promptForPlanUsageOnVehicleChange` and waits for a decision, which QML
+answers with a dialog and a native frontend answers with nothing; a clean plan is cleared if the
+vehicle went away, or replaced by the new vehicle's plan if one took over. So a native Plan tab that
+ever sees a real vehicle change will either keep a plan silently associated with a different
+vehicle, or lose a clean one. Neither is reachable by stopping a vehicle.
+
 **A lost link does not make the position unusable.** QGC keeps the `Vehicle` and its last known
 coordinate after heartbeats stop, so `isPlottable` stays true and the marker keeps drawing a live
 looking aircraft at a place it may have left. Clearing on an unusable position is right but never
