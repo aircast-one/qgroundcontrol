@@ -169,7 +169,9 @@ underneath is caught by validating the selection against the plan each poll.
 return void, so `ok` is true whether they worked or not. Measured, all four cases: an unwritable
 save path and a missing load path each came back `ok=true`, exactly like the ones that worked, and
 `plan.currentPlanFile` was the only difference — empty after a failure, holding the path after a
-success. The saved path is also not the path passed: a filename with no dot gets `.plan` appended,
+success. A failed load is not destructive: with a survey in the plan, loading a missing file and
+loading a file that exists but is not a plan both left the item count untouched, so opening the
+wrong document costs nothing but the attempt. The saved path is also not the path passed: a filename with no dot gets `.plan` appended,
 so `/…/probe-plan` was written as `/…/probe-plan.plan`. Anything copying a saved plan back out has
 to use `currentPlanFile` rather than the path it asked for, or it will look for a file that is not
 there.
