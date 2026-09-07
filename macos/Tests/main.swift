@@ -515,6 +515,20 @@ func checkItemFacts() {
         ["name": "TurnAroundDistanceMultiRotor", "property": "turnAroundDistance", "valueString": "10"],
         ["name": "HoverAndCapture", "property": "hoverAndCapture", "valueString": "false", "typeIsBool": true],
     ])
+    let cameraFacts = ItemFact.camera([
+        ["name": "SensorWidth", "property": "sensorWidth", "valueString": "7.6", "units": "mm"],
+        ["name": "FrontalOverlap", "property": "frontalOverlap", "valueString": "70", "units": "%"],
+        ["name": "DistanceToSurface", "property": "distanceToSurface", "valueString": "50", "units": "m"],
+        ["name": "SideOverlap", "property": "sideOverlap", "valueString": "70", "units": "%"],
+        ["name": "ImageDensity", "property": "imageDensity", "valueString": "1.8", "units": "cm/px"],
+    ])
+    expect(cameraFacts.count == 4, "only the four that decide a survey are offered")
+    expect(cameraFacts[0].id, "cameraCalc.distanceToSurface", "a camera fact is addressed through cameraCalc")
+    expect(cameraFacts[0].group, ItemFact.cameraGroup, "and is grouped as camera")
+    expect(!cameraFacts.contains { $0.name == "SensorWidth" }, "camera hardware specs are not survey settings")
+    expect(cameraFacts.map(\.name).joined(separator: ","), ["DistanceToSurface", "ImageDensity", "FrontalOverlap", "SideOverlap"].joined(separator: ","),
+           "they read in the order an operator thinks about them")
+
     expect(identifiers[0].title != "TurnAroundDistanceMultiRotor",
            "an undescribed fact is not shown as a raw identifier")
     expect(identifiers[1].isBool, "a boolean fact is a toggle, not a text field")

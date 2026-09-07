@@ -170,9 +170,12 @@ final class MissionStore: ObservableObject, Probeable {
 
         // A complex item keeps its settings as its own properties rather than in the
         // fact lists a simple item uses.
-        selectedFacts = listed.isEmpty && !item.isSimpleItem
+        let camera = item.isSimpleItem ? [] : ItemFact.camera(
+            (Bridge.group("plan.missionController.visualItems.\(item.index).cameraCalc")["facts"] as? [Any]) ?? [])
+
+        selectedFacts = camera + (listed.isEmpty && !item.isSimpleItem
             ? ItemFact.owned((Bridge.group("plan.missionController.visualItems.\(item.index)")["facts"] as? [Any]) ?? [])
-            : listed
+            : listed)
     }
 
     func setFact(_ fact: ItemFact, to value: String) {
@@ -306,7 +309,9 @@ final class MissionStore: ObservableObject, Probeable {
          "canUndo": canUndo, "canRedo": canRedo,
          "commands": commands.map(\.name),
          "surveys": surveyAreas.map(\.count),
-         "facts": selectedFacts.map { ["name": $0.name, "value": $0.value, "units": $0.units] },
+         "facts": selectedFacts.map {
+             ["name": $0.name, "value": $0.value, "units": $0.units, "group": $0.group, "path": $0.pathSuffix]
+         },
          "terrain": ["points": terrain.points.count, "usable": terrain.usable,
                      "collision": terrain.hasCollision,
                      "unknown": terrain.unknownTerrain,

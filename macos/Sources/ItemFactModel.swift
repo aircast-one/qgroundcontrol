@@ -9,8 +9,17 @@ struct ItemFact: Identifiable, Equatable {
     let units: String
     let options: [String]
     let readOnly: Bool
+    var group = ItemFact.itemGroup
 
     var id: String { pathSuffix }
+
+    static let itemGroup = "Settings"
+    static let cameraGroup = "Camera"
+
+    // A survey is decided by how high it flies, how finely it sees the ground and how
+    // much the images overlap. The rest of cameraCalc describes the camera itself and
+    // belongs with choosing one.
+    static let cameraProperties = ["distanceToSurface", "imageDensity", "frontalOverlap", "sideOverlap"]
 
     private init?(json: Any?, pathSuffix: String) {
         guard let object = json as? [String: Any],
@@ -42,6 +51,18 @@ struct ItemFact: Identifiable, Equatable {
             guard let object = element as? [String: Any],
                   let property = object["property"] as? String, !property.isEmpty else { return nil }
             return ItemFact(json: element, pathSuffix: property)
+        }
+    }
+
+    static func camera(_ elements: [Any]) -> [ItemFact] {
+        cameraProperties.compactMap { wanted in
+            elements.lazy.compactMap { element -> ItemFact? in
+                guard let object = element as? [String: Any],
+                      (object["property"] as? String) == wanted else { return nil }
+                var fact = ItemFact(json: element, pathSuffix: "cameraCalc.\(wanted)")
+                fact?.group = cameraGroup
+                return fact
+            }.first
         }
     }
 

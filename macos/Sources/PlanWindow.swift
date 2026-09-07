@@ -290,11 +290,19 @@ struct PlanInspector: View {
     }
 
     @ViewBuilder private var details: some View {
-        if !mission.selectedFacts.isEmpty {
-            VStack(alignment: .leading, spacing: 0) {
-                SectionLabel(text: "Details")
-                GroupCard {
-                    ForEach(Array(mission.selectedFacts.enumerated()), id: \.element.id) { index, fact in
+        ForEach([ItemFact.cameraGroup, ItemFact.itemGroup], id: \.self) { group in
+            let facts = mission.selectedFacts.filter { $0.group == group }
+            if !facts.isEmpty {
+                factCard(group, facts)
+            }
+        }
+    }
+
+    @ViewBuilder private func factCard(_ group: String, _ facts: [ItemFact]) -> some View {
+        VStack(alignment: .leading, spacing: 0) {
+            SectionLabel(text: group)
+            GroupCard {
+                    ForEach(Array(facts.enumerated()), id: \.element.id) { index, fact in
                         GroupRow(title: fact.title,
                                  showSeparator: index > 0,
                                  titleLines: 2,
@@ -322,7 +330,6 @@ struct PlanInspector: View {
                                          .frame(maxWidth: 150)
                                      }
                                  })
-                    }
                 }
             }
         }
