@@ -10,6 +10,8 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
+import androidx.compose.material3.HorizontalDivider
+import androidx.compose.material3.MenuDefaults
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
@@ -33,14 +35,15 @@ private const val NOTICE_MILLIS = 4000L
 fun PlanTab(modifier: Modifier = Modifier) {
     var notice by remember { mutableStateOf<String?>(null) }
     var menuOpen by remember { mutableStateOf(false) }
-    var confirmOpen by remember { mutableStateOf(false) }
+    var pending by remember { mutableStateOf<PlanConfirm?>(null) }
     val files = rememberPlanFileActions { notice = it }
 
     val dirty by qgcBool("plan.dirty")
     val syncing by qgcBool("plan.syncInProgress")
     val containsItems by qgcBool("plan.containsItems")
     val hasMissionItems by qgcBool("plan.missionController.containsItems")
-    val can = planActions(syncing, containsItems, hasMissionItems)
+    val offline by qgcBool("plan.offline")
+    val can = planActions(syncing, containsItems, hasMissionItems, offline)
 
     LaunchedEffect(notice) {
         if (notice != null) {
@@ -49,16 +52,22 @@ fun PlanTab(modifier: Modifier = Modifier) {
         }
     }
 
-    if (confirmOpen) {
+    pending?.let { kind ->
+        val copy = confirmCopy(kind)
+        val act = when (kind) {
+            PlanConfirm.Open -> files.open
+            PlanConfirm.NewPlan -> files.newPlan
+            PlanConfirm.ClearMission -> files.clearMission
+        }
         AlertDialog(
-            onDismissRequest = { confirmOpen = false },
-            title = { Text("Discard unsaved changes?") },
-            text = { Text("Opening a plan replaces the one you have. Your unsaved changes cannot be recovered.") },
+            onDismissRequest = { pending = null },
+            title = { Text(copy.title) },
+            text = { Text(copy.body) },
             confirmButton = {
-                TextButton(onClick = { confirmOpen = false; files.open() }) { Text("Discard and open") }
+                TextButton(onClick = { pending = null; act() }) { Text(copy.confirm) }
             },
             dismissButton = {
-                TextButton(onClick = { confirmOpen = false }) { Text("Keep editing") }
+                TextButton(onClick = { pending = null }) { Text("Keep editing") }
             },
         )
     }
@@ -71,7 +80,7 @@ fun PlanTab(modifier: Modifier = Modifier) {
         ) {
             TextButton(
                 enabled = can.open,
-                onClick = { if (dirty) confirmOpen = true else files.open() },
+                onClick = { if (dirty) pending = PlanConfirm.Open else files.open() },
             ) { Text("Open") }
             TextButton(enabled = can.save, onClick = files.save) { Text("Save") }
             Box {
@@ -86,6 +95,21 @@ fun PlanTab(modifier: Modifier = Modifier) {
                         text = { Text("Export KML…") },
                         enabled = can.exportKml,
                         onClick = { menuOpen = false; files.exportKml() },
+                    )
+                    HorizontalDivider()
+                    DropdownMenuItem(
+                        text = { Text("New plan") },
+                        enabled = can.newPlan,
+                        onClick = {
+                            menuOpen = false
+                            if (dirty) pending = PlanConfirm.NewPlan else files.newPlan()
+                        },
+                    )
+                    DropdownMenuItem(
+                        text = { Text("Clear mission") },
+                        enabled = can.clearMission,
+                        colors = MenuDefaults.itemColors(textColor = MaterialTheme.colorScheme.error),
+                        onClick = { menuOpen = false; pending = PlanConfirm.ClearMission },
                     )
                 }
             }

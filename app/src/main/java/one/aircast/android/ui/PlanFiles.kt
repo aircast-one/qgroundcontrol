@@ -28,14 +28,26 @@ internal val PLAN_OPEN_TYPES = arrayOf(PLAN_MIME)
 internal const val DEFAULT_PLAN_NAME = "mission.plan"
 internal const val DEFAULT_KML_NAME = "mission.kml"
 
-data class PlanActions(val open: Boolean, val save: Boolean, val exportKml: Boolean)
+data class PlanActions(
+    val open: Boolean,
+    val save: Boolean,
+    val exportKml: Boolean,
+    val newPlan: Boolean,
+    val clearMission: Boolean,
+)
 
-internal fun planActions(syncing: Boolean, containsItems: Boolean, hasMissionItems: Boolean) =
-    PlanActions(
-        open = !syncing,
-        save = !syncing && containsItems,
-        exportKml = !syncing && hasMissionItems,
-    )
+internal fun planActions(
+    syncing: Boolean,
+    containsItems: Boolean,
+    hasMissionItems: Boolean,
+    offline: Boolean,
+) = PlanActions(
+    open = !syncing,
+    save = !syncing && containsItems,
+    exportKml = !syncing && hasMissionItems,
+    newPlan = !syncing,
+    clearMission = !offline && !syncing,
+)
 
 internal const val READY_FOR_SAVE = 0
 internal const val NOT_READY_TERRAIN = 1
@@ -46,6 +58,28 @@ internal fun saveBlockedReason(state: Int?): String? = when (state) {
     NOT_READY_TERRAIN -> "Waiting on terrain data. Saving now would store wrong altitudes."
     NOT_READY_DATA -> "Some items still need a position or a value."
     else -> "The plan could not be checked for saving."
+}
+
+enum class PlanConfirm { Open, NewPlan, ClearMission }
+
+data class ConfirmCopy(val title: String, val body: String, val confirm: String)
+
+internal fun confirmCopy(kind: PlanConfirm): ConfirmCopy = when (kind) {
+    PlanConfirm.Open -> ConfirmCopy(
+        "Discard unsaved changes?",
+        "Opening a plan replaces the one you have. Your unsaved changes cannot be recovered.",
+        "Discard and open",
+    )
+    PlanConfirm.NewPlan -> ConfirmCopy(
+        "Discard unsaved changes?",
+        "Starting a new plan clears the one you have. Your unsaved changes cannot be recovered.",
+        "Discard and start new",
+    )
+    PlanConfirm.ClearMission -> ConfirmCopy(
+        "Clear the mission from the vehicle?",
+        "This removes the mission from the aircraft as well as from this plan. It cannot be undone.",
+        "Clear mission",
+    )
 }
 
 internal fun planStatusText(name: String?, dirty: Boolean): String = when {
@@ -60,6 +94,8 @@ class PlanFileActions(
     val saveAs: () -> Unit,
     val save: () -> Unit,
     val exportKml: () -> Unit,
+    val newPlan: () -> Unit,
+    val clearMission: () -> Unit,
     val documentName: () -> String?,
 )
 
@@ -107,6 +143,23 @@ fun rememberPlanFileActions(onResult: (String) -> Unit = {}): PlanFileActions {
         document.value = uri
         scope.launch {
             name.value = withContext(Dispatchers.IO) { displayName(context, uri) }
+        }
+    }
+
+    fun forget() {
+        document.value = null
+        name.value = null
+    }
+
+    fun discard(method: String, success: String, failure: String) {
+        scope.launch {
+            val ok = withContext(Dispatchers.Default) { Qgc.invoke("$PLAN_ROOT.$method") }
+            if (ok) {
+                forget()
+                onResult(success)
+            } else {
+                onResult(failure)
+            }
         }
     }
 
@@ -198,6 +251,14 @@ fun rememberPlanFileActions(onResult: (String) -> Unit = {}): PlanFileActions {
                 }
             },
             exportKml = { guarded { kmlCreator.launch(DEFAULT_KML_NAME) } },
+            newPlan = { discard("removeAll", "New plan.", "The plan could not be cleared.") },
+            clearMission = {
+                discard(
+                    "removeAllFromVehicle",
+                    "Mission cleared from the vehicle.",
+                    "The mission could not be cleared from the vehicle.",
+                )
+            },
             documentName = { name.value },
         )
     }

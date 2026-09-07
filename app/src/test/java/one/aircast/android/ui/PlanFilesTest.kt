@@ -60,21 +60,28 @@ class PlanStatusTest {
 }
 
 class PlanActionsTest {
+    private fun actions(
+        syncing: Boolean = false,
+        containsItems: Boolean = true,
+        hasMissionItems: Boolean = true,
+        offline: Boolean = false,
+    ) = planActions(syncing, containsItems, hasMissionItems, offline)
+
     @Test
     fun `an empty plan cannot be saved over a real one`() {
-        val can = planActions(syncing = false, containsItems = false, hasMissionItems = false)
+        val can = actions(containsItems = false, hasMissionItems = false)
         assertEquals(false, can.save)
         assertEquals(false, can.exportKml)
     }
 
     @Test
     fun `opening stays available on an empty plan, because that is how you get one`() {
-        assertEquals(true, planActions(false, containsItems = false, hasMissionItems = false).open)
+        assertEquals(true, actions(containsItems = false, hasMissionItems = false).open)
     }
 
     @Test
     fun `nothing is offered while a sync is in progress`() {
-        val can = planActions(syncing = true, containsItems = true, hasMissionItems = true)
+        val can = actions(syncing = true)
         assertEquals(false, can.open)
         assertEquals(false, can.save)
         assertEquals(false, can.exportKml)
@@ -82,16 +89,55 @@ class PlanActionsTest {
 
     @Test
     fun `a fence-only plan saves but exports no KML, because saveToKml writes only the mission`() {
-        val can = planActions(syncing = false, containsItems = true, hasMissionItems = false)
+        val can = actions(hasMissionItems = false)
         assertEquals(true, can.save)
         assertEquals(false, can.exportKml)
     }
 
     @Test
     fun `a plan with mission items offers everything`() {
-        val can = planActions(syncing = false, containsItems = true, hasMissionItems = true)
+        val can = actions()
         assertEquals(true, can.open)
         assertEquals(true, can.save)
         assertEquals(true, can.exportKml)
+    }
+}
+
+class DestructiveActionsTest {
+    @Test
+    fun `a mission cannot be cleared from a vehicle that is not there`() {
+        assertEquals(false, planActions(false, true, true, offline = true).clearMission)
+        assertEquals(true, planActions(false, true, true, offline = false).clearMission)
+    }
+
+    @Test
+    fun `a sync in progress stops the mission being cleared`() {
+        assertEquals(false, planActions(true, true, true, offline = false).clearMission)
+    }
+
+    @Test
+    fun `starting a new plan stays available with no vehicle and an empty plan`() {
+        assertEquals(true, planActions(false, containsItems = false, hasMissionItems = false, offline = true).newPlan)
+    }
+
+    @Test
+    fun `clearing the vehicle says it touches the aircraft, not just the plan`() {
+        val copy = confirmCopy(PlanConfirm.ClearMission)
+        assertEquals(true, copy.body.contains("aircraft"))
+        assertEquals("Clear mission", copy.confirm)
+    }
+
+    @Test
+    fun `each confirmation names the act rather than saying OK`() {
+        listOf(PlanConfirm.Open, PlanConfirm.NewPlan, PlanConfirm.ClearMission)
+            .map { confirmCopy(it).confirm }
+            .forEach { assertEquals("vague confirm label: $it", false, it in listOf("OK", "Yes", "Confirm")) }
+    }
+
+    @Test
+    fun `the two discarding actions warn that the loss is permanent`() {
+        listOf(PlanConfirm.Open, PlanConfirm.NewPlan)
+            .map { confirmCopy(it).body }
+            .forEach { assertEquals("no warning in: $it", true, it.contains("cannot be recovered")) }
     }
 }
