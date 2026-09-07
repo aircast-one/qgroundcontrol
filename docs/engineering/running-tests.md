@@ -35,19 +35,34 @@ timeouts and fail when the machine is loaded. Reading a full-run failure as a
 regression, or waving one away as "just a flake", have both wasted real time. A
 `LOAD FLAKE` verdict is reported but does not fail the run; `REAL` does.
 
-**It knows what a complete run looks like.** The suite has been observed dying
-partway through — exit 1, no crash report, output stopping mid-suite. A
-truncated run still ends in a plausible-looking "222 passed, 0 failed", which
-has twice been reported as green. The runner now reads the active
-`UT_REGISTER_TEST` entries out of `test/UnitTestList.cc`, compares them against
-the suites that actually reported, and leads with
+**It knows what a complete run looks like.** The suite was for a long time
+observed dying partway through, and a truncated run still ends in a
+plausible-looking "222 passed, 0 failed" — reported as green more than once. The
+runner reads the active `UT_REGISTER_TEST` entries out of `test/UnitTestList.cc`,
+compares them against the suites that actually reported, and leads with
 
-    INCOMPLETE RUN - 47 of 80 suites never ran (binary exited 1).
+    INCOMPLETE RUN - 62 of 80 suites never ran.
+      why: killed with SIGKILL from outside the process...
       stopped after: ParameterManagerTest
       did not run: ...
       do not read the totals below as a pass.
 
 Exit code is `3` for an incomplete run, distinct from `1` for a real failure.
+
+**It runs from a clone that other sessions cannot kill.** That truncation had one
+cause, and it was never the tests. Parallel sessions on this machine run
+`tools/macos/build-run.sh`, whose first act is
+`pkill -9 -f 'build-test/Debug/AircastQGC.app'` — which matches the command line
+of a unit-test run out of that same tree. Any parallel build killed the suite
+mid-run. It looked like a flaky, load-dependent, SITL-dependent crash, and was
+blamed on all three; none of them were it. The tell was the exit code: SIGKILL is
+never raised by a crash, only by another process.
+
+So the runner copies the app bundle to `$TMPDIR/qgc-testrun-<pid>/QGCSuite<pid>.app`
+and runs that. `QGCSuite` alone is not enough — `tools/macos/run-tests.sh` opens
+with `pkill -9 -x QGCSuite`, so the name carries the PID. Clones older than an
+hour are swept on the next run, because `codesign --force` breaks APFS reflink
+dedup and each one is a full ~100 MB copy.
 
 **It keeps history.** Each full run appends a line to
 `build-test/test-history.jsonl`, so `--history` can tell you a suite has flaked
@@ -71,8 +86,9 @@ The runner checks UDP 14550 before starting and prints a warning naming the
 holder, but it does not refuse to run — sometimes you only want a suite that
 does not touch links.
 
-With the port free the whole suite passes: 573 tests, 80 suites, no failures.
-Every "flake" previously blamed on machine load was this.
+With the port free the whole suite passes: 576 tests, 80 suites, no failures.
+The link-suite failures previously blamed on machine load were this. The
+*truncation* blamed on it was not — see the clone above.
 
 ## Testing the runner
 

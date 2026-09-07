@@ -9,4 +9,7 @@ class LinkDuplicateConnectTest : public UnitTest
 private slots:
     void _connectingTwiceReusesTheSameLink();
     void _oneDisconnectClosesTheConfiguration();
+    void _disconnectingADynamicLinkRemovesItsConfiguration();
+    void _createAndConnectLinkRefusesADuplicateName();
+    void _createAndConnectLinkConnectsAndRegisters();
 };

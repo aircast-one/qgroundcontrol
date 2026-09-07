@@ -1,7 +1,9 @@
 #!/usr/bin/env python3
 import argparse
 import json
+import os
 import re
+import shutil
 import subprocess
 import sys
 import time
@@ -12,6 +14,11 @@ from pathlib import Path
 REPO = Path(__file__).resolve().parents[1]
 TEST_BUILD = REPO / "build-test"
 TEST_APP = TEST_BUILD / "Debug/AircastQGC.app/Contents/MacOS/AircastQGC"
+SUITE_NAME = f"QGCSuite{os.getpid()}"
+STAGE_ROOT = Path(os.environ.get("TMPDIR", "/tmp"))
+STAGE = STAGE_ROOT / f"qgc-testrun-{os.getpid()}"
+CLONE = STAGE / f"{SUITE_NAME}.app"
+CLONE_BIN = CLONE / f"Contents/MacOS/{SUITE_NAME}"
 HISTORY = REPO / "build-test/test-history.jsonl"
 UNIT_TEST_LIST = REPO / "test/UnitTestList.cc"
 
@@ -61,8 +68,30 @@ def missing_suites(summary):
     return [name for name in expected if name not in ran]
 
 
+def sweep_old_clones():
+    for stale in STAGE_ROOT.glob("qgc-testrun-*"):
+        if stale != STAGE and time.time() - stale.stat().st_mtime > 3600:
+            shutil.rmtree(stale, ignore_errors=True)
+
+
+def refresh_clone():
+    if CLONE_BIN.exists() and CLONE_BIN.stat().st_mtime >= TEST_APP.stat().st_mtime:
+        return CLONE_BIN
+    sweep_old_clones()
+    shutil.rmtree(STAGE, ignore_errors=True)
+    STAGE.mkdir(parents=True, exist_ok=True)
+    subprocess.run(["cp", "-Rc", str(TEST_APP.parents[2]), str(CLONE)], check=True)
+    (CLONE / "Contents/MacOS/AircastQGC").rename(CLONE_BIN)
+    subprocess.run(["/usr/libexec/PlistBuddy", "-c", f"Set :CFBundleExecutable {SUITE_NAME}",
+                    str(CLONE / "Contents/Info.plist")], capture_output=True)
+    subprocess.run(["codesign", "--force", "--sign", "-", "--timestamp=none", str(CLONE)],
+                   capture_output=True)
+    return CLONE_BIN
+
+
 def run_suite(name):
-    args = [str(TEST_APP), "--allow-multiple", f"--unittest:{name}" if name else "--unittest"]
+    binary = refresh_clone()
+    args = [str(binary), "--allow-multiple", f"--unittest:{name}" if name else "--unittest"]
     started = time.monotonic()
     proc = subprocess.run(args, capture_output=True, text=True, timeout=3600)
     return proc.stdout + proc.stderr, time.monotonic() - started, proc.returncode
@@ -150,11 +179,31 @@ def record(summary, verdicts, incomplete=False):
     return entry
 
 
+SIGNAL_CAUSE = {
+    -9: "killed with SIGKILL from outside the process. Nothing failed and nothing "
+        "crashed - SIGKILL is never raised by a crash. On this machine it is a parallel "
+        "session's pkill: tools/macos/build-run.sh kills -f 'build-test/Debug/"
+        "AircastQGC.app' and tools/macos/run-tests.sh kills -x QGCSuite. This runner now "
+        "executes a clone named per-PID so neither pattern can match it; if you still see "
+        "this, find the pattern that matches "
+        + SUITE_NAME + ".",
+    -11: "crashed (SIGSEGV). This is a real defect, not a flake.",
+    -6: "aborted (SIGABRT) - an assertion or unhandled exception.",
+}
+
+
+def why_it_stopped(exit_code):
+    if exit_code in SIGNAL_CAUSE:
+        return SIGNAL_CAUSE[exit_code]
+    return f"binary exited {exit_code}"
+
+
 def report(summary, verdicts, history, stale, contention=None, missing=(), exit_code=0):
     lines = []
     if missing:
         lines.append(f"INCOMPLETE RUN - {len(missing)} of {len(missing) + len(summary['suites'])} "
-                     f"suites never ran (binary exited {exit_code}).")
+                     f"suites never ran.")
+        lines.append(f"  why: {why_it_stopped(exit_code)}")
         lines.append(f"  stopped after: {summary['suites'][-1] if summary['suites'] else 'nothing'}")
         lines.append(f"  did not run: {', '.join(missing[:6])}"
                      + (f" and {len(missing) - 6} more" if len(missing) > 6 else ""))

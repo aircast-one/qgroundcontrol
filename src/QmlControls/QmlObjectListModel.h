@@ -43,7 +43,7 @@ public:
     QObjectList swapObjectList      (const QObjectList& newlist);
     void        clear               ();
     QObject*    removeAt            (int i);
-    QObject*    removeOne           (const QObject* object) { return removeAt(indexOf(object)); }
+    QObject*    removeOne           (const QObject* object) { const int i = indexOf(object); return (i < 0) ? nullptr : removeAt(i); }
     void        insert              (int i, QObject* object);
     void        insert              (int i, QList<QObject*> objects);
     bool        contains            (const QObject* object) { return _objectList.indexOf(object) != -1; }

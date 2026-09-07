@@ -111,6 +111,20 @@ def test_report_refuses_to_call_a_truncated_run_a_pass():
     assert "do not read the totals below as a pass" in text, text
 
 
+def test_a_sigkill_is_explained_as_an_outside_kill_not_a_failure():
+    summary = {"passed": 409, "failed": 0, "skipped": 0, "suites": ["A", "PipViewTest"], "durations": {}}
+    text = runner.report(summary, {}, [], None, None, missing=["VideoTileTest"], exit_code=-9)
+    assert "SIGKILL" in text, text
+    assert "Nothing failed" in text, text
+    assert "build-run.sh" in text, text
+
+
+def test_an_unknown_exit_code_still_reports_the_number():
+    summary = {"passed": 1, "failed": 0, "skipped": 0, "suites": ["A"], "durations": {}}
+    text = runner.report(summary, {}, [], None, None, missing=["B"], exit_code=1)
+    assert "binary exited 1" in text, text
+
+
 def test_expected_suites_reads_the_real_list():
     names = runner.expected_suites()
     assert len(names) > 50, len(names)

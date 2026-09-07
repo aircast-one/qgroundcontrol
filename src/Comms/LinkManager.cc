@@ -307,12 +307,16 @@ void LinkManager::_linkDisconnected()
 
     for (auto it = _rgLinks.begin(); it != _rgLinks.end(); ++it) {
         if (it->get() == link) {
-            qCDebug(LinkManagerLog) << Q_FUNC_INFO << it->get()->linkConfiguration()->name() << it->use_count();
+            const SharedLinkConfigurationPtr config = it->get()->linkConfiguration();
+            qCDebug(LinkManagerLog) << Q_FUNC_INFO << config->name() << it->use_count();
             (void) _rgLinks.erase(it);
             emit connectingLinkNameChanged();
             if (connectingLinkName().isEmpty()) {
                 _connectingStallTimer->stop();
                 _setConnectingStalled(false);
+            }
+            if (config && config->isDynamic()) {
+                _removeConfiguration(config.get());
             }
             return;
         }
@@ -710,6 +714,47 @@ void LinkManager::removeConfiguration(LinkConfiguration *config)
 
     _removeConfiguration(config);
     saveLinkConfigurationList();
+}
+
+bool LinkManager::createAndConnectLink(const QString &type, const QString &name, const QString &host, int port)
+{
+    if (name.isEmpty() || (port <= 0) || (port > 65535)) {
+        qCWarning(LinkManagerLog) << "createAndConnectLink: bad name or port" << name << port;
+        return false;
+    }
+
+    for (const SharedLinkConfigurationPtr &existing : std::as_const(_rgLinkConfigs)) {
+        if (existing->name() == name) {
+            qCWarning(LinkManagerLog) << "createAndConnectLink: name already in use" << name;
+            return false;
+        }
+    }
+
+    LinkConfiguration *config = nullptr;
+    if (type.compare(QStringLiteral("udp"), Qt::CaseInsensitive) == 0) {
+        UDPConfiguration *const udpConfig = new UDPConfiguration(name);
+        udpConfig->setLocalPort(static_cast<quint16>(port));
+        if (!host.isEmpty()) {
+            udpConfig->addHost(host, static_cast<quint16>(port));
+        }
+        config = udpConfig;
+    } else if (type.compare(QStringLiteral("tcp"), Qt::CaseInsensitive) == 0) {
+        if (host.isEmpty()) {
+            qCWarning(LinkManagerLog) << "createAndConnectLink: TCP needs a host";
+            return false;
+        }
+        TCPConfiguration *const tcpConfig = new TCPConfiguration(name);
+        tcpConfig->setHost(host);
+        tcpConfig->setPort(static_cast<quint16>(port));
+        config = tcpConfig;
+    } else {
+        qCWarning(LinkManagerLog) << "createAndConnectLink: unsupported type" << type;
+        return false;
+    }
+
+    SharedLinkConfigurationPtr shared = addConfiguration(config);
+    saveLinkConfigurationList();
+    return createConnectedLink(shared);
 }
 
 void LinkManager::createMavlinkForwardingSupportLink()
