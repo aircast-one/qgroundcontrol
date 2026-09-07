@@ -387,6 +387,132 @@ struct TuningView: View {
     }
 }
 
+struct RadioView: View {
+    @ObservedObject var store: RadioStore
+
+    var body: some View {
+        SetupPageBody(title: "Radio",
+                      note: "What the transmitter is sending, and the calibration that teaches the vehicle its limits.") {
+            GroupCard {
+                GroupRow(title: store.state.summary, showSeparator: false,
+                         leading: {
+                             Image(systemName: store.state.channelCount > 0
+                                 ? "antenna.radiowaves.left.and.right" : "antenna.radiowaves.left.and.right.slash")
+                                 .foregroundColor(store.state.channelCount > 0 ? .green : .secondary)
+                         })
+            }
+
+            if !store.state.shortfall.isEmpty {
+                Label(store.state.shortfall, systemImage: "exclamationmark.triangle.fill")
+                    .font(.callout)
+                    .foregroundColor(.orange)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+
+            VStack(alignment: .leading, spacing: 0) {
+                SectionLabel(text: "Calibration")
+                GroupCard {
+                    GroupRow(title: "Transmitter mode",
+                             description: "Which stick carries throttle",
+                             showSeparator: false,
+                             trailing: {
+                                 Picker("", selection: Binding(
+                                     get: { store.state.transmitterMode },
+                                     set: { store.setTransmitterMode($0) })
+                                 ) {
+                                     Text("Mode 1").tag(1)
+                                     Text("Mode 2").tag(2)
+                                 }
+                                 .labelsHidden()
+                                 .frame(width: 120)
+                                 .disabled(store.state.calibrating)
+                             })
+                    GroupRow(title: "Stick calibration",
+                             description: store.state.statusText.isEmpty
+                                 ? "Move every stick and switch through its full travel when asked."
+                                 : store.state.statusText,
+                             titleLines: 1,
+                             trailing: {
+                                 HStack(spacing: Overlay.step) {
+                                     if store.state.skipEnabled {
+                                         Button("Skip", action: store.skip)
+                                     }
+                                     if store.state.cancelEnabled {
+                                         Button("Cancel", action: store.cancel)
+                                     }
+                                     Button(store.state.nextText.isEmpty ? "Start" : store.state.nextText,
+                                            action: store.next)
+                                         .disabled(!store.state.nextEnabled)
+                                 }
+                             })
+                }
+            }
+
+            if !store.state.sticks.isEmpty {
+                VStack(alignment: .leading, spacing: 0) {
+                    SectionLabel(text: "Sticks")
+                    GroupCard {
+                        ForEach(Array(store.state.sticks.enumerated()), id: \.element.id) { row, stick in
+                            GroupRow(title: stick.title,
+                                     description: stick.reversed ? "Reversed" : "",
+                                     showSeparator: row > 0,
+                                     trailing: {
+                                         HStack(spacing: Overlay.step) {
+                                             RadioBar(fraction: stick.fraction, live: stick.mapped)
+                                             Text(stick.valueText)
+                                                 .font(.caption.monospacedDigit())
+                                                 .foregroundColor(Overlay.value)
+                                                 .frame(width: 74, alignment: .trailing)
+                                         }
+                                     })
+                        }
+                    }
+                }
+            }
+
+            if !store.state.liveChannels.isEmpty {
+                VStack(alignment: .leading, spacing: 0) {
+                    SectionLabel(text: "Channels")
+                    GroupCard {
+                        ForEach(Array(store.state.liveChannels.enumerated()), id: \.element.id) { row, channel in
+                            GroupRow(title: "Channel \(channel.label)",
+                                     showSeparator: row > 0,
+                                     trailing: {
+                                         HStack(spacing: Overlay.step) {
+                                             RadioBar(fraction: channel.fraction, live: true)
+                                             Text(channel.valueText)
+                                                 .font(.caption.monospacedDigit())
+                                                 .foregroundColor(Overlay.value)
+                                                 .frame(width: 74, alignment: .trailing)
+                                         }
+                                     })
+                        }
+                    }
+                }
+            }
+        }
+        .onAppear(perform: store.start)
+        .onDisappear(perform: store.stop)
+    }
+}
+
+struct RadioBar: View {
+    let fraction: Double
+    let live: Bool
+
+    var body: some View {
+        GeometryReader { geometry in
+            ZStack(alignment: .leading) {
+                Capsule().fill(Color.primary.opacity(0.12))
+                Capsule()
+                    .fill(live ? Color.accentColor : Color.secondary.opacity(0.5))
+                    .frame(width: max(3, geometry.size.width * fraction))
+            }
+        }
+        .frame(width: 150, height: 7)
+    }
+}
+
 struct FrameView: View {
     @ObservedObject var store: ParametersStore
     @ObservedObject var frame: FrameStore
@@ -614,7 +740,7 @@ struct SetupSummaryView: View {
 }
 
 enum SetupPage {
-    static let all = ["Summary", "Sensors", "Frame", "Flight Modes", "Safety", "Power", "Tuning", "Camera", "Parameters"]
+    static let all = ["Summary", "Sensors", "Radio", "Frame", "Flight Modes", "Safety", "Power", "Tuning", "Camera", "Parameters"]
 
     static func symbol(for page: String) -> String {
         switch page {
@@ -653,6 +779,7 @@ struct VehicleSetupView: View {
     @ObservedObject var components: VehicleComponentsStore
     @ObservedObject var power: PowerStore
     @ObservedObject var frame: FrameStore
+    @ObservedObject var radio: RadioStore
     @ObservedObject var selection: PageSelection
 
     var body: some View {
@@ -666,6 +793,7 @@ struct VehicleSetupView: View {
                 }
                 Section("Setup") {
                     row("Sensors", badge: !sensors.failing.isEmpty)
+                    row("Radio")
                     row("Frame")
                     row("Flight Modes")
                     row("Safety")
@@ -703,6 +831,7 @@ struct VehicleSetupView: View {
         case "Safety": SafetyView(store: parameters)
         case "Power": PowerView(store: parameters, power: power)
         case "Frame": FrameView(store: parameters, frame: frame)
+        case "Radio": RadioView(store: radio)
         case "Tuning": TuningView(store: parameters)
         case "Camera": CameraView(store: parameters)
         case "Flight Modes": FlightModesView(store: parameters)
@@ -720,6 +849,7 @@ final class VehicleSetupWindow: NSObject, NSWindowDelegate {
     private let components = VehicleComponentsStore()
     private let power = PowerStore()
     private let frame = FrameStore()
+    private let radio = RadioStore()
     private let selection = PageSelection(owner: "vehicleSetup", pages: SetupPage.all)
     private var window: NSWindow?
 
@@ -730,6 +860,7 @@ final class VehicleSetupWindow: NSObject, NSWindowDelegate {
         NativeProbe.register(components)
         NativeProbe.register(power)
         NativeProbe.register(frame)
+        NativeProbe.register(radio)
         NativeProbe.register(selection, as: selection.identifier)
     }
 
@@ -753,7 +884,7 @@ final class VehicleSetupWindow: NSObject, NSWindowDelegate {
         window.delegate = self
         window.contentView = NSHostingView(rootView: VehicleSetupView(
             parameters: parameters, sensors: sensors, components: components,
-            power: power, frame: frame, selection: selection))
+            power: power, frame: frame, radio: radio, selection: selection))
         window.center()
         window.makeKeyAndOrderFront(nil)
         self.window = window

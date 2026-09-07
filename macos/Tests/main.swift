@@ -867,6 +867,61 @@ func checkAbout() {
 
 checkAbout()
 
+func checkRadio() {
+    expect(!Radio.read(["kind": "value"]).connected, "with no controller there is no radio page to fill")
+
+    expect(Radio.property("throttle", "RCValue"), "throttleChannelRCValue",
+           "stick properties are derived from the key, matching what the controller exposes")
+    expect(Radio.property("roll", "Mapped"), "rollChannelMapped", "for every suffix")
+
+    expect(RadioState.fraction(1000) == 0, "the low end of the travel is the left of the bar")
+    expect(RadioState.fraction(2000) == 1, "and the high end fills it")
+    expect(RadioState.fraction(1500) == 0.5, "centre sits in the middle")
+    expect(RadioState.fraction(0) == 0, "a channel carrying nothing is empty, not centred")
+    expect(RadioState.fraction(2500) == 1, "a value beyond the travel is clamped rather than overflowing")
+    expect(RadioState.fraction(500) == 0, "at both ends")
+
+    let live: [String: Any] = [
+        "kind": "object", "channelCount": 16, "minChannelCount": 5,
+        "rcValues": [1500, 1500, 1000, 1500, 1800, 1000, 1000, 1800, 0, 0],
+        "rollChannelMapped": true, "rollChannelRCValue": 1500,
+        "pitchChannelMapped": true, "pitchChannelRCValue": 1500,
+        "yawChannelMapped": true, "yawChannelRCValue": 1500, "yawChannelReversed": 1,
+        "throttleChannelMapped": true, "throttleChannelRCValue": 1000,
+        "nextText": "Calibrate", "nextEnabled": true, "transmitterMode": 2,
+    ]
+    let state = Radio.read(live)
+    expect(state.channelCount == 16, "the reported channel count is kept")
+    expect(state.liveChannels.count == 8,
+           "only channels carrying a signal are listed; the silent ones are not drawn as empty bars")
+    expect(state.summary, "16 channels reported, 8 carrying a signal.", "and the summary says both")
+    expect(state.enoughChannels, "sixteen is more than the five needed to fly")
+    expect(state.shortfall, "", "so nothing is wanting")
+    expect(!state.calibrating, "an idle controller is not calibrating")
+
+    expect(state.sticks.map(\.title).joined(separator: ","), "Roll,Pitch,Yaw,Throttle",
+           "the four sticks are named in the order a pilot reads them")
+    expect(state.sticks[3].valueText, "1000", "throttle down reads as its pulse width")
+    expect(state.sticks[2].reversed, "a reversed channel is marked")
+    expect(!state.sticks[0].reversed, "and an unreversed one is not")
+
+    let thin = Radio.read(["kind": "object", "channelCount": 4, "minChannelCount": 5])
+    expect(!thin.enoughChannels, "four channels is not enough to fly")
+    expect(thin.shortfall, "At least 5 channels are needed to fly; the transmitter reports 4.",
+           "and the page says so in the pilot's terms")
+
+    let silent = Radio.read(["kind": "object", "channelCount": 0, "minChannelCount": 5])
+    expect(silent.summary, "No transmitter is being heard.",
+           "a vehicle with no transmitter says that rather than reporting zero channels")
+    expect(silent.shortfall, "", "and is not also scolded for having too few")
+
+    let unmapped = Radio.sticks(from: ["kind": "object"])
+    expect(unmapped[0].valueText, "Not mapped",
+           "a stick with no channel assigned says so instead of showing a dash")
+}
+
+checkRadio()
+
 func checkLogReplayLink() {
     let empty = LinkConfig(index: 0, json: ["linkType": "TypeLogReplay", "name": "Replay"])
     expect(empty.editing == .logFile, "a log replay link is edited by choosing a file")
