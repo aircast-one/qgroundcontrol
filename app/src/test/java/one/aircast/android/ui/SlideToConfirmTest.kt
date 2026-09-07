@@ -85,3 +85,60 @@ class TelemetryFormatTest {
         assertEquals("356", telemetryValue(fact("heading", "Heading", "", "356")))
     }
 }
+
+class GuidedAvailabilityTest {
+    private fun availability(
+        armed: Boolean = true,
+        flying: Boolean = true,
+        guided: Boolean = true,
+        takeoff: Boolean = true,
+        fixedWing: Boolean = false,
+        mode: String = "Guided",
+    ) = guidedAvailability(armed, flying, guided, takeoff, fixedWing, mode)
+
+    @Test
+    fun `takeoff is offered only when the vehicle is on the ground`() {
+        assertTrue(availability(flying = false).takeoff)
+        assertFalse(availability(flying = true).takeoff)
+    }
+
+    @Test
+    fun `takeoff is not offered by a vehicle that cannot take off`() {
+        assertFalse(availability(flying = false, takeoff = false).takeoff)
+    }
+
+    @Test
+    fun `land needs an armed vehicle that is not a fixed wing`() {
+        assertTrue(availability().land)
+        assertFalse(availability(armed = false).land)
+        assertFalse(availability(fixedWing = true).land)
+        assertFalse(availability(guided = false).land)
+    }
+
+    @Test
+    fun `land is not offered while already landing`() {
+        assertFalse(availability(mode = "Land").land)
+        assertFalse(availability(mode = "land").land)
+    }
+
+    @Test
+    fun `return needs an armed vehicle that is flying`() {
+        assertTrue(availability().rtl)
+        assertFalse(availability(flying = false).rtl)
+        assertFalse(availability(armed = false).rtl)
+    }
+
+    @Test
+    fun `return is not offered while already returning`() {
+        assertFalse(availability(mode = "RTL").rtl)
+        assertFalse(availability(mode = "rtl").rtl)
+    }
+
+    @Test
+    fun `a disarmed vehicle on the ground offers only takeoff`() {
+        val can = availability(armed = false, flying = false)
+        assertTrue(can.takeoff)
+        assertFalse(can.land)
+        assertFalse(can.rtl)
+    }
+}

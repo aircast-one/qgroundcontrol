@@ -47,6 +47,25 @@ internal data class GuidedAction(
     val run: () -> Unit,
 )
 
+internal data class GuidedAvailability(
+    val takeoff: Boolean,
+    val land: Boolean,
+    val rtl: Boolean,
+)
+
+internal fun guidedAvailability(
+    armed: Boolean,
+    flying: Boolean,
+    guidedModeSupported: Boolean,
+    takeoffSupported: Boolean,
+    fixedWing: Boolean,
+    flightMode: String,
+): GuidedAvailability = GuidedAvailability(
+    takeoff = takeoffSupported && !flying,
+    land = guidedModeSupported && armed && !fixedWing && !flightMode.equals("Land", ignoreCase = true),
+    rtl = guidedModeSupported && armed && flying && !flightMode.equals("RTL", ignoreCase = true),
+)
+
 internal fun telemetryLabel(fact: Fact): String = fact.description.ifBlank { fact.name }
 
 internal fun telemetryValue(fact: Fact): String =
@@ -104,6 +123,14 @@ fun FlightActions(modifier: Modifier = Modifier) {
     val armed by qgcBool("vehicle.armed")
     var pending by remember { mutableStateOf<GuidedAction?>(null) }
     var takeoffAltitude by remember { mutableStateOf(FALLBACK_TAKEOFF_ALTITUDE_METERS) }
+    val flying by qgcBool("vehicle.flying")
+    val guidedModeSupported by qgcBool("vehicle.guidedModeSupported")
+    val takeoffSupported by qgcBool("vehicle.takeoffVehicleSupported")
+    val fixedWing by qgcBool("vehicle.fixedWing")
+    val flightMode by qgcString("vehicle.flightMode")
+    val can = guidedAvailability(
+        armed, flying, guidedModeSupported, takeoffSupported, fixedWing, flightMode,
+    )
 
     LaunchedEffect(available) {
         if (available) {
@@ -138,7 +165,7 @@ fun FlightActions(modifier: Modifier = Modifier) {
                 else ButtonDefaults.buttonColors(),
             ) { Text(if (armed) "Disarm" else "Arm") }
 
-            OutlinedButton(onClick = {
+            OutlinedButton(enabled = can.takeoff, onClick = {
                 val altitude = takeoffAltitude
                 pending = GuidedAction(
                     name = "Take off",
@@ -147,7 +174,7 @@ fun FlightActions(modifier: Modifier = Modifier) {
                 ) { offMainDetached { Qgc.invoke("vehicle.guidedModeTakeoff", altitude) } }
             }) { Text("Takeoff") }
 
-            OutlinedButton(onClick = {
+            OutlinedButton(enabled = can.land, onClick = {
                 pending = GuidedAction(
                     name = "Land",
                     confirm = "The aircraft will descend and land where it is now.",
@@ -155,7 +182,7 @@ fun FlightActions(modifier: Modifier = Modifier) {
                 ) { offMainDetached { Qgc.invoke("vehicle.guidedModeLand") } }
             }) { Text("Land") }
 
-            OutlinedButton(onClick = {
+            OutlinedButton(enabled = can.rtl, onClick = {
                 pending = GuidedAction(
                     name = "Return",
                     confirm = "The aircraft will fly back to its launch point and land.",
