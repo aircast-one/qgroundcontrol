@@ -160,10 +160,6 @@ SetupPage {
                         break
                     }
                 }
-
-                onSetAllCalButtonsEnabled: {
-                    buttonColumn.enabled = enabled
-                }
             }
 
             QGCPalette { id: qgcPal; colorGroupEnabled: true }
@@ -654,6 +650,7 @@ SetupPage {
 
             Column {
                 id:             calColumn
+                enabled:        !controller.calibrationInProgress
                 anchors.left:   parent.left
                 anchors.top:    parent.top
                 width:          Math.min(parent.width * _calColumnWidthFraction, _buttonWidth * _calColumnButtonWidths)
@@ -765,7 +762,7 @@ SetupPage {
             }
 
             SetupSheet {
-                open:   controller.cancelEnabled
+                open:   controller.calibrationInProgress
                 title:  _calName !== "" ? qsTr("Calibrating %1").arg(_calName) : qsTr("Calibrating")
 
                 SetupProgressBar {

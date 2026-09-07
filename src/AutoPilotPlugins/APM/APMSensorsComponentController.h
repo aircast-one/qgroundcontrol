@@ -29,6 +29,7 @@ class APMSensorsComponentController : public FactPanelController
     Q_PROPERTY(bool    nextEnabled          READ nextEnabled            NOTIFY nextEnabledChanged)
     Q_PROPERTY(bool    cancelEnabled        READ cancelEnabled          NOTIFY cancelEnabledChanged)
     Q_PROPERTY(QString orientationHelpText  READ orientationHelpText    NOTIFY orientationHelpTextChanged)
+    Q_PROPERTY(bool    calibrationInProgress READ calibrationInProgress  NOTIFY calibrationInProgressChanged)
 
 
     Q_PROPERTY(bool compassSetupNeeded                      READ compassSetupNeeded                         NOTIFY setupNeededChanged)
@@ -82,6 +83,7 @@ public:
     bool nextEnabled() const { return _nextEnabled; }
     bool cancelEnabled() const { return _cancelEnabled; }
     QString orientationHelpText() const { return _orientationHelpText; }
+    bool calibrationInProgress() const { return _calibrationInProgress; }
 
     Q_INVOKABLE void calibrateCompass();
     Q_INVOKABLE void calibrateAccel(bool doSimpleAccelCal);
@@ -110,6 +112,7 @@ signals:
     void nextEnabledChanged();
     void cancelEnabledChanged();
     void orientationHelpTextChanged();
+    void calibrationInProgressChanged();
     void statusTextAppended(const QString &text);
     void showGyroCalAreaChanged();
     void showOrientationCalAreaChanged();
@@ -127,7 +130,6 @@ signals:
     void compass1CalFitnessChanged(double compass1CalFitness);
     void compass2CalFitnessChanged(double compass2CalFitness);
     void compass3CalFitnessChanged(double compass3CalFitness);
-    void setAllCalButtonsEnabled(bool enabled);
 
 private slots:
     void _handleTextMessage(int sysid, int componentid, int severity, const QString &text, const QString &description);
@@ -138,6 +140,7 @@ private slots:
     void _setNextEnabled(bool enabled);
     void _setCancelEnabled(bool enabled);
     void _setOrientationHelpText(const QString &text);
+    void _setCalibrationInProgress(bool inProgress);
 
 private:
     void _startLogCalibration();
@@ -170,6 +173,7 @@ private:
     bool _nextEnabled = false;
     bool _cancelEnabled = false;
     QString _orientationHelpText;
+    bool _calibrationInProgress = false;
 
     bool _showOrientationCalArea = false;
 

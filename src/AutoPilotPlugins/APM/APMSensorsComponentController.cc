@@ -58,7 +58,7 @@ void APMSensorsComponentController::_startLogCalibration()
 
     (void) connect(_vehicle, &Vehicle::textMessageReceived, this, &APMSensorsComponentController::_handleTextMessage);
 
-    emit setAllCalButtonsEnabled(false);
+    _setCalibrationInProgress(true);
     if ((_calTypeInProgress == QGCMAVLink::CalibrationAccel) || (_calTypeInProgress == QGCMAVLink::CalibrationAPMCompassMot)) {
         _setNextEnabled(true);
     }
@@ -69,7 +69,7 @@ void APMSensorsComponentController::_startLogCalibration()
 
 void APMSensorsComponentController::_startVisualCalibration()
 {
-    emit setAllCalButtonsEnabled(false);
+    _setCalibrationInProgress(true);
     _setCancelEnabled(true);
     _setNextEnabled(false);
 
@@ -113,7 +113,7 @@ void APMSensorsComponentController::_stopCalibration(APMSensorsComponentControll
 
     (void) disconnect(_vehicle, &Vehicle::textMessageReceived, this, &APMSensorsComponentController::_handleTextMessage);
 
-    emit setAllCalButtonsEnabled(true);
+    _setCalibrationInProgress(false);
     _setNextEnabled(false);
     _setCancelEnabled(false);
 
@@ -713,6 +713,14 @@ void APMSensorsComponentController::_setCancelEnabled(bool enabled)
     if (_cancelEnabled != enabled) {
         _cancelEnabled = enabled;
         emit cancelEnabledChanged();
+    }
+}
+
+void APMSensorsComponentController::_setCalibrationInProgress(bool inProgress)
+{
+    if (_calibrationInProgress != inProgress) {
+        _calibrationInProgress = inProgress;
+        emit calibrationInProgressChanged();
     }
 }
 
