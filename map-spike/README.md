@@ -160,6 +160,11 @@ a map that trusted `ok` would report an upload that never happened. `plan.offlin
 `plan.syncInProgress` are the properties that actually answer it. Any void call worth trusting
 needs a property to confirm it landed.
 
+**A selection outlives the plan it was made against.** It names an index, and loading from the
+vehicle replaces the plan wholesale, so the altitude and delete controls would have acted on
+whatever now sat at that index. Deletes clear it themselves; every other way the plan can change
+underneath is caught by validating the selection against the plan each poll.
+
 **Loading from the vehicle throws work away.** It overwrites whatever is drawn and there is no
 undo, so QGC asks first when the plan has unsent changes. `plan.dirty` says when that is, and Load
 here asks the same question rather than being the one place that discards a survey silently.
