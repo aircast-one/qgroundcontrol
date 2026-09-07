@@ -11,13 +11,15 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.ListItem
+import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.DisposableEffect
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -75,8 +77,10 @@ internal fun parseInspectorFields(model: JSONObject?): List<InspectorField> {
     }
 }
 
-private fun setMessageSelected(index: Int, selected: Boolean) {
-    offMainDetached { Qgc.set("$INSPECTOR_MESSAGES.$index.selected", selected) }
+private const val INSPECTOR_SELECTED = "mavlinkInspector.activeSystem.selected"
+
+private fun selectMessage(index: Int) {
+    offMainDetached { Qgc.set(INSPECTOR_SELECTED, index) }
 }
 
 internal fun formatRate(rateHz: Double): String =
@@ -96,10 +100,7 @@ private fun InspectorNotice(text: String, modifier: Modifier = Modifier) {
 
 @Composable
 private fun FieldList(messageIndex: Int, modifier: Modifier = Modifier) {
-    DisposableEffect(messageIndex) {
-        setMessageSelected(messageIndex, true)
-        onDispose { setMessageSelected(messageIndex, false) }
-    }
+    LaunchedEffect(messageIndex) { selectMessage(messageIndex) }
 
     val fields by qgcPath("$INSPECTOR_MESSAGES.$messageIndex.fields")
     val rows = parseInspectorFields(fields)
@@ -130,6 +131,7 @@ fun InspectorScreen(modifier: Modifier = Modifier) {
     val hasVehicle by qgcBool("vehicles.activeVehicleAvailable")
     val messagesModel by qgcPath(INSPECTOR_MESSAGES)
     var openMessage by remember { mutableStateOf<InspectorMessage?>(null) }
+    var filter by rememberSaveable { mutableStateOf("") }
     val messages = parseInspectorMessages(messagesModel)
 
     BackHandler(enabled = openMessage != null) { openMessage = null }
@@ -166,17 +168,32 @@ fun InspectorScreen(modifier: Modifier = Modifier) {
         return
     }
 
-    LazyColumn(modifier.fillMaxSize()) {
-        items(messages, key = { it.index }) { message ->
-            ListItem(
-                headlineContent = {
-                    Text(message.name, fontFamily = FontFamily.Monospace)
-                },
-                supportingContent = { Text("id ${message.id} · ${message.count} received") },
-                trailingContent = { Text(formatRate(message.rateHz)) },
-                modifier = Modifier.clickable { openMessage = message },
-            )
-            HorizontalDivider()
+    val shown = messages.filter { it.name.contains(filter, ignoreCase = true) }
+
+    Column(modifier.fillMaxSize()) {
+        OutlinedTextField(
+            value = filter,
+            onValueChange = { filter = it },
+            label = { Text("Filter messages") },
+            singleLine = true,
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 20.dp, vertical = 8.dp),
+        )
+
+        if (shown.isEmpty()) {
+            InspectorNotice("No message matches \"$filter\".")
+            return@Column
+        }
+
+        LazyColumn(Modifier.fillMaxSize()) {
+            items(shown, key = { it.index }) { message ->
+                SetupRow(
+                    title = message.name,
+                    status = formatRate(message.rateHz),
+                    onClick = { openMessage = message },
+                )
+            }
         }
     }
 }
