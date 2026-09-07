@@ -15,12 +15,16 @@ struct MissionItem: Identifiable {
     let amslAltitude: Double?
     let terrainAltitude: Double?
     let terrainCollision: Bool
+    let commandId: Int
+    let isSimpleItem: Bool
 
     var id: Int { sequence }
 
     var hasPosition: Bool { latitude != nil && longitude != nil }
 
     var canRemove: Bool { sequence > 0 }
+
+    var canChangeCommand: Bool { isSimpleItem && sequence > 0 && !isLaunch }
 
     init(json: [String: Any], index: Int) {
         self.index = index
@@ -35,6 +39,8 @@ struct MissionItem: Identifiable {
         amslAltitude = (json["amslEntryAlt"] as? NSNumber)?.doubleValue
         terrainAltitude = (json["terrainAltitude"] as? NSNumber)?.doubleValue
         terrainCollision = (json["terrainCollision"] as? NSNumber)?.boolValue ?? false
+        commandId = (json["command"] as? NSNumber)?.intValue ?? 0
+        isSimpleItem = (json["isSimpleItem"] as? NSNumber)?.boolValue ?? false
 
         let coordinate = json["coordinate"] as? [String: Any]
         latitude = (coordinate?["latitude"] as? NSNumber)?.doubleValue

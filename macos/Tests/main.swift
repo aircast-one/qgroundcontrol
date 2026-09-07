@@ -459,6 +459,33 @@ func checkTerrainProfile() {
 
 checkTerrainProfile()
 
+func checkMissionCommands() {
+    let commands = MissionCommand.from([
+        ["command": 16, "friendlyName": "Waypoint", "category": "Basic"],
+        ["command": 21, "friendlyName": "Land", "category": "Basic"],
+        ["command": 16, "friendlyName": "Waypoint", "category": "Basic"],
+        ["command": 99, "friendlyName": "", "category": "Basic"],
+        ["friendlyName": "No command number"],
+    ])
+    expect(commands.count == 2, "duplicates, nameless and numberless commands are dropped")
+    expect(commands.first?.name == "Waypoint", "the friendly name is what an operator picks from")
+
+    let waypoint = MissionItem(json: [
+        "sequenceNumber": 1, "commandName": "Waypoint", "isSimpleItem": true,
+    ], index: 1)
+    let home = MissionItem(json: [
+        "sequenceNumber": 0, "commandName": "Mission Start", "isSimpleItem": true,
+    ], index: 0)
+    let survey = MissionItem(json: [
+        "sequenceNumber": 2, "commandName": "Survey", "isSimpleItem": false,
+    ], index: 2)
+    expect(waypoint.canChangeCommand, "a simple waypoint can become another command")
+    expect(!home.canChangeCommand, "mission start is not a command an operator retypes")
+    expect(!survey.canChangeCommand, "a complex item is not a simple command swap")
+}
+
+checkMissionCommands()
+
 if failures == 0 {
     print("all Swift checks passed")
     exit(0)

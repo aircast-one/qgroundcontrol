@@ -9,6 +9,7 @@
 #include "RadioComponentController.h"
 #include "MultiVehicleManager.h"
 #include "PlanMasterController.h"
+#include "MissionCommandTree.h"
 #include "QmlObjectListModel.h"
 #include "SettingsManager.h"
 #include "Vehicle.h"
@@ -68,6 +69,9 @@ QObject *rootObject(const QString &name)
     }
     if (name == QLatin1String("logDownload")) {
         return LogDownloadController::instance();
+    }
+    if (name == QLatin1String("missionCommandTree")) {
+        return MissionCommandTree::instance();
     }
     if (name == QLatin1String("mavlinkConsole")) {
         return MAVLinkConsoleController::instance();
@@ -486,7 +490,7 @@ QJsonObject invokePath(const QString &path, const QJsonArray &args)
         } else if (QObject *const object = returned.value<QObject *>()) {
             result.insert(QStringLiteral("result"), objectJson(object));
         } else {
-            result.insert(QStringLiteral("result"), QJsonValue::fromVariant(returned));
+            result.insert(QStringLiteral("result"), variantJson(returned));
         }
         return result;
     }
@@ -565,6 +569,20 @@ void runOnQtThread(Fn &&fn)
     QMetaObject::invokeMethod(app, std::forward<Fn>(fn), Qt::BlockingQueuedConnection);
 }
 
+template<typename Fn>
+void postToQtThread(Fn &&fn)
+{
+    QCoreApplication *const app = QCoreApplication::instance();
+    if (!app) {
+        return;
+    }
+    if (QThread::currentThread() == app->thread()) {
+        fn();
+        return;
+    }
+    QMetaObject::invokeMethod(app, std::forward<Fn>(fn), Qt::QueuedConnection);
+}
+
 std::optional<QVariant> variantFromJsonText(const QString &text)
 {
     const QJsonDocument document = QJsonDocument::fromJson(text.toUtf8());
@@ -609,7 +627,7 @@ QString invoke(const QString &path, const QString &argsJson)
 
 void watch(const QStringList &paths)
 {
-    runOnQtThread([paths]() { watcher()->setPaths(paths); });
+    postToQtThread([paths]() { watcher()->setPaths(paths); });
 }
 
 void setEventHandler(EventHandler handler)

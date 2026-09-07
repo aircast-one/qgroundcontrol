@@ -14,6 +14,7 @@ final class MissionStore: ObservableObject, Probeable {
     @Published var addingWaypoint = false
     @Published private(set) var canUndo = false
     @Published private(set) var canRedo = false
+    @Published private(set) var commands: [MissionCommand] = []
 
     private var undoPoll: Timer?
 
@@ -33,6 +34,7 @@ final class MissionStore: ObservableObject, Probeable {
         dirty = (plan["dirty"] as? NSNumber)?.boolValue ?? false
         canUndo = (plan["canUndo"] as? NSNumber)?.boolValue ?? false
         canRedo = (plan["canRedo"] as? NSNumber)?.boolValue ?? false
+        loadCommands()
         connected = Bridge.group("vehicle")["kind"] as? String == "object"
         status = items.isEmpty ? "This plan has no items." : ""
 
@@ -118,6 +120,19 @@ final class MissionStore: ObservableObject, Probeable {
         guard let item = items.first(where: { $0.sequence == sequence }), item.canRemove else { return }
         _ = Bridge.set("plan.missionController.visualItems.\(item.index).coordinate",
                        ["latitude": latitude, "longitude": longitude])
+        reload()
+    }
+
+    func loadCommands() {
+        guard commands.isEmpty, connected else { return }
+        commands = MissionCommand.from(
+            (Bridge.invoke("missionCommandTree.getCommandsForCategory",
+                           ["@vehicle", "Basic", true])["result"] as? [Any]) ?? [])
+    }
+
+    func setCommand(of item: MissionItem, to command: Int) {
+        guard item.canChangeCommand else { return }
+        _ = Bridge.set("plan.missionController.visualItems.\(item.index).command", command)
         reload()
     }
 
@@ -210,6 +225,7 @@ final class MissionStore: ObservableObject, Probeable {
          "selected": items.first(where: \.isCurrent)?.sequence ?? -1,
          "addingWaypoint": addingWaypoint,
          "canUndo": canUndo, "canRedo": canRedo,
+         "commands": commands.map(\.name),
          "terrain": ["points": terrain.points.count, "usable": terrain.usable,
                      "collision": terrain.hasCollision,
                      "unknown": terrain.unknownTerrain,
@@ -271,6 +287,14 @@ final class MissionStore: ObservableObject, Probeable {
                 return ["ok": false, "error": "\(target.command) cannot be moved"]
             }
             move(sequence: sequence, latitude: latitude, longitude: longitude)
+        case "setCommand":
+            guard let target = items.first(where: { $0.sequence == Int(args["sequence"] ?? "") ?? -1 }) else {
+                return ["ok": false, "error": "no item with that sequence"]
+            }
+            guard target.canChangeCommand else {
+                return ["ok": false, "error": "\(target.command) cannot change its command"]
+            }
+            setCommand(of: target, to: Int(args["command"] ?? "") ?? 0)
         case "select":
             select(sequence: Int(args["sequence"] ?? "") ?? -1)
         case "remove":

@@ -247,6 +247,21 @@ struct PlanInspector: View {
                                         .font(.body.monospacedDigit())
                                         .foregroundColor(Overlay.value)
                                 }
+                                if item.isCurrent && item.canChangeCommand && !mission.commands.isEmpty {
+                                    Menu {
+                                        ForEach(mission.commands) { command in
+                                            Button(command.name) {
+                                                mission.setCommand(of: item, to: command.command)
+                                            }
+                                        }
+                                    } label: {
+                                        Image(systemName: "chevron.up.chevron.down")
+                                    }
+                                    .menuStyle(.borderlessButton)
+                                    .menuIndicator(.hidden)
+                                    .frame(width: 22)
+                                    .help("Change what this item does")
+                                }
                                 if item.isCurrent && item.canRemove {
                                     Button {
                                         mission.remove(item)

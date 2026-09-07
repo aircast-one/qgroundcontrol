@@ -19,6 +19,7 @@ swiftc -Onone -o "$out" \
     "$root/macos/Sources/SafetySections.swift" \
     "$root/macos/Sources/Probeable.swift" \
     "$root/macos/Sources/MissionItemModel.swift" \
+    "$root/macos/Sources/MissionCommandModel.swift" \
     "$root/macos/Sources/TerrainProfileModel.swift" \
     "$root/macos/Sources/MapFraming.swift" \
     "$root/macos/Sources/FenceRallyModel.swift" \
