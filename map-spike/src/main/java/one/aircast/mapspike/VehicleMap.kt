@@ -88,9 +88,10 @@ fun VehicleMap(
     modifier: Modifier = Modifier,
     mapStyle: String = OSM_RASTER_STYLE,
     follow: Boolean = true,
-    mission: MissionModel? = null,
-    missionRevision: Int = 0,
-    onMissionChanged: () -> Unit = {},
+    missionItems: List<MissionItem> = emptyList(),
+    editable: Boolean = false,
+    onAdd: (Double, Double) -> Unit = { _, _ -> },
+    onMove: (Int, Double, Double) -> Unit = { _, _, _ -> },
     onWaypointSelected: (Int?) -> Unit = {},
 ) {
     val latitude by mapDouble("vehicle.latitude")
@@ -133,15 +134,12 @@ fun VehicleMap(
             }
             loaded.setStyle(builder) { loadedStyle ->
                 installLayers(loadedStyle)
-                if (mission != null) {
-                    installMissionLayers(loadedStyle)
-                    renderMission(loadedStyle, mission)
+                installMissionLayers(loadedStyle)
+                if (editable) {
                     attachMissionEditing(
-                        mapView, loaded, loadedStyle, mission,
-                        onChanged = {
-                            renderMission(loadedStyle, mission)
-                            onMissionChanged()
-                        },
+                        mapView, loaded, loadedStyle,
+                        onAdd = onAdd,
+                        onMove = onMove,
                         onSelected = onWaypointSelected,
                     )
                 }
@@ -172,11 +170,9 @@ fun VehicleMap(
         }
     }
 
-    LaunchedEffect(style, missionRevision) {
+    LaunchedEffect(style, missionItems) {
         val currentStyle = style ?: return@LaunchedEffect
-        if (mission != null) {
-            renderMission(currentStyle, mission)
-        }
+        renderMission(currentStyle, missionItems)
     }
 
     AndroidView(factory = { mapView }, modifier = modifier)

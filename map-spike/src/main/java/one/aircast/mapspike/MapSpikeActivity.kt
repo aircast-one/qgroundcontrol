@@ -3,25 +3,38 @@ package one.aircast.mapspike
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
+import androidx.compose.foundation.horizontalScroll
+import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.material3.darkColorScheme
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
+
+private const val PLAN_POLL_MS = 700L
 
 class MapSpikeActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -40,29 +53,46 @@ class MapSpikeActivity : ComponentActivity() {
 @Composable
 private fun MapSpikeScreen(mapStyle: String) {
     var follow by remember { mutableStateOf(true) }
-    val mission = remember { MissionModel() }
-    var missionRevision by remember { mutableStateOf(0) }
-    var selectedWaypoint by remember { mutableStateOf<Int?>(null) }
+    var items by remember { mutableStateOf<List<MissionItem>>(emptyList()) }
+    var selected by remember { mutableStateOf<Int?>(null) }
+    var busy by remember { mutableStateOf<String?>(null) }
+    val scope = rememberCoroutineScope()
+
+    fun onBridge(work: () -> Unit) {
+        scope.launch(Dispatchers.Default) { work() }
+    }
 
     val available by mapBool("vehicles.activeVehicleAvailable")
     val latitude by mapDouble("vehicle.latitude")
     val longitude by mapDouble("vehicle.longitude")
     val mode by mapString("vehicle.flightMode")
 
+    suspend fun refresh() {
+        items = withContext(Dispatchers.Default) { PlanBridge.items() }
+    }
+
+    LaunchedEffect(Unit) {
+        while (true) {
+            refresh()
+            delay(PLAN_POLL_MS)
+        }
+    }
+
     Box(Modifier.fillMaxSize()) {
         VehicleMap(
             modifier = Modifier.fillMaxSize(),
             mapStyle = mapStyle,
             follow = follow,
-            mission = mission,
-            missionRevision = missionRevision,
-            onMissionChanged = { missionRevision++ },
-            onWaypointSelected = { selectedWaypoint = it },
+            missionItems = items,
+            editable = true,
+            onAdd = { lat, lon -> onBridge { PlanBridge.appendWaypoint(lat, lon) } },
+            onMove = { index, lat, lon -> onBridge { PlanBridge.moveItem(index, lat, lon) } },
+            onWaypointSelected = { selected = it },
         )
 
         Surface(
             Modifier.align(Alignment.TopCenter).fillMaxWidth().padding(8.dp),
-            color = MaterialTheme.colorScheme.surface.copy(alpha = 0.85f),
+            color = MaterialTheme.colorScheme.surface.copy(alpha = 0.88f),
         ) {
             Column(Modifier.padding(12.dp)) {
                 val ready by MapBridge.bridgeReady.collectAsState()
@@ -82,28 +112,43 @@ private fun MapSpikeScreen(mapStyle: String) {
                     },
                     style = MaterialTheme.typography.bodySmall,
                 )
-                Row(follow) { follow = it }
+
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Switch(checked = follow, onCheckedChange = { follow = it })
+                    Text(
+                        "Follow vehicle",
+                        Modifier.padding(start = 8.dp),
+                        style = MaterialTheme.typography.bodySmall,
+                    )
+                }
+
                 Text(
-                    "Waypoints: ${mission.size.also { missionRevision }} " +
-                        "· long-press to add, drag to move, tap to select",
+                    busy ?: "Mission items: ${items.size} · long-press to add, drag to move",
                     style = MaterialTheme.typography.bodySmall,
                 )
-                selectedWaypoint?.let { id ->
-                    androidx.compose.material3.TextButton(onClick = {
-                        mission.remove(id)
-                        selectedWaypoint = null
-                        missionRevision++
-                    }) { Text("Delete selected waypoint") }
+
+                Row(
+                    Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()),
+                    horizontalArrangement = Arrangement.spacedBy(4.dp),
+                ) {
+                    TextButton(onClick = {
+                        busy = "Loading from vehicle"
+                        onBridge { PlanBridge.loadFromVehicle() }
+                    }) { Text("Load") }
+
+                    TextButton(onClick = {
+                        busy = "Sending to vehicle"
+                        onBridge { PlanBridge.sendToVehicle() }
+                    }) { Text("Send") }
+
+                    selected?.let { index ->
+                        TextButton(onClick = {
+                            onBridge { PlanBridge.removeItem(index) }
+                            selected = null
+                        }) { Text("Delete #$index") }
+                    }
                 }
             }
         }
-    }
-}
-
-@Composable
-private fun Row(follow: Boolean, onChange: (Boolean) -> Unit) {
-    androidx.compose.foundation.layout.Row(verticalAlignment = Alignment.CenterVertically) {
-        Switch(checked = follow, onCheckedChange = onChange)
-        Text("Follow vehicle", Modifier.padding(start = 8.dp), style = MaterialTheme.typography.bodySmall)
     }
 }

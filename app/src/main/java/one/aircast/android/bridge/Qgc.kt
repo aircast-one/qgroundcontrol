@@ -23,9 +23,6 @@ data class Fact(
 ) {
     val title: String = description.ifBlank { name }
     val isEnum: Boolean = enumStrings.isNotEmpty()
-    val valueIsOffTheEnumList: Boolean =
-        enumStrings.getOrNull(enumIndex)?.startsWith("Unknown: ") == true
-
     val boolValue: Boolean = value == true || valueString.equals("true", ignoreCase = true) || valueString == "1"
 }
 

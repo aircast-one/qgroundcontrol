@@ -22,8 +22,8 @@ fun attachMissionEditing(
     mapView: MapView,
     map: MapLibreMap,
     style: Style,
-    mission: MissionModel,
-    onChanged: () -> Unit,
+    onAdd: (Double, Double) -> Unit,
+    onMove: (Int, Double, Double) -> Unit,
     onSelected: (Int?) -> Unit = {},
 ) {
     var draggingId: Int? = null
@@ -34,8 +34,7 @@ fun attachMissionEditing(
     // Long press adds. It never deletes, because a slow drag begins with a long
     // press and deleting the waypoint the user meant to move is unrecoverable.
     map.addOnMapLongClickListener { latLng ->
-        mission.add(latLng.latitude, latLng.longitude)
-        onChanged()
+        onAdd(latLng.latitude, latLng.longitude)
         true
     }
 
@@ -64,9 +63,7 @@ fun attachMissionEditing(
                 }
                 if (moved) {
                     val target = map.projection.fromScreenLocation(PointF(event.x, event.y))
-                    if (mission.move(id, target.latitude, target.longitude)) {
-                        onChanged()
-                    }
+                    onMove(id, target.latitude, target.longitude)
                 }
                 true
             }

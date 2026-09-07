@@ -57,28 +57,28 @@ fun installMissionLayers(style: Style) {
     }
 }
 
-fun missionFeatures(mission: MissionModel): FeatureCollection {
-    val features = mission.sequence().map { (number, waypoint) ->
-        Feature.fromGeometry(Point.fromLngLat(waypoint.longitude, waypoint.latitude)).apply {
-            addNumberProperty(WAYPOINT_ID_PROPERTY, waypoint.id)
-            addStringProperty(WAYPOINT_LABEL_PROPERTY, number.toString())
+fun missionFeatures(items: List<MissionItem>): FeatureCollection {
+    val features = items.map { item ->
+        Feature.fromGeometry(Point.fromLngLat(item.longitude, item.latitude)).apply {
+            addNumberProperty(WAYPOINT_ID_PROPERTY, item.index)
+            addStringProperty(WAYPOINT_LABEL_PROPERTY, item.sequence.toString())
         }
     }
     return FeatureCollection.fromFeatures(features)
 }
 
-fun missionPath(mission: MissionModel): Feature? {
-    val points = mission.waypoints().map { Point.fromLngLat(it.longitude, it.latitude) }
+fun missionPath(items: List<MissionItem>): Feature? {
+    val points = items.map { Point.fromLngLat(it.longitude, it.latitude) }
     if (points.size < 2) {
         return null
     }
     return Feature.fromGeometry(LineString.fromLngLats(points))
 }
 
-fun renderMission(style: Style, mission: MissionModel) {
-    (style.getSource(MISSION_SOURCE) as? GeoJsonSource)?.setGeoJson(missionFeatures(mission))
+fun renderMission(style: Style, items: List<MissionItem>) {
+    (style.getSource(MISSION_SOURCE) as? GeoJsonSource)?.setGeoJson(missionFeatures(items))
 
-    val path = missionPath(mission)
+    val path = missionPath(items)
     val pathSource = style.getSource(MISSION_PATH_SOURCE) as? GeoJsonSource ?: return
     if (path == null) {
         pathSource.setGeoJson(FeatureCollection.fromFeatures(emptyList()))

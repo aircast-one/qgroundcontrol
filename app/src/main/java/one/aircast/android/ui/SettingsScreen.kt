@@ -110,12 +110,7 @@ internal fun enumLabel(fact: Fact): String =
     fact.enumStrings.getOrNull(fact.enumIndex) ?: fact.valueString
 
 @Composable
-internal fun FactRow(
-    fact: Fact,
-    title: String = fact.title,
-    subtitle: String = fact.units,
-    onWrite: () -> Unit = {},
-) {
+internal fun FactRow(fact: Fact, onWrite: () -> Unit = {}) {
     Row(
         Modifier
             .fillMaxWidth()
@@ -126,18 +121,16 @@ internal fun FactRow(
     ) {
         Column(Modifier.weight(1f)) {
             Text(
-                text = title,
+                text = fact.title,
                 style = MaterialTheme.typography.bodyLarge,
                 maxLines = 3,
                 overflow = TextOverflow.Ellipsis,
             )
-            if (subtitle.isNotBlank()) {
+            if (fact.units.isNotBlank()) {
                 Text(
-                    text = subtitle,
+                    text = fact.units,
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    maxLines = 2,
-                    overflow = TextOverflow.Ellipsis,
                 )
             }
         }
@@ -156,7 +149,7 @@ internal fun FactRow(
                         offMainDetached { Qgc.set(fact.path, checked); onWrite() }
                     },
                 )
-                fact.isEnum && !fact.valueIsOffTheEnumList -> EnumPicker(fact, onWrite)
+                fact.isEnum -> EnumPicker(fact, onWrite)
                 else -> FactTextField(fact, onWrite)
             }
         }
