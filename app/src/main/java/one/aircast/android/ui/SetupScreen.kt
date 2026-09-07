@@ -58,6 +58,8 @@ internal data class SetupComponent(
     val description: String,
     val requiresSetup: Boolean,
     val setupComplete: Boolean,
+    val allowSetupWhileArmed: Boolean = false,
+    val allowSetupWhileFlying: Boolean = false,
 ) {
     val needsAttention: Boolean get() = requiresSetup && !setupComplete
 }
@@ -76,6 +78,8 @@ private fun readComponents(): List<SetupComponent> {
                 description = json.optString("description"),
                 requiresSetup = json.optBoolean("requiresSetup"),
                 setupComplete = json.optBoolean("setupComplete"),
+                allowSetupWhileArmed = json.optBoolean("allowSetupWhileArmed"),
+                allowSetupWhileFlying = json.optBoolean("allowSetupWhileFlying"),
             )
         }
     }
@@ -98,6 +102,9 @@ fun SetupScreen(modifier: Modifier = Modifier) {
     val hasVehicle by qgcBool("vehicles.activeVehicleAvailable")
     val parametersReady by qgcBool("vehicle.parameterManager.parametersReady")
     val setupComplete by qgcBool("$PLUGIN.setupComplete")
+    val armed by qgcBool("vehicle.armed")
+    val flying by qgcBool("vehicle.flying")
+    val isRover by qgcBool("vehicle.rover")
     val isPx4 by qgcBool("vehicle.px4Firmware")
     val vehicleId by qgcDouble("vehicle.id")
     val major by qgcDouble("vehicle.firmwareMajorVersion", -1.0)
@@ -146,7 +153,12 @@ fun SetupScreen(modifier: Modifier = Modifier) {
             }
             HorizontalDivider()
             val sections = setupSectionsFor(open.name, isPx4)
+            val blocked = setupBlockedReason(open, armed, flying, isRover)
             when {
+                blocked != null -> SetupNotice(
+                    "${open.name} cannot be set up while the vehicle is $blocked.",
+                    Modifier.weight(1f),
+                )
                 open.name == SENSORS -> SensorsScreen(Modifier.weight(1f))
                 open.name == RADIO -> RadioScreen(Modifier.weight(1f))
                 sections == null -> RemoteSupportScreen(Modifier.weight(1f))
@@ -164,6 +176,9 @@ fun SetupScreen(modifier: Modifier = Modifier) {
         versionType,
     )
     val needSetup = components.filter { it.needsAttention }
+    val blockedFor = { component: SetupComponent ->
+        setupBlockedReason(component, armed, flying, isRover)
+    }
 
     LazyColumn(modifier.fillMaxSize()) {
         item(key = "verdict") {
@@ -178,11 +193,12 @@ fun SetupScreen(modifier: Modifier = Modifier) {
         if (needSetup.isNotEmpty()) {
             item(key = "attention") { SectionHeader("Needs setup before flight") }
             items(needSetup, key = { "a${it.index}" }) { component ->
+                val blocked = blockedFor(component)
                 SetupRow(
                     title = component.name,
-                    status = "Needs setup",
-                    state = SetupState.NeedsAttention,
-                    onClick = if (hasNativeSetupPage(component.name, isPx4)) {
+                    status = blocked?.let { "Not while $it" } ?: "Needs setup",
+                    state = if (blocked != null) SetupState.Unavailable else SetupState.NeedsAttention,
+                    onClick = if (blocked == null && hasNativeSetupPage(component.name, isPx4)) {
                         { openComponent = component }
                     } else {
                         null
@@ -199,14 +215,17 @@ fun SetupScreen(modifier: Modifier = Modifier) {
             item(key = "allheader") { SectionHeader("Setup") }
             items(components, key = { it.index }) { component ->
                 val openable = hasNativeSetupPage(component.name, isPx4)
+                val blocked = blockedFor(component)
                 SetupRow(
                     title = component.name,
                     status = when {
+                        blocked != null -> "Not while $blocked"
                         component.needsAttention -> "Needs setup"
                         !openable -> "On desktop"
                         else -> ""
                     },
                     state = when {
+                        blocked != null -> SetupState.Unavailable
                         component.needsAttention -> SetupState.NeedsAttention
                         !openable -> SetupState.Unavailable
                         else -> SetupState.Neutral
@@ -273,4 +292,15 @@ private fun ReadinessHeader(
             )
         }
     }
+}
+
+internal fun setupBlockedReason(
+    component: SetupComponent,
+    armed: Boolean,
+    flying: Boolean,
+    isRover: Boolean,
+): String? = when {
+    !component.allowSetupWhileArmed && armed -> "armed"
+    !isRover && !component.allowSetupWhileFlying && flying -> "flying"
+    else -> null
 }

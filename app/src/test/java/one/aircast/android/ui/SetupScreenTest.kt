@@ -33,4 +33,61 @@ class SetupScreenTest {
         assertEquals(false, done.needsAttention)
         assertEquals(false, optional.needsAttention)
     }
+
+    private fun component(
+        allowArmed: Boolean = false,
+        allowFlying: Boolean = false,
+    ) = SetupComponent(
+        index = 0,
+        name = "Sensors",
+        description = "",
+        requiresSetup = true,
+        setupComplete = false,
+        allowSetupWhileArmed = allowArmed,
+        allowSetupWhileFlying = allowFlying,
+    )
+
+    @Test
+    fun `a disarmed vehicle on the ground blocks nothing`() {
+        assertEquals(null, setupBlockedReason(component(), armed = false, flying = false, isRover = false))
+    }
+
+    @Test
+    fun `calibration is refused on an armed vehicle`() {
+        assertEquals("armed", setupBlockedReason(component(), armed = true, flying = false, isRover = false))
+    }
+
+    @Test
+    fun `calibration is refused in flight`() {
+        assertEquals("flying", setupBlockedReason(component(), armed = false, flying = true, isRover = false))
+    }
+
+    @Test
+    fun `armed is reported before flying when both are true`() {
+        assertEquals("armed", setupBlockedReason(component(), armed = true, flying = true, isRover = false))
+    }
+
+    @Test
+    fun `a component that permits it is allowed while armed`() {
+        assertEquals(
+            null,
+            setupBlockedReason(component(allowArmed = true), armed = true, flying = false, isRover = false),
+        )
+    }
+
+    @Test
+    fun `a rover is never blocked for flying, matching the desktop`() {
+        assertEquals(
+            null,
+            setupBlockedReason(component(), armed = false, flying = true, isRover = true),
+        )
+    }
+
+    @Test
+    fun `a rover is still blocked while armed`() {
+        assertEquals(
+            "armed",
+            setupBlockedReason(component(), armed = true, flying = false, isRover = true),
+        )
+    }
 }
