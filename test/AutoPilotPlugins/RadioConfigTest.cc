@@ -17,6 +17,9 @@
 #include "PX4RadioComponent.h"
 #include "AutoPilotPlugin.h"
 #include "MultiSignalSpy.h"
+#include "ParameterManager.h"
+#include "QGCLoggingCategory.h"
+#include "Vehicle.h"
 
 #include <QtTest/QTest>
 
@@ -31,14 +34,14 @@ QGC_LOGGING_CATEGORY(RadioConfigTestLog, "RadioConfigTestLog")
 // We use a macro instead of a method so that we get better line number reporting on failure.
 #define CHK_BUTTONS(mask) \
 { \
-    if (_controller->_nextButton->isEnabled() != !!((mask) & nextButtonMask) || \
-    _controller->_skipButton->isEnabled() != !!((mask) & skipButtonMask) || \
-    _controller->_cancelButton->isEnabled() != !!((mask) & cancelButtonMask) ) { \
-    qCDebug(RadioConfigTestLog) << _controller->_statusText->property("text"); \
+    if (_controller->nextEnabled() != !!((mask) & nextButtonMask) || \
+    _controller->skipEnabled() != !!((mask) & skipButtonMask) || \
+    _controller->cancelEnabled() != !!((mask) & cancelButtonMask) ) { \
+    qCDebug(RadioConfigTestLog) << _controller->statusText(); \
     } \
-    QCOMPARE(_controller->_nextButton->isEnabled(), !!((mask) & nextButtonMask)); \
-    QCOMPARE(_controller->_skipButton->isEnabled(), !!((mask) & skipButtonMask)); \
-    QCOMPARE(_controller->_cancelButton->isEnabled(), !!((mask) & cancelButtonMask)); \
+    QCOMPARE(_controller->nextEnabled(), !!((mask) & nextButtonMask)); \
+    QCOMPARE(_controller->skipEnabled(), !!((mask) & skipButtonMask)); \
+    QCOMPARE(_controller->cancelEnabled(), !!((mask) & cancelButtonMask)); \
     }
 
 // This allows you to write unit tests which will click the Cancel button the first time through, followed
@@ -46,12 +49,12 @@ QGC_LOGGING_CATEGORY(RadioConfigTestLog, "RadioConfigTestLog")
 #define NEXT_OR_CANCEL(cancelNum) \
 { \
     if (mode == testModeStandalone && tryCancel ## cancelNum) { \
-    QTest::mouseClick(_cancelButton, Qt::LeftButton); \
+    _controller->cancelButtonClicked(); \
     QCOMPARE(_controller->_rcCalState, RadioComponentController::rcCalStateChannelWait); \
     tryCancel ## cancelNum = false; \
     goto StartOver; \
     } else { \
-    QTest::mouseClick(_nextButton, Qt::LeftButton); \
+    _controller->nextButtonClicked(); \
     } \
     }
 
@@ -61,7 +64,7 @@ const int RadioConfigTest::_testMinValue = RadioComponentController::_rcCalPWMDe
 const int RadioConfigTest::_testMaxValue = RadioComponentController::_rcCalPWMDefaultMaxValue - 10;
 const int RadioConfigTest::_testCenterValue = RadioConfigTest::_testMinValue + ((RadioConfigTest::_testMaxValue - RadioConfigTest::_testMinValue) / 2);
 
-const struct RadioConfigTest::ChannelSettings RadioConfigTest::_rgChannelSettingsPX4[RadioComponentController::_chanMaxPX4] = {
+const struct RadioConfigTest::ChannelSettings RadioConfigTest::_rgChannelSettingsPX4[RadioConfigTest::_chanMaxPX4] = {
     // Function										Min                 Max                 #  Reversed
 
     // Channel 0 : Not mapped to function, Simulate invalid Min/Max
@@ -98,7 +101,7 @@ const struct RadioConfigTest::ChannelSettings RadioConfigTest::_rgChannelSetting
 
 // Note the: 1500/*RadioComponentController::_rcCalPWMCenterPoint*/ entries. For some reason I couldn't get the compiler to do the
 // right thing with the constant. So I just hacked inthe real value instead of fighting with it any longer.
-const struct RadioConfigTest::ChannelSettings RadioConfigTest::_rgChannelSettingsValidatePX4[RadioComponentController::_chanMaxPX4] = {
+const struct RadioConfigTest::ChannelSettings RadioConfigTest::_rgChannelSettingsValidatePX4[RadioConfigTest::_chanMaxPX4] = {
     // Function										Min Value									Max Value									Trim Value										Reversed
 
     // Channels 0: not mapped and should be set to defaults
@@ -128,7 +131,7 @@ const struct RadioConfigTest::ChannelSettings RadioConfigTest::_rgChannelSetting
 { RadioComponentController::rcCalFunctionMax,			RadioComponentController::_rcCalPWMDefaultMinValue,	RadioComponentController::_rcCalPWMDefaultMaxValue,	1500/*RadioComponentController::_rcCalPWMCenterPoint*/,         false },
 };
 
-const struct RadioConfigTest::ChannelSettings RadioConfigTest::_rgChannelSettingsAPM[RadioComponentController::_chanMaxAPM] = {
+const struct RadioConfigTest::ChannelSettings RadioConfigTest::_rgChannelSettingsAPM[RadioConfigTest::_chanMaxAPM] = {
     // Function										Min                 Max                 #  Reversed
 
     // Channel 0 : Not mapped to function, Simulate invalid Min/Max
@@ -158,7 +161,7 @@ const struct RadioConfigTest::ChannelSettings RadioConfigTest::_rgChannelSetting
 
 // Note the: 1500/*RadioComponentController::_rcCalPWMCenterPoint*/ entries. For some reason I couldn't get the compiler to do the
 // right thing with the constant. So I just hacked inthe real value instead of fighting with it any longer.
-const struct RadioConfigTest::ChannelSettings RadioConfigTest::_rgChannelSettingsValidateAPM[RadioComponentController::_chanMaxAPM] = {
+const struct RadioConfigTest::ChannelSettings RadioConfigTest::_rgChannelSettingsValidateAPM[RadioConfigTest::_chanMaxAPM] = {
     // Function										Min Value									Max Value									Trim Value										Reversed
 
     // Channels 0: not mapped and should be set to defaults
@@ -184,55 +187,21 @@ const struct RadioConfigTest::ChannelSettings RadioConfigTest::_rgChannelSetting
 { RadioComponentController::rcCalFunctionMax,			RadioComponentController::_rcCalPWMDefaultMinValue,	RadioComponentController::_rcCalPWMDefaultMaxValue,	1500/*RadioComponentController::_rcCalPWMCenterPoint*/,         false },
 };
 
-RadioConfigTest::RadioConfigTest(void) :
-    _calWidget(NULL),
-    _controller(NULL)
+RadioConfigTest::RadioConfigTest(void)
 {
-    
+
 }
 
 void RadioConfigTest::_init(MAV_AUTOPILOT firmwareType)
 {
     _connectMockLink(firmwareType);
     
-    _autopilot = MultiVehicleManager::instance()->activeVehicle()->autopilotPlugin();
-    Q_ASSERT(_autopilot);
-
     // This test is so quick that it tends to finish before the mission item protocol completes. This causes an error to pop up.
     // So we wait a little to let mission items sync.
     QTest::qWait(500);
     
-    // This will instatiate the widget with an active uas with ready parameters
-    _calWidget = new QGCQmlWidgetHolder(QString(), NULL);
-    _calWidget->resize(600, 600);
-    Q_CHECK_PTR(_calWidget);
-    _calWidget->setAutoPilot(_autopilot);
-
-    // Find the radio component
-    QObject* vehicleComponent = NULL;
-    for (const QVariant& varVehicleComponent: _autopilot->vehicleComponents()) {
-        if (firmwareType == MAV_AUTOPILOT_PX4) {
-            PX4RadioComponent* radioComponent = qobject_cast<PX4RadioComponent*>(varVehicleComponent.value<VehicleComponent*>());
-            if (radioComponent) {
-                vehicleComponent = radioComponent;
-                break;
-            }
-        } else {
-            APMRadioComponent* radioComponent = qobject_cast<APMRadioComponent*>(varVehicleComponent.value<VehicleComponent*>());
-            if (radioComponent) {
-                vehicleComponent = radioComponent;
-                break;
-            }
-        }
-    }
-    Q_CHECK_PTR(vehicleComponent);
-
-    _calWidget->setContextPropertyObject("vehicleComponent", vehicleComponent);
-    _calWidget->setSource(QUrl::fromUserInput("qrc:/qml/QGroundControl/AutoPilotPlugins/Common/RadioComponent.qml"));
-    
-    // Nasty hack to get to controller
-    _controller = RadioComponentController::_unitTestController;
-    Q_ASSERT(_controller);
+    _controller = new RadioComponentController();
+    Q_CHECK_PTR(_controller);
 
     _controller->_setUnitTestMode();
     
@@ -246,9 +215,9 @@ void RadioConfigTest::_init(MAV_AUTOPILOT firmwareType)
 
 void RadioConfigTest::cleanup(void)
 {
-    Q_ASSERT(_calWidget);
-    delete _calWidget;
-    
+    delete _controller;
+    _controller = nullptr;
+
     UnitTest::cleanup();
 }
 
@@ -528,10 +497,10 @@ const struct RadioConfigTest::ChannelSettings* RadioConfigTest::_channelSettings
 
 const struct RadioComponentController::FunctionInfo* RadioConfigTest::_functionInfo(void) const
 {
-    return _px4Vehicle() ? RadioComponentController::_rgFunctionInfoPX4 : RadioComponentController::_rgFunctionInfoAPM;
+    return _controller->_functionInfo();
 }
 
 int RadioConfigTest::_chanMax(void) const
 {
-    return _px4Vehicle() ? RadioComponentController::_chanMaxPX4 : RadioComponentController::_chanMaxAPM;
+    return _px4Vehicle() ? RadioConfigTest::_chanMaxPX4 : RadioConfigTest::_chanMaxAPM;
 }

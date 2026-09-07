@@ -25,6 +25,7 @@ RadioComponentController* RadioComponentController::_unitTestController = nullpt
 
 RadioComponentController::RadioComponentController(QObject *parent)
     : FactPanelController(parent)
+    , _nextText(tr("Calibrate"))
 {
     // qCDebug(RadioComponentControllerLog) << Q_FUNC_INFO << this;
 
@@ -174,7 +175,7 @@ void RadioComponentController::_setupCurrentState()
         instructions = msgBeginAPMRover;
         helpImage = _imageCenter;
     }
-    _statusText->setProperty("text", instructions);
+    _setStatusText(instructions);
     _setHelpImage(helpImage);
 
     _stickDetectChannel = _chanMax;
@@ -182,8 +183,8 @@ void RadioComponentController::_setupCurrentState()
 
     _rcCalSaveCurrentValues();
 
-    _nextButton->setEnabled(state->nextFn != nullptr);
-    _skipButton->setEnabled(state->skipFn != nullptr);
+    _setNextEnabled(state->nextFn != nullptr);
+    _setSkipEnabled(state->skipFn != nullptr);
 }
 
 void RadioComponentController::_rcChannelsChanged(int channelCount, int pwmValues[QGCMAVLink::maxRcChannels])
@@ -311,7 +312,7 @@ void RadioComponentController::_inputCenterWaitBegin(rcCalFunctions function, in
     Q_UNUSED(value);
 
     // FIXME: Doesn't wait for center
-    _nextButton->setEnabled(true);
+    _setNextEnabled(true);
 }
 
 bool RadioComponentController::_stickSettleComplete(int value)
@@ -769,8 +770,8 @@ void RadioComponentController::_startCalibration()
     // Let the mav known we are starting calibration. This should turn off motors and so forth.
     _vehicle->startCalibration(QGCMAVLink::CalibrationRadio);
 
-    _nextButton->setProperty("text", tr("Next"));
-    _cancelButton->setEnabled(true);
+    _setNextText(tr("Next"));
+    _setCancelEnabled(true);
 
     _currentStep = 0;
     _setupCurrentState();
@@ -789,21 +790,11 @@ void RadioComponentController::_stopCalibration()
         _resetInternalCalibrationValues();
     }
 
-    if (_statusText) {
-        _statusText->setProperty("text", "");
-    }
-    if (_nextButton) {
-        _nextButton->setProperty("text", tr("Calibrate"));
-    }
-    if (_nextButton) {
-        _nextButton->setEnabled(true);
-    }
-    if (_cancelButton) {
-        _cancelButton->setEnabled(false);
-    }
-    if (_skipButton) {
-        _skipButton->setEnabled(false);
-    }
+    _setStatusText(QString());
+    _setNextText(tr("Calibrate"));
+    _setNextEnabled(true);
+    _setCancelEnabled(false);
+    _setSkipEnabled(false);
 
     _setHelpImage(_imageCenter);
 }
@@ -816,27 +807,57 @@ void RadioComponentController::_rcCalSaveCurrentValues()
     }
 }
 
+void RadioComponentController::_setStatusText(const QString &text)
+{
+    if (_statusText != text) {
+        _statusText = text;
+        emit statusTextChanged();
+    }
+}
+
+void RadioComponentController::_setNextText(const QString &text)
+{
+    if (_nextText != text) {
+        _nextText = text;
+        emit nextTextChanged();
+    }
+}
+
+void RadioComponentController::_setNextEnabled(bool enabled)
+{
+    if (_nextEnabled != enabled) {
+        _nextEnabled = enabled;
+        emit nextEnabledChanged();
+    }
+}
+
+void RadioComponentController::_setCancelEnabled(bool enabled)
+{
+    if (_cancelEnabled != enabled) {
+        _cancelEnabled = enabled;
+        emit cancelEnabledChanged();
+    }
+}
+
+void RadioComponentController::_setSkipEnabled(bool enabled)
+{
+    if (_skipEnabled != enabled) {
+        _skipEnabled = enabled;
+        emit skipEnabledChanged();
+    }
+}
+
 void RadioComponentController::_rcCalSave()
 {
     _rcCalState = rcCalStateSave;
 
-    if (_statusText) {
-        _statusText->setProperty(
-            "text",
-            tr("The current calibration settings are now displayed for each channel on screen.\n\n"
-            "Click the Next button to upload calibration to board. Click Cancel if you don't want to save these values.")
-        );
-    }
+    _setStatusText(
+        tr("The current calibration settings are now displayed for each channel on screen.\n\n"
+        "Click the Next button to upload calibration to board. Click Cancel if you don't want to save these values."));
 
-    if (_nextButton) {
-        _nextButton->setEnabled(true);
-    }
-    if (_skipButton) {
-        _skipButton->setEnabled(false);
-    }
-    if (_cancelButton) {
-        _cancelButton->setEnabled(true);
-    }
+    _setNextEnabled(true);
+    _setSkipEnabled(false);
+    _setCancelEnabled(true);
 
     // This updates the internal values according to the validation rules. Then _updateView will tick and update ui
     // such that the settings that will be written our are displayed.

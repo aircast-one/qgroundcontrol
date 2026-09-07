@@ -44,10 +44,6 @@ SetupPage {
 
             RadioComponentController {
                 id:             controller
-                statusText:     statusText
-                cancelButton:   cancelButton
-                nextButton:     nextButton
-                skipButton:     skipButton
                 onChannelCountChanged:              updateChannelCount()
                 onFunctionMappingChangedAPMReboot:  mainWindow.showMessageDialog(qsTr("Reboot required"), qsTr("Your stick mappings have changed, you must reboot the vehicle for correct operation."))
                 onThrottleReversedCalFailure:       mainWindow.showMessageDialog(qsTr("Throttle channel reversed"), qsTr("Calibration failed. The throttle channel on your transmitter is reversed. You must correct this on your transmitter in order to complete calibration."))
@@ -297,7 +293,8 @@ SetupPage {
                     QGCButton {
                         id:         nextButton
                         primary:    true
-                        text:       qsTr("Calibrate")
+                        text:       controller.nextText
+                        enabled:    controller.nextEnabled
 
                         onClicked: {
                             if (text === qsTr("Calibrate")) {
@@ -323,6 +320,7 @@ SetupPage {
                     QGCButton {
                         id:         skipButton
                         text:       qsTr("Skip")
+                        enabled:    controller.skipEnabled
                         visible:    enabled
                         onClicked:  controller.skipButtonClicked()
                     }
@@ -330,6 +328,7 @@ SetupPage {
                     QGCButton {
                         id:         cancelButton
                         text:       qsTr("Cancel")
+                        enabled:    controller.cancelEnabled
                         visible:    enabled
                         onClicked:  controller.cancelButtonClicked()
                     }
@@ -340,6 +339,7 @@ SetupPage {
                     id:         statusText
                     width:      parent.width
                     wrapMode:   Text.WordWrap
+                    text:       controller.statusText
                 }
 
                 Rectangle {

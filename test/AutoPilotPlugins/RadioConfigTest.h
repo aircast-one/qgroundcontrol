@@ -85,9 +85,7 @@ private:
     
     void _validateParameters(void);
     
-    AutoPilotPlugin*    _autopilot;
     
-    QGCQmlWidgetHolder* _calWidget;
     
     enum {
         nextButtonMask =        1 << 0,
@@ -106,13 +104,16 @@ private:
     
     static const int _stickSettleWait;
 	
-    static const struct ChannelSettings _rgChannelSettingsPX4[RadioComponentController::_chanMaxPX4];
-    static const struct ChannelSettings _rgChannelSettingsAPM[RadioComponentController::_chanMaxAPM];
-    static const struct ChannelSettings _rgChannelSettingsValidatePX4[RadioComponentController::_chanMaxPX4];
-    static const struct ChannelSettings _rgChannelSettingsValidateAPM[RadioComponentController::_chanMaxAPM];
+    static constexpr int _chanMaxPX4 = 18;
+    static constexpr int _chanMaxAPM = 14;
+
+    static const struct ChannelSettings _rgChannelSettingsPX4[_chanMaxPX4];
+    static const struct ChannelSettings _rgChannelSettingsAPM[_chanMaxAPM];
+    static const struct ChannelSettings _rgChannelSettingsValidatePX4[_chanMaxPX4];
+    static const struct ChannelSettings _rgChannelSettingsValidateAPM[_chanMaxAPM];
 
 	int _rgFunctionChannelMap[RadioComponentController::rcCalFunctionMax];
     
-    RadioComponentController*   _controller;
+    RadioComponentController*   _controller = nullptr;
 };
 

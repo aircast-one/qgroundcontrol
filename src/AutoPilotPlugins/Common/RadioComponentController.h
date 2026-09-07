@@ -11,7 +11,6 @@
 
 #include <QtCore/QLoggingCategory>
 #include <QtCore/QElapsedTimer>
-#include <QtQuick/QQuickItem>
 
 #include "FactPanelController.h"
 #include "QGCMAVLink.h"
@@ -24,10 +23,11 @@ class RadioComponentController : public FactPanelController
     Q_OBJECT
     Q_PROPERTY(int minChannelCount MEMBER _chanMinimum CONSTANT)
     Q_PROPERTY(int channelCount READ channelCount NOTIFY channelCountChanged)
-    Q_PROPERTY(QQuickItem *statusText MEMBER _statusText NOTIFY statusTextChanged)
-    Q_PROPERTY(QQuickItem *cancelButton MEMBER _cancelButton NOTIFY cancelButtonChanged)
-    Q_PROPERTY(QQuickItem *nextButton MEMBER _nextButton NOTIFY nextButtonChanged)
-    Q_PROPERTY(QQuickItem *skipButton MEMBER _skipButton NOTIFY skipButtonChanged)
+    Q_PROPERTY(QString statusText READ statusText NOTIFY statusTextChanged)
+    Q_PROPERTY(QString nextText READ nextText NOTIFY nextTextChanged)
+    Q_PROPERTY(bool nextEnabled READ nextEnabled NOTIFY nextEnabledChanged)
+    Q_PROPERTY(bool cancelEnabled READ cancelEnabled NOTIFY cancelEnabledChanged)
+    Q_PROPERTY(bool skipEnabled READ skipEnabled NOTIFY skipEnabledChanged)
     Q_PROPERTY(bool rollChannelMapped READ rollChannelMapped NOTIFY rollChannelMappedChanged)
     Q_PROPERTY(bool pitchChannelMapped READ pitchChannelMapped NOTIFY pitchChannelMappedChanged)
     Q_PROPERTY(bool yawChannelMapped READ yawChannelMapped NOTIFY yawChannelMappedChanged)
@@ -81,14 +81,21 @@ public:
 
     int channelCount() const { return _chanCount; }
 
+    QString statusText() const { return _statusText; }
+    QString nextText() const { return _nextText; }
+    bool nextEnabled() const { return _nextEnabled; }
+    bool cancelEnabled() const { return _cancelEnabled; }
+    bool skipEnabled() const { return _skipEnabled; }
+
     int transmitterMode() const { return _transmitterMode; }
     void setTransmitterMode(int mode);
 
 signals:
     void statusTextChanged();
-    void cancelButtonChanged();
-    void nextButtonChanged();
-    void skipButtonChanged();
+    void nextTextChanged();
+    void nextEnabledChanged();
+    void cancelEnabledChanged();
+    void skipEnabledChanged();
 
     void channelCountChanged(int channelCount);
     void channelRCValueChanged(int channel, int rcValue);
@@ -253,10 +260,17 @@ private:
 
     bool _unitTestMode = false;
 
-    QQuickItem *_statusText = nullptr;
-    QQuickItem *_cancelButton = nullptr;
-    QQuickItem *_nextButton = nullptr;
-    QQuickItem *_skipButton = nullptr;
+    void _setStatusText(const QString &text);
+    void _setNextText(const QString &text);
+    void _setNextEnabled(bool enabled);
+    void _setCancelEnabled(bool enabled);
+    void _setSkipEnabled(bool enabled);
+
+    QString _statusText;
+    QString _nextText;
+    bool _nextEnabled = false;
+    bool _cancelEnabled = false;
+    bool _skipEnabled = false;
 
     QString _imageHelp;
 
