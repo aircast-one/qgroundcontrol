@@ -1,0 +1,82 @@
+package one.aircast.android.map
+
+import android.os.Bundle
+import androidx.activity.ComponentActivity
+import androidx.activity.compose.setContent
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.padding
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Surface
+import androidx.compose.material3.Switch
+import androidx.compose.material3.Text
+import androidx.compose.material3.darkColorScheme
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.unit.dp
+import one.aircast.android.bridge.Qgc
+import one.aircast.android.bridge.qgcBool
+import one.aircast.android.bridge.qgcDouble
+import one.aircast.android.bridge.qgcString
+
+class MapSpikeActivity : ComponentActivity() {
+    override fun onCreate(savedInstanceState: Bundle?) {
+        super.onCreate(savedInstanceState)
+        Qgc.start()
+        setContent {
+            MaterialTheme(colorScheme = darkColorScheme()) {
+                Surface(Modifier.fillMaxSize()) { MapSpikeScreen() }
+            }
+        }
+    }
+}
+
+@Composable
+private fun MapSpikeScreen() {
+    var follow by remember { mutableStateOf(true) }
+
+    val available by qgcBool("vehicles.activeVehicleAvailable")
+    val latitude by qgcDouble("vehicle.latitude")
+    val longitude by qgcDouble("vehicle.longitude")
+    val mode by qgcString("vehicle.flightMode")
+
+    Box(Modifier.fillMaxSize()) {
+        VehicleMap(modifier = Modifier.fillMaxSize(), follow = follow)
+
+        Surface(
+            Modifier.align(Alignment.TopCenter).fillMaxWidth().padding(8.dp),
+            color = MaterialTheme.colorScheme.surface.copy(alpha = 0.85f),
+        ) {
+            Column(Modifier.padding(12.dp)) {
+                Text(
+                    if (available) "Vehicle: ${mode.ifBlank { "connected" }}" else "No vehicle",
+                    style = MaterialTheme.typography.titleSmall,
+                )
+                Text(
+                    if (latitude.isNaN() || longitude.isNaN()) {
+                        "No position"
+                    } else {
+                        "%.6f, %.6f".format(latitude, longitude)
+                    },
+                    style = MaterialTheme.typography.bodySmall,
+                )
+                Row(follow) { follow = it }
+            }
+        }
+    }
+}
+
+@Composable
+private fun Row(follow: Boolean, onChange: (Boolean) -> Unit) {
+    androidx.compose.foundation.layout.Row(verticalAlignment = Alignment.CenterVertically) {
+        Switch(checked = follow, onCheckedChange = onChange)
+        Text("Follow vehicle", Modifier.padding(start = 8.dp), style = MaterialTheme.typography.bodySmall)
+    }
+}
