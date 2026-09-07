@@ -1701,15 +1701,17 @@ QByteArray DebugApiServer::_bridgeJson(const QString &path, const QUrlQuery &que
         }
         // Take the value as a JSON literal when it parses as one (numbers, true, null),
         // and as a plain string otherwise, so ?value=3 and ?value=Manual both work.
-        const QString raw = query.queryItemValue(QStringLiteral("value"));
+        const QString raw = query.queryItemValue(QStringLiteral("value"), QUrl::FullyDecoded);
         const QJsonDocument literal = QJsonDocument::fromJson(QStringLiteral("[%1]").arg(raw).toUtf8());
         const QJsonValue value = literal.isArray() ? literal.array().at(0) : QJsonValue(raw);
         const QByteArray payload = QJsonDocument(QJsonObject{{"value", value}}).toJson(QJsonDocument::Compact);
         return QGCBridgeCore::set(target, QString::fromUtf8(payload)).toUtf8();
     }
     if (path == QStringLiteral("/bridge/invoke")) {
+        // FullyDecoded: PrettyDecoded leaves brackets and quotes percent-encoded, so
+        // the JSON never parses and every call arrives with an empty argument list.
         const QString args = query.hasQueryItem(QStringLiteral("args"))
-            ? query.queryItemValue(QStringLiteral("args"))
+            ? query.queryItemValue(QStringLiteral("args"), QUrl::FullyDecoded)
             : QStringLiteral("[]");
         return QGCBridgeCore::invoke(target, args).toUtf8();
     }

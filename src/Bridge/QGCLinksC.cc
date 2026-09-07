@@ -1,7 +1,6 @@
 #include "QGCLinksC.h"
 
 #include "LinkConfiguration.h"
-#include "LinkInterface.h"
 #include "LinkManager.h"
 #include "QmlObjectListModel.h"
 #include "SerialLink.h"
@@ -24,35 +23,8 @@ LinkConfiguration *configurationAt(int index)
 
 } // namespace
 
-int qgc_links_connect(int index)
-{
-    LinkConfiguration *const config = configurationAt(index);
-    if (!config) {
-        return 0;
-    }
-    LinkManager::instance()->createConnectedLink(config);
-    return 1;
-}
 
-int qgc_links_disconnect(int index)
-{
-    LinkConfiguration *const config = configurationAt(index);
-    if (!config || !config->link()) {
-        return 0;
-    }
-    config->link()->disconnect();
-    return 1;
-}
 
-int qgc_links_remove(int index)
-{
-    LinkConfiguration *const config = configurationAt(index);
-    if (!config) {
-        return 0;
-    }
-    LinkManager::instance()->removeConfiguration(config);
-    return 1;
-}
 
 int qgc_links_create(int type, const char *name, const char *host, int port)
 {

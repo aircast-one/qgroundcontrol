@@ -41,17 +41,17 @@ final class LinksStore: ObservableObject, Probeable {
     }
 
     func connect(_ link: LinkConfig) {
-        qgc_links_connect(Int32(link.index))
+        Bridge.invoke("links.createConnectedLink", ["@\(link.path)"])
         reload()
     }
 
     func disconnect(_ link: LinkConfig) {
-        qgc_links_disconnect(Int32(link.index))
+        Bridge.invoke("\(link.path).link.disconnect")
         reload()
     }
 
     func remove(_ link: LinkConfig) {
-        qgc_links_remove(Int32(link.index))
+        Bridge.invoke("links.removeConfiguration", ["@\(link.path)"])
         reload()
     }
 
