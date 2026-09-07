@@ -18,9 +18,6 @@ enum AppShell {
         return exitCode
     }
 
-    // Qt installs its own NSApplicationDelegate and depends on it for QFileOpenEvent
-    // deep links, so the delegate stays Qt's until the last QML view is gone. The menu
-    // bar is ours from here.
     private static func installMenuBar() {
         let appName = ProcessInfo.processInfo.processName
 
@@ -46,14 +43,9 @@ enum AppShell {
         let fly = windowMenu.addItem(withTitle: "Fly", action: #selector(FlyWindow.showFromMenu), keyEquivalent: "f")
         fly.target = FlyWindow.shared
 
-        let telemetry = windowMenu.addItem(withTitle: "Native Telemetry", action: #selector(NativeWindow.showFromMenu), keyEquivalent: "t")
-        telemetry.target = NativeWindow.shared
-
         let settings = appMenu.insertItem(withTitle: "Settings…", action: #selector(SettingsWindow.showFromMenu), keyEquivalent: ",", at: 1)
         settings.target = SettingsWindow.shared
 
-        // The menu bar shows a submenu's own title, so an untitled carrier item still
-        // renders correctly but is invisible to lookup by name. Title both.
         let bar = NSMenu()
         for menu in [appMenu, windowMenu] {
             let item = NSMenuItem()

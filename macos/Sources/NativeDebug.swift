@@ -3,12 +3,6 @@ import Foundation
 import QGCNativeDebugC
 
 enum NativeDebug {
-    // Driving the wrong window silently is worse than refusing: the caller cannot tell
-    // a click that missed from one that landed somewhere unexpected.
-    // Activation is asynchronous and competes with whatever app currently has focus,
-    // so one short settle is not enough when the request arrives from a terminal.
-    // Posting into an unraised window would land the event on whatever is in front,
-    // which is worse than failing.
     private static func raise(_ window: NSWindow) -> Bool {
         for _ in 0..<10 {
             NSApp.activate(ignoringOtherApps: true)
@@ -45,7 +39,6 @@ enum NativeDebug {
                 "visible": window.isVisible,
                 "key": window.isKeyWindow,
                 "main": window.isMainWindow,
-                // AppKit frames are bottom-left origin; screencapture -R wants top-left
                 "captureRect": [
                     "x": Int(frame.origin.x.rounded()),
                     "y": Int((screenHeight - frame.origin.y - frame.height).rounded()),
@@ -59,10 +52,6 @@ enum NativeDebug {
         return ["windows": entries, "screenHeight": Int(screenHeight.rounded())]
     }
 
-    // x/y are content-view coordinates with a top-left origin, which is how UI work is
-    // described. The event is sent straight to the window rather than posted to the
-    // HID tap, so it lands on the intended window whatever else has focus — no
-    // activation, no focus stealing, and no nested runloop.
     static func click(window title: String, x: Double, y: Double) -> [String: Any] {
         let window: NSWindow
         switch NativeDebug.resolve(title) {
@@ -76,7 +65,6 @@ enum NativeDebug {
             return ["ok": false, "error": "screen is locked; synthesised clicks cannot reach a window that cannot become key — drive the UI through /native/probe instead"]
         }
 
-        // NSEvent locations are window coordinates with a bottom-left origin.
         let frame = content.frame
         let point = NSPoint(x: frame.origin.x + x, y: frame.origin.y + (frame.height - y))
         guard content.bounds.contains(content.convert(point, from: nil)) else {
@@ -103,8 +91,6 @@ enum NativeDebug {
         return ["ok": true, "windowPoint": ["x": Int(point.x), "y": Int(point.y)]]
     }
 
-    // Types into whatever has focus in the named window. CGEvent carries the text as a
-    // unicode string rather than keycodes, so layout and modifiers do not matter.
     static func type(window title: String, text: String) -> [String: Any] {
         let window: NSWindow
         switch NativeDebug.resolve(title) {
@@ -157,7 +143,6 @@ enum NativeDebug {
         return ["menu": describe(bar)]
     }
 
-    // path is slash-separated titles, e.g. "Window/Native Telemetry"
     static func invokeMenu(path: String) -> [String: Any] {
         let parts = path.split(separator: "/").map(String.init)
         guard !parts.isEmpty, let bar = NSApp.mainMenu else {

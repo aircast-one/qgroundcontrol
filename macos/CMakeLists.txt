@@ -67,13 +67,10 @@ add_library(QGCNativeUI STATIC
     Sources/NativeDebug.swift
     Sources/NativeProbe.swift
     Sources/Probeable.swift
-    Sources/NativeWindow.swift
     Sources/QtHostWindow.swift
-    Sources/Telemetry.swift
     Sources/FlyTelemetryModel.swift
     Sources/Fly.swift
     Sources/FlyWindow.swift
-    Sources/TelemetryView.swift
 )
 
 set_target_properties(QGCNativeUI PROPERTIES
