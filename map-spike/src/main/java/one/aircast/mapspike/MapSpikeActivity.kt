@@ -166,6 +166,7 @@ private fun MapSpikeScreen(mapStyle: String) {
                 }
             },
             onWaypointSelected = { selected = it },
+            selectedWaypoint = (selected as? MapHit.Waypoint)?.index,
             onCentreChanged = { centre = it },
             fitRequest = fitRequest,
             onFitFailed = { onBridge("Fitting the plan") { false } },

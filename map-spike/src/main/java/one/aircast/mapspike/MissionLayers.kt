@@ -23,6 +23,7 @@ const val MISSION_PATH_LAYER = "aircast-mission-path-layer"
 const val WAYPOINT_ID_PROPERTY = "waypointId"
 private const val WAYPOINT_LABEL_PROPERTY = "label"
 const val WAYPOINT_COLOUR_PROPERTY = "waypointColour"
+const val WAYPOINT_SELECTED_PROPERTY = "waypointSelected"
 
 const val TAKEOFF_COLOUR = "#43A047"
 const val LAND_COLOUR = "#E53935"
@@ -65,8 +66,18 @@ fun installMissionLayers(style: Style) {
             CircleLayer(MISSION_DOT_LAYER, MISSION_SOURCE).withProperties(
                 PropertyFactory.circleColor(Expression.get(WAYPOINT_COLOUR_PROPERTY)),
                 PropertyFactory.circleRadius(13f),
-                PropertyFactory.circleStrokeColor("#37474F"),
-                PropertyFactory.circleStrokeWidth(2f),
+                PropertyFactory.circleStrokeColor(
+                    Expression.switchCase(
+                        Expression.get(WAYPOINT_SELECTED_PROPERTY), Expression.literal("#FFFFFF"),
+                        Expression.literal("#37474F"),
+                    ),
+                ),
+                PropertyFactory.circleStrokeWidth(
+                    Expression.switchCase(
+                        Expression.get(WAYPOINT_SELECTED_PROPERTY), Expression.literal(5f),
+                        Expression.literal(2f),
+                    ),
+                ),
             ),
         )
         style.addLayer(
@@ -84,12 +95,16 @@ fun installMissionLayers(style: Style) {
     }
 }
 
-fun missionFeatures(items: List<MissionItem>): FeatureCollection {
+// Tapping a waypoint changed the buttons but nothing on the map, and markers
+// routinely sit on top of each other where a plan starts, so there was no way
+// to tell which one had been picked.
+fun missionFeatures(items: List<MissionItem>, selectedIndex: Int? = null): FeatureCollection {
     val features = items.map { item ->
         Feature.fromGeometry(Point.fromLngLat(item.longitude, item.latitude)).apply {
             addNumberProperty(WAYPOINT_ID_PROPERTY, item.index)
             addStringProperty(WAYPOINT_LABEL_PROPERTY, item.sequence.toString())
             addStringProperty(WAYPOINT_COLOUR_PROPERTY, waypointColour(item.command))
+            addBooleanProperty(WAYPOINT_SELECTED_PROPERTY, item.index == selectedIndex)
         }
     }
     return FeatureCollection.fromFeatures(features)
@@ -103,8 +118,9 @@ fun missionPath(items: List<MissionItem>): Feature? {
     return Feature.fromGeometry(LineString.fromLngLats(points))
 }
 
-fun renderMission(style: Style, items: List<MissionItem>) {
-    (style.getSource(MISSION_SOURCE) as? GeoJsonSource)?.setGeoJson(missionFeatures(items))
+fun renderMission(style: Style, items: List<MissionItem>, selectedIndex: Int? = null) {
+    (style.getSource(MISSION_SOURCE) as? GeoJsonSource)
+        ?.setGeoJson(missionFeatures(items, selectedIndex))
 
     val path = missionPath(items)
     val pathSource = style.getSource(MISSION_PATH_SOURCE) as? GeoJsonSource ?: return

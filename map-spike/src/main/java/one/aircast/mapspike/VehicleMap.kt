@@ -135,6 +135,7 @@ fun VehicleMap(
     rallyPoints: List<RallyPoint> = emptyList(),
     surveys: List<Survey> = emptyList(),
     editable: Boolean = false,
+    selectedWaypoint: Int? = null,
     onAdd: (Double, Double) -> Unit = { _, _ -> },
     onMove: (MapHit, Double, Double) -> Unit = { _, _, _ -> },
     onWaypointSelected: (MapHit?) -> Unit = {},
@@ -265,12 +266,12 @@ fun VehicleMap(
         )
     }
 
-    LaunchedEffect(style, missionItems, fencePolygons, fenceCircles, rallyPoints, surveys) {
+    LaunchedEffect(style, missionItems, fencePolygons, fenceCircles, rallyPoints, surveys, selectedWaypoint) {
         val currentStyle = style ?: return@LaunchedEffect
         renderSurveys(currentStyle, surveys)
         renderFences(currentStyle, fencePolygons, rallyPoints, circlesAsPolygons(fenceCircles))
         renderVertexHandles(currentStyle, fencePolygons, surveys, fenceCircles)
-        renderMission(currentStyle, missionItems)
+        renderMission(currentStyle, missionItems, selectedWaypoint)
     }
 
     AndroidView(factory = { mapView }, modifier = modifier)
