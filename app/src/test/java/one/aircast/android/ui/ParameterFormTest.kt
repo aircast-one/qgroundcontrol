@@ -112,4 +112,29 @@ class ParameterFormTest {
         assertNull(setupSectionsFor("Sensors", isPx4 = false))
         assertNull(setupSectionsFor("Radio", isPx4 = true))
     }
+
+    @Test
+    fun `an empty error from QGC means the value is acceptable`() {
+        assertNull(validationMessage(""))
+        assertNull(validationMessage("   "))
+    }
+
+    @Test
+    fun `QGC's own wording is passed through unchanged`() {
+        assertEquals(
+            "Value must be within 0 and 100",
+            validationMessage("Value must be within 0 and 100"),
+        )
+    }
+
+    @Test
+    fun `a bridge call that returned nothing does not block the write`() {
+        assertNull(validationMessage(null))
+    }
+
+    @Test
+    fun `a non-string result is not treated as an error`() {
+        assertNull(validationMessage(false))
+        assertNull(validationMessage(0))
+    }
 }

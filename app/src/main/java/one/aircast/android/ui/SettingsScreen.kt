@@ -31,11 +31,15 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import one.aircast.android.bridge.Fact
 import one.aircast.android.bridge.Qgc
 import one.aircast.android.bridge.offMainDetached
@@ -209,23 +213,53 @@ private fun EnumPicker(fact: Fact, onWrite: () -> Unit) {
     }
 }
 
+internal fun validationMessage(result: Any?): String? =
+    (result as? String)?.takeIf { it.isNotBlank() }
+
+private suspend fun rejectionFor(fact: Fact, text: String): String? =
+    withContext(Dispatchers.Default) {
+        validationMessage(Qgc.invokeResult("${fact.path}.validate", text, false))
+    }
+
 @Composable
 private fun FactTextField(fact: Fact, onWrite: () -> Unit) {
     var editing by remember(fact.path) { mutableStateOf<String?>(null) }
+    var rejection by remember(fact.path) { mutableStateOf<String?>(null) }
+    val scope = rememberCoroutineScope()
 
-    OutlinedTextField(
-        value = editing ?: fact.valueString,
-        onValueChange = { editing = it },
-        singleLine = true,
-        modifier = Modifier.fillMaxWidth(),
-        trailingIcon = {
-            if (editing != null && editing != fact.valueString) {
-                TextButton(onClick = {
-                    val committed = editing
-                    editing = null
-                    offMainDetached { Qgc.set(fact.path, committed); onWrite() }
-                }) { Text("Set") }
-            }
-        },
-    )
+    Column {
+        OutlinedTextField(
+            value = editing ?: fact.valueString,
+            onValueChange = {
+                editing = it
+                rejection = null
+            },
+            singleLine = true,
+            isError = rejection != null,
+            modifier = Modifier.fillMaxWidth(),
+            trailingIcon = {
+                val committed = editing
+                if (committed != null && committed != fact.valueString) {
+                    TextButton(onClick = {
+                        scope.launch {
+                            val refused = rejectionFor(fact, committed)
+                            rejection = refused
+                            if (refused == null) {
+                                editing = null
+                                withContext(Dispatchers.Default) { Qgc.set(fact.path, committed) }
+                                onWrite()
+                            }
+                        }
+                    }) { Text("Set") }
+                }
+            },
+        )
+        rejection?.let {
+            Text(
+                text = it,
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.error,
+            )
+        }
+    }
 }
