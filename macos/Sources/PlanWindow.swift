@@ -144,6 +144,9 @@ struct PlanInspector: View {
     @ObservedObject var selection: PageSelection
 
     static let pages = ["Mission", "Fence", "Rally"]
+    static let maximumContentHeight: CGFloat = 460
+
+    @State private var contentHeight: CGFloat = 0
 
     var body: some View {
         GlassPanel {
@@ -167,27 +170,26 @@ struct PlanInspector: View {
 
                 ScrollView {
                     VStack(alignment: .leading, spacing: Overlay.gutter) { page }
+                        .measuringHeight(into: $contentHeight)
                 }
-                .frame(height: contentHeight)
+                .frame(height: min(max(contentHeight, Overlay.rowMinHeight),
+                                   PlanInspector.maximumContentHeight))
+                .overlay(alignment: .bottom) {
+                    // A long list is cut mid-row at the panel's limit, which reads as
+                    // broken rather than as more to scroll to.
+                    if contentHeight > PlanInspector.maximumContentHeight {
+                        LinearGradient(colors: [.clear, Color(nsColor: .windowBackgroundColor)],
+                                       startPoint: .top, endPoint: .bottom)
+                            .frame(height: Overlay.unit * 1.5)
+                            .allowsHitTesting(false)
+                    }
+                }
 
                 actions
             }
             .padding(Overlay.gutter)
             .frame(width: 320)
         }
-    }
-
-    private var rowCount: Int {
-        switch selection.page {
-        case "Fence": return max(fenceRally.shapes.count, 1)
-        case "Rally": return max(fenceRally.rallyPoints.count, 1)
-        default: return max(mission.items.count, 1)
-        }
-    }
-
-    private var contentHeight: CGFloat {
-        let rows = rowCount + (selection.page == "Mission" ? mission.selectedFacts.count : 0)
-        return min(CGFloat(rows) * Overlay.rowMinHeight + Overlay.unit * 1.5, 460)
     }
 
     private var summary: some View {

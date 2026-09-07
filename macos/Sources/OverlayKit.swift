@@ -225,3 +225,22 @@ struct SidebarRow: View {
         .padding(.vertical, 1)
     }
 }
+
+struct ContentHeightKey: PreferenceKey {
+    static var defaultValue: CGFloat = 0
+
+    static func reduce(value: inout CGFloat, nextValue: () -> CGFloat) {
+        value = max(value, nextValue())
+    }
+}
+
+extension View {
+    // Row heights vary once a label wraps, so an estimate of rows times row height
+    // clipped the last one. Measure instead.
+    func measuringHeight(into height: Binding<CGFloat>) -> some View {
+        background(GeometryReader { proxy in
+            Color.clear.preference(key: ContentHeightKey.self, value: proxy.size.height)
+        })
+        .onPreferenceChange(ContentHeightKey.self) { height.wrappedValue = $0 }
+    }
+}
