@@ -35,8 +35,6 @@ struct MissionMap: NSViewRepresentable {
         let map = MKMapView()
         map.delegate = context.coordinator
 
-        // Draw QGC's own cached imagery when there is any; Apple's tiles are the
-        // fallback, and are useless without a network connection.
         let mapType = CachedTileOverlay.currentMapType()
         if !mapType.isEmpty {
             context.coordinator.overlay = CachedTileOverlay(mapType: mapType)
@@ -50,8 +48,6 @@ struct MissionMap: NSViewRepresentable {
 
     func updateNSView(_ map: MKMapView, context: Context) {
         map.removeAnnotations(map.annotations)
-        // Keep the tile overlay: it is not derived from the mission and rebuilding it
-        // every update would discard every tile the map has drawn.
         map.overlays.filter { !($0 is CachedTileOverlay) }.forEach(map.removeOverlay)
 
         let placed = items.compactMap { item -> MissionAnnotation? in
@@ -64,15 +60,11 @@ struct MissionMap: NSViewRepresentable {
             map.addAnnotation(VehicleAnnotation(latitude: vehicle.latitude, longitude: vehicle.longitude))
         }
 
-        // The route is what makes a list of waypoints a mission: order matters, and a
-        // leg that doubles back is obvious on a line and invisible in a table.
         if placed.count > 1 {
             var coordinates = placed.map(\.coordinate)
             map.addOverlay(MKPolyline(coordinates: &coordinates, count: coordinates.count))
         }
 
-        // Frame the mission once. Re-framing on every update would fight the operator
-        // the moment they pan.
         MissionMap.lastRender = [
             "items": items.count,
             "placed": placed.count,
@@ -87,24 +79,35 @@ struct MissionMap: NSViewRepresentable {
         ]
 
         if !context.coordinator.hasFramed, !placed.isEmpty {
+            let region = MissionMap.region(enclosing: placed.map(\.coordinate))
+            guard map.bounds.width > 0 else {
+                DispatchQueue.main.async { [weak map] in
+                    guard let map, !context.coordinator.hasFramed, map.bounds.width > 0 else { return }
+                    context.coordinator.hasFramed = true
+                    map.setRegion(region, animated: false)
+                }
+                return
+            }
             context.coordinator.hasFramed = true
-            map.showAnnotations(placed, animated: false)
-            // map.camera returns a copy, so mutating its altitude does nothing. Widen
-            // the region instead: showAnnotations frames the pins edge to edge, which
-            // puts the outermost waypoints under the map's own chrome.
-            var region = map.region
-            region.span.latitudeDelta *= 1.4
-            region.span.longitudeDelta *= 1.4
             map.setRegion(region, animated: false)
+            MissionMap.lastRender["framedSpanLat"] = map.region.span.latitudeDelta
+            MissionMap.lastRender["framedCentre"] =
+                ["lat": map.centerCoordinate.latitude, "lon": map.centerCoordinate.longitude]
         }
+    }
+
+    static func region(enclosing coordinates: [CLLocationCoordinate2D]) -> MKCoordinateRegion {
+        let frame = MapFrame(latitudes: coordinates.map(\.latitude),
+                             longitudes: coordinates.map(\.longitude))
+        return MKCoordinateRegion(
+            center: CLLocationCoordinate2D(latitude: frame.centreLatitude,
+                                           longitude: frame.centreLongitude),
+            span: MKCoordinateSpan(latitudeDelta: frame.latitudeDelta,
+                                   longitudeDelta: frame.longitudeDelta))
     }
 
     func makeCoordinator() -> Coordinator { Coordinator() }
 
-    // What the map actually ended up holding. MapKit draws through Metal, and a locked
-    // screen gives its layer a zero-sized drawable, so the map renders nothing even
-    // though AppKit and SwiftUI views still capture normally. Without this the two
-    // cases -- "never given any data" and "given data, cannot draw" -- look identical.
     static var lastRender: [String: Any] = [:]
 
     final class Coordinator: NSObject, MKMapViewDelegate {

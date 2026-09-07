@@ -220,6 +220,29 @@ expect(!bare.hasPosition, "an item without a coordinate has no position")
 expect(bare.positionText, "—", "and shows nothing rather than a false one")
 expect(bare.altitudeText, "—", "same for altitude")
 
+func checkMapFraming() {
+    let canberra = MapFrame(latitudes: [-35.363262, -35.362900],
+                            longitudes: [149.165237, 149.165000])
+    expect(abs(canberra.centreLatitude - -35.363081) < 1e-5, "mission centre sits between the waypoints")
+    expect(abs(canberra.centreLongitude - 149.1651185) < 1e-5, "mission centre longitude sits between the waypoints")
+    expect(canberra.latitudeDelta < 0.01, "two close waypoints frame tightly, not to a hemisphere")
+    expect(canberra.isUsable, "a real mission frames to a usable region")
+
+    let single = MapFrame(latitudes: [-35.36], longitudes: [149.16])
+    expect(single.latitudeDelta == MapFrame.minimumDelta, "one waypoint still gets a minimum span")
+    expect(single.longitudeDelta == MapFrame.minimumDelta, "one waypoint still gets a minimum longitude span")
+
+    let empty = MapFrame(latitudes: [], longitudes: [])
+    expect(empty.isUsable, "no waypoints yields a usable region rather than NaN")
+
+    let bogus = MapFrame(latitudes: [-35.36, .nan, 1000], longitudes: [149.16, .infinity])
+    expect(abs(bogus.centreLatitude - -35.36) < 1e-9, "a NaN or out-of-range latitude cannot drag the frame")
+    expect(abs(bogus.centreLongitude - 149.16) < 1e-9, "a non-finite longitude cannot drag the frame")
+    expect(bogus.isUsable, "a bogus coordinate still leaves a usable region")
+}
+
+checkMapFraming()
+
 if failures == 0 {
     print("all Swift checks passed")
     exit(0)

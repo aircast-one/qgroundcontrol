@@ -202,6 +202,31 @@ Resolved resolve(const QString &path)
     return Resolved { object, QString() };
 }
 
+QJsonValue variantJson(const QVariant &value)
+{
+    if (value.canConvert<QGeoCoordinate>()) {
+        const QGeoCoordinate coordinate = value.value<QGeoCoordinate>();
+        return coordinate.isValid()
+            ? QJsonValue(QJsonObject {
+                  { QStringLiteral("latitude"), coordinate.latitude() },
+                  { QStringLiteral("longitude"), coordinate.longitude() },
+                  { QStringLiteral("altitude"), coordinate.altitude() },
+              })
+            : QJsonValue();
+    }
+
+    if (value.metaType().id() == QMetaType::QVariantList) {
+        QJsonArray array;
+        const QVariantList list = value.toList();
+        for (const QVariant &element : list) {
+            array.append(variantJson(element));
+        }
+        return array;
+    }
+
+    return QJsonValue::fromVariant(value);
+}
+
 QJsonObject factJson(Fact *fact)
 {
     static const QStringList kFactProperties = {
@@ -247,20 +272,6 @@ QJsonObject objectJson(QObject *object)
 
         const QVariant value = property.read(object);
 
-        // QGeoCoordinate has no QJsonValue conversion, so every coordinate on every
-        // object came through as null. It is the one thing a mission is made of.
-        if (value.canConvert<QGeoCoordinate>()) {
-            const QGeoCoordinate coordinate = value.value<QGeoCoordinate>();
-            json.insert(QString::fromLatin1(property.name()), coordinate.isValid()
-                ? QJsonValue(QJsonObject {
-                      { QStringLiteral("latitude"), coordinate.latitude() },
-                      { QStringLiteral("longitude"), coordinate.longitude() },
-                      { QStringLiteral("altitude"), coordinate.altitude() },
-                  })
-                : QJsonValue());
-            continue;
-        }
-
         QObject *const child = value.value<QObject *>();
         if (Fact *const fact = qobject_cast<Fact *>(child)) {
             facts.append(factJson(fact));
@@ -270,7 +281,7 @@ QJsonObject objectJson(QObject *object)
             children.append(QString::fromLatin1(property.name()));
             continue;
         }
-        json.insert(QString::fromLatin1(property.name()), QJsonValue::fromVariant(value));
+        json.insert(QString::fromLatin1(property.name()), variantJson(value));
     }
 
     if (QmlObjectListModel *const model = qobject_cast<QmlObjectListModel *>(object)) {
@@ -320,7 +331,7 @@ QJsonObject readPath(const QString &path)
 
     return QJsonObject {
         { QStringLiteral("kind"), QStringLiteral("value") },
-        { QStringLiteral("value"), QJsonValue::fromVariant(value) },
+        { QStringLiteral("value"), variantJson(value) },
     };
 }
 
@@ -380,6 +391,20 @@ QJsonObject invokePath(const QString &path, const QJsonArray &args)
                 }
                 values[arg] = QVariant::fromValue(target.object);
             }
+            if (method.parameterMetaType(arg).id() == qMetaTypeId<QGeoCoordinate>()) {
+                const QJsonObject point = args.at(arg).toObject();
+                if (!point.contains(QStringLiteral("latitude"))
+                    || !point.contains(QStringLiteral("longitude"))) {
+                    return QJsonObject { { QStringLiteral("ok"), false } };
+                }
+                values[arg] = QVariant::fromValue(QGeoCoordinate(
+                    point.value(QStringLiteral("latitude")).toDouble(),
+                    point.value(QStringLiteral("longitude")).toDouble(),
+                    point.value(QStringLiteral("altitude")).toDouble()));
+                generic[arg] = QGenericArgument(method.parameterMetaType(arg).name(), values[arg].constData());
+                continue;
+            }
+
             if (!values[arg].convert(method.parameterMetaType(arg))) {
                 return QJsonObject { { QStringLiteral("ok"), false } };
             }
