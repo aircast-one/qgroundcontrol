@@ -30,6 +30,7 @@ class APMSensorsComponentController : public FactPanelController
     Q_PROPERTY(bool    cancelEnabled        READ cancelEnabled          NOTIFY cancelEnabledChanged)
     Q_PROPERTY(QString orientationHelpText  READ orientationHelpText    NOTIFY orientationHelpTextChanged)
     Q_PROPERTY(bool    calibrationInProgress READ calibrationInProgress  NOTIFY calibrationInProgressChanged)
+    Q_PROPERTY(QString statusText           READ statusText             NOTIFY statusTextChanged)
 
 
     Q_PROPERTY(bool compassSetupNeeded                      READ compassSetupNeeded                         NOTIFY setupNeededChanged)
@@ -86,6 +87,7 @@ public:
     bool cancelEnabled() const { return _cancelEnabled; }
     QString orientationHelpText() const { return _orientationHelpText; }
     bool calibrationInProgress() const { return _calibrationInProgress; }
+    QString statusText() const { return _statusText; }
 
     Q_INVOKABLE void calibrateCompass();
     Q_INVOKABLE void calibrateAccel(bool doSimpleAccelCal);
@@ -115,6 +117,7 @@ signals:
     void cancelEnabledChanged();
     void orientationHelpTextChanged();
     void calibrationInProgressChanged();
+    void statusTextChanged();
     void statusTextAppended(const QString &text);
     void showGyroCalAreaChanged();
     void showOrientationCalAreaChanged();
@@ -143,6 +146,7 @@ private slots:
     void _setCancelEnabled(bool enabled);
     void _setOrientationHelpText(const QString &text);
     void _setCalibrationInProgress(bool inProgress);
+    void _clearStatusLog();
 
 private:
     void _startLogCalibration();
@@ -176,6 +180,7 @@ private:
     bool _cancelEnabled = false;
     QString _orientationHelpText;
     bool _calibrationInProgress = false;
+    QString _statusText;
 
     bool _showOrientationCalArea = false;
 

@@ -76,11 +76,23 @@ APMSensorsComponentController::~APMSensorsComponentController()
 
 void APMSensorsComponentController::_appendStatusLog(const QString &text)
 {
+    _statusText += _statusText.isEmpty() ? text : (QStringLiteral("\n") + text);
+    emit statusTextChanged();
     emit statusTextAppended(text);
+}
+
+void APMSensorsComponentController::_clearStatusLog()
+{
+    if (!_statusText.isEmpty()) {
+        _statusText.clear();
+        emit statusTextChanged();
+    }
+    emit resetStatusTextArea();
 }
 
 void APMSensorsComponentController::_startLogCalibration()
 {
+    _clearStatusLog();
     _hideAllCalAreas();
 
     (void) connect(_vehicle, &Vehicle::textMessageReceived, this, &APMSensorsComponentController::_handleTextMessage);
@@ -96,6 +108,7 @@ void APMSensorsComponentController::_startLogCalibration()
 
 void APMSensorsComponentController::_startVisualCalibration()
 {
+    _clearStatusLog();
     _setCalibrationInProgress(true);
     _setCancelEnabled(true);
     _setNextEnabled(false);
@@ -166,14 +179,14 @@ void APMSensorsComponentController::_stopCalibration(APMSensorsComponentControll
     switch (code) {
     case StopCalibrationSuccess:
         _setOrientationHelpText(tr("Calibration complete"));
-        emit resetStatusTextArea();
+        _clearStatusLog();
         emit calibrationComplete(_calTypeInProgress);
         break;
     case StopCalibrationSuccessShowLog:
         emit calibrationComplete(_calTypeInProgress);
         break;
     case StopCalibrationCancelled:
-        emit resetStatusTextArea();
+        _clearStatusLog();
         _hideAllCalAreas();
         break;
     default:
