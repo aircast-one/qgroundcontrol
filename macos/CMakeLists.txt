@@ -55,6 +55,8 @@ add_library(QGCNativeUI STATIC
     Sources/MissionVehicleModel.swift
     Sources/GeoTagModel.swift
     Sources/GeoTag.swift
+    Sources/MavlinkInspectorModel.swift
+    Sources/MavlinkInspector.swift
     Sources/OverlayKit.swift
     Sources/AppShell.swift
     Sources/Bridge.swift

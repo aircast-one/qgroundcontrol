@@ -282,18 +282,91 @@ struct GeoTagView: View {
     }
 }
 
+struct MavlinkInspectorView: View {
+    @ObservedObject var store: MavlinkInspectorStore
+
+    static let listHeight: CGFloat = 300
+
+    var body: some View {
+        SetupPageBody(title: "MAVLink Inspector",
+                      note: store.listening
+                          ? "Every message system \(store.systemId) is sending, how often it arrives, and what is inside the one you pick."
+                          : "Every message the vehicle sends, how often it arrives, and what is inside the one you pick.") {
+            if !store.listening {
+                GroupCard { EmptyStateRow(text: "No vehicle is talking yet.") }
+            } else {
+                HStack(alignment: .top, spacing: Overlay.unit) {
+                    GroupCard {
+                        ScrollView {
+                            VStack(spacing: 0) {
+                                ForEach(Array(store.messages.enumerated()), id: \.element.id) { row, message in
+                                    Button {
+                                        store.select(message)
+                                    } label: {
+                                        GroupRow(title: message.name,
+                                                 description: "#\(message.id)",
+                                                 value: message.rateText,
+                                                 showSeparator: row > 0,
+                                                 current: message.selected)
+                                    }
+                                    .buttonStyle(.plain)
+                                }
+                            }
+                        }
+                    }
+                    .frame(width: 260, height: MavlinkInspectorView.listHeight)
+
+                    fields
+                        .frame(height: MavlinkInspectorView.listHeight, alignment: .top)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                }
+            }
+        }
+        .onAppear(perform: store.start)
+        .onDisappear(perform: store.stop)
+    }
+
+    @ViewBuilder private var fields: some View {
+        VStack(alignment: .leading, spacing: Overlay.unit * 0.35) {
+            if let message = store.selected {
+                SectionLabel(text: "\(message.name) \u{00B7} \(message.countText) received")
+                GroupCard {
+                    ScrollView {
+                        VStack(spacing: 0) {
+                            if store.fields.isEmpty {
+                                EmptyStateRow(text: "This message carries no fields.")
+                            } else {
+                                ForEach(Array(store.fields.enumerated()), id: \.element.id) { row, field in
+                                    GroupRow(title: field.name,
+                                             description: field.type,
+                                             value: field.value.isEmpty ? "\u{2014}" : field.value,
+                                             showSeparator: row > 0)
+                                }
+                            }
+                        }
+                    }
+                }
+            } else {
+                GroupCard { EmptyStateRow(text: "Pick a message to watch its fields.") }
+            }
+        }
+    }
+}
+
 struct AnalyzeView: View {
     @ObservedObject var vibration: VibrationStore
     @ObservedObject var logs: LogDownloadStore
     @ObservedObject var geoTag: GeoTagStore
+    @ObservedObject var inspector: MavlinkInspectorStore
     @ObservedObject var selection: PageSelection
 
-    static let pages = ["Vibration", "Log Download", "Geotag Images"]
+    static let pages = ["Vibration", "Log Download", "Geotag Images", "MAVLink Inspector"]
 
     static let symbols = ["Vibration": "waveform.path.ecg", "Log Download": "doc.text.fill",
-                          "Geotag Images": "mappin.and.ellipse"]
+                          "Geotag Images": "mappin.and.ellipse",
+                          "MAVLink Inspector": "dot.radiowaves.left.and.right"]
     static let colours: [String: Color] = ["Vibration": .pink, "Log Download": .indigo,
-                                           "Geotag Images": .teal]
+                                           "Geotag Images": .teal, "MAVLink Inspector": .orange]
 
     var body: some View {
         HStack(spacing: 0) {
@@ -312,6 +385,7 @@ struct AnalyzeView: View {
             switch selection.page {
             case "Log Download": LogDownloadView(store: logs)
             case "Geotag Images": GeoTagView(store: geoTag)
+            case "MAVLink Inspector": MavlinkInspectorView(store: inspector)
             default: VibrationView(store: vibration)
             }
         }
@@ -325,6 +399,7 @@ final class AnalyzeWindow: NSObject, NSWindowDelegate {
     private let vibration = VibrationStore()
     private let logs = LogDownloadStore()
     private let geoTag = GeoTagStore()
+    private let inspector = MavlinkInspectorStore()
     private let selection = PageSelection(owner: "analyze", pages: AnalyzeView.pages)
     private var window: NSWindow?
 
@@ -333,6 +408,7 @@ final class AnalyzeWindow: NSObject, NSWindowDelegate {
         NativeProbe.register(vibration)
         NativeProbe.register(logs)
         NativeProbe.register(geoTag)
+        NativeProbe.register(inspector)
         NativeProbe.register(selection, as: selection.identifier)
     }
 
@@ -354,7 +430,7 @@ final class AnalyzeWindow: NSObject, NSWindowDelegate {
         window.title = "Analyze"
         window.isReleasedWhenClosed = false
         window.delegate = self
-        window.contentView = NSHostingView(rootView: AnalyzeView(vibration: vibration, logs: logs, geoTag: geoTag, selection: selection))
+        window.contentView = NSHostingView(rootView: AnalyzeView(vibration: vibration, logs: logs, geoTag: geoTag, inspector: inspector, selection: selection))
         window.center()
         window.makeKeyAndOrderFront(nil)
         self.window = window

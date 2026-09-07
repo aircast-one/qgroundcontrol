@@ -845,6 +845,24 @@ func checkGeoTagJob() {
 
 checkGeoTagJob()
 
+func checkMavlinkMessage() {
+    func rate(_ hz: Double) -> String {
+        MavlinkMessage(json: ["name": "ATTITUDE", "id": 30, "actualRateHz": hz], index: 0)?.rateText ?? "?"
+    }
+
+    expect(rate(10), "10.0 Hz", "a steady message reads in hertz")
+    expect(rate(0), "—", "one that has never repeated has no rate")
+    expect(rate(0.01), "<0.1 Hz", "a rare one is rare, not zero")
+    expect(rate(3.04), "3.0 Hz", "the rate is rounded to a tenth")
+
+    expect(MavlinkMessage(json: ["id": 30], index: 0) == nil, "a message without a name is not one")
+    expect(MavlinkField(json: ["name": "roll", "type": "float", "value": "-0.01"])?.value ?? "", "-0.01",
+           "a field carries the value the vehicle sent, unrounded")
+    expect(MavlinkField(json: ["type": "float"]) == nil, "a field without a name is not one")
+}
+
+checkMavlinkMessage()
+
 if failures == 0 {
     print("all Swift checks passed")
     exit(0)
