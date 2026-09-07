@@ -67,7 +67,7 @@ final class MissionStore: ObservableObject, Probeable {
         ["count": items.count, "syncing": syncing, "status": status,
          "placed": items.filter(\.hasPosition).count,
          "vehiclePlaced": vehiclePosition != nil,
-         "map": MissionMap.lastRender,
+         "map": MissionMap.lastRender["mission"] ?? [:],
          "items": items.prefix(8).map {
              ["seq": $0.sequence, "command": $0.command,
               "position": $0.positionText, "altitude": $0.altitudeText]

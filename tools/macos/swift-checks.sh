@@ -20,6 +20,7 @@ swiftc -Onone -o "$out" \
     "$root/macos/Sources/Probeable.swift" \
     "$root/macos/Sources/MissionItemModel.swift" \
     "$root/macos/Sources/MapFraming.swift" \
+    "$root/macos/Sources/FenceRallyModel.swift" \
     "$root/macos/Sources/FlightModePositions.swift" \
     "$root/macos/Sources/PageSelection.swift" \
     "$root/macos/Tests/main.swift"

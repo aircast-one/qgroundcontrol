@@ -18,6 +18,27 @@ final class MissionAnnotation: NSObject, MKAnnotation {
     }
 }
 
+final class RallyAnnotation: NSObject, MKAnnotation {
+    let coordinate: CLLocationCoordinate2D
+    let title: String?
+    let subtitle: String?
+
+    init(point: RallyPointRow) {
+        coordinate = CLLocationCoordinate2D(latitude: point.latitude ?? 0,
+                                            longitude: point.longitude ?? 0)
+        title = "Rally \(point.id + 1)"
+        subtitle = point.altitudeText == "\u{2014}" ? nil : point.altitudeText
+    }
+}
+
+final class FencePolygon: MKPolygon {
+    var inclusion = true
+}
+
+final class FenceCircle: MKCircle {
+    var inclusion = true
+}
+
 final class VehicleAnnotation: NSObject, MKAnnotation {
     let coordinate: CLLocationCoordinate2D
     let title: String? = "Vehicle"
@@ -28,8 +49,11 @@ final class VehicleAnnotation: NSObject, MKAnnotation {
 }
 
 struct MissionMap: NSViewRepresentable {
+    let owner: String
     let items: [MissionItem]
     let vehicle: (latitude: Double, longitude: Double)?
+    let shapes: [FenceShape]
+    let rallyPoints: [RallyPointRow]
 
     func makeNSView(context: Context) -> MKMapView {
         let map = MKMapView()
@@ -60,17 +84,23 @@ struct MissionMap: NSViewRepresentable {
             map.addAnnotation(VehicleAnnotation(latitude: vehicle.latitude, longitude: vehicle.longitude))
         }
 
+        let rally = rallyPoints.filter { $0.latitude != nil && $0.longitude != nil }
+        map.addAnnotations(rally.map(RallyAnnotation.init(point:)))
+        shapes.compactMap(MissionMap.overlay(for:)).forEach { map.addOverlay($0, level: .aboveLabels) }
+
         if placed.count > 1 {
             var coordinates = placed.map(\.coordinate)
             map.addOverlay(MKPolyline(coordinates: &coordinates, count: coordinates.count))
         }
 
-        MissionMap.lastRender = [
+        MissionMap.lastRender[owner] = [
             "items": items.count,
             "placed": placed.count,
             "annotations": map.annotations.count,
+            "rally": rally.count,
+            "fenceOverlays": map.overlays.filter { $0 is FencePolygon || $0 is FenceCircle }.count,
             "overlays": map.overlays.count,
-            "framed": context.coordinator.hasFramed,
+            "framed": context.coordinator.lastFrame != nil,
             "centre": ["lat": map.centerCoordinate.latitude, "lon": map.centerCoordinate.longitude],
             "spanLat": map.region.span.latitudeDelta,
             "tileOverlay": context.coordinator.overlay != nil,
@@ -78,28 +108,59 @@ struct MissionMap: NSViewRepresentable {
             "size": ["w": Double(map.bounds.width), "h": Double(map.bounds.height)],
         ]
 
-        if !context.coordinator.hasFramed, !placed.isEmpty {
-            let region = MissionMap.region(enclosing: placed.map(\.coordinate))
+        let framable = placed.map(\.coordinate)
+            + rally.compactMap { point in
+                point.latitude.flatMap { latitude in
+                    point.longitude.map { CLLocationCoordinate2D(latitude: latitude, longitude: $0) }
+                }
+            }
+            + shapes.flatMap(\.framingPoints).map {
+                CLLocationCoordinate2D(latitude: $0.latitude, longitude: $0.longitude)
+            }
+
+        let frame = MapFrame(latitudes: framable.map(\.latitude),
+                             longitudes: framable.map(\.longitude))
+
+        if !framable.isEmpty, frame != context.coordinator.lastFrame {
             guard map.bounds.width > 0 else {
                 DispatchQueue.main.async { [weak map] in
-                    guard let map, !context.coordinator.hasFramed, map.bounds.width > 0 else { return }
-                    context.coordinator.hasFramed = true
-                    map.setRegion(region, animated: false)
+                    guard let map, map.bounds.width > 0,
+                          frame != context.coordinator.lastFrame else { return }
+                    context.coordinator.lastFrame = frame
+                    map.setRegion(MissionMap.region(frame), animated: false)
                 }
                 return
             }
-            context.coordinator.hasFramed = true
-            map.setRegion(region, animated: false)
-            MissionMap.lastRender["framedSpanLat"] = map.region.span.latitudeDelta
-            MissionMap.lastRender["framedCentre"] =
-                ["lat": map.centerCoordinate.latitude, "lon": map.centerCoordinate.longitude]
+            context.coordinator.lastFrame = frame
+            map.setRegion(MissionMap.region(frame), animated: false)
         }
+
+        MissionMap.lastRender[owner]?["centre"] =
+            ["lat": map.centerCoordinate.latitude, "lon": map.centerCoordinate.longitude]
+        MissionMap.lastRender[owner]?["spanLat"] = map.region.span.latitudeDelta
     }
 
-    static func region(enclosing coordinates: [CLLocationCoordinate2D]) -> MKCoordinateRegion {
-        let frame = MapFrame(latitudes: coordinates.map(\.latitude),
-                             longitudes: coordinates.map(\.longitude))
-        return MKCoordinateRegion(
+    static func overlay(for shape: FenceShape) -> MKOverlay? {
+        if let radius = shape.radius {
+            guard let latitude = shape.latitude, let longitude = shape.longitude else { return nil }
+            let circle = FenceCircle(
+                center: CLLocationCoordinate2D(latitude: latitude, longitude: longitude),
+                radius: radius)
+            circle.inclusion = shape.inclusion
+            return circle
+        }
+
+        guard shape.vertices.count >= 3 else { return nil }
+        var coordinates = shape.vertices.map {
+            CLLocationCoordinate2D(latitude: $0.latitude, longitude: $0.longitude)
+        }
+        let polygon = FencePolygon(coordinates: &coordinates, count: coordinates.count)
+        polygon.inclusion = shape.inclusion
+        return polygon
+    }
+
+    static func region(_ frame: MapFrame) -> MKCoordinateRegion {
+        MKCoordinateRegion(
             center: CLLocationCoordinate2D(latitude: frame.centreLatitude,
                                            longitude: frame.centreLongitude),
             span: MKCoordinateSpan(latitudeDelta: frame.latitudeDelta,
@@ -108,10 +169,10 @@ struct MissionMap: NSViewRepresentable {
 
     func makeCoordinator() -> Coordinator { Coordinator() }
 
-    static var lastRender: [String: Any] = [:]
+    static var lastRender: [String: [String: Any]] = [:]
 
     final class Coordinator: NSObject, MKMapViewDelegate {
-        var hasFramed = false
+        var lastFrame: MapFrame?
         var overlay: CachedTileOverlay?
         var tilesServed = 0
         var tilesMissing = 0
@@ -120,6 +181,14 @@ struct MissionMap: NSViewRepresentable {
             if let tiles = overlay as? CachedTileOverlay {
                 return MKTileOverlayRenderer(tileOverlay: tiles)
             }
+            if let polygon = overlay as? FencePolygon {
+                return Coordinator.fenceRenderer(MKPolygonRenderer(polygon: polygon),
+                                                 inclusion: polygon.inclusion)
+            }
+            if let circle = overlay as? FenceCircle {
+                return Coordinator.fenceRenderer(MKCircleRenderer(circle: circle),
+                                                 inclusion: circle.inclusion)
+            }
             guard let line = overlay as? MKPolyline else { return MKOverlayRenderer(overlay: overlay) }
             let renderer = MKPolylineRenderer(polyline: line)
             renderer.strokeColor = .controlAccentColor
@@ -127,7 +196,25 @@ struct MissionMap: NSViewRepresentable {
             return renderer
         }
 
+        static func fenceRenderer(_ renderer: MKOverlayPathRenderer, inclusion: Bool) -> MKOverlayRenderer {
+            let colour: NSColor = inclusion ? .systemGreen : .systemRed
+            renderer.strokeColor = colour
+            renderer.fillColor = colour.withAlphaComponent(0.12)
+            renderer.lineWidth = 2
+            return renderer
+        }
+
         func mapView(_ mapView: MKMapView, viewFor annotation: MKAnnotation) -> MKAnnotationView? {
+            if let rally = annotation as? RallyAnnotation {
+                let view = mapView.dequeueReusableAnnotationView(withIdentifier: "rally") as? MKMarkerAnnotationView
+                    ?? MKMarkerAnnotationView(annotation: rally, reuseIdentifier: "rally")
+                view.annotation = rally
+                view.canShowCallout = true
+                view.glyphText = "R"
+                view.markerTintColor = .systemPurple
+                return view
+            }
+
             if let vehicle = annotation as? VehicleAnnotation {
                 let view = mapView.dequeueReusableAnnotationView(withIdentifier: "vehicle")
                     ?? MKAnnotationView(annotation: vehicle, reuseIdentifier: "vehicle")

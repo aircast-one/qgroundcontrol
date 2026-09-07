@@ -243,6 +243,46 @@ func checkMapFraming() {
 
 checkMapFraming()
 
+func checkFenceGeometry() {
+    let polygon = FenceShape(json: [
+        "inclusion": true, "count": 4, "area": 85268.0,
+        "center": ["latitude": -35.3635, "longitude": 149.1655],
+        "path": [["latitude": -35.3607, "longitude": 149.1612],
+                 ["latitude": -35.3607, "longitude": 149.1687],
+                 ["latitude": -35.3652, "longitude": 149.1687],
+                 ["latitude": -35.3652, "longitude": 149.1612]],
+    ], id: 0, circle: false)
+    expect(polygon.vertices.count == 4, "a polygon keeps every vertex the bridge sent")
+    expect(polygon.radius == nil, "a polygon has no radius")
+    expect(polygon.framingPoints.count == 4, "a polygon frames from its vertices")
+    expect(polygon.kindText, "Keep-in polygon", "an inclusion polygon reads as keep-in")
+
+    let exclusion = FenceShape(json: ["inclusion": false, "count": 3, "path": []], id: 1, circle: false)
+    expect(exclusion.kindText, "Keep-out polygon", "an exclusion polygon reads as keep-out")
+
+    let circle = FenceShape(json: [
+        "inclusion": true,
+        "center": ["latitude": -35.3635, "longitude": 149.1655],
+        "facts": [["name": "Radius", "value": 100.0]],
+    ], id: 2, circle: true)
+    expect(circle.radius != nil, "a circle carries its radius")
+    expect(circle.vertices.isEmpty, "a circle has no vertices")
+    expect(circle.framingPoints.count == 2, "a circle frames from a box around its radius")
+    let span = circle.framingPoints[1].latitude - circle.framingPoints[0].latitude
+    expect(abs(span - 200.0 / 111_320.0) < 1e-6, "the framing box spans the circle's diameter")
+
+    let headless = FenceShape(json: ["inclusion": true, "facts": []], id: 3, circle: true)
+    expect(headless.framingPoints.isEmpty, "a circle with no centre contributes no framing points")
+
+    let bogus = FenceShape(json: [
+        "count": 2, "path": [["latitude": "north", "longitude": 149.16],
+                             ["latitude": -35.36, "longitude": 149.17]],
+    ], id: 4, circle: false)
+    expect(bogus.vertices.count == 1, "a malformed vertex is dropped rather than read as zero")
+}
+
+checkFenceGeometry()
+
 if failures == 0 {
     print("all Swift checks passed")
     exit(0)

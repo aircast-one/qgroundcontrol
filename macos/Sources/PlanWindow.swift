@@ -3,6 +3,7 @@ import SwiftUI
 
 struct MissionView: View {
     @ObservedObject var store: MissionStore
+    @ObservedObject var fenceRally: FenceRallyStore
 
     var body: some View {
         VStack(spacing: 0) {
@@ -12,14 +13,18 @@ struct MissionView: View {
                 Notice(text: store.status)
             } else {
                 VSplitView {
-                    MissionMap(items: store.items, vehicle: store.vehiclePosition)
+                    MissionMap(owner: "mission", items: store.items, vehicle: store.vehiclePosition,
+                               shapes: fenceRally.shapes, rallyPoints: fenceRally.rallyPoints)
                         .frame(minHeight: 220)
                     list
                         .frame(minHeight: 120)
                 }
             }
         }
-        .onAppear(perform: store.reload)
+        .onAppear {
+            store.reload()
+            fenceRally.reload()
+        }
     }
 
     private var header: some View {
@@ -95,13 +100,19 @@ struct FenceRallyView: View {
             if !store.status.isEmpty {
                 Notice(text: store.status)
             } else {
-                ScrollView {
-                    VStack(alignment: .leading, spacing: 22) {
-                        SectionCard(title: "Geofence") { fenceBody }
-                        SectionCard(title: "Rally Points") { rallyBody }
+                VSplitView {
+                    MissionMap(owner: "fence", items: [], vehicle: nil,
+                               shapes: store.shapes, rallyPoints: store.rallyPoints)
+                        .frame(minHeight: 200)
+                    ScrollView {
+                        VStack(alignment: .leading, spacing: 22) {
+                            SectionCard(title: "Geofence") { fenceBody }
+                            SectionCard(title: "Rally Points") { rallyBody }
+                        }
+                        .padding(16)
+                        .frame(maxWidth: .infinity, alignment: .leading)
                     }
-                    .padding(16)
-                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .frame(minHeight: 160)
                 }
             }
         }
@@ -208,7 +219,7 @@ struct PlanView: View {
             .frame(width: 170)
             Divider()
             if selection.page == "Mission" {
-                MissionView(store: mission)
+                MissionView(store: mission, fenceRally: fenceRally)
             } else {
                 FenceRallyView(store: fenceRally)
             }
