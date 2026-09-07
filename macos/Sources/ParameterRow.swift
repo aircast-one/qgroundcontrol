@@ -65,7 +65,7 @@ struct ParameterEditor: View {
                 }
             }
             .labelsHidden()
-            .frame(maxWidth: 180)
+            .frame(maxWidth: 220)
         }
     }
 }

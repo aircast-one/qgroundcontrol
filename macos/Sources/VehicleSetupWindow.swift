@@ -153,8 +153,68 @@ struct SafetyView: View {
         .onAppear(perform: store.load)
     }
 
-    private var sections: [(section: SafetySection, names: [String])] {
-        SafetySection.present(in: Set(store.parameters.map(\.name)))
+    private var sections: [(section: SetupSection, names: [String])] {
+        SetupSection.present(SetupSection.safety, in: Set(store.parameters.map(\.name)))
+    }
+}
+
+struct PowerView: View {
+    @ObservedObject var store: ParametersStore
+    @ObservedObject var power: PowerStore
+
+    var body: some View {
+        SetupPageBody(title: "Power",
+                      note: "What the vehicle measures its pack with, and how that measurement is scaled.") {
+            VStack(alignment: .leading, spacing: 0) {
+                SectionLabel(text: "Measured now")
+                GroupCard {
+                    if power.battery.available {
+                        GroupRow(title: "Voltage", value: power.battery.voltageText, showSeparator: false)
+                        GroupRow(title: "Current", value: power.battery.currentText)
+                        GroupRow(title: "Remaining", value: power.battery.percentText)
+                    } else {
+                        EmptyStateRow(text: "This vehicle is not reporting a battery.")
+                    }
+                }
+            }
+
+            if store.loading {
+                GroupCard { EmptyStateRow(text: "Reading parameters from the vehicle\u{2026}") }
+            } else if sections.isEmpty {
+                GroupCard {
+                    EmptyStateRow(text: "This vehicle reports none of the battery parameters this page knows about.")
+                }
+            } else {
+                ForEach(sections, id: \.section.id) { entry in
+                    VStack(alignment: .leading, spacing: 0) {
+                        SectionLabel(text: entry.section.title)
+                        GroupCard {
+                            ForEach(Array(entry.names.enumerated()), id: \.element) { index, name in
+                                if let parameter = store.parameter(named: name) {
+                                    ParameterRow(parameter: parameter, showSeparator: index > 0) {
+                                        store.write(parameter, $0)
+                                    }
+                                }
+                            }
+                        }
+                        Text(entry.section.note)
+                            .font(.caption).foregroundColor(.secondary)
+                            .fixedSize(horizontal: false, vertical: true)
+                            .padding(.horizontal, Overlay.horizontalPadding)
+                            .padding(.top, Overlay.unit * 0.35)
+                    }
+                }
+            }
+        }
+        .onAppear {
+            store.load()
+            power.start()
+        }
+        .onDisappear(perform: power.stop)
+    }
+
+    private var sections: [(section: SetupSection, names: [String])] {
+        SetupSection.present(SetupSection.power, in: Set(store.parameters.map(\.name)))
     }
 }
 
@@ -313,7 +373,7 @@ struct SetupSummaryView: View {
 }
 
 enum SetupPage {
-    static let all = ["Summary", "Sensors", "Flight Modes", "Safety", "Parameters"]
+    static let all = ["Summary", "Sensors", "Flight Modes", "Safety", "Power", "Parameters"]
 
     static func symbol(for page: String) -> String {
         switch page {
@@ -350,6 +410,7 @@ struct VehicleSetupView: View {
     @ObservedObject var parameters: ParametersStore
     @ObservedObject var sensors: SensorsStore
     @ObservedObject var components: VehicleComponentsStore
+    @ObservedObject var power: PowerStore
     @ObservedObject var selection: PageSelection
 
     var body: some View {
@@ -365,6 +426,7 @@ struct VehicleSetupView: View {
                     row("Sensors", badge: !sensors.failing.isEmpty)
                     row("Flight Modes")
                     row("Safety")
+                    row("Power")
                 }
                 Section("Advanced") {
                     row("Parameters")
@@ -394,6 +456,7 @@ struct VehicleSetupView: View {
         switch selection.page {
         case "Parameters": ParametersView(store: parameters)
         case "Safety": SafetyView(store: parameters)
+        case "Power": PowerView(store: parameters, power: power)
         case "Flight Modes": FlightModesView(store: parameters)
         case "Sensors": SensorsView(store: sensors)
         default: SetupSummaryView(store: components, sensors: sensors, selection: selection)
@@ -407,6 +470,7 @@ final class VehicleSetupWindow: NSObject, NSWindowDelegate {
     private let parameters = ParametersStore()
     private let sensors = SensorsStore()
     private let components = VehicleComponentsStore()
+    private let power = PowerStore()
     private let selection = PageSelection(owner: "vehicleSetup", pages: SetupPage.all)
     private var window: NSWindow?
 
@@ -415,6 +479,7 @@ final class VehicleSetupWindow: NSObject, NSWindowDelegate {
         NativeProbe.register(parameters)
         NativeProbe.register(sensors)
         NativeProbe.register(components)
+        NativeProbe.register(power)
         NativeProbe.register(selection, as: selection.identifier)
     }
 
@@ -437,7 +502,8 @@ final class VehicleSetupWindow: NSObject, NSWindowDelegate {
         window.isReleasedWhenClosed = false
         window.delegate = self
         window.contentView = NSHostingView(rootView: VehicleSetupView(
-            parameters: parameters, sensors: sensors, components: components, selection: selection))
+            parameters: parameters, sensors: sensors, components: components,
+            power: power, selection: selection))
         window.center()
         window.makeKeyAndOrderFront(nil)
         self.window = window

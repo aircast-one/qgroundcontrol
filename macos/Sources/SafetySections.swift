@@ -1,47 +1,51 @@
 import Foundation
 
-// The raw parameter list is not a mental model. QGC's safety page is hand-authored for
-// exactly that reason, so this mirrors its grouping rather than exposing FS_*, BATT_*
-// and FENCE_* as one alphabetical run.
-//
-// The names are ArduPilot's. A vehicle running different firmware simply will not have
-// them, and a section with nothing present is dropped rather than shown empty -- which
-// is also what makes this safe to extend with PX4 names later.
-struct SafetySection: Identifiable {
+struct SetupSection: Identifiable {
     let title: String
     let note: String
     let parameters: [String]
     var id: String { title }
 
-    static let all: [SafetySection] = [
-        SafetySection(
+    static let safety: [SetupSection] = [
+        SetupSection(
             title: "Failsafe",
             note: "What the vehicle does when it stops hearing from the transmitter or the ground station.",
             parameters: ["FS_THR_ENABLE", "FS_THR_VALUE", "FS_GCS_ENABLE"]),
-        SafetySection(
+        SetupSection(
             title: "Battery",
             note: "Thresholds and the action taken when the pack runs low.",
             parameters: ["BATT_MONITOR", "BATT_CAPACITY", "BATT_LOW_VOLT", "BATT_LOW_MAH",
                          "BATT_FS_LOW_ACT", "BATT_CRT_VOLT", "BATT_FS_CRT_ACT"]),
-        SafetySection(
+        SetupSection(
             title: "Return to Launch",
             note: "The path home when a failsafe or the operator triggers a return.",
             parameters: ["RTL_ALT", "RTL_ALT_FINAL", "RTL_LOIT_TIME", "LAND_SPEED"]),
-        SafetySection(
+        SetupSection(
             title: "Geofence",
             note: "The boundary the vehicle will not cross, and what it does at the edge.",
             parameters: ["FENCE_ENABLE", "FENCE_TYPE", "FENCE_ACTION",
                          "FENCE_ALT_MAX", "FENCE_RADIUS", "FENCE_MARGIN"]),
-        SafetySection(
+        SetupSection(
             title: "Arming",
             note: "Which pre-arm checks must pass before the vehicle will arm.",
             parameters: ["ARMING_CHECK"]),
     ]
 
-    // Only what this vehicle actually reports: a section listing parameters the
-    // firmware does not have would imply settings that cannot be changed.
-    static func present(in available: Set<String>) -> [(section: SafetySection, names: [String])] {
-        all.compactMap { section in
+    static let power: [SetupSection] = [
+        SetupSection(
+            title: "Battery 1",
+            note: "How the pack is measured. Compare the readings above against a meter and correct the multipliers until they agree.",
+            parameters: ["BATT_MONITOR", "BATT_CAPACITY", "BATT_VOLT_MULT", "BATT_AMP_PERVLT",
+                         "BATT_AMP_OFFSET", "BATT_VOLT_PIN", "BATT_CURR_PIN", "BATT_ARM_VOLT"]),
+        SetupSection(
+            title: "Battery 2",
+            note: "A second pack. The rest of its settings appear once a monitor is chosen.",
+            parameters: ["BATT2_MONITOR", "BATT2_CAPACITY", "BATT2_VOLT_MULT", "BATT2_AMP_PERVLT",
+                         "BATT2_AMP_OFFSET", "BATT2_VOLT_PIN", "BATT2_CURR_PIN", "BATT2_ARM_VOLT"]),
+    ]
+
+    static func present(_ sections: [SetupSection], in available: Set<String>) -> [(section: SetupSection, names: [String])] {
+        sections.compactMap { section in
             let names = section.parameters.filter(available.contains)
             return names.isEmpty ? nil : (section, names)
         }

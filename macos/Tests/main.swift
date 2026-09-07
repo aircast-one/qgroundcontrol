@@ -159,16 +159,16 @@ expect(SensorHealth.from(json: ["sensorNames": ["GPS", "Gyro"],
 // A section listing parameters the firmware does not have would imply settings the
 // operator cannot change; an empty section is dropped entirely.
 let copterLike: Set<String> = ["FS_THR_ENABLE", "FS_THR_VALUE", "RTL_ALT", "ARMING_CHECK"]
-let present = SafetySection.present(in: copterLike)
+let present = SetupSection.present(SetupSection.safety, in: copterLike)
 expect(present.map(\.section.title).joined(separator: ","),
        "Failsafe,Return to Launch,Arming", "only sections with present parameters survive")
 expect(present.first!.names.joined(separator: ","), "FS_THR_ENABLE,FS_THR_VALUE",
        "a section keeps only the parameters this vehicle has")
-expect(SafetySection.present(in: []).isEmpty, "a vehicle with none of them gets no sections")
-expect(SafetySection.present(in: ["RTL_ALT"]).count == 1, "one parameter is enough to keep its section")
+expect(SetupSection.present(SetupSection.safety, in: []).isEmpty, "a vehicle with none of them gets no sections")
+expect(SetupSection.present(SetupSection.safety, in: ["RTL_ALT"]).count == 1, "one parameter is enough to keep its section")
 
 // Order is the authored order, not whatever the vehicle happens to report.
-expect(SafetySection.all.map(\.title).first!, "Failsafe", "failsafe leads the page")
+expect(SetupSection.safety.map(\.title).first!, "Failsafe", "failsafe leads the page")
 
 // Page selection is probe-driven because a locked screen cannot deliver a sidebar
 // click; it must reject a page that does not exist rather than blanking the window.
@@ -862,6 +862,32 @@ func checkMavlinkMessage() {
 }
 
 checkMavlinkMessage()
+
+func checkPowerSections() {
+    let batteryOne = Set(["BATT_MONITOR", "BATT_CAPACITY", "BATT_VOLT_MULT", "BATT2_MONITOR"])
+    let present = SetupSection.present(SetupSection.power, in: batteryOne)
+    expect(present.count == 2, "both packs appear when each has at least one parameter")
+    expect(present[0].names.joined(separator: ","), "BATT_MONITOR,BATT_CAPACITY,BATT_VOLT_MULT",
+           "only the parameters this firmware reports, in the page's order")
+    expect(present[1].names.joined(separator: ","), "BATT2_MONITOR",
+           "a second pack shows just its monitor until one is chosen")
+
+    expect(SetupSection.present(SetupSection.power, in: []).isEmpty,
+           "a vehicle reporting no battery parameters gets no sections at all")
+
+    expect(BatteryReading.unavailable.available == false, "no voltage means no battery to show")
+    let live = BatteryReading(voltage: 12.6, current: 1.5, percent: 100)
+    expect(live.available, "a voltage is a battery")
+    expect(live.voltageText, "12.60 V", "voltage reads to a hundredth, as a meter does")
+    expect(live.currentText, "1.50 A", "so does current")
+    expect(live.percentText, "100%", "the charge is whole percent")
+    expect(BatteryReading(voltage: 12, current: nil, percent: nil).currentText, "—",
+           "a pack measured for voltage only says nothing about current")
+    expect(BatteryReading(voltage: .nan, current: nil, percent: nil).voltageText, "—",
+           "an unset reading is not a number")
+}
+
+checkPowerSections()
 
 if failures == 0 {
     print("all Swift checks passed")
