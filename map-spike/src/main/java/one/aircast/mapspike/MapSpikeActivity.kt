@@ -58,8 +58,12 @@ private fun MapSpikeScreen(mapStyle: String) {
     var busy by remember { mutableStateOf<String?>(null) }
     val scope = rememberCoroutineScope()
 
-    fun onBridge(work: () -> Unit) {
-        scope.launch(Dispatchers.Default) { work() }
+    fun onBridge(label: String? = null, work: () -> Unit) {
+        busy = label
+        scope.launch {
+            withContext(Dispatchers.Default) { work() }
+            busy = null
+        }
     }
 
     val available by mapBool("vehicles.activeVehicleAvailable")
@@ -132,13 +136,11 @@ private fun MapSpikeScreen(mapStyle: String) {
                     horizontalArrangement = Arrangement.spacedBy(4.dp),
                 ) {
                     TextButton(onClick = {
-                        busy = "Loading from vehicle"
-                        onBridge { PlanBridge.loadFromVehicle() }
+                        onBridge("Loading from vehicle") { PlanBridge.loadFromVehicle() }
                     }) { Text("Load") }
 
                     TextButton(onClick = {
-                        busy = "Sending to vehicle"
-                        onBridge { PlanBridge.sendToVehicle() }
+                        onBridge("Sending to vehicle") { PlanBridge.sendToVehicle() }
                     }) { Text("Send") }
 
                     selected?.let { index ->
