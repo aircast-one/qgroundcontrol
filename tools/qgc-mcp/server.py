@@ -679,13 +679,28 @@ def logs(pattern: str = "", lines: int = 50) -> str:
 
 
 @mcp.tool()
-def run_test(name: str = "") -> str:
-    """Run a QGC unit test suite by name (e.g. PipViewTest, DragToPositionTest, VideoManagerTest); empty runs all suites."""
-    args = [str(TEST_APP), "--allow-multiple", f"--unittest:{name}" if name else "--unittest"]
-    result = subprocess.run(args, capture_output=True, text=True, timeout=1800)
-    interesting = [line for line in result.stdout.splitlines()
-                   if any(key in line for key in ("PASS", "FAIL", "Totals", "TESTS"))]
-    return "\n".join(interesting) or result.stdout[-2000:]
+def run_test(name: str = "", allow_stale: bool = False) -> str:
+    """Run QGC unit tests and classify any failures; empty name runs every suite.
+
+    Refuses to run a binary older than the sources unless allow_stale is set.
+    Failing suites are re-run in isolation and reported as REAL (fails every
+    time), UNSTABLE (fails some isolated runs) or a LOAD FLAKE (passes alone).
+    """
+    args = ["python3", str(REPO / "tools/run-tests.py")]
+    if name:
+        args.append(name)
+    if allow_stale:
+        args.append("--allow-stale")
+    result = subprocess.run(args, capture_output=True, text=True, timeout=3600)
+    return (result.stdout + result.stderr).strip() or "no output"
+
+
+@mcp.tool()
+def test_history() -> str:
+    """Show which test suites have been flaking, across recorded runs of run_test."""
+    args = ["python3", str(REPO / "tools/run-tests.py"), "--history"]
+    result = subprocess.run(args, capture_output=True, text=True, timeout=120)
+    return (result.stdout + result.stderr).strip() or "no history yet"
 
 
 if __name__ == "__main__":
