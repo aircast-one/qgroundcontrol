@@ -98,7 +98,7 @@ Same rule as macOS. Start where a bug costs nothing, end where a bug hurts someo
 |---|---|---|---|---|
 | 1 | Settings | 5.7k | none | **done** |
 | 2 | Analyze | 1.3k | none | next |
-| 3 | Vehicle Setup | 15.0k | first HW gate | params done, calibration pending |
+| 3 | Vehicle Setup | 15.0k | first HW gate | native; HW gate open, motor test deferred |
 | 4 | Plan | 12k in `QmlControls` | ground only | pending — the map is the work |
 | 5 | Fly + video | 9.0k + 4.6k map | **critical** | status and actions done, map and video pending |
 | 6 | Shell | — | — | pending |
@@ -153,33 +153,56 @@ The big evaporation: 15k lines of `AutoPilotPlugins` QML.
 **Gate (HW):** full parameter tree loads and writes on PX4 and ArduPilot; accelerometer, compass and
 radio calibration complete on real hardware.
 
-### Status — the form half is done, the hardware half is not
+### Status — every component is native or deliberately deferred; the HW gate is not met
 
 The Setup tab is native. It reads the autopilot plugin's own component list and
 renders a page per component, so it follows whatever the vehicle reports rather
 than a hardcoded list.
 
-Converted, all as generic parameter forms with no new C++: Frame, Flight Modes,
-Power, Safety, Tuning, Camera, Lights, and PX4's Flight Behavior. Remote Support
-is native too, as a small custom page.
+Generic parameter forms, no new C++: Frame, Flight Modes, Power, Safety, Tuning,
+Camera, Lights, PX4's Flight Behavior. Remote Support is a small custom page.
 
-Two findings worth carrying:
+Sensor calibration is native and works: accelerometer, compass, level horizon,
+gyro and pressure, with the six orientation tiles, progress and Next/Cancel.
+Radio is a read-only check — mapped channel and live PWM per attitude control,
+plus a monitor of every channel.
 
-- **More reduces to parameters than the plan assumed.** Frame was expected to need
-  `APMAirframeComponentController`; on ArduCopter it is `FRAME_CLASS` and
+**The gate is still open.** Everything above was verified against ArduCopter
+SITL and on a OnePlus 6, never against a real airframe. Accelerometer, compass
+and radio calibration on real hardware remain unproven.
+
+Three findings worth carrying:
+
+- **More reduces to parameters than the plan assumed.** Frame was expected to
+  need `APMAirframeComponentController`; on ArduCopter it is `FRAME_CLASS` and
   `FRAME_TYPE`. Check for a parameter pair before reaching for a controller — it
-  also keeps `loadParameters()`, which rewrites the vehicle and reboots it, out of
-  reach.
-- **What is left is not more of the same.** Radio, Sensors and Motors are the
-  remainder, and none is a form. `APMSensorsComponentController` holds five
-  `QQuickItem*` members and drives the view directly, so it needs those replaced
-  with properties and signals before any native head can use it. That is a
-  refactor of the calibration flow, and its gate needs real hardware, so it should
-  not be done unsupervised.
+  also keeps `loadParameters()`, which rewrites the vehicle and reboots it, out
+  of reach.
+- **A controller that drives QML items cannot serve a second head, and the fix
+  is mechanical.** `APMSensorsComponentController` and `RadioComponentController`
+  each held `QQuickItem*` members and wrote into the view. Both now expose
+  properties and signals instead; the QML binds to those and behaves as before.
+  Doing this to the sensors one exposed a fork bug that made accelerometer
+  calibration unusable on the desktop too — the sheet holding Next was gated on
+  the Cancel button's enabled state.
+- **State, never signal arguments.** The bridge watcher polls properties, so
+  anything a native head must observe has to be readable. The calibration log
+  and the per-channel PWM list were signal-only and had to become `statusText`
+  and `rcValues` before Android could show them.
 
-`Vehicle::motorTest` is already `Q_INVOKABLE` and reachable through the existing
-`vehicle` root, so the motor test needs no bridge work at all — only a UI built
-carefully enough to spin motors safely, and hardware to prove it on.
+**Deliberately not built:** the motor test and CompassMot. Both spin the
+propellers, `APMMotorComponent` sets `allowSetupWhileArmed`, and their gate needs
+a supervised airframe. `Vehicle::motorTest` is already `Q_INVOKABLE` through the
+`vehicle` root, so this is a UI and safety decision, not a bridge one. The Setup
+pages say so and send the operator to desktop QGroundControl.
+
+**Radio calibration cannot be tested in this rig at all.** Stick movement cannot
+be simulated: `setRcChannelOverride` is accepted but SITL does not reflect it in
+`RC_CHANNELS`, so the controller never sees a stick move. The long-disabled
+`RadioConfigTest` hits the same wall — its mock input no longer drives channel
+identification, so no channel ever maps. Covering radio calibration needs either
+a transmitter on the bench or MockLink taught to drive `_inputStickDetect`; the
+latter would revive that test too.
 
 ## Phase 4 — Plan · 7 weeks
 
