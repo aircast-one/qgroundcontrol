@@ -6,6 +6,7 @@
 #include "MAVLinkConsoleController.h"
 #include "APMSensorsComponentController.h"
 #include "GeoTagController.h"
+#include "VideoManager.h"
 #include "MAVLinkInspectorController.h"
 #include "RadioComponentController.h"
 #include "MultiVehicleManager.h"
@@ -70,6 +71,9 @@ QObject *rootObject(const QString &name)
     }
     if (name == QLatin1String("logDownload")) {
         return LogDownloadController::instance();
+    }
+    if (name == QLatin1String("video")) {
+        return VideoManager::instance();
     }
     if (name == QLatin1String("geoTag")) {
         static GeoTagController *geoTag = nullptr;

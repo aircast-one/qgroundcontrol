@@ -3,6 +3,7 @@ import SwiftUI
 
 struct FlyPanel: View {
     @ObservedObject var fly: FlyStore
+    @ObservedObject var video: VideoStore
 
     var body: some View {
         GlassPanel {
@@ -14,6 +15,10 @@ struct FlyPanel: View {
                              leading: { dot(fly.telemetry.batteryLevel) })
                     GroupRow(title: "GPS", value: fly.telemetry.gpsText,
                              leading: { dot(fly.telemetry.gpsLevel) })
+                }
+
+                if video.status.available {
+                    videoCard
                 }
 
                 if fly.connected {
@@ -111,6 +116,27 @@ struct FlyPanel: View {
             .contentShape(Rectangle())
             .onTapGesture { fly.toggle(check) }
             .help(check.blocked ? "Fix this before it can be checked off" : check.prompt)
+    }
+
+    private var videoCard: some View {
+        VStack(alignment: .leading, spacing: Overlay.unit * 0.3) {
+            SectionLabel(text: "Video")
+            GroupCard {
+                GroupRow(title: video.status.summary, showSeparator: false, titleLines: 2,
+                         leading: {
+                             Circle()
+                                 .fill(video.status.settled ? Color.green
+                                     : (video.status.anyConnecting ? Color.orange : Color.secondary))
+                                 .frame(width: 7, height: 7)
+                         },
+                         trailing: { EmptyView() })
+                ForEach(video.status.configuredCameras) { camera in
+                    GroupRow(title: camera.title,
+                             description: camera.recording ? "Recording" : "",
+                             value: camera.status)
+                }
+            }
+        }
     }
 
     private var messages: some View {
@@ -374,6 +400,7 @@ struct FlyView: View {
     @ObservedObject var mission: MissionStore
     @ObservedObject var instruments: InstrumentsStore
     @ObservedObject var guided: GuidedStore
+    @ObservedObject var video: VideoStore
 
     private var warningBanner: some View {
         GlassPanel {
@@ -408,7 +435,7 @@ struct FlyView: View {
                     .transition(.opacity)
             }
 
-            FlyPanel(fly: fly)
+            FlyPanel(fly: fly, video: video)
                 .padding(Overlay.unit)
                 .frame(maxWidth: .infinity, alignment: .trailing)
 
@@ -433,14 +460,17 @@ struct FlyView: View {
             fly.start()
             instruments.refresh()
             guided.refresh(prearmClear: !fly.warning.showing)
+            video.refresh()
         }
         .onDisappear {
             fly.stop()
             instruments.clear()
+            video.clear()
         }
         .onChange(of: fly.telemetry) { _ in
             instruments.refresh()
             guided.refresh(prearmClear: !fly.warning.showing)
+            video.refresh()
         }
     }
 }
@@ -452,6 +482,7 @@ final class FlyWindow: NSObject, NSWindowDelegate {
     private let mission = MissionStore()
     private let instruments = InstrumentsStore()
     private let guided = GuidedStore()
+    private let video = VideoStore()
     private var window: NSWindow?
 
     override init() {
@@ -459,6 +490,7 @@ final class FlyWindow: NSObject, NSWindowDelegate {
         NativeProbe.register(fly)
         NativeProbe.register(instruments)
         NativeProbe.register(guided)
+        NativeProbe.register(video)
     }
 
     @objc func showFromMenu() {
@@ -480,7 +512,7 @@ final class FlyWindow: NSObject, NSWindowDelegate {
         window.titlebarAppearsTransparent = true
         window.isReleasedWhenClosed = false
         window.delegate = self
-        window.contentView = NSHostingView(rootView: FlyView(fly: fly, mission: mission, instruments: instruments, guided: guided))
+        window.contentView = NSHostingView(rootView: FlyView(fly: fly, mission: mission, instruments: instruments, guided: guided, video: video))
         window.center()
         window.makeKeyAndOrderFront(nil)
         self.window = window

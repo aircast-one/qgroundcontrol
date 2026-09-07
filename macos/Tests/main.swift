@@ -922,6 +922,50 @@ func checkRadio() {
 
 checkRadio()
 
+func checkVideoStatus() {
+    expect(!VideoStatus.read(["kind": "value"]).available,
+           "a build with no video manager can show nothing")
+    expect(VideoStatus.unavailable.summary, "This build cannot show video.",
+           "and says so rather than claiming there is no stream")
+
+    let live: [String: Any] = [
+        "kind": "object", "hasVideo": true, "gstreamerEnabled": true, "isStreamSource": true,
+        "decoding": false, "activeVideoSource": 0,
+        "cameraStatuses": ["Connecting\u{2026}", "No stream URL", "Connecting\u{2026}", "No stream URL"],
+        "cameraConnecting": [true, false, true, false],
+        "cameraRecording": [false, false, false, false],
+    ]
+    let status = VideoStatus.read(live)
+    expect(status.available, "a manager reporting video is available")
+    expect(status.cameras.count == 4, "every slot the manager reports is read")
+    expect(status.configuredCameras.count == 2,
+           "a slot with no URL is not a camera anyone configured, so it is not listed")
+    expect(status.configuredCameras.map(\.title).joined(separator: ","), "Camera 1,Camera 3",
+           "and the ones that are keep their own slot numbers")
+    expect(status.anyConnecting, "a slot still connecting is waiting for a stream")
+    expect(status.summary, "Waiting for a stream.", "which is what the operator is told")
+    expect(!status.settled, "and nothing is settled until something decodes")
+
+    var decoding = VideoStatus.read(live)
+    decoding.decoding = true
+    expect(decoding.summary, "Streaming.", "once it decodes it is streaming")
+    decoding.recording = true
+    expect(decoding.summary, "Streaming and recording.", "and says when it is also recording")
+
+    let idle = VideoStatus.read(["kind": "object", "hasVideo": true,
+                                 "cameraStatuses": ["No stream URL"],
+                                 "cameraConnecting": [false]])
+    expect(idle.summary, "No stream URL is set.",
+           "a manager with nothing configured says that, not that it failed")
+
+    let short = VideoStatus.cameras(statuses: ["A", "B", "C"], connecting: [true], recording: [])
+    expect(short.count == 3, "a status list longer than its flags still yields every camera")
+    expect(short[0].connecting, "the flags that exist are used")
+    expect(!short[2].connecting, "and the ones that do not default to false rather than crashing")
+}
+
+checkVideoStatus()
+
 func checkLogReplayLink() {
     let empty = LinkConfig(index: 0, json: ["linkType": "TypeLogReplay", "name": "Replay"])
     expect(empty.editing == .logFile, "a log replay link is edited by choosing a file")
