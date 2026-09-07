@@ -1,5 +1,7 @@
 package one.aircast.android.bridge
 
+import android.os.Looper
+import android.os.SystemClock
 import android.util.Log
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -23,6 +25,9 @@ data class Fact(
 ) {
     val title: String = description.ifBlank { name }
     val isEnum: Boolean = enumStrings.isNotEmpty()
+    val valueIsOffTheEnumList: Boolean =
+        enumStrings.getOrNull(enumIndex)?.startsWith("Unknown: ") == true
+
     val boolValue: Boolean = value == true || valueString.equals("true", ignoreCase = true) || valueString == "1"
 }
 
@@ -40,17 +45,32 @@ object Qgc {
         }
     }
 
+    private const val SLOW_CALL_MS = 250L
+
+    private fun onMainThread(): Boolean = Looper.myLooper() == Looper.getMainLooper()
+
+    private fun <T> timed(what: String, block: () -> T): T {
+        val started = SystemClock.uptimeMillis()
+        val result = block()
+        val took = SystemClock.uptimeMillis() - started
+        if (took >= SLOW_CALL_MS) {
+            Log.w(TAG, "bridge call blocked ${took}ms in $what, onMainThread=${onMainThread()}")
+        }
+        return result
+    }
+
     @Synchronized
     fun watch(paths: Collection<String>) {
         if (!watched.addAll(paths)) return
-        QGCBridge.watch(watched.joinToString(","))
+        timed("watch") { QGCBridge.watch(watched.joinToString(",")) }
     }
 
-    fun get(path: String): JSONObject = runCatching { JSONObject(QGCBridge.get(path)) }.getOrDefault(JSONObject())
+    fun get(path: String): JSONObject =
+        timed("get $path") { runCatching { JSONObject(QGCBridge.get(path)) }.getOrDefault(JSONObject()) }
 
     fun set(path: String, value: Any?): Boolean {
         val reply = runCatching {
-            JSONObject(QGCBridge.set(path, JSONObject().put("value", value).toString()))
+            JSONObject(timed("set $path") { QGCBridge.set(path, JSONObject().put("value", value).toString()) })
         }.getOrNull()
         if (reply?.optBoolean("ok") == true) return true
         val reason = reply?.optString("reason").orEmpty().ifBlank { "the bridge rejected the write" }
@@ -68,7 +88,9 @@ object Qgc {
 
     private fun call(path: String, vararg args: Any?): JSONObject? {
         val array = JSONArray().apply { args.forEach { put(it) } }
-        return runCatching { JSONObject(QGCBridge.invoke(path, array.toString())) }.getOrNull()
+        return timed("invoke $path") {
+            runCatching { JSONObject(QGCBridge.invoke(path, array.toString())) }.getOrNull()
+        }
     }
 
     fun facts(groupPath: String, json: JSONObject?): List<Fact> {
