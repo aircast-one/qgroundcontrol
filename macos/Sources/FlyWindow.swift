@@ -451,6 +451,17 @@ struct FlyView: View {
                     .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .leading)
             }
 
+            if video.nativeFrames > 0 {
+                NativeVideoView()
+                    .frame(width: 320, height: 180)
+                    .clipShape(RoundedRectangle(cornerRadius: Overlay.panelRadius))
+                    .overlay(RoundedRectangle(cornerRadius: Overlay.panelRadius)
+                        .strokeBorder(Overlay.border, lineWidth: 1))
+                    .shadow(color: .black.opacity(0.3), radius: 10, y: 3)
+                    .padding(.bottom, Overlay.unit * 5)
+                    .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottom)
+            }
+
             GuidedConfirm(guided: guided)
                 .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .center)
         }

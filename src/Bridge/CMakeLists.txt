@@ -18,6 +18,8 @@ if(APPLE AND NOT IOS)
             QGCMapTileC.h
             QGCNativeDebugC.cc
             QGCNativeDebugC.h
+            QGCVideoC.cc
+            QGCVideoC.h
     )
 endif()
 

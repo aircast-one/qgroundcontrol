@@ -38,6 +38,7 @@ add_library(QGCNativeUI STATIC
     Sources/RadioModel.swift
     Sources/VideoModel.swift
     Sources/Video.swift
+    Sources/VideoSurface.swift
     Sources/Radio.swift
     Sources/Sensors.swift
     Sources/CachedTileOverlay.swift

@@ -22,3 +22,8 @@ module QGCNativeDebugC {
     header "QGCNativeDebugC.h"
     export *
 }
+
+module QGCVideoC {
+    header "QGCVideoC.h"
+    export *
+}
