@@ -149,6 +149,7 @@ fun SetupScreen(modifier: Modifier = Modifier) {
             val sections = setupSectionsFor(open.name, isPx4)
             when {
                 open.name == SENSORS -> SensorsScreen(Modifier.weight(1f))
+                open.name == RADIO -> RadioScreen(Modifier.weight(1f))
                 sections == null -> RemoteSupportScreen(Modifier.weight(1f))
                 else -> ParameterForm(sections, Modifier.weight(1f))
             }
@@ -208,9 +209,10 @@ fun SetupScreen(modifier: Modifier = Modifier) {
         }
 
         Text(
-            text = "Pages marked Open work here. Radio calibration and the motor test " +
-                "are not carried over yet, so use QGroundControl on a computer for " +
-                "those. Any parameter can still be edited from the Params tab.",
+            text = "Pages marked Open work here. Radio and motor calibration are not " +
+                "carried over: they need you watching the vehicle while it moves. " +
+                "Use QGroundControl on a computer for those. Any parameter can still " +
+                "be edited from the Params tab.",
             style = MaterialTheme.typography.bodySmall,
             modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp),
         )

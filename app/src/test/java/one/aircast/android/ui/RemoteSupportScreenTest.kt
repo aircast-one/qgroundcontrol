@@ -27,7 +27,21 @@ class RemoteSupportScreenTest {
     fun `a component with neither a form nor a custom page stays closed`() {
         assertEquals(false, hasNativeSetupPage("Motors", isPx4 = false))
         assertEquals(false, hasNativeSetupPage("Motors", isPx4 = true))
-        assertEquals(false, hasNativeSetupPage("Radio", isPx4 = false))
+    }
+
+    @Test
+    fun `the radio check opens on both firmwares`() {
+        assertEquals(true, hasNativeSetupPage(RADIO, isPx4 = false))
+        assertEquals(true, hasNativeSetupPage(RADIO, isPx4 = true))
+    }
+
+    @Test
+    fun `pwm maps onto the bar and clamps outside the rc range`() {
+        assertEquals(0f, pwmFraction(1000))
+        assertEquals(0.5f, pwmFraction(1500))
+        assertEquals(1f, pwmFraction(2000))
+        assertEquals(0f, pwmFraction(800))
+        assertEquals(1f, pwmFraction(2400))
     }
 
     @Test
