@@ -84,6 +84,7 @@ private fun MapSpikeScreen(mapStyle: String) {
     val available by mapBool("vehicles.activeVehicleAvailable")
     val latitude by mapDouble("vehicle.latitude")
     val longitude by mapDouble("vehicle.longitude")
+    val heading by mapDouble("vehicle.heading")
     val mode by mapString("vehicle.flightMode")
     val vehicleId by mapInt("vehicle.id")
     val vehicleCount by mapCount("vehicles.vehicles")
@@ -179,7 +180,8 @@ private fun MapSpikeScreen(mapStyle: String) {
                     if (latitude.isNaN() || longitude.isNaN()) {
                         "No position"
                     } else {
-                        "%.6f, %.6f".format(latitude, longitude)
+                        "%.6f, %.6f".format(latitude, longitude) +
+                            if (heading.isNaN()) "" else " · %.0f°".format(heading)
                     },
                     style = MaterialTheme.typography.bodySmall,
                 )

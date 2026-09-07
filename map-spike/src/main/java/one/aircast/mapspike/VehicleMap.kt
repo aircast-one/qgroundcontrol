@@ -1,5 +1,9 @@
 package one.aircast.mapspike
 
+import android.graphics.Bitmap
+import android.graphics.Canvas
+import android.graphics.Paint
+import android.graphics.Path
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
@@ -18,9 +22,12 @@ import org.maplibre.android.geometry.LatLng
 import org.maplibre.android.maps.MapLibreMap
 import org.maplibre.android.maps.MapView
 import org.maplibre.android.maps.Style
+import org.maplibre.android.style.expressions.Expression
 import org.maplibre.android.style.layers.CircleLayer
 import org.maplibre.android.style.layers.LineLayer
+import org.maplibre.android.style.layers.Property
 import org.maplibre.android.style.layers.PropertyFactory
+import org.maplibre.android.style.layers.SymbolLayer
 import org.maplibre.android.style.sources.GeoJsonSource
 import org.maplibre.geojson.Feature
 import org.maplibre.geojson.LineString
@@ -28,6 +35,10 @@ import org.maplibre.geojson.Point
 
 private const val VEHICLE_SOURCE = "aircast-vehicle"
 private const val VEHICLE_LAYER = "aircast-vehicle-layer"
+private const val VEHICLE_HEADING_LAYER = "aircast-vehicle-heading-layer"
+private const val VEHICLE_ARROW_IMAGE = "aircast-vehicle-arrow"
+
+const val HEADING_PROPERTY = "heading"
 private const val TRAIL_SOURCE = "aircast-trail"
 private const val TRAIL_LAYER = "aircast-trail-layer"
 
@@ -63,6 +74,16 @@ fun isPlottable(latitude: Double, longitude: Double): Boolean =
     !latitude.isNaN() && !longitude.isNaN() &&
         !(latitude == 0.0 && longitude == 0.0) &&
         latitude in -90.0..90.0 && longitude in -180.0..180.0
+
+// Heading only means something once the vehicle reports it. Without it the
+// feature carries no heading property and the arrow layer filters itself out,
+// leaving the plain position dot.
+fun vehicleFeature(latitude: Double, longitude: Double, heading: Double): Feature =
+    Feature.fromGeometry(Point.fromLngLat(longitude, latitude)).apply {
+        if (!heading.isNaN()) {
+            addNumberProperty(HEADING_PROPERTY, ((heading % 360) + 360) % 360)
+        }
+    }
 
 class VehicleTrack(private val limit: Int = MAX_TRAIL_POINTS) {
     private val points = ArrayDeque<TrackPoint>()
@@ -113,6 +134,7 @@ fun VehicleMap(
 ) {
     val latitude by mapDouble("vehicle.latitude")
     val longitude by mapDouble("vehicle.longitude")
+    val heading by mapDouble("vehicle.heading")
 
     var map by remember { mutableStateOf<MapLibreMap?>(null) }
     var style by remember { mutableStateOf<Style?>(null) }
@@ -182,7 +204,7 @@ fun VehicleMap(
         if (!track.add(latitude, longitude)) return@LaunchedEffect
 
         (currentStyle.getSource(VEHICLE_SOURCE) as? GeoJsonSource)
-            ?.setGeoJson(Feature.fromGeometry(Point.fromLngLat(longitude, latitude)))
+            ?.setGeoJson(vehicleFeature(latitude, longitude, heading))
 
         if (track.size >= 2) {
             val line = LineString.fromLngLats(track.points().map { Point.fromLngLat(it.longitude, it.latitude) })
@@ -230,5 +252,39 @@ private fun installLayers(style: Style) {
                 PropertyFactory.circleStrokeWidth(2f),
             ),
         )
+        style.addImage(VEHICLE_ARROW_IMAGE, headingArrow())
+        style.addLayer(
+            SymbolLayer(VEHICLE_HEADING_LAYER, VEHICLE_SOURCE).withProperties(
+                PropertyFactory.iconImage(VEHICLE_ARROW_IMAGE),
+                PropertyFactory.iconRotate(Expression.get(HEADING_PROPERTY)),
+                PropertyFactory.iconRotationAlignment(Property.ICON_ROTATION_ALIGNMENT_MAP),
+                PropertyFactory.iconAllowOverlap(true),
+                PropertyFactory.iconIgnorePlacement(true),
+            ).withFilter(Expression.has(HEADING_PROPERTY)),
+        )
     }
+}
+
+// A triangle pointing north, so iconRotate can read as a compass bearing.
+private fun headingArrow(): Bitmap {
+    val size = 48
+    val bitmap = Bitmap.createBitmap(size, size, Bitmap.Config.ARGB_8888)
+    val canvas = Canvas(bitmap)
+    val path = Path().apply {
+        moveTo(size / 2f, 2f)
+        lineTo(size - 8f, size - 6f)
+        lineTo(size / 2f, size * 0.72f)
+        lineTo(8f, size - 6f)
+        close()
+    }
+    canvas.drawPath(path, Paint(Paint.ANTI_ALIAS_FLAG).apply {
+        color = android.graphics.Color.WHITE
+        style = Paint.Style.STROKE
+        strokeWidth = 6f
+        strokeJoin = Paint.Join.ROUND
+    })
+    canvas.drawPath(path, Paint(Paint.ANTI_ALIAS_FLAG).apply {
+        color = android.graphics.Color.parseColor("#E53935")
+    })
+    return bitmap
 }
