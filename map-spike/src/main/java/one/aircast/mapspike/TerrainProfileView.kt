@@ -28,7 +28,7 @@ internal fun profileOffsets(
     if (!profile.drawable || width <= 0f || height <= 0f) {
         return emptyList()
     }
-    val span = profile.highest - profile.lowest
+    val span = profile.span
     val distance = profile.distance.takeIf { it > 0.0 } ?: return emptyList()
 
     return profile.points.mapNotNull { point ->
@@ -86,7 +86,11 @@ fun TerrainProfileView(profile: TerrainProfile, modifier: Modifier = Modifier) {
             }
 
             Text(
-                "${profile.lowest.toInt()}–${profile.highest.toInt()} m AMSL · " +
+                (if (profile.flat) {
+                    "${profile.lowest.toInt()} m AMSL · "
+                } else {
+                    "${profile.lowest.toInt()}–${profile.highest.toInt()} m AMSL · "
+                }) +
                     "${(profile.distance / 1000).format2()} km" +
                     if (profile.hasTerrain) "" else " · ground height unknown",
                 style = MaterialTheme.typography.labelSmall,

@@ -113,17 +113,21 @@ class TerrainProfileTest {
     }
 
     @Test
-    fun `a single point or a flat range is not drawable`() {
+    fun `a single point is not drawable`() {
         assertFalse(terrainProfile(model(item(41.0, 44.0))).drawable)
-        assertFalse(
-            terrainProfile(
-                model(
-                    item(41.0, 44.0, terrain = 100.0, planned = 100.0),
-                    item(41.0, 44.01, terrain = 100.0, planned = 100.0),
-                ),
-            ).drawable,
+    }
+
+    @Test
+    fun `a flat range draws as a flat profile rather than refusing`() {
+        val profile = terrainProfile(
+            model(
+                item(41.0, 44.0, terrain = 100.0, planned = 100.0),
+                item(41.0, 44.01, terrain = 100.0, planned = 100.0),
+            ),
         )
-        assertFalse(terrainProfile(null).drawable)
+
+        assertTrue(profile.drawable)
+        assertTrue(profile.flat)
     }
 
     @Test
@@ -141,5 +145,43 @@ class TerrainProfileTest {
         assertEquals(100f, offsets.first().y, 0.001f)
         assertEquals(200f, offsets.last().x, 0.001f)
         assertEquals(0f, offsets.last().y, 0.001f)
+    }
+}
+
+class FlatProfileTest {
+    private fun plan(vararg altitudes: Double): TerrainProfile {
+        val elements = altitudes.mapIndexed { index, alt ->
+            """{"specifiesCoordinate":true,"coordinate":{"latitude":${41.0 + index * 0.01},""" +
+                """"longitude":44.0},"amslEntryAlt":$alt}"""
+        }
+        return terrainProfile(
+            org.json.JSONObject("""{"kind":"object","elements":[${elements.joinToString(",")}]}"""),
+        )
+    }
+
+    @Test
+    fun `a mission flown at one altitude is a flat profile not an absent one`() {
+        val profile = plan(50.0, 50.0, 50.0)
+
+        assertTrue(profile.drawable)
+        assertTrue(profile.flat)
+    }
+
+    @Test
+    fun `a flat profile still has a span so it can be plotted`() {
+        assertTrue(plan(50.0, 50.0).span > 0.0)
+    }
+
+    @Test
+    fun `a varying profile is not flat and keeps its real span`() {
+        val profile = plan(50.0, 150.0)
+
+        assertTrue(!profile.flat)
+        assertEquals(100.0, profile.span, 1e-9)
+    }
+
+    @Test
+    fun `a single point is still not enough to draw`() {
+        assertTrue(!plan(50.0).drawable)
     }
 }

@@ -10,6 +10,7 @@ import kotlin.math.sin
 import kotlin.math.sqrt
 
 private const val EARTH_RADIUS_METRES = 6_371_000.0
+private const val MIN_SPAN_METRES = 1.0
 
 data class ProfilePoint(
     val distance: Double,
@@ -30,7 +31,14 @@ data class TerrainProfile(val points: List<ProfilePoint>) {
     // planned altitude alone is still worth showing, so only that is required.
     val hasTerrain: Boolean get() = points.count { it.terrain != null } >= 2
 
-    val drawable: Boolean get() = points.size >= 2 && highest > lowest
+    // A survey flies at one altitude, so with no terrain under it the range is a
+    // single value. That is a flat profile, not an absent one, and refusing to
+    // draw it told the pilot to add altitudes they had already set.
+    val span: Double get() = (highest - lowest).coerceAtLeast(MIN_SPAN_METRES)
+
+    val flat: Boolean get() = highest - lowest < MIN_SPAN_METRES
+
+    val drawable: Boolean get() = points.size >= 2
 }
 
 fun metresBetween(from: TrackPoint, to: TrackPoint): Double {
