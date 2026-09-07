@@ -50,8 +50,9 @@ fun surveys(json: JSONObject?): List<Survey> {
 object SurveyBridge {
     // The bridge lists a child object by name rather than nesting it, so the
     // survey's polygon needs its own read.
-    fun surveys(): List<Survey> {
-        val json = runCatching { JSONObject(QGCBridge.get(PLAN_ITEMS)) }.getOrNull()
+    fun surveys(): List<Survey> = surveysFrom(PlanBridge.rawItems())
+
+    fun surveysFrom(json: JSONObject?): List<Survey> {
         val elements = json?.optJSONArray("elements") ?: return emptyList()
 
         return (0 until elements.length()).mapNotNull { index ->

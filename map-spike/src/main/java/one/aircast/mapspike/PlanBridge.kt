@@ -57,8 +57,13 @@ fun missionItems(json: JSONObject?): List<MissionItem> {
 }
 
 object PlanBridge {
-    fun items(): List<MissionItem> =
-        missionItems(runCatching { JSONObject(QGCBridge.get(PLAN_ITEMS)) }.getOrNull())
+    // The item list feeds mission items, surveys and the terrain profile. Read
+    // once and hand the same JSON to each, rather than three trips over the
+    // bridge for the same data.
+    fun rawItems(): JSONObject? =
+        runCatching { JSONObject(QGCBridge.get(PLAN_ITEMS)) }.getOrNull()
+
+    fun items(): List<MissionItem> = missionItems(rawItems())
 
     fun loadFromVehicle() = invoke("$PLAN_ROOT.loadFromVehicle")
 

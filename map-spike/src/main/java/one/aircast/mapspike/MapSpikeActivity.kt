@@ -97,12 +97,13 @@ private fun MapSpikeScreen(mapStyle: String) {
 
     suspend fun refresh() {
         withContext(Dispatchers.Default) {
-            val nextItems = PlanBridge.items()
+            val plan = PlanBridge.rawItems()
+            val nextItems = missionItems(plan)
             val nextFences = FenceBridge.polygons()
             val nextRally = FenceBridge.rally()
             val nextCircles = FenceBridge.circles()
-            val nextSurveys = SurveyBridge.surveys()
-            val nextProfile = TerrainBridge.profile()
+            val nextSurveys = SurveyBridge.surveysFrom(plan)
+            val nextProfile = terrainProfile(plan)
             withContext(Dispatchers.Main) {
                 items = nextItems
                 fences = nextFences

@@ -77,6 +77,5 @@ fun terrainProfile(json: JSONObject?): TerrainProfile {
 }
 
 object TerrainBridge {
-    fun profile(): TerrainProfile =
-        terrainProfile(runCatching { JSONObject(QGCBridge.get(PLAN_ITEMS)) }.getOrNull())
+    fun profile(): TerrainProfile = terrainProfile(PlanBridge.rawItems())
 }
