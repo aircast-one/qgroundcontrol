@@ -247,6 +247,31 @@ Hardest phase. `MissionManager` (20.7k C++) survives entirely; the map-editing U
 
 **Gate (HW):** a 200+ waypoint survey planned, uploaded, flown and downloaded byte-identical.
 
+### Plan files — scope the plan missed
+
+This phase lists mission upload and download and its gate is a vehicle round
+trip, so saving a plan to a file never appeared in it. `PlanView.qml` has it
+today, through `QGCFileDialog`, and it is not gated off on mobile — so a user on
+the current Android build can save and open `.plan` files. The native Plan tab
+cannot, and Phase 6 deleting that view makes the loss permanent.
+
+That makes it a **regression to prevent**, not a feature to consider, and it has
+to land before the Phase 6 teardown rather than after.
+
+It is app-shell work rather than map work. `PlanMasterController` already exposes
+`loadFromFile`, `saveToFile`, `saveToCurrent` and `saveToKml` as `Q_INVOKABLE`,
+alongside `currentPlanFile` and `dirty`, so the missing half is entirely the
+Android file layer:
+
+- **Use the system document picker.** A plan belongs to the person who made it:
+  it has to survive uninstall and be shareable off the device, and app-private
+  storage fails both. That also avoids inventing an in-app file browser.
+- **The picker returns a `content://` URI and the controller wants a path**, so
+  the shell copies in to cache before `loadFromFile`, and after `saveToFile`
+  streams the result back out to the chosen document.
+- **`saveToCurrent` and `dirty` carry Save versus Save As**, which is what keeps
+  a single silently-overwritten slot from being the design.
+
 ## Phase 5 — Fly and video · 7 weeks
 
 Safety-critical, deliberately last.
