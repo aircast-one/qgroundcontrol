@@ -218,6 +218,48 @@ struct PowerView: View {
     }
 }
 
+struct CameraView: View {
+    @ObservedObject var store: ParametersStore
+
+    var body: some View {
+        SetupPageBody(title: "Camera",
+                      note: "The gimbal the vehicle carries and how it triggers a camera.") {
+            if store.loading {
+                GroupCard { EmptyStateRow(text: "Reading parameters from the vehicle\u{2026}") }
+            } else if sections.isEmpty {
+                GroupCard {
+                    EmptyStateRow(text: "This vehicle reports no gimbal or camera parameters.")
+                }
+            } else {
+                ForEach(sections, id: \.section.id) { entry in
+                    VStack(alignment: .leading, spacing: 0) {
+                        SectionLabel(text: entry.section.title)
+                        GroupCard {
+                            ForEach(Array(entry.names.enumerated()), id: \.element) { index, name in
+                                if let parameter = store.parameter(named: name) {
+                                    ParameterRow(parameter: parameter, showSeparator: index > 0) {
+                                        store.write(parameter, $0)
+                                    }
+                                }
+                            }
+                        }
+                        Text(entry.section.note)
+                            .font(.caption).foregroundColor(.secondary)
+                            .fixedSize(horizontal: false, vertical: true)
+                            .padding(.horizontal, Overlay.horizontalPadding)
+                            .padding(.top, Overlay.unit * 0.35)
+                    }
+                }
+            }
+        }
+        .onAppear(perform: store.load)
+    }
+
+    private var sections: [(section: SetupSection, names: [String])] {
+        SetupSection.present(SetupSection.camera, in: Set(store.parameters.map(\.name)))
+    }
+}
+
 struct TuningView: View {
     @ObservedObject var store: ParametersStore
 
@@ -493,7 +535,7 @@ struct SetupSummaryView: View {
 }
 
 enum SetupPage {
-    static let all = ["Summary", "Sensors", "Frame", "Flight Modes", "Safety", "Power", "Tuning", "Parameters"]
+    static let all = ["Summary", "Sensors", "Frame", "Flight Modes", "Safety", "Power", "Tuning", "Camera", "Parameters"]
 
     static func symbol(for page: String) -> String {
         switch page {
@@ -550,6 +592,7 @@ struct VehicleSetupView: View {
                     row("Safety")
                     row("Power")
                     row("Tuning")
+                    row("Camera")
                 }
                 Section("Advanced") {
                     row("Parameters")
@@ -582,6 +625,7 @@ struct VehicleSetupView: View {
         case "Power": PowerView(store: parameters, power: power)
         case "Frame": FrameView(store: parameters, frame: frame)
         case "Tuning": TuningView(store: parameters)
+        case "Camera": CameraView(store: parameters)
         case "Flight Modes": FlightModesView(store: parameters)
         case "Sensors": SensorsView(store: sensors)
         default: SetupSummaryView(store: components, sensors: sensors, selection: selection)

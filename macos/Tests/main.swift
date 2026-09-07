@@ -930,6 +930,30 @@ func checkTuningSections() {
 
 checkTuningSections()
 
+func checkCameraSections() {
+    let bare = SetupSection.present(SetupSection.camera,
+                                    in: ["MNT1_TYPE", "MNT2_TYPE", "CAM1_TYPE", "CAM2_TYPE",
+                                         "CAM_AUTO_ONLY", "CAM_MAX_ROLL", "CAM_RC_TYPE"])
+    expect(bare.map(\.section.title).joined(separator: ","),
+           "Gimbal 1,Gimbal 2,Camera 1,Camera 2,Triggering",
+           "each mount and camera gets its own heading, so two rows never share a title")
+
+    let oneOfEach = SetupSection.present(SetupSection.camera,
+                                         in: ["MNT1_TYPE", "CAM1_TYPE", "CAM_MAX_ROLL"])
+    expect(oneOfEach.map(\.section.title).joined(separator: ","), "Gimbal 1,Camera 1,Triggering",
+           "a vehicle with one of each is not offered a second slot it does not have")
+
+    let noGimbal = SetupSection.present(SetupSection.camera, in: ["CAM_MAX_ROLL"])
+    expect(noGimbal.map(\.section.title).joined(separator: ","), "Triggering",
+           "a vehicle with no mount at all drops the gimbal and camera sections")
+
+    let names = Set(SetupSection.camera.flatMap(\.parameters))
+    expect(!names.contains("MNT_RETRACT_X"),
+           "the pre-4.2 MNT_ names are gone from ArduPilot and are not listed here")
+}
+
+checkCameraSections()
+
 if failures == 0 {
     print("all Swift checks passed")
     exit(0)

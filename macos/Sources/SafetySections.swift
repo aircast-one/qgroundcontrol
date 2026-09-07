@@ -76,6 +76,29 @@ struct SetupSection: Identifiable {
             parameters: ["MOT_SPIN_ARM", "MOT_SPIN_MIN", "MOT_THST_HOVER"]),
     ]
 
+    static let camera: [SetupSection] = [
+        SetupSection(
+            title: "Gimbal 1",
+            note: "Choose a mount type and its own settings — angle limits, default mode, servo outputs — appear under MNT1 in Parameters.",
+            parameters: ["MNT1_TYPE"]),
+        SetupSection(
+            title: "Gimbal 2",
+            note: "A second mount, for a vehicle carrying two.",
+            parameters: ["MNT2_TYPE"]),
+        SetupSection(
+            title: "Camera 1",
+            note: "Choose a camera type and its trigger settings appear under CAM1 in Parameters.",
+            parameters: ["CAM1_TYPE"]),
+        SetupSection(
+            title: "Camera 2",
+            note: "A second camera.",
+            parameters: ["CAM2_TYPE"]),
+        SetupSection(
+            title: "Triggering",
+            note: "How photos are taken, whichever camera is wired.",
+            parameters: ["CAM_AUTO_ONLY", "CAM_MAX_ROLL", "CAM_RC_TYPE"]),
+    ]
+
     static func present(_ sections: [SetupSection], in available: Set<String>) -> [(section: SetupSection, names: [String])] {
         sections.compactMap { section in
             let names = section.parameters.filter(available.contains)
