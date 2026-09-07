@@ -142,3 +142,41 @@ class GuidedAvailabilityTest {
         assertFalse(can.rtl)
     }
 }
+
+class VehicleSubtitleTest {
+    @Test
+    fun `a lost link is named instead of the last known state`() {
+        assertEquals(
+            "Communication lost",
+            vehicleSubtitle(available = true, communicationLost = true, flightMode = "Stabilize", armed = false),
+        )
+    }
+
+    @Test
+    fun `a live vehicle reads mode and armed state`() {
+        assertEquals(
+            "Stabilize · Disarmed",
+            vehicleSubtitle(available = true, communicationLost = false, flightMode = "Stabilize", armed = false),
+        )
+        assertEquals(
+            "Guided · Armed",
+            vehicleSubtitle(available = true, communicationLost = false, flightMode = "Guided", armed = true),
+        )
+    }
+
+    @Test
+    fun `no vehicle outranks a lost link`() {
+        assertEquals(
+            "No vehicle",
+            vehicleSubtitle(available = false, communicationLost = true, flightMode = "Stabilize", armed = true),
+        )
+    }
+
+    @Test
+    fun `a missing flight mode does not leave a dangling separator`() {
+        assertEquals(
+            "Armed",
+            vehicleSubtitle(available = true, communicationLost = false, flightMode = "", armed = true),
+        )
+    }
+}

@@ -71,20 +71,38 @@ internal fun telemetryLabel(fact: Fact): String = fact.description.ifBlank { fac
 internal fun telemetryValue(fact: Fact): String =
     if (fact.units.isBlank()) fact.valueString else "${fact.valueString} ${fact.units}"
 
+internal fun vehicleSubtitle(
+    available: Boolean,
+    communicationLost: Boolean,
+    flightMode: String,
+    armed: Boolean,
+): String = when {
+    !available -> "No vehicle"
+    communicationLost -> "Communication lost"
+    else -> listOfNotNull(
+        flightMode.ifBlank { null },
+        if (armed) "Armed" else "Disarmed",
+    ).joinToString(" · ")
+}
+
 @Composable
 fun VehicleTitle() {
     val available by qgcBool("vehicles.activeVehicleAvailable")
     val flightMode by qgcString("vehicle.flightMode")
     val armed by qgcBool("vehicle.armed")
+    val communicationLost by qgcBool("vehicle.vehicleLinkManager.communicationLost")
 
     Column {
         Text("Aircast", style = MaterialTheme.typography.titleMedium)
         Text(
-            when {
-                !available -> "No vehicle"
-                else -> listOfNotNull(flightMode.ifBlank { null }, if (armed) "Armed" else "Disarmed").joinToString(" · ")
-            },
+            text = vehicleSubtitle(available, communicationLost, flightMode, armed),
             style = MaterialTheme.typography.bodySmall,
+            fontWeight = if (communicationLost) FontWeight.Bold else FontWeight.Normal,
+            color = if (communicationLost) {
+                MaterialTheme.colorScheme.error
+            } else {
+                MaterialTheme.colorScheme.onSurfaceVariant
+            },
         )
     }
 }
