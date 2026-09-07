@@ -11,6 +11,7 @@ final class MissionStore: ObservableObject, Probeable {
     @Published private(set) var vehiclePosition: (latitude: Double, longitude: Double)?
     @Published private(set) var dirty = false
     @Published private(set) var connected = false
+    @Published var addingWaypoint = false
 
     func reload() {
         let controller = Bridge.group("plan.missionController")
@@ -47,6 +48,13 @@ final class MissionStore: ObservableObject, Probeable {
     func uploadToVehicle() {
         Bridge.invoke("plan.sendToVehicle")
         syncing = true
+        reload()
+    }
+
+    func addWaypoint(latitude: Double, longitude: Double) {
+        Bridge.invoke("plan.missionController.insertSimpleMissionItem",
+                      [["latitude": latitude, "longitude": longitude], items.count, true])
+        addingWaypoint = false
         reload()
     }
 
@@ -132,6 +140,7 @@ final class MissionStore: ObservableObject, Probeable {
          "vehiclePlaced": vehiclePosition != nil,
          "map": MissionMap.lastRender["plan"] ?? [:],
          "selected": items.first(where: \.isCurrent)?.sequence ?? -1,
+         "addingWaypoint": addingWaypoint,
          "items": items.prefix(8).map {
              ["seq": $0.sequence, "command": $0.command, "selected": $0.isCurrent,
               "position": $0.positionText, "altitude": $0.altitudeText]
@@ -161,6 +170,14 @@ final class MissionStore: ObservableObject, Probeable {
                 syncing = (Bridge.group("plan")["syncInProgress"] as? NSNumber)?.boolValue ?? false
             }
             reload()
+        case "addWaypoint":
+            guard let latitude = Double(args["latitude"] ?? ""),
+                  let longitude = Double(args["longitude"] ?? "") else {
+                return ["ok": false, "error": "addWaypoint needs latitude and longitude"]
+            }
+            addWaypoint(latitude: latitude, longitude: longitude)
+        case "arm":
+            addingWaypoint = args["on"] != "0"
         case "select":
             select(sequence: Int(args["sequence"] ?? "") ?? -1)
         case "remove":

@@ -55,6 +55,12 @@ struct PlanInspector: View {
             VStack(alignment: .leading, spacing: Overlay.gutter) {
                 summary
 
+                if mission.addingWaypoint && selection.page == "Mission" {
+                    Text("Click the map to place a waypoint.")
+                        .font(.callout)
+                        .foregroundColor(Overlay.mission)
+                }
+
                 Picker("", selection: Binding(
                     get: { selection.page },
                     set: { selection.page = $0 })
@@ -211,6 +217,14 @@ struct PlanInspector: View {
 
     private var actions: some View {
         HStack(spacing: Overlay.step) {
+            Button {
+                mission.addingWaypoint.toggle()
+            } label: {
+                Image(systemName: mission.addingWaypoint ? "xmark" : "plus")
+            }
+            .help(mission.addingWaypoint ? "Stop adding waypoints" : "Add a waypoint by clicking the map")
+            .disabled(mission.syncing)
+
             Button("Download", action: reload)
                 .disabled(mission.syncing || !mission.connected)
             Spacer()
@@ -241,7 +255,9 @@ struct PlanView: View {
             MissionMap(owner: "plan", items: mission.items, vehicle: mission.vehiclePosition,
                        shapes: fenceRally.shapes, rallyPoints: fenceRally.rallyPoints,
                        padding: PlanView.mapPadding,
-                       select: mission.select(sequence:))
+                       select: mission.select(sequence:),
+                       adding: mission.addingWaypoint,
+                       add: mission.addWaypoint(latitude:longitude:))
                 .ignoresSafeArea()
 
             HStack {

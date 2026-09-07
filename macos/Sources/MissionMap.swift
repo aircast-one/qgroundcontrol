@@ -58,6 +58,8 @@ struct MissionMap: NSViewRepresentable {
     let rallyPoints: [RallyPointRow]
     let padding: NSEdgeInsets
     let select: (Int) -> Void
+    let adding: Bool
+    let add: (Double, Double) -> Void
 
     func makeNSView(context: Context) -> MKMapView {
         let map = MKMapView()
@@ -66,8 +68,9 @@ struct MissionMap: NSViewRepresentable {
         let mapType = CachedTileOverlay.currentMapType()
         if !mapType.isEmpty {
             context.coordinator.overlay = CachedTileOverlay(mapType: mapType)
-            map.addOverlay(context.coordinator.overlay!, level: .aboveLabels)
+            map.addOverlay(context.coordinator.overlay!, level: .aboveRoads)
         }
+        context.coordinator.add = add
         map.showsCompass = true
         map.showsScale = true
         map.isPitchEnabled = false
@@ -75,6 +78,8 @@ struct MissionMap: NSViewRepresentable {
     }
 
     func updateNSView(_ map: MKMapView, context: Context) {
+        context.coordinator.add = add
+        context.coordinator.arm(adding, on: map)
         map.removeAnnotations(map.annotations)
         map.overlays.filter { !($0 is CachedTileOverlay) }.forEach(map.removeOverlay)
 
@@ -94,7 +99,8 @@ struct MissionMap: NSViewRepresentable {
 
         if placed.count > 1 {
             var coordinates = placed.map(\.coordinate)
-            map.addOverlay(MKPolyline(coordinates: &coordinates, count: coordinates.count))
+            map.addOverlay(MKPolyline(coordinates: &coordinates, count: coordinates.count),
+                           level: .aboveLabels)
         }
 
         MissionMap.lastRender[owner] = [
@@ -181,10 +187,38 @@ struct MissionMap: NSViewRepresentable {
 
     final class Coordinator: NSObject, MKMapViewDelegate {
         let select: (Int) -> Void
+        var add: (Double, Double) -> Void = { _, _ in }
         var lastFrame: MapFrame?
+        private var placer: NSClickGestureRecognizer?
 
         init(select: @escaping (Int) -> Void) {
             self.select = select
+        }
+
+        deinit {
+            if placer != nil {
+                NSCursor.pop()
+            }
+        }
+
+        func arm(_ adding: Bool, on map: MKMapView) {
+            if adding, placer == nil {
+                let recognizer = NSClickGestureRecognizer(target: self, action: #selector(placeWaypoint(_:)))
+                map.addGestureRecognizer(recognizer)
+                placer = recognizer
+                NSCursor.crosshair.push()
+            } else if !adding, let recognizer = placer {
+                map.removeGestureRecognizer(recognizer)
+                placer = nil
+                NSCursor.pop()
+            }
+        }
+
+        @objc private func placeWaypoint(_ recognizer: NSClickGestureRecognizer) {
+            guard let map = recognizer.view as? MKMapView else { return }
+            let point = recognizer.location(in: map)
+            let coordinate = map.convert(point, toCoordinateFrom: map)
+            add(coordinate.latitude, coordinate.longitude)
         }
 
         func mapView(_ mapView: MKMapView, didSelect view: MKAnnotationView) {
