@@ -153,6 +153,34 @@ The big evaporation: 15k lines of `AutoPilotPlugins` QML.
 **Gate (HW):** full parameter tree loads and writes on PX4 and ArduPilot; accelerometer, compass and
 radio calibration complete on real hardware.
 
+### Status — the form half is done, the hardware half is not
+
+The Setup tab is native. It reads the autopilot plugin's own component list and
+renders a page per component, so it follows whatever the vehicle reports rather
+than a hardcoded list.
+
+Converted, all as generic parameter forms with no new C++: Frame, Flight Modes,
+Power, Safety, Tuning, Camera, Lights, and PX4's Flight Behavior. Remote Support
+is native too, as a small custom page.
+
+Two findings worth carrying:
+
+- **More reduces to parameters than the plan assumed.** Frame was expected to need
+  `APMAirframeComponentController`; on ArduCopter it is `FRAME_CLASS` and
+  `FRAME_TYPE`. Check for a parameter pair before reaching for a controller — it
+  also keeps `loadParameters()`, which rewrites the vehicle and reboots it, out of
+  reach.
+- **What is left is not more of the same.** Radio, Sensors and Motors are the
+  remainder, and none is a form. `APMSensorsComponentController` holds five
+  `QQuickItem*` members and drives the view directly, so it needs those replaced
+  with properties and signals before any native head can use it. That is a
+  refactor of the calibration flow, and its gate needs real hardware, so it should
+  not be done unsupervised.
+
+`Vehicle::motorTest` is already `Q_INVOKABLE` and reachable through the existing
+`vehicle` root, so the motor test needs no bridge work at all — only a UI built
+carefully enough to spin motors safely, and hardware to prove it on.
+
 ## Phase 4 — Plan · 7 weeks
 
 Hardest phase. `MissionManager` (20.7k C++) survives entirely; the map-editing UI does not.
