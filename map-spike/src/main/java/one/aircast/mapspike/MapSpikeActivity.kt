@@ -4,6 +4,7 @@ import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.layout.ExperimentalLayoutApi
 import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Box
@@ -12,7 +13,9 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material3.MaterialTheme
@@ -47,6 +50,7 @@ import kotlinx.coroutines.withContext
 private const val PLAN_POLL_MS = 700L
 private const val FAILURE_MESSAGE_MS = 2500L
 private const val CONFIRM_TIMEOUT_MS = 5000L
+private val CONTROLS_MAX_HEIGHT = 320.dp
 
 class MapSpikeActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -245,7 +249,16 @@ internal fun MapSpikeScreen(mapStyle: String) {
                 .onGloballyPositioned { controlsHeightPx = it.size.height },
             color = MaterialTheme.colorScheme.surface.copy(alpha = 0.88f),
         ) {
-            Column(Modifier.padding(horizontal = 8.dp, vertical = 4.dp)) {
+            // The panel grows with what is selected, and it had grown past the
+            // screen: the survey altitude field and Delete survey were rendering
+            // below the fold with nothing to say so. Capping it and letting it
+            // scroll means adding a control can never again make an existing one
+            // unreachable.
+            Column(
+                Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
+                    .heightIn(max = CONTROLS_MAX_HEIGHT)
+                    .verticalScroll(rememberScrollState()),
+            ) {
                 TerrainProfileView(profile)
 
                 Row(verticalAlignment = Alignment.CenterVertically) {
@@ -434,6 +447,43 @@ internal fun MapSpikeScreen(mapStyle: String) {
                                 onBridge { FenceBridge.deletePolygon(hit.polygon) }
                                 selected = null
                             }) { Text("Delete fence") }
+                        }
+
+                        surveyHit?.let { hit ->
+                            // Read once when the survey is picked. Polling it would
+                            // add a call per survey per poll for a value that only
+                            // changes when someone changes it.
+                            var surveyAlt by remember(hit.item) { mutableStateOf("") }
+                            LaunchedEffect(hit.item) {
+                                val metres = withContext(Dispatchers.Default) {
+                                    SurveyBridge.altitude(hit.item)
+                                }
+                                surveyAlt = altitudeFieldText(metres)
+                            }
+                            OutlinedTextField(
+                                value = surveyAlt,
+                                onValueChange = { surveyAlt = it },
+                                label = { Text("Survey alt m") },
+                                singleLine = true,
+                                keyboardOptions = KeyboardOptions(
+                                    keyboardType = KeyboardType.Number,
+                                    imeAction = ImeAction.Done,
+                                ),
+                                keyboardActions = KeyboardActions(
+                                    onDone = {
+                                        val metres = parsedAltitude(surveyAlt)
+                                        if (metres == null) {
+                                            say("Not an altitude")
+                                        } else {
+                                            onBridge("Setting survey altitude") {
+                                                SurveyBridge.setAltitude(hit.item, metres)
+                                            }
+                                        }
+                                    },
+                                ),
+                                modifier = Modifier.width(150.dp),
+                                textStyle = MaterialTheme.typography.bodySmall,
+                            )
                         }
 
                         surveyHit?.let { hit ->

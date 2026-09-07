@@ -79,6 +79,24 @@ object SurveyBridge {
                 .optJSONArray("path")
         }.getOrNull()
 
+    // A survey's height is its camera distance to surface, not an Altitude fact
+    // on the item, and cameraCalc is a child object so it needs its own read.
+    // Read when a survey is selected rather than every poll, since the poll
+    // already costs one call per survey.
+    private fun altitudePath(itemIndex: Int) =
+        "$PLAN_ITEMS.$itemIndex.cameraCalc.distanceToSurface"
+
+    fun altitude(itemIndex: Int): Double =
+        runCatching {
+            JSONObject(QGCBridge.get(altitudePath(itemIndex))).optDouble("value", Double.NaN)
+        }.getOrDefault(Double.NaN)
+
+    fun setAltitude(itemIndex: Int, metres: Double): Boolean =
+        runCatching {
+            JSONObject(QGCBridge.set(altitudePath(itemIndex), "{\"value\":$metres}"))
+                .optBoolean("ok")
+        }.getOrDefault(false)
+
     fun surveyItemName(): String =
         runCatching {
             JSONObject(QGCBridge.get("$MISSION_CONTROLLER.surveyComplexItemName")).optString("value")

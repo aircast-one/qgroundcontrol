@@ -314,6 +314,11 @@ touch an altitude. The field refuses what does not parse and anything below the 
 sending it, and keeps a half-typed number — "4" on the way to "47" is not a reason to throw the edit
 away.
 
+**A survey's height is not an altitude fact.** It is `cameraCalc.distanceToSurface` — the camera's
+distance to the surface, which is what the survey editor labels Altitude. `cameraCalc` is a child
+object, so it needs its own read, and that read happens when a survey is selected rather than every
+poll, since the poll already costs one call per survey.
+
 ## Naming
 
 The vehicle sync buttons are `Download` and `Upload`, which is what QGC calls them — "Download from
