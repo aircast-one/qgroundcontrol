@@ -35,6 +35,7 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
 private const val PLAN_POLL_MS = 700L
+private const val FAILURE_MESSAGE_MS = 2500L
 
 class MapSpikeActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -64,11 +65,19 @@ private fun MapSpikeScreen(mapStyle: String) {
     val scope = rememberCoroutineScope()
     var centre by remember { mutableStateOf<TrackPoint?>(null) }
 
-    fun onBridge(label: String? = null, work: () -> Unit) {
+    // A bridge call that fails returns false rather than throwing, so without
+    // this a refused operation looks exactly like one that worked.
+    fun onBridge(label: String? = null, work: () -> Boolean) {
         busy = label
         scope.launch {
-            withContext(Dispatchers.Default) { work() }
-            busy = null
+            val ok = withContext(Dispatchers.Default) { work() }
+            if (ok) {
+                busy = null
+            } else {
+                busy = "${label ?: "That"} did not work"
+                delay(FAILURE_MESSAGE_MS)
+                busy = null
+            }
         }
     }
 
@@ -132,8 +141,9 @@ private fun MapSpikeScreen(mapStyle: String) {
                         is MapHit.SurveyVertex -> SurveyBridge.adjustAreaVertex(hit.item, hit.vertex, lat, lon)
                         is MapHit.Rally -> FenceBridge.moveRallyPoint(hit.index, lat, lon)
                         is MapHit.CircleCentre -> FenceBridge.moveCircle(hit.index, lat, lon)
-                        // Tapping the fill selects a circle; its centre handle moves it.
-                        is MapHit.Circle -> Unit
+                        // Tapping the fill selects a circle; its centre handle moves
+                        // it. Nothing to do here is not a failure.
+                        is MapHit.Circle -> true
                     }
                 }
             },
@@ -219,38 +229,34 @@ private fun MapSpikeScreen(mapStyle: String) {
                     TextButton(onClick = {
                         val at = placeAt()
                         onBridge("Adding fence") {
-                            at?.let {
-                                FenceBridge.addInclusionPolygon(
-                                    TrackPoint(it.latitude + 0.002, it.longitude - 0.002),
-                                    TrackPoint(it.latitude - 0.002, it.longitude + 0.002),
-                                )
-                            }
+                            at != null && FenceBridge.addInclusionPolygon(
+                                TrackPoint(at.latitude + 0.002, at.longitude - 0.002),
+                                TrackPoint(at.latitude - 0.002, at.longitude + 0.002),
+                            )
                         }
                     }) { Text("Fence") }
 
                     TextButton(onClick = {
                         val at = placeAt()
                         onBridge("Adding survey") {
-                            at?.let { SurveyBridge.insertSurvey(it.latitude, it.longitude) }
+                            at != null && SurveyBridge.insertSurvey(at.latitude, at.longitude)
                         }
                     }) { Text("Survey") }
 
                     TextButton(onClick = {
                         val at = placeAt()
                         onBridge("Adding circle") {
-                            at?.let {
-                                FenceBridge.addInclusionCircle(
-                                    TrackPoint(it.latitude + 0.002, it.longitude - 0.002),
-                                    TrackPoint(it.latitude - 0.002, it.longitude + 0.002),
-                                )
-                            }
+                            at != null && FenceBridge.addInclusionCircle(
+                                TrackPoint(at.latitude + 0.002, at.longitude - 0.002),
+                                TrackPoint(at.latitude - 0.002, at.longitude + 0.002),
+                            )
                         }
                     }) { Text("Circle") }
 
                     TextButton(onClick = {
                         val at = placeAt()
                         onBridge("Adding rally") {
-                            at?.let { FenceBridge.addRallyPoint(it.latitude, it.longitude) }
+                            at != null && FenceBridge.addRallyPoint(at.latitude, at.longitude)
                         }
                     }) { Text("Rally") }
 
