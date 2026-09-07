@@ -205,8 +205,10 @@ fun SetupScreen(modifier: Modifier = Modifier) {
         }
 
         Text(
-            text = "Only pages marked Open are moved over so far. " +
-                "Edit any parameter from the Params tab meanwhile.",
+            text = "Pages marked Open work here. Radio and sensor calibration and the " +
+                "motor test are not carried over yet, so use QGroundControl on a " +
+                "computer for those. Any parameter can still be edited from the " +
+                "Params tab.",
             style = MaterialTheme.typography.bodySmall,
             modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp),
         )
