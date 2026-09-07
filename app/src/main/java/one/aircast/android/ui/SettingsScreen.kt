@@ -7,7 +7,10 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.widthIn
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
@@ -109,9 +112,12 @@ internal fun enumLabel(fact: Fact): String =
 @Composable
 internal fun FactRow(fact: Fact, onWrite: () -> Unit = {}) {
     Row(
-        Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp),
+        Modifier
+            .fillMaxWidth()
+            .heightIn(min = 64.dp)
+            .padding(horizontal = 20.dp, vertical = 10.dp),
         verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.SpaceBetween,
+        horizontalArrangement = Arrangement.spacedBy(16.dp),
     ) {
         Column(Modifier.weight(1f)) {
             Text(
@@ -121,11 +127,15 @@ internal fun FactRow(fact: Fact, onWrite: () -> Unit = {}) {
                 overflow = TextOverflow.Ellipsis,
             )
             if (fact.units.isNotBlank()) {
-                Text(fact.units, style = MaterialTheme.typography.bodySmall)
+                Text(
+                    text = fact.units,
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
             }
         }
 
-        Box(Modifier.weight(1f), contentAlignment = Alignment.CenterEnd) {
+        Box(Modifier.widthIn(max = 190.dp), contentAlignment = Alignment.CenterEnd) {
             when {
                 fact.readOnly -> Text(
                     text = enumLabel(fact),
@@ -152,14 +162,21 @@ private fun EnumPicker(fact: Fact, onWrite: () -> Unit) {
     val label = enumLabel(fact)
 
     Column {
-        TextButton(onClick = { expanded = true }) {
+        TextButton(
+            onClick = { expanded = true },
+            contentPadding = PaddingValues(horizontal = 4.dp, vertical = 8.dp),
+        ) {
             Text(
                 text = label,
                 maxLines = 2,
                 overflow = TextOverflow.Ellipsis,
                 modifier = Modifier.weight(1f, fill = false),
             )
-            Icon(Icons.Default.KeyboardArrowDown, null)
+            Icon(
+                imageVector = Icons.Default.KeyboardArrowDown,
+                contentDescription = null,
+                modifier = Modifier.padding(start = 2.dp),
+            )
         }
         DropdownMenu(expanded = expanded, onDismissRequest = { expanded = false }) {
             fact.enumStrings.forEachIndexed { index, option ->

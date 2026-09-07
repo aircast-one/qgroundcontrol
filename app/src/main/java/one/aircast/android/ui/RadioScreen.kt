@@ -81,7 +81,7 @@ private fun AttitudeRow(channel: AttitudeChannel) {
     Row(
         modifier = Modifier
             .fillMaxWidth()
-            .padding(horizontal = 16.dp, vertical = 8.dp),
+            .padding(horizontal = 20.dp, vertical = 10.dp),
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(12.dp),
     ) {
@@ -144,16 +144,6 @@ fun RadioScreen(modifier: Modifier = Modifier) {
     val rcValues = parseRcValues(rcValuesJson)
 
     LazyColumn(modifier.fillMaxSize()) {
-        item(key = "intro") {
-            Text(
-                text = "Turn the transmitter on and move each stick and switch. " +
-                    "Every channel you use should move here.",
-                style = MaterialTheme.typography.bodySmall,
-                modifier = Modifier.padding(16.dp),
-            )
-            HorizontalDivider()
-        }
-
         if (channelCount.toInt() == 0) {
             item(key = "nochannels") {
                 RadioNotice(
@@ -163,30 +153,19 @@ fun RadioScreen(modifier: Modifier = Modifier) {
             }
         }
 
-        item(key = "attitudeheader") {
-            Text(
-                text = "Attitude controls",
-                style = MaterialTheme.typography.titleSmall,
-                modifier = Modifier.padding(horizontal = 16.dp, vertical = 12.dp),
-            )
-        }
+        item(key = "attitudeheader") { SectionHeader("Attitude controls") }
         items(attitude.size, key = { "att${attitude[it].label}" }) { index ->
             AttitudeRow(attitude[index])
         }
 
         item(key = "monitorheader") {
-            HorizontalDivider()
-            Text(
-                text = "Channel monitor · ${channelCount.toInt()} channels",
-                style = MaterialTheme.typography.titleSmall,
-                modifier = Modifier.padding(horizontal = 16.dp, vertical = 12.dp),
-            )
+            SectionHeader("Channel monitor · ${channelCount.toInt()} channels")
         }
         items(rcValues.size, key = { "ch$it" }) { index ->
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .padding(horizontal = 16.dp, vertical = 4.dp),
+                    .padding(horizontal = 20.dp, vertical = 6.dp),
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.spacedBy(12.dp),
             ) {
@@ -207,13 +186,10 @@ fun RadioScreen(modifier: Modifier = Modifier) {
         }
 
         item(key = "footer") {
-            HorizontalDivider()
-            Text(
-                text = "Calibration is not carried over: it needs you to hold each stick " +
-                    "at its extremes while watching the vehicle, and it rewrites the " +
-                    "channel mapping. Use QGroundControl on a computer for that.",
-                style = MaterialTheme.typography.bodySmall,
-                modifier = Modifier.padding(16.dp),
+            FootNote(
+                "Move each stick and switch — every channel you use should move here. " +
+                    "Calibration stays on the desktop: it needs you holding each stick at " +
+                    "its extremes while watching the aircraft, and it rewrites the mapping.",
             )
         }
     }

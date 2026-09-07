@@ -69,13 +69,6 @@ fun RemoteSupportScreen(modifier: Modifier = Modifier) {
             .padding(16.dp),
         verticalArrangement = Arrangement.spacedBy(16.dp),
     ) {
-        Text(
-            text = "Forwards this vehicle's MAVLink telemetry to an ArduPilot support " +
-                "engineer so they can see what you see.",
-            style = MaterialTheme.typography.bodyMedium,
-        )
-
-        HorizontalDivider()
 
         if (host == null) {
             Text("Reading the support address.", style = MaterialTheme.typography.bodyMedium)
@@ -87,12 +80,13 @@ fun RemoteSupportScreen(modifier: Modifier = Modifier) {
         HorizontalDivider()
 
         Text(
-            text = if (forwarding) {
-                "Forwarding is running. Remove the forwarding link from Comm Links to stop it."
+            text = if (forwarding) "Forwarding" else "Not forwarding",
+            style = MaterialTheme.typography.titleMedium,
+            color = if (forwarding) {
+                MaterialTheme.colorScheme.primary
             } else {
-                "Not forwarding."
+                MaterialTheme.colorScheme.onSurfaceVariant
             },
-            style = MaterialTheme.typography.bodyMedium,
         )
 
         Button(
@@ -105,7 +99,14 @@ fun RemoteSupportScreen(modifier: Modifier = Modifier) {
             Text(
                 text = "Enter the address your support engineer gave you first.",
                 style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
         }
+
+        FootNote(
+            "Sends live telemetry, including position, to an ArduPilot support " +
+                "engineer for as long as the link stays up. Remove the forwarding link " +
+                "from Comm Links to stop it.",
+        )
     }
 }

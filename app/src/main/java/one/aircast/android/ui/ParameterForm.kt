@@ -80,36 +80,25 @@ internal fun ParameterForm(
     LazyColumn(modifier.fillMaxSize()) {
         rows.forEach { section ->
             item(key = "section:${section.title}") {
-                Text(
-                    text = section.title,
-                    style = MaterialTheme.typography.titleSmall,
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(horizontal = 16.dp, vertical = 12.dp),
-                )
+                SectionHeader(section.title)
                 if (section.note.isNotBlank()) {
                     Text(
                         text = section.note,
                         style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
                         modifier = Modifier
                             .fillMaxWidth()
-                            .padding(horizontal = 16.dp)
+                            .padding(horizontal = 20.dp)
                             .padding(bottom = 12.dp),
                     )
                 }
-                HorizontalDivider()
             }
             items(section.facts.size, key = { section.facts[it].path }) { index ->
                 FactRow(section.facts[index]) { reloads++ }
-                HorizontalDivider()
             }
         }
         item(key = "refresh") {
-            Text(
-                text = "Values refresh after each change.",
-                style = MaterialTheme.typography.bodySmall,
-                modifier = Modifier.padding(16.dp),
-            )
+            FootNote("Values refresh after each change.")
         }
     }
 }
