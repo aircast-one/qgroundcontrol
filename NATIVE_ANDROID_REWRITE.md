@@ -296,9 +296,15 @@ missing file layer, because the result looks like a valid plan. The guard now
 runs before the picker opens, and an unreadable check refuses rather than
 allows.
 
-Still open: `saveToKml` has no affordance, and the unsaved-changes label is
-unit-tested only, because nothing in the native Plan tab can edit a plan yet —
-that arrives with the map editing work.
+The unsaved-changes label is verified on the handset through all four of its
+states. The map in the Plan tab already edits plans — a long press adds a
+waypoint — so `plan.dirty` could be exercised directly: `New plan` becomes
+`Unsaved plan` on the first edit, and `mission.plan` becomes
+`mission.plan \u00b7 unsaved changes` after a save and a further edit. The saved
+file grew from 589 to 1168 bytes across it, which is the edit landing in the
+file rather than only in the label.
+
+Still open: `saveToKml` has no affordance.
 
 ## Phase 5 — Fly and video · 7 weeks
 
