@@ -288,8 +288,17 @@ Two corrections to the paragraph above:
   `application/json` makes DocumentsUI append `.json`, and `mission.plan.json`
   does not match the `*.plan` filter desktop QGC opens with.
 
-Still open: `dirty` is unused, so nothing warns a pilot leaving the tab with
-unsaved edits, and `saveToKml` has no affordance.
+**Save readiness** (`e18f84f`): `PlanView.qml` blocks save and upload unless
+`readyForSaveState()` is `ReadyForSave` — a survey still fetching terrain stores
+wrong altitudes, an item missing a position stores an incomplete mission. The
+native tab wrote the file regardless, which is a worse regression than the
+missing file layer, because the result looks like a valid plan. The guard now
+runs before the picker opens, and an unreadable check refuses rather than
+allows.
+
+Still open: `saveToKml` has no affordance, and the unsaved-changes label is
+unit-tested only, because nothing in the native Plan tab can edit a plan yet —
+that arrives with the map editing work.
 
 ## Phase 5 — Fly and video · 7 weeks
 
