@@ -113,6 +113,9 @@ fun SetupScreen(modifier: Modifier = Modifier) {
     BackHandler(enabled = openComponent != null) { openComponent = null }
 
     LaunchedEffect(hasVehicle, parametersReady, setupComplete) {
+        if (!hasVehicle) {
+            openComponent = null
+        }
         components = if (hasVehicle && parametersReady) {
             withContext(Dispatchers.Default) { readComponents() }
         } else {

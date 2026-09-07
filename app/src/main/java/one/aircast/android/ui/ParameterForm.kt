@@ -41,7 +41,6 @@ internal fun factFromParameter(name: String, json: JSONObject): Fact? =
         null
     }
 
-
 private fun readSections(sections: List<ParameterSection>): List<ParameterRows> =
     sections.mapNotNull { section ->
         val facts = section.names.mapNotNull { name ->
