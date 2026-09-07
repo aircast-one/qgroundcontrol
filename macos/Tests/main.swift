@@ -196,6 +196,30 @@ expect(FlightModePosition.present(in: ["FLTMODE1", "FLTMODE3"]).map(\.index).map
        "1,3", "only reported positions appear")
 expect(FlightModePosition.present(in: []).isEmpty, "a vehicle without them shows no positions")
 
+// A waypoint's altitude lives in its Altitude fact; the coordinate's altitude is NaN
+// for most commands and arrives as null, so reading the coordinate would show nothing.
+let waypoint = MissionItem(json: [
+    "sequenceNumber": 1, "commandName": "Waypoint", "isCurrentItem": false,
+    "coordinate": ["latitude": -35.3629, "longitude": 149.165, "altitude": NSNull()],
+    "facts": [["name": "Altitude", "value": 50.0]]])
+expect(waypoint.altitudeText, "50.0 m", "altitude comes from the fact")
+expect(waypoint.positionText, "-35.362900, 149.165000", "position formats to six decimals")
+expect(waypoint.hasPosition, "a waypoint with a coordinate has a position")
+
+// Mission Start carries its altitude on the coordinate instead.
+let start = MissionItem(json: [
+    "sequenceNumber": 0, "commandName": "Mission Start", "isCurrentItem": true,
+    "coordinate": ["latitude": -35.36, "longitude": 149.16, "altitude": 584.09],
+    "facts": []])
+expect(start.altitudeText, "584.1 m", "falls back to the coordinate altitude")
+expect(start.isCurrent, "the current item is flagged")
+
+// A command with no position at all must not render as 0,0 in the Gulf of Guinea.
+let bare = MissionItem(json: ["sequenceNumber": 2, "commandName": "Delay", "facts": []])
+expect(!bare.hasPosition, "an item without a coordinate has no position")
+expect(bare.positionText, "—", "and shows nothing rather than a false one")
+expect(bare.altitudeText, "—", "same for altitude")
+
 if failures == 0 {
     print("all Swift checks passed")
     exit(0)

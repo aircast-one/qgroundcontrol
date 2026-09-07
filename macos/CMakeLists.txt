@@ -18,6 +18,9 @@ add_library(QGCNativeUI STATIC
     Sources/SafetySections.swift
     Sources/SensorHealth.swift
     Sources/Sensors.swift
+    Sources/Mission.swift
+    Sources/MissionItemModel.swift
+    Sources/PlanWindow.swift
     Sources/AppShell.swift
     Sources/Bridge.swift
     Sources/Fact.swift

@@ -33,6 +33,9 @@ enum AppShell {
         windowMenu.addItem(withTitle: "Minimize", action: #selector(NSWindow.miniaturize(_:)), keyEquivalent: "m")
         windowMenu.addItem(withTitle: "Zoom", action: #selector(NSWindow.zoom(_:)), keyEquivalent: "")
         windowMenu.addItem(.separator())
+        let plan = windowMenu.addItem(withTitle: "Plan", action: #selector(PlanWindow.showFromMenu), keyEquivalent: "p")
+        plan.target = PlanWindow.shared
+
         let setup = windowMenu.addItem(withTitle: "Vehicle Setup", action: #selector(VehicleSetupWindow.showFromMenu), keyEquivalent: "u")
         setup.target = VehicleSetupWindow.shared
 
