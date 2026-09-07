@@ -109,8 +109,7 @@ fun SetupScreen(modifier: Modifier = Modifier) {
     }
 
     val open = openComponent
-    val openSections = open?.let { setupSectionsFor(it.name, isPx4) }
-    if (open != null && openSections != null) {
+    if (open != null && hasNativeSetupPage(open.name, isPx4)) {
         Column(modifier.fillMaxSize()) {
             Row(
                 modifier = Modifier.fillMaxWidth(),
@@ -122,7 +121,12 @@ fun SetupScreen(modifier: Modifier = Modifier) {
                 Text(open.name, style = MaterialTheme.typography.titleMedium)
             }
             HorizontalDivider()
-            ParameterForm(openSections, Modifier.weight(1f))
+            val sections = setupSectionsFor(open.name, isPx4)
+            if (sections == null) {
+                RemoteSupportScreen(Modifier.weight(1f))
+            } else {
+                ParameterForm(sections, Modifier.weight(1f))
+            }
         }
         return
     }
@@ -156,9 +160,9 @@ fun SetupScreen(modifier: Modifier = Modifier) {
 
         LazyColumn(Modifier.fillMaxSize()) {
             items(components, key = { it.index }) { component ->
-                val sections = setupSectionsFor(component.name, isPx4)
+                val openable = hasNativeSetupPage(component.name, isPx4)
                 ListItem(
-                    modifier = if (sections == null) {
+                    modifier = if (!openable) {
                         Modifier
                     } else {
                         Modifier.clickable { openComponent = component }
@@ -168,7 +172,7 @@ fun SetupScreen(modifier: Modifier = Modifier) {
                     trailingContent = {
                         Text(
                             text = when {
-                                sections != null -> "Open"
+                                openable -> "Open"
                                 !component.requiresSetup -> ""
                                 component.setupComplete -> "Ready"
                                 else -> "Needs setup"

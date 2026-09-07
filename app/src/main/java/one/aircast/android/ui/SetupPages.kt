@@ -97,3 +97,8 @@ internal fun setupSectionsFor(componentName: String, isPx4: Boolean): List<Param
         "Flight Behavior" -> if (isPx4) FLIGHT_BEHAVIOR_PX4 else null
         else -> null
     }
+
+internal const val REMOTE_SUPPORT = "Remote Support"
+
+internal fun hasNativeSetupPage(componentName: String, isPx4: Boolean) =
+    componentName == REMOTE_SUPPORT || setupSectionsFor(componentName, isPx4) != null
