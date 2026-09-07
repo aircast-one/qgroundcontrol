@@ -149,8 +149,8 @@ struct PlanInspector: View {
             VStack(alignment: .leading, spacing: Overlay.gutter) {
                 summary
 
-                if mission.addingWaypoint && selection.page == "Mission" {
-                    Text("Click the map to place a waypoint.")
+                if let arming = mission.arming, selection.page == "Mission" {
+                    Text(arming.placementHint)
                         .font(.callout)
                         .foregroundColor(Overlay.mission)
                 }
@@ -359,13 +359,31 @@ struct PlanInspector: View {
 
     private var actions: some View {
         HStack(spacing: Overlay.step) {
-            Button {
-                mission.addingWaypoint.toggle()
-            } label: {
-                Image(systemName: mission.addingWaypoint ? "xmark" : "plus")
+            if mission.arming == nil {
+                Menu {
+                    ForEach(MissionItemKind.allCases) { kind in
+                        Button {
+                            mission.arming = kind
+                        } label: {
+                            Label(kind.title, systemImage: kind.symbol)
+                        }
+                    }
+                } label: {
+                    Image(systemName: "plus")
+                }
+                .menuStyle(.borderlessButton)
+                .menuIndicator(.hidden)
+                .frame(width: 26)
+                .help("Add an item by clicking the map")
+                .disabled(mission.syncing || !mission.connected)
+            } else {
+                Button {
+                    mission.arming = nil
+                } label: {
+                    Image(systemName: "xmark")
+                }
+                .help("Stop adding")
             }
-            .help(mission.addingWaypoint ? "Stop adding waypoints" : "Add a waypoint by clicking the map")
-            .disabled(mission.syncing)
 
             Button {
                 mission.undo()
@@ -426,7 +444,7 @@ struct PlanView: View {
                        shapes: fenceRally.shapes, rallyPoints: fenceRally.rallyPoints,
                        padding: PlanView.mapPadding,
                        select: mission.select(sequence:),
-                       adding: mission.addingWaypoint,
+                       adding: mission.arming != nil,
                        add: mission.addWaypoint(latitude:longitude:),
                        move: mission.move(sequence:latitude:longitude:))
                 .ignoresSafeArea()

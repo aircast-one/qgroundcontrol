@@ -11,7 +11,7 @@ final class MissionStore: ObservableObject, Probeable {
     @Published private(set) var vehiclePosition: (latitude: Double, longitude: Double)?
     @Published private(set) var dirty = false
     @Published private(set) var connected = false
-    @Published var addingWaypoint = false
+    @Published var arming: MissionItemKind?
     @Published private(set) var canUndo = false
     @Published private(set) var canRedo = false
     @Published private(set) var commands: [MissionCommand] = []
@@ -103,9 +103,10 @@ final class MissionStore: ObservableObject, Probeable {
     }
 
     func addWaypoint(latitude: Double, longitude: Double) {
-        Bridge.invoke("plan.missionController.insertSimpleMissionItem",
+        let kind = arming ?? .waypoint
+        Bridge.invoke("plan.missionController.\(kind.invokable)",
                       [["latitude": latitude, "longitude": longitude], items.count, true])
-        addingWaypoint = false
+        arming = nil
         reload()
     }
 
@@ -244,7 +245,7 @@ final class MissionStore: ObservableObject, Probeable {
          "vehiclePlaced": vehiclePosition != nil,
          "map": MissionMap.lastRender["plan"] ?? [:],
          "selected": items.first(where: \.isCurrent)?.sequence ?? -1,
-         "addingWaypoint": addingWaypoint,
+         "arming": arming?.rawValue ?? "",
          "canUndo": canUndo, "canRedo": canRedo,
          "commands": commands.map(\.name),
          "facts": selectedFacts.map { ["name": $0.name, "value": $0.value, "units": $0.units] },
@@ -295,7 +296,7 @@ final class MissionStore: ObservableObject, Probeable {
         case "editing":
             args["on"] == "0" ? stopEditing() : startEditing()
         case "arm":
-            addingWaypoint = args["on"] != "0"
+            arming = args["on"] == "0" ? nil : MissionItemKind(rawValue: args["kind"] ?? "waypoint")
         case "move":
             guard let latitude = Double(args["latitude"] ?? ""),
                   let longitude = Double(args["longitude"] ?? "") else {

@@ -530,6 +530,22 @@ func checkUnplacedCommands() {
 
 checkUnplacedCommands()
 
+func checkMissionItemKinds() {
+    expect(MissionItemKind.allCases.count == 4, "the add menu offers four kinds of item")
+    expect(MissionItemKind.waypoint.invokable, "insertSimpleMissionItem", "a waypoint inserts a simple item")
+    expect(MissionItemKind.takeoff.invokable, "insertTakeoffItem", "takeoff has its own insert")
+    expect(MissionItemKind.land.invokable, "insertLandItem", "land has its own insert")
+    expect(MissionItemKind.roi.invokable, "insertROIMissionItem", "a region of interest has its own insert")
+    expect(MissionItemKind(rawValue: "takeoff") == .takeoff, "a kind round-trips through its raw value")
+    expect(MissionItemKind(rawValue: "survey") == nil, "an unknown kind is not invented")
+    expect(MissionItemKind.roi.placementHint, "Click the map to place a region of interest.",
+           "the hint reads as English rather than a lowercased title")
+    expect(MissionItemKind.takeoff.placementHint, "Click the map to place a takeoff.",
+           "and names the kind being placed")
+}
+
+checkMissionItemKinds()
+
 if failures == 0 {
     print("all Swift checks passed")
     exit(0)
