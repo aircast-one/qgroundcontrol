@@ -304,7 +304,18 @@ waypoint — so `plan.dirty` could be exercised directly: `New plan` becomes
 file grew from 589 to 1168 bytes across it, which is the edit landing in the
 file rather than only in the label.
 
-Still open: `saveToKml` has no affordance.
+**Gating** (`4e294b1`): the file scope is closed. `PlanView.qml`'s file menu
+gates every action, and the native row was missing all of it — most seriously,
+Open discarded unsaved edits without asking. Open now confirms when the plan is
+dirty; Save and Save as need `containsItems` and no sync in progress; Export KML
+needs `plan.missionController.containsItems` rather than the master's, because
+`saveToKml` writes only the mission and a fence-only plan would export an empty
+document. `saveToKml` returns void, so success comes from the file on disk.
+
+The whole file scope is verified on the handset, including the negative cases:
+the menu items are disabled on an empty plan and enable when a waypoint is
+added, which is what proves the nested property path resolves rather than
+merely reading false.
 
 ## Phase 5 — Fly and video · 7 weeks
 
