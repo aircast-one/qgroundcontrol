@@ -728,6 +728,34 @@ func checkAltitudeMode() {
 
 checkAltitudeMode()
 
+func checkPlanSummary() {
+    expect(PlanSummary.distance(0), "—", "a plan that goes nowhere shows no distance")
+    expect(PlanSummary.distance(-1), "—", "nor does a nonsense one")
+    expect(PlanSummary.distance(.nan), "—", "nor does an unset one")
+    expect(PlanSummary.distance(500.397), "500 m", "metres below a kilometre, rounded")
+    expect(PlanSummary.distance(999.6), "1000 m", "just under the switch is still metres")
+    expect(PlanSummary.distance(1000), "1.0 km", "a kilometre reads as kilometres")
+    expect(PlanSummary.distance(12345), "12.3 km", "and keeps one decimal")
+
+    expect(PlanSummary.duration(0), "—", "no flight time means no duration")
+    expect(PlanSummary.duration(.infinity), "—", "an infinite estimate is not shown")
+    expect(PlanSummary.duration(100.079), "1:40", "minutes and seconds, zero padded")
+    expect(PlanSummary.duration(9), "0:09", "under a minute still shows the minute")
+    expect(PlanSummary.duration(3661), "1:01:01", "past an hour the hour appears")
+
+    let flight = PlanSummary(distanceMetres: 500.4, seconds: 100.1, maxTelemetryMetres: 457.3)
+    expect(flight.hasFlight, "a plan with distance and time has a flight to describe")
+    expect(flight.distanceText, "500 m", "the summary formats its own distance")
+    expect(flight.durationText, "1:40", "and its own duration")
+    expect(flight.telemetryText, "457 m", "and the furthest it gets from launch")
+
+    expect(!PlanSummary.empty.hasFlight, "an empty plan has nothing to summarise")
+    expect(!PlanSummary(distanceMetres: 0, seconds: 0, maxTelemetryMetres: 0).hasFlight,
+           "a launch point alone is not a flight")
+}
+
+checkPlanSummary()
+
 if failures == 0 {
     print("all Swift checks passed")
     exit(0)

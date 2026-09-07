@@ -195,27 +195,44 @@ struct PlanInspector: View {
     }
 
     private var summary: some View {
-        HStack(spacing: Overlay.step) {
-            Text(mission.planName)
-                .foregroundColor(.primary)
-            Text("\(mission.items.count) item\(mission.items.count == 1 ? "" : "s")")
-            if !fenceRally.shapes.isEmpty {
-                dot(Overlay.fence)
-                Text("\(fenceRally.shapes.count) fence")
+        VStack(alignment: .leading, spacing: 2) {
+            HStack(spacing: Overlay.step) {
+                Text(mission.planName)
+                    .foregroundColor(.primary)
+                Text("\(mission.items.count) item\(mission.items.count == 1 ? "" : "s")")
+                if !fenceRally.shapes.isEmpty {
+                    dot(Overlay.fence)
+                    Text("\(fenceRally.shapes.count) fence")
+                }
+                if !fenceRally.rallyPoints.isEmpty {
+                    dot(Overlay.rally)
+                    Text("\(fenceRally.rallyPoints.count) rally")
+                }
+                Spacer(minLength: 0)
+                if mission.dirty {
+                    Text("Unsent")
+                        .font(.caption.weight(.semibold))
+                        .foregroundColor(Overlay.fence)
+                }
             }
-            if !fenceRally.rallyPoints.isEmpty {
-                dot(Overlay.rally)
-                Text("\(fenceRally.rallyPoints.count) rally")
-            }
-            Spacer(minLength: 0)
-            if mission.dirty {
-                Text("Unsent")
-                    .font(.caption.weight(.semibold))
-                    .foregroundColor(Overlay.fence)
+            .font(.callout)
+            .foregroundColor(.secondary)
+
+            if mission.summary.hasFlight {
+                HStack(spacing: Overlay.step) {
+                    Label(mission.summary.distanceText, systemImage: "arrow.triangle.turn.up.right.diamond")
+                        .help("Distance flown")
+                    Label(mission.summary.durationText, systemImage: "clock")
+                        .help("How long the mission takes")
+                    Spacer(minLength: 0)
+                    Text("\(mission.summary.telemetryText) from launch")
+                        .help("The furthest the vehicle gets from where it took off")
+                }
+                .font(.caption.monospacedDigit())
+                .foregroundColor(.secondary)
+                .labelStyle(.titleAndIcon)
             }
         }
-        .font(.callout)
-        .foregroundColor(.secondary)
         .padding(.horizontal, 2)
     }
 

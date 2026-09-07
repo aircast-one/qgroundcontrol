@@ -21,6 +21,7 @@ final class MissionStore: ObservableObject, Probeable {
     @Published private(set) var itemAltitudeMode = ""
     @Published private(set) var globalAltitudeMode = ""
     @Published private(set) var defaultAltitude = ""
+    @Published private(set) var summary = PlanSummary.empty
     @Published private(set) var planFile = ""
 
     private var undoPoll: Timer?
@@ -40,7 +41,14 @@ final class MissionStore: ObservableObject, Probeable {
         syncing = (plan["syncInProgress"] as? NSNumber)?.boolValue ?? false
         dirty = (plan["dirty"] as? NSNumber)?.boolValue ?? false
         planFile = (plan["currentPlanFile"] as? String) ?? ""
-        globalAltitudeMode = (Bridge.group("plan.missionController")["globalAltitudeMode"] as? String) ?? ""
+        globalAltitudeMode = (controller["globalAltitudeMode"] as? String) ?? ""
+
+        let hover = (controller["missionHoverDistance"] as? NSNumber)?.doubleValue ?? 0
+        let cruise = (controller["missionCruiseDistance"] as? NSNumber)?.doubleValue ?? 0
+        summary = PlanSummary(
+            distanceMetres: hover + cruise,
+            seconds: (controller["missionTime"] as? NSNumber)?.doubleValue ?? 0,
+            maxTelemetryMetres: (controller["missionMaxTelemetry"] as? NSNumber)?.doubleValue ?? 0)
         defaultAltitude = (Bridge.group("settings.appSettings.defaultMissionItemAltitude")["valueString"] as? String) ?? ""
         canUndo = (plan["canUndo"] as? NSNumber)?.boolValue ?? false
         canRedo = (plan["canRedo"] as? NSNumber)?.boolValue ?? false
@@ -359,6 +367,8 @@ final class MissionStore: ObservableObject, Probeable {
          "surveys": surveyAreas.map(\.count),
          "distanceMode": distanceMode, "itemAltitudeMode": itemAltitudeMode,
          "globalAltitudeMode": globalAltitudeMode, "defaultAltitude": defaultAltitude,
+         "summary": ["distance": summary.distanceText, "duration": summary.durationText,
+                     "telemetry": summary.telemetryText, "hasFlight": summary.hasFlight],
          "camera": ["brand": camera.brand, "model": camera.model,
                     "brands": camera.brands.count, "models": camera.models.count,
                     "describes": camera.describes],
