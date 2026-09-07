@@ -11,7 +11,20 @@ data class Survey(
     val area: List<TrackPoint>,
     val transects: List<TrackPoint>,
     val cameraShots: Int,
+    val gridAngle: Double = Double.NaN,
 )
+
+// The survey's own settings arrive as Facts on the item, not as fields.
+fun surveyFact(element: JSONObject, name: String): Double {
+    val facts = element.optJSONArray("facts") ?: return Double.NaN
+    for (index in 0 until facts.length()) {
+        val fact = facts.optJSONObject(index) ?: continue
+        if (fact.optString("name").equals(name, ignoreCase = true)) {
+            return fact.optDouble("value", Double.NaN)
+        }
+    }
+    return Double.NaN
+}
 
 private fun points(array: JSONArray?): List<TrackPoint> {
     if (array == null) return emptyList()
@@ -35,7 +48,13 @@ fun surveys(json: JSONObject?): List<Survey> {
         val area = points(element.optJSONObject("surveyAreaPolygon")?.optJSONArray("path"))
         if (transects.isEmpty() && area.isEmpty()) return@mapNotNull null
 
-        Survey(index, area, transects, element.optInt("cameraShots"))
+        Survey(
+            index = index,
+            area = area,
+            transects = transects,
+            cameraShots = element.optInt("cameraShots"),
+            gridAngle = surveyFact(element, "GridAngle"),
+        )
     }
 }
 
@@ -54,7 +73,13 @@ object SurveyBridge {
             val area = points(polygonPath(index))
             if (transects.isEmpty() && area.isEmpty()) return@mapNotNull null
 
-            Survey(index, area, transects, element.optInt("cameraShots"))
+            Survey(
+                index = index,
+                area = area,
+                transects = transects,
+                cameraShots = element.optInt("cameraShots"),
+                gridAngle = surveyFact(element, "GridAngle"),
+            )
         }
     }
 
@@ -105,6 +130,13 @@ object SurveyBridge {
 
     fun appendAreaVertex(itemIndex: Int, latitude: Double, longitude: Double): Boolean =
         invoke("$PLAN_ITEMS.$itemIndex.surveyAreaPolygon.appendVertex", "[${coordinate(latitude, longitude)}]")
+
+    fun setGridAngle(itemIndex: Int, degrees: Double): Boolean =
+        runCatching {
+            JSONObject(
+                QGCBridge.set("$PLAN_ITEMS.$itemIndex.gridAngle", "{\"value\":$degrees}"),
+            ).optBoolean("ok")
+        }.getOrDefault(false)
 
     fun adjustAreaVertex(itemIndex: Int, vertex: Int, latitude: Double, longitude: Double): Boolean =
         invoke(

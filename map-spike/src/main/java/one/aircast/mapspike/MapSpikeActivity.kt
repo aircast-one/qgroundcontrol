@@ -209,6 +209,15 @@ private fun MapSpikeScreen(mapStyle: String) {
                         }
                     }) { Text("Survey") }
 
+                    surveyList.firstOrNull()?.let { survey ->
+                        TextButton(onClick = {
+                            val next = (if (survey.gridAngle.isNaN()) 0.0 else survey.gridAngle) + 30.0
+                            onBridge("Rotating grid") {
+                                SurveyBridge.setGridAngle(survey.index, next % 360.0)
+                            }
+                        }) { Text("Rotate") }
+                    }
+
                     TextButton(onClick = {
                         val at = placeAt()
                         onBridge("Adding circle") {

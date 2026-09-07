@@ -144,10 +144,14 @@ fun VehicleMap(
     DisposableEffect(mapView, mapStyle) {
         mapView.getMapAsync { loaded ->
             map = loaded
-            loaded.addOnCameraIdleListener {
-                val target = loaded.cameraPosition.target ?: return@addOnCameraIdleListener
+            // Camera idle only fires once the map moves, so report where it
+            // already is too, or nothing can be placed until the user pans.
+            fun reportCentre() {
+                val target = loaded.cameraPosition.target ?: return
                 onCentreChanged(TrackPoint(target.latitude, target.longitude))
             }
+            reportCentre()
+            loaded.addOnCameraIdleListener { reportCentre() }
             val builder = if (mapStyle.trimStart().startsWith("{")) {
                 Style.Builder().fromJson(mapStyle)
             } else {
