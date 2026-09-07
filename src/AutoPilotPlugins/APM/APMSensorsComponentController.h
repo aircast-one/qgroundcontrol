@@ -79,6 +79,8 @@ public:
     explicit APMSensorsComponentController(QObject *parent = nullptr);
     ~APMSensorsComponentController();
 
+    static APMSensorsComponentController *forActiveVehicle();
+
     qreal calProgress() const { return _calProgress; }
     bool nextEnabled() const { return _nextEnabled; }
     bool cancelEnabled() const { return _cancelEnabled; }

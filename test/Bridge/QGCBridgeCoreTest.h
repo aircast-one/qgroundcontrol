@@ -38,6 +38,7 @@ private slots:
     void _invokeRejectsTooManyArguments();
     void _accessorCallNeedsAQObjectReturn();
     void _vehicleRootIsNullWithoutAnActiveVehicle();
+    void _sensorsCalRootIsNullWithoutAnApmVehicle();
     void _setRejectsAPayloadWithoutAValue();
     void _indexesAVariantListOfObjects();
     void _watchEmitsOnChange();

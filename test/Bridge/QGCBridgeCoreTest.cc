@@ -231,6 +231,15 @@ void QGCBridgeCoreTest::_vehicleRootIsNullWithoutAnActiveVehicle()
              QStringLiteral("null"));
 }
 
+void QGCBridgeCoreTest::_sensorsCalRootIsNullWithoutAnApmVehicle()
+{
+    QVERIFY(!MultiVehicleManager::instance()->activeVehicle());
+    QCOMPARE(readObject(QStringLiteral("sensorsCal.calibrationInProgress")).value(QStringLiteral("kind")).toString(),
+             QStringLiteral("null"));
+    QCOMPARE(readObject(QStringLiteral("sensorsCal")).value(QStringLiteral("kind")).toString(),
+             QStringLiteral("null"));
+}
+
 void QGCBridgeCoreTest::_indexesAVariantListOfObjects()
 {
     const QString pluginPath = QStringLiteral("vehicles.offlineEditingVehicle.autopilotPlugin");

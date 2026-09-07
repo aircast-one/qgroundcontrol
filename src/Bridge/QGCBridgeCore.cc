@@ -4,6 +4,7 @@
 #include "LinkManager.h"
 #include "LogDownloadController.h"
 #include "MAVLinkConsoleController.h"
+#include "APMSensorsComponentController.h"
 #include "MAVLinkInspectorController.h"
 #include "MultiVehicleManager.h"
 #include "PlanMasterController.h"
@@ -72,6 +73,9 @@ QObject *rootObject(const QString &name)
     }
     if (name == QLatin1String("mavlinkInspector")) {
         return MAVLinkInspectorController::instance();
+    }
+    if (name == QLatin1String("sensorsCal")) {
+        return APMSensorsComponentController::forActiveVehicle();
     }
     return nullptr;
 }

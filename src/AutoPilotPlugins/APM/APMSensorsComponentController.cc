@@ -11,11 +11,14 @@
 #include "APMAutoPilotPlugin.h"
 #include "APMSensorsComponent.h"
 #include "MAVLinkProtocol.h"
+#include "MultiVehicleManager.h"
 #include "ParameterManager.h"
 #include "QGCApplication.h"
 #include "QGCLoggingCategory.h"
 #include "Vehicle.h"
 
+#include <QtCore/QCoreApplication>
+#include <QtCore/QPointer>
 #include <QtCore/QVariant>
 
 QGC_LOGGING_CATEGORY(APMSensorsComponentControllerLog, "qgc.autopilotplugins.apm.apmsensorscomponentcontroller")
@@ -24,9 +27,12 @@ QGC_LOGGING_CATEGORY(APMSensorsComponentControllerVerboseLog, "qgc.autopilotplug
 APMSensorsComponentController::APMSensorsComponentController(QObject *parent)
     : FactPanelController(parent)
 {
-    APMAutoPilotPlugin *const apmPlugin = qobject_cast<APMAutoPilotPlugin*>(_vehicle->autopilotPlugin());
+    APMAutoPilotPlugin *const apmPlugin = _vehicle ? qobject_cast<APMAutoPilotPlugin*>(_vehicle->autopilotPlugin()) : nullptr;
+    if (!apmPlugin) {
+        qCWarning(APMSensorsComponentControllerLog) << "No APM autopilot plugin";
+        return;
+    }
 
-    // Find the sensors component
     for (const QVariant &varVehicleComponent : apmPlugin->vehicleComponents()) {
         _sensorsComponent = qobject_cast<APMSensorsComponent*>(varVehicleComponent.value<VehicleComponent*>());
         if (_sensorsComponent) {
@@ -40,6 +46,27 @@ APMSensorsComponentController::APMSensorsComponentController(QObject *parent)
         qCWarning(APMSensorsComponentControllerLog) << "Sensors component is missing";
     }
 
+}
+
+APMSensorsComponentController *APMSensorsComponentController::forActiveVehicle()
+{
+    static QPointer<APMSensorsComponentController> controller;
+    static QPointer<Vehicle> boundVehicle;
+
+    Vehicle *const activeVehicle = MultiVehicleManager::instance()->activeVehicle();
+    if (!activeVehicle || !qobject_cast<APMAutoPilotPlugin*>(activeVehicle->autopilotPlugin())) {
+        delete controller;
+        boundVehicle.clear();
+        return nullptr;
+    }
+
+    if (!controller || (boundVehicle != activeVehicle)) {
+        delete controller;
+        controller = new APMSensorsComponentController(QCoreApplication::instance());
+        boundVehicle = activeVehicle;
+    }
+
+    return controller;
 }
 
 APMSensorsComponentController::~APMSensorsComponentController()
