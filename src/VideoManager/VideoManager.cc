@@ -627,12 +627,10 @@ void VideoManager::_rebindWidgets()
             continue;
         }
         QQuickItem *desired = _widgetForCamera(_cameraIndexForReceiver(receiver));
-        if (receiver->widget() == desired) {
-            continue;
-        }
-        receiver->setWidget(desired);
         if (_nativeRendering && !desired && !receiver->sink()) {
             void *nativeSink = QGCCorePlugin::instance()->createNativeVideoSink(receiver);
+            qCDebug(VideoManagerLog) << "native sink rebind" << receiver->name()
+                                     << (nativeSink != nullptr) << "started:" << receiver->started();
             if (nativeSink) {
                 receiver->setSink(nativeSink);
                 if (receiver->started()) {
@@ -641,6 +639,10 @@ void VideoManager::_rebindWidgets()
             }
             continue;
         }
+        if (receiver->widget() == desired) {
+            continue;
+        }
+        receiver->setWidget(desired);
         if (receiver->sink()) {
             QGCCorePlugin::instance()->setVideoSinkWidget(receiver->sink(), desired);
         } else if (desired) {
