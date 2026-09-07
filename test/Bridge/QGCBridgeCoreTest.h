@@ -29,6 +29,7 @@ private slots:
     void _factCarriesWhatQGCKnowsAboutItsRange();
     void _watchFromAnotherThreadDoesNotBlockTheCaller();
     void _writesAnObjectPropertyFromAnAtPath();
+    void _planStartsWithItsSettingsItemAndNoVehicle();
     void _resolvesAccessorCall();
     void _writesThroughAccessorCall();
     void _invokeReturnsValue();

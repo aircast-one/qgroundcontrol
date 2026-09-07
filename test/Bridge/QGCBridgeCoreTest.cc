@@ -549,3 +549,15 @@ void QGCBridgeCoreTest::_writesAnObjectPropertyFromAnAtPath()
     QVERIFY2(wrongType.value(QStringLiteral("reason")).toString().contains(QStringLiteral("not a")),
              qPrintable(wrongType.value(QStringLiteral("reason")).toString()));
 }
+
+void QGCBridgeCoreTest::_planStartsWithItsSettingsItemAndNoVehicle()
+{
+    const QJsonObject items = parse(QGCBridgeCore::get(
+        QStringLiteral("plan.missionController.visualItems")));
+    const QJsonArray elements = items.value(QStringLiteral("elements")).toArray();
+
+    QVERIFY2(elements.size() == 1, qPrintable(QStringLiteral(
+        "visualItems reported %1 elements with no vehicle; MissionController::_init "
+        "adds exactly one settings item to a started controller")
+        .arg(elements.size())));
+}
