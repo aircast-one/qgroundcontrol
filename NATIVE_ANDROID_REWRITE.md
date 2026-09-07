@@ -35,7 +35,7 @@ What landed, native:
 - **Activity duties** — wake lock, multicast lock, font scale, safe area, deep links, USB serial,
   system bar appearance, all moved out of `QGCActivity` into Kotlin.
 
-Still QML, hosted under native tabs: Fly (map + video), Plan.
+Still QML, hosted under native tabs: Fly (map + video).
 
 ### Since that gate — Phase 3 done, Phase 5 started
 
@@ -58,11 +58,19 @@ Phase 5 has been started from the parts that do not need the Phase 4 map:
 - QML's own guided buttons are gated off behind `hostProvidesGuidedActions` so
   the two heads do not both offer Takeoff.
 
-**Not started:** the Phase 4 map is a working spike in `aircast-android/map-spike`
-(MapLibre, QGC's tile cache, mission editing, geofence and rally, vertex drag) but
-nothing in the app imports it, so the Plan tab is still QML. Video, joystick and
-the Phase 6 host teardown are untouched; the AAR is still 78 MB because
-`QtQuickView` still hosts Fly and Plan.
+**The Plan tab is native.** The app imports `map-spike`, so the tab is MapLibre
+with QGC's tile cache, mission editing, geofence, rally and vertex drag, under a
+native file row. Video, joystick and the Phase 6 host teardown are untouched; the
+AAR is still 78 MB because `QtQuickView` still hosts Fly.
+
+**The native Fly view is blocked on video, not on the map.** `map-spike` already
+has `VehicleMap` — vehicle position, heading, home, trail, link-loss and a follow
+mode — and the guided actions, telemetry and prearm surfaces are already native.
+What stops the tab being switched over is that the QML view it would cover is
+where video renders, and the gate above records that PiP as passing. Putting a
+native map on the Fly tab today trades a working video feed for a map we already
+have elsewhere, which is a regression, so **video is the gating feature for
+Phase 5, ahead of the Fly view itself.**
 
 **Every hardware gate from Phase 3 onward is unmet.** Everything above was
 verified against ArduCopter SITL and a OnePlus 6, never a real airframe.
