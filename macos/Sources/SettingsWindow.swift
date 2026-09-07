@@ -20,7 +20,10 @@ struct SettingsView: View {
             SearchField(text: $store.search, placeholder: "Search settings")
                 .padding(8)
             List(store.pages, selection: $store.selected) { page in
-                Text(page.title).tag(page.id)
+                SidebarRow(title: page.title,
+                           symbol: SettingsPage.symbol(for: page.title),
+                           colour: SettingsPage.colour(for: page.title))
+                    .tag(page.id)
             }
             .listStyle(.sidebar)
             .disabled(!store.search.isEmpty)
@@ -39,27 +42,35 @@ struct SettingsView: View {
                    ? "This page has no editable settings."
                    : "No setting matches “\(store.search)”.")
         } else {
-            ScrollView {
-                VStack(alignment: .leading, spacing: 24) {
-                    if showsLinks {
-                        ConnectionsSection(store: links)
-                    }
-                    ForEach(store.sections) { section in
-                        VStack(alignment: .leading, spacing: 0) {
-                            Text(section.title)
-                                .font(.headline)
-                                .padding(.bottom, 8)
+            SetupPageBody(title: pageTitle) {
+                if showsLinks {
+                    ConnectionsSection(store: links)
+                }
+                ForEach(store.sections) { section in
+                    VStack(alignment: .leading, spacing: 0) {
+                        SectionLabel(text: section.title)
+                        GroupCard {
                             ForEach(Array(section.facts.enumerated()), id: \.element.id) { index, fact in
-                                if index > 0 { Divider() }
-                                FactRow(fact: fact, showsUnits: section.showsUnits) { store.write(fact, $0) }
-                                    .padding(.vertical, 7)
+                                GroupRow(title: fact.title,
+                                         description: section.showsUnits ? fact.units : "",
+                                         showSeparator: index > 0,
+                                         trailing: {
+                                             FactControl(fact: fact) { store.write(fact, $0) }
+                                                 .disabled(fact.readOnly)
+                                                 .frame(width: 200, alignment: .trailing)
+                                         })
                             }
                         }
                     }
                 }
-                .padding(20)
             }
         }
+    }
+
+    private var pageTitle: String {
+        store.search.trimmingCharacters(in: .whitespaces).isEmpty
+            ? (store.pages.first { $0.id == store.selected }?.title ?? "Settings")
+            : "Search results"
     }
 
     private var showsLinks: Bool {
@@ -100,32 +111,15 @@ struct SearchField: NSViewRepresentable {
     }
 }
 
-struct FactRow: View {
+struct FactControl: View {
     let fact: Fact
-    let showsUnits: Bool
     let write: (Any) -> Void
 
     @State private var draft = ""
     @FocusState private var editing: Bool
 
-    var body: some View {
-        HStack(alignment: .firstTextBaseline, spacing: 16) {
-            Text(fact.title)
-                .frame(maxWidth: .infinity, alignment: .leading)
-            control
-                .frame(width: 230, alignment: .trailing)
-                .disabled(fact.readOnly)
-            if showsUnits {
-                Text(fact.units)
-                    .font(.caption)
-                    .foregroundColor(.secondary)
-                    .frame(width: 44, alignment: .leading)
-            }
-        }
-    }
-
     @ViewBuilder
-    private var control: some View {
+    var body: some View {
         switch fact.kind {
         case .toggle:
             Toggle("", isOn: Binding(get: { fact.boolValue }, set: { write($0) }))
@@ -145,6 +139,7 @@ struct FactRow: View {
 
         case .text, .number:
             TextField("", text: $draft)
+                .textFieldStyle(.roundedBorder)
                 .multilineTextAlignment(.trailing)
                 .focused($editing)
                 .onAppear { draft = fact.stringValue }
@@ -242,5 +237,47 @@ final class SettingsWindow: NSObject, NSWindowDelegate {
 
     func windowWillClose(_ notification: Notification) {
         window = nil
+    }
+}
+
+extension SettingsPage {
+    static func symbol(for title: String) -> String {
+        switch title {
+        case "General": return "gearshape.fill"
+        case "Fly View": return "paperplane.fill"
+        case "Plan View": return "map.fill"
+        case "Video": return "video.fill"
+        case "Maps": return "globe"
+        case "Connections": return "cable.connector"
+        case "MAVLink": return "antenna.radiowaves.left.and.right"
+        case "Flight Modes": return "slider.horizontal.3"
+        case "ADSB Server": return "dot.radiowaves.up.forward"
+        case "Packet Radio": return "wifi"
+        case "Remote ID": return "person.text.rectangle"
+        case "RTK GPS": return "location.fill"
+        case "Firmware Upgrade": return "arrow.down.circle.fill"
+        case "3D Viewer": return "cube.fill"
+        default: return "gearshape.fill"
+        }
+    }
+
+    static func colour(for title: String) -> Color {
+        switch title {
+        case "General": return .gray
+        case "Fly View": return .accentColor
+        case "Plan View": return .green
+        case "Video": return .pink
+        case "Maps": return .teal
+        case "Connections": return .indigo
+        case "MAVLink": return .purple
+        case "Flight Modes": return .indigo
+        case "ADSB Server": return .orange
+        case "Packet Radio": return .blue
+        case "Remote ID": return .brown
+        case "RTK GPS": return .green
+        case "Firmware Upgrade": return .red
+        case "3D Viewer": return .cyan
+        default: return .gray
+        }
     }
 }

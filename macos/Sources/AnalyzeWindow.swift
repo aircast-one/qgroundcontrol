@@ -81,51 +81,63 @@ struct VibrationView: View {
     @ObservedObject var store: VibrationStore
 
     var body: some View {
-        ScrollView {
-            VStack(alignment: .leading, spacing: 24) {
-                if store.reading.available {
-                    SectionCard(title: "Vibration") {
-                        VStack(alignment: .leading, spacing: 12) {
-                            HStack(alignment: .bottom, spacing: 28) {
-                                VibrationScale()
-                                VibrationBar(label: "X", value: store.reading.x)
-                                VibrationBar(label: "Y", value: store.reading.y)
-                                VibrationBar(label: "Z", value: store.reading.z)
-                            }
-                            .frame(height: 190)
+        SetupPageBody(title: "Vibration",
+                      note: "Live vibration on each axis, and whether it is safe to fly.") {
+            if store.reading.available {
+                GroupCard {
+                    VStack(alignment: .leading, spacing: Overlay.unit * 0.75) {
+                        HStack(alignment: .bottom, spacing: 28) {
+                            VibrationScale()
+                            VibrationBar(label: "X", value: store.reading.x)
+                            VibrationBar(label: "Y", value: store.reading.y)
+                            VibrationBar(label: "Z", value: store.reading.z)
+                        }
+                        .frame(height: 190)
+                        HStack(spacing: 6) {
+                            Image(systemName: adviceSymbol)
                             Text(advice)
-                                .font(.callout)
-                                .foregroundColor(adviceColour)
                         }
-                        .padding(.top, 4)
+                        .font(.callout)
+                        .foregroundColor(adviceColour)
                     }
-
-                    SectionCard(title: "Accelerometer clipping") {
-                        VStack(alignment: .leading, spacing: 4) {
-                            Text("Counted since the vehicle booted. Any clipping means the accelerometer saturated.")
-                                .font(.caption)
-                                .foregroundColor(.secondary)
-                                .padding(.bottom, 6)
-                            ForEach(Array(store.reading.clipCounts.enumerated()), id: \.offset) { index, count in
-                                if index > 0 { Divider() }
-                                MetricRow(label: "Accelerometer \(index + 1)",
-                                          value: String(count),
-                                          units: count == 1 ? "clip" : "clips")
-                            }
-                        }
-                    }
-                } else {
-                    Notice(text: "This vehicle is not reporting vibration.")
-                        .frame(height: 240)
+                    .padding(Overlay.unit)
                 }
+
+                VStack(alignment: .leading, spacing: 0) {
+                    SectionLabel(text: "Accelerometer clipping")
+                    GroupCard {
+                        ForEach(Array(store.reading.clipCounts.enumerated()), id: \.offset) { index, count in
+                            GroupRow(title: "Accelerometer \(index + 1)",
+                                     value: "\(count) \(count == 1 ? "clip" : "clips")",
+                                     showSeparator: index > 0,
+                                     trailing: {
+                                         Image(systemName: count == 0
+                                             ? "checkmark.circle.fill" : "exclamationmark.circle.fill")
+                                             .foregroundColor(count == 0 ? .green : .orange)
+                                     })
+                        }
+                    }
+                    Text("Counted since the vehicle booted. Any clipping means the accelerometer saturated.")
+                        .font(.caption).foregroundColor(.secondary)
+                        .padding(.horizontal, Overlay.horizontalPadding)
+                        .padding(.top, Overlay.unit * 0.35)
+                }
+            } else {
+                GroupCard { EmptyStateRow(text: "This vehicle is not reporting vibration.") }
             }
-            .padding(20)
         }
         .onAppear(perform: store.start)
         .onDisappear(perform: store.stop)
     }
 
-    // The numbers alone do not tell an operator whether to fly; the thresholds do.
+    private var adviceSymbol: String {
+        switch store.reading.worst {
+        case .danger: return "exclamationmark.triangle.fill"
+        case .warning: return "exclamationmark.circle.fill"
+        case .normal: return "checkmark.circle.fill"
+        }
+    }
+
     private var advice: String {
         switch store.reading.worst {
         case .danger: return "Above \(Int(VibrationReading.dangerLevel)) — do not fly until this is fixed."
@@ -145,8 +157,6 @@ struct VibrationView: View {
 
 struct AnalyzeView: View {
     @ObservedObject var vibration: VibrationStore
-    // Optional selection: the non-optional List initialiser is macOS 13+ and the
-    // deployment floor here is 12.0.
     @State private var page: String? = "Vibration"
 
     private let pages = ["Vibration"]
@@ -154,10 +164,11 @@ struct AnalyzeView: View {
     var body: some View {
         HStack(spacing: 0) {
             List(pages, id: \.self, selection: $page) { name in
-                Text(name).tag(name)
+                SidebarRow(title: name, symbol: "waveform.path.ecg", colour: .pink)
+                    .tag(name)
             }
             .listStyle(.sidebar)
-            .frame(width: 190)
+            .frame(width: 200)
             Divider()
             VibrationView(store: vibration)
         }
