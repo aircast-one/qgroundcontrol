@@ -84,14 +84,11 @@ never ranges. The insert index addresses the whole visual item list, which opens
 item and can hold items carrying no coordinate, so counting only what is drawn gives the wrong
 number.
 
-**This module is not the bridge's only client, so it reads rather than watches.**
-`QGCBridgeCore::watch` replaces the watcher's entire path list and `setEventListener` is a single
-slot, so a second client cannot arm either without silently disarming the first. Arming watches here
-froze the app's other screens. `get` has no shared state, and the screen already polls, so map
-values come off the same pass: `MapBridge.refresh()` reads its paths and nothing here touches
-`watch` or `setEventListener` at all. The cost is latency — values move at the poll interval rather
-than the watcher's 200 ms — and for a plan view that is a fair trade. If the bridge grows a
-per-client registry, watching becomes safe again and this can go back to it.
+**This module is one client of several, and says so.** `QGCBridge` keeps a path set and a listener
+per client and watches the union, so this module registers as `"map"` and arming its watches no
+longer disarms the app's other screens. It did once: `watch` and `setEventListener` used to be
+single-owner, and taking either froze the telemetry on the screen a pilot flies from. Anything
+calling the single-argument forms lands in a shared `"default"` bucket, so always pass the client.
 
 **Let the bridge off the hook.** A watch registered before Qt has its natives in place throws. If
 the path stays in the watched set nothing ever retries it, and the screen reports a dead bridge at

@@ -23,6 +23,7 @@ private var installedStyle: String? = null
 @Synchronized
 private fun planMapStyle(context: Context): String =
     installedStyle ?: run {
+        MapBridge.start()
         MapLibre.getInstance(context)
         installQgcTileSource(context).also {
             if (it != OSM_RASTER_STYLE) {

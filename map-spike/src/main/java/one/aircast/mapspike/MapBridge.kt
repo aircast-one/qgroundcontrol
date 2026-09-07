@@ -14,6 +14,7 @@ import org.json.JSONObject
 import org.mavlink.qgroundcontrol.QGCBridge
 
 object MapBridge {
+    private const val CLIENT = "map"
     private val watched = linkedSetOf<String>()
     private val _values = MutableStateFlow<Map<String, JSONObject>>(emptyMap())
 
@@ -22,41 +23,44 @@ object MapBridge {
     private val _bridgeReady = MutableStateFlow(false)
     val bridgeReady: StateFlow<Boolean> = _bridgeReady.asStateFlow()
 
-    // Reads, not watches. QGCBridgeCore::watch replaces the watcher's whole path
-    // list and setEventListener is a single slot, so a second client of the
-    // bridge cannot arm either without silently disarming the first. get() has
-    // no such shared state, and the screen already polls, so the map takes its
-    // values from the same pass. Costs latency, buys not breaking the app's
-    // other screens.
+    // The bridge keeps a path set and a listener per client and watches the
+    // union, so arming these no longer disarms the app's other screens. Reads
+    // were the interim while it was single-owner; watching is event driven and
+    // does not spend a blocking call per path per poll.
+
+    fun start() {
+        runCatching {
+            QGCBridge.setEventListener(CLIENT) { path, json ->
+                _values.value = _values.value +
+                    (path to runCatching { JSONObject(json) }.getOrDefault(JSONObject()))
+            }
+            _bridgeReady.value = true
+        }
+    }
+
+    // Clearing this client's paths leaves every other client's alone, so the
+    // watcher can stop for a map nobody is looking at without taking the app's
+    // telemetry down with it.
     @Synchronized
     fun release() {
         watched.clear()
         _values.value = emptyMap()
+        runCatching { QGCBridge.watch(CLIENT, "") }
     }
 
+    // A watch registered before Qt has its natives in place throws, and the path
+    // has to come back out of the set or nothing ever retries it.
     @Synchronized
     fun watch(path: String) {
-        watched.add(path)
-    }
-
-    @Synchronized
-    private fun paths(): List<String> = watched.toList()
-
-    // Driven by the screen's own poll so there is one cadence and one place that
-    // decides the map is talking to a live bridge.
-    fun refresh() {
-        val reachable = paths().fold(false) { any, path ->
-            val json = runCatching { JSONObject(QGCBridge.get(path)) }.getOrNull()
-            if (json == null) {
-                any
-            } else {
-                _values.value = _values.value + (path to json)
-                true
+        if (!watched.add(path)) {
+            return
+        }
+        runCatching { QGCBridge.watch(CLIENT, watched.joinToString(",")) }
+            .onSuccess { _bridgeReady.value = true }
+            .onFailure {
+                watched.remove(path)
+                _bridgeReady.value = false
             }
-        }
-        if (reachable) {
-            markReachable()
-        }
     }
 
     fun markReachable() {
