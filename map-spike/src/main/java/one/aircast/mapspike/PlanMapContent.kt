@@ -30,6 +30,8 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableDoubleStateOf
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
@@ -72,11 +74,11 @@ internal fun MapSpikeScreen(
     onCentre: ((Double, Double) -> Unit)? = null,
 ) {
     var follow by remember { mutableStateOf(true) }
-    var fitRequest by remember { mutableStateOf(0) }
+    var fitRequest by remember { mutableIntStateOf(0) }
     var loadArmed by remember { mutableStateOf(false) }
     var clearArmed by remember { mutableStateOf(false) }
     var items by remember { mutableStateOf<List<MissionItem>>(emptyList()) }
-    var itemCount by remember { mutableStateOf(0) }
+    var itemCount by remember { mutableIntStateOf(0) }
     var fences by remember { mutableStateOf<List<FencePolygon>>(emptyList()) }
     var rally by remember { mutableStateOf<List<RallyPoint>>(emptyList()) }
     var circles by remember { mutableStateOf<List<FenceCircle>>(emptyList()) }
@@ -86,8 +88,8 @@ internal fun MapSpikeScreen(
     var busy by remember { mutableStateOf<String?>(null) }
     val scope = rememberCoroutineScope()
     var centre by remember { mutableStateOf<TrackPoint?>(null) }
-    var zoom by remember { mutableStateOf(0.0) }
-    var controlsHeightPx by remember { mutableStateOf(0) }
+    var zoom by remember { mutableDoubleStateOf(0.0) }
+    var controlsHeightPx by remember { mutableIntStateOf(0) }
 
     // A bridge call that fails returns false rather than throwing, so without
     // this a refused operation looks exactly like one that worked.
