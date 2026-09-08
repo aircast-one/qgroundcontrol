@@ -63,6 +63,29 @@ with QGC's tile cache, mission editing, geofence, rally and vertex drag, under a
 native file row. Video, joystick and the Phase 6 host teardown are untouched; the
 AAR is still 78 MB because `QtQuickView` still hosts Fly.
 
+**Native video decodes on Android** (`4d0c3dd16`, `d6abe4cd9`). Two faults, both
+silent. The static build never registered `app` or `videoconvertscale`, so
+`createNativeSink`'s `videoconvert ! appsink` could not be constructed — a
+dynamic GStreamer finds those on disk, so only the Android build was affected.
+And `GstVideoReceiver::startDecoding` refused outright when `_widget` was null,
+before looking at the sink it had been handed; only a sink rendering into a
+QQuickItem needs a widget.
+
+**Measured on a OnePlus 6 against a 1920x1080 h.264 MPEG-TS stream**, with the
+sender verified at 93 fps encoder throughput so it is not the limit:
+
+| | |
+|---|---|
+| throughput | ~20 fps of a 30 fps source |
+| frame copy out of the buffer | 1.3–1.7 ms for 8.29 MB, about 5 GB/s |
+
+So the copy the JNI does is **not** the problem — at 30 fps it would cost around
+5% of a core. A third of the frames are lost upstream of it. Where has not been
+isolated: decode, the NV12-to-BGRA `videoconvert`, or the appsink are all
+candidates, and the conversion is the one that would defeat hardware decode. That
+measurement decides whether this path ships or is replaced by rendering into a
+Surface, and it has not been made.
+
 **The native Fly view is blocked on video, not on the map.** `map-spike` already
 has `VehicleMap` — vehicle position, heading, home, trail, link-loss and a follow
 mode — and the guided actions, telemetry and prearm surfaces are already native.
