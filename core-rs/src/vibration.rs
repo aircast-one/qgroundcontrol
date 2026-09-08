@@ -20,6 +20,7 @@ pub fn severity(value: f64) -> &'static str {
 fn axis_json(axis: &str, value: Option<f64>) -> Value {
     json!({
         "axis": axis,
+        "label": axis.to_uppercase(),
         "value": value,
         "fraction": value.map(|v| (v / SCALE_MAXIMUM).clamp(0.0, 1.0)),
         "severity": value.map(severity),
@@ -87,6 +88,7 @@ mod tests {
         assert_eq!(view["axes"][1]["severity"], "warning");
         assert_eq!(view["axes"][2]["severity"], "danger");
         assert_eq!(view["axes"][1]["fraction"], 0.5);
+        assert_eq!(view["axes"][1]["label"], "Y");
         assert_eq!(view["worst"], "danger");
         assert_eq!(view["clipCounts"][1], 3);
         assert_eq!(view["clipping"], true);

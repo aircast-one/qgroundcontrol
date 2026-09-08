@@ -873,6 +873,7 @@
             {
                 "axis": "string",
                 "fraction": "null|number",
+                "label": "string",
                 "severity": "null|string",
                 "value": "null|number"
             }
