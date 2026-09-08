@@ -12,6 +12,7 @@
 #include "MultiVehicleManager.h"
 #include "PlanMasterController.h"
 #include "MissionCommandTree.h"
+#include "QmlUnitsConversion.h"
 #include "QmlObjectListModel.h"
 #include "SettingsManager.h"
 #include "Vehicle.h"
@@ -81,6 +82,17 @@ QObject *rootObject(const QString &name)
             geoTag = new GeoTagController(QCoreApplication::instance());
         }
         return geoTag;
+    }
+    if (name == QLatin1String("units")) {
+        // QmlUnitsConversion only forwards to FactMetaData statics, so a bridge-owned one
+        // behaves exactly like QGroundControlQmlGlobal's. Facts cross the bridge cooked
+        // while invokables and plain doubles stay metric, so a native head needs these to
+        // put the two beside each other without mixing units.
+        static QmlUnitsConversion *units = nullptr;
+        if (!units) {
+            units = new QmlUnitsConversion(QCoreApplication::instance());
+        }
+        return units;
     }
     if (name == QLatin1String("missionCommandTree")) {
         return MissionCommandTree::instance();
@@ -578,6 +590,13 @@ QJsonObject invokePath(const QString &path, const QJsonArray &args)
                 continue;
             }
 
+            // A QVariant parameter wants the QVariant itself, not a value converted into
+            // one — converting a double to the QVariant metatype fails and the call is
+            // refused with no reason. QmlUnitsConversion takes all its arguments this way.
+            if (method.parameterMetaType(arg).id() == QMetaType::QVariant) {
+                generic[arg] = QGenericArgument("QVariant", &values[arg]);
+                continue;
+            }
             if (!values[arg].convert(method.parameterMetaType(arg))) {
                 return QJsonObject { { QStringLiteral("ok"), false } };
             }
@@ -600,6 +619,12 @@ QJsonObject invokePath(const QString &path, const QJsonArray &args)
                                       generic[0], generic[1], generic[2], generic[3]);
         if (!ok) {
             return QJsonObject { { QStringLiteral("ok"), false } };
+        }
+
+        // A method declared to return QVariant hands back a QVariant holding one, and
+        // the outer wrapper renders as nothing.
+        if (returned.metaType().id() == QMetaType::QVariant) {
+            returned = returned.value<QVariant>();
         }
 
         QJsonObject result { { QStringLiteral("ok"), true } };

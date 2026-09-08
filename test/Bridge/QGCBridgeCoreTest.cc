@@ -592,6 +592,25 @@ void QGCBridgeCoreTest::_readsEnumsAsNumbers()
              qPrintable(QJsonDocument(elements.first().toObject()).toJson(QJsonDocument::Compact)));
 }
 
+// Facts cross the bridge cooked while invokables and plain doubles stay metric, so a
+// head that puts the two beside each other mixes units silently. QGC converts for
+// display through QmlUnitsConversion; without it a native head either carries its own
+// factors or shows metres whatever the operator selected.
+void QGCBridgeCoreTest::_convertsUnitsForNativeHeads()
+{
+    const QJsonObject roundTrip = parse(QGCBridgeCore::invoke(
+        QStringLiteral("units.appSettingsVerticalDistanceUnitsToMeters"),
+        QStringLiteral("[100]")));
+    QVERIFY2(roundTrip.value(QStringLiteral("ok")).toBool(),
+             qPrintable(QJsonDocument(roundTrip).toJson(QJsonDocument::Compact)));
+    QVERIFY(roundTrip.value(QStringLiteral("result")).isDouble());
+
+    const QJsonObject units = parse(QGCBridgeCore::get(QStringLiteral("units")));
+    QVERIFY2(!units.value(QStringLiteral("appSettingsVerticalDistanceUnitsString"))
+                  .toString().isEmpty(),
+             qPrintable(QJsonDocument(units).toJson(QJsonDocument::Compact)));
+}
+
 void QGCBridgeCoreTest::_planStartsWithItsSettingsItemAndNoVehicle()
 {
     const QJsonObject items = parse(QGCBridgeCore::get(

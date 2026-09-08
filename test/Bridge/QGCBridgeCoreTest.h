@@ -31,6 +31,7 @@ private slots:
     void _writesAnObjectPropertyFromAnAtPath();
     void _findsThePropertyEvenWhenItAlreadyHoldsAnObject();
     void _readsEnumsAsNumbers();
+    void _convertsUnitsForNativeHeads();
     void _planStartsWithItsSettingsItemAndNoVehicle();
     void _planSaveReportsWhetherItWrote();
     void _aRefusedLoadLeavesTheExistingPlanAlone();
