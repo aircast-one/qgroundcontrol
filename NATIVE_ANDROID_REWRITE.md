@@ -1066,7 +1066,7 @@ exists natively today:
 | vehicle messages / warnings | **`VehicleMessageBanner`** | |
 | status (sats, HDOP) | **`StatusStrip`** | |
 | `PipView` map/video swap | **partial** | inset expands to full screen and back; still not a *swap* — the map cannot become the inset |
-| `CameraControlLayer`, `CameraSwitchButton` | **missing** | shutter, mode, camera selection — reachable, but blocked on a rig that has a camera |
+| `CameraControlLayer`, `CameraSwitchButton` | **missing** | shutter, mode, camera selection — reachable and now verifiable against a sim camera |
 | `VideoTilesLayer` | **missing** | multiple streams |
 | `RcControlsLayer` | **built** | renders the configured controls and sends `setRcChannelOverride`; editing the list is still desktop-only |
 | `ObstacleDistanceOverlay` (map and video) | **built, in another form** | a sentence — "3.2 m right" — rather than a proximity ring |
@@ -1087,12 +1087,24 @@ needed is on the bridge already: `vehicle.cameraManager.currentCameraInstance` e
 and `storageFreeStr`, with `takePhoto()`, `toggleVideoRecording()` and `toggleCameraMode()`
 as `Q_INVOKABLE`. Writing the Compose side is a couple of hours.
 
-What stopped it was the rig. Building it blind is exactly the thing this plan keeps
-refusing, so the sim was given a camera component: a heartbeat from `MAV_COMP_ID_CAMERA`
-and a `CAMERA_INFORMATION` reply to `MAV_CMD_REQUEST_MESSAGE`. **QGC re-requested five times
-in 28 seconds and never accepted it** — no camera appeared, in the QML view or anywhere.
-So the handshake is incomplete in a way the sim log cannot see, and the sim replies happily
-while QGC discards them.
+**It is verifiable. I recorded it as blocked twice and was wrong both times.** The sim was
+given a camera component — a heartbeat from `MAV_COMP_ID_CAMERA` and a `CAMERA_INFORMATION`
+reply to `MAV_CMD_REQUEST_MESSAGE` — and with the camera log finally enabled it says:
+
+    _handleCameraInfo: Success for compId 100 - reset retry counter
+    _handleCameraInfo: SimCam Aircast Comp ID: 100
+
+The camera is discovered and registered. What made me conclude otherwise, twice:
+
+- I read the log through `head -10`, which showed only the retries for **compId 1** — the
+  autopilot, which QGC also probes as a possible camera and which the sim never answers as.
+  Those retries are expected and permanent; they are not the camera's.
+- I checked a screenshot crop that did not include where camera controls render, and read
+  their absence as absence of a camera.
+
+Both are the sampling failure this document keeps recording, and this time the cost was
+abandoning a feature that was already working. The retry lines were real and I let them
+stand for the whole exchange.
 
 A second, bounded attempt narrowed it and then hit a different wall. Reading
 `_handleCameraInfo`: it needs the sending compid to be in `_cameraInfoRequest`, which it is,
