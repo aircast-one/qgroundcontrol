@@ -1146,6 +1146,22 @@ Caution was a hard amber; High was `colorScheme.error`, which in this dark theme
 pink meant for text on a surface rather than for filling a shape. The most serious band was
 the least alarming thing on the screen. High is a saturated red now.
 
+**A watched view can be stale, and a head that re-derives an answer will believe the stale one.**
+The speed button was gated on the core's `changeSpeed` offer *and* on a watched
+`view.guidedSpeed` being usable. Measured with the vehicle armed and flying: the offer read
+`ready`, `haveMRSpeedLimits` read true, `parameterExists` read true - and the button was still
+disabled, because the watch had been established before the parameters loaded, when the view
+correctly reported `available: false`, and nothing made it read again. The offer already encodes
+availability; the button follows it alone now and reads the range fresh when the dialog opens.
+
+**Three explanations were wrong before that one, and each cost a build.** Parameter ordering
+(`WPNAV_SPEED` is last of 216, but the fact is stored before the ready check); the advertised
+`param_count` (216 names, 216 advertised); the component id (`parameterExists` and
+`getParameter` both call `_actualComponentId`). Two of the three were mine and one was the core
+session's, and all three were reasoning from source about a runtime disagreement. **Measuring
+both sides in the same instant** - the offer and the flag, logged from one call site - ended it
+immediately and should have been the first move, not the fourth.
+
 **Takeoff asks how high.** `readTakeoffAltitudeMeters`, `verticalOf`, `verticalUnits` and the
 3 m fallback are deleted; `view.guidedTakeoff` serves the range, the firmware minimum, the
 initial value and the sentence, and its argument form serves the metric target. Takeoff used to
