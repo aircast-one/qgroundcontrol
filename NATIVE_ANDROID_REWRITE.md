@@ -338,7 +338,30 @@ bridge.
 - Log download → Compose list plus the existing `LogDownloadController`.
 - MAVLink inspector and console → Compose, backed by `MAVLinkInspectorController`.
 - Vibration → a Compose chart.
-- `Viewer3D` (1.7k) → decide keep-or-drop; it is the cheapest moment to drop it.
+- ~~`Viewer3D` (1.7k) → decide keep-or-drop; it is the cheapest moment to drop it.~~
+  **Decided: drop for Android — but not here, and not now.** Two corrections to that line.
+
+  *It is not an Analyze feature.* `Viewer3D` is reached from the Fly view tool strip
+  (`FlyViewToolStripActionList.qml`), and `FlyView.qml` imports and instantiates it
+  directly. It sits in Phase 2 only because someone filed it with the other read-only
+  visualisations.
+
+  *The case for dropping it on Android is strong.* It costs **4.0 MB** of QtQuick3D in
+  every AAR (`libQt6Quick3DRuntimeRender` 2.1 MB, `libQt6Quick3D` 1.6 MB, plus plugins),
+  its `enabled` fact defaults to **false**, and `osmFilePath` defaults to the placeholder
+  *"Please select an OSM file"* — so on a phone it ships four megabytes to render nothing
+  unless the operator has put an OSM extract on the device and pointed at it.
+
+  *But this is not the cheapest moment, because it is not a flag flip.* `QGC_VIEWER3D=OFF`
+  compiles out the C++ and skips `Viewer3DManager::registerQmlTypes()`, which is behind
+  `#ifdef QGC_VIEWER3D` — while `Viewer3D.qml` and its `qmldir` stay in
+  `qgroundcontrol.qrc` **unconditionally** and `FlyView.qml` still does `import Viewer3D`
+  and `Viewer3D { }`. Turning the flag off therefore leaves QML instantiating C++ types
+  that no longer exist, and takes the whole Fly view down with it. A clean drop has to
+  remove the `.qrc` entries and the `FlyView.qml` usage in the same change.
+
+  *So it costs nothing at the Phase 6 teardown and something now,* since Phase 6 deletes
+  `FlyView.qml` anyway. Dropped there, not here.
 
 ~~Needs from the bridge: a table/list model reader.~~ **That requirement does not exist.**
 Nothing under `src/AnalyzeView/` uses `QAbstractTableModel` or `QAbstractListModel`: Log
