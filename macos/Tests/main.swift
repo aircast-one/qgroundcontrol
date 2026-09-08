@@ -390,37 +390,33 @@ func checkTilePyramid() {
 checkTilePyramid()
 
 func checkVehicleReadiness() {
-    let complete = VehicleComponentInfo(json: ["name": "Radio", "setupComplete": true, "requiresSetup": true])!
-    let missing = VehicleComponentInfo(json: ["name": "Sensors", "setupComplete": false, "requiresSetup": true])!
-    let optional = VehicleComponentInfo(json: ["name": "Camera", "setupComplete": false, "requiresSetup": false])!
+    let listed = VehicleComponentInfo.list([
+        ["name": "Radio", "needsAttention": false as NSNumber],
+        ["name": "Sensors", "needsAttention": true as NSNumber],
+    ])
+    expect(listed.map(\.name).joined(separator: ","), "Radio,Sensors",
+           "each component the core lists is carried across, in its order")
+    expect(listed[1].needsAttention,
+           "and the core decides which needs setup, from setupComplete and requiresSetup together")
+    expect(VehicleComponentInfo(["needsAttention": true as NSNumber]) == nil,
+           "a nameless component is dropped, because the name is the row and the page it opens")
+    expect(VehicleComponentInfo.list(nil).isEmpty, "no answer is no components")
 
-    expect(!complete.needsAttention, "a complete component needs no attention")
-    expect(missing.needsAttention, "an incomplete required component needs attention")
-    expect(!optional.needsAttention, "an incomplete optional component is not a blocker")
-    expect(VehicleComponentInfo(json: ["setupComplete": true]) == nil, "a nameless component is dropped")
+    let ready = VehicleReadiness(["ready": true as NSNumber, "headline": "Ready to fly",
+                                  "detail": "Setup complete and all enabled sensors are healthy."])
+    expect(ready.ready && ready.headline == "Ready to fly",
+           "the summary carries the core's verdict rather than recomputing it")
 
-    let healthy = VehicleReadiness(connected: true, components: [complete, optional], sensorFaults: [])
-    expect(healthy.ready, "setup complete with healthy sensors is ready")
-    expect(healthy.headline, "Ready to fly", "and says so")
+    let faulty = VehicleReadiness(["ready": false as NSNumber,
+                                   "headline": "2 sensors reporting a fault",
+                                   "detail": "GPS, Pre-Arm Check"])
+    expect(!faulty.ready && faulty.detail == "GPS, Pre-Arm Check",
+           "including the sensor faults, which the core now folds in itself, so this summary no "
+           + "longer has to be handed the sensor list by a store that may not have loaded")
 
-    let faulty = VehicleReadiness(connected: true, components: [complete, optional],
-                                  sensorFaults: ["Gyro", "Accelerometer"])
-    expect(!faulty.ready, "a sensor fault is never ready, however complete the setup")
-    expect(faulty.headline, "2 sensors reporting a fault", "the headline names the fault, not readiness")
-    expect(faulty.detail, "Gyro, Accelerometer", "and says which sensors")
-
-    let unset = VehicleReadiness(connected: true, components: [complete, missing], sensorFaults: [])
-    expect(!unset.ready, "an incomplete required component is not ready")
-    expect(unset.headline, "1 component needs setup", "the headline counts outstanding components")
-
-    let offline = VehicleReadiness(connected: false, components: [], sensorFaults: [])
-    expect(!offline.ready, "no vehicle is never ready")
-    expect(offline.headline, "No vehicle connected", "and says why")
-
-    let bare = VehicleReadiness(connected: true, components: [], sensorFaults: [])
-    expect(!bare.ready, "a vehicle reporting no components is not declared ready")
+    expect(VehicleReadiness([:]) == VehicleReadiness(ready: false, headline: "", detail: ""),
+           "an empty answer is not ready and says nothing, rather than claiming readiness")
 }
-
 checkVehicleReadiness()
 
 func checkParameterOptions() {
@@ -2611,6 +2607,10 @@ func checkViewContract() {
         ("view.control(settings.appSettings.audioMuted)", [],
          ["path", "name", "label", "control", "value", "valueString", "display", "units",
           "readOnly", "rebootRequired", "options", "decimalPlaces", "minimum", "maximum"]),
+    ("view.setup", [], ["connected", "firmware", "ready", "headline", "detail", "components",
+                        "groups"]),
+        ("view.setup", ["groups"], ["title", "pages"]),
+        ("view.setup", ["groups", "pages"], ["name", "native", "parameterSections"]),
     ]
 
     let enumerations = (shapes["view.contract"] as? [String: Any])?["enumerations"] as? [String: Any]
@@ -2676,6 +2676,9 @@ func checkViewContract() {
     expect(controlKinds.filter { SettingsControl.Kind($0) == .unknown }.joined(separator: ","), "",
            "and every one of them decodes to an editor, rather than falling through to a field")
 
+    expect(recorded("view.setup.firmware").sorted().joined(separator: ","), "apm,none,px4",
+           "the three firmware kinds are the three the setup pages are built for")
+
     let neverNull: [(String, [String], [String])] = [
         ("view.battery", ["packs"], ["level", "text", "secondaryText"]),
         ("view.preflight", ["groups", "checks"], ["name", "prompt", "verdict", "reason"]),
@@ -2686,6 +2689,7 @@ func checkViewContract() {
         ("view.vibration", ["axes"], ["axis", "label"]),
         ("view.control(settings.appSettings.audioMuted)", [],
          ["path", "name", "label", "control", "valueString", "units"]),
+        ("view.setup", [], ["firmware", "headline", "detail"]),
     ]
     neverNull.forEach { view, inner, keys in
         let place = inner.isEmpty ? view : "\(view).\(inner.joined(separator: "."))"

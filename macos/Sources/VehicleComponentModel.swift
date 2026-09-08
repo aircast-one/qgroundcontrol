@@ -1,69 +1,39 @@
 import Foundation
 
-struct VehicleComponentInfo: Identifiable {
+struct VehicleComponentInfo: Identifiable, Equatable {
     let name: String
-    let setupComplete: Bool
-    let requiresSetup: Bool
+    let needsAttention: Bool
 
     var id: String { name }
 
-    var needsAttention: Bool { requiresSetup && !setupComplete }
-
-    init?(json: Any?) {
-        guard let object = json as? [String: Any],
-              let name = object["name"] as? String, !name.isEmpty else { return nil }
+    init?(_ json: Any?) {
+        guard let json = json as? [String: Any],
+              let name = json["name"] as? String, !name.isEmpty else { return nil }
         self.name = name
-        setupComplete = (object["setupComplete"] as? NSNumber)?.boolValue ?? true
-        requiresSetup = (object["requiresSetup"] as? NSNumber)?.boolValue ?? false
+        needsAttention = (json["needsAttention"] as? NSNumber)?.boolValue ?? false
     }
 
-    static func from(_ elements: [Any]) -> [VehicleComponentInfo] {
-        elements.compactMap(VehicleComponentInfo.init(json:))
+    static func list(_ json: Any?) -> [VehicleComponentInfo] {
+        ((json as? [Any]) ?? []).compactMap(VehicleComponentInfo.init)
     }
-
-    static func incomplete(_ components: [VehicleComponentInfo]) -> [VehicleComponentInfo] {
-        components.filter(\.needsAttention)
-    }
-
 }
 
-struct VehicleReadiness {
+struct VehicleReadiness: Equatable {
     let ready: Bool
     let headline: String
     let detail: String
 
-    init(connected: Bool, components: [VehicleComponentInfo], sensorFaults: [String]) {
-        let outstanding = VehicleComponentInfo.incomplete(components)
+    static let unknown = VehicleReadiness(ready: false, headline: "", detail: "")
 
-        guard connected else {
-            ready = false
-            headline = "No vehicle connected"
-            detail = "Connect a vehicle to check what it needs."
-            return
-        }
+    init(ready: Bool, headline: String, detail: String) {
+        self.ready = ready
+        self.headline = headline
+        self.detail = detail
+    }
 
-        ready = outstanding.isEmpty && sensorFaults.isEmpty && !components.isEmpty
-
-        if !outstanding.isEmpty {
-            headline = outstanding.count == 1
-                ? "1 component needs setup"
-                : "\(outstanding.count) components need setup"
-        } else if !sensorFaults.isEmpty {
-            headline = "\(sensorFaults.count) sensor\(sensorFaults.count == 1 ? "" : "s") reporting a fault"
-        } else if components.isEmpty {
-            headline = "This vehicle reports no setup components"
-        } else {
-            headline = "Ready to fly"
-        }
-
-        if !sensorFaults.isEmpty {
-            detail = sensorFaults.joined(separator: ", ")
-        } else if !outstanding.isEmpty {
-            detail = outstanding.map(\.name).joined(separator: ", ")
-        } else if components.isEmpty {
-            detail = "Nothing to check."
-        } else {
-            detail = "Setup complete and all enabled sensors are healthy."
-        }
+    init(_ json: [String: Any]) {
+        ready = (json["ready"] as? NSNumber)?.boolValue ?? false
+        headline = (json["headline"] as? String) ?? ""
+        detail = (json["detail"] as? String) ?? ""
     }
 }

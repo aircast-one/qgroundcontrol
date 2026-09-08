@@ -766,9 +766,7 @@ struct SetupSummaryView: View {
     @ObservedObject var sensors: SensorsStore
     @ObservedObject var selection: PageSelection
 
-    private var readiness: VehicleReadiness {
-        store.readiness(sensorFaults: sensors.failing)
-    }
+    private var readiness: VehicleReadiness { store.readiness }
 
     var body: some View {
         ScrollView {
@@ -800,9 +798,9 @@ struct SetupSummaryView: View {
                             ForEach(store.components) { component in
                                 let opens = SetupPage.all.contains(component.name)
                                 let faulted = component.name == "Sensors" && !sensors.failing.isEmpty
-                                let good = component.setupComplete && !faulted
+                                let good = !component.needsAttention && !faulted
                                 GroupRow(title: component.name,
-                                         value: !component.setupComplete ? "Needs setup"
+                                         value: component.needsAttention ? "Needs setup"
                                              : faulted ? "Reporting a fault" : "",
                                          showSeparator: component.id != store.components.first?.id,
                                          leading: {

@@ -5,24 +5,26 @@ final class VehicleComponentsStore: ObservableObject, Probeable {
 
     @Published private(set) var components: [VehicleComponentInfo] = []
     @Published private(set) var connected = false
+    @Published private(set) var readiness = VehicleReadiness.unknown
 
     func reload() {
-        connected = Bridge.group("vehicle")["kind"] as? String == "object"
-        let plugin = Bridge.group("vehicle.autopilotPlugin.vehicleComponents")
-        components = VehicleComponentInfo.from((plugin["value"] as? [Any]) ?? [])
+        let view = Bridge.group("view.setup")
+        let live = (view["connected"] as? NSNumber)?.boolValue ?? false
+        if live != connected { connected = live }
+        let listed = VehicleComponentInfo.list(view["components"])
+        if listed != components { components = listed }
+        let read = VehicleReadiness(view)
+        if read != readiness { readiness = read }
     }
 
-    var outstanding: [VehicleComponentInfo] { VehicleComponentInfo.incomplete(components) }
-
-    func readiness(sensorFaults: [String]) -> VehicleReadiness {
-        VehicleReadiness(connected: connected, components: components, sensorFaults: sensorFaults)
-    }
+    var outstanding: [VehicleComponentInfo] { components.filter(\.needsAttention) }
 
     func probeState() -> [String: Any] {
         ["connected": connected, "count": components.count,
          "outstanding": outstanding.map(\.name),
+         "ready": readiness.ready, "headline": readiness.headline, "detail": readiness.detail,
          "components": components.map {
-             ["name": $0.name, "complete": $0.setupComplete, "requires": $0.requiresSetup]
+             ["name": $0.name, "needsAttention": $0.needsAttention]
          }]
     }
 
