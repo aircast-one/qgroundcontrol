@@ -20,7 +20,6 @@ bool qgc_video_attach_appsink(void *appsink);
 void qgc_video_detach_appsink(void);
 bool qgc_video_set_window(void *native_window);
 bool qgc_video_attach_overlay(void *sink);
-void qgc_video_detach_overlay(void);
 
 #ifdef __cplusplus
 }

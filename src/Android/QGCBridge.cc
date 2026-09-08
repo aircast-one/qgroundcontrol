@@ -96,14 +96,24 @@ jboolean jniVideoCopyFrame(JNIEnv *env, jclass, jobject buffer)
         : JNI_FALSE;
 }
 
+ANativeWindow *heldWindow = nullptr;
+
 jboolean jniVideoSetSurface(JNIEnv *env, jclass, jobject surface)
 {
     ANativeWindow *const window = surface ? ANativeWindow_fromSurface(env, surface) : nullptr;
     const bool applied = qgc_video_set_window(window);
-    if (!applied && window) {
-        ANativeWindow_release(window);
+    if (!applied) {
+        if (window) {
+            ANativeWindow_release(window);
+        }
+        return JNI_FALSE;
     }
-    return applied ? JNI_TRUE : JNI_FALSE;
+
+    if (heldWindow) {
+        ANativeWindow_release(heldWindow);
+    }
+    heldWindow = window;
+    return JNI_TRUE;
 }
 
 } // namespace

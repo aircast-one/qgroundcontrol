@@ -63,12 +63,10 @@ bool qgc_video_set_window(void *native_window)
 #ifdef QGC_GST_STREAMING
     const std::lock_guard<std::mutex> lock(overlayMutex);
     overlayWindow = native_window;
-    if (!overlaySink) {
-        lastError.clear();
-        return native_window != nullptr;
+    if (overlaySink) {
+        gst_video_overlay_set_window_handle(GST_VIDEO_OVERLAY(overlaySink),
+                                            reinterpret_cast<guintptr>(native_window));
     }
-    gst_video_overlay_set_window_handle(GST_VIDEO_OVERLAY(overlaySink),
-                                        reinterpret_cast<guintptr>(native_window));
     lastError.clear();
     return true;
 #else
@@ -87,7 +85,10 @@ bool qgc_video_attach_overlay(void *element)
     }
 
     const std::lock_guard<std::mutex> lock(overlayMutex);
-    overlaySink = GST_ELEMENT(element);
+    if (overlaySink) {
+        gst_object_unref(overlaySink);
+    }
+    overlaySink = GST_ELEMENT(gst_object_ref(element));
     if (overlayWindow) {
         gst_video_overlay_set_window_handle(GST_VIDEO_OVERLAY(overlaySink),
                                             reinterpret_cast<guintptr>(overlayWindow));
@@ -98,14 +99,6 @@ bool qgc_video_attach_overlay(void *element)
     (void)element;
     lastError = "this build has no GStreamer";
     return false;
-#endif
-}
-
-void qgc_video_detach_overlay(void)
-{
-#ifdef QGC_GST_STREAMING
-    const std::lock_guard<std::mutex> lock(overlayMutex);
-    overlaySink = nullptr;
 #endif
 }
 
