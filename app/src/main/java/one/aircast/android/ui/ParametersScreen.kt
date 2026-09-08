@@ -14,6 +14,7 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.produceState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.remember
@@ -28,7 +29,6 @@ import org.json.JSONArray
 
 private const val PARAMETER_MANAGER = "vehicle.parameterManager"
 private const val DEFAULT_COMPONENT = -1
-private const val MAX_ROWS = 60
 
 internal fun parameterPath(name: String) = "$PARAMETER_MANAGER.getParameter($DEFAULT_COMPONENT,$name)"
 
@@ -37,7 +37,6 @@ fun ParametersScreen(modifier: Modifier = Modifier) {
     val ready by qgcBool("$PARAMETER_MANAGER.parametersReady")
     var search by remember { mutableStateOf("") }
     var names by remember { mutableStateOf<List<String>>(emptyList()) }
-    var facts by remember { mutableStateOf<List<Fact>>(emptyList()) }
     var revision by remember { mutableStateOf(0) }
 
     LaunchedEffect(ready) {
@@ -47,12 +46,6 @@ fun ParametersScreen(modifier: Modifier = Modifier) {
     val matches = remember(names, search) {
         names.filter { search.isBlank() || it.contains(search, ignoreCase = true) }
     }
-    val visible = remember(matches) { matches.take(MAX_ROWS) }
-
-    LaunchedEffect(visible, revision) {
-        facts = withContext(Dispatchers.Default) { visible.mapNotNull { parameterFact(it) } }
-    }
-
     Column(modifier.fillMaxSize()) {
         OutlinedTextField(
             value = search,
@@ -68,21 +61,41 @@ fun ParametersScreen(modifier: Modifier = Modifier) {
         }
 
         Text(
-            "${matches.size} parameters" + if (matches.size > visible.size) ", showing first ${visible.size}" else "",
+            "${matches.size} parameters",
             style = MaterialTheme.typography.labelMedium,
             modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp),
         )
 
         LazyColumn(Modifier.fillMaxSize()) {
-            items(facts, key = { it.name }) { fact ->
-                FactRow(
-                    fact = fact,
-                    title = fact.name,
-                    subtitle = fact.description.ifBlank { fact.units },
-                ) { revision++ }
+            items(matches, key = { it }) { name ->
+                ParameterRow(name, revision) { revision++ }
                 HorizontalDivider()
             }
         }
+    }
+}
+
+// One read per row that is on screen, rather than a fixed slice of the matches. The
+// slice capped the list at 60, so a parameter matching 61st could not be reached
+// without narrowing the search, and every edit re-read all 60.
+@Composable
+private fun ParameterRow(name: String, revision: Int, onWrite: () -> Unit) {
+    val fact by produceState<Fact?>(null, name, revision) {
+        value = withContext(Dispatchers.Default) { parameterFact(name) }
+    }
+
+    when (val loaded = fact) {
+        null -> Text(
+            text = name,
+            style = MaterialTheme.typography.bodyMedium,
+            modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 20.dp),
+        )
+        else -> FactRow(
+            fact = loaded,
+            title = loaded.name,
+            subtitle = loaded.description.ifBlank { loaded.units },
+            onWrite = onWrite,
+        )
     }
 }
 
