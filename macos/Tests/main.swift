@@ -1595,9 +1595,9 @@ func checkCameraControl() {
 
     let live: [String: Any] = [
         "kind": "object", "modelName": "Simulated Camera", "vendor": "QGroundControl",
-        "cameraMode": "CAM_MODE_UNDEFINED", "photoCaptureStatus": "PHOTO_CAPTURE_IDLE",
-        "videoCaptureStatus": "VIDEO_CAPTURE_STATUS_STOPPED", "recordTimeStr": "00:00:00",
-        "storageStatus": "STORAGE_NOT_SUPPORTED", "storageFreeStr": "",
+        "cameraMode": -1 as NSNumber, "photoCaptureStatus": 0 as NSNumber,
+        "videoCaptureStatus": 0 as NSNumber, "recordTimeStr": "00:00:00",
+        "storageStatus": 3 as NSNumber, "storageFreeStr": "",
         "capturesPhotos": true, "capturesVideo": true, "hasModes": true, "batteryRemaining": -1,
     ]
     let camera = CameraControl.read(live)
@@ -1609,15 +1609,46 @@ func checkCameraControl() {
     expect(camera.storageText, "Not reported",
            "a camera that does not support storage reporting says that, not zero bytes")
     expect(camera.batteryText, "", "a camera with no battery reading shows nothing at all")
+    expect(camera.shotsText, "00000", "and no photos taken reads as five zeroes, as QGC pads it")
+    expect(camera.clockText, "00:00:00", "with the record clock at zero")
+
+    expect(CameraControl.read(["kind": "object", "modelName": "X",
+                               "cameraMode": "CAM_MODE_PHOTO"]).mode == CameraControl.undefinedMode,
+           "an enum arriving as a name is no mode at all, which is how every one of these read for hours")
+
+    var ready = camera
+    ready.storageStatus = CameraControl.storageReady
+    ready.storageFree = "12.4 GB"
+    expect(ready.storageText, "12.4 GB", "a ready card shows what is left on it")
+    ready.storageFree = ""
+    expect(ready.storageText, "Ready", "and says it is ready when it will not say how much")
+
+    var empty = camera
+    empty.storageStatus = CameraControl.storageEmpty
+    expect(empty.storageText, "No card", "a missing card is named, not called unknown")
+    empty.storageStatus = CameraControl.storageUnformatted
+    expect(empty.storageText, "Not formatted", "so is an unformatted one")
+
+    var interval = camera
+    interval.photoStatus = CameraControl.photoIntervalInProgress
+    expect(interval.isTakingPhoto,
+           "a timelapse counts as taking a photo, which the single-status check missed")
+    interval.photoStatus = CameraControl.photoIntervalIdle
+    expect(!interval.isTakingPhoto, "but waiting between them does not")
+
+    var shot = camera
+    shot.shots = 42
+    expect(shot.shotsText, "00042", "the shot counter is zero padded to five")
 
     var recording = camera
-    recording.videoStatus = CameraControl.recording
+    recording.videoStatus = CameraControl.videoRunning
     recording.recordTime = "00:01:24"
     expect(recording.isRecording, "a running video capture is recording")
     expect(recording.stateText, "Recording 00:01:24", "and shows how long it has been going")
+    expect(recording.clockText, "00:01:24", "the clock runs with it")
 
     var shooting = camera
-    shooting.photoStatus = CameraControl.takingPhoto
+    shooting.photoStatus = CameraControl.photoInProgress
     expect(shooting.stateText, "Taking a photo", "a photo in progress says so")
 
     var photoMode = camera
@@ -1638,7 +1669,7 @@ func checkCameraControl() {
     expect(modeless.canRecord, "without being told which it is in")
 
     let named = CameraControl.read(["kind": "object", "modelName": "Sim", "vendor": "QGC",
-                                    "storageStatus": "STORAGE_READY", "storageFreeStr": "1.2 GB"])
+                                    "storageStatus": 2 as NSNumber, "storageFreeStr": "1.2 GB"])
     expect(named.storageText, "1.2 GB", "a camera that reports storage shows what is free")
 }
 

@@ -293,6 +293,21 @@ struct FlyPanel: View {
                         .frame(width: 140)
                     })
                 }
+                GroupRow(title: "Photos taken", value: video.camera.shotsText)
+                if video.camera.capturesVideo {
+                    GroupRow(title: "Recording time", value: video.camera.clockText)
+                }
+                if video.camera.hasZoom {
+                    GroupRow(title: "Zoom", trailing: {
+                        Slider(value: Binding(get: { video.camera.zoomLevel },
+                                              set: { video.setZoom($0) }),
+                               in: 0...100)
+                            .frame(width: 140)
+                    })
+                }
+                if !video.camera.batteryText.isEmpty {
+                    GroupRow(title: "Camera battery", value: video.camera.batteryText)
+                }
                 GroupRow(title: "Storage", value: video.camera.storageText)
             }
             if !video.camera.modeKnown {

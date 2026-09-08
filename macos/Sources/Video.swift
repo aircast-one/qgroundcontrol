@@ -57,7 +57,8 @@ final class VideoStore: ObservableObject, Probeable {
         let labels = (manager["cameraLabels"] as? [String]) ?? []
         if labels != cameraLabels { cameraLabels = labels }
 
-        let read = CameraControl.read(Bridge.group("vehicle.cameraManager.currentCameraInstance"))
+        var read = CameraControl.read(Bridge.group("vehicle.cameraManager.currentCameraInstance"))
+        read.shots = (Bridge.group("vehicle.cameraTriggerPoints")["count"] as? NSNumber)?.intValue ?? 0
         if read != camera { camera = read }
     }
 
@@ -65,6 +66,12 @@ final class VideoStore: ObservableObject, Probeable {
         guard camera.present, camera.hasModes else { return }
         Bridge.invoke(photo ? "vehicle.cameraManager.currentCameraInstance.setCameraModePhoto"
                             : "vehicle.cameraManager.currentCameraInstance.setCameraModeVideo")
+        loadCamera()
+    }
+
+    func setZoom(_ level: Double) {
+        guard camera.present, camera.hasZoom, level.isFinite else { return }
+        _ = Bridge.set("vehicle.cameraManager.currentCameraInstance.zoomLevel", level)
         loadCamera()
     }
 
@@ -111,6 +118,8 @@ final class VideoStore: ObservableObject, Probeable {
          "nativeRequested": askedForNative,
          "camera": ["present": camera.present, "title": camera.title, "mode": camera.modeText,
                     "state": camera.stateText, "storage": camera.storageText,
+                     "shots": camera.shotsText, "clock": camera.clockText,
+                     "battery": camera.batteryText, "hasZoom": camera.hasZoom,
                     "recording": camera.isRecording, "labels": cameraLabels],
          "sources": sources.map { ["slot": $0.slot, "name": $0.name, "source": $0.source,
                                    "url": $0.url, "summary": $0.summary,

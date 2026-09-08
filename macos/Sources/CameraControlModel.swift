@@ -4,11 +4,12 @@ struct CameraControl: Equatable {
     var present = false
     var model = ""
     var vendor = ""
-    var mode = ""
-    var photoStatus = ""
-    var videoStatus = ""
+    var mode = CameraControl.undefinedMode
+    var photoStatus = CameraControl.photoIdle
+    var videoStatus = CameraControl.videoStopped
     var recordTime = ""
-    var storageStatus = ""
+    var storageStatus = CameraControl.storageUnsupported
+    var shots = 0
     var storageFree = ""
     var capturesPhotos = false
     var capturesVideo = false
@@ -19,17 +20,32 @@ struct CameraControl: Equatable {
 
     static let absent = CameraControl()
 
-    static let undefinedMode = "CAM_MODE_UNDEFINED"
-    static let photoMode = "CAM_MODE_PHOTO"
-    static let videoMode = "CAM_MODE_VIDEO"
-    static let surveyMode = "CAM_MODE_SURVEY"
-    static let recording = "VIDEO_CAPTURE_STATUS_RUNNING"
-    static let takingPhoto = "PHOTO_CAPTURE_IN_PROGRESS"
-    static let storageUnsupported = "STORAGE_NOT_SUPPORTED"
+    static let undefinedMode = -1
+    static let photoMode = 0
+    static let videoMode = 1
+    static let surveyMode = 2
 
-    var isRecording: Bool { videoStatus == CameraControl.recording }
+    static let videoStopped = 0
+    static let videoRunning = 1
 
-    var isTakingPhoto: Bool { photoStatus == CameraControl.takingPhoto }
+    static let photoIdle = 0
+    static let photoInProgress = 1
+    static let photoIntervalIdle = 2
+    static let photoIntervalInProgress = 3
+
+    static let storageEmpty = 0
+    static let storageUnformatted = 1
+    static let storageReady = 2
+    static let storageUnsupported = 3
+
+    static let idleClock = "00:00:00"
+
+    var isRecording: Bool { videoStatus == CameraControl.videoRunning }
+
+    var isTakingPhoto: Bool {
+        photoStatus == CameraControl.photoInProgress
+            || photoStatus == CameraControl.photoIntervalInProgress
+    }
 
     var title: String {
         if !model.isEmpty { return model }
@@ -45,7 +61,7 @@ struct CameraControl: Equatable {
         }
     }
 
-    var modeKnown: Bool { mode != CameraControl.undefinedMode && !mode.isEmpty }
+    var modeKnown: Bool { mode != CameraControl.undefinedMode }
 
     var stateText: String {
         if isRecording { return recordTime.isEmpty ? "Recording" : "Recording \(recordTime)" }
@@ -54,9 +70,18 @@ struct CameraControl: Equatable {
     }
 
     var storageText: String {
-        if storageStatus == CameraControl.storageUnsupported { return "Not reported" }
-        return storageFree.isEmpty ? "Unknown" : storageFree
+        switch storageStatus {
+        case CameraControl.storageEmpty: return "No card"
+        case CameraControl.storageUnformatted: return "Not formatted"
+        case CameraControl.storageReady: return storageFree.isEmpty ? "Ready" : storageFree
+        default: return "Not reported"
+        }
     }
+
+    var clockText: String { isRecording ? (recordTime.isEmpty ? CameraControl.idleClock : recordTime)
+                                        : CameraControl.idleClock }
+
+    var shotsText: String { String(format: "%05d", shots) }
 
     var batteryText: String {
         batteryRemaining >= 0 ? "\(batteryRemaining)%" : ""
@@ -72,16 +97,19 @@ struct CameraControl: Equatable {
 
         func flag(_ name: String) -> Bool { (json[name] as? NSNumber)?.boolValue ?? false }
         func text(_ name: String) -> String { (json[name] as? String) ?? "" }
+        func number(_ name: String, _ fallback: Int) -> Int {
+            (json[name] as? NSNumber)?.intValue ?? fallback
+        }
 
         var camera = CameraControl()
         camera.present = true
         camera.model = model
         camera.vendor = text("vendor")
-        camera.mode = text("cameraMode")
-        camera.photoStatus = text("photoCaptureStatus")
-        camera.videoStatus = text("videoCaptureStatus")
+        camera.mode = number("cameraMode", CameraControl.undefinedMode)
+        camera.photoStatus = number("photoCaptureStatus", CameraControl.photoIdle)
+        camera.videoStatus = number("videoCaptureStatus", CameraControl.videoStopped)
         camera.recordTime = text("recordTimeStr")
-        camera.storageStatus = text("storageStatus")
+        camera.storageStatus = number("storageStatus", CameraControl.storageUnsupported)
         camera.storageFree = text("storageFreeStr")
         camera.capturesPhotos = flag("capturesPhotos")
         camera.capturesVideo = flag("capturesVideo")
