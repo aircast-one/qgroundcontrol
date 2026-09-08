@@ -74,6 +74,7 @@ struct MissionMap: NSViewRepresentable {
     var secondary: ((Double, Double) -> Void)?
     var surveys: [[GeoPoint]] = []
     var corridors: [[GeoPoint]] = []
+    var focus: MapFrame?
 
     func makeNSView(context: Context) -> MKMapView {
         let map = MKMapView()
@@ -170,6 +171,15 @@ struct MissionMap: NSViewRepresentable {
             ? vehicle.map { [CLLocationCoordinate2D(latitude: $0.latitude, longitude: $0.longitude)] } ?? []
             : framable
 
+        if let focus, focus != context.coordinator.lastFocus {
+            context.coordinator.lastFocus = focus
+            context.coordinator.lastFrame = focus
+            map.setRegion(MissionMap.region(focus, padding: padding, in: map.bounds.size),
+                          animated: false)
+            MissionMap.recordCentre(owner: owner, map: map)
+            return
+        }
+
         let frame = MapFrame(latitudes: anchored.map(\.latitude),
                              longitudes: anchored.map(\.longitude))
 
@@ -187,10 +197,14 @@ struct MissionMap: NSViewRepresentable {
             map.setRegion(MissionMap.region(frame, padding: padding, in: map.bounds.size), animated: false)
         }
 
-        MissionMap.lastRender[owner]?["centre"] =
+        MissionMap.recordCentre(owner: owner, map: map)
+    }
+
+    static func recordCentre(owner: String, map: MKMapView) {
+        lastRender[owner]?["centre"] =
             ["lat": map.centerCoordinate.latitude, "lon": map.centerCoordinate.longitude]
-        MissionMap.lastRender[owner]?["spanLat"] = map.region.span.latitudeDelta
-        MissionMap.lastRender[owner]?["spanLon"] = map.region.span.longitudeDelta
+        lastRender[owner]?["spanLat"] = map.region.span.latitudeDelta
+        lastRender[owner]?["spanLon"] = map.region.span.longitudeDelta
     }
 
     static func overlay(for shape: FenceShape) -> MKOverlay? {
@@ -256,6 +270,7 @@ struct MissionMap: NSViewRepresentable {
         var secondary: ((Double, Double) -> Void)?
         private var secondaryClick: NSClickGestureRecognizer?
         var lastFrame: MapFrame?
+        var lastFocus: MapFrame?
         private var placer: NSClickGestureRecognizer?
 
         init(select: @escaping (Int) -> Void) {

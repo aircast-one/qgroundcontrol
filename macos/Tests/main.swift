@@ -2238,6 +2238,7 @@ checkGuidedActions()
 checkTerrainUnits()
 checkMotorTest()
 checkMapClick()
+checkMapCentre()
 checkSetupPages()
 checkRemoteSupport()
 
@@ -2468,4 +2469,50 @@ func checkMapClick() {
     expect(!MapClickState.homeUsable(nil, altitude: 584), "no home at all is not a home")
     expect(!MapClickState.homeUsable(GeoPoint(latitude: -35.36, longitude: 149.16), altitude: .nan),
            "nor is one at an unknown height")
+}
+
+func checkMapCentre() {
+    let empty = MapCentreState()
+    expect(!MapCentre.mission.enabled(in: empty), "a plan with no items has no mission to centre on")
+    expect(!MapCentre.allItems.enabled(in: empty), "nor anything else")
+    expect(!MapCentre.launch.enabled(in: empty), "nor a launch point")
+    expect(!MapCentre.vehicle.enabled(in: empty), "nor a vehicle")
+    expect(MapCentre.coordinates.enabled(in: empty),
+           "but coordinates can always be typed, which is why QGC leaves that one ungated")
+
+    var planned = MapCentreState()
+    planned.missionPoints = [GeoPoint(latitude: -35.363, longitude: 149.165),
+                             GeoPoint(latitude: -35.360, longitude: 149.170)]
+    expect(MapCentre.mission.enabled(in: planned), "items make the mission entry usable")
+    expect(MapCentre.allItems.enabled(in: planned), "and everything covers them too")
+    expect(!MapCentre.vehicle.enabled(in: planned),
+           "a plan drawn with no vehicle connected still cannot centre on one")
+
+    var fenced = planned
+    fenced.otherPoints = [GeoPoint(latitude: -35.40, longitude: 149.20)]
+    let missionFrame = MapCentre.mission.frame(in: fenced)
+    let allFrame = MapCentre.allItems.frame(in: fenced)
+    expect(missionFrame != allFrame,
+           "a fence outside the mission widens Everything without moving Mission")
+    expect((allFrame?.latitudeDelta ?? 0) > (missionFrame?.latitudeDelta ?? 0),
+           "and Everything is the wider of the two")
+
+    var placed = planned
+    placed.launch = GeoPoint(latitude: -35.363, longitude: 149.165)
+    placed.vehicle = GeoPoint(latitude: -35.361, longitude: 149.166)
+    expect(MapCentre.launch.enabled(in: placed), "a placed launch point can be centred on")
+    expect(MapCentre.vehicle.enabled(in: placed), "so can a vehicle that has reported a position")
+    expect(MapCentre.launch.frame(in: placed) != MapCentre.vehicle.frame(in: placed),
+           "and they are two different places")
+
+    expect(MapCentre.coordinates.frame(in: placed) == nil,
+           "typing coordinates is not a frame until the numbers arrive")
+    expect(MapCentre.frame(latitude: -35.363, longitude: 149.165) != nil,
+           "a real pair gives one")
+    expect(MapCentre.frame(latitude: 91, longitude: 0) == nil, "a latitude off the globe does not")
+    expect(MapCentre.frame(latitude: 0, longitude: 181) == nil, "nor a longitude")
+    expect(MapCentre.frame(latitude: .nan, longitude: 0) == nil, "nor an empty field")
+
+    expect(Set(MapCentre.allCases.map(\.title)).count == MapCentre.allCases.count,
+           "no two destinations read alike")
 }

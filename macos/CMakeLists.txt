@@ -69,6 +69,7 @@ add_library(QGCNativeUI STATIC
     Sources/SetupPageModel.swift
     Sources/MapClick.swift
     Sources/MapClickModel.swift
+    Sources/MapCentreModel.swift
     Sources/MotorTestModel.swift
     Sources/RemoteSupportModel.swift
     Sources/AppUnits.swift

@@ -38,6 +38,8 @@ final class MissionStore: ObservableObject, Probeable {
     @Published private(set) var notReadyReason = ""
     @Published var uploadWarning: PlanUpload?
     @Published var writeFailure: String?
+    @Published var focus: MapFrame?
+    @Published var centreMenuOpen = false
 
     private var undoPoll: Timer?
 
@@ -466,6 +468,37 @@ final class MissionStore: ObservableObject, Probeable {
         reload()
     }
 
+    func centreState(fence: [GeoPoint], rally: [GeoPoint]) -> MapCentreState {
+        var read = MapCentreState()
+        read.missionPoints = items.filter(\.hasPosition).compactMap { item in
+            guard let latitude = item.latitude, let longitude = item.longitude else { return nil }
+            return GeoPoint(latitude: latitude, longitude: longitude)
+        }
+        read.otherPoints = fence + rally + surveyAreas.flatMap { $0 }
+        read.launch = items.first.flatMap { item in
+            guard let latitude = item.latitude, let longitude = item.longitude,
+                  latitude != 0 || longitude != 0 else { return nil }
+            return GeoPoint(latitude: latitude, longitude: longitude)
+        }
+        read.vehicle = vehiclePosition.flatMap { marker in
+            guard marker.latitude != 0 || marker.longitude != 0 else { return nil }
+            return GeoPoint(latitude: marker.latitude, longitude: marker.longitude)
+        }
+        return read
+    }
+
+    func centre(_ choice: MapCentre, fence: [GeoPoint], rally: [GeoPoint]) {
+        centreMenuOpen = false
+        guard let built = choice.frame(in: centreState(fence: fence, rally: rally)) else { return }
+        focus = built
+    }
+
+    func centre(latitude: Double, longitude: Double) {
+        centreMenuOpen = false
+        guard let built = MapCentre.frame(latitude: latitude, longitude: longitude) else { return }
+        focus = built
+    }
+
     var mapCentre: GeoPoint? {
         guard let centre = MissionMap.lastRender["plan"]?["centre"] as? [String: Double],
               let latitude = centre["lat"], let longitude = centre["lon"] else { return nil }
@@ -658,6 +691,11 @@ final class MissionStore: ObservableObject, Probeable {
          "distanceMode": AltitudeMode.title(for: distanceMode),
          "itemAltitudeMode": AltitudeMode.title(for: itemAltitudeMode),
          "globalAltitudeMode": AltitudeMode.title(for: globalAltitudeMode), "defaultAltitude": defaultAltitude,
+         "centre": ["open": centreMenuOpen,
+                    "focused": focus != nil,
+                    "enabled": MapCentre.allCases
+                        .filter { $0.enabled(in: centreState(fence: [], rally: [])) }
+                        .map(\.title)],
          "launch": ["editable": launch.editable, "altitude": launch.altitudeText,
                     "position": launch.positionText],
          "vehicle": ["firmware": vehicle.firmware, "type": vehicle.type,
@@ -786,6 +824,19 @@ final class MissionStore: ObservableObject, Probeable {
                 return ["ok": false, "error": "setLaunchAltitude needs a value"]
             }
             setLaunchAltitude(value)
+        case "centreMenu":
+            centreMenuOpen = args["open"] != "0"
+        case "centre":
+            guard let choice = MapCentre(rawValue: args["which"] ?? "") else {
+                return ["ok": false, "error": "centre needs a known destination"]
+            }
+            centre(choice, fence: [], rally: [])
+        case "centreAt":
+            guard let latitude = Double(args["latitude"] ?? ""),
+                  let longitude = Double(args["longitude"] ?? "") else {
+                return ["ok": false, "error": "centreAt needs latitude and longitude"]
+            }
+            centre(latitude: latitude, longitude: longitude)
         case "setLaunchToMapCentre":
             setLaunchToMapCentre()
         case "setCruiseSpeed":

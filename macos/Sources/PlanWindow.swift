@@ -48,6 +48,75 @@ struct AltitudeField: View {
     }
 }
 
+struct CentreMenu: View {
+    @ObservedObject var mission: MissionStore
+    let fence: [GeoPoint]
+    let rally: [GeoPoint]
+
+    @State private var latitude = ""
+    @State private var longitude = ""
+    @State private var typing = false
+
+    private var state: MapCentreState {
+        mission.centreState(fence: fence, rally: rally)
+    }
+
+    var body: some View {
+        GlassPanel {
+            VStack(alignment: .leading, spacing: 0) {
+                ForEach(MapCentre.allCases) { choice in
+                    let on = choice.enabled(in: state)
+                    Button(action: { pick(choice) }) {
+                        Text(choice.title)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                            .contentShape(Rectangle())
+                    }
+                    .buttonStyle(.plain)
+                    .foregroundColor(on ? .primary : .secondary)
+                    .disabled(!on)
+                    .padding(.horizontal, Overlay.unit * 0.7)
+                    .padding(.vertical, Overlay.unit * 0.35)
+                }
+                if typing {
+                    Divider()
+                    HStack(spacing: 4) {
+                        TextField("Latitude", text: $latitude)
+                            .textFieldStyle(.roundedBorder)
+                            .frame(width: 90)
+                        TextField("Longitude", text: $longitude)
+                            .textFieldStyle(.roundedBorder)
+                            .frame(width: 90)
+                        Button("Go", action: go).disabled(!typed)
+                    }
+                    .padding(.horizontal, Overlay.unit * 0.7)
+                    .padding(.vertical, Overlay.unit * 0.35)
+                }
+            }
+            .frame(width: typing ? 260 : 180)
+        }
+    }
+
+    private var typed: Bool {
+        MapCentre.frame(latitude: Double(latitude) ?? .nan,
+                        longitude: Double(longitude) ?? .nan) != nil
+    }
+
+    private func pick(_ choice: MapCentre) {
+        if choice == .coordinates {
+            typing = true
+        } else {
+            typing = false
+            mission.centre(choice, fence: fence, rally: rally)
+        }
+    }
+
+    private func go() {
+        guard let latitude = Double(latitude), let longitude = Double(longitude) else { return }
+        typing = false
+        mission.centre(latitude: latitude, longitude: longitude)
+    }
+}
+
 struct TerrainProfileSheet: View {
     let profile: TerrainProfile
 
@@ -1002,8 +1071,28 @@ struct PlanView: View {
                        add: place(latitude:longitude:),
                        move: mission.move(sequence:latitude:longitude:),
                        surveys: mission.surveyAreas,
-                       corridors: mission.corridorPaths)
+                       corridors: mission.corridorPaths,
+                       focus: mission.focus)
                 .ignoresSafeArea()
+
+            VStack(alignment: .leading, spacing: Overlay.step) {
+                Button(action: { mission.centreMenuOpen.toggle() }) {
+                    Image(systemName: "scope")
+                        .frame(width: 24, height: 24)
+                }
+                .buttonStyle(.plain)
+                .padding(Overlay.step)
+                .background(GlassPanel { Color.clear })
+                .help("Centre the map")
+
+                if mission.centreMenuOpen {
+                    CentreMenu(mission: mission, fence: fencePoints, rally: rallyPoints)
+                }
+                Spacer(minLength: 0)
+            }
+            .padding(Overlay.unit)
+            .padding(.top, Overlay.unit * 1.6)
+            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
 
             HStack {
                 Spacer()
@@ -1031,6 +1120,17 @@ struct PlanView: View {
             mission.reload()
             fenceRally.reload()
             mission.startEditing()
+        }
+    }
+
+    private var fencePoints: [GeoPoint] {
+        fenceRally.shapes.flatMap(\.framingPoints)
+    }
+
+    private var rallyPoints: [GeoPoint] {
+        fenceRally.rallyPoints.compactMap { point in
+            guard let latitude = point.latitude, let longitude = point.longitude else { return nil }
+            return GeoPoint(latitude: latitude, longitude: longitude)
         }
     }
 
