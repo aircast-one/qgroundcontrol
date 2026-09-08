@@ -1063,7 +1063,7 @@ exists natively today:
 | telemetry readouts | **`TelemetryRow`** | |
 | flight mode | **`FlightModePicker`** | reports refusals |
 | arm / takeoff / land / RTL | **`FlightActions`** | slide-to-confirm; arm and mode report refusals |
-| vehicle messages / warnings | **`VehicleMessageBanner`** | |
+| vehicle messages / warnings | **`VehicleMessageBanner`** | prearm text, unhealthy sensor, not-ready-to-fly, and no-GPS-lock |
 | status (sats, HDOP) | **`StatusStrip`** | |
 | `PipView` map/video swap | **partial** | inset expands to full screen and back; still not a *swap* — the map cannot become the inset |
 | `CameraControlLayer` | **built** | selection, mode and shutter, all verified on the wire |
@@ -1122,6 +1122,17 @@ reached, which no test would have caught. And confirming is gated on the change 
 firmware will act on: `APMFirmwarePlugin` drops anything under 0.01 m, so an enabled button
 below that is a control that reports success and does nothing. One constant decides both the
 button and the sentence, so they cannot disagree.
+
+**The no-GPS-lock warning was missing and the sim could not have caught it.** `VehicleWarnings.qml`
+shows two things - the vehicle's prearm text, which the banner already had, and a no-GPS-lock
+warning, which nothing in the native head had. It is gated on `requiresGpsFix`, which is the
+GPS bit of the vehicle's own sensors-present mask, not on the fix type: a vehicle with no GPS
+is not told it is missing a lock it never had.
+
+Worth recording because it nearly read as a working feature: the branch had never been
+reachable in testing, because the sim sent an empty sensors-present mask, so `requiresGpsFix`
+was false no matter what the fix type said. The first run showed no banner and the honest
+reading of that was not "the code is wrong" but "nothing here exercises the condition".
 
 **A Fact's `value` is the operator's display unit, and commands take metric.** The bridge
 serves `cookedValue()`. `guidedModeChangeAltitude` takes metres, and QML converts at the call
