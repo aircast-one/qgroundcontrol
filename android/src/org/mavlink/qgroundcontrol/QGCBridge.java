@@ -77,6 +77,15 @@ public final class QGCBridge {
 
     public static native void notifyDeepLink(String url);
 
+    public static native int videoWidth();
+
+    public static native int videoHeight();
+
+    public static native long videoFrames();
+
+    /** dest must be a direct ByteBuffer; returns false when no frame has arrived yet. */
+    public static native boolean videoCopyFrame(java.nio.ByteBuffer dest);
+
     public static void onSystemBarAppearance(final boolean lightBars) {
         final Host current = host;
         if (current == null) {

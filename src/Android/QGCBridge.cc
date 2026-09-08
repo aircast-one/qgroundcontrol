@@ -2,6 +2,7 @@
 
 #include "AndroidInterface.h"
 #include "QGCBridgeCore.h"
+#include "QGCVideoC.h"
 #include "QGCLoggingCategory.h"
 
 #include <QtCore/QJniEnvironment>
@@ -58,6 +59,43 @@ void jniNotifyDeepLink(JNIEnv *env, jclass clazz, jstring urlA)
     AndroidInterface::jniDeepLink(env, nullptr, urlA);
 }
 
+jint jniVideoWidth(JNIEnv *, jclass)
+{
+    return qgc_video_width();
+}
+
+jint jniVideoHeight(JNIEnv *, jclass)
+{
+    return qgc_video_height();
+}
+
+jlong jniVideoFrames(JNIEnv *, jclass)
+{
+    return static_cast<jlong>(qgc_video_frames());
+}
+
+// The appsink fills the frame buffer on GStreamer's thread while this reads it on
+// whichever thread Kotlin asks from; qgc_video_copy_frame holds the lock for the copy.
+jboolean jniVideoCopyFrame(JNIEnv *env, jclass, jobject buffer)
+{
+    if (!buffer) {
+        return JNI_FALSE;
+    }
+
+    void *const destination = env->GetDirectBufferAddress(buffer);
+    const jlong capacity = env->GetDirectBufferCapacity(buffer);
+    if (!destination || (capacity <= 0)) {
+        return JNI_FALSE;
+    }
+
+    int width = 0;
+    int height = 0;
+    int stride = 0;
+    return qgc_video_copy_frame(destination, static_cast<int>(capacity), &width, &height, &stride)
+        ? JNI_TRUE
+        : JNI_FALSE;
+}
+
 } // namespace
 
 namespace QGCBridge
@@ -81,6 +119,10 @@ void setNativeMethods()
         { "notifyFontScale", "(F)V", reinterpret_cast<void *>(jniNotifyFontScale) },
         { "notifySafeAreaInsets", "(IIII)V", reinterpret_cast<void *>(jniNotifySafeAreaInsets) },
         { "notifyDeepLink", "(Ljava/lang/String;)V", reinterpret_cast<void *>(jniNotifyDeepLink) },
+        { "videoWidth", "()I", reinterpret_cast<void *>(jniVideoWidth) },
+        { "videoHeight", "()I", reinterpret_cast<void *>(jniVideoHeight) },
+        { "videoFrames", "()J", reinterpret_cast<void *>(jniVideoFrames) },
+        { "videoCopyFrame", "(Ljava/nio/ByteBuffer;)Z", reinterpret_cast<void *>(jniVideoCopyFrame) },
     };
 
     QJniEnvironment jniEnv;
