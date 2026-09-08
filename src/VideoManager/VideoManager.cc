@@ -626,7 +626,12 @@ void VideoManager::_rebindWidgets()
         if (receiver->isThermal()) {
             continue;
         }
-        QQuickItem *desired = _widgetForCamera(_cameraIndexForReceiver(receiver));
+        // A native head that has asked to render video itself must not also be handed a
+        // QML item. On Android the QML fly view is still hosted, so init() finds its video
+        // item by name and _widgetForCamera returns it — which silently kept the native
+        // sink from ever being created, however the flag was set.
+        QQuickItem *desired =
+            _nativeRendering ? nullptr : _widgetForCamera(_cameraIndexForReceiver(receiver));
         if (_nativeRendering && !desired && !receiver->sink()) {
             void *nativeSink = QGCCorePlugin::instance()->createNativeVideoSink(receiver);
             qCDebug(VideoManagerLog) << "native sink rebind" << receiver->name()
