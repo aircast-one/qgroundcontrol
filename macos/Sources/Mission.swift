@@ -189,6 +189,17 @@ final class MissionStore: ObservableObject, Probeable {
         return ((polygon["path"] as? [Any]) ?? []).compactMap(GeoPoint.init(json:))
     }
 
+    private func corridorPath(of item: MissionItem) -> [GeoPoint] {
+        guard let property = MissionItemKind.lineProperty(forCommand: item.command)
+        else { return [] }
+        let line = Bridge.group("plan.missionController.visualItems.\(item.index).\(property)")
+        return ((line["path"] as? [Any]) ?? []).compactMap(GeoPoint.init(json:))
+    }
+
+    var corridorPaths: [[GeoPoint]] {
+        items.map(corridorPath).filter { $0.count >= 2 }
+    }
+
     var surveyAreas: [[GeoPoint]] {
         items.map(surveyPolygon).filter { $0.count >= 3 }
     }
@@ -418,6 +429,7 @@ final class MissionStore: ObservableObject, Probeable {
          "canUndo": canUndo, "canRedo": canRedo,
          "commands": commands.map(\.name),
          "surveys": surveyAreas.map(\.count),
+         "corridors": corridorPaths.map(\.count),
          "surveyStats": ["shots": surveyStats.shotsText, "interval": surveyStats.intervalText,
                          "area": surveyStats.areaText, "footprint": surveyStats.footprintText,
                          "warning": surveyStats.warning],

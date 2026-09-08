@@ -41,6 +41,8 @@ final class FencePolygon: MKPolygon {
 
 final class SurveyPolygon: MKPolygon {}
 
+final class CorridorPolyline: MKPolyline {}
+
 final class FenceCircle: MKCircle {
     var inclusion = true
 }
@@ -70,6 +72,7 @@ struct MissionMap: NSViewRepresentable {
     let add: (Double, Double) -> Void
     let move: (Int, Double, Double) -> Void
     var surveys: [[GeoPoint]] = []
+    var corridors: [[GeoPoint]] = []
 
     func makeNSView(context: Context) -> MKMapView {
         let map = MKMapView()
@@ -116,6 +119,12 @@ struct MissionMap: NSViewRepresentable {
             map.addOverlay(SurveyPolygon(coordinates: &corners, count: corners.count), level: .aboveLabels)
         }
 
+        corridors.filter { $0.count >= 2 }.forEach { path in
+            var points = path.map { CLLocationCoordinate2D(latitude: $0.latitude, longitude: $0.longitude) }
+            map.addOverlay(CorridorPolyline(coordinates: &points, count: points.count),
+                           level: .aboveLabels)
+        }
+
         if placed.count > 1 {
             var coordinates = placed.map(\.coordinate)
             map.addOverlay(MKPolyline(coordinates: &coordinates, count: coordinates.count),
@@ -129,6 +138,7 @@ struct MissionMap: NSViewRepresentable {
             "rally": rally.count,
             "fenceOverlays": map.overlays.filter { $0 is FencePolygon || $0 is FenceCircle }.count,
             "surveyOverlays": map.overlays.filter { $0 is SurveyPolygon }.count,
+            "corridorOverlays": map.overlays.filter { $0 is CorridorPolyline }.count,
             "overlays": map.overlays.count,
             "framed": context.coordinator.lastFrame != nil,
             "centre": ["lat": map.centerCoordinate.latitude, "lon": map.centerCoordinate.longitude],
@@ -151,9 +161,6 @@ struct MissionMap: NSViewRepresentable {
                 CLLocationCoordinate2D(latitude: $0.latitude, longitude: $0.longitude)
             }
 
-        // A plan can hold nothing with a position at all -- every item a Delay, or an
-        // empty plan -- and framing nothing left the map on MapKit's default view of the
-        // whole world. The vehicle is the next best thing to look at.
         let anchored = framable.isEmpty
             ? vehicle.map { [CLLocationCoordinate2D(latitude: $0.latitude, longitude: $0.longitude)] } ?? []
             : framable
@@ -199,10 +206,6 @@ struct MissionMap: NSViewRepresentable {
         return polygon
     }
 
-    // setVisibleMapRect with edgePadding silently left the map on its default view of
-    // the world. setRegion always takes, so the inspector is accounted for by widening
-    // the span by the fraction of the view it covers and shifting the centre by half of
-    // what it hides.
     static func region(_ frame: MapFrame, padding: NSEdgeInsets, in size: CGSize) -> MKCoordinateRegion {
         let width = max(size.width, 1)
         let height = max(size.height, 1)
@@ -298,6 +301,13 @@ struct MissionMap: NSViewRepresentable {
             if let tiles = overlay as? CachedTileOverlay {
                 return MKTileOverlayRenderer(tileOverlay: tiles)
             }
+            if let corridor = overlay as? CorridorPolyline {
+                let renderer = MKPolylineRenderer(polyline: corridor)
+                renderer.strokeColor = .controlAccentColor
+                renderer.lineWidth = 4
+                renderer.lineDashPattern = [8, 6]
+                return renderer
+            }
             if let survey = overlay as? SurveyPolygon {
                 let renderer = MKPolygonRenderer(polygon: survey)
                 renderer.strokeColor = .controlAccentColor
@@ -363,9 +373,6 @@ struct MissionMap: NSViewRepresentable {
             return view
         }
 
-        // A dot says where the vehicle is; an arrow also says which way it is facing,
-        // which is what an operator is looking for. The dot stays for the case where
-        // the vehicle reports no heading at all.
         private static let vehicleArrow: NSImage = {
             let size = NSSize(width: 20, height: 20)
             let image = NSImage(size: size)

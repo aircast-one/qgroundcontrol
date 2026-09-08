@@ -108,6 +108,12 @@ enum MissionItemKind: String, CaseIterable, Identifiable {
         return nil
     }
 
+    static func lineProperty(forCommand command: String) -> String? {
+        guard let kind = allCases.first(where: { $0.complexName == command }) else { return nil }
+        if case .line(let property) = kind.geometry { return property }
+        return nil
+    }
+
     static func seed(for kind: MissionItemKind, latitude: Double, longitude: Double) -> (property: String, points: [GeoPoint])? {
         switch kind.geometry {
         case .none:

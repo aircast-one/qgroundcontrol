@@ -616,6 +616,15 @@ func checkMissionItemKinds() {
            "a corridor is a line and has no area to draw, so it is not offered one")
     expect(MissionItemKind.areaProperty(forCommand: "Waypoint") == nil,
            "and a simple item has none either")
+
+    expect(MissionItemKind.lineProperty(forCommand: "Corridor Scan") ?? "", "corridorPolyline",
+           "a corridor's path is found the same way, by the item's command name")
+    expect(MissionItemKind.lineProperty(forCommand: "Survey") == nil,
+           "a survey is an area, so it is never asked for a line")
+    expect(MissionItemKind.lineProperty(forCommand: "Structure Scan") == nil,
+           "nor is a structure scan")
+    expect(MissionItemKind.lineProperty(forCommand: "Waypoint") == nil,
+           "and a simple item has no path of its own")
     expect(MissionItemKind.roi.placementHint, "Click the map to place a region of interest.",
            "the hint reads as English rather than a lowercased title")
     expect(MissionItemKind.takeoff.placementHint, "Click the map to place a takeoff.",
