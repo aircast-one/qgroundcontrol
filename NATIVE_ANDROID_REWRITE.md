@@ -1066,7 +1066,7 @@ exists natively today:
 | vehicle messages / warnings | **`VehicleMessageBanner`** | |
 | status (sats, HDOP) | **`StatusStrip`** | |
 | `PipView` map/video swap | **partial** | inset expands to full screen and back; still not a *swap* — the map cannot become the inset |
-| `CameraControlLayer`, `CameraSwitchButton` | **missing** | shutter, mode, camera selection |
+| `CameraControlLayer`, `CameraSwitchButton` | **missing** | shutter, mode, camera selection — reachable, but blocked on a rig that has a camera |
 | `VideoTilesLayer` | **missing** | multiple streams |
 | `RcControlsLayer` | **built** | renders the configured controls and sends `setRcChannelOverride`; editing the list is still desktop-only |
 | `ObstacleDistanceOverlay` (map and video) | **built, in another form** | a sentence — "3.2 m right" — rather than a proximity ring |
@@ -1080,6 +1080,23 @@ exists natively today:
 So the tab cannot be switched yet, and not because video was missing — video works. Eight
 surfaces have no native equivalent, and two of them (camera controls, obstacle distance)
 are things an operator uses in flight.
+
+**Camera control is reachable but not verifiable here, and that is the blocker.** Everything
+needed is on the bridge already: `vehicle.cameraManager.currentCameraInstance` exposes
+`capturesPhotos`, `capturesVideo`, `hasModes`, `videoCaptureStatus`, `photoCaptureStatus`
+and `storageFreeStr`, with `takePhoto()`, `toggleVideoRecording()` and `toggleCameraMode()`
+as `Q_INVOKABLE`. Writing the Compose side is a couple of hours.
+
+What stopped it was the rig. Building it blind is exactly the thing this plan keeps
+refusing, so the sim was given a camera component: a heartbeat from `MAV_COMP_ID_CAMERA`
+and a `CAMERA_INFORMATION` reply to `MAV_CMD_REQUEST_MESSAGE`. **QGC re-requested five times
+in 28 seconds and never accepted it** — no camera appeared, in the QML view or anywhere.
+So the handshake is incomplete in a way the sim log cannot see, and the sim replies happily
+while QGC discards them.
+
+Recorded rather than chased: the next person needs either a real MAVLink camera, or to
+work out what `QGCCameraManager` rejects about that `CAMERA_INFORMATION` — the retry is
+the only symptom, and it is on QGC's side of the exchange.
 
 **Obstacle distance is built, and finding a bridge defect along the way.** QGC draws a
 proximity ring from `OBSTACLE_DISTANCE`; on a phone the useful form is a sentence, so the
