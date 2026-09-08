@@ -1146,6 +1146,14 @@ Caution was a hard amber; High was `colorScheme.error`, which in this dark theme
 pink meant for text on a surface rather than for filling a shape. The most serious band was
 the least alarming thing on the screen. High is a saturated red now.
 
+**The same double gate was on all three guided buttons.** Auditing for the pattern found
+takeoff and altitude gated exactly as speed had been - the core's offer *and* a locally watched
+range. All three follow the offer alone now and read the range when the dialog opens. Altitude
+had worked by luck: its bounds come from settings present from the start, so its watch was never
+wrong. Takeoff's minimum comes from a parameter, which is the identical exposure. **A bug found
+once is worth grepping for; two of the three sites had never failed and would have failed the
+first time a vehicle was slow with its parameters.**
+
 **A watched view can be stale, and a head that re-derives an answer will believe the stale one.**
 The speed button was gated on the core's `changeSpeed` offer *and* on a watched
 `view.guidedSpeed` being usable. Measured with the vehicle armed and flying: the offer read
