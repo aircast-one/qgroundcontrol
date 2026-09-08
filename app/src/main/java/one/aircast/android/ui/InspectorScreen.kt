@@ -201,7 +201,7 @@ fun InspectorScreen(modifier: Modifier = Modifier) {
         LazyColumn(Modifier.fillMaxSize()) {
             items(shown, key = { it.path }) { message ->
                 SetupRow(
-                    title = inspectorRowLabel(message, shown),
+                    title = inspectorRowLabel(message, messages),
                     status = message.rateText,
                     onClick = { openPath = message.path },
                 )
