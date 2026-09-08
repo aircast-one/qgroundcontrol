@@ -26,6 +26,7 @@ pub mod preflight;
 pub mod radio;
 pub mod read;
 pub mod sensors;
+pub mod sensorfacts;
 pub mod settings;
 pub mod shp;
 pub mod setup;

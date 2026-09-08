@@ -587,6 +587,7 @@ About 58 developer-weeks. Flight-test time, not code, is the schedule.
 - 2026-09-09: GPS fact-group decoding from MAVLink in the core; the tlog reader visits messages.
 - 2026-09-09: battery fact-group decoding in the core (BATTERY_STATUS by id, HIGH_LATENCY2 percent).
 - 2026-09-09: vehicle fact-group decoding in the core (attitude, quaternion, altitude, HUD, nav controller, rangefinder).
+- 2026-09-09: wind, temperature, distance sensor, local position and estimator status decoding in the core.
 
 ### Stream F · Core
 
