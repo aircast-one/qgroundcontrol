@@ -33,6 +33,7 @@ pub mod sensors;
 pub mod sensorfacts;
 pub mod settings;
 pub mod settingsgroups;
+pub mod settingsini;
 pub mod shp;
 pub mod setup;
 pub mod signing;

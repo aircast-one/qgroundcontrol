@@ -601,6 +601,7 @@ About 58 developer-weeks. Flight-test time, not code, is the schedule.
 - 2026-09-09: RTCM correction fragmenter in the core (GPS_RTCM_DATA flags and sequence as RTCMMavlink).
 - 2026-09-09: R3 starts: fact metadata loader in the core, all 38 SettingsGroup/FactMetaData files load with typed enums, defaults and bounds.
 - 2026-09-09: settings-group registry in the core (22 groups, metadata files compiled in, QSettings key layout).
+- 2026-09-09: QSettings INI reader in the core (sections, escapes, lists, @Invalid/@ByteArray/@Variant).
 
 ### Stream F · Core
 
