@@ -668,9 +668,20 @@ both calls in the same poll:
     whole   153-160 ms   790598 b
     "*"      86-94 ms    364047 b
 
-Bytes to 46%, time to 56%: the property walk still happens whatever you ask for,
-so a payload reduction is not a latency reduction and should not be reported as
-one. Those absolutes are lower than the 247-294 ms above because that poll made
+Bytes to 46%, time to 56%: the property walk still happens whatever you ask for.
+
+Twelve surveys, twenty samples, medians: 52.2 ms and 162984 b whole against
+17.9 ms and 88851 b starred. Bytes to 55%, time to 34% - the other way round
+from the waypoints, because a survey carries cameraCalc and cameraCalc is facts
+all the way down, which is what compaction removes.
+
+So the two do not move together and they do not even move in the same direction
+across plan shapes: a payload reduction is not a latency reduction, and which
+one flatters the other depends on what the items are. Quote whichever you
+measured, for the shape you measured it on.
+
+The starred read is also far steadier - 16.8 to 20.4 ms across twenty samples
+against 36 to 89 ms for the whole one. Those absolutes are lower than the 247-294 ms above because that poll made
 three reads and the caches were warm - the ratio is like for like, the numbers
 are not comparable across the two runs.
 
