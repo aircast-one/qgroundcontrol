@@ -1971,37 +1971,34 @@ func checkVehicleWarning() {
 checkVehicleWarning()
 
 func checkInstrumentValues() {
-    let facts: [[String: Any]] = [
-        ["name": "altitudeRelative", "valueString": "12.3", "units": "m", "shortDescription": "Alt (Rel)"],
-        ["name": "airSpeedSetpoint", "valueString": "0.024", "units": "", "shortDescription": ""],
+    let items: [Any] = [
+        ["id": "vehicle/altitudeRelative", "group": "vehicle", "name": "altitudeRelative",
+         "label": "Alt (Rel)", "value": "-0.0", "units": "m", "missing": false as NSNumber],
+        ["id": "batteries.0/voltage", "group": "batteries.0", "name": "voltage",
+         "label": "Voltage", "value": "12.60", "units": "V", "missing": false as NSNumber],
+        ["id": "vehicle/notAFactAtAll", "group": "vehicle", "name": "notAFactAtAll",
+         "label": "Not A Fact At All", "value": "\u{2014}", "units": "", "missing": true as NSNumber],
     ]
+    let read = InstrumentValue.list(items)
+    expect(read.count == 3, "every reading the core resolves is carried across")
+    expect(read[0].label, "Alt (Rel)",
+           "the label is the core's, taken from the fact's own description")
+    expect(read[1].units, "V",
+           "and the unit is the core's display form, so no head maps a lowercase v itself")
+    expect(read[1].id, "batteries.0/voltage",
+           "a reading from another group keeps its group in the id, which is what the slot is keyed by")
 
-    let altitude = InstrumentValue.resolve(.vehicle("altitudeRelative"), in: facts)
-    expect(altitude.label, "Alt (Rel)", "the vehicle's own description names the reading")
-    expect(altitude.value, "12.3", "and its formatted value is shown as the vehicle formats it")
-    expect(altitude.units, "m", "with the units beside it")
-    expect(!altitude.missing, "a fact that is present is not missing")
+    let absent = read[2]
+    expect(absent.missing, "a fact the vehicle does not report is marked missing")
+    expect(absent.value, "\u{2014}", "and shows a dash")
+    expect(absent.units, "", "with no unit, because a unit beside a dash reads as a real measurement")
 
-    let undescribed = InstrumentValue.resolve(.vehicle("airSpeedSetpoint"), in: facts)
-    expect(undescribed.label, "Air Speed Setpoint",
-           "a fact with no description falls back to its name, split into words")
-
-    let absent = InstrumentValue.resolve(.vehicle("nothingHere"), in: facts)
-    expect(absent.missing, "a fact this firmware does not report reads as missing")
-    expect(absent.label, "Nothing Here", "but is still named, so the slot is not blank")
-
-    expect(InstrumentValue.label(for: "gps"), "GPS",
-           "a known acronym keeps its casing even when the vehicle reports it lowercase")
-    expect(InstrumentValue.label(for: "altitudeAMSL"), "Altitude AMSL",
-           "and a run of capitals stays one word instead of becoming A M S L")
-
-    expect(InstrumentSelection.vehicle("heading").path, "vehicle",
-           "the vehicle's own facts come from the vehicle itself")
-    expect(InstrumentSelection(group: "gps", factName: "count").path, "vehicle.gps",
-           "a named group is a child of it")
-    expect(InstrumentSelection.defaults.count == 6, "six readings are shown before anyone configures it")
+    expect(InstrumentValue.list(nil).isEmpty, "no answer is no readings")
+    expect(InstrumentValue(["id": "vehicle/x"]) == nil,
+           "an item with no name is dropped rather than drawn as a blank slot")
+    expect(InstrumentValue(["name": "heading"]) == nil,
+           "and one with no id is dropped, because the id is what the slot is keyed by")
 }
-
 checkInstrumentValues()
 
 func checkInstrumentGroups() {
@@ -2564,6 +2561,9 @@ func checkViewContract() {
          ["name", "prompt", "verdict", "reason", "blocked"]),
         ("view.warnings", [], ["showing", "warnings"]),
         ("view.warnings", ["warnings"], ["id", "text", "detail"]),
+        ("view.instruments", [], ["available", "items"]),
+        ("view.instruments", ["items"],
+         ["id", "group", "name", "label", "value", "units", "missing"]),
     ]
 
     let enumerations = (shapes["view.contract"] as? [String: Any])?["enumerations"] as? [String: Any]
@@ -2601,11 +2601,18 @@ func checkViewContract() {
     expect(warningIds.sorted().joined(separator: ","), "noGpsLock,prearm",
            "the two warnings the core can raise are the two the banner was written against")
 
+    expect(InstrumentSelection.defaults.map(\.factName).joined(separator: ","),
+           "altitudeRelative,groundSpeed,climbRate,distanceToHome,heading,altitudeAMSL",
+           "this head keeps its own copy of the six default readings, because they are needed "
+           + "before a bridge read is safe; core-rs instruments::DEFAULTS is the same list in the "
+           + "same order, and this pins the copy so the two cannot drift apart unnoticed")
+
     let neverNull: [(String, [String], [String])] = [
         ("view.battery", ["packs"], ["level", "text", "secondaryText"]),
         ("view.preflight", ["groups", "checks"], ["name", "prompt", "verdict", "reason"]),
         ("view.guidedActions", ["actions"], ["id", "offer", "title", "prompt", "reason"]),
         ("view.warnings", ["warnings"], ["id", "text", "detail"]),
+        ("view.instruments", ["items"], ["id", "label", "value", "units"]),
     ]
     neverNull.forEach { view, inner, keys in
         let place = inner.isEmpty ? view : "\(view).\(inner.joined(separator: "."))"
@@ -2815,18 +2822,14 @@ func checkPolygonEdit() {
 }
 
 func checkInstrumentLabels() {
-    expect(InstrumentValue.label(for: "groundSpeed") == "Ground Speed",
+    expect(Fact.humanise("groundSpeed") == "Ground Speed",
            "a plain camelCase fact name splits into words")
-    expect(InstrumentValue.label(for: "altitudeAMSL") == "Altitude AMSL",
+    expect(Fact.humanise("altitudeAMSL") == "Altitude AMSL",
            "an acronym stays one word rather than becoming A M S L")
-    expect(InstrumentValue.label(for: "distanceToGCS") == "Distance To GCS",
+    expect(Fact.humanise("distanceToGCS") == "Distance To GCS",
            "and so does a trailing acronym")
-    expect(InstrumentValue.label(for: "hdop") == "Hdop",
+    expect(Fact.humanise("hdop") == "Hdop",
            "a single lowercase word is just capitalised")
-    expect(InstrumentValue.label(for: "groundSpeed") == Fact.humanise("groundSpeed"),
-           "the instrument grid and the fact rows name a fact the same way")
-    expect(InstrumentValue.label(for: "altitudeAMSL") == Fact.humanise("altitudeAMSL"),
-           "including when it carries an acronym")
 }
 
 

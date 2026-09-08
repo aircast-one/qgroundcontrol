@@ -15,11 +15,8 @@ final class InstrumentsStore: ObservableObject, Probeable {
     @Published var chosenGroup = InstrumentSelection.vehicleGroup
 
     func refresh() {
-        let groups = Set(selections.map(\.path))
-        let facts = groups.reduce(into: [String: [[String: Any]]]()) { store, path in
-            store[path] = (Bridge.group(path)["facts"] as? [[String: Any]]) ?? []
-        }
-        let read = selections.map { InstrumentValue.resolve($0, in: facts[$0.path] ?? []) }
+        let asked = selections.map(\.stored).joined(separator: ",")
+        let read = InstrumentValue.list(Bridge.group("view.instruments(\(asked))")["items"])
         if read != values { values = read }
     }
 
@@ -105,7 +102,7 @@ final class InstrumentsStore: ObservableObject, Probeable {
          "groups": groups.map { ["group": $0.group, "title": $0.title, "facts": $0.facts.count] },
          "stored": selections.map(\.stored), "canAdd": canAdd, "canRemove": canRemove,
          "values": values.map { ["label": $0.label, "value": $0.value, "units": $0.units,
-                                 "fact": $0.selection.id] }]
+                                 "fact": $0.id, "missing": $0.missing] }]
     }
 
     func probeInvoke(action: String, args: [String: String]) -> [String: Any] {

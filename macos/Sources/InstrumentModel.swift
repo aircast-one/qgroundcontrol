@@ -6,8 +6,6 @@ struct InstrumentSelection: Equatable, Identifiable {
 
     var id: String { "\(group)/\(factName)" }
 
-    var path: String { group.isEmpty ? "vehicle" : "vehicle.\(group)" }
-
     static let vehicleGroup = ""
 
     static func vehicle(_ factName: String) -> InstrumentSelection {
@@ -69,7 +67,7 @@ struct InstrumentGroup: Identifiable, Equatable {
     static func title(for group: String) -> String {
         guard !group.isEmpty else { return vehicleTitle }
         if group == "batteries.0" { return "Battery 1" }
-        return InstrumentValue.label(for: group)
+        return Fact.humanise(group)
     }
 
     static func facts(in json: [String: Any]) -> [InstrumentFact] {
@@ -77,7 +75,7 @@ struct InstrumentGroup: Identifiable, Equatable {
             guard let name = fact["name"] as? String, !name.isEmpty else { return nil }
             let described = (fact["shortDescription"] as? String) ?? ""
             return InstrumentFact(name: name,
-                                  label: described.isEmpty ? InstrumentValue.label(for: name) : described)
+                                  label: described.isEmpty ? Fact.humanise(name) : described)
         }
     }
 
@@ -94,30 +92,28 @@ struct InstrumentGroup: Identifiable, Equatable {
 }
 
 struct InstrumentValue: Identifiable, Equatable {
-    let selection: InstrumentSelection
+    let id: String
+    let group: String
+    let name: String
     let label: String
     let value: String
     let units: String
+    let missing: Bool
 
-    var id: String { selection.id }
-
-    var missing: Bool { value == InstrumentValue.absent }
-
-    static let absent = "\u{2014}"
-
-    static func resolve(_ selection: InstrumentSelection, in facts: [[String: Any]]) -> InstrumentValue {
-        guard let fact = facts.first(where: { $0["name"] as? String == selection.factName }) else {
-            return InstrumentValue(selection: selection, label: label(for: selection.factName),
-                                   value: absent, units: "")
-        }
-        let described = (fact["shortDescription"] as? String) ?? ""
-        let reading = (fact["valueString"] as? String) ?? ""
-        return InstrumentValue(
-            selection: selection,
-            label: described.isEmpty ? label(for: selection.factName) : described,
-            value: reading.isEmpty ? absent : reading,
-            units: Units.display((fact["units"] as? String) ?? ""))
+    init?(_ json: Any?) {
+        guard let json = json as? [String: Any],
+              let id = json["id"] as? String, !id.isEmpty,
+              let name = json["name"] as? String, !name.isEmpty else { return nil }
+        self.id = id
+        self.name = name
+        group = (json["group"] as? String) ?? ""
+        label = (json["label"] as? String) ?? ""
+        value = (json["value"] as? String) ?? ""
+        units = (json["units"] as? String) ?? ""
+        missing = (json["missing"] as? NSNumber)?.boolValue ?? false
     }
 
-    static func label(for factName: String) -> String { Fact.humanise(factName) }
+    static func list(_ json: Any?) -> [InstrumentValue] {
+        ((json as? [Any]) ?? []).compactMap(InstrumentValue.init)
+    }
 }
