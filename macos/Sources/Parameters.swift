@@ -7,6 +7,7 @@ final class ParametersStore: ObservableObject, Probeable {
     @Published private(set) var loading = false
     @Published private(set) var status = ""
     @Published var writeFailure: String?
+    @Published private(set) var connected = false
     @Published var search = "" { didSet { refilter() } }
     @Published var group = "" { didSet { refilter() } }
     @Published private(set) var visible: [Parameter] = []
@@ -19,9 +20,10 @@ final class ParametersStore: ObservableObject, Probeable {
 
     func load() {
         guard !loading else { return }
+        connected = Bridge.group("vehicle")["kind"] as? String == "object"
         let manager = Bridge.group("vehicle.parameterManager")
         guard (manager["parametersReady"] as? NSNumber)?.boolValue == true else {
-            status = "Waiting for parameters from the vehicle…"
+            status = VehicleSetupText.waiting(connected: connected, for: "parameters")
             parameters = []
             refilter()
             return
@@ -77,7 +79,7 @@ final class ParametersStore: ObservableObject, Probeable {
     }
 
     func probeState() -> [String: Any] {
-        ["writeFailure": writeFailure ?? "",
+        ["writeFailure": writeFailure ?? "", "connected": connected,
          "count": parameters.count, "visible": visible.count, "loading": loading,
          "search": search, "group": group, "status": status,
          "groups": groups.prefix(12).map { $0 },

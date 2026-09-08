@@ -695,6 +695,30 @@ func checkFlyDetail() {
 
 checkFlyDetail()
 
+func checkVehicleSetupText() {
+    expect(VehicleSetupText.waiting(connected: true, for: "parameters"),
+           "Reading parameters from the vehicle\u{2026}",
+           "with a vehicle attached, the page really is waiting on it")
+    expect(VehicleSetupText.waiting(connected: false, for: "parameters"),
+           "Connect a vehicle to see its parameters.",
+           "with none, saying it is reading claims a transfer that is not happening")
+
+    expect(VehicleSetupText.absent(connected: true, "is not reporting a battery."),
+           "This vehicle is not reporting a battery.",
+           "a connected vehicle that omits something is described as omitting it")
+    expect(VehicleSetupText.absent(connected: false, "is not reporting a battery."),
+           "Connect a vehicle to set this up.",
+           "but with no vehicle there is no this vehicle to report anything")
+
+    expect(VehicleSetupText.filtered(connected: true), "No parameter matches this filter.",
+           "an empty list under a filter is the filter's doing")
+    expect(VehicleSetupText.filtered(connected: false),
+           "Connect a vehicle to see its parameters.",
+           "an empty list with no vehicle is not")
+}
+
+checkVehicleSetupText()
+
 func checkLogDownloadRules() {
     expect(LogDownloadRules.canRefresh(connected: true, requestingList: false, downloading: false),
            "a connected and idle vehicle can be asked for its logs")

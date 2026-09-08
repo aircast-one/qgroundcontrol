@@ -9,12 +9,12 @@ struct ParametersView: View {
             filters
             Divider()
             if store.loading {
-                EmptyStateRow(text: "Reading parameters from the vehicle\u{2026}")
+                EmptyStateRow(text: VehicleSetupText.waiting(connected: store.connected, for: "parameters"))
                     .frame(maxHeight: .infinity)
             } else if !store.status.isEmpty {
                 EmptyStateRow(text: store.status).frame(maxHeight: .infinity)
             } else if store.visible.isEmpty {
-                EmptyStateRow(text: "No parameter matches this filter.").frame(maxHeight: .infinity)
+                EmptyStateRow(text: VehicleSetupText.filtered(connected: store.connected)).frame(maxHeight: .infinity)
             } else {
                 list
             }
@@ -211,12 +211,14 @@ struct SafetyView: View {
 
     var body: some View {
         SetupPageBody(title: "Safety",
-                      note: "What the vehicle does when something goes wrong.") {
+                      note: "What the vehicle does when something goes wrong.",
+                      connected: store.connected) {
             if store.loading {
-                GroupCard { EmptyStateRow(text: "Reading parameters from the vehicle\u{2026}") }
+                GroupCard { EmptyStateRow(text: VehicleSetupText.waiting(connected: store.connected, for: "parameters")) }
             } else if sections.isEmpty {
                 GroupCard {
-                    EmptyStateRow(text: "This vehicle reports none of the safety parameters this page knows about.")
+                    EmptyStateRow(text: VehicleSetupText.absent(connected: store.connected,
+                        "reports none of the safety parameters this page knows about."))
                 }
             } else {
                 ForEach(sections, id: \.section.id) { entry in
@@ -253,7 +255,8 @@ struct PowerView: View {
 
     var body: some View {
         SetupPageBody(title: "Power",
-                      note: "What the vehicle measures its pack with, and how that measurement is scaled.") {
+                      note: "What the vehicle measures its pack with, and how that measurement is scaled.",
+                      connected: store.connected) {
             VStack(alignment: .leading, spacing: 0) {
                 SectionLabel(text: "Measured now")
                 GroupCard {
@@ -262,16 +265,18 @@ struct PowerView: View {
                         GroupRow(title: "Current", value: power.battery.currentText)
                         GroupRow(title: "Remaining", value: power.battery.percentText)
                     } else {
-                        EmptyStateRow(text: "This vehicle is not reporting a battery.")
+                        EmptyStateRow(text: VehicleSetupText.absent(connected: store.connected,
+                            "is not reporting a battery."))
                     }
                 }
             }
 
             if store.loading {
-                GroupCard { EmptyStateRow(text: "Reading parameters from the vehicle\u{2026}") }
+                GroupCard { EmptyStateRow(text: VehicleSetupText.waiting(connected: store.connected, for: "parameters")) }
             } else if sections.isEmpty {
                 GroupCard {
-                    EmptyStateRow(text: "This vehicle reports none of the battery parameters this page knows about.")
+                    EmptyStateRow(text: VehicleSetupText.absent(connected: store.connected,
+                        "reports none of the battery parameters this page knows about."))
                 }
             } else {
                 ForEach(sections, id: \.section.id) { entry in
@@ -312,12 +317,14 @@ struct CameraView: View {
 
     var body: some View {
         SetupPageBody(title: "Camera",
-                      note: "The gimbal the vehicle carries and how it triggers a camera.") {
+                      note: "The gimbal the vehicle carries and how it triggers a camera.",
+                      connected: store.connected) {
             if store.loading {
-                GroupCard { EmptyStateRow(text: "Reading parameters from the vehicle\u{2026}") }
+                GroupCard { EmptyStateRow(text: VehicleSetupText.waiting(connected: store.connected, for: "parameters")) }
             } else if sections.isEmpty {
                 GroupCard {
-                    EmptyStateRow(text: "This vehicle reports no gimbal or camera parameters.")
+                    EmptyStateRow(text: VehicleSetupText.absent(connected: store.connected,
+                        "reports no gimbal or camera parameters."))
                 }
             } else {
                 ForEach(sections, id: \.section.id) { entry in
@@ -354,12 +361,14 @@ struct TuningView: View {
 
     var body: some View {
         SetupPageBody(title: "Tuning",
-                      note: "The gains that decide how the vehicle answers the sticks. Change one thing at a time and fly it.") {
+                      note: "The gains that decide how the vehicle answers the sticks. Change one thing at a time and fly it.",
+                      connected: store.connected) {
             if store.loading {
-                GroupCard { EmptyStateRow(text: "Reading parameters from the vehicle\u{2026}") }
+                GroupCard { EmptyStateRow(text: VehicleSetupText.waiting(connected: store.connected, for: "parameters")) }
             } else if sections.isEmpty {
                 GroupCard {
-                    EmptyStateRow(text: "This vehicle reports none of the tuning parameters this page knows about.")
+                    EmptyStateRow(text: VehicleSetupText.absent(connected: store.connected,
+                        "reports none of the tuning parameters this page knows about."))
                 }
             } else {
                 ForEach(sections, id: \.section.id) { entry in
@@ -529,12 +538,14 @@ struct FrameView: View {
 
     var body: some View {
         SetupPageBody(title: "Frame",
-                      note: "Which airframe this is, and what the firmware made of it.") {
+                      note: "Which airframe this is, and what the firmware made of it.",
+                      connected: store.connected) {
             if store.loading {
-                GroupCard { EmptyStateRow(text: "Reading parameters from the vehicle\u{2026}") }
+                GroupCard { EmptyStateRow(text: VehicleSetupText.waiting(connected: store.connected, for: "parameters")) }
             } else if sections.isEmpty {
                 GroupCard {
-                    EmptyStateRow(text: "This vehicle does not report a frame class.")
+                    EmptyStateRow(text: VehicleSetupText.absent(connected: store.connected,
+                        "does not report a frame class."))
                 }
             } else {
                 if needsFrameClass {
@@ -600,11 +611,13 @@ struct FlightModesView: View {
 
     var body: some View {
         SetupPageBody(title: "Flight Modes",
-                      note: "Which mode each position of the transmitter switch selects.") {
+                      note: "Which mode each position of the transmitter switch selects.",
+                      connected: store.connected) {
             if store.loading {
-                GroupCard { EmptyStateRow(text: "Reading parameters from the vehicle\u{2026}") }
+                GroupCard { EmptyStateRow(text: VehicleSetupText.waiting(connected: store.connected, for: "parameters")) }
             } else if positions.isEmpty {
-                GroupCard { EmptyStateRow(text: "This vehicle does not report a six-position mode switch.") }
+                GroupCard { EmptyStateRow(text: VehicleSetupText.absent(connected: store.connected,
+                    "does not report a six-position mode switch.")) }
             } else {
                 if let channel = store.parameter(named: FlightModePosition.channelParameter) {
                     VStack(alignment: .leading, spacing: 0) {

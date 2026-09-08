@@ -86,6 +86,7 @@ struct ParameterRow: View {
 struct SetupPageBody<Content: View>: View {
     let title: String
     var note = ""
+    var connected = true
     @ViewBuilder var content: Content
 
     var body: some View {
@@ -97,7 +98,13 @@ struct SetupPageBody<Content: View>: View {
                         Text(note).font(.callout).foregroundColor(.secondary)
                     }
                 }
-                content
+                if connected {
+                    content
+                } else {
+                    GroupCard {
+                        EmptyStateRow(text: "Connect a vehicle to set this up.")
+                    }
+                }
             }
             .padding(Overlay.unit * 1.25)
             .frame(maxWidth: 660, alignment: .leading)
