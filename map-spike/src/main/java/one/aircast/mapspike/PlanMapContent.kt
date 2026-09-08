@@ -145,7 +145,13 @@ internal fun MapSpikeScreen(
         fences.isNotEmpty() || circles.isNotEmpty() || rally.isNotEmpty()
 
     LaunchedEffect(planIsDrawn, isPlottable(latitude, longitude)) {
-        if (planIsDrawn && !fittedToPlan && !isPlottable(latitude, longitude)) {
+        // A vehicle having been seen disarms this for good. Keyed only on there
+        // being no position, losing the link mid-flight would count as "no
+        // vehicle" and throw the camera across the map at the moment the pilot
+        // least wants it moved.
+        if (isPlottable(latitude, longitude)) {
+            fittedToPlan = true
+        } else if (planIsDrawn && !fittedToPlan) {
             fittedToPlan = true
             fitRequest += 1
         }
