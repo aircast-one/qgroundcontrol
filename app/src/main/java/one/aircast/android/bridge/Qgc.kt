@@ -127,6 +127,12 @@ object Qgc {
     fun get(path: String): JSONObject =
         timed("get $path") { runCatching { JSONObject(QGCBridge.get(path)) }.getOrDefault(JSONObject()) }
 
+    fun get(path: String, fields: Collection<String>): JSONObject =
+        timed("get $path") {
+            runCatching { JSONObject(QGCBridge.getFields(path, fields.joinToString(","))) }
+                .getOrDefault(JSONObject())
+        }
+
     fun set(path: String, value: Any?): Boolean {
         val reply = runCatching {
             JSONObject(timed("set $path") { QGCBridge.set(path, JSONObject().put("value", value).toString()) })
