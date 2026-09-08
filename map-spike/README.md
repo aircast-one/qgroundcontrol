@@ -680,6 +680,12 @@ across plan shapes: a payload reduction is not a latency reduction, and which
 one flatters the other depends on what the items are. Quote whichever you
 measured, for the shape you measured it on.
 
+Counting is narrower still. `rawItemCount` only needs `elements.length`, so it
+asks for one field: `getFields(PLAN_ITEMS, "sequenceNumber")` returns 42553
+bytes against 790598 for the same 200 item plan, and the element count is
+unchanged at 200. Facts and children come back whatever you ask for, which is
+why it is 5% rather than 0.5%.
+
 The starred read is also far steadier - 16.8 to 20.4 ms across twenty samples
 against 36 to 89 ms for the whole one. Those absolutes are lower than the 247-294 ms above because that poll made
 three reads and the caches were warm - the ratio is like for like, the numbers

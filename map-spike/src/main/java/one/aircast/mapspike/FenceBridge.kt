@@ -109,7 +109,7 @@ object FenceBridge {
         "{\"latitude\":${value.latitude},\"longitude\":${value.longitude},\"altitude\":0}"
 
     private fun read(path: String): JSONObject? =
-        runCatching { JSONObject(QGCBridge.get(path)) }.getOrNull()
+        runCatching { JSONObject(QGCBridge.getFields(path, "*")) }.getOrNull()
 
     private fun invoke(path: String, args: String = "[]"): Boolean =
         runCatching { JSONObject(QGCBridge.invoke(path, args)).optBoolean("ok") }.getOrDefault(false)

@@ -130,7 +130,10 @@ object PlanBridge {
     fun sendToVehicle() = invoke("$PLAN_ROOT.sendToVehicle")
 
     fun rawItemCount(): Int? =
-        runCatching { JSONObject(QGCBridge.get(PLAN_ITEMS)).optJSONArray("elements")?.length() }
+        runCatching {
+            JSONObject(QGCBridge.getFields(PLAN_ITEMS, "sequenceNumber"))
+                .optJSONArray("elements")?.length()
+        }
             .getOrNull()
 
     fun appendWaypoint(latitude: Double, longitude: Double): Boolean =
