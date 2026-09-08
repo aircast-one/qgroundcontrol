@@ -315,7 +315,17 @@ a file loads its area in the constructor, so that signal fires before the worker
 runs and nothing clears the flag. `wizardMode` is half of `NotReadyForSaveData`,
 so an imported survey reported not-ready for the life of the plan — save refused,
 upload refused, and the message told the operator to draw an area that was
-already drawn. **It reaches a phone only after the AAR is rebuilt.**
+already drawn. Verified on the handset after rebuilding the AAR: an imported
+survey now saves, 55 KB of plan JSON where the save was previously refused.
+
+**The Android link had been broken for hours** (`22f25f637`), which is why no
+C++ change had reached a handset. `GStreamer::createNativeSink` calls
+`qgc_video_attach_appsink` unconditionally while `QGCVideoC.cc` was listed only
+under `if(APPLE AND NOT IOS)`, so `ld.lld` failed on `undefined symbol`. It builds
+clean on macOS, so the stream that introduced it had no way to see it. Both
+Android modules consume the prebuilt AAR, so this is a silent, total block on
+every bridge change — **when a bridge fix seems not to take effect on the device,
+check that the AAR actually rebuilt before doubting the fix.**
 
 **Known gap — the map draws less than the plan holds.** Waypoints, fences, rally
 points and surveys are drawn; corridor scans, structure scans and landing
