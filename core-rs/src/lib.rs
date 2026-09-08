@@ -1,6 +1,7 @@
 #[cfg(not(test))]
 mod abi;
 pub mod altitude;
+pub mod autoconnect;
 pub mod apmmeta;
 pub mod batteryfacts;
 pub mod battery;

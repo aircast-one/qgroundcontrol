@@ -610,6 +610,7 @@ About 58 developer-weeks. Flight-test time, not code, is the schedule.
 - 2026-09-09: R4 starts: link configuration codec in the core over the QSettings keys, with the build-dependent type table.
 - 2026-09-09: tlog recording and replay pacing in the core (worker rules, time-based seek).
 - 2026-09-09: USB board classification in the core over the bundled USBBoardInfo table (ids, then description and manufacturer patterns).
+- 2026-09-09: autoconnect decisions in the core (composite filter, wait list, board gating, baud choice, RTK port tracking).
 
 ### Stream F · Core
 
