@@ -29,8 +29,8 @@ impl Replay {
         Replay { entries, index: 0, speed: 1.0, start_log_us: start, duration_us: last.saturating_sub(start), current_us: start, playback_start_ms: 0, playback_start_log_us: 0, playing: false }
     }
 
-    pub fn from_tlog(bytes: &[u8]) -> Self {
-        Self::new(crate::tlog::entries(bytes))
+    pub fn from_tlog(bytes: &[u8], now_us: u64) -> Self {
+        Self::new(crate::tlog::entries(bytes, now_us))
     }
 
     pub fn duration_s(&self) -> u64 {
@@ -42,6 +42,10 @@ impl Replay {
     }
 
     pub fn play(&mut self, now_ms: u64) {
+        if self.index >= self.entries.len() {
+            self.index = 0;
+            self.current_us = self.start_log_us;
+        }
         self.playing = true;
         self.set_speed(self.speed, now_ms);
     }
@@ -51,7 +55,7 @@ impl Replay {
     }
 
     pub fn set_speed(&mut self, speed: f64, now_ms: u64) {
-        self.speed = speed;
+        self.speed = if speed.is_finite() && speed > 0.0 { speed } else { 1.0 };
         self.playback_start_ms = now_ms;
         self.playback_start_log_us = self.current_us;
     }
@@ -128,6 +132,10 @@ mod tests {
         let last = replay.tick(6000);
         assert_eq!((second.frames.len(), third.frames.len(), last.frames.len()), (1, 1, 1));
         assert!(last.at_end && !replay.is_playing() && last.percent == 100.0);
+        replay.play(7000);
+        assert_eq!(replay.tick(7000).frames.len(), 1);
+        replay.set_speed(0.0, 7000);
+        assert_eq!(replay.tick(7000).frames.len(), 1);
     }
 
     #[test]
@@ -149,8 +157,8 @@ mod tests {
         let little = 1_700_000_000_000_000u64.to_le_bytes();
         assert_eq!(crate::tlog::parse_timestamp(little, 1_800_000_000_000_000), 1_700_000_000_000_000);
         let sample = std::fs::read(concat!(env!("CARGO_MANIFEST_DIR"), "/../mav.tlog")).unwrap();
-        let replay = Replay::from_tlog(&sample);
+        let replay = Replay::from_tlog(&sample, u64::MAX);
         assert!(replay.duration_s() > 0 && replay.entries.len() > 1000);
-        assert_eq!(replay.entries.len(), crate::tlog::parse(&sample).frames + crate::tlog::parse(&sample).undecodable);
+        assert_eq!(replay.entries.len(), crate::tlog::parse(&sample).frames);
     }
 }

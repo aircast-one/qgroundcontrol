@@ -76,6 +76,7 @@ pub fn on_received(firmware: u8, received: Version, current: &Choice) -> CacheAc
         Choice::Cache { name, version } if version.major == major => {
             if received.minor >= version.minor { CacheAction::Store { as_name, replacing: Some(name.clone()) } } else { CacheAction::Keep }
         }
+        Choice::Internal { version } if version.major == major && received.minor < version.minor => CacheAction::Keep,
         _ => CacheAction::Store { as_name, replacing: None },
     }
 }
@@ -118,6 +119,7 @@ mod tests {
         let received = Version { major: 1, minor: 16 };
         let none = Choice::Internal { version: Version { major: 1, minor: 15 } };
         assert_eq!(on_received(PX4_FIRMWARE, received, &none), CacheAction::Store { as_name: "ParameterFactMetaData.12.1.xml".into(), replacing: None });
+        assert_eq!(on_received(PX4_FIRMWARE, Version { major: 1, minor: 14 }, &none), CacheAction::Keep);
         let same = Choice::Cache { name: "ParameterFactMetaData.12.1.xml".into(), version: Version { major: 1, minor: 16 } };
         assert_eq!(on_received(PX4_FIRMWARE, received, &same), CacheAction::Store { as_name: "ParameterFactMetaData.12.1.xml".into(), replacing: Some("ParameterFactMetaData.12.1.xml".into()) });
         let newer = Choice::Cache { name: "ParameterFactMetaData.12.1.xml".into(), version: Version { major: 1, minor: 17 } };

@@ -37,7 +37,7 @@ pub fn parse_timestamp(raw: [u8; 8], now_us: u64) -> u64 {
     if big > now_us { big.swap_bytes() } else { big }
 }
 
-pub fn entries(bytes: &[u8]) -> Vec<(u64, Vec<u8>)> {
+pub fn entries(bytes: &[u8], now_us: u64) -> Vec<(u64, Vec<u8>)> {
     let mut out = Vec::new();
     let mut at = 0usize;
     while at + TIMESTAMP_BYTES < bytes.len() {
@@ -47,7 +47,12 @@ pub fn entries(bytes: &[u8]) -> Vec<(u64, Vec<u8>)> {
             continue;
         };
         let Some(frame) = bytes.get(frame_start..frame_start + length) else { break };
-        out.push((u64::from_be_bytes(bytes[at..frame_start].try_into().unwrap()), frame.to_vec()));
+        let (version, _) = frame_length(frame).unwrap();
+        if read_versioned_msg::<MavMessage, _>(&mut PeekReader::new(frame), ReadVersion::Single(version)).is_err() {
+            at += 1;
+            continue;
+        }
+        out.push((parse_timestamp(bytes[at..frame_start].try_into().unwrap(), now_us), frame.to_vec()));
         at = frame_start + length;
     }
     out
@@ -65,10 +70,15 @@ pub fn for_each(bytes: &[u8], mut visit: impl FnMut(u64, &mavlink::MavHeader, &M
         let Some(frame) = bytes.get(frame_start..frame_start + length) else { break };
         let timestamp = u64::from_be_bytes(bytes[at..frame_start].try_into().unwrap());
         match read_versioned_msg::<MavMessage, _>(&mut PeekReader::new(frame), ReadVersion::Single(version)) {
-            Ok((header, message)) => visit(timestamp, &header, &message),
-            Err(_) => undecodable += 1,
+            Ok((header, message)) => {
+                visit(timestamp, &header, &message);
+                at = frame_start + length;
+            }
+            Err(_) => {
+                undecodable += 1;
+                at += 1;
+            }
         }
-        at = frame_start + length;
     }
     undecodable
 }
@@ -152,7 +162,7 @@ mod tests {
     fn garbage_between_frames_is_skipped_not_fatal() {
         let bytes = sample();
         let mut damaged = bytes.clone();
-        damaged.splice(4000..4000, [0u8, 1, 2, 3, 4, 5, 6, 7, 8, 9]);
+        damaged.splice(4000..4000, [0xFEu8, 0xFF, 0, 1, 2, 3, 4, 5, 6, 7]);
         let clean = parse(&bytes).frames;
         let after = parse(&damaged).frames;
         assert!(after + 3 >= clean && after <= clean + 1, "clean {clean}, damaged {after}");

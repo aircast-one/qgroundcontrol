@@ -612,6 +612,7 @@ About 58 developer-weeks. Flight-test time, not code, is the schedule.
 - 2026-09-09: USB board classification in the core over the bundled USBBoardInfo table (ids, then description and manufacturer patterns).
 - 2026-09-09: autoconnect decisions in the core (composite filter, wait list, board gating, baud choice, RTK port tracking).
 - 2026-09-09: guided speed offer checks the firmware parameter live (was a flag latched once at parametersReady).
+- 2026-09-09: review pass over the R3/R4 core slices, sixteen findings fixed (QSettings unescaping, metadata guards, tlog resync, replay rewind, parameter machine parity).
 
 ### Stream F · Core
 

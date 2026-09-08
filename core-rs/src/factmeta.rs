@@ -87,6 +87,7 @@ fn defines(root: &Value) -> BTreeMap<String, String> {
 fn typed(value_type: ValueType, raw: &Value) -> Value {
     match (value_type, raw) {
         (ValueType::Bool, Value::Number(n)) => Value::Bool(n.as_f64().unwrap_or(0.0) != 0.0),
+        (ValueType::Bool, Value::String(s)) => Value::Bool(s.eq_ignore_ascii_case("true") || s == "1"),
         (ValueType::String, Value::Number(n)) => Value::String(n.to_string()),
         (ValueType::Float | ValueType::Double, Value::String(s)) => s.parse::<f64>().map(Value::from).unwrap_or(Value::Null),
         (ValueType::Float | ValueType::Double, Value::Number(n)) => n.as_f64().map(Value::from).unwrap_or(Value::Null),
@@ -123,7 +124,8 @@ fn enums(name: &str, json: &Map<String, Value>, defines: &BTreeMap<String, Strin
     }
     let bitmask = labelled_array(json, "bitmask", "index")?;
     if !bitmask.is_empty() {
-        return Ok((bitmask.into_iter().map(|(label, i)| EnumEntry { label, value: Value::from(1i64 << (i as i64)) }).collect(), true));
+        let bits: Option<Vec<EnumEntry>> = bitmask.into_iter().map(|(label, i)| (i >= 0.0 && i < 63.0).then(|| EnumEntry { label, value: Value::from(1i64 << (i as u32)) })).collect();
+        return bits.map(|b| (b, true)).ok_or_else(|| format!("bitmask index out of range for {name}"));
     }
     let Some(strings) = json.get("enumStrings").and_then(Value::as_str) else { return Ok((Vec::new(), false)) };
     let resolve = |text: &str| defines.get(text).cloned().unwrap_or_else(|| text.to_string());
@@ -136,6 +138,10 @@ fn enums(name: &str, json: &Map<String, Value>, defines: &BTreeMap<String, Strin
 }
 
 pub fn from_object(json: &Map<String, Value>, defines: &BTreeMap<String, String>) -> Result<MetaData, String> {
+    from_object_for(json, defines, false)
+}
+
+pub fn from_object_for(json: &Map<String, Value>, defines: &BTreeMap<String, String>, mobile: bool) -> Result<MetaData, String> {
     let name = json.get("name").and_then(Value::as_str).ok_or("fact without a name")?.to_string();
     let type_name = json.get("type").and_then(Value::as_str).ok_or(format!("fact {name} without a type"))?;
     let value_type = value_type(type_name).ok_or(format!("Unknown type {type_name}"))?;
@@ -144,7 +150,7 @@ pub fn from_object(json: &Map<String, Value>, defines: &BTreeMap<String, String>
     let flag = |key: &str, fallback: bool| json.get(key).and_then(Value::as_bool).unwrap_or(fallback);
     let number = |key: &str| json.get(key).map(|v| typed(value_type, v));
     Ok(MetaData {
-        default: json.get("default").map(|v| match (v, value_type) {
+        default: json.get("mobileDefault").filter(|_| mobile).or(json.get("default")).map(|v| match (v, value_type) {
             (Value::Null, ValueType::Float | ValueType::Double) => Value::Null,
             _ => typed(value_type, v),
         }),
@@ -170,11 +176,15 @@ pub fn from_object(json: &Map<String, Value>, defines: &BTreeMap<String, String>
 }
 
 pub fn from_file(text: &str) -> Result<BTreeMap<String, MetaData>, String> {
+    from_file_for(text, false)
+}
+
+pub fn from_file_for(text: &str, mobile: bool) -> Result<BTreeMap<String, MetaData>, String> {
     let root: Value = serde_json::from_str(text).map_err(|e| format!("not JSON: {e}"))?;
     let defines = defines(&root);
     let facts = root.get(FACTS_KEY).and_then(Value::as_array).ok_or(format!("no {FACTS_KEY} array"))?;
     facts.iter().filter_map(Value::as_object).try_fold(BTreeMap::new(), |mut map, object| {
-        let meta = from_object(object, &defines)?;
+        let meta = from_object_for(object, &defines, mobile)?;
         match map.contains_key(&meta.name) {
             true => Err(format!("Duplicate fact name: {}", meta.name)),
             false => {
@@ -242,6 +252,10 @@ mod tests {
         let unknown: Map<String, Value> = serde_json::from_str(r#"{"name":"m","type":"quad"}"#).unwrap();
         assert_eq!(from_object(&unknown, &defines).unwrap_err(), "Unknown type quad");
         let bits: Map<String, Value> = serde_json::from_str(r#"{"name":"b","type":"uint32","bitmask":[{"index":0,"description":"one"},{"index":3,"description":"eight"}]}"#).unwrap();
+        let wild: Map<String, Value> = serde_json::from_str(r#"{"name":"b","type":"uint32","bitmask":[{"index":64,"description":"far"}]}"#).unwrap();
+        assert!(from_object(&wild, &defines).is_err());
+        let mobile: Map<String, Value> = serde_json::from_str(r#"{"name":"m","type":"bool","default":"false","mobileDefault":"true"}"#).unwrap();
+        assert_eq!((from_object(&mobile, &defines).unwrap().default, from_object_for(&mobile, &defines, true).unwrap().default), (Some(Value::Bool(false)), Some(Value::Bool(true))));
         let meta = from_object(&bits, &defines).unwrap();
         assert!(meta.bitmask);
         assert_eq!(meta.enums.iter().map(|e| e.value.as_i64().unwrap()).collect::<Vec<_>>(), vec![1, 8]);

@@ -20,7 +20,7 @@ pub fn parse(text: &str) -> Result<ComponentParameters, String> {
     }
     let list = root.get(PARAMETERS_KEY).and_then(Value::as_array).ok_or(format!("no {PARAMETERS_KEY} array"))?;
     let defines = BTreeMap::new();
-    let entries: Vec<MetaData> = list.iter().map(|entry| entry.as_object().ok_or("parameter entry is not an object".to_string()).and_then(|o: &Map<String, Value>| factmeta::from_object(o, &defines))).collect::<Result<_, _>>()?;
+    let entries: Vec<MetaData> = list.iter().filter_map(Value::as_object).filter_map(|o: &Map<String, Value>| factmeta::from_object(o, &defines).ok()).collect();
     let (indexed, named): (Vec<MetaData>, Vec<MetaData>) = entries.into_iter().partition(|m| m.name.contains(INDEXED_NAME_TAG));
     Ok(ComponentParameters { named: named.into_iter().map(|m| (m.name.clone(), m)).collect(), indexed })
 }
@@ -101,6 +101,7 @@ mod tests {
     fn a_wrong_version_or_shape_is_refused() {
         assert!(parse(r#"{"version":2,"parameters":[]}"#).unwrap_err().contains("version"));
         assert!(parse(r#"{"version":1}"#).unwrap_err().contains("parameters"));
-        assert!(parse(r#"{"version":1,"parameters":[{"name":"A"}]}"#).is_err());
+        let partial = parse(r#"{"version":1,"parameters":[{"name":"A"},{"name":"B","type":"uint8","enumStrings":"x,y","enumValues":"1"},{"name":"C","type":"float"}]}"#).unwrap();
+        assert_eq!(partial.named.keys().cloned().collect::<Vec<_>>(), vec!["C".to_string()]);
     }
 }

@@ -207,7 +207,7 @@ mod tests {
         assert_eq!(cone.enums.iter().map(|e| e.value.as_f64().unwrap()).collect::<Vec<_>>(), vec![0.0, 1.0, 3.0]);
         let masked = defs.values().flat_map(|m| m.values()).find(|r| r.bitmask.len() >= 3).unwrap().clone();
         let meta = metadata(&defs, 2, &masked.name, ValueType::Int32);
-        assert!(meta.bitmask && meta.enums.iter().all(|e| e.value.as_i64().unwrap().count_ones() == 1));
+        assert!(meta.bitmask && meta.enums.iter().all(|e| (e.value.as_i64().unwrap() as i32 as u32).count_ones() == 1));
         let gain = metadata(&defs, 2, "ATC_RAT_RLL_P", ValueType::Float);
         assert_eq!(gain.decimal_places, Some(6));
         let unknown = metadata(&defs, 2, "NOPE_X1", ValueType::Int32);

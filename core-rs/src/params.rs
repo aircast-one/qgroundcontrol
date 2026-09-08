@@ -19,6 +19,7 @@ pub enum ParamValue {
     U32(u32),
     I32(i32),
     F32(f32),
+    Unsupported(u8),
 }
 
 impl ParamValue {
@@ -32,6 +33,7 @@ impl ParamValue {
             5 => ParamValue::U32(u32::from_le_bytes(raw)),
             6 => ParamValue::I32(i32::from_le_bytes(raw)),
             9 => ParamValue::F32(bits),
+            7 | 8 | 10 => ParamValue::Unsupported(param_type),
             _ => return None,
         })
     }
@@ -45,6 +47,7 @@ impl ParamValue {
             ParamValue::U32(_) => 5,
             ParamValue::I32(_) => 6,
             ParamValue::F32(_) => 9,
+            ParamValue::Unsupported(t) => t,
         }
     }
 
@@ -57,6 +60,7 @@ impl ParamValue {
             ParamValue::U32(v) => v.to_le_bytes(),
             ParamValue::I32(v) => v.to_le_bytes(),
             ParamValue::F32(v) => v.to_le_bytes(),
+            ParamValue::Unsupported(_) => [0, 0, 0, 0],
         };
         f32::from_le_bytes(bytes)
     }
@@ -70,6 +74,7 @@ impl ParamValue {
             ParamValue::U32(v) => v as f64,
             ParamValue::I32(v) => v as f64,
             ParamValue::F32(v) => v as f64,
+            ParamValue::Unsupported(_) => f64::NAN,
         }
     }
 }
@@ -101,6 +106,9 @@ pub struct Params {
     waiting_index: BTreeMap<u8, BTreeMap<u16, u32>>,
     waiting_read: BTreeMap<u8, BTreeMap<String, u32>>,
     waiting_write: BTreeMap<u8, BTreeMap<String, u32>>,
+    pending_write: BTreeMap<u8, BTreeMap<String, ParamValue>>,
+    write_batch: usize,
+    read_batch: usize,
     failed_index: BTreeMap<u8, Vec<u16>>,
     batch_queue: Vec<u16>,
     batch_active: bool,
@@ -148,32 +156,49 @@ impl Params {
     }
 
     pub fn refresh(&mut self, component: u8, name: &str) -> Vec<Action> {
-        let Some(waiting) = self.waiting_read.get_mut(&component) else { return Vec::new() };
-        waiting.insert(name.to_string(), 0);
+        let waiting = self.waiting_read.entry(component).or_default();
+        if waiting.insert(name.to_string(), 0).is_none() {
+            self.read_batch += 1;
+        }
         vec![self.progress(), Action::StartWaitingTimer, Action::ReadByName { component, name: name.to_string() }]
     }
 
     pub fn write(&mut self, component: u8, name: &str, value: ParamValue) -> Vec<Action> {
-        self.waiting_write.entry(component).or_default().insert(name.to_string(), 0);
-        self.facts.entry(component).or_default().insert(name.to_string(), value);
-        vec![Action::StartWaitingTimer, Action::Set { component, name: name.to_string(), value }]
+        if self.waiting_write.entry(component).or_default().insert(name.to_string(), 0).is_none() {
+            self.write_batch += 1;
+        }
+        self.pending_write.entry(component).or_default().insert(name.to_string(), value);
+        vec![self.progress(), Action::StartWaitingTimer, Action::Set { component, name: name.to_string(), value }]
     }
 
-    fn progress(&self) -> Action {
-        let waiting: usize = self.waiting_index.values().map(BTreeMap::len).sum::<usize>() + self.waiting_read.values().map(BTreeMap::len).sum::<usize>() + self.waiting_write.values().map(BTreeMap::len).sum::<usize>();
-        let total = self.total_count.max(1) as f64;
-        Action::Progress(if waiting == 0 { 0.0 } else { (total - waiting as f64) / total })
+    fn progress(&mut self) -> Action {
+        let waiting_index: usize = self.waiting_index.values().map(BTreeMap::len).sum();
+        let waiting_write: usize = self.waiting_write.values().map(BTreeMap::len).sum();
+        let waiting_read: usize = self.waiting_read.values().map(BTreeMap::len).sum();
+        let fraction = |batch: usize, waiting: usize| batch.saturating_sub(waiting).max(1) as f64 / (batch + 1) as f64;
+        if waiting_index > 0 {
+            return Action::Progress((self.total_count.saturating_sub(waiting_index)) as f64 / self.total_count.max(1) as f64);
+        }
+        if waiting_write > 0 {
+            return Action::Progress(fraction(self.write_batch, waiting_write));
+        }
+        self.write_batch = 0;
+        if waiting_read > 0 {
+            return Action::Progress(fraction(self.read_batch, waiting_read));
+        }
+        self.read_batch = 0;
+        Action::Progress(0.0)
     }
 
     pub fn on_param_value(&mut self, component: u8, name: &str, count: u16, index: u16, value: ParamValue) -> Vec<Action> {
         if index == NO_INDEX && name != HASH_CHECK && self.initial_timer_active {
             return Vec::new();
         }
-        let mut actions = vec![Action::StopInitialTimer, Action::StopWaitingTimer];
         self.initial_timer_active = false;
         if self.px4 && name == HASH_CHECK {
-            return actions;
+            return vec![Action::StopInitialTimer];
         }
+        let mut actions = vec![Action::StopInitialTimer, Action::StopWaitingTimer];
         if !self.counts.contains_key(&component) {
             self.counts.insert(component, count);
             self.total_count += count as usize;
@@ -190,6 +215,7 @@ impl Params {
         }
         self.waiting_read.entry(component).or_default().remove(name);
         self.waiting_write.entry(component).or_default().remove(name);
+        self.pending_write.entry(component).or_default().remove(name);
         let total_waiting: usize = self.waiting_index.values().map(BTreeMap::len).sum::<usize>() + self.waiting_read.values().map(BTreeMap::len).sum::<usize>() + self.waiting_write.values().map(BTreeMap::len).sum::<usize>();
         if total_waiting > 0 || !self.facts.contains_key(&self.default_component) {
             actions.push(Action::StartWaitingTimer);
@@ -252,7 +278,7 @@ impl Params {
                     let retries = waiting.entry(name.clone()).or_insert(0);
                     *retries += 1;
                     if *retries <= MAX_READ_WRITE_RETRY {
-                        let value = self.facts.get(component).and_then(|f| f.get(&name)).copied();
+                        let value = self.pending_write.get(component).and_then(|f| f.get(&name)).copied();
                         if let Some(value) = value {
                             actions.push(Action::Set { component: *component, name: name.clone(), value });
                         }
@@ -333,7 +359,9 @@ mod tests {
         for value in [ParamValue::I32(-7), ParamValue::U8(200), ParamValue::I16(-300), ParamValue::U32(4_000_000_000), ParamValue::F32(1.5)] {
             assert_eq!(ParamValue::decode(value.param_type(), value.encode()), Some(value));
         }
-        assert_eq!(ParamValue::decode(10, 1.0), None);
+        assert_eq!(ParamValue::decode(10, 1.0), Some(ParamValue::Unsupported(10)));
+        assert_eq!(ParamValue::decode(11, 1.0), None);
+        assert!(ParamValue::Unsupported(8).as_f64().is_nan());
         assert_eq!(ParamValue::I8(-1).as_f64(), -1.0);
     }
 
@@ -347,6 +375,22 @@ mod tests {
         assert!(params.ready());
         assert_eq!(params.value(1, "C"), Some(ParamValue::I32(2)));
         assert!(!actions[..actions.len() - 2].contains(&Action::Ready { missing: false }));
+    }
+
+    #[test]
+    fn a_write_before_any_parameter_does_not_make_the_load_ready() {
+        let mut params = Params::new(1, false);
+        params.start();
+        params.write(1, "X", ParamValue::I32(1));
+        assert_eq!(params.on_waiting_timeout(), vec![Action::StartWaitingTimer]);
+        let actions = params.on_waiting_timeout();
+        assert!(!actions.iter().any(|a| matches!(a, Action::Ready { .. })));
+        assert!(actions.contains(&Action::Set { component: 1, name: "X".into(), value: ParamValue::I32(1) }));
+        let mut px4 = Params::new(1, true);
+        px4.start();
+        assert_eq!(px4.on_param_value(1, "_HASH_CHECK", 3, NO_INDEX, ParamValue::U32(7)), vec![Action::StopInitialTimer]);
+        let mut fresh = Params::new(1, false);
+        assert!(fresh.refresh(5, "Y").contains(&Action::ReadByName { component: 5, name: "Y".into() }));
     }
 
     #[test]
@@ -379,7 +423,8 @@ mod tests {
         params.start();
         deliver(&mut params, &["A"], &[]);
         let sent = params.write(1, "A", ParamValue::I32(9));
-        assert_eq!(sent, vec![Action::StartWaitingTimer, Action::Set { component: 1, name: "A".into(), value: ParamValue::I32(9) }]);
+        assert_eq!(sent, vec![Action::Progress(0.5), Action::StartWaitingTimer, Action::Set { component: 1, name: "A".into(), value: ParamValue::I32(9) }]);
+        assert_eq!(params.value(1, "A"), Some(ParamValue::I32(0)));
         let resend = params.on_waiting_timeout();
         assert!(resend.contains(&Action::Set { component: 1, name: "A".into(), value: ParamValue::I32(9) }));
         let ack = params.on_param_value(1, "A", 1, 0, ParamValue::I32(9));

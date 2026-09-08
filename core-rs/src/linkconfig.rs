@@ -52,7 +52,7 @@ pub enum Kind {
     Udp { local_port: u16, hosts: Vec<(String, u16)> },
     Tcp { host: String, port: u16 },
     Bluetooth { device_name: String, address: String },
-    Mock,
+    Mock { firmware_type: i64, vehicle_type: i64, send_status_text: bool, increment_vehicle_id: bool, failure_mode: i64 },
     AirLink,
     LogReplay { file: String },
 }
@@ -110,7 +110,13 @@ fn kind(settings: &BTreeMap<String, Setting>, root: &str, link: LinkKind, defaul
             device_name: text(settings, &key("deviceName")).unwrap_or_default(),
             address: text(settings, &key("address")).or_else(|| text(settings, &key("uuid"))).unwrap_or_default(),
         },
-        LinkKind::Mock => Kind::Mock,
+        LinkKind::Mock => Kind::Mock {
+            firmware_type: number(settings, &key("FirmwareType")).unwrap_or(12),
+            vehicle_type: number(settings, &key("VehicleType")).unwrap_or(2),
+            send_status_text: flag(settings, &key("SendStatusText")),
+            increment_vehicle_id: text(settings, &key("IncrementVehicleId")).map(|v| v == "true" || v == "1").unwrap_or(true),
+            failure_mode: number(settings, &key("FailureMode")).unwrap_or(0),
+        },
         LinkKind::AirLink => Kind::AirLink,
         LinkKind::LogReplay => Kind::LogReplay { file: text(settings, &key("logFilename")).unwrap_or_default() },
     }
@@ -134,7 +140,7 @@ fn link_kind(kind: &Kind) -> LinkKind {
         Kind::Udp { .. } => LinkKind::Udp,
         Kind::Tcp { .. } => LinkKind::Tcp,
         Kind::Bluetooth { .. } => LinkKind::Bluetooth,
-        Kind::Mock => LinkKind::Mock,
+        Kind::Mock { .. } => LinkKind::Mock,
         Kind::AirLink => LinkKind::AirLink,
         Kind::LogReplay { .. } => LinkKind::LogReplay,
     }
@@ -158,7 +164,14 @@ fn entries(root: &str, kind: &Kind) -> Vec<(String, String)> {
             .collect(),
         Kind::Tcp { host, port } => vec![key("host", host.clone()), key("port", port.to_string())],
         Kind::Bluetooth { device_name, address } => vec![key("deviceName", device_name.clone()), key("address", address.clone())],
-        Kind::Mock | Kind::AirLink => Vec::new(),
+        Kind::Mock { firmware_type, vehicle_type, send_status_text, increment_vehicle_id, failure_mode } => vec![
+            key("FirmwareType", firmware_type.to_string()),
+            key("VehicleType", vehicle_type.to_string()),
+            key("SendStatusText", send_status_text.to_string()),
+            key("IncrementVehicleId", increment_vehicle_id.to_string()),
+            key("FailureMode", failure_mode.to_string()),
+        ],
+        Kind::AirLink => Vec::new(),
         Kind::LogReplay { file } => vec![key("logFilename", file.clone())],
     }
 }
@@ -208,7 +221,7 @@ mod tests {
             LinkConfig { name: "Field UDP".into(), auto_connect: true, high_latency: false, kind: Kind::Udp { local_port: 14550, hosts: vec![("192.168.4.1".into(), 14550), ("10.0.0.2".into(), 14551)] } },
             LinkConfig { name: "SITL".into(), auto_connect: false, high_latency: false, kind: Kind::Tcp { host: "127.0.0.1".into(), port: 5760 } },
             LinkConfig { name: "Radio".into(), auto_connect: true, high_latency: true, kind: Kind::Serial { baud: 57600, data_bits: 8, flow_control: 0, stop_bits: 1, parity: 0, port_name: "cu.usbserial".into(), port_display_name: "USB Serial".into() } },
-            LinkConfig { name: "Mock".into(), auto_connect: false, high_latency: false, kind: Kind::Mock },
+            LinkConfig { name: "Mock".into(), auto_connect: false, high_latency: false, kind: Kind::Mock { firmware_type: 3, vehicle_type: 1, send_status_text: true, increment_vehicle_id: false, failure_mode: 0 } },
             LinkConfig { name: "Replay".into(), auto_connect: false, high_latency: false, kind: Kind::LogReplay { file: "/tmp/mav.tlog".into() } },
         ];
         let saved = save(&configs, &table);
@@ -216,7 +229,10 @@ mod tests {
         assert_eq!(saved[&format!("{ROOT}/Link0/type")], Setting::Text("1".into()));
         assert_eq!(saved[&format!("{ROOT}/Link2/high_latency")], Setting::Text("true".into()));
         let loaded = load(&saved, &table, &defaults());
-        assert_eq!(loaded, configs.iter().filter(|c| c.kind != Kind::Mock).cloned().collect::<Vec<_>>());
+        assert_eq!(loaded, configs.iter().filter(|c| !matches!(c.kind, Kind::Mock { .. })).cloned().collect::<Vec<_>>());
+        let debug = TypeTable::new(true, false, true, false);
+        let mock_only: Vec<LinkConfig> = configs.iter().filter(|c| matches!(c.kind, Kind::Mock { .. })).cloned().collect();
+        assert_eq!(load(&save(&mock_only, &debug), &debug, &defaults()), mock_only);
     }
 
     #[test]
