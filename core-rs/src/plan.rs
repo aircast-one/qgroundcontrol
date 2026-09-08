@@ -1,5 +1,6 @@
 use serde_json::{Value, json};
 
+use crate::read::{flag, object, result_integer};
 use crate::router::Backend;
 
 pub const DEPS: &[&str] = &[
@@ -24,8 +25,8 @@ pub fn plan_view(backend: &dyn Backend, _args: &[String]) -> Value {
     let has_mission_items = flag(&mission, "containsItems");
     let file = plan.get("currentPlanFile").and_then(Value::as_str).unwrap_or("");
     let name = file.rsplit('/').next().filter(|n| !n.is_empty());
-    let readiness = result(&backend.invoke("plan.readyForSaveState", "[]"));
-    let upload = result(&backend.invoke("plan.missionController.sendToVehiclePreCheck", "[]"));
+    let readiness = result_integer(&backend.invoke("plan.readyForSaveState", "[]"));
+    let upload = result_integer(&backend.invoke("plan.missionController.sendToVehiclePreCheck", "[]"));
     json!({
         "kind": "object",
         "class": "PlanStatus",
@@ -92,19 +93,6 @@ fn status_text(name: Option<&str>, dirty: bool, offline: bool) -> String {
         (Some(n), true, true) => format!("{n} \u{b7} unsaved changes"),
         (Some(n), true, false) => format!("{n} \u{b7} not uploaded"),
     }
-}
-
-fn object(json: &str) -> Value {
-    serde_json::from_str(json).unwrap_or(Value::Null)
-}
-
-fn flag(object: &Value, key: &str) -> bool {
-    object.get(key).and_then(Value::as_bool).unwrap_or(false)
-}
-
-fn result(json: &str) -> Option<i64> {
-    let reply = object(json);
-    (reply.get("ok") == Some(&Value::Bool(true))).then(|| reply.get("result")?.as_i64()).flatten()
 }
 
 #[cfg(test)]

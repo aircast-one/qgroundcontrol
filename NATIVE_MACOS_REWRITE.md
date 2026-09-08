@@ -541,6 +541,8 @@ About 58 developer-weeks. Flight-test time, not code, is the schedule.
 - 2026-09-08: `view.guidedAltitude` and `view.guidedAltitude(target)` — range in the operator's unit with metres
   alongside, the delta to send, the 0.01 m firmware threshold, and the confirm sentence. View paths may carry
   arguments in parentheses.
+- 2026-09-08: `view.guidedTakeoff(target)` and `view.guidedSpeed(target)` — the remaining guided value ranges;
+  speed carries the vehicle method name to invoke.
 
 ### Stream F · Core
 

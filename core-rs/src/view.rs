@@ -6,6 +6,9 @@ use crate::altitude;
 use crate::guided;
 use crate::messages;
 use crate::plan;
+use crate::read::value_string;
+use crate::speed;
+use crate::takeoff;
 use crate::router::Backend;
 
 pub struct View {
@@ -19,6 +22,8 @@ pub const VIEWS: &[View] = &[
     View { path: "view.plan", deps: plan::DEPS, compute: plan::plan_view },
     View { path: "view.guidedActions", deps: guided::DEPS, compute: guided::guided_view },
     View { path: "view.guidedAltitude", deps: altitude::DEPS, compute: altitude::altitude_view },
+    View { path: "view.guidedTakeoff", deps: takeoff::DEPS, compute: takeoff::takeoff_view },
+    View { path: "view.guidedSpeed", deps: speed::DEPS, compute: speed::speed_view },
 ];
 
 pub fn owns(path: &str) -> bool {
@@ -67,9 +72,3 @@ fn messages_view(backend: &dyn Backend, _args: &[String]) -> Value {
     json!({ "kind": "object", "class": "VehicleMessages", "count": items.len(), "items": items })
 }
 
-fn value_string(json: &str) -> String {
-    serde_json::from_str::<Value>(json)
-        .ok()
-        .and_then(|value| value.get("value")?.as_str().map(str::to_owned))
-        .unwrap_or_default()
-}

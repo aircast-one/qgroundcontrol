@@ -173,3 +173,22 @@ void QGCCoreCTest::_guidedAltitudeTakesATarget()
     QCOMPARE(same.value(QStringLiteral("sends")).toBool(true), false);
     QVERIFY(same.value(QStringLiteral("sentence")).toString().contains(QStringLiteral("will not move")));
 }
+
+void QGCCoreCTest::_takeoffAndSpeedRangesFollowTheVehicle()
+{
+    QCOMPARE(take(qgc_bridge_get("view.guidedTakeoff")).value(QStringLiteral("available")).toBool(true), false);
+    QCOMPARE(take(qgc_bridge_get("view.guidedSpeed")).value(QStringLiteral("available")).toBool(true), false);
+
+    _connectMockLink(MAV_AUTOPILOT_PX4);
+    QTRY_COMPARE_WITH_TIMEOUT(take(qgc_bridge_get("view.guidedTakeoff")).value(QStringLiteral("available")).toBool(false), true, 5000);
+    const QJsonObject takeoff = take(qgc_bridge_get("view.guidedTakeoff(5)"));
+    QVERIFY(takeoff.value(QStringLiteral("minimumMeters")).toDouble() > 0);
+    QVERIFY(takeoff.value(QStringLiteral("sentence")).toString().startsWith(QStringLiteral("The aircraft will take off")));
+
+    QTRY_COMPARE_WITH_TIMEOUT(take(qgc_bridge_get("view.guidedSpeed")).value(QStringLiteral("available")).toBool(false), true, 5000);
+    const QJsonObject speed = take(qgc_bridge_get("view.guidedSpeed(3)"));
+    QCOMPARE(speed.value(QStringLiteral("label")).toString(), QStringLiteral("Ground speed"));
+    QCOMPARE(speed.value(QStringLiteral("command")).toString(), QStringLiteral("guidedModeChangeGroundSpeedMetersSecond"));
+    QVERIFY(speed.value(QStringLiteral("targetMetersSecond")).toDouble() > 0);
+    QVERIFY(!speed.value(QStringLiteral("unit")).toString().isEmpty());
+}

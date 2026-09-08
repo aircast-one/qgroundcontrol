@@ -17,4 +17,5 @@ private slots:
     void _planViewFollowsTheVehicle();
     void _guidedActionsFollowTheVehicle();
     void _guidedAltitudeTakesATarget();
+    void _takeoffAndSpeedRangesFollowTheVehicle();
 };

@@ -4,6 +4,9 @@ mod altitude;
 mod guided;
 mod messages;
 mod plan;
+mod read;
+mod speed;
+mod takeoff;
 mod router;
 mod view;
 

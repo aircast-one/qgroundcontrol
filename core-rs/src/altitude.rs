@@ -1,5 +1,6 @@
 use serde_json::{Value, json};
 
+use crate::read::{Unit, value_number};
 use crate::router::Backend;
 
 pub const DEPS: &[&str] = &[
@@ -18,50 +19,45 @@ struct Range {
 }
 
 pub fn altitude_view(backend: &dyn Backend, args: &[String]) -> Value {
-    let factor = result_number(&backend.invoke("units.metersToAppSettingsVerticalDistanceUnits", "[1.0]"))
-        .filter(|f| f.is_finite() && *f > 0.0)
-        .unwrap_or(1.0);
-    let unit = object(&backend.get_fields("units", "appSettingsVerticalDistanceUnitsString"))
-        .get("appSettingsVerticalDistanceUnitsString")
-        .and_then(Value::as_str)
-        .filter(|u| !u.is_empty())
-        .unwrap_or("m")
-        .to_string();
+    let unit = Unit::vertical(backend);
     let range = range_meters(backend);
     let target = args.first().and_then(|a| a.parse::<f64>().ok()).filter(|t| t.is_finite());
     let base = json!({
         "kind": "object",
         "class": "GuidedAltitude",
         "available": range.is_some(),
-        "unit": unit,
-        "current": range.as_ref().map(|r| r.current * factor),
-        "minimum": range.as_ref().map(|r| r.minimum * factor),
-        "maximum": range.as_ref().map(|r| r.maximum * factor),
+        "unit": unit.name,
+        "current": range.as_ref().map(|r| unit.show(r.current)),
+        "minimum": range.as_ref().map(|r| unit.show(r.minimum)),
+        "maximum": range.as_ref().map(|r| unit.show(r.maximum)),
         "currentMeters": range.as_ref().map(|r| r.current),
     });
     match (range, target) {
-        (Some(range), Some(target)) => with_target(base, &range, target, factor, &unit),
+        (Some(range), Some(target)) => merge(base, with_target(&range, target, &unit)),
         _ => base,
     }
 }
 
-fn with_target(base: Value, range: &Range, target: f64, factor: f64, unit: &str) -> Value {
-    let target_meters = target / factor;
+fn with_target(range: &Range, target: f64, unit: &Unit) -> Value {
+    let target_meters = unit.meters(target);
     let delta_meters = target_meters - range.current;
     let sends = delta_meters.abs() >= SMALLEST_CHANGE_METERS;
     let sentence = match (sends, delta_meters > 0.0) {
-        (false, _) => format!("The aircraft is already at {:.1} {unit} and will not move.", range.current * factor),
-        (true, true) => format!("The aircraft will climb {:.1} {unit} to {:.1} {unit}.", delta_meters * factor, target),
-        (true, false) => format!("The aircraft will descend {:.1} {unit} to {:.1} {unit}.", -delta_meters * factor, target),
+        (false, _) => format!("The aircraft is already at {} and will not move.", unit.label(range.current)),
+        (true, true) => format!("The aircraft will climb {} to {}.", unit.label(delta_meters), unit.label(target_meters)),
+        (true, false) => format!("The aircraft will descend {} to {}.", unit.label(-delta_meters), unit.label(target_meters)),
     };
-    let extra = json!({
+    json!({
         "target": target,
         "targetMeters": target_meters,
-        "delta": delta_meters * factor,
+        "delta": unit.show(delta_meters),
         "deltaMeters": delta_meters,
         "sends": sends,
         "sentence": sentence,
-    });
+    })
+}
+
+pub fn merge(base: Value, extra: Value) -> Value {
     match (base, extra) {
         (Value::Object(map), Value::Object(more)) => Value::Object(map.into_iter().chain(more).collect()),
         (base, _) => base,
@@ -73,19 +69,6 @@ fn range_meters(backend: &dyn Backend) -> Option<Range> {
     let minimum = value_number(&backend.get("settings.flyViewSettings.guidedMinimumAltitude.rawValue"))?;
     let maximum = value_number(&backend.get("settings.flyViewSettings.guidedMaximumAltitude.rawValue"))?;
     (maximum > minimum).then(|| Range { current, minimum: minimum.min(current), maximum: maximum.max(current) })
-}
-
-fn object(json: &str) -> Value {
-    serde_json::from_str(json).unwrap_or(Value::Null)
-}
-
-fn value_number(json: &str) -> Option<f64> {
-    object(json).get("value")?.as_f64().filter(|v| v.is_finite())
-}
-
-fn result_number(json: &str) -> Option<f64> {
-    let reply = object(json);
-    (reply.get("ok") == Some(&Value::Bool(true))).then(|| reply.get("result")?.as_f64()).flatten()
 }
 
 #[cfg(test)]

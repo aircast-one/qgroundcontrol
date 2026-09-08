@@ -1,6 +1,7 @@
 use serde::Serialize;
 use serde_json::{Value, json};
 
+use crate::read::{fact_flag, flag, integer, object, text};
 use crate::router::Backend;
 
 pub const DEPS: &[&str] = &[
@@ -237,7 +238,7 @@ fn read_state(backend: &dyn Backend) -> GuidedState {
     let same_mode = |key: &str| !mode.is_empty() && text(&vehicle, key) == mode;
     let use_checklist = fact_flag(&app, "useChecklist");
     let enforce_checklist = fact_flag(&app, "enforceChecklist");
-    let checklist_passed = !use_checklist || !enforce_checklist || number(&vehicle, "checkListState") == Some(CHECKLIST_PASSED);
+    let checklist_passed = !use_checklist || !enforce_checklist || integer(&vehicle, "checkListState") == Some(CHECKLIST_PASSED);
     let report_supported = flag(&report, "supported");
     let gate = |key: &str| checklist_passed && (!report_supported || flag(&report, key));
     let fixed_wing = flag(&vehicle, "fixedWing");
@@ -264,35 +265,9 @@ fn read_state(backend: &dyn Backend) -> GuidedState {
         can_takeoff: gate("canTakeoff"),
         can_start_mission: gate("canStartMission"),
         mission_available: flag(&mission, "containsItems"),
-        mission_item_count: number(&mission, "missionItemCount").unwrap_or(0),
-        current_mission_index: number(&mission, "currentMissionIndex").unwrap_or(-1),
+        mission_item_count: integer(&mission, "missionItemCount").unwrap_or(0),
+        current_mission_index: integer(&mission, "currentMissionIndex").unwrap_or(-1),
     }
-}
-
-fn object(json: &str) -> Value {
-    serde_json::from_str(json).unwrap_or(Value::Null)
-}
-
-fn flag(object: &Value, key: &str) -> bool {
-    object.get(key).and_then(Value::as_bool).unwrap_or(false)
-}
-
-fn number(object: &Value, key: &str) -> Option<i64> {
-    object.get(key).and_then(Value::as_i64)
-}
-
-fn text(object: &Value, key: &str) -> String {
-    object.get(key).and_then(Value::as_str).unwrap_or("").to_string()
-}
-
-fn fact_flag(object: &Value, name: &str) -> bool {
-    object
-        .get("facts")
-        .and_then(Value::as_array)
-        .and_then(|facts| facts.iter().find(|f| f.get("name").and_then(Value::as_str) == Some(name)))
-        .and_then(|f| f.get("value"))
-        .map(|v| v.as_bool().unwrap_or(v.as_i64().unwrap_or(0) != 0))
-        .unwrap_or(false)
 }
 
 #[cfg(test)]
