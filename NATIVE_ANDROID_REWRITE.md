@@ -170,6 +170,19 @@ shipped the GL bin to both and broke macOS silently — it compiles either way, 
 video is parked waiting for a stream, so nothing would have complained for a long time.
 Checking who called `qgc_video_copy_frame` before deleting it is what caught it.
 
+**Video and telemetry together: no interference found, and the instrument cannot see one.**
+Everything until now had been tested one at a time — video with no vehicle, the vehicle with
+no video — so the Fly tab's actual condition was untested. Running both: the vehicle connects
+and reports, the ball renders, and **zero** bridge calls exceeded the 250 ms warning threshold
+across the run.
+
+Sampling screenshots suggested the ball froze for several seconds at a time, which looked
+like telemetry starving video. **The control run says otherwise** — with the vehicle stopped
+and only video running, the ball sits at the same centroid for four consecutive samples too.
+So `adb exec-out screencap` is not a frame-rate instrument for a `SurfaceView`; it shows the
+video is live and says nothing about its rate. Measuring that needs a counter in the pipeline,
+not pixels. Recorded because the wrong conclusion was one unrun control away.
+
 **The inset is not the product.** It sits in the Fly tab corner and says "No video"
 until a stream starts. While the QML view still owns that tab, the operator can see
 video twice — QML's own inset and this one — which is the price of proving the pipeline
