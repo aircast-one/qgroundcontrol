@@ -523,7 +523,22 @@ uses the same four numbers and an equivalent formula, and both read the same fac
 transform, so the charts cannot disagree. Unit tests pin the constants against QGC's, and
 setting the maximum to 100 fails two of them.
 
-The remaining half — log download from real hardware — still needs the vehicle.
+The remaining half — log download from real hardware — still needs the vehicle. **The
+software half of it is now proven, which it was not before.** The screen had only ever been
+seen against a vehicle with no logs, so nothing distinguished "works and the list is empty"
+from "never worked". Teaching the sim the log-download protocol showed the whole path: the
+list arrives with sizes and timestamps, selecting one and downloading shows a progress bar
+and a transfer rate, the row turns from Available to Downloaded, and a file lands in the log
+directory. The bytes were checked rather than the file's existence - 4096 of them, matching
+the pattern the sim generated exactly.
+
+That leaves a genuinely smaller gap: whether a real autopilot's log sizes, timing and
+failure modes behave the same. It does not close the gate, because a sim that answers every
+request promptly proves nothing about a vehicle that stalls mid-transfer.
+
+One protocol detail the sim got wrong first and is worth keeping: ArduPilot log ids are
+1-based. Sending ids 0 and 1 with `last_log_num` 1 made QGC re-request `2..2` forever,
+because it counts the last id rather than the number of entries.
 
 ## Phase 3 — Vehicle Setup · 5 weeks
 
