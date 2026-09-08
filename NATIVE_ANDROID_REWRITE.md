@@ -1146,6 +1146,24 @@ Caution was a hard amber; High was `colorScheme.error`, which in this dark theme
 pink meant for text on a surface rather than for filling a shape. The most serious band was
 the least alarming thing on the screen. High is a saturated red now.
 
+**The first head logic is gone, replaced by the core.** `TelemetryRow` reads
+`view.instruments`; `telemetryLabel` and `telemetryValue` are deleted. The view serves each
+reading already formatted with its label, units and a missing flag, so the head joins a value
+to its units and draws. Verified against the sim: 25.0 m, 8.1 m/s, 1.2 m/s, --.-- m, 268 deg,
+120.0 m.
+
+Two things came out of doing it. The row **wraps** now, because the count belongs to the core
+and not to the head: the no-argument view serves six instruments where this row had hardcoded
+four, and six in a fixed row collided - "Ground SpeedClimb Rate" ran together and the sixth
+spilled off the edge. A head that assumes a served list's length is a head that breaks when
+the core changes its mind.
+
+And **multi-argument view paths cannot be watched yet**. `qgc_qt_watch` splits its path list on
+commas, so `view.instruments(a,b,c,d)` is shredded into four fragments that resolve to nothing
+and the row renders empty. That is how the failure presents - not an error, an empty screen -
+which is why the first migration was chosen to be one whose absence is visible. Reported; the
+no-argument form has no commas and is correct meanwhile.
+
 **The Rust core runs on the handset.** The first AAR built with `QGC_RUST_CORE` on (cargo-ndk
 cross-compiling `libqgc_core.a` into `libAircastQGC`) starts, and the whole regression passes
 against it: battery, RC, sats, HDOP, the vibration bands, four status texts, the log list and
