@@ -87,6 +87,8 @@ struct MissionMap: NSViewRepresentable {
     var corridors: [[GeoPoint]] = []
     var focus: MapFrame?
     var overlays = FlyOverlays.none
+    var follow = false
+    var tracking = false
 
     func makeNSView(context: Context) -> MKMapView {
         let map = MKMapView()
@@ -193,6 +195,32 @@ struct MissionMap: NSViewRepresentable {
         let anchored = framable.isEmpty
             ? vehicle.map { [CLLocationCoordinate2D(latitude: $0.latitude, longitude: $0.longitude)] } ?? []
             : framable
+
+        if tracking, let marker = vehicle {
+            let target = CLLocationCoordinate2D(latitude: marker.latitude,
+                                                longitude: marker.longitude)
+            let inset = MapInsets(top: padding.top, left: padding.left,
+                                  bottom: padding.bottom, right: padding.right)
+            let screen = map.convert(target, toPointTo: map)
+            let point = MapPoint(x: screen.x, y: screen.y)
+            let width = map.bounds.width
+            let height = map.bounds.height
+
+            if MapFollow.follows(setting: follow, tracking: true) {
+                map.setCenter(target, animated: false)
+                MissionMap.recordCentre(owner: owner, map: map)
+                return
+            }
+            if MapFollow.nudges(setting: follow, tracking: true),
+               MapFollow.needsRecentre(vehicle: point, width: width, height: height,
+                                       insets: inset),
+               let shift = MapFollow.offset(width: width, height: height, insets: inset) {
+                let moved = CGPoint(x: screen.x + shift.x, y: screen.y + shift.y)
+                map.setCenter(map.convert(moved, toCoordinateFrom: map), animated: false)
+                MissionMap.recordCentre(owner: owner, map: map)
+                return
+            }
+        }
 
         if let focus, focus != context.coordinator.lastFocus {
             context.coordinator.lastFocus = focus

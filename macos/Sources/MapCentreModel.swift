@@ -5,6 +5,7 @@ struct MapCentreState: Equatable {
     var otherPoints: [GeoPoint] = []
     var launch: GeoPoint?
     var vehicle: GeoPoint?
+    var gcs: GeoPoint?
 
     var allPoints: [GeoPoint] { missionPoints + otherPoints }
 }
@@ -14,6 +15,7 @@ enum MapCentre: String, CaseIterable, Identifiable {
     case allItems
     case launch
     case vehicle
+    case myLocation
     case coordinates
 
     var id: String { rawValue }
@@ -24,6 +26,7 @@ enum MapCentre: String, CaseIterable, Identifiable {
         case .allItems: return "Everything"
         case .launch: return "Launch"
         case .vehicle: return "Vehicle"
+        case .myLocation: return "My Location"
         case .coordinates: return "Coordinates\u{2026}"
         }
     }
@@ -34,6 +37,7 @@ enum MapCentre: String, CaseIterable, Identifiable {
         case .allItems: return !state.allPoints.isEmpty
         case .launch: return state.launch != nil
         case .vehicle: return state.vehicle != nil
+        case .myLocation: return state.gcs != nil
         case .coordinates: return true
         }
     }
@@ -45,10 +49,19 @@ enum MapCentre: String, CaseIterable, Identifiable {
         case .allItems: points = state.allPoints
         case .launch: points = state.launch.map { [$0] } ?? []
         case .vehicle: points = state.vehicle.map { [$0] } ?? []
+        case .myLocation: points = state.gcs.map { [$0] } ?? []
         case .coordinates: return nil
         }
         guard !points.isEmpty else { return nil }
         return MapFrame(latitudes: points.map(\.latitude), longitudes: points.map(\.longitude))
+    }
+
+    static func usable(_ coordinate: [String: Any]?) -> GeoPoint? {
+        guard let coordinate,
+              (coordinate["valid"] as? NSNumber)?.boolValue ?? true,
+              let point = GeoPoint(json: coordinate),
+              point.latitude != 0 || point.longitude != 0 else { return nil }
+        return point
     }
 
     static func frame(latitude: Double, longitude: Double) -> MapFrame? {

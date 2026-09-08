@@ -151,6 +151,7 @@ final class MapClickStore: ObservableObject, Probeable {
          "menuOpen": openAt != nil,
          "confirming": confirming?.action.title ?? "",
          "lastSent": lastSent,
+         "map": MissionMap.lastRender["fly"] ?? [:],
          "overlays": ["orbit": overlays.showsOrbit, "roi": overlays.roiActive,
                       "goto": overlays.showsGoto, "summary": overlays.summary,
                       "roiNote": overlays.roiNote]]

@@ -40,9 +40,15 @@ final class FlyStore: ObservableObject, Probeable {
         poll = nil
     }
 
+    @Published private(set) var keepCentered = false
+
     func refresh() {
         let muted = (Bridge.group("settings.appSettings.audioMuted")["value"] as? NSNumber)?.boolValue ?? false
         if muted != audioMuted { audioMuted = muted }
+
+        let centred = (Bridge.group("settings.flyViewSettings.keepMapCenteredOnVehicle")["value"]
+            as? NSNumber)?.boolValue ?? false
+        if centred != keepCentered { keepCentered = centred }
 
         let vehicle = Bridge.group("vehicle")
         guard vehicle["kind"] as? String == "object" else {
@@ -212,6 +218,7 @@ final class FlyStore: ObservableObject, Probeable {
         ["connected": connected, "mode": telemetry.mode, "state": telemetry.stateText,
          "altitude": telemetry.altitudeText,
          "groundSpeed": telemetry.groundSpeedText,
+         "keepCentered": keepCentered,
          "heading": FlyTelemetry.degrees(telemetry.heading),
          "battery": telemetry.batteryText, "gps": telemetry.gpsText,
          "placed": position != nil,

@@ -720,7 +720,9 @@ struct FlyView: View {
                        padding: NSEdgeInsets(top: 56, left: 24, bottom: 40, right: 352),
                        select: { _ in }, adding: false, add: { _, _ in }, move: { _, _, _ in },
                        secondary: { mapClick.open(latitude: $0, longitude: $1) },
-                       overlays: mapClick.overlays)
+                       overlays: mapClick.overlays,
+                       follow: fly.keepCentered,
+                       tracking: fly.position != nil)
                 .ignoresSafeArea()
 
             VStack(spacing: Overlay.step) {

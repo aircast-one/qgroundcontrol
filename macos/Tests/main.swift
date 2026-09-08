@@ -2239,6 +2239,8 @@ checkTerrainUnits()
 checkMotorTest()
 checkMapClick()
 checkMapCentre()
+checkMapFollow()
+checkMyLocation()
 checkFlyOverlays()
 checkSetupPages()
 checkRemoteSupport()
@@ -2573,4 +2575,77 @@ func checkFlyOverlays() {
         radius: 60, orbitActive: true, roiActive: true)
     everything.goingTo = GeoPoint(latitude: -35.36, longitude: 149.16)
     expect(everything.summary, "orbit, look-at, fly-to", "all three read out together")
+}
+
+func checkMapFollow() {
+    let insets = MapInsets(top: 56, left: 24, bottom: 40, right: 352)
+    let rect = MapFollow.centreRect(width: 1000, height: 700, insets: insets)
+    expect(rect == MapRect(x: 24, y: 56, width: 624, height: 604),
+           "the area the panels leave clear is what the vehicle has to stay inside")
+    expect(MapFollow.centreRect(width: 300, height: 700, insets: insets) == nil,
+           "a window narrower than its own panels leaves no area at all")
+    expect(MapFollow.centreRect(width: 0, height: 0, insets: insets) == nil,
+           "and neither does one that has not been laid out yet")
+
+    expect(!MapFollow.needsRecentre(vehicle: MapPoint(x: 300, y: 300),
+                                    width: 1000, height: 700, insets: insets),
+           "a vehicle in the clear area is left where it is, so a pan is not fought")
+    expect(MapFollow.needsRecentre(vehicle: MapPoint(x: 800, y: 300),
+                                   width: 1000, height: 700, insets: insets),
+           "one that has drifted under the side panel is pulled back")
+    expect(MapFollow.needsRecentre(vehicle: MapPoint(x: 300, y: 20),
+                                   width: 1000, height: 700, insets: insets),
+           "so is one above the top inset")
+    expect(MapFollow.needsRecentre(vehicle: MapPoint(x: 300, y: 690),
+                                   width: 1000, height: 700, insets: insets),
+           "and one below the bottom")
+    expect(!MapFollow.needsRecentre(vehicle: nil, width: 1000, height: 700, insets: insets),
+           "a vehicle that has reported no position moves nothing")
+    expect(!MapFollow.needsRecentre(vehicle: MapPoint(x: .nan, y: 300),
+                                    width: 1000, height: 700, insets: insets),
+           "nor one that projects to nowhere")
+
+    let shift = MapFollow.offset(width: 1000, height: 700, insets: insets)
+    expect(shift == MapPoint(x: 164, y: -8),
+           "the recentre aims at the middle of the clear area, not the middle of the window")
+    expect(MapFollow.offset(width: 0, height: 0, insets: insets) == nil,
+           "with no clear area there is nowhere to aim")
+    expect(MapFollow.offset(width: 1000, height: 700, insets: .none) == MapPoint(x: 0, y: 0),
+           "and with no panels the two middles are the same place")
+
+    expect(MapFollow.follows(setting: true, tracking: true),
+           "with the setting on the map follows the vehicle")
+    expect(!MapFollow.follows(setting: true, tracking: false),
+           "but not before the vehicle has a position")
+    expect(!MapFollow.follows(setting: false, tracking: true), "and not with the setting off")
+    expect(MapFollow.nudges(setting: false, tracking: true),
+           "with it off the map only pulls back when the vehicle leaves the clear area")
+    expect(!MapFollow.nudges(setting: true, tracking: true),
+           "the two behaviours never both apply")
+    expect(!MapFollow.nudges(setting: false, tracking: false), "and neither applies with no vehicle")
+}
+
+func checkMyLocation() {
+    var state = MapCentreState()
+    expect(!MapCentre.myLocation.enabled(in: state),
+           "with no ground station position My Location cannot be centred on")
+    state.gcs = GeoPoint(latitude: 51.5074, longitude: -0.1278)
+    expect(MapCentre.myLocation.enabled(in: state), "with one it can")
+    expect(MapCentre.myLocation.frame(in: state) != nil, "and it gives a frame")
+
+    expect(MapCentre.usable(["valid": false as NSNumber,
+                             "latitude": 51.5 as NSNumber,
+                             "longitude": -0.1 as NSNumber]) == nil,
+           "a coordinate the bridge calls invalid is not used even though its numbers look fine")
+    expect(MapCentre.usable(["valid": true as NSNumber,
+                             "latitude": 0 as NSNumber,
+                             "longitude": 0 as NSNumber]) == nil,
+           "and null island is rejected on the numbers, because QGeoCoordinate(0,0) calls itself valid")
+    expect(MapCentre.usable(["valid": true as NSNumber,
+                             "latitude": 51.5074 as NSNumber,
+                             "longitude": -0.1278 as NSNumber]) != nil,
+           "a real position passes both tests")
+    expect(MapCentre.usable(nil) == nil, "and a nested coordinate that came back null is no position")
+    expect(MapCentre.usable(["latitude": 51.5 as NSNumber, "longitude": -0.1 as NSNumber]) != nil,
+           "a coordinate with no valid key at all is judged on its numbers rather than discarded")
 }

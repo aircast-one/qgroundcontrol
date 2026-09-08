@@ -484,6 +484,7 @@ final class MissionStore: ObservableObject, Probeable {
             guard marker.latitude != 0 || marker.longitude != 0 else { return nil }
             return GeoPoint(latitude: marker.latitude, longitude: marker.longitude)
         }
+        read.gcs = MapCentre.usable(Bridge.group("positionManager.gcsPosition"))
         return read
     }
 
