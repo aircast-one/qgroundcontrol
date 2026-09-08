@@ -708,14 +708,27 @@ void QGCBridgeCoreTest::_aProjectedReadIsSmallerAndKeepsWhatWasAsked()
     clock.start();
     const QString whole = QGCBridgeCore::get(path);
     const qint64 wholeUs = clock.nsecsElapsed() / 1000;
+
+    // Every plain property the full read produced, so this isolates fact compaction
+    // from the field list: same fields, compact facts.
+    const QJsonObject sample = parse(whole).value(QStringLiteral("elements")).toArray().at(1).toObject();
+    const QString allFields = QStringList(sample.keys()).join(QLatin1Char(','));
+    clock.restart();
+    const QString factsOnly = QGCBridgeCore::getFields(path, allFields);
+    const qint64 factsOnlyUs = clock.nsecsElapsed() / 1000;
+
     clock.restart();
     const QString projected = QGCBridgeCore::getFields(path, wanted);
     const qint64 projectedUs = clock.nsecsElapsed() / 1000;
 
-    qDebug() << "PROJECTION bytes" << whole.size() << "->" << projected.size()
-             << "| micros" << wholeUs << "->" << projectedUs
-             << "| size" << (whole.size() ? (100 * projected.size() / whole.size()) : 0) << "%"
-             << "| time" << (wholeUs ? (100 * projectedUs / wholeUs) : 0) << "%";
+    qDebug() << "SPLIT whole" << whole.size() << "b" << wholeUs << "us"
+             << "| compact-facts-only" << factsOnly.size() << "b" << factsOnlyUs << "us"
+             << "| +field-list" << projected.size() << "b" << projectedUs << "us";
+
+    // The facts are the weight, not the field count: compacting them alone has to carry
+    // most of the saving, or the field list is doing work it should not need to.
+    QVERIFY2(factsOnly.size() * 2 < whole.size(),
+             qPrintable(QStringLiteral("compact facts %1 vs whole %2").arg(factsOnly.size()).arg(whole.size())));
 
     QVERIFY2(projected.size() * 2 < whole.size(),
              qPrintable(QStringLiteral("projected %1 vs whole %2").arg(projected.size()).arg(whole.size())));
