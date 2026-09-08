@@ -26,6 +26,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import one.aircast.android.bridge.Qgc
 import one.aircast.android.bridge.offMainDetached
+import one.aircast.android.bridge.qgcBool
 import one.aircast.android.bridge.qgcString
 
 private const val RC_CONTROLS_FACT = "settings.flyViewSettings.rcControls"
@@ -103,9 +104,18 @@ private fun RcSwitch3(control: RcControl) {
 private fun RcMomentary(control: RcControl) {
     val interactions = remember(control.channel) { MutableInteractionSource() }
     val pressed by interactions.collectIsPressedAsState()
+    var everPressed by remember(control.channel) { mutableStateOf(false) }
 
+    // Without the latch this drives the channel to its minimum the moment the control
+    // appears, which is a command the operator never gave.
     LaunchedEffect(pressed) {
-        sendOverride(control.channel, if (pressed) PWM_MAX else PWM_MIN)
+        when {
+            pressed -> {
+                everPressed = true
+                sendOverride(control.channel, PWM_MAX)
+            }
+            everPressed -> sendOverride(control.channel, PWM_MIN)
+        }
     }
 
     Button(onClick = {}, interactionSource = interactions) { Text(control.label) }
@@ -113,10 +123,13 @@ private fun RcMomentary(control: RcControl) {
 
 @Composable
 fun RcControlsLayer(modifier: Modifier = Modifier) {
+    val hasVehicle by qgcBool("vehicles.activeVehicleAvailable")
     val configured by qgcString(RC_CONTROLS_FACT)
     val controls = remember(configured) { parseRcControls(configured) }
 
-    if (controls.isEmpty()) {
+    // Every one of these sends to a vehicle. Drawn without one they look live and do
+    // nothing, which is worse than not being drawn.
+    if (controls.isEmpty() || !hasVehicle) {
         return
     }
 
