@@ -680,6 +680,16 @@ across plan shapes: a payload reduction is not a latency reduction, and which
 one flatters the other depends on what the items are. Quote whichever you
 measured, for the shape you measured it on.
 
+End to end, the whole poll at 200 items, twelve samples each side against the
+same plan:
+
+    before   min 252   median 278   max 386 ms
+    after    min 141   median 159   max 220 ms
+
+Both sides sampled the same way, because the first comparison I had was three
+samples against twelve and would have read as 268 to 159 - a bigger number from
+a worse measurement.
+
 Counting is narrower still. `rawItemCount` only needs `elements.length`, so it
 asks for one field: `getFields(PLAN_ITEMS, "sequenceNumber")` returns 42553
 bytes against 790598 for the same 200 item plan, and the element count is
