@@ -1,0 +1,44 @@
+package one.aircast.android.ui
+
+import org.json.JSONObject
+
+internal const val GUIDED_ACTIONS = "view.guidedActions"
+
+internal data class GuidedOffer(
+    val id: String,
+    val title: String,
+    val offer: String,
+    val reason: String,
+    val prompt: String,
+    val destructive: Boolean,
+    val carriesValue: Boolean,
+) {
+    val ready: Boolean get() = offer == "ready"
+    val blocked: Boolean get() = offer == "blocked"
+    val shown: Boolean get() = offer != "hidden"
+}
+
+internal fun guidedOffers(view: JSONObject?): Map<String, GuidedOffer> {
+    val actions = view?.optJSONArray("actions") ?: return emptyMap()
+    return (0 until actions.length()).mapNotNull { index ->
+        actions.optJSONObject(index)?.let { action ->
+            val id = action.optString("id")
+            if (id.isBlank()) {
+                null
+            } else {
+                id to GuidedOffer(
+                    id = id,
+                    title = action.optString("title"),
+                    offer = action.optString("offer"),
+                    reason = action.optString("reason"),
+                    prompt = action.optString("prompt"),
+                    destructive = action.optBoolean("destructive"),
+                    carriesValue = action.optBoolean("carriesValue"),
+                )
+            }
+        }
+    }.toMap()
+}
+
+internal fun blockedReasonFor(offer: GuidedOffer?): String? =
+    offer?.takeIf { it.blocked }?.reason?.ifBlank { "The vehicle will not accept this yet." }
