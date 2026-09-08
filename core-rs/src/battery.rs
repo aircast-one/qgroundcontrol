@@ -1,5 +1,6 @@
 use serde_json::{Value, json};
 
+use crate::instruments::display_units;
 use crate::read::{object, value_number};
 use crate::router::Backend;
 
@@ -24,6 +25,7 @@ pub struct Pack {
     pub charge_label: String,
     pub percent_text: String,
     pub voltage_text: String,
+    pub time_remaining_text: Option<String>,
 }
 
 pub fn level(charge_state: i64, percent: Option<f64>, threshold1: f64, threshold2: f64) -> &'static str {
@@ -32,18 +34,29 @@ pub fn level(charge_state: i64, percent: Option<f64>, threshold1: f64, threshold
         (CHARGE_UNDEFINED, None) => "normal",
         (CHARGE_UNDEFINED, Some(p)) if p > threshold1 => "normal",
         (CHARGE_UNDEFINED, Some(p)) if p > threshold2 => "caution",
-        (CHARGE_UNDEFINED, Some(_)) => "critical",
-        (CHARGE_LOW, _) => "caution",
-        _ => "critical",
+        (CHARGE_UNDEFINED, Some(_)) => "warning",
+        (CHARGE_LOW, _) => "warning",
+        (3..=6, _) => "critical",
+        _ => "normal",
     }
 }
 
 pub fn text(pack: &Pack) -> String {
-    match (pack.percent, pack.charge_state) {
-        (Some(p), _) if p > PERCENT_ROUNDS_TO_FULL => "100%".to_string(),
-        (Some(_), _) if !pack.percent_text.is_empty() => pack.percent_text.clone(),
-        (_, state) if state != CHARGE_UNDEFINED => pack.charge_label.clone(),
-        _ => String::new(),
+    match (pack.percent, pack.voltage, pack.charge_state) {
+        (Some(p), _, _) if p > PERCENT_ROUNDS_TO_FULL => "100%".to_string(),
+        (Some(_), _, _) => pack.percent_text.clone(),
+        (None, Some(_), _) => pack.voltage_text.clone(),
+        (None, None, state) if state != CHARGE_UNDEFINED => pack.charge_label.clone(),
+        _ => "n/a".to_string(),
+    }
+}
+
+pub fn secondary_text(pack: &Pack) -> String {
+    match (&pack.time_remaining_text, pack.voltage, pack.charge_state) {
+        (Some(t), _, _) => t.clone(),
+        (None, Some(_), _) => pack.voltage_text.clone(),
+        (None, None, state) if state != CHARGE_UNDEFINED => pack.charge_label.clone(),
+        _ => "n/a".to_string(),
     }
 }
 
@@ -60,7 +73,7 @@ fn pack(element: &Value) -> Pack {
     let number = |name: &str| fact(name).and_then(|f| f.get("value")).and_then(Value::as_f64).filter(|v| v.is_finite());
     let shown = |name: &str| {
         fact(name)
-            .map(|f| format!("{}{}", f.get("valueString").and_then(Value::as_str).unwrap_or(""), f.get("units").and_then(Value::as_str).unwrap_or("")))
+            .map(|f| format!("{}{}", f.get("valueString").and_then(Value::as_str).unwrap_or(""), display_units(f.get("units").and_then(Value::as_str).unwrap_or(""))))
             .unwrap_or_default()
     };
     Pack {
@@ -71,6 +84,7 @@ fn pack(element: &Value) -> Pack {
         charge_label: fact("chargeState").and_then(|f| f.get("enumOrValueString")).and_then(Value::as_str).unwrap_or("").to_string(),
         percent_text: shown("percentRemaining"),
         voltage_text: shown("voltage"),
+        time_remaining_text: number("timeRemaining").and_then(|_| fact("timeRemainingStr")).and_then(|f| f.get("valueString")).and_then(Value::as_str).filter(|t| !t.is_empty()).map(str::to_string),
     }
 }
 
@@ -92,11 +106,12 @@ pub fn battery_view(backend: &dyn Backend, _args: &[String]) -> Value {
                 "chargeLabel": p.charge_label,
                 "level": level(p.charge_state, p.percent, threshold1, threshold2),
                 "text": text(p),
+                "secondaryText": secondary_text(p),
                 "voltageText": p.voltage_text,
             })
         })
         .collect();
-    let worst = ["critical", "caution", "normal"]
+    let worst = ["critical", "warning", "caution", "normal"]
         .into_iter()
         .find(|l| described.iter().any(|p| p["level"] == *l))
         .unwrap_or("normal");
@@ -131,20 +146,26 @@ mod tests {
         assert_eq!(level(CHARGE_OK, Some(5.0), 80.0, 60.0), "normal");
         assert_eq!(level(CHARGE_UNDEFINED, Some(85.0), 80.0, 60.0), "normal");
         assert_eq!(level(CHARGE_UNDEFINED, Some(70.0), 80.0, 60.0), "caution");
-        assert_eq!(level(CHARGE_UNDEFINED, Some(55.0), 80.0, 60.0), "critical");
+        assert_eq!(level(CHARGE_UNDEFINED, Some(55.0), 80.0, 60.0), "warning");
         assert_eq!(level(CHARGE_UNDEFINED, None, 80.0, 60.0), "normal");
-        assert_eq!(level(CHARGE_LOW, Some(90.0), 80.0, 60.0), "caution");
+        assert_eq!(level(CHARGE_LOW, Some(90.0), 80.0, 60.0), "warning");
         assert_eq!(level(3, Some(90.0), 80.0, 60.0), "critical");
         assert_eq!(level(6, None, 80.0, 60.0), "critical");
+        assert_eq!(level(7, None, 80.0, 60.0), "normal");
     }
 
     #[test]
-    fn nearly_full_reads_as_full_and_a_missing_percent_falls_back_to_the_charge_state() {
+    fn nearly_full_reads_as_full_and_a_missing_percent_falls_back_to_voltage_then_charge_state() {
         let packs = packs(&json!({ "elements": [pack_json(Some(99.2), CHARGE_OK, "OK"), pack_json(Some(72.0), CHARGE_UNDEFINED, "Undefined"), pack_json(None, CHARGE_LOW, "Low")] }));
         assert_eq!(text(&packs[0]), "100%");
         assert_eq!(text(&packs[1]), "72%");
-        assert_eq!(text(&packs[2]), "Low");
+        assert_eq!(text(&packs[2]), "15.80V");
         assert_eq!(packs[0].voltage_text, "15.80V");
+        let bare = Pack { voltage: None, current: None, percent: None, charge_state: CHARGE_LOW, charge_label: "Low".into(), percent_text: String::new(), voltage_text: String::new(), time_remaining_text: None };
+        assert_eq!(text(&bare), "Low");
+        assert_eq!(secondary_text(&bare), "Low");
+        let empty = Pack { charge_state: CHARGE_UNDEFINED, charge_label: String::new(), ..bare };
+        assert_eq!(text(&empty), "n/a");
     }
 
     #[test]
@@ -167,9 +188,10 @@ mod tests {
         }
         let view = battery_view(&Fake, &[]);
         assert_eq!(view["available"], true);
-        assert_eq!(view["level"], "critical");
+        assert_eq!(view["level"], "warning");
         assert_eq!(view["text"], "90%");
-        assert_eq!(view["packs"][1]["level"], "critical");
+        assert_eq!(view["packs"][1]["level"], "warning");
+        assert_eq!(view["packs"][0]["secondaryText"], "15.80V");
     }
 
     #[test]
