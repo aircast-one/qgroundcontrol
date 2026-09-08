@@ -400,6 +400,18 @@ replaces `activeSystem` and the old index then points at a different message. Th
 would have kept the old name above the new message's fields. It now holds the name and
 resolves the index from the current list.
 
+**The Console had invented a restriction QGC does not have.** It returned early for any
+vehicle not reporting PX4 firmware, stating the console "is a PX4 feature" and the vehicle
+"has no shell to connect to". Neither `MAVLinkConsoleController` nor `MAVLinkConsolePage`
+checks firmware anywhere — QGC offers it to every vehicle. The belief behind it is roughly
+right, since the shell answers on PX4 and most ArduPilot builds ignore `SERIAL_CONTROL`,
+but roughly right is not a reason to refuse, and the wording claimed a certainty the code
+did not have. It is now a note above a usable console.
+
+That is the same defect as the withdrawn plan warnings and the flight-control predicate,
+in its third costume: **a message asserting something the program does not know.** Here it
+also blocked the feature, which is the most expensive form of it.
+
 ### Status — all four pages are built
 
 Log Download, Vibration, MAVLink Console and MAVLink Inspector all exist natively
