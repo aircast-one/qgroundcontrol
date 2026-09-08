@@ -255,6 +255,23 @@ Hardest phase. `MissionManager` (20.7k C++) survives entirely; the map-editing U
 
 **Gate (HW):** a 200+ waypoint survey planned, uploaded, flown and downloaded byte-identical.
 
+**Known gap — the map draws less than the plan holds.** Waypoints, fences, rally
+points and surveys are drawn; corridor scans, structure scans and landing
+patterns are not. They still count in the distance and duration and they still
+upload to the aircraft, so a pilot can see a map that looks like their whole
+plan and fly one that is not. Opening a `.plan` file is the likeliest way such
+an item arrives, since it was planned on desktop.
+
+A warning was attempted three times and withdrawn (`58295f8`). Each predicate —
+is the item complex, did anything on the map come from it, does it specify a
+coordinate — fired on ordinary plans, because Mission Start satisfies all three
+while being drawn or being nothing. A warning that fires on every plan is worse
+than the gap it names, since it trains the pilot to ignore the next one. Whoever
+picks this up should start from a plan that actually contains a corridor scan
+and read its real serialisation, rather than reasoning about what the fields
+ought to mean. The gate above is unaffected for surveys but cannot be claimed
+for a mixed plan.
+
 ### Plan files — scope the plan missed
 
 This phase lists mission upload and download and its gate is a vehicle round
