@@ -1146,9 +1146,30 @@ Caution was a hard amber; High was `colorScheme.error`, which in this dark theme
 pink meant for text on a surface rather than for filling a shape. The most serious band was
 the least alarming thing on the screen. High is a saturated red now.
 
-Three screens tonight looked finished because nothing exercised them: the GPS branch behind an
-empty sensors-present mask, the log list behind a sim with no logs, and this one behind a sim
-with no vibration. **An empty screen is not evidence that a screen works.** The question to ask
+Auditing the rest of the sim against what the screens read turned up two more. The vehicle
+message log had never carried a message, because the sim sent no `STATUSTEXT`; fed four of
+varying severity it was **correct** - counts, severity classification, colours in the right
+order, and `Batt & temp < 40C` with its entities decoded. Worth stating plainly, since the
+point of an audit is not to find a defect in everything it touches.
+
+The battery had never rendered, because the sim sent no `BATTERY_STATUS`, and that one did
+have a defect. Sampling the strip's actual pixels: Caution hue 46 saturation 1.00, Warning
+hue 36 saturation 1.00, Critical hue 0 saturation **0.69**. The hues climb correctly and the
+saturation climbs and then drops at the step that matters most, so the worst state was the
+palest thing on the strip - the same shape as the vibration bug, in a different screen, found
+by measuring rather than by eye. Both now use one saturated red.
+
+Two corrections to the method while doing it. The thresholds are 80 and 60, not the 30 and 20
+assumed, so a first pass labelled a Warning reading as Caution and never rendered Caution at
+all; the levels have to be driven from the real settings, not from plausible ones. And
+`.rawValue` had been committed without re-running it on the handset - it is correct, a scalar
+read comes back as `{kind: "value", value: …}`, but that was confirmed after shipping rather
+than before.
+
+Five screens tonight looked finished because nothing exercised them: the GPS branch behind an empty
+sensors-present mask, the log list behind a sim with no logs, vibration behind a sim with no
+vibration, the message log behind a sim with no `STATUSTEXT`, and the battery behind a sim
+with no `BATTERY_STATUS`. **An empty screen is not evidence that a screen works.** The question to ask
 of any surface that looks correct is what the simulator never sends, because that is exactly
 the set of paths no one has seen.
 
