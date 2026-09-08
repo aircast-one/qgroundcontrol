@@ -32,65 +32,42 @@ struct PlanSummary: Equatable {
     }
 }
 
-enum PlanReadiness {
-    // Ordered as VisualMissionItem.h declares them: ReadyForSave, NotReadyForSaveTerrain,
-    // NotReadyForSaveData. These were swapped, so a plan waiting on terrain told the operator
-    // an item was unfinished, and an unfinished item blamed the terrain.
-    static let readyForSave = 0
-    static let notReadyForSaveTerrain = 1
-    static let notReadyForSaveData = 2
+// The core decides whether a plan can be saved or sent, and says why, so both heads give the
+// operator the same sentence. This only carries the answer across.
+struct PlanReadiness: Equatable {
+    let ready: Bool
+    let reason: String
 
-    static func reason(for state: Int) -> String {
-        switch state {
-        case notReadyForSaveData:
-            return "An item is still being drawn, so the plan cannot be saved or sent."
-        case notReadyForSaveTerrain:
-            return "Waiting for terrain heights before the plan can be saved or sent."
-        default:
-            return ""
-        }
+    static let unknown = PlanReadiness(ready: true, reason: "")
+
+    init(ready: Bool, reason: String) {
+        self.ready = ready
+        self.reason = reason
+    }
+
+    init?(_ json: Any?) {
+        guard let json = json as? [String: Any] else { return nil }
+        ready = (json["ready"] as? NSNumber)?.boolValue ?? true
+        reason = (json["reason"] as? String) ?? ""
     }
 }
 
-enum PlanUpload: Int {
-    case ok = 0
-    case noVehicle = 1
-    case firmwareMismatch = 2
-    case flyingThisMission = 3
+struct PlanUpload: Equatable {
+    let canSend: Bool
+    let refusal: String
+    let heading: String
+    let proceedTitle: String
+    let canProceed: Bool
+    let pausesFirst: Bool
 
-    var refusal: String {
-        switch self {
-        case .ok: return ""
-        case .noVehicle: return "No vehicle is connected, so there is nowhere to send this plan."
-        case .firmwareMismatch:
-            return "This plan was made for a different firmware or vehicle type. "
-                + "Uploading it can make the vehicle behave incorrectly."
-        case .flyingThisMission:
-            return "The vehicle is flying this mission. It has to be paused before a new plan goes up."
-        }
+    init?(_ json: Any?) {
+        guard let json = json as? [String: Any] else { return nil }
+        canSend = (json["canSend"] as? NSNumber)?.boolValue ?? false
+        refusal = (json["refusal"] as? String) ?? ""
+        heading = (json["heading"] as? String) ?? ""
+        proceedTitle = (json["proceedTitle"] as? String) ?? ""
+        canProceed = (json["canProceed"] as? NSNumber)?.boolValue ?? false
+        pausesFirst = (json["pausesFirst"] as? NSNumber)?.boolValue ?? false
     }
-
-    var heading: String {
-        canProceed ? "Upload this plan?" : "This plan cannot be uploaded"
-    }
-
-    var proceedTitle: String {
-        switch self {
-        case .firmwareMismatch: return "Upload anyway"
-        case .flyingThisMission: return "Pause and upload"
-        case .ok, .noVehicle: return ""
-        }
-    }
-
-    var canProceed: Bool {
-        self == .firmwareMismatch || self == .flyingThisMission
-    }
-
-    var pausesFirst: Bool { self == .flyingThisMission }
-
-    static func state(_ raw: Int) -> PlanUpload {
-        PlanUpload(rawValue: raw) ?? .ok
-    }
-
 }
 

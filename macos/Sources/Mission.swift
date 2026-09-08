@@ -54,13 +54,9 @@ final class MissionStore: ObservableObject, Probeable, WriteReporting {
             return
         }
 
-        let readiness = (Bridge.invoke("plan.readyForSaveState")["result"] as? NSNumber)?.intValue
-        let ready = readiness ?? PlanReadiness.readyForSave
-        if (ready == PlanReadiness.readyForSave) != readyToSave {
-            readyToSave = ready == PlanReadiness.readyForSave
-        }
-        let reason = PlanReadiness.reason(for: ready)
-        if reason != notReadyReason { notReadyReason = reason }
+        let readiness = PlanReadiness(Bridge.group("view.plan")["readiness"]) ?? .unknown
+        if readiness.ready != readyToSave { readyToSave = readiness.ready }
+        if readiness.reason != notReadyReason { notReadyReason = readiness.reason }
 
         let offered = (controller["complexMissionItemNames"] as? [String]) ?? []
         if offered != patterns { patterns = offered }
@@ -131,20 +127,14 @@ final class MissionStore: ObservableObject, Probeable, WriteReporting {
     }
 
     func uploadToVehicle() {
-        guard preCheck() == .ok else {
-            uploadWarning = preCheck()
-            return
-        }
-        send()
+        let check = preCheck()
+        if let check, !check.canSend { uploadWarning = check } else { send() }
     }
 
-    func preCheck() -> PlanUpload {
-        let answer = Bridge.invoke("plan.missionController.sendToVehiclePreCheck")
-        guard answer["ok"] as? Bool == true,
-              let raw = (answer["result"] as? NSNumber)?.intValue else {
-            return .ok
-        }
-        return PlanUpload.state(raw)
+    // Read fresh on the attempt: terrain arriving does not raise an event, so the answer
+    // held from the last reload can be out of date by the time the operator presses send.
+    func preCheck() -> PlanUpload? {
+        PlanUpload(Bridge.group("view.plan")["upload"])
     }
 
     func confirmUpload() {
@@ -863,9 +853,9 @@ final class MissionStore: ObservableObject, Probeable, WriteReporting {
             if let value = Double(args["value"] ?? "") { setItemSpeed(value) }
         case "uploadPreCheck":
             let check = preCheck()
-            if args["show"] == "1" { uploadWarning = check == .ok ? nil : check }
-            return ["ok": true, "preCheck": check.rawValue, "refusal": check.refusal,
-                    "state": probeState()]
+            if args["show"] == "1" { uploadWarning = check?.canSend == true ? nil : check }
+            return ["ok": true, "canSend": check?.canSend ?? false,
+                    "refusal": check?.refusal ?? "", "state": probeState()]
         case "createPlan":
             let kind = MissionItemKind(rawValue: args["kind"] ?? "")
             if let failure = createPlan(kind) {

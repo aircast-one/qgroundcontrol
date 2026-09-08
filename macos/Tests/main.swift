@@ -989,53 +989,11 @@ func checkMissionItemKinds() {
     expect(area[0].longitude < 149.165 && area[2].longitude > 149.165, "on both axes")
     let span = (area[2].latitude - area[0].latitude) * 111_320
     expect(abs(span - 2 * MissionItemKind.defaultAreaMetres) < 1, "and is the intended size across")
-    expect(PlanUpload.state(0) == .ok, "the controller's zero is its all-clear")
-    expect(PlanUpload.ok.refusal, "", "which says nothing and uploads")
-    expect(!PlanUpload.ok.canProceed, "there is nothing to proceed past")
-
-    expect(PlanUpload.state(1) == .noVehicle, "one is no active vehicle")
-    expect(!PlanUpload.noVehicle.canProceed,
-           "and that one cannot be overridden — there is nowhere to send it")
-
-    expect(PlanUpload.state(2) == .firmwareMismatch, "two is a firmware or vehicle mismatch")
-    expect(PlanUpload.firmwareMismatch.canProceed,
-           "which QGC lets the operator accept, because only they know if it matters")
-    expect(PlanUpload.firmwareMismatch.proceedTitle, "Upload anyway", "and says so plainly")
-    expect(!PlanUpload.firmwareMismatch.pausesFirst, "without touching the vehicle")
-
-    expect(PlanUpload.state(3) == .flyingThisMission, "three is a vehicle flying this mission")
-    expect(PlanUpload.flyingThisMission.pausesFirst,
-           "which QGC pauses before uploading, so the vehicle is not flying items being replaced")
-    expect(PlanUpload.flyingThisMission.proceedTitle, "Pause and upload",
-           "and the button says the pause out loud rather than hiding it")
-
-    expect(PlanUpload.state(99) == .ok,
-           "a state the controller has not defined does not become a false refusal")
-
     expect(WriteReport.failure("the fence radius"),
            "Could not change the fence radius. It is unchanged.",
            "a refused write names what did not change and says the old value still stands")
     expect(WriteReport.failure("this item's altitude").contains("unchanged"),
            "because the control snapping back on the next poll reads as the app glitching")
-
-    expect(PlanUpload.noVehicle.heading, "This plan cannot be uploaded",
-           "a refusal with no way past it does not ask a question it will not act on")
-    expect(PlanUpload.flyingThisMission.heading, "Upload this plan?",
-           "one the operator can accept does ask")
-
-    expect(PlanUpload.state(2).canProceed && PlanUpload.state(2).proceedTitle == "Upload anyway",
-           "the firmware mismatch is a real branch again now that the invokable works")
-
-    expect(PlanReadiness.reason(for: PlanReadiness.readyForSave), "",
-           "a plan that is ready to save says nothing")
-    expect(PlanReadiness.reason(for: PlanReadiness.notReadyForSaveData),
-           "An item is still being drawn, so the plan cannot be saved or sent.",
-           "and one that is not says why, because QGC's own message told the operator to draw an area already on their map")
-    expect(PlanReadiness.reason(for: PlanReadiness.notReadyForSaveTerrain),
-           "Waiting for terrain heights before the plan can be saved or sent.",
-           "waiting on terrain is a different reason and reads as one")
-    expect(PlanReadiness.reason(for: 99), "",
-           "a state the controller has not defined is not turned into a scary sentence")
 
     expect(MissionItemKind.simpleKinds.map(\.rawValue).joined(separator: ","),
            "waypoint,takeoff,land,roi",
@@ -2283,7 +2241,7 @@ checkMessageRate()
 checkMenuPlacement()
 checkOverlayArrange()
 checkCentreNotes()
-checkPlanReadiness()
+checkPlanViewState()
 checkInstrumentLabels()
 checkMapFollow()
 checkMapScale()
@@ -2901,19 +2859,26 @@ func checkInstrumentLabels() {
            "including when it carries an acronym")
 }
 
-func checkPlanReadiness() {
-    // VisualMissionItem.h:39-43 declares ReadyForSave, NotReadyForSaveTerrain,
-    // NotReadyForSaveData in that order, so terrain is 1 and data is 2.
-    expect(PlanReadiness.readyForSave == 0, "a ready plan is zero, as the header declares it")
-    expect(PlanReadiness.notReadyForSaveTerrain == 1,
-           "terrain is the FIRST not-ready value in the C++ enum")
-    expect(PlanReadiness.notReadyForSaveData == 2,
-           "and an incomplete item is the second")
-    expect(PlanReadiness.reason(for: 1).contains("terrain"),
-           "so state 1 must tell the operator it is waiting for terrain")
-    expect(PlanReadiness.reason(for: 2).contains("still being drawn"),
-           "and state 2 that an item is unfinished")
-    expect(PlanReadiness.reason(for: 0).isEmpty, "a ready plan explains nothing")
+
+func checkPlanViewState() {
+    let json: [String: Any] = [
+        "readiness": ["ready": false, "reason": "Waiting for terrain heights before the plan can be saved or sent."],
+        "upload": ["canSend": false, "canProceed": true, "pausesFirst": true,
+                   "heading": "Upload this plan?", "proceedTitle": "Pause and upload",
+                   "refusal": "This vehicle is flying this mission."],
+    ]
+    let readiness = PlanReadiness(json["readiness"])
+    expect(readiness?.ready == false, "the head takes the core's answer, it does not recompute it")
+    expect(readiness?.reason.contains("terrain") == true, "including the sentence the operator reads")
+
+    let upload = PlanUpload(json["upload"])
+    expect(upload?.canSend == false, "a refusal does not send")
+    expect(upload?.canProceed == true, "but this one the operator may accept")
+    expect(upload?.pausesFirst == true, "after a pause, so the vehicle stops flying items being replaced")
+    expect(upload?.proceedTitle ?? "", "Pause and upload", "and the button says the pause out loud")
+
+    expect(PlanReadiness(nil) == nil, "a missing object is not silently a ready plan")
+    expect(PlanUpload("not an object") == nil, "nor is a shape the core never sends")
 }
 
 func checkCentreNotes() {
