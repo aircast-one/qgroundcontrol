@@ -43,6 +43,7 @@ private slots:
     void _tlogSummaryDecodesTheSampleLog();
     void _planFileAgreesWithTheCppLoader();
     void _waypointsFileAgreesWithTheCppLoader();
+    void _missionFileAgreesWithTheCppLoader();
     void _planWrittenFromWaypointsLoadsInCpp();
     void _kmlFilesFollowTheMapPolygonTest();
     void _shapeFilesFollowShapeTest();
