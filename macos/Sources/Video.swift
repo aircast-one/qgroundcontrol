@@ -47,7 +47,7 @@ final class VideoStore: ObservableObject, Probeable, WriteReporting {
     }
 
     func refresh() {
-        let read = VideoStatus.read(Bridge.group("video"))
+        let read = VideoStatus(Bridge.group("view.video"))
         if read != status { status = read }
         pollNative()
         loadCamera()
@@ -58,8 +58,7 @@ final class VideoStore: ObservableObject, Probeable, WriteReporting {
         let labels = (manager["cameraLabels"] as? [String]) ?? []
         if labels != cameraLabels { cameraLabels = labels }
 
-        var read = CameraControl.read(Bridge.group("vehicle.cameraManager.currentCameraInstance"))
-        read.shots = (Bridge.group("vehicle.cameraTriggerPoints")["count"] as? NSNumber)?.intValue ?? 0
+        let read = CameraControl(Bridge.group("view.camera"))
         if read != camera { camera = read }
     }
 

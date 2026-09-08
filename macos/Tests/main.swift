@@ -1506,47 +1506,38 @@ func checkRadio() {
 checkRadio()
 
 func checkVideoStatus() {
-    expect(!VideoStatus.read(["kind": "value"]).available,
-           "a build with no video manager can show nothing")
-    expect(VideoStatus.unavailable.summary, "This build cannot show video.",
-           "and says so rather than claiming there is no stream")
+    expect(VideoStatus.unavailable.summary, "",
+           "an unread status says nothing rather than claiming this build cannot show video, "
+           + "which is now the core's sentence to write")
 
-    let live: [String: Any] = [
-        "kind": "object", "hasVideo": true, "gstreamerEnabled": true, "isStreamSource": true,
-        "decoding": false, "activeVideoSource": 0,
-        "cameraStatuses": ["Connecting\u{2026}", "No stream URL", "Connecting\u{2026}", "No stream URL"],
-        "cameraConnecting": [true, false, true, false],
-        "cameraRecording": [false, false, false, false],
-    ]
-    let status = VideoStatus.read(live)
-    expect(status.available, "a manager reporting video is available")
-    expect(status.cameras.count == 4, "every slot the manager reports is read")
-    expect(status.configuredCameras.count == 2,
-           "a slot with no URL is not a camera anyone configured, so it is not listed")
-    expect(status.configuredCameras.map(\.title).joined(separator: ","), "Camera 1,Camera 3",
-           "and the ones that are keep their own slot numbers")
-    expect(status.anyConnecting, "a slot still connecting is waiting for a stream")
-    expect(status.summary, "Waiting for a stream.", "which is what the operator is told")
-    expect(!status.settled, "and nothing is settled until something decodes")
+    let live = VideoStatus([
+        "available": true as NSNumber, "gstreamer": true as NSNumber,
+        "decoding": true as NSNumber, "recording": true as NSNumber,
+        "anyConnecting": false as NSNumber, "configuredCount": 2 as NSNumber,
+        "multipleSources": true as NSNumber, "activeSource": 1 as NSNumber,
+        "summary": "Streaming and recording.",
+        "cameras": [
+            ["slot": 0 as NSNumber, "title": "Camera 1", "status": "rtsp://one",
+             "connecting": false as NSNumber, "recording": true as NSNumber,
+             "configured": true as NSNumber],
+            ["slot": 1 as NSNumber, "title": "Camera 2", "status": "No stream URL",
+             "connecting": false as NSNumber, "recording": false as NSNumber,
+             "configured": false as NSNumber],
+        ],
+    ])
+    expect(live.summary, "Streaming and recording.",
+           "the summary is the core's sentence, not one this head assembles from flags")
+    expect(live.cameras.count == 2, "each camera slot is carried across")
+    expect(live.cameras[0].title, "Camera 1", "with the core's title rather than a slot number plus one")
+    expect(live.configuredCameras.map(\.slot) == [0],
+           "and the core decides which are configured, from the status text it also owns")
+    expect(live.configuredCount == 2,
+           "configuredCount is the core's own count and is reported separately from the list")
 
-    var decoding = VideoStatus.read(live)
-    decoding.decoding = true
-    expect(decoding.summary, "Streaming.", "once it decodes it is streaming")
-    decoding.recording = true
-    expect(decoding.summary, "Streaming and recording.", "and says when it is also recording")
-
-    let idle = VideoStatus.read(["kind": "object", "hasVideo": true,
-                                 "cameraStatuses": ["No stream URL"],
-                                 "cameraConnecting": [false]])
-    expect(idle.summary, "No stream URL is set.",
-           "a manager with nothing configured says that, not that it failed")
-
-    let short = VideoStatus.cameras(statuses: ["A", "B", "C"], connecting: [true], recording: [])
-    expect(short.count == 3, "a status list longer than its flags still yields every camera")
-    expect(short[0].connecting, "the flags that exist are used")
-    expect(!short[2].connecting, "and the ones that do not default to false rather than crashing")
+    expect(VideoCamera(["title": "Camera 1"]) == nil,
+           "a camera with no slot is dropped, because the slot is what the row is keyed by")
+    expect(VideoStatus([:]).cameras.isEmpty, "an empty answer is no cameras")
 }
-
 checkVideoStatus()
 
 func checkVideoSources() {
@@ -1594,90 +1585,31 @@ func checkVideoSources() {
 checkVideoSources()
 
 func checkCameraControl() {
-    expect(!CameraControl.read(["kind": "value"]).present, "no camera object means no camera")
-    expect(!CameraControl.read(["kind": "object", "modelName": ""]).present,
-           "nor does an object that will not name itself")
+    expect(!CameraControl.absent.present, "no camera is not present")
 
-    let live: [String: Any] = [
-        "kind": "object", "modelName": "Simulated Camera", "vendor": "QGroundControl",
-        "cameraMode": -1 as NSNumber, "photoCaptureStatus": 0 as NSNumber,
-        "videoCaptureStatus": 0 as NSNumber, "recordTimeStr": "00:00:00",
-        "storageStatus": 3 as NSNumber, "storageFreeStr": "",
-        "capturesPhotos": true, "capturesVideo": true, "hasModes": true, "batteryRemaining": -1,
-    ]
-    let camera = CameraControl.read(live)
-    expect(camera.present, "the live SITL camera is present")
-    expect(camera.title, "Simulated Camera", "and is named by its model")
-    expect(camera.stateText, "Idle", "an idle camera is idle")
-    expect(camera.modeText, "Not set", "an undefined mode is not guessed at")
-    expect(!camera.modeKnown, "and is known to be unknown, so the page can say so")
-    expect(camera.storageText, "Not reported",
-           "a camera that does not support storage reporting says that, not zero bytes")
-    expect(camera.batteryText, "", "a camera with no battery reading shows nothing at all")
-    expect(camera.shotsText, "00000", "and no photos taken reads as five zeroes, as QGC pads it")
-    expect(camera.clockText, "00:00:00", "with the record clock at zero")
+    let camera = CameraControl([
+        "present": true as NSNumber, "title": "Simulated Camera", "model": "Simulated Camera",
+        "vendor": "QGC", "mode": 0 as NSNumber, "modeKnown": true as NSNumber,
+        "modeText": "Photo", "isRecording": false as NSNumber,
+        "isTakingPhoto": false as NSNumber, "stateText": "Idle", "clockText": "00:00:00",
+        "storageStatus": 2 as NSNumber, "storageText": "Not reported",
+        "shots": 0 as NSNumber, "shotsText": "00000",
+        "batteryRemaining": -1 as NSNumber, "batteryText": "",
+        "hasZoom": false as NSNumber, "zoomLevel": 1.0 as NSNumber,
+        "canRecord": true as NSNumber, "canPhoto": true as NSNumber,
+        "hasModes": true as NSNumber,
+    ])
+    expect(camera.present && camera.title == "Simulated Camera",
+           "the camera card takes its title from the core, which prefers the model over the vendor")
+    expect(camera.modeText, "Photo", "and the mode's wording, rather than mapping an enum here")
+    expect(camera.shotsText, "00000",
+           "including the five-digit shot counter, which was a format string in this head")
+    expect(camera.mode == CameraControl.photoMode,
+           "the numeric mode still comes across, because the picker writes it back")
 
-    expect(CameraControl.read(["kind": "object", "modelName": "X",
-                               "cameraMode": "CAM_MODE_PHOTO"]).mode == CameraControl.undefinedMode,
-           "an enum arriving as a name is no mode at all, which is how every one of these read for hours")
-
-    var ready = camera
-    ready.storageStatus = CameraControl.storageReady
-    ready.storageFree = "12.4 GB"
-    expect(ready.storageText, "12.4 GB", "a ready card shows what is left on it")
-    ready.storageFree = ""
-    expect(ready.storageText, "Ready", "and says it is ready when it will not say how much")
-
-    var empty = camera
-    empty.storageStatus = CameraControl.storageEmpty
-    expect(empty.storageText, "No card", "a missing card is named, not called unknown")
-    empty.storageStatus = CameraControl.storageUnformatted
-    expect(empty.storageText, "Not formatted", "so is an unformatted one")
-
-    var interval = camera
-    interval.photoStatus = CameraControl.photoIntervalInProgress
-    expect(interval.isTakingPhoto,
-           "a timelapse counts as taking a photo, which the single-status check missed")
-    interval.photoStatus = CameraControl.photoIntervalIdle
-    expect(!interval.isTakingPhoto, "but waiting between them does not")
-
-    var shot = camera
-    shot.shots = 42
-    expect(shot.shotsText, "00042", "the shot counter is zero padded to five")
-
-    var recording = camera
-    recording.videoStatus = CameraControl.videoRunning
-    recording.recordTime = "00:01:24"
-    expect(recording.isRecording, "a running video capture is recording")
-    expect(recording.stateText, "Recording 00:01:24", "and shows how long it has been going")
-    expect(recording.clockText, "00:01:24", "the clock runs with it")
-
-    var shooting = camera
-    shooting.photoStatus = CameraControl.photoInProgress
-    expect(shooting.stateText, "Taking a photo", "a photo in progress says so")
-
-    var photoMode = camera
-    photoMode.mode = CameraControl.photoMode
-    expect(photoMode.modeText, "Photo", "a set mode is named")
-    expect(photoMode.canPhoto, "and photo mode can take photos")
-    expect(!photoMode.canRecord, "but not record video")
-
-    var videoMode = camera
-    videoMode.mode = CameraControl.videoMode
-    expect(videoMode.canRecord, "video mode can record")
-    expect(!videoMode.canPhoto, "but not shoot stills")
-
-    var modeless = camera
-    modeless.hasModes = false
-    modeless.mode = CameraControl.undefinedMode
-    expect(modeless.canPhoto, "a camera with no modes can do both")
-    expect(modeless.canRecord, "without being told which it is in")
-
-    let named = CameraControl.read(["kind": "object", "modelName": "Sim", "vendor": "QGC",
-                                    "storageStatus": 2 as NSNumber, "storageFreeStr": "1.2 GB"])
-    expect(named.storageText, "1.2 GB", "a camera that reports storage shows what is free")
+    expect(CameraControl([:]).present == false,
+           "an empty answer is no camera rather than a present one with blank fields")
 }
-
 checkCameraControl()
 
 func checkLogReplayLink() {
@@ -2554,6 +2486,17 @@ func checkViewContract() {
         ("view.setup(Safety)", ["sections"], ["title", "note", "controls"]),
         ("view.setup(Safety)", ["sections", "controls"],
          ["path", "name", "label", "control", "valueString", "display", "units", "options"]),
+        ("view.video", [],
+         ["available", "gstreamer", "streamSource", "decoding", "streaming", "recording",
+          "activeSource", "multipleSources", "anyConnecting", "configuredCount", "summary",
+          "cameras"]),
+        ("view.video", ["cameras"],
+         ["slot", "title", "status", "connecting", "recording", "configured"]),
+        ("view.camera", [],
+         ["present", "title", "model", "vendor", "mode", "modeKnown", "modeText", "isRecording",
+          "isTakingPhoto", "stateText", "clockText", "storageStatus", "storageText", "shots",
+          "shotsText", "batteryRemaining", "batteryText", "hasZoom", "zoomLevel", "canRecord",
+          "canPhoto", "hasModes"]),
     ]
 
     let enumerations = (shapes["view.contract"] as? [String: Any])?["enumerations"] as? [String: Any]
@@ -2622,6 +2565,10 @@ func checkViewContract() {
     expect(recorded("view.setup.firmware").sorted().joined(separator: ","), "apm,none,px4",
            "the three firmware kinds are the three the setup pages are built for")
 
+    expect(recorded("view.camera.modeText").sorted().joined(separator: ","),
+           "Not set,Photo,Survey,Video",
+           "the four mode words are the core's, so neither head writes its own")
+
     let neverNull: [(String, [String], [String])] = [
         ("view.battery", ["packs"], ["level", "text", "secondaryText"]),
         ("view.preflight", ["groups", "checks"], ["name", "prompt", "verdict", "reason"]),
@@ -2633,6 +2580,9 @@ func checkViewContract() {
         ("view.control(settings.appSettings.audioMuted)", [],
          ["path", "name", "label", "control", "valueString", "units"]),
         ("view.setup", [], ["firmware", "headline", "detail"]),
+        ("view.video", [], ["summary"]),
+        ("view.video", ["cameras"], ["title", "status"]),
+        ("view.camera", [], ["title", "modeText", "stateText", "storageText", "shotsText"]),
     ]
     neverNull.forEach { view, inner, keys in
         let place = inner.isEmpty ? view : "\(view).\(inner.joined(separator: "."))"

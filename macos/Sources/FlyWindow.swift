@@ -295,7 +295,7 @@ struct FlyPanel: View {
                     })
                 }
                 GroupRow(title: "Photos taken", value: video.camera.shotsText)
-                if video.camera.capturesVideo {
+                if video.camera.canRecord {
                     GroupRow(title: "Recording time", value: video.camera.clockText)
                 }
                 if video.camera.hasZoom {
