@@ -8,6 +8,7 @@ import android.view.WindowManager
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
@@ -51,6 +52,7 @@ import one.aircast.android.bridge.Qgc
 import one.aircast.android.ui.AnalyzePage
 import one.aircast.android.ui.AnalyzeScreen
 import one.aircast.android.ui.FlightActions
+import one.aircast.android.ui.ObstacleReadout
 import one.aircast.android.ui.ParametersScreen
 import one.aircast.android.ui.PlanTab
 import one.aircast.android.ui.RcControlsLayer
@@ -259,11 +261,15 @@ fun AircastShell(quickView: QtQuickView) {
                 }
 
                 if (tab == Tab.Fly && !videoExpanded) {
-                    RcControlsLayer(
+                    Column(
                         Modifier
                             .align(Alignment.TopStart)
                             .padding(12.dp),
-                    )
+                        verticalArrangement = Arrangement.spacedBy(8.dp),
+                    ) {
+                        ObstacleReadout()
+                        RcControlsLayer()
+                    }
                 }
 
                 AnimatedVisibility(
