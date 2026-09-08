@@ -69,6 +69,11 @@ moved and deleted. Surveys generate transects and their grid rotates. Waypoint a
 editable. A terrain profile plots planned altitude and ground height against distance. All
 verified on a device against a live vehicle.
 
+All of it composes. A plan of takeoff, survey, waypoint, land and one more waypoint reads
+"5 items (takeoff, RTL, 1 after the landing) · 48 survey pts · 6.87 km", the profile agrees at
+6.87 km, and the last waypoint is drawn with no line reaching it - in the plan, named, and out of
+both the route and the distance.
+
 The whole of that in one gesture: dragging a survey's corner handle - the same handle built for
 fence polygons - reshapes the area, regenerates the grid through the bridge, redraws the
 transects, and moves the profile with it. 5.90 km became 4.16 km in the status line, in the
