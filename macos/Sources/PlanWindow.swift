@@ -147,6 +147,7 @@ struct PlanInspector: View {
     static let maximumContentHeight: CGFloat = 460
 
     @State private var contentHeight: CGFloat = 0
+    @State private var shapeError: String?
 
     var body: some View {
         GlassPanel {
@@ -187,6 +188,12 @@ struct PlanInspector: View {
             }
             .padding(Overlay.gutter)
             .frame(width: 320)
+        }
+        .alert("That file could not be used",
+               isPresented: Binding(get: { shapeError != nil }, set: { if !$0 { shapeError = nil } })) {
+            Button("OK") { shapeError = nil }
+        } message: {
+            Text(shapeError ?? "")
         }
     }
 
@@ -553,6 +560,8 @@ struct PlanInspector: View {
             Menu {
                 Button("Open\u{2026}", action: openPlan)
                 Button("Save As\u{2026}", action: savePlanAs)
+                Button("Export KML\u{2026}", action: exportKml)
+                    .disabled(mission.items.count < 2)
                 Divider()
                 Button("Clear", action: mission.removeAll)
             } label: {
@@ -570,6 +579,14 @@ struct PlanInspector: View {
                             mission.arming = kind
                         } label: {
                             Label(kind.title, systemImage: kind.symbol)
+                        }
+                    }
+                    Divider()
+                    ForEach(MissionItemKind.shapeImportable) { kind in
+                        Button {
+                            importShape(kind)
+                        } label: {
+                            Label("\(kind.title) from KML or SHP\u{2026}", systemImage: kind.symbol)
                         }
                     }
                 } label: {
@@ -648,6 +665,23 @@ struct PlanInspector: View {
         guard panel.runModal() == .OK, let file = panel.url else { return }
         mission.save(to: file)
     }
+
+    private func exportKml() {
+        let panel = NSSavePanel()
+        panel.allowedContentTypes = PlanView.kmlTypes
+        panel.nameFieldStringValue = "\(mission.planName).kml"
+        guard panel.runModal() == .OK, let file = panel.url else { return }
+        mission.exportKml(to: file)
+    }
+
+    private func importShape(_ kind: MissionItemKind) {
+        let panel = NSOpenPanel()
+        panel.allowedContentTypes = PlanView.shapeTypes
+        panel.allowsMultipleSelection = false
+        panel.message = "Choose a KML or shape file holding the \(kind.shapeNoun) to \(kind.title.lowercased())."
+        guard panel.runModal() == .OK, let file = panel.url else { return }
+        shapeError = mission.importShape(kind, from: file)
+    }
 }
 
 struct PlanView: View {
@@ -655,6 +689,8 @@ struct PlanView: View {
 
     static let mapPadding = NSEdgeInsets(top: 56, left: 24, bottom: 40, right: 372)
     static let planTypes = [UTType(filenameExtension: "plan")].compactMap { $0 }
+    static let kmlTypes = [UTType(filenameExtension: "kml")].compactMap { $0 }
+    static let shapeTypes = ["kml", "shp"].compactMap { UTType(filenameExtension: $0) }
 
     @ObservedObject var mission: MissionStore
     @ObservedObject var fenceRally: FenceRallyStore

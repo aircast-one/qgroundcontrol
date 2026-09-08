@@ -333,6 +333,29 @@ final class MissionStore: ObservableObject, Probeable {
         reload()
     }
 
+    func exportKml(to file: URL) {
+        Bridge.invoke("plan.saveToKml", [file.path])
+    }
+
+    func importShape(_ kind: MissionItemKind, from file: URL) -> String? {
+        guard let complex = kind.complexName else {
+            return "\(kind.title) is not drawn from a shape file."
+        }
+        Bridge.invoke("plan.missionController.insertComplexMissionItemFromKMLOrSHP",
+                      [complex, file.path, items.count, true])
+        reload()
+
+        guard let placed = items.last, placed.command == complex else {
+            return "\(file.lastPathComponent) added nothing to the plan."
+        }
+        let vertices = max(surveyPolygon(of: placed).count, corridorPath(of: placed).count)
+        guard vertices >= 2 else {
+            remove(placed)
+            return "\(file.lastPathComponent) holds no \(kind.shapeNoun) for a \(kind.title.lowercased())."
+        }
+        return nil
+    }
+
     var planName: String {
         planFile.isEmpty ? "Untitled" : URL(fileURLWithPath: planFile).deletingPathExtension().lastPathComponent
     }
@@ -484,6 +507,19 @@ final class MissionStore: ObservableObject, Probeable {
                 return ["ok": false, "error": "addWaypoint needs latitude and longitude"]
             }
             addWaypoint(latitude: latitude, longitude: longitude)
+        case "importShape":
+            guard let kind = MissionItemKind(rawValue: args["kind"] ?? ""),
+                  let path = args["file"] else {
+                return ["ok": false, "error": "importShape needs kind and file"]
+            }
+            if let failure = importShape(kind, from: URL(fileURLWithPath: path)) {
+                return ["ok": false, "error": failure]
+            }
+        case "exportKml":
+            guard let path = args["file"] else {
+                return ["ok": false, "error": "exportKml needs file"]
+            }
+            exportKml(to: URL(fileURLWithPath: path))
         case "undo":
             undo()
         case "redo":

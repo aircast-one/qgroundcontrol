@@ -578,6 +578,15 @@ func checkMissionItemKinds() {
     expect(area[0].longitude < 149.165 && area[2].longitude > 149.165, "on both axes")
     let span = (area[2].latitude - area[0].latitude) * 111_320
     expect(abs(span - 2 * MissionItemKind.defaultAreaMetres) < 1, "and is the intended size across")
+    expect(MissionItemKind.shapeImportable.map(\.rawValue).joined(separator: ","),
+           "survey,corridor,structure",
+           "only the three complex patterns can be drawn from a shape file")
+    expect(MissionItemKind.shapeImportable.allSatisfy { $0.complexName != nil },
+           "and every one of them has a name the controller inserts by")
+    expect(MissionItemKind.corridor.shapeNoun, "path", "a corridor is imported from a path")
+    expect(MissionItemKind.survey.shapeNoun, "area", "a survey from an area")
+    expect(MissionItemKind.structure.shapeNoun, "area", "a structure scan from an area too")
+
     expect(MissionItemKind.waypoint.invokable, "insertSimpleMissionItem", "a waypoint inserts a simple item")
     expect(MissionItemKind.takeoff.invokable, "insertTakeoffItem", "takeoff has its own insert")
     expect(MissionItemKind.land.invokable, "insertLandItem", "land has its own insert")
