@@ -1146,6 +1146,23 @@ Caution was a hard amber; High was `colorScheme.error`, which in this dark theme
 pink meant for text on a surface rather than for filling a shape. The most serious band was
 the least alarming thing on the screen. High is a saturated red now.
 
+**The `view.setup` migration was attempted, blocked, and reverted.** `SetupPages.kt` is 206
+lines of per-firmware parameter tables and `view.setup(<page>)` is meant to replace them. On
+Android it does not: every control on a page comes back with an **empty `name` and empty
+`label`**, a zero `value`, and no units. The `path` is correct and carries the parameter -
+`vehicle.parameterManager.getParameter(-1,BATT_MONITOR)` - so the section titles and notes
+render and the rows cannot be labelled or read.
+
+Three attempts were spent guessing at the shape from the outside: first the rows drew blank,
+then filtering on `name` emptied the page, then filtering on `label` emptied it too. That was
+three guesses too many. **One temporary log line printed the served JSON and settled it in one
+build** - the honest move was available from the first failure and was not taken until the
+third.
+
+Reverted rather than left broken: the tables work and the Setup pages read parameters, which
+is worth more than a migration count. The finding is the core's to chase, and it is a
+one-vehicle-on-Android question, since the recorded contract has these fields populated.
+
 **Every decoder audited against the contract, and one real finding.** Having written one test
 that asserted a value the core never sets, the question was whether that was a habit. It was
 not: checking every JSON key each of the seven view decoders reads against the recorded shapes,
