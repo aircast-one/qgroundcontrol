@@ -41,6 +41,7 @@ swiftc -Onone -o "$out" \
     "$root/macos/Sources/MeasureModel.swift" \
     "$root/macos/Sources/SetupPageModel.swift" \
     "$root/macos/Sources/MapClickModel.swift" \
+    "$root/macos/Sources/OverlayArrangeModel.swift" \
     "$root/macos/Sources/MapCentreModel.swift" \
     "$root/macos/Sources/FlyOverlayModel.swift" \
     "$root/macos/Sources/MapFollowModel.swift" \

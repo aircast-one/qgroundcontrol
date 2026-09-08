@@ -2279,6 +2279,7 @@ checkMapCentre()
 checkPolygonEdit()
 checkMessageRate()
 checkMenuPlacement()
+checkOverlayArrange()
 checkMapFollow()
 checkMapScale()
 checkTerrainDownload()
@@ -2878,6 +2879,62 @@ func checkPolygonEdit() {
     expect(pair?.canRemoveVertex == false, "but neither end can be dropped")
     expect(EditablePolygon.read(path: "l", json: ["path": []], ring: false) == nil,
            "and an empty line is still nothing to edit")
+}
+
+func checkOverlayArrange() {
+    let extent = 200.0, size = 1000.0, margin = 10.0, grid = 20.0
+    let high = size - margin - extent
+
+    let near = OverlayArrange.snap(100, extent: extent, size: size, margin: margin, grid: grid)
+    expect(near == 110, "a drop in the near half snaps to a step measured from the near edge")
+    expect((near - margin).truncatingRemainder(dividingBy: grid) == 0,
+           "so its distance from that edge is a whole number of steps")
+
+    let far = OverlayArrange.snap(700, extent: extent, size: size, margin: margin, grid: grid)
+    expect(far == 690, "a drop in the far half snaps to a step measured from the FAR edge")
+    expect((high - far).truncatingRemainder(dividingBy: grid) == 0,
+           "so its distance from the far edge is the whole number, which is what keeps a "
+           + "right-hand panel looking right-aligned")
+    expect(far != 710, "measuring that same drop from the near edge would have given 710")
+
+    expect(OverlayArrange.snap(-500, extent: extent, size: size, margin: margin, grid: grid) == margin,
+           "a drop outside the near edge is pulled back to the margin")
+    expect(OverlayArrange.snap(5000, extent: extent, size: size, margin: margin, grid: grid) == high,
+           "and one outside the far edge to the last position that still fits")
+    expect(OverlayArrange.snap(137, extent: extent, size: size, margin: margin, grid: 0) == 137,
+           "with no grid the value is kept as dropped")
+    expect(OverlayArrange.clamp(5000, extent: extent, size: size, margin: margin) == high,
+           "clamping without a grid still keeps the panel on screen")
+    expect(OverlayArrange.clamp(400, extent: 5000, size: size, margin: margin) == margin,
+           "a panel larger than the window sits at the margin rather than off it")
+
+    expect(OverlayArrange.settles(dropped: 105, base: 100, extent: extent, threshold: 12),
+           "a drop close to where the panel started forgets the custom position")
+    expect(!OverlayArrange.settles(dropped: 400, base: 100, extent: extent, threshold: 12),
+           "a real move keeps it")
+    expect(OverlayArrange.settles(dropped: 190, base: 100, extent: extent, threshold: 12),
+           "half the panel's own width counts as close, not just the bare threshold")
+
+    expect(OverlayArrange.key(width: 960, height: 640) == "960x640", "sizes key on their pixels")
+    let once = OverlayArrange.remember([], "960x640")
+    expect(once == ["960x640"], "the first arrangement is remembered")
+    expect(OverlayArrange.remember(["800x600", "960x640"], "800x600") == ["960x640", "800x600"],
+           "re-arranging a size moves it to the end rather than duplicating it")
+    let many = (1...10).reduce([String]()) { OverlayArrange.remember($0, "\($1)00x600") }
+    expect(many.count == OverlayArrange.maxRememberedSizes, "only eight sizes are kept")
+    expect(many.first == "300x600" && many.last == "1000x600",
+           "and it is the oldest two that fall off the front")
+
+    expect(OverlayArrange.storedKey(["800x600", "960x640"], width: 960, height: 640) == "960x640",
+           "an exact size wins")
+    expect(OverlayArrange.storedKey(["800x600", "1400x900"], width: 960, height: 640) == "800x600",
+           "otherwise the nearest remembered size is a better start than nothing")
+    expect(OverlayArrange.storedKey([], width: 960, height: 640) == nil,
+           "with nothing remembered the panel stays where it was designed to be")
+    expect(OverlayArrange.distance(from: "junk", width: 960, height: 640) == nil,
+           "a malformed key has no distance")
+    expect(OverlayArrange.storedKey(["junk", "800x600"], width: 960, height: 640) == "800x600",
+           "and is never chosen as the nearest")
 }
 
 func checkMenuPlacement() {
