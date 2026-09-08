@@ -1146,6 +1146,13 @@ Caution was a hard amber; High was `colorScheme.error`, which in this dark theme
 pink meant for text on a surface rather than for filling a shape. The most serious band was
 the least alarming thing on the screen. High is a saturated red now.
 
+**Takeoff asks how high.** `readTakeoffAltitudeMeters`, `verticalOf`, `verticalUnits` and the
+3 m fallback are deleted; `view.guidedTakeoff` serves the range, the firmware minimum, the
+initial value and the sentence, and its argument form serves the metric target. Takeoff used to
+take whatever the settings said and tell the operator afterwards; it now opens the same kind of
+dialog the altitude change uses, because the view marks takeoff as carrying a value and QML has
+always let the operator choose one.
+
 **The flight actions are offered by the core, and the `readyToArm` gap is closed.**
 `guidedAvailability` is deleted. `view.guidedActions` says whether each action is hidden, ready
 or blocked and why, so the head no longer decides from `armed`, `flying`, `guidedModeSupported`,
