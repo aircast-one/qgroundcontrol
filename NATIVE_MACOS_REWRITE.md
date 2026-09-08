@@ -608,6 +608,7 @@ About 58 developer-weeks. Flight-test time, not code, is the schedule.
 - 2026-09-09: COMPONENT_INFORMATION parameters.json loader in the core with {n} indexed-name resolution.
 - 2026-09-09: PX4 metadata cache selection and storage rules in the core (pure decisions; host copies files).
 - 2026-09-09: R4 starts: link configuration codec in the core over the QSettings keys, with the build-dependent type table.
+- 2026-09-09: tlog recording and replay pacing in the core (worker rules, time-based seek).
 
 ### Stream F · Core
 

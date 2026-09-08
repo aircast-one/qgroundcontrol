@@ -28,6 +28,31 @@ pub fn frame_length(bytes: &[u8]) -> Option<(MavlinkVersion, usize)> {
     }
 }
 
+pub fn record(timestamp_us: u64, frame: &[u8]) -> Vec<u8> {
+    timestamp_us.to_be_bytes().iter().copied().chain(frame.iter().copied()).collect()
+}
+
+pub fn parse_timestamp(raw: [u8; 8], now_us: u64) -> u64 {
+    let big = u64::from_be_bytes(raw);
+    if big > now_us { big.swap_bytes() } else { big }
+}
+
+pub fn entries(bytes: &[u8]) -> Vec<(u64, Vec<u8>)> {
+    let mut out = Vec::new();
+    let mut at = 0usize;
+    while at + TIMESTAMP_BYTES < bytes.len() {
+        let frame_start = at + TIMESTAMP_BYTES;
+        let Some((_, length)) = frame_length(&bytes[frame_start..]) else {
+            at += 1;
+            continue;
+        };
+        let Some(frame) = bytes.get(frame_start..frame_start + length) else { break };
+        out.push((u64::from_be_bytes(bytes[at..frame_start].try_into().unwrap()), frame.to_vec()));
+        at = frame_start + length;
+    }
+    out
+}
+
 pub fn for_each(bytes: &[u8], mut visit: impl FnMut(u64, &mavlink::MavHeader, &MavMessage)) -> usize {
     let mut undecodable = 0usize;
     let mut at = 0usize;
