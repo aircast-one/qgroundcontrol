@@ -627,10 +627,22 @@ void QGCBridgeCoreTest::_anObjectSaysWhatClassItIs()
     QVERIFY2(corridor.value(QStringLiteral("ok")).toBool(),
              qPrintable(QJsonDocument(corridor).toJson(QJsonDocument::Compact)));
 
+    const QJsonObject takeoff = parse(QGCBridgeCore::invoke(
+        QStringLiteral("plan.missionController.insertTakeoffItem"),
+        QStringLiteral("[{\"latitude\": 47.397, \"longitude\": 8.545, \"altitude\": 30}, -1, false]")));
+    QVERIFY2(takeoff.value(QStringLiteral("ok")).toBool(),
+             qPrintable(QJsonDocument(takeoff).toJson(QJsonDocument::Compact)));
+
+    const QJsonObject survey = parse(QGCBridgeCore::invoke(
+        QStringLiteral("plan.missionController.insertComplexMissionItem"),
+        QStringLiteral("[\"Survey\", {\"latitude\": 47.397, \"longitude\": 8.545}, -1, false]")));
+    QVERIFY2(survey.value(QStringLiteral("ok")).toBool(),
+             qPrintable(QJsonDocument(survey).toJson(QJsonDocument::Compact)));
+
     const QJsonArray elements = parse(QGCBridgeCore::get(
         QStringLiteral("plan.missionController.visualItems")))
         .value(QStringLiteral("elements")).toArray();
-    QVERIFY(elements.size() >= 3);
+    QVERIFY(elements.size() >= 5);
 
     const QStringList classes = [&elements]() {
         QStringList found;
@@ -642,6 +654,8 @@ void QGCBridgeCoreTest::_anObjectSaysWhatClassItIs()
 
     QVERIFY2(classes.contains(QStringLiteral("SimpleMissionItem")), qPrintable(classes.join(QChar(','))));
     QVERIFY2(classes.contains(QStringLiteral("CorridorScanComplexItem")), qPrintable(classes.join(QChar(','))));
+    QVERIFY2(classes.contains(QStringLiteral("SurveyComplexItem")), qPrintable(classes.join(QChar(','))));
+    QVERIFY2(classes.contains(QStringLiteral("TakeoffMissionItem")), qPrintable(classes.join(QChar(','))));
     QVERIFY2(!classes.contains(QString()), qPrintable(classes.join(QChar(','))));
 
     const QJsonObject corridorItem = [&elements]() {
@@ -653,6 +667,17 @@ void QGCBridgeCoreTest::_anObjectSaysWhatClassItIs()
         }
         return QJsonObject();
     }();
+    const QJsonObject takeoffItem = [&elements]() {
+        for (const QJsonValue &element : elements) {
+            if (element.toObject().value(QStringLiteral("class")).toString()
+                == QStringLiteral("TakeoffMissionItem")) {
+                return element.toObject();
+            }
+        }
+        return QJsonObject();
+    }();
+    QCOMPARE(takeoffItem.value(QStringLiteral("isSimpleItem")).toBool(), true);
+
     QCOMPARE(corridorItem.value(QStringLiteral("isSimpleItem")).toBool(), false);
     QCOMPARE(corridorItem.value(QStringLiteral("isSurveyItem")).toBool(), false);
     QVERIFY(!corridorItem.contains(QStringLiteral("surveyAreaPolygon")));
