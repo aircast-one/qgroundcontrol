@@ -12,10 +12,29 @@ struct FlyPanel: View {
                 header
 
                 GroupCard {
-                    GroupRow(title: "Battery", value: fly.telemetry.batteryText, showSeparator: false,
-                             leading: { dot(fly.telemetry.batteryLevel) })
-                    GroupRow(title: "GPS", value: fly.telemetry.gpsText,
-                             leading: { dot(fly.telemetry.gpsLevel) })
+                    ForEach(Array(fly.batteries.enumerated()), id: \.offset) { index, pack in
+                        expandable(
+                            key: "battery\(index)",
+                            title: fly.batteries.count > 1 ? "Battery \(index + 1)" : "Battery",
+                            value: index == 0 ? fly.telemetry.batteryText : pack.first?.value ?? "",
+                            level: fly.telemetry.batteryLevel,
+                            detail: pack,
+                            showSeparator: index > 0)
+                    }
+                    if fly.batteries.isEmpty {
+                        GroupRow(title: "Battery", value: fly.telemetry.batteryText,
+                                 showSeparator: false,
+                                 leading: { dot(fly.telemetry.batteryLevel) })
+                    }
+                    expandable(key: "gps", title: "GPS", value: fly.telemetry.gpsText,
+                               level: fly.telemetry.gpsLevel, detail: fly.gpsDetail,
+                               showSeparator: true)
+                    if !fly.linkDetail.isEmpty {
+                        expandable(key: "link", title: "Link",
+                                   value: fly.linkDetail.first?.value ?? "",
+                                   level: fly.telemetry.gpsLevel, detail: fly.linkDetail,
+                                   showSeparator: true)
+                    }
                 }
 
                 if video.camera.present {
@@ -36,6 +55,32 @@ struct FlyPanel: View {
         }
         .frame(maxHeight: .infinity, alignment: .top)
         .sheet(isPresented: $fly.showingChecklist) { checklistSheet }
+    }
+
+    @ViewBuilder private func expandable(key: String, title: String, value: String,
+                                         level: FlyTelemetry.Level, detail: [DetailRow],
+                                         showSeparator: Bool) -> some View {
+        let open = fly.expanded.contains(key)
+        Button {
+            fly.expanded = open ? fly.expanded.subtracting([key]) : fly.expanded.union([key])
+        } label: {
+            GroupRow(title: title, value: value, showSeparator: showSeparator,
+                     leading: { dot(level) },
+                     trailing: {
+                         Image(systemName: open ? "chevron.up" : "chevron.down")
+                             .font(.caption2)
+                             .foregroundColor(detail.isEmpty ? .clear : Overlay.chevron)
+                     })
+        }
+        .buttonStyle(.plain)
+        .disabled(detail.isEmpty)
+
+        if open {
+            ForEach(detail) { row in
+                GroupRow(title: row.label, value: row.value, showSeparator: false)
+                    .padding(.leading, Overlay.unit * 1.5)
+            }
+        }
     }
 
     private var header: some View {

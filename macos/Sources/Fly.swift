@@ -11,6 +11,10 @@ final class FlyStore: ObservableObject, Probeable {
     @Published private(set) var warning = VehicleWarning.none
     @Published private(set) var airframe = PreflightAirframe.generic
     @Published private(set) var audioMuted = false
+    @Published private(set) var batteries: [[DetailRow]] = []
+    @Published private(set) var gpsDetail: [DetailRow] = []
+    @Published private(set) var linkDetail: [DetailRow] = []
+    @Published var expanded: Set<String> = []
     @Published private(set) var ticked: Set<String> = []
     @Published var showingChecklist = false
 
@@ -42,6 +46,9 @@ final class FlyStore: ObservableObject, Probeable {
             if unhealthyBits != nil { unhealthyBits = nil }
             if warning != .none { warning = .none }
             if airframe != .generic { airframe = .generic }
+            if !batteries.isEmpty { batteries = [] }
+            if !gpsDetail.isEmpty { gpsDetail = [] }
+            if !linkDetail.isEmpty { linkDetail = [] }
             return
         }
 
@@ -56,11 +63,25 @@ final class FlyStore: ObservableObject, Probeable {
         reading.climbRate = facts["climbRate"]
         reading.heading = facts["heading"]
 
-        let gps = FlyStore.facts(Bridge.group("vehicle.gps"))
+        let gpsGroup = Bridge.group("vehicle.gps")
+        let readGps = FlyDetail.gps(FactReading.from((gpsGroup["facts"] as? [Any]) ?? []))
+        if readGps != gpsDetail { gpsDetail = readGps }
+
+        let gps = FlyStore.facts(gpsGroup)
         reading.satellites = gps["count"].map { Int($0) }
         reading.gpsLock = gps["lock"].map { Int($0) }
 
-        let battery = ((Bridge.group("vehicle.batteries")["elements"] as? [[String: Any]]) ?? []).first
+        let packs = (Bridge.group("vehicle.batteries")["elements"] as? [[String: Any]]) ?? []
+        let readPacks = packs.map { FlyDetail.battery(FactReading.from(($0["facts"] as? [Any]) ?? [])) }
+        if readPacks != batteries { batteries = readPacks }
+
+        let readLink = FlyDetail.link(
+            rcRSSI: (vehicle["rcRSSI"] as? NSNumber)?.intValue,
+            localRSSI: (vehicle["telemetryLRSSI"] as? NSNumber)?.intValue,
+            remoteRSSI: (vehicle["telemetryRRSSI"] as? NSNumber)?.intValue)
+        if readLink != linkDetail { linkDetail = readLink }
+
+        let battery = packs.first
         let batteryFacts = battery.map(FlyStore.facts) ?? [:]
         reading.batteryPercent = batteryFacts["percentRemaining"]
         reading.batteryVolts = batteryFacts["voltage"]
@@ -142,6 +163,10 @@ final class FlyStore: ObservableObject, Probeable {
          "warnings": warning.lines,
          "checklistOpen": showingChecklist,
          "airframe": airframe.rawValue,
+         "expanded": Array(expanded).sorted(),
+         "batteryDetail": batteries.map { pack in pack.map { "\($0.label): \($0.value)" } },
+         "gpsDetail": gpsDetail.map { "\($0.label): \($0.value)" },
+         "linkDetail": linkDetail.map { "\($0.label): \($0.value)" },
          "checklistNames": checklist.flatMap(\.checks).map(\.name),
          "checklistProgress": Preflight.progress(checklist, ticked: ticked),
          "checklistReady": Preflight.ready(checklist, ticked: ticked),
@@ -154,6 +179,9 @@ final class FlyStore: ObservableObject, Probeable {
         case "refresh": refresh()
         case "checklist": showingChecklist = args["open"] != "0"
         case "resetChecklist": resetChecklist()
+        case "expand":
+            let row = args["row"] ?? ""
+            expanded = args["on"] == "0" ? expanded.subtracting([row]) : expanded.union([row])
         case "tick":
             guard let check = checklist.flatMap(\.checks).first(where: { $0.name == args["check"] ?? "" }) else {
                 return ["ok": false, "error": "no check named \(args["check"] ?? "")"]

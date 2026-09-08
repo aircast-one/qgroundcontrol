@@ -646,6 +646,55 @@ func checkGuidedValue() {
 
 checkGuidedValue()
 
+func checkFlyDetail() {
+    let battery = [
+        FactReading(name: "voltage", value: "12.60", units: "v"),
+        FactReading(name: "current", value: "0.00", units: "A"),
+        FactReading(name: "mahConsumed", value: "0", units: "mAh"),
+        FactReading(name: "temperature", value: "--.--", units: "C"),
+        FactReading(name: "timeRemainingStr", value: "--:--:--", units: ""),
+        FactReading(name: "instantPower", value: "0.00", units: "W"),
+        FactReading(name: "chargeState", value: "1", units: ""),
+    ]
+    let pack = FlyDetail.battery(battery)
+    expect(pack.map(\.label).joined(separator: ","), "Voltage,Current,Power,Consumed",
+           "a temperature and a time the pack never reported are left out, not shown as dashes")
+    expect(pack[0].value, "12.60 V",
+           "a reading carries its units, with the volt capitalised as the summary row has it")
+
+    expect(FlyDetail.battery([]).isEmpty, "a vehicle with no battery facts has no detail to open")
+
+    let gps = FlyDetail.gps([
+        FactReading(name: "lat", value: "-35.3632621", units: ""),
+        FactReading(name: "lon", value: "149.1652374", units: ""),
+        FactReading(name: "hdop", value: "1.2", units: ""),
+        FactReading(name: "count", value: "10", units: ""),
+        FactReading(name: "courseOverGround", value: "0.0", units: "deg"),
+    ])
+    expect(gps.first?.label ?? "", "Position", "position leads, because it is what an operator looks for")
+    expect(gps.first?.value ?? "", "-35.3632621, 149.1652374", "and reads as one pair")
+    expect(gps.map(\.label).joined(separator: ","),
+           "Position,Satellites,HDOP,Course over ground",
+           "the rest follow in the order QGC lists them, minus what was not reported")
+
+    expect(FlyDetail.gps([FactReading(name: "lat", value: "1.0", units: "")]).isEmpty,
+           "half a position is no position")
+
+    expect(FlyDetail.link(rcRSSI: 255, localRSSI: 0, remoteRSSI: 0).isEmpty,
+           "a TCP link reports no radio at all, so the link row stays away")
+    expect(FlyDetail.link(rcRSSI: 84, localRSSI: -70, remoteRSSI: -68).map(\.label)
+        .joined(separator: ","), "RC signal,Telemetry here,Telemetry on the vehicle",
+           "a real radio reports all three")
+    expect(FlyDetail.link(rcRSSI: 0, localRSSI: nil, remoteRSSI: nil).isEmpty,
+           "and a zero RC reading is absence, not a dead stick")
+
+    expect(Units.display("v"), "V",
+           "the vehicle spells volts in lower case; the whole window spells it the same way")
+    expect(Units.display("m/s"), "m/s", "everything else is left as the vehicle sent it")
+}
+
+checkFlyDetail()
+
 func checkFenceUsable() {
     let square = (0..<4).map { _ in ["latitude": -35.36, "longitude": 149.16] }
     let polygon = FenceShape(json: ["count": 4, "path": square,
