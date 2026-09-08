@@ -1159,6 +1159,17 @@ saturation climbs and then drops at the step that matters most, so the worst sta
 palest thing on the strip - the same shape as the vibration bug, in a different screen, found
 by measuring rather than by eye. Both now use one saturated red.
 
+The last unexercised path, RC RSSI, turned out to be **correct code and a wrong test**, which
+is worth as much as a defect. Sending `RC_CHANNELS` with `rssi=80` displayed 31%, and the
+temptation was to call that a scale bug. It is not: `APMFirmwarePlugin` rescales
+`channels.rssi` by `/254.0 * 100` before `Vehicle` ever sees it, so on ArduPilot the field is
+0-254 on the wire and 80 becomes 31.5. Sending 203 displayed 79%, against a predicted 79.9.
+
+The mispredicton is the lesson. `Vehicle::_remoteControlRSSIChanged` carries the comment
+`0 <= rssi <= 100`, and that reads like the wire contract; it describes the value *after* the
+firmware plugin has already converted it. A comment one layer below the transform is not a
+statement about the input.
+
 Two corrections to the method while doing it. The thresholds are 80 and 60, not the 30 and 20
 assumed, so a first pass labelled a Warning reading as Caution and never rendered Caution at
 all; the levels have to be driven from the real settings, not from plausible ones. And
