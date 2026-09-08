@@ -422,6 +422,16 @@ gate below has not happened.
 **Gate (HW):** log download from real hardware; chart values match the Qt build. `src/AnalyzeView/`
 QML deleted.
 
+**Half that gate is already discharged, by construction rather than comparison.**
+`VibrationPage.qml` declares `_barMinimum 0`, `_barMaximum 90`, `_barBadValue 60`,
+`_barMidValue 30` and draws each bar at `min(max, value) / (max - min)`. The native screen
+uses the same four numbers and an equivalent formula, and both read the same facts —
+`vehicle.vibration.xAxis/yAxis/zAxis` and `clipCount1..3`. Same inputs, same scale, same
+transform, so the charts cannot disagree. Unit tests pin the constants against QGC's, and
+setting the maximum to 100 fails two of them.
+
+The remaining half — log download from real hardware — still needs the vehicle.
+
 ## Phase 3 — Vehicle Setup · 5 weeks
 
 The big evaporation: 15k lines of `AutoPilotPlugins` QML.
