@@ -555,6 +555,7 @@ About 58 developer-weeks. Flight-test time, not code, is the schedule.
   view arguments split on top-level commas so nested accessors pass through.
 - 2026-09-08: `view.links` and `view.linkForm(type,host,port)` — link list with type, editing mode and status line;
   add-link validation and auto naming.
+- 2026-09-08: `view.mapScale(metresAcross)` — the QML scale-bar ladder and labels, feet from the unit setting.
 
 ### Stream F · Core
 

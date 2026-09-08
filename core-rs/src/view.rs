@@ -9,6 +9,7 @@ use crate::guided;
 use crate::instruments;
 use crate::label;
 use crate::links;
+use crate::mapscale;
 use crate::messages;
 use crate::plan;
 use crate::preflight;
@@ -43,6 +44,7 @@ pub const VIEWS: &[View] = &[
     View { path: "view.control", deps: control::DEPS, compute: control::control_view },
     View { path: "view.links", deps: links::DEPS, compute: links::links_view },
     View { path: "view.linkForm", deps: &[], compute: links::link_form_view },
+    View { path: "view.mapScale", deps: mapscale::DEPS, compute: mapscale::map_scale_view },
 ];
 
 pub fn owns(path: &str) -> bool {

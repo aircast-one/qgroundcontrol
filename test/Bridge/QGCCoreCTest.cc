@@ -303,3 +303,12 @@ void QGCCoreCTest::_linksAreListedAndTheFormValidates()
     QCOMPARE(ok.value(QStringLiteral("valid")).toBool(false), true);
     QCOMPARE(ok.value(QStringLiteral("name")).toString(), QStringLiteral("UDP 14550"));
 }
+
+void QGCCoreCTest::_mapScaleFollowsTheUnitSetting()
+{
+    const QJsonObject bar = take(qgc_bridge_get("view.mapScale(120)"));
+    QCOMPARE(bar.value(QStringLiteral("available")).toBool(false), true);
+    QVERIFY(bar.value(QStringLiteral("text")).toString() == QStringLiteral("100 m") || bar.value(QStringLiteral("text")).toString() == QStringLiteral("500 ft"));
+    QCOMPARE(bar.value(QStringLiteral("imperial")).toBool(), bar.value(QStringLiteral("text")).toString().endsWith(QStringLiteral("ft")));
+    QCOMPARE(take(qgc_bridge_get("view.mapScale")).value(QStringLiteral("available")).toBool(true), false);
+}

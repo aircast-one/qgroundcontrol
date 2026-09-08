@@ -7,6 +7,7 @@ mod guided;
 mod instruments;
 mod label;
 mod links;
+mod mapscale;
 mod messages;
 mod plan;
 mod preflight;

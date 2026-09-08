@@ -26,6 +26,7 @@ private slots:
     void _sensorHealthIsOrdered();
     void _controlsDescribeAFact();
     void _linksAreListedAndTheFormValidates();
+    void _mapScaleFollowsTheUnitSetting();
 
 private:
     static bool _unavailable(const char *path);
