@@ -247,6 +247,17 @@ extension View {
         })
         .onPreferenceChange(ContentHeightKey.self) { height.wrappedValue = $0 }
     }
+    func writeFailureAlert(title: String = "That change was not accepted",
+                           _ reports: Binding<String?>...) -> some View {
+        let shown = reports.compactMap(\.wrappedValue).first
+        let clear = { reports.forEach { $0.wrappedValue = nil } }
+        return alert(title,
+                     isPresented: Binding(get: { shown != nil }, set: { if !$0 { clear() } })) {
+            Button("OK", action: clear)
+        } message: {
+            Text(shown ?? "")
+        }
+    }
 }
 
 struct MapScaleView: View {

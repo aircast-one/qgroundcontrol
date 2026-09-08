@@ -1,6 +1,6 @@
 import Foundation
 
-final class RemoteSupportStore: ObservableObject, Probeable {
+final class RemoteSupportStore: ObservableObject, Probeable, WriteReporting {
     static let probeID = "remoteSupport"
 
     @Published private(set) var state = RemoteSupport.empty
@@ -18,9 +18,7 @@ final class RemoteSupportStore: ObservableObject, Probeable {
 
     func setHost(_ host: String) {
         guard !host.isEmpty else { return }
-        if !Bridge.set(RemoteSupportStore.hostPath, host) {
-            writeFailure = WriteReport.failure("the support host")
-        }
+        write(RemoteSupportStore.hostPath, host, "the support host")
         refresh()
     }
 

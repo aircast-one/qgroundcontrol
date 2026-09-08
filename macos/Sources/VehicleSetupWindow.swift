@@ -20,13 +20,7 @@ struct ParametersView: View {
             }
         }
         .onAppear(perform: store.load)
-        .alert("That parameter was not accepted",
-               isPresented: Binding(get: { store.writeFailure != nil },
-                                    set: { if !$0 { store.writeFailure = nil } })) {
-            Button("OK") { store.writeFailure = nil }
-        } message: {
-            Text(store.writeFailure ?? "")
-        }
+        .writeFailureAlert(title: "That parameter was not accepted", $store.writeFailure)
     }
 
     private var filters: some View {
@@ -351,6 +345,7 @@ struct RemoteSupportView: View {
             }
         }
         .onAppear(perform: support.refresh)
+        .writeFailureAlert($support.writeFailure)
     }
 }
 
@@ -617,6 +612,7 @@ struct RadioView: View {
         }
         .onAppear(perform: store.start)
         .onDisappear(perform: store.stop)
+        .writeFailureAlert($store.writeFailure)
     }
 }
 

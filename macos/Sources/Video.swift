@@ -1,7 +1,8 @@
 import Foundation
 import QGCVideoC
 
-final class VideoStore: ObservableObject, Probeable {
+final class VideoStore: ObservableObject, Probeable, WriteReporting {
+    @Published var writeFailure: String?
     static let probeID = "video"
 
     static let shared = VideoStore()
@@ -29,7 +30,7 @@ final class VideoStore: ObservableObject, Probeable {
 
     func write(_ replacement: VideoSource) {
         let updated = VideoSources.replacing(sources, at: replacement.slot, with: replacement)
-        _ = Bridge.set(VideoStore.sourcesPath, VideoSources.encode(updated))
+        write(VideoStore.sourcesPath, VideoSources.encode(updated), "the video source")
         loadSources()
     }
 
@@ -71,7 +72,8 @@ final class VideoStore: ObservableObject, Probeable {
 
     func setZoom(_ level: Double) {
         guard camera.present, camera.hasZoom, level.isFinite else { return }
-        _ = Bridge.set("vehicle.cameraManager.currentCameraInstance.zoomLevel", level)
+        write("vehicle.cameraManager.currentCameraInstance.zoomLevel", level,
+              "the camera zoom")
         loadCamera()
     }
 
@@ -108,7 +110,8 @@ final class VideoStore: ObservableObject, Probeable {
     }
 
     func probeState() -> [String: Any] {
-        ["available": status.available, "gstreamer": status.gstreamer,
+        ["writeFailure": writeFailure ?? "",
+         "available": status.available, "gstreamer": status.gstreamer,
          "decoding": status.decoding, "streaming": status.streaming,
          "summary": status.summary, "activeSource": status.activeSource,
          "configured": status.configuredCameras.count,

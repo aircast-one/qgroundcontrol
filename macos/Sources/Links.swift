@@ -3,7 +3,7 @@ import Foundation
 import QGCLinksC
 import UniformTypeIdentifiers
 
-final class LinksStore: ObservableObject, Probeable {
+final class LinksStore: ObservableObject, Probeable, WriteReporting {
     static let probeID = "links"
 
     @Published private(set) var links: [LinkConfig] = []
@@ -59,15 +59,6 @@ final class LinksStore: ObservableObject, Probeable {
         let ok = qgc_links_create(Int32(type), name, host, Int32(port)) == 1
         reload()
         return ok
-    }
-
-    @discardableResult
-    func write(_ path: String, _ value: Any, _ what: String) -> Bool {
-        guard Bridge.set(path, value) else {
-            writeFailure = WriteReport.failure(what)
-            return false
-        }
-        return true
     }
 
     var linkTypes: [String] {

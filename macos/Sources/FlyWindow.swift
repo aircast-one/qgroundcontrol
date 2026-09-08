@@ -837,6 +837,7 @@ struct FlyView: View {
             guided.refresh(prearmClear: !fly.warning.showing)
             video.refresh()
         }
+        .writeFailureAlert($fly.writeFailure, $guided.writeFailure, $video.writeFailure)
     }
 }
 

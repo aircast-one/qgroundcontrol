@@ -2,7 +2,12 @@ import AppKit
 import Foundation
 import UniformTypeIdentifiers
 
-final class GeoTagStore: ObservableObject, Probeable {
+final class GeoTagStore: ObservableObject, Probeable, WriteReporting {
+    @Published var writeFailure: String?
+
+    static let labels = ["logFile": "the flight log",
+                         "imageDirectory": "the image folder",
+                         "saveDirectory": "the destination folder"]
     static let probeID = "geoTag"
 
     @Published private(set) var job = GeoTagJob()
@@ -54,7 +59,7 @@ final class GeoTagStore: ObservableObject, Probeable {
     }
 
     func set(_ property: String, _ path: String) {
-        _ = Bridge.set("geoTag.\(property)", path)
+        write("geoTag.\(property)", path, GeoTagStore.labels[property] ?? property)
         reload()
     }
 
@@ -87,7 +92,8 @@ final class GeoTagStore: ObservableObject, Probeable {
     }
 
     func probeState() -> [String: Any] {
-        ["logFile": job.logFile, "imageDirectory": job.imageDirectory,
+        ["writeFailure": writeFailure ?? "",
+         "logFile": job.logFile, "imageDirectory": job.imageDirectory,
          "saveDirectory": job.saveDirectory, "destination": job.destination,
          "error": job.errorMessage, "progress": job.progress,
          "running": job.running, "canStart": job.canStart,

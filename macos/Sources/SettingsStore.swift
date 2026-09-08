@@ -7,7 +7,8 @@ struct FactSection: Identifiable {
     var showsUnits: Bool { facts.contains { !$0.units.isEmpty } }
 }
 
-final class SettingsStore: ObservableObject, Probeable {
+final class SettingsStore: ObservableObject, Probeable, WriteReporting {
+    @Published var writeFailure: String?
     static let probeID = "settings"
 
     @Published private(set) var sections: [FactSection] = []
@@ -71,7 +72,7 @@ final class SettingsStore: ObservableObject, Probeable {
     // A Fact can clamp or refuse a value, so the written value is not necessarily the
     // stored one. Drop the cache and read back rather than trusting local state.
     func write(_ fact: Fact, _ value: Any) {
-        Bridge.set(fact.path, value)
+        write(fact.path, value, fact.title)
         cache.removeAll()
         refresh()
     }
@@ -80,6 +81,7 @@ final class SettingsStore: ObservableObject, Probeable {
 extension SettingsStore {
     func probeState() -> [String: Any] {
         [
+            "writeFailure": writeFailure ?? "",
             "page": selected ?? "",
             "search": search,
             "pages": pages.map(\.id),

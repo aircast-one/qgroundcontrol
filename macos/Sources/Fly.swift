@@ -1,6 +1,7 @@
 import Foundation
 
-final class FlyStore: ObservableObject, Probeable {
+final class FlyStore: ObservableObject, Probeable, WriteReporting {
+    @Published var writeFailure: String?
     static let probeID = "fly"
 
     @Published private(set) var telemetry = FlyTelemetry()
@@ -222,17 +223,17 @@ final class FlyStore: ObservableObject, Probeable {
     }
 
     private func send(_ name: String) {
-        requestedMode = name
         confirmingMode = ""
-        _ = Bridge.set("vehicle.flightMode", name)
         showingModes = false
+        if write("vehicle.flightMode", name, "the flight mode") { requestedMode = name }
         refresh()
     }
 
     static let messageLimit = 6
 
     func probeState() -> [String: Any] {
-        ["connected": connected, "mode": telemetry.mode, "state": telemetry.stateText,
+        ["writeFailure": writeFailure ?? "",
+         "connected": connected, "mode": telemetry.mode, "state": telemetry.stateText,
          "altitude": telemetry.altitudeText,
          "groundSpeed": telemetry.groundSpeedText,
          "keepCentered": keepCentered,

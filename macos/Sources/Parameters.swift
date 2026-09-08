@@ -1,6 +1,6 @@
 import Foundation
 
-final class ParametersStore: ObservableObject, Probeable {
+final class ParametersStore: ObservableObject, Probeable, WriteReporting {
     static let probeID = "parameters"
 
     @Published private(set) var parameters: [Parameter] = []
@@ -65,10 +65,7 @@ final class ParametersStore: ObservableObject, Probeable {
     }
 
     func write(_ parameter: Parameter, _ value: String) {
-        guard Bridge.set(parameter.path, Double(value) ?? value) else {
-            writeFailure = WriteReport.failure(parameter.name)
-            return
-        }
+        guard write(parameter.path, Double(value) ?? value, parameter.name) else { return }
         let json = Bridge.group(parameter.path)
         guard json["kind"] as? String == "fact" else { return }
         let updated = Parameter(name: parameter.name, componentId: parameter.componentId, json: json)

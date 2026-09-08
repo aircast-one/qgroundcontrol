@@ -2,7 +2,7 @@ import Foundation
 import MapKit
 import QGCMapTileC
 
-final class MissionStore: ObservableObject, Probeable {
+final class MissionStore: ObservableObject, Probeable, WriteReporting {
     static let probeID = "mission"
 
     @Published private(set) var items: [MissionItem] = []
@@ -130,15 +130,6 @@ final class MissionStore: ObservableObject, Probeable {
             return
         }
         send()
-    }
-
-    @discardableResult
-    func write(_ path: String, _ value: Any, _ what: String) -> Bool {
-        guard Bridge.set(path, value) else {
-            writeFailure = WriteReport.failure(what)
-            return false
-        }
-        return true
     }
 
     func preCheck() -> PlanUpload {

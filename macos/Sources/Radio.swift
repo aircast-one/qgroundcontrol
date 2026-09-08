@@ -1,6 +1,7 @@
 import Foundation
 
-final class RadioStore: ObservableObject, Probeable {
+final class RadioStore: ObservableObject, Probeable, WriteReporting {
+    @Published var writeFailure: String?
     static let probeID = "radio"
 
     @Published private(set) var state = RadioState.disconnected
@@ -27,7 +28,7 @@ final class RadioStore: ObservableObject, Probeable {
 
     func setTransmitterMode(_ mode: Int) {
         guard mode == 1 || mode == 2, !state.calibrating else { return }
-        _ = Bridge.set("radioCal.transmitterMode", mode)
+        write("radioCal.transmitterMode", mode, "the transmitter mode")
         refresh()
     }
 
@@ -50,7 +51,8 @@ final class RadioStore: ObservableObject, Probeable {
     }
 
     func probeState() -> [String: Any] {
-        ["connected": state.connected, "channelCount": state.channelCount,
+        ["writeFailure": writeFailure ?? "",
+         "connected": state.connected, "channelCount": state.channelCount,
          "live": state.liveChannels.count, "summary": state.summary,
          "shortfall": state.shortfall, "calibrating": state.calibrating,
          "transmitterMode": state.transmitterMode, "nextText": state.nextText,

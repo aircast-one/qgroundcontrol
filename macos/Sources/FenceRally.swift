@@ -1,6 +1,6 @@
 import Foundation
 
-final class FenceRallyStore: ObservableObject, Probeable {
+final class FenceRallyStore: ObservableObject, Probeable, WriteReporting {
     static let probeID = "fenceRally"
 
     @Published private(set) var shapes: [FenceShape] = []
@@ -87,15 +87,6 @@ final class FenceRallyStore: ObservableObject, Probeable {
             return "The plan is still settling after its download; try the fence again in a moment."
         }
         return nil
-    }
-
-    @discardableResult
-    func write(_ path: String, _ value: Any, _ what: String) -> Bool {
-        guard Bridge.set(path, value) else {
-            writeFailure = WriteReport.failure(what)
-            return false
-        }
-        return true
     }
 
     private func circlePath(_ shape: FenceShape) -> String? {

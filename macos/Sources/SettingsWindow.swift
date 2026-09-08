@@ -14,13 +14,7 @@ struct SettingsView: View {
         }
         .frame(minWidth: 720, minHeight: 460)
         .onAppear(perform: store.load)
-        .alert("That change was not accepted",
-               isPresented: Binding(get: { links.writeFailure != nil },
-                                    set: { if !$0 { links.writeFailure = nil } })) {
-            Button("OK") { links.writeFailure = nil }
-        } message: {
-            Text(links.writeFailure ?? "")
-        }
+        .writeFailureAlert($store.writeFailure, $links.writeFailure, $video.writeFailure)
     }
 
     private var sidebar: some View {

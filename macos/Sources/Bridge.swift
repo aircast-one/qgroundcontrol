@@ -67,3 +67,18 @@ enum Bridge {
         return (try? JSONSerialization.jsonObject(with: data)) as? [String: Any] ?? [:]
     }
 }
+
+protocol WriteReporting: AnyObject {
+    var writeFailure: String? { get set }
+}
+
+extension WriteReporting {
+    @discardableResult
+    func write(_ path: String, _ value: Any, _ what: String) -> Bool {
+        guard Bridge.set(path, value) else {
+            writeFailure = WriteReport.failure(what)
+            return false
+        }
+        return true
+    }
+}

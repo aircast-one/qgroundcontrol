@@ -260,6 +260,7 @@ struct GeoTagView: View {
             }
         }
         .onAppear(perform: store.reload)
+        .writeFailureAlert($store.writeFailure)
     }
 
     private func shorten(_ path: String) -> String {

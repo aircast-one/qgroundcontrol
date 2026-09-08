@@ -1,6 +1,7 @@
 import Foundation
 
-final class GuidedStore: ObservableObject, Probeable {
+final class GuidedStore: ObservableObject, Probeable, WriteReporting {
+    @Published var writeFailure: String?
     static let probeID = "guided"
 
     @Published private(set) var state = GuidedState()
@@ -119,8 +120,8 @@ final class GuidedStore: ObservableObject, Probeable {
     private func send(_ action: GuidedAction) {
         lastSent = action.rawValue
         switch action {
-        case .arm: _ = Bridge.set("vehicle.armed", true)
-        case .disarm: _ = Bridge.set("vehicle.armed", false)
+        case .arm: write("vehicle.armed", true, "the vehicle to armed")
+        case .disarm: write("vehicle.armed", false, "the vehicle to disarmed")
         case .rtl: Bridge.invoke("vehicle.guidedModeRTL", [false])
         case .land: Bridge.invoke("vehicle.guidedModeLand")
         case .takeoff: Bridge.invoke("vehicle.guidedModeTakeoff", [chosen])
@@ -141,7 +142,8 @@ final class GuidedStore: ObservableObject, Probeable {
     }
 
     func probeState() -> [String: Any] {
-        ["connected": state.connected, "armed": state.armed, "flying": state.flying,
+        ["writeFailure": writeFailure ?? "",
+         "connected": state.connected, "armed": state.armed, "flying": state.flying,
          "flightMode": state.flightMode, "readyToArm": state.readyToArm,
          "missionActive": state.missionActive, "lastSent": lastSent,
          "pending": pending?.rawValue ?? "",
