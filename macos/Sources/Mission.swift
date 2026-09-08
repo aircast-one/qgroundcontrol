@@ -667,8 +667,9 @@ final class MissionStore: ObservableObject, Probeable, WriteReporting {
         reload()
     }
 
-    func setAltitude(of item: MissionItem, metres: Double) {
-        write("plan.missionController.visualItems.\(item.index).altitude", metres,
+    // Cooked, like every Fact write: feet when the operator works in feet.
+    func setAltitude(of item: MissionItem, value: Double) {
+        write("plan.missionController.visualItems.\(item.index).altitude", value,
               "this item's altitude")
         reload()
     }
@@ -971,7 +972,7 @@ final class MissionStore: ObservableObject, Probeable, WriteReporting {
             guard let target = items.first(where: { $0.index == Int(args["index"] ?? "") ?? -1 }) else {
                 return ["ok": false, "error": "no item at that index"]
             }
-            setAltitude(of: target, metres: Double(args["metres"] ?? "") ?? 0)
+            setAltitude(of: target, value: Double(args["value"] ?? "") ?? 0)
         case "download":
             downloadFromVehicle()
             for _ in 0..<100 where syncing {

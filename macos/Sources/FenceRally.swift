@@ -88,16 +88,18 @@ final class FenceRallyStore: ObservableObject, Probeable, WriteReporting {
         return "plan.geoFenceController.circles.\(shape.id - polygons)"
     }
 
-    func setRadius(_ shape: FenceShape, metres: Double) {
-        guard let path = circlePath(shape), metres > 0 else { return }
-        write("\(path).radius", metres, "the fence radius")
+    // A Fact write is COOKED, so this is whatever unit the operator is working in, not
+    // metres. Naming it metres invites someone to convert a value that is already right.
+    func setRadius(_ shape: FenceShape, value: Double) {
+        guard let path = circlePath(shape), value > 0 else { return }
+        write("\(path).radius", value, "the fence radius")
         reload()
     }
 
-    func setRallyAltitude(_ point: RallyPointRow, metres: Double) {
+    func setRallyAltitude(_ point: RallyPointRow, value: Double) {
         guard let index = point.altitudeIndex else { return }
         write("plan.rallyPointController.points.\(point.id).textFieldFacts.\(index)",
-              metres, "the rally point height")
+              value, "the rally point height")
         reload()
     }
 
@@ -114,8 +116,8 @@ final class FenceRallyStore: ObservableObject, Probeable, WriteReporting {
         return breachReturn == nil ? "The breach return point was not accepted." : nil
     }
 
-    func setBreachAltitude(_ metres: Double) {
-        write("plan.geoFenceController.breachReturnAltitude", metres,
+    func setBreachAltitude(_ value: Double) {
+        write("plan.geoFenceController.breachReturnAltitude", value,
               "the breach return altitude")
         reload()
     }
@@ -231,25 +233,28 @@ final class FenceRallyStore: ObservableObject, Probeable, WriteReporting {
             addRallyPoint(latitude: latitude, longitude: longitude)
         case "setRadius":
             guard let shape = shapes.first(where: { $0.id == Int(args["which"] ?? "") ?? -1 }),
-                  let metres = Double(args["metres"] ?? "") else {
-                return ["ok": false, "error": "setRadius needs a circle id and metres"]
+                  let value = Double(args["value"] ?? "") else {
+                return ["ok": false, "error": "setRadius needs a circle id and a value in the "
+                    + "units the fence is shown in, which is not always metres"]
             }
-            setRadius(shape, metres: metres)
+            setRadius(shape, value: value)
         case "setRallyAltitude":
             guard let point = rallyPoints.first(where: { $0.id == Int(args["which"] ?? "") ?? -1 }),
-                  let metres = Double(args["metres"] ?? "") else {
-                return ["ok": false, "error": "setRallyAltitude needs a point id and metres"]
+                  let value = Double(args["value"] ?? "") else {
+                return ["ok": false, "error": "setRallyAltitude needs a point id and a value in "
+                    + "the units the point is shown in, which is not always metres"]
             }
-            setRallyAltitude(point, metres: metres)
+            setRallyAltitude(point, value: value)
         case "addBreachReturn":
             if let failure = addBreachReturn() {
                 return ["ok": false, "error": failure]
             }
         case "setBreachAltitude":
-            guard let metres = Double(args["metres"] ?? "") else {
-                return ["ok": false, "error": "setBreachAltitude needs metres"]
+            guard let value = Double(args["value"] ?? "") else {
+                return ["ok": false, "error": "setBreachAltitude needs a value in the units the "
+                    + "breach return is shown in, which is not always metres"]
             }
-            setBreachAltitude(metres)
+            setBreachAltitude(value)
         case "setInclusion":
             guard let shape = shapes.first(where: { $0.id == Int(args["which"] ?? "") ?? -1 }) else {
                 return ["ok": false, "error": "no fence shape with that id"]

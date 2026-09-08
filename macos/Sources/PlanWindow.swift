@@ -3,7 +3,10 @@ import SwiftUI
 import UniformTypeIdentifiers
 
 struct AltitudeField: View {
-    let metres: Double?
+    // Named for what it carries, not for metres: an altitude fact hands over its COOKED
+    // value, so this is feet whenever the operator works in feet, and the units label
+    // beside it comes from the same fact.
+    let value: Double?
     var units = "m"
     var decimals = 0
     let commit: (Double) -> Void
@@ -19,8 +22,8 @@ struct AltitudeField: View {
                 .font(.body.monospacedDigit())
                 .frame(width: 46)
                 .focused($editing)
-                .onAppear { draft = AltitudeField.text(metres, decimals) }
-                .onChange(of: metres) { latest in
+                .onAppear { draft = AltitudeField.text(value, decimals) }
+                .onChange(of: value) { latest in
                     if !editing { draft = AltitudeField.text(latest, decimals) }
                 }
                 .onSubmit(send)
@@ -34,17 +37,17 @@ struct AltitudeField: View {
     }
 
     private func send() {
-        guard let value = Double(draft.trimmingCharacters(in: .whitespaces)), value.isFinite else {
-            draft = AltitudeField.text(metres, decimals)
+        guard let typed = Double(draft.trimmingCharacters(in: .whitespaces)), typed.isFinite else {
+            draft = AltitudeField.text(value, decimals)
             return
         }
-        guard value != metres else { return }
-        commit(value)
+        guard typed != value else { return }
+        commit(typed)
     }
 
-    static func text(_ metres: Double?, _ decimals: Int) -> String {
-        guard let metres, metres.isFinite else { return "" }
-        return String(format: "%.\(decimals)f", metres)
+    static func text(_ value: Double?, _ decimals: Int) -> String {
+        guard let value, value.isFinite else { return "" }
+        return String(format: "%.\(decimals)f", value)
     }
 }
 
@@ -456,8 +459,8 @@ struct PlanInspector: View {
                         trailing: {
                             HStack(spacing: Overlay.step) {
                                 if item.specifiesAltitude {
-                                    AltitudeField(metres: item.altitude, units: item.altitudeUnits,
-                                                  commit: { mission.setAltitude(of: item, metres: $0) })
+                                    AltitudeField(value: item.altitude, units: item.altitudeUnits,
+                                                  commit: { mission.setAltitude(of: item, value: $0) })
                                 } else {
                                     Text(item.altitudeText)
                                         .font(.body.monospacedDigit())
@@ -568,7 +571,7 @@ struct PlanInspector: View {
                 })
                 if mission.selectedSpeed.specified {
                     GroupRow(title: "Speed", trailing: {
-                        AltitudeField(metres: mission.selectedSpeed.value,
+                        AltitudeField(value: mission.selectedSpeed.value,
                                       units: mission.selectedSpeed.units, decimals: 1,
                                       commit: mission.setItemSpeed)
                     })
@@ -587,7 +590,7 @@ struct PlanInspector: View {
             SectionLabel(text: "Launch Position")
             GroupCard {
                 GroupRow(title: "Altitude", showSeparator: false, trailing: {
-                    AltitudeField(metres: mission.launch.altitude,
+                    AltitudeField(value: mission.launch.altitude,
                                   units: mission.launch.units, decimals: 1,
                                   commit: mission.setLaunchAltitude)
                 })
@@ -780,8 +783,8 @@ struct PlanInspector: View {
                         trailing: {
                             HStack(spacing: Overlay.step * 0.5) {
                                 if let radius = shape.radius {
-                                    AltitudeField(metres: radius, units: shape.radiusUnits,
-                                                  commit: { fenceRally.setRadius(shape, metres: $0) })
+                                    AltitudeField(value: radius, units: shape.radiusUnits,
+                                                  commit: { fenceRally.setRadius(shape, value: $0) })
                                 }
                                 Picker("", selection: Binding(
                                     get: { shape.inclusion },
@@ -818,8 +821,8 @@ struct PlanInspector: View {
                         trailing: {
                             HStack(spacing: Overlay.step * 0.5) {
                                 AltitudeField(
-                                    metres: point.altitude, units: point.altitudeUnits,
-                                    commit: { fenceRally.setRallyAltitude(point, metres: $0) })
+                                    value: point.altitude, units: point.altitudeUnits,
+                                    commit: { fenceRally.setRallyAltitude(point, value: $0) })
                                 removeButton { fenceRally.remove(point) }
                             }
                         })
@@ -895,7 +898,7 @@ struct PlanInspector: View {
                         title: "The vehicle returns here",
                         description: point.positionText,
                         trailing: {
-                            AltitudeField(metres: fenceRally.breachAltitude,
+                            AltitudeField(value: fenceRally.breachAltitude,
                                           units: fenceRally.breachAltitudeUnits,
                                           commit: fenceRally.setBreachAltitude)
                         })
