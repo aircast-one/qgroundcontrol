@@ -589,6 +589,7 @@ About 58 developer-weeks. Flight-test time, not code, is the schedule.
 - 2026-09-09: vehicle fact-group decoding in the core (attitude, quaternion, altitude, HUD, nav controller, rangefinder).
 - 2026-09-09: wind, temperature, distance sensor, local position and estimator status decoding in the core.
 - 2026-09-09: `.plan` writer and `.waypoints` to `.plan` conversion in the core (`view.planFromWaypoints`), loaded back by Qt in the C ABI suite.
+- 2026-09-09: `view.inspector` messages carry `title` (name, or name with comp id when the name repeats across components).
 
 ### Stream F · Core
 

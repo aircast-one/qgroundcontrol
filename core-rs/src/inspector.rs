@@ -38,19 +38,24 @@ pub fn inspector_view(backend: &dyn Backend, _args: &[String]) -> Value {
         .get("elements")
         .and_then(Value::as_array)
         .map(|elements| {
+            let name_of = |m: &Value| m.get("name").and_then(Value::as_str).filter(|n| !n.is_empty()).map(str::to_string);
+            let repeated = |name: &str| elements.iter().filter(|m| name_of(m).as_deref() == Some(name)).count() > 1;
             elements
                 .iter()
                 .enumerate()
                 .filter_map(|(index, m)| {
-                    let name = m.get("name").and_then(Value::as_str).filter(|n| !n.is_empty())?;
+                    let name = name_of(m)?;
+                    let comp_id = m.get("compId").and_then(Value::as_i64).unwrap_or(0);
+                    let title = if repeated(&name) { format!("{name} (comp {comp_id})") } else { name.clone() };
                     let rate = m.get("actualRateHz").and_then(Value::as_f64).unwrap_or(0.0);
                     let target = m.get("targetRateHz").and_then(Value::as_i64).unwrap_or(RATE_DEFAULT);
                     Some(json!({
                         "index": index,
                         "path": format!("mavlinkInspector.systems.0.messages.{index}"),
                         "id": m.get("id").and_then(Value::as_i64).unwrap_or(0),
-                        "compId": m.get("compId").and_then(Value::as_i64).unwrap_or(0),
+                        "compId": comp_id,
                         "name": name,
+                        "title": title,
                         "count": m.get("count").and_then(Value::as_i64).unwrap_or(0),
                         "rateHz": rate,
                         "rateText": rate_text(rate),
@@ -96,6 +101,8 @@ mod tests {
                 json!({ "kind": "object", "elements": [
                     { "id": 0, "compId": 1, "name": "HEARTBEAT", "count": 12, "actualRateHz": 1.0, "targetRateHz": 0, "selected": true },
                     { "id": 30, "compId": 1, "name": "", "count": 1 },
+                    { "id": 262, "compId": 100, "name": "CAMERA_CAPTURE_STATUS", "count": 3 },
+                    { "id": 262, "compId": 101, "name": "CAMERA_CAPTURE_STATUS", "count": 2 },
                 ] }).to_string()
             }
             fn set(&self, _p: &str, _v: &str) -> String { String::new() }
@@ -104,7 +111,10 @@ mod tests {
         }
         let view = inspector_view(&Fake, &[]);
         assert_eq!(view["available"], true);
-        assert_eq!(view["messages"].as_array().unwrap().len(), 1);
+        assert_eq!(view["messages"].as_array().unwrap().len(), 3);
+        assert_eq!(view["messages"][0]["title"], "HEARTBEAT");
+        assert_eq!(view["messages"][1]["title"], "CAMERA_CAPTURE_STATUS (comp 100)");
+        assert_eq!(view["messages"][2]["path"], "mavlinkInspector.systems.0.messages.3");
         assert_eq!(view["messages"][0]["rateText"], "1.0 Hz");
         assert_eq!(view["messages"][0]["path"], "mavlinkInspector.systems.0.messages.0");
         assert_eq!(view["rateChoices"].as_array().unwrap().len(), 15);

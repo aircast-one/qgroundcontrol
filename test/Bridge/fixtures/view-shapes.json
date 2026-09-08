@@ -465,7 +465,8 @@
                 "rateText": "string",
                 "selected": "bool",
                 "targetRateHz": "number",
-                "targetRateTitle": "string"
+                "targetRateTitle": "string",
+                "title": "string"
             }
         ],
         "rateChoices": [
