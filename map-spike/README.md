@@ -51,6 +51,11 @@ after the main app booted it. Use it on `MainActivity` if you want a clean resta
 spike. The symptom is "Bridge not running" and `No implementation found for QGCBridge.get` in
 logcat, which reads like a broken bridge rather than a test harness shooting Qt.
 
+**Do not name a cause the bridge cannot see.** A failed read says a read failed. It does not say
+why, and the map used to answer it with "start the main app first" — true of the harness, and in
+the app's Plan tab an instruction to do the thing already done. It says "Waiting for
+QGroundControl", which is the observation. The harness hint lives here instead, where it is true.
+
 **The main app has to start first.** Launching the spike alone never boots Qt, so the bridge
 natives are unregistered and every call throws. The header says so when that happens.
 

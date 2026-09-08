@@ -212,7 +212,10 @@ internal fun MapSpikeScreen(mapStyle: String, onClear: (() -> Unit)? = null) {
                 val ready by MapBridge.bridgeReady.collectAsState()
                 Text(
                     busy ?: if (!ready) {
-                        "Bridge not running (start the main app first)"
+                        // What is known is that no read has come back. Why is a
+                        // guess, and in the app's Plan tab the old guess — start
+                        // the main app — is advice to do the thing already done.
+                        "Waiting for QGroundControl"
                     } else {
                         planSummary(
                             items, fences, circles, rally, surveyList,
