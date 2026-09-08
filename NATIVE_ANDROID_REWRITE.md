@@ -269,6 +269,19 @@ and the map module — the file row should collapse to a single File button as Q
 has, but only once Upload is visually primary, or Save goes two taps away while
 the text beside it says "unsaved changes".
 
+**Boundary import** (`230b5d9`): a site boundary arrives as a file, and
+`insertComplexMissionItemFromKMLOrSHP` had been in `MissionController` all along
+with nothing calling it from a native head. Two things the Android side had to
+get right: the cache copy keeps the source suffix, because `QGCMapPolygon` picks
+its parser off the extension; and the pattern is read from
+`complexMissionItemNames` rather than hardcoded, because the C++ compares against
+`SurveyComplexItem::name`, a `tr()` string that would stop matching under
+localisation — reading it back also offers only the patterns the vehicle
+supports. A file with no usable area is inserted anyway by `QGCMapPolygon`, which
+reports its parse failure through `showAppMessage`, so the import checks the
+distance of what came back and removes the empty item rather than leaving it in
+the plan.
+
 **Known gap — the map draws less than the plan holds.** Waypoints, fences, rally
 points and surveys are drawn; corridor scans, structure scans and landing
 patterns are not. They still count in the distance and duration and they still
