@@ -6,6 +6,16 @@ import org.mavlink.qgroundcontrol.QGCBridge
 const val PLAN_ROOT = "plan"
 const val PLAN_ITEMS = "$PLAN_ROOT.missionController.visualItems"
 
+// An insert that returns a null pointer still answers ok:true, because the
+// method was found and did run. The item it hands back is the only evidence
+// that anything was created, and a null one serialises as kind "null".
+fun insertedItem(raw: String): Boolean =
+    runCatching {
+        val answer = JSONObject(raw)
+        answer.optBoolean("ok") &&
+            answer.optJSONObject("result")?.optString("kind") == "object"
+    }.getOrDefault(false)
+
 // Several of QGroundControl's settings arrive as Facts in an object's fact
 // list rather than as plain fields: a circle's radius, a survey's grid angle,
 // an item's altitude.
@@ -89,21 +99,18 @@ object PlanBridge {
         runCatching { JSONObject(QGCBridge.get(PLAN_ITEMS)).optJSONArray("elements")?.length() }
             .getOrNull()
 
-    fun appendWaypoint(latitude: Double, longitude: Double): Boolean {
-        val count = rawItemCount()?.takeIf { it > 0 } ?: return false
-        return invoke(
-            "$PLAN_ROOT.missionController.insertSimpleMissionItem",
-            "[{\"latitude\":$latitude,\"longitude\":$longitude,\"altitude\":0}, $count]",
-        )
-    }
+    fun appendWaypoint(latitude: Double, longitude: Double): Boolean =
+        insertAt("insertSimpleMissionItem", latitude, longitude) != null
 
     private fun insertAt(method: String, latitude: Double, longitude: Double): Int? {
         val count = rawItemCount()?.takeIf { it > 0 } ?: return null
-        val placed = invoke(
-            "$PLAN_ROOT.missionController.$method",
-            "[{\"latitude\":$latitude,\"longitude\":$longitude,\"altitude\":0}, $count]",
-        )
-        return if (placed) count else null
+        val raw = runCatching {
+            QGCBridge.invoke(
+                "$PLAN_ROOT.missionController.$method",
+                "[{\"latitude\":$latitude,\"longitude\":$longitude,\"altitude\":0}, $count]",
+            )
+        }.getOrDefault("")
+        return if (insertedItem(raw)) count else null
     }
 
     private fun writeCoordinate(path: String, latitude: Double, longitude: Double): Boolean =
