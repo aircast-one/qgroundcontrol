@@ -21,6 +21,7 @@ use crate::preflight;
 use crate::radio;
 use crate::read::value_string;
 use crate::sensors;
+use crate::settings;
 use crate::speed;
 use crate::takeoff;
 use crate::terrain;
@@ -60,6 +61,7 @@ pub const VIEWS: &[View] = &[
     View { path: "view.logs", deps: logs::DEPS, compute: logs::logs_view },
     View { path: "view.inspector", deps: inspector::DEPS, compute: inspector::inspector_view },
     View { path: "view.flightModes", deps: flightmodes::DEPS, compute: flightmodes::flight_modes_view },
+    View { path: "view.settings", deps: settings::DEPS, compute: settings::settings_view },
 ];
 
 pub fn owns(path: &str) -> bool {

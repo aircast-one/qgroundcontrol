@@ -34,6 +34,7 @@ private slots:
     void _logsFollowTheController();
     void _inspectorListsMessages();
     void _flightModesFollowTheVehicle();
+    void _settingsPagesDecodeTheirControls();
 
 private:
     static bool _unavailable(const char *path);

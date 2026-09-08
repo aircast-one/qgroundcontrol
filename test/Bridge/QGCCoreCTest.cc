@@ -385,3 +385,17 @@ void QGCCoreCTest::_flightModesFollowTheVehicle()
     const QString current = view.value(QStringLiteral("current")).toString();
     QVERIFY(std::any_of(view.value(QStringLiteral("modes")).toArray().begin(), view.value(QStringLiteral("modes")).toArray().end(), [&current](const QJsonValue &m) { return m.toObject().value(QStringLiteral("name")).toString() == current; }));
 }
+
+void QGCCoreCTest::_settingsPagesDecodeTheirControls()
+{
+    QCOMPARE(take(qgc_bridge_get("view.settings")).value(QStringLiteral("pages")).toArray().count(), 15);
+    const QJsonObject general = take(qgc_bridge_get("view.settings(General)"));
+    const QJsonArray sections = general.value(QStringLiteral("sections")).toArray();
+    QCOMPARE(sections.count(), 3);
+    const QJsonArray subsections = sections.first().toObject().value(QStringLiteral("subsections")).toArray();
+    QVERIFY(!subsections.isEmpty());
+    const QJsonArray controls = subsections.first().toObject().value(QStringLiteral("controls")).toArray();
+    QVERIFY(!controls.isEmpty());
+    QVERIFY(!controls.first().toObject().value(QStringLiteral("control")).toString().isEmpty());
+    QVERIFY(controls.first().toObject().value(QStringLiteral("path")).toString().startsWith(QStringLiteral("settings.appSettings.")));
+}

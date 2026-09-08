@@ -19,6 +19,7 @@ mod preflight;
 mod radio;
 mod read;
 mod sensors;
+mod settings;
 mod speed;
 mod takeoff;
 mod terrain;

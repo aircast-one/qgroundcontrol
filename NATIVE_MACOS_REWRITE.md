@@ -562,6 +562,7 @@ About 58 developer-weeks. Flight-test time, not code, is the schedule.
 - 2026-09-08: `view.radio` — radio calibration state, channel bars, stick mapping, summary and shortfall.
 - 2026-09-08: `view.logs` (log list, sizes, times, button rules) and `view.inspector` (message table, rate choices).
 - 2026-09-09: `view.flightModes` — mode picker with summaries, everyday/folded split, confirm-in-flight flag.
+- 2026-09-09: `view.settings` and `view.settings(page)` — pages, sections, subsections and decoded controls.
 
 ### Stream F · Core
 
