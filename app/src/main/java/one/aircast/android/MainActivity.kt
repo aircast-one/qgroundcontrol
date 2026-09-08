@@ -156,6 +156,7 @@ fun AircastShell(quickView: QtQuickView) {
     var qmlReady by remember { mutableStateOf(false) }
     var controlsExpanded by remember { mutableStateOf(true) }
     var analyzePage by remember { mutableStateOf<AnalyzePage?>(null) }
+    var videoExpanded by remember { mutableStateOf(false) }
 
     LaunchedEffect(Unit) {
         withContext(Dispatchers.Default) { Qgc.invoke("video.setNativeRendering", true) }
@@ -231,10 +232,15 @@ fun AircastShell(quickView: QtQuickView) {
                 AndroidView(factory = { quickView }, modifier = Modifier.fillMaxSize())
 
                 VideoSurface(
-                    Modifier
-                        .align(Alignment.TopEnd)
-                        .padding(12.dp)
-                        .size(width = 200.dp, height = 112.dp),
+                    modifier = if (videoExpanded) {
+                        Modifier.fillMaxSize()
+                    } else {
+                        Modifier
+                            .align(Alignment.TopEnd)
+                            .padding(12.dp)
+                            .size(width = 200.dp, height = 112.dp)
+                    },
+                    onClick = { videoExpanded = !videoExpanded },
                 )
 
                 when (tab) {

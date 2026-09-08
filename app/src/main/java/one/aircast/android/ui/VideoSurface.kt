@@ -2,6 +2,7 @@ package one.aircast.android.ui
 
 import android.view.SurfaceHolder
 import android.view.SurfaceView
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.material3.MaterialTheme
@@ -16,10 +17,10 @@ import one.aircast.android.bridge.qgcBool
 import org.mavlink.qgroundcontrol.QGCBridge
 
 @Composable
-fun VideoSurface(modifier: Modifier = Modifier) {
+fun VideoSurface(modifier: Modifier = Modifier, onClick: () -> Unit = {}) {
     val streaming by qgcBool("video.streaming")
 
-    Box(modifier) {
+    Box(modifier.clickable { onClick() }) {
         AndroidView(
             modifier = Modifier.fillMaxSize(),
             factory = { context ->
