@@ -183,6 +183,17 @@ So `adb exec-out screencap` is not a frame-rate instrument for a `SurfaceView`; 
 video is live and says nothing about its rate. Measuring that needs a counter in the pipeline,
 not pixels. Recorded because the wrong conclusion was one unrun control away.
 
+**The inset expands.** A 200x112 corner box is not something to fly from, so tapping it
+fills the view and a close button puts it back. The two directions are deliberately not
+symmetric: enlarging a small picture is a guessable convention, while an operator flying by
+map who taps the inset by accident loses the map, and that needs a button rather than a
+convention to undo.
+
+It resizes the same `SurfaceView` rather than creating one, which is forced by the
+`glimagesink` one-window limit above — a design that recreated the surface on expand would
+go black exactly as the tab switch did. Verified through the full cycle on the handset with
+the ball moving at every step.
+
 **The inset is not the product.** It sits in the Fly tab corner and says "No video"
 until a stream starts. While the QML view still owns that tab, the operator can see
 video twice — QML's own inset and this one — which is the price of proving the pipeline
@@ -1054,7 +1065,7 @@ exists natively today:
 | arm / takeoff / land / RTL | **`FlightActions`** | slide-to-confirm; arm and mode report refusals |
 | vehicle messages / warnings | **`VehicleMessageBanner`** | |
 | status (sats, HDOP) | **`StatusStrip`** | |
-| `PipView` map/video swap | **partial** | `VideoSurface` is a fixed corner inset; no swap |
+| `PipView` map/video swap | **partial** | inset expands to full screen and back; still not a *swap* — the map cannot become the inset |
 | `CameraControlLayer`, `CameraSwitchButton` | **missing** | shutter, mode, camera selection |
 | `VideoTilesLayer` | **missing** | multiple streams |
 | `RcControlsLayer` | **missing** | on-screen RC |
