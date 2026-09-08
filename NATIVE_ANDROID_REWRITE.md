@@ -1146,6 +1146,24 @@ Caution was a hard amber; High was `colorScheme.error`, which in this dark theme
 pink meant for text on a surface rather than for filling a shape. The most serious band was
 the least alarming thing on the screen. High is a saturated red now.
 
+**Open defect: some parameters come back read-only, and which ones changes between runs.**
+The parameter list drew a read-only fact as plain text, which looks exactly like a value
+nobody has tapped yet - tapping did nothing and nothing said why. Rows now carry a
+"Read-only" caption, and that label immediately showed something the screen had been hiding:
+`FLTMODE2` through `FLTMODE6` come back read-only while `FLTMODE1` does not, and the set is
+not stable - `FLTMODE3` was a working dropdown in one run and read-only in the next. All six
+are declared identically by the simulator (`REAL32`, values 1-6) and `FLTMODE1`'s dropdown
+lists the very modes the inert rows display, so the enum metadata is present for all of them.
+
+What was ruled out: it is not the sim (identical declarations), not missing enum metadata
+(the list contains those modes), and not the row's control choice (plain text is reachable
+only through the `readOnly` branch, since the fallback draws a bordered text field). Keying
+the row's read on `parametersReady` did not change it, so the guess that rows compose before
+metadata arrives is wrong, and that change was reverted rather than left in as decoration.
+**The cause is not established and is upstream of this screen**, which reflects the flag
+faithfully. It matters beyond Android: `view.control` serves the same `readOnly`, so whatever
+this is will reach every head the same way.
+
 **A true `PipView` swap is blocked, and it is worth saying why rather than leaving it open.**
 `AndroidHost.qml` hosts the whole `FlyView`, not a map component, so shrinking the Qt view to
 an inset would shrink that entire UI with its own overlays inside it. The swap is not a
