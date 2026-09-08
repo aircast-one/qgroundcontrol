@@ -1747,6 +1747,21 @@ func checkGuidedActions() {
     expect(names(flying), "continueMission,pause,changeAltitude,land,rtl,emergencyStop",
            "in the air it can continue, hold, climb, land, return or be stopped, but never disarmed")
 
+    var approaching = flying
+    approaching.fixedWing = true
+    approaching.landing = true
+    expect(names(approaching).contains("landAbort"),
+           "a fixed wing on approach is offered the abort")
+    expect(!names(approaching).contains("pause"),
+           "and holding position is withdrawn while it is on approach, as QGC does")
+    expect(!names(flying).contains("landAbort"),
+           "a multirotor in the cruise is never offered a landing abort")
+
+    var landingMultiRotor = flying
+    landingMultiRotor.landing = true
+    expect(!names(landingMultiRotor).contains("landAbort"),
+           "nor is a multirotor that is landing; the abort is a fixed-wing manoeuvre")
+
     expect(!names(flying).contains("changeSpeed"),
            "changing speed is withheld until the vehicle has reported its speed limits")
     var withLimits = flying

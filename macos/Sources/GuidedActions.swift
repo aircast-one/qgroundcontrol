@@ -37,6 +37,7 @@ final class GuidedStore: ObservableObject, Probeable {
         read.speedLimitsAvailable = read.forwardFlight
             ? flag("haveFWSpeedLimits")
             : flag("haveMRSpeedLimits")
+        read.landing = flag("landing")
         read.readyToArm = prearmClear
         read.flightMode = (vehicle["flightMode"] as? String) ?? ""
         read.rtlMode = (vehicle["rtlFlightMode"] as? String) ?? ""
@@ -52,8 +53,10 @@ final class GuidedStore: ObservableObject, Probeable {
 
     func ask(_ action: GuidedAction) {
         guard action.available(in: state) else { return }
-        range = action.carriesValue ? limits(for: action) : nil
-        chosen = range?.initial ?? 0
+        let built = action.carriesValue ? limits(for: action) : nil
+        guard !action.carriesValue || built != nil else { return }
+        range = built
+        chosen = built?.initial ?? 0
         pending = action
     }
 
@@ -64,6 +67,7 @@ final class GuidedStore: ObservableObject, Probeable {
 
     func confirm() {
         guard let action = pending else { return }
+        guard !action.carriesValue || range != nil else { return }
         send(action)
         pending = nil
         range = nil
@@ -74,7 +78,7 @@ final class GuidedStore: ObservableObject, Probeable {
         case .takeoff:
             return GuidedValue.takeoff(minimumAltitude: number("vehicle.minimumTakeoffAltitudeMeters"),
                                        maximumAltitude: setting("guidedMaximumAltitude"))
-        case .changeAltitude:
+        case .changeAltitude, .pause:
             return GuidedValue.altitude(minimum: setting("guidedMinimumAltitude"),
                                         maximum: setting("guidedMaximumAltitude"),
                                         current: currentAltitude)
@@ -87,6 +91,8 @@ final class GuidedStore: ObservableObject, Probeable {
             return nil
         }
     }
+
+    static let climbOutAltitude = 50.0
 
     private func number(_ path: String) -> Double {
         (Bridge.invoke(path)["result"] as? NSNumber)?.doubleValue ?? .nan
@@ -117,7 +123,9 @@ final class GuidedStore: ObservableObject, Probeable {
                 ? "vehicle.guidedModeChangeEquivalentAirspeedMetersSecond"
                 : "vehicle.guidedModeChangeGroundSpeedMetersSecond", [chosen])
         case .startMission, .continueMission: Bridge.invoke("vehicle.startMission")
-        case .pause: Bridge.invoke("vehicle.pauseVehicle")
+        case .pause:
+            Bridge.invoke("vehicle.guidedModeChangeAltitude", [chosen - currentAltitude, true])
+        case .landAbort: Bridge.invoke("vehicle.abortLanding", [GuidedStore.climbOutAltitude])
         case .emergencyStop: Bridge.invoke("vehicle.emergencyStop")
         }
     }
@@ -147,6 +155,10 @@ final class GuidedStore: ObservableObject, Probeable {
                 return ["ok": false, "error": "\(wanted.title) is not available in this state"]
             }
             ask(wanted)
+            guard pending == wanted else {
+                return ["ok": false,
+                        "error": "\(wanted.title) needs a range the vehicle has not reported"]
+            }
         case "cancel": cancel()
         case "choose":
             guard let range, let wanted = Double(args["value"] ?? "") else {
