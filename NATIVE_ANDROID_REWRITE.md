@@ -1080,7 +1080,7 @@ exists natively today:
 | arm / takeoff / land / RTL | **`FlightActions`** | slide-to-confirm; arm and mode report refusals |
 | vehicle messages / warnings | **`VehicleMessageBanner`** | prearm text, unhealthy sensor, not-ready-to-fly, and no-GPS-lock |
 | status (sats, HDOP) | **`StatusStrip`** | |
-| `PipView` map/video swap | **partial** | inset expands to full screen and back; still not a *swap* — the map cannot become the inset |
+| `PipView` map/video swap | **partial** | inset expands and collapses with the overlays kept over it; still not a *swap* — the map cannot become the inset |
 | `CameraControlLayer` | **built** | selection, mode and shutter, all verified on the wire |
 | `VideoTilesLayer` | **missing** | multiple streams |
 | `RcControlsLayer` | **built** | renders the configured controls and sends `setRcChannelOverride`; editing the list is still desktop-only |
@@ -1145,6 +1145,18 @@ and 75 across the bands showed them working - and showed the colours in the wron
 Caution was a hard amber; High was `colorScheme.error`, which in this dark theme is the pale
 pink meant for text on a surface rather than for filling a shape. The most serious band was
 the least alarming thing on the screen. High is a saturated red now.
+
+**A true `PipView` swap is blocked, and it is worth saying why rather than leaving it open.**
+`AndroidHost.qml` hosts the whole `FlyView`, not a map component, so shrinking the Qt view to
+an inset would shrink that entire UI with its own overlays inside it. The swap is not a
+standalone piece of work; it arrives when the Fly tab stops being QML.
+
+What was not blocked was the state either side of it. Expanding the video hid the whole overlay
+column, so an operator flying on the camera lost the shutter, the mode chip and the camera
+picker at the moment they are the only controls that matter. And in the collapsed layout the
+same column drew *over* the video inset, because it starts at the top left and is wide enough
+to reach under an inset pinned to the top right. Both are fixed: the column starts below the
+inset's height when collapsed, and stays on screen when the video is expanded.
 
 **The Android AAR had not been rebuilt in a long time, and rebuilding it broke the app.**
 Nothing verified the claim that the C ABI reroute left Android unchanged, so the rebuild was
