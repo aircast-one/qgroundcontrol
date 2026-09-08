@@ -363,6 +363,35 @@ internal fun MapSpikeScreen(
                         }
                     }, contentPadding = PRIMARY_PADDING) { Text("Upload") }
 
+                    // Only when there is a choice. One vehicle needs no picker,
+                    // and none needs it less.
+                    if (vehicleCount > 1) {
+                        var vehicles by remember(vehicleCount, vehicleId) {
+                            mutableStateOf<List<VehicleEntry>>(emptyList())
+                        }
+                        LaunchedEffect(vehicleCount, vehicleId) {
+                            vehicles = withContext(Dispatchers.Default) {
+                                VehicleBridge.entries(vehicleId)
+                            }
+                        }
+                        vehicles.filterNot { it.active }.forEach { entry ->
+                            TextButton(onClick = {
+                                scope.launch {
+                                    val switched = withContext(Dispatchers.Default) {
+                                        VehicleBridge.makeActive(entry.index)
+                                    }
+                                    busy = if (switched) {
+                                        "Vehicle ${entry.id} is active"
+                                    } else {
+                                        VehicleBridge.lastRefusal ?: "Could not switch vehicle"
+                                    }
+                                    delay(FAILURE_MESSAGE_MS)
+                                    busy = null
+                                }
+                            }) { Text("Vehicle ${entry.id}") }
+                        }
+                    }
+
                     GroupBreak()
 
                     TextButton(onClick = {
@@ -416,35 +445,6 @@ internal fun MapSpikeScreen(
                         follow = false
                         fitRequest += 1
                     }) { Text("Fit") }
-
-                    // Only when there is a choice. One vehicle needs no picker,
-                    // and none needs it less.
-                    if (vehicleCount > 1) {
-                        var vehicles by remember(vehicleCount, vehicleId) {
-                            mutableStateOf<List<VehicleEntry>>(emptyList())
-                        }
-                        LaunchedEffect(vehicleCount, vehicleId) {
-                            vehicles = withContext(Dispatchers.Default) {
-                                VehicleBridge.entries(vehicleId)
-                            }
-                        }
-                        vehicles.filterNot { it.active }.forEach { entry ->
-                            TextButton(onClick = {
-                                scope.launch {
-                                    val switched = withContext(Dispatchers.Default) {
-                                        VehicleBridge.makeActive(entry.index)
-                                    }
-                                    busy = if (switched) {
-                                        "Vehicle ${entry.id} is active"
-                                    } else {
-                                        VehicleBridge.lastRefusal ?: "Could not switch vehicle"
-                                    }
-                                    delay(FAILURE_MESSAGE_MS)
-                                    busy = null
-                                }
-                            }) { Text("Vehicle ${entry.id}") }
-                        }
-                    }
 
                     // Only offered when the host supplies one. Clearing the plan
                     // from in here would empty it behind a shell that still holds
