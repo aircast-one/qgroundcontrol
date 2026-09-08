@@ -89,6 +89,7 @@ fn typed(value_type: ValueType, raw: &Value) -> Value {
         (ValueType::Bool, Value::Number(n)) => Value::Bool(n.as_f64().unwrap_or(0.0) != 0.0),
         (ValueType::String, Value::Number(n)) => Value::String(n.to_string()),
         (ValueType::Float | ValueType::Double, Value::String(s)) => s.parse::<f64>().map(Value::from).unwrap_or(Value::Null),
+        (ValueType::Float | ValueType::Double, Value::Number(n)) => n.as_f64().map(Value::from).unwrap_or(Value::Null),
         (ValueType::Uint8 | ValueType::Int8 | ValueType::Uint16 | ValueType::Int16 | ValueType::Uint32 | ValueType::Int32 | ValueType::Uint64 | ValueType::Int64, Value::String(s)) => {
             s.parse::<f64>().ok().map(|n| Value::from(n.round() as i64)).unwrap_or(Value::Null)
         }

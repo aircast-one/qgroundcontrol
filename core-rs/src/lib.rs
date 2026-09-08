@@ -6,6 +6,7 @@ pub mod batteryfacts;
 pub mod battery;
 pub mod calibration;
 pub mod compression;
+pub mod compinfo;
 pub mod cmdinfo;
 pub mod contract;
 pub mod factmeta;

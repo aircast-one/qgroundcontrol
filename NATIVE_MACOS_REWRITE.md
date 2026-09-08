@@ -605,6 +605,7 @@ About 58 developer-weeks. Flight-test time, not code, is the schedule.
 - 2026-09-09: parameter download/write state machine in the core (pure events in, actions out, C++ retry budgets).
 - 2026-09-09: PX4 parameter XML metadata loader in the core over the bundled file (2,600+ parameters).
 - 2026-09-09: ArduPilot apm.pdef.xml loader in the core with the plugin's lookup rules (Copter 4.6 fixture).
+- 2026-09-09: COMPONENT_INFORMATION parameters.json loader in the core with {n} indexed-name resolution.
 
 ### Stream F · Core
 
