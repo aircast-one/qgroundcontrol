@@ -1146,6 +1146,14 @@ Caution was a hard amber; High was `colorScheme.error`, which in this dark theme
 pink meant for text on a surface rather than for filling a shape. The most serious band was
 the least alarming thing on the screen. High is a saturated red now.
 
+**`optString` returns the string `"null"`, and that is how a view field lands in the UI.**
+The second migration - `flightBlocker` deleted, `view.warnings.armingBlocker` in its place -
+worked first time and then showed the word **null** in red once the blocker cleared, because
+`org.json`'s `optString` renders a JSON null as the literal four characters rather than as
+absence. Every optional field on every view path has this trap waiting. Read anything that can
+be absent through an `isNull` guard, and pin it with a test: this was caught by looking at the
+handset a minute after it looked right, not by the suite.
+
 **The first head logic is gone, replaced by the core.** `TelemetryRow` reads
 `view.instruments`; `telemetryLabel` and `telemetryValue` are deleted. The view serves each
 reading already formatted with its label, units and a missing flag, so the head joins a value
