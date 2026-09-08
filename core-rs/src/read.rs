@@ -26,6 +26,11 @@ pub fn value_string(json: &str) -> String {
     object(json).get("value").and_then(Value::as_str).unwrap_or("").to_string()
 }
 
+pub fn result_flag(json: &str) -> bool {
+    let v = object(json);
+    flag(&v, "ok") && flag(&v, "result")
+}
+
 pub fn result_integer(json: &str) -> Option<i64> {
     ok_result(json)?.as_i64()
 }

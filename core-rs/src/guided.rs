@@ -6,6 +6,7 @@ use crate::router::Backend;
 
 pub const DEPS: &[&str] = &[
     "vehicles.activeVehicleAvailable",
+    "vehicle.parameterManager.parametersReady",
     "vehicle.armed",
     "vehicle.flying",
     "vehicle.flightMode",
@@ -224,6 +225,17 @@ pub fn guided_view(backend: &dyn Backend, _args: &[String]) -> Value {
     })
 }
 
+fn speed_limits_live(backend: &dyn Backend, px4: bool, apm: bool, forward_flight: bool) -> bool {
+    let names: &[&str] = match (forward_flight, px4, apm) {
+        (false, true, _) => &["MPC_XY_VEL_MAX"],
+        (false, false, true) => &["WPNAV_SPEED"],
+        (true, true, _) => &["FW_AIRSPD_MIN", "FW_AIRSPD_MAX"],
+        (true, false, true) => &["r.AIRSPEED_MIN", "r.AIRSPEED_MAX"],
+        _ => return false,
+    };
+    names.iter().all(|name| crate::read::result_flag(&backend.invoke("vehicle.parameterManager.parameterExists", &json!([-1, name]).to_string())))
+}
+
 fn read_state(backend: &dyn Backend) -> GuidedState {
     let vehicles = object(&backend.get_fields("vehicles", "activeVehicleAvailable"));
     if !flag(&vehicles, "activeVehicleAvailable") {
@@ -231,7 +243,7 @@ fn read_state(backend: &dyn Backend) -> GuidedState {
     }
     let vehicle = object(&backend.get_fields(
         "vehicle",
-        "armed,flying,guidedModeSupported,takeoffVehicleSupported,pauseVehicleSupported,fixedWing,vtolInFwdFlight,haveFWSpeedLimits,haveMRSpeedLimits,landing,hasGripper,initialConnectComplete,checkListState,flightMode,rtlFlightMode,smartRTLFlightMode,landFlightMode,missionFlightMode,pauseFlightMode",
+        "armed,flying,guidedModeSupported,takeoffVehicleSupported,pauseVehicleSupported,fixedWing,vtolInFwdFlight,haveFWSpeedLimits,haveMRSpeedLimits,px4Firmware,apmFirmware,landing,hasGripper,initialConnectComplete,checkListState,flightMode,rtlFlightMode,smartRTLFlightMode,landFlightMode,missionFlightMode,pauseFlightMode",
     ));
     let report = object(&backend.get_fields("vehicle.healthAndArmingCheckReport", "supported,canArm,canTakeoff,canStartMission"));
     let mission = object(&backend.get_fields("plan.missionController", "containsItems,missionItemCount,currentMissionIndex"));
@@ -254,7 +266,8 @@ fn read_state(backend: &dyn Backend) -> GuidedState {
         pause_supported: flag(&vehicle, "pauseVehicleSupported"),
         fixed_wing,
         forward_flight,
-        speed_limits: if forward_flight { flag(&vehicle, "haveFWSpeedLimits") } else { flag(&vehicle, "haveMRSpeedLimits") },
+        speed_limits: if forward_flight { flag(&vehicle, "haveFWSpeedLimits") } else { flag(&vehicle, "haveMRSpeedLimits") }
+            || speed_limits_live(backend, flag(&vehicle, "px4Firmware"), flag(&vehicle, "apmFirmware"), forward_flight),
         landing: flag(&vehicle, "landing"),
         has_gripper: flag(&vehicle, "hasGripper"),
         initial_connect_complete: flag(&vehicle, "initialConnectComplete"),
@@ -388,5 +401,29 @@ mod tests {
         assert_eq!(view["actions"][13]["destructive"], true);
         assert_eq!(view["actions"][1]["carriesValue"], true);
         assert!(view["actions"][1].get("carries_value").is_none());
+    }
+
+    #[test]
+    fn the_speed_offer_follows_the_live_parameter_when_the_latched_flag_is_stale() {
+        struct Fake(bool);
+        impl Backend for Fake {
+            fn get(&self, _p: &str) -> String { String::new() }
+            fn get_fields(&self, path: &str, _f: &str) -> String {
+                match path {
+                    "vehicles" => json!({ "kind": "object", "activeVehicleAvailable": true }).to_string(),
+                    "vehicle" => json!({ "kind": "object", "armed": true, "flying": true, "guidedModeSupported": true, "haveMRSpeedLimits": false, "apmFirmware": true, "px4Firmware": false, "flightMode": "Guided" }).to_string(),
+                    _ => json!({ "kind": "object" }).to_string(),
+                }
+            }
+            fn set(&self, _p: &str, _v: &str) -> String { String::new() }
+            fn invoke(&self, path: &str, args: &str) -> String {
+                assert_eq!(path, "vehicle.parameterManager.parameterExists");
+                assert!(args.contains("WPNAV_SPEED"));
+                json!({ "ok": true, "result": self.0 }).to_string()
+            }
+            fn watch(&self, _p: &[String]) {}
+        }
+        assert!(read_state(&Fake(true)).speed_limits);
+        assert!(!read_state(&Fake(false)).speed_limits);
     }
 }
