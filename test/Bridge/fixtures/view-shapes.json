@@ -1,0 +1,743 @@
+{
+    "view.battery": {
+        "available": "bool",
+        "class": "string",
+        "kind": "string",
+        "level": "string",
+        "packs": [
+            {
+                "chargeLabel": "string",
+                "chargeState": "number",
+                "current": "number",
+                "index": "number",
+                "level": "string",
+                "percent": "number",
+                "secondaryText": "string",
+                "text": "string",
+                "voltage": "number",
+                "voltageText": "string"
+            }
+        ],
+        "text": "string"
+    },
+    "view.calibration": {
+        "accelNeeded": "bool",
+        "busy": "bool",
+        "cancelEnabled": "bool",
+        "class": "string",
+        "compassNeeded": "bool",
+        "connected": "bool",
+        "helpText": "string",
+        "inProgress": "bool",
+        "kind": "string",
+        "needsAttention": "string",
+        "nextEnabled": "bool",
+        "progress": "number",
+        "progressText": "string",
+        "routines": [
+            {
+                "arguments": [
+                    "bool"
+                ],
+                "blocked": "bool",
+                "description": "string",
+                "enabled": "bool",
+                "id": "string",
+                "invocation": "string",
+                "title": "string",
+                "warning": "string"
+            }
+        ],
+        "showsSides": "bool",
+        "sides": [
+            {
+                "key": "string",
+                "rotate": "bool",
+                "stage": "string",
+                "title": "string",
+                "visible": "bool"
+            }
+        ],
+        "statusText": "string",
+        "visibleSides": [
+            "empty"
+        ],
+        "waitingForCancel": "bool"
+    },
+    "view.camera": {
+        "batteryRemaining": "number",
+        "batteryText": "string",
+        "canPhoto": "bool",
+        "canRecord": "bool",
+        "class": "string",
+        "clockText": "string",
+        "hasModes": "bool",
+        "hasZoom": "bool",
+        "isRecording": "bool",
+        "isTakingPhoto": "bool",
+        "kind": "string",
+        "mode": "number",
+        "modeKnown": "bool",
+        "modeText": "string",
+        "model": "string",
+        "present": "bool",
+        "shots": "number",
+        "shotsText": "string",
+        "stateText": "string",
+        "storageStatus": "number",
+        "storageText": "string",
+        "title": "string",
+        "vendor": "string",
+        "zoomLevel": "number"
+    },
+    "view.control(settings.appSettings.audioMuted)": {
+        "class": "string",
+        "control": "string",
+        "decimalPlaces": "number",
+        "display": "string",
+        "kind": "string",
+        "label": "string",
+        "maximum": "null",
+        "minimum": "null",
+        "name": "string",
+        "options": [
+            "empty"
+        ],
+        "path": "string",
+        "readOnly": "bool",
+        "rebootRequired": "bool",
+        "units": "string",
+        "value": "bool",
+        "valueString": "string"
+    },
+    "view.fences": {
+        "circles": [
+            "empty"
+        ],
+        "class": "string",
+        "count": "number",
+        "kind": "string",
+        "polygons": [
+            "empty"
+        ],
+        "rallyPoints": [
+            "empty"
+        ]
+    },
+    "view.flightModes": {
+        "available": "bool",
+        "canSet": "bool",
+        "class": "string",
+        "current": "string",
+        "currentSummary": "string",
+        "everyday": [
+            {
+                "advanced": "bool",
+                "current": "bool",
+                "name": "string",
+                "needsConfirm": "bool",
+                "summary": "string"
+            }
+        ],
+        "folded": [
+            {
+                "advanced": "bool",
+                "current": "bool",
+                "name": "string",
+                "needsConfirm": "bool",
+                "summary": "string"
+            }
+        ],
+        "kind": "string",
+        "modes": [
+            {
+                "advanced": "bool",
+                "current": "bool",
+                "name": "string",
+                "needsConfirm": "bool",
+                "summary": "string"
+            }
+        ]
+    },
+    "view.guidedActions": {
+        "actions": [
+            {
+                "carriesValue": "bool",
+                "destructive": "bool",
+                "id": "string",
+                "offer": "string",
+                "prompt": "string",
+                "reason": "string",
+                "title": "string"
+            }
+        ],
+        "class": "string",
+        "connected": "bool",
+        "forwardFlight": "bool",
+        "kind": "string",
+        "missionActive": "bool"
+    },
+    "view.guidedAltitude": {
+        "available": "bool",
+        "class": "string",
+        "current": "number",
+        "currentMeters": "number",
+        "kind": "string",
+        "label": "string",
+        "maximum": "number",
+        "minimum": "number",
+        "unit": "string"
+    },
+    "view.guidedAltitude(30)": {
+        "available": "bool",
+        "class": "string",
+        "current": "number",
+        "currentMeters": "number",
+        "delta": "number",
+        "deltaMeters": "number",
+        "kind": "string",
+        "label": "string",
+        "maximum": "number",
+        "minimum": "number",
+        "sends": "bool",
+        "sentence": "string",
+        "target": "number",
+        "targetMeters": "number",
+        "unit": "string"
+    },
+    "view.guidedSpeed": {
+        "available": "bool",
+        "class": "string",
+        "command": "string",
+        "initial": "number",
+        "kind": "string",
+        "label": "string",
+        "maximum": "number",
+        "minimum": "number",
+        "unit": "string"
+    },
+    "view.guidedSpeed(3)": {
+        "available": "bool",
+        "class": "string",
+        "command": "string",
+        "initial": "number",
+        "kind": "string",
+        "label": "string",
+        "maximum": "number",
+        "minimum": "number",
+        "sentence": "string",
+        "target": "number",
+        "targetMetersSecond": "number",
+        "unit": "string"
+    },
+    "view.guidedTakeoff": {
+        "available": "bool",
+        "class": "string",
+        "initial": "number",
+        "kind": "string",
+        "label": "string",
+        "maximum": "number",
+        "minimum": "number",
+        "minimumMeters": "number",
+        "unit": "string"
+    },
+    "view.guidedTakeoff(10)": {
+        "available": "bool",
+        "class": "string",
+        "initial": "number",
+        "kind": "string",
+        "label": "string",
+        "maximum": "number",
+        "minimum": "number",
+        "minimumMeters": "number",
+        "sentence": "string",
+        "target": "number",
+        "targetMeters": "number",
+        "unit": "string"
+    },
+    "view.inspector": {
+        "available": "bool",
+        "class": "string",
+        "kind": "string",
+        "messages": [
+            {
+                "compId": "number",
+                "count": "number",
+                "id": "number",
+                "index": "number",
+                "name": "string",
+                "path": "string",
+                "rateHz": "number",
+                "rateText": "string",
+                "selected": "bool",
+                "targetRateHz": "number",
+                "targetRateTitle": "string"
+            }
+        ],
+        "rateChoices": [
+            {
+                "rate": "number",
+                "title": "string"
+            }
+        ]
+    },
+    "view.instruments": {
+        "available": "bool",
+        "class": "string",
+        "items": [
+            {
+                "group": "string",
+                "id": "string",
+                "label": "string",
+                "missing": "bool",
+                "name": "string",
+                "units": "string",
+                "value": "string"
+            }
+        ],
+        "kind": "string"
+    },
+    "view.label(altitudeRelative)": {
+        "kind": "string",
+        "value": "string"
+    },
+    "view.linkForm(udp,,14550)": {
+        "class": "string",
+        "error": "string",
+        "kind": "string",
+        "name": "string",
+        "type": "string",
+        "valid": "bool"
+    },
+    "view.links": {
+        "available": "bool",
+        "baudRates": [
+            "number"
+        ],
+        "class": "string",
+        "configured": [
+            "empty"
+        ],
+        "kind": "string",
+        "linkTypes": [
+            "string"
+        ],
+        "links": [
+            {
+                "autoConnect": "bool",
+                "baud": "number",
+                "connected": "bool",
+                "displaySummary": "string",
+                "dynamic": "bool",
+                "editing": "string",
+                "filename": "string",
+                "host": "string",
+                "index": "number",
+                "lastError": "string",
+                "logFileName": "string",
+                "name": "string",
+                "path": "string",
+                "port": "number",
+                "portName": "string",
+                "statusLine": "string",
+                "summary": "string",
+                "type": "string",
+                "typeLabel": "string"
+            }
+        ]
+    },
+    "view.logs": {
+        "anyDownloaded": "bool",
+        "busy": "bool",
+        "canCancel": "bool",
+        "canDownload": "bool",
+        "canErase": "bool",
+        "canRefresh": "bool",
+        "class": "string",
+        "connected": "bool",
+        "downloading": "bool",
+        "emptyText": "string",
+        "entries": [
+            "empty"
+        ],
+        "eraseWarning": "string",
+        "kind": "string",
+        "requestingList": "bool"
+    },
+    "view.mapScale(120)": {
+        "available": "bool",
+        "class": "string",
+        "fraction": "number",
+        "imperial": "bool",
+        "kind": "string",
+        "text": "string"
+    },
+    "view.messages": {
+        "class": "string",
+        "count": "number",
+        "items": [
+            "empty"
+        ],
+        "kind": "string"
+    },
+    "view.missionKinds": {
+        "class": "string",
+        "kind": "string",
+        "kinds": [
+            {
+                "complexName": "null",
+                "geometry": "null",
+                "geometryProperty": "null",
+                "id": "string",
+                "invokable": "string",
+                "placementHint": "string",
+                "shapeNoun": "string",
+                "simple": "bool",
+                "title": "string"
+            }
+        ]
+    },
+    "view.missionSeed(survey,47,8)": {
+        "class": "string",
+        "id": "string",
+        "kind": "string",
+        "points": [
+            {
+                "altitude": "number",
+                "latitude": "number",
+                "longitude": "number"
+            }
+        ],
+        "property": "string"
+    },
+    "view.plan": {
+        "actions": {
+            "clearMission": "bool",
+            "exportKml": "bool",
+            "newPlan": "bool",
+            "open": "bool",
+            "save": "bool"
+        },
+        "class": "string",
+        "dirty": "bool",
+        "file": "null",
+        "kind": "string",
+        "readiness": {
+            "ready": "bool",
+            "reason": "string",
+            "state": "number"
+        },
+        "status": "string",
+        "sync": {
+            "refusal": "string",
+            "state": "string"
+        },
+        "upload": {
+            "canProceed": "bool",
+            "canSend": "bool",
+            "heading": "string",
+            "pausesFirst": "bool",
+            "proceedTitle": "string",
+            "refusal": "string",
+            "state": "number"
+        }
+    },
+    "view.polygon": {
+        "kind": "string"
+    },
+    "view.preflight": {
+        "airframe": "string",
+        "blocked": [
+            "string"
+        ],
+        "class": "string",
+        "groups": [
+            {
+                "checks": [
+                    {
+                        "blocked": "bool",
+                        "name": "string",
+                        "prompt": "string",
+                        "reason": "string",
+                        "verdict": "string"
+                    }
+                ],
+                "name": "string"
+            }
+        ],
+        "kind": "string",
+        "total": "number"
+    },
+    "view.radio": {
+        "calibrating": "bool",
+        "cancelEnabled": "bool",
+        "channelCount": "number",
+        "channels": [
+            "empty"
+        ],
+        "class": "string",
+        "connected": "bool",
+        "enoughChannels": "bool",
+        "kind": "string",
+        "liveChannels": "number",
+        "minimumChannels": "number",
+        "nextEnabled": "bool",
+        "nextText": "string",
+        "shortfall": "string",
+        "skipEnabled": "bool",
+        "statusText": "string",
+        "sticks": [
+            {
+                "fraction": "number",
+                "key": "string",
+                "mapped": "bool",
+                "reversed": "bool",
+                "title": "string",
+                "value": "number",
+                "valueText": "string"
+            }
+        ],
+        "summary": "string",
+        "transmitterMode": "number"
+    },
+    "view.sensors": {
+        "available": "bool",
+        "class": "string",
+        "failing": [
+            "empty"
+        ],
+        "kind": "string",
+        "sensors": [
+            {
+                "label": "string",
+                "name": "string",
+                "state": "string"
+            }
+        ],
+        "status": "string"
+    },
+    "view.settings": {
+        "class": "string",
+        "kind": "string",
+        "pages": [
+            {
+                "sections": [
+                    {
+                        "group": "string",
+                        "path": "string",
+                        "title": "string"
+                    }
+                ],
+                "showsAbout": "bool",
+                "showsLinks": "bool",
+                "showsVideoSources": "bool",
+                "title": "string"
+            }
+        ]
+    },
+    "view.settings(General)": {
+        "sections": [
+            {
+                "group": "string",
+                "note": "string",
+                "path": "string",
+                "subsections": [
+                    {
+                        "controls": [
+                            {
+                                "class": "string",
+                                "control": "string",
+                                "decimalPlaces": "number",
+                                "display": "string",
+                                "kind": "string",
+                                "label": "string",
+                                "maximum": "null",
+                                "minimum": "null",
+                                "name": "string",
+                                "options": [
+                                    {
+                                        "label": "string",
+                                        "raw": "string"
+                                    }
+                                ],
+                                "path": "string",
+                                "readOnly": "bool",
+                                "rebootRequired": "bool",
+                                "units": "string",
+                                "value": "number",
+                                "valueString": "string"
+                            }
+                        ],
+                        "title": "string"
+                    }
+                ],
+                "title": "string"
+            }
+        ],
+        "showsAbout": "bool",
+        "showsLinks": "bool",
+        "showsVideoSources": "bool",
+        "title": "string"
+    },
+    "view.setup": {
+        "class": "string",
+        "components": [
+            "empty"
+        ],
+        "connected": "bool",
+        "detail": "string",
+        "firmware": "string",
+        "groups": [
+            {
+                "pages": [
+                    {
+                        "name": "string",
+                        "native": "bool",
+                        "parameterSections": "bool"
+                    }
+                ],
+                "title": "string"
+            }
+        ],
+        "headline": "string",
+        "kind": "string",
+        "ready": "bool"
+    },
+    "view.setup(Safety)": {
+        "available": "bool",
+        "class": "string",
+        "firmware": "string",
+        "kind": "string",
+        "page": "string",
+        "sections": [
+            {
+                "controls": [
+                    {
+                        "class": "string",
+                        "control": "string",
+                        "decimalPlaces": "number",
+                        "display": "string",
+                        "kind": "string",
+                        "label": "string",
+                        "maximum": "null",
+                        "minimum": "null",
+                        "name": "string",
+                        "options": [
+                            {
+                                "label": "string",
+                                "raw": "string"
+                            }
+                        ],
+                        "path": "string",
+                        "readOnly": "bool",
+                        "rebootRequired": "bool",
+                        "units": "string",
+                        "value": "number",
+                        "valueString": "string"
+                    }
+                ],
+                "note": "string",
+                "title": "string"
+            }
+        ]
+    },
+    "view.surveyStats(0)": {
+        "areaSquareMetres": "number",
+        "areaText": "string",
+        "available": "bool",
+        "class": "string",
+        "distanceMetres": "number",
+        "distanceText": "string",
+        "footprintFrontal": "number",
+        "footprintSide": "number",
+        "footprintText": "string",
+        "footprintUnits": "string",
+        "index": "number",
+        "intervalText": "string",
+        "isSurvey": "bool",
+        "kind": "string",
+        "minimumInterval": "number",
+        "secondsBetweenShots": "number",
+        "shots": "number",
+        "shotsText": "string",
+        "tooFast": "bool",
+        "warning": "string"
+    },
+    "view.terrainProfile": {
+        "class": "string",
+        "distanceText": "string",
+        "groundKnown": "bool",
+        "hasCollision": "bool",
+        "highestText": "string",
+        "kind": "string",
+        "lowestText": "string",
+        "maxAltitudeMeters": "number",
+        "minAltitudeMeters": "number",
+        "points": [
+            "empty"
+        ],
+        "totalDistanceMeters": "number",
+        "unknownTerrain": "number",
+        "usable": "bool"
+    },
+    "view.vibration": {
+        "available": "bool",
+        "axes": [
+            {
+                "axis": "string",
+                "fraction": "number",
+                "severity": "string",
+                "value": "number"
+            }
+        ],
+        "class": "string",
+        "clipCounts": [
+            "number"
+        ],
+        "clipping": "bool",
+        "dangerLevel": "number",
+        "kind": "string",
+        "scaleMaximum": "number",
+        "units": "string",
+        "warningLevel": "number",
+        "worst": "string"
+    },
+    "view.video": {
+        "activeSource": "number",
+        "anyConnecting": "bool",
+        "available": "bool",
+        "cameras": [
+            {
+                "configured": "bool",
+                "connecting": "bool",
+                "recording": "bool",
+                "slot": "number",
+                "status": "string",
+                "title": "string"
+            }
+        ],
+        "class": "string",
+        "configuredCount": "number",
+        "decoding": "bool",
+        "gstreamer": "bool",
+        "kind": "string",
+        "multipleSources": "bool",
+        "recording": "bool",
+        "streamSource": "bool",
+        "streaming": "bool",
+        "summary": "string"
+    },
+    "view.warnings": {
+        "armingBlocker": "string",
+        "class": "string",
+        "kind": "string",
+        "showing": "bool",
+        "warnings": [
+            {
+                "detail": "string",
+                "id": "string",
+                "text": "string"
+            }
+        ]
+    }
+}

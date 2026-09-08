@@ -39,6 +39,7 @@ private slots:
     void _fencesAndPolygonsAreServed();
     void _setupOverviewFollowsTheVehicle();
     void _videoAndCameraAreServed();
+    void _viewShapesMatchTheRecordedContract();
 
 private:
     static bool _unavailable(const char *path);

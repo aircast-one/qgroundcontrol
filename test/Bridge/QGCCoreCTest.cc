@@ -3,6 +3,9 @@
 #include "MockLink.h"
 #include "QGCBridgeC.h"
 
+#include <QtCore/QDir>
+#include <QtCore/QFile>
+#include <QtCore/QFileInfo>
 #include <QtCore/QJsonArray>
 #include <QtCore/QJsonDocument>
 #include <QtCore/QJsonObject>
@@ -441,4 +444,67 @@ void QGCCoreCTest::_videoAndCameraAreServed()
     const QJsonObject camera = take(qgc_bridge_get("view.camera"));
     QCOMPARE(camera.value(QStringLiteral("present")).toBool(true), false);
     QCOMPARE(camera.value(QStringLiteral("shotsText")).toString(), QStringLiteral("00000"));
+}
+
+namespace
+{
+
+QJsonValue shapeOf(const QJsonValue &value)
+{
+    if (value.isObject()) {
+        const QJsonObject object = value.toObject();
+        QJsonObject described;
+        for (auto it = object.begin(); it != object.end(); ++it) {
+            described.insert(it.key(), shapeOf(it.value()));
+        }
+        return described;
+    }
+    if (value.isArray()) {
+        const QJsonArray array = value.toArray();
+        return QJsonArray { array.isEmpty() ? QJsonValue(QStringLiteral("empty")) : shapeOf(array.first()) };
+    }
+    return value.isNull() ? QStringLiteral("null") : value.isBool() ? QStringLiteral("bool") : value.isDouble() ? QStringLiteral("number") : QStringLiteral("string");
+}
+
+const char *const kViewPaths[] = {
+    "view.messages", "view.plan", "view.guidedActions", "view.guidedAltitude", "view.guidedAltitude(30)",
+    "view.guidedTakeoff", "view.guidedTakeoff(10)", "view.guidedSpeed", "view.guidedSpeed(3)", "view.battery",
+    "view.preflight", "view.warnings", "view.label(altitudeRelative)", "view.instruments", "view.vibration",
+    "view.sensors", "view.control(settings.appSettings.audioMuted)", "view.links", "view.linkForm(udp,,14550)",
+    "view.mapScale(120)", "view.terrainProfile", "view.missionKinds", "view.missionSeed(survey,47,8)",
+    "view.calibration", "view.radio", "view.logs", "view.inspector", "view.flightModes", "view.settings",
+    "view.settings(General)", "view.surveyStats(0)", "view.fences", "view.polygon", "view.setup",
+    "view.setup(Safety)", "view.video", "view.camera",
+};
+
+} // namespace
+
+void QGCCoreCTest::_viewShapesMatchTheRecordedContract()
+{
+    _connectMockLink(MAV_AUTOPILOT_PX4);
+    QTRY_VERIFY_WITH_TIMEOUT(take(qgc_bridge_get("view.guidedActions")).value(QStringLiteral("connected")).toBool(false), 5000);
+
+    QJsonObject recorded;
+    for (const char *path : kViewPaths) {
+        recorded.insert(QString::fromUtf8(path), shapeOf(take(qgc_bridge_get(path))));
+    }
+    const QByteArray current = QJsonDocument(recorded).toJson(QJsonDocument::Indented);
+
+    const QString fixture = QFileInfo(QString::fromUtf8(__FILE__)).dir().filePath(QStringLiteral("fixtures/view-shapes.json"));
+    if (qEnvironmentVariableIsSet("QGC_RECORD_VIEW_CONTRACT")) {
+        QFile out(fixture);
+        QVERIFY(out.open(QIODevice::WriteOnly | QIODevice::Truncate));
+        out.write(current);
+        return;
+    }
+
+    QFile in(fixture);
+    QVERIFY2(in.open(QIODevice::ReadOnly), "no recorded view contract; run with QGC_RECORD_VIEW_CONTRACT=1 once");
+    const QJsonObject expected = QJsonDocument::fromJson(in.readAll()).object();
+    for (const char *path : kViewPaths) {
+        const QString key = QString::fromUtf8(path);
+        const QByteArray was = QJsonDocument(expected.value(key).toObject()).toJson(QJsonDocument::Compact);
+        const QByteArray now = QJsonDocument(recorded.value(key).toObject()).toJson(QJsonDocument::Compact);
+        QVERIFY2(was == now, qPrintable(QStringLiteral("%1 changed shape\n was: %2\n now: %3").arg(key, QString::fromUtf8(was), QString::fromUtf8(now))));
+    }
 }
