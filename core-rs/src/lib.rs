@@ -4,6 +4,7 @@ pub mod altitude;
 pub mod apmmeta;
 pub mod batteryfacts;
 pub mod battery;
+pub mod boards;
 pub mod calibration;
 pub mod compression;
 pub mod compinfo;
