@@ -18,15 +18,28 @@ fun vehicleEntries(json: JSONObject?, activeId: Int): List<VehicleEntry> {
     }
 }
 
-fun vehicleSummary(entries: List<VehicleEntry>): String? {
-    if (entries.size < 2) {
-        return null
-    }
-    val active = entries.firstOrNull { it.active } ?: return null
-    return entries.sortedBy { it.id }.joinToString(", ") { "Vehicle ${it.id}" } + " \u00b7 ${active.id} active"
-}
-
 object VehicleBridge {
+    // activeVehicle takes a Vehicle*, so the write is an @path naming the entry
+    // in the manager's own list rather than a copy of it. The bridge resolves
+    // the reference and type-checks it against the property.
+    //
+    // It refuses with a reason, and discarding that was how a failing picker
+    // became "did not work" with nothing to chase.
+    var lastRefusal: String? = null
+        private set
+
+    fun makeActive(index: Int): Boolean =
+        runCatching {
+            val answer = JSONObject(
+                QGCBridge.set(
+                    "$VEHICLES_ROOT.activeVehicle",
+                    "{\"value\":\"@$VEHICLE_LIST.$index\"}",
+                ),
+            )
+            lastRefusal = answer.optString("reason").takeIf { it.isNotBlank() }
+            answer.optBoolean("ok")
+        }.onFailure { lastRefusal = "bridge threw: ${it.message}" }.getOrDefault(false)
+
     fun entries(activeId: Int): List<VehicleEntry> =
         vehicleEntries(
             runCatching { JSONObject(QGCBridge.get(VEHICLE_LIST)) }.getOrNull(),

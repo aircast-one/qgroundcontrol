@@ -417,10 +417,8 @@ internal fun MapSpikeScreen(
                         fitRequest += 1
                     }) { Text("Fit") }
 
-                    // Reads only. Making a vehicle active means writing a
-                    // Vehicle* to vehicles.activeVehicle, and the bridge resolves
-                    // that path to the vehicle itself rather than to the writable
-                    // property, so the write cannot be expressed yet.
+                    // Only when there is a choice. One vehicle needs no picker,
+                    // and none needs it less.
                     if (vehicleCount > 1) {
                         var vehicles by remember(vehicleCount, vehicleId) {
                             mutableStateOf<List<VehicleEntry>>(emptyList())
@@ -430,8 +428,21 @@ internal fun MapSpikeScreen(
                                 VehicleBridge.entries(vehicleId)
                             }
                         }
-                        vehicleSummary(vehicles)?.let {
-                            Text(it, style = MaterialTheme.typography.labelSmall)
+                        vehicles.filterNot { it.active }.forEach { entry ->
+                            TextButton(onClick = {
+                                scope.launch {
+                                    val switched = withContext(Dispatchers.Default) {
+                                        VehicleBridge.makeActive(entry.index)
+                                    }
+                                    busy = if (switched) {
+                                        "Vehicle ${entry.id} is active"
+                                    } else {
+                                        VehicleBridge.lastRefusal ?: "Could not switch vehicle"
+                                    }
+                                    delay(FAILURE_MESSAGE_MS)
+                                    busy = null
+                                }
+                            }) { Text("Vehicle ${entry.id}") }
                         }
                     }
 

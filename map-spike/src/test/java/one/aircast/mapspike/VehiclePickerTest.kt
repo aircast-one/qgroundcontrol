@@ -44,22 +44,4 @@ class VehiclePickerTest {
         assertTrue(vehicleEntries(null, activeId = 1).isEmpty())
     }
 
-    @Test
-    fun `the summary names every vehicle and which one is active`() {
-        assertEquals(
-            "Vehicle 1, Vehicle 2 \u00b7 2 active",
-            vehicleSummary(vehicleEntries(list(1, 2), activeId = 2)),
-        )
-    }
-
-    @Test
-    fun `one vehicle or none says nothing`() {
-        assertNull(vehicleSummary(vehicleEntries(list(1), activeId = 1)))
-        assertNull(vehicleSummary(emptyList()))
-    }
-
-    @Test
-    fun `a list with no active vehicle says nothing rather than guessing one`() {
-        assertNull(vehicleSummary(vehicleEntries(list(1, 2), activeId = -1)))
-    }
 }
