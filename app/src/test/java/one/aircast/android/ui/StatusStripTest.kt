@@ -2,6 +2,7 @@ package one.aircast.android.ui
 
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull
+import org.json.JSONObject
 import org.junit.Test
 
 class RcSignalTest {
@@ -39,70 +40,66 @@ class RcSignalTest {
 }
 
 class BatteryLevelTest {
-    @Test
-    fun `a pack the firmware calls OK is never coloured by percentage`() {
-        assertEquals(BatteryLevel.Normal, batteryLevel(1, 5.0, 80, 60))
-    }
 
-    @Test
-    fun `a critical pack is red even at a high percentage`() {
-        assertEquals(BatteryLevel.Critical, batteryLevel(3, 95.0, 80, 60))
-    }
 
-    @Test
-    fun `emergency failed and unhealthy are all critical`() {
-        listOf(4, 5, 6).forEach { state ->
-            assertEquals(BatteryLevel.Critical, batteryLevel(state, 95.0, 80, 60))
-        }
-    }
 
-    @Test
-    fun `a low pack warns`() {
-        assertEquals(BatteryLevel.Warning, batteryLevel(2, 95.0, 80, 60))
-    }
 
-    @Test
-    fun `thresholds decide only when the firmware reports no charge state`() {
-        assertEquals(BatteryLevel.Normal, batteryLevel(0, 90.0, 80, 60))
-        assertEquals(BatteryLevel.Caution, batteryLevel(0, 70.0, 80, 60))
-        assertEquals(BatteryLevel.Warning, batteryLevel(0, 50.0, 80, 60))
-    }
 
-    @Test
-    fun `the user's own thresholds are honoured, not hardcoded ones`() {
-        assertEquals(BatteryLevel.Normal, batteryLevel(0, 30.0, 25, 15))
-        assertEquals(BatteryLevel.Caution, batteryLevel(0, 20.0, 25, 15))
-        assertEquals(BatteryLevel.Warning, batteryLevel(0, 10.0, 25, 15))
-    }
 
-    @Test
-    fun `an unknown percentage is not treated as empty`() {
-        assertEquals(BatteryLevel.Normal, batteryLevel(0, Double.NaN, 80, 60))
-        assertEquals(BatteryLevel.Normal, batteryLevel(0, null, 80, 60))
-    }
 }
 
 class BatteryTextTest {
+
+
+
+
     @Test
-    fun `percentage and voltage both carry their units`() {
+    fun `the level name maps to the ladder this strip already drew`() {
+        assertEquals(BatteryLevel.Normal, batteryLevelOf("normal"))
+        assertEquals(BatteryLevel.Caution, batteryLevelOf("caution"))
+        assertEquals(BatteryLevel.Warning, batteryLevelOf("warning"))
+        assertEquals(BatteryLevel.Critical, batteryLevelOf("critical"))
+    }
+
+    @Test
+    fun `an unknown or absent level is not treated as an alarm`() {
+        assertEquals(BatteryLevel.Normal, batteryLevelOf(null))
+        assertEquals(BatteryLevel.Normal, batteryLevelOf("a level added later"))
+    }
+
+    @Test
+    fun `the reading is the core's text and level`() {
+        val reading = batteryReading(
+            JSONObject("""{"available":true,"level":"caution","text":"70%",
+                "packs":[{"secondaryText":"11.10 V"}]}"""),
+        )!!
+
+        assertEquals("70% · 11.10 V", reading.text)
+        assertEquals(BatteryLevel.Caution, reading.level)
+    }
+
+    @Test
+    fun `no battery is no cell rather than an empty one`() {
+        assertNull(batteryReading(null))
+        assertNull(batteryReading(JSONObject("""{"available":false}""")))
+        assertNull(batteryReading(JSONObject("""{"available":true,"level":"normal","text":""}""")))
+    }
+
+    @Test
+    fun `a pack with nothing to add leaves the primary alone`() {
         assertEquals(
-            "47% · 12.60 V",
-            batteryText(47.0, "47", "%", "12.60", " V"),
+            "90%",
+            batteryReading(
+                JSONObject("""{"available":true,"level":"warning","text":"90%",
+                    "packs":[{"secondaryText":""}]}"""),
+            )!!.text,
         )
-    }
-
-    @Test
-    fun `a nearly full pack reads as full, the way QGC rounds it`() {
-        assertEquals("100%", batteryText(99.4, "99.4", "%", null, ""))
-    }
-
-    @Test
-    fun `voltage alone is shown when percentage is unknown`() {
-        assertEquals("12.60 V", batteryText(Double.NaN, "", "%", "12.60", " V"))
-    }
-
-    @Test
-    fun `a battery reporting nothing shows nothing`() {
-        assertNull(batteryText(Double.NaN, null, "%", null, " V"))
+        assertEquals(
+            "12.4 V",
+            batteryReading(
+                JSONObject("""{"available":true,"level":"normal","text":"12.4 V",
+                    "packs":[{"secondaryText":"12.4 V"}]}"""),
+            )!!.text,
+        )
     }
 }
