@@ -35,6 +35,7 @@ QGC_LOGGING_CATEGORY(GStreamerAPILog, "qgc.videomanager.videoreceiver.gstreamer.
 
 // TODO: Clean These up with Macros or CMake
 G_BEGIN_DECLS
+GST_PLUGIN_STATIC_DECLARE(app);
 GST_PLUGIN_STATIC_DECLARE(androidmedia);
 GST_PLUGIN_STATIC_DECLARE(applemedia);
 GST_PLUGIN_STATIC_DECLARE(coreelements);
@@ -66,6 +67,7 @@ GST_PLUGIN_STATIC_DECLARE(tcp);
 GST_PLUGIN_STATIC_DECLARE(typefindfunctions);
 GST_PLUGIN_STATIC_DECLARE(udp);
 GST_PLUGIN_STATIC_DECLARE(va);
+GST_PLUGIN_STATIC_DECLARE(videoconvertscale);
 GST_PLUGIN_STATIC_DECLARE(videoparsersbad);
 GST_PLUGIN_STATIC_DECLARE(vpx);
 GST_PLUGIN_STATIC_DECLARE(vulkan);
@@ -139,6 +141,11 @@ void _registerPlugins()
     #ifdef GST_PLUGIN_applemedia_FOUND
         GST_PLUGIN_STATIC_REGISTER(applemedia);
     #endif
+        // appsink and videoconvert are what createNativeSink is built from. A dynamic
+        // GStreamer finds them on disk, so this only ever bit the static Android build:
+        // the sink failed with no element "videoconvert" and the native path went dark.
+        GST_PLUGIN_STATIC_REGISTER(app);
+        GST_PLUGIN_STATIC_REGISTER(videoconvertscale);
         GST_PLUGIN_STATIC_REGISTER(coreelements);
     #ifdef GST_PLUGIN_d3d_FOUND
         GST_PLUGIN_STATIC_REGISTER(d3d);

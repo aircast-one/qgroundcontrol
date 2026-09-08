@@ -257,6 +257,7 @@ if(GStreamer_USE_STATIC_LIBS)
     )
 
     set(GSTREAMER_PLUGINS
+        app
         coreelements
         dav1d
         dtls
@@ -277,6 +278,7 @@ if(GStreamer_USE_STATIC_LIBS)
         tcp
         typefindfunctions
         udp
+        videoconvertscale
         videoparsersbad
         vpx
         webrtc
