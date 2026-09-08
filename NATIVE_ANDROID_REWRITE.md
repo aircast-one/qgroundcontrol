@@ -307,6 +307,16 @@ reports its parse failure through `showAppMessage`, so the import checks the
 distance of what came back and removes the empty item rather than leaving it in
 the plan.
 
+**An imported pattern could not be saved** (`fa8ba8de3`). Finding the import
+worked was not the same as finding it useful: `_insertComplexMissionItemWorker`
+puts every new complex item into wizard mode so the operator finishes drawing it,
+and the item leaves wizard mode when its area becomes valid. A pattern built from
+a file loads its area in the constructor, so that signal fires before the worker
+runs and nothing clears the flag. `wizardMode` is half of `NotReadyForSaveData`,
+so an imported survey reported not-ready for the life of the plan — save refused,
+upload refused, and the message told the operator to draw an area that was
+already drawn. **It reaches a phone only after the AAR is rebuilt.**
+
 **Known gap — the map draws less than the plan holds.** Waypoints, fences, rally
 points and surveys are drawn; corridor scans, structure scans and landing
 patterns are not. They still count in the distance and duration and they still
