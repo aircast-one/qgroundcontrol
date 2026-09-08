@@ -615,6 +615,19 @@ ways to do one thing, when one moves a plan to and from the aircraft and the oth
 file. Taking QGC's vocabulary rather than inventing keeps the two pairs distinct without anyone
 having to learn a local dialect.
 
+## One block per interaction
+
+The device lock protects a block, not a device session. Whoever holds it next
+starts tapping into whatever app the last block left foreground, and a setup
+that force-stops then lands on someone else's running verification. So each
+block force-stops the app when it finishes, leaving the device empty.
+
+The consequence is that an interaction has to fit in one block. A block that
+screenshots, ends, and expects a follow-up block to tap what it found will tap
+into nothing - the app is gone, and the tap reaches whatever is behind it, which
+on this handset was Android Settings. Coordinates have to come from an earlier
+run rather than from the block before.
+
 ## Committing in a shared tree
 
 `git commit` writes the whole index, not the paths you staged. Another session
