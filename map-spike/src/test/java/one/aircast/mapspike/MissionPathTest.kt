@@ -65,6 +65,19 @@ class MissionPathTest {
     }
 
     @Test
+    fun `an item still being set up is not linked into the route`() {
+        val halfMade = MissionItem(
+            2, 3, 41.5, 44.15, "Survey", false, Double.NaN, null,
+            standalone = false, afterLanding = false, incomplete = true,
+        )
+
+        assertEquals(
+            listOf(44.1, 44.2),
+            longitudes(listOf(home, first, halfMade, second), link = false),
+        )
+    }
+
+    @Test
     fun `the rule is the same one the distance uses`() {
         val takeoffFirst = JSONObject(
             """{"kind":"object","elements":[{},{"isTakeoffItem":true},{}]}""",

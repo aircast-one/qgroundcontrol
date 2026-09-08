@@ -89,6 +89,10 @@ data class MissionItem(
     // Everything past the landing. QGC stops both the line and the distance
     // there and so does this.
     val afterLanding: Boolean = false,
+    // A complex item still waiting to be set up - a survey with no polygon yet.
+    // "We don't link lines from a valid item to an incomplete item", and the
+    // reason is that it "may not yet have valid entry/exit coordinates".
+    val incomplete: Boolean = false,
 )
 
 // "Don't draw segments immediately after a landing item", and "No need to add
@@ -135,6 +139,7 @@ fun missionItems(json: JSONObject?): List<MissionItem> {
             altitude = factValue(element, "Altitude"),
             standalone = element.optBoolean("isStandaloneCoordinate"),
             afterLanding = index > endsAfter,
+            incomplete = element.optBoolean("isIncomplete"),
             exit = element.optJSONObject("exitCoordinate")?.let { at ->
                 val exitLatitude = at.optDouble("latitude", Double.NaN)
                 val exitLongitude = at.optDouble("longitude", Double.NaN)

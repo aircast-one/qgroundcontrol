@@ -476,10 +476,17 @@ item" - and it covers `DO_SET_ROI`, `DO_SET_ROI_LOCATION`,
 `DO_SET_ROI_WPNEXT_OFFSET`, `DO_SET_HOME` and `DO_LAND_START`. An ROI is a
 camera target, not a place the aircraft goes.
 
-That last one is unit-tested and not verified on the handset: nothing in this
-module creates an ROI, so it arrives only in a plan loaded from a file or a
-vehicle. It is implemented because it matches an explicit upstream rule rather
-than a guess about behaviour, but a device check is still owed.
+An item that is still being set up is not linked either - "We don't link lines
+from a valid item to an incomplete item", because it "may not yet have valid
+entry/exit coordinates".
+
+Three of those five are verified on the handset. The standalone and incomplete
+rules are unit-tested only, because nothing in this module can produce either:
+an ROI arrives only in a plan loaded from a file or a vehicle, `insertSurvey`
+seeds its polygon in the same breath as creating it, and the app's import
+removes an empty survey rather than leaving one. They are implemented because
+they mirror explicit upstream conditions rather than guesses about behaviour,
+and the device checks are owed rather than skipped.
 
 ## Which calls can be checked, and which cannot
 
