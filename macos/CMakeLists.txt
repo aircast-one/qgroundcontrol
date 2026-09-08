@@ -75,6 +75,7 @@ add_library(QGCNativeUI STATIC
     Sources/InstrumentModel.swift
     Sources/Instruments.swift
     Sources/GuidedActionsModel.swift
+    Sources/GuidedValueModel.swift
     Sources/GuidedActions.swift
     Sources/Frame.swift
     Sources/OverlayKit.swift

@@ -387,6 +387,9 @@ struct GuidedConfirm: View {
                         .foregroundColor(.secondary)
                         .multilineTextAlignment(.center)
                         .fixedSize(horizontal: false, vertical: true)
+                    if let range = guided.range {
+                        valuePicker(range)
+                    }
                     SlideToConfirm(title: "Slide to \(action.title.lowercased())",
                                    destructive: action.destructive,
                                    confirm: guided.confirm)
@@ -396,6 +399,25 @@ struct GuidedConfirm: View {
                 .padding(Overlay.unit)
                 .frame(width: 320)
             }
+        }
+    }
+
+    private func valuePicker(_ range: GuidedValue) -> some View {
+        VStack(spacing: 2) {
+            HStack {
+                Text(range.label).font(.caption).foregroundColor(.secondary)
+                Spacer()
+                Text(range.text(guided.chosen))
+                    .font(.title3.monospacedDigit().weight(.medium))
+            }
+            Slider(value: $guided.chosen, in: range.minimum...range.maximum)
+            HStack {
+                Text(range.text(range.minimum))
+                Spacer()
+                Text(range.text(range.maximum))
+            }
+            .font(.caption2)
+            .foregroundColor(.secondary)
         }
     }
 }

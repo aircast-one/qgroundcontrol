@@ -600,6 +600,45 @@ func checkMapWindow() {
 
 checkMapWindow()
 
+func checkGuidedValue() {
+    expect(GuidedValue(label: "x", units: "m", minimum: 10, maximum: 10, initial: 10) == nil,
+           "a range with no span is no range; a slider over it cannot be moved")
+    expect(GuidedValue(label: "x", units: "m", minimum: 5, maximum: 120, initial: .nan) == nil,
+           "and a vehicle that has not reported the value gives none either")
+
+    guard let takeoff = GuidedValue.takeoff(minimumAltitude: 3, maximumAltitude: 121) else {
+        expect(false, "a takeoff range is built from the firmware minimum and the setting maximum")
+        return
+    }
+    expect(takeoff.initial == 3, "takeoff starts at the lowest the firmware allows, as QGC does")
+    expect(takeoff.clamped(500) == 121, "and nothing above the setting maximum can be chosen")
+    expect(takeoff.clamped(0) == 3, "nor below the firmware minimum")
+    expect(takeoff.text(50), "50 m", "a height reads in whole metres")
+
+    guard let above = GuidedValue.altitude(minimum: 5, maximum: 121, current: 40) else {
+        expect(false, "a change-altitude range is built from the settings and the current height")
+        return
+    }
+    expect(above.initial == 40, "it opens at the height the vehicle is already at")
+
+    let clipped = GuidedValue.altitude(minimum: 5, maximum: 121, current: 400)
+    expect(clipped?.initial == 121,
+           "a vehicle already above the ceiling opens at the ceiling, not off the end of the slider")
+
+    let ground = GuidedValue.speed(maximum: 12, forwardFlight: false,
+                                   minimumAirspeed: 15, maximumAirspeed: 30)
+    expect(ground?.label ?? "", "Ground speed", "a multirotor changes ground speed")
+    expect(ground?.initial == 6, "opening at half the limit, as QGC does")
+    expect(ground?.text(6.25) ?? "", "6.2 m/s", "and a speed reads to a tenth")
+
+    let air = GuidedValue.speed(maximum: 12, forwardFlight: true,
+                                minimumAirspeed: 15, maximumAirspeed: 30)
+    expect(air?.label ?? "", "Airspeed", "a vehicle in forward flight changes airspeed instead")
+    expect(air?.initial == 22.5, "opening midway between the firmware's own limits")
+}
+
+checkGuidedValue()
+
 func checkFenceUsable() {
     let square = (0..<4).map { _ in ["latitude": -35.36, "longitude": 149.16] }
     let polygon = FenceShape(json: ["count": 4, "path": square,
@@ -1705,12 +1744,24 @@ func checkGuidedActions() {
 
     var flying = armed
     flying.flying = true
-    expect(names(flying), "continueMission,pause,land,rtl,emergencyStop",
-           "in the air it can continue, hold, land, return or be stopped, but never disarmed")
+    expect(names(flying), "continueMission,pause,changeAltitude,land,rtl,emergencyStop",
+           "in the air it can continue, hold, climb, land, return or be stopped, but never disarmed")
+
+    expect(!names(flying).contains("changeSpeed"),
+           "changing speed is withheld until the vehicle has reported its speed limits")
+    var withLimits = flying
+    withLimits.speedLimitsAvailable = true
+    expect(names(withLimits).contains("changeSpeed"), "and offered once it has")
+
+    var onMission = withLimits
+    onMission.flightMode = onMission.missionMode
+    expect(!names(onMission).contains("changeAltitude")
+           && !names(onMission).contains("changeSpeed"),
+           "neither is offered while the vehicle is flying its mission")
 
     var flyingUnready = flying
     flyingUnready.readyToArm = false
-    expect(names(flyingUnready), "continueMission,pause,land,rtl,emergencyStop",
+    expect(names(flyingUnready), "continueMission,pause,changeAltitude,land,rtl,emergencyStop",
            "a failing prearm never withholds getting a flying vehicle back down")
 
     var returning = flying
