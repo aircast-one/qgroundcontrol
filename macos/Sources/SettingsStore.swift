@@ -1,78 +1,74 @@
 import Foundation
 
-struct FactSection: Identifiable {
-    let title: String
-    let facts: [Fact]
-    var id: String { title }
-    var showsUnits: Bool { facts.contains { !$0.units.isEmpty } }
-}
-
 final class SettingsStore: ObservableObject, Probeable, WriteReporting {
     @Published var writeFailure: String?
     static let probeID = "settings"
 
-    @Published private(set) var sections: [FactSection] = []
+    @Published private(set) var pages: [SettingsPage] = []
+    @Published private(set) var sections: [SettingsSection] = []
     @Published private(set) var loadError: String?
     @Published var selected: SettingsPage.ID?
     @Published var search = "" { didSet { refresh() } }
 
-    let pages = SettingsPage.all
-
-    private var cache: [String: [Fact]] = [:]
+    private var cache: [String: [SettingsSection]] = [:]
 
     func load() {
-        let root = Bridge.group("settings")
-        guard !((root["children"] as? [String]) ?? []).isEmpty else {
+        let read = SettingsPage.list(Bridge.group("view.settings")["pages"])
+        guard !read.isEmpty else {
             loadError = "The settings tree is empty — the bridge is not reachable."
+            pages = []
             sections = []
             return
         }
         loadError = nil
-        if selected == nil { selected = pages.first?.id }
+        pages = read
+        if selected == nil || !read.contains(where: { $0.id == selected }) {
+            selected = read.first?.id
+        }
         cache.removeAll()
         refresh()
     }
 
     func refresh() {
         guard loadError == nil else { return }
-        sections = search.trimmingCharacters(in: .whitespaces).isEmpty ? currentPage() : matches()
+        let read = search.trimmingCharacters(in: .whitespaces).isEmpty ? currentPage() : matches()
+        if read != sections { sections = read }
     }
 
-    private func facts(in section: SettingsSection) -> [Fact] {
-        if let cached = cache[section.path] { return cached }
-        let group = Bridge.group(section.path)
-        let facts = ((group["facts"] as? [[String: Any]]) ?? [])
-            .compactMap { Fact(json: $0, groupPath: section.path) }
-        cache[section.path] = facts
-        return facts
+    private func sections(of page: String) -> [SettingsSection] {
+        if let cached = cache[page] { return cached }
+        let read = SettingsSection.list(Bridge.group("view.settings(\(page))")["sections"])
+            .filter { !$0.controls.isEmpty }
+        cache[page] = read
+        return read
     }
 
-    private func currentPage() -> [FactSection] {
-        guard let page = pages.first(where: { $0.id == selected }) else { return [] }
-        return page.sections
-            .map { FactSection(title: $0.title, facts: facts(in: $0)) }
-            .filter { !$0.facts.isEmpty }
+    private func currentPage() -> [SettingsSection] {
+        guard let selected else { return [] }
+        return sections(of: selected)
     }
 
     // Search spans every page, so an operator who knows the setting's name never has to
     // guess which page it lives on.
-    private func matches() -> [FactSection] {
+    private func matches() -> [SettingsSection] {
         let needle = search.trimmingCharacters(in: .whitespaces).lowercased()
         return pages.flatMap { page in
-            page.sections.compactMap { section -> FactSection? in
-                let hits = facts(in: section).filter {
-                    $0.title.lowercased().contains(needle) || $0.name.lowercased().contains(needle)
+            sections(of: page.title).compactMap { section -> SettingsSection? in
+                let hits = section.controls.filter {
+                    $0.label.lowercased().contains(needle) || $0.name.lowercased().contains(needle)
                 }
                 guard !hits.isEmpty else { return nil }
-                return FactSection(title: "\(page.title) › \(section.title)", facts: hits)
+                return SettingsSection(title: "\(page.title) › \(section.title)",
+                                       group: section.group, path: section.path, note: "",
+                                       subsections: [SettingsSubsection(title: "", controls: hits)])
             }
         }
     }
 
     // A Fact can clamp or refuse a value, so the written value is not necessarily the
     // stored one. Drop the cache and read back rather than trusting local state.
-    func write(_ fact: Fact, _ value: Any) {
-        write(fact.path, value, fact.title)
+    func write(_ control: SettingsControl, _ value: Any) {
+        write(control.path, value, control.label)
         cache.removeAll()
         refresh()
     }
@@ -87,9 +83,10 @@ extension SettingsStore {
             "pages": pages.map(\.id),
             "sections": sections.map { section in
                 ["title": section.title,
-                 "facts": section.facts.map { ["name": $0.name, "title": $0.title,
-                                                "value": $0.stringValue, "units": $0.units,
-                                                "readOnly": $0.readOnly] }]
+                 "facts": section.controls.map { ["name": $0.name, "title": $0.label,
+                                                  "value": $0.valueString, "units": $0.units,
+                                                  "readOnly": $0.readOnly,
+                                                  "control": String(describing: $0.kind)] }]
             },
         ]
     }
@@ -108,10 +105,10 @@ extension SettingsStore {
             guard let name = args["name"], let value = args["value"] else {
                 return ["ok": false, "error": "set needs name and value"]
             }
-            guard let fact = sections.flatMap(\.facts).first(where: { $0.name == name }) else {
+            guard let control = sections.flatMap(\.controls).first(where: { $0.name == name }) else {
                 return ["ok": false, "error": "no fact \(name) on this page"]
             }
-            write(fact, Double(value) ?? value)
+            write(control, Double(value) ?? value)
         case "reload":
             load()
         default:

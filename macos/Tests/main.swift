@@ -27,36 +27,55 @@ expect(Fact.humanise("offlineEditingCruiseSpeed"), "Offline Editing Cruise Speed
 expect(Fact.humanise(""), "", "empty identifier")
 expect(Fact.humanise("x"), "X", "single character")
 
-// Every storage group must appear on exactly one page: a missing group is a setting the
-// operator can no longer reach, a duplicated one is a setting with two homes.
-let groups = SettingsPage.all.flatMap { $0.sections.map(\.group) }
-expect(Set(groups).count == groups.count, "no group appears on two pages")
+let controlJson: [String: Any] = [
+    "path": "settings.appSettings.audioMuted", "name": "audioMuted", "label": "Audio muted",
+    "control": "toggle", "value": true as NSNumber, "valueString": "true", "display": "On",
+    "units": "", "readOnly": false as NSNumber, "rebootRequired": false as NSNumber,
+    "options": [], "decimalPlaces": 0 as NSNumber,
+]
+guard let toggle = SettingsControl(controlJson) else {
+    fatalError("the core's control shape must decode")
+}
+expect(toggle.kind == .toggle, "a toggle control is a toggle")
+expect(toggle.boolValue, "and carries its value")
+expect(toggle.minimum == nil && toggle.maximum == nil,
+       "a toggle has no bounds, and the core sends null rather than a type extreme")
 
-// Fact decoding: the bridge's JSON shape drives every control choice.
-let boolFact = Fact(json: ["name": "muted", "typeIsBool": true, "value": true], groupPath: "settings.app")
-expect(boolFact != nil, "bool fact parses")
-if case .toggle = boolFact!.kind {} else { expect(false, "bool fact yields a toggle") }
-expect(boolFact!.path, "settings.app.muted", "path is group-qualified")
+let choice = SettingsControl([
+    "path": "settings.unitsSettings.speedUnits", "name": "speedUnits", "label": "Speed",
+    "control": "choice", "value": 1 as NSNumber, "valueString": "1",
+    "options": [["label": "Feet/second", "raw": "0"],
+                ["label": "Metres/second", "raw": "1"]],
+])
+expect(choice?.kind == .choice, "a choice control is a choice")
+expect(choice?.options.count == 2, "with the core's options")
+expect(choice?.options.last?.raw ?? "", "1",
+       "each option carries the raw value to write, so the head never indexes by position")
+expect(SettingsControl(["path": "g.c", "control": "choice",
+                        "options": [["label": "A", "raw": 0 as NSNumber]]])?.options.isEmpty == true,
+       "the core sends raw as TEXT, because a raw can be 2.5 or a word; reading it as a number "
+       + "dropped every option and would have drawn a choice with an empty picker")
 
-let enumFact = Fact(json: ["name": "speedUnits", "enumStrings": ["Feet", "Meters"],
-                           "enumValues": [0, 1], "value": 1], groupPath: "settings.units")
-if case let .choice(labels, values) = enumFact!.kind {
-    expect(labels.count == 2 && values == [0, 1], "enum labels and values pair up")
-} else { expect(false, "enum fact yields a choice") }
+let bounded = SettingsControl([
+    "path": "g.n", "name": "n", "control": "number", "value": 3 as NSNumber,
+    "minimum": 0 as NSNumber, "maximum": 5.0e9 as NSNumber,
+])
+expect(bounded?.maximum == 5.0e9,
+       "a real five-billion ceiling survives, where this head used to discard any bound above "
+       + "a billion as a type extreme and quietly drop a genuine limit")
 
-// enumValues is sometimes absent even when enumStrings is not; fall back to positions.
-let looseEnum = Fact(json: ["name": "x", "enumStrings": ["A", "B", "C"], "value": 2], groupPath: "g")
-if case let .choice(_, values) = looseEnum!.kind {
-    expect(values == [0, 1, 2], "missing enumValues falls back to indices")
-} else { expect(false, "loose enum yields a choice") }
+let unbounded = SettingsControl(["path": "g.m", "name": "m", "control": "number",
+                                 "value": 3 as NSNumber])
+expect(unbounded?.minimum == nil && unbounded?.maximum == nil,
+       "and an unbounded fact has no bounds at all, because the core decides that from "
+       + "minIsDefaultForType rather than from the magnitude")
 
-// QGC leaves min/max at the type extremes when unbounded; those must not become hints.
-let unbounded = Fact(json: ["name": "n", "min": 0, "max": 4294967295, "value": 3], groupPath: "g")
-if case let .number(_, minimum, maximum) = unbounded!.kind {
-    expect(minimum == 0 && maximum == nil, "type-extreme maximum is dropped")
-} else { expect(false, "numeric fact yields a number") }
-
-expect(Fact(json: ["value": 1], groupPath: "g") == nil, "a fact without a name is rejected")
+expect(SettingsControl(["path": "g.x"]) == nil,
+       "a control with no kind is dropped rather than rendered as a text field")
+expect(SettingsControl(["control": "toggle"]) == nil,
+       "and one with no path is dropped, because the path is what a write goes to")
+expect(SettingsControl(["path": "g.y", "control": "invented"])?.kind == .unknown,
+       "a control kind this head does not know is unknown, and falls through to a plain field")
 
 // A live LinkInterface is reported by the bridge as a child, not a value; reading
 // json["link"] instead reports every connected link as disconnected.
@@ -2585,6 +2604,13 @@ func checkViewContract() {
          ["available", "units", "scaleMaximum", "warningLevel", "dangerLevel", "axes", "worst",
           "clipCounts", "clipping"]),
         ("view.vibration", ["axes"], ["axis", "label", "value", "fraction", "severity"]),
+        ("view.settings", ["pages"],
+         ["title", "sections", "showsLinks", "showsAbout", "showsVideoSources"]),
+        ("view.settings(General)", ["sections"], ["title", "group", "path", "note", "subsections"]),
+        ("view.settings(General)", ["sections", "subsections"], ["title", "controls"]),
+        ("view.control(settings.appSettings.audioMuted)", [],
+         ["path", "name", "label", "control", "value", "valueString", "display", "units",
+          "readOnly", "rebootRequired", "options", "decimalPlaces", "minimum", "maximum"]),
     ]
 
     let enumerations = (shapes["view.contract"] as? [String: Any])?["enumerations"] as? [String: Any]
@@ -2644,6 +2670,12 @@ func checkViewContract() {
     expect(recorded("view.vibration.worst").sorted().joined(separator: ","), "danger,normal,warning",
            "the worst level takes the same three, and is absent rather than normal when unknown")
 
+    let controlKinds = recorded("view.control.control")
+    expect(controlKinds.sorted().joined(separator: ","), "choice,number,text,toggle",
+           "the four control kinds are the four this editor draws")
+    expect(controlKinds.filter { SettingsControl.Kind($0) == .unknown }.joined(separator: ","), "",
+           "and every one of them decodes to an editor, rather than falling through to a field")
+
     let neverNull: [(String, [String], [String])] = [
         ("view.battery", ["packs"], ["level", "text", "secondaryText"]),
         ("view.preflight", ["groups", "checks"], ["name", "prompt", "verdict", "reason"]),
@@ -2652,13 +2684,18 @@ func checkViewContract() {
         ("view.instruments", ["items"], ["id", "label", "value", "units"]),
         ("view.sensors", ["sensors"], ["name", "state", "label"]),
         ("view.vibration", ["axes"], ["axis", "label"]),
+        ("view.control(settings.appSettings.audioMuted)", [],
+         ["path", "name", "label", "control", "valueString", "units"]),
     ]
     neverNull.forEach { view, inner, keys in
         let place = inner.isEmpty ? view : "\(view).\(inner.joined(separator: "."))"
         guard let shown = shape(view, inner) else {
             return expect(false, "\(place) is in the recorded contract")
         }
-        let nullable = keys.filter { ((shown[$0] as? String) ?? "").contains("null|") }.sorted()
+        let nullable = keys.filter { key in
+            let recorded = (shown[key] as? String) ?? ""
+            return recorded == "null" || recorded.hasPrefix("null|")
+        }.sorted()
         expect(nullable.joined(separator: ","), "",
                "this head renders \(place) straight into the interface with no fallback, so a "
                + "field the core can send as null would put an empty row in front of the operator")

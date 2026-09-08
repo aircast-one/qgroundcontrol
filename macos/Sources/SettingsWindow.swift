@@ -57,8 +57,8 @@ struct SettingsView: View {
                     VStack(alignment: .leading, spacing: 0) {
                         SectionLabel(text: section.title)
                         GroupCard {
-                            ForEach(Array(section.facts.enumerated()), id: \.element.id) { index, fact in
-                                GroupRow(title: fact.title,
+                            ForEach(Array(section.controls.enumerated()), id: \.element.id) { index, fact in
+                                GroupRow(title: fact.label,
                                          description: section.showsUnits ? fact.units : "",
                                          showSeparator: index > 0,
                                          trailing: {
@@ -194,7 +194,7 @@ struct SearchField: NSViewRepresentable {
 }
 
 struct FactControl: View {
-    let fact: Fact
+    let fact: SettingsControl
     let write: (Any) -> Void
 
     @State private var draft = ""
@@ -208,24 +208,24 @@ struct FactControl: View {
                 .labelsHidden()
                 .frame(maxWidth: .infinity, alignment: .trailing)
 
-        case let .choice(labels, values):
+        case .choice:
             Picker("", selection: Binding(
-                get: { values.firstIndex(of: fact.intValue) ?? 0 },
-                set: { write(values[$0]) })
+                get: { fact.options.firstIndex { $0.raw == fact.valueString } ?? 0 },
+                set: { if fact.options.indices.contains($0) { write(fact.options[$0].writable) } })
             ) {
-                ForEach(Array(labels.enumerated()), id: \.offset) { index, label in
-                    Text(label).tag(index)
+                ForEach(Array(fact.options.enumerated()), id: \.offset) { index, option in
+                    Text(option.label).tag(index)
                 }
             }
             .labelsHidden()
 
-        case .text, .number:
+        case .text, .number, .unknown:
             TextField("", text: $draft)
                 .textFieldStyle(.roundedBorder)
                 .multilineTextAlignment(.trailing)
                 .focused($editing)
-                .onAppear { draft = fact.stringValue }
-                .onChange(of: fact.stringValue) { latest in
+                .onAppear { draft = fact.valueString }
+                .onChange(of: fact.valueString) { latest in
                     if !editing { draft = latest }
                 }
                 .onSubmit(commit)
@@ -237,8 +237,8 @@ struct FactControl: View {
     }
 
     private var rangeHint: String {
-        guard case let .number(_, minimum, maximum) = fact.kind else { return "" }
-        switch (minimum, maximum) {
+        guard fact.kind == .number else { return "" }
+        switch (fact.minimum, fact.maximum) {
         case let (min?, max?): return "\(compact(min)) to \(compact(max))"
         case let (min?, nil): return "at least \(compact(min))"
         case let (nil, max?): return "at most \(compact(max))"
@@ -251,13 +251,13 @@ struct FactControl: View {
     }
 
     private func commit() {
-        guard draft != fact.stringValue else { return }
+        guard draft != fact.valueString else { return }
         switch fact.kind {
         case .text:
             write(draft)
         case .number:
             guard let number = Double(draft.replacingOccurrences(of: ",", with: ".")) else {
-                draft = fact.stringValue
+                draft = fact.valueString
                 return
             }
             write(number)
