@@ -240,6 +240,7 @@ fun AircastShell(quickView: QtQuickView) {
                             .padding(12.dp)
                             .size(width = 200.dp, height = 112.dp)
                     },
+                    expanded = videoExpanded,
                     onClick = { videoExpanded = !videoExpanded },
                 )
 
