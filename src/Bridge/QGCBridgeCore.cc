@@ -235,7 +235,8 @@ Resolved resolve(const QString &path)
     return Resolved { object, QString() };
 }
 
-QJsonObject objectJson(QObject *object, const QSet<QString> &fields = {}, bool compactFacts = false);
+QJsonObject objectJson(QObject *object, const QSet<QString> &fields = {}, bool compactFacts = false,
+                       QSet<QString> *seen = nullptr);
 
 QJsonValue variantJson(const QVariant &value)
 {
@@ -336,7 +337,8 @@ QJsonObject compactFactJson(Fact *fact)
     };
 }
 
-QJsonObject objectJson(QObject *object, const QSet<QString> &fields, bool compactFacts)
+QJsonObject objectJson(QObject *object, const QSet<QString> &fields, bool compactFacts,
+                       QSet<QString> *seen)
 {
     const bool everything = fields.isEmpty();
     QJsonObject json;
@@ -351,6 +353,9 @@ QJsonObject objectJson(QObject *object, const QSet<QString> &fields, bool compac
         }
 
         const QString name = QString::fromLatin1(property.name());
+        if (seen) {
+            seen->insert(name);
+        }
         const bool wanted = everything || fields.contains(name);
 
         const QVariant value = property.read(object);
@@ -381,7 +386,7 @@ QJsonObject objectJson(QObject *object, const QSet<QString> &fields, bool compac
         QJsonArray elements;
         for (int i = 0; i < model->count(); ++i) {
             QObject *const element = model->get(i);
-            elements.append(element ? objectJson(element, fields, compactFacts) : QJsonObject());
+            elements.append(element ? objectJson(element, fields, compactFacts, seen) : QJsonObject());
         }
         json.insert(QStringLiteral("elements"), elements);
     }
@@ -393,7 +398,8 @@ QJsonObject objectJson(QObject *object, const QSet<QString> &fields, bool compac
     return json;
 }
 
-QJsonObject readPath(const QString &path, const QSet<QString> &fields = {}, bool compactFacts = false)
+QJsonObject readPath(const QString &path, const QSet<QString> &fields = {}, bool compactFacts = false,
+                     QSet<QString> *seen = nullptr)
 {
     const Resolved resolved = resolve(path);
     if (!resolved.object) {
@@ -404,7 +410,7 @@ QJsonObject readPath(const QString &path, const QSet<QString> &fields = {}, bool
         if (Fact *const fact = qobject_cast<Fact *>(resolved.object)) {
             return factJson(fact);
         }
-        return objectJson(resolved.object, fields, compactFacts);
+        return objectJson(resolved.object, fields, compactFacts, seen);
     }
 
     const QVariant value = resolved.object->property(resolved.property.toUtf8().constData());
@@ -800,7 +806,23 @@ QString getFields(const QString &path, const QString &fieldsCsv)
 
     QString result;
     runOnQtThread([&result, &path, &fields]() {
-        result = jsonToString(readPath(path, fields, true));
+        QSet<QString> seen;
+        QJsonObject json = readPath(path, fields, true, &seen);
+
+        // A name that matched no property anywhere is a caller error - a typo, or a
+        // binary older than the field it is asking for - and silently returning items
+        // without it looks like a vehicle with nothing on it.
+        QStringList unknown;
+        for (const QString &field : fields) {
+            if (!seen.contains(field)) {
+                unknown.append(field);
+            }
+        }
+        if (!unknown.isEmpty()) {
+            unknown.sort();
+            json.insert(QStringLiteral("unknownFields"), QJsonArray::fromStringList(unknown));
+        }
+        result = jsonToString(json);
     });
     return result;
 }

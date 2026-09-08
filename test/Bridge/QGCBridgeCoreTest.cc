@@ -755,6 +755,18 @@ void QGCBridgeCoreTest::_aProjectedReadIsSmallerAndKeepsWhatWasAsked()
     QVERIFY2(!item.contains(QStringLiteral("wizardMode")),
              "a field that was not asked for came back anyway");
 
+    // A field nobody has must be reported, not silently absent: that is what an older
+    // binary asked for "*" looks like, and it renders as a plan with nothing on it.
+    const QJsonObject typo = parse(QGCBridgeCore::getFields(path, QStringLiteral("coordinate,coordnate")));
+    const QJsonArray unknown = typo.value(QStringLiteral("unknownFields")).toArray();
+    QCOMPARE(unknown.size(), 1);
+    QCOMPARE(unknown.at(0).toString(), QStringLiteral("coordnate"));
+
+    QVERIFY(!parse(QGCBridgeCore::getFields(path, QStringLiteral("coordinate")))
+                 .contains(QStringLiteral("unknownFields")));
+    QVERIFY(!parse(QGCBridgeCore::getFields(path, QStringLiteral("*")))
+                 .contains(QStringLiteral("unknownFields")));
+
     (void) QGCBridgeCore::invoke(QStringLiteral("plan.removeAll"), QStringLiteral("[]"));
 }
 
