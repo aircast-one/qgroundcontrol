@@ -66,10 +66,12 @@ internal fun guidedAvailability(
     takeoffSupported: Boolean,
     fixedWing: Boolean,
     flightMode: String,
+    landFlightMode: String,
+    rtlFlightMode: String,
 ): GuidedAvailability = GuidedAvailability(
     takeoff = takeoffSupported && !flying,
-    land = guidedModeSupported && armed && !fixedWing && !flightMode.equals("Land", ignoreCase = true),
-    rtl = guidedModeSupported && armed && flying && !flightMode.equals("RTL", ignoreCase = true),
+    land = guidedModeSupported && armed && !fixedWing && !flightMode.equals(landFlightMode, ignoreCase = true),
+    rtl = guidedModeSupported && armed && flying && !flightMode.equals(rtlFlightMode, ignoreCase = true),
 )
 
 internal fun telemetryLabel(fact: Fact): String = fact.description.ifBlank { fact.name }
@@ -152,11 +154,14 @@ fun FlightActions(modifier: Modifier = Modifier) {
     var takeoffLabel by remember { mutableStateOf("") }
     val flying by qgcBool("vehicle.flying")
     val guidedModeSupported by qgcBool("vehicle.guidedModeSupported")
+    val landFlightMode by qgcString("vehicle.landFlightMode")
+    val rtlFlightMode by qgcString("vehicle.rtlFlightMode")
     val takeoffSupported by qgcBool("vehicle.takeoffVehicleSupported")
     val fixedWing by qgcBool("vehicle.fixedWing")
     val flightMode by qgcString("vehicle.flightMode")
     val can = guidedAvailability(
         armed, flying, guidedModeSupported, takeoffSupported, fixedWing, flightMode,
+        landFlightMode, rtlFlightMode,
     )
 
     LaunchedEffect(available) {

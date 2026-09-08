@@ -94,7 +94,18 @@ class GuidedAvailabilityTest {
         takeoff: Boolean = true,
         fixedWing: Boolean = false,
         mode: String = "Guided",
-    ) = guidedAvailability(armed, flying, guided, takeoff, fixedWing, mode)
+        landMode: String = "Land",
+        rtlMode: String = "RTL",
+    ) = guidedAvailability(armed, flying, guided, takeoff, fixedWing, mode, landMode, rtlMode)
+
+    @Test
+    fun `the RTL button reads the vehicle's own name for the mode`() {
+        val px4 = availability(armed = true, flying = true, guided = true, mode = "Return", rtlMode = "Return")
+        val apm = availability(armed = true, flying = true, guided = true, mode = "RTL", rtlMode = "RTL")
+
+        assertFalse(px4.rtl)
+        assertFalse(apm.rtl)
+    }
 
     @Test
     fun `takeoff is offered only when the vehicle is on the ground`() {
