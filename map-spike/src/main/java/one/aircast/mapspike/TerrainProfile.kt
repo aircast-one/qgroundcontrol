@@ -132,8 +132,11 @@ fun terrainProfile(
         ?.takeIf { linksStartToHome(json) }
         ?.let { point(it, "coordinate") }
 
+    val endsAfter = routeEndsAfter(elements)
+
     return TerrainProfile(
         (1 until elements.length())
+            .filter { it <= endsAfter }
             .mapNotNull { index -> elements.optJSONObject(index)?.let { index to it } }
             .filter { (_, element) -> element.optBoolean("specifiesCoordinate") }
             .fold(Walk(home, 0.0, emptyList())) { walk, (index, element) ->

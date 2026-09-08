@@ -455,6 +455,21 @@ one corner and leaves from the far one, so the route runs entry, transects,
 exit, next item. Drawing only the entry made the line jump back to the corner it
 came in at.
 
+The route stops at a landing. QGC uses two tests for this and so does this
+module: `isLandCommand`, which the bridge answers from the command tree, and
+`mavCommand() == MAV_CMD_NAV_RETURN_TO_LAUNCH`, which it does not - an RTL
+reports `isLandCommand` false, so checking only the first leaves the route
+running straight past a Land. The cut has to come from the plan rather than from
+the items that reach the map, because a multirotor Land inserts an RTL with no
+coordinate of its own and is never drawn.
+
+QGC's source adds "the final segment back to home" when it finds an RTL. On the
+handset it does not: a survey plus an RTL reports the survey's own distance and
+no leg back to the launch point. Implementing the return leg from the source put
+283 m in the profile that the panel did not have, so it was taken out again. The
+measurement is what this matches; the source is noted here because it says
+otherwise.
+
 A standalone coordinate is drawn and not routed through. QGC's own property
 documentation is the whole rule - "true: Waypoint line does not go through
 item" - and it covers `DO_SET_ROI`, `DO_SET_ROI_LOCATION`,

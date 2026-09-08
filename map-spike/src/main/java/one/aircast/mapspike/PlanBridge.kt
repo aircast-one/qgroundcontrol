@@ -1,5 +1,6 @@
 package one.aircast.mapspike
 
+import org.json.JSONArray
 import org.json.JSONObject
 import org.mavlink.qgroundcontrol.QGCBridge
 
@@ -85,13 +86,36 @@ data class MissionItem(
     // set-home or a land-start has a place on the map and is not somewhere the
     // aircraft flies to, so it is drawn and not routed through.
     val standalone: Boolean = false,
+    // Everything past the landing. QGC stops both the line and the distance
+    // there and so does this.
+    val afterLanding: Boolean = false,
 )
 
-// A mission item only sits on the map when it specifies a coordinate; takeoff
-// and land items that inherit position do not, and neither does the settings
-// item that always heads the list.
+// "Don't draw segments immediately after a landing item", and "No need to add
+// waypoint segments after an RTL". The aircraft is down; a leg onward is one
+// nobody flies, and QGC leaves it out of missionTotalDistance too.
+//
+// The cut comes from the plan rather than from the items that reach the map,
+// because the ending usually is not one of them: a multirotor Land inserts an
+// RTL, which has no coordinate of its own and is never drawn.
+//
+// Two different tests, because QGC uses two. isLandCommand is a command-tree
+// question the bridge answers for us. An RTL is not one of those - QGC finds it
+// with `mavCommand() == MAV_CMD_NAV_RETURN_TO_LAUNCH` - which is why testing
+// only the first left the route running straight past a Land.
+fun routeEndsAfter(elements: JSONArray?): Int =
+    (0 until (elements?.length() ?: 0))
+        .firstOrNull { index ->
+            elements?.optJSONObject(index)?.let { element ->
+                element.optBoolean("isLandCommand") ||
+                    element.optInt("command") == MAV_CMD_NAV_RETURN_TO_LAUNCH
+            } == true
+        }
+        ?: Int.MAX_VALUE
+
 fun missionItems(json: JSONObject?): List<MissionItem> {
     val elements = json?.optJSONArray("elements") ?: return emptyList()
+    val endsAfter = routeEndsAfter(elements)
     return (0 until elements.length()).mapNotNull { index ->
         val element = elements.optJSONObject(index) ?: return@mapNotNull null
         if (!element.optBoolean("specifiesCoordinate")) return@mapNotNull null
@@ -110,6 +134,7 @@ fun missionItems(json: JSONObject?): List<MissionItem> {
             current = element.optBoolean("isCurrentItem"),
             altitude = factValue(element, "Altitude"),
             standalone = element.optBoolean("isStandaloneCoordinate"),
+            afterLanding = index > endsAfter,
             exit = element.optJSONObject("exitCoordinate")?.let { at ->
                 val exitLatitude = at.optDouble("latitude", Double.NaN)
                 val exitLongitude = at.optDouble("longitude", Double.NaN)
