@@ -52,36 +52,67 @@ fun metresBetween(from: TrackPoint, to: TrackPoint): Double {
     return 2 * EARTH_RADIUS_METRES * asin(min(1.0, sqrt(a)))
 }
 
+private data class Walk(
+    val at: TrackPoint?,
+    val travelled: Double,
+    val points: List<ProfilePoint>,
+)
+
+private fun point(json: JSONObject, name: String): TrackPoint? {
+    val coordinate = json.optJSONObject(name) ?: return null
+    val latitude = coordinate.optDouble("latitude", Double.NaN)
+    val longitude = coordinate.optDouble("longitude", Double.NaN)
+    return if (isPlottable(latitude, longitude)) TrackPoint(latitude, longitude) else null
+}
+
 // An item with no planned altitude is dropped rather than drawn at zero, which
 // would read as a dive to sea level. Unknown ground height is carried as null.
+//
+// A survey is one item holding a whole flight. Reading only its entry
+// coordinate charted the hop out to it and called that the mission: 0.25 km
+// against the 6.43 km the plan actually flies. complexDistance is how far the
+// item itself covers, so it is added to the distance travelled and closed off
+// at the exit altitude.
+//
+// Item 0 is the mission settings item, which QGC identifies by that position
+// too. It is the planned home position, not a leg that gets flown, and
+// MissionController leaves it out of missionTotalDistance for that reason.
+// Counting it put a different distance in the profile than in the status line
+// above it, and drew the plan diving from a sea-level launch it never has.
 fun terrainProfile(json: JSONObject?): TerrainProfile {
     val elements = json?.optJSONArray("elements") ?: return TerrainProfile(emptyList())
 
-    var previous: TrackPoint? = null
-    var travelled = 0.0
-    val points = mutableListOf<ProfilePoint>()
+    return TerrainProfile(
+        (1 until elements.length())
+            .mapNotNull { elements.optJSONObject(it) }
+            .filter { it.optBoolean("specifiesCoordinate") }
+            .fold(Walk(null, 0.0, emptyList())) { walk, element ->
+                val entry = point(element, "coordinate") ?: return@fold walk
+                val terrain = element.optDouble("terrainAltitude", Double.NaN).takeIf { !it.isNaN() }
+                val entryAlt = element.optDouble("amslEntryAlt", Double.NaN)
+                val span = element.optDouble("complexDistance", 0.0).takeIf { it > 0.0 && !it.isNaN() }
+                val exitAlt = element.optDouble("amslExitAlt", Double.NaN).takeIf { !it.isNaN() }
 
-    for (index in 0 until elements.length()) {
-        val element = elements.optJSONObject(index) ?: continue
-        if (!element.optBoolean("specifiesCoordinate")) continue
+                val reached = walk.travelled + (walk.at?.let { metresBetween(it, entry) } ?: 0.0)
+                val arrival = if (entryAlt.isNaN()) {
+                    emptyList()
+                } else {
+                    listOf(ProfilePoint(reached, terrain, entryAlt))
+                }
+                val departure = if (span == null || exitAlt == null) {
+                    emptyList()
+                } else {
+                    listOf(ProfilePoint(reached + span, terrain, exitAlt))
+                }
 
-        val coordinate = element.optJSONObject("coordinate") ?: continue
-        val latitude = coordinate.optDouble("latitude", Double.NaN)
-        val longitude = coordinate.optDouble("longitude", Double.NaN)
-        if (!isPlottable(latitude, longitude)) continue
-
-        val terrain = element.optDouble("terrainAltitude", Double.NaN)
-        val planned = element.optDouble("amslEntryAlt", Double.NaN)
-        val here = TrackPoint(latitude, longitude)
-
-        previous?.let { travelled += metresBetween(it, here) }
-        previous = here
-
-        if (planned.isNaN()) continue
-        points.add(ProfilePoint(travelled, terrain.takeIf { !it.isNaN() }, planned))
-    }
-
-    return TerrainProfile(points)
+                Walk(
+                    at = point(element, "exitCoordinate") ?: entry,
+                    travelled = reached + (span ?: 0.0),
+                    points = walk.points + arrival + departure,
+                )
+            }
+            .points,
+    )
 }
 
 object TerrainBridge {

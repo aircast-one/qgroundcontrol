@@ -20,8 +20,14 @@ class TerrainProfileTest {
             """"coordinate":{"latitude":$latitude,"longitude":$longitude}$terrainJson$plannedJson}"""
     }
 
+    private val settingsItem =
+        """{"specifiesCoordinate":true,"coordinate":{"latitude":41.0,"longitude":44.0},""" +
+            """"amslEntryAlt":0.0}"""
+
     private fun model(vararg items: String) =
-        JSONObject("""{"kind":"object","elements":[${items.joinToString(",")}]}""")
+        JSONObject(
+            """{"kind":"object","elements":[${(listOf(settingsItem) + items).joinToString(",")}]}""",
+        )
 
     @Test
     fun `distance accumulates along the route`() {
@@ -146,14 +152,77 @@ class TerrainProfileTest {
         assertEquals(200f, offsets.last().x, 0.001f)
         assertEquals(0f, offsets.last().y, 0.001f)
     }
+
+    private fun survey(
+        latitude: Double,
+        longitude: Double,
+        exitLatitude: Double,
+        exitLongitude: Double,
+        distance: Double,
+        entryAlt: Double = 50.0,
+        exitAlt: Double = 50.0,
+    ) = """{"specifiesCoordinate":true,""" +
+        """"coordinate":{"latitude":$latitude,"longitude":$longitude},""" +
+        """"exitCoordinate":{"latitude":$exitLatitude,"longitude":$exitLongitude},""" +
+        """"complexDistance":$distance,"amslEntryAlt":$entryAlt,"amslExitAlt":$exitAlt}"""
+
+    @Test
+    fun `a survey contributes the distance it flies rather than a single point`() {
+        val profile = terrainProfile(
+            model(survey(41.0, 44.0, 41.0, 44.01, distance = 6000.0)),
+        )
+
+        assertEquals(2, profile.points.size)
+        assertEquals(0.0, profile.points[0].distance, 1e-6)
+        assertEquals(6000.0, profile.points[1].distance, 1e-6)
+        assertEquals(6000.0, profile.distance, 1e-6)
+    }
+
+    @Test
+    fun `the item after a survey is measured from where the survey exits`() {
+        val exitToNext = metresBetween(TrackPoint(41.0, 44.01), TrackPoint(41.0, 44.02))
+        val profile = terrainProfile(
+            model(
+                survey(41.0, 44.0, 41.0, 44.01, distance = 6000.0),
+                item(41.0, 44.02),
+            ),
+        )
+
+        assertEquals(3, profile.points.size)
+        assertEquals(6000.0 + exitToNext, profile.distance, 1e-6)
+    }
+
+    @Test
+    fun `a survey climbs from its entry altitude to its exit altitude`() {
+        val profile = terrainProfile(
+            model(survey(41.0, 44.0, 41.0, 44.01, distance = 500.0, entryAlt = 40.0, exitAlt = 90.0)),
+        )
+
+        assertEquals(40.0, profile.points[0].planned, 1e-9)
+        assertEquals(90.0, profile.points[1].planned, 1e-9)
+    }
+
+    @Test
+    fun `a plain waypoint still contributes one point and no extra distance`() {
+        val profile = terrainProfile(model(item(41.0, 44.0), item(41.0, 44.01)))
+
+        assertEquals(2, profile.points.size)
+        assertEquals(
+            metresBetween(TrackPoint(41.0, 44.0), TrackPoint(41.0, 44.01)),
+            profile.distance,
+            1e-6,
+        )
+    }
+
 }
 
 class FlatProfileTest {
     private fun plan(vararg altitudes: Double): TerrainProfile {
-        val elements = altitudes.mapIndexed { index, alt ->
-            """{"specifiesCoordinate":true,"coordinate":{"latitude":${41.0 + index * 0.01},""" +
-                """"longitude":44.0},"amslEntryAlt":$alt}"""
-        }
+        val elements = listOf("""{"specifiesCoordinate":true,"amslEntryAlt":0.0}""") +
+            altitudes.mapIndexed { index, alt ->
+                """{"specifiesCoordinate":true,"coordinate":{"latitude":${41.0 + index * 0.01},""" +
+                    """"longitude":44.0},"amslEntryAlt":$alt}"""
+            }
         return terrainProfile(
             org.json.JSONObject("""{"kind":"object","elements":[${elements.joinToString(",")}]}"""),
         )
