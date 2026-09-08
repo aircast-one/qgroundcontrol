@@ -1146,6 +1146,18 @@ Caution was a hard amber; High was `colorScheme.error`, which in this dark theme
 pink meant for text on a surface rather than for filling a shape. The most serious band was
 the least alarming thing on the screen. High is a saturated red now.
 
+**The flight actions are offered by the core, and the `readyToArm` gap is closed.**
+`guidedAvailability` is deleted. `view.guidedActions` says whether each action is hidden, ready
+or blocked and why, so the head no longer decides from `armed`, `flying`, `guidedModeSupported`,
+`takeoffVehicleSupported`, `fixedWing` and two flight-mode name comparisons whether a button
+should work. Arm was enabled whenever the vehicle was disarmed; it is now blocked with the
+vehicle's own reason when the arming report refuses, and a blocked action reports that reason
+where a refusal would go rather than doing nothing.
+
+Scoped deliberately: the view offers fourteen actions and this head wires the five it can
+invoke. Rendering a button for `grab`, `release` or `emergencyStop` with nothing behind it would
+be worse than not showing it, so the rest stay unoffered until each has a working invoke.
+
 **The camera controls read `view.camera`.** `shutterFor` takes the served camera instead of
 five separate bridge reads, `cameraModeLabel` is gone, and the capture-mode constants went with
 it. One rule survives the move and is worth naming: **an undefined mode is not photo.** The core
