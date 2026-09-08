@@ -131,6 +131,26 @@ internal fun MapSpikeScreen(
         else -> centre?.takeIf { isPlottable(it.latitude, it.longitude) }
     }
 
+    // With no vehicle to follow the map opens on MapLibre's world view, and a
+    // plan that is already loaded sits somewhere in it as a single dot while
+    // every readout insists it is real and kilometres long. QGC's Plan view fits
+    // the mission, so this does too.
+    //
+    // Once, and only while there is no vehicle position, so it never argues with
+    // a camera the pilot is flying. It is also what keeps the world view from
+    // being used as a placement anchor: its centre is a valid coordinate in the
+    // North Atlantic, and items were being created there.
+    var fittedToPlan by remember { mutableStateOf(false) }
+    val planIsDrawn = items.isNotEmpty() || surveyList.isNotEmpty() ||
+        fences.isNotEmpty() || circles.isNotEmpty() || rally.isNotEmpty()
+
+    LaunchedEffect(planIsDrawn, isPlottable(latitude, longitude)) {
+        if (planIsDrawn && !fittedToPlan && !isPlottable(latitude, longitude)) {
+            fittedToPlan = true
+            fitRequest += 1
+        }
+    }
+
     suspend fun refresh() {
         withContext(Dispatchers.Default) {
             val plan = PlanBridge.rawItems()

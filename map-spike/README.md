@@ -381,11 +381,15 @@ refusing and start placing items there instead - a mission line running from the
 plan to the middle of the North Atlantic. isPlottable is doing its job; a
 coordinate can be valid and still mean nothing.
 
-Fitting the map to a plan that is already loaded would fix it, and QGC's Plan
-view does exactly that. Not done here: the case that needs it is a plan present
-at startup with no vehicle, which arrives through KML import and cannot be
-reproduced in this module's harness. An unverified change to the startup camera
-is worse than a documented hole.
+So the map now fits the plan once, while there is no vehicle position. QGC's
+Plan view does the same. It fires only while there is nothing to follow, so it
+never argues with a camera the pilot is flying, and it is what keeps the world
+view from being used as an anchor in the first place.
+
+Reproducing it needs the app's Plan tab, File, Import boundary, site.kml,
+Survey - no vehicle, and touch nothing else. Before: "1 item, 56 survey pts,
+4.92 km" at 20000 km, a black screen with one dot. After: the same plan at
+200 m with its transects and handles.
 
 ## ok is not the same as done, again
 
