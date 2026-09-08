@@ -116,17 +116,43 @@ as a property of the app, the `videoconvert` attribution, or the conclusion that
       ! x264enc tune=zerolatency bitrate=8000 key-int-max=30 speed-preset=veryfast \
       ! video/x-h264,profile=main ! mpegtsmux ! udpsink host=<phone> port=5600
 
-That re-measurement is **still open**. The first attempt returned nothing usable:
-the receiver logged `Starting decoding` / `Streaming started` / `Streaming stopped`
-in a repeating cycle, and because `qgc_video_detach_appsink` zeroes the frame
-counter on every detach, a counter-sampling probe reads ~0 throughout. Whatever
-replaces the probe has to survive a restart — or the restart loop has to be
-understood first, since a receiver that cannot hold a Main-profile stream open is
-a bigger problem than the frame rate.
+### The re-measurement produced a better answer than a frame rate
 
-Until that number exists, **do not build the Surface path on the strength of this
-section.** The general lesson is already in the plan and I broke it anyway: a
-measurement whose input you have not characterised measures the input.
+On a Main-profile stream the decoder selected is
+`amcviddec-c2androidavcdecoder` — hardware, as expected. But **no frames arrive at
+all**: 0 frames, 0x0, and the pipeline errors out with
+`streaming stopped, reason not-negotiated (-4)`, preceded by
+`<amcvideodec-c2androidavcdecoder21> Subclass refused caps` and
+`invalid matrix 3 for RGB format, using RGB`.
+
+The caps the decoder offers say why:
+
+    video/x-raw(memory:GLMemory), format=(string)RGBA, width=1920, height=1080, ...
+
+**The hardware decoder delivers a GL texture, not system memory.** `createNativeSink`
+is `videoconvert ! appsink`, and `videoconvert` cannot consume `memory:GLMemory`, so
+negotiation fails before a single frame is produced.
+
+So the appsink path has **never worked with hardware decode**. It appeared to work
+only because the 4:4:4 test stream forced the software decoder, which does output
+system memory. There is no throughput ceiling to fix: there is a path that does not
+connect.
+
+**This is the gating problem for Phase 5 video, and it does point at a Surface** —
+but for a sounder reason than the retracted measurement gave. Reading decoded frames
+on the CPU means pulling a GL texture back across the bus every frame (`gldownload`,
+with the GStreamer GL elements added to the static build), which is precisely the
+work the hardware decoder exists to avoid. Rendering the texture where it already
+lives is the shape that fits.
+
+Not yet established, and worth one experiment before committing to that: whether
+`amcviddec` on this device would negotiate a **system-memory** output at all if the
+bin stopped implying it wanted one. Only the GLMemory caps were observed; a
+system-memory variant was not offered under the caps we presented, which is not the
+same as it not existing.
+
+The general lesson, which was already in this plan when I broke it: a measurement
+whose input you have not characterised measures the input.
 
 **The native Fly view is blocked on video, not on the map.** `map-spike` already
 has `VehicleMap` — vehicle position, heading, home, trail, link-loss and a follow
