@@ -19,7 +19,7 @@ pub fn signing_timestamp(now: SystemTime) -> u64 {
 }
 
 pub fn config(passphrase: &[u8], link_id: u8, allow_unsigned: bool) -> SigningConfig {
-    SigningConfig::new(secret_key(passphrase), link_id, allow_unsigned)
+    SigningConfig::new(secret_key(passphrase), link_id, true, allow_unsigned)
 }
 
 pub struct SetupSigning {
