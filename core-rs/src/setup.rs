@@ -169,7 +169,8 @@ fn page_json(backend: &dyn Backend, page: &str, px4: bool) -> Value {
     let read = |name: &str| {
         let path = format!("vehicle.parameterManager.getParameter(-1,{name})");
         let fact = object(&backend.get(&path));
-        (fact.get("kind").and_then(Value::as_str) == Some("fact")).then(|| decode(&fact, &path))
+        let present = fact.get("kind").and_then(Value::as_str) == Some("fact") && fact.get("name").and_then(Value::as_str).is_some_and(|n| !n.is_empty());
+        present.then(|| decode(&fact, &path))
     };
     let listed: Vec<Value> = sections
         .iter()
@@ -211,9 +212,10 @@ mod tests {
         struct Fake;
         impl Backend for Fake {
             fn get(&self, path: &str) -> String {
-                match path.contains("RTL_ALT)") || path.contains("ARMING_CHECK") {
-                    true => json!({ "kind": "fact", "name": path.rsplit(',').next().unwrap().trim_end_matches(')'), "value": 30, "min": 0, "max": 100, "minIsDefaultForType": false, "maxIsDefaultForType": false }),
-                    false => json!({ "kind": "null" }),
+                match (path.contains("RTL_ALT)") || path.contains("ARMING_CHECK"), path.contains("LAND_SPEED")) {
+                    (true, _) => json!({ "kind": "fact", "name": path.rsplit(',').next().unwrap().trim_end_matches(')'), "value": 30, "min": 0, "max": 100, "minIsDefaultForType": false, "maxIsDefaultForType": false }),
+                    (false, true) => json!({ "kind": "fact", "name": "", "value": 0, "valueString": "0", "decimalPlaces": 3 }),
+                    _ => json!({ "kind": "null" }),
                 }
                 .to_string()
             }
@@ -227,6 +229,7 @@ mod tests {
         assert_eq!(sections.len(), 2);
         assert_eq!(sections[0]["title"], "Return and land");
         assert_eq!(sections[0]["controls"][0]["name"], "RTL_ALT");
+        assert_eq!(sections[0]["controls"].as_array().unwrap().len(), 1);
         assert_eq!(sections[0]["controls"][0]["control"], "number");
         assert_eq!(sections[1]["title"], "Arming");
         assert_eq!(setup_view(&Fake, &["Nope".to_string()])["kind"], "null");

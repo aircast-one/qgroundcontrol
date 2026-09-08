@@ -437,6 +437,29 @@ void QGCCoreCTest::_setupOverviewFollowsTheVehicle()
     QVERIFY(!online.value(QStringLiteral("headline")).toString().isEmpty());
 }
 
+void QGCCoreCTest::_setupPageServesApmParameters()
+{
+    _connectMockLink(MAV_AUTOPILOT_ARDUPILOTMEGA);
+    QTRY_COMPARE_WITH_TIMEOUT(take(qgc_bridge_get("view.setup")).value(QStringLiteral("connected")).toBool(false), true, 5000);
+    QTRY_VERIFY_WITH_TIMEOUT(take(qgc_bridge_get("vehicle.parameterManager.parametersReady")).value(QStringLiteral("value")).toBool(false), 20000);
+    const QJsonObject raw = take(qgc_bridge_get("vehicle.parameterManager.getParameter(-1,RTL_ALT)"));
+    QCOMPARE(raw.value(QStringLiteral("name")).toString(), QStringLiteral("RTL_ALT"));
+    const QJsonObject page = take(qgc_bridge_get("view.setup(Safety)"));
+    QCOMPARE(page.value(QStringLiteral("firmware")).toString(), QStringLiteral("apm"));
+    QCOMPARE(page.value(QStringLiteral("available")).toBool(false), true);
+    const QJsonArray sections = page.value(QStringLiteral("sections")).toArray();
+    QVERIFY(!sections.isEmpty());
+    for (const QJsonValue &section : sections) {
+        for (const QJsonValue &control : section.toObject().value(QStringLiteral("controls")).toArray()) {
+            const QJsonObject c = control.toObject();
+            QVERIFY2(!c.value(QStringLiteral("name")).toString().isEmpty(), qPrintable(QStringLiteral("blank control at %1").arg(c.value(QStringLiteral("path")).toString())));
+            QVERIFY(!c.value(QStringLiteral("label")).toString().isEmpty());
+        }
+    }
+    const QJsonObject control = take(qgc_bridge_get("view.control(vehicle.parameterManager.getParameter(-1,RTL_ALT))"));
+    QCOMPARE(control.value(QStringLiteral("name")).toString(), QStringLiteral("RTL_ALT"));
+}
+
 void QGCCoreCTest::_videoAndCameraAreServed()
 {
     const QJsonObject video = take(qgc_bridge_get("view.video"));
