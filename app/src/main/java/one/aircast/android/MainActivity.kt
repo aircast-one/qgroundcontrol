@@ -43,6 +43,8 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.core.view.WindowCompat
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 import one.aircast.android.bridge.Qgc
 import one.aircast.android.ui.AnalyzePage
 import one.aircast.android.ui.AnalyzeScreen
@@ -151,6 +153,10 @@ fun AircastShell(quickView: QtQuickView) {
     var qmlReady by remember { mutableStateOf(false) }
     var controlsExpanded by remember { mutableStateOf(true) }
     var analyzePage by remember { mutableStateOf<AnalyzePage?>(null) }
+
+    LaunchedEffect(Unit) {
+        withContext(Dispatchers.Default) { Qgc.invoke("video.setNativeRendering", true) }
+    }
 
     DisposableEffect(quickView) {
         val listeners = mutableListOf<Int>()
