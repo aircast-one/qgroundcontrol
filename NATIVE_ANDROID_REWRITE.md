@@ -261,10 +261,21 @@ two of three controls were silent and one was not. All three share one write pat
 now. The message says only that the change was not accepted: the reason the
 bridge carries names a property and a class, which is true and no use to a pilot.
 
-The same fire-and-forget shape is still in `VehicleUi`, `LinksScreen`,
-`SensorsScreen`, `UnitsPage` and `InspectorScreen`. Arming and the guided actions
-are covered by other surfaces — the prearm banner and the vehicle's own state —
-but the link and calibration calls are not, and that is where to look next.
+The criterion is not "is the call `void`" — most of them are. It is **whether the
+operator can tell a refusal from a call still in flight.**
+
+Reporting was added where they cannot: the settings controls showed the new value
+optimistically and then reverted, which reads as the app glitching; a link
+operation is slow enough that an unchanged row is ambiguous; a calibration closes
+its dialog and takes seconds to show anything.
+
+It was deliberately **not** added to `UnitsPage`, `VehicleMessages` and
+`InspectorScreen`. All three render entirely from watched paths rather than from
+local state, and their operations are immediate, so a failure shows at once as
+nothing changing. A notice there would be noise on a surface that is already
+honest. Arming and the guided actions are left for a different reason: the prearm
+banner and the vehicle's own state already report them, and a second voice would
+compete with the more authoritative one.
 
 **Deliberately not built:** the motor test and CompassMot. Both spin the
 propellers, `APMMotorComponent` sets `allowSetupWhileArmed`, and their gate needs
