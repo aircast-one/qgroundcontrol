@@ -84,8 +84,8 @@ fun installMissionLayers(style: Style) {
                 PropertyFactory.textColor("#FFFFFF"),
                 PropertyFactory.textHaloColor("#37474F"),
                 PropertyFactory.textHaloWidth(2.5f),
-                PropertyFactory.textAllowOverlap(true),
-                PropertyFactory.textIgnorePlacement(true),
+                PropertyFactory.textAllowOverlap(false),
+                PropertyFactory.textIgnorePlacement(false),
             ),
         )
     }

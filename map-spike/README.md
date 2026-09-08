@@ -344,6 +344,17 @@ vehicle connected, because with one there is nothing to choose.
 
 ## What MapLibre taught us
 
+Waypoint labels yield to each other; the circles under them do not. A two
+hundred item mission at 500 m drew every sequence number on top of its
+neighbours - a wall of digits with nothing readable in it. `textAllowOverlap`
+and `textIgnorePlacement` are false now, so MapLibre drops a label rather than
+collide it, and the same screenshot shows both halves: 0 through 10 all
+labelled where they fit, then 12, 14, 16, 18 where they do not.
+
+The circle is a separate `CircleLayer`, so every waypoint still draws and stays
+tappable when its number is dropped - and `hitTest` queries both layers, so
+selection does not depend on the label surviving.
+
 **A failing glyph font kills every layer on the source.** Waypoint circles that need no glyphs
 never drew because a sibling text layer's font 404'd. The only evidence is in MapLibre's native
 log, not in Java. Match the font stack to what the style's glyph endpoint actually serves.
