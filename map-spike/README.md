@@ -633,6 +633,32 @@ before segments existed, and nine more segment reads would put it near half the
 interval. Cache it then, and remember that terrain arrives after the plan stops
 changing - a cache keyed on the plan alone would freeze an empty profile.
 
+## What the poll costs, and where
+
+Measured on the handset with a 199 item mission downloaded from the vehicle,
+against a 700 ms poll:
+
+    read    247-294 ms    plan.missionController.visualItems
+    parse     3.2 ms      missionItems over that JSON
+    fences    3.2 ms      polygons, circles, rally
+    profile   4.9 ms      terrain and distance
+    whole   258-306 ms
+
+So the poll is one read and a rounding error. An empty plan is 5.7 ms whole, and
+the cost tracks item count because the bridge serialises every property and every
+fact of every item and hands it back as one string across JNI. There is no way
+to ask it for less; `objectJson` walks the whole object.
+
+At 199 items that is a third of the interval, on Dispatchers.Default, so nothing
+blocks and the phone is doing it four times a second forever. Around 500 items
+the read exceeds the interval and the poll stops idling at all - on a handset
+that is also flying an aircraft.
+
+The fix is not a smaller read, it is not reading: `QGCBridge.watch` already
+delivers changes for the scalar paths MapBridge uses, and the plan is polled
+only because it was easier. Anyone reaching for this should move visualItems
+onto a watch rather than trying to trim the JSON.
+
 ## Weight
 
 Upload is a filled button and everything else is text. It is the action that finishes the job — the
