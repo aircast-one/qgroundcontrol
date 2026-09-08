@@ -1071,7 +1071,7 @@ exists natively today:
 | `RcControlsLayer` | **built** | renders the configured controls and sends `setRcChannelOverride`; editing the list is still desktop-only |
 | `ObstacleDistanceOverlay` (map and video) | **built, in another form** | a sentence — "3.2 m right" — rather than a proximity ring |
 | `FlyViewToolStrip` + action list | **missing** | waypoint actions and the Viewer3D entry |
-| `GuidedValueSlider` | **missing** | adjusting a guided value in flight, distinct from the confirm slider |
+| `GuidedValueSlider` | **built, for altitude** | speed and takeoff-value variants not yet built |
 | `DetectionOverlayVideo` | **missing** | |
 | `FlyViewCustomLayer` | **missing** | plugin extension point |
 | `OverlayGlass` / `OverlayRig` / `FlyViewInsetViewer` | **missing** | the overlay layout system the above sit in |
@@ -1109,6 +1109,24 @@ toggled the mode, the second took the picture. Users satisfice, so the one they 
 first was the one that did not take a photo. Video mode had always labelled its shutter with a
 verb; photo mode now does too ("Take Photo"), and a test asserts no mode's shutter label
 equals that mode's chip label, so a mode added later cannot reintroduce it.
+
+**Changing altitude in flight is built.** The slider carries an absolute target seeded from
+the current altitude and bounded by `guidedMinimumAltitude`/`guidedMaximumAltitude`, and sends
+the *delta*, which is what `guidedModeChangeAltitude` takes. Verified on the wire: dragging to
+68.5 m from 25.0 m put one `SET_POSITION_TARGET_LOCAL_NED` out, frame 7 (`LOCAL_OFFSET_NED`),
+`z=-43.53`, `type_mask 0xFFF8`.
+
+Two things came out of building it. The row of flight actions had to wrap - a fifth button
+pushed `Alt` off the right edge of a 1080 px screen, where it rendered and could not be
+reached, which no test would have caught. And confirming is gated on the change being one the
+firmware will act on: `APMFirmwarePlugin` drops anything under 0.01 m, so an enabled button
+below that is a control that reports success and does nothing. One constant decides both the
+button and the sentence, so they cannot disagree.
+
+`altitudeRange`, `altitudeDelta` and `altitudeChangeSummary` are **Rust view-state
+candidates** under the shared-core rules - Swift will otherwise copy all three. The answer a
+head wants is: given the settings and the current altitude, what range, what delta, and what
+sentence.
 
 **Getting a log out of `CameraControlLog` needed one more correction.** It is an old-style
 category name with no `qgc.` prefix, so the blanket `*Log.debug=false` rule silences it and
