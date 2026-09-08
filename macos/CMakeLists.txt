@@ -62,6 +62,7 @@ add_library(QGCNativeUI STATIC
     Sources/PlanSummaryModel.swift
     Sources/WriteReportModel.swift
     Sources/ItemSpeedModel.swift
+    Sources/LaunchPositionModel.swift
     Sources/VehicleSetupTextModel.swift
     Sources/SurveyStatsModel.swift
     Sources/MissionVehicleModel.swift

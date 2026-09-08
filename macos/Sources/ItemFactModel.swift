@@ -46,10 +46,13 @@ struct ItemFact: Identifiable, Equatable {
         }
     }
 
+    static let launchAltitudeProperty = "plannedHomePositionAltitude"
+
     static func owned(_ elements: [Any]) -> [ItemFact] {
         elements.compactMap { element in
             guard let object = element as? [String: Any],
-                  let property = object["property"] as? String, !property.isEmpty else { return nil }
+                  let property = object["property"] as? String, !property.isEmpty,
+                  property != launchAltitudeProperty else { return nil }
             return ItemFact(json: element, pathSuffix: property)
         }
     }

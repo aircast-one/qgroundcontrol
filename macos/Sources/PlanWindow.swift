@@ -430,7 +430,7 @@ struct PlanInspector: View {
             surveyCard
         }
 
-        if mission.selectedSpeed.available {
+        if mission.selectedSpeed.shown(missionStart: showsMissionSettings, vehicle: mission.vehicle) {
             speedCard
         }
 
@@ -443,6 +443,10 @@ struct PlanInspector: View {
 
         if showsMissionSettings, mission.vehicle.showsAnything {
             vehicleCard
+        }
+
+        if showsMissionSettings, mission.launch.editable {
+            launchCard
         }
     }
 
@@ -500,6 +504,28 @@ struct PlanInspector: View {
                 }
             }
             Text(mission.selectedSpeed.note)
+                .font(.caption)
+                .foregroundColor(.secondary)
+                .fixedSize(horizontal: false, vertical: true)
+                .padding(.horizontal, Overlay.horizontalPadding)
+        }
+    }
+
+    private var launchCard: some View {
+        VStack(alignment: .leading, spacing: Overlay.unit * 0.35) {
+            SectionLabel(text: "Launch Position")
+            GroupCard {
+                GroupRow(title: "Altitude", showSeparator: false, trailing: {
+                    AltitudeField(metres: mission.launch.altitude,
+                                  units: mission.launch.units, decimals: 1,
+                                  commit: mission.setLaunchAltitude)
+                })
+                GroupRow(title: mission.launch.positionText, trailing: {
+                    Button("Set To Map Center") { mission.setLaunchToMapCentre() }
+                        .controlSize(.small)
+                })
+            }
+            Text(mission.launch.note)
                 .font(.caption)
                 .foregroundColor(.secondary)
                 .fixedSize(horizontal: false, vertical: true)

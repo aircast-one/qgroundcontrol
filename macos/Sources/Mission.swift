@@ -22,11 +22,12 @@ final class MissionStore: ObservableObject, Probeable {
     @Published private(set) var pickerCategory = ""
     @Published private(set) var selectedFacts: [ItemFact] = []
     @Published private(set) var selectedSpeed = ItemSpeed.unavailable
+    @Published private(set) var launch = LaunchPosition.unknown
     @Published private(set) var surveyStats = SurveyStats.none
     @Published private(set) var camera = CameraChoice.empty
-    @Published private(set) var distanceMode = ""
-    @Published private(set) var itemAltitudeMode = ""
-    @Published private(set) var globalAltitudeMode = ""
+    @Published private(set) var distanceMode = AltitudeMode.none
+    @Published private(set) var itemAltitudeMode = AltitudeMode.none
+    @Published private(set) var globalAltitudeMode = AltitudeMode.none
     @Published private(set) var defaultAltitude = ""
     @Published private(set) var summary = PlanSummary.empty
     @Published private(set) var vehicle = MissionVehicle.unknown
@@ -67,7 +68,7 @@ final class MissionStore: ObservableObject, Probeable {
         syncing = (plan["syncInProgress"] as? NSNumber)?.boolValue ?? false
         dirty = (plan["dirty"] as? NSNumber)?.boolValue ?? false
         planFile = (plan["currentPlanFile"] as? String) ?? ""
-        globalAltitudeMode = (controller["globalAltitudeMode"] as? String) ?? ""
+        globalAltitudeMode = AltitudeMode.read(controller["globalAltitudeMode"])
 
         let hover = (controller["missionHoverDistance"] as? NSNumber)?.doubleValue ?? 0
         let cruise = (controller["missionCruiseDistance"] as? NSNumber)?.doubleValue ?? 0
@@ -82,9 +83,14 @@ final class MissionStore: ObservableObject, Probeable {
             firmware: (controllerVehicle["firmwareTypeString"] as? String) ?? "",
             type: (controllerVehicle["vehicleTypeString"] as? String) ?? "",
             multiRotor: (controllerVehicle["multiRotor"] as? NSNumber)?.boolValue ?? false,
-            vtol: (controllerVehicle["vtol"] as? NSNumber)?.boolValue ?? false)
+            vtol: (controllerVehicle["vtol"] as? NSNumber)?.boolValue ?? false,
+            apmFirmware: (controllerVehicle["apmFirmware"] as? NSNumber)?.boolValue ?? false)
         cruiseSpeed = (Bridge.group("settings.appSettings.offlineEditingCruiseSpeed")["valueString"] as? String) ?? ""
         hoverSpeed = (Bridge.group("settings.appSettings.offlineEditingHoverSpeed")["valueString"] as? String) ?? ""
+        launch = LaunchPosition(
+            home: (controllerVehicle["homePosition"] as? [String: Any]) ?? [:],
+            item: (model["elements"] as? [[String: Any]])?.first ?? [:],
+            altitude: Bridge.group("plan.missionController.visualItems.0.plannedHomePositionAltitude"))
         canUndo = (plan["canUndo"] as? NSNumber)?.boolValue ?? false
         canRedo = (plan["canRedo"] as? NSNumber)?.boolValue ?? false
         loadCommands()
@@ -305,10 +311,10 @@ final class MissionStore: ObservableObject, Probeable {
             : Bridge.group("plan.missionController.visualItems.\(item.index).cameraCalc")
         camera = CameraChoice(json: calc)
         loadSurveyStats(for: item, calc: calc)
-        distanceMode = (calc["distanceMode"] as? String) ?? ""
+        distanceMode = AltitudeMode.read(calc["distanceMode"])
         itemAltitudeMode = item.specifiesAltitude
-            ? (Bridge.group("plan.missionController.visualItems.\(item.index)")["altitudeMode"] as? String) ?? ""
-            : ""
+            ? AltitudeMode.read(Bridge.group("plan.missionController.visualItems.\(item.index)")["altitudeMode"])
+            : AltitudeMode.none
 
         let cameraFacts = item.isSimpleItem ? [] : ItemFact.camera(
             (calc["facts"] as? [Any]) ?? [])
@@ -326,7 +332,7 @@ final class MissionStore: ObservableObject, Probeable {
         reload()
     }
 
-    func setGlobalAltitudeMode(_ raw: String) {
+    func setGlobalAltitudeMode(_ raw: Int) {
         guard AltitudeMode.isMissionChoice(raw) else { return }
         write("plan.missionController.globalAltitudeMode", raw, "the altitude mode")
         reload()
@@ -337,6 +343,27 @@ final class MissionStore: ObservableObject, Probeable {
         write("settings.appSettings.defaultMissionItemAltitude", metres,
               "the altitude for new items")
         reload()
+    }
+
+    func setLaunchAltitude(_ value: Double) {
+        guard value.isFinite else { return }
+        write("plan.missionController.visualItems.0.plannedHomePositionAltitude", value,
+              "the launch altitude")
+        reload()
+    }
+
+    func setLaunchToMapCentre() {
+        guard let centre = mapCentre else { return }
+        write("plan.missionController.visualItems.0.coordinate",
+              ["latitude": centre.latitude, "longitude": centre.longitude,
+               "altitude": launchAltitudeMetres],
+              "the launch position")
+        reload()
+    }
+
+    private var launchAltitudeMetres: Double {
+        (Bridge.group("plan.missionController.visualItems.0.plannedHomePositionAltitude.rawValue")["value"]
+            as? NSNumber)?.doubleValue ?? 0
     }
 
     func setCruiseSpeed(_ value: String) {
@@ -355,14 +382,14 @@ final class MissionStore: ObservableObject, Probeable {
         reload()
     }
 
-    func setItemAltitudeMode(_ raw: String) {
+    func setItemAltitudeMode(_ raw: Int) {
         guard let item = items.first(where: \.isCurrent), AltitudeMode.isChoice(raw) else { return }
         write("plan.missionController.visualItems.\(item.index).altitudeMode", raw,
               "this item's altitude mode")
         reload()
     }
 
-    func setDistanceMode(_ raw: String) {
+    func setDistanceMode(_ raw: Int) {
         guard let item = items.first(where: \.isCurrent), AltitudeMode.isChoice(raw) else { return }
         write("plan.missionController.visualItems.\(item.index).cameraCalc.distanceMode", raw,
               "the camera distance mode")
@@ -615,8 +642,11 @@ final class MissionStore: ObservableObject, Probeable {
          "surveyStats": ["shots": surveyStats.shotsText, "interval": surveyStats.intervalText,
                          "area": surveyStats.areaText, "footprint": surveyStats.footprintText,
                          "warning": surveyStats.warning],
-         "distanceMode": distanceMode, "itemAltitudeMode": itemAltitudeMode,
-         "globalAltitudeMode": globalAltitudeMode, "defaultAltitude": defaultAltitude,
+         "distanceMode": AltitudeMode.title(for: distanceMode),
+         "itemAltitudeMode": AltitudeMode.title(for: itemAltitudeMode),
+         "globalAltitudeMode": AltitudeMode.title(for: globalAltitudeMode), "defaultAltitude": defaultAltitude,
+         "launch": ["editable": launch.editable, "altitude": launch.altitudeText,
+                    "position": launch.positionText],
          "vehicle": ["firmware": vehicle.firmware, "type": vehicle.type,
                      "cruiseSpeed": vehicle.showsCruiseSpeed ? cruiseSpeed : "",
                      "hoverSpeed": vehicle.showsHoverSpeed ? hoverSpeed : ""],
@@ -735,17 +765,24 @@ final class MissionStore: ObservableObject, Probeable {
             }
             setCommand(of: target, to: Int(args["command"] ?? "") ?? 0)
         case "setGlobalAltitudeMode":
-            setGlobalAltitudeMode(args["value"] ?? "")
+            setGlobalAltitudeMode(Int(args["value"] ?? "") ?? AltitudeMode.none)
         case "setDefaultAltitude":
             setDefaultAltitude(args["value"] ?? "")
+        case "setLaunchAltitude":
+            guard let value = Double(args["value"] ?? "") else {
+                return ["ok": false, "error": "setLaunchAltitude needs a value"]
+            }
+            setLaunchAltitude(value)
+        case "setLaunchToMapCentre":
+            setLaunchToMapCentre()
         case "setCruiseSpeed":
             setCruiseSpeed(args["value"] ?? "")
         case "setHoverSpeed":
             setHoverSpeed(args["value"] ?? "")
         case "setItemAltitudeMode":
-            setItemAltitudeMode(args["value"] ?? "")
+            setItemAltitudeMode(Int(args["value"] ?? "") ?? AltitudeMode.none)
         case "setDistanceMode":
-            setDistanceMode(args["value"] ?? "")
+            setDistanceMode(Int(args["value"] ?? "") ?? AltitudeMode.none)
         case "setCameraBrand":
             setCamera(brand: args["value"] ?? "")
         case "setCameraModel":

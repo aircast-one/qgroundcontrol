@@ -29,6 +29,10 @@ struct ItemSpeed: Equatable {
     static let factName = "FlightSpeed"
     static let property = "flightSpeed"
 
+    func shown(missionStart: Bool, vehicle: MissionVehicle) -> Bool {
+        available && (!missionStart || vehicle.acceptsMissionStartSpeed)
+    }
+
     var note: String {
         specified
             ? "This item flies at its own speed."

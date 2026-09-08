@@ -718,6 +718,9 @@ func checkItemSpeed() {
 }
 
 checkItemSpeed()
+checkMissionStartSpeed()
+checkLaunchPosition()
+checkLaunchAltitudeIsNotListedTwice()
 
 func checkTelemetryUnits() {
     var feet = FlyTelemetry()
@@ -1200,25 +1203,33 @@ checkCameraChoice()
 
 func checkAltitudeMode() {
     expect(AltitudeMode.choices.count == 4, "a survey offers four altitude modes")
-    expect(!AltitudeMode.isChoice("AltitudeModeMixed"), "mixed belongs to a whole mission, not a survey")
-    expect(!AltitudeMode.isChoice("AltitudeModeNone"), "none means the distance is not about the ground")
-    expect(AltitudeMode.isChoice("AltitudeModeTerrainFrame"), "terrain frame is a survey mode")
+    expect(!AltitudeMode.isChoice(AltitudeMode.mixedRaw), "mixed belongs to a whole mission, not a survey")
+    expect(!AltitudeMode.isChoice(5), "none means the distance is not about the ground")
+    expect(AltitudeMode.isChoice(AltitudeMode.terrainFrameRaw), "terrain frame is a survey mode")
 
-    expect(AltitudeMode.title(for: "AltitudeModeTerrainFrame"), "Follow terrain",
+    expect(AltitudeMode.read(4 as NSNumber) == AltitudeMode.terrainFrameRaw,
+           "the mode crosses the bridge as the number of its C++ enum case")
+    expect(AltitudeMode.read("AltitudeModeTerrainFrame") == AltitudeMode.none,
+           "and a name where a number belongs is no mode at all, which is what broke the pickers")
+    expect(AltitudeMode.read(nil) == AltitudeMode.none, "so is a missing one")
+
+    expect(AltitudeMode.title(for: AltitudeMode.terrainFrameRaw), "Follow terrain",
            "the mode reads as what it does, not as its enum name")
-    expect(AltitudeMode.title(for: "AltitudeModeRelative"), "Relative to launch", "same for relative")
-    expect(AltitudeMode.title(for: "SomethingNew"), "SomethingNew",
+    expect(AltitudeMode.title(for: AltitudeMode.relativeRaw), "Relative to launch", "same for relative")
+    expect(AltitudeMode.title(for: 9), "Mode 9",
            "an unknown mode is shown as sent rather than hidden")
+    expect(AltitudeMode.title(for: AltitudeMode.none), "",
+           "but an item that carries no altitude at all names no mode")
 
-    expect(AltitudeMode.usesTerrain("AltitudeModeTerrainFrame"), "terrain frame uses the terrain settings")
-    expect(AltitudeMode.usesTerrain("AltitudeModeCalcAboveTerrain"), "so does calculated above terrain")
-    expect(!AltitudeMode.usesTerrain("AltitudeModeRelative"), "relative does not")
-    expect(!AltitudeMode.usesTerrain("AltitudeModeAbsolute"), "nor does absolute")
+    expect(AltitudeMode.usesTerrain(AltitudeMode.terrainFrameRaw), "terrain frame uses the terrain settings")
+    expect(AltitudeMode.usesTerrain(AltitudeMode.calcAboveTerrainRaw), "so does calculated above terrain")
+    expect(!AltitudeMode.usesTerrain(AltitudeMode.relativeRaw), "relative does not")
+    expect(!AltitudeMode.usesTerrain(AltitudeMode.absoluteRaw), "nor does absolute")
 
     expect(AltitudeMode.missionChoices.count == 5, "a mission offers one more mode than a survey")
-    expect(AltitudeMode.isMissionChoice("AltitudeModeMixed"), "a mission can be mixed")
-    expect(!AltitudeMode.isChoice("AltitudeModeMixed"), "one survey cannot")
-    expect(AltitudeMode.title(for: "AltitudeModeMixed"), "Mixed (per item)",
+    expect(AltitudeMode.isMissionChoice(AltitudeMode.mixedRaw), "a mission can be mixed")
+    expect(!AltitudeMode.isChoice(AltitudeMode.mixedRaw), "one survey cannot")
+    expect(AltitudeMode.title(for: AltitudeMode.mixedRaw), "Mixed (per item)",
            "mixed says that each item carries its own frame")
 }
 
@@ -1581,15 +1592,15 @@ func checkLogReplayLink() {
 checkLogReplayLink()
 
 func checkMissionVehicle() {
-    let copter = MissionVehicle(firmware: "ArduPilot", type: "Quadrotor", multiRotor: true, vtol: false)
+    let copter = MissionVehicle(firmware: "ArduPilot", type: "Quadrotor", multiRotor: true, vtol: false, apmFirmware: false)
     expect(copter.showsHoverSpeed, "a multirotor hovers between waypoints")
     expect(!copter.showsCruiseSpeed, "and never cruises, so asking a cruise speed would be noise")
 
-    let plane = MissionVehicle(firmware: "PX4 Pro", type: "Fixed Wing", multiRotor: false, vtol: false)
+    let plane = MissionVehicle(firmware: "PX4 Pro", type: "Fixed Wing", multiRotor: false, vtol: false, apmFirmware: false)
     expect(plane.showsCruiseSpeed, "a plane cruises")
     expect(!plane.showsHoverSpeed, "and cannot hover")
 
-    let vtol = MissionVehicle(firmware: "PX4 Pro", type: "VTOL", multiRotor: false, vtol: true)
+    let vtol = MissionVehicle(firmware: "PX4 Pro", type: "VTOL", multiRotor: false, vtol: true, apmFirmware: false)
     expect(vtol.showsCruiseSpeed, "a VTOL does both")
     expect(vtol.showsHoverSpeed, "so it needs both speeds")
 
@@ -2160,3 +2171,59 @@ if failures == 0 {
 }
 FileHandle.standardError.write("\(failures) check(s) failed\n".data(using: .utf8)!)
 exit(1)
+
+func checkLaunchPosition() {
+    let absent = LaunchPosition(home: ["valid": false],
+                                item: [:],
+                                altitude: ["value": 0 as NSNumber, "units": "m"])
+    expect(absent.editable, "no vehicle home means the plan owns the launch position")
+    expect(absent.positionText == "Not set", "an unplaced launch position says so")
+
+    let onVehicle = LaunchPosition(home: ["valid": true],
+                                   item: ["coordinate": ["latitude": -35.36 as NSNumber,
+                                                         "longitude": 149.16 as NSNumber]],
+                                   altitude: ["value": 583.0 as NSNumber, "units": "m"])
+    expect(!onVehicle.editable, "the vehicle's own home position wins over the plan's")
+    expect(onVehicle.altitude == 583.0, "the launch altitude comes from its fact")
+    expect(onVehicle.altitudeText, "583.0 m", "and reads out with the fact's own units")
+    expect(onVehicle.positionText == "-35.360000, 149.160000", "a placed launch position reads out")
+
+    let feet = LaunchPosition(home: ["valid": false], item: [:],
+                              altitude: ["value": 100.0 as NSNumber, "units": "ft"])
+    expect(feet.units == "ft", "the launch altitude takes its units from the fact")
+    expect(feet.altitudeText, "100.0 ft", "so an operator on feet is not told metres")
+    expect(feet.note.contains("ground height"),
+           "and the note says the terrain fills that altitude in, which QGC does two seconds later")
+}
+
+func checkMissionStartSpeed() {
+    let speed = ItemSpeed(json: ["available": true, "specifyFlightSpeed": false,
+                                 "facts": [["name": "FlightSpeed", "value": 8.0, "units": "m/s"]]])
+    let arduPilot = MissionVehicle(firmware: "ArduPilot", type: "Quadrotor",
+                                   multiRotor: true, vtol: false, apmFirmware: true)
+    let px4 = MissionVehicle(firmware: "PX4 Pro", type: "Quadrotor",
+                             multiRotor: true, vtol: false, apmFirmware: false)
+    let vtol = MissionVehicle(firmware: "PX4 Pro", type: "VTOL",
+                              multiRotor: false, vtol: true, apmFirmware: false)
+
+    expect(speed.shown(missionStart: false, vehicle: arduPilot),
+           "a waypoint offers its own speed whatever the firmware is")
+    expect(!speed.shown(missionStart: true, vehicle: arduPilot),
+           "but mission start does not on ArduPilot, which is what QGC hides")
+    expect(speed.shown(missionStart: true, vehicle: px4), "on PX4 it does")
+    expect(!speed.shown(missionStart: true, vehicle: vtol), "and never on a VTOL")
+
+    let absent = ItemSpeed.unavailable
+    expect(!absent.shown(missionStart: false, vehicle: px4),
+           "an item with no speed section offers nothing regardless")
+}
+
+func checkLaunchAltitudeIsNotListedTwice() {
+    let facts = ItemFact.owned([
+        ["property": "plannedHomePositionAltitude", "name": "PlannedHomePositionAltitude",
+         "units": "m", "valueString": "0.0"],
+        ["property": "holdTime", "name": "Hold", "units": "secs", "valueString": "0"],
+    ])
+    expect(facts.count == 1, "the launch altitude is left out of the generic settings list")
+    expect(facts.first?.title ?? "", "Hold", "the item's own facts are still listed")
+}
