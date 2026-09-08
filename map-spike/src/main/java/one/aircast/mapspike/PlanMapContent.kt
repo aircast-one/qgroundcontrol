@@ -507,7 +507,16 @@ internal fun MapSpikeScreen(
                                 // Stepping by ten is fine for a nudge and hopeless for
                                 // reaching a particular height, which is the usual reason
                                 // to touch an altitude at all.
-                                var typed by remember(item.index) {
+                                // Keyed on the altitude as well as the item, so a
+                                // change from anywhere - the steppers beside it, or
+                                // another station - reaches the field. Keyed on the
+                                // item alone it showed the height the waypoint had
+                                // when it was selected, which after two taps of +10
+                                // is a number nothing in the plan agrees with.
+                                //
+                                // Typing survives, because a poll that reads back the
+                                // same altitude does not change the key.
+                                var typed by remember(item.index, item.altitude) {
                                     mutableStateOf(altitudeFieldText(item.altitude))
                                 }
                                 OutlinedTextField(
