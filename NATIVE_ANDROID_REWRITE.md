@@ -1146,6 +1146,19 @@ Caution was a hard amber; High was `colorScheme.error`, which in this dark theme
 pink meant for text on a surface rather than for filling a shape. The most serious band was
 the least alarming thing on the screen. High is a saturated red now.
 
+**Two open items closed by rebuilding, and one self-inflicted lesson.** An AAR at
+`9491c6132` starts, the whole regression passes, the four-name argument form resolves now that
+the watch splits on top-level commas only, and `FLTMODE1` through `FLTMODE6` are all editable
+again - the uninitialised `readOnly` is fixed, so the "Read-only" caption appears only where a
+parameter genuinely is.
+
+The lesson: the first attempt showed the parameters *still* read-only, and the reason was that
+the APK had not been rebuilt after the AAR was replaced. The AAR is a file dependency; Gradle
+has to repackage it. This is the same stale-artifact trap recorded further down, self-inflicted
+within an hour of writing it up, and the tell was identical - a fix known to be in the source
+having no effect on the device. **When a verified fix does not appear on the handset, suspect
+the artifact before the fix.**
+
 **Third migration: the vibration bands.** `barFraction`, `verdictFor` and the
 `VIBE_MAX`/`WARN`/`HIGH` constants are gone. `view.vibration` serves each axis with its value,
 its fraction of the scale and its severity, plus both levels and the clip counts; the screen
