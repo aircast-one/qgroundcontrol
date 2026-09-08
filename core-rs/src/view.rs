@@ -7,9 +7,11 @@ use crate::battery;
 use crate::calibration;
 use crate::control;
 use crate::guided;
+use crate::inspector;
 use crate::instruments;
 use crate::label;
 use crate::links;
+use crate::logs;
 use crate::mapscale;
 use crate::messages;
 use crate::missionkinds;
@@ -54,6 +56,8 @@ pub const VIEWS: &[View] = &[
     View { path: "view.missionSeed", deps: missionkinds::DEPS, compute: missionkinds::seed_view },
     View { path: "view.calibration", deps: calibration::DEPS, compute: calibration::calibration_view },
     View { path: "view.radio", deps: radio::DEPS, compute: radio::radio_view },
+    View { path: "view.logs", deps: logs::DEPS, compute: logs::logs_view },
+    View { path: "view.inspector", deps: inspector::DEPS, compute: inspector::inspector_view },
 ];
 
 pub fn owns(path: &str) -> bool {

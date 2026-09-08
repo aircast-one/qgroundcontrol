@@ -62,11 +62,7 @@ char *qgc_qt_invoke(const char *path, const char *args_json)
 
 void qgc_qt_watch(const char *paths_csv)
 {
-    const QString copied = QString::fromUtf8(paths_csv);
-    (void) onQtThread([&] {
-        QGCBridgeCore::watch(copied.split(QLatin1Char(','), Qt::SkipEmptyParts));
-        return QString();
-    });
+    QGCBridgeCore::watch(QString::fromUtf8(paths_csv).split(QLatin1Char(','), Qt::SkipEmptyParts));
 }
 
 void qgc_qt_set_event_handler(QGCCoreEventFn handler)

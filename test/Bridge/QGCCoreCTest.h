@@ -31,6 +31,8 @@ private slots:
     void _missionKindsAndSeedsAreServed();
     void _calibrationIsListedWithoutAnApmVehicle();
     void _radioFollowsTheVehicle();
+    void _logsFollowTheController();
+    void _inspectorListsMessages();
 
 private:
     static bool _unavailable(const char *path);

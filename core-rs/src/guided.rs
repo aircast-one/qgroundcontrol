@@ -102,6 +102,7 @@ pub const ACTIONS: &[Action] = &[
 ];
 
 #[derive(Serialize, PartialEq, Debug)]
+#[serde(rename_all = "camelCase")]
 pub struct Offer {
     pub id: Action,
     pub title: &'static str,
@@ -385,5 +386,7 @@ mod tests {
         assert_eq!(view["actions"][1]["offer"], "ready");
         assert_eq!(view["actions"][13]["id"], "emergencyStop");
         assert_eq!(view["actions"][13]["destructive"], true);
+        assert_eq!(view["actions"][1]["carriesValue"], true);
+        assert!(view["actions"][1].get("carries_value").is_none());
     }
 }

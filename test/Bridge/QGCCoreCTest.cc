@@ -351,3 +351,25 @@ void QGCCoreCTest::_radioFollowsTheVehicle()
     QCOMPARE(online.value(QStringLiteral("sticks")).toArray().count(), 4);
     QVERIFY(online.value(QStringLiteral("minimumChannels")).toInt() > 0);
 }
+
+void QGCCoreCTest::_logsFollowTheController()
+{
+    const QJsonObject offline = take(qgc_bridge_get("view.logs"));
+    QCOMPARE(offline.value(QStringLiteral("class")).toString(), QStringLiteral("Logs"));
+    QCOMPARE(offline.value(QStringLiteral("canRefresh")).toBool(true), false);
+    QCOMPARE(offline.value(QStringLiteral("emptyText")).toString(), QStringLiteral("Connect a vehicle to list its logs."));
+    _connectMockLink(MAV_AUTOPILOT_PX4);
+    QTRY_COMPARE_WITH_TIMEOUT(take(qgc_bridge_get("view.logs")).value(QStringLiteral("connected")).toBool(false), true, 5000);
+    QVERIFY(take(qgc_bridge_get("view.logs")).value(QStringLiteral("entries")).isArray());
+}
+
+void QGCCoreCTest::_inspectorListsMessages()
+{
+    _connectMockLink(MAV_AUTOPILOT_PX4);
+    QTRY_VERIFY_WITH_TIMEOUT(!take(qgc_bridge_get("view.inspector")).value(QStringLiteral("messages")).toArray().isEmpty(), 5000);
+    const QJsonObject view = take(qgc_bridge_get("view.inspector"));
+    QCOMPARE(view.value(QStringLiteral("rateChoices")).toArray().count(), 15);
+    const QJsonObject first = view.value(QStringLiteral("messages")).toArray().first().toObject();
+    QVERIFY(!first.value(QStringLiteral("name")).toString().isEmpty());
+    QVERIFY(first.value(QStringLiteral("path")).toString().startsWith(QStringLiteral("mavlinkInspector.systems.0.messages.")));
+}
