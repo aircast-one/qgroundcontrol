@@ -628,58 +628,49 @@ func checkMapWindow() {
 
 checkMapWindow()
 
-func checkGuidedValue() {
-    expect(GuidedValue(label: "x", measure: .metres, minimum: 10, maximum: 10, initial: 10) == nil,
-           "a range with no span is no range; a slider over it cannot be moved")
-    expect(GuidedValue(label: "x", measure: .metres, minimum: 5, maximum: 120, initial: .nan) == nil,
-           "and a vehicle that has not reported the value gives none either")
-
-    guard let takeoff = GuidedValue.takeoff(minimumAltitude: 3, maximumAltitude: 121,
-                                            measure: .metres) else {
-        expect(false, "a takeoff range is built from the firmware minimum and the setting maximum")
-        return
+func checkGuidedRange() {
+    let altitude: [String: Any] = ["available": true as NSNumber, "unit": "m",
+                                   "label": "Height above launch",
+                                   "minimum": 5.0 as NSNumber, "maximum": 121.0 as NSNumber,
+                                   "current": 40.0 as NSNumber]
+    guard let above = GuidedRange(altitude) else {
+        return expect(false, "the core's altitude range is usable")
     }
-    expect(takeoff.initial == 3, "takeoff starts at the lowest the firmware allows, as QGC does")
-    expect(takeoff.clamped(500) == 121, "and nothing above the setting maximum can be chosen")
-    expect(takeoff.clamped(0) == 3, "nor below the firmware minimum")
-    expect(takeoff.text(50), "50.0 m", "a height reads with its unit")
+    expect(above.initial == 40, "the slider starts where the aircraft already is")
+    expect(above.label, "Height above launch", "and says what the height is measured from")
+    expect(above.text(40), "40 m", "the core has already converted, so the head only appends its unit")
 
-    guard let feet = GuidedValue.takeoff(minimumAltitude: 3, maximumAltitude: 121,
-                                         measure: Measure(units: "ft", factor: 3.28084)) else {
-        expect(false, "the same range can be shown in feet")
-        return
-    }
-    expect(feet.clamped(500) == 121,
-           "the range stays metric, because the command that follows it wants metres")
-    expect(feet.text(121), "397 ft",
-           "but the operator reads feet, instead of the 121 that would have said metres")
+    let feet: [String: Any] = ["available": true as NSNumber, "unit": "ft",
+                               "minimum": 16.4 as NSNumber, "maximum": 397.0 as NSNumber,
+                               "current": 131.2 as NSNumber]
+    expect(GuidedRange(feet)?.text(131.2) ?? "", "131 ft",
+           "in feet the head appends the core's unit rather than converting anything itself")
 
-    guard let above = GuidedValue.altitude(minimum: 5, maximum: 121, current: 40,
-                                           measure: .metres) else {
-        expect(false, "a change-altitude range is built from the settings and the current height")
-        return
-    }
-    expect(above.initial == 40, "it opens at the height the vehicle is already at")
+    let speed: [String: Any] = ["available": true as NSNumber, "unit": "m/s", "label": "Airspeed",
+                                "minimum": 8.0 as NSNumber, "maximum": 20.0 as NSNumber,
+                                "initial": 14.0 as NSNumber]
+    let air = GuidedRange(speed)
+    expect(air?.label ?? "", "Airspeed", "a view that carries its own label keeps it")
+    expect(air?.text(14) ?? "", "14 m/s", "a speed the operator can read at a glance")
+    expect(air?.text(0.4) ?? "", "8.0 m/s",
+           "a value under ten keeps a decimal, so the slowest ground speed cannot render as a stationary 0 m/s")
 
-    let clipped = GuidedValue.altitude(minimum: 5, maximum: 121, current: 400, measure: .metres)
-    expect(clipped?.initial == 121,
-           "a vehicle already above the ceiling opens at the ceiling, not off the end of the slider")
+    expect(GuidedRange(["available": false as NSNumber, "minimum": 5.0 as NSNumber,
+                        "maximum": 121.0 as NSNumber]) == nil,
+           "a view that says it is unavailable offers no slider, whatever else it carries")
+    expect(GuidedRange(["available": true as NSNumber, "minimum": 10.0 as NSNumber,
+                        "maximum": 10.0 as NSNumber]) == nil,
+           "and an empty range is not a slider")
+    expect(GuidedRange(nil) == nil, "no answer is no range")
 
-    let ground = GuidedValue.speed(maximum: 12, forwardFlight: false,
-                                   minimumAirspeed: 15, maximumAirspeed: 30,
-                                   measure: .metresPerSecond)
-    expect(ground?.label ?? "", "Ground speed", "a multirotor changes ground speed")
-    expect(ground?.initial == 6, "opening at half the limit, as QGC does")
-    expect(ground?.text(6.25) ?? "", "6.2 m/s", "and a speed reads to a tenth")
-
-    let air = GuidedValue.speed(maximum: 12, forwardFlight: true,
-                                minimumAirspeed: 15, maximumAirspeed: 30,
-                                measure: .metresPerSecond)
-    expect(air?.label ?? "", "Airspeed", "a vehicle in forward flight changes airspeed instead")
-    expect(air?.initial == 22.5, "opening midway between the firmware's own limits")
+    let clipped = GuidedRange(["available": true as NSNumber, "unit": "m",
+                               "minimum": 5.0 as NSNumber, "maximum": 121.0 as NSNumber,
+                               "current": 400.0 as NSNumber])
+    expect(clipped?.initial == 121, "a start outside the range is pulled into it")
+    expect(clipped?.clamped(900) == 121, "as is anything the slider is asked for")
 }
 
-checkGuidedValue()
+checkGuidedRange()
 
 func checkFlyDetail() {
     let battery = [
@@ -2597,6 +2588,14 @@ func checkGuidedOffers() {
            "an id this head does not know is dropped, not guessed at")
     expect(GuidedOffer(["id": "arm"]) == nil,
            "and an entry with no offer state is dropped rather than read as shown")
+
+    let asTheCoreSpellsIt: [String: Any] = ["id": "takeoff", "offer": "ready", "title": "Takeoff",
+                                            "prompt": "P", "reason": "",
+                                            "destructive": false as NSNumber,
+                                            "carries_value": true as NSNumber]
+    expect(GuidedOffer(asTheCoreSpellsIt)?.carriesValue == true,
+           "the core spells this field carries_value, and reading only camelCase silently cost every "
+           + "value-carrying action its slider and sent takeoff a target of zero")
 }
 
 func checkMapScale() {

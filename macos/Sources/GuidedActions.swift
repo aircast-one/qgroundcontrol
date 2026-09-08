@@ -9,7 +9,7 @@ final class GuidedStore: ObservableObject, Probeable, WriteReporting {
     @Published private(set) var missionActive = false
     @Published private(set) var pending: GuidedOffer?
     @Published private(set) var lastSent = ""
-    @Published private(set) var range: GuidedValue?
+    @Published private(set) var range: GuidedRange?
     @Published var chosen = 0.0
 
     var actions: [GuidedOffer] { offers.filter(\.shown) }
@@ -27,7 +27,7 @@ final class GuidedStore: ObservableObject, Probeable, WriteReporting {
 
     func ask(_ offer: GuidedOffer) {
         guard offer.ready else { return }
-        let built = offer.carriesValue ? limits(for: offer.action) : nil
+        let built = offer.carriesValue ? range(for: offer.action) : nil
         guard !offer.carriesValue || built != nil else { return }
         range = built
         chosen = built?.initial ?? 0
@@ -47,71 +47,49 @@ final class GuidedStore: ObservableObject, Probeable, WriteReporting {
         range = nil
     }
 
-    private func limits(for action: GuidedAction) -> GuidedValue? {
+    private func valueView(_ action: GuidedAction, _ target: Double? = nil) -> [String: Any] {
+        let argument = target.map { "(\($0))" } ?? ""
         switch action {
-        case .takeoff:
-            return GuidedValue.takeoff(minimumAltitude: number("vehicle.minimumTakeoffAltitudeMeters"),
-                                       maximumAltitude: setting("guidedMaximumAltitude"),
-                                       measure: AppUnits.measure(AppUnits.vertical))
-        case .changeAltitude, .pause:
-            return GuidedValue.altitude(minimum: setting("guidedMinimumAltitude"),
-                                        maximum: setting("guidedMaximumAltitude"),
-                                        current: currentAltitude,
-                                        measure: AppUnits.measure(AppUnits.vertical))
-        case .changeSpeed:
-            return GuidedValue.speed(maximum: number("vehicle.maximumHorizontalSpeedMultirotor"),
-                                     forwardFlight: forwardFlight,
-                                     minimumAirspeed: number("vehicle.minimumEquivalentAirspeed"),
-                                     maximumAirspeed: number("vehicle.maximumEquivalentAirspeed"),
-                                     measure: AppUnits.measure(AppUnits.speed))
-        default:
-            return nil
+        case .takeoff: return Bridge.group("view.guidedTakeoff\(argument)")
+        case .changeAltitude, .pause: return Bridge.group("view.guidedAltitude\(argument)")
+        case .changeSpeed: return Bridge.group("view.guidedSpeed\(argument)")
+        default: return [:]
         }
+    }
+
+    private func range(for action: GuidedAction) -> GuidedRange? {
+        GuidedRange(valueView(action))
     }
 
     static let climbOutAltitude = 50.0
     static let gripperRelease = 0
     static let gripperGrab = 1
 
-    private var forwardFlight: Bool {
-        let vehicle = Bridge.group("vehicle")
-        func flag(_ name: String) -> Bool { (vehicle[name] as? NSNumber)?.boolValue ?? false }
-        return flag("vtolInFwdFlight") || flag("fixedWing")
-    }
-
-    private func number(_ path: String) -> Double {
-        (Bridge.invoke(path)["result"] as? NSNumber)?.doubleValue ?? .nan
-    }
-
-    private func setting(_ name: String) -> Double {
-        metres("settings.flyViewSettings.\(name).rawValue")
-    }
-
-    private var currentAltitude: Double {
-        metres("vehicle.altitudeRelative.rawValue")
-    }
-
-    private func metres(_ path: String) -> Double {
-        (Bridge.group(path)["value"] as? NSNumber)?.doubleValue ?? .nan
-    }
-
     private func send(_ action: GuidedAction) {
         lastSent = action.rawValue
+        let answer = valueView(action, range == nil ? nil : chosen)
         switch action {
         case .arm: write("vehicle.armed", true, "the vehicle to armed")
         case .disarm: write("vehicle.armed", false, "the vehicle to disarmed")
         case .rtl: Bridge.invoke("vehicle.guidedModeRTL", [false])
         case .land: Bridge.invoke("vehicle.guidedModeLand")
-        case .takeoff: Bridge.invoke("vehicle.guidedModeTakeoff", [chosen])
-        case .changeAltitude:
-            Bridge.invoke("vehicle.guidedModeChangeAltitude", [chosen - currentAltitude, false])
+        case .takeoff:
+            guard let metres = answer["targetMeters"] as? NSNumber else { return }
+            Bridge.invoke("vehicle.guidedModeTakeoff", [metres.doubleValue])
+        case .changeAltitude, .pause:
+            guard let delta = answer["deltaMeters"] as? NSNumber else { return }
+            guard (answer["sends"] as? NSNumber)?.boolValue == true else {
+                lastSent = ""
+                writeFailure = (answer["sentence"] as? String) ?? ""
+                return
+            }
+            Bridge.invoke("vehicle.guidedModeChangeAltitude",
+                          [delta.doubleValue, action == .pause])
         case .changeSpeed:
-            Bridge.invoke(forwardFlight
-                ? "vehicle.guidedModeChangeEquivalentAirspeedMetersSecond"
-                : "vehicle.guidedModeChangeGroundSpeedMetersSecond", [chosen])
+            guard let command = answer["command"] as? String,
+                  let metres = answer["targetMetersSecond"] as? NSNumber else { return }
+            Bridge.invoke("vehicle.\(command)", [metres.doubleValue])
         case .startMission, .continueMission: Bridge.invoke("vehicle.startMission")
-        case .pause:
-            Bridge.invoke("vehicle.guidedModeChangeAltitude", [chosen - currentAltitude, true])
         case .landAbort: Bridge.invoke("vehicle.abortLanding", [GuidedStore.climbOutAltitude])
         case .emergencyStop: Bridge.invoke("vehicle.emergencyStop")
         case .grab: Bridge.invoke("vehicle.sendGripperAction", [GuidedStore.gripperGrab])
@@ -124,7 +102,7 @@ final class GuidedStore: ObservableObject, Probeable, WriteReporting {
          "connected": connected, "missionActive": missionActive, "lastSent": lastSent,
          "pending": pending?.id ?? "",
          "range": range.map {
-             ["label": $0.label, "units": $0.measure.suffix, "min": $0.minimum,
+             ["label": $0.label, "units": $0.unit, "min": $0.minimum,
               "max": $0.maximum, "initial": $0.initial]
          } ?? [:],
          "chosen": range.map { $0.text(chosen) } ?? "",

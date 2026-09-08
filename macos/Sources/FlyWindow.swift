@@ -626,7 +626,7 @@ struct GuidedConfirm: View {
         }
     }
 
-    private func valuePicker(_ range: GuidedValue) -> some View {
+    private func valuePicker(_ range: GuidedRange) -> some View {
         VStack(spacing: 2) {
             HStack {
                 Text(range.label).font(.caption).foregroundColor(.secondary)
