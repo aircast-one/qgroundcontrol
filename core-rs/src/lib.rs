@@ -29,6 +29,7 @@ mod shp;
 mod setup;
 mod signing;
 mod speed;
+mod statustext;
 mod survey;
 mod takeoff;
 mod terrain;
