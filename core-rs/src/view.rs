@@ -28,6 +28,7 @@ use crate::speed;
 use crate::survey;
 use crate::takeoff;
 use crate::terrain;
+use crate::tlog;
 use crate::vibration;
 use crate::video;
 use crate::warnings;
@@ -72,6 +73,7 @@ pub const VIEWS: &[View] = &[
     View { path: "view.setup", deps: setup::DEPS, compute: setup::setup_view },
     View { path: "view.video", deps: video::VIDEO_DEPS, compute: video::video_view },
     View { path: "view.camera", deps: video::CAMERA_DEPS, compute: video::camera_view },
+    View { path: "view.tlog", deps: tlog::DEPS, compute: tlog::tlog_view },
 ];
 
 pub fn owns(path: &str) -> bool {

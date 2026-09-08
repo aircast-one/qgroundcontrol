@@ -508,3 +508,14 @@ void QGCCoreCTest::_viewShapesMatchTheRecordedContract()
         QVERIFY2(was == now, qPrintable(QStringLiteral("%1 changed shape\n was: %2\n now: %3").arg(key, QString::fromUtf8(was), QString::fromUtf8(now))));
     }
 }
+
+void QGCCoreCTest::_tlogSummaryDecodesTheSampleLog()
+{
+    const QString sample = QFileInfo(QString::fromUtf8(__FILE__)).dir().filePath(QStringLiteral("../../mav.tlog"));
+    const QJsonObject summary = take(qgc_bridge_get(QStringLiteral("view.tlog(%1)").arg(sample).toUtf8().constData()));
+    QCOMPARE(summary.value(QStringLiteral("readable")).toBool(false), true);
+    QVERIFY(summary.value(QStringLiteral("frames")).toInt() > 1000);
+    QVERIFY(summary.value(QStringLiteral("byName")).toObject().contains(QStringLiteral("HEARTBEAT")));
+    QCOMPARE(take(qgc_bridge_get("view.tlog(/nonexistent.tlog)")).value(QStringLiteral("readable")).toBool(true), false);
+    QCOMPARE(take(qgc_bridge_get("view.tlog")).value(QStringLiteral("kind")).toString(), QStringLiteral("null"));
+}

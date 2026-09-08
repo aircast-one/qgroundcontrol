@@ -571,6 +571,8 @@ About 58 developer-weeks. Flight-test time, not code, is the schedule.
   for all 37 view paths and `QGCCoreCTest` diffs it (re-record with `QGC_RECORD_VIEW_CONTRACT=1`).
 - 2026-09-09: Android builds link the Rust core via cargo-ndk when it is installed (arm64-v8a verified); CI
   still routes straight to Qt until Rust and cargo-ndk are added to the Android job.
+- 2026-09-09: R2 begins — the `mavlink` crate (ArduPilot dialect) is in the core; `view.tlog(path)` decodes a
+  telemetry log frame by frame, checked against an independent frame count on the sample log.
 
 ### Stream F · Core
 

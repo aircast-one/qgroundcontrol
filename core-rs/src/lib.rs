@@ -26,6 +26,7 @@ mod speed;
 mod survey;
 mod takeoff;
 mod terrain;
+mod tlog;
 mod router;
 mod vibration;
 mod video;
