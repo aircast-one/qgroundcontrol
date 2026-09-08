@@ -51,6 +51,7 @@ import kotlinx.coroutines.withContext
 import one.aircast.android.bridge.Qgc
 import one.aircast.android.ui.AnalyzePage
 import one.aircast.android.ui.AnalyzeScreen
+import one.aircast.android.ui.CameraControlLayer
 import one.aircast.android.ui.FlightActions
 import one.aircast.android.ui.ObstacleReadout
 import one.aircast.android.ui.ParametersScreen
@@ -268,6 +269,7 @@ fun AircastShell(quickView: QtQuickView) {
                         verticalArrangement = Arrangement.spacedBy(8.dp),
                     ) {
                         ObstacleReadout()
+                        CameraControlLayer()
                         RcControlsLayer()
                     }
                 }
