@@ -4,6 +4,7 @@ struct MissionCommand: Identifiable, Equatable {
     let command: Int
     let name: String
     let category: String
+    let summary: String
 
     var id: Int { command }
 
@@ -14,6 +15,7 @@ struct MissionCommand: Identifiable, Equatable {
         self.command = command
         self.name = name
         category = (object["category"] as? String) ?? ""
+        summary = (object["description"] as? String) ?? ""
     }
 
     static func from(_ elements: [Any]) -> [MissionCommand] {

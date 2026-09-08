@@ -85,6 +85,7 @@ struct GroupRow<Leading: View, Trailing: View>: View {
     var showSeparator = true
     var current = false
     var titleLines = 1
+    var descriptionLines = 1
     @ViewBuilder var leading: Leading
     @ViewBuilder var trailing: Trailing
 
@@ -110,7 +111,8 @@ struct GroupRow<Leading: View, Trailing: View>: View {
                         Text(description)
                             .font(.caption)
                             .foregroundColor(.secondary)
-                            .lineLimit(1)
+                            .lineLimit(descriptionLines)
+                            .fixedSize(horizontal: false, vertical: descriptionLines > 1)
                     }
                 }
 
@@ -153,9 +155,11 @@ extension GroupRow where Trailing == EmptyView {
 
 extension GroupRow where Leading == EmptyView, Trailing == EmptyView {
     init(title: String, description: String = "", value: String = "",
-         showSeparator: Bool = true, current: Bool = false) {
+         showSeparator: Bool = true, current: Bool = false, titleLines: Int = 1,
+         descriptionLines: Int = 1) {
         self.init(title: title, description: description, value: value,
-                  showSeparator: showSeparator, current: current,
+                  showSeparator: showSeparator, current: current, titleLines: titleLines,
+                  descriptionLines: descriptionLines,
                   leading: { EmptyView() }, trailing: { EmptyView() })
     }
 }
