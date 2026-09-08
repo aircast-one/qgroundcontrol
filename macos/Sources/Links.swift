@@ -140,7 +140,7 @@ extension LinksStore {
          "adding": adding, "editing": editingIndex ?? -1,
          "linkTypes": linkTypes, "serialPorts": serialPorts.map(\.label),
          "links": links.map { ["index": $0.index, "name": $0.name, "type": $0.typeLabel,
-                               "summary": $0.summary, "connected": $0.connected,
+                               "summary": $0.displaySummary, "connected": $0.connected,
                                "autoConnect": $0.autoConnect, "lastError": $0.lastError] }]
     }
 

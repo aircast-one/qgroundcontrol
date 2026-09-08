@@ -4,6 +4,7 @@ struct LinkConfig: Identifiable {
     let index: Int
     let name: String
     let type: String
+    let title: String
     let summary: String
     let connected: Bool
     let autoConnect: Bool
@@ -17,34 +18,45 @@ struct LinkConfig: Identifiable {
     var id: Int { index }
     var path: String { "links.linkConfigurations.\(index)" }
 
+    static let tcp = "TcpSettings.qml"
+    static let udp = "UdpSettings.qml"
+    static let serial = "SerialSettings.qml"
+    static let bluetooth = "BluetoothSettings.qml"
+    static let logReplay = "LogReplaySettings.qml"
+
     var typeLabel: String {
-        let bare = type.hasPrefix("Type") ? String(type.dropFirst(4)) : type
-        switch bare.lowercased() {
-        case "tcp": return "TCP"
-        case "udp": return "UDP"
-        case "serial": return "Serial"
-        case "bluetooth": return "Bluetooth"
-        case "mock": return "Mock"
-        case "logreplay": return "Log Replay"
-        default: return bare
+        switch type {
+        case LinkConfig.tcp: return "TCP"
+        case LinkConfig.udp: return "UDP"
+        case LinkConfig.serial: return "Serial"
+        case LinkConfig.bluetooth: return "Bluetooth"
+        case LinkConfig.logReplay: return "Log Replay"
+        default: return LinkConfig.strip(title)
         }
+    }
+
+    static func strip(_ title: String) -> String {
+        let dropped = title.replacingOccurrences(of: " Link Settings", with: "")
+        return dropped == title
+            ? title.replacingOccurrences(of: " Settings", with: "")
+            : dropped
     }
 
     enum Editing: Equatable { case hostAndPort, portOnly, serial, logFile, none }
 
     var editing: Editing {
         switch type {
-        case "TypeTcp": return .hostAndPort
-        case "TypeLogReplay": return .logFile
-        case "TypeUdp": return .portOnly      // UDP binds a local port; there is no single host
-        case "TypeSerial": return .serial
+        case LinkConfig.tcp: return .hostAndPort
+        case LinkConfig.logReplay: return .logFile
+        case LinkConfig.udp: return .portOnly
+        case LinkConfig.serial: return .serial
         default: return .none
         }
     }
 
     var displaySummary: String {
-        if type == "TypeTcp", host.isEmpty { return "No host set" }
-        if type == "TypeLogReplay", filename.isEmpty { return "No log chosen" }
+        if type == LinkConfig.tcp, host.isEmpty { return "No host set" }
+        if type == LinkConfig.logReplay, filename.isEmpty { return "No log chosen" }
         return summary
     }
 
@@ -55,7 +67,8 @@ struct LinkConfig: Identifiable {
     init(index: Int, json: [String: Any]) {
         self.index = index
         name = (json["name"] as? String) ?? ""
-        type = (json["linkType"] as? String) ?? ""
+        type = (json["settingsURL"] as? String) ?? ""
+        title = (json["settingsTitle"] as? String) ?? ""
         summary = (json["summary"] as? String) ?? ""
         connected = ((json["children"] as? [String]) ?? []).contains("link")
         autoConnect = (json["autoConnect"] as? NSNumber)?.boolValue ?? false

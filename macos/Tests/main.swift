@@ -60,35 +60,41 @@ expect(Fact(json: ["value": 1], groupPath: "g") == nil, "a fact without a name i
 
 // A live LinkInterface is reported by the bridge as a child, not a value; reading
 // json["link"] instead reports every connected link as disconnected.
-let liveLink = LinkConfig(index: 0, json: ["name": "sitl", "linkType": "TypeTcp",
+let liveLink = LinkConfig(index: 0, json: ["name": "sitl", "settingsURL": LinkConfig.tcp,
                                            "children": ["link"], "link": NSNull()])
 expect(liveLink.connected, "a link listed in children reads as connected")
-let deadLink = LinkConfig(index: 1, json: ["name": "sitl", "linkType": "TypeTcp",
+let deadLink = LinkConfig(index: 1, json: ["name": "sitl", "settingsURL": LinkConfig.tcp,
                                            "children": [], "link": NSNull()])
 expect(!deadLink.connected, "a link absent from children reads as disconnected")
 expect(liveLink.typeLabel, "TCP", "TypeTcp renders as TCP")
-expect(LinkConfig(index: 2, json: ["linkType": "TypeLogReplay"]).typeLabel, "Log Replay", "TypeLogReplay renders readably")
+expect(LinkConfig(index: 2, json: ["settingsURL": LinkConfig.logReplay]).typeLabel, "Log Replay",
+       "a log replay link renders readably")
+expect(LinkConfig(index: 3, json: ["settingsURL": "AirLinkSettings.qml",
+                                   "settingsTitle": "AirLink Link Settings"]).typeLabel, "AirLink",
+       "and a link type this head has never heard of takes its name from the title QGC gives it")
+expect(LinkConfig(index: 4, json: ["linkType": 2 as NSNumber]).typeLabel, "",
+       "reading linkType as a name gives nothing, which is how every link label read for hours")
 
 // A TCP link with no host cannot connect; "TCP · :5760" hid that.
-expect(LinkConfig(index: 0, json: ["linkType": "TypeTcp", "host": "", "summary": ":5760"]).displaySummary,
+expect(LinkConfig(index: 0, json: ["settingsURL": LinkConfig.tcp, "host": "", "summary": ":5760"]).displaySummary,
        "No host set", "hostless TCP link says so")
-expect(LinkConfig(index: 0, json: ["linkType": "TypeTcp", "host": "h", "summary": "h:5760"]).displaySummary,
+expect(LinkConfig(index: 0, json: ["settingsURL": LinkConfig.tcp, "host": "h", "summary": "h:5760"]).displaySummary,
        "h:5760", "TCP link with a host keeps its summary")
-expect(LinkConfig(index: 0, json: ["linkType": "TypeUdp", "summary": "UDP port 14550"]).displaySummary,
+expect(LinkConfig(index: 0, json: ["settingsURL": LinkConfig.udp, "summary": "UDP port 14550"]).displaySummary,
        "UDP port 14550", "UDP has no host and is not flagged")
 
 // UDP exposes localPort, TCP exposes port; reading only "port" reported UDP links as port 0.
-expect(String(LinkConfig(index: 0, json: ["linkType": "TypeUdp", "localPort": 14550]).port),
+expect(String(LinkConfig(index: 0, json: ["settingsURL": LinkConfig.udp, "localPort": 14550]).port),
        "14550", "UDP port comes from localPort")
-expect(String(LinkConfig(index: 0, json: ["linkType": "TypeTcp", "port": 5760]).port),
+expect(String(LinkConfig(index: 0, json: ["settingsURL": LinkConfig.tcp, "port": 5760]).port),
        "5760", "TCP port comes from port")
 
 func expectEditing(_ type: String, _ want: LinkConfig.Editing, _ label: String) {
-    expect(LinkConfig(index: 0, json: ["linkType": type]).editing == want, label)
+    expect(LinkConfig(index: 0, json: ["settingsURL": type]).editing == want, label)
 }
-expectEditing("TypeTcp", .hostAndPort, "TCP edits host and port")
-expectEditing("TypeUdp", .portOnly, "UDP edits only its local port")
-expectEditing("TypeSerial", .serial, "serial edits device and baud")
+expectEditing(LinkConfig.tcp, .hostAndPort, "TCP edits host and port")
+expectEditing(LinkConfig.udp, .portOnly, "UDP edits only its local port")
+expectEditing(LinkConfig.serial, .serial, "serial edits device and baud")
 expectEditing("TypeMock", LinkConfig.Editing.none, "mock link has nothing to edit")
 
 // The thresholds are ArduPilot/PX4 flight guidance, not styling: getting them wrong
@@ -1676,18 +1682,18 @@ func checkCameraControl() {
 checkCameraControl()
 
 func checkLogReplayLink() {
-    let empty = LinkConfig(index: 0, json: ["linkType": "TypeLogReplay", "name": "Replay"])
+    let empty = LinkConfig(index: 0, json: ["settingsURL": LinkConfig.logReplay, "name": "Replay"])
     expect(empty.editing == .logFile, "a log replay link is edited by choosing a file")
     expect(empty.displaySummary, "No log chosen",
            "and says so rather than showing an empty summary")
 
-    let chosen = LinkConfig(index: 0, json: ["linkType": "TypeLogReplay", "name": "Replay",
+    let chosen = LinkConfig(index: 0, json: ["settingsURL": LinkConfig.logReplay, "name": "Replay",
                                              "filename": "/Users/pilot/logs/flight.tlog",
                                              "summary": "Log Replay"])
     expect(chosen.logFileName, "flight.tlog", "the row shows the log's name, not its whole path")
     expect(chosen.displaySummary, "Log Replay", "and the summary is left to the link once set")
 
-    let tcp = LinkConfig(index: 0, json: ["linkType": "TypeTcp", "host": "1.2.3.4"])
+    let tcp = LinkConfig(index: 0, json: ["settingsURL": LinkConfig.tcp, "host": "1.2.3.4"])
     expect(tcp.editing == .hostAndPort, "other link types are unaffected")
 }
 
