@@ -43,12 +43,15 @@ import kotlin.math.roundToInt
 import one.aircast.android.bridge.Qgc
 import one.aircast.android.bridge.offMainDetached
 import one.aircast.android.bridge.qgcBool
+import one.aircast.android.bridge.qgcPath
+import org.json.JSONObject
 import one.aircast.android.bridge.qgcFacts
 import one.aircast.android.bridge.qgcDouble
 import one.aircast.android.bridge.qgcString
 import one.aircast.android.bridge.qgcStrings
 
 private const val FALLBACK_TAKEOFF_ALTITUDE_METERS = 3.0
+private const val INSTRUMENTS = "view.instruments"
 
 internal data class GuidedAction(
     val name: String,
@@ -80,10 +83,21 @@ internal fun guidedAvailability(
     changeAltitude = guidedModeSupported && armed && flying,
 )
 
-internal fun telemetryLabel(fact: Fact): String = fact.description.ifBlank { fact.name }
+internal data class Instrument(val label: String, val reading: String)
 
-internal fun telemetryValue(fact: Fact): String =
-    if (fact.units.isBlank()) fact.valueString else "${fact.valueString} ${fact.units}"
+internal fun instruments(view: JSONObject?): List<Instrument> {
+    val items = view?.optJSONArray("items") ?: return emptyList()
+    return (0 until items.length()).mapNotNull { index ->
+        items.optJSONObject(index)?.takeIf { !it.optBoolean("missing") }?.let { item ->
+            val units = item.optString("units")
+            val value = item.optString("value")
+            Instrument(
+                label = item.optString("label"),
+                reading = if (units.isBlank()) value else "$value $units",
+            )
+        }
+    }
+}
 
 internal fun vehicleSubtitle(
     available: Boolean,
@@ -121,26 +135,31 @@ fun VehicleTitle() {
     }
 }
 
+@OptIn(ExperimentalLayoutApi::class)
 @Composable
 fun TelemetryRow(modifier: Modifier = Modifier) {
-    val facts by qgcFacts("vehicle.vehicle")
-    val shown = remember(facts) {
-        listOf("altitudeRelative", "groundSpeed", "distanceToHome", "heading")
-            .mapNotNull { name -> facts.firstOrNull { it.name == name } }
-    }
+    val view by qgcPath(INSTRUMENTS)
+    val shown = remember(view) { instruments(view) }
 
     if (shown.isEmpty()) return
 
-    Row(modifier.fillMaxWidth().padding(8.dp), horizontalArrangement = Arrangement.SpaceEvenly) {
-        shown.forEach { fact ->
-            Column(horizontalAlignment = Alignment.CenterHorizontally) {
+    FlowRow(
+        modifier.fillMaxWidth().padding(8.dp),
+        horizontalArrangement = Arrangement.SpaceEvenly,
+        verticalArrangement = Arrangement.spacedBy(6.dp),
+    ) {
+        shown.forEach { instrument ->
+            Column(
+                Modifier.padding(horizontal = 6.dp),
+                horizontalAlignment = Alignment.CenterHorizontally,
+            ) {
                 Text(
-                    telemetryValue(fact),
+                    instrument.reading,
                     style = MaterialTheme.typography.titleMedium,
                     fontWeight = FontWeight.Bold,
                 )
                 Text(
-                    telemetryLabel(fact),
+                    instrument.label,
                     style = MaterialTheme.typography.labelSmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )

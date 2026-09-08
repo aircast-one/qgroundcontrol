@@ -62,28 +62,9 @@ class TelemetryFormatTest {
         readOnly = true,
     )
 
-    @Test
-    fun `a pilot sees the described name, not the property name`() {
-        assertEquals(
-            "Altitude Rel",
-            telemetryLabel(fact("altitudeRelative", "Altitude Rel", "m", "12.0")),
-        )
-    }
 
-    @Test
-    fun `a property with no description falls back to its name`() {
-        assertEquals("heading", telemetryLabel(fact("heading", "", "deg", "356")))
-    }
 
-    @Test
-    fun `a value carries its units`() {
-        assertEquals("12.0 m", telemetryValue(fact("altitudeRelative", "Altitude Rel", "m", "12.0")))
-    }
 
-    @Test
-    fun `a unitless value is shown bare`() {
-        assertEquals("356", telemetryValue(fact("heading", "Heading", "", "356")))
-    }
 }
 
 class GuidedAvailabilityTest {
