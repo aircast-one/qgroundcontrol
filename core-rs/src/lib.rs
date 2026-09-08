@@ -54,6 +54,7 @@ pub mod takeoff;
 pub mod terrain;
 pub mod terraintile;
 pub mod tlog;
+pub mod transport;
 pub mod router;
 pub mod rtcm;
 pub mod vibration;
