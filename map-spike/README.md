@@ -442,6 +442,30 @@ Survey - no vehicle, and touch nothing else. Before: "1 item, 56 survey pts,
 4.92 km" at 20000 km, a black screen with one dot. After: the same plan at
 200 m with its transects and handles.
 
+## What the route is drawn through
+
+Three rules, all QGC's, and all of them ones this module got wrong at first by
+reading a plan through `MissionItem` instead of from the plan itself.
+
+The launch leg is drawn only when the first item is a takeoff - `linksStartToHome`,
+which the distance asks too so the two cannot disagree.
+
+An item with an exit is flown through rather than touched. A survey enters at
+one corner and leaves from the far one, so the route runs entry, transects,
+exit, next item. Drawing only the entry made the line jump back to the corner it
+came in at.
+
+A standalone coordinate is drawn and not routed through. QGC's own property
+documentation is the whole rule - "true: Waypoint line does not go through
+item" - and it covers `DO_SET_ROI`, `DO_SET_ROI_LOCATION`,
+`DO_SET_ROI_WPNEXT_OFFSET`, `DO_SET_HOME` and `DO_LAND_START`. An ROI is a
+camera target, not a place the aircraft goes.
+
+That last one is unit-tested and not verified on the handset: nothing in this
+module creates an ROI, so it arrives only in a plan loaded from a file or a
+vehicle. It is implemented because it matches an explicit upstream rule rather
+than a guess about behaviour, but a device check is still owed.
+
 ## Which calls can be checked, and which cannot
 
 Worth knowing before trusting any of them, because the answer is a property of

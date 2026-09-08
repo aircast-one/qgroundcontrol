@@ -53,6 +53,18 @@ class MissionPathTest {
     }
 
     @Test
+    fun `the route does not detour through a standalone coordinate`() {
+        val roi = MissionItem(
+            2, 3, 41.9, 44.9, "ROI", false, Double.NaN, null, standalone = true,
+        )
+
+        assertEquals(
+            listOf(44.1, 44.2),
+            longitudes(listOf(home, first, roi, second), link = false),
+        )
+    }
+
+    @Test
     fun `the rule is the same one the distance uses`() {
         val takeoffFirst = JSONObject(
             """{"kind":"object","elements":[{},{"isTakeoffItem":true},{}]}""",

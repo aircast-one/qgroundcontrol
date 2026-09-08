@@ -80,6 +80,11 @@ data class MissionItem(
     // Where the aircraft leaves this item, which for a survey is the far corner
     // rather than the one it arrived at. Null when the item is a single point.
     val exit: TrackPoint? = null,
+    // QGC's isStandaloneCoordinate, whose documentation is the whole rule:
+    // "true: Waypoint line does not go through item". A region of interest, a
+    // set-home or a land-start has a place on the map and is not somewhere the
+    // aircraft flies to, so it is drawn and not routed through.
+    val standalone: Boolean = false,
 )
 
 // A mission item only sits on the map when it specifies a coordinate; takeoff
@@ -104,6 +109,7 @@ fun missionItems(json: JSONObject?): List<MissionItem> {
             command = element.optString("commandName"),
             current = element.optBoolean("isCurrentItem"),
             altitude = factValue(element, "Altitude"),
+            standalone = element.optBoolean("isStandaloneCoordinate"),
             exit = element.optJSONObject("exitCoordinate")?.let { at ->
                 val exitLatitude = at.optDouble("latitude", Double.NaN)
                 val exitLongitude = at.optDouble("longitude", Double.NaN)

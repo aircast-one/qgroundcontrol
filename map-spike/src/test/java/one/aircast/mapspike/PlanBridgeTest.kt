@@ -2,6 +2,7 @@ package one.aircast.mapspike
 
 import org.json.JSONObject
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
@@ -118,5 +119,14 @@ class PlanBridgeTest {
 
         assertEquals(null, missionItems(model(same)).single().exit)
         assertEquals(null, missionItems(model(unusable)).single().exit)
+    }
+
+    @Test
+    fun `an item says whether the waypoint line goes through it`() {
+        val roi = """{"specifiesCoordinate":true,"isStandaloneCoordinate":true,""" +
+            """"coordinate":{"latitude":41.0,"longitude":44.0}}"""
+
+        assertTrue(missionItems(model(roi)).single().standalone)
+        assertFalse(missionItems(model(element())).single().standalone)
     }
 }
