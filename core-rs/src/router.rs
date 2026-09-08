@@ -233,6 +233,8 @@ mod tests {
             ("view.control", vec!["vehicle.parameterManager.getParameter(-1,RTL_ALT)".to_string()])
         );
         assert_eq!(view::split("view.instruments(gps/count, vehicle/heading)").1.len(), 2);
+        assert_eq!(view::split("view.linkForm(udp,,14550)").1, vec!["udp".to_string(), String::new(), "14550".to_string()]);
+        assert!(view::split("view.plan()").1.is_empty());
         assert!(view::lookup("view.guidedAltitude(1, 2)").is_some());
         let core = Core::new(Fake::default());
         assert_eq!(parsed(&core.get("view.messages(anything)"))["class"], "VehicleMessages");

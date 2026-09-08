@@ -8,6 +8,7 @@ use crate::control;
 use crate::guided;
 use crate::instruments;
 use crate::label;
+use crate::links;
 use crate::messages;
 use crate::plan;
 use crate::preflight;
@@ -40,6 +41,8 @@ pub const VIEWS: &[View] = &[
     View { path: "view.vibration", deps: vibration::DEPS, compute: vibration::vibration_view },
     View { path: "view.sensors", deps: sensors::DEPS, compute: sensors::sensors_view },
     View { path: "view.control", deps: control::DEPS, compute: control::control_view },
+    View { path: "view.links", deps: links::DEPS, compute: links::links_view },
+    View { path: "view.linkForm", deps: &[], compute: links::link_form_view },
 ];
 
 pub fn owns(path: &str) -> bool {
@@ -54,6 +57,9 @@ pub fn lookup(path: &str) -> Option<&'static View> {
 pub fn split(path: &str) -> (&str, Vec<String>) {
     let Some((base, rest)) = path.split_once('(') else { return (path, Vec::new()) };
     let inner = rest.strip_suffix(')').unwrap_or(rest);
+    if inner.trim().is_empty() {
+        return (base, Vec::new());
+    }
     let (args, last, _) = inner.chars().fold((Vec::new(), String::new(), 0usize), |(mut args, mut current, depth), c| match (c, depth) {
         (',', 0) => {
             args.push(std::mem::take(&mut current));
@@ -72,7 +78,7 @@ pub fn split(path: &str) -> (&str, Vec<String>) {
             (args, current, depth)
         }
     });
-    (base, args.into_iter().chain(std::iter::once(last)).map(|a| a.trim().to_string()).filter(|a| !a.is_empty()).collect())
+    (base, args.into_iter().chain(std::iter::once(last)).map(|a| a.trim().to_string()).collect())
 }
 
 impl View {

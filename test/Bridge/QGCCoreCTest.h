@@ -25,6 +25,7 @@ private slots:
     void _vibrationBandsAreServed();
     void _sensorHealthIsOrdered();
     void _controlsDescribeAFact();
+    void _linksAreListedAndTheFormValidates();
 
 private:
     static bool _unavailable(const char *path);

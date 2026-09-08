@@ -218,6 +218,7 @@ pub fn guided_view(backend: &dyn Backend, _args: &[String]) -> Value {
         "class": "GuidedActions",
         "connected": state.connected,
         "missionActive": state.mission_active(),
+        "forwardFlight": state.forward_flight,
         "actions": offers,
     })
 }

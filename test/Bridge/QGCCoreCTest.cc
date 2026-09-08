@@ -289,3 +289,17 @@ void QGCCoreCTest::_controlsDescribeAFact()
     QCOMPARE(take(qgc_bridge_get("view.control(settings.nope)")).value(QStringLiteral("kind")).toString(), QStringLiteral("null"));
     QCOMPARE(take(qgc_bridge_get("view.control")).value(QStringLiteral("kind")).toString(), QStringLiteral("null"));
 }
+
+void QGCCoreCTest::_linksAreListedAndTheFormValidates()
+{
+    const QJsonObject links = take(qgc_bridge_get("view.links"));
+    QCOMPARE(links.value(QStringLiteral("available")).toBool(false), true);
+    QVERIFY(!links.value(QStringLiteral("linkTypes")).toArray().isEmpty());
+    QVERIFY(!links.value(QStringLiteral("baudRates")).toArray().isEmpty());
+    QVERIFY(links.value(QStringLiteral("links")).isArray());
+    const QJsonObject form = take(qgc_bridge_get("view.linkForm(tcp,,5760)"));
+    QCOMPARE(form.value(QStringLiteral("valid")).toBool(true), false);
+    const QJsonObject ok = take(qgc_bridge_get("view.linkForm(udp,,14550)"));
+    QCOMPARE(ok.value(QStringLiteral("valid")).toBool(false), true);
+    QCOMPARE(ok.value(QStringLiteral("name")).toString(), QStringLiteral("UDP 14550"));
+}

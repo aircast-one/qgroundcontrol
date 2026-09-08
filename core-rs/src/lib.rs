@@ -6,6 +6,7 @@ mod control;
 mod guided;
 mod instruments;
 mod label;
+mod links;
 mod messages;
 mod plan;
 mod preflight;
