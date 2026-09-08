@@ -237,6 +237,22 @@ Three findings worth carrying:
   and the per-channel PWM list were signal-only and had to become `statusText`
   and `rcValues` before Android could show them.
 
+**Parameters — a finding left unbuilt for want of a vehicle.** The screen slices
+its matches to the first 60, so a parameter matching 61st cannot be reached
+without narrowing the search, and every edit re-reads all 60 facts through the
+bridge. Both dissolve if the `LazyColumn` takes the whole match list and each row
+loads its own fact, since only rows on screen cost a read. The change was written
+and reverted unverified: it replaces the list's entire data path and there is no
+parameter source on this rig.
+
+Getting one is harder than it looks, which is the part worth recording. A
+heartbeat-only fake vehicle is not enough — QGC asks for `AUTOPILOT_VERSION` and
+then attempts the parameter download over **MAVFTP**, and it keeps attempting it
+even when `AUTOPILOT_VERSION` advertises no `PARAM_FTP` capability. So a fake
+vehicle has to serve MAVFTP or refuse it convincingly enough to force the
+fallback to `PARAM_REQUEST_LIST`. Anyone picking this up should use SITL rather
+than extend a sim.
+
 **Deliberately not built:** the motor test and CompassMot. Both spin the
 propellers, `APMMotorComponent` sets `allowSetupWhileArmed`, and their gate needs
 a supervised airframe. `Vehicle::motorTest` is already `Q_INVOKABLE` through the
