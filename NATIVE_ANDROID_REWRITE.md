@@ -170,6 +170,12 @@ shipped the GL bin to both and broke macOS silently — it compiles either way, 
 video is parked waiting for a stream, so nothing would have complained for a long time.
 Checking who called `qgc_video_copy_frame` before deleting it is what caught it.
 
+**The inset is not the product.** It sits in the Fly tab corner and says "No video"
+until a stream starts. While the QML view still owns that tab, the operator can see
+video twice — QML's own inset and this one — which is the price of proving the pipeline
+before the view moves. The duplication ends when the Fly view migrates, and that is the
+same moment the limitation below has to be faced, so they should be done together.
+
 **A limitation the Fly view migration inherits.** `glimagesink` creates its GL context
 against the first window it is given and does not take a second one. While the surface
 lived inside the tab switch, leaving Fly destroyed it and coming back gave the sink a
