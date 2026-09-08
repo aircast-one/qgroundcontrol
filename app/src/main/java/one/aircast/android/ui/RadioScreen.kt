@@ -29,9 +29,6 @@ import one.aircast.android.bridge.qgcPath
 
 private const val CAL = "radioCal"
 
-private const val PWM_MIN = 1000.0
-private const val PWM_MAX = 2000.0
-
 internal data class AttitudeChannel(
     val label: String,
     val mapped: Boolean,
@@ -40,7 +37,7 @@ internal data class AttitudeChannel(
 )
 
 internal fun pwmFraction(pwm: Int): Float =
-    ((pwm - PWM_MIN) / (PWM_MAX - PWM_MIN)).toFloat().coerceIn(0f, 1f)
+    ((pwm - PWM_MIN).toDouble() / (PWM_MAX - PWM_MIN)).toFloat().coerceIn(0f, 1f)
 
 internal fun parseRcValues(json: JSONObject?): List<Int> {
     val array = json?.optJSONArray("value") ?: return emptyList()

@@ -53,6 +53,7 @@ import one.aircast.android.ui.AnalyzeScreen
 import one.aircast.android.ui.FlightActions
 import one.aircast.android.ui.ParametersScreen
 import one.aircast.android.ui.PlanTab
+import one.aircast.android.ui.RcControlsLayer
 import one.aircast.android.ui.SettingsScreen
 import one.aircast.android.ui.SetupScreen
 import one.aircast.android.ui.StatusStrip
@@ -255,6 +256,14 @@ fun AircastShell(quickView: QtQuickView) {
                         modifier = Modifier.fillMaxSize(),
                     )
                     else -> Unit
+                }
+
+                if (tab == Tab.Fly && !videoExpanded) {
+                    RcControlsLayer(
+                        Modifier
+                            .align(Alignment.TopStart)
+                            .padding(12.dp),
+                    )
                 }
 
                 AnimatedVisibility(
