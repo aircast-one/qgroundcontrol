@@ -25,6 +25,7 @@ pub mod messages;
 pub mod mission;
 pub mod missionkinds;
 pub mod plan;
+pub mod params;
 pub mod planfile;
 pub mod preflight;
 pub mod radio;
