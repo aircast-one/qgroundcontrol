@@ -129,7 +129,7 @@ fun terrainProfile(
     // leg is measured without charting the settings item's 0 m entry altitude
     // as a dive to sea level.
     val home = elements.optJSONObject(0)
-        ?.takeIf { elements.optJSONObject(1)?.optBoolean("isTakeoffItem") == true }
+        ?.takeIf { linksStartToHome(json) }
         ?.let { point(it, "coordinate") }
 
     return TerrainProfile(

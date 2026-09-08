@@ -80,6 +80,7 @@ internal fun MapSpikeScreen(
     var items by remember { mutableStateOf<List<MissionItem>>(emptyList()) }
     var itemCount by remember { mutableIntStateOf(0) }
     var shape by remember { mutableStateOf<List<String>>(emptyList()) }
+    var linkStartToHome by remember { mutableStateOf(false) }
     var fences by remember { mutableStateOf<List<FencePolygon>>(emptyList()) }
     var rally by remember { mutableStateOf<List<RallyPoint>>(emptyList()) }
     var circles by remember { mutableStateOf<List<FenceCircle>>(emptyList()) }
@@ -169,6 +170,7 @@ internal fun MapSpikeScreen(
             val nextItems = missionItems(plan)
             val nextItemCount = planItemCount(plan)
             val nextShape = planShape(plan)
+            val nextLink = linksStartToHome(plan)
             val nextFences = FenceBridge.polygons()
             val nextRally = FenceBridge.rally()
             val nextCircles = FenceBridge.circles()
@@ -178,6 +180,7 @@ internal fun MapSpikeScreen(
                 items = nextItems
                 itemCount = nextItemCount
                 shape = nextShape
+                linkStartToHome = nextLink
                 fences = nextFences
                 rally = nextRally
                 if (!selectionSurvives(selected, nextItems, nextFences, nextCircles, nextRally, nextSurveys)) {
@@ -225,6 +228,7 @@ internal fun MapSpikeScreen(
             mapStyle = mapStyle,
             follow = follow,
             missionItems = items,
+            linkStartToHome = linkStartToHome,
             fencePolygons = fences,
             fenceCircles = circles,
             rallyPoints = rally,

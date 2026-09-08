@@ -31,7 +31,6 @@ import androidx.compose.ui.unit.dp
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import one.aircast.android.bridge.Fact
-import kotlin.math.roundToInt
 import one.aircast.android.bridge.Qgc
 import one.aircast.android.bridge.offMainDetached
 import one.aircast.android.bridge.qgcBool
@@ -142,7 +141,6 @@ fun FlightActions(modifier: Modifier = Modifier) {
     val armed by qgcBool("vehicle.armed")
     var pending by remember { mutableStateOf<GuidedAction?>(null) }
     var takeoffAltitude by remember { mutableStateOf(FALLBACK_TAKEOFF_ALTITUDE_METERS) }
-    var takeoffLabel by remember { mutableStateOf("") }
     val flying by qgcBool("vehicle.flying")
     val guidedModeSupported by qgcBool("vehicle.guidedModeSupported")
     val takeoffSupported by qgcBool("vehicle.takeoffVehicleSupported")
@@ -154,11 +152,7 @@ fun FlightActions(modifier: Modifier = Modifier) {
 
     LaunchedEffect(available) {
         if (available) {
-            withContext(Dispatchers.Default) {
-                val meters = readTakeoffAltitudeMeters()
-                takeoffAltitude = meters
-                takeoffLabel = altitudeLabel(meters, verticalOf(meters), verticalUnits())
-            }
+            takeoffAltitude = withContext(Dispatchers.Default) { readTakeoffAltitudeMeters() }
         }
     }
 
@@ -193,7 +187,7 @@ fun FlightActions(modifier: Modifier = Modifier) {
                 val altitude = takeoffAltitude
                 pending = GuidedAction(
                     name = "Take off",
-                    confirm = "The aircraft will climb to $takeoffLabel and hold.",
+                    confirm = "The aircraft will climb to ${altitude.toInt()} m and hold.",
                     destructive = false,
                 ) { offMainDetached { Qgc.invoke("vehicle.guidedModeTakeoff", altitude) } }
             }) { Text("Takeoff") }
@@ -239,24 +233,6 @@ fun FlightActions(modifier: Modifier = Modifier) {
         )
     }
 }
-
-// The command takes metres and the operator may be reading feet. Converting only the
-// label keeps the number sent to the aircraft raw, which is what guidedModeTakeoff wants.
-// If either half of the conversion is unavailable both are dropped, so the figure and the
-// unit beside it can never come from different systems.
-internal fun altitudeLabel(meters: Double, converted: Double?, unit: String?): String =
-    if (converted != null && !unit.isNullOrBlank()) {
-        "${converted.roundToInt()} $unit"
-    } else {
-        "${meters.roundToInt()} m"
-    }
-
-private fun verticalOf(meters: Double): Double? =
-    (Qgc.invokeResult("units.metersToAppSettingsVerticalDistanceUnits", meters) as? Number)
-        ?.toDouble()
-
-private fun verticalUnits(): String? =
-    Qgc.get("units").opt("appSettingsVerticalDistanceUnitsString")?.toString()
 
 private fun readTakeoffAltitudeMeters(): Double =
     (Qgc.invokeResult("vehicle.minimumTakeoffAltitudeMeters") as? Number)?.toDouble()

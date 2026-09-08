@@ -161,6 +161,7 @@ fun VehicleMap(
     mapStyle: String = OSM_RASTER_STYLE,
     follow: Boolean = true,
     missionItems: List<MissionItem> = emptyList(),
+    linkStartToHome: Boolean = false,
     fencePolygons: List<FencePolygon> = emptyList(),
     fenceCircles: List<FenceCircle> = emptyList(),
     rallyPoints: List<RallyPoint> = emptyList(),
@@ -332,12 +333,15 @@ fun VehicleMap(
         )
     }
 
-    LaunchedEffect(style, missionItems, fencePolygons, fenceCircles, rallyPoints, surveys, selectedWaypoint) {
+    LaunchedEffect(
+        style, missionItems, fencePolygons, fenceCircles, rallyPoints, surveys,
+        selectedWaypoint, linkStartToHome,
+    ) {
         val currentStyle = style ?: return@LaunchedEffect
         renderSurveys(currentStyle, surveys)
         renderFences(currentStyle, fencePolygons, rallyPoints, circlesAsPolygons(fenceCircles))
         renderVertexHandles(currentStyle, fencePolygons, surveys, fenceCircles)
-        renderMission(currentStyle, missionItems, selectedWaypoint)
+        renderMission(currentStyle, missionItems, linkStartToHome, selectedWaypoint)
     }
 
     AndroidView(factory = { mapView }, modifier = modifier)

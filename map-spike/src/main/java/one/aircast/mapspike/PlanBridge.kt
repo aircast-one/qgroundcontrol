@@ -23,6 +23,13 @@ fun planItemCount(json: JSONObject?): Int =
 // string and matching it works until the app is localised.
 const val MAV_CMD_NAV_RETURN_TO_LAUNCH = 20
 
+// QGC links the planned home to the first item only when that item is a takeoff:
+// its linkStartToHome, "Link back to home if first item is takeoff". Both the
+// drawn path and the distance have to ask this the same way, or the map shows a
+// leg the panel does not count.
+fun linksStartToHome(json: JSONObject?): Boolean =
+    json?.optJSONArray("elements")?.optJSONObject(1)?.optBoolean("isTakeoffItem") == true
+
 fun planShape(json: JSONObject?): List<String> {
     val elements = json?.optJSONArray("elements") ?: return emptyList()
 
