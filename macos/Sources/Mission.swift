@@ -126,12 +126,12 @@ final class MissionStore: ObservableObject, Probeable {
     }
 
     func preCheck() -> PlanUpload {
-        let manager = Bridge.group("plan.managerVehicle")
-        return PlanUpload.check(
-            offlineVehicle: (manager["isOfflineEditingVehicle"] as? NSNumber)?.boolValue ?? true,
-            armed: (manager["armed"] as? NSNumber)?.boolValue ?? false,
-            flightMode: (manager["flightMode"] as? String) ?? "",
-            missionFlightMode: (manager["missionFlightMode"] as? String) ?? "")
+        let answer = Bridge.invoke("plan.missionController.sendToVehiclePreCheck")
+        guard answer["ok"] as? Bool == true,
+              let raw = (answer["result"] as? NSNumber)?.intValue else {
+            return .ok
+        }
+        return PlanUpload.state(raw)
     }
 
     func confirmUpload() {

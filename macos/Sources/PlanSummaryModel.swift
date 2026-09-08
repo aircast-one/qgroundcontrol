@@ -89,13 +89,5 @@ enum PlanUpload: Int {
         PlanUpload(rawValue: raw) ?? .ok
     }
 
-    static func check(offlineVehicle: Bool, armed: Bool,
-                      flightMode: String, missionFlightMode: String) -> PlanUpload {
-        if offlineVehicle { return .noVehicle }
-        if armed, !missionFlightMode.isEmpty, flightMode == missionFlightMode {
-            return .flyingThisMission
-        }
-        return .ok
-    }
 }
 

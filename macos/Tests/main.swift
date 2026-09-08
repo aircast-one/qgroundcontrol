@@ -829,21 +829,8 @@ func checkMissionItemKinds() {
     expect(PlanUpload.flyingThisMission.heading, "Upload this plan?",
            "one the operator can accept does ask")
 
-    expect(PlanUpload.check(offlineVehicle: true, armed: false,
-                            flightMode: "", missionFlightMode: "Auto") == .noVehicle,
-           "the offline editing vehicle is what QGC calls no active vehicle, tested first")
-    expect(PlanUpload.check(offlineVehicle: false, armed: true,
-                            flightMode: "Auto", missionFlightMode: "Auto") == .flyingThisMission,
-           "armed and in the mission mode is a vehicle flying the mission being replaced")
-    expect(PlanUpload.check(offlineVehicle: false, armed: false,
-                            flightMode: "Auto", missionFlightMode: "Auto") == .ok,
-           "sitting disarmed in Auto is not flying it")
-    expect(PlanUpload.check(offlineVehicle: false, armed: true,
-                            flightMode: "Guided", missionFlightMode: "Auto") == .ok,
-           "armed in another mode is not flying it either")
-    expect(PlanUpload.check(offlineVehicle: false, armed: true,
-                            flightMode: "", missionFlightMode: "") == .ok,
-           "a vehicle that has named no mission mode is not judged to be flying one")
+    expect(PlanUpload.state(2).canProceed && PlanUpload.state(2).proceedTitle == "Upload anyway",
+           "the firmware mismatch is a real branch again now that the invokable works")
 
     expect(PlanReadiness.reason(for: PlanReadiness.readyForSave), "",
            "a plan that is ready to save says nothing")
