@@ -14,6 +14,30 @@ const val PLAN_ITEMS = "$PLAN_ROOT.missionController.visualItems"
 fun planItemCount(json: JSONObject?): Int =
     ((json?.optJSONArray("elements")?.length() ?: 0) - 1).coerceAtLeast(0)
 
+// A takeoff and a return to launch are both in the plan and neither is on the
+// map: both report coordinate 0,0, and the only position either has is the
+// launch point, which the settings item already draws. Stacking markers there
+// would be clutter rather than information, so the panel names them instead.
+//
+// isTakeoffItem and the numeric command, never commandName - that is a tr()
+// string and matching it works until the app is localised.
+const val MAV_CMD_NAV_RETURN_TO_LAUNCH = 20
+
+fun planShape(json: JSONObject?): List<String> {
+    val elements = json?.optJSONArray("elements") ?: return emptyList()
+
+    return (1 until elements.length())
+        .mapNotNull { elements.optJSONObject(it) }
+        .mapNotNull { element ->
+            when {
+                element.optBoolean("isTakeoffItem") -> "takeoff"
+                element.optInt("command") == MAV_CMD_NAV_RETURN_TO_LAUNCH -> "RTL"
+                else -> null
+            }
+        }
+        .distinct()
+}
+
 // An insert that returns a null pointer still answers ok:true, because the
 // method was found and did run. The item it hands back is the only evidence
 // that anything was created, and a null one serialises as kind "null".

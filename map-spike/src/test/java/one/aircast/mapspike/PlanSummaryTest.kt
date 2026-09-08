@@ -15,10 +15,19 @@ class PlanSummaryTest {
         seconds: Double = Double.NaN,
         selected: MapHit? = null,
         itemCount: Int = items.size,
+        shape: List<String> = emptyList(),
     ) = planSummary(
-        itemCount, items, emptyList(), circles, emptyList(), emptyList(),
+        itemCount, shape, items, emptyList(), circles, emptyList(), emptyList(),
         distance, seconds, selected,
     )
+
+    @Test
+    fun `what is in the plan but not on the map is named`() {
+        assertTrue(
+            summary(items = listOf(item()), itemCount = 3, shape = listOf("takeoff", "RTL"))
+                .startsWith("3 items (takeoff, RTL)"),
+        )
+    }
 
     @Test
     fun `items that cannot be drawn are still in the plan`() {

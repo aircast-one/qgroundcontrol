@@ -78,11 +78,15 @@ under both.
 
 ## Not done, and why
 
-Takeoff and RTL are counted but not drawn. Neither has a coordinate of its own - a multirotor
-takeoff goes straight up from the launch point and an RTL returns to it - so the panel can say
-"3 items" over a map showing one survey. QGC solves this with a mission item list, which is a
-bigger thing than a map and is not here. The count is right and the map is right; what is missing
-is the third view that reconciles them.
+Takeoff and RTL are named rather than drawn. Both report `coordinate` 0,0, and the only position
+either has is the launch point, which the settings item already draws - `setLaunchCoordinate`
+does not fill the takeoff's own coordinate because `QGeoCoordinate(0, 0)` reports as valid, so its
+`if (!coordinate().isValid())` guard never fires. Stacking two more markers on the launch point
+would be clutter rather than information, so the panel says "3 items (takeoff, RTL)" instead. That
+a plan ends in a return to launch is worth knowing and was invisible before.
+
+QGC reconciles this properly with a mission item list, which is a bigger thing than a map and is
+not here.
 
 The `flightPathSegments` read that draws the ground is not cached. One survey costs 20 ms per poll
 against 0.1 ms without it, which is 3% of a 700 ms poll off the main thread. Nine surveys is where

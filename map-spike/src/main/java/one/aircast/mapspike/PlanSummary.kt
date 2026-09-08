@@ -5,6 +5,7 @@ package one.aircast.mapspike
 // what is selected.
 fun planSummary(
     itemCount: Int,
+    shape: List<String>,
     items: List<MissionItem>,
     polygons: List<FencePolygon>,
     circles: List<FenceCircle>,
@@ -15,7 +16,11 @@ fun planSummary(
     selected: MapHit?,
 ): String {
     val counts = listOfNotNull(
-        itemCount.takeIf { it > 0 }?.let { "$it item${if (it == 1) "" else "s"}" },
+        itemCount.takeIf { it > 0 }?.let {
+            "$it item${if (it == 1) "" else "s"}" +
+                shape.takeIf { named -> named.isNotEmpty() }
+                    ?.joinToString(", ", " (", ")").orEmpty()
+        },
         (polygons.size + circles.size).takeIf { it > 0 }?.let { "$it fence${if (it == 1) "" else "s"}" },
         rally.size.takeIf { it > 0 }?.let { "$it rally" },
         surveys.sumOf { it.transects.size }.takeIf { it > 0 }?.let { "$it survey pts" },

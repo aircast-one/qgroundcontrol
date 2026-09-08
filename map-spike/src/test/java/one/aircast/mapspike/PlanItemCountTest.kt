@@ -19,4 +19,22 @@ class PlanItemCountTest {
         assertEquals(0, planItemCount(null))
         assertEquals(0, planItemCount(model(0)))
     }
+
+    @Test
+    fun `a takeoff and a return to launch are named by flag and command`() {
+        val plan = JSONObject(
+            """{"kind":"object","elements":[{},""" +
+                """{"isTakeoffItem":true,"commandName":"Start"},""" +
+                """{"command":20,"commandName":"irrelevant"},""" +
+                """{"specifiesCoordinate":true}]}""",
+        )
+
+        assertEquals(listOf("takeoff", "RTL"), planShape(plan))
+    }
+
+    @Test
+    fun `a plan with neither names nothing`() {
+        assertEquals(emptyList<String>(), planShape(model(3)))
+        assertEquals(emptyList<String>(), planShape(null))
+    }
 }
