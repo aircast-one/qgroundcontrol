@@ -1146,10 +1146,25 @@ Caution was a hard amber; High was `colorScheme.error`, which in this dark theme
 pink meant for text on a surface rather than for filling a shape. The most serious band was
 the least alarming thing on the screen. High is a saturated red now.
 
-**The `view.setup` migration was attempted, blocked, and reverted.** `SetupPages.kt` is 206
-lines of per-firmware parameter tables and `view.setup(<page>)` is meant to replace them. On
-Android it does not: every control on a page comes back with an **empty `name` and empty
-`label`**, a zero `value`, and no units. The `path` is correct and carries the parameter -
+**The `view.setup` migration was attempted, reverted, and the reason I gave for reverting was
+wrong.** `SetupPages.kt` is 206 lines of per-firmware parameter tables and `view.setup(<page>)`
+replaces them. Every control on the Power page came back with an empty `name` and `label` and a
+zero `value`, and I reported that as the core failing on Android.
+
+**It was not.** Read after `parametersReady`, `view.control` on this handset returns
+`RTL_ALT` with `label "RTL Altitude"`, `name "RTL_ALT"`, `display "1500"`, min 0 max 8000 -
+correct, through the Rust-to-Qt hop and the nested-parenthesis argument. `BATT_MONITOR` returns
+the default fact because **this simulator does not define it**. Every control on that page was
+a parameter the vehicle does not have, and the empty answer was the right one.
+
+The check that would have prevented the false report was one grep of my own simulator's
+parameter list. Instead a peer spent a round reproducing it on macOS. **Before reporting that a
+producer is broken, confirm the input it was given exists.**
+
+The migration itself was sound: "This vehicle exposes none of these parameters" is true for that
+page on this vehicle, and the table-based page is the one that lies - it renders rows for
+parameters the vehicle does not have, showing 0. It re-lands once the core's drop-the-default-fact
+change is in an AAR. The `path` is correct and carries the parameter -
 `vehicle.parameterManager.getParameter(-1,BATT_MONITOR)` - so the section titles and notes
 render and the rows cannot be labelled or read.
 
