@@ -595,6 +595,7 @@ About 58 developer-weeks. Flight-test time, not code, is the schedule.
 - 2026-09-09: legacy `.mission` reader (v1 and v2) served as `view.missionFile(path)` with the plan rewritten; Qt agrees on OldFileFormat.mission.
 - 2026-09-09: gzip, xz and zip decompression in the core (pure Rust: flate2, lzma-rs, zip with deflate only), verified on the Qt manifest fixtures.
 - 2026-09-09: review pass over the night's core slices, ten findings fixed (metadata defaults and hidden params, HUD offset relatch, attitude source filter, HIGH_LATENCY arms, WPL 120 jump targets, legacy mission parity, inflate cap).
+- 2026-09-09: tlog frame, heartbeat and drop counts proven equal to the C parser in the C ABI suite (R2 gate clause).
 
 ### Stream F · Core
 

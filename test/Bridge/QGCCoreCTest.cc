@@ -2,6 +2,7 @@
 
 #include "MockLink.h"
 #include "QGCBridgeC.h"
+#include "MAVLinkLib.h"
 
 #include <QtCore/QDir>
 #include <QtCore/QFile>
@@ -558,6 +559,33 @@ void QGCCoreCTest::_tlogSummaryDecodesTheSampleLog()
     QCOMPARE(summary.value(QStringLiteral("readable")).toBool(false), true);
     QVERIFY(summary.value(QStringLiteral("frames")).toInt() > 1000);
     QVERIFY(summary.value(QStringLiteral("byName")).toObject().contains(QStringLiteral("HEARTBEAT")));
+
+    QFile file(sample);
+    QVERIFY(file.open(QIODevice::ReadOnly));
+    const QByteArray bytes = file.readAll();
+    const uint8_t channel = MAVLINK_COMM_NUM_BUFFERS - 1;
+    mavlink_reset_channel_status(channel);
+    int cFrames = 0;
+    int cHeartbeats = 0;
+    int cDropped = 0;
+    qsizetype at = 0;
+    while (at + 8 < bytes.size()) {
+        at += 8;
+        bool found = false;
+        while (!found && at < bytes.size()) {
+            mavlink_message_t message{};
+            mavlink_status_t status{};
+            found = mavlink_parse_char(channel, static_cast<uint8_t>(bytes[at++]), &message, &status) == MAVLINK_FRAMING_OK;
+            cDropped += status.packet_rx_drop_count;
+            if (found) {
+                cFrames++;
+                cHeartbeats += (message.msgid == MAVLINK_MSG_ID_HEARTBEAT);
+            }
+        }
+    }
+    QCOMPARE(summary.value(QStringLiteral("frames")).toInt(), cFrames);
+    QCOMPARE(summary.value(QStringLiteral("byName")).toObject().value(QStringLiteral("HEARTBEAT")).toInt(), cHeartbeats);
+    QCOMPARE(summary.value(QStringLiteral("undecodable")).toInt(), cDropped);
     QCOMPARE(take(qgc_bridge_get("view.tlog(/nonexistent.tlog)")).value(QStringLiteral("readable")).toBool(true), false);
     QCOMPARE(take(qgc_bridge_get("view.tlog")).value(QStringLiteral("kind")).toString(), QStringLiteral("null"));
 }
