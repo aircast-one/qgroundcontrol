@@ -302,6 +302,13 @@ the local intent and Upload already exists for anyone who wants the empty plan f
 divergence: it makes the destructive half opt-in rather than the default, and it keeps the action
 inside what a two-tap confirm can honestly carry.
 
+That confirm disarms itself after `CONFIRM_TIMEOUT_MS`, which is 5000, and an armed Clear reads
+"Clear everything". Both halves are easy to miss and one of them cost an hour: a screenshot taken
+four seconds after the tap catches the label already back to "Clear", which is indistinguishable
+from a button that did nothing, and the first tap correctly calls nothing so there is no log
+either. Two taps inside the window take "1 fence · 1 rally" to "Empty plan · long press to add".
+When a control looks dead, check what its own timeout is before checking anything else.
+
 **Loading from the vehicle throws work away.** It overwrites whatever is drawn and there is no
 undo, so QGC asks first when the plan has unsent changes. `plan.dirty` says when that is, and Load
 here asks the same question rather than being the one place that discards a survey silently.
