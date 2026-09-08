@@ -6,6 +6,7 @@
 #include <QtCore/QDir>
 #include <QtCore/QFile>
 #include <QtCore/QFileInfo>
+#include <QtCore/QTemporaryFile>
 #include <QtCore/QJsonArray>
 #include <QtCore/QJsonDocument>
 #include <QtCore/QJsonObject>
@@ -581,6 +582,33 @@ void QGCCoreCTest::_planFileAgreesWithTheCppLoader()
     QVERIFY(qAbs(home.value(QStringLiteral("latitude")).toDouble() - read.value(QStringLiteral("home")).toObject().value(QStringLiteral("latitude")).toDouble()) < 1e-6);
     (void) take(qgc_bridge_invoke("plan.removeAll", "[]"));
     QCOMPARE(take(qgc_bridge_get("view.planFile(/nonexistent.plan)")).value(QStringLiteral("readable")).toBool(true), false);
+}
+
+void QGCCoreCTest::_planWrittenFromWaypointsLoadsInCpp()
+{
+    const QString fixture = QFileInfo(QString::fromUtf8(__FILE__)).dir().filePath(QStringLiteral("../MissionManager/MissionPlanner.waypoints"));
+    const QJsonObject converted = take(qgc_bridge_get(QStringLiteral("view.planFromWaypoints(%1)").arg(fixture).toUtf8().constData()));
+    QCOMPARE(converted.value(QStringLiteral("valid")).toBool(false), true);
+    const int rustCount = converted.value(QStringLiteral("itemCount")).toInt();
+    QVERIFY(rustCount > 0);
+    QTemporaryFile written(QDir::tempPath() + QStringLiteral("/core-written-XXXXXX.plan"));
+    QVERIFY(written.open());
+    written.write(converted.value(QStringLiteral("plan")).toString().toUtf8());
+    written.close();
+
+    (void) take(qgc_bridge_invoke("plan.start", "[]"));
+    const QJsonObject loaded = take(qgc_bridge_invoke("plan.loadFromFile", QJsonDocument(QJsonArray { written.fileName() }).toJson(QJsonDocument::Compact).constData()));
+    QVERIFY2(loaded.value(QStringLiteral("ok")).toBool(false) && loaded.value(QStringLiteral("result")).toBool(false), qPrintable(QStringLiteral("the C++ loader refused the written plan: %1").arg(QString::fromUtf8(QJsonDocument(loaded).toJson(QJsonDocument::Compact)))));
+    const auto lastSequence = []() {
+        const QJsonArray elements = take(qgc_bridge_get_fields("plan.missionController.visualItems", "lastSequenceNumber")).value(QStringLiteral("elements")).toArray();
+        return elements.isEmpty() ? -1 : elements.last().toObject().value(QStringLiteral("lastSequenceNumber")).toInt(-1);
+    };
+    QTRY_COMPARE_WITH_TIMEOUT(lastSequence(), rustCount, 5000);
+    const QJsonObject home = take(qgc_bridge_get("plan.missionController.plannedHomePosition"));
+    const QJsonObject read = take(qgc_bridge_get(QStringLiteral("view.waypointsFile(%1)").arg(fixture).toUtf8().constData()));
+    QVERIFY(qAbs(home.value(QStringLiteral("latitude")).toDouble() - read.value(QStringLiteral("home")).toObject().value(QStringLiteral("latitude")).toDouble()) < 1e-6);
+    (void) take(qgc_bridge_invoke("plan.removeAll", "[]"));
+    QCOMPARE(take(qgc_bridge_get("view.planFromWaypoints(/nonexistent.waypoints)")).value(QStringLiteral("readable")).toBool(true), false);
 }
 
 void QGCCoreCTest::_waypointsFileAgreesWithTheCppLoader()

@@ -84,6 +84,7 @@ pub const VIEWS: &[View] = &[
     View { path: "view.contract", deps: contract::DEPS, compute: contract::contract_view },
     View { path: "view.planFile", deps: planfile::DEPS, compute: planfile::plan_file_view },
     View { path: "view.waypointsFile", deps: waypoints::DEPS, compute: waypoints::waypoints_view },
+    View { path: "view.planFromWaypoints", deps: planfile::DEPS, compute: planfile::plan_from_waypoints_view },
     View { path: "view.kmlFile", deps: kml::DEPS, compute: kml::kml_view },
     View { path: "view.shapeFile", deps: shp::DEPS, compute: shp::shp_view },
     View { path: "view.geoToNed", deps: geo::DEPS, compute: geo::geo_to_ned_view },

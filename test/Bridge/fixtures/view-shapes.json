@@ -274,6 +274,7 @@
             "view.contract",
             "view.planFile",
             "view.waypointsFile",
+            "view.planFromWaypoints",
             "view.kmlFile",
             "view.shapeFile",
             "view.geoToNed",

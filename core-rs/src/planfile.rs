@@ -1,6 +1,7 @@
 use serde_json::{Value, json};
 
 use crate::router::Backend;
+use crate::waypoints::Waypoints;
 
 pub const DEPS: &[&str] = &[];
 
@@ -62,6 +63,117 @@ fn item_json(item: &Value) -> Value {
     })
 }
 
+#[derive(Debug, Clone, PartialEq)]
+pub struct SimpleItem {
+    pub frame: i64,
+    pub command: i64,
+    pub params: [f64; 7],
+    pub auto_continue: bool,
+    pub altitude_mode: Option<i64>,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct Mission {
+    pub home: (f64, f64, f64),
+    pub firmware_type: i64,
+    pub vehicle_type: i64,
+    pub cruise_speed: f64,
+    pub hover_speed: f64,
+    pub global_altitude_mode: i64,
+    pub items: Vec<SimpleItem>,
+}
+
+pub const ALTITUDE_MODE_RELATIVE: i64 = 1;
+pub const ALTITUDE_MODE_ABSOLUTE: i64 = 2;
+pub const ALTITUDE_MODE_TERRAIN_FRAME: i64 = 4;
+
+fn item_object(sequence: usize, item: &SimpleItem) -> Value {
+    let base = [
+        ("type", json!("SimpleItem")),
+        ("frame", json!(item.frame)),
+        ("command", json!(item.command)),
+        ("autoContinue", json!(item.auto_continue)),
+        ("doJumpId", json!(sequence)),
+        ("params", json!(item.params)),
+    ];
+    let altitude = item
+        .altitude_mode
+        .map(|mode| [("AltitudeMode", json!(mode)), ("Altitude", json!(item.params[6])), ("AMSLAltAboveTerrain", Value::Null)])
+        .into_iter()
+        .flatten();
+    Value::Object(base.into_iter().chain(altitude).map(|(key, value)| (key.to_string(), value)).collect())
+}
+
+pub fn write(mission: &Mission) -> String {
+    let items: Vec<Value> = mission.items.iter().enumerate().map(|(i, item)| item_object(i + 1, item)).collect();
+    let root = json!({
+        "fileType": "Plan",
+        "groundStation": "QGroundControl",
+        "version": 1,
+        "mission": {
+            "version": 2,
+            "plannedHomePosition": [mission.home.0, mission.home.1, mission.home.2],
+            "firmwareType": mission.firmware_type,
+            "vehicleType": mission.vehicle_type,
+            "cruiseSpeed": mission.cruise_speed,
+            "hoverSpeed": mission.hover_speed,
+            "globalPlanAltitudeMode": mission.global_altitude_mode,
+            "items": items,
+        },
+        "geoFence": { "version": 2, "circles": [], "polygons": [] },
+        "rallyPoints": { "version": 2, "points": [] },
+    });
+    serde_json::to_string_pretty(&root).unwrap()
+}
+
+pub fn altitude_mode_for_frame(frame: i64) -> Option<i64> {
+    match frame {
+        3 => Some(ALTITUDE_MODE_RELATIVE),
+        0 => Some(ALTITUDE_MODE_ABSOLUTE),
+        10 => Some(ALTITUDE_MODE_TERRAIN_FRAME),
+        _ => None,
+    }
+}
+
+pub fn from_waypoints(file: &Waypoints, firmware_type: i64, vehicle_type: i64) -> Mission {
+    let home = file.home.as_ref().or(file.items.first()).map(|r| (r.latitude, r.longitude, r.altitude)).unwrap_or_default();
+    Mission {
+        home,
+        firmware_type,
+        vehicle_type,
+        cruise_speed: 15.0,
+        hover_speed: 5.0,
+        global_altitude_mode: ALTITUDE_MODE_RELATIVE,
+        items: file
+            .items
+            .iter()
+            .map(|r| SimpleItem {
+                frame: r.frame,
+                command: r.command,
+                params: [r.params[0], r.params[1], r.params[2], r.params[3], r.latitude, r.longitude, r.altitude],
+                auto_continue: r.auto_continue,
+                altitude_mode: altitude_mode_for_frame(r.frame),
+            })
+            .collect(),
+    }
+}
+
+pub fn plan_from_waypoints_view(_backend: &dyn Backend, args: &[String]) -> Value {
+    let Some(path) = args.first().filter(|p| !p.is_empty()) else { return json!({ "kind": "null" }) };
+    let text = match std::fs::read_to_string(path) {
+        Ok(t) => t,
+        Err(e) => return json!({ "kind": "planFromWaypoints", "readable": false, "valid": false, "error": e.to_string() }),
+    };
+    let (firmware_type, vehicle_type) = (
+        args.get(1).and_then(|a| a.parse().ok()).unwrap_or(12),
+        args.get(2).and_then(|a| a.parse().ok()).unwrap_or(2),
+    );
+    match crate::waypoints::parse(&text) {
+        Ok(file) => json!({ "kind": "planFromWaypoints", "readable": true, "valid": true, "itemCount": file.items.len(), "plan": write(&from_waypoints(&file, firmware_type, vehicle_type)) }),
+        Err(e) => json!({ "kind": "planFromWaypoints", "readable": true, "valid": false, "error": e }),
+    }
+}
+
 pub fn plan_file_view(_backend: &dyn Backend, args: &[String]) -> Value {
     let Some(path) = args.first().filter(|p| !p.is_empty()) else { return json!({ "kind": "null" }) };
     let text = match std::fs::read_to_string(path) {
@@ -113,6 +225,51 @@ mod tests {
         assert!((lat - 47.6334).abs() < 1e-3 && (lon + 122.0908).abs() < 1e-3 && alt == 20.0);
         assert!(plan.items[0]["coordinate"].is_object());
         assert_eq!(plan.rally_points, 0);
+    }
+
+    fn sample() -> Mission {
+        Mission {
+            home: (47.6, -122.1, 20.0),
+            firmware_type: 12,
+            vehicle_type: 2,
+            cruise_speed: 15.0,
+            hover_speed: 5.0,
+            global_altitude_mode: ALTITUDE_MODE_RELATIVE,
+            items: vec![
+                SimpleItem { frame: 3, command: 22, params: [0.0, 0.0, 0.0, f64::NAN, 47.6, -122.1, 30.0], auto_continue: true, altitude_mode: Some(ALTITUDE_MODE_RELATIVE) },
+                SimpleItem { frame: 3, command: 16, params: [0.0, 0.0, 0.0, f64::NAN, 47.61, -122.11, 30.0], auto_continue: true, altitude_mode: Some(ALTITUDE_MODE_RELATIVE) },
+                SimpleItem { frame: 2, command: 177, params: [1.0, 2.0, 0.0, 0.0, 0.0, 0.0, 0.0], auto_continue: true, altitude_mode: None },
+            ],
+        }
+    }
+
+    #[test]
+    fn a_written_plan_reads_back_through_the_reader() {
+        let text = write(&sample());
+        let plan = parse(&text).unwrap();
+        assert_eq!((plan.version, plan.ground_station.as_str(), plan.firmware_type, plan.vehicle_type), (1, "QGroundControl", 12, 2));
+        assert_eq!(plan.home, Some((47.6, -122.1, 20.0)));
+        assert_eq!(plan.items.len(), 3);
+        assert_eq!(plan.items[1]["coordinate"]["latitude"], json!(47.61));
+        assert_eq!(plan.items[2]["doJumpId"], json!(3));
+        let root: Value = serde_json::from_str(&text).unwrap();
+        let items = root["mission"]["items"].as_array().unwrap();
+        assert_eq!((items[0]["AltitudeMode"].clone(), items[0]["Altitude"].clone(), items[0]["AMSLAltAboveTerrain"].clone()), (json!(1), json!(30.0), Value::Null));
+        assert!(items[2].get("AltitudeMode").is_none());
+        assert_eq!(items[0]["params"][3], Value::Null);
+        assert_eq!((root["geoFence"]["version"].clone(), root["rallyPoints"]["version"].clone()), (json!(2), json!(2)));
+    }
+
+    #[test]
+    fn a_waypoints_file_becomes_a_plan_with_the_home_row_as_home() {
+        let text = std::fs::read_to_string(concat!(env!("CARGO_MANIFEST_DIR"), "/../test/MissionManager/MissionPlanner.waypoints")).unwrap();
+        let file = crate::waypoints::parse(&text).unwrap();
+        let mission = from_waypoints(&file, 12, 2);
+        let home = file.home.as_ref().unwrap();
+        assert_eq!(mission.home, (home.latitude, home.longitude, home.altitude));
+        assert_eq!(mission.items.len(), file.items.len());
+        assert!(mission.items.iter().zip(&file.items).all(|(m, r)| m.params[4] == r.latitude && m.altitude_mode == altitude_mode_for_frame(r.frame)));
+        assert_eq!(parse(&write(&mission)).unwrap().items.len(), file.items.len());
     }
 
     #[test]
