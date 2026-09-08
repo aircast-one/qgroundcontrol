@@ -459,8 +459,21 @@ rally point read back as "2 fences · 1 rally", and deleting the circle reads
 back as "1 fence · 1 rally" with the selection clearing itself because what it
 pointed at is gone.
 
-So a false success is structurally possible on the void half and structurally
-impossible on the other, and the difference is not visible from the Kotlin.
+Property writes are a third case and a weaker one. `set` reports whether
+`setProperty` returned true, which is more than "invoked" and less than "the
+value you asked for": a Fact clamps to its own range, so a write can succeed and
+land on a different number. What saves this module is that the poll re-reads
+every value it writes, so a clamped one shows up within 700 ms and the map
+disagrees with the request rather than hiding it.
+
+The clamp itself is unobserved rather than ruled out. Twenty-eight presses of
+Smaller kept shrinking the circle without reaching the radius Fact's minimum, so
+the window where the panel says one thing and the Fact holds another was never
+reached. Recorded as untested, not as safe.
+
+So a false success is structurally possible on the void half, structurally
+impossible on the returning half, and possible but self-correcting on writes -
+and none of the three is visible from the Kotlin.
 
 ## ok is not the same as done, again
 
