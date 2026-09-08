@@ -73,4 +73,4 @@ swiftc -Onone -o "$out" \
     "$root/macos/Sources/PageSelection.swift" \
     "$root/macos/Tests/main.swift"
 
-"$out"
+QGC_ROOT="$root" "$out"

@@ -61,8 +61,7 @@ struct GuidedOffer: Identifiable, Equatable {
         prompt = (json["prompt"] as? String) ?? ""
         reason = (json["reason"] as? String) ?? ""
         destructive = (json["destructive"] as? NSNumber)?.boolValue ?? false
-        let carries = json["carriesValue"] ?? json["carries_value"]
-        carriesValue = (carries as? NSNumber)?.boolValue ?? false
+        carriesValue = (json["carriesValue"] as? NSNumber)?.boolValue ?? false
         shown = offer != "hidden"
         blocked = offer == "blocked"
     }

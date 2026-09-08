@@ -2127,6 +2127,7 @@ checkInstrumentStorage()
 
 
 checkGuidedOffers()
+checkViewContract()
 checkTerrainUnits()
 checkMotorTest()
 checkMapClick()
@@ -2568,6 +2569,55 @@ func checkMyLocation() {
 }
 
 
+func checkViewContract() {
+    let root = ProcessInfo.processInfo.environment["QGC_ROOT"] ?? "."
+    let path = root + "/test/Bridge/fixtures/view-shapes.json"
+    guard let data = FileManager.default.contents(atPath: path),
+          let shapes = (try? JSONSerialization.jsonObject(with: data)) as? [String: Any] else {
+        return expect(false, "the recorded view contract is readable at \(path)")
+    }
+
+    func shape(_ view: String, _ inner: [String]) -> [String: Any]? {
+        var here = shapes[view]
+        for step in inner {
+            guard let dictionary = here as? [String: Any] else { return nil }
+            here = dictionary[step]
+            if let list = here as? [Any] { here = list.first }
+        }
+        return here as? [String: Any]
+    }
+
+    let required: [(String, [String], [String])] = [
+        ("view.plan", ["readiness"], ["ready", "reason"]),
+        ("view.plan", ["upload"],
+         ["canSend", "canProceed", "pausesFirst", "heading", "proceedTitle", "refusal"]),
+        ("view.guidedActions", [], ["connected", "missionActive", "actions"]),
+        ("view.guidedActions", ["actions"],
+         ["id", "offer", "title", "prompt", "reason", "destructive", "carriesValue"]),
+        ("view.guidedAltitude(30)", [],
+         ["available", "minimum", "maximum", "current", "label", "unit", "sends", "deltaMeters",
+          "sentence"]),
+        ("view.guidedTakeoff(10)", [],
+         ["available", "minimum", "maximum", "initial", "label", "unit", "targetMeters"]),
+        ("view.guidedSpeed(3)", [],
+         ["available", "minimum", "maximum", "initial", "label", "unit", "command",
+          "targetMetersSecond"]),
+        ("view.battery", [], ["level", "packs"]),
+        ("view.battery", ["packs"],
+         ["level", "text", "secondaryText", "percent", "voltage", "current"]),
+    ]
+
+    required.forEach { view, inner, keys in
+        let where_ = inner.isEmpty ? view : "\(view).\(inner.joined(separator: "."))"
+        guard let recorded = shape(view, inner) else {
+            return expect(false, "\(where_) is in the recorded contract")
+        }
+        let missing = keys.filter { recorded[$0] == nil }.sorted()
+        expect(missing.joined(separator: ","), "",
+               "every key this head decodes from \(where_) is one the core actually emits")
+    }
+}
+
 func checkGuidedOffers() {
     func offer(_ id: String, _ state: String, _ reason: String = "") -> [String: Any] {
         ["id": id, "title": "T", "prompt": "P is the prompt", "offer": state, "reason": reason,
@@ -2599,13 +2649,10 @@ func checkGuidedOffers() {
     expect(GuidedOffer(["id": "arm"]) == nil,
            "and an entry with no offer state is dropped rather than read as shown")
 
-    let asTheCoreSpellsIt: [String: Any] = ["id": "takeoff", "offer": "ready", "title": "Takeoff",
-                                            "prompt": "P", "reason": "",
-                                            "destructive": false as NSNumber,
-                                            "carries_value": true as NSNumber]
-    expect(GuidedOffer(asTheCoreSpellsIt)?.carriesValue == true,
-           "the core spells this field carries_value, and reading only camelCase silently cost every "
-           + "value-carrying action its slider and sent takeoff a target of zero")
+    expect(GuidedOffer(["id": "takeoff", "offer": "ready", "carriesValue": true as NSNumber])?
+        .carriesValue == true,
+           "the field is carriesValue, which checkViewContract now pins against the core's own "
+           + "recorded shape rather than against a spelling agreed only with itself")
 }
 
 func checkMapScale() {
