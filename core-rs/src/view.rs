@@ -23,6 +23,7 @@ use crate::radio;
 use crate::read::value_string;
 use crate::sensors;
 use crate::settings;
+use crate::setup;
 use crate::speed;
 use crate::survey;
 use crate::takeoff;
@@ -67,6 +68,7 @@ pub const VIEWS: &[View] = &[
     View { path: "view.surveyStats", deps: survey::DEPS, compute: survey::survey_stats_view },
     View { path: "view.fences", deps: fences::DEPS, compute: fences::fences_view },
     View { path: "view.polygon", deps: &[], compute: fences::polygon_view },
+    View { path: "view.setup", deps: setup::DEPS, compute: setup::setup_view },
 ];
 
 pub fn owns(path: &str) -> bool {

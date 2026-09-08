@@ -565,6 +565,7 @@ About 58 developer-weeks. Flight-test time, not code, is the schedule.
 - 2026-09-09: `view.settings` and `view.settings(page)` — pages, sections, subsections and decoded controls.
 - 2026-09-09: `view.surveyStats(itemIndex)` — shots, interval, area, distance, footprint and the trigger-interval warning.
 - 2026-09-09: `view.fences` and `view.polygon(path, ring|line)` — fence and rally descriptions, vertex editing rules and midpoints.
+- 2026-09-09: `view.setup` and `view.setup(page)` — setup overview, readiness, page groups and per-firmware parameter sections.
 
 ### Stream F · Core
 

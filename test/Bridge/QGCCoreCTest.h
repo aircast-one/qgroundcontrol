@@ -37,6 +37,7 @@ private slots:
     void _settingsPagesDecodeTheirControls();
     void _surveyStatsNeedAnItem();
     void _fencesAndPolygonsAreServed();
+    void _setupOverviewFollowsTheVehicle();
 
 private:
     static bool _unavailable(const char *path);

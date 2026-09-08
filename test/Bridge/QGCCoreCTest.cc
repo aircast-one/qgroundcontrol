@@ -418,3 +418,16 @@ void QGCCoreCTest::_fencesAndPolygonsAreServed()
     QCOMPARE(take(qgc_bridge_get("view.polygon")).value(QStringLiteral("kind")).toString(), QStringLiteral("null"));
     QCOMPARE(take(qgc_bridge_get("view.polygon(plan.geoFenceController.polygons.99)")).value(QStringLiteral("kind")).toString(), QStringLiteral("null"));
 }
+
+void QGCCoreCTest::_setupOverviewFollowsTheVehicle()
+{
+    const QJsonObject offline = take(qgc_bridge_get("view.setup"));
+    QCOMPARE(offline.value(QStringLiteral("headline")).toString(), QStringLiteral("No vehicle connected"));
+    QCOMPARE(offline.value(QStringLiteral("groups")).toArray().count(), 3);
+    QCOMPARE(take(qgc_bridge_get("view.setup(Safety)")).value(QStringLiteral("class")).toString(), QStringLiteral("SetupPage"));
+    _connectMockLink(MAV_AUTOPILOT_PX4);
+    QTRY_COMPARE_WITH_TIMEOUT(take(qgc_bridge_get("view.setup")).value(QStringLiteral("connected")).toBool(false), true, 5000);
+    const QJsonObject online = take(qgc_bridge_get("view.setup"));
+    QCOMPARE(online.value(QStringLiteral("firmware")).toString(), QStringLiteral("px4"));
+    QVERIFY(!online.value(QStringLiteral("headline")).toString().isEmpty());
+}

@@ -21,6 +21,7 @@ mod radio;
 mod read;
 mod sensors;
 mod settings;
+mod setup;
 mod speed;
 mod survey;
 mod takeoff;
