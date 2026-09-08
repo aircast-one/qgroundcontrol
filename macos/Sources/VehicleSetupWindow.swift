@@ -249,6 +249,111 @@ struct SafetyView: View {
     }
 }
 
+struct MotorsView: View {
+    @ObservedObject var motors: MotorsStore
+
+    var body: some View {
+        SetupPageBody(title: "Motors",
+                      note: "Spin one motor at a time to check it turns the right way.",
+                      connected: motors.state.connected) {
+            VStack(alignment: .leading, spacing: Overlay.unit * 0.35) {
+                SectionLabel(text: "Safety")
+                GroupCard {
+                    GroupRow(title: "Motors enabled", showSeparator: false, trailing: {
+                        Toggle("", isOn: Binding(get: { motors.safetyOff },
+                                                 set: { motors.setSafety($0) }))
+                            .labelsHidden()
+                            .toggleStyle(.switch)
+                            .controlSize(.small)
+                            .disabled(!motors.state.connected || motors.state.armed)
+                    })
+                }
+                Text(MotorTest.safetyText(motors.safetyOff))
+                    .font(.caption)
+                    .foregroundColor(motors.safetyOff ? .orange : .secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+                    .padding(.horizontal, Overlay.horizontalPadding)
+                if !motors.state.armedRefusal.isEmpty {
+                    Text(motors.state.armedRefusal)
+                        .font(.caption)
+                        .foregroundColor(.orange)
+                        .fixedSize(horizontal: false, vertical: true)
+                        .padding(.horizontal, Overlay.horizontalPadding)
+                }
+            }
+
+            VStack(alignment: .leading, spacing: Overlay.unit * 0.35) {
+                SectionLabel(text: "Throttle")
+                GroupCard {
+                    GroupRow(title: String(format: "%.0f%%", motors.throttle), showSeparator: false,
+                             trailing: {
+                        Slider(value: $motors.throttle,
+                               in: MotorTest.minimumThrottle...MotorTest.maximumThrottle)
+                            .frame(width: 220)
+                            .disabled(!motors.state.canTest(safetyOff: motors.safetyOff))
+                    })
+                }
+                if !motors.state.countWarning.isEmpty {
+                    Text(motors.state.countWarning)
+                        .font(.caption)
+                        .foregroundColor(.secondary)
+                        .fixedSize(horizontal: false, vertical: true)
+                        .padding(.horizontal, Overlay.horizontalPadding)
+                }
+            }
+
+            VStack(alignment: .leading, spacing: Overlay.unit * 0.35) {
+                SectionLabel(text: "Motors")
+                GroupCard {
+                    GroupRow(title: "Spin", showSeparator: false, trailing: {
+                        HStack(spacing: 6) {
+                            ForEach(Array(motors.state.names.enumerated()), id: \.offset) { index, name in
+                                Button(name) { motors.test(motor: index) }
+                                    .controlSize(.small)
+                            }
+                            Button("All") { motors.testAll() }.controlSize(.small)
+                            Button("Stop") { motors.stopAll() }.controlSize(.small)
+                        }
+                        .disabled(!motors.state.canTest(safetyOff: motors.safetyOff))
+                    })
+                }
+            }
+        }
+    }
+}
+
+struct RemoteSupportView: View {
+    @ObservedObject var support: RemoteSupportStore
+
+    var body: some View {
+        SetupPageBody(title: "Remote Support",
+                      note: support.state.note,
+                      connected: true) {
+            VStack(alignment: .leading, spacing: Overlay.unit * 0.35) {
+                SectionLabel(text: "Support host")
+                GroupCard {
+                    GroupRow(title: "Host", showSeparator: false, trailing: {
+                        ValueField(value: support.state.host, units: "", width: 260) {
+                            support.setHost($0)
+                        }
+                    })
+                    GroupRow(title: support.state.status, trailing: {
+                        Button("Connect") { support.connect() }
+                            .controlSize(.small)
+                            .disabled(!support.state.canConnect)
+                    })
+                }
+                Text("Forwarding cannot be switched off again until the app restarts.")
+                    .font(.caption)
+                    .foregroundColor(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+                    .padding(.horizontal, Overlay.horizontalPadding)
+            }
+        }
+        .onAppear(perform: support.refresh)
+    }
+}
+
 struct PowerView: View {
     @ObservedObject var store: ParametersStore
     @ObservedObject var power: PowerStore
@@ -762,26 +867,7 @@ struct SetupSummaryView: View {
     }
 }
 
-enum SetupPage {
-    static let all = ["Summary", "Sensors", "Radio", "Frame", "Flight Modes", "Safety", "Power", "Tuning", "Camera", "Parameters"]
-
-    static func symbol(for page: String) -> String {
-        switch page {
-        case "Summary": return "airplane"
-        case "Sensors": return "gauge"
-        case "Flight Modes": return "slider.horizontal.3"
-        case "Safety": return "shield.fill"
-        case "Parameters": return "list.bullet"
-        case "Radio": return "antenna.radiowaves.left.and.right"
-        case "Frame": return "square.on.square"
-        case "Power": return "bolt.fill"
-        case "Motors": return "fan.fill"
-        case "Camera": return "camera.fill"
-        case "Tuning": return "dial.min"
-        default: return "gearshape.fill"
-        }
-    }
-
+extension SetupPage {
     static func colour(for page: String) -> Color {
         switch page {
         case "Summary": return .accentColor
@@ -803,6 +889,8 @@ struct VehicleSetupView: View {
     @ObservedObject var power: PowerStore
     @ObservedObject var frame: FrameStore
     @ObservedObject var radio: RadioStore
+    @ObservedObject var motors: MotorsStore
+    @ObservedObject var support: RemoteSupportStore
     @ObservedObject var selection: PageSelection
 
     var body: some View {
@@ -811,21 +899,12 @@ struct VehicleSetupView: View {
                 get: { Optional(selection.page) },
                 set: { selection.page = $0 ?? selection.page })
             ) {
-                Section("Vehicle") {
-                    row("Summary")
-                }
-                Section("Setup") {
-                    row("Sensors", badge: !sensors.failing.isEmpty)
-                    row("Radio")
-                    row("Frame")
-                    row("Flight Modes")
-                    row("Safety")
-                    row("Power")
-                    row("Tuning")
-                    row("Camera")
-                }
-                Section("Advanced") {
-                    row("Parameters")
+                ForEach(SetupPage.sections, id: \.title) { section in
+                    Section(section.title) {
+                        ForEach(section.pages, id: \.self) { page in
+                            row(page, badge: page == "Sensors" && !sensors.failing.isEmpty)
+                        }
+                    }
                 }
             }
             .listStyle(.sidebar)
@@ -857,6 +936,9 @@ struct VehicleSetupView: View {
         case "Radio": RadioView(store: radio)
         case "Tuning": TuningView(store: parameters)
         case "Camera": CameraView(store: parameters)
+        case "Motors": MotorsView(motors: motors).onAppear(perform: motors.start)
+            .onDisappear(perform: motors.stop)
+        case "Remote Support": RemoteSupportView(support: support)
         case "Flight Modes": FlightModesView(store: parameters)
         case "Sensors": SensorsView(store: sensors)
         default: SetupSummaryView(store: components, sensors: sensors, selection: selection)
@@ -873,6 +955,8 @@ final class VehicleSetupWindow: NSObject, NSWindowDelegate {
     private let power = PowerStore()
     private let frame = FrameStore()
     private let radio = RadioStore()
+    private let motors = MotorsStore()
+    private let support = RemoteSupportStore()
     private let selection = PageSelection(owner: "vehicleSetup", pages: SetupPage.all)
     private var window: NSWindow?
 
@@ -884,6 +968,8 @@ final class VehicleSetupWindow: NSObject, NSWindowDelegate {
         NativeProbe.register(power)
         NativeProbe.register(frame)
         NativeProbe.register(radio)
+        NativeProbe.register(motors)
+        NativeProbe.register(support)
         NativeProbe.register(selection, as: selection.identifier)
     }
 
@@ -907,7 +993,8 @@ final class VehicleSetupWindow: NSObject, NSWindowDelegate {
         window.delegate = self
         window.contentView = NSHostingView(rootView: VehicleSetupView(
             parameters: parameters, sensors: sensors, components: components,
-            power: power, frame: frame, radio: radio, selection: selection))
+            power: power, frame: frame, radio: radio, motors: motors, support: support,
+            selection: selection))
         window.center()
         window.makeKeyAndOrderFront(nil)
         self.window = window
@@ -915,6 +1002,7 @@ final class VehicleSetupWindow: NSObject, NSWindowDelegate {
 
     func windowWillClose(_ notification: Notification) {
         sensors.stop()
+        motors.stop()
         window = nil
     }
 }

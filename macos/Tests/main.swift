@@ -2236,6 +2236,9 @@ func checkGuidedActions() {
 
 checkGuidedActions()
 checkTerrainUnits()
+checkMotorTest()
+checkSetupPages()
+checkRemoteSupport()
 
 if failures == 0 {
     print("all Swift checks passed")
@@ -2318,3 +2321,69 @@ func checkTerrainUnits() {
     expect(feet.highestText, "2247 ft", "at both ends")
 }
 
+
+func checkMotorTest() {
+    let apm = MotorTest(reportedCount: 4, letterIndices: true, connected: true, armed: false)
+    expect(apm.names.joined(separator: ","), "A,B,C,D",
+           "ArduPilot names its motors by letter, which is what its own page shows")
+    expect(apm.countWarning, "", "a vehicle that reported four motors needs no warning")
+
+    let px4 = MotorTest(reportedCount: 6, letterIndices: false, connected: true, armed: false)
+    expect(px4.names.joined(separator: ","), "1,2,3,4,5,6", "PX4 numbers them instead")
+
+    let unknown = MotorTest(reportedCount: MotorTest.unknownCount, letterIndices: false,
+                            connected: true, armed: false)
+    expect(unknown.motors == MotorTest.fallbackMotors,
+           "a vehicle that never said how many motors it has gets eight buttons, as QGC does")
+    expect(!unknown.countWarning.isEmpty, "and is told why there are eight")
+
+    expect(!apm.canTest(safetyOff: false), "nothing spins until the safety switch is on")
+    expect(apm.canTest(safetyOff: true), "with it on and the vehicle disarmed a motor can be tested")
+    expect(!MotorTest.disconnected.canTest(safetyOff: true),
+           "and never with no vehicle to send it to")
+
+    let armed = MotorTest(reportedCount: 4, letterIndices: true, connected: true, armed: true)
+    expect(!armed.canTest(safetyOff: true), "nor while the vehicle is armed")
+    expect(!armed.armedRefusal.isEmpty, "which the page says rather than just disabling the buttons")
+    expect(apm.armedRefusal, "", "a disarmed vehicle is not scolded")
+
+    expect(MotorTest.timeout(throttle: 0) == 0,
+           "a motor asked for no throttle is stopped, not run for three seconds")
+    expect(MotorTest.timeout(throttle: 20) == MotorTest.timeoutSeconds,
+           "any other throttle runs for the timeout QGC uses")
+    expect(MotorTest.clamp(140) == 100, "throttle cannot exceed full")
+    expect(MotorTest.clamp(-5) == 0, "nor go below nothing")
+
+    expect(MotorTest.safetyText(false).contains("propellers"),
+           "the switch off says to remove the propellers first")
+    expect(MotorTest.safetyText(true).contains("turn"),
+           "and switched on says the motors will turn")
+}
+
+func checkRemoteSupport() {
+    let ready = RemoteSupport(host: "support.ardupilot.org:1234", forwarding: false)
+    expect(ready.canConnect, "a host and no forwarding yet means connect is offered")
+    expect(ready.status.contains("Nothing"), "and the page says nothing is being forwarded")
+
+    let running = RemoteSupport(host: "support.ardupilot.org:1234", forwarding: true)
+    expect(!running.canConnect, "once forwarding starts there is nothing left to press")
+    expect(running.status.contains("restarts"),
+           "and the page says it cannot be stopped, because QGC cannot stop it either")
+
+    expect(!RemoteSupport(host: "", forwarding: false).canConnect,
+           "a button that would forward to nowhere is refused rather than offered")
+    expect(!RemoteSupport.empty.canConnect, "same before the setting has been read")
+}
+
+func checkSetupPages() {
+    expect(SetupPage.all == SetupPage.sections.flatMap(\.pages),
+           "the sidebar and the page list are the same list, so a page cannot be reachable by probe and invisible in the sidebar")
+    expect(SetupPage.all.contains("Motors"), "Motors is one of them")
+    expect(SetupPage.all.contains("Remote Support"), "so is Remote Support")
+    expect(Set(SetupPage.all).count == SetupPage.all.count, "and no page is listed twice")
+    let symbols = SetupPage.all.map(SetupPage.symbol(for:))
+    expect(Set(symbols).count == symbols.count,
+           "no two pages share an icon, which is how Motors and Remote Support ended up looking alike")
+    expect(!symbols.contains(SetupPage.symbol(for: "Anything Unknown")),
+           "and none of them is the fallback icon")
+}

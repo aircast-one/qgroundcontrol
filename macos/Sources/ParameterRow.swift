@@ -3,6 +3,7 @@ import SwiftUI
 struct ValueField: View {
     let value: String
     let units: String
+    var width = 72.0
     let commit: (String) -> Void
 
     @State private var draft = ""
@@ -14,7 +15,7 @@ struct ValueField: View {
                 .textFieldStyle(.plain)
                 .multilineTextAlignment(.trailing)
                 .font(.body.monospacedDigit())
-                .frame(width: 72)
+                .frame(width: width)
                 .focused($editing)
                 .onAppear { draft = value }
                 .onChange(of: value) { latest in if !editing { draft = latest } }
