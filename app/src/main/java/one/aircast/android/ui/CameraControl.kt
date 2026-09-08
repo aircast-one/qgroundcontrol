@@ -1,5 +1,7 @@
 package one.aircast.android.ui
 
+import org.json.JSONObject
+
 internal const val CAM_MODE_UNDEFINED = -1
 internal const val CAM_MODE_PHOTO = 0
 internal const val CAM_MODE_VIDEO = 1
@@ -16,28 +18,45 @@ data class CameraShutter(
     val enabled: Boolean,
 )
 
-internal fun cameraModeLabel(mode: Int): String? = when (mode) {
-    CAM_MODE_PHOTO -> "Photo"
-    CAM_MODE_VIDEO -> "Video"
-    else -> null
+
+internal const val CAMERA_VIEW = "view.camera"
+
+internal data class CameraReading(
+    val present: Boolean,
+    val hasModes: Boolean,
+    val modeText: String,
+    val isRecording: Boolean,
+    val canPhoto: Boolean,
+    val canRecord: Boolean,
+    val isTakingPhoto: Boolean,
+    val isVideoMode: Boolean,
+)
+
+internal fun cameraReading(view: JSONObject?): CameraReading? {
+    if (view == null || !view.optBoolean("present")) return null
+    return CameraReading(
+        present = true,
+        hasModes = view.optBoolean("hasModes"),
+        modeText = view.optString("modeText"),
+        isRecording = view.optBoolean("isRecording"),
+        canPhoto = view.optBoolean("canPhoto"),
+        canRecord = view.optBoolean("canRecord"),
+        isTakingPhoto = view.optBoolean("isTakingPhoto"),
+        isVideoMode = view.optInt("mode", CAM_MODE_UNDEFINED) == CAM_MODE_VIDEO &&
+            view.optBoolean("modeKnown"),
+    )
 }
 
-internal fun shutterFor(
-    mode: Int,
-    capturesPhotos: Boolean,
-    capturesVideo: Boolean,
-    videoStatus: Int,
-    photoStatus: Int,
-): CameraShutter? = when {
-    mode == CAM_MODE_VIDEO && capturesVideo -> CameraShutter(
-        label = if (videoStatus == VIDEO_CAPTURE_RUNNING) "Stop" else "Record",
-        recording = videoStatus == VIDEO_CAPTURE_RUNNING,
+internal fun shutterFor(camera: CameraReading): CameraShutter? = when {
+    camera.isVideoMode && camera.canRecord -> CameraShutter(
+        label = if (camera.isRecording) "Stop" else "Record",
+        recording = camera.isRecording,
         enabled = true,
     )
-    mode == CAM_MODE_PHOTO && capturesPhotos -> CameraShutter(
+    !camera.isVideoMode && camera.canPhoto -> CameraShutter(
         label = "Take Photo",
         recording = false,
-        enabled = photoStatus != PHOTO_CAPTURE_IN_PROGRESS,
+        enabled = !camera.isTakingPhoto,
     )
     else -> null
 }

@@ -1,61 +1,81 @@
 package one.aircast.android.ui
 
+import org.json.JSONObject
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
+import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class CameraControlTest {
+
+    private fun camera(json: String) = cameraReading(JSONObject(json))
+
     @Test
-    fun `an undefined mode offers no shutter`() {
+    fun `a photo camera offers a photo shutter`() {
+        val shutter = shutterFor(
+            camera("""{"present":true,"hasModes":true,"modeText":"Photo","mode":0,
+                "modeKnown":true,"canPhoto":true,"canRecord":true,
+                "isRecording":false,"isTakingPhoto":false}""")!!,
+        )!!
+
+        assertEquals("Take Photo", shutter.label)
+        assertTrue(shutter.enabled)
+        assertFalse(shutter.recording)
+    }
+
+    @Test
+    fun `a photo already in progress disables the shutter rather than queueing another`() {
+        val shutter = shutterFor(
+            camera("""{"present":true,"hasModes":true,"modeText":"Photo","mode":0,
+                "modeKnown":true,"canPhoto":true,"canRecord":true,
+                "isRecording":false,"isTakingPhoto":true}""")!!,
+        )!!
+
+        assertFalse(shutter.enabled)
+    }
+
+    @Test
+    fun `video mode records and then stops`() {
+        val idle = shutterFor(
+            camera("""{"present":true,"hasModes":true,"modeText":"Video","mode":1,
+                "modeKnown":true,"canPhoto":true,"canRecord":true,
+                "isRecording":false,"isTakingPhoto":false}""")!!,
+        )!!
+        val running = shutterFor(
+            camera("""{"present":true,"hasModes":true,"modeText":"Video","mode":1,
+                "modeKnown":true,"canPhoto":true,"canRecord":true,
+                "isRecording":true,"isTakingPhoto":false}""")!!,
+        )!!
+
+        assertEquals("Record", idle.label)
+        assertEquals("Stop", running.label)
+        assertTrue(running.recording)
+    }
+
+    @Test
+    fun `a camera in a mode it cannot do offers no shutter`() {
         assertNull(
-            shutterFor(CAM_MODE_UNDEFINED, capturesPhotos = true, capturesVideo = true,
-                videoStatus = VIDEO_CAPTURE_STOPPED, photoStatus = PHOTO_CAPTURE_IDLE),
-        )
-        assertNull(cameraModeLabel(CAM_MODE_UNDEFINED))
-    }
-
-    @Test
-    fun `a camera that cannot do the current mode offers no shutter`() {
-        assertNull(
-            shutterFor(CAM_MODE_VIDEO, capturesPhotos = true, capturesVideo = false,
-                videoStatus = VIDEO_CAPTURE_STOPPED, photoStatus = PHOTO_CAPTURE_IDLE),
-        )
-        assertNull(
-            shutterFor(CAM_MODE_PHOTO, capturesPhotos = false, capturesVideo = true,
-                videoStatus = VIDEO_CAPTURE_STOPPED, photoStatus = PHOTO_CAPTURE_IDLE),
+            shutterFor(
+                camera("""{"present":true,"hasModes":true,"modeText":"Video","mode":1,
+                    "modeKnown":true,"canPhoto":true,"canRecord":false,
+                    "isRecording":false,"isTakingPhoto":false}""")!!,
+            ),
         )
     }
 
     @Test
-    fun `video mode reads Record when stopped and Stop while running`() {
-        val stopped = shutterFor(CAM_MODE_VIDEO, true, true, VIDEO_CAPTURE_STOPPED, PHOTO_CAPTURE_IDLE)
-        val running = shutterFor(CAM_MODE_VIDEO, true, true, VIDEO_CAPTURE_RUNNING, PHOTO_CAPTURE_IDLE)
+    fun `an unknown mode is not treated as photo`() {
+        val unknown = camera("""{"present":true,"hasModes":true,"modeText":"Not set","mode":1,
+            "modeKnown":false,"canPhoto":true,"canRecord":true,
+            "isRecording":false,"isTakingPhoto":false}""")!!
 
-        assertEquals(CameraShutter("Record", recording = false, enabled = true), stopped)
-        assertEquals(CameraShutter("Stop", recording = true, enabled = true), running)
+        assertFalse(unknown.isVideoMode)
     }
 
     @Test
-    fun `a photo already being taken disables the shutter rather than queueing another`() {
-        val busy = shutterFor(CAM_MODE_PHOTO, true, true, VIDEO_CAPTURE_STOPPED, PHOTO_CAPTURE_IN_PROGRESS)
-
-        assertEquals(CameraShutter("Take Photo", recording = false, enabled = false), busy)
-    }
-
-    @Test
-    fun `each defined mode is named`() {
-        assertEquals("Photo", cameraModeLabel(CAM_MODE_PHOTO))
-
-        assertEquals("Video", cameraModeLabel(CAM_MODE_VIDEO))
-    }
-
-    @Test
-    fun `the shutter never repeats the mode chip's word`() {
-        val modes = listOf(CAM_MODE_PHOTO, CAM_MODE_VIDEO)
-        val collisions = modes.filter { mode ->
-            val shutter = shutterFor(mode, true, true, VIDEO_CAPTURE_STOPPED, PHOTO_CAPTURE_IDLE)
-            shutter?.label == cameraModeLabel(mode)
-        }
-        assertEquals(emptyList<Int>(), collisions)
+    fun `no camera present is no controls`() {
+        assertNull(cameraReading(null))
+        assertNull(cameraReading(JSONObject("""{"present":false}""")))
     }
 }
