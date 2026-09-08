@@ -388,6 +388,18 @@ build" cannot be checked on Android, because the Android Qt build does not draw 
 charts at all. The comparison has to be against the **desktop** Qt build, on the same
 vehicle, or the gate can never be met.
 
+**The Inspector is verified on hardware**, which matters because QGC has never run it on
+Android, so nothing had ever exercised it there. Against the ArduPilot sim on the
+OnePlus 6: seven message types with live rates (`COMMAND_ACK` correctly at 0.0 Hz, being
+event-driven), and ATTITUDE's fields updating live.
+
+Reading it first found a defect. The open message was a snapshot carrying its index into
+the live model, and the field list re-read `messages.<index>.fields` on every update —
+correct while the model only grows, wrong the moment it is rebuilt, since a vehicle reboot
+replaces `activeSystem` and the old index then points at a different message. The header
+would have kept the old name above the new message's fields. It now holds the name and
+resolves the index from the current list.
+
 ### Status — all four pages are built
 
 Log Download, Vibration, MAVLink Console and MAVLink Inspector all exist natively
