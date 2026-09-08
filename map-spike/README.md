@@ -366,6 +366,27 @@ distance to the surface, which is what the survey editor labels Altitude. `camer
 object, so it needs its own read, and that read happens when a survey is selected rather than every
 poll, since the poll already costs one call per survey.
 
+## The map centre is a real coordinate before it is a meaningful one
+
+With no vehicle the map opens on MapLibre's default camera: a 10000 km world
+view sitting in the Atlantic. placeAt falls back to that centre, and near 0,0
+isPlottable refuses it, so every creator answers "did not work". That is correct
+and it is reported - the message appears immediately and clears after
+FAILURE_MESSAGE_MS, which is 2500, so a screenshot taken later shows a button
+that looks ignored.
+
+The dangerous half is one pan away. Move that world view slightly and its centre
+becomes a perfectly plottable coordinate off Greenland, so the creators stop
+refusing and start placing items there instead - a mission line running from the
+plan to the middle of the North Atlantic. isPlottable is doing its job; a
+coordinate can be valid and still mean nothing.
+
+Fitting the map to a plan that is already loaded would fix it, and QGC's Plan
+view does exactly that. Not done here: the case that needs it is a plan present
+at startup with no vehicle, which arrives through KML import and cannot be
+reproduced in this module's harness. An unverified change to the startup camera
+is worse than a documented hole.
+
 ## ok is not the same as done, again
 
 `insertTakeoffItem` throws away the coordinate it is handed - the parameter is
