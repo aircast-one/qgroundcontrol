@@ -99,6 +99,9 @@ class MainActivity : ComponentActivity(), QGCBridge.Host {
     private var multicastLock: WifiManager.MulticastLock? = null
     private lateinit var quickView: QtQuickView
 
+    @Suppress("unused")
+    fun hideSplashScreen(duration: Int) = Unit
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
 
