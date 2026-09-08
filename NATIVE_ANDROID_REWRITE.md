@@ -363,6 +363,18 @@ no signal for the vehicle having obeyed, so the notice now says the clear was
 sent. **Any void `Q_INVOKABLE` that commands the vehicle has this shape**: the
 native head can report that it asked, never that it was done.
 
+Two corollaries, both found by auditing against that rule rather than by a
+failure:
+
+- **A property that correlates with success is not evidence of it.** `dirty`
+  falling to false after a sync means the controller has no unsent changes — a
+  statement about the controller, not about the aircraft. It reads like an
+  acknowledgement and is not one.
+- **Do not claim to know why you failed.** `planLoad` reported both a rejected
+  file and a bridge call that never answered as "That is not a plan file",
+  printing our own failure as an accusation against the user's document. The two
+  now get different sentences (`f36aa76`).
+
 ## Phase 5 — Fly and video · 7 weeks
 
 Safety-critical, deliberately last.
