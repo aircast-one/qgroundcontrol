@@ -675,8 +675,12 @@ QString jsonToString(const QJsonObject &json)
 }
 
 
-// ponytail: watched paths are polled and diffed, not signal-connected. Move to
-// generic QMetaMethod notify connections if 200ms latency or the poll cost bites.
+// ponytail: watched paths are polled and diffed, not signal-connected. Notify
+// connections cannot replace this and the upgrade path is a hybrid: Vehicle declares
+// NOTIFY on 96 of 164 properties, TransectStyleComplexItem on 5 of 15, SurveyComplexItem
+// on none of 4, and QmlObjectListModel signals only countChanged and dirtyChanged, so an
+// element's own property changing is invisible to the model. Connect where a NOTIFY
+// exists and keep polling the rest; a notify-only Watcher goes silently stale.
 class Watcher : public QObject
 {
 public:

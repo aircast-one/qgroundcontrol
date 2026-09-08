@@ -690,7 +690,7 @@ void QGCBridgeCoreTest::_aProjectedReadIsSmallerAndKeepsWhatWasAsked()
     for (int i = 0; i < 20; ++i) {
         const QJsonObject inserted = parse(QGCBridgeCore::invoke(
             QStringLiteral("plan.missionController.insertSimpleMissionItem"),
-            QStringLiteral("[{\"latitude\": 47.39%1, \"longitude\": 8.54%1, \"altitude\": 50}, -1, false]").arg(i)));
+            QStringLiteral("[{\"latitude\": %1, \"longitude\": %2, \"altitude\": 50}, -1, false]").arg(47.0 + i * 0.001).arg(8.0 + i * 0.001)));
         QVERIFY2(inserted.value(QStringLiteral("ok")).toBool(),
                  qPrintable(QJsonDocument(inserted).toJson(QJsonDocument::Compact)));
     }
