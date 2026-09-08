@@ -21,37 +21,17 @@ final class VibrationStore: ObservableObject, Probeable {
     }
 
     func refresh() {
-        let group = Bridge.group("vehicle.vibration")
-        let facts = (group["facts"] as? [[String: Any]]) ?? []
-        guard !facts.isEmpty else {
-            reading = .unavailable
-            return
-        }
-
-        func value(_ name: String) -> Double? {
-            guard let raw = facts.first(where: { $0["name"] as? String == name })?["value"] else { return nil }
-            guard let number = raw as? NSNumber else { return nil }
-            let double = number.doubleValue
-            // The vehicle publishes NaN until it reports vibration at all.
-            return double.isFinite ? double : nil
-        }
-
-        guard let x = value("xAxis"), let y = value("yAxis"), let z = value("zAxis") else {
-            reading = .unavailable
-            return
-        }
-
-        reading = VibrationReading(
-            x: x, y: y, z: z,
-            clipCounts: (1...3).map { Int(value("clipCount\($0)") ?? 0) },
-            available: true)
+        let read = VibrationReading(Bridge.group("view.vibration"))
+        if read != reading { reading = read }
     }
 
     func probeState() -> [String: Any] {
-        ["available": reading.available,
-         "x": reading.x, "y": reading.y, "z": reading.z,
-         "clipCounts": reading.clipCounts,
-         "worst": String(describing: reading.worst)]
+        ["available": reading.available, "units": reading.units,
+         "axes": reading.axes.map { ["axis": $0.axis, "label": $0.label,
+                                     "value": $0.value ?? -1,
+                                     "severity": $0.severity.map { String(describing: $0) } ?? ""] },
+         "clipCounts": reading.clipCounts, "clipping": reading.clipping,
+         "worst": reading.worst.map { String(describing: $0) } ?? ""]
     }
 
     func probeInvoke(action: String, args: [String: String]) -> [String: Any] {

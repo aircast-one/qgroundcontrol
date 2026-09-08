@@ -97,24 +97,43 @@ expectEditing(LinkConfig.udp, .portOnly, "UDP edits only its local port")
 expectEditing(LinkConfig.serial, .serial, "serial edits device and baud")
 expectEditing("TypeMock", LinkConfig.Editing.none, "mock link has nothing to edit")
 
-// The thresholds are ArduPilot/PX4 flight guidance, not styling: getting them wrong
-// tells an operator a shaking airframe is fine.
-func expectSeverity(_ value: Double, _ want: VibrationReading.Severity, _ label: String) {
-    expect(VibrationReading.severity(value) == want, label)
-}
-expectSeverity(0, .normal, "zero vibration is normal")
-expectSeverity(29.9, .normal, "just under the warning threshold is normal")
-expectSeverity(30, .warning, "the warning threshold is inclusive")
-expectSeverity(59.9, .warning, "just under the danger threshold is a warning")
-expectSeverity(60, .danger, "the danger threshold is inclusive")
-expectSeverity(1000, .danger, "beyond the scale is still danger")
+let vibrationJson: [String: Any] = [
+    "available": true as NSNumber, "units": "", "scaleMaximum": 90.0 as NSNumber,
+    "warningLevel": 30.0 as NSNumber, "dangerLevel": 60.0 as NSNumber,
+    "worst": "danger",
+    "clipCounts": [0 as NSNumber, 2 as NSNumber, 0 as NSNumber],
+    "clipping": true as NSNumber,
+    "axes": [
+        ["axis": "x", "label": "X", "value": 5.0 as NSNumber,
+         "fraction": 0.0555 as NSNumber, "severity": "normal"],
+        ["axis": "y", "label": "Y", "value": 65.0 as NSNumber,
+         "fraction": 0.7222 as NSNumber, "severity": "danger"],
+        ["axis": "z", "label": "Z", "value": 35.0 as NSNumber,
+         "fraction": 0.3888 as NSNumber, "severity": "warning"],
+    ],
+]
+let vibration = VibrationReading(vibrationJson)
+expect(vibration.axes.count == 3, "each axis the core reports is carried across")
+expect(vibration.axes.map(\.label).joined(separator: ","), "X,Y,Z",
+       "with the core's display label, so no head upper-cases an axis name itself")
+expect(vibration.worst == .danger,
+       "one bad axis makes the whole reading dangerous, and the core decides which is worst")
+expect(vibration.axes[1].severity == .danger, "each bar takes its own colour from its own severity")
+expect(vibration.dangerLevel == 60 && vibration.warningLevel == 30 && vibration.scaleMaximum == 90,
+       "the thresholds the bars and the scale are drawn against come from the core, which is "
+       + "where ArduPilot and PX4's flight guidance now lives rather than in two heads")
+expect(vibration.clipping, "any clip count above zero is clipping")
 
-// worst() drives the advice line, so it must track the highest axis, not the last one.
-expect(VibrationReading(x: 5, y: 65, z: 5, clipCounts: [], available: true).worst == .danger,
-       "one bad axis makes the whole reading dangerous")
-expect(VibrationReading(x: 5, y: 5, z: 35, clipCounts: [], available: true).worst == .warning,
-       "the worst axis wins")
+let quiet = VibrationReading(["available": false as NSNumber,
+                              "axes": [["axis": "x", "label": "X"]]])
+expect(quiet.worst == nil,
+       "a vehicle reporting no level has no worst level, which is not the same as normal")
+expect(quiet.axes[0].value == nil && quiet.axes[0].severity == nil,
+       "and an axis with no reading draws no bar rather than a bar at zero, which would look "
+       + "like a perfectly still airframe")
 expect(!VibrationReading.unavailable.available, "the unavailable reading reports itself as such")
+expect(VibrationReading.Severity("molten") == nil,
+       "a severity this head does not know is no severity, not the reassuring one")
 
 // QGC appends "Unknown: N" to enumStrings when a value is outside the enum and points
 // enumIndex at it; showing that instead of the number is a regression in readability.
@@ -2562,6 +2581,10 @@ func checkViewContract() {
          ["id", "group", "name", "label", "value", "units", "missing"]),
         ("view.sensors", [], ["available", "status", "failing", "sensors"]),
         ("view.sensors", ["sensors"], ["name", "state", "label"]),
+        ("view.vibration", [],
+         ["available", "units", "scaleMaximum", "warningLevel", "dangerLevel", "axes", "worst",
+          "clipCounts", "clipping"]),
+        ("view.vibration", ["axes"], ["axis", "label", "value", "fraction", "severity"]),
     ]
 
     let enumerations = (shapes["view.contract"] as? [String: Any])?["enumerations"] as? [String: Any]
@@ -2612,6 +2635,15 @@ func checkViewContract() {
     expect(sensorStates.filter { SensorHealth.State($0) == .unknown }.joined(separator: ","), "",
            "and every one of them decodes to a state the row can draw")
 
+    let vibrationSeverities = recorded("view.vibration.axes[].severity")
+    expect(vibrationSeverities.sorted().joined(separator: ","), "danger,normal,warning",
+           "vibration has its own three severities, which are not the battery's four nor the "
+           + "sensors' three, so it is pinned on its own")
+    expect(vibrationSeverities.filter { VibrationReading.Severity($0) == nil }.joined(separator: ","), "",
+           "and every one of them decodes to a colour the bar can draw")
+    expect(recorded("view.vibration.worst").sorted().joined(separator: ","), "danger,normal,warning",
+           "the worst level takes the same three, and is absent rather than normal when unknown")
+
     let neverNull: [(String, [String], [String])] = [
         ("view.battery", ["packs"], ["level", "text", "secondaryText"]),
         ("view.preflight", ["groups", "checks"], ["name", "prompt", "verdict", "reason"]),
@@ -2619,6 +2651,7 @@ func checkViewContract() {
         ("view.warnings", ["warnings"], ["id", "text", "detail"]),
         ("view.instruments", ["items"], ["id", "label", "value", "units"]),
         ("view.sensors", ["sensors"], ["name", "state", "label"]),
+        ("view.vibration", ["axes"], ["axis", "label"]),
     ]
     neverNull.forEach { view, inner, keys in
         let place = inner.isEmpty ? view : "\(view).\(inner.joined(separator: "."))"

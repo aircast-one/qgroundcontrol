@@ -4,40 +4,40 @@ import SwiftUI
 struct VibrationBar: View {
     static let captionHeight = 42.0
 
-    let label: String
-    let value: Double
+    let axis: VibrationAxis
+    let reading: VibrationReading
 
     var body: some View {
         VStack(spacing: 6) {
             GeometryReader { geometry in
                 let height = geometry.size.height
-                let filled = min(value / VibrationReading.scaleMaximum, 1) * height
 
                 ZStack(alignment: .bottom) {
                     Rectangle()
                         .stroke(Color.secondary.opacity(0.5), lineWidth: 1)
                     Rectangle()
                         .fill(colour)
-                        .frame(height: filled)
-                    threshold(VibrationReading.dangerLevel, in: height)
-                    threshold(VibrationReading.warningLevel, in: height)
+                        .frame(height: (axis.fraction ?? 0) * height)
+                    threshold(reading.dangerLevel, in: height)
+                    threshold(reading.warningLevel, in: height)
                 }
             }
             .frame(width: 54)
 
-            Text(String(format: "%.1f", value))
+            Text(axis.value.map { String(format: "%.1f", $0) } ?? "\u{2014}")
                 .font(.body.monospacedDigit())
-            Text(label)
+            Text(axis.label)
                 .font(.caption)
                 .foregroundColor(.secondary)
         }
     }
 
     private var colour: Color {
-        switch VibrationReading.severity(value) {
+        switch axis.severity {
         case .danger: return .red
         case .warning: return .orange
         case .normal: return .accentColor
+        case nil: return .secondary
         }
     }
 
@@ -45,14 +45,17 @@ struct VibrationBar: View {
         Rectangle()
             .fill(Color.red)
             .frame(height: 1)
-            .offset(y: -(level / VibrationReading.scaleMaximum) * height)
+            .offset(y: -(level / reading.scaleMaximum) * height)
             .frame(maxHeight: .infinity, alignment: .bottom)
     }
 }
 
 struct VibrationScale: View {
-    private let marks = [VibrationReading.scaleMaximum, VibrationReading.dangerLevel,
-                         VibrationReading.warningLevel, 0.0]
+    let reading: VibrationReading
+
+    private var marks: [Double] {
+        [reading.scaleMaximum, reading.dangerLevel, reading.warningLevel, 0]
+    }
 
     var body: some View {
         GeometryReader { geometry in
@@ -60,9 +63,9 @@ struct VibrationScale: View {
                 ForEach(marks, id: \.self) { mark in
                     Text(String(Int(mark)))
                         .font(.caption2.monospacedDigit())
-                        .foregroundColor(mark == VibrationReading.dangerLevel || mark == VibrationReading.warningLevel
+                        .foregroundColor(mark == reading.dangerLevel || mark == reading.warningLevel
                                          ? .red : .secondary)
-                        .offset(y: -(mark / VibrationReading.scaleMaximum) * geometry.size.height + 6)
+                        .offset(y: -(mark / reading.scaleMaximum) * geometry.size.height + 6)
                         .frame(maxHeight: .infinity, alignment: .bottom)
                 }
             }
@@ -82,10 +85,10 @@ struct VibrationView: View {
                 GroupCard {
                     VStack(alignment: .leading, spacing: Overlay.unit * 0.75) {
                         HStack(alignment: .bottom, spacing: 28) {
-                            VibrationScale()
-                            VibrationBar(label: "X", value: store.reading.x)
-                            VibrationBar(label: "Y", value: store.reading.y)
-                            VibrationBar(label: "Z", value: store.reading.z)
+                            VibrationScale(reading: store.reading)
+                            ForEach(store.reading.axes) { axis in
+                                VibrationBar(axis: axis, reading: store.reading)
+                            }
                         }
                         .frame(height: 190)
                         HStack(spacing: 6) {
@@ -130,14 +133,16 @@ struct VibrationView: View {
         case .danger: return "exclamationmark.triangle.fill"
         case .warning: return "exclamationmark.circle.fill"
         case .normal: return "checkmark.circle.fill"
+        case nil: return "questionmark.circle"
         }
     }
 
     private var advice: String {
         switch store.reading.worst {
-        case .danger: return "Above \(Int(VibrationReading.dangerLevel)) — do not fly until this is fixed."
-        case .warning: return "Above \(Int(VibrationReading.warningLevel)) — attitude estimation may degrade."
+        case .danger: return "Above \(Int(store.reading.dangerLevel)) — do not fly until this is fixed."
+        case .warning: return "Above \(Int(store.reading.warningLevel)) — attitude estimation may degrade."
         case .normal: return "Within normal range."
+        case nil: return "No axis is reporting a level yet."
         }
     }
 
@@ -146,6 +151,7 @@ struct VibrationView: View {
         case .danger: return .red
         case .warning: return .orange
         case .normal: return .secondary
+        case nil: return .secondary
         }
     }
 }

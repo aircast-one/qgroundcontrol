@@ -1,29 +1,74 @@
 import Foundation
 
-struct VibrationReading {
-    // ArduPilot and PX4 guidance: sustained vibration above ~30 degrades attitude
-    // estimation and above ~60 is likely to cause a crash. The QML page draws its
-    // threshold lines at exactly these values; they are the reason the page exists.
-    static let scaleMaximum = 90.0
-    static let warningLevel = 30.0
-    static let dangerLevel = 60.0
+struct VibrationAxis: Identifiable, Equatable {
+    let axis: String
+    let label: String
+    let value: Double?
+    let fraction: Double?
+    let severity: VibrationReading.Severity?
 
-    let x: Double
-    let y: Double
-    let z: Double
-    let clipCounts: [Int]
-    let available: Bool
+    var id: String { axis }
 
-    static let unavailable = VibrationReading(x: 0, y: 0, z: 0, clipCounts: [0, 0, 0], available: false)
-
-    enum Severity: Equatable { case normal, warning, danger }
-
-    static func severity(_ value: Double) -> Severity {
-        if value >= dangerLevel { return .danger }
-        if value >= warningLevel { return .warning }
-        return .normal
+    init?(_ json: Any?) {
+        guard let json = json as? [String: Any],
+              let axis = json["axis"] as? String, !axis.isEmpty else { return nil }
+        self.axis = axis
+        label = (json["label"] as? String) ?? axis.uppercased()
+        value = (json["value"] as? NSNumber)?.doubleValue
+        fraction = (json["fraction"] as? NSNumber)?.doubleValue
+        severity = VibrationReading.Severity(json["severity"] as? String)
     }
-
-    var worst: Severity { VibrationReading.severity(max(x, max(y, z))) }
 }
 
+struct VibrationReading: Equatable {
+    enum Severity {
+        case normal
+        case warning
+        case danger
+
+        init?(_ reported: String?) {
+            switch reported {
+            case "normal": self = .normal
+            case "warning": self = .warning
+            case "danger": self = .danger
+            default: return nil
+            }
+        }
+    }
+
+    let available: Bool
+    let units: String
+    let scaleMaximum: Double
+    let warningLevel: Double
+    let dangerLevel: Double
+    let axes: [VibrationAxis]
+    let worst: Severity?
+    let clipCounts: [Int]
+    let clipping: Bool
+
+    static let unavailable = VibrationReading()
+
+    private init() {
+        available = false
+        units = ""
+        scaleMaximum = 90
+        warningLevel = 30
+        dangerLevel = 60
+        axes = []
+        worst = nil
+        clipCounts = []
+        clipping = false
+    }
+
+    init(_ json: [String: Any]) {
+        available = (json["available"] as? NSNumber)?.boolValue ?? false
+        units = (json["units"] as? String) ?? ""
+        scaleMaximum = (json["scaleMaximum"] as? NSNumber)?.doubleValue ?? 90
+        warningLevel = (json["warningLevel"] as? NSNumber)?.doubleValue ?? 30
+        dangerLevel = (json["dangerLevel"] as? NSNumber)?.doubleValue ?? 60
+        axes = ((json["axes"] as? [Any]) ?? []).compactMap(VibrationAxis.init)
+        worst = Severity(json["worst"] as? String)
+        clipCounts = ((json["clipCounts"] as? [Any]) ?? []).compactMap { ($0 as? NSNumber)?.intValue }
+        clipping = (json["clipping"] as? NSNumber)?.boolValue ?? false
+    }
+}
