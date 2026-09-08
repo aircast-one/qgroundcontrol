@@ -45,5 +45,8 @@ private fun selectionText(
         ?.let { "circle ${it.radius.toInt()} m" }
     is MapHit.CircleCentre -> circles.firstOrNull { it.index == selected.index }
         ?.let { "circle ${it.radius.toInt()} m" }
-    else -> null
+    is MapHit.FenceVertex -> null
+    is MapHit.SurveyVertex -> null
+    is MapHit.Rally -> null
+    null -> null
 }

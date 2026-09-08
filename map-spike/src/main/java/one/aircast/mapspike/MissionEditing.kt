@@ -52,6 +52,13 @@ private fun nearest(
     },
 )?.let { features[it] }
 
+internal fun handleHit(kind: String?, owner: Int, vertex: Int): MapHit? = when (kind) {
+    HANDLE_KIND_FENCE -> MapHit.FenceVertex(owner, vertex)
+    HANDLE_KIND_SURVEY -> MapHit.SurveyVertex(owner, vertex)
+    HANDLE_KIND_CIRCLE -> MapHit.CircleCentre(owner)
+    else -> null
+}
+
 fun hitTest(map: MapLibreMap, x: Float, y: Float): MapHit? {
     val box = RectF(x - HIT_RADIUS_PX, y - HIT_RADIUS_PX, x + HIT_RADIUS_PX, y + HIT_RADIUS_PX)
 
@@ -60,11 +67,7 @@ fun hitTest(map: MapLibreMap, x: Float, y: Float): MapHit? {
         val vertex = feature.getNumberProperty(VERTEX_INDEX_PROPERTY)?.toInt()
         val kind = feature.getStringProperty(HANDLE_KIND_PROPERTY)
         if (owner != null && vertex != null) {
-            return when (kind) {
-                HANDLE_KIND_SURVEY -> MapHit.SurveyVertex(owner, vertex)
-                HANDLE_KIND_CIRCLE -> MapHit.CircleCentre(owner)
-                else -> MapHit.FenceVertex(owner, vertex)
-            }
+            handleHit(kind, owner, vertex)?.let { return it }
         }
     }
 
