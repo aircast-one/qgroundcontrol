@@ -422,11 +422,15 @@ and it is reported - the message appears immediately and clears after
 FAILURE_MESSAGE_MS, which is 2500, so a screenshot taken later shows a button
 that looks ignored.
 
-The dangerous half is one pan away. Move that world view slightly and its centre
-becomes a perfectly plottable coordinate off Greenland, so the creators stop
-refusing and start placing items there instead - a mission line running from the
-plan to the middle of the North Atlantic. isPlottable is doing its job; a
-coordinate can be valid and still mean nothing.
+The dangerous half is one pan away, and this is demonstrated rather than
+reasoned. With no vehicle and no plan: tapping Rally on the untouched world view
+says "Adding rally did not work". One short swipe, tap Rally again, and the
+panel says "1 rally" - then Fit zooms to 200 m on a screen of empty ocean with
+the point alone in it. Nothing failed and nothing warned; the centre simply
+stopped being 0,0 and started being a real place in the North Atlantic.
+
+isPlottable is doing its job throughout. A coordinate can be valid and still
+mean nothing, and validity is the only question it is able to answer.
 
 So the map now fits the plan once, while there is no vehicle position. QGC's
 Plan view does the same. It fires only while there is nothing to follow, so it
