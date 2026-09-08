@@ -59,6 +59,10 @@ impl Unit {
         Unit::read(backend, "metersToAppSettingsVerticalDistanceUnits", "appSettingsVerticalDistanceUnitsString", "m")
     }
 
+    pub fn horizontal(backend: &dyn Backend) -> Unit {
+        Unit::read(backend, "metersToAppSettingsHorizontalDistanceUnits", "appSettingsHorizontalDistanceUnitsString", "m")
+    }
+
     pub fn speed(backend: &dyn Backend) -> Unit {
         Unit::read(backend, "metersSecondToAppSettingsSpeedUnits", "appSettingsSpeedUnitsString", "m/s")
     }

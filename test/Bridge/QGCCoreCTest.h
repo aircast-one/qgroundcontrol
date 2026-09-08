@@ -27,6 +27,7 @@ private slots:
     void _controlsDescribeAFact();
     void _linksAreListedAndTheFormValidates();
     void _mapScaleFollowsTheUnitSetting();
+    void _terrainProfileReadsThePlan();
 
 private:
     static bool _unavailable(const char *path);

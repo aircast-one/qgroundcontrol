@@ -312,3 +312,12 @@ void QGCCoreCTest::_mapScaleFollowsTheUnitSetting()
     QCOMPARE(bar.value(QStringLiteral("imperial")).toBool(), bar.value(QStringLiteral("text")).toString().endsWith(QStringLiteral("ft")));
     QCOMPARE(take(qgc_bridge_get("view.mapScale")).value(QStringLiteral("available")).toBool(true), false);
 }
+
+void QGCCoreCTest::_terrainProfileReadsThePlan()
+{
+    const QJsonObject empty = take(qgc_bridge_get("view.terrainProfile"));
+    QCOMPARE(empty.value(QStringLiteral("class")).toString(), QStringLiteral("TerrainProfile"));
+    QCOMPARE(empty.value(QStringLiteral("usable")).toBool(true), false);
+    QVERIFY(empty.value(QStringLiteral("points")).isArray());
+    QVERIFY(!empty.value(QStringLiteral("distanceText")).toString().isEmpty());
+}

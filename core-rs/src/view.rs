@@ -17,6 +17,7 @@ use crate::read::value_string;
 use crate::sensors;
 use crate::speed;
 use crate::takeoff;
+use crate::terrain;
 use crate::vibration;
 use crate::warnings;
 use crate::router::Backend;
@@ -45,6 +46,7 @@ pub const VIEWS: &[View] = &[
     View { path: "view.links", deps: links::DEPS, compute: links::links_view },
     View { path: "view.linkForm", deps: &[], compute: links::link_form_view },
     View { path: "view.mapScale", deps: mapscale::DEPS, compute: mapscale::map_scale_view },
+    View { path: "view.terrainProfile", deps: terrain::DEPS, compute: terrain::terrain_view },
 ];
 
 pub fn owns(path: &str) -> bool {
