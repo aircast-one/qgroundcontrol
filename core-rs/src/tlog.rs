@@ -28,8 +28,8 @@ pub fn frame_length(bytes: &[u8]) -> Option<(MavlinkVersion, usize)> {
     }
 }
 
-pub fn parse(bytes: &[u8]) -> Summary {
-    let mut summary = Summary::default();
+pub fn for_each(bytes: &[u8], mut visit: impl FnMut(u64, &mavlink::MavHeader, &MavMessage)) -> usize {
+    let mut undecodable = 0usize;
     let mut at = 0usize;
     while at + TIMESTAMP_BYTES < bytes.len() {
         let frame_start = at + TIMESTAMP_BYTES;
@@ -40,19 +40,25 @@ pub fn parse(bytes: &[u8]) -> Summary {
         let Some(frame) = bytes.get(frame_start..frame_start + length) else { break };
         let timestamp = u64::from_be_bytes(bytes[at..frame_start].try_into().unwrap());
         match read_versioned_msg::<MavMessage, _>(&mut PeekReader::new(frame), ReadVersion::Single(version)) {
-            Ok((header, message)) => {
-                summary.frames += 1;
-                *summary.by_name.entry(message.message_name().to_string()).or_insert(0) += 1;
-                summary.first_timestamp_us.get_or_insert(timestamp);
-                summary.last_timestamp_us = Some(timestamp);
-                if !summary.system_ids.contains(&header.system_id) {
-                    summary.system_ids.push(header.system_id);
-                }
-            }
-            Err(_) => summary.undecodable += 1,
+            Ok((header, message)) => visit(timestamp, &header, &message),
+            Err(_) => undecodable += 1,
         }
         at = frame_start + length;
     }
+    undecodable
+}
+
+pub fn parse(bytes: &[u8]) -> Summary {
+    let mut summary = Summary::default();
+    summary.undecodable = for_each(bytes, |timestamp, header, message| {
+        summary.frames += 1;
+        *summary.by_name.entry(message.message_name().to_string()).or_insert(0) += 1;
+        summary.first_timestamp_us.get_or_insert(timestamp);
+        summary.last_timestamp_us = Some(timestamp);
+        if !summary.system_ids.contains(&header.system_id) {
+            summary.system_ids.push(header.system_id);
+        }
+    });
     summary
 }
 
