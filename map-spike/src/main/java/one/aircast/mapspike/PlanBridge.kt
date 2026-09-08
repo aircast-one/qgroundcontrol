@@ -137,10 +137,17 @@ object PlanBridge {
     // is not drawn, it is not counted, and the panel read "Empty plan" over a
     // plan that had a takeoff in it. Writing launchCoordinate is what places it,
     // and it sets the planned home the takeoff is measured from at the same time.
-    fun appendTakeoff(latitude: Double, longitude: Double): Boolean =
-        insertAt("insertTakeoffItem", latitude, longitude)?.let { index ->
-            writeCoordinate("$PLAN_ITEMS.$index.launchCoordinate", latitude, longitude)
-        } ?: false
+    // The item is already in the plan by the time its location is written, so a
+    // refused write would leave a takeoff behind while reporting that nothing
+    // was added - and the panel counts items whether or not they can be drawn.
+    fun appendTakeoff(latitude: Double, longitude: Double): Boolean {
+        val index = insertAt("insertTakeoffItem", latitude, longitude) ?: return false
+        if (writeCoordinate("$PLAN_ITEMS.$index.launchCoordinate", latitude, longitude)) {
+            return true
+        }
+        removeItem(index)
+        return false
+    }
 
     // insertLandItem passes its coordinate through, so it needs no such help.
     fun appendLanding(latitude: Double, longitude: Double): Boolean =
