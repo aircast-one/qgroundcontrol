@@ -166,12 +166,19 @@ internal fun FactRow(
 
         Box(Modifier.widthIn(max = 190.dp), contentAlignment = Alignment.CenterEnd) {
             when {
-                fact.readOnly -> Text(
-                    text = enumLabel(fact),
-                    style = MaterialTheme.typography.bodyMedium,
-                    maxLines = 2,
-                    overflow = TextOverflow.Ellipsis,
-                )
+                fact.readOnly -> Column(horizontalAlignment = Alignment.End) {
+                    Text(
+                        text = enumLabel(fact),
+                        style = MaterialTheme.typography.bodyMedium,
+                        maxLines = 2,
+                        overflow = TextOverflow.Ellipsis,
+                    )
+                    Text(
+                        text = "Read-only",
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
                 fact.isBool -> Switch(
                     checked = fact.boolValue,
                     onCheckedChange = { checked -> write { Qgc.set(fact.path, checked) } },
