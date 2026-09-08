@@ -76,6 +76,28 @@ chart, and in the ground curve underneath it. A second survey carries on from wh
 ended: 10.80 km in the profile against 10.80 km in the status line, with the ground running
 under both.
 
+## Not done, and why
+
+Takeoff and RTL are counted but not drawn. Neither has a coordinate of its own - a multirotor
+takeoff goes straight up from the launch point and an RTL returns to it - so the panel can say
+"3 items" over a map showing one survey. QGC solves this with a mission item list, which is a
+bigger thing than a map and is not here. The count is right and the map is right; what is missing
+is the third view that reconciles them.
+
+The `flightPathSegments` read that draws the ground is not cached. One survey costs 20 ms per poll
+against 0.1 ms without it, which is 3% of a 700 ms poll off the main thread. Nine surveys is where
+that stops being free - see **Terrain** for the number and for the trap waiting in any cache keyed
+on the plan alone.
+
+Terrain cannot be tested at the default site at all. The tile service has no coverage for Tbilisi
+and answers HTTP 500; `fakevehicle.py` takes `SIM_LAT`/`SIM_LON` so the vehicle can be flown
+somewhere with tiles.
+
+A fix in `QGCBridgeCore` does not reach the phone until `AircastQGC.aar` is rebuilt. Both Android
+modules build against the prebuilt AAR, so "verified on the handset" covers the app and not the C++
+under it unless the AAR was rebuilt in between. The vehicle picker sat disabled for hours for
+exactly this reason.
+
 ## What the bridge taught us
 
 These cost the most time. They are not obvious from the C++ headers.
