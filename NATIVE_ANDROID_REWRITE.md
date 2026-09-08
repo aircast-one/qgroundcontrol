@@ -1146,6 +1146,23 @@ Caution was a hard amber; High was `colorScheme.error`, which in this dark theme
 pink meant for text on a surface rather than for filling a shape. The most serious band was
 the least alarming thing on the screen. High is a saturated red now.
 
+**Every decoder audited against the contract, and one real finding.** Having written one test
+that asserted a value the core never sets, the question was whether that was a habit. It was
+not: checking every JSON key each of the seven view decoders reads against the recorded shapes,
+and every enumerated string against `view.contract`, came back clean. Battery's
+`normal/caution/warning/critical` and vibration's `normal/warning/danger` both match; the only
+keys not in the contract are the log entry fields, which the contract cannot describe because
+the recording had no logs, and those were read from the producer and match it exactly.
+
+The one finding was worth the pass. The inspector's field list **rebuilt its own bridge path**
+as `mavlinkInspector.activeSystem.messages.<index>.fields`, using an index that now comes from
+the core - and the core enumerates `mavlinkInspector.systems.0.messages`. Those are the same
+object with one vehicle and not the same by guarantee; with a second vehicle the detail could
+have shown another system's message under this one's name. Every message already carries its
+own `path`, so nothing needed reconstructing. **A head that rebuilds an identifier the core
+already gave it has invented a second source of truth**, and this one had been latent since the
+migration an hour earlier.
+
 **The confirmation gap is closed, and closing it caught an invented test.** The picker set any
 mode it was asked for, including the ones the core marks `needsConfirm` - the modes that fly
 the aircraft somewhere on their own. A mis-tap in a drop-down should not start one. The dialog
