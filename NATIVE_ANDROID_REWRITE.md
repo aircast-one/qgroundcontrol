@@ -1146,6 +1146,21 @@ Caution was a hard amber; High was `colorScheme.error`, which in this dark theme
 pink meant for text on a surface rather than for filling a shape. The most serious band was
 the least alarming thing on the screen. High is a saturated red now.
 
+**The camera controls read `view.camera`.** `shutterFor` takes the served camera instead of
+five separate bridge reads, `cameraModeLabel` is gone, and the capture-mode constants went with
+it. One rule survives the move and is worth naming: **an undefined mode is not photo.** The core
+reports `modeKnown` separately from `mode`, so a camera that has not said which mode it is in
+offers no shutter rather than a photo button that might start a recording.
+
+Verified on the wire: the shutter sent `MAV_CMD_IMAGE_START_CAPTURE`, the mode chip sent
+`SET_CAMERA_MODE`, and the row went from SimCam/Photo/Take Photo to SimCam/Video/Record.
+
+Worth recording how the tap was aimed, because two attempts hit nothing first. Computing screen
+coordinates by scaling a cropped screenshot put the tap 100 px below the button. **Finding the
+button by its own colour in the full-size capture** - the only large lavender pill in that band -
+gave its centre directly, and the first tap after that landed. Measure the target; do not derive
+it from a resized picture of the target.
+
 **The `view.setup` migration was attempted, reverted, and the reason I gave for reverting was
 wrong.** `SetupPages.kt` is 206 lines of per-firmware parameter tables and `view.setup(<page>)`
 replaces them. Every control on the Power page came back with an empty `name` and `label` and a
