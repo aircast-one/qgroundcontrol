@@ -87,7 +87,20 @@ pub fn fences_view(backend: &dyn Backend, _args: &[String]) -> Value {
     let rally: Vec<Value> = elements(backend, "plan.rallyPointController.points")
         .iter()
         .enumerate()
-        .filter_map(|(i, p)| p.get("coordinate").and_then(point).map(|(lat, lon)| json!({ "index": i, "path": format!("plan.rallyPointController.points.{i}"), "latitude": lat, "longitude": lon })))
+        .filter_map(|(i, p)| {
+            let (lat, lon) = p.get("coordinate").and_then(point)?;
+            let altitude = object(&backend.get(&format!("plan.rallyPointController.points.{i}.textFieldFacts.2")));
+            let is_fact = altitude.get("kind").and_then(Value::as_str) == Some("fact");
+            Some(json!({
+                "index": i,
+                "path": format!("plan.rallyPointController.points.{i}"),
+                "latitude": lat,
+                "longitude": lon,
+                "altitude": if is_fact { altitude.get("value").cloned().unwrap_or(Value::Null) } else { Value::Null },
+                "altitudeUnits": if is_fact { altitude.get("units").and_then(Value::as_str).unwrap_or("") } else { "" },
+                "altitudePath": format!("plan.rallyPointController.points.{i}.textFieldFacts.2"),
+            }))
+        })
         .collect();
     json!({
         "kind": "object",
@@ -148,6 +161,7 @@ mod tests {
                 "plan.geoFenceController.polygons" => json!({ "kind": "object", "elements": [ { "inclusion": false, "count": 4, "area": 25000.0, "path": [ {"latitude": 1.0, "longitude": 1.0}, {"latitude": 1.0, "longitude": 2.0}, {"latitude": 2.0, "longitude": 2.0}, {"latitude": 2.0, "longitude": 1.0} ] } ] }),
                 "plan.geoFenceController.circles" => json!({ "kind": "object", "elements": [ { "inclusion": true, "center": {"latitude": 47.0, "longitude": 8.0}, "facts": [ { "name": "Radius", "value": 150.0, "units": "m" } ] } ] }),
                 "plan.rallyPointController.points" => json!({ "kind": "object", "elements": [ { "coordinate": {"latitude": 47.1, "longitude": 8.1} } ] }),
+                "plan.rallyPointController.points.0.textFieldFacts.2" => json!({ "kind": "fact", "name": "RelativeAltitude", "value": 50.0, "units": "m" }),
                 "poly" => json!({ "kind": "object", "path": [ {"latitude": 0.0, "longitude": 0.0}, {"latitude": 0.0, "longitude": 2.0}, {"latitude": 2.0, "longitude": 2.0} ] }),
                 "line" => json!({ "kind": "object", "path": [ {"latitude": 0.0, "longitude": 0.0}, {"latitude": 0.0, "longitude": 2.0} ], "minVertexCount": 2 }),
                 _ => json!({ "kind": "null" }),
@@ -170,6 +184,7 @@ mod tests {
         assert_eq!(view["circles"][0]["centreText"], "47.000000, 8.000000");
         assert_eq!(view["circles"][0]["framing"].as_array().unwrap().len(), 2);
         assert_eq!(view["rallyPoints"][0]["path"], "plan.rallyPointController.points.0");
+        assert_eq!((view["rallyPoints"][0]["altitude"].clone(), view["rallyPoints"][0]["altitudeUnits"].clone()), (json!(50.0), json!("m")));
         assert_eq!(area_text(9999.0), "9999 m\u{b2}");
     }
 
