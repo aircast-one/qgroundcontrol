@@ -2242,6 +2242,7 @@ checkMapCentre()
 checkMapFollow()
 checkMyLocation()
 checkFlyOverlays()
+checkGripper()
 checkSetupPages()
 checkRemoteSupport()
 
@@ -2552,11 +2553,27 @@ func checkFlyOverlays() {
         radius: 60, orbitActive: false, roiActive: false)
     expect(!stale.showsOrbit, "a centre left over from a finished orbit is not drawn either")
 
-    let looking = FlyOverlays.read(orbitCircle: nil, radius: 0, orbitActive: false, roiActive: true)
+    let looking = FlyOverlays.read(orbitCircle: nil, radius: 0, orbitActive: false, roiActive: true,
+                                   roi: ["valid": true as NSNumber,
+                                         "latitude": -35.363 as NSNumber,
+                                         "longitude": 149.165 as NSNumber])
     expect(looking.roiActive, "an ROI the vehicle reports is shown")
-    expect(looking.roiNote.contains("does not say where"),
-           "and the head says it cannot place it, because roiCoord reaches QML by signal and the bridge cannot read a signal")
+    expect(looking.showsRoi, "and marked, now that roiCoord is a property rather than only a signal")
+    expect(looking.roiNote.contains("marked spot"), "with the note pointing at the marker")
     expect(looking.summary, "look-at", "which is what is in progress")
+
+    let blind = FlyOverlays.read(orbitCircle: nil, radius: 0, orbitActive: false, roiActive: true,
+                                 roi: ["valid": false as NSNumber])
+    expect(blind.roiActive, "an ROI with no position is still reported as running")
+    expect(!blind.showsRoi, "but nothing is drawn at a place the vehicle did not give")
+    expect(blind.roiNote.contains("not given a position"), "and the note says why there is no marker")
+
+    let stopped = FlyOverlays.read(orbitCircle: nil, radius: 0, orbitActive: false, roiActive: false,
+                                   roi: ["valid": true as NSNumber,
+                                         "latitude": -35.363 as NSNumber,
+                                         "longitude": 149.165 as NSNumber])
+    expect(!stopped.showsRoi,
+           "and a coordinate left over from a finished ROI is not drawn, as with the orbit centre")
 
     var sent = FlyOverlays.none
     sent.goingTo = GeoPoint(latitude: -35.363, longitude: 149.165)
@@ -2648,4 +2665,27 @@ func checkMyLocation() {
     expect(MapCentre.usable(nil) == nil, "and a nested coordinate that came back null is no position")
     expect(MapCentre.usable(["latitude": 51.5 as NSNumber, "longitude": -0.1 as NSNumber]) != nil,
            "a coordinate with no valid key at all is judged on its numbers rather than discarded")
+}
+
+func checkGripper() {
+    var state = GuidedState()
+    state.connected = true
+    expect(!GuidedAction.grab.shown(in: state),
+           "a vehicle with no gripper is offered neither half of one")
+    expect(!GuidedAction.release.shown(in: state), "neither half")
+
+    state.hasGripper = true
+    expect(GuidedAction.grab.shown(in: state), "one that has a gripper can close it")
+    expect(GuidedAction.release.shown(in: state), "and open it")
+
+    state.armed = true
+    expect(!GuidedAction.release.shown(in: state),
+           "but not while armed, which is QGC's own gate so cargo cannot be dropped mid-flight from here")
+    expect(!GuidedAction.grab.shown(in: state), "the same for grabbing")
+
+    expect(!GuidedAction.grab.carriesValue, "the gripper takes no number")
+    expect(!GuidedAction.release.carriesValue, "neither half does")
+    expect(!GuidedAction.grab.needsPrearm, "and neither waits on a prearm check")
+    expect(GuidedAction.release.prompt.contains("drop"),
+           "the prompt says what happens, because this one lets go of something")
 }

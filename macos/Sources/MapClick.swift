@@ -77,7 +77,8 @@ final class MapClickStore: ObservableObject, Probeable {
             radius: (Bridge.group("vehicle.orbitMapCircle.radius")["value"] as? NSNumber)?
                 .doubleValue ?? 0,
             orbitActive: flag("orbitActive"),
-            roiActive: read.roiActive)
+            roiActive: read.roiActive,
+            roi: Bridge.group("vehicle.roiCoord"))
         drawn.goingTo = goingTo
         if drawn != overlays { overlays = drawn }
 
@@ -153,6 +154,7 @@ final class MapClickStore: ObservableObject, Probeable {
          "lastSent": lastSent,
          "map": MissionMap.lastRender["fly"] ?? [:],
          "overlays": ["orbit": overlays.showsOrbit, "roi": overlays.roiActive,
+                      "roiPlaced": overlays.showsRoi,
                       "goto": overlays.showsGoto, "summary": overlays.summary,
                       "roiNote": overlays.roiNote]]
     }

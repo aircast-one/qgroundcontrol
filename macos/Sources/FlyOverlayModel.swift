@@ -5,6 +5,7 @@ struct FlyOverlays: Equatable {
     var orbitRadius: Double = 0
     var orbitActive = false
     var roiActive = false
+    var roiAt: GeoPoint?
     var goingTo: GeoPoint?
 
     static let none = FlyOverlays()
@@ -13,10 +14,13 @@ struct FlyOverlays: Equatable {
 
     var showsGoto: Bool { goingTo != nil }
 
+    var showsRoi: Bool { roiActive && roiAt != nil }
+
     var roiNote: String {
-        roiActive
-            ? "The camera is locked on a spot. The vehicle does not say where, so the map cannot show it."
-            : ""
+        guard roiActive else { return "" }
+        return roiAt == nil
+            ? "The camera is locked on a spot the vehicle has not given a position for."
+            : "The camera is locked on the marked spot."
     }
 
     var summary: String {
@@ -27,10 +31,12 @@ struct FlyOverlays: Equatable {
     }
 
     static func read(orbitCircle: [String: Any]?, radius: Double,
-                     orbitActive: Bool, roiActive: Bool) -> FlyOverlays {
+                     orbitActive: Bool, roiActive: Bool,
+                     roi: [String: Any]? = nil) -> FlyOverlays {
         var built = FlyOverlays()
         built.orbitActive = orbitActive
         built.roiActive = roiActive
+        built.roiAt = roiActive ? MapCentre.usable(roi) : nil
         built.orbitCentre = GeoPoint(json: orbitCircle?["center"])
         built.orbitRadius = radius.isFinite && radius > 0 ? radius : 0
         return built

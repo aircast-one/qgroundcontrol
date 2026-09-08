@@ -58,6 +58,15 @@ final class GotoAnnotation: NSObject, MKAnnotation {
     }
 }
 
+final class RoiAnnotation: NSObject, MKAnnotation {
+    let coordinate: CLLocationCoordinate2D
+    let title: String? = "Looking here"
+
+    init(point: GeoPoint) {
+        coordinate = CLLocationCoordinate2D(latitude: point.latitude, longitude: point.longitude)
+    }
+}
+
 final class VehicleAnnotation: NSObject, MKAnnotation {
     let coordinate: CLLocationCoordinate2D
     let title: String? = "Vehicle"
@@ -131,6 +140,10 @@ struct MissionMap: NSViewRepresentable {
 
         if let going = overlays.goingTo {
             map.addAnnotation(GotoAnnotation(point: going))
+        }
+
+        if overlays.showsRoi, let looking = overlays.roiAt {
+            map.addAnnotation(RoiAnnotation(point: looking))
         }
 
         if overlays.showsOrbit, let centre = overlays.orbitCentre {
@@ -443,6 +456,17 @@ struct MissionMap: NSViewRepresentable {
                 view.canShowCallout = true
                 view.glyphText = "R"
                 view.markerTintColor = .systemGreen
+                return view
+            }
+
+            if let looking = annotation as? RoiAnnotation {
+                let view = mapView.dequeueReusableAnnotationView(withIdentifier: "roi") as? MKMarkerAnnotationView
+                    ?? MKMarkerAnnotationView(annotation: looking, reuseIdentifier: "roi")
+                view.annotation = looking
+                view.canShowCallout = true
+                view.glyphImage = NSImage(systemSymbolName: "viewfinder",
+                                          accessibilityDescription: nil)
+                view.markerTintColor = .systemOrange
                 return view
             }
 

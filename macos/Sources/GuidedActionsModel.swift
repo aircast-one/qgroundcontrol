@@ -4,6 +4,7 @@ struct GuidedState: Equatable {
     var connected = false
     var armed = false
     var flying = false
+    var hasGripper = false
     var guidedSupported = false
     var takeoffSupported = false
     var pauseSupported = false
@@ -40,6 +41,8 @@ enum GuidedAction: String, CaseIterable, Identifiable {
     case land
     case rtl
     case disarm
+    case grab
+    case release
     case emergencyStop
 
     var id: String { rawValue }
@@ -57,6 +60,8 @@ enum GuidedAction: String, CaseIterable, Identifiable {
         case .land: return "Land"
         case .rtl: return "Return"
         case .disarm: return "Disarm"
+        case .grab: return "Grab"
+        case .release: return "Release"
         case .emergencyStop: return "Emergency Stop"
         }
     }
@@ -74,6 +79,8 @@ enum GuidedAction: String, CaseIterable, Identifiable {
         case .land: return "arrow.down.circle"
         case .rtl: return "house.circle"
         case .disarm: return "bolt.slash.circle"
+        case .grab: return "hand.raised.fill"
+        case .release: return "hand.point.down.fill"
         case .emergencyStop: return "exclamationmark.octagon"
         }
     }
@@ -93,6 +100,8 @@ enum GuidedAction: String, CaseIterable, Identifiable {
         case .land: return "Land where it is."
         case .rtl: return "Fly home and land."
         case .disarm: return "Disarm the vehicle."
+        case .grab: return "Close the gripper and hold the cargo."
+        case .release: return "Open the gripper and drop the cargo."
         case .emergencyStop: return "Stop the motors immediately. The vehicle will fall."
         }
     }
@@ -110,6 +119,7 @@ enum GuidedAction: String, CaseIterable, Identifiable {
         switch self {
         case .arm: return !state.armed
         case .disarm: return state.armed && !state.flying
+        case .grab, .release: return state.hasGripper && !state.armed
         case .rtl: return state.armed && state.guidedSupported && state.flying && !state.inRTL
         case .takeoff: return state.takeoffSupported && !state.flying
         case .land: return state.guidedSupported && state.armed && !state.fixedWing && !state.inLand

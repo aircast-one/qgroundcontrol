@@ -38,6 +38,7 @@ final class GuidedStore: ObservableObject, Probeable {
             ? flag("haveFWSpeedLimits")
             : flag("haveMRSpeedLimits")
         read.landing = flag("landing")
+        read.hasGripper = flag("hasGripper")
         read.readyToArm = prearmClear
         read.flightMode = (vehicle["flightMode"] as? String) ?? ""
         read.rtlMode = (vehicle["rtlFlightMode"] as? String) ?? ""
@@ -96,6 +97,8 @@ final class GuidedStore: ObservableObject, Probeable {
     }
 
     static let climbOutAltitude = 50.0
+    static let gripperRelease = 0
+    static let gripperGrab = 1
 
     private func number(_ path: String) -> Double {
         (Bridge.invoke(path)["result"] as? NSNumber)?.doubleValue ?? .nan
@@ -132,6 +135,8 @@ final class GuidedStore: ObservableObject, Probeable {
             Bridge.invoke("vehicle.guidedModeChangeAltitude", [chosen - currentAltitude, true])
         case .landAbort: Bridge.invoke("vehicle.abortLanding", [GuidedStore.climbOutAltitude])
         case .emergencyStop: Bridge.invoke("vehicle.emergencyStop")
+        case .grab: Bridge.invoke("vehicle.sendGripperAction", [GuidedStore.gripperGrab])
+        case .release: Bridge.invoke("vehicle.sendGripperAction", [GuidedStore.gripperRelease])
         }
     }
 
