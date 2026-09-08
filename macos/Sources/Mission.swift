@@ -66,18 +66,23 @@ final class MissionStore: ObservableObject, Probeable, WriteReporting {
         if offered != patterns { patterns = offered }
 
         let model = Bridge.group("plan.missionController.visualItems")
-        items = ((model["elements"] as? [[String: Any]]) ?? [])
+        let listed = ((model["elements"] as? [[String: Any]]) ?? [])
             .enumerated().map {
                 MissionItem(json: $0.element, index: $0.offset,
                             verticalMeasure: AppUnits.measure(AppUnits.vertical))
             }
+        if listed != items { items = listed }
         let plan = Bridge.group("plan")
-        syncing = (plan["syncInProgress"] as? NSNumber)?.boolValue ?? false
-        dirty = (plan["dirty"] as? NSNumber)?.boolValue ?? false
-        planFile = (plan["currentPlanFile"] as? String) ?? ""
+        let busy = (plan["syncInProgress"] as? NSNumber)?.boolValue ?? false
+        if busy != syncing { syncing = busy }
+        let changed = (plan["dirty"] as? NSNumber)?.boolValue ?? false
+        if changed != dirty { dirty = changed }
+        let file = (plan["currentPlanFile"] as? String) ?? ""
+        if file != planFile { planFile = file }
         let bar = MissionMap.lastScale["plan"] ?? .none
         if bar != scaleBar { scaleBar = bar }
-        globalAltitudeMode = AltitudeMode.read(controller["globalAltitudeMode"])
+        let mode = AltitudeMode.read(controller["globalAltitudeMode"])
+        if mode != globalAltitudeMode { globalAltitudeMode = mode }
 
         let hover = (controller["missionHoverDistance"] as? NSNumber)?.doubleValue ?? 0
         let cruise = (controller["missionCruiseDistance"] as? NSNumber)?.doubleValue ?? 0

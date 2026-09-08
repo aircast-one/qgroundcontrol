@@ -1,6 +1,6 @@
 import Foundation
 
-struct MissionItem: Identifiable {
+struct MissionItem: Identifiable, Equatable {
     let index: Int
     let sequence: Int
     let command: String
