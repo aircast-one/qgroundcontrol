@@ -123,6 +123,8 @@ final class FlyStore: ObservableObject, Probeable, WriteReporting {
         reading.batteryPercent = (first?["percent"] as? NSNumber)?.doubleValue
         reading.batteryVolts = (first?["voltage"] as? NSNumber)?.doubleValue
         reading.batteryLevel = FlyTelemetry.Level(batteryView["level"] as? String)
+        reading.batteryText = FlyTelemetry.batteryLine((first?["text"] as? String) ?? "",
+                                                       (first?["secondaryText"] as? String) ?? "")
         let readLevels = batteryPacks.map { FlyTelemetry.Level($0["level"] as? String) }
         if readLevels != batteryLevels { batteryLevels = readLevels }
 

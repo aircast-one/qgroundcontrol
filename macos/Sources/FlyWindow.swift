@@ -380,6 +380,7 @@ struct FlyPanel: View {
     static func colour(_ level: FlyTelemetry.Level) -> Color {
         switch level {
         case .good: return .green
+        case .caution: return .yellow
         case .warning: return .orange
         case .critical: return Overlay.vehicle
         case .unknown: return .secondary

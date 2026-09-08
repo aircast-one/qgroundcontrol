@@ -1081,12 +1081,19 @@ func checkFlyTelemetry() {
     expect(reading.batteryText, "\u{2014}", "and shows nothing rather than a number")
     expect(reading.stateText, "Disarmed", "a vehicle that is not armed reads as disarmed")
 
-    reading.batteryPercent = 100
-    reading.batteryVolts = 12.6
-    expect(reading.batteryText, "100% \u{00B7} 12.6 V", "reads as percent and volts")
+    expect(FlyTelemetry.batteryLine("100%", "12.60V"), "100% \u{00B7} 12.60V",
+           "the chip joins the core's two indicator lines")
+    expect(FlyTelemetry.batteryLine("12.60V", "12.60V"), "12.60V",
+           "and does not say the same thing twice when a pack reports no percentage")
+    expect(FlyTelemetry.batteryLine("n/a", ""), "n/a",
+           "a pack that reports nothing usable still says so in QGC's own words")
+    expect(FlyTelemetry.batteryLine("", ""), "\u{2014}", "and an absent battery shows a dash")
 
     expect(FlyTelemetry.Level("normal") == .good, "the core's normal is a good battery")
-    expect(FlyTelemetry.Level("caution") == .warning, "its caution is a warning")
+    expect(FlyTelemetry.Level("caution") == .caution, "its caution is yellow, not orange")
+    expect(FlyTelemetry.Level("warning") == .warning,
+           "its warning is the orange QGC paints for a vehicle-reported LOW, and reading that as "
+           + "unknown would have drawn a grey dot for a battery the vehicle called low")
     expect(FlyTelemetry.Level("critical") == .critical, "and its critical is critical")
     expect(FlyTelemetry.Level(nil) == .unknown,
            "no answer is unknown, never good, because the head no longer decides this from a "

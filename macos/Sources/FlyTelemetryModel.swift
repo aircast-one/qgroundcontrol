@@ -3,6 +3,7 @@ import Foundation
 struct FlyTelemetry: Equatable {
     enum Level {
         case good
+        case caution
         case warning
         case critical
         case unknown
@@ -10,7 +11,8 @@ struct FlyTelemetry: Equatable {
         init(_ reported: String?) {
             switch reported {
             case "normal": self = .good
-            case "caution": self = .warning
+            case "caution": self = .caution
+            case "warning": self = .warning
             case "critical": self = .critical
             default: self = .unknown
             }
@@ -57,10 +59,12 @@ struct FlyTelemetry: Equatable {
         return "\(fix) · \(satellites) sats"
     }
 
-    var batteryText: String {
-        guard let batteryPercent else { return "—" }
-        guard let batteryVolts else { return String(format: "%.0f%%", batteryPercent) }
-        return String(format: "%.0f%% · %.1f V", batteryPercent, batteryVolts)
+    var batteryText = "—"
+
+    static func batteryLine(_ main: String, _ secondary: String) -> String {
+        guard !main.isEmpty else { return "—" }
+        guard !secondary.isEmpty, secondary != main else { return main }
+        return "\(main) · \(secondary)"
     }
 
     var stateText: String {
