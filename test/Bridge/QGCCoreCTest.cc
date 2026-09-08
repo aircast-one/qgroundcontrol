@@ -339,3 +339,15 @@ void QGCCoreCTest::_calibrationIsListedWithoutAnApmVehicle()
     QCOMPARE(view.value(QStringLiteral("routines")).toArray().count(), 5);
     QCOMPARE(view.value(QStringLiteral("sides")).toArray().count(), 6);
 }
+
+void QGCCoreCTest::_radioFollowsTheVehicle()
+{
+    const QJsonObject offline = take(qgc_bridge_get("view.radio"));
+    QCOMPARE(offline.value(QStringLiteral("connected")).toBool(true), false);
+    QCOMPARE(offline.value(QStringLiteral("summary")).toString(), QStringLiteral("No vehicle is connected."));
+    _connectMockLink(MAV_AUTOPILOT_PX4);
+    QTRY_COMPARE_WITH_TIMEOUT(take(qgc_bridge_get("view.radio")).value(QStringLiteral("connected")).toBool(false), true, 5000);
+    const QJsonObject online = take(qgc_bridge_get("view.radio"));
+    QCOMPARE(online.value(QStringLiteral("sticks")).toArray().count(), 4);
+    QVERIFY(online.value(QStringLiteral("minimumChannels")).toInt() > 0);
+}

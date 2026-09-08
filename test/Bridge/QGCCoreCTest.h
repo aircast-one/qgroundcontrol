@@ -30,6 +30,7 @@ private slots:
     void _terrainProfileReadsThePlan();
     void _missionKindsAndSeedsAreServed();
     void _calibrationIsListedWithoutAnApmVehicle();
+    void _radioFollowsTheVehicle();
 
 private:
     static bool _unavailable(const char *path);

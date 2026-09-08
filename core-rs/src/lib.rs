@@ -13,6 +13,7 @@ mod messages;
 mod missionkinds;
 mod plan;
 mod preflight;
+mod radio;
 mod read;
 mod sensors;
 mod speed;

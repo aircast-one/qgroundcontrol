@@ -15,6 +15,7 @@ use crate::messages;
 use crate::missionkinds;
 use crate::plan;
 use crate::preflight;
+use crate::radio;
 use crate::read::value_string;
 use crate::sensors;
 use crate::speed;
@@ -52,6 +53,7 @@ pub const VIEWS: &[View] = &[
     View { path: "view.missionKinds", deps: missionkinds::DEPS, compute: missionkinds::kinds_view },
     View { path: "view.missionSeed", deps: missionkinds::DEPS, compute: missionkinds::seed_view },
     View { path: "view.calibration", deps: calibration::DEPS, compute: calibration::calibration_view },
+    View { path: "view.radio", deps: radio::DEPS, compute: radio::radio_view },
 ];
 
 pub fn owns(path: &str) -> bool {

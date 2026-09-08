@@ -559,6 +559,7 @@ About 58 developer-weeks. Flight-test time, not code, is the schedule.
 - 2026-09-08: `view.terrainProfile` — profile points, padded altitude band, unknown ground count, texts in the operator's units.
 - 2026-09-08: `view.missionKinds(kind?)` and `view.missionSeed(kind,lat,lon)` — the item catalogue and the default seed geometry.
 - 2026-09-08: `view.calibration` — APM sensor calibration state, orientation sides, and the routine list with the accel-first gate.
+- 2026-09-08: `view.radio` — radio calibration state, channel bars, stick mapping, summary and shortfall.
 
 ### Stream F · Core
 
