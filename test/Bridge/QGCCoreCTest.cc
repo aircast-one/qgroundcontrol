@@ -275,3 +275,17 @@ void QGCCoreCTest::_sensorHealthIsOrdered()
     QVERIFY(!listed.isEmpty());
     QVERIFY(!listed.first().toObject().value(QStringLiteral("label")).toString().isEmpty());
 }
+
+void QGCCoreCTest::_controlsDescribeAFact()
+{
+    const QJsonObject units = take(qgc_bridge_get("view.control(settings.unitsSettings.verticalDistanceUnits)"));
+    QCOMPARE(units.value(QStringLiteral("control")).toString(), QStringLiteral("choice"));
+    QCOMPARE(units.value(QStringLiteral("options")).toArray().count(), 2);
+    QVERIFY(!units.value(QStringLiteral("display")).toString().isEmpty());
+    const QJsonObject muted = take(qgc_bridge_get("view.control(settings.appSettings.audioMuted)"));
+    QCOMPARE(muted.value(QStringLiteral("control")).toString(), QStringLiteral("toggle"));
+    const QJsonObject altitude = take(qgc_bridge_get("view.control(settings.appSettings.defaultMissionItemAltitude)"));
+    QCOMPARE(altitude.value(QStringLiteral("control")).toString(), QStringLiteral("number"));
+    QCOMPARE(take(qgc_bridge_get("view.control(settings.nope)")).value(QStringLiteral("kind")).toString(), QStringLiteral("null"));
+    QCOMPARE(take(qgc_bridge_get("view.control")).value(QStringLiteral("kind")).toString(), QStringLiteral("null"));
+}

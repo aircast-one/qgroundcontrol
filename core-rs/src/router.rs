@@ -228,6 +228,11 @@ mod tests {
     fn a_view_path_may_carry_arguments_in_parentheses() {
         assert_eq!(view::split("view.guidedAltitude(68.5)"), ("view.guidedAltitude", vec!["68.5".to_string()]));
         assert_eq!(view::split("view.plan"), ("view.plan", vec![]));
+        assert_eq!(
+            view::split("view.control(vehicle.parameterManager.getParameter(-1,RTL_ALT))"),
+            ("view.control", vec!["vehicle.parameterManager.getParameter(-1,RTL_ALT)".to_string()])
+        );
+        assert_eq!(view::split("view.instruments(gps/count, vehicle/heading)").1.len(), 2);
         assert!(view::lookup("view.guidedAltitude(1, 2)").is_some());
         let core = Core::new(Fake::default());
         assert_eq!(parsed(&core.get("view.messages(anything)"))["class"], "VehicleMessages");

@@ -24,6 +24,7 @@ private slots:
     void _instrumentsResolveTheSelection();
     void _vibrationBandsAreServed();
     void _sensorHealthIsOrdered();
+    void _controlsDescribeAFact();
 
 private:
     static bool _unavailable(const char *path);

@@ -551,6 +551,8 @@ About 58 developer-weeks. Flight-test time, not code, is the schedule.
   in the core; the selection stays with the head.
 - 2026-09-08: `view.vibration` — axes with fraction and severity band, worst axis, clip counts.
 - 2026-09-08: `view.sensors` — SYS_STATUS sensor health as healthy/unhealthy/disabled, failing first.
+- 2026-09-08: `view.control(factPath)` — toggle/choice/text/number with options and bounds decoded once;
+  view arguments split on top-level commas so nested accessors pass through.
 
 ### Stream F · Core
 
