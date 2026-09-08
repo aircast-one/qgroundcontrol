@@ -157,14 +157,12 @@ fun FlightActions(modifier: Modifier = Modifier) {
     val scope = rememberCoroutineScope()
     var takeoffTarget by remember { mutableStateOf<Double?>(null) }
     var takeoffSettled by remember { mutableStateOf<Double?>(null) }
-    val takeoffJson by qgcPath(GUIDED_TAKEOFF)
-    val takeoffRange = remember(takeoffJson) { guidedTakeoff(takeoffJson) }
+    var takeoffRange by remember { mutableStateOf<GuidedTakeoff?>(null) }
     val flying by qgcBool("vehicle.flying")
     val guidedModeSupported by qgcBool("vehicle.guidedModeSupported")
     var altitudeTarget by remember { mutableStateOf<Double?>(null) }
     var altitudeSettled by remember { mutableStateOf<Double?>(null) }
-    val altitudeJson by qgcPath(GUIDED_ALTITUDE)
-    val altitudeRange = remember(altitudeJson) { guidedAltitude(altitudeJson) }
+    var altitudeRange by remember { mutableStateOf<GuidedAltitude?>(null) }
     var speedTarget by remember { mutableStateOf<Double?>(null) }
     var speedSettled by remember { mutableStateOf<Double?>(null) }
     var speedRange by remember { mutableStateOf<GuidedSpeed?>(null) }
@@ -220,10 +218,20 @@ fun FlightActions(modifier: Modifier = Modifier) {
             ) { Text(if (armed) "Disarm" else "Arm") }
 
             OutlinedButton(
-                enabled = offers["takeoff"]?.ready == true && takeoffRangeUsable(takeoffRange),
+                enabled = offers["takeoff"]?.ready == true,
                 onClick = {
-                    takeoffTarget = takeoffRange?.initial
-                    takeoffSettled = takeoffRange?.initial
+                    scope.launch {
+                        val fresh = withContext(Dispatchers.Default) {
+                            guidedTakeoff(Qgc.get(GUIDED_TAKEOFF))
+                        }
+                        if (!takeoffRangeUsable(fresh)) {
+                            refusal = "This vehicle did not report a takeoff height range."
+                            return@launch
+                        }
+                        takeoffRange = fresh
+                        takeoffTarget = fresh?.initial
+                        takeoffSettled = fresh?.initial
+                    }
                 },
             ) { Text(offers["takeoff"]?.title ?: "Takeoff") }
 
@@ -267,11 +275,20 @@ fun FlightActions(modifier: Modifier = Modifier) {
             ) { Text("Speed") }
 
             OutlinedButton(
-                enabled = offers["changeAltitude"]?.ready == true &&
-                    altitudeRangeUsable(altitudeRange),
+                enabled = offers["changeAltitude"]?.ready == true,
                 onClick = {
-                    altitudeTarget = altitudeRange?.current
-                    altitudeSettled = altitudeRange?.current
+                    scope.launch {
+                        val fresh = withContext(Dispatchers.Default) {
+                            guidedAltitude(Qgc.get(GUIDED_ALTITUDE))
+                        }
+                        if (!altitudeRangeUsable(fresh)) {
+                            refusal = "This vehicle did not report an altitude range."
+                            return@launch
+                        }
+                        altitudeRange = fresh
+                        altitudeTarget = fresh?.current
+                        altitudeSettled = fresh?.current
+                    }
                 },
             ) { Text("Alt") }
         }
