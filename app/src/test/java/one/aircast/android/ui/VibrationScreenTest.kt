@@ -33,3 +33,26 @@ class VibrationScreenTest {
         assertEquals(0f, barFraction(Double.NaN), 1e-6f)
     }
 }
+
+class VibrationMatchesQtBuildTest {
+    @Test
+    fun `the scale and thresholds are the ones VibrationPage qml uses`() {
+        assertEquals(90.0, VIBE_MAX, 0.0)
+        assertEquals(30.0, VIBE_WARN, 0.0)
+        assertEquals(60.0, VIBE_HIGH, 0.0)
+    }
+
+    @Test
+    fun `bar height follows the Qt build's formula`() {
+        val qtBarFraction = { v: Double -> (minOf(90.0, v) / 90.0) }
+
+        listOf(0.0, 15.0, 30.0, 60.0, 89.9, 90.0, 120.0).forEach { value ->
+            assertEquals(qtBarFraction(value).toFloat(), barFraction(value), 1e-6f)
+        }
+    }
+
+    @Test
+    fun `a missing reading draws nothing rather than a full bar`() {
+        assertEquals(0f, barFraction(Double.NaN), 0f)
+    }
+}
