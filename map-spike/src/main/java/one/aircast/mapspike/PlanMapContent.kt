@@ -354,6 +354,26 @@ internal fun MapSpikeScreen(mapStyle: String, onClear: (() -> Unit)? = null) {
                         fitRequest += 1
                     }) { Text("Fit") }
 
+                    // Only when there is a choice. One vehicle needs no picker,
+                    // and none needs it less.
+                    if (vehicleCount > 1) {
+                        var vehicles by remember(vehicleCount, vehicleId) {
+                            mutableStateOf<List<VehicleEntry>>(emptyList())
+                        }
+                        LaunchedEffect(vehicleCount, vehicleId) {
+                            vehicles = withContext(Dispatchers.Default) {
+                                VehicleBridge.entries(vehicleId)
+                            }
+                        }
+                        vehicles.filterNot { it.active }.forEach { entry ->
+                            TextButton(onClick = {
+                                onBridge("Switching to vehicle ${entry.id}") {
+                                    VehicleBridge.makeActive(entry.index)
+                                }
+                            }) { Text("Vehicle ${entry.id}") }
+                        }
+                    }
+
                     // Only offered when the host supplies one. Clearing the plan
                     // from in here would empty it behind a shell that still holds
                     // the opened document, leaving the next Save to write a blank

@@ -276,10 +276,11 @@ here asks the same question rather than being the one place that discards a surv
 **`clearAllInteractive` does not clear anything stored.** It ends an interactive edit. A button
 built on it reports success and changes nothing. `deletePolygon` is the real path.
 
-**Writes cannot take an object.** `invoke` resolves an `@path` argument to a QObject, but `set`
-does not. So `activeVehicle`, which is a writable property taking a `Vehicle*`, cannot be written,
-and there is no vehicle picker here. Teaching `writePath` the same `@path` form would fix it and
-would serve the macOS frontend equally.
+**Writes can take an object now.** `writePath` resolves an `@path` value to a QObject and
+type-checks it against the property, as of qgroundcontrol `78040316a`. That is what makes the
+vehicle picker possible: `vehicles.activeVehicle` is a writable `Vehicle*`, and the write names an
+entry in the manager's own list rather than a copy of it. The picker only appears with more than one
+vehicle connected, because with one there is nothing to choose.
 
 ## What MapLibre taught us
 
