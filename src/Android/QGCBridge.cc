@@ -1,7 +1,7 @@
 #include "QGCBridge.h"
 
 #include "AndroidInterface.h"
-#include "QGCBridgeCore.h"
+#include "QGCBridgeC.h"
 #include "QGCVideoC.h"
 #include "QGCLoggingCategory.h"
 
@@ -18,37 +18,44 @@ namespace
 jstring jniGet(JNIEnv *env, jclass clazz, jstring pathA)
 {
     Q_UNUSED(clazz);
-    const QString result = QGCBridgeCore::get(QJniObject(pathA).toString());
-    return env->NewStringUTF(result.toUtf8().constData());
+    char *const result = qgc_bridge_get(QJniObject(pathA).toString().toUtf8().constData());
+    jstring out = env->NewStringUTF(result);
+    qgc_bridge_free(result);
+    return out;
 }
 
 jstring jniGetFields(JNIEnv *env, jclass clazz, jstring pathA, jstring fieldsA)
 {
     Q_UNUSED(clazz);
-    const QString result = QGCBridgeCore::getFields(
-        QJniObject(pathA).toString(), QJniObject(fieldsA).toString());
-    return env->NewStringUTF(result.toUtf8().constData());
+    char *const result = qgc_bridge_get_fields(QJniObject(pathA).toString().toUtf8().constData(), QJniObject(fieldsA).toString().toUtf8().constData());
+    jstring out = env->NewStringUTF(result);
+    qgc_bridge_free(result);
+    return out;
 }
 
 jstring jniSet(JNIEnv *env, jclass clazz, jstring pathA, jstring jsonA)
 {
     Q_UNUSED(clazz);
-    const QString result = QGCBridgeCore::set(QJniObject(pathA).toString(), QJniObject(jsonA).toString());
-    return env->NewStringUTF(result.toUtf8().constData());
+    char *const result = qgc_bridge_set(QJniObject(pathA).toString().toUtf8().constData(), QJniObject(jsonA).toString().toUtf8().constData());
+    jstring out = env->NewStringUTF(result);
+    qgc_bridge_free(result);
+    return out;
 }
 
 jstring jniInvoke(JNIEnv *env, jclass clazz, jstring pathA, jstring argsA)
 {
     Q_UNUSED(clazz);
-    const QString result = QGCBridgeCore::invoke(QJniObject(pathA).toString(), QJniObject(argsA).toString());
-    return env->NewStringUTF(result.toUtf8().constData());
+    char *const result = qgc_bridge_invoke(QJniObject(pathA).toString().toUtf8().constData(), QJniObject(argsA).toString().toUtf8().constData());
+    jstring out = env->NewStringUTF(result);
+    qgc_bridge_free(result);
+    return out;
 }
 
 void jniWatch(JNIEnv *env, jclass clazz, jstring pathsA)
 {
     Q_UNUSED(env);
     Q_UNUSED(clazz);
-    QGCBridgeCore::watch(QJniObject(pathsA).toString().split(QLatin1Char(','), Qt::SkipEmptyParts));
+    qgc_bridge_watch(QJniObject(pathsA).toString().toUtf8().constData());
 }
 
 void jniNotifyFontScale(JNIEnv *env, jclass clazz, jfloat scaleA)
@@ -124,6 +131,15 @@ jboolean jniVideoSetSurface(JNIEnv *env, jclass, jobject surface)
     return JNI_TRUE;
 }
 
+void relayToJava(const char *path, const char *json)
+{
+    QJniObject::callStaticMethod<void>(
+        kJniQGCBridgeClassName, "onEvent",
+        "(Ljava/lang/String;Ljava/lang/String;)V",
+        QJniObject::fromString(QString::fromUtf8(path)).object<jstring>(),
+        QJniObject::fromString(QString::fromUtf8(json)).object<jstring>());
+}
+
 } // namespace
 
 namespace QGCBridge
@@ -131,13 +147,7 @@ namespace QGCBridge
 
 void setNativeMethods()
 {
-    QGCBridgeCore::setEventHandler([](const QString &path, const QString &json) {
-        QJniObject::callStaticMethod<void>(
-            kJniQGCBridgeClassName, "onEvent",
-            "(Ljava/lang/String;Ljava/lang/String;)V",
-            QJniObject::fromString(path).object<jstring>(),
-            QJniObject::fromString(json).object<jstring>());
-    });
+    qgc_bridge_set_event_handler(relayToJava);
 
     const JNINativeMethod javaMethods[] {
         { "get", "(Ljava/lang/String;)Ljava/lang/String;", reinterpret_cast<void *>(jniGet) },

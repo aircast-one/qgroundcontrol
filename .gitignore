@@ -137,3 +137,5 @@ libs/xz-embedded/
 /src/QtLocationPlugin/QGCLocation_init.cpp
 /src/GPS/Drivers/
 .codex/
+
+core-rs/target/

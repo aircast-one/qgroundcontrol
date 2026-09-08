@@ -591,6 +591,7 @@ if(CMAKE_SYSTEM_NAME STREQUAL "Darwin")
 endif()
 
 add_subdirectory(src)
+add_subdirectory(core-rs)
 
 if(MACOS)
     add_subdirectory(macos)

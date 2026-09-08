@@ -528,6 +528,13 @@ base of 2025-06-18. Risk 5 above is withdrawn.
 
 About 58 developer-weeks. Flight-test time, not code, is the schedule.
 
+### R1 status
+
+- 2026-09-08: `core-rs/` landed. Every `qgc_bridge_*` call passes through Rust on single-arch
+  macOS; `view.messages` is the first view-state path; `qgc_bridge_watch_client(client, paths)`
+  gives each store its own watch set with the union going to Qt. `QGCCoreCTest` is the C ABI
+  suite. Without cargo, or on universal and non-macOS builds, the bridge routes straight to Qt.
+
 ### Stream F · Core
 
 Owns `core-rs/`, the generated `QGCBridgeC.h`, the golden dump and fixtures, the router in

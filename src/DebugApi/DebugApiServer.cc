@@ -41,7 +41,6 @@
 #include <QtCore/QUrl>
 #include <QtCore/QUrlQuery>
 
-#include "QGCBridgeCore.h"
 
 #ifdef Q_OS_MACOS
 #include "QGCBridgeC.h"
@@ -67,6 +66,18 @@
 #include <algorithm>
 #include <functional>
 #include <optional>
+
+namespace
+{
+
+QByteArray bridgeText(char *owned)
+{
+    const QByteArray copy(owned);
+    qgc_bridge_free(owned);
+    return copy;
+}
+
+} // namespace
 
 QGC_LOGGING_CATEGORY(DebugApiServerLog, "qgc.debugapi.debugapiserver")
 
@@ -1690,13 +1701,9 @@ QByteArray DebugApiServer::_bridgeJson(const QString &path, const QUrlQuery &que
     }
 
     if (path == QStringLiteral("/bridge/get")) {
-        return QGCBridgeCore::get(target).toUtf8();
+        return bridgeText(qgc_bridge_get(target.toUtf8().constData()));
     }
 
-    // The bridge resolves any property or Q_INVOKABLE reachable from its roots, which
-    // includes vehicle.armed, emergencyStop, guidedModeRTL and startMission. Writing
-    // through it must sit behind the same gate as /vehicle/motortest rather than
-    // quietly routing around it.
     if (!qEnvironmentVariableIsSet("QGC_DEBUG_API_ALLOW_ACTUATORS")) {
         return _errorJson(QStringLiteral(
             "bridge writes disabled; set QGC_DEBUG_API_ALLOW_ACTUATORS=1 (props off!)"));
@@ -1705,21 +1712,17 @@ QByteArray DebugApiServer::_bridgeJson(const QString &path, const QUrlQuery &que
         if (!query.hasQueryItem(QStringLiteral("value"))) {
             return _errorJson(QStringLiteral("value is required"));
         }
-        // Take the value as a JSON literal when it parses as one (numbers, true, null),
-        // and as a plain string otherwise, so ?value=3 and ?value=Manual both work.
         const QString raw = query.queryItemValue(QStringLiteral("value"), QUrl::FullyDecoded);
         const QJsonDocument literal = QJsonDocument::fromJson(QStringLiteral("[%1]").arg(raw).toUtf8());
         const QJsonValue value = literal.isArray() ? literal.array().at(0) : QJsonValue(raw);
         const QByteArray payload = QJsonDocument(QJsonObject{{"value", value}}).toJson(QJsonDocument::Compact);
-        return QGCBridgeCore::set(target, QString::fromUtf8(payload)).toUtf8();
+        return bridgeText(qgc_bridge_set(target.toUtf8().constData(), payload.constData()));
     }
     if (path == QStringLiteral("/bridge/invoke")) {
-        // FullyDecoded: PrettyDecoded leaves brackets and quotes percent-encoded, so
-        // the JSON never parses and every call arrives with an empty argument list.
         const QString args = query.hasQueryItem(QStringLiteral("args"))
             ? query.queryItemValue(QStringLiteral("args"), QUrl::FullyDecoded)
             : QStringLiteral("[]");
-        return QGCBridgeCore::invoke(target, args).toUtf8();
+        return bridgeText(qgc_bridge_invoke(target.toUtf8().constData(), args.toUtf8().constData()));
     }
 
     return _errorJson(QStringLiteral("unknown bridge route: %1").arg(path));

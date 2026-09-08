@@ -1,7 +1,10 @@
 target_sources(${CMAKE_PROJECT_NAME}
     PRIVATE
+        QGCBridgeC.cc
+        QGCBridgeC.h
         QGCBridgeCore.cc
         QGCBridgeCore.h
+        QGCCoreC.h
         QGCEntry.cc
         QGCEntry.h
         QGCVideoC.cc
@@ -11,8 +14,6 @@ target_sources(${CMAKE_PROJECT_NAME}
 if(APPLE AND NOT IOS)
     target_sources(${CMAKE_PROJECT_NAME}
         PRIVATE
-            QGCBridgeC.cc
-            QGCBridgeC.h
             QGCEmbed.cc
             QGCLinksC.cc
             QGCLinksC.h
