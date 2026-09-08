@@ -1161,10 +1161,20 @@ The check that would have prevented the false report was one grep of my own simu
 parameter list. Instead a peer spent a round reproducing it on macOS. **Before reporting that a
 producer is broken, confirm the input it was given exists.**
 
-The migration itself was sound: "This vehicle exposes none of these parameters" is true for that
-page on this vehicle, and the table-based page is the one that lies - it renders rows for
-parameters the vehicle does not have, showing 0. It re-lands once the core's drop-the-default-fact
-change is in an AAR. The `path` is correct and carries the parameter -
+The migration itself was sound and **has now landed**. With an AAR carrying the core's
+drop-the-default-fact change, `view.setup` serves the groups and pages and `view.setup(<page>)`
+serves the sections with every control decoded; `ParameterForm` takes a page name rather than a
+table of parameter names.
+
+The pages read better than they did. Frame showed `FRAME_CLASS` and `FRAME_TYPE`; it now shows
+"Frame Class" and "Frame Type (+, X, V, etc)" with pickers, because the label is the core's
+instead of the raw parameter name the table happened to carry. And a page whose parameters the
+vehicle lacks says so: the old form rendered a row per table entry whatever the vehicle
+reported, so Power showed `BATT_MONITOR` and `BATT_CAPACITY` as 0 on a vehicle that has
+neither.
+
+`SetupPages`' tables are dead in production but stay for now - `hasNativeSetupPage` is pinned by
+another session's uncommitted test, and deleting it would break their work. The `path` is correct and carries the parameter -
 `vehicle.parameterManager.getParameter(-1,BATT_MONITOR)` - so the section titles and notes
 render and the rows cannot be labelled or read.
 
