@@ -7,6 +7,7 @@ extern "C" {
 typedef void (*QGCBridgeEventFn)(const char *path, const char *json);
 
 char *qgc_bridge_get(const char *path);
+char *qgc_bridge_get_fields(const char *path, const char *fields_csv);
 char *qgc_bridge_set(const char *path, const char *value_json);
 char *qgc_bridge_invoke(const char *path, const char *args_json);
 void qgc_bridge_watch(const char *paths_csv);

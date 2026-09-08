@@ -22,6 +22,14 @@ jstring jniGet(JNIEnv *env, jclass clazz, jstring pathA)
     return env->NewStringUTF(result.toUtf8().constData());
 }
 
+jstring jniGetFields(JNIEnv *env, jclass clazz, jstring pathA, jstring fieldsA)
+{
+    Q_UNUSED(clazz);
+    const QString result = QGCBridgeCore::getFields(
+        QJniObject(pathA).toString(), QJniObject(fieldsA).toString());
+    return env->NewStringUTF(result.toUtf8().constData());
+}
+
 jstring jniSet(JNIEnv *env, jclass clazz, jstring pathA, jstring jsonA)
 {
     Q_UNUSED(clazz);
@@ -133,6 +141,7 @@ void setNativeMethods()
 
     const JNINativeMethod javaMethods[] {
         { "get", "(Ljava/lang/String;)Ljava/lang/String;", reinterpret_cast<void *>(jniGet) },
+        { "getFields", "(Ljava/lang/String;Ljava/lang/String;)Ljava/lang/String;", reinterpret_cast<void *>(jniGetFields) },
         { "set", "(Ljava/lang/String;Ljava/lang/String;)Ljava/lang/String;", reinterpret_cast<void *>(jniSet) },
         { "invoke", "(Ljava/lang/String;Ljava/lang/String;)Ljava/lang/String;", reinterpret_cast<void *>(jniInvoke) },
         { "nativeWatch", "(Ljava/lang/String;)V", reinterpret_cast<void *>(jniWatch) },

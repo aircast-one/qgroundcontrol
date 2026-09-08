@@ -42,6 +42,13 @@ char *qgc_bridge_get(const char *path)
     return duplicate(onQtThread([&] { return QGCBridgeCore::get(copied); }));
 }
 
+char *qgc_bridge_get_fields(const char *path, const char *fields_csv)
+{
+    const QString copiedPath = QString::fromUtf8(path);
+    const QString copiedFields = QString::fromUtf8(fields_csv);
+    return duplicate(onQtThread([&] { return QGCBridgeCore::getFields(copiedPath, copiedFields); }));
+}
+
 char *qgc_bridge_set(const char *path, const char *value_json)
 {
     const QString copiedPath = QString::fromUtf8(path);

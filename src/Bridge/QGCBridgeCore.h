@@ -12,6 +12,7 @@ namespace QGCBridgeCore
     QString get(const QString &path);
     QString set(const QString &path, const QString &valueJson);
     QString invoke(const QString &path, const QString &argsJson);
+    QString getFields(const QString &path, const QString &fieldsCsv);
     void watch(const QStringList &paths);
     void setEventHandler(EventHandler handler);
 }

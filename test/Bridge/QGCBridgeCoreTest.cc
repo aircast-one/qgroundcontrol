@@ -685,6 +685,53 @@ void QGCBridgeCoreTest::_anObjectSaysWhatClassItIs()
     (void) QGCBridgeCore::invoke(QStringLiteral("plan.removeAll"), QStringLiteral("[]"));
 }
 
+void QGCBridgeCoreTest::_aProjectedReadIsSmallerAndKeepsWhatWasAsked()
+{
+    for (int i = 0; i < 20; ++i) {
+        const QJsonObject inserted = parse(QGCBridgeCore::invoke(
+            QStringLiteral("plan.missionController.insertSimpleMissionItem"),
+            QStringLiteral("[{\"latitude\": 47.39%1, \"longitude\": 8.54%1, \"altitude\": 50}, -1, false]").arg(i)));
+        QVERIFY2(inserted.value(QStringLiteral("ok")).toBool(),
+                 qPrintable(QJsonDocument(inserted).toJson(QJsonDocument::Compact)));
+    }
+
+    const QString path = QStringLiteral("plan.missionController.visualItems");
+    const QString wanted = QStringLiteral(
+        "coordinate,command,commandName,sequenceNumber,specifiesCoordinate,"
+        "isStandaloneCoordinate,isIncomplete,isTakeoffItem,isLandCommand,isSurveyItem,"
+        "isCurrentItem,exitCoordinate,amslEntryAlt,amslExitAlt,terrainAltitude,complexDistance");
+
+    (void) QGCBridgeCore::get(path);
+    (void) QGCBridgeCore::getFields(path, wanted);
+
+    QElapsedTimer clock;
+    clock.start();
+    const QString whole = QGCBridgeCore::get(path);
+    const qint64 wholeUs = clock.nsecsElapsed() / 1000;
+    clock.restart();
+    const QString projected = QGCBridgeCore::getFields(path, wanted);
+    const qint64 projectedUs = clock.nsecsElapsed() / 1000;
+
+    qDebug() << "PROJECTION bytes" << whole.size() << "->" << projected.size()
+             << "| micros" << wholeUs << "->" << projectedUs
+             << "| size" << (whole.size() ? (100 * projected.size() / whole.size()) : 0) << "%"
+             << "| time" << (wholeUs ? (100 * projectedUs / wholeUs) : 0) << "%";
+
+    QVERIFY2(projected.size() * 2 < whole.size(),
+             qPrintable(QStringLiteral("projected %1 vs whole %2").arg(projected.size()).arg(whole.size())));
+
+    const QJsonArray elements = parse(projected).value(QStringLiteral("elements")).toArray();
+    QVERIFY(elements.size() >= 21);
+    const QJsonObject item = elements.at(1).toObject();
+    QVERIFY2(item.contains(QStringLiteral("command")), qPrintable(QJsonDocument(item).toJson(QJsonDocument::Compact)));
+    QVERIFY(item.contains(QStringLiteral("coordinate")));
+    QVERIFY(item.contains(QStringLiteral("class")));
+    QVERIFY2(!item.contains(QStringLiteral("wizardMode")),
+             "a field that was not asked for came back anyway");
+
+    (void) QGCBridgeCore::invoke(QStringLiteral("plan.removeAll"), QStringLiteral("[]"));
+}
+
 // A coordinate read directly carries "valid"; nested in an object read it did not, so a
 // caller checking that key could not tell a good coordinate from a missing field. The
 // macOS head read nil there and would have hidden Orbit from a vehicle with a valid home.

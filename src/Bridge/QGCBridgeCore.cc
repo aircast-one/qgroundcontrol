@@ -18,6 +18,7 @@
 #include "SettingsManager.h"
 #include "Vehicle.h"
 
+#include <QtCore/QSet>
 #include <QtCore/QCoreApplication>
 #include <QtPositioning/QGeoCoordinate>
 #include <QtCore/QHash>
@@ -234,7 +235,7 @@ Resolved resolve(const QString &path)
     return Resolved { object, QString() };
 }
 
-QJsonObject objectJson(QObject *object);
+QJsonObject objectJson(QObject *object, const QSet<QString> &fields = {});
 
 QJsonValue variantJson(const QVariant &value)
 {
@@ -325,10 +326,19 @@ QJsonObject factJson(Fact *fact)
     return json;
 }
 
-QJsonObject objectJson(QObject *object);
-
-QJsonObject objectJson(QObject *object)
+QJsonObject compactFactJson(Fact *fact)
 {
+    return QJsonObject {
+        { QStringLiteral("kind"), QStringLiteral("fact") },
+        { QStringLiteral("name"), fact->name() },
+        { QStringLiteral("value"), QJsonValue::fromVariant(fact->cookedValue()) },
+        { QStringLiteral("valueString"), fact->cookedValueString() },
+    };
+}
+
+QJsonObject objectJson(QObject *object, const QSet<QString> &fields)
+{
+    const bool everything = fields.isEmpty();
     QJsonObject json;
     QJsonArray facts;
     QJsonArray children;
@@ -340,29 +350,38 @@ QJsonObject objectJson(QObject *object)
             continue;
         }
 
+        const QString name = QString::fromLatin1(property.name());
+        const bool wanted = everything || fields.contains(name);
+
         const QVariant value = property.read(object);
 
         QObject *const child = value.value<QObject *>();
         if (Fact *const fact = qobject_cast<Fact *>(child)) {
+            if (!wanted) {
+                continue;
+            }
             // Without the property it came from, a fact can be read and never written:
             // its name is a label, not a path segment.
-            QJsonObject described = factJson(fact);
-            described.insert(QStringLiteral("property"), QString::fromLatin1(property.name()));
+            QJsonObject described = everything ? factJson(fact) : compactFactJson(fact);
+            described.insert(QStringLiteral("property"), name);
             facts.append(described);
             continue;
         }
         if (child) {
-            children.append(QString::fromLatin1(property.name()));
+            children.append(name);
             continue;
         }
-        json.insert(QString::fromLatin1(property.name()), variantJson(value));
+        if (!wanted) {
+            continue;
+        }
+        json.insert(name, variantJson(value));
     }
 
     if (QmlObjectListModel *const model = qobject_cast<QmlObjectListModel *>(object)) {
         QJsonArray elements;
         for (int i = 0; i < model->count(); ++i) {
             QObject *const element = model->get(i);
-            elements.append(element ? objectJson(element) : QJsonObject());
+            elements.append(element ? objectJson(element, fields) : QJsonObject());
         }
         json.insert(QStringLiteral("elements"), elements);
     }
@@ -374,7 +393,7 @@ QJsonObject objectJson(QObject *object)
     return json;
 }
 
-QJsonObject readPath(const QString &path)
+QJsonObject readPath(const QString &path, const QSet<QString> &fields = {})
 {
     const Resolved resolved = resolve(path);
     if (!resolved.object) {
@@ -385,7 +404,7 @@ QJsonObject readPath(const QString &path)
         if (Fact *const fact = qobject_cast<Fact *>(resolved.object)) {
             return factJson(fact);
         }
-        return objectJson(resolved.object);
+        return objectJson(resolved.object, fields);
     }
 
     const QVariant value = resolved.object->property(resolved.property.toUtf8().constData());
@@ -754,6 +773,22 @@ QString get(const QString &path)
 {
     QString result;
     runOnQtThread([&result, &path]() { result = jsonToString(readPath(path)); });
+    return result;
+}
+
+QString getFields(const QString &path, const QString &fieldsCsv)
+{
+    const QStringList requested = fieldsCsv.split(QLatin1Char(','), Qt::SkipEmptyParts);
+    QSet<QString> fields;
+    for (const QString &field : requested) {
+        const QString trimmed = field.trimmed();
+        if (!trimmed.isEmpty()) {
+            fields.insert(trimmed);
+        }
+    }
+
+    QString result;
+    runOnQtThread([&result, &path, &fields]() { result = jsonToString(readPath(path, fields)); });
     return result;
 }
 
