@@ -957,6 +957,15 @@ Worth noting where it hid: a sentence in a `listOf(...)` of section definitions 
 configuration, not as an assertion about a vehicle. The audit that found the others was
 looking at UI code.
 
+And the right pattern was already in the tree, one file over. `desktopOnlyNote` in
+`SettingsSections.kt` derives its sentence from the facts actually present and returns
+nothing when none are — exactly what `readOnlyNote` now does. Setup had the hard-coded
+version while Settings had the derived one, so this was not a new idea, it was a rung of
+the ladder nobody climbed. A sweep of the remaining prose in both static lists found the
+rest sound: they are either honest about what this port has not built yet ("the calibration
+wizard is not here yet") or general guidance about a parameter rather than a claim about
+the connected vehicle.
+
 ### The rule these keep breaking
 
 Three times tonight, in three different costumes, the defect was **a message asserting
