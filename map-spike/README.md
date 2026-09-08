@@ -359,6 +359,39 @@ distance to the surface, which is what the survey editor labels Altitude. `camer
 object, so it needs its own read, and that read happens when a survey is selected rather than every
 poll, since the poll already costs one call per survey.
 
+## Terrain
+
+Ground height comes from a tile service, and it does not cover our test site.
+`https://terrain-ce.suite.auterion.com/api/v1/carpet?points=41.713,44.830,...`
+answers HTTP 500 `{"error":"tile not found"}` for Tbilisi and returns real
+carpets for Switzerland and San Francisco. So at 41.71,44.83 every
+`amslTerrainHeights` is `[]` and every `terrainAltitude` is NaN, and "ground
+height unknown" is the honest answer rather than a bug worth chasing. Nothing
+terrain-shaped can be tested here without moving the vehicle: `fakevehicle.py`
+takes `SIM_LAT`/`SIM_LON` for that.
+
+A survey is one visual item holding a whole flight. Reading its coordinate
+gives a point, and the profile charted a 6.43 km mission as the 0.25 km hop out
+to it. `complexDistance` is the distance the item covers on its own and
+`exitCoordinate` is where the next item is measured from.
+
+Item 0 of `visualItems` is the mission settings item - QGC finds it by that
+position too, `_visualItems->value<MissionSettingsItem*>(0)`. It is the planned
+home, not a leg that gets flown, and `MissionController` leaves it out of
+`missionTotalDistance` under `lastFlyThroughVI != _settingsItem`. Counting it
+put a different distance in the profile than in the status line above it.
+
+The two altitude sources disagree, and each is right about one thing. Every
+segment of a 5.9 km survey reported `coord1AMSLAlt` as 50 - the height above
+launch - while the item's `amslEntryAlt` read 1099 against 1049 of terrain.
+The item is resolved to AMSL; the segments are not. But the segments carry a
+run of `amslTerrainHeights` each, which is the only place the real ground curve
+exists. Ground from the segments, planned altitude from the item.
+
+Reading one survey's `flightPathSegments` is 31 KB of JSON across 67 segments,
+so it is fetched only for items that have a `complexDistance`, never per poll
+for the whole plan.
+
 ## Weight
 
 Upload is a filled button and everything else is text. It is the action that finishes the job — the
