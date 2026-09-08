@@ -1100,14 +1100,17 @@ since the requests are going out. So the reply either never reaches
 `_mavlinkMessageReceived` or does not decode — the retry means `infoReceived` never became
 true, so `_handleCameraInfo` did not run at all.
 
-**The log route to that answer is closed.** `CameraManagerLog` is registered as
-`qgc.camera.qgccameramanager`, but adding it to `[LoggingFilters]` does not take: the rules
-the app loads at startup contain the video categories and not that one. So the standard
-technique for this exact question does not work here, which is worth knowing before someone
-else spends an evening on it.
+**Correction: the log route is not closed, I was using the wrong key.** `[LoggingFilters]`
+entries are the **bare** category name — `categoryLoggingOn` does
+`settings.value(category)` and the code appends `.debug=true` itself when it builds the
+rules. The existing entries show it: `qgc.videomanager.videomanager=true`, no suffix. I had
+written `qgc.camera.qgccameramanager.debug=true`, which is the *output* format copied into
+the *input*, so the lookup missed and no rule was emitted. The ini I was editing had four
+correct examples in it.
 
-Recorded rather than chased further: the next person needs either a real MAVLink camera, or
-a way to see inside `QGCCameraManager` that is not `[LoggingFilters]`.
+So `qgc.camera.qgccameramanager=true` is the way to see inside `QGCCameraManager`, and the
+camera blocker is diagnosable after all — by whoever has the time, since the answer is one
+log away rather than behind a closed door.
 
 **Obstacle distance is built, and finding a bridge defect along the way.** QGC draws a
 proximity ring from `OBSTACLE_DISTANCE`; on a phone the useful form is a sentence, so the
