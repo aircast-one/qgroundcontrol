@@ -22,7 +22,6 @@ struct ValueField: View {
                 .onChange(of: editing) { focused in
                     guard !focused else { return }
                     send()
-                    draft = value
                 }
             if !units.isEmpty {
                 Text(units).font(.caption).foregroundColor(.secondary).fixedSize()

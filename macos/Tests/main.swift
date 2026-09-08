@@ -695,6 +695,30 @@ func checkFlyDetail() {
 
 checkFlyDetail()
 
+func checkCalibrationOrder() {
+    expect(CalibrationRoutine.compass.blocked(whenAccelNeeded: true),
+           "a compass calibration on an uncalibrated accelerometer gives a result to distrust")
+    expect(CalibrationRoutine.levelHorizon.blocked(whenAccelNeeded: true),
+           "and so does levelling the horizon against one")
+    expect(!CalibrationRoutine.accelerometer.blocked(whenAccelNeeded: true),
+           "the accelerometer itself is the way out, so it is never blocked")
+    expect(!CalibrationRoutine.gyro.blocked(whenAccelNeeded: true),
+           "the gyro does not depend on it")
+    expect(!CalibrationRoutine.pressure.blocked(whenAccelNeeded: true),
+           "nor does the barometer")
+    expect(!CalibrationRoutine.compass.blocked(whenAccelNeeded: false),
+           "and once the accelerometer is done the compass is offered again")
+
+    expect(CalibrationRoutine.compass.description(whenAccelNeeded: true),
+           "Calibrate the accelerometer first.",
+           "a blocked row says what to do instead of how to do what it will not let you")
+    expect(CalibrationRoutine.compass.description(whenAccelNeeded: false),
+           CalibrationRoutine.compass.explanation,
+           "and goes back to its own instructions when it is available")
+}
+
+checkCalibrationOrder()
+
 func checkFlightModes() {
     let all = ["Stabilize", "Altitude Hold", "Auto", "Guided", "Loiter", "RTL", "Land",
                "Position Hold", "Acro", "Circle", "Turtle"]

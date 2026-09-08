@@ -112,6 +112,20 @@ enum CalibrationRoutine: String, CaseIterable, Identifiable {
 
     var id: String { rawValue }
 
+    var needsAccelerometerFirst: Bool {
+        self == .compass || self == .levelHorizon
+    }
+
+    func blocked(whenAccelNeeded accelNeeded: Bool) -> Bool {
+        needsAccelerometerFirst && accelNeeded
+    }
+
+    static let accelFirst = "Calibrate the accelerometer first."
+
+    func description(whenAccelNeeded accelNeeded: Bool) -> String {
+        blocked(whenAccelNeeded: accelNeeded) ? CalibrationRoutine.accelFirst : explanation
+    }
+
     var title: String {
         switch self {
         case .accelerometer: return "Accelerometer"

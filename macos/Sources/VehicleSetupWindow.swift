@@ -125,13 +125,16 @@ struct SensorsView: View {
 
             GroupCard {
                 ForEach(Array(CalibrationRoutine.allCases.enumerated()), id: \.element.id) { row, routine in
+                    let blocked = routine.blocked(whenAccelNeeded: store.calibration.accelNeeded)
                     GroupRow(title: routine.title,
-                             description: routine.explanation,
+                             description: routine.description(whenAccelNeeded:
+                                 store.calibration.accelNeeded),
                              showSeparator: row > 0,
                              trailing: {
                                  Button("Start") { store.start(routine) }
-                                     .disabled(store.calibration.busy)
+                                     .disabled(store.calibration.busy || blocked)
                              })
+                        .foregroundColor(blocked ? .secondary : .primary)
                 }
             }
 

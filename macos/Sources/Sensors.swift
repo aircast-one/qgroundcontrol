@@ -36,7 +36,8 @@ final class SensorsStore: ObservableObject, Probeable {
     }
 
     func start(_ routine: CalibrationRoutine) {
-        guard calibration.connected, !calibration.busy else { return }
+        guard calibration.connected, !calibration.busy,
+              !routine.blocked(whenAccelNeeded: calibration.accelNeeded) else { return }
         lastStarted = routine.rawValue
         Bridge.invoke(routine.invocation, routine.arguments)
         refresh()
@@ -60,6 +61,9 @@ final class SensorsStore: ObservableObject, Probeable {
                          "progress": calibration.progressText, "help": calibration.helpText,
                          "statusText": calibration.statusText, "busy": calibration.busy,
                          "needs": calibration.needsAttention,
+                         "blocked": CalibrationRoutine.allCases
+                             .filter { $0.blocked(whenAccelNeeded: calibration.accelNeeded) }
+                             .map(\.rawValue),
                          "sides": calibration.visibleSides.map(\.title),
                          "lastStarted": lastStarted],
          "failing": failing.map(\.name),
