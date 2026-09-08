@@ -24,15 +24,15 @@ class LandingCutTest {
         val items = missionItems(plan(settings, placed(44.1), rtl, placed(44.2)))
 
         assertEquals(3, items.size)
-        assertFalse(items[1].afterLanding)
-        assertTrue(items[2].afterLanding)
+        assertTrue(items[1].routed)
+        assertFalse(items[2].routed)
     }
 
     @Test
     fun `nothing is after the landing when there is no landing`() {
         val items = missionItems(plan(settings, placed(44.1), placed(44.2)))
 
-        assertTrue(items.none { it.afterLanding })
+        assertTrue(items.all { it.routed })
     }
 
     @Test

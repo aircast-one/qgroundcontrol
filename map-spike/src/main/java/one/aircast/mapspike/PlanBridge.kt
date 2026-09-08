@@ -81,13 +81,10 @@ data class MissionItem(
     // Where the aircraft leaves this item, which for a survey is the far corner
     // rather than the one it arrived at. Null when the item is a single point.
     val exit: TrackPoint? = null,
-    // Everything past the landing. QGC stops both the line and the distance
-    // there and so does this.
-    val afterLanding: Boolean = false,
-    // Whether the route runs through this item at all. Drawn either way: a
-    // camera target has a place on the map, it is just not somewhere the
-    // aircraft goes.
-    val flownLeg: Boolean = true,
+    // Whether the route runs through this item. Drawn either way: a camera
+    // target has a place on the map, it is just not somewhere the aircraft
+    // goes, and neither is anything past the landing.
+    val routed: Boolean = true,
 )
 
 // One question, asked once. The map and the profile disagreed twice about the
@@ -147,8 +144,7 @@ fun missionItems(json: JSONObject?): List<MissionItem> {
             command = element.optString("commandName"),
             current = element.optBoolean("isCurrentItem"),
             altitude = factValue(element, "Altitude"),
-            afterLanding = index > endsAfter,
-            flownLeg = isFlownLeg(element),
+            routed = isFlownLeg(element) && index <= endsAfter,
             exit = element.optJSONObject("exitCoordinate")?.let { at ->
                 val exitLatitude = at.optDouble("latitude", Double.NaN)
                 val exitLongitude = at.optDouble("longitude", Double.NaN)

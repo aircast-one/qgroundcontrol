@@ -126,7 +126,7 @@ class PlanBridgeTest {
         val roi = """{"specifiesCoordinate":true,"isStandaloneCoordinate":true,""" +
             """"coordinate":{"latitude":41.0,"longitude":44.0}}"""
 
-        assertFalse(missionItems(model(roi)).single().flownLeg)
-        assertTrue(missionItems(model(element())).single().flownLeg)
+        assertFalse(missionItems(model(roi)).single().routed)
+        assertTrue(missionItems(model(element())).single().routed)
     }
 }
