@@ -18,12 +18,16 @@ import one.aircast.android.bridge.Qgc
 import one.aircast.android.bridge.offMainDetached
 import one.aircast.android.bridge.qgcBool
 import one.aircast.android.bridge.qgcDouble
+import one.aircast.android.bridge.qgcStrings
 
-private const val CAMERA = "vehicle.cameraManager.currentCameraInstance"
+private const val MANAGER = "vehicle.cameraManager"
+private const val CAMERA = "$MANAGER.currentCameraInstance"
 
 @Composable
 fun CameraControlLayer(modifier: Modifier = Modifier) {
     val hasVehicle by qgcBool("vehicles.activeVehicleAvailable")
+    val labels by qgcStrings("$MANAGER.cameraLabels")
+    val current by qgcDouble("$MANAGER.currentCamera", 0.0)
     val capturesPhotos by qgcBool("$CAMERA.capturesPhotos")
     val capturesVideo by qgcBool("$CAMERA.capturesVideo")
     val hasModes by qgcBool("$CAMERA.hasModes")
@@ -52,6 +56,17 @@ fun CameraControlLayer(modifier: Modifier = Modifier) {
             horizontalArrangement = Arrangement.spacedBy(8.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
+            if (labels.size > 1) {
+                FilterChip(
+                    selected = false,
+                    onClick = {
+                        val next = (current.toInt() + 1) % labels.size
+                        offMainDetached { Qgc.set("$MANAGER.currentCamera", next) }
+                    },
+                    label = { Text(labels.getOrElse(current.toInt()) { "Camera" }) },
+                )
+            }
+
             if (hasModes) {
                 cameraModeLabel(mode.toInt())?.let { label ->
                     FilterChip(
