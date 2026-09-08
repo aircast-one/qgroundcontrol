@@ -329,13 +329,13 @@ touch an altitude. The field refuses what does not parse and anything below the 
 sending it, and keeps a half-typed number — "4" on the way to "47" is not a reason to throw the edit
 away.
 
-**Say when the map is not showing the whole plan.** A plan can hold complex items this map cannot
-draw — corridor and structure scans, landing patterns — and opening a file is where they arrive.
-They still count in the distance and still upload to the aircraft, so drawing part of a plan without
-saying so is the dangerous half. Complex is not the same as undrawn — Mission Start is a complex
-item and is drawn as a numbered marker — so the test is whether anything on the map came from that
-element, not what kind of element it is. The check defaults to "simple" when the property is missing, so a
-serialisation change makes it stop detecting rather than start crying wolf.
+**The map does not draw every item a plan can hold.** Corridor scans, structure scans and landing
+patterns are not rendered, and a plan opened from a file is where they arrive. They still count in
+the distance and still upload. A runtime warning for this was tried and removed: three attempts at
+the predicate each fired on ordinary plans, because "complex", "specifies a coordinate" and "was
+drawn" do not mean on real serialised elements what they appear to mean. A warning that fires on
+every plan is worse than the gap it describes, so this is documentation until someone can state the
+condition against real data rather than against an assumption about it.
 
 **Every control on the selection row must follow the selection.** Rotate did not: it acted on
 `surveys.first()` whatever was picked, so with two surveys it turned the wrong grid, and it appeared

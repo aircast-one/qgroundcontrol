@@ -61,7 +61,6 @@ internal fun MapSpikeScreen(mapStyle: String, onClear: (() -> Unit)? = null) {
     var circles by remember { mutableStateOf<List<FenceCircle>>(emptyList()) }
     var surveyList by remember { mutableStateOf<List<Survey>>(emptyList()) }
     var profile by remember { mutableStateOf(TerrainProfile(emptyList())) }
-    var undrawn by remember { mutableStateOf<List<String>>(emptyList()) }
     var selected by remember { mutableStateOf<MapHit?>(null) }
     var busy by remember { mutableStateOf<String?>(null) }
     val scope = rememberCoroutineScope()
@@ -123,7 +122,6 @@ internal fun MapSpikeScreen(mapStyle: String, onClear: (() -> Unit)? = null) {
             val nextCircles = FenceBridge.circles()
             val nextSurveys = SurveyBridge.surveysFrom(plan)
             val nextProfile = terrainProfile(plan)
-            val nextUndrawn = undrawnComplexItems(plan, nextItems, nextSurveys)
             withContext(Dispatchers.Main) {
                 items = nextItems
                 fences = nextFences
@@ -134,7 +132,6 @@ internal fun MapSpikeScreen(mapStyle: String, onClear: (() -> Unit)? = null) {
                 circles = nextCircles
                 surveyList = nextSurveys
                 profile = nextProfile
-                undrawn = nextUndrawn
             }
         }
     }
@@ -220,7 +217,7 @@ internal fun MapSpikeScreen(mapStyle: String, onClear: (() -> Unit)? = null) {
                         planSummary(
                             items, fences, circles, rally, surveyList,
                             missionDistance, missionTime, selected,
-                        ) + undrawnLabel(undrawn)
+                        )
                     },
                     Modifier.padding(horizontal = 10.dp, vertical = 6.dp),
                     style = MaterialTheme.typography.bodySmall,
