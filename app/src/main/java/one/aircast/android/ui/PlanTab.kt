@@ -86,14 +86,22 @@ fun PlanTab(modifier: Modifier = Modifier) {
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(4.dp),
         ) {
-            TextButton(
-                enabled = can.open,
-                onClick = { if (dirty) pending = PlanConfirm.Open else files.open() },
-            ) { Text("Open") }
-            TextButton(enabled = can.save, onClick = files.save) { Text("Save") }
             Box {
-                TextButton(onClick = { menuOpen = true }) { Text("More") }
+                TextButton(onClick = { menuOpen = true }) { Text("File") }
                 DropdownMenu(expanded = menuOpen, onDismissRequest = { menuOpen = false }) {
+                    DropdownMenuItem(
+                        text = { Text("Open…") },
+                        enabled = can.open,
+                        onClick = {
+                            menuOpen = false
+                            if (dirty) pending = PlanConfirm.Open else files.open()
+                        },
+                    )
+                    DropdownMenuItem(
+                        text = { Text("Save") },
+                        enabled = can.save,
+                        onClick = { menuOpen = false; files.save() },
+                    )
                     DropdownMenuItem(
                         text = { Text("Save as…") },
                         enabled = can.save,
@@ -122,7 +130,7 @@ fun PlanTab(modifier: Modifier = Modifier) {
                 }
             }
             Text(
-                text = notice ?: planStatusText(files.documentName(), dirty),
+                text = notice ?: planStatusText(files.documentName(), dirty, offline),
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                 maxLines = if (notice == null) 1 else 3,

@@ -40,22 +40,33 @@ class SaveGuardTest {
 class PlanStatusTest {
     @Test
     fun `an untouched plan is new, not unsaved`() {
-        assertEquals("New plan", planStatusText(null, dirty = false))
+        assertEquals("New plan", planStatusText(null, dirty = false, offline = true))
     }
 
     @Test
     fun `an edited plan with no file says so`() {
-        assertEquals("Unsaved plan", planStatusText(null, dirty = true))
+        assertEquals("Unsaved plan", planStatusText(null, dirty = true, offline = true))
     }
 
     @Test
     fun `a saved plan is named`() {
-        assertEquals("mission.plan", planStatusText("mission.plan", dirty = false))
+        assertEquals("mission.plan", planStatusText("mission.plan", dirty = false, offline = true))
     }
 
     @Test
-    fun `edits after a save are called out next to the name`() {
-        assertEquals("mission.plan · unsaved changes", planStatusText("mission.plan", dirty = true))
+    fun `with no vehicle, dirty does mean the file is behind`() {
+        assertEquals(
+            "mission.plan · unsaved changes",
+            planStatusText("mission.plan", dirty = true, offline = true),
+        )
+    }
+
+    @Test
+    fun `with a vehicle, a saved plan is not called unsaved`() {
+        assertEquals(
+            "mission.plan · not uploaded",
+            planStatusText("mission.plan", dirty = true, offline = false),
+        )
     }
 }
 

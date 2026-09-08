@@ -88,11 +88,12 @@ internal fun confirmCopy(kind: PlanConfirm): ConfirmCopy = when (kind) {
     )
 }
 
-internal fun planStatusText(name: String?, dirty: Boolean): String = when {
+internal fun planStatusText(name: String?, dirty: Boolean, offline: Boolean): String = when {
     name == null && !dirty -> "New plan"
     name == null -> "Unsaved plan"
-    dirty -> "$name \u00b7 unsaved changes"
-    else -> name
+    !dirty -> name
+    offline -> "$name \u00b7 unsaved changes"
+    else -> "$name \u00b7 not uploaded"
 }
 
 class PlanFileActions(
