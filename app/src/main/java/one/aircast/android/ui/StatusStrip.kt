@@ -159,7 +159,7 @@ private fun batteryLevelColour(level: BatteryLevel): Color = when (level) {
     BatteryLevel.Normal -> Color.Unspecified
     BatteryLevel.Caution -> Color(0xFFFFD54F)
     BatteryLevel.Warning -> Color(0xFFFFB74D)
-    BatteryLevel.Critical -> Color(0xFFE57373)
+    BatteryLevel.Critical -> Color(0xFFFF5252)
 }
 
 private fun gpsColour(lock: String?): Color = when {
