@@ -1,6 +1,7 @@
 package one.aircast.mapspike
 
 import org.json.JSONObject
+import org.mavlink.qgroundcontrol.QGCBridge
 import kotlin.math.asin
 import kotlin.math.cos
 import kotlin.math.max
@@ -64,28 +65,63 @@ private fun point(json: JSONObject, name: String): TrackPoint? {
     return if (isPlottable(latitude, longitude)) TrackPoint(latitude, longitude) else null
 }
 
-// An item with no planned altitude is dropped rather than drawn at zero, which
-// would read as a dive to sea level. Unknown ground height is carried as null.
+// One terrain height per item is one sample of the ground, and stretching it
+// across a survey drew flat ground under a flight that climbs 100 m. The
+// segments each carry their own run of heights, which is the shape QGC's own
+// profile draws, so the ground comes from them.
 //
-// A survey is one item holding a whole flight. Reading only its entry
-// coordinate charted the hop out to it and called that the mission: 0.25 km
-// against the 6.43 km the plan actually flies. complexDistance is how far the
-// item itself covers, so it is added to the distance travelled and closed off
-// at the exit altitude.
-//
-// Item 0 is the mission settings item, which QGC identifies by that position
-// too. It is the planned home position, not a leg that gets flown, and
-// MissionController leaves it out of missionTotalDistance for that reason.
-// Counting it put a different distance in the profile than in the status line
-// above it, and drew the plan diving from a sea-level launch it never has.
-fun terrainProfile(json: JSONObject?): TerrainProfile {
+// Only the ground. Every segment of a 5.9 km survey reported coord1AMSLAlt as
+// 50, the height above launch, while the item's amslEntryAlt read 1099 against
+// terrain of 1049 - the item is the one resolved to AMSL. Taking the planned
+// line from the segments put a relative 50 on an AMSL chart and pinned the
+// floor 900 m under the flight, so it is interpolated across the item's own
+// entry and exit instead.
+private fun segmentTerrain(
+    segments: JSONObject?,
+    from: Double,
+    entryAlt: Double,
+    exitAlt: Double,
+): List<ProfilePoint>? {
+    val elements = segments?.optJSONArray("elements")?.takeIf { it.length() > 0 } ?: return null
+
+    val sampled = (0 until elements.length())
+        .mapNotNull { elements.optJSONObject(it) }
+        .fold(from to emptyList<Pair<Double, Double>>()) { (at, samples), segment ->
+            val length = segment.optDouble("totalDistance", 0.0).takeIf { !it.isNaN() } ?: 0.0
+            val heights = segment.optJSONArray("amslTerrainHeights")
+            val count = heights?.length() ?: 0
+
+            if (count < 2) {
+                at + length to samples
+            } else {
+                at + length to samples + (0 until count).mapNotNull { index ->
+                    heights.optDouble(index, Double.NaN).takeIf { !it.isNaN() }?.let {
+                        at + length * (index.toDouble() / (count - 1)) to it
+                    }
+                }
+            }
+        }
+        .second
+        .takeIf { it.size >= 2 } ?: return null
+
+    val span = (sampled.last().first - from).takeIf { it > 0.0 } ?: return null
+
+    return sampled.map { (distance, terrain) ->
+        ProfilePoint(distance, terrain, entryAlt + (exitAlt - entryAlt) * ((distance - from) / span))
+    }
+}
+
+fun terrainProfile(
+    json: JSONObject?,
+    segments: (Int) -> JSONObject? = { null },
+): TerrainProfile {
     val elements = json?.optJSONArray("elements") ?: return TerrainProfile(emptyList())
 
     return TerrainProfile(
         (1 until elements.length())
-            .mapNotNull { elements.optJSONObject(it) }
-            .filter { it.optBoolean("specifiesCoordinate") }
-            .fold(Walk(null, 0.0, emptyList())) { walk, element ->
+            .mapNotNull { index -> elements.optJSONObject(index)?.let { index to it } }
+            .filter { (_, element) -> element.optBoolean("specifiesCoordinate") }
+            .fold(Walk(null, 0.0, emptyList())) { walk, (index, element) ->
                 val entry = point(element, "coordinate") ?: return@fold walk
                 val terrain = element.optDouble("terrainAltitude", Double.NaN).takeIf { !it.isNaN() }
                 val entryAlt = element.optDouble("amslEntryAlt", Double.NaN)
@@ -98,18 +134,36 @@ fun terrainProfile(json: JSONObject?): TerrainProfile {
                 } else {
                     listOf(ProfilePoint(reached, terrain, entryAlt))
                 }
+                val flown = if (span == null || entryAlt.isNaN()) {
+                    null
+                } else {
+                    segmentTerrain(segments(index), reached, entryAlt, exitAlt ?: entryAlt)
+                }
                 val departure = if (span == null || exitAlt == null) {
                     emptyList()
                 } else {
                     listOf(ProfilePoint(reached + span, terrain, exitAlt))
                 }
 
+                // The segments carry their own entry altitude, and it is the one
+                // resolved against terrain. The item's amslEntryAlt reads back as
+                // the height above ground until that resolves, and mixing a
+                // relative 50 into an AMSL chart pinned the floor 900 m low.
                 Walk(
                     at = point(element, "exitCoordinate") ?: entry,
-                    travelled = reached + (span ?: 0.0),
-                    points = walk.points + arrival + departure,
+                    travelled = flown?.last()?.distance ?: (reached + (span ?: 0.0)),
+                    points = walk.points + (flown ?: (arrival + departure)),
                 )
             }
             .points,
     )
+}
+
+object SegmentBridge {
+    fun forItem(index: Int): JSONObject? =
+        runCatching {
+            JSONObject(
+                QGCBridge.get("plan.missionController.visualItems.$index.flightPathSegments"),
+            )
+        }.getOrNull()
 }

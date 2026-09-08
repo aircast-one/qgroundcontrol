@@ -137,7 +137,7 @@ internal fun MapSpikeScreen(mapStyle: String, onClear: (() -> Unit)? = null) {
             val nextRally = FenceBridge.rally()
             val nextCircles = FenceBridge.circles()
             val nextSurveys = SurveyBridge.surveysFrom(plan)
-            val nextProfile = terrainProfile(plan)
+            val nextProfile = terrainProfile(plan, SegmentBridge::forItem)
             withContext(Dispatchers.Main) {
                 items = nextItems
                 fences = nextFences

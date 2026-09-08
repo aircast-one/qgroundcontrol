@@ -255,6 +255,74 @@ class FlatProfileTest {
     }
 }
 
+class SegmentTerrainTest {
+    private fun segment(entry: Double, exit: Double, length: Double, vararg heights: Double) =
+        """{"coord1AMSLAlt":$entry,"coord2AMSLAlt":$exit,"totalDistance":$length,""" +
+            """"amslTerrainHeights":[${heights.joinToString(",")}]}"""
+
+    private fun segments(vararg items: String) =
+        JSONObject("""{"kind":"object","elements":[${items.joinToString(",")}]}""")
+
+    private val survey =
+        """{"specifiesCoordinate":true,"coordinate":{"latitude":47.0,"longitude":8.0},""" +
+            """"exitCoordinate":{"latitude":47.0,"longitude":8.01},"complexDistance":200.0,""" +
+            """"terrainAltitude":948.0,"amslEntryAlt":1099.0,"amslExitAlt":1099.0}"""
+
+    private fun plan(lookup: (Int) -> JSONObject?) = terrainProfile(
+        JSONObject(
+            """{"kind":"object","elements":[""" +
+                """{"specifiesCoordinate":true,"amslEntryAlt":0.0},$survey]}""",
+        ),
+        lookup,
+    )
+
+    @Test
+    fun `the ground follows the segments rather than one sampled height`() {
+        val profile = plan { segments(segment(1099.0, 1099.0, 200.0, 948.0, 1000.0, 1049.0)) }
+
+        assertEquals(listOf(948.0, 1000.0, 1049.0), profile.points.map { it.terrain })
+        assertEquals(948.0, profile.lowest, 1e-9)
+        assertEquals(1099.0, profile.highest, 1e-9)
+    }
+
+    @Test
+    fun `the item's own entry altitude is left out when segments supply one`() {
+        val profile = plan { segments(segment(1099.0, 1099.0, 200.0, 948.0, 1049.0)) }
+
+        assertEquals(listOf(1099.0, 1099.0), profile.points.map { it.planned })
+    }
+
+    @Test
+    fun `segment distances accumulate across the item`() {
+        val profile = plan {
+            segments(
+                segment(1099.0, 1099.0, 100.0, 948.0, 980.0),
+                segment(1099.0, 1099.0, 100.0, 980.0, 1049.0),
+            )
+        }
+
+        assertEquals(200.0, profile.distance, 1e-9)
+    }
+
+    @Test
+    fun `an item with no segment terrain keeps the entry and exit it already had`() {
+        val profile = plan { segments(segment(1099.0, 1099.0, 200.0)) }
+
+        assertEquals(2, profile.points.size)
+        assertEquals(200.0, profile.distance, 1e-9)
+    }
+
+    @Test
+    fun `segments that cannot be read fall back to the item itself`() {
+        val profile = plan { null }
+
+        assertEquals(2, profile.points.size)
+        assertEquals(200.0, profile.distance, 1e-9)
+        assertEquals(948.0, profile.points.first().terrain!!, 1e-9)
+    }
+}
+
+
 class ProfileLabelTest {
     private fun profile(vararg points: ProfilePoint) = TerrainProfile(points.toList())
 
