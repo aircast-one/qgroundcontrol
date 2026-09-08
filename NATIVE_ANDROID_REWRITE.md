@@ -153,6 +153,24 @@ decoder states it directly:
               downstream does not
     warning:  <amcvideodec-c2androidavcdecoder0> Subclass refused caps
 
+**This is now solved — Android video renders.** `createNativeSink` builds
+`glupload ! glcolorconvert ! glimagesink` on Android and a new `qgc_video_set_window`
+hands the sink an `ANativeWindow` through `GstVideoOverlay`; a Compose `SurfaceView`
+supplies the Surface. Verified on the OnePlus 6 against 1080p30 Main profile: the
+decoder selected is `amcviddec-c2androidavcdecoder`, **zero** not-negotiated and
+**zero** refused caps in a log with zero dropped chunks, and the ball moves between
+screenshots — (19,131), (280,98), (372,171) — which is what separates a live pipeline
+from a stuck frame. `glupload` passes GLMemory through untouched and uploads system
+memory when software decode is in play, so one bin serves both decoders.
+
+**macOS keeps the appsink, and that fork is correct rather than cautious.**
+`VideoSurface.swift` reads frames through `qgc_video_copy_frame`, and `vtdec`'s src pad
+template offers a system-memory output where the Android codec offers none. I nearly
+shipped the GL bin to both and broke macOS silently — it compiles either way, and their
+video is parked waiting for a stream, so nothing would have complained for a long time.
+Checking who called `qgc_video_copy_frame` before deleting it is what caught it.
+
+The finding that forced all this:
 `c2androidavcdecoder` has **no system-memory output mode**. There is no arrangement of
 caps that gets decoded frames into system memory on this device, so `videoconvert !
 appsink` was never going to work and no amount of tuning it will. That leaves exactly
