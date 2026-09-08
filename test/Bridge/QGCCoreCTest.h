@@ -46,6 +46,7 @@ private slots:
     void _kmlFilesFollowTheMapPolygonTest();
     void _shapeFilesFollowShapeTest();
     void _geoConversionsMatchGeoTest();
+    void _terrainTileNeedsAFile();
 
 private:
     static bool _unavailable(const char *path);

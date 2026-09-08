@@ -279,7 +279,8 @@
             "view.geoToNed",
             "view.nedToGeo",
             "view.geoToUtm",
-            "view.utmToGeo"
+            "view.utmToGeo",
+            "view.terrainTile"
         ]
     },
     "view.control(settings.appSettings.audioMuted)": {

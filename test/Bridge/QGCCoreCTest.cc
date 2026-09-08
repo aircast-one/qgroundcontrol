@@ -643,3 +643,9 @@ void QGCCoreCTest::_geoConversionsMatchGeoTest()
     QVERIFY(qAbs(back.value(QStringLiteral("latitude")).toDouble() - 47.3764) < 0.00001);
     QCOMPARE(take(qgc_bridge_get("view.nedToGeo(1,2)")).value(QStringLiteral("kind")).toString(), QStringLiteral("null"));
 }
+
+void QGCCoreCTest::_terrainTileNeedsAFile()
+{
+    QCOMPARE(take(qgc_bridge_get("view.terrainTile")).value(QStringLiteral("kind")).toString(), QStringLiteral("null"));
+    QCOMPARE(take(qgc_bridge_get("view.terrainTile(/nonexistent.tile)")).value(QStringLiteral("readable")).toBool(true), false);
+}

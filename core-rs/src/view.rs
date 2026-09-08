@@ -33,6 +33,7 @@ use crate::speed;
 use crate::survey;
 use crate::takeoff;
 use crate::terrain;
+use crate::terraintile;
 use crate::tlog;
 use crate::vibration;
 use crate::video;
@@ -89,6 +90,7 @@ pub const VIEWS: &[View] = &[
     View { path: "view.nedToGeo", deps: geo::DEPS, compute: geo::ned_to_geo_view },
     View { path: "view.geoToUtm", deps: geo::DEPS, compute: geo::geo_to_utm_view },
     View { path: "view.utmToGeo", deps: geo::DEPS, compute: geo::utm_to_geo_view },
+    View { path: "view.terrainTile", deps: terraintile::DEPS, compute: terraintile::terrain_tile_view },
 ];
 
 pub fn owns(path: &str) -> bool {
