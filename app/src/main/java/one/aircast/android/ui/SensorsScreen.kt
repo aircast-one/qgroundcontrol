@@ -34,12 +34,6 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
-import androidx.compose.runtime.rememberCoroutineScope
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.delay
-import kotlinx.coroutines.launch
-import kotlinx.coroutines.withContext
-import kotlinx.coroutines.withTimeoutOrNull
 import one.aircast.android.bridge.Qgc
 import one.aircast.android.bridge.offMainDetached
 import one.aircast.android.bridge.qgcBool
@@ -53,36 +47,7 @@ internal data class Calibration(
     val method: String,
     val instruction: String,
     val warning: String = "",
-    // APMSensorsComponent.qml blocks these two while the accelerometer needs calibrating.
-    // A compass calibration against an uncalibrated accelerometer produces a result the
-    // operator has no reason to distrust, which is worse than refusing to start it. The
-    // accelerometer itself is never blocked, because it is the way out.
-    val needsAccelFirst: Boolean = false,
 )
-
-internal fun blockedByAccel(calibration: Calibration, accelNeeded: Boolean): Boolean =
-    calibration.needsAccelFirst && accelNeeded
-
-private const val CAL_START_MS = 5000L
-
-// Every calibration entry point on APMSensorsComponentController is void, so the bridge
-// can only say the method was called. The dialog closes either way, and a start that did
-// nothing leaves the operator back at the list with no calibration and nothing said.
-internal fun calibrationFailure(name: String, started: Boolean): String? =
-    if (started) null else "$name calibration did not start."
-
-private fun calibrationRunning(): Boolean =
-    Qgc.get("$CAL.calibrationInProgress").opt("value") == true
-
-private fun calibrationStatus(): String =
-    Qgc.get("$CAL.statusText").opt("value")?.toString().orEmpty()
-
-// calibrationInProgress alone is not enough: pressure finishes before a 150 ms poll can
-// see it, so watching only that flag reported a calibration that had already succeeded as
-// one that never started. The controller writes "Requesting ..." to statusText as it
-// begins, so a changed status is the evidence a fast routine leaves behind.
-internal fun calibrationBegan(running: Boolean, statusBefore: String, statusNow: String): Boolean =
-    running || statusNow != statusBefore
 
 internal val CALIBRATIONS = listOf(
     Calibration(
@@ -94,14 +59,12 @@ internal val CALIBRATIONS = listOf(
     Calibration(
         name = "Compass",
         method = "calibrateCompass",
-        needsAccelFirst = true,
         instruction = "Rotate the vehicle slowly around all axes until the bar fills. " +
             "Stand away from metal, cars and reinforced concrete.",
     ),
     Calibration(
         name = "Level Horizon",
         method = "levelHorizon",
-        needsAccelFirst = true,
         instruction = "Place the vehicle in its level flight position and leave it still.",
         warning = "Sets what the vehicle considers level. Get this wrong and it will drift in flight.",
     ),
@@ -294,8 +257,6 @@ fun SensorsScreen(modifier: Modifier = Modifier) {
     val lastResult by qgcString("$CAL.statusText")
     var pending by remember { mutableStateOf<Calibration?>(null) }
     var runningName by remember { mutableStateOf("") }
-    var notice by remember { mutableStateOf<String?>(null) }
-    val scope = rememberCoroutineScope()
 
     if (!hasVehicle) {
         SensorsNotice("Connect a vehicle to calibrate its sensors.", modifier)
@@ -316,27 +277,12 @@ fun SensorsScreen(modifier: Modifier = Modifier) {
             calibration = calibration,
             onConfirm = {
                 runningName = calibration.name
-                notice = null
-                scope.launch {
-                    val before = withContext(Dispatchers.Default) { calibrationStatus() }
-                    val dispatched = withContext(Dispatchers.Default) {
-                        if (calibration.method == "calibrateAccel") {
-                            Qgc.invoke("$CAL.calibrateAccel", false)
-                        } else {
-                            Qgc.invoke("$CAL.${calibration.method}")
-                        }
+                offMainDetached {
+                    if (calibration.method == "calibrateAccel") {
+                        Qgc.invoke("$CAL.calibrateAccel", false)
+                    } else {
+                        Qgc.invoke("$CAL.${calibration.method}")
                     }
-                    val started = dispatched && withTimeoutOrNull(CAL_START_MS) {
-                        while (
-                            !withContext(Dispatchers.Default) {
-                                calibrationBegan(calibrationRunning(), before, calibrationStatus())
-                            }
-                        ) {
-                            delay(150)
-                        }
-                        true
-                    } == true
-                    notice = calibrationFailure(calibration.name, started)
                 }
             },
             onDismiss = { pending = null },
@@ -353,39 +299,25 @@ fun SensorsScreen(modifier: Modifier = Modifier) {
     ) {
         item(key = "header") { SectionHeader("Calibration") }
 
-        notice?.let { message ->
-            item(key = "notice") {
-                Text(
-                    text = message,
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.error,
-                    modifier = Modifier.padding(horizontal = 20.dp, vertical = 8.dp),
-                )
-            }
-        }
-
         items(CALIBRATIONS, key = { it.name }) { calibration ->
             val needed = when (calibration.name) {
                 "Accelerometer" -> accelNeeded
                 "Compass" -> compassNeeded
                 else -> null
             }
-            val blocked = blockedByAccel(calibration, accelNeeded)
             SetupRow(
                 title = calibration.name,
-                status = when {
-                    blocked -> "Calibrate the accelerometer first"
-                    needed == true -> "Not calibrated"
-                    needed == false -> "Calibrated"
-                    else -> ""
+                status = when (needed) {
+                    true -> "Not calibrated"
+                    false -> "Calibrated"
+                    null -> ""
                 },
-                state = when {
-                    blocked -> SetupState.Neutral
-                    needed == true -> SetupState.NeedsAttention
-                    needed == false -> SetupState.Done
-                    else -> SetupState.Neutral
+                state = when (needed) {
+                    true -> SetupState.NeedsAttention
+                    false -> SetupState.Done
+                    null -> SetupState.Neutral
                 },
-                onClick = if (blocked) null else ({ pending = calibration }),
+                onClick = { pending = calibration },
             )
         }
 

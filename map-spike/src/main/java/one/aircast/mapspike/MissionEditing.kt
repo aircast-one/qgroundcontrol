@@ -33,21 +33,35 @@ sealed interface MapHit {
 // close together — a launch point and the first waypoint routinely do — that
 // grabs whichever was drawn first, and the wrong item moves. Fills are exempt:
 // being inside one is not a matter of degree.
+// Split out from the projection so the rule can be tested without a map. A null
+// entry is something that did not project to a point; it sorts last but still
+// wins if nothing else is there, which is what the map-backed version did before
+// and what the callers rely on to read properties off a non-point feature.
+internal fun nearestIndex(x: Float, y: Float, points: List<Pair<Float, Float>?>): Int? =
+    points.indices.minByOrNull { index ->
+        points[index]?.let { (px, py) ->
+            val dx = px - x
+            val dy = py - y
+            dx * dx + dy * dy
+        } ?: Float.MAX_VALUE
+    }
+
 private fun nearest(
     map: MapLibreMap,
     features: List<org.maplibre.geojson.Feature>,
     x: Float,
     y: Float,
-): org.maplibre.geojson.Feature? = features.minByOrNull { feature ->
-    val point = feature.geometry() as? org.maplibre.geojson.Point
-        ?: return@minByOrNull Float.MAX_VALUE
-    val screen = map.projection.toScreenLocation(
-        org.maplibre.android.geometry.LatLng(point.latitude(), point.longitude()),
-    )
-    val dx = screen.x - x
-    val dy = screen.y - y
-    dx * dx + dy * dy
-}
+): org.maplibre.geojson.Feature? = nearestIndex(
+    x,
+    y,
+    features.map { feature ->
+        (feature.geometry() as? org.maplibre.geojson.Point)?.let { point ->
+            map.projection.toScreenLocation(
+                org.maplibre.android.geometry.LatLng(point.latitude(), point.longitude()),
+            ).let { it.x to it.y }
+        }
+    },
+)?.let { features[it] }
 
 fun hitTest(map: MapLibreMap, x: Float, y: Float): MapHit? {
     val box = RectF(x - HIT_RADIUS_PX, y - HIT_RADIUS_PX, x + HIT_RADIUS_PX, y + HIT_RADIUS_PX)
