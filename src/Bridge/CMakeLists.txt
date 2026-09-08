@@ -4,6 +4,8 @@ target_sources(${CMAKE_PROJECT_NAME}
         QGCBridgeCore.h
         QGCEntry.cc
         QGCEntry.h
+        QGCVideoC.cc
+        QGCVideoC.h
 )
 
 if(APPLE AND NOT IOS)
@@ -18,8 +20,6 @@ if(APPLE AND NOT IOS)
             QGCMapTileC.h
             QGCNativeDebugC.cc
             QGCNativeDebugC.h
-            QGCVideoC.cc
-            QGCVideoC.h
     )
 endif()
 
