@@ -46,21 +46,21 @@ struct ValueField: View {
 }
 
 struct ParameterEditor: View {
-    let parameter: Parameter
+    let value: String
+    let units: String
+    let options: [ParameterOption]
+    let selectedRaw: String
     let commit: (String) -> Void
 
     @ViewBuilder var body: some View {
-        if parameter.options.isEmpty {
-            ValueField(value: parameter.value, units: parameter.units, commit: commit)
+        if options.isEmpty {
+            ValueField(value: value, units: units, commit: commit)
         } else {
-            Picker("", selection: Binding(
-                get: { parameter.selectedOption?.raw ?? "" },
-                set: { commit($0) })
-            ) {
-                if parameter.selectedOption == nil {
-                    Text(parameter.value).tag("")
+            Picker("", selection: Binding(get: { selectedRaw }, set: { commit($0) })) {
+                if !options.contains(where: { $0.raw == selectedRaw }) {
+                    Text(value).tag(selectedRaw)
                 }
-                ForEach(parameter.options) { option in
+                ForEach(options) { option in
                     Text(option.label).tag(option.raw)
                 }
             }
@@ -71,16 +71,48 @@ struct ParameterEditor: View {
 }
 
 struct ParameterRow: View {
-    let parameter: Parameter
+    let name: String
+    let label: String
+    let value: String
+    let units: String
+    let options: [ParameterOption]
+    let selectedRaw: String
     var showSeparator = true
     let commit: (String) -> Void
 
+    init(parameter: Parameter, showSeparator: Bool = true,
+         commit: @escaping (String) -> Void) {
+        name = parameter.name
+        label = parameter.description
+        value = parameter.value
+        units = parameter.units
+        options = parameter.options
+        selectedRaw = parameter.selectedOption?.raw ?? ""
+        self.showSeparator = showSeparator
+        self.commit = commit
+    }
+
+    init(control: SettingsControl, showSeparator: Bool = true,
+         commit: @escaping (String) -> Void) {
+        name = control.name
+        label = control.label
+        value = control.display.isEmpty ? control.valueString : control.display
+        units = control.units
+        options = control.parameterOptions
+        selectedRaw = control.valueString
+        self.showSeparator = showSeparator
+        self.commit = commit
+    }
+
     var body: some View {
         GroupRow(
-            title: parameter.description.isEmpty ? parameter.name : parameter.description,
-            description: parameter.description.isEmpty ? "" : parameter.name,
+            title: label.isEmpty ? name : label,
+            description: label.isEmpty ? "" : name,
             showSeparator: showSeparator,
-            trailing: { ParameterEditor(parameter: parameter, commit: commit) })
+            trailing: {
+                ParameterEditor(value: value, units: units, options: options,
+                                selectedRaw: selectedRaw, commit: commit)
+            })
     }
 }
 
@@ -111,5 +143,32 @@ struct SetupPageBody<Content: View>: View {
             .frame(maxWidth: 660, alignment: .leading)
         }
         .frame(maxWidth: .infinity, alignment: .leading)
+    }
+}
+
+struct SetupSections: View {
+    let sections: [SettingsSection]
+    @ObservedObject var store: ParametersStore
+
+    var body: some View {
+        ForEach(sections) { section in
+            VStack(alignment: .leading, spacing: 0) {
+                SectionLabel(text: section.title)
+                GroupCard {
+                    ForEach(Array(section.controls.enumerated()), id: \.element.id) { index, control in
+                        ParameterRow(control: control, showSeparator: index > 0) {
+                            store.writeControl(control, $0)
+                        }
+                    }
+                }
+                if !section.note.isEmpty {
+                    Text(section.note)
+                        .font(.caption).foregroundColor(.secondary)
+                        .fixedSize(horizontal: false, vertical: true)
+                        .padding(.horizontal, Overlay.horizontalPadding)
+                        .padding(.top, Overlay.unit * 0.35)
+                }
+            }
+        }
     }
 }

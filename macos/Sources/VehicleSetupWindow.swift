@@ -207,32 +207,13 @@ struct SafetyView: View {
                         "reports none of the safety parameters this page knows about."))
                 }
             } else {
-                ForEach(sections, id: \.section.id) { entry in
-                    VStack(alignment: .leading, spacing: 0) {
-                        SectionLabel(text: entry.section.title)
-                        GroupCard {
-                            ForEach(Array(entry.names.enumerated()), id: \.element) { index, name in
-                                if let parameter = store.parameter(named: name) {
-                                    ParameterRow(parameter: parameter, showSeparator: index > 0) {
-                                        store.write(parameter, $0)
-                                    }
-                                }
-                            }
-                        }
-                        Text(entry.section.note)
-                            .font(.caption).foregroundColor(.secondary)
-                            .padding(.horizontal, Overlay.horizontalPadding)
-                            .padding(.top, Overlay.unit * 0.35)
-                    }
-                }
+                SetupSections(sections: sections, store: store)
             }
         }
         .onAppear(perform: store.load)
     }
 
-    private var sections: [(section: SetupSection, names: [String])] {
-        SetupSection.present(SetupSection.safety, in: Set(store.parameters.map(\.name)))
-    }
+    private var sections: [SettingsSection] { store.sections(of: "Safety") }
 }
 
 struct MotorsView: View {
@@ -371,25 +352,7 @@ struct PowerView: View {
                         "reports none of the battery parameters this page knows about."))
                 }
             } else {
-                ForEach(sections, id: \.section.id) { entry in
-                    VStack(alignment: .leading, spacing: 0) {
-                        SectionLabel(text: entry.section.title)
-                        GroupCard {
-                            ForEach(Array(entry.names.enumerated()), id: \.element) { index, name in
-                                if let parameter = store.parameter(named: name) {
-                                    ParameterRow(parameter: parameter, showSeparator: index > 0) {
-                                        store.write(parameter, $0)
-                                    }
-                                }
-                            }
-                        }
-                        Text(entry.section.note)
-                            .font(.caption).foregroundColor(.secondary)
-                            .fixedSize(horizontal: false, vertical: true)
-                            .padding(.horizontal, Overlay.horizontalPadding)
-                            .padding(.top, Overlay.unit * 0.35)
-                    }
-                }
+                SetupSections(sections: sections, store: store)
             }
         }
         .onAppear {
@@ -399,9 +362,31 @@ struct PowerView: View {
         .onDisappear(perform: power.stop)
     }
 
-    private var sections: [(section: SetupSection, names: [String])] {
-        SetupSection.present(SetupSection.power, in: Set(store.parameters.map(\.name)))
+    private var sections: [SettingsSection] { store.sections(of: "Power") }
+}
+
+struct LightsView: View {
+    @ObservedObject var store: ParametersStore
+
+    var body: some View {
+        SetupPageBody(title: "Lights",
+                      note: "The channels the vehicle drives its lights from.",
+                      connected: store.connected) {
+            if store.loading {
+                GroupCard { EmptyStateRow(text: VehicleSetupText.waiting(connected: store.connected, for: "parameters")) }
+            } else if sections.isEmpty {
+                GroupCard {
+                    EmptyStateRow(text: VehicleSetupText.absent(connected: store.connected,
+                        "reports no light channels."))
+                }
+            } else {
+                SetupSections(sections: sections, store: store)
+            }
+        }
+        .onAppear(perform: store.load)
     }
+
+    private var sections: [SettingsSection] { store.sections(of: "Lights") }
 }
 
 struct CameraView: View {
@@ -419,33 +404,13 @@ struct CameraView: View {
                         "reports no gimbal or camera parameters."))
                 }
             } else {
-                ForEach(sections, id: \.section.id) { entry in
-                    VStack(alignment: .leading, spacing: 0) {
-                        SectionLabel(text: entry.section.title)
-                        GroupCard {
-                            ForEach(Array(entry.names.enumerated()), id: \.element) { index, name in
-                                if let parameter = store.parameter(named: name) {
-                                    ParameterRow(parameter: parameter, showSeparator: index > 0) {
-                                        store.write(parameter, $0)
-                                    }
-                                }
-                            }
-                        }
-                        Text(entry.section.note)
-                            .font(.caption).foregroundColor(.secondary)
-                            .fixedSize(horizontal: false, vertical: true)
-                            .padding(.horizontal, Overlay.horizontalPadding)
-                            .padding(.top, Overlay.unit * 0.35)
-                    }
-                }
+                SetupSections(sections: sections, store: store)
             }
         }
         .onAppear(perform: store.load)
     }
 
-    private var sections: [(section: SetupSection, names: [String])] {
-        SetupSection.present(SetupSection.camera, in: Set(store.parameters.map(\.name)))
-    }
+    private var sections: [SettingsSection] { store.sections(of: "Camera") }
 }
 
 struct TuningView: View {
@@ -463,25 +428,7 @@ struct TuningView: View {
                         "reports none of the tuning parameters this page knows about."))
                 }
             } else {
-                ForEach(sections, id: \.section.id) { entry in
-                    VStack(alignment: .leading, spacing: 0) {
-                        SectionLabel(text: entry.section.title)
-                        GroupCard {
-                            ForEach(Array(entry.names.enumerated()), id: \.element) { index, name in
-                                if let parameter = store.parameter(named: name) {
-                                    ParameterRow(parameter: parameter, showSeparator: index > 0) {
-                                        store.write(parameter, $0)
-                                    }
-                                }
-                            }
-                        }
-                        Text(entry.section.note)
-                            .font(.caption).foregroundColor(.secondary)
-                            .fixedSize(horizontal: false, vertical: true)
-                            .padding(.horizontal, Overlay.horizontalPadding)
-                            .padding(.top, Overlay.unit * 0.35)
-                    }
-                }
+                SetupSections(sections: sections, store: store)
 
                 Text("AutoTune and in-flight tuning are flown, not configured, and stay in the Qt view.")
                     .font(.caption)
@@ -493,9 +440,7 @@ struct TuningView: View {
         .onAppear(perform: store.load)
     }
 
-    private var sections: [(section: SetupSection, names: [String])] {
-        SetupSection.present(SetupSection.tuning, in: Set(store.parameters.map(\.name)))
-    }
+    private var sections: [SettingsSection] { store.sections(of: "Tuning") }
 }
 
 struct RadioView: View {
@@ -649,25 +594,7 @@ struct FrameView: View {
                         .fixedSize(horizontal: false, vertical: true)
                 }
 
-                ForEach(sections, id: \.section.id) { entry in
-                    VStack(alignment: .leading, spacing: 0) {
-                        SectionLabel(text: entry.section.title)
-                        GroupCard {
-                            ForEach(Array(entry.names.enumerated()), id: \.element) { index, name in
-                                if let parameter = store.parameter(named: name) {
-                                    ParameterRow(parameter: parameter, showSeparator: index > 0) {
-                                        store.write(parameter, $0)
-                                    }
-                                }
-                            }
-                        }
-                        Text(entry.section.note)
-                            .font(.caption).foregroundColor(.secondary)
-                            .fixedSize(horizontal: false, vertical: true)
-                            .padding(.horizontal, Overlay.horizontalPadding)
-                            .padding(.top, Overlay.unit * 0.35)
-                    }
-                }
+                SetupSections(sections: sections, store: store)
             }
 
             VStack(alignment: .leading, spacing: 0) {
@@ -690,9 +617,7 @@ struct FrameView: View {
         .onDisappear(perform: frame.stop)
     }
 
-    private var sections: [(section: SetupSection, names: [String])] {
-        SetupSection.present(SetupSection.frame, in: Set(store.parameters.map(\.name)))
-    }
+    private var sections: [SettingsSection] { store.sections(of: "Frame") }
 
     private var needsFrameClass: Bool {
         FrameSetup.needsFrameClass(store.parameter(named: "FRAME_CLASS")?.selectedOption?.raw)
@@ -742,7 +667,11 @@ struct FlightModesView: View {
                                                          .font(.caption.weight(.semibold))
                                                          .foregroundColor(.green)
                                                  }
-                                                 ParameterEditor(parameter: parameter) {
+                                                 ParameterEditor(
+                                                     value: parameter.value,
+                                                     units: parameter.units,
+                                                     options: parameter.options,
+                                                     selectedRaw: parameter.selectedOption?.raw ?? "") {
                                                      store.write(parameter, $0)
                                                  }
                                              }
@@ -922,6 +851,7 @@ struct VehicleSetupView: View {
         case "Radio": RadioView(store: radio)
         case "Tuning": TuningView(store: parameters)
         case "Camera": CameraView(store: parameters)
+        case "Lights": LightsView(store: parameters)
         case "Motors": MotorsView(motors: motors).onAppear(perform: motors.start)
             .onDisappear(perform: motors.stop)
         case "Remote Support": RemoteSupportView(support: support)

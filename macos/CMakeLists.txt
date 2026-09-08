@@ -32,7 +32,6 @@ add_library(QGCNativeUI STATIC
     Sources/VehicleComponents.swift
     Sources/FlightModePositions.swift
     Sources/PageSelection.swift
-    Sources/SafetySections.swift
     Sources/SensorHealth.swift
     Sources/CalibrationModel.swift
     Sources/RadioModel.swift

@@ -13,6 +13,7 @@ final class ParametersStore: ObservableObject, Probeable, WriteReporting {
     @Published private(set) var visible: [Parameter] = []
 
     private let componentId = 1
+    private var setupCache: [String: [SettingsSection]] = [:]
 
     var groups: [String] {
         Array(Set(parameters.map(\.group))).sorted()
@@ -52,6 +53,20 @@ final class ParametersStore: ObservableObject, Probeable, WriteReporting {
 
     func parameter(named name: String) -> Parameter? {
         parameters.first { $0.name == name }
+    }
+
+    func sections(of page: String) -> [SettingsSection] {
+        if let cached = setupCache[page] { return cached }
+        let read = SettingsSection.list(Bridge.group("view.setup(\(page))")["sections"])
+            .filter { !$0.controls.isEmpty }
+        setupCache[page] = read
+        return read
+    }
+
+    func writeControl(_ control: SettingsControl, _ value: String) {
+        guard write(control.path, Double(value) ?? value, control.label) else { return }
+        setupCache.removeAll()
+        objectWillChange.send()
     }
 
     func refilter() {

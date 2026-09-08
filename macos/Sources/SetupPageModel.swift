@@ -4,7 +4,7 @@ enum SetupPage {
     static let sections: [(title: String, pages: [String])] = [
         ("Vehicle", ["Summary"]),
         ("Setup", ["Sensors", "Radio", "Frame", "Flight Modes", "Safety", "Power", "Motors",
-                   "Tuning", "Camera"]),
+                   "Tuning", "Camera", "Lights"]),
         ("Advanced", ["Remote Support", "Parameters"]),
     ]
 
@@ -22,6 +22,7 @@ enum SetupPage {
         case "Power": return "bolt.fill"
         case "Motors": return "gearshape.2.fill"
         case "Camera": return "camera.fill"
+        case "Lights": return "lightbulb.fill"
         case "Remote Support": return "lifepreserver.fill"
         case "Tuning": return "dial.min"
         default: return "gearshape.fill"

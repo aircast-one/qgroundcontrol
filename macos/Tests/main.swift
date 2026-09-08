@@ -196,19 +196,29 @@ expect(SensorHealth(["name": "GPS", "state": "molten"])?.state == SensorHealth.S
        "a state this head does not know reads as unknown, not as the reassuring one")
 expect(SensorHealth.list(nil).isEmpty, "no answer is no sensors")
 
-// A section listing parameters the firmware does not have would imply settings the
-// operator cannot change; an empty section is dropped entirely.
-let copterLike: Set<String> = ["FS_THR_ENABLE", "FS_THR_VALUE", "RTL_ALT", "ARMING_CHECK"]
-let present = SetupSection.present(SetupSection.safety, in: copterLike)
-expect(present.map(\.section.title).joined(separator: ","),
-       "Failsafe,Return to Launch,Arming", "only sections with present parameters survive")
-expect(present.first!.names.joined(separator: ","), "FS_THR_ENABLE,FS_THR_VALUE",
-       "a section keeps only the parameters this vehicle has")
-expect(SetupSection.present(SetupSection.safety, in: []).isEmpty, "a vehicle with none of them gets no sections")
-expect(SetupSection.present(SetupSection.safety, in: ["RTL_ALT"]).count == 1, "one parameter is enough to keep its section")
-
-// Order is the authored order, not whatever the vehicle happens to report.
-expect(SetupSection.safety.map(\.title).first!, "Failsafe", "failsafe leads the page")
+let setupPage: [String: Any] = [
+    "page": "Safety", "firmware": "apm", "available": true as NSNumber,
+    "sections": [
+        ["title": "Failsafe", "note": "What the vehicle does when it loses the transmitter.",
+         "controls": [["path": "p.FS_THR_ENABLE", "name": "FS_THR_ENABLE", "control": "choice",
+                       "label": "Throttle failsafe", "valueString": "1", "display": "Enabled",
+                       "options": [["label": "Disabled", "raw": "0"],
+                                   ["label": "Enabled", "raw": "1"]]]]],
+        ["title": "Return to Launch", "note": "",
+         "controls": [["path": "p.RTL_ALT", "name": "RTL_ALT", "control": "number",
+                       "label": "Return altitude", "valueString": "1500", "units": "cm"]]],
+    ],
+]
+let safetySections = SettingsSection.list(setupPage["sections"])
+expect(safetySections.map(\.title).joined(separator: ","), "Failsafe,Return to Launch",
+       "the core lists only the sections this vehicle has parameters for, in its own order")
+expect(safetySections[0].controls.count == 1,
+       "a setup section carries its controls directly, where a settings page nests them in "
+       + "subsections; one decode reads both")
+expect(safetySections[0].controls[0].options.count == 2,
+       "and a parameter's options come through as the core's label and raw text pairs")
+expect(safetySections[1].controls[0].units, "cm",
+       "with the parameter's own units, which the row shows beside the field")
 
 // Page selection is probe-driven because a locked screen cannot deliver a sidebar
 // click; it must reject a page that does not exist rather than blanking the window.
@@ -1795,31 +1805,6 @@ func checkMavlinkMessage() {
 
 checkMavlinkMessage()
 
-func checkPowerSections() {
-    let batteryOne = Set(["BATT_MONITOR", "BATT_CAPACITY", "BATT_VOLT_MULT", "BATT2_MONITOR"])
-    let present = SetupSection.present(SetupSection.power, in: batteryOne)
-    expect(present.count == 2, "both packs appear when each has at least one parameter")
-    expect(present[0].names.joined(separator: ","), "BATT_MONITOR,BATT_CAPACITY,BATT_VOLT_MULT",
-           "only the parameters this firmware reports, in the page's order")
-    expect(present[1].names.joined(separator: ","), "BATT2_MONITOR",
-           "a second pack shows just its monitor until one is chosen")
-
-    expect(SetupSection.present(SetupSection.power, in: []).isEmpty,
-           "a vehicle reporting no battery parameters gets no sections at all")
-
-    expect(BatteryReading.unavailable.available == false, "no voltage means no battery to show")
-    let live = BatteryReading(voltage: 12.6, current: 1.5, percent: 100)
-    expect(live.available, "a voltage is a battery")
-    expect(live.voltageText, "12.60 V", "voltage reads to a hundredth, as a meter does")
-    expect(live.currentText, "1.50 A", "so does current")
-    expect(live.percentText, "100%", "the charge is whole percent")
-    expect(BatteryReading(voltage: 12, current: nil, percent: nil).currentText, "—",
-           "a pack measured for voltage only says nothing about current")
-    expect(BatteryReading(voltage: .nan, current: nil, percent: nil).voltageText, "—",
-           "an unset reading is not a number")
-}
-
-checkPowerSections()
 
 func checkFrameSetup() {
     expect(!FrameSetup.unknown.known, "no vehicle reports no frame")
@@ -1834,57 +1819,11 @@ func checkFrameSetup() {
     expect(FrameSetup.needsFrameClass("0"), "frame class 0 is no airframe at all")
     expect(!FrameSetup.needsFrameClass("1"), "any other class is a chosen airframe")
     expect(!FrameSetup.needsFrameClass(nil), "a firmware without the parameter is not misconfigured")
-
-    let present = SetupSection.present(SetupSection.frame, in: ["FRAME_CLASS"])
-    expect(present.count == 1, "the airframe section survives a firmware with no FRAME_TYPE")
-    expect(present[0].names.joined(separator: ","), "FRAME_CLASS", "showing only what is there")
 }
 
 checkFrameSetup()
 
-func checkTuningSections() {
-    let everything = Set(SetupSection.tuning.flatMap(\.parameters))
-    let all = SetupSection.present(SetupSection.tuning, in: everything)
-    expect(all.count == SetupSection.tuning.count, "a full firmware shows every tuning section")
-    expect(all.map(\.section.title).joined(separator: ","),
-           "Angle gains,Rate gains,Climb,Stick feel,Motor thrust",
-           "in the order a tuner works through them")
 
-    let ratesOnly = SetupSection.present(SetupSection.tuning, in: ["ATC_RAT_YAW_P", "PSC_ACCZ_P"])
-    expect(ratesOnly.map(\.section.title).joined(separator: ","), "Rate gains,Climb",
-           "sections with nothing present are dropped, not shown empty")
-    expect(ratesOnly[0].names.joined(separator: ","), "ATC_RAT_YAW_P",
-           "and each keeps only the parameters this firmware has")
-
-    expect(everything.contains("MOT_THST_HOVER"), "hover thrust is part of tuning, not of power")
-    expect(!everything.contains("AUTOTUNE_AXES"), "autotune is flown, so it is not on this page")
-}
-
-checkTuningSections()
-
-func checkCameraSections() {
-    let bare = SetupSection.present(SetupSection.camera,
-                                    in: ["MNT1_TYPE", "MNT2_TYPE", "CAM1_TYPE", "CAM2_TYPE",
-                                         "CAM_AUTO_ONLY", "CAM_MAX_ROLL", "CAM_RC_TYPE"])
-    expect(bare.map(\.section.title).joined(separator: ","),
-           "Gimbal 1,Gimbal 2,Camera 1,Camera 2,Triggering",
-           "each mount and camera gets its own heading, so two rows never share a title")
-
-    let oneOfEach = SetupSection.present(SetupSection.camera,
-                                         in: ["MNT1_TYPE", "CAM1_TYPE", "CAM_MAX_ROLL"])
-    expect(oneOfEach.map(\.section.title).joined(separator: ","), "Gimbal 1,Camera 1,Triggering",
-           "a vehicle with one of each is not offered a second slot it does not have")
-
-    let noGimbal = SetupSection.present(SetupSection.camera, in: ["CAM_MAX_ROLL"])
-    expect(noGimbal.map(\.section.title).joined(separator: ","), "Triggering",
-           "a vehicle with no mount at all drops the gimbal and camera sections")
-
-    let names = Set(SetupSection.camera.flatMap(\.parameters))
-    expect(!names.contains("MNT_RETRACT_X"),
-           "the pre-4.2 MNT_ names are gone from ArduPilot and are not listed here")
-}
-
-checkCameraSections()
 
 func checkVehicleMessages() {
     let live = "<font style=\"<#E>\">[23:24:17.897 ] Critical: PreArm: GPS 1: not healthy</font><br/>"
@@ -2611,6 +2550,10 @@ func checkViewContract() {
                         "groups"]),
         ("view.setup", ["groups"], ["title", "pages"]),
         ("view.setup", ["groups", "pages"], ["name", "native", "parameterSections"]),
+        ("view.setup(Safety)", [], ["page", "firmware", "available", "sections"]),
+        ("view.setup(Safety)", ["sections"], ["title", "note", "controls"]),
+        ("view.setup(Safety)", ["sections", "controls"],
+         ["path", "name", "label", "control", "valueString", "display", "units", "options"]),
     ]
 
     let enumerations = (shapes["view.contract"] as? [String: Any])?["enumerations"] as? [String: Any]

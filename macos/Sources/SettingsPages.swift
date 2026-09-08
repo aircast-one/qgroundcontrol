@@ -56,6 +56,10 @@ struct SettingsControl: Identifiable, Equatable {
     var boolValue: Bool { (value as? NSNumber)?.boolValue ?? false }
     var intValue: Int { (value as? NSNumber)?.intValue ?? 0 }
 
+    var parameterOptions: [ParameterOption] {
+        options.map { ParameterOption(label: $0.label, raw: $0.raw) }
+    }
+
     init?(_ json: Any?) {
         guard let json = json as? [String: Any],
               let path = json["path"] as? String, !path.isEmpty,
@@ -128,7 +132,11 @@ struct SettingsSection: Identifiable, Equatable {
         group = (json["group"] as? String) ?? ""
         path = (json["path"] as? String) ?? ""
         note = (json["note"] as? String) ?? ""
-        subsections = ((json["subsections"] as? [Any]) ?? []).compactMap(SettingsSubsection.init)
+        let listed = ((json["subsections"] as? [Any]) ?? []).compactMap(SettingsSubsection.init)
+        let direct = SettingsControl.list(json["controls"])
+        subsections = listed.isEmpty && !direct.isEmpty
+            ? [SettingsSubsection(title: "", controls: direct)]
+            : listed
     }
 
     static func list(_ json: Any?) -> [SettingsSection] {
