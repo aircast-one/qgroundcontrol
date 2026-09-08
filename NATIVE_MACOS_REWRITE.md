@@ -575,6 +575,7 @@ About 58 developer-weeks. Flight-test time, not code, is the schedule.
   telemetry log frame by frame, checked against an independent frame count on the sample log.
 - 2026-09-09: `view.planFile(path)` reads .plan files in the core (checked against the C++ loader); watch
   lists keep argument commas whole.
+- 2026-09-09: `view.waypointsFile(path)` reads QGC WPL 110/120 in the core, checked against the C++ importer.
 
 ### Stream F · Core
 

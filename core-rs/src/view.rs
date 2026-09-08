@@ -34,6 +34,7 @@ use crate::tlog;
 use crate::vibration;
 use crate::video;
 use crate::warnings;
+use crate::waypoints;
 use crate::router::Backend;
 
 pub struct View {
@@ -78,6 +79,7 @@ pub const VIEWS: &[View] = &[
     View { path: "view.tlog", deps: tlog::DEPS, compute: tlog::tlog_view },
     View { path: "view.contract", deps: contract::DEPS, compute: contract::contract_view },
     View { path: "view.planFile", deps: planfile::DEPS, compute: planfile::plan_file_view },
+    View { path: "view.waypointsFile", deps: waypoints::DEPS, compute: waypoints::waypoints_view },
 ];
 
 pub fn owns(path: &str) -> bool {

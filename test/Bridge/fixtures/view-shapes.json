@@ -272,7 +272,8 @@
             "view.camera",
             "view.tlog",
             "view.contract",
-            "view.planFile"
+            "view.planFile",
+            "view.waypointsFile"
         ]
     },
     "view.control(settings.appSettings.audioMuted)": {

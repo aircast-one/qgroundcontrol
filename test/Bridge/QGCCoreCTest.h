@@ -42,6 +42,7 @@ private slots:
     void _viewShapesMatchTheRecordedContract();
     void _tlogSummaryDecodesTheSampleLog();
     void _planFileAgreesWithTheCppLoader();
+    void _waypointsFileAgreesWithTheCppLoader();
 
 private:
     static bool _unavailable(const char *path);

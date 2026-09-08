@@ -34,5 +34,6 @@ mod vibration;
 mod video;
 mod view;
 mod warnings;
+mod waypoints;
 
 pub use router::{Backend, Core};
