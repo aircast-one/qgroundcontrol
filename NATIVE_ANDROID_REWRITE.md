@@ -334,8 +334,17 @@ user's mission and reports success. This is why a clear belonging to the map
 module cannot stay inside it — the dependency runs app to map, so a clear there
 has to be a callback the app supplies.
 
-`Clear mission` is verified disabled with no vehicle; its enabled state needs a
-live one and is not yet proven.
+`Clear mission` is verified both ways against a live vehicle: greyed with none,
+enabled with one, so `plan.offline` resolves rather than reading a stuck false.
+The sync gate disables Open and Save while the clear is in flight.
+
+Its notice was wrong and is worth recording. `removeAllFromVehicle` returns
+void, and a bridge invoke reporting success means the method was called, not
+that the aircraft complied — firing it at a sim that never acknowledges still
+produced "Mission cleared from the vehicle." The bridge polls properties and has
+no signal for the vehicle having obeyed, so the notice now says the clear was
+sent. **Any void `Q_INVOKABLE` that commands the vehicle has this shape**: the
+native head can report that it asked, never that it was done.
 
 ## Phase 5 — Fly and video · 7 weeks
 
