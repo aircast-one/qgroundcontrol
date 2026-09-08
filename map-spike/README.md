@@ -676,10 +676,22 @@ no segment reads, which is why the first breakdown here made it look free.
 
 The projection does not help: `FlightPathSegment` has no Fact properties, so
 there is no metadata to drop, and `amslTerrainHeights` is the bulk and is wanted.
-The fix would have to be reading them less often rather than reading less, and
-the trap in that is the one under **Terrain** - terrain arrives after the plan
-stops changing, so a cache keyed on the plan would freeze a profile with no
-ground in it. An empty plan is 5.7 ms whole, and
+So the segments are read less often instead of read smaller. `SegmentBridge`
+refreshes four complex items per poll on a round robin and serves the rest from
+what it read last time, which makes the cost flat in survey count: twelve
+surveys went from a median 177 ms to 55 (47-67 over ten polls).
+
+The cache is not keyed on the plan, which is the trap under **Terrain** -
+terrain arrives after the plan stops changing, so a plan-keyed cache would
+freeze a profile with no ground in it. This one is keyed on nothing and expires
+by rotation, so a survey whose ground has not arrived yet gets re-read within
+three polls regardless. It is dropped whole when the item count changes, since
+indices shift and a held entry would then belong to a different item. The price
+is latency: a full refresh of twelve surveys takes three polls, about 2.1 s.
+Verified on the handset at twelve surveys - the profile still drew ground end to
+end, 892-1115 m AMSL over 73.68 km, with `hasTerrain` true on every poll.
+
+An empty plan is 5.7 ms whole, and
 the cost tracks item count because the bridge serialises every property and every
 fact of every item and hands it back as one string across JNI. There is no way
 to ask it for less; `objectJson` walks the whole object.

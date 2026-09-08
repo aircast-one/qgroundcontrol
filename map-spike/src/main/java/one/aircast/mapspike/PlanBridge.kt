@@ -15,6 +15,16 @@ const val MAV_CMD_NAV_RETURN_TO_LAUNCH = 20
 fun linksStartToHome(json: JSONObject?): Boolean =
     json?.optJSONArray("elements")?.optJSONObject(1)?.optBoolean("isTakeoffItem") == true
 
+fun complexIndices(json: JSONObject?): List<Int> {
+    val elements = json?.optJSONArray("elements") ?: return emptyList()
+
+    return (1 until elements.length()).filter { index ->
+        elements.optJSONObject(index)
+            ?.optDouble("complexDistance", 0.0)
+            ?.let { it > 0.0 && !it.isNaN() } == true
+    }
+}
+
 fun planShape(json: JSONObject?): List<String> {
     val elements = json?.optJSONArray("elements") ?: return emptyList()
     val endsAfter = routeEndsAfter(elements)

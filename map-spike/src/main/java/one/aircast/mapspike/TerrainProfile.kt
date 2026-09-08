@@ -146,11 +146,41 @@ fun terrainProfile(
     )
 }
 
+const val SEGMENT_READS_PER_POLL = 4
+
 object SegmentBridge {
-    fun forItem(index: Int): JSONObject? =
-        runCatching {
+    private val held = mutableMapOf<Int, JSONObject?>()
+    private var next = 0
+    private var refreshing = emptySet<Int>()
+    private var lastCount = -1
+
+    fun beginPoll(itemCount: Int, complexIndices: List<Int>) {
+        if (itemCount != lastCount) {
+            held.clear()
+            next = 0
+            lastCount = itemCount
+        }
+        if (complexIndices.isEmpty()) {
+            refreshing = emptySet()
+            return
+        }
+        val start = next % complexIndices.size
+        refreshing = (0 until minOf(SEGMENT_READS_PER_POLL, complexIndices.size))
+            .map { complexIndices[(start + it) % complexIndices.size] }
+            .toSet()
+        next = start + refreshing.size
+    }
+
+    fun forItem(index: Int): JSONObject? {
+        if (held.containsKey(index) && index !in refreshing) {
+            return held[index]
+        }
+        val read = runCatching {
             JSONObject(
                 QGCBridge.get("plan.missionController.visualItems.$index.flightPathSegments"),
             )
         }.getOrNull()
+        held[index] = read
+        return read
+    }
 }
