@@ -1066,7 +1066,7 @@ exists natively today:
 | vehicle messages / warnings | **`VehicleMessageBanner`** | |
 | status (sats, HDOP) | **`StatusStrip`** | |
 | `PipView` map/video swap | **partial** | inset expands to full screen and back; still not a *swap* — the map cannot become the inset |
-| `CameraControlLayer`, `CameraSwitchButton` | **missing** | shutter, mode, camera selection — reachable and now verifiable against a sim camera |
+| `CameraControlLayer` | **built** | mode and shutter, verified on the wire; camera *selection* still missing |
 | `VideoTilesLayer` | **missing** | multiple streams |
 | `RcControlsLayer` | **built** | renders the configured controls and sends `setRcChannelOverride`; editing the list is still desktop-only |
 | `ObstacleDistanceOverlay` (map and video) | **built, in another form** | a sentence — "3.2 m right" — rather than a proximity ring |
@@ -1080,6 +1080,30 @@ exists natively today:
 So the tab cannot be switched yet, and not because video was missing — video works. Eight
 surfaces have no native equivalent, and two of them (camera controls, obstacle distance)
 are things an operator uses in flight.
+
+**Camera control is built and verified on the wire.** The Fly view shows the current mode
+and a shutter that takes a photo or toggles recording, through the same `takePhoto` and
+`toggleVideoRecording` that `CameraControlLayer.qml` calls. Against a sim camera
+("SimCam"), each action was confirmed by the command the vehicle received rather than by
+the button changing:
+
+| action | command | evidence |
+|---|---|---|
+| shutter in photo mode | `MAV_CMD_IMAGE_START_CAPTURE` (2000) | sim logged the photo; QGC went `PHOTO_CAPTURE_IN_PROGRESS` → `IDLE` |
+| mode chip | `MAV_CMD_SET_CAMERA_MODE` (530) | sim switched to video; the chip followed to "Video" |
+| shutter in video mode | `MAV_CMD_VIDEO_START_CAPTURE` (2500) | button turned red and read "Stop" |
+
+A camera in a mode it cannot do offers no shutter rather than a button that fails, an
+undefined mode offers nothing rather than guessing photo, and a photo already in progress
+disables the button rather than queueing another. Camera *selection* between multiple
+cameras is still missing.
+
+**Getting a log out of `CameraControlLog` needed one more correction.** It is an old-style
+category name with no `qgc.` prefix, so the blanket `*Log.debug=false` rule silences it and
+the settings key is the bare `CameraControlLog=true`. Two different key shapes in one
+`[LoggingFilters]` group, and neither is the `.debug=true` form the rules print.
+
+The earlier text below is what this replaced.
 
 **Camera control is reachable but not verifiable here, and that is the blocker.** Everything
 needed is on the bridge already: `vehicle.cameraManager.currentCameraInstance` exposes
