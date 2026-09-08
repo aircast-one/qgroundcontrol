@@ -37,7 +37,7 @@ impl<B: Backend> Core<B> {
 
     pub fn get(&self, path: &str) -> String {
         match (view::owns(path), view::lookup(path)) {
-            (true, Some(v)) => v.render(&self.backend),
+            (true, Some(v)) => v.render(&self.backend, path),
             (true, None) => null(),
             (false, _) => self.backend.get(path),
         }
@@ -45,7 +45,7 @@ impl<B: Backend> Core<B> {
 
     pub fn get_fields(&self, path: &str, fields: &str) -> String {
         match (view::owns(path), view::lookup(path)) {
-            (true, Some(v)) => v.render_fields(&self.backend, fields),
+            (true, Some(v)) => v.render_fields(&self.backend, path, fields),
             (true, None) => null(),
             (false, _) => self.backend.get_fields(path, fields),
         }
@@ -89,15 +89,19 @@ impl<B: Backend> Core<B> {
     }
 
     pub fn on_event(&self, path: &str, json: &str) -> Vec<(String, String)> {
-        let (direct, dependents): (bool, Vec<&'static view::View>) = {
+        let (direct, dependents): (bool, Vec<(String, &'static view::View)>) = {
             let asked = self.watching.lock().unwrap().asked();
             (
                 asked.contains(path),
-                asked.iter().filter_map(|p| view::lookup(p)).filter(|v| v.deps.contains(&path)).collect(),
+                asked
+                    .iter()
+                    .filter_map(|p| view::lookup(p).map(|v| (p.clone(), v)))
+                    .filter(|(_, v)| v.deps.contains(&path))
+                    .collect(),
             )
         };
         let recomputed: Vec<(String, String)> =
-            dependents.iter().map(|v| (v.path.to_string(), v.render(&self.backend))).collect();
+            dependents.iter().map(|(asked_path, v)| (asked_path.clone(), v.render(&self.backend, asked_path))).collect();
         let changed: Vec<(String, String)> = {
             let mut watching = self.watching.lock().unwrap();
             recomputed
@@ -218,6 +222,15 @@ mod tests {
         assert_eq!(*core.backend.watched.borrow(), vec!["vehicle.flying".to_string()]);
         core.watch("fly", &[]);
         assert!(core.backend.watched.borrow().is_empty());
+    }
+
+    #[test]
+    fn a_view_path_may_carry_arguments_in_parentheses() {
+        assert_eq!(view::split("view.guidedAltitude(68.5)"), ("view.guidedAltitude", vec!["68.5".to_string()]));
+        assert_eq!(view::split("view.plan"), ("view.plan", vec![]));
+        assert!(view::lookup("view.guidedAltitude(1, 2)").is_some());
+        let core = Core::new(Fake::default());
+        assert_eq!(parsed(&core.get("view.messages(anything)"))["class"], "VehicleMessages");
     }
 
     #[test]

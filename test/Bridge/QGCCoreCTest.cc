@@ -154,3 +154,22 @@ void QGCCoreCTest::_guidedActionsFollowTheVehicle()
     QCOMPARE(offer(QStringLiteral("rtl")), QStringLiteral("hidden"));
     QCOMPARE(offer(QStringLiteral("emergencyStop")), QStringLiteral("hidden"));
 }
+
+void QGCCoreCTest::_guidedAltitudeTakesATarget()
+{
+    QCOMPARE(take(qgc_bridge_get("view.guidedAltitude")).value(QStringLiteral("available")).toBool(true), false);
+
+    _connectMockLink(MAV_AUTOPILOT_PX4);
+    QTRY_COMPARE_WITH_TIMEOUT(take(qgc_bridge_get("view.guidedAltitude")).value(QStringLiteral("available")).toBool(false), true, 5000);
+    const QJsonObject range = take(qgc_bridge_get("view.guidedAltitude"));
+    QVERIFY(!range.value(QStringLiteral("unit")).toString().isEmpty());
+    const double current = range.value(QStringLiteral("current")).toDouble();
+    QVERIFY(range.value(QStringLiteral("minimum")).toDouble() <= current && current <= range.value(QStringLiteral("maximum")).toDouble());
+
+    const QJsonObject climb = take(qgc_bridge_get(QStringLiteral("view.guidedAltitude(%1)").arg(current + 10).toUtf8().constData()));
+    QCOMPARE(climb.value(QStringLiteral("sends")).toBool(false), true);
+    QVERIFY(climb.value(QStringLiteral("sentence")).toString().startsWith(QStringLiteral("The aircraft will climb")));
+    const QJsonObject same = take(qgc_bridge_get(QStringLiteral("view.guidedAltitude(%1)").arg(current).toUtf8().constData()));
+    QCOMPARE(same.value(QStringLiteral("sends")).toBool(true), false);
+    QVERIFY(same.value(QStringLiteral("sentence")).toString().contains(QStringLiteral("will not move")));
+}

@@ -1,5 +1,6 @@
 #[cfg(not(test))]
 mod abi;
+mod altitude;
 mod guided;
 mod messages;
 mod plan;

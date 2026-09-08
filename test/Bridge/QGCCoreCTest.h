@@ -16,4 +16,5 @@ private slots:
     void _clientsWatchIndependently();
     void _planViewFollowsTheVehicle();
     void _guidedActionsFollowTheVehicle();
+    void _guidedAltitudeTakesATarget();
 };

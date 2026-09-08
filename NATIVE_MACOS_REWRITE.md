@@ -538,6 +538,9 @@ About 58 developer-weeks. Flight-test time, not code, is the schedule.
   the sentences included; watched through the plan and vehicle properties it derives from.
 - 2026-09-08: `view.guidedActions` — the fourteen guided actions with offer hidden/ready/blocked, the
   blocked reason, titles and prompts; derived from vehicle, arming report, mission cursor and checklist.
+- 2026-09-08: `view.guidedAltitude` and `view.guidedAltitude(target)` — range in the operator's unit with metres
+  alongside, the delta to send, the 0.01 m firmware threshold, and the confirm sentence. View paths may carry
+  arguments in parentheses.
 
 ### Stream F · Core
 

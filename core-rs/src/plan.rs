@@ -14,7 +14,7 @@ pub const DEPS: &[&str] = &[
     "vehicle.flightMode",
 ];
 
-pub fn plan_view(backend: &dyn Backend) -> Value {
+pub fn plan_view(backend: &dyn Backend, _args: &[String]) -> Value {
     let plan = object(&backend.get_fields("plan", "syncInProgress,offline,dirty,containsItems,currentPlanFile"));
     let mission = object(&backend.get_fields("plan.missionController", "containsItems"));
     let syncing = flag(&plan, "syncInProgress");
@@ -153,7 +153,7 @@ mod tests {
             json!({ "ok": true, "result": 0 }),
             json!({ "ok": true, "result": 1 }),
         );
-        let view = plan_view(&backend);
+        let view = plan_view(&backend, &[]);
         assert_eq!(view["readiness"]["ready"], true);
         assert_eq!(view["readiness"]["reason"], "");
         assert_eq!(view["upload"]["canSend"], false);
@@ -170,9 +170,9 @@ mod tests {
     #[test]
     fn terrain_and_data_reasons_follow_the_cpp_enum_order() {
         let base = json!({ "kind": "object", "syncInProgress": false, "offline": false, "dirty": true, "containsItems": true, "currentPlanFile": "/tmp/field.plan" });
-        let terrain = plan_view(&fake(base.clone(), true, json!({ "ok": true, "result": 1 }), json!({ "ok": true, "result": 0 })));
+        let terrain = plan_view(&fake(base.clone(), true, json!({ "ok": true, "result": 1 }), json!({ "ok": true, "result": 0 })), &[]);
         assert!(terrain["readiness"]["reason"].as_str().unwrap().contains("terrain"));
-        let data = plan_view(&fake(base.clone(), true, json!({ "ok": true, "result": 2 }), json!({ "ok": true, "result": 0 })));
+        let data = plan_view(&fake(base.clone(), true, json!({ "ok": true, "result": 2 }), json!({ "ok": true, "result": 0 })), &[]);
         assert!(data["readiness"]["reason"].as_str().unwrap().contains("still being drawn"));
         assert_eq!(data["status"], "field.plan \u{b7} not uploaded");
         assert_eq!(data["actions"]["exportKml"], true);
@@ -182,12 +182,12 @@ mod tests {
     #[test]
     fn mismatch_and_active_mission_can_proceed_with_their_own_button() {
         let base = json!({ "kind": "object", "syncInProgress": true, "offline": false, "dirty": true, "containsItems": true, "currentPlanFile": "a.plan" });
-        let mismatch = plan_view(&fake(base.clone(), true, json!({ "ok": true, "result": 0 }), json!({ "ok": true, "result": 2 })));
+        let mismatch = plan_view(&fake(base.clone(), true, json!({ "ok": true, "result": 0 }), json!({ "ok": true, "result": 2 })), &[]);
         assert_eq!(mismatch["upload"]["proceedTitle"], "Upload anyway");
         assert_eq!(mismatch["upload"]["pausesFirst"], false);
         assert_eq!(mismatch["actions"]["open"], false);
         assert_eq!(mismatch["sync"]["state"], "busy");
-        let flying = plan_view(&fake(base, true, json!({ "ok": true, "result": 0 }), json!({ "ok": true, "result": 3 })));
+        let flying = plan_view(&fake(base, true, json!({ "ok": true, "result": 0 }), json!({ "ok": true, "result": 3 })), &[]);
         assert_eq!(flying["upload"]["proceedTitle"], "Pause and upload");
         assert_eq!(flying["upload"]["pausesFirst"], true);
         assert_eq!(flying["upload"]["heading"], "Upload this plan?");
@@ -195,7 +195,7 @@ mod tests {
 
     #[test]
     fn a_failed_check_is_reported_not_assumed_ready() {
-        let view = plan_view(&fake(json!({ "kind": "null" }), false, json!({ "ok": false, "reason": "no plan" }), json!({ "ok": false })));
+        let view = plan_view(&fake(json!({ "kind": "null" }), false, json!({ "ok": false, "reason": "no plan" }), json!({ "ok": false })), &[]);
         assert_eq!(view["readiness"]["ready"], false);
         assert_eq!(view["readiness"]["state"], Value::Null);
         assert!(view["readiness"]["reason"].as_str().unwrap().contains("could not be checked"));

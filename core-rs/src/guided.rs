@@ -209,7 +209,7 @@ impl Action {
     }
 }
 
-pub fn guided_view(backend: &dyn Backend) -> Value {
+pub fn guided_view(backend: &dyn Backend, _args: &[String]) -> Value {
     let state = read_state(backend);
     let offers: Vec<Offer> = ACTIONS.iter().map(|a| a.offer(&state)).collect();
     json!({
@@ -399,7 +399,7 @@ mod tests {
             fn invoke(&self, _p: &str, _a: &str) -> String { String::new() }
             fn watch(&self, _p: &[String]) {}
         }
-        let view = guided_view(&Fake);
+        let view = guided_view(&Fake, &[]);
         assert_eq!(view["connected"], true);
         let arm = &view["actions"][0];
         assert_eq!(arm["id"], "arm");
