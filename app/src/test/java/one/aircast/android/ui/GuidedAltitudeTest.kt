@@ -1,56 +1,51 @@
 package one.aircast.android.ui
 
+import org.json.JSONObject
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
+import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class GuidedAltitudeTest {
 
     @Test
-    fun `the range always contains where the aircraft actually is`() {
-        val above = altitudeRange(settingMin = 5.0, settingMax = 50.0, current = 80.0)
-        val below = altitudeRange(settingMin = 5.0, settingMax = 50.0, current = 1.0)
+    fun `the served reading carries the sentence and the metric delta`() {
+        val reading = guidedAltitude(
+            JSONObject("""{"available":true,"label":"Alt (Rel)","unit":"m","current":25.0,
+                "currentMeters":25.0,"minimum":0.0,"maximum":121.0,"target":68.5,
+                "targetMeters":68.5,"delta":43.5,"deltaMeters":43.5,"sends":true,
+                "sentence":"The aircraft will climb 43.5 m to 68.5 m."}"""),
+        )!!
 
-        assertTrue(above.max >= 80.0)
-        assertTrue(below.min <= 1.0)
+        assertEquals("The aircraft will climb 43.5 m to 68.5 m.", reading.sentence)
+        assertEquals(43.5, reading.deltaMeters, 1e-6)
+        assertTrue(reading.sends)
     }
 
     @Test
-    fun `reversed settings still produce a usable range`() {
-        val range = altitudeRange(settingMin = 50.0, settingMax = 5.0, current = 20.0)
+    fun `a vehicle with no altitude yet reads as absent, not as zero`() {
+        val reading = guidedAltitude(
+            JSONObject("""{"available":true,"label":"Alt (Rel)","unit":"m","current":null,
+                "currentMeters":null,"minimum":null,"maximum":null}"""),
+        )!!
 
-        assertTrue(range.min < range.max)
+        assertNull(reading.current)
+        assertNull(reading.minimum)
+        assertNull(reading.maximum)
+        assertFalse(altitudeRangeUsable(reading))
     }
 
     @Test
-    fun `the command sent is a delta, not the target`() {
-        assertEquals(15.0, altitudeDelta(target = 25.0, current = 10.0), 0.001)
-        assertEquals(-15.0, altitudeDelta(target = 10.0, current = 25.0), 0.001)
+    fun `an unavailable view offers nothing`() {
+        assertNull(guidedAltitude(null))
+        assertNull(guidedAltitude(JSONObject("""{"available":false}""")))
+        assertFalse(altitudeRangeUsable(null))
     }
 
     @Test
-    fun `the summary names the direction and both altitudes`() {
-        assertEquals(
-            "The aircraft will climb 15.0 m to 25.0 m.",
-            altitudeChangeSummary(target = 25.0, current = 10.0),
-        )
-        assertEquals(
-            "The aircraft will descend 15.0 m to 10.0 m.",
-            altitudeChangeSummary(target = 10.0, current = 25.0),
-        )
-    }
-
-    @Test
-    fun `no movement is stated rather than described as a climb`() {
-        assertTrue(altitudeChangeSummary(target = 10.0, current = 10.0).contains("will not move"))
-    }
-
-    @Test
-    fun `the summary and the button agree on what counts as no movement`() {
-        val edge = ALTITUDE_DEADBAND_METERS / 2
-
-        assertTrue(altitudeChangeSummary(10.0 + edge, 10.0).contains("will not move"))
-        assertTrue(!altitudeChangeIsUseful(10.0 + edge, 10.0))
-        assertTrue(altitudeChangeIsUseful(10.0 + ALTITUDE_DEADBAND_METERS * 2, 10.0))
+    fun `the argument path carries the target and no stray separators`() {
+        assertEquals("view.guidedAltitude(68.50)", guidedAltitudePath(68.5))
+        assertFalse(guidedAltitudePath(68.5).contains(","))
     }
 }

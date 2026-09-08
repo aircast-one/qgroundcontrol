@@ -1,31 +1,41 @@
 package one.aircast.android.ui
 
-internal const val ALTITUDE_DEADBAND_METERS = 0.01
+import org.json.JSONObject
 
-internal data class AltitudeRange(val min: Double, val max: Double)
+internal const val GUIDED_ALTITUDE = "view.guidedAltitude"
 
-internal fun altitudeRange(settingMin: Double, settingMax: Double, current: Double): AltitudeRange {
-    val low = minOf(settingMin, settingMax)
-    val high = maxOf(settingMin, settingMax)
-    return AltitudeRange(
-        min = minOf(low, current),
-        max = maxOf(high, current),
+internal data class GuidedAltitude(
+    val available: Boolean,
+    val label: String,
+    val unit: String,
+    val current: Double?,
+    val minimum: Double?,
+    val maximum: Double?,
+    val sentence: String,
+    val deltaMeters: Double,
+    val sends: Boolean,
+)
+
+internal fun guidedAltitudePath(target: Double): String =
+    "$GUIDED_ALTITUDE(${String.format(java.util.Locale.US, "%.2f", target)})"
+
+private fun JSONObject.numberOrNull(key: String): Double? =
+    if (isNull(key)) null else optDouble(key).takeIf { !it.isNaN() }
+
+internal fun guidedAltitude(view: JSONObject?): GuidedAltitude? {
+    if (view == null || !view.optBoolean("available")) return null
+    return GuidedAltitude(
+        available = true,
+        label = view.optString("label"),
+        unit = view.optString("unit"),
+        current = view.numberOrNull("current"),
+        minimum = view.numberOrNull("minimum"),
+        maximum = view.numberOrNull("maximum"),
+        sentence = if (view.isNull("sentence")) "" else view.optString("sentence"),
+        deltaMeters = view.optDouble("deltaMeters", 0.0),
+        sends = view.optBoolean("sends"),
     )
 }
 
-internal fun altitudeDelta(target: Double, current: Double): Double = target - current
-
-internal fun altitudeChangeIsUseful(target: Double, current: Double): Boolean =
-    kotlin.math.abs(altitudeDelta(target, current)) >= ALTITUDE_DEADBAND_METERS
-
-internal fun altitudeChangeSummary(target: Double, current: Double): String {
-    val delta = altitudeDelta(target, current)
-    val target1 = String.format("%.1f", target)
-    val move = String.format("%.1f", kotlin.math.abs(delta))
-    return when {
-        !altitudeChangeIsUseful(target, current) ->
-            "The aircraft is already at $target1 m and will not move."
-        delta > 0 -> "The aircraft will climb $move m to $target1 m."
-        else -> "The aircraft will descend $move m to $target1 m."
-    }
-}
+internal fun altitudeRangeUsable(reading: GuidedAltitude?): Boolean =
+    reading?.minimum != null && reading.maximum != null && reading.maximum > reading.minimum

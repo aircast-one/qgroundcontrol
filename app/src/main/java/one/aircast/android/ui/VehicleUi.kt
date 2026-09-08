@@ -182,9 +182,9 @@ fun FlightActions(modifier: Modifier = Modifier) {
     val flying by qgcBool("vehicle.flying")
     val guidedModeSupported by qgcBool("vehicle.guidedModeSupported")
     var altitudeTarget by remember { mutableStateOf<Double?>(null) }
-    val altitudeNow by qgcDouble("vehicle.altitudeRelative.rawValue", 0.0)
-    val guidedMinAltitude by qgcDouble("settings.flyViewSettings.guidedMinimumAltitude.rawValue", 0.0)
-    val guidedMaxAltitude by qgcDouble("settings.flyViewSettings.guidedMaximumAltitude.rawValue", 121.0)
+    var altitudeSettled by remember { mutableStateOf<Double?>(null) }
+    val altitudeJson by qgcPath(GUIDED_ALTITUDE)
+    val altitudeRange = remember(altitudeJson) { guidedAltitude(altitudeJson) }
     val landFlightMode by qgcString("vehicle.landFlightMode")
     val rtlFlightMode by qgcString("vehicle.rtlFlightMode")
     val takeoffSupported by qgcBool("vehicle.takeoffVehicleSupported")
@@ -281,36 +281,50 @@ fun FlightActions(modifier: Modifier = Modifier) {
                 }
             }) { Text("RTL") }
 
-            OutlinedButton(enabled = can.changeAltitude, onClick = {
-                altitudeTarget = altitudeNow
-            }) { Text("Alt") }
+            OutlinedButton(
+                enabled = can.changeAltitude && altitudeRangeUsable(altitudeRange),
+                onClick = {
+                    altitudeTarget = altitudeRange?.current
+                    altitudeSettled = altitudeRange?.current
+                },
+            ) { Text("Alt") }
         }
 
         TelemetryRow()
     }
 
     altitudeTarget?.let { target ->
-        val range = altitudeRange(guidedMinAltitude, guidedMaxAltitude, altitudeNow)
+        var probe by remember(altitudeTarget != null) { mutableStateOf<GuidedAltitude?>(null) }
+        LaunchedEffect(altitudeSettled) {
+            val at = altitudeSettled ?: return@LaunchedEffect
+            probe = withContext(Dispatchers.Default) { guidedAltitude(Qgc.get(guidedAltitudePath(at))) }
+        }
         AlertDialog(
             onDismissRequest = { altitudeTarget = null },
             title = { Text("Change altitude") },
             text = {
                 Column {
-                    Text(altitudeChangeSummary(target, altitudeNow))
+                    Text(probe?.sentence ?: "")
                     Slider(
                         value = target.toFloat(),
                         onValueChange = { altitudeTarget = it.toDouble() },
-                        valueRange = range.min.toFloat()..range.max.toFloat(),
+                        onValueChangeFinished = { altitudeSettled = altitudeTarget },
+                        valueRange = (altitudeRange?.minimum ?: 0.0).toFloat()..
+                            (altitudeRange?.maximum ?: 0.0).toFloat(),
                     )
                 }
             },
             confirmButton = {
                 TextButton(
-                    enabled = altitudeChangeIsUseful(target, altitudeNow),
+                    enabled = probe?.sends == true,
                     onClick = {
-                        val delta = altitudeDelta(target, altitudeNow)
                         altitudeTarget = null
-                        offMainDetached { Qgc.invoke("vehicle.guidedModeChangeAltitude", delta, false) }
+                        offMainDetached {
+                            val fresh = guidedAltitude(Qgc.get(guidedAltitudePath(target)))
+                            if (fresh?.sends == true) {
+                                Qgc.invoke("vehicle.guidedModeChangeAltitude", fresh.deltaMeters, false)
+                            }
+                        }
                     },
                 ) { Text("Change") }
             },
