@@ -1103,50 +1103,28 @@ category name with no `qgc.` prefix, so the blanket `*Log.debug=false` rule sile
 the settings key is the bare `CameraControlLog=true`. Two different key shapes in one
 `[LoggingFilters]` group, and neither is the `.debug=true` form the rules print.
 
-The earlier text below is what this replaced.
+**How this was got wrong, twice, before it was got right.** Worth keeping because the
+failure is the one this document records most often and here it cost a working feature.
 
-**Camera control is reachable but not verifiable here, and that is the blocker.** Everything
-needed is on the bridge already: `vehicle.cameraManager.currentCameraInstance` exposes
-`capturesPhotos`, `capturesVideo`, `hasModes`, `videoCaptureStatus`, `photoCaptureStatus`
-and `storageFreeStr`, with `takePhoto()`, `toggleVideoRecording()` and `toggleCameraMode()`
-as `Q_INVOKABLE`. Writing the Compose side is a couple of hours.
+The sim's camera was discovered from the first attempt. I concluded otherwise because I read
+the camera log through `head -10`, which showed only the retries for **compId 1** — the
+autopilot, which QGC also probes as a possible camera and which the sim never answers as.
+Those retries are expected and permanent, and I let them stand for the whole exchange. The
+screenshot I checked alongside was cropped to a region where camera controls do not render,
+so its emptiness confirmed nothing.
 
-**It is verifiable. I recorded it as blocked twice and was wrong both times.** The sim was
-given a camera component — a heartbeat from `MAV_COMP_ID_CAMERA` and a `CAMERA_INFORMATION`
-reply to `MAV_CMD_REQUEST_MESSAGE` — and with the camera log finally enabled it says:
+Reaching the log at all took two corrections to the settings key, and they are different
+from each other:
 
-    _handleCameraInfo: Success for compId 100 - reset retry counter
-    _handleCameraInfo: SimCam Aircast Comp ID: 100
+- `[LoggingFilters]` entries are the **bare** category name. `categoryLoggingOn` does
+  `settings.value(category)` and the rule builder appends `.debug=true` itself, so writing
+  `qgc.camera.qgccameramanager.debug=true` puts the generated-rule format into the setting
+  and the lookup misses silently. The ini being edited had four correct examples in it.
+- `CameraControlLog` has **no `qgc.` prefix at all** — an old-style name that the blanket
+  `*Log.debug=false` rule silences, whose key is the bare `CameraControlLog=true`.
 
-The camera is discovered and registered. What made me conclude otherwise, twice:
-
-- I read the log through `head -10`, which showed only the retries for **compId 1** — the
-  autopilot, which QGC also probes as a possible camera and which the sim never answers as.
-  Those retries are expected and permanent; they are not the camera's.
-- I checked a screenshot crop that did not include where camera controls render, and read
-  their absence as absence of a camera.
-
-Both are the sampling failure this document keeps recording, and this time the cost was
-abandoning a feature that was already working. The retry lines were real and I let them
-stand for the whole exchange.
-
-A second, bounded attempt narrowed it and then hit a different wall. Reading
-`_handleCameraInfo`: it needs the sending compid to be in `_cameraInfoRequest`, which it is,
-since the requests are going out. So the reply either never reaches
-`_mavlinkMessageReceived` or does not decode — the retry means `infoReceived` never became
-true, so `_handleCameraInfo` did not run at all.
-
-**Correction: the log route is not closed, I was using the wrong key.** `[LoggingFilters]`
-entries are the **bare** category name — `categoryLoggingOn` does
-`settings.value(category)` and the code appends `.debug=true` itself when it builds the
-rules. The existing entries show it: `qgc.videomanager.videomanager=true`, no suffix. I had
-written `qgc.camera.qgccameramanager.debug=true`, which is the *output* format copied into
-the *input*, so the lookup missed and no rule was emitted. The ini I was editing had four
-correct examples in it.
-
-So `qgc.camera.qgccameramanager=true` is the way to see inside `QGCCameraManager`, and the
-camera blocker is diagnosable after all — by whoever has the time, since the answer is one
-log away rather than behind a closed door.
+So one group holds two key shapes, and neither is the form the rules print. The
+"Filter rules" line the app logs at startup is the only confirmation a filter took.
 
 **Obstacle distance is built, and finding a bridge defect along the way.** QGC draws a
 proximity ring from `OBSTACLE_DISTANCE`; on a phone the useful form is a sentence, so the
