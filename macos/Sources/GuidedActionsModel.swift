@@ -125,7 +125,7 @@ enum GuidedAction: String, CaseIterable, Identifiable {
         case .changeSpeed:
             return state.armed && state.guidedSupported && state.flying
                 && !state.missionActive && state.speedLimitsAvailable
-        case .emergencyStop: return state.armed
+        case .emergencyStop: return state.armed && state.flying
         }
     }
 

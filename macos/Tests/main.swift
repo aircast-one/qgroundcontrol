@@ -2019,8 +2019,10 @@ func checkGuidedActions() {
 
     var armed = withMission
     armed.armed = true
-    expect(names(armed), "takeoff,startMission,land,disarm,emergencyStop",
-           "an armed vehicle on the ground can be disarmed and stopped, and is not offered arming again")
+    expect(names(armed), "takeoff,startMission,land,disarm",
+           "an armed vehicle on the ground is disarmed, not emergency-stopped; QGC requires flight for that")
+    expect(!names(armed).contains("emergencyStop"),
+           "cutting the motors is for the air — on the ground Disarm does the job without the drop")
 
     var flying = armed
     flying.flying = true
