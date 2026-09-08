@@ -105,6 +105,17 @@ under the terrain's own extent, and the label says what fraction of the route
 has ground rather than leaving the picture to imply all of it. Partial coverage
 is the normal state on a cold tile cache, not an edge case.
 
+The profile's x-axis disagreed with the plan's own distance whenever terrain was
+present: 73.67 km of plan drew as 64.36 km of profile, and 72.87 as 58.66. The
+walk advanced by the sum of the segments' `totalDistance` when segments came
+back and by `complexDistance` when they did not, so the same axis had two
+sources and the terrain-bearing one was shorter. The evidence for which is
+right was already on the screen: on runs with no terrain at all the two numbers
+matched exactly, 73.48 against 73.48, because only the `complexDistance` branch
+ran. `complexDistance` is now the authority in both branches and `overSpan`
+fits the terrain samples into it, so the ground still lines up with the route it
+belongs to.
+
 ## Not done, and why
 
 Takeoff and RTL are named rather than drawn. Both report `coordinate` 0,0, and the only position

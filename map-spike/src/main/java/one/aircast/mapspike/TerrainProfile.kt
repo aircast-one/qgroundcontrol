@@ -102,6 +102,16 @@ private fun segmentTerrain(
     }
 }
 
+internal fun overSpan(points: List<ProfilePoint>, from: Double, span: Double): List<ProfilePoint> {
+    val measured = (points.lastOrNull()?.distance ?: from) - from
+
+    return if (measured <= 0.0) {
+        points
+    } else {
+        points.map { it.copy(distance = from + (it.distance - from) * (span / measured)) }
+    }
+}
+
 fun terrainProfile(
     json: JSONObject?,
     segments: (Int) -> JSONObject? = { null },
@@ -136,6 +146,7 @@ fun terrainProfile(
                     null
                 } else {
                     segmentTerrain(segments(index), reached, entryAlt, exitAlt ?: entryAlt)
+                        ?.let { overSpan(it, reached, span) }
                 }
                 val departure = if (span == null || exitAlt == null) {
                     emptyList()
@@ -145,7 +156,7 @@ fun terrainProfile(
 
                 Walk(
                     at = point(element, "exitCoordinate") ?: entry,
-                    travelled = flown?.last()?.distance ?: (reached + (span ?: 0.0)),
+                    travelled = reached + (span ?: 0.0),
                     points = walk.points + (flown ?: (arrival + departure)),
                 )
             }
