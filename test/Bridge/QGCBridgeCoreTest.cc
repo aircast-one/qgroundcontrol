@@ -611,6 +611,41 @@ void QGCBridgeCoreTest::_convertsUnitsForNativeHeads()
              qPrintable(QJsonDocument(units).toJson(QJsonDocument::Compact)));
 }
 
+// A coordinate read directly carries "valid"; nested in an object read it did not, so a
+// caller checking that key could not tell a good coordinate from a missing field. The
+// macOS head read nil there and would have hidden Orbit from a vehicle with a valid home.
+void QGCBridgeCoreTest::_aNestedCoordinateSaysItIsValid()
+{
+    // Insert a waypoint so there is definitely a valid coordinate to read back. Asserting
+    // against whatever the fixture happened to hold passed without running the check at
+    // all — the settings item has no home coordinate with no vehicle.
+    const QJsonObject inserted = parse(QGCBridgeCore::invoke(
+        QStringLiteral("plan.missionController.insertSimpleMissionItem"),
+        QStringLiteral("[{\"latitude\": 47.397, \"longitude\": 8.545, \"altitude\": 50}, -1, false]")));
+    QVERIFY2(inserted.value(QStringLiteral("ok")).toBool(),
+             qPrintable(QJsonDocument(inserted).toJson(QJsonDocument::Compact)));
+
+    const QJsonObject plan = parse(QGCBridgeCore::get(
+        QStringLiteral("plan.missionController.visualItems")));
+    const QJsonArray elements = plan.value(QStringLiteral("elements")).toArray();
+    QVERIFY(elements.size() >= 2);
+
+    const QJsonValue nested = elements.last().toObject().value(QStringLiteral("coordinate"));
+    QVERIFY2(nested.isObject(),
+             qPrintable(QJsonDocument(elements.last().toObject()).toJson(QJsonDocument::Compact)));
+    QVERIFY2(nested.toObject().contains(QStringLiteral("valid")),
+             qPrintable(QJsonDocument(nested.toObject()).toJson(QJsonDocument::Compact)));
+    QCOMPARE(nested.toObject().value(QStringLiteral("valid")).toBool(), true);
+    QCOMPARE(nested.toObject().value(QStringLiteral("latitude")).toDouble(), 47.397);
+
+    const QJsonObject position = parse(QGCBridgeCore::get(QStringLiteral("positionManager")));
+    QVERIFY2(position.contains(QStringLiteral("gcsHeading")),
+             qPrintable(QJsonDocument(position).toJson(QJsonDocument::Compact)));
+
+    // The plan controller is shared across this suite, so put it back as it was found.
+    (void) QGCBridgeCore::invoke(QStringLiteral("plan.removeAll"), QStringLiteral("[]"));
+}
+
 void QGCBridgeCoreTest::_planStartsWithItsSettingsItemAndNoVehicle()
 {
     const QJsonObject items = parse(QGCBridgeCore::get(

@@ -12,6 +12,7 @@
 #include "MultiVehicleManager.h"
 #include "PlanMasterController.h"
 #include "MissionCommandTree.h"
+#include "PositionManager.h"
 #include "QmlUnitsConversion.h"
 #include "QmlObjectListModel.h"
 #include "SettingsManager.h"
@@ -82,6 +83,9 @@ QObject *rootObject(const QString &name)
             geoTag = new GeoTagController(QCoreApplication::instance());
         }
         return geoTag;
+    }
+    if (name == QLatin1String("positionManager")) {
+        return QGCPositionManager::instance();
     }
     if (name == QLatin1String("units")) {
         // QmlUnitsConversion only forwards to FactMetaData statics, so a bridge-owned one
@@ -238,6 +242,10 @@ QJsonValue variantJson(const QVariant &value)
         const QGeoCoordinate coordinate = value.value<QGeoCoordinate>();
         return coordinate.isValid()
             ? QJsonValue(QJsonObject {
+                  // A direct read of a coordinate property carries "valid"; nested in an
+                  // object read it did not, so a caller checking that key got nothing back
+                  // for a perfectly good coordinate and could read it as invalid.
+                  { QStringLiteral("valid"), true },
                   { QStringLiteral("latitude"), coordinate.latitude() },
                   { QStringLiteral("longitude"), coordinate.longitude() },
                   { QStringLiteral("altitude"), coordinate.altitude() },

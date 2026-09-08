@@ -32,6 +32,7 @@ private slots:
     void _findsThePropertyEvenWhenItAlreadyHoldsAnObject();
     void _readsEnumsAsNumbers();
     void _convertsUnitsForNativeHeads();
+    void _aNestedCoordinateSaysItIsValid();
     void _planStartsWithItsSettingsItemAndNoVehicle();
     void _planSaveReportsWhetherItWrote();
     void _aRefusedLoadLeavesTheExistingPlanAlone();
