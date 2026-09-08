@@ -320,6 +320,11 @@ void GstVideoReceiver::stop()
     _dispatchSignal([this]() { emit onStopComplete(STATUS_OK); });
 }
 
+bool GstVideoReceiver::_sinkTakesWidget(GstElement *sink)
+{
+    return sink && (g_object_class_find_property(G_OBJECT_GET_CLASS(sink), "widget") != nullptr);
+}
+
 void GstVideoReceiver::startDecoding(void *sink)
 {
     if (!sink) {
@@ -334,7 +339,10 @@ void GstVideoReceiver::startDecoding(void *sink)
 
     qCDebug(GstVideoReceiverLog) << "Starting decoding" << _uri;
 
-    if (!_widget) {
+    // Only a sink that renders into a QQuickItem needs one. A native head asks for a sink
+    // that draws elsewhere and has no widget by design, and this refused to decode for it —
+    // the sink it had just been handed was never looked at.
+    if (!_widget && _sinkTakesWidget(GST_ELEMENT(sink))) {
         qCDebug(GstVideoReceiverLog) << "Video Widget is NULL" << _uri;
         _dispatchSignal([this]() { emit onStartDecodingComplete(STATUS_FAIL); });
         return;
@@ -1194,16 +1202,15 @@ bool GstVideoReceiver::_addVideoSink(GstPad *pad)
     // drops these late frames, which shows up as stutter even though decode is
     // cheap. Disable clock-sync so every decoded frame is presented as it arrives.
 #ifdef Q_OS_ANDROID
-    g_object_set(_videoSink,
-                 "widget", _widget,
-                 "sync", FALSE,
-                 NULL);
+    const gboolean syncToClock = FALSE;
 #else
-    g_object_set(_videoSink,
-                 "widget", _widget,
-                 "sync", (_buffer >= 0),
-                 NULL);
+    const gboolean syncToClock = (_buffer >= 0) ? TRUE : FALSE;
 #endif
+    if (_sinkTakesWidget(_videoSink)) {
+        g_object_set(_videoSink, "widget", _widget, "sync", syncToClock, NULL);
+    } else {
+        g_object_set(_videoSink, "sync", syncToClock, NULL);
+    }
 
     (void) gst_element_sync_state_with_parent(_videoSink);
 

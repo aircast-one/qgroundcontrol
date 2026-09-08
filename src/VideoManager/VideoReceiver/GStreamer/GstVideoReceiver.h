@@ -65,6 +65,9 @@ public slots:
     void start(uint32_t timeout) override;
     void stop() override;
     void startDecoding(void *sink) override;
+
+    /// True when the sink renders into a QQuickItem and therefore needs one.
+    static bool _sinkTakesWidget(GstElement *sink);
     void stopDecoding() override;
     void startRecording(const QString &videoFile, FILE_FORMAT format) override;
     void stopRecording() override;
