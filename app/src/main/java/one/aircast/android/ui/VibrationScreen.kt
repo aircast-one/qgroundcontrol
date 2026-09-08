@@ -27,6 +27,9 @@ import java.util.Locale
 import one.aircast.android.bridge.qgcBool
 import one.aircast.android.bridge.qgcDouble
 
+private val VIBE_HIGH_COLOR = Color(0xFFFF5252)
+private val VIBE_WARN_COLOR = Color(0xFFFFA000)
+
 internal const val VIBE_MAX = 90.0
 internal const val VIBE_WARN = 30.0
 internal const val VIBE_HIGH = 60.0
@@ -62,8 +65,8 @@ internal fun verdictFor(value: Double) = when {
 @Composable
 private fun colorFor(value: Double) = when {
     value.isNaN() -> MaterialTheme.colorScheme.surfaceVariant
-    value >= VIBE_HIGH -> MaterialTheme.colorScheme.error
-    value >= VIBE_WARN -> Color(0xFFFFA000)
+    value >= VIBE_HIGH -> VIBE_HIGH_COLOR
+    value >= VIBE_WARN -> VIBE_WARN_COLOR
     else -> MaterialTheme.colorScheme.primary
 }
 
