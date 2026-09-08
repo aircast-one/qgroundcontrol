@@ -604,6 +604,7 @@ About 58 developer-weeks. Flight-test time, not code, is the schedule.
 - 2026-09-09: QSettings INI reader in the core (sections, escapes, lists, @Invalid/@ByteArray/@Variant).
 - 2026-09-09: parameter download/write state machine in the core (pure events in, actions out, C++ retry budgets).
 - 2026-09-09: PX4 parameter XML metadata loader in the core over the bundled file (2,600+ parameters).
+- 2026-09-09: ArduPilot apm.pdef.xml loader in the core with the plugin's lookup rules (Copter 4.6 fixture).
 
 ### Stream F · Core
 
