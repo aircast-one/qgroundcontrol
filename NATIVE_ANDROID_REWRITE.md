@@ -145,11 +145,32 @@ with the GStreamer GL elements added to the static build), which is precisely th
 work the hardware decoder exists to avoid. Rendering the texture where it already
 lives is the shape that fits.
 
-Not yet established, and worth one experiment before committing to that: whether
-`amcviddec` on this device would negotiate a **system-memory** output at all if the
-bin stopped implying it wanted one. Only the GLMemory caps were observed; a
-system-memory variant was not offered under the caps we presented, which is not the
-same as it not existing.
+**That question is now settled, and the answer is no.** At `gstDebugLevel=5` the
+decoder states it directly:
+
+    info:     <amcvideodec-c2androidavcdecoder0> GL output: disabled
+    critical: <amcvideodec-c2androidavcdecoder0> Codec only supports GL output but
+              downstream does not
+    warning:  <amcvideodec-c2androidavcdecoder0> Subclass refused caps
+
+`c2androidavcdecoder` has **no system-memory output mode**. There is no arrangement of
+caps that gets decoded frames into system memory on this device, so `videoconvert !
+appsink` was never going to work and no amount of tuning it will. That leaves exactly
+two options, and they are a real choice rather than one being obviously right:
+
+- **Consume the texture where it lives** — a `Surface`/`SurfaceTexture` the decoder
+  renders into. Keeps hardware decode, no per-frame copy across the bus, and is the
+  reason the Phase 5 bullet now points here.
+- **Software decode** (`avdec_h264`). Works today and is what every measurement in this
+  section was actually taken through. Costs per-pixel CPU, which is what the retracted
+  45 Mpx/s figure was really measuring.
+
+**How this was read matters, because the first attempt at it lied.** At level 5 the log
+overruns logcat's default buffer: that run reported *zero* decoders created, zero
+`Streaming started`, zero refusals — all artifacts of 230 dropped chunks. Re-running with
+`adb logcat -G 64M` gave 85,521 lines, **zero drops**, and the opposite picture: two
+decoders, two `Decoding started`, ten refusals. Absence in a lossy log is not absence.
+Check the drop count before believing a zero.
 
 The general lesson, which was already in this plan when I broke it: a measurement
 whose input you have not characterised measures the input.
