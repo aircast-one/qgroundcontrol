@@ -41,6 +41,7 @@ pub mod tlog;
 pub mod router;
 pub mod vibration;
 pub mod video;
+pub mod vehiclefacts;
 pub mod view;
 pub mod warnings;
 pub mod waypoints;
