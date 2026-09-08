@@ -67,4 +67,58 @@ class QgcWatchTest {
 
         assertEquals(listOf("a", "a,b"), sent)
     }
+
+    @Test
+    fun `a path is only dropped once its last holder releases it`() {
+        Qgc.forgetWatchesForTest()
+        succeeding()
+        Qgc.watch(listOf("a"))
+        Qgc.watch(listOf("a"))
+
+        Qgc.unwatch(listOf("a"))
+        assertEquals(setOf("a"), Qgc.watchedPathsForTest())
+
+        Qgc.unwatch(listOf("a"))
+        assertEquals(emptySet<String>(), Qgc.watchedPathsForTest())
+        assertEquals(listOf("a", ""), sent)
+    }
+
+    @Test
+    fun `releasing one path leaves the others registered`() {
+        Qgc.forgetWatchesForTest()
+        succeeding()
+        Qgc.watch(listOf("a"))
+        Qgc.watch(listOf("b"))
+        Qgc.unwatch(listOf("a"))
+
+        assertEquals(setOf("b"), Qgc.watchedPathsForTest())
+        assertEquals(listOf("a", "a,b", "b"), sent)
+    }
+
+    @Test
+    fun `releasing a path that was never registered changes nothing`() {
+        Qgc.forgetWatchesForTest()
+        succeeding()
+        Qgc.watch(listOf("a"))
+        Qgc.unwatch(listOf("never"))
+
+        assertEquals(setOf("a"), Qgc.watchedPathsForTest())
+        assertEquals(listOf("a"), sent)
+    }
+
+    @Test
+    fun `a failed release keeps the path registered rather than silently dropping it`() {
+        Qgc.forgetWatchesForTest()
+        succeeding()
+        Qgc.watch(listOf("a"))
+
+        failing(IllegalStateException("bridge went away"))
+        Qgc.unwatch(listOf("a"))
+
+        assertEquals(setOf("a"), Qgc.watchedPathsForTest())
+
+        succeeding()
+        Qgc.unwatch(listOf("a"))
+        assertEquals(listOf("a", ""), sent)
+    }
 }

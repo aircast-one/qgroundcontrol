@@ -1,6 +1,7 @@
 package one.aircast.android.ui
 
 import org.junit.Assert.assertEquals
+import one.aircast.android.bridge.Fact
 import org.junit.Test
 
 class RemoteSupportScreenTest {
@@ -56,5 +57,22 @@ class RemoteSupportScreenTest {
             emptyList<String>(),
             CALIBRATIONS.map { it.method }.filter { it == "calibrateMotorInterference" },
         )
+    }
+
+    @Test
+    fun `a value outside the listed options is not treated as an enum`() {
+        val listed = Fact(
+            path = "p", name = "ACRO_TRAINER", description = "", units = "",
+            valueString = "2", value = 2, enumStrings = listOf("Disabled", "Leveling", "Leveling and Limited"),
+            enumIndex = 2, isBool = false, isString = false, readOnly = false,
+        )
+        val offList = listed.copy(
+            name = "ACRO_RP_RATE_TC",
+            valueString = "Unknown: 0",
+            enumStrings = listOf("Disabled", "Leveling", "Leveling and Limited", "Unknown: 0"),
+            enumIndex = 3,
+        )
+        assertEquals(false, listed.valueIsOffTheEnumList)
+        assertEquals(true, offList.valueIsOffTheEnumList)
     }
 }
