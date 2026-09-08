@@ -389,8 +389,14 @@ run of `amslTerrainHeights` each, which is the only place the real ground curve
 exists. Ground from the segments, planned altitude from the item.
 
 Reading one survey's `flightPathSegments` is 31 KB of JSON across 67 segments,
-so it is fetched only for items that have a `complexDistance`, never per poll
-for the whole plan.
+and it is fetched only for items that have a `complexDistance`. Measured on the
+phone, one survey: 20 ms per poll with segments against 0.1 ms without, and an
+empty plan is unaffected at 104 us. That is 3% of the 700 ms poll for one
+survey and it sits on Dispatchers.Default, so nothing was cached for it. The
+number to watch is the count: the poll already cost 164 ms at nine surveys
+before segments existed, and nine more segment reads would put it near half the
+interval. Cache it then, and remember that terrain arrives after the plan stops
+changing - a cache keyed on the plan alone would freeze an empty profile.
 
 ## Weight
 
