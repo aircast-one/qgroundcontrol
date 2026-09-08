@@ -136,7 +136,7 @@ final class MissionStore: ObservableObject, Probeable {
         if let complex = kind.complexName {
             Bridge.invoke("plan.missionController.\(kind.invokable)",
                           [complex, ["latitude": latitude, "longitude": longitude], index, true])
-            seedArea(at: index, latitude: latitude, longitude: longitude)
+            seed(kind, at: index, latitude: latitude, longitude: longitude)
         } else {
             Bridge.invoke("plan.missionController.\(kind.invokable)",
                           [["latitude": latitude, "longitude": longitude], index, true])
@@ -146,11 +146,13 @@ final class MissionStore: ObservableObject, Probeable {
         reload()
     }
 
-    private func seedArea(at index: Int, latitude: Double, longitude: Double) {
-        let polygon = "plan.missionController.visualItems.\(index).surveyAreaPolygon"
-        MissionItemKind.defaultArea(latitude: latitude, longitude: longitude).forEach { corner in
-            Bridge.invoke("\(polygon).appendVertex",
-                          [["latitude": corner.latitude, "longitude": corner.longitude]])
+    private func seed(_ kind: MissionItemKind, at index: Int, latitude: Double, longitude: Double) {
+        guard let plan = MissionItemKind.seed(for: kind, latitude: latitude, longitude: longitude)
+        else { return }
+        let path = "plan.missionController.visualItems.\(index).\(plan.property)"
+        plan.points.forEach { point in
+            Bridge.invoke("\(path).appendVertex",
+                          [["latitude": point.latitude, "longitude": point.longitude]])
         }
     }
 
@@ -181,13 +183,14 @@ final class MissionStore: ObservableObject, Probeable {
     }
 
     private func surveyPolygon(of item: MissionItem) -> [GeoPoint] {
-        guard item.isSurveyItem else { return [] }
-        let polygon = Bridge.group("plan.missionController.visualItems.\(item.index).surveyAreaPolygon")
+        guard let property = MissionItemKind.areaProperty(forCommand: item.command)
+        else { return [] }
+        let polygon = Bridge.group("plan.missionController.visualItems.\(item.index).\(property)")
         return ((polygon["path"] as? [Any]) ?? []).compactMap(GeoPoint.init(json:))
     }
 
     var surveyAreas: [[GeoPoint]] {
-        items.filter(\.isSurveyItem).map(surveyPolygon).filter { $0.count >= 3 }
+        items.map(surveyPolygon).filter { $0.count >= 3 }
     }
 
     var terrain: TerrainProfile {

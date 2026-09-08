@@ -565,7 +565,8 @@ func checkUnplacedCommands() {
 checkUnplacedCommands()
 
 func checkMissionItemKinds() {
-    expect(MissionItemKind.allCases.count == 5, "the add menu offers five kinds of item")
+    expect(MissionItemKind.allCases.count == 7,
+           "the add menu offers every item type, including the three survey patterns")
     expect(MissionItemKind.survey.complexName == "Survey", "a survey inserts by name as a complex item")
     expect(MissionItemKind.waypoint.complexName == nil, "a waypoint is not a complex item")
     expect(MissionItemKind.survey.placementHint, "Click the map to place a survey area.",
@@ -582,7 +583,39 @@ func checkMissionItemKinds() {
     expect(MissionItemKind.land.invokable, "insertLandItem", "land has its own insert")
     expect(MissionItemKind.roi.invokable, "insertROIMissionItem", "a region of interest has its own insert")
     expect(MissionItemKind(rawValue: "takeoff") == .takeoff, "a kind round-trips through its raw value")
-    expect(MissionItemKind(rawValue: "corridor") == nil, "an unknown kind is not invented")
+    expect(MissionItemKind(rawValue: "helix") == nil, "an unknown kind is not invented")
+
+    expect(MissionItemKind.corridor.complexName ?? "", "Corridor Scan",
+           "the pattern names match what the vehicle offers in complexMissionItemNames")
+    expect(MissionItemKind.structure.complexName ?? "", "Structure Scan", "for all three")
+    expect(MissionItemKind.corridor.invokable, "insertComplexMissionItem",
+           "every pattern goes in through the complex insert")
+
+    expect(MissionItemKind.survey.geometry == .area("surveyAreaPolygon"),
+           "a survey is seeded with an area")
+    expect(MissionItemKind.structure.geometry == .area("structurePolygon"),
+           "so is a structure scan, but into its own polygon")
+    expect(MissionItemKind.corridor.geometry == .line("corridorPolyline"),
+           "a corridor is a line, not an area, so a four-corner box would be wrong")
+    expect(MissionItemKind.waypoint.geometry == .none, "a simple item has no geometry to seed")
+
+    let seededArea = MissionItemKind.seed(for: .survey, latitude: -35.36, longitude: 149.16)
+    expect(seededArea?.points.count == 4, "an area is seeded as a box")
+    expect(seededArea?.property ?? "", "surveyAreaPolygon", "on the property that item uses")
+    let seededLine = MissionItemKind.seed(for: .corridor, latitude: -35.36, longitude: 149.16)
+    expect(seededLine?.points.count == 2, "a corridor is seeded as two ends")
+    expect(seededLine?.property ?? "", "corridorPolyline", "on its polyline")
+    expect(MissionItemKind.seed(for: .waypoint, latitude: 0, longitude: 0) == nil,
+           "and a waypoint is seeded with nothing at all")
+
+    expect(MissionItemKind.areaProperty(forCommand: "Survey") ?? "", "surveyAreaPolygon",
+           "the map finds a survey's outline by the item's own command name")
+    expect(MissionItemKind.areaProperty(forCommand: "Structure Scan") ?? "", "structurePolygon",
+           "and a structure scan's, which is a different property entirely")
+    expect(MissionItemKind.areaProperty(forCommand: "Corridor Scan") == nil,
+           "a corridor is a line and has no area to draw, so it is not offered one")
+    expect(MissionItemKind.areaProperty(forCommand: "Waypoint") == nil,
+           "and a simple item has none either")
     expect(MissionItemKind.roi.placementHint, "Click the map to place a region of interest.",
            "the hint reads as English rather than a lowercased title")
     expect(MissionItemKind.takeoff.placementHint, "Click the map to place a takeoff.",
