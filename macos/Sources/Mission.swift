@@ -1,3 +1,4 @@
+import CoreLocation
 import Foundation
 import MapKit
 import QGCMapTileC
@@ -505,6 +506,32 @@ final class MissionStore: ObservableObject, Probeable, WriteReporting {
         reload()
     }
 
+    // Reading the status never prompts; only asking for authorisation does, and QGC's own
+    // position manager is what asks.
+    private static let locationProbe = CLLocationManager()
+
+    static var locationAccess: LocationAccess {
+        switch locationProbe.authorizationStatus {
+        case .notDetermined: return .notAsked
+        case .denied, .restricted: return .refused
+        case .authorized, .authorizedAlways: return .waiting
+        @unknown default: return .unknown
+        }
+    }
+
+    // Built once: every centreState call reads the bridge, and asking six times over could
+    // report a menu no single moment ever showed.
+    private func centreProbe() -> [String: Any] {
+        let state = centreState(fence: [], rally: [])
+        return ["open": centreMenuOpen,
+                "focused": focus != nil,
+                "access": "\(MissionStore.locationAccess)",
+                "enabled": MapCentre.allCases.filter { $0.enabled(in: state) }.map(\.title),
+                "notes": MapCentre.allCases
+                    .map { [$0.title, $0.note(in: state)] }
+                    .filter { !$0[1].isEmpty }]
+    }
+
     func centreState(fence: [GeoPoint], rally: [GeoPoint]) -> MapCentreState {
         var read = MapCentreState()
         read.missionPoints = items.filter(\.hasPosition).compactMap { item in
@@ -522,6 +549,7 @@ final class MissionStore: ObservableObject, Probeable, WriteReporting {
             return GeoPoint(latitude: marker.latitude, longitude: marker.longitude)
         }
         read.gcs = MapCentre.usable(Bridge.group("positionManager.gcsPosition"))
+        read.access = MissionStore.locationAccess
         return read
     }
 
@@ -734,11 +762,7 @@ final class MissionStore: ObservableObject, Probeable, WriteReporting {
                                              "canRemove": $0.canRemoveVertex,
                                              "ring": $0.ring, "segments": $0.segments,
                                              "split": $0.splitInvokable] },
-         "centre": ["open": centreMenuOpen,
-                    "focused": focus != nil,
-                    "enabled": MapCentre.allCases
-                        .filter { $0.enabled(in: centreState(fence: [], rally: [])) }
-                        .map(\.title)],
+         "centre": centreProbe(),
          "launch": ["editable": launch.editable, "altitude": launch.altitudeText,
                     "position": launch.positionText],
          "vehicle": ["firmware": vehicle.firmware, "type": vehicle.type,

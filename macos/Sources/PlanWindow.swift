@@ -66,10 +66,19 @@ struct CentreMenu: View {
             VStack(alignment: .leading, spacing: 0) {
                 ForEach(MapCentre.allCases) { choice in
                     let on = choice.enabled(in: state)
+                    let note = choice.note(in: state)
                     Button(action: { pick(choice) }) {
-                        Text(choice.title)
-                            .frame(maxWidth: .infinity, alignment: .leading)
-                            .contentShape(Rectangle())
+                        VStack(alignment: .leading, spacing: 1) {
+                            Text(choice.title)
+                            if !note.isEmpty {
+                                Text(note)
+                                    .font(.caption)
+                                    .foregroundColor(.secondary)
+                                    .fixedSize(horizontal: false, vertical: true)
+                            }
+                        }
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .contentShape(Rectangle())
                     }
                     .buttonStyle(.plain)
                     .foregroundColor(on ? .primary : .secondary)

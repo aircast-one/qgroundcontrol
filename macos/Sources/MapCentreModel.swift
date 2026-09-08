@@ -1,11 +1,19 @@
 import Foundation
 
+enum LocationAccess: Equatable {
+    case unknown
+    case waiting
+    case notAsked
+    case refused
+}
+
 struct MapCentreState: Equatable {
     var missionPoints: [GeoPoint] = []
     var otherPoints: [GeoPoint] = []
     var launch: GeoPoint?
     var vehicle: GeoPoint?
     var gcs: GeoPoint?
+    var access = LocationAccess.unknown
 
     var allPoints: [GeoPoint] { missionPoints + otherPoints }
 }
@@ -39,6 +47,26 @@ enum MapCentre: String, CaseIterable, Identifiable {
         case .vehicle: return state.vehicle != nil
         case .myLocation: return state.gcs != nil
         case .coordinates: return true
+        }
+    }
+
+    // A greyed row with no reason leaves the operator guessing whether it is broken or
+    // just waiting, and My Location is the one whose cause they can actually fix.
+    func note(in state: MapCentreState) -> String {
+        guard !enabled(in: state) else { return "" }
+        switch self {
+        case .mission: return "This plan has no waypoints"
+        case .allItems: return "Nothing has been placed yet"
+        case .launch: return "No launch position yet"
+        case .vehicle: return "No vehicle position yet"
+        case .coordinates: return ""
+        case .myLocation:
+            switch state.access {
+            case .notAsked: return "macOS has not been asked for location access yet"
+            case .refused: return "macOS is not allowing location access"
+            case .waiting: return "Waiting for a position fix"
+            case .unknown: return "No position for this computer"
+            }
         }
     }
 

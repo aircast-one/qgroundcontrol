@@ -2280,6 +2280,7 @@ checkPolygonEdit()
 checkMessageRate()
 checkMenuPlacement()
 checkOverlayArrange()
+checkCentreNotes()
 checkMapFollow()
 checkMapScale()
 checkTerrainDownload()
@@ -2879,6 +2880,34 @@ func checkPolygonEdit() {
     expect(pair?.canRemoveVertex == false, "but neither end can be dropped")
     expect(EditablePolygon.read(path: "l", json: ["path": []], ring: false) == nil,
            "and an empty line is still nothing to edit")
+}
+
+func checkCentreNotes() {
+    var state = MapCentreState()
+    expect(MapCentre.mission.note(in: state) == "This plan has no waypoints",
+           "a greyed centre option says why rather than leaving the operator guessing")
+    expect(MapCentre.vehicle.note(in: state) == "No vehicle position yet",
+           "and stays true whether a vehicle is connected or not, rather than implying one is")
+    expect(MapCentre.coordinates.note(in: state) == "",
+           "the option that is always available needs no note")
+
+    state.access = .notAsked
+    expect(MapCentre.myLocation.note(in: state).contains("not been asked"),
+           "an unanswered permission prompt is something the operator can act on")
+    state.access = .refused
+    expect(MapCentre.myLocation.note(in: state).contains("not allowing"),
+           "a refused permission reads differently from one never asked for")
+    state.access = .waiting
+    expect(MapCentre.myLocation.note(in: state) == "Waiting for a position fix",
+           "with permission granted the wait is the honest reason")
+    state.access = .unknown
+    expect(MapCentre.myLocation.note(in: state) == "No position for this computer",
+           "and an unknown status claims nothing about permission")
+
+    state.gcs = GeoPoint(latitude: 1, longitude: 2)
+    expect(MapCentre.myLocation.enabled(in: state), "a usable position enables the option")
+    expect(MapCentre.myLocation.note(in: state) == "",
+           "an enabled option carries no note at all")
 }
 
 func checkOverlayArrange() {
