@@ -371,6 +371,23 @@ are `FactValueSliderListModel`, `ParameterEditorController` and `QmlObjectListMo
 and none of them is on an Analyze path. Left as a struck-through line rather than deleted
 because a reader who remembers the original would otherwise assume it was overlooked.
 
+**The native head shows three pages QGC hides on Android, on purpose.**
+`QGCCorePlugin::analyzePages()` wraps GeoTag, MAVLink Console, MAVLink Inspector and
+Vibration in `#ifndef Q_OS_ANDROID`, so the QML build offers **only Log Download** on a
+phone. The native picker offers four.
+
+That is not an oversight to correct back. The controllers —
+`MAVLinkConsoleController`, `MAVLinkInspectorController`, and the vibration facts — carry
+no platform guard and are compiled on Android already; what was excluded was the
+desktop-shaped QML page, not the capability. Building phone-shaped versions of exactly
+those pages is the migration doing its job. GeoTag stays out: it is file-system work on
+images, and its exclusion is about the platform rather than the layout.
+
+**That makes this phase's gate unsatisfiable as written.** "Chart values match the Qt
+build" cannot be checked on Android, because the Android Qt build does not draw those
+charts at all. The comparison has to be against the **desktop** Qt build, on the same
+vehicle, or the gate can never be met.
+
 ### Status — all four pages are built
 
 Log Download, Vibration, MAVLink Console and MAVLink Inspector all exist natively
