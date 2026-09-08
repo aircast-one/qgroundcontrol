@@ -659,6 +659,21 @@ blocks and the phone is doing it four times a second forever. Around 500 items
 the read exceeds the interval and the poll stops idling at all - on a handset
 that is also flying an aircraft.
 
+The read asks for a projection now. `getFields(path, "*")` keeps every property
+and drops the fact metadata - a Fact was carrying min, max, enumStrings,
+enumValues and both bound strings into every item, where this module wants a
+value. Measured against a plain read on the same binary, same 200 item plan,
+both calls in the same poll:
+
+    whole   153-160 ms   790598 b
+    "*"      86-94 ms    364047 b
+
+Bytes to 46%, time to 56%: the property walk still happens whatever you ask for,
+so a payload reduction is not a latency reduction and should not be reported as
+one. Those absolutes are lower than the 247-294 ms above because that poll made
+three reads and the caches were warm - the ratio is like for like, the numbers
+are not comparable across the two runs.
+
 A watch does not fix it, and I wrote here an hour ago that it would. `Watcher`
 in QGCBridgeCore.cc polls on a QTimer and diffs: every tick it calls
 `readPath`, serialises the result to a string and compares it to the last one.

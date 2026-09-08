@@ -119,7 +119,7 @@ fun missionItems(json: JSONObject?): List<MissionItem> {
 
 object PlanBridge {
     fun rawItems(): JSONObject? =
-        runCatching { JSONObject(QGCBridge.get(PLAN_ITEMS)) }.getOrNull()
+        runCatching { JSONObject(QGCBridge.getFields(PLAN_ITEMS, "*")) }.getOrNull()
 
     fun items(): List<MissionItem> = missionItems(rawItems())
 
