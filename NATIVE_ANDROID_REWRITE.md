@@ -934,6 +934,41 @@ Safety-critical, deliberately last.
   section above. The frames never reach system memory, so the sink has to meet the texture where it
   is — a `Surface`/`SurfaceTexture` the decoder renders into — rather than being fed by a CPU copy.
 
+### What switching the Fly tab actually costs
+
+The bullets above say what to build; they do not say what `FlyView.qml` currently provides,
+so anyone switching the tab would find the gaps by removing them. Its layers against what
+exists natively today:
+
+| QML layer | Native | Note |
+|---|---|---|
+| vehicle marker, trail, follow | **`VehicleMap`** | in `map-spike`, public, all-default parameters |
+| telemetry readouts | **`TelemetryRow`** | |
+| flight mode | **`FlightModePicker`** | reports refusals |
+| arm / takeoff / land / RTL | **`FlightActions`** | slide-to-confirm; arm and mode report refusals |
+| vehicle messages / warnings | **`VehicleMessageBanner`** | |
+| status (sats, HDOP) | **`StatusStrip`** | |
+| `PipView` map/video swap | **partial** | `VideoSurface` is a fixed corner inset; no swap |
+| `CameraControlLayer`, `CameraSwitchButton` | **missing** | shutter, mode, camera selection |
+| `VideoTilesLayer` | **missing** | multiple streams |
+| `RcControlsLayer` | **missing** | on-screen RC |
+| `ObstacleDistanceOverlay` (map and video) | **missing** | |
+| `FlyViewToolStrip` + action list | **missing** | waypoint actions and the Viewer3D entry |
+| `GuidedValueSlider` | **missing** | adjusting a guided value in flight, distinct from the confirm slider |
+| `DetectionOverlayVideo` | **missing** | |
+| `FlyViewCustomLayer` | **missing** | plugin extension point |
+| `OverlayGlass` / `OverlayRig` / `FlyViewInsetViewer` | **missing** | the overlay layout system the above sit in |
+| `Viewer3D` | **dropped** | decided in Phase 2; goes with `FlyView.qml` |
+
+So the tab cannot be switched yet, and not because video was missing — video works. Nine
+surfaces have no native equivalent, and three of them (camera controls, RC, obstacle
+distance) are things an operator uses in flight. **Removing them to ship a native map would
+be a regression of exactly the kind this plan refuses elsewhere** for plan files.
+
+The video duplication noted above — QML's inset and the native one both drawing — ends at
+this switch and not before, which is another reason to do the switch as one piece of work
+rather than creeping up on it.
+
 **Gate (HW):** every guided action verified on PX4 and ArduPilot. Confirmation control cannot be
 actuated accidentally. Sub-200 ms glass-to-glass on WHEP. A 30-minute flight with flat memory.
 
