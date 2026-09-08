@@ -534,6 +534,8 @@ About 58 developer-weeks. Flight-test time, not code, is the schedule.
   macOS; `view.messages` is the first view-state path; `qgc_bridge_watch_client(client, paths)`
   gives each store its own watch set with the union going to Qt. `QGCCoreCTest` is the C ABI
   suite. Without cargo, or on universal and non-macOS builds, the bridge routes straight to Qt.
+- 2026-09-08: `view.plan` — readiness, upload pre-check, file actions, sync state and status line with
+  the sentences included; watched through the plan and vehicle properties it derives from.
 
 ### Stream F · Core
 

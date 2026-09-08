@@ -110,3 +110,22 @@ void QGCCoreCTest::_clientsWatchIndependently()
     QTest::qWait(1000);
     QVERIFY2(!paths.contains(QStringLiteral("vehicles.activeVehicleAvailable")), "a client that unregistered kept receiving events");
 }
+
+void QGCCoreCTest::_planViewFollowsTheVehicle()
+{
+    const QJsonObject offline = take(qgc_bridge_get("view.plan"));
+    QCOMPARE(offline.value(QStringLiteral("class")).toString(), QStringLiteral("PlanStatus"));
+    QCOMPARE(offline.value(QStringLiteral("readiness")).toObject().value(QStringLiteral("ready")).toBool(), true);
+    QCOMPARE(offline.value(QStringLiteral("upload")).toObject().value(QStringLiteral("state")).toInt(-1), 1);
+    QCOMPARE(offline.value(QStringLiteral("sync")).toObject().value(QStringLiteral("state")).toString(), QStringLiteral("offline"));
+    QCOMPARE(offline.value(QStringLiteral("status")).toString(), QStringLiteral("New plan"));
+
+    qgc_bridge_set_event_handler(onEvent);
+    qgc_bridge_watch("view.plan");
+    _connectMockLink(MAV_AUTOPILOT_PX4);
+    QTRY_VERIFY_WITH_TIMEOUT(paths.contains(QStringLiteral("view.plan")), 5000);
+    QTRY_COMPARE_WITH_TIMEOUT(take(qgc_bridge_get("view.plan")).value(QStringLiteral("sync")).toObject().value(QStringLiteral("state")).toString(), QStringLiteral("ready"), 5000);
+    const QJsonObject online = take(qgc_bridge_get("view.plan"));
+    QVERIFY2(online.value(QStringLiteral("upload")).toObject().value(QStringLiteral("state")).toInt(-1) != 1, "a connected vehicle still reads as absent");
+    QCOMPARE(online.value(QStringLiteral("actions")).toObject().value(QStringLiteral("clearMission")).toBool(), true);
+}

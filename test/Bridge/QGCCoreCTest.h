@@ -14,4 +14,5 @@ private slots:
     void _viewPathsAreReadOnlyAtTheCAbi();
     void _viewFieldsProjectAndNameTheUnknown();
     void _clientsWatchIndependently();
+    void _planViewFollowsTheVehicle();
 };

@@ -3,6 +3,7 @@ use std::collections::BTreeSet;
 use serde_json::{Value, json};
 
 use crate::messages;
+use crate::plan;
 use crate::router::Backend;
 
 pub struct View {
@@ -11,11 +12,10 @@ pub struct View {
     compute: fn(&dyn Backend) -> Value,
 }
 
-pub const VIEWS: &[View] = &[View {
-    path: "view.messages",
-    deps: &["vehicle.formattedMessages"],
-    compute: messages_view,
-}];
+pub const VIEWS: &[View] = &[
+    View { path: "view.messages", deps: &["vehicle.formattedMessages"], compute: messages_view },
+    View { path: "view.plan", deps: plan::DEPS, compute: plan::plan_view },
+];
 
 pub fn owns(path: &str) -> bool {
     path.split(['.', '[']).next() == Some("view")
