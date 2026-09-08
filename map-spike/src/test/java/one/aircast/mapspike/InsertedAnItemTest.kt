@@ -4,7 +4,7 @@ import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
-class InsertedItemTest {
+class InsertedAnItemTest {
     @Test
     fun `an item comes back as an object`() {
         assertTrue(insertedItem("""{"ok":true,"result":{"kind":"object","command":22}}"""))
