@@ -569,6 +569,8 @@ About 58 developer-weeks. Flight-test time, not code, is the schedule.
 - 2026-09-09: `view.video` (stream state, camera slots, summary) and `view.camera` (MAVLink camera control state and sentences).
 - 2026-09-09: R1 view-state layer served end to end; `test/Bridge/fixtures/view-shapes.json` is the recorded contract
   for all 37 view paths and `QGCCoreCTest` diffs it (re-record with `QGC_RECORD_VIEW_CONTRACT=1`).
+- 2026-09-09: Android builds link the Rust core via cargo-ndk when it is installed (arm64-v8a verified); CI
+  still routes straight to Qt until Rust and cargo-ndk are added to the Android job.
 
 ### Stream F · Core
 
