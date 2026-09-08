@@ -43,76 +43,13 @@ class ParameterFormTest {
         assertNull(factFromParameter("NOPE", JSONObject("{}")))
     }
 
-    @Test
-    fun `safety sections are chosen by firmware`() {
-        val apm = setupSectionsFor("Safety", isPx4 = false)!!
-        val px4 = setupSectionsFor("Safety", isPx4 = true)!!
-        assertEquals(true, apm.any { it.names.contains("FS_THR_ENABLE") })
-        assertEquals(true, px4.any { it.names.contains("NAV_RCL_ACT") })
-        assertEquals(false, apm.any { it.names.contains("NAV_RCL_ACT") })
-    }
 
-    @Test
-    fun `camera and lights are ardupilot only, flight behavior is px4 only`() {
-        assertEquals(null, setupSectionsFor("Camera", isPx4 = true))
-        assertEquals(null, setupSectionsFor("Lights", isPx4 = true))
-        assertEquals(null, setupSectionsFor("Flight Behavior", isPx4 = false))
-        assertEquals(true, setupSectionsFor("Camera", isPx4 = false)!!.isNotEmpty())
-        assertEquals(true, setupSectionsFor("Lights", isPx4 = false)!!.isNotEmpty())
-        assertEquals(true, setupSectionsFor("Flight Behavior", isPx4 = true)!!.isNotEmpty())
-    }
 
-    @Test
-    fun `light channels cover every servo output the page offers`() {
-        val channels = setupSectionsFor("Lights", isPx4 = false)!!.first().names
-        assertEquals(12, channels.size)
-        assertEquals("SERVO5_FUNCTION", channels.first())
-        assertEquals("SERVO16_FUNCTION", channels.last())
-    }
 
-    @Test
-    fun `flight modes offer six slots on both firmwares`() {
-        val apm = setupSectionsFor("Flight Modes", isPx4 = false)!!
-        val px4 = setupSectionsFor("Flight Modes", isPx4 = true)!!
-        assertEquals(listOf("FLTMODE1", "FLTMODE6"), apm[1].names.let { listOf(it.first(), it.last()) })
-        assertEquals(6, apm[1].names.size)
-        assertEquals(listOf("COM_FLTMODE1", "COM_FLTMODE6"), px4[1].names.let { listOf(it.first(), it.last()) })
-        assertEquals("FLTMODE_CH", apm[0].names.single())
-        assertEquals("RC_MAP_FLTMODE", px4[0].names.single())
-    }
 
-    @Test
-    fun `power covers both batteries on ardupilot and both naming eras on px4`() {
-        val apm = setupSectionsFor("Power", isPx4 = false)!!
-        val px4 = setupSectionsFor("Power", isPx4 = true)!!
-        assertEquals(true, apm.any { it.names.contains("BATT_MONITOR") })
-        assertEquals(true, apm.any { it.names.contains("BATT2_MONITOR") })
-        assertEquals(true, px4.first().names.containsAll(listOf("BAT_N_CELLS", "BAT1_N_CELLS")))
-        assertEquals(false, apm.any { it.names.contains("BAT_N_CELLS") })
-    }
 
-    @Test
-    fun `tuning is ardupilot only and warns on the rate gains`() {
-        assertNull(setupSectionsFor("Tuning", isPx4 = true))
-        val apm = setupSectionsFor("Tuning", isPx4 = false)!!
-        val rates = apm.first { it.title == "Rate gains" }
-        assertEquals(true, rates.names.contains("ATC_RAT_RLL_P"))
-        assertEquals(true, rates.note.contains("small steps"))
-    }
 
-    @Test
-    fun `frame is the two ardupilot frame parameters and warns about motor order`() {
-        assertNull(setupSectionsFor("Frame", isPx4 = true))
-        val frame = setupSectionsFor("Frame", isPx4 = false)!!.single()
-        assertEquals(listOf("FRAME_CLASS", "FRAME_TYPE"), frame.names)
-        assertEquals(true, frame.note.contains("motor order"))
-    }
 
-    @Test
-    fun `components without a native form report none`() {
-        assertNull(setupSectionsFor("Sensors", isPx4 = false))
-        assertNull(setupSectionsFor("Radio", isPx4 = true))
-    }
 
     @Test
     fun `an empty error from QGC means the value is acceptable`() {
@@ -225,5 +162,55 @@ class ReadOnlyNoteTest {
                 listOf(fact("FLTMODE1", false), fact("FLTMODE2", true), fact("FLTMODE3", true)),
             ),
         )
+    }
+
+    @Test
+    fun `the setup pages come from the core, grouped and flagged`() {
+        val view = JSONObject("""{"groups":[
+            {"title":"Vehicle","pages":[
+              {"name":"Frame","native":true,"parameterSections":true},
+              {"name":"Motors","native":false,"parameterSections":false}]},
+            {"title":"Support","pages":[
+              {"name":"Remote Support","native":true,"parameterSections":false}]}]}""")
+
+        assertEquals(listOf("Vehicle", "Support"), setupGroups(view).map { it.title })
+        assertEquals(true, setupPage(view, "Frame")?.native)
+        assertEquals(true, setupPage(view, "Frame")?.parameterSections)
+        assertEquals(false, setupPage(view, "Motors")?.native)
+        assertEquals(false, setupPage(view, "Remote Support")?.parameterSections)
+        assertNull(setupPage(view, "A page this firmware does not have"))
+    }
+
+    @Test
+    fun `a control becomes a row with the core's label and options`() {
+        val fact = factFromControl(
+            JSONObject("""{"class":"Control","control":"choice","label":"Frame Class",
+                "name":"FRAME_CLASS","display":"Quad","value":1,"valueString":"1","units":"",
+                "path":"vehicle.parameterManager.getParameter(-1,FRAME_CLASS)","readOnly":false,
+                "rebootRequired":true,
+                "options":[{"label":"Undefined","raw":"0"},{"label":"Quad","raw":"1"}]}"""),
+        )!!
+
+        assertEquals("Frame Class", fact.title)
+        assertEquals(listOf("Undefined", "Quad"), fact.enumStrings)
+        assertEquals(1, fact.enumIndex)
+        assertEquals(true, fact.vehicleRebootRequired)
+    }
+
+    @Test
+    fun `a control the vehicle does not have is dropped rather than shown blank`() {
+        assertNull(
+            factFromControl(
+                JSONObject("""{"class":"Control","control":"number","label":"","name":"",
+                    "display":"0","value":0,"valueString":"0","units":"",
+                    "path":"vehicle.parameterManager.getParameter(-1,BATT_MONITOR)"}"""),
+            ),
+        )
+    }
+
+    @Test
+    fun `the page path carries the name and no separators the watch would split`() {
+        assertEquals("view.setup(Flight Modes)", setupPagePath("Flight Modes"))
+        assertEquals(false, setupPagePath("Flight Modes").contains(","))
     }
 }

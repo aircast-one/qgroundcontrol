@@ -53,30 +53,60 @@ internal fun readOnlyNote(facts: List<Fact>): String? {
     }
 }
 
-private fun readSections(sections: List<ParameterSection>): List<ParameterRows> =
-    sections.mapNotNull { section ->
-        val facts = section.names.mapNotNull { name ->
-            factFromParameter(name, Qgc.get(parameterPath(name)))
-        }
-        if (facts.isEmpty()) {
-            null
-        } else {
-            val note = listOfNotNull(section.note.ifBlank { null }, readOnlyNote(facts))
-            ParameterRows(section.title, facts, note.joinToString(" "))
+internal fun factFromControl(control: JSONObject): Fact? {
+    val label = control.optString("label")
+    val name = control.optString("name")
+    if (label.isBlank() && name.isBlank()) return null
+    val options = control.optJSONArray("options")
+    val labels = (0 until (options?.length() ?: 0)).map { options!!.optJSONObject(it).optString("label") }
+    return Fact(
+        path = control.optString("path"),
+        name = name,
+        description = label,
+        units = control.optString("units"),
+        valueString = control.optString("valueString"),
+        value = control.opt("value"),
+        enumStrings = labels,
+        enumIndex = labels.indexOf(control.optString("display")),
+        isBool = control.optString("control") == "toggle",
+        isString = control.optString("control") == "text",
+        readOnly = control.optBoolean("readOnly"),
+        vehicleRebootRequired = control.optBoolean("rebootRequired"),
+    )
+}
+
+private fun readPage(page: String): List<ParameterRows> {
+    val sections = Qgc.get(setupPagePath(page)).optJSONArray("sections") ?: return emptyList()
+    return (0 until sections.length()).mapNotNull { index ->
+        sections.optJSONObject(index)?.let { section ->
+            val controls = section.optJSONArray("controls")
+            val facts = (0 until (controls?.length() ?: 0)).mapNotNull { control ->
+                controls!!.optJSONObject(control)?.let(::factFromControl)
+            }
+            if (facts.isEmpty()) {
+                null
+            } else {
+                val note = listOfNotNull(
+                    section.optString("note").ifBlank { null },
+                    readOnlyNote(facts),
+                )
+                ParameterRows(section.optString("title"), facts, note.joinToString(" "))
+            }
         }
     }
+}
 
 @Composable
 internal fun ParameterForm(
-    sections: List<ParameterSection>,
+    page: String,
     modifier: Modifier = Modifier,
 ) {
     var rows by remember { mutableStateOf(emptyList<ParameterRows>()) }
     var loaded by remember { mutableStateOf(false) }
     var reloads by remember { mutableIntStateOf(0) }
 
-    LaunchedEffect(sections, reloads) {
-        rows = withContext(Dispatchers.Default) { readSections(sections) }
+    LaunchedEffect(page, reloads) {
+        rows = withContext(Dispatchers.Default) { readPage(page) }
         loaded = true
     }
 

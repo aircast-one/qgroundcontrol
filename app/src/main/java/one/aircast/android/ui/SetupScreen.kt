@@ -24,6 +24,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import one.aircast.android.bridge.Qgc
 import one.aircast.android.bridge.qgcBool
+import one.aircast.android.bridge.qgcPath
 import one.aircast.android.bridge.qgcDouble
 import one.aircast.android.bridge.qgcString
 import androidx.compose.material.icons.Icons
@@ -106,6 +107,7 @@ fun SetupScreen(modifier: Modifier = Modifier) {
     val flying by qgcBool("vehicle.flying")
     val isRover by qgcBool("vehicle.rover")
     val isPx4 by qgcBool("vehicle.px4Firmware")
+    val setupJson by qgcPath(SETUP)
     val vehicleId by qgcDouble("vehicle.id")
     val major by qgcDouble("vehicle.firmwareMajorVersion", -1.0)
     val minor by qgcDouble("vehicle.firmwareMinorVersion", 0.0)
@@ -140,7 +142,7 @@ fun SetupScreen(modifier: Modifier = Modifier) {
     }
 
     val open = openComponent
-    if (open != null && hasNativeSetupPage(open.name, isPx4)) {
+    if (open != null && setupPage(setupJson, open.name)?.native == true) {
         Column(modifier.fillMaxSize()) {
             Row(
                 modifier = Modifier.fillMaxWidth(),
@@ -152,7 +154,7 @@ fun SetupScreen(modifier: Modifier = Modifier) {
                 Text(open.name, style = MaterialTheme.typography.titleMedium)
             }
             HorizontalDivider()
-            val sections = setupSectionsFor(open.name, isPx4)
+            val nativePage = setupPage(setupJson, open.name)
             val blocked = setupBlockedReason(open, armed, flying, isRover)
             when {
                 blocked != null -> SetupNotice(
@@ -161,8 +163,8 @@ fun SetupScreen(modifier: Modifier = Modifier) {
                 )
                 open.name == SENSORS -> SensorsScreen(Modifier.weight(1f))
                 open.name == RADIO -> RadioScreen(Modifier.weight(1f))
-                sections == null -> RemoteSupportScreen(Modifier.weight(1f))
-                else -> ParameterForm(sections, Modifier.weight(1f))
+                nativePage?.parameterSections != true -> RemoteSupportScreen(Modifier.weight(1f))
+                else -> ParameterForm(open.name, Modifier.weight(1f))
             }
         }
         return
@@ -198,7 +200,7 @@ fun SetupScreen(modifier: Modifier = Modifier) {
                     title = component.name,
                     status = blocked?.let { "Not while $it" } ?: "Needs setup",
                     state = if (blocked != null) SetupState.Unavailable else SetupState.NeedsAttention,
-                    onClick = if (blocked == null && hasNativeSetupPage(component.name, isPx4)) {
+                    onClick = if (blocked == null && setupPage(setupJson, component.name)?.native == true) {
                         { openComponent = component }
                     } else {
                         null
@@ -214,7 +216,7 @@ fun SetupScreen(modifier: Modifier = Modifier) {
         } else {
             item(key = "allheader") { SectionHeader("Setup") }
             items(components, key = { it.index }) { component ->
-                val openable = hasNativeSetupPage(component.name, isPx4)
+                val openable = setupPage(setupJson, component.name)?.native == true
                 val blocked = blockedFor(component)
                 SetupRow(
                     title = component.name,
