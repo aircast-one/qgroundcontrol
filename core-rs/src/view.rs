@@ -11,6 +11,7 @@ use crate::label;
 use crate::links;
 use crate::mapscale;
 use crate::messages;
+use crate::missionkinds;
 use crate::plan;
 use crate::preflight;
 use crate::read::value_string;
@@ -47,6 +48,8 @@ pub const VIEWS: &[View] = &[
     View { path: "view.linkForm", deps: &[], compute: links::link_form_view },
     View { path: "view.mapScale", deps: mapscale::DEPS, compute: mapscale::map_scale_view },
     View { path: "view.terrainProfile", deps: terrain::DEPS, compute: terrain::terrain_view },
+    View { path: "view.missionKinds", deps: missionkinds::DEPS, compute: missionkinds::kinds_view },
+    View { path: "view.missionSeed", deps: missionkinds::DEPS, compute: missionkinds::seed_view },
 ];
 
 pub fn owns(path: &str) -> bool {

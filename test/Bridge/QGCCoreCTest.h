@@ -28,6 +28,7 @@ private slots:
     void _linksAreListedAndTheFormValidates();
     void _mapScaleFollowsTheUnitSetting();
     void _terrainProfileReadsThePlan();
+    void _missionKindsAndSeedsAreServed();
 
 private:
     static bool _unavailable(const char *path);

@@ -9,6 +9,7 @@ mod label;
 mod links;
 mod mapscale;
 mod messages;
+mod missionkinds;
 mod plan;
 mod preflight;
 mod read;

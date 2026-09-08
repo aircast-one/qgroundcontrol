@@ -557,6 +557,7 @@ About 58 developer-weeks. Flight-test time, not code, is the schedule.
   add-link validation and auto naming.
 - 2026-09-08: `view.mapScale(metresAcross)` — the QML scale-bar ladder and labels, feet from the unit setting.
 - 2026-09-08: `view.terrainProfile` — profile points, padded altitude band, unknown ground count, texts in the operator's units.
+- 2026-09-08: `view.missionKinds(kind?)` and `view.missionSeed(kind,lat,lon)` — the item catalogue and the default seed geometry.
 
 ### Stream F · Core
 

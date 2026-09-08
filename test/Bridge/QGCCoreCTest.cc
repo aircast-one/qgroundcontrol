@@ -321,3 +321,12 @@ void QGCCoreCTest::_terrainProfileReadsThePlan()
     QVERIFY(empty.value(QStringLiteral("points")).isArray());
     QVERIFY(!empty.value(QStringLiteral("distanceText")).toString().isEmpty());
 }
+
+void QGCCoreCTest::_missionKindsAndSeedsAreServed()
+{
+    QCOMPARE(take(qgc_bridge_get("view.missionKinds")).value(QStringLiteral("kinds")).toArray().count(), 7);
+    QCOMPARE(take(qgc_bridge_get("view.missionKinds(Survey)")).value(QStringLiteral("geometryProperty")).toString(), QStringLiteral("surveyAreaPolygon"));
+    const QJsonObject seed = take(qgc_bridge_get("view.missionSeed(survey,47.0,8.0)"));
+    QCOMPARE(seed.value(QStringLiteral("points")).toArray().count(), 4);
+    QCOMPARE(take(qgc_bridge_get("view.missionSeed(waypoint,47.0,8.0)")).value(QStringLiteral("kind")).toString(), QStringLiteral("null"));
+}
