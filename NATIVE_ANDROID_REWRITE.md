@@ -1068,7 +1068,7 @@ exists natively today:
 | `PipView` map/video swap | **partial** | inset expands to full screen and back; still not a *swap* — the map cannot become the inset |
 | `CameraControlLayer`, `CameraSwitchButton` | **missing** | shutter, mode, camera selection |
 | `VideoTilesLayer` | **missing** | multiple streams |
-| `RcControlsLayer` | **missing** | on-screen RC |
+| `RcControlsLayer` | **built** | renders the configured controls and sends `setRcChannelOverride`; editing the list is still desktop-only |
 | `ObstacleDistanceOverlay` (map and video) | **missing** | |
 | `FlyViewToolStrip` + action list | **missing** | waypoint actions and the Viewer3D entry |
 | `GuidedValueSlider` | **missing** | adjusting a guided value in flight, distinct from the confirm slider |
@@ -1077,9 +1077,25 @@ exists natively today:
 | `OverlayGlass` / `OverlayRig` / `FlyViewInsetViewer` | **missing** | the overlay layout system the above sit in |
 | `Viewer3D` | **dropped** | decided in Phase 2; goes with `FlyView.qml` |
 
-So the tab cannot be switched yet, and not because video was missing — video works. Nine
-surfaces have no native equivalent, and three of them (camera controls, RC, obstacle
-distance) are things an operator uses in flight. **Removing them to ship a native map would
+So the tab cannot be switched yet, and not because video was missing — video works. Eight
+surfaces have no native equivalent, and two of them (camera controls, obstacle distance)
+are things an operator uses in flight.
+
+**On-screen RC is now built.** `rcControls` is a JSON list of controls bound to RC channels
+— sliders, buttons, three-position switches, momentaries — for gimbals, lights and payload
+releases rather than for flying, which is why it is less dangerous than its name suggests.
+They render natively and send through `vehicle.setRcChannelOverride`, the same call
+`CameraControlLayer.qml` makes.
+
+Verified on the wire rather than on screen, which is the only verification worth having
+here: with the sim logging `RC_CHANNELS_OVERRIDE`, pressing Light put **channel 8 at 2000**,
+dragging Gimbal put **channel 7 at 1402**, and press-and-release on the momentary Drop gave
+**channel 9 at 2000 then 1000**. Switch3 was not in the test configuration, so its rendering
+is unit-tested and not yet exercised on hardware.
+
+Parsing drops a control with no channel or an unrecognised type rather than defaulting,
+because one that silently drives channel 0 or guesses it is a slider is worse than one that
+does not appear. **Removing them to ship a native map would
 be a regression of exactly the kind this plan refuses elsewhere** for plan files.
 
 The video duplication noted above — QML's inset and the native one both drawing — ends at
