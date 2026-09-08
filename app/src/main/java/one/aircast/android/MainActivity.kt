@@ -230,6 +230,13 @@ fun AircastShell(quickView: QtQuickView) {
             Box(Modifier.padding(padding).fillMaxSize()) {
                 AndroidView(factory = { quickView }, modifier = Modifier.fillMaxSize())
 
+                VideoSurface(
+                    Modifier
+                        .align(Alignment.TopEnd)
+                        .padding(12.dp)
+                        .size(width = 200.dp, height = 112.dp),
+                )
+
                 when (tab) {
                     Tab.Settings -> Surface(Modifier.fillMaxSize()) { SettingsScreen() }
                     Tab.Params -> Surface(Modifier.fillMaxSize()) { ParametersScreen() }
@@ -239,12 +246,6 @@ fun AircastShell(quickView: QtQuickView) {
                         page = analyzePage,
                         onSelect = { analyzePage = it },
                         modifier = Modifier.fillMaxSize(),
-                    )
-                    Tab.Fly -> VideoSurface(
-                        Modifier
-                            .align(Alignment.TopEnd)
-                            .padding(12.dp)
-                            .size(width = 200.dp, height = 112.dp),
                     )
                     else -> Unit
                 }
