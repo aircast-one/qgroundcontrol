@@ -24,6 +24,7 @@ pub mod links;
 pub mod logs;
 pub mod mapscale;
 pub mod messages;
+pub mod metacache;
 pub mod mission;
 pub mod missionkinds;
 pub mod plan;
