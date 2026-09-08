@@ -92,13 +92,41 @@ And it scales with pixels rather than frames:
 | 1280x720 30 fps | 30 fps, even |
 | 1920x1080 30 fps | ~22 fps, even |
 
-That is about 45 Mpx/s either way, which is a per-pixel CPU cost sitting upstream
-of the copy — the NV12-to-BGRA `videoconvert` is the candidate that fits.
+That is about 45 Mpx/s either way — a per-pixel CPU cost upstream of the copy.
+I attributed it to the NV12-to-BGRA `videoconvert` because that is the per-pixel
+stage I had put there. **That attribution is wrong, and so is the number.**
 
-**So the appsink path is viable at 720p and short at 1080p**, and the fix for
-1080p is to stop doing the colour conversion on the CPU — rendering into a
-Surface — rather than to stop copying. The copy was the thing this plan
-previously assumed was unaffordable; it is not.
+Turning on GStreamer's own logging (`gstDebugLevel=4` under `[General]`; the
+`[LoggingFilters]` group only takes *registered* QGC categories, and `VideoAllLog`
+is not one) shows the decoder actually selected was **`avdec_h264` — software**.
+The cause is the test stream, not the app: `x264enc` defaults to **High 4:4:4
+Predictive**, which no Android hardware decoder accepts, so `decodebin` fell back
+to software. Software H.264 decode is itself per-pixel and scales with resolution
+exactly like `videoconvert` does, so the measurement cannot separate the two, and
+it was taken on a profile no drone sends.
+
+**What this leaves established, and what it does not.** The copy costing ~5% of a
+core is still measured and still true. That 720p is smooth and 1080p is not, on
+*this* stream, is still true. What is **not** established is the 45 Mpx/s figure
+as a property of the app, the `videoconvert` attribution, or the conclusion that
+1080p needs a Surface. Re-measure against a **Main-profile 4:2:0** stream first:
+
+    gst-launch-1.0 -q videotestsrc pattern=ball is-live=true \
+      ! video/x-raw,width=1920,height=1080,framerate=30/1 \
+      ! x264enc tune=zerolatency bitrate=8000 key-int-max=30 speed-preset=veryfast \
+      ! video/x-h264,profile=main ! mpegtsmux ! udpsink host=<phone> port=5600
+
+That re-measurement is **still open**. The first attempt returned nothing usable:
+the receiver logged `Starting decoding` / `Streaming started` / `Streaming stopped`
+in a repeating cycle, and because `qgc_video_detach_appsink` zeroes the frame
+counter on every detach, a counter-sampling probe reads ~0 throughout. Whatever
+replaces the probe has to survive a restart — or the restart loop has to be
+understood first, since a receiver that cannot hold a Main-profile stream open is
+a bigger problem than the frame rate.
+
+Until that number exists, **do not build the Surface path on the strength of this
+section.** The general lesson is already in the plan and I broke it anyway: a
+measurement whose input you have not characterised measures the input.
 
 **The native Fly view is blocked on video, not on the map.** `map-spike` already
 has `VehicleMap` — vehicle position, heading, home, trail, link-loss and a follow
