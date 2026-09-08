@@ -463,6 +463,15 @@ all `void`. Reporting built on `ok` therefore covered the one path that needed i
 least, and the three that needed it were checking a value that cannot carry the
 answer. They read the link list back now (`aircast-android`).
 
+**Reading back can settle on a value that does not last.**
+`MissionSettingsItem` overwrites `plannedHomePositionAltitude` with the terrain
+elevation about two seconds after a write, unless the home came from the vehicle:
+write 10, read back 10, read back 596. A check that reads immediately after
+writing confirms a value that is about to be replaced. The read-back pattern
+above verifies *operations* — connected, removed, started — which do not have
+this shape, but a read-back that verifies a *written number* needs to know
+whether anything else owns that field.
+
 **A `Q_ENUM` crosses as its number, and that was a breaking change.** An
 enum-returning invokable used to fail outright: the metaobject records a return
 type as written, so an enum declared inside a class is `State` there and
