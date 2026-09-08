@@ -219,6 +219,7 @@ public:
     Q_PROPERTY(GimbalController*    gimbalController            READ gimbalController                                               CONSTANT)
     Q_PROPERTY(bool                 hasGripper                  READ hasGripper                                                     CONSTANT)
     Q_PROPERTY(bool                 isROIEnabled                READ isROIEnabled                                                   NOTIFY isROIEnabledChanged)
+    Q_PROPERTY(QGeoCoordinate       roiCoord                    READ roiCoord                                                       NOTIFY roiCoordChanged)
     Q_PROPERTY(CheckList            checkListState              READ checkListState             WRITE setCheckListState             NOTIFY checkListStateChanged)
     Q_PROPERTY(bool                 readyToFlyAvailable         READ readyToFlyAvailable                                            NOTIFY readyToFlyAvailableChanged)  ///< true: readyToFly signalling is available on this vehicle
     Q_PROPERTY(bool                 readyToFly                  READ readyToFly                                                     NOTIFY readyToFlyChanged)
@@ -823,6 +824,8 @@ public:
     float       mavlinkLossPercent      () const{ return _mavlinkLossPercent; }      /// Running loss rate
 
     bool        isROIEnabled            () const{ return _isROIEnabled; }
+    /// Where the ROI is, for a head that reads state rather than listening for signals.
+    QGeoCoordinate roiCoord             () const{ return _roiCoord; }
 
     CheckList   checkListState          () { return _checkListState; }
     void        setCheckListState       (CheckList cl)  { _checkListState = cl; emit checkListStateChanged(); }
@@ -1148,6 +1151,7 @@ private:
     bool                _heardFrom = false;
 
     bool                _isROIEnabled   = false;
+    QGeoCoordinate      _roiCoord;
     Joystick*           _activeJoystick = nullptr;
 
     bool _checkLatestStableFWDone = false;

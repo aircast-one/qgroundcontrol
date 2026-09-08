@@ -2290,7 +2290,9 @@ void Vehicle::guidedModeROI(const QGeoCoordinate& centerCoord)
                     static_cast<float>(centerCoord.longitude()),
                     static_cast<float>(centerCoord.altitude()));
     }
-    // This is picked by qml to display coordinate over map
+    // QML listens for the signal; a native head polls properties and cannot, so the
+    // coordinate is kept as well as announced.
+    _roiCoord = centerCoord;
     emit roiCoordChanged(centerCoord);
 }
 
@@ -2862,7 +2864,9 @@ void Vehicle::_handleCommandAck(mavlink_message_t& message)
     if (ack.command == MAV_CMD_DO_SET_ROI_NONE) {
         if (ack.result == MAV_RESULT_ACCEPTED) {
             _isROIEnabled = false;
+            _roiCoord = QGeoCoordinate();
             emit isROIEnabledChanged();
+            emit roiCoordChanged(_roiCoord);
         }
     }
 

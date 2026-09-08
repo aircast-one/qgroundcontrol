@@ -8,6 +8,8 @@
  ****************************************************************************/
 
 #include "QGCBridgeCoreTest.h"
+
+#include "QGCMapCircle.h"
 #include "QGCBridgeCore.h"
 #include "MultiVehicleManager.h"
 
@@ -643,6 +645,50 @@ void QGCBridgeCoreTest::_aNestedCoordinateSaysItIsValid()
              qPrintable(QJsonDocument(position).toJson(QJsonDocument::Compact)));
 
     // The plan controller is shared across this suite, so put it back as it was found.
+    (void) QGCBridgeCore::invoke(QStringLiteral("plan.removeAll"), QStringLiteral("[]"));
+}
+
+// A fact nested in an object read is identified by the property it came from; its name is
+// a label. The macOS head reported the orbit circle's radius arriving with an empty name,
+// which would make a head that matches on name silently find nothing.
+void QGCBridgeCoreTest::_aNestedFactKeepsItsName()
+{
+    const QJsonObject added = parse(QGCBridgeCore::invoke(
+        QStringLiteral("plan.geoFenceController.addInclusionCircle"),
+        QStringLiteral("[{\"latitude\": 47.397, \"longitude\": 8.545, \"altitude\": 0},"
+                       " {\"latitude\": 47.398, \"longitude\": 8.546, \"altitude\": 0}]")));
+    QVERIFY2(added.value(QStringLiteral("ok")).toBool(),
+             qPrintable(QJsonDocument(added).toJson(QJsonDocument::Compact)));
+
+    const QJsonObject circles = parse(QGCBridgeCore::get(
+        QStringLiteral("plan.geoFenceController.circles")));
+    const QJsonArray elements = circles.value(QStringLiteral("elements")).toArray();
+    QVERIFY(!elements.isEmpty());
+
+    const QJsonArray facts = elements.first().toObject().value(QStringLiteral("facts")).toArray();
+    QVERIFY2(!facts.isEmpty(),
+             qPrintable(QJsonDocument(elements.first().toObject()).toJson(QJsonDocument::Compact)));
+
+    bool sawRadius = false;
+    for (const QJsonValue &entry : facts) {
+        const QJsonObject described = entry.toObject();
+        QVERIFY2(!described.value(QStringLiteral("property")).toString().isEmpty(),
+                 qPrintable(QJsonDocument(described).toJson(QJsonDocument::Compact)));
+        if (described.value(QStringLiteral("property")).toString() == QStringLiteral("radius")) {
+            sawRadius = true;
+            QVERIFY2(!described.value(QStringLiteral("name")).toString().isEmpty(),
+                     qPrintable(QJsonDocument(described).toJson(QJsonDocument::Compact)));
+        }
+    }
+    QVERIFY2(sawRadius, "the circle exposes no radius fact to check");
+
+    // The fence circle above is built by a constructor that names its fact. Vehicle's
+    // orbit circle is default-constructed, and that constructor did not — so the check
+    // above passed while the reported case stayed broken.
+    QGCMapCircle defaultConstructed;
+    QVERIFY2(!defaultConstructed.radius()->name().isEmpty(),
+             "a default-constructed circle hands out an unnamed radius fact");
+
     (void) QGCBridgeCore::invoke(QStringLiteral("plan.removeAll"), QStringLiteral("[]"));
 }
 

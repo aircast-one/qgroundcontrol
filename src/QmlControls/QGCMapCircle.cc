@@ -14,6 +14,10 @@
 QGCMapCircle::QGCMapCircle(QObject* parent)
     : QObject           (parent)
     , _dirty            (false)
+    // The other constructors name this fact; without it here a default-constructed circle
+    // — Vehicle::_orbitMapCircle is one — hands out a radius with an empty name, and a
+    // reader matching facts by name finds nothing and cannot tell that from no radius.
+    , _radius           (ParameterManager::defaultComponentId, _radiusFactName, FactMetaData::valueTypeDouble)
     , _interactive      (false)
     , _showRotation     (false)
     , _clockwiseRotation(true)
