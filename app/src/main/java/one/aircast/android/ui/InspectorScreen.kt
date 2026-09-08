@@ -83,6 +83,9 @@ private fun selectMessage(index: Int) {
     offMainDetached { Qgc.set(INSPECTOR_SELECTED, index) }
 }
 
+internal fun openMessageIn(messages: List<InspectorMessage>, name: String?): InspectorMessage? =
+    name?.let { wanted -> messages.firstOrNull { it.name == wanted } }
+
 internal fun formatRate(rateHz: Double): String =
     if (rateHz.isNaN()) "--" else String.format(Locale.US, "%.1f Hz", rateHz)
 
@@ -130,24 +133,24 @@ private fun FieldList(messageIndex: Int, modifier: Modifier = Modifier) {
 fun InspectorScreen(modifier: Modifier = Modifier) {
     val hasVehicle by qgcBool("vehicles.activeVehicleAvailable")
     val messagesModel by qgcPath(INSPECTOR_MESSAGES)
-    var openMessage by remember { mutableStateOf<InspectorMessage?>(null) }
+    var openName by rememberSaveable { mutableStateOf<String?>(null) }
     var filter by rememberSaveable { mutableStateOf("") }
     val messages = parseInspectorMessages(messagesModel)
+    val open = openMessageIn(messages, openName)
 
-    BackHandler(enabled = openMessage != null) { openMessage = null }
+    BackHandler(enabled = open != null) { openName = null }
 
     if (!hasVehicle) {
         InspectorNotice("Connect a vehicle to inspect its MAVLink traffic.", modifier)
         return
     }
 
-    val open = openMessage
     if (open != null) {
         Column(modifier.fillMaxSize()) {
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .clickable { openMessage = null }
+                    .clickable { openName = null }
                     .padding(16.dp),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
@@ -187,11 +190,11 @@ fun InspectorScreen(modifier: Modifier = Modifier) {
         }
 
         LazyColumn(Modifier.fillMaxSize()) {
-            items(shown, key = { it.index }) { message ->
+            items(shown, key = { it.name }) { message ->
                 SetupRow(
                     title = message.name,
                     status = formatRate(message.rateHz),
-                    onClick = { openMessage = message },
+                    onClick = { openName = message.name },
                 )
             }
         }

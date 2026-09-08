@@ -2,6 +2,7 @@ package one.aircast.android.ui
 
 import org.json.JSONObject
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertNull
 import org.junit.Test
 
 class InspectorScreenTest {
@@ -53,5 +54,31 @@ class InspectorScreenTest {
     @Test
     fun `an unknown rate reads as unavailable`() {
         assertEquals("--", formatRate(Double.NaN))
+    }
+}
+
+class InspectorOpenMessageTest {
+    private fun message(index: Int, name: String) =
+        InspectorMessage(index = index, id = index, name = name, rateHz = 1.0, count = 1L)
+
+    @Test
+    fun `the open message follows its name when the model is rebuilt at other indices`() {
+        val before = listOf(message(0, "HEARTBEAT"), message(1, "ATTITUDE"))
+        val after = listOf(message(0, "SYS_STATUS"), message(1, "HEARTBEAT"), message(2, "ATTITUDE"))
+
+        assertEquals(1, openMessageIn(before, "ATTITUDE")?.index)
+        assertEquals(2, openMessageIn(after, "ATTITUDE")?.index)
+    }
+
+    @Test
+    fun `a message that leaves the model closes rather than showing another one`() {
+        val after = listOf(message(0, "HEARTBEAT"))
+
+        assertNull(openMessageIn(after, "ATTITUDE"))
+    }
+
+    @Test
+    fun `nothing open resolves to nothing`() {
+        assertNull(openMessageIn(listOf(message(0, "HEARTBEAT")), null))
     }
 }
