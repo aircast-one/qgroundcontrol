@@ -235,7 +235,7 @@ Resolved resolve(const QString &path)
     return Resolved { object, QString() };
 }
 
-QJsonObject objectJson(QObject *object, const QSet<QString> &fields = {});
+QJsonObject objectJson(QObject *object, const QSet<QString> &fields = {}, bool compactFacts = false);
 
 QJsonValue variantJson(const QVariant &value)
 {
@@ -336,7 +336,7 @@ QJsonObject compactFactJson(Fact *fact)
     };
 }
 
-QJsonObject objectJson(QObject *object, const QSet<QString> &fields)
+QJsonObject objectJson(QObject *object, const QSet<QString> &fields, bool compactFacts)
 {
     const bool everything = fields.isEmpty();
     QJsonObject json;
@@ -362,7 +362,7 @@ QJsonObject objectJson(QObject *object, const QSet<QString> &fields)
             }
             // Without the property it came from, a fact can be read and never written:
             // its name is a label, not a path segment.
-            QJsonObject described = everything ? factJson(fact) : compactFactJson(fact);
+            QJsonObject described = compactFacts ? compactFactJson(fact) : factJson(fact);
             described.insert(QStringLiteral("property"), name);
             facts.append(described);
             continue;
@@ -381,7 +381,7 @@ QJsonObject objectJson(QObject *object, const QSet<QString> &fields)
         QJsonArray elements;
         for (int i = 0; i < model->count(); ++i) {
             QObject *const element = model->get(i);
-            elements.append(element ? objectJson(element, fields) : QJsonObject());
+            elements.append(element ? objectJson(element, fields, compactFacts) : QJsonObject());
         }
         json.insert(QStringLiteral("elements"), elements);
     }
@@ -393,7 +393,7 @@ QJsonObject objectJson(QObject *object, const QSet<QString> &fields)
     return json;
 }
 
-QJsonObject readPath(const QString &path, const QSet<QString> &fields = {})
+QJsonObject readPath(const QString &path, const QSet<QString> &fields = {}, bool compactFacts = false)
 {
     const Resolved resolved = resolve(path);
     if (!resolved.object) {
@@ -404,7 +404,7 @@ QJsonObject readPath(const QString &path, const QSet<QString> &fields = {})
         if (Fact *const fact = qobject_cast<Fact *>(resolved.object)) {
             return factJson(fact);
         }
-        return objectJson(resolved.object, fields);
+        return objectJson(resolved.object, fields, compactFacts);
     }
 
     const QVariant value = resolved.object->property(resolved.property.toUtf8().constData());
@@ -787,8 +787,17 @@ QString getFields(const QString &path, const QString &fieldsCsv)
         }
     }
 
+    // "*" keeps every property and still drops the fact metadata, because compacting the
+    // facts is most of the saving and enumerating fields to get it is a list to maintain.
+    const bool allProperties = fields.remove(QStringLiteral("*"));
+    if (allProperties) {
+        fields.clear();
+    }
+
     QString result;
-    runOnQtThread([&result, &path, &fields]() { result = jsonToString(readPath(path, fields)); });
+    runOnQtThread([&result, &path, &fields]() {
+        result = jsonToString(readPath(path, fields, true));
+    });
     return result;
 }
 

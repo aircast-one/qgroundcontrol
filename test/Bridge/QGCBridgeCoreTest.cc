@@ -718,12 +718,25 @@ void QGCBridgeCoreTest::_aProjectedReadIsSmallerAndKeepsWhatWasAsked()
     const qint64 factsOnlyUs = clock.nsecsElapsed() / 1000;
 
     clock.restart();
+    const QString star = QGCBridgeCore::getFields(path, QStringLiteral("*"));
+    const qint64 starUs = clock.nsecsElapsed() / 1000;
+
+    clock.restart();
     const QString projected = QGCBridgeCore::getFields(path, wanted);
     const qint64 projectedUs = clock.nsecsElapsed() / 1000;
 
     qDebug() << "SPLIT whole" << whole.size() << "b" << wholeUs << "us"
+             << "| star" << star.size() << "b" << starUs << "us"
              << "| compact-facts-only" << factsOnly.size() << "b" << factsOnlyUs << "us"
              << "| +field-list" << projected.size() << "b" << projectedUs << "us";
+
+    // "*" is the cheap win with no field list to maintain: it must at least halve the
+    // payload on its own, and naming fields must narrow it further rather than being the
+    // only way to get anything.
+    QVERIFY2(star.size() * 2 < whole.size(),
+             qPrintable(QStringLiteral("star %1 vs whole %2").arg(star.size()).arg(whole.size())));
+    QVERIFY2(projected.size() < star.size(),
+             qPrintable(QStringLiteral("projected %1 vs star %2").arg(projected.size()).arg(star.size())));
 
     // The facts are the weight, not the field count: compacting them alone has to carry
     // most of the saving, or the field list is doing work it should not need to.
