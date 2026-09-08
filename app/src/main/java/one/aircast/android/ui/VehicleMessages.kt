@@ -28,6 +28,7 @@ import androidx.compose.ui.unit.dp
 import one.aircast.android.bridge.Qgc
 import one.aircast.android.bridge.offMainDetached
 import one.aircast.android.bridge.qgcBool
+import one.aircast.android.bridge.qgcPath
 import one.aircast.android.bridge.qgcDouble
 import one.aircast.android.bridge.qgcString
 
@@ -70,9 +71,12 @@ internal fun flightBlocker(
     allSensorsHealthy: Boolean,
     readyToFlyAvailable: Boolean,
     readyToFly: Boolean,
+    requiresGpsFix: Boolean,
+    hasPositionFix: Boolean,
 ): String? = when {
     armed -> null
     prearmError.isNotBlank() -> prearmError
+    requiresGpsFix && !hasPositionFix -> "No GPS lock. This vehicle needs a position fix before it will arm."
     !allSensorsHealthy -> "A sensor is reporting unhealthy. The vehicle will refuse to arm."
     readyToFlyAvailable && !readyToFly -> "The vehicle is not ready to fly yet."
     else -> null
@@ -85,13 +89,18 @@ fun VehicleMessageBanner(modifier: Modifier = Modifier) {
     val allSensorsHealthy by qgcBool("vehicle.allSensorsHealthy")
     val readyToFlyAvailable by qgcBool("vehicle.readyToFlyAvailable")
     val readyToFly by qgcBool("vehicle.readyToFly")
+    val requiresGpsFix by qgcBool("vehicle.requiresGpsFix")
+    val coordinate by qgcPath("vehicle.coordinate")
     val messageCount by qgcDouble("vehicle.messageCount", 0.0)
     val hasError by qgcBool("vehicle.messageTypeError")
     val hasWarning by qgcBool("vehicle.messageTypeWarning")
 
     var showing by remember { mutableStateOf(false) }
 
-    val blocker = flightBlocker(armed, prearmError, allSensorsHealthy, readyToFlyAvailable, readyToFly)
+    val blocker = flightBlocker(
+        armed, prearmError, allSensorsHealthy, readyToFlyAvailable, readyToFly,
+        requiresGpsFix, coordinate?.optBoolean("valid") == true,
+    )
     val count = messageCount.toInt()
 
     if (blocker == null && count == 0) return

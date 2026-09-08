@@ -71,16 +71,50 @@ class VehicleMessagesTest {
         assertEquals(listOf("Land complete"), vehicleMessageLines("<font>Land complete</font>"))
     }
 
+    private fun blocker(
+        armed: Boolean = false,
+        prearmError: String = "",
+        allSensorsHealthy: Boolean = true,
+        readyToFlyAvailable: Boolean = true,
+        readyToFly: Boolean = true,
+        requiresGpsFix: Boolean = false,
+        hasPositionFix: Boolean = true,
+    ) = flightBlocker(
+        armed, prearmError, allSensorsHealthy, readyToFlyAvailable, readyToFly,
+        requiresGpsFix, hasPositionFix,
+    )
+
+    @Test
+    fun `a vehicle that needs a fix and has none says so`() {
+        assertEquals(
+            "No GPS lock. This vehicle needs a position fix before it will arm.",
+            blocker(requiresGpsFix = true, hasPositionFix = false),
+        )
+    }
+
+    @Test
+    fun `a vehicle that does not need a fix is not warned about one`() {
+        assertNull(blocker(requiresGpsFix = false, hasPositionFix = false))
+    }
+
+    @Test
+    fun `the vehicle's own words win over my sentence about the fix`() {
+        assertEquals(
+            "PreArm: Need 3D Fix",
+            blocker(prearmError = "PreArm: Need 3D Fix", requiresGpsFix = true, hasPositionFix = false),
+        )
+    }
+
     @Test
     fun `an armed vehicle is never told what is blocking it`() {
-        assertNull(flightBlocker(true, "PreArm: Need 3D Fix", false, true, false))
+        assertNull(blocker(armed = true, prearmError = "PreArm: Need 3D Fix", allSensorsHealthy = false))
     }
 
     @Test
     fun `the vehicle's own prearm text wins over anything I could word`() {
         assertEquals(
             "PreArm: Need 3D Fix",
-            flightBlocker(false, "PreArm: Need 3D Fix", false, true, false),
+            blocker(prearmError = "PreArm: Need 3D Fix", allSensorsHealthy = false),
         )
     }
 
@@ -88,7 +122,7 @@ class VehicleMessagesTest {
     fun `an unhealthy sensor is named when the vehicle gives no prearm text`() {
         assertEquals(
             "A sensor is reporting unhealthy. The vehicle will refuse to arm.",
-            flightBlocker(false, "", false, false, false),
+            blocker(allSensorsHealthy = false, readyToFlyAvailable = false),
         )
     }
 
@@ -96,13 +130,13 @@ class VehicleMessagesTest {
     fun `not-ready-to-fly only counts when the vehicle signals readiness at all`() {
         assertEquals(
             "The vehicle is not ready to fly yet.",
-            flightBlocker(false, "", true, true, false),
+            blocker(readyToFly = false),
         )
-        assertNull(flightBlocker(false, "", true, false, false))
+        assertNull(blocker(readyToFlyAvailable = false, readyToFly = false))
     }
 
     @Test
     fun `a healthy disarmed vehicle shows nothing`() {
-        assertNull(flightBlocker(false, "", true, true, true))
+        assertNull(blocker())
     }
 }
