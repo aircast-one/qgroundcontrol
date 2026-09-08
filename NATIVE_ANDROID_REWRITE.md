@@ -761,6 +761,26 @@ The stale-row case above therefore stands, and the honest framing is that it is 
 **deliberate trade** — a parameter changed by another GCS is not reflected until the
 row is reopened — not a missing primitive.
 
+**The flight controls were the biggest hole in this and I missed them first time.**
+Arm, disarm and mode changes discarded the result of a checkable `Qgc.set`. They looked
+acceptable because the armed state and mode chip update live — but a MAVLink round trip
+makes an unchanged chip ambiguous between *refused* and *still in flight*, which is
+exactly the test. They now wait four seconds for the vehicle to report the state that
+was asked for and name the command when it does not.
+
+Takeoff, Land and RTL are deliberately still silent: their firmware mode names differ
+between PX4 and ArduPilot, so there is no reliable predicate, and the vehicle's own
+STATUSTEXT already reaches the message banner directly above those buttons. A guess
+there would be worse than silence.
+
+**A predicate that can only fail silently.** The first version confirmed on *any* change
+to `(mode, armed)` rather than on reaching the requested state. Freezing the vehicle
+mid-command exposed it: the aircraft went to RTL on its own comms-loss failsafe, so the
+state changed, the command had not been obeyed, and the check reported success. Its only
+failure mode was staying quiet when a warning was owed. The exact predicate — did the
+vehicle reach the state asked for — catches it, and the frozen-vehicle run now produces
+*"Acro was not confirmed by the aircraft."*
+
 Two corollaries, both found by auditing against that rule rather than by a
 failure:
 
