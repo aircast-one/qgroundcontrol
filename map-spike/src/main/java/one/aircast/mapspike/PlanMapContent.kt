@@ -342,10 +342,10 @@ internal fun MapSpikeScreen(
                             TextButton(onClick = {
                                 scope.launch {
                                     val switched = withContext(Dispatchers.Default) {
-                                        VehicleBridge.makeActive(entry.index)
+                                        VehicleBridge.askFor(entry.index)
                                     }
                                     busy = if (switched) {
-                                        "Vehicle ${entry.id} is active"
+                                        "Asked for vehicle ${entry.id}"
                                     } else {
                                         VehicleBridge.lastRefusal ?: "Could not switch vehicle"
                                     }
@@ -443,9 +443,8 @@ internal fun MapSpikeScreen(
                     ) {
                         survey?.let {
                             TextButton(onClick = {
-                                val next = (if (it.gridAngle.isNaN()) 0.0 else it.gridAngle) + 30.0
                                 onBridge("Rotating grid") {
-                                    SurveyBridge.setGridAngle(it.index, next % 360.0)
+                                    SurveyBridge.setGridAngle(it.index, nextGridAngle(it.gridAngle))
                                 }
                             }) { Text("Rotate") }
                         }

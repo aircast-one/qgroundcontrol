@@ -22,7 +22,7 @@ object VehicleBridge {
     var lastRefusal: String? = null
         private set
 
-    fun makeActive(index: Int): Boolean =
+    fun askFor(index: Int): Boolean =
         runCatching {
             val answer = JSONObject(
                 QGCBridge.set(

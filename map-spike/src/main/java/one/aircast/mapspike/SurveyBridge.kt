@@ -44,6 +44,11 @@ fun surveys(json: JSONObject?): List<Survey> {
     }
 }
 
+const val GRID_STEP_DEGREES = 30.0
+
+fun nextGridAngle(current: Double): Double =
+    ((if (current.isNaN()) 0.0 else current) + GRID_STEP_DEGREES) % 360.0
+
 object SurveyBridge {
     fun surveys(): List<Survey> = surveysFrom(PlanBridge.rawItems())
 
