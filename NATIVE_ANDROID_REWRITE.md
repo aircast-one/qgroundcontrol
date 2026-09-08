@@ -1146,6 +1146,26 @@ Caution was a hard amber; High was `colorScheme.error`, which in this dark theme
 pink meant for text on a surface rather than for filling a shape. The most serious band was
 the least alarming thing on the screen. High is a saturated red now.
 
+**Eighth migration: the inspector, which crashed on its first run.** `parseInspectorMessages`
+and `formatRate` are deleted; `view.inspector` serves each message with its rate formatted and
+a path that identifies it.
+
+The crash is the part worth keeping. The view serves messages **per component**, and this sim
+carries two camera components, so `CAMERA_CAPTURE_STATUS` arrives twice and a `LazyColumn`
+keyed on the message name threw *Key "CAMERA_CAPTURE_STATUS" was already used*. The old
+per-system model never produced a duplicate name, so nothing had ever been keyed against one.
+The recorded contract could not have warned about it either: MockLink has a single component,
+so the fixture's message list has no duplicate names in it.
+
+That also retired a guard written earlier the same night. `openMessageIn` re-resolved the open
+message **by name** so a rebuilt model could not show one message's fields under another's;
+the moment messages arrive per component, a name stops being unique and the guard has to key
+on path. A correct fix can be invalidated by a change in what the data means, not only by a
+change in the code around it.
+
+And two identical rows told the operator nothing about which camera they came from. A row
+whose name appears more than once now carries its component id; a unique name stays bare.
+
 **Seventh migration: the battery, and a question asked before the work.** `batteryLevel`,
 `batteryText`, `firstBattery`, the four charge-state constants and the 98.9% rounding rule are
 deleted. `view.battery` serves the level and the text.
