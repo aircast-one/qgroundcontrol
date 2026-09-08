@@ -1123,6 +1123,17 @@ firmware will act on: `APMFirmwarePlugin` drops anything under 0.01 m, so an ena
 below that is a control that reports success and does nothing. One constant decides both the
 button and the sentence, so they cannot disagree.
 
+**A Fact's `value` is the operator's display unit, and commands take metric.** The bridge
+serves `cookedValue()`. `guidedModeChangeAltitude` takes metres, and QML converts at the call
+site before calling it. The first version of this slider fed the cooked delta straight to the
+command, which would have commanded 43.5 m for an operator asking to climb 43.5 ft.
+
+It does not misbehave today, and the reason is worth recording: with Vertical Distance set to
+Feet the handset still reports `altitudeRelative` as `25.0 m` - value, valueString and units
+all metric, across a process restart. Cooked translation is not happening in this build, so
+cooked equals raw and the original code was safe by accident. Anything that decides a command
+reads `rawValue`; `value` is for display only.
+
 `altitudeRange`, `altitudeDelta` and `altitudeChangeSummary` are **Rust view-state
 candidates** under the shared-core rules - Swift will otherwise copy all three. The answer a
 head wants is: given the settings and the current altitude, what range, what delta, and what
