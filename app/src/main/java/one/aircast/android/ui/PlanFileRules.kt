@@ -1,16 +1,18 @@
 package one.aircast.android.ui
 
-import org.json.JSONArray
-
 internal const val DEFAULT_PLAN_NAME = "mission.plan"
 internal const val DEFAULT_KML_NAME = "mission.kml"
 internal const val DEFAULT_BOUNDARY_EXT = "kml"
 
+// QGCMapPolygon picks its parser off the suffix, so a boundary copied into the cache
+// under a fixed name would always be read as the wrong format.
 internal fun boundaryCacheName(displayName: String?): String {
     val ext = displayName?.substringAfterLast('.', "")?.lowercase()?.takeIf { it.isNotBlank() }
     return "boundary.${ext ?: DEFAULT_BOUNDARY_EXT}"
 }
 
+// QGCMapPolygon reports a parse failure through showAppMessage and inserts the item
+// regardless, so a file with no usable area leaves an empty pattern in the plan.
 internal fun importedNothing(distance: Double?): Boolean = distance == null || distance <= 0.0
 
 data class PlanActions(
@@ -79,20 +81,4 @@ internal fun planStatusText(name: String?, dirty: Boolean, offline: Boolean): St
     !dirty -> name
     offline -> "$name \u00b7 unsaved changes"
     else -> "$name \u00b7 not uploaded"
-}
-
-private val DRAWN_CLASSES = setOf("MissionSettingsItem", "SurveyComplexItem")
-
-internal fun undrawnItemNames(elements: JSONArray): List<String> =
-    (0 until elements.length())
-        .mapNotNull { elements.optJSONObject(it) }
-        .filterNot { it.optBoolean("isSimpleItem") || it.optString("class") in DRAWN_CLASSES }
-        .map { it.optString("patternName").ifBlank { it.optString("class") } }
-        .filter { it.isNotBlank() }
-        .distinct()
-
-internal fun undrawnItemsWarning(names: List<String>): String? = when {
-    names.isEmpty() -> null
-    else -> "The map cannot draw ${names.joinToString(", ")}. " +
-        "Those items are still in the plan and will still be flown."
 }

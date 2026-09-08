@@ -188,7 +188,7 @@ fun rememberPlanFileActions(onResult: (String) -> Unit = {}): PlanFileActions {
     val opener = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
         val chosen = uri ?: return@rememberLauncherForActivityResult
         scope.launch {
-            val failure = withContext(Dispatchers.Default) {
+            val message = withContext(Dispatchers.Default) {
                 val staged = File(context.cacheDir, OPEN_CACHE)
                 staged.delete()
                 if (!copyIn(context, chosen, staged)) {
@@ -196,15 +196,12 @@ fun rememberPlanFileActions(onResult: (String) -> Unit = {}): PlanFileActions {
                 }
                 loadFailureMessage(planLoad(staged.absolutePath))
             }
-            if (failure != null) {
-                onResult(failure)
-                return@launch
+            if (message == null) {
+                adopt(chosen)
+                onResult("Plan opened.")
+            } else {
+                onResult(message)
             }
-            adopt(chosen)
-            val warning = withContext(Dispatchers.Default) {
-                undrawnItemsWarning(undrawnItemNames(visualItems()))
-            }
-            onResult(warning ?: "Plan opened.")
         }
     }
 

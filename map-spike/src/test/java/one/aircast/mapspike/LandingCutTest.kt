@@ -71,4 +71,38 @@ class LandingCutTest {
 
         assertEquals(stopping.distance, homeward.distance, 1e-9)
     }
+
+    @Test
+    fun `a camera target is not a leg in the distance either`() {
+        val roi = """{"specifiesCoordinate":true,"isStandaloneCoordinate":true,""" +
+            """"amslEntryAlt":50.0,"coordinate":{"latitude":41.0,"longitude":44.9}}"""
+        val withRoi = terrainProfile(plan(settings, placed(44.1), roi, placed(44.2)))
+        val without = terrainProfile(plan(settings, placed(44.1), placed(44.2)))
+
+        assertEquals(without.distance, withRoi.distance, 1e-9)
+    }
+
+    @Test
+    fun `an item still being set up is not a leg either`() {
+        val halfMade = """{"specifiesCoordinate":true,"isIncomplete":true,""" +
+            """"amslEntryAlt":50.0,"coordinate":{"latitude":41.0,"longitude":44.9}}"""
+        val withIt = terrainProfile(plan(settings, placed(44.1), halfMade, placed(44.2)))
+        val without = terrainProfile(plan(settings, placed(44.1), placed(44.2)))
+
+        assertEquals(without.distance, withIt.distance, 1e-9)
+    }
+
+    @Test
+    fun `the map and the profile ask the same question about a leg`() {
+        val roi = JSONObject("""{"specifiesCoordinate":true,"isStandaloneCoordinate":true}""")
+        val halfMade = JSONObject("""{"specifiesCoordinate":true,"isIncomplete":true}""")
+        val placeless = JSONObject("""{"specifiesCoordinate":false}""")
+        val ordinary = JSONObject("""{"specifiesCoordinate":true}""")
+
+        assertFalse(isFlownLeg(roi))
+        assertFalse(isFlownLeg(halfMade))
+        assertFalse(isFlownLeg(placeless))
+        assertFalse(isFlownLeg(null))
+        assertTrue(isFlownLeg(ordinary))
+    }
 }

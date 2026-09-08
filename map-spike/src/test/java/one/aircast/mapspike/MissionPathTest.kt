@@ -55,7 +55,7 @@ class MissionPathTest {
     @Test
     fun `the route does not detour through a standalone coordinate`() {
         val roi = MissionItem(
-            2, 3, 41.9, 44.9, "ROI", false, Double.NaN, null, standalone = true,
+            2, 3, 41.9, 44.9, "ROI", false, Double.NaN, null, flownLeg = false,
         )
 
         assertEquals(
@@ -68,7 +68,7 @@ class MissionPathTest {
     fun `an item still being set up is not linked into the route`() {
         val halfMade = MissionItem(
             2, 3, 41.5, 44.15, "Survey", false, Double.NaN, null,
-            standalone = false, afterLanding = false, incomplete = true,
+            afterLanding = false, flownLeg = false,
         )
 
         assertEquals(

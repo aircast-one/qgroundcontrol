@@ -41,7 +41,7 @@ data class Fact(
 object Qgc {
     private const val TAG = "QgcBridge"
 
-    private var watched: Map<String, Int> = emptyMap()
+    private val watched = linkedSetOf<String>()
     private val _values = MutableStateFlow<Map<String, JSONObject>>(emptyMap())
 
     val values: StateFlow<Map<String, JSONObject>> = _values.asStateFlow()
@@ -71,58 +71,21 @@ object Qgc {
     internal var sendWatch: (String) -> Unit = { QGCBridge.watch(CLIENT, it) }
 
     internal fun forgetWatchesForTest() {
-        watched = emptyMap()
+        watched.clear()
     }
-
-    internal fun watchedPathsForTest(): Set<String> = watched.keys
 
     @Synchronized
     fun watch(paths: Collection<String>) {
-        val next = retained(watched, paths)
-        if (next.keys == watched.keys) {
-            watched = next
-            return
-        }
-        val previous = watched
-        watched = next
-        if (!resend()) {
-            watched = previous
-            Log.w(TAG, "watch failed for $paths, will retry")
+        val added = paths.filterNot { it in watched }
+        if (added.isEmpty()) return
+
+        watched.addAll(added)
+        val sent = runCatching { timed("watch") { sendWatch(watched.joinToString(",")) } }
+        if (sent.isFailure) {
+            watched.removeAll(added.toSet())
+            Log.w(TAG, "watch failed for $added, will retry: ${sent.exceptionOrNull()}")
         }
     }
-
-    @Synchronized
-    fun unwatch(paths: Collection<String>) {
-        val next = released(watched, paths)
-        val dropped = watched.keys - next.keys
-        if (dropped.isEmpty()) {
-            watched = next
-            return
-        }
-        val previous = watched
-        watched = next
-        if (resend()) {
-            _values.value = _values.value - dropped
-        } else {
-            watched = previous
-            Log.w(TAG, "unwatch failed for $paths, still watching them")
-        }
-    }
-
-    private fun retained(counts: Map<String, Int>, paths: Collection<String>): Map<String, Int> =
-        paths.fold(counts) { acc, path -> acc + (path to (acc[path] ?: 0) + 1) }
-
-    private fun released(counts: Map<String, Int>, paths: Collection<String>): Map<String, Int> =
-        paths.fold(counts) { acc, path ->
-            when (val held = acc[path]) {
-                null -> acc
-                1 -> acc - path
-                else -> acc + (path to held - 1)
-            }
-        }
-
-    private fun resend(): Boolean =
-        runCatching { timed("watch") { sendWatch(watched.keys.joinToString(",")) } }.isSuccess
 
     fun get(path: String): JSONObject =
         timed("get $path") { runCatching { JSONObject(QGCBridge.get(path)) }.getOrDefault(JSONObject()) }

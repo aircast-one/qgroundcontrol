@@ -115,7 +115,7 @@ fun missionFeatures(items: List<MissionItem>, selectedIndex: Int? = null): Featu
 // leg that missionTotalDistance leaves out.
 fun missionPath(items: List<MissionItem>, linkStartToHome: Boolean): Feature? {
     val flown = (if (linkStartToHome) items else items.filterNot { it.index == 0 })
-        .filterNot { it.standalone || it.afterLanding || it.incomplete }
+        .filter { it.flownLeg && !it.afterLanding }
     // An item with an exit is flown through, not touched: a survey enters at one
     // corner and leaves from the far one. Drawing only the entry made the route
     // leave the survey from the corner it arrived at.

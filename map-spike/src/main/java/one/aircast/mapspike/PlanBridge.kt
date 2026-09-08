@@ -81,19 +81,29 @@ data class MissionItem(
     // Where the aircraft leaves this item, which for a survey is the far corner
     // rather than the one it arrived at. Null when the item is a single point.
     val exit: TrackPoint? = null,
-    // QGC's isStandaloneCoordinate, whose documentation is the whole rule:
-    // "true: Waypoint line does not go through item". A region of interest, a
-    // set-home or a land-start has a place on the map and is not somewhere the
-    // aircraft flies to, so it is drawn and not routed through.
-    val standalone: Boolean = false,
     // Everything past the landing. QGC stops both the line and the distance
     // there and so does this.
     val afterLanding: Boolean = false,
-    // A complex item still waiting to be set up - a survey with no polygon yet.
-    // "We don't link lines from a valid item to an incomplete item", and the
-    // reason is that it "may not yet have valid entry/exit coordinates".
-    val incomplete: Boolean = false,
+    // Whether the route runs through this item at all. Drawn either way: a
+    // camera target has a place on the map, it is just not somewhere the
+    // aircraft goes.
+    val flownLeg: Boolean = true,
 )
+
+// One question, asked once. The map and the profile disagreed twice about the
+// same plan because each decided separately what counted as a leg, so the
+// decision lives here and both read it.
+//
+// specifiesCoordinate: it has a place at all.
+// isStandaloneCoordinate: "true: Waypoint line does not go through item" -
+//   a region of interest, a set-home, a land-start.
+// isIncomplete: "We don't link lines from a valid item to an incomplete item",
+//   because it "may not yet have valid entry/exit coordinates".
+fun isFlownLeg(element: JSONObject?): Boolean =
+    element != null &&
+        element.optBoolean("specifiesCoordinate") &&
+        !element.optBoolean("isStandaloneCoordinate") &&
+        !element.optBoolean("isIncomplete")
 
 // "Don't draw segments immediately after a landing item", and "No need to add
 // waypoint segments after an RTL". The aircraft is down; a leg onward is one
@@ -137,9 +147,8 @@ fun missionItems(json: JSONObject?): List<MissionItem> {
             command = element.optString("commandName"),
             current = element.optBoolean("isCurrentItem"),
             altitude = factValue(element, "Altitude"),
-            standalone = element.optBoolean("isStandaloneCoordinate"),
             afterLanding = index > endsAfter,
-            incomplete = element.optBoolean("isIncomplete"),
+            flownLeg = isFlownLeg(element),
             exit = element.optJSONObject("exitCoordinate")?.let { at ->
                 val exitLatitude = at.optDouble("latitude", Double.NaN)
                 val exitLongitude = at.optDouble("longitude", Double.NaN)

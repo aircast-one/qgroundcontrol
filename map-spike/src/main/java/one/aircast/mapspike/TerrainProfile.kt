@@ -138,7 +138,7 @@ fun terrainProfile(
         (1 until elements.length())
             .filter { it <= endsAfter }
             .mapNotNull { index -> elements.optJSONObject(index)?.let { index to it } }
-            .filter { (_, element) -> element.optBoolean("specifiesCoordinate") }
+            .filter { (_, element) -> isFlownLeg(element) }
             .fold(Walk(home, 0.0, emptyList())) { walk, (index, element) ->
                 val entry = point(element, "coordinate") ?: return@fold walk
                 val terrain = element.optDouble("terrainAltitude", Double.NaN).takeIf { !it.isNaN() }

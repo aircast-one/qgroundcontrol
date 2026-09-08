@@ -480,6 +480,11 @@ An item that is still being set up is not linked either - "We don't link lines
 from a valid item to an incomplete item", because it "may not yet have valid
 entry/exit coordinates".
 
+Whether an item is a leg at all is one question in one place, `isFlownLeg`,
+which the drawn route and the distance both read. They disagreed twice about the
+same plan because each decided separately, and that is the fix for the cause
+rather than for either symptom.
+
 Three of those five are verified on the handset. The standalone and incomplete
 rules are unit-tested only, because nothing in this module can produce either:
 an ROI arrives only in a plan loaded from a file or a vehicle, `insertSurvey`

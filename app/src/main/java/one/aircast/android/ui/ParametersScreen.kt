@@ -37,6 +37,7 @@ fun ParametersScreen(modifier: Modifier = Modifier) {
     val ready by qgcBool("$PARAMETER_MANAGER.parametersReady")
     var search by remember { mutableStateOf("") }
     var names by remember { mutableStateOf<List<String>>(emptyList()) }
+    var revision by remember { mutableStateOf(0) }
 
     LaunchedEffect(ready) {
         names = if (!ready) emptyList() else withContext(Dispatchers.Default) { parameterNames() }
@@ -67,16 +68,18 @@ fun ParametersScreen(modifier: Modifier = Modifier) {
 
         LazyColumn(Modifier.fillMaxSize()) {
             items(matches, key = { it }) { name ->
-                ParameterRow(name)
+                ParameterRow(name, revision) { revision++ }
                 HorizontalDivider()
             }
         }
     }
 }
 
+// One read per row that is on screen, rather than a fixed slice of the matches. The
+// slice capped the list at 60, so a parameter matching 61st could not be reached
+// without narrowing the search, and every edit re-read all 60.
 @Composable
-private fun ParameterRow(name: String) {
-    var revision by remember { mutableStateOf(0) }
+private fun ParameterRow(name: String, revision: Int, onWrite: () -> Unit) {
     val fact by produceState<Fact?>(null, name, revision) {
         value = withContext(Dispatchers.Default) { parameterFact(name) }
     }
@@ -91,7 +94,7 @@ private fun ParameterRow(name: String) {
             fact = loaded,
             title = loaded.name,
             subtitle = loaded.description.ifBlank { loaded.units },
-            onWrite = { revision++ },
+            onWrite = onWrite,
         )
     }
 }
