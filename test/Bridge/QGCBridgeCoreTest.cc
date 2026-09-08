@@ -644,6 +644,19 @@ void QGCBridgeCoreTest::_anObjectSaysWhatClassItIs()
     QVERIFY2(classes.contains(QStringLiteral("CorridorScanComplexItem")), qPrintable(classes.join(QChar(','))));
     QVERIFY2(!classes.contains(QString()), qPrintable(classes.join(QChar(','))));
 
+    const QJsonObject corridorItem = [&elements]() {
+        for (const QJsonValue &element : elements) {
+            if (element.toObject().value(QStringLiteral("class")).toString()
+                == QStringLiteral("CorridorScanComplexItem")) {
+                return element.toObject();
+            }
+        }
+        return QJsonObject();
+    }();
+    QCOMPARE(corridorItem.value(QStringLiteral("isSimpleItem")).toBool(), false);
+    QCOMPARE(corridorItem.value(QStringLiteral("isSurveyItem")).toBool(), false);
+    QVERIFY(!corridorItem.contains(QStringLiteral("surveyAreaPolygon")));
+
     (void) QGCBridgeCore::invoke(QStringLiteral("plan.removeAll"), QStringLiteral("[]"));
 }
 

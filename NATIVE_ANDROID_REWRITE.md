@@ -455,15 +455,32 @@ coordinate — fired on ordinary plans, because Mission Start satisfies all thre
 while being drawn or being nothing. A warning that fires on every plan is worse
 than the gap it names, since it trains the pilot to ignore the next one.
 
-**The reason all three failed is now fixed.** Every one was reasoning about the
-*shape* of an object because it could not ask what the object *was*: the bridge
-serialised properties, facts and children, but never the type. `objectJson` now
-carries the runtime class name, so a client can name the item exactly —
-`CorridorScanComplexItem`, `StructureScanComplexItem`, `FixedWingLandingComplexItem`,
-`VTOLLandingComplexItem` — instead of inferring from fields that several types share.
-The bridge test inserts a real corridor scan next to a simple waypoint and asserts
-each reports its own class, which is the "read the real serialisation" this note
-asked for.
+`objectJson` now carries the runtime class name, so a client can name the item
+exactly — `CorridorScanComplexItem`, `StructureScanComplexItem`,
+`FixedWingLandingComplexItem`, `VTOLLandingComplexItem`.
+
+**Correcting the reason I first gave for this.** I claimed no predicate could
+separate a corridor scan from Mission Start. That was wrong, and reading a real
+corridor scan is what showed it — the same mistake the withdrawn attempts made,
+made once more while adding the fix for them. Against a live plan:
+
+| item | `class` | `patternName` | `isSimpleItem` | `isSurveyItem` |
+|---|---|---|---|---|
+| Mission Start | `MissionSettingsItem` | `""` | false | false |
+| waypoint | `SimpleMissionItem` | `""` | true | false |
+| corridor scan | `CorridorScanComplexItem` | `"Corridor Scan"` | false | false |
+
+`patternName` already discriminated. The three attempts did not fail for want of a
+predicate; they failed because each picked one that Mission Start also satisfies,
+and never checked against a plan containing the item they were warning about.
+
+The class name is still the better primitive, for a reason that is *not* the one I
+gave: **`patternName` is a translated display string** (`tr("Corridor Scan")`), so
+matching on it silently stops working in any other locale. `class` does not move.
+
+Also checked, since the survey layer keys off it: a corridor scan does **not** carry
+`surveyAreaPolygon` at the top level, so it is not being mis-drawn as a survey. It is
+absent from the map, as this note said — not wrong on it.
 
 That supplies the discriminator and nothing more. Still to do: either draw those
 three, or warn naming the specific items, and the warning is now cheap to make
