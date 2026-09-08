@@ -72,7 +72,9 @@ verified on a device against a live vehicle.
 The whole of that in one gesture: dragging a survey's corner handle - the same handle built for
 fence polygons - reshapes the area, regenerates the grid through the bridge, redraws the
 transects, and moves the profile with it. 5.90 km became 4.16 km in the status line, in the
-chart, and in the ground curve underneath it.
+chart, and in the ground curve underneath it. A second survey carries on from where the first
+ended: 10.80 km in the profile against 10.80 km in the status line, with the ground running
+under both.
 
 ## What the bridge taught us
 
