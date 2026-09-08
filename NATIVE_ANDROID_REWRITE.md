@@ -1146,6 +1146,23 @@ Caution was a hard amber; High was `colorScheme.error`, which in this dark theme
 pink meant for text on a surface rather than for filling a shape. The most serious band was
 the least alarming thing on the screen. High is a saturated red now.
 
+**Ninth migration: the flight mode picker, and a capability rather than a swap.** The picker
+listed every mode the vehicle reports in one flat drop-down, so Acro, Circle, Drift, Sport and
+Flip sat between Land and the modes an operator actually reaches for. `view.flightModes`
+separates the everyday set from the folded one, marks the current mode and says whether the
+vehicle will accept a change at all. The current mode carries a tick, and "More modes" reveals
+the rest - what the QML picker has always done and this one never did.
+
+`needsConfirm` is served for modes like Acro and **is not honoured yet**: the picker sets any
+mode it is asked for. Recorded as a gap rather than half-built.
+
+The inspector's row title is the core's now too, so `inspectorRowLabel` is gone. That rule
+lived in the head for about twenty minutes and was wrong in it - it measured uniqueness over
+the *filtered* rows, so typing in the filter box could drop the component id from a label. The
+core measures over the system. Two heads would each have made that choice separately, and one
+of them would have got it wrong; that is the argument for the core owning it, stated better by
+the bug than by any reasoning beforehand.
+
 **Eighth migration: the inspector, which crashed on its first run.** `parseInspectorMessages`
 and `formatRate` are deleted; `view.inspector` serves each message with its rate formatted and
 a path that identifies it.
