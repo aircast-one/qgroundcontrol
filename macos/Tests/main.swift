@@ -473,6 +473,17 @@ func checkMissionCommands() {
     expect(commands.count == 2, "duplicates, nameless and numberless commands are dropped")
     expect(commands.first?.name == "Waypoint", "the friendly name is what an operator picks from")
 
+    let described = MissionCommand.from([
+        ["command": 19, "friendlyName": "Loiter (time)", "category": "Loiter",
+         "description": "Loiter around the specified position for an amount of time."],
+        ["command": 16, "friendlyName": "Waypoint", "category": "Basic"],
+    ])
+    expect(described[0].summary, "Loiter around the specified position for an amount of time.",
+           "the description QGC lists beside the name comes through")
+    expect(described[0].category, "Loiter", "and so does the category it was listed under")
+    expect(described[1].summary, "",
+           "a command with no description reads as empty, not as a missing row")
+
     let waypoint = MissionItem(json: [
         "sequenceNumber": 1, "commandName": "Waypoint", "isSimpleItem": true,
     ], index: 1)

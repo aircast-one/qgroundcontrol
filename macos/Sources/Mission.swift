@@ -15,6 +15,10 @@ final class MissionStore: ObservableObject, Probeable {
     @Published private(set) var canUndo = false
     @Published private(set) var canRedo = false
     @Published private(set) var commands: [MissionCommand] = []
+    @Published private(set) var commandCategories: [String] = []
+    @Published var pickingCommandFor: Int?
+
+    @Published private(set) var pickerCategory = ""
     @Published private(set) var selectedFacts: [ItemFact] = []
     @Published private(set) var surveyStats = SurveyStats.none
     @Published private(set) var camera = CameraChoice.empty
@@ -306,15 +310,37 @@ final class MissionStore: ObservableObject, Probeable {
     }
 
     func loadCommands() {
-        guard commands.isEmpty, connected else { return }
+        guard commandCategories.isEmpty, connected else { return }
+        commandCategories = (Bridge.invoke("missionCommandTree.categoriesForVehicle",
+                                           ["@vehicle"])["result"] as? [String]) ?? []
+        showCategory(commandCategories.first ?? "")
+    }
+
+    func showCategory(_ category: String) {
+        pickerCategory = category
         commands = MissionCommand.from(
             (Bridge.invoke("missionCommandTree.getCommandsForCategory",
-                           ["@vehicle", "Basic", true])["result"] as? [Any]) ?? [])
+                           ["@vehicle", category, true])["result"] as? [Any]) ?? [])
+    }
+
+    func pickCommand(for item: MissionItem) {
+        loadCommands()
+        showCategory(commandCategories.contains(item.category)
+            ? item.category
+            : commandCategories.first ?? "")
+        pickingCommandFor = item.sequence
     }
 
     func setCommand(of item: MissionItem, to command: Int) {
         guard item.canChangeCommand else { return }
+        if let centre = MissionMap.lastRender["plan"]?["centre"] as? [String: Double],
+           let latitude = centre["lat"], let longitude = centre["lon"] {
+            _ = Bridge.invoke(
+                "plan.missionController.visualItems.\(item.index).setMapCenterHintForCommandChange",
+                [["latitude": latitude, "longitude": longitude]])
+        }
         _ = Bridge.set("plan.missionController.visualItems.\(item.index).command", command)
+        pickingCommandFor = nil
         reload()
     }
 
@@ -446,6 +472,11 @@ final class MissionStore: ObservableObject, Probeable {
          "placed": items.filter(\.hasPosition).count,
          "vehiclePlaced": vehiclePosition != nil,
          "map": MissionMap.lastRender["plan"] ?? [:],
+         "commandCategories": commandCategories,
+         "pickerCategory": pickerCategory,
+         "pickingCommandFor": pickingCommandFor ?? -1,
+         "commandNames": commands.map(\.name),
+         "commandsWithSummary": commands.filter { !$0.summary.isEmpty }.count,
          "selected": items.first(where: \.isCurrent)?.sequence ?? -1,
          "arming": arming?.rawValue ?? "",
          "planFile": planFile, "planName": planName,
@@ -541,6 +572,16 @@ final class MissionStore: ObservableObject, Probeable {
                 return ["ok": false, "error": "\(target.command) cannot be moved"]
             }
             move(sequence: sequence, latitude: latitude, longitude: longitude)
+        case "pickCommand":
+            guard let target = items.first(where: {
+                $0.sequence == Int(args["sequence"] ?? "") ?? -1
+            }) else {
+                return ["ok": false, "error": "no item at that sequence"]
+            }
+            pickCommand(for: target)
+        case "commandCategory":
+            loadCommands()
+            showCategory(args["category"] ?? pickerCategory)
         case "setCommand":
             guard let target = items.first(where: { $0.sequence == Int(args["sequence"] ?? "") ?? -1 }) else {
                 return ["ok": false, "error": "no item with that sequence"]

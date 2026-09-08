@@ -189,12 +189,80 @@ struct PlanInspector: View {
             .padding(Overlay.gutter)
             .frame(width: 320)
         }
+        .sheet(isPresented: Binding(get: { mission.pickingCommandFor != nil },
+                                    set: { if !$0 { mission.pickingCommandFor = nil } })) {
+            commandPicker
+        }
         .alert("That file could not be used",
                isPresented: Binding(get: { shapeError != nil }, set: { if !$0 { shapeError = nil } })) {
             Button("OK") { shapeError = nil }
         } message: {
             Text(shapeError ?? "")
         }
+    }
+
+    private var commandPicker: some View {
+        VStack(alignment: .leading, spacing: Overlay.unit * 0.75) {
+            Text("Choose what this item does").font(.title3.weight(.semibold))
+
+            Picker("Category", selection: Binding(
+                get: { mission.pickerCategory },
+                set: { mission.showCategory($0) })
+            ) {
+                ForEach(mission.commandCategories, id: \.self) { Text($0).tag($0) }
+            }
+            .frame(maxWidth: 320)
+
+            if mission.commands.isEmpty {
+                GroupCard {
+                    EmptyStateRow(text: mission.connected
+                        ? "This category has no commands this vehicle accepts."
+                        : "Connect a vehicle to see the commands it accepts.")
+                }
+            } else {
+                ScrollView {
+                    GroupCard {
+                        ForEach(Array(mission.commands.enumerated()), id: \.element.id) { row, command in
+                            commandRow(command, showSeparator: row > 0)
+                        }
+                    }
+                }
+                .frame(height: 380)
+            }
+
+            Divider()
+
+            HStack {
+                Spacer()
+                Button("Cancel") { mission.pickingCommandFor = nil }
+                    .keyboardShortcut(.cancelAction)
+            }
+        }
+        .padding(Overlay.unit)
+        .frame(width: 520)
+    }
+
+    private func commandRow(_ command: MissionCommand, showSeparator: Bool) -> some View {
+        Button {
+            chooseCommand(command)
+        } label: {
+            GroupRow(title: command.name,
+                     description: command.summary,
+                     showSeparator: showSeparator,
+                     current: command.command == chosenCommand,
+                     titleLines: 2, descriptionLines: 4)
+        }
+        .buttonStyle(.plain)
+    }
+
+    private func chooseCommand(_ command: MissionCommand) {
+        guard let item = mission.items.first(where: { $0.sequence == mission.pickingCommandFor })
+        else { return }
+        mission.setCommand(of: item, to: command.command)
+    }
+
+    private var chosenCommand: Int {
+        mission.items.first { $0.sequence == mission.pickingCommandFor }?.commandId ?? -1
     }
 
     private var summary: some View {
@@ -277,18 +345,13 @@ struct PlanInspector: View {
                                         .font(.body.monospacedDigit())
                                         .foregroundColor(Overlay.value)
                                 }
-                                if item.isCurrent && item.canChangeCommand && !mission.commands.isEmpty {
-                                    Menu {
-                                        ForEach(mission.commands) { command in
-                                            Button(command.name) {
-                                                mission.setCommand(of: item, to: command.command)
-                                            }
-                                        }
+                                if item.isCurrent && item.canChangeCommand {
+                                    Button {
+                                        mission.pickCommand(for: item)
                                     } label: {
                                         Image(systemName: "chevron.up.chevron.down")
                                     }
-                                    .menuStyle(.borderlessButton)
-                                    .menuIndicator(.hidden)
+                                    .buttonStyle(.borderless)
                                     .frame(width: 22)
                                     .help("Change what this item does")
                                 }
