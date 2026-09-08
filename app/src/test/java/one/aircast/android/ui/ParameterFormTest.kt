@@ -195,3 +195,35 @@ class ParameterFormTest {
         assertNull(factRebootNote(ranged()))
     }
 }
+
+class ReadOnlyNoteTest {
+    private fun fact(name: String, readOnly: Boolean) = one.aircast.android.bridge.Fact(
+        path = "p/$name", name = name, description = "", units = "",
+        valueString = "0", value = 0, enumStrings = emptyList(), enumIndex = -1,
+        isBool = false, isString = false, readOnly = readOnly,
+    )
+
+    @Test
+    fun `nothing read-only says nothing`() {
+        assertNull(readOnlyNote(listOf(fact("FLTMODE1", false), fact("FLTMODE2", false))))
+    }
+
+    @Test
+    fun `all read-only says so without naming them`() {
+        assertEquals(
+            "This firmware reports all of these as read-only, so they are shown for reference.",
+            readOnlyNote(listOf(fact("A", true), fact("B", true))),
+        )
+    }
+
+    @Test
+    fun `some read-only names which ones`() {
+        assertEquals(
+            "This firmware reports FLTMODE2, FLTMODE3 as read-only, " +
+                "so they are shown but cannot be changed here.",
+            readOnlyNote(
+                listOf(fact("FLTMODE1", false), fact("FLTMODE2", true), fact("FLTMODE3", true)),
+            ),
+        )
+    }
+}

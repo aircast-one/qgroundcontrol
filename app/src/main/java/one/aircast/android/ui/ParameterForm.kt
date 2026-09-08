@@ -41,6 +41,18 @@ internal fun factFromParameter(name: String, json: JSONObject): Fact? =
         null
     }
 
+internal fun readOnlyNote(facts: List<Fact>): String? {
+    val locked = facts.filter { it.readOnly }
+    return when {
+        locked.isEmpty() -> null
+        locked.size == facts.size ->
+            "This firmware reports all of these as read-only, so they are shown for reference."
+        else ->
+            "This firmware reports " + locked.joinToString(", ") { it.name } +
+                " as read-only, so they are shown but cannot be changed here."
+    }
+}
+
 private fun readSections(sections: List<ParameterSection>): List<ParameterRows> =
     sections.mapNotNull { section ->
         val facts = section.names.mapNotNull { name ->
@@ -49,7 +61,8 @@ private fun readSections(sections: List<ParameterSection>): List<ParameterRows> 
         if (facts.isEmpty()) {
             null
         } else {
-            ParameterRows(section.title, facts, section.note)
+            val note = listOfNotNull(section.note.ifBlank { null }, readOnlyNote(facts))
+            ParameterRows(section.title, facts, note.joinToString(" "))
         }
     }
 

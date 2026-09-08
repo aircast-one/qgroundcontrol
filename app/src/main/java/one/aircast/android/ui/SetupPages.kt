@@ -94,8 +94,6 @@ private val FLIGHT_MODES_APM = listOf(
     ParameterSection(
         "Mode slots",
         (1..6).map { "FLTMODE$it" },
-        "This firmware reports every slot after the first as read-only, so they are " +
-            "shown but cannot be changed here.",
     ),
     ParameterSection("Options", listOf("SIMPLE", "SUPER_SIMPLE", "INITIAL_MODE")),
 )
@@ -105,7 +103,6 @@ private val FLIGHT_MODES_PX4 = listOf(
     ParameterSection(
         "Mode slots",
         (1..6).map { "COM_FLTMODE$it" },
-        "Slots the firmware reports as read-only are shown but cannot be changed here.",
     ),
     ParameterSection(
         "Single function switches",
