@@ -448,6 +448,36 @@ no signal for the vehicle having obeyed, so the notice now says the clear was
 sent. **Any void `Q_INVOKABLE` that commands the vehicle has this shape**: the
 native head can report that it asked, never that it was done.
 
+**Whether a call can be checked at all is a property of the C++ signature**, and
+nothing on the native side shows which case you are in. Three categories:
+
+| Shape | What a success reply means | How to check |
+|---|---|---|
+| invoke returning a pointer | a null arrives as `{"kind":"null"}` in `result` | require an object in `result` |
+| invoke returning `void` | the method was found and called | read the state back |
+| `set` | `setProperty` returned true | re-read; a Fact may clamp to its own range |
+
+`LinkManager` is the worked example: `createAndConnectLink` returns `bool`, while
+`createConnectedLink`, `removeConfiguration` and `LinkInterface::disconnect` are
+all `void`. Reporting built on `ok` therefore covered the one path that needed it
+least, and the three that needed it were checking a value that cannot carry the
+answer. They read the link list back now (`aircast-android`).
+
+**Two guards we rely on were put there for other reasons.** An out-of-range
+settings value never reaches the clamp, because the field calls the Fact's own
+`validate` first — added to produce a message, not to foreclose clamping. The map
+module's radius has the same property from a 20 m floor that exists so nobody
+builds a one-metre fence. Neither protection was designed for the job it is
+doing, so the next person to touch either will be thinking about the reason it
+exists rather than the one it also serves.
+
+**"It re-reads" means two different contracts.** Settings facts go through a
+watch, so any value on screen comes from the poll and a change from any source
+surfaces. Parameters rows are not watched — each loads on demand and re-reads
+after its own write, so a clamp surfaces once and a change made by the vehicle or
+another GCS never does. That is the right trade at two hundred paths, but it is
+not the settings contract and reads identically in the code.
+
 Two corollaries, both found by auditing against that rule rather than by a
 failure:
 
