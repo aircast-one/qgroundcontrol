@@ -2,6 +2,7 @@ package one.aircast.android.ui
 
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull
+import org.junit.Assert.assertTrue
 import org.json.JSONArray
 import org.json.JSONObject
 import org.junit.Test
@@ -416,5 +417,25 @@ class UndrawnItemsTest {
             .put(JSONObject().put("isSimpleItem", false))
 
         assertEquals(emptyList<String>(), undrawnItemNames(older))
+    }
+}
+
+class CommandRefusalTest {
+    @Test
+    fun `a confirmed command says nothing`() {
+        assertNull(commandRefusal("Return", confirmed = true))
+    }
+
+    @Test
+    fun `an unconfirmed command names itself`() {
+        assertEquals(
+            "Return was not confirmed by the aircraft.",
+            commandRefusal("Return", confirmed = false),
+        )
+    }
+
+    @Test
+    fun `the settle window is long enough for a MAVLink round trip`() {
+        assertTrue(COMMAND_SETTLE_MS >= 2000L)
     }
 }

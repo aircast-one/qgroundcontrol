@@ -23,13 +23,18 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import kotlinx.coroutines.withTimeoutOrNull
 import one.aircast.android.bridge.Fact
 import kotlin.math.roundToInt
 import one.aircast.android.bridge.Qgc
@@ -141,6 +146,8 @@ fun FlightActions(modifier: Modifier = Modifier) {
     val available by qgcBool("vehicles.activeVehicleAvailable")
     val armed by qgcBool("vehicle.armed")
     var pending by remember { mutableStateOf<GuidedAction?>(null) }
+    var refusal by remember { mutableStateOf<String?>(null) }
+    val scope = rememberCoroutineScope()
     var takeoffAltitude by remember { mutableStateOf(FALLBACK_TAKEOFF_ALTITUDE_METERS) }
     var takeoffLabel by remember { mutableStateOf("") }
     val flying by qgcBool("vehicle.flying")
@@ -170,7 +177,16 @@ fun FlightActions(modifier: Modifier = Modifier) {
     Column(modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
         VehicleMessageBanner()
 
-        FlightModePicker()
+        refusal?.let { message ->
+            Text(
+                text = message,
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.error,
+                modifier = Modifier.fillMaxWidth(),
+            )
+        }
+
+        FlightModePicker { refusal = it }
 
         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             Button(
@@ -183,7 +199,13 @@ fun FlightActions(modifier: Modifier = Modifier) {
                             "Arming spins the propellers. Stand clear of the aircraft."
                         },
                         destructive = true,
-                    ) { offMainDetached { Qgc.set("vehicle.armed", !armed) } }
+                    ) {
+                        scope.attemptCommand(
+                            action = if (armed) "Disarm" else "Arm",
+                            report = { refusal = it },
+                            reached = { armedNow() == !armed },
+                        ) { Qgc.set("vehicle.armed", !armed) }
+                    }
                 },
                 colors = if (armed) ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.error)
                 else ButtonDefaults.buttonColors(),
@@ -195,7 +217,9 @@ fun FlightActions(modifier: Modifier = Modifier) {
                     name = "Take off",
                     confirm = "The aircraft will climb to $takeoffLabel and hold.",
                     destructive = false,
-                ) { offMainDetached { Qgc.invoke("vehicle.guidedModeTakeoff", altitude) } }
+                ) {
+                    offMainDetached { Qgc.invoke("vehicle.guidedModeTakeoff", altitude) }
+                }
             }) { Text("Takeoff") }
 
             OutlinedButton(enabled = can.land, onClick = {
@@ -203,7 +227,9 @@ fun FlightActions(modifier: Modifier = Modifier) {
                     name = "Land",
                     confirm = "The aircraft will descend and land where it is now.",
                     destructive = false,
-                ) { offMainDetached { Qgc.invoke("vehicle.guidedModeLand") } }
+                ) {
+                    offMainDetached { Qgc.invoke("vehicle.guidedModeLand") }
+                }
             }) { Text("Land") }
 
             OutlinedButton(enabled = can.rtl, onClick = {
@@ -211,7 +237,9 @@ fun FlightActions(modifier: Modifier = Modifier) {
                     name = "Return",
                     confirm = "The aircraft will fly back to its launch point and land.",
                     destructive = false,
-                ) { offMainDetached { Qgc.invoke("vehicle.guidedModeRTL", false) } }
+                ) {
+                    offMainDetached { Qgc.invoke("vehicle.guidedModeRTL", false) }
+                }
             }) { Text("RTL") }
         }
 
@@ -241,9 +269,35 @@ fun FlightActions(modifier: Modifier = Modifier) {
 }
 
 // The command takes metres and the operator may be reading feet. Converting only the
-// label keeps the number sent to the aircraft raw, which is what guidedModeTakeoff wants.
-// If either half of the conversion is unavailable both are dropped, so the figure and the
-// unit beside it can never come from different systems.
+private fun armedNow(): Boolean = Qgc.get("vehicle.armed").opt("value") == true
+
+private fun flightModeNow(): String =
+    Qgc.get("vehicle.flightMode").opt("value")?.toString().orEmpty()
+
+private fun CoroutineScope.attemptCommand(
+    action: String,
+    report: (String?) -> Unit,
+    reached: () -> Boolean,
+    call: () -> Unit,
+) {
+    launch {
+        report(null)
+        withContext(Dispatchers.Default) { call() }
+        val confirmed = withTimeoutOrNull(COMMAND_SETTLE_MS) {
+            while (!withContext(Dispatchers.Default) { reached() }) {
+                delay(200)
+            }
+            true
+        } == true
+        report(commandRefusal(action, confirmed))
+    }
+}
+
+internal const val COMMAND_SETTLE_MS = 4000L
+
+internal fun commandRefusal(action: String, confirmed: Boolean): String? =
+    if (confirmed) null else "$action was not confirmed by the aircraft."
+
 internal fun altitudeLabel(meters: Double, converted: Double?, unit: String?): String =
     if (converted != null && !unit.isNullOrBlank()) {
         "${converted.roundToInt()} $unit"
@@ -264,10 +318,11 @@ private fun readTakeoffAltitudeMeters(): Double =
         ?: FALLBACK_TAKEOFF_ALTITUDE_METERS
 
 @Composable
-private fun FlightModePicker() {
+private fun FlightModePicker(onRefusal: (String?) -> Unit) {
     val modes by qgcStrings("vehicle.flightModes")
     val current by qgcString("vehicle.flightMode")
     var expanded by remember { mutableStateOf(false) }
+    val scope = rememberCoroutineScope()
 
     Row(verticalAlignment = Alignment.CenterVertically) {
         AssistChip(onClick = { expanded = true }, label = { Text(current.ifBlank { "Mode" }) })
@@ -278,7 +333,11 @@ private fun FlightModePicker() {
                     text = { Text(mode) },
                     onClick = {
                         expanded = false
-                        offMainDetached { Qgc.set("vehicle.flightMode", mode) }
+                        scope.attemptCommand(
+                            action = mode,
+                            report = onRefusal,
+                            reached = { flightModeNow() == mode },
+                        ) { Qgc.set("vehicle.flightMode", mode) }
                     },
                 )
             }
