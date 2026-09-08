@@ -18,6 +18,8 @@ struct FlyTelemetry: Equatable {
     var batteryPercent: Double?
     var batteryVolts: Double?
     var satellites: Int?
+    var distanceUnits = "m"
+    var speedUnits = "m/s"
     var gpsLock: Int?
 
     static let lowBattery = 25.0
@@ -72,15 +74,17 @@ struct FlyTelemetry: Equatable {
         return rounded == 0 ? 0 : rounded
     }
 
-    static func metres(_ value: Double?) -> String {
+    static func measure(_ value: Double?, _ units: String) -> String {
         guard let value, value.isFinite else { return "—" }
-        return String(format: "%.1f m", zeroed(value))
+        let rounded = zeroed(value)
+        return units.isEmpty
+            ? String(format: "%.1f", rounded)
+            : String(format: "%.1f %@", rounded, units)
     }
 
-    static func speed(_ value: Double?) -> String {
-        guard let value, value.isFinite else { return "—" }
-        return String(format: "%.1f m/s", zeroed(value))
-    }
+    var altitudeText: String { FlyTelemetry.measure(altitude, distanceUnits) }
+    var groundSpeedText: String { FlyTelemetry.measure(groundSpeed, speedUnits) }
+    var climbRateText: String { FlyTelemetry.measure(climbRate, speedUnits) }
 
     static func degrees(_ value: Double?) -> String {
         guard let value, value.isFinite else { return "—" }

@@ -695,6 +695,29 @@ func checkFlyDetail() {
 
 checkFlyDetail()
 
+func checkTelemetryUnits() {
+    var feet = FlyTelemetry()
+    feet.altitude = 1916.2
+    feet.groundSpeed = 12.5
+    feet.distanceUnits = "ft"
+    feet.speedUnits = "ft/s"
+    expect(feet.altitudeText, "1916.2 ft",
+           "a height the vehicle reported in feet is labelled feet, not metres")
+    expect(feet.groundSpeedText, "12.5 ft/s", "and a speed carries the units it came with")
+
+    var metric = FlyTelemetry()
+    metric.altitude = 584.0
+    expect(metric.altitudeText, "584.0 m", "the default stays metric when nothing says otherwise")
+
+    expect(FlyTelemetry().altitudeText, "—", "a height the vehicle has not reported shows nothing")
+    expect(FlyTelemetry.measure(1.0, ""), "1.0",
+           "a fact with no units at all is printed bare rather than with a guessed suffix")
+    expect(FlyTelemetry.measure(-0.04, "m"), "0.0 m",
+           "a hair below zero reads as zero, not as minus zero")
+}
+
+checkTelemetryUnits()
+
 func checkVehicleSetupText() {
     expect(VehicleSetupText.waiting(connected: true, for: "parameters"),
            "Reading parameters from the vehicle\u{2026}",
@@ -1055,13 +1078,13 @@ func checkFlyTelemetry() {
     reading.flying = true
     expect(reading.stateText, "Flying", "and as flying once it is airborne")
 
-    expect(FlyTelemetry.metres(nil), "\u{2014}", "a missing altitude shows nothing")
-    expect(FlyTelemetry.metres(Double.nan), "\u{2014}", "and so does a NaN")
-    expect(FlyTelemetry.speed(3.26), "3.3 m/s", "speed reads to one decimal")
-    expect(FlyTelemetry.metres(-0.0), "0.0 m", "a vehicle on the ground does not report minus zero")
-    expect(FlyTelemetry.metres(-0.04), "0.0 m", "nor does one a few centimetres below its launch point")
-    expect(FlyTelemetry.speed(-0.02), "0.0 m/s", "nor does a stationary one")
-    expect(FlyTelemetry.metres(-12.5), "-12.5 m", "a real negative altitude keeps its sign")
+    expect(FlyTelemetry.measure(nil, "m"), "\u{2014}", "a missing altitude shows nothing")
+    expect(FlyTelemetry.measure(Double.nan, "m"), "\u{2014}", "and so does a NaN")
+    expect(FlyTelemetry.measure(3.26, "m/s"), "3.3 m/s", "speed reads to one decimal")
+    expect(FlyTelemetry.measure(-0.0, "m"), "0.0 m", "a vehicle on the ground does not report minus zero")
+    expect(FlyTelemetry.measure(-0.04, "m"), "0.0 m", "nor does one a few centimetres below its launch point")
+    expect(FlyTelemetry.measure(-0.02, "m/s"), "0.0 m/s", "nor does a stationary one")
+    expect(FlyTelemetry.measure(-12.5, "m"), "-12.5 m", "a real negative altitude keeps its sign")
     expect(FlyTelemetry.degrees(91.6), "92\u{00B0}", "heading reads whole degrees")
 }
 

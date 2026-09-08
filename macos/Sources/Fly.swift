@@ -66,6 +66,9 @@ final class FlyStore: ObservableObject, Probeable {
         reading.flying = (vehicle["flying"] as? NSNumber)?.boolValue ?? false
 
         let facts = FlyStore.facts(vehicle)
+        let units = FlyStore.units(vehicle)
+        reading.distanceUnits = units["altitudeRelative"] ?? "m"
+        reading.speedUnits = units["groundSpeed"] ?? "m/s"
         reading.altitude = facts["altitudeRelative"]
         reading.groundSpeed = facts["groundSpeed"]
         reading.climbRate = facts["climbRate"]
@@ -140,6 +143,14 @@ final class FlyStore: ObservableObject, Probeable {
         (vehicle[name] as? NSNumber)?.boolValue ?? false
     }
 
+    private static func units(_ object: [String: Any]) -> [String: String] {
+        ((object["facts"] as? [[String: Any]]) ?? []).reduce(into: [String: String]()) { found, fact in
+            guard let name = fact["name"] as? String,
+                  let units = fact["units"] as? String, !units.isEmpty else { return }
+            found[name] = Units.display(units)
+        }
+    }
+
     private static func facts(_ object: [String: Any]) -> [String: Double] {
         ((object["facts"] as? [[String: Any]]) ?? []).reduce(into: [String: Double]()) { values, fact in
             guard let name = fact["name"] as? String,
@@ -199,8 +210,8 @@ final class FlyStore: ObservableObject, Probeable {
 
     func probeState() -> [String: Any] {
         ["connected": connected, "mode": telemetry.mode, "state": telemetry.stateText,
-         "altitude": FlyTelemetry.metres(telemetry.altitude),
-         "groundSpeed": FlyTelemetry.speed(telemetry.groundSpeed),
+         "altitude": telemetry.altitudeText,
+         "groundSpeed": telemetry.groundSpeedText,
          "heading": FlyTelemetry.degrees(telemetry.heading),
          "battery": telemetry.batteryText, "gps": telemetry.gpsText,
          "placed": position != nil,
