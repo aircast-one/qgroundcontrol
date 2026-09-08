@@ -447,8 +447,10 @@ Everything on the fence and rally controllers is void:
 `RallyPointController::addPoint` and `removePoint`, and `QGCMapPolygon::appendVertex`.
 For those `ok` means the method was found and invoked and can mean nothing more,
 so the only check is reading the plan back on the next poll and seeing the thing
-appear. Verified that way: a fence, a circle and a rally point read back as
-"2 fences · 1 rally".
+appear or go. Verified that way in both directions: a fence, a circle and a
+rally point read back as "2 fences · 1 rally", and deleting the circle reads
+back as "1 fence · 1 rally" with the selection clearing itself because what it
+pointed at is gone.
 
 So a false success is structurally possible on the void half and structurally
 impossible on the other, and the difference is not visible from the Kotlin.
