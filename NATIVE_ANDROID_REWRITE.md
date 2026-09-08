@@ -1095,7 +1095,19 @@ is unit-tested and not yet exercised on hardware.
 
 Parsing drops a control with no channel or an unrecognised type rather than defaulting,
 because one that silently drives channel 0 or guesses it is a slider is worse than one that
-does not appear. **Removing them to ship a native map would
+does not appear. The layer is hidden without an active vehicle, since every control on it
+sends to one.
+
+**The first version commanded a channel before anyone touched it.** `LaunchedEffect(pressed)`
+runs on first composition with `pressed` false, so each momentary drove its channel to
+minimum the moment the Fly view appeared — an RC override the operator never asked for. It
+latches now: the release only goes after a press, and opening the view produces zero
+`RC_CHANNELS_OVERRIDE` where it produced a stream before.
+
+**That defect was in the log of the run that verified the feature.** Eleven channel-9
+minimums against five maximums, when one press and release should be one of each. I read the
+log for the values I expected and not for the counts that were in front of me — the same
+shape as reading a `tail` and calling it the whole. **Removing them to ship a native map would
 be a regression of exactly the kind this plan refuses elsewhere** for plan files.
 
 The video duplication noted above — QML's inset and the native one both drawing — ends at
