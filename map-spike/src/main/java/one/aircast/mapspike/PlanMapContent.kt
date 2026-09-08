@@ -22,7 +22,8 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.VerticalDivider
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Surface
-import androidx.compose.material3.Switch
+import androidx.compose.material3.FilterChip
+import androidx.compose.material3.FilterChipDefaults
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
@@ -217,6 +218,20 @@ internal fun MapSpikeScreen(mapStyle: String, onClear: (() -> Unit)? = null) {
             onFitFailed = { onBridge("Fitting the plan") { false } },
         )
 
+        // On the map rather than in the panel. It steers the map and nothing
+        // else, and a whole row of the panel is a row the map does not get.
+        FilterChip(
+            selected = follow,
+            onClick = { follow = !follow },
+            label = { Text("Follow", style = MaterialTheme.typography.labelSmall) },
+            modifier = Modifier.align(Alignment.TopEnd).padding(8.dp),
+            colors = FilterChipDefaults.filterChipColors(
+                containerColor = MaterialTheme.colorScheme.surface.copy(alpha = 0.88f),
+                selectedContainerColor =
+                    MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.92f),
+            ),
+        )
+
         Column(
             Modifier.align(Alignment.TopStart).padding(8.dp),
         ) {
@@ -263,15 +278,6 @@ internal fun MapSpikeScreen(mapStyle: String, onClear: (() -> Unit)? = null) {
                     .verticalScroll(rememberScrollState()),
             ) {
                 TerrainProfileView(profile)
-
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    Switch(checked = follow, onCheckedChange = { follow = it })
-                    Text(
-                        "Follow",
-                        Modifier.padding(start = 8.dp),
-                        style = MaterialTheme.typography.bodySmall,
-                    )
-                }
 
                 // Wrapping beats scrolling here: a scrolled row cut a button off
                 // mid-word at the right edge, which reads as a rendering fault
