@@ -942,6 +942,21 @@ failure mode was staying quiet when a warning was owed. The exact predicate — 
 vehicle reach the state asked for — catches it, and the frozen-vehicle run now produces
 *"Acro was not confirmed by the aircraft."*
 
+**A fourth instance, in the hardest place to spot one.** Two Setup sections carried the
+read-only note as a *hard-coded string* in a static list — the ArduPilot one telling every
+operator "this firmware reports every slot after the first as read-only" without asking
+their firmware. The facts already carry `readOnly`, so it is now derived: silent when
+nothing is locked, "all of these" when everything is, and the specific names otherwise.
+
+Verified on the handset: it renders *"This firmware reports FLTMODE2, FLTMODE3, FLTMODE4,
+FLTMODE5, FLTMODE6 as read-only…"* and the rows agree — slot 1 has an editable dropdown,
+2 to 6 are plain text. The original claim was true for this firmware; it is now earned
+rather than assumed, and it will disappear on firmware that does not lock those slots.
+
+Worth noting where it hid: a sentence in a `listOf(...)` of section definitions reads as
+configuration, not as an assertion about a vehicle. The audit that found the others was
+looking at UI code.
+
 ### The rule these keep breaking
 
 Three times tonight, in three different costumes, the defect was **a message asserting
