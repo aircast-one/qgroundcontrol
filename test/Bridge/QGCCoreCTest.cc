@@ -330,3 +330,12 @@ void QGCCoreCTest::_missionKindsAndSeedsAreServed()
     QCOMPARE(seed.value(QStringLiteral("points")).toArray().count(), 4);
     QCOMPARE(take(qgc_bridge_get("view.missionSeed(waypoint,47.0,8.0)")).value(QStringLiteral("kind")).toString(), QStringLiteral("null"));
 }
+
+void QGCCoreCTest::_calibrationIsListedWithoutAnApmVehicle()
+{
+    const QJsonObject view = take(qgc_bridge_get("view.calibration"));
+    QCOMPARE(view.value(QStringLiteral("class")).toString(), QStringLiteral("Calibration"));
+    QCOMPARE(view.value(QStringLiteral("connected")).toBool(true), false);
+    QCOMPARE(view.value(QStringLiteral("routines")).toArray().count(), 5);
+    QCOMPARE(view.value(QStringLiteral("sides")).toArray().count(), 6);
+}

@@ -134,7 +134,7 @@ jboolean jniVideoSetSurface(JNIEnv *env, jclass, jobject surface)
 void relayToJava(const char *path, const char *json)
 {
     QJniObject::callStaticMethod<void>(
-        kJniQGCBridgeClassName, "onEvent",
+        QGCBridge::kJniQGCBridgeClassName, "onEvent",
         "(Ljava/lang/String;Ljava/lang/String;)V",
         QJniObject::fromString(QString::fromUtf8(path)).object<jstring>(),
         QJniObject::fromString(QString::fromUtf8(json)).object<jstring>());

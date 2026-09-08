@@ -29,6 +29,7 @@ private slots:
     void _mapScaleFollowsTheUnitSetting();
     void _terrainProfileReadsThePlan();
     void _missionKindsAndSeedsAreServed();
+    void _calibrationIsListedWithoutAnApmVehicle();
 
 private:
     static bool _unavailable(const char *path);

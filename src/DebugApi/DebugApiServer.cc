@@ -42,8 +42,8 @@
 #include <QtCore/QUrlQuery>
 
 
-#ifdef Q_OS_MACOS
 #include "QGCBridgeC.h"
+#ifdef Q_OS_MACOS
 #include "QGCNativeDebugC.h"
 #endif
 #include <QtCore/QFile>

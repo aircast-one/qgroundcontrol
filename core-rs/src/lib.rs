@@ -2,6 +2,7 @@
 mod abi;
 mod altitude;
 mod battery;
+mod calibration;
 mod control;
 mod guided;
 mod instruments;

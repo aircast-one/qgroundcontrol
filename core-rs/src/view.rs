@@ -4,6 +4,7 @@ use serde_json::{Value, json};
 
 use crate::altitude;
 use crate::battery;
+use crate::calibration;
 use crate::control;
 use crate::guided;
 use crate::instruments;
@@ -50,6 +51,7 @@ pub const VIEWS: &[View] = &[
     View { path: "view.terrainProfile", deps: terrain::DEPS, compute: terrain::terrain_view },
     View { path: "view.missionKinds", deps: missionkinds::DEPS, compute: missionkinds::kinds_view },
     View { path: "view.missionSeed", deps: missionkinds::DEPS, compute: missionkinds::seed_view },
+    View { path: "view.calibration", deps: calibration::DEPS, compute: calibration::calibration_view },
 ];
 
 pub fn owns(path: &str) -> bool {
