@@ -463,6 +463,20 @@ all `void`. Reporting built on `ok` therefore covered the one path that needed i
 least, and the three that needed it were checking a value that cannot carry the
 answer. They read the link list back now (`aircast-android`).
 
+**A `Q_ENUM` crosses as its number, and that was a breaking change.** An
+enum-returning invokable used to fail outright: the metaobject records a return
+type as written, so an enum declared inside a class is `State` there and
+`Class::State` in the metatype, and `invoke` refuses the mismatch. Enum
+properties came across as their *name*. Both now give the number (`2b0dce01f`),
+which is what a caller can compare — a printed name changes with translations and
+refactors.
+
+The macOS head had four controls keyed on those names and all four went silent
+rather than erroring: the pickers rendered empty and writes of an enum name were
+accepted and did nothing. **Anything reading an enum property by name is broken
+by this and will not say so.** The Android head had no exposure — its only enum
+read is `readyForSaveState`, already taken as a number.
+
 **Two guards we rely on were put there for other reasons.** An out-of-range
 settings value never reaches the clamp, because the field calls the Fact's own
 `validate` first — added to produce a message, not to foreclose clamping. The map
