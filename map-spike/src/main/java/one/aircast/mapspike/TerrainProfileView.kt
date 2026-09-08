@@ -45,6 +45,15 @@ private fun pathOf(points: List<Offset>): Path = Path().apply {
     }
 }
 
+internal fun profileLabel(profile: TerrainProfile): String =
+    (if (profile.flat) {
+        "${profile.lowest.toInt()} m AMSL"
+    } else {
+        "${profile.lowest.toInt()}\u2013${profile.highest.toInt()} m AMSL"
+    }) +
+        " \u00b7 ${(profile.distance / 1000).format2()} km" +
+        if (profile.hasTerrain) "" else " \u00b7 ground height unknown"
+
 @Composable
 fun TerrainProfileView(profile: TerrainProfile, modifier: Modifier = Modifier) {
     // Screen is the scarcest thing on a phone, and before anything is planned
@@ -56,6 +65,18 @@ fun TerrainProfileView(profile: TerrainProfile, modifier: Modifier = Modifier) {
     if (!profile.drawable) {
         Text(
             "Plan a route with altitudes to see a profile.",
+            modifier.fillMaxWidth().padding(vertical = 4.dp),
+            style = MaterialTheme.typography.labelSmall,
+        )
+        return
+    }
+
+    // A survey flies level, so its chart is a horizontal line and the label
+    // already says the altitude it sits at. Spending 110dp to draw that took
+    // the space from the map, which is the part with something to show.
+    if (profile.flat) {
+        Text(
+            profileLabel(profile),
             modifier.fillMaxWidth().padding(vertical = 4.dp),
             style = MaterialTheme.typography.labelSmall,
         )
@@ -86,13 +107,7 @@ fun TerrainProfileView(profile: TerrainProfile, modifier: Modifier = Modifier) {
             }
 
             Text(
-                (if (profile.flat) {
-                    "${profile.lowest.toInt()} m AMSL · "
-                } else {
-                    "${profile.lowest.toInt()}–${profile.highest.toInt()} m AMSL · "
-                }) +
-                    "${(profile.distance / 1000).format2()} km" +
-                    if (profile.hasTerrain) "" else " · ground height unknown",
+                profileLabel(profile),
                 style = MaterialTheme.typography.labelSmall,
                 modifier = Modifier.align(Alignment.TopStart).padding(8.dp),
             )

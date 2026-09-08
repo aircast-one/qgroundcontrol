@@ -254,3 +254,31 @@ class FlatProfileTest {
         assertTrue(!plan(50.0).drawable)
     }
 }
+
+class ProfileLabelTest {
+    private fun profile(vararg points: ProfilePoint) = TerrainProfile(points.toList())
+
+    @Test
+    fun `a level plan states one altitude rather than a range`() {
+        assertEquals(
+            "50 m AMSL \u00b7 6.43 km \u00b7 ground height unknown",
+            profileLabel(profile(ProfilePoint(0.0, null, 50.0), ProfilePoint(6430.0, null, 50.0))),
+        )
+    }
+
+    @Test
+    fun `a climbing plan states the range it covers`() {
+        assertEquals(
+            "40\u201390 m AMSL \u00b7 0.50 km \u00b7 ground height unknown",
+            profileLabel(profile(ProfilePoint(0.0, null, 40.0), ProfilePoint(500.0, null, 90.0))),
+        )
+    }
+
+    @Test
+    fun `known ground height drops the caveat`() {
+        assertEquals(
+            "40\u201390 m AMSL \u00b7 0.50 km",
+            profileLabel(profile(ProfilePoint(0.0, 40.0, 40.0), ProfilePoint(500.0, 45.0, 90.0))),
+        )
+    }
+}
