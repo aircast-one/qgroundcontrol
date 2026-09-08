@@ -26,6 +26,7 @@ use crate::radio;
 use crate::read::value_string;
 use crate::sensors;
 use crate::settings;
+use crate::shp;
 use crate::setup;
 use crate::speed;
 use crate::survey;
@@ -82,6 +83,7 @@ pub const VIEWS: &[View] = &[
     View { path: "view.planFile", deps: planfile::DEPS, compute: planfile::plan_file_view },
     View { path: "view.waypointsFile", deps: waypoints::DEPS, compute: waypoints::waypoints_view },
     View { path: "view.kmlFile", deps: kml::DEPS, compute: kml::kml_view },
+    View { path: "view.shapeFile", deps: shp::DEPS, compute: shp::shp_view },
 ];
 
 pub fn owns(path: &str) -> bool {

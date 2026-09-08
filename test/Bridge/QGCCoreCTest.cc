@@ -617,3 +617,16 @@ void QGCCoreCTest::_kmlFilesFollowTheMapPolygonTest()
     QCOMPARE(read("PolygonMissingNode.kml").value(QStringLiteral("valid")).toBool(true), false);
     QCOMPARE(read("PolygonBadCoordinatesNode.kml").value(QStringLiteral("valid")).toBool(true), false);
 }
+
+void QGCCoreCTest::_shapeFilesFollowShapeTest()
+{
+    const QDir fixtures = QFileInfo(QString::fromUtf8(__FILE__)).dir();
+    const auto read = [&fixtures](const char *name) { return take(qgc_bridge_get(QStringLiteral("view.shapeFile(%1)").arg(fixtures.filePath(QStringLiteral("../Utilities/Shape/") + QString::fromUtf8(name))).toUtf8().constData())); };
+    const QJsonObject polygon = read("polygon.shp");
+    QCOMPARE(polygon.value(QStringLiteral("valid")).toBool(false), true);
+    QCOMPARE(polygon.value(QStringLiteral("shape")).toString(), QStringLiteral("polygon"));
+    QVERIFY(polygon.value(QStringLiteral("count")).toInt() >= 3);
+    const QJsonObject line = read("pline.shp");
+    QCOMPARE(line.value(QStringLiteral("shape")).toString(), QStringLiteral("polyline"));
+    QCOMPARE(read("polygon.kml").value(QStringLiteral("valid")).toBool(true), false);
+}

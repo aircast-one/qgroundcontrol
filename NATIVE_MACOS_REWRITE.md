@@ -577,6 +577,8 @@ About 58 developer-weeks. Flight-test time, not code, is the schedule.
   lists keep argument commas whole.
 - 2026-09-09: `view.waypointsFile(path)` reads QGC WPL 110/120 in the core, checked against the C++ importer.
 - 2026-09-09: `view.kmlFile(path)` reads KML polygons and polylines in the core with the map-polygon test's fixtures.
+- 2026-09-09: `view.shapeFile(path)` reads .shp polygons and polylines in the core with the SHPFileHelper rules
+  (prj projection, UTM, five-metre vertex filters).
 
 ### Stream F · Core
 
