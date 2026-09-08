@@ -654,10 +654,18 @@ blocks and the phone is doing it four times a second forever. Around 500 items
 the read exceeds the interval and the poll stops idling at all - on a handset
 that is also flying an aircraft.
 
-The fix is not a smaller read, it is not reading: `QGCBridge.watch` already
-delivers changes for the scalar paths MapBridge uses, and the plan is polled
-only because it was easier. Anyone reaching for this should move visualItems
-onto a watch rather than trying to trim the JSON.
+A watch does not fix it, and I wrote here an hour ago that it would. `Watcher`
+in QGCBridgeCore.cc polls on a QTimer and diffs: every tick it calls
+`readPath`, serialises the result to a string and compares it to the last one.
+Watching `visualItems` would run this same quarter-second serialisation on the
+Qt thread - the one carrying MAVLink - and add a whole-JSON string compare.
+That is worse than polling it from here, not better.
+
+The source says so itself, in a note above the class: watched paths are polled
+and diffed rather than signal-connected, to be revisited if the poll cost bites.
+It bites at 200 items. The fix is in the bridge - notify-signal connections, or
+a read that can be asked for less than everything - and neither is in this
+module.
 
 ## Weight
 
