@@ -13,6 +13,7 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Build
 import androidx.compose.material.icons.filled.Home
@@ -40,6 +41,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.unit.dp
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.core.view.WindowCompat
@@ -55,6 +57,7 @@ import one.aircast.android.ui.SettingsScreen
 import one.aircast.android.ui.SetupScreen
 import one.aircast.android.ui.StatusStrip
 import one.aircast.android.ui.VehicleTitle
+import one.aircast.android.ui.VideoSurface
 import org.mavlink.qgroundcontrol.QGCBridge
 import org.mavlink.qgroundcontrol.QGCUsbSerialManager
 import org.qtproject.qt.android.QtQmlStatus
@@ -236,6 +239,12 @@ fun AircastShell(quickView: QtQuickView) {
                         page = analyzePage,
                         onSelect = { analyzePage = it },
                         modifier = Modifier.fillMaxSize(),
+                    )
+                    Tab.Fly -> VideoSurface(
+                        Modifier
+                            .align(Alignment.TopEnd)
+                            .padding(12.dp)
+                            .size(width = 200.dp, height = 112.dp),
                     )
                     else -> Unit
                 }
