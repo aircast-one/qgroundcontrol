@@ -14,7 +14,16 @@ class PlanSummaryTest {
         distance: Double = Double.NaN,
         seconds: Double = Double.NaN,
         selected: MapHit? = null,
-    ) = planSummary(items, emptyList(), circles, emptyList(), emptyList(), distance, seconds, selected)
+        itemCount: Int = items.size,
+    ) = planSummary(
+        itemCount, items, emptyList(), circles, emptyList(), emptyList(),
+        distance, seconds, selected,
+    )
+
+    @Test
+    fun `items that cannot be drawn are still in the plan`() {
+        assertTrue(summary(items = listOf(item()), itemCount = 3).startsWith("3 items"))
+    }
 
     @Test
     fun `an empty plan says how to start one`() {

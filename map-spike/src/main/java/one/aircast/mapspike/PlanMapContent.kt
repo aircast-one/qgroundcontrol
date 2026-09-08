@@ -76,6 +76,7 @@ internal fun MapSpikeScreen(
     var loadArmed by remember { mutableStateOf(false) }
     var clearArmed by remember { mutableStateOf(false) }
     var items by remember { mutableStateOf<List<MissionItem>>(emptyList()) }
+    var itemCount by remember { mutableStateOf(0) }
     var fences by remember { mutableStateOf<List<FencePolygon>>(emptyList()) }
     var rally by remember { mutableStateOf<List<RallyPoint>>(emptyList()) }
     var circles by remember { mutableStateOf<List<FenceCircle>>(emptyList()) }
@@ -137,6 +138,7 @@ internal fun MapSpikeScreen(
                 MapBridge.markReachable()
             }
             val nextItems = missionItems(plan)
+            val nextItemCount = planItemCount(plan)
             val nextFences = FenceBridge.polygons()
             val nextRally = FenceBridge.rally()
             val nextCircles = FenceBridge.circles()
@@ -144,6 +146,7 @@ internal fun MapSpikeScreen(
             val nextProfile = terrainProfile(plan, SegmentBridge::forItem)
             withContext(Dispatchers.Main) {
                 items = nextItems
+                itemCount = nextItemCount
                 fences = nextFences
                 rally = nextRally
                 if (!selectionSurvives(selected, nextItems, nextFences, nextCircles, nextRally, nextSurveys)) {
@@ -253,7 +256,7 @@ internal fun MapSpikeScreen(
                         "Waiting for QGroundControl"
                     } else {
                         planSummary(
-                            items, fences, circles, rally, surveyList,
+                            itemCount, items, fences, circles, rally, surveyList,
                             missionDistance, missionTime, selected,
                         )
                     },

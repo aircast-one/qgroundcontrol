@@ -6,6 +6,14 @@ import org.mavlink.qgroundcontrol.QGCBridge
 const val PLAN_ROOT = "plan"
 const val PLAN_ITEMS = "$PLAN_ROOT.missionController.visualItems"
 
+// Not every mission item is drawable. A multirotor Land inserts an RTL, which
+// has no coordinate of its own, and a multirotor Takeoff goes straight up from
+// the launch point. Counting what is on the map reported "1 item" over a plan
+// holding a takeoff and a return to launch. Element 0 is the settings item,
+// which is a planned home rather than something the pilot added.
+fun planItemCount(json: JSONObject?): Int =
+    ((json?.optJSONArray("elements")?.length() ?: 0) - 1).coerceAtLeast(0)
+
 // An insert that returns a null pointer still answers ok:true, because the
 // method was found and did run. The item it hands back is the only evidence
 // that anything was created, and a null one serialises as kind "null".

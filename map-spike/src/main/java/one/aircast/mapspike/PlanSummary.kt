@@ -4,6 +4,7 @@ package one.aircast.mapspike
 // map says only what nothing else does: what is in the plan, what it costs and
 // what is selected.
 fun planSummary(
+    itemCount: Int,
     items: List<MissionItem>,
     polygons: List<FencePolygon>,
     circles: List<FenceCircle>,
@@ -14,7 +15,7 @@ fun planSummary(
     selected: MapHit?,
 ): String {
     val counts = listOfNotNull(
-        items.size.takeIf { it > 0 }?.let { "$it item${if (it == 1) "" else "s"}" },
+        itemCount.takeIf { it > 0 }?.let { "$it item${if (it == 1) "" else "s"}" },
         (polygons.size + circles.size).takeIf { it > 0 }?.let { "$it fence${if (it == 1) "" else "s"}" },
         rally.size.takeIf { it > 0 }?.let { "$it rally" },
         surveys.sumOf { it.transects.size }.takeIf { it > 0 }?.let { "$it survey pts" },
