@@ -45,6 +45,7 @@ struct FenceShape: Identifiable {
     let latitude: Double?
     let longitude: Double?
     let vertices: [GeoPoint]
+    let radiusUnits: String
 
     init(json: [String: Any], id: Int, circle: Bool) {
         self.id = id
@@ -54,6 +55,9 @@ struct FenceShape: Identifiable {
         latitude = (center?["latitude"] as? NSNumber)?.doubleValue
         longitude = (center?["longitude"] as? NSNumber)?.doubleValue
         vertices = circle ? [] : ((json["path"] as? [Any]) ?? []).compactMap(GeoPoint.init(json:))
+
+        radiusUnits = (((json["facts"] as? [[String: Any]]) ?? [])
+            .first { ($0["name"] as? String) == "Radius" }?["units"] as? String) ?? "m"
 
         form = circle
             ? .circle(radius: ((json["facts"] as? [[String: Any]]) ?? [])
@@ -73,7 +77,7 @@ struct FenceShape: Identifiable {
     var detailText: String {
         switch form {
         case let .circle(radius):
-            return String(format: "%.0f m radius", radius)
+            return String(format: "%.0f %@ radius", radius, radiusUnits)
         case let .polygon(vertices, area):
             let vertexText = "\(vertices) vertice\(vertices == 1 ? "" : "s")"
             return area > 0
@@ -139,10 +143,14 @@ struct FenceShape: Identifiable {
 }
 
 struct RallyPointRow: Identifiable {
+    static let altitudeFact = "RelativeAltitude"
+
     let id: Int
     let latitude: Double?
     let longitude: Double?
     let altitude: Double?
+    let altitudeUnits: String
+    let altitudeIndex: Int?
 
     init(json: [String: Any], id: Int) {
         self.id = id
@@ -150,7 +158,13 @@ struct RallyPointRow: Identifiable {
         latitude = (coordinate?["latitude"] as? NSNumber)?.doubleValue
         longitude = (coordinate?["longitude"] as? NSNumber)?.doubleValue
 
-        altitude = (coordinate?["altitude"] as? NSNumber)?.doubleValue
+        let fields = (json["textFieldFacts"] as? [[String: Any]]) ?? []
+        let found = fields.firstIndex { ($0["name"] as? String) == RallyPointRow.altitudeFact }
+        altitudeIndex = found
+        let fact = found.map { fields[$0] }
+        altitude = (fact?["value"] as? NSNumber)?.doubleValue
+            ?? (coordinate?["altitude"] as? NSNumber)?.doubleValue
+        altitudeUnits = (fact?["units"] as? String) ?? "m"
     }
 
     var positionText: String {
@@ -160,6 +174,6 @@ struct RallyPointRow: Identifiable {
 
     var altitudeText: String {
         guard let altitude, altitude.isFinite else { return "—" }
-        return String(format: "%.1f m", altitude)
+        return String(format: "%.1f %@", altitude, altitudeUnits)
     }
 }

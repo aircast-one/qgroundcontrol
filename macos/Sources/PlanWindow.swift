@@ -4,6 +4,7 @@ import UniformTypeIdentifiers
 
 struct AltitudeField: View {
     let metres: Double?
+    var units = "m"
     let commit: (Double) -> Void
 
     @State private var draft = ""
@@ -21,7 +22,7 @@ struct AltitudeField: View {
                 .onChange(of: metres) { latest in if !editing { draft = AltitudeField.text(latest) } }
                 .onSubmit(send)
                 .onChange(of: editing) { focused in if !focused { send() } }
-            Text("m").font(.caption).foregroundColor(.secondary).fixedSize()
+            Text(units).font(.caption).foregroundColor(.secondary).fixedSize()
         }
         .padding(.horizontal, 6)
         .padding(.vertical, 2)
@@ -381,7 +382,7 @@ struct PlanInspector: View {
                         trailing: {
                             HStack(spacing: Overlay.step) {
                                 if item.specifiesAltitude {
-                                    AltitudeField(metres: item.altitude,
+                                    AltitudeField(metres: item.altitude, units: item.altitudeUnits,
                                                   commit: { mission.setAltitude(of: item, metres: $0) })
                                 } else {
                                     Text(item.altitudeText)
@@ -646,7 +647,7 @@ struct PlanInspector: View {
                         trailing: {
                             HStack(spacing: Overlay.step * 0.5) {
                                 if let radius = shape.radius {
-                                    AltitudeField(metres: radius,
+                                    AltitudeField(metres: radius, units: shape.radiusUnits,
                                                   commit: { fenceRally.setRadius(shape, metres: $0) })
                                 }
                                 Picker("", selection: Binding(
@@ -684,7 +685,7 @@ struct PlanInspector: View {
                         trailing: {
                             HStack(spacing: Overlay.step * 0.5) {
                                 AltitudeField(
-                                    metres: point.altitude,
+                                    metres: point.altitude, units: point.altitudeUnits,
                                     commit: { fenceRally.setRallyAltitude(point, metres: $0) })
                                 removeButton { fenceRally.remove(point) }
                             }
@@ -762,6 +763,7 @@ struct PlanInspector: View {
                         description: point.positionText,
                         trailing: {
                             AltitudeField(metres: fenceRally.breachAltitude,
+                                          units: fenceRally.breachAltitudeUnits,
                                           commit: fenceRally.setBreachAltitude)
                         })
                 } else {

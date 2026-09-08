@@ -13,6 +13,7 @@ final class FenceRallyStore: ObservableObject, Probeable {
     @Published private(set) var syncing = false
     @Published var armingRally = false
     @Published private(set) var breachAltitude: Double?
+    @Published private(set) var breachAltitudeUnits = "m"
     @Published var writeFailure: String?
 
     func reload() {
@@ -43,8 +44,9 @@ final class FenceRallyStore: ObservableObject, Probeable {
 
         breachReturn = (fence["breachReturnPoint"] as? [String: Any])
             .map { RallyPointRow(json: ["coordinate": $0], id: -1) }
-        breachAltitude = (Bridge.group("plan.geoFenceController.breachReturnAltitude")["value"]
-            as? NSNumber)?.doubleValue
+        let breachFact = Bridge.group("plan.geoFenceController.breachReturnAltitude")
+        breachAltitude = (breachFact["value"] as? NSNumber)?.doubleValue
+        breachAltitudeUnits = (breachFact["units"] as? String) ?? "m"
 
         syncing = (Bridge.group("plan")["syncInProgress"] as? NSNumber)?.boolValue ?? false
     }
@@ -109,10 +111,9 @@ final class FenceRallyStore: ObservableObject, Probeable {
     }
 
     func setRallyAltitude(_ point: RallyPointRow, metres: Double) {
-        guard let latitude = point.latitude, let longitude = point.longitude else { return }
-        write("plan.rallyPointController.points.\(point.id).coordinate",
-              ["latitude": latitude, "longitude": longitude, "altitude": metres],
-              "the rally point height")
+        guard let index = point.altitudeIndex else { return }
+        write("plan.rallyPointController.points.\(point.id).textFieldFacts.\(index)",
+              metres, "the rally point height")
         reload()
     }
 

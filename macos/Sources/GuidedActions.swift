@@ -99,13 +99,15 @@ final class GuidedStore: ObservableObject, Probeable {
     }
 
     private func setting(_ name: String) -> Double {
-        (Bridge.group("settings.flyViewSettings.\(name)")["value"] as? NSNumber)?.doubleValue ?? .nan
+        metres("settings.flyViewSettings.\(name).rawValue")
     }
 
     private var currentAltitude: Double {
-        let facts = (Bridge.group("vehicle")["facts"] as? [[String: Any]]) ?? []
-        let match = facts.first { ($0["name"] as? String) == "altitudeRelative" }
-        return (match?["value"] as? NSNumber)?.doubleValue ?? .nan
+        metres("vehicle.altitudeRelative.rawValue")
+    }
+
+    private func metres(_ path: String) -> Double {
+        (Bridge.group(path)["value"] as? NSNumber)?.doubleValue ?? .nan
     }
 
     private func send(_ action: GuidedAction) {

@@ -879,9 +879,21 @@ func checkFenceUsable() {
 checkFenceUsable()
 
 func checkRallyAndBreach() {
+    let inFeet = RallyPointRow(json: [
+        "coordinate": ["latitude": -35.36, "longitude": 149.16, "altitude": 18.3],
+        "textFieldFacts": [["name": "Longitude", "value": 149.16, "units": ""],
+                           ["name": "Latitude", "value": -35.36, "units": ""],
+                           ["name": "RelativeAltitude", "value": 60.0, "units": "ft"]],
+    ], id: 0)
+    expect(inFeet.altitudeText, "60.0 ft",
+           "the height comes from the fact, which the vehicle already converted")
+    expect(inFeet.altitudeIndex == 2, "and the write goes back to that same fact, not the coordinate")
+
     let placed = RallyPointRow(json: ["coordinate": ["latitude": -35.3628, "longitude": 149.1665,
                                                      "altitude": 60.0]], id: 0)
-    expect(placed.altitudeText, "60.0 m", "a rally point shows the height it holds")
+    expect(placed.altitudeText, "60.0 m",
+           "a point with no facts yet falls back to its coordinate, which is always metres")
+    expect(placed.altitudeIndex == nil, "and offers no fact to write to")
     expect(placed.positionText, "-35.362800, 149.166500", "and where it is")
 
     let bare = RallyPointRow(json: [:], id: 1)
@@ -890,6 +902,11 @@ func checkRallyAndBreach() {
 
     let nan = RallyPointRow(json: ["coordinate": ["latitude": -35.36, "longitude": 149.16,
                                                   "altitude": Double.nan]], id: 2)
+    expect(FenceShape(json: ["center": ["latitude": -35.36, "longitude": 149.16],
+                             "facts": [["name": "Radius", "value": 250, "units": "ft"]]],
+                      id: 1, circle: true).detailText, "250 ft radius",
+           "a circle names the units its radius fact came in")
+
     expect(nan.altitudeText, "—",
            "and a height the vehicle reported as not-a-number is not shown as one")
 }

@@ -20,6 +20,7 @@ struct MissionItem: Identifiable {
     let specifiesCoordinate: Bool
     let isSurveyItem: Bool
     let category: String
+    let altitudeUnits: String
 
     var id: Int { sequence }
 
@@ -59,6 +60,7 @@ struct MissionItem: Identifiable {
 
         let facts = (json["facts"] as? [[String: Any]]) ?? []
         let altitudeFact = facts.first { ($0["name"] as? String) == "Altitude" }
+        altitudeUnits = (altitudeFact?["units"] as? String) ?? "m"
         if let value = (altitudeFact?["value"] as? NSNumber)?.doubleValue, value.isFinite {
             altitude = value
         } else {
