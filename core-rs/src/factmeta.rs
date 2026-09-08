@@ -65,6 +65,7 @@ pub struct MetaData {
     pub qgc_reboot_required: bool,
     pub vehicle_reboot_required: bool,
     pub volatile_value: bool,
+    pub read_only: bool,
     pub group: Option<String>,
     pub category: Option<String>,
 }
@@ -157,6 +158,7 @@ pub fn from_object(json: &Map<String, Value>, defines: &BTreeMap<String, String>
         qgc_reboot_required: flag("qgcRebootRequired", false),
         vehicle_reboot_required: flag("rebootRequired", false),
         volatile_value: flag("volatile", false),
+        read_only: false,
         group: text("group"),
         category: text("category"),
         name,

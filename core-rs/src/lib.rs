@@ -28,6 +28,7 @@ pub mod plan;
 pub mod params;
 pub mod planfile;
 pub mod preflight;
+pub mod px4meta;
 pub mod radio;
 pub mod read;
 pub mod sensors;
