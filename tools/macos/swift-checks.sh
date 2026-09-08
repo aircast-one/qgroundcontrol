@@ -44,6 +44,7 @@ swiftc -Onone -o "$out" \
     "$root/macos/Sources/MapCentreModel.swift" \
     "$root/macos/Sources/FlyOverlayModel.swift" \
     "$root/macos/Sources/MapFollowModel.swift" \
+    "$root/macos/Sources/MapScaleModel.swift" \
     "$root/macos/Sources/MotorTestModel.swift" \
     "$root/macos/Sources/RemoteSupportModel.swift" \
     "$root/macos/Sources/VehicleSetupTextModel.swift" \

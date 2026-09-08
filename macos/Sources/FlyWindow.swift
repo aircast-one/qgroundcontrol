@@ -725,6 +725,10 @@ struct FlyView: View {
                        tracking: fly.position != nil)
                 .ignoresSafeArea()
 
+            GlassPanel { MapScaleView(bar: mapClick.scaleBar) }
+                .padding(Overlay.unit)
+                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+
             VStack(spacing: Overlay.step) {
                 if fly.warning.showing {
                     warningBanner

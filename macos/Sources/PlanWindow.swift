@@ -1076,6 +1076,8 @@ struct PlanView: View {
                 .ignoresSafeArea()
 
             VStack(alignment: .leading, spacing: Overlay.step) {
+                GlassPanel { MapScaleView(bar: mission.scaleBar) }
+
                 Button(action: { mission.centreMenuOpen.toggle() }) {
                     Image(systemName: "scope")
                         .frame(width: 24, height: 24)
@@ -1091,7 +1093,6 @@ struct PlanView: View {
                 Spacer(minLength: 0)
             }
             .padding(Overlay.unit)
-            .padding(.top, Overlay.unit * 1.6)
             .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
 
             HStack {

@@ -2240,6 +2240,7 @@ checkMotorTest()
 checkMapClick()
 checkMapCentre()
 checkMapFollow()
+checkMapScale()
 checkMyLocation()
 checkFlyOverlays()
 checkGripper()
@@ -2688,4 +2689,38 @@ func checkGripper() {
     expect(!GuidedAction.grab.needsPrearm, "and neither waits on a prearm check")
     expect(GuidedAction.release.prompt.contains("drop"),
            "the prompt says what happens, because this one lets go of something")
+}
+
+func checkMapScale() {
+    expect(MapScaleBar.bar(metresAcross: 0, imperial: false) == .none,
+           "a map that has not laid out yet draws no scale")
+    expect(MapScaleBar.bar(metresAcross: .nan, imperial: false) == .none, "nor one measuring nothing")
+
+    let hundred = MapScaleBar.bar(metresAcross: 100, imperial: false)
+    expect(hundred.text, "100 m", "a hundred metres across reads as a hundred metres")
+    expect(hundred.fraction == 1, "and the bar spans the whole measured length")
+
+    let snapped = MapScaleBar.bar(metresAcross: 90, imperial: false)
+    expect(snapped.text, "100 m", "ninety snaps up to the nearest step QGC offers")
+    expect(snapped.fraction > 1, "so the bar is drawn longer than what was measured")
+
+    expect(MapScaleBar.bar(metresAcross: 1500, imperial: false).text, "2.0 km",
+           "past a kilometre it reads in kilometres to a tenth")
+    expect(MapScaleBar.bar(metresAcross: 600000, imperial: false).text, "500 km",
+           "and past a hundred kilometres it drops the tenth, as QGC does")
+    expect(MapScaleBar.bar(metresAcross: 3, imperial: false).text, "5 m",
+           "below the smallest step it snaps up rather than vanishing")
+
+    let feet = MapScaleBar.bar(metresAcross: 100, imperial: true)
+    expect(feet.text, "250 ft",
+           "the same map on Feet reads in feet, which is the whole point of not using MapKit's own bar")
+    expect(MapScaleBar.bar(metresAcross: 3000, imperial: true).text, "2 miles",
+           "and rolls into miles past 5280 feet")
+    expect(MapScaleBar.bar(metresAcross: 1600, imperial: true).text, "1 mile",
+           "with the singular spelled properly, as QGC spells it")
+
+    expect(MapScaleBar.snapped(0, to: MapScaleBar.metres) == nil, "no length snaps to nothing")
+    expect(MapScaleBar.snapped(-5, to: MapScaleBar.metres) == nil, "nor a negative one")
+    expect(MapScaleBar.snapped(5_000_000, to: MapScaleBar.metres)?.value == 2_000_000,
+           "and past the largest step it holds at the largest")
 }

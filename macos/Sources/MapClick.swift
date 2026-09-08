@@ -14,6 +14,7 @@ final class MapClickStore: ObservableObject, Probeable {
     @Published var confirming: MapClickTarget?
     @Published private(set) var lastSent = ""
     @Published private(set) var overlays = FlyOverlays.none
+    @Published private(set) var scaleBar = MapScaleBar.none
     private var goingTo: GeoPoint?
 
     private var timer: Timer?
@@ -81,6 +82,9 @@ final class MapClickStore: ObservableObject, Probeable {
             roi: Bridge.group("vehicle.roiCoord"))
         drawn.goingTo = goingTo
         if drawn != overlays { overlays = drawn }
+
+        let bar = MissionMap.lastScale["fly"] ?? .none
+        if bar != scaleBar { scaleBar = bar }
 
         dismissIfUnavailable()
     }
@@ -153,6 +157,7 @@ final class MapClickStore: ObservableObject, Probeable {
          "confirming": confirming?.action.title ?? "",
          "lastSent": lastSent,
          "map": MissionMap.lastRender["fly"] ?? [:],
+         "scale": scaleBar.text,
          "overlays": ["orbit": overlays.showsOrbit, "roi": overlays.roiActive,
                       "roiPlaced": overlays.showsRoi,
                       "goto": overlays.showsGoto, "summary": overlays.summary,

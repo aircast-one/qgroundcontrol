@@ -248,3 +248,30 @@ extension View {
         .onPreferenceChange(ContentHeightKey.self) { height.wrappedValue = $0 }
     }
 }
+
+struct MapScaleView: View {
+    let bar: MapScaleBar
+
+    var body: some View {
+        if !bar.text.isEmpty {
+            VStack(alignment: .leading, spacing: 2) {
+                Text(bar.text)
+                    .font(.caption2.monospacedDigit())
+                    .foregroundColor(.primary)
+                ZStack(alignment: .leading) {
+                    Rectangle()
+                        .fill(Color.primary.opacity(0.35))
+                        .frame(width: MissionMap.scalePixels * bar.fraction, height: 3)
+                    HStack {
+                        Rectangle().fill(Color.primary).frame(width: 2, height: 9)
+                        Spacer(minLength: 0)
+                        Rectangle().fill(Color.primary).frame(width: 2, height: 9)
+                    }
+                    .frame(width: MissionMap.scalePixels * bar.fraction)
+                }
+            }
+            .padding(.horizontal, 6)
+            .padding(.vertical, 4)
+        }
+    }
+}

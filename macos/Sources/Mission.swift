@@ -40,6 +40,7 @@ final class MissionStore: ObservableObject, Probeable {
     @Published var writeFailure: String?
     @Published var focus: MapFrame?
     @Published var centreMenuOpen = false
+    @Published private(set) var scaleBar = MapScaleBar.none
 
     private var undoPoll: Timer?
 
@@ -73,6 +74,8 @@ final class MissionStore: ObservableObject, Probeable {
         syncing = (plan["syncInProgress"] as? NSNumber)?.boolValue ?? false
         dirty = (plan["dirty"] as? NSNumber)?.boolValue ?? false
         planFile = (plan["currentPlanFile"] as? String) ?? ""
+        let bar = MissionMap.lastScale["plan"] ?? .none
+        if bar != scaleBar { scaleBar = bar }
         globalAltitudeMode = AltitudeMode.read(controller["globalAltitudeMode"])
 
         let hover = (controller["missionHoverDistance"] as? NSNumber)?.doubleValue ?? 0
@@ -692,6 +695,7 @@ final class MissionStore: ObservableObject, Probeable {
          "distanceMode": AltitudeMode.title(for: distanceMode),
          "itemAltitudeMode": AltitudeMode.title(for: itemAltitudeMode),
          "globalAltitudeMode": AltitudeMode.title(for: globalAltitudeMode), "defaultAltitude": defaultAltitude,
+         "scale": scaleBar.text,
          "centre": ["open": centreMenuOpen,
                     "focused": focus != nil,
                     "enabled": MapCentre.allCases
