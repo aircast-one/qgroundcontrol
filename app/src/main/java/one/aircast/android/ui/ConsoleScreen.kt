@@ -40,6 +40,14 @@ private const val CONSOLE_LINES = "mavlinkConsole.lines"
 internal fun visibleConsoleLines(lines: List<String>): List<String> =
     lines.dropLastWhile { it.isBlank() }
 
+internal fun consoleShellHint(px4Firmware: Boolean): String? =
+    if (px4Firmware) {
+        null
+    } else {
+        "This vehicle does not report PX4 firmware. The shell answers on PX4; " +
+            "other autopilots may not reply to anything you send."
+    }
+
 @Composable
 private fun ConsoleNotice(text: String, modifier: Modifier = Modifier) {
     Text(
@@ -62,6 +70,14 @@ fun ConsoleScreen(modifier: Modifier = Modifier) {
     val listState = rememberLazyListState()
     val lines = visibleConsoleLines(rawLines)
 
+    fun send() {
+        val toSend = command
+        if (toSend.isNotBlank()) {
+            command = ""
+            scope.offMain { Qgc.invoke("$CONSOLE_ROOT.sendCommand", toSend) }
+        }
+    }
+
     LaunchedEffect(lines.size) {
         if (lines.isNotEmpty()) {
             listState.scrollToItem(lines.size - 1)
@@ -76,20 +92,22 @@ fun ConsoleScreen(modifier: Modifier = Modifier) {
         return
     }
 
-    if (!isPx4) {
-        ConsoleNotice(
-            "The MAVLink console is a PX4 feature. This vehicle does not run PX4, " +
-                "so it has no shell to connect to.",
-            modifier,
-        )
-        return
-    }
-
     Column(
         modifier = modifier
             .fillMaxSize()
             .imePadding(),
     ) {
+        consoleShellHint(isPx4)?.let { hint ->
+            Text(
+                text = hint,
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 16.dp, vertical = 8.dp),
+            )
+        }
+
         if (lines.isEmpty()) {
             Text(
                 text = "No output yet. Send a command, for example help.",
@@ -130,22 +148,9 @@ fun ConsoleScreen(modifier: Modifier = Modifier) {
                 singleLine = true,
                 label = { Text("Command") },
                 keyboardOptions = KeyboardOptions(imeAction = ImeAction.Send),
-                keyboardActions = KeyboardActions(onSend = {
-                    val toSend = command
-                    if (toSend.isNotBlank()) {
-                        command = ""
-                        scope.offMain { Qgc.invoke("$CONSOLE_ROOT.sendCommand", toSend) }
-                    }
-                }),
+                keyboardActions = KeyboardActions(onSend = { send() }),
             )
-            Button(
-                onClick = {
-                    val toSend = command
-                    command = ""
-                    scope.offMain { Qgc.invoke("$CONSOLE_ROOT.sendCommand", toSend) }
-                },
-                enabled = command.isNotBlank(),
-            ) { Text("Send") }
+            Button(onClick = { send() }, enabled = command.isNotBlank()) { Text("Send") }
         }
     }
 }
