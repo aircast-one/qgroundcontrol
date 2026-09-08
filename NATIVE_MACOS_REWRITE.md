@@ -599,6 +599,7 @@ About 58 developer-weeks. Flight-test time, not code, is the schedule.
 - 2026-09-09: `view.setup(page)` lists only parameters the vehicle has (the default fact is dropped); APM mock covers the Safety page in the suite.
 - 2026-09-09: fact JSON skips the default-value read when none is available (no more per-read warnings on APM parameters).
 - 2026-09-09: RTCM correction fragmenter in the core (GPS_RTCM_DATA flags and sequence as RTCMMavlink).
+- 2026-09-09: R3 starts: fact metadata loader in the core, all 38 SettingsGroup/FactMetaData files load with typed enums, defaults and bounds.
 
 ### Stream F · Core
 

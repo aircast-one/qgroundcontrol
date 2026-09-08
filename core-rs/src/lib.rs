@@ -7,6 +7,7 @@ pub mod calibration;
 pub mod compression;
 pub mod cmdinfo;
 pub mod contract;
+pub mod factmeta;
 pub mod control;
 pub mod fences;
 pub mod flightmodes;
