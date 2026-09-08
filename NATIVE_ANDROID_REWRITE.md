@@ -863,6 +863,33 @@ failure mode was staying quiet when a warning was owed. The exact predicate — 
 vehicle reach the state asked for — catches it, and the frozen-vehicle run now produces
 *"Acro was not confirmed by the aircraft."*
 
+### The rule these keep breaking
+
+Three times tonight, in three different costumes, the defect was **a message asserting
+something the program does not know**: the withdrawn plan warnings, the flight-control
+predicate that confirmed on any state change, and the console refusing ArduPilot on a
+firmware rule QGC does not have. The last one blocked a feature, which is the expensive
+form; the others merely misinformed.
+
+So, for any user-facing sentence about the vehicle or the system, ask which of these it is:
+
+- **An observation** — "the autopilot has not sent a VIBRATION message". Always safe: it
+  says what was seen, not what is true.
+- **An attributed report** — "slots the firmware reports as read-only". Safe: the claim is
+  the firmware's, and the sentence says so.
+- **A guarded claim** — "the vehicle is not ready to fly yet", shown only when
+  `readyToFlyAvailable` is true. Safe *because* of the guard; without it the same sentence
+  is a fabrication about vehicles that never signal readiness.
+- **An assertion** — "this vehicle has no shell to connect to". Needs a verified basis or
+  it must be softened to an observation. If it also disables something, the bar is higher
+  still, because a wrong assertion then costs the operator a working feature.
+
+An audit of every such string in `app/src/main/java/one/aircast/android/ui/` against this
+found the rest sound, so this section is a rule for new work rather than a list of pending
+fixes. The one that is *verified* rather than merely plausible is worth copying: "that is
+not a plan file, the current plan is unchanged" is backed by a bridge test
+(`_aRefusedLoadLeavesTheExistingPlanAlone`) that proves the refusal leaves the plan intact.
+
 Two corollaries, both found by auditing against that rule rather than by a
 failure:
 
