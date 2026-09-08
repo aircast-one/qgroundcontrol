@@ -1100,6 +1100,17 @@ display stayed blank. **A conversion that fails by producing nothing rather than
 is indistinguishable from a vehicle with nothing to say, and only bisecting the path found
 which end was silent.
 
+**And the first version kept naming an obstacle after the sensor stopped.** Nothing in
+`VehicleObjectAvoidance` is ever cleared — `_distances` holds the last message for the life
+of the vehicle object, and `available` is `distances.count() > 0`, so once true it stays
+true. A proximity display that goes on reporting a cleared obstacle fails in the worst
+direction available to it.
+
+`msSinceUpdate` is now on `VehicleObjectAvoidance` (additive, nothing else reads it) and the
+readout hides after three seconds of silence; never having heard from the sensor counts as
+stale rather than fresh. Verified by having the sim stop sending obstacles while staying
+connected and streaming everything else — the readout disappears.
+
 **On-screen RC is now built.** `rcControls` is a JSON list of controls bound to RC channels
 — sliders, buttons, three-position switches, momentaries — for gimbals, lights and payload
 releases rather than for flying, which is why it is less dangerous than its name suggests.
