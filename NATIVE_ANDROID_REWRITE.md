@@ -1146,6 +1146,22 @@ Caution was a hard amber; High was `colorScheme.error`, which in this dark theme
 pink meant for text on a surface rather than for filling a shape. The most serious band was
 the least alarming thing on the screen. High is a saturated red now.
 
+**The confirmation gap is closed, and closing it caught an invented test.** The picker set any
+mode it was asked for, including the ones the core marks `needsConfirm` - the modes that fly
+the aircraft somewhere on their own. A mis-tap in a drop-down should not start one. The dialog
+carries the core's own summary for the mode rather than wording invented here.
+
+The verification went wrong first, and usefully. Tapping Acro switched straight through with no
+dialog, which looked like the feature not working. It was not: the core's rule is
+`flying && (mode == rtl || mode == land)`, so Acro never needs confirming and a disarmed
+vehicle never needs it at all. **My test had asserted `needsConfirm` on Acro** - a value I made
+up when writing the fixture and never checked against the producer. It passed, and would have
+gone on passing while describing a rule the core has never had. Armed and flying, RTL opens
+"Switch to RTL? Climbs, returns home and lands" and changes mode only on Switch.
+
+A test written from an assumed shape tests the assumption, not the system. The producer or the
+recorded contract is the only honest source for what a field contains.
+
 **Ninth migration: the flight mode picker, and a capability rather than a swap.** The picker
 listed every mode the vehicle reports in one flat drop-down, so Acro, Circle, Drift, Sport and
 Flip sat between Land and the modes an operator actually reaches for. `view.flightModes`
