@@ -513,6 +513,72 @@ struct SlideToConfirm: View {
     static var limit: CGFloat { track - knob }
 }
 
+struct MapClickMenu: View {
+    @ObservedObject var mapClick: MapClickStore
+
+    var body: some View {
+        if let openAt = mapClick.openAt {
+            GlassPanel {
+                VStack(alignment: .leading, spacing: 0) {
+                    Text(String(format: "%.6f, %.6f", openAt.latitude, openAt.longitude))
+                        .font(.caption.monospacedDigit())
+                        .foregroundColor(.secondary)
+                        .padding(.horizontal, Overlay.unit * 0.7)
+                        .padding(.vertical, Overlay.unit * 0.4)
+                    Divider()
+                    ForEach(mapClick.offered) { action in
+                        Button(action: { mapClick.choose(action) }) {
+                            Text(action.title)
+                                .frame(maxWidth: .infinity, alignment: .leading)
+                                .contentShape(Rectangle())
+                        }
+                        .buttonStyle(.plain)
+                        .padding(.horizontal, Overlay.unit * 0.7)
+                        .padding(.vertical, Overlay.unit * 0.4)
+                    }
+                    Divider()
+                    Button("Cancel", action: mapClick.close)
+                        .buttonStyle(.plain)
+                        .foregroundColor(.secondary)
+                        .padding(.horizontal, Overlay.unit * 0.7)
+                        .padding(.vertical, Overlay.unit * 0.4)
+                }
+                .frame(width: 220)
+            }
+        }
+    }
+}
+
+struct MapClickConfirm: View {
+    @ObservedObject var mapClick: MapClickStore
+
+    var body: some View {
+        if let target = mapClick.confirming {
+            GlassPanel {
+                VStack(spacing: Overlay.unit * 0.6) {
+                    Text(target.action.title)
+                        .font(.title3.weight(.semibold))
+                    Text(target.action.prompt)
+                        .font(.callout)
+                        .foregroundColor(.secondary)
+                        .multilineTextAlignment(.center)
+                        .fixedSize(horizontal: false, vertical: true)
+                    Text(String(format: "%.6f, %.6f", target.latitude, target.longitude))
+                        .font(.caption.monospacedDigit())
+                        .foregroundColor(.secondary)
+                    SlideToConfirm(title: "Slide to \(target.action.title.lowercased())",
+                                   destructive: false,
+                                   confirm: mapClick.confirm)
+                    Button("Cancel", action: mapClick.cancel)
+                        .keyboardShortcut(.cancelAction)
+                }
+                .padding(Overlay.unit)
+                .frame(width: 320)
+            }
+        }
+    }
+}
+
 struct GuidedConfirm: View {
     @ObservedObject var guided: GuidedStore
 
@@ -609,6 +675,7 @@ struct FlyView: View {
     @ObservedObject var instruments: InstrumentsStore
     @ObservedObject var guided: GuidedStore
     @ObservedObject var video: VideoStore
+    @ObservedObject var mapClick: MapClickStore
 
     private var warningBanner: some View {
         GlassPanel {
@@ -634,7 +701,8 @@ struct FlyView: View {
             MissionMap(owner: "fly", items: mission.items, vehicle: fly.position,
                        shapes: [], rallyPoints: [],
                        padding: NSEdgeInsets(top: 56, left: 24, bottom: 40, right: 352),
-                       select: { _ in }, adding: false, add: { _, _ in }, move: { _, _, _ in })
+                       select: { _ in }, adding: false, add: { _, _ in }, move: { _, _, _ in },
+                       secondary: { mapClick.open(latitude: $0, longitude: $1) })
                 .ignoresSafeArea()
 
             if fly.warning.showing {
@@ -670,7 +738,14 @@ struct FlyView: View {
                     .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottom)
             }
 
+            MapClickMenu(mapClick: mapClick)
+                .padding(Overlay.unit)
+                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+
             GuidedConfirm(guided: guided)
+                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .center)
+
+            MapClickConfirm(mapClick: mapClick)
                 .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .center)
         }
         .frame(minWidth: 820, minHeight: 600)
@@ -681,9 +756,11 @@ struct FlyView: View {
             guided.refresh(prearmClear: !fly.warning.showing)
             video.useNativeRendering()
             video.refresh()
+            mapClick.start()
         }
         .onDisappear {
             fly.stop()
+            mapClick.stop()
             instruments.clear()
             video.clear()
         }
@@ -703,6 +780,7 @@ final class FlyWindow: NSObject, NSWindowDelegate {
     private let instruments = InstrumentsStore()
     private let guided = GuidedStore()
     private let video = VideoStore.shared
+    private let mapClick = MapClickStore()
     private var window: NSWindow?
 
     override init() {
@@ -710,6 +788,7 @@ final class FlyWindow: NSObject, NSWindowDelegate {
         NativeProbe.register(fly)
         NativeProbe.register(instruments)
         NativeProbe.register(guided)
+        NativeProbe.register(mapClick)
         NativeProbe.register(video)
     }
 
@@ -732,7 +811,7 @@ final class FlyWindow: NSObject, NSWindowDelegate {
         window.titlebarAppearsTransparent = true
         window.isReleasedWhenClosed = false
         window.delegate = self
-        window.contentView = NSHostingView(rootView: FlyView(fly: fly, mission: mission, instruments: instruments, guided: guided, video: video))
+        window.contentView = NSHostingView(rootView: FlyView(fly: fly, mission: mission, instruments: instruments, guided: guided, video: video, mapClick: mapClick))
         window.center()
         window.makeKeyAndOrderFront(nil)
         self.window = window

@@ -71,6 +71,7 @@ struct MissionMap: NSViewRepresentable {
     let adding: Bool
     let add: (Double, Double) -> Void
     let move: (Int, Double, Double) -> Void
+    var secondary: ((Double, Double) -> Void)?
     var surveys: [[GeoPoint]] = []
     var corridors: [[GeoPoint]] = []
 
@@ -85,6 +86,7 @@ struct MissionMap: NSViewRepresentable {
         }
         context.coordinator.add = add
         context.coordinator.move = move
+        context.coordinator.secondary = secondary
         map.showsCompass = true
         map.showsScale = true
         map.isPitchEnabled = false
@@ -94,7 +96,9 @@ struct MissionMap: NSViewRepresentable {
     func updateNSView(_ map: MKMapView, context: Context) {
         context.coordinator.add = add
         context.coordinator.move = move
+        context.coordinator.secondary = secondary
         context.coordinator.arm(adding, on: map)
+        context.coordinator.armSecondary(on: map)
         map.removeAnnotations(map.annotations)
         map.overlays.filter { !($0 is CachedTileOverlay) }.forEach(map.removeOverlay)
 
@@ -249,6 +253,8 @@ struct MissionMap: NSViewRepresentable {
         let select: (Int) -> Void
         var add: (Double, Double) -> Void = { _, _ in }
         var move: (Int, Double, Double) -> Void = { _, _, _ in }
+        var secondary: ((Double, Double) -> Void)?
+        private var secondaryClick: NSClickGestureRecognizer?
         var lastFrame: MapFrame?
         private var placer: NSClickGestureRecognizer?
 
@@ -260,6 +266,22 @@ struct MissionMap: NSViewRepresentable {
             if placer != nil {
                 NSCursor.pop()
             }
+        }
+
+        func armSecondary(on map: MKMapView) {
+            guard secondary != nil, secondaryClick == nil else { return }
+            let recognizer = NSClickGestureRecognizer(target: self,
+                                                      action: #selector(secondaryTap(_:)))
+            recognizer.buttonMask = 0x2
+            map.addGestureRecognizer(recognizer)
+            secondaryClick = recognizer
+        }
+
+        @objc private func secondaryTap(_ recognizer: NSClickGestureRecognizer) {
+            guard let map = recognizer.view as? MKMapView else { return }
+            let point = recognizer.location(in: map)
+            let coordinate = map.convert(point, toCoordinateFrom: map)
+            secondary?(coordinate.latitude, coordinate.longitude)
         }
 
         func arm(_ adding: Bool, on map: MKMapView) {

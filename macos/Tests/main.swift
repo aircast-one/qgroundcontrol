@@ -2237,6 +2237,7 @@ func checkGuidedActions() {
 checkGuidedActions()
 checkTerrainUnits()
 checkMotorTest()
+checkMapClick()
 checkSetupPages()
 checkRemoteSupport()
 
@@ -2386,4 +2387,85 @@ func checkSetupPages() {
            "no two pages share an icon, which is how Motors and Remote Support ended up looking alike")
     expect(!symbols.contains(SetupPage.symbol(for: "Anything Unknown")),
            "and none of them is the fallback icon")
+}
+
+func checkMapClick() {
+    expect(MapClickAction.offered(in: MapClickState()).isEmpty,
+           "with no vehicle the map commands nothing")
+    expect(MapClickAction.refusal(in: MapClickState()).contains("No vehicle"),
+           "and says why rather than showing an empty menu")
+
+    var grounded = MapClickState()
+    grounded.connected = true
+    grounded.roiSupported = true
+    grounded.orbitSupported = true
+    grounded.homeUsable = true
+    expect(MapClickAction.offered(in: grounded) == [.setHome],
+           "on the ground only Set home is offered, which is QGC's showSetHome with no flying gate")
+
+    var flying = grounded
+    flying.flying = true
+    expect(MapClickAction.offered(in: flying) == [.goTo, .orbit, .roi, .setHome, .setHeading],
+           "in the air the four guided commands join it, in QGC's own order")
+
+    var noOrbit = flying
+    noOrbit.orbitSupported = false
+    expect(!MapClickAction.offered(in: noOrbit).contains(.orbit),
+           "a vehicle that does not support orbit is not offered it, which is this ArduCopter")
+
+    var onMission = flying
+    onMission.missionActive = true
+    expect(!MapClickAction.offered(in: onMission).contains(.orbit),
+           "nor is one already flying a mission")
+    expect(MapClickAction.offered(in: onMission).contains(.goTo),
+           "though it can still be sent somewhere")
+
+    var noHome = flying
+    noHome.homeUsable = false
+    expect(!MapClickAction.offered(in: noHome).contains(.orbit),
+           "orbit needs a home altitude to circle at, so without one it is withheld")
+
+    var looking = flying
+    looking.roiActive = true
+    expect(!MapClickAction.offered(in: looking).contains(.roi), "a camera already aimed is not re-aimed")
+    expect(MapClickAction.offered(in: looking).contains(.cancelRoi), "it is released instead")
+
+    var noGps = flying
+    noGps.gpsSensorPresent = false
+    expect(MapClickAction.offered(in: noGps).contains(.setEstimatorOrigin),
+           "a vehicle with no GPS sensor can be told where it is starting from")
+    expect(!MapClickAction.offered(in: flying).contains(.setEstimatorOrigin),
+           "one with GPS never is")
+
+    expect(MapClickAction.setHome.needsConfirmation(in: flying),
+           "every command off the map is confirmed")
+    var guidedNoConfirm = flying
+    guidedNoConfirm.inGotoMode = true
+    guidedNoConfirm.confirmGotoInGuided = false
+    expect(!MapClickAction.goTo.needsConfirmation(in: guidedNoConfirm),
+           "except a fly-to while already in guided mode with the setting turned off, which is QGC's one exemption")
+    guidedNoConfirm.confirmGotoInGuided = true
+    expect(MapClickAction.goTo.needsConfirmation(in: guidedNoConfirm),
+           "the setting on puts the confirmation back")
+    var notGuided = flying
+    notGuided.confirmGotoInGuided = false
+    expect(MapClickAction.goTo.needsConfirmation(in: notGuided),
+           "and the exemption does not apply outside guided mode")
+    expect(MapClickAction.orbit.needsConfirmation(in: guidedNoConfirm),
+           "the exemption is for fly-to alone, not for everything")
+
+    expect(Set(MapClickAction.allCases.map(\.invokable)).count == MapClickAction.allCases.count,
+           "no two commands send the same thing")
+    expect(Set(MapClickAction.allCases.map(\.title)).count == MapClickAction.allCases.count,
+           "and no two read alike")
+
+    expect(MapClickState.homeUsable(GeoPoint(latitude: -35.36, longitude: 149.16), altitude: 584),
+           "a home position with a real place and a real height can be orbited around")
+    expect(!MapClickState.homeUsable(GeoPoint(latitude: -35.36, longitude: 149.16), altitude: nil),
+           "the vehicle group serialises a coordinate without its valid flag, so validity is read off the numbers")
+    expect(!MapClickState.homeUsable(GeoPoint(latitude: 0, longitude: 0), altitude: 0),
+           "and null island is the home position ArduPilot sends before it knows one")
+    expect(!MapClickState.homeUsable(nil, altitude: 584), "no home at all is not a home")
+    expect(!MapClickState.homeUsable(GeoPoint(latitude: -35.36, longitude: 149.16), altitude: .nan),
+           "nor is one at an unknown height")
 }

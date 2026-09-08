@@ -40,6 +40,7 @@ swiftc -Onone -o "$out" \
     "$root/macos/Sources/LaunchPositionModel.swift" \
     "$root/macos/Sources/MeasureModel.swift" \
     "$root/macos/Sources/SetupPageModel.swift" \
+    "$root/macos/Sources/MapClickModel.swift" \
     "$root/macos/Sources/MotorTestModel.swift" \
     "$root/macos/Sources/RemoteSupportModel.swift" \
     "$root/macos/Sources/VehicleSetupTextModel.swift" \
