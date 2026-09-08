@@ -1,58 +1,73 @@
 package one.aircast.android.ui
 
+import org.json.JSONObject
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertNull
 import org.junit.Test
 
 class VibrationScreenTest {
+
+    private val served = """
+        {"available":true,"units":"m/s²","scaleMaximum":90,"warningLevel":30,"dangerLevel":60,
+         "axes":[
+           {"axis":"X","value":15.0,"fraction":0.1667,"severity":"normal"},
+           {"axis":"Y","value":45.0,"fraction":0.5,"severity":"warning"},
+           {"axis":"Z","value":75.0,"fraction":0.8333,"severity":"danger"}],
+         "clipCounts":[0,3,12],"worst":"danger","clipping":true}
+    """
+
     @Test
-    fun `verdict follows the published thresholds`() {
-        assertEquals("OK", verdictFor(0.0))
-        assertEquals("OK", verdictFor(VIBE_WARN - 0.1))
-        assertEquals("Caution", verdictFor(VIBE_WARN))
-        assertEquals("Caution", verdictFor(VIBE_HIGH - 0.1))
-        assertEquals("High", verdictFor(VIBE_HIGH))
-        assertEquals("High", verdictFor(VIBE_MAX * 2))
+    fun `each severity keeps the word this screen has always shown`() {
+        assertEquals("OK", severityLabel("normal"))
+        assertEquals("Caution", severityLabel("warning"))
+        assertEquals("High", severityLabel("danger"))
     }
 
     @Test
-    fun `verdict says nothing without a reading`() {
-        assertEquals("", verdictFor(Double.NaN))
+    fun `an absent severity is blank rather than a guess`() {
+        assertEquals("", severityLabel(null))
+        assertEquals("", severityLabel("something the core added later"))
     }
 
     @Test
-    fun `bar fraction spans zero to full across the scale`() {
-        assertEquals(0f, barFraction(0.0), 1e-6f)
-        assertEquals(0.5f, barFraction(VIBE_MAX / 2), 1e-6f)
-        assertEquals(1f, barFraction(VIBE_MAX), 1e-6f)
+    fun `the reading carries the axes and clip counts the core served`() {
+        val reading = vibrationReading(JSONObject(served))!!
+
+        assertEquals(listOf("X", "Y", "Z"), reading.axes.map { it.axis })
+        assertEquals(listOf(15.0, 45.0, 75.0), reading.axes.map { it.value })
+        assertEquals(listOf("normal", "warning", "danger"), reading.axes.map { it.severity })
+        assertEquals(listOf(0, 3, 12), reading.clipCounts)
     }
 
     @Test
-    fun `bar fraction clamps beyond the scale and on bad input`() {
-        assertEquals(1f, barFraction(VIBE_MAX * 10), 1e-6f)
-        assertEquals(0f, barFraction(-5.0), 1e-6f)
-        assertEquals(0f, barFraction(Double.NaN), 1e-6f)
-    }
-}
+    fun `a null axis reads as absent, not as zero at the bottom of the scale`() {
+        val reading = vibrationReading(
+            JSONObject("""{"available":true,"units":"m/s²","scaleMaximum":90,
+                "warningLevel":30,"dangerLevel":60,
+                "axes":[{"axis":"X","value":null,"fraction":null,"severity":null}],
+                "clipCounts":[]}"""),
+        )!!
 
-class VibrationMatchesQtBuildTest {
-    @Test
-    fun `the scale and thresholds are the ones VibrationPage qml uses`() {
-        assertEquals(90.0, VIBE_MAX, 0.0)
-        assertEquals(30.0, VIBE_WARN, 0.0)
-        assertEquals(60.0, VIBE_HIGH, 0.0)
+        assertNull(reading.axes[0].value)
+        assertNull(reading.axes[0].severity)
+        assertEquals(0f, reading.axes[0].fraction, 1e-6f)
     }
 
     @Test
-    fun `bar height follows the Qt build's formula`() {
-        val qtBarFraction = { v: Double -> (minOf(90.0, v) / 90.0) }
-
-        listOf(0.0, 15.0, 30.0, 60.0, 89.9, 90.0, 120.0).forEach { value ->
-            assertEquals(qtBarFraction(value).toFloat(), barFraction(value), 1e-6f)
-        }
+    fun `an unavailable view is no reading at all`() {
+        assertNull(vibrationReading(null))
+        assertNull(vibrationReading(JSONObject("""{"available":false}""")))
     }
 
     @Test
-    fun `a missing reading draws nothing rather than a full bar`() {
-        assertEquals(0f, barFraction(Double.NaN), 0f)
+    fun `the scale and the caption are built from the core's own levels`() {
+        assertEquals(listOf("90", "60", "30", "0"), scaleLabels(90.0, 30.0, 60.0))
+        assertEquals("Under 30 healthy · 30-60 watch · over 60 unsafe", bandCaption(30.0, 60.0))
+    }
+
+    @Test
+    fun `a blank unit leaves no empty brackets in the heading`() {
+        assertEquals("Vibration (m/s²)", vibrationHeading("m/s²"))
+        assertEquals("Vibration", vibrationHeading(""))
     }
 }

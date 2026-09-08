@@ -16,6 +16,7 @@ import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.remember
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -25,67 +26,107 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import java.util.Locale
 import one.aircast.android.bridge.qgcBool
+import one.aircast.android.bridge.qgcPath
+import org.json.JSONObject
 import one.aircast.android.bridge.qgcDouble
 
 private val VIBE_HIGH_COLOR = Color(0xFFFF5252)
 private val VIBE_WARN_COLOR = Color(0xFFFFA000)
 
-internal const val VIBE_MAX = 90.0
-internal const val VIBE_WARN = 30.0
-internal const val VIBE_HIGH = 60.0
-private const val VIBE_UNITS = "m/s²"
+private const val VIBRATION = "view.vibration"
+private const val SCALE_STEPS = 4
 
 private val AXIS_WIDTH = 32.dp
 private val BAR_WIDTH = 56.dp
 
-private val SCALE_LABELS = listOf("90", "60", "30", "0")
-
-private val AXES = listOf(
-    "X" to "vehicle.vibration.xAxis",
-    "Y" to "vehicle.vibration.yAxis",
-    "Z" to "vehicle.vibration.zAxis",
+internal data class VibrationAxis(
+    val axis: String,
+    val value: Double?,
+    val fraction: Float,
+    val severity: String?,
 )
 
-private val CLIPS = listOf(
-    "Accel 1" to "vehicle.vibration.clipCount1",
-    "Accel 2" to "vehicle.vibration.clipCount2",
-    "Accel 3" to "vehicle.vibration.clipCount3",
+internal data class VibrationReading(
+    val units: String,
+    val scaleMaximum: Double,
+    val warningLevel: Double,
+    val dangerLevel: Double,
+    val axes: List<VibrationAxis>,
+    val clipCounts: List<Int>,
 )
 
-internal fun barFraction(value: Double): Float =
-    if (value.isNaN()) 0f else (value / VIBE_MAX).coerceIn(0.0, 1.0).toFloat()
+private fun JSONObject.doubleOrNull(key: String): Double? =
+    if (isNull(key)) null else optDouble(key).takeIf { !it.isNaN() }
 
-internal fun verdictFor(value: Double) = when {
-    value.isNaN() -> ""
-    value >= VIBE_HIGH -> "High"
-    value >= VIBE_WARN -> "Caution"
-    else -> "OK"
+private fun JSONObject.stringOrNull(key: String): String? =
+    if (isNull(key)) null else optString(key).ifBlank { null }
+
+internal fun vibrationReading(view: JSONObject?): VibrationReading? {
+    if (view == null || !view.optBoolean("available")) return null
+    val axes = view.optJSONArray("axes") ?: return null
+    val clips = view.optJSONArray("clipCounts")
+    return VibrationReading(
+        units = view.optString("units"),
+        scaleMaximum = view.optDouble("scaleMaximum", 0.0),
+        warningLevel = view.optDouble("warningLevel", 0.0),
+        dangerLevel = view.optDouble("dangerLevel", 0.0),
+        axes = (0 until axes.length()).mapNotNull { index ->
+            axes.optJSONObject(index)?.let { axis ->
+                VibrationAxis(
+                    axis = axis.optString("axis"),
+                    value = axis.doubleOrNull("value"),
+                    fraction = axis.doubleOrNull("fraction")?.toFloat() ?: 0f,
+                    severity = axis.stringOrNull("severity"),
+                )
+            }
+        },
+        clipCounts = (0 until (clips?.length() ?: 0)).map { clips!!.optInt(it) },
+    )
+}
+
+internal fun severityLabel(severity: String?): String = when (severity) {
+    "danger" -> "High"
+    "warning" -> "Caution"
+    "normal" -> "OK"
+    else -> ""
+}
+
+internal fun vibrationHeading(units: String): String =
+    if (units.isBlank()) "Vibration" else "Vibration ($units)"
+
+internal fun bandCaption(warningLevel: Double, dangerLevel: Double): String {
+    val warn = warningLevel.toInt()
+    val danger = dangerLevel.toInt()
+    return "Under $warn healthy · $warn-$danger watch · over $danger unsafe"
+}
+
+internal fun scaleLabels(scaleMaximum: Double, warningLevel: Double, dangerLevel: Double): List<String> =
+    listOf(scaleMaximum, dangerLevel, warningLevel, 0.0).map { it.toInt().toString() }
+
+@Composable
+private fun colorFor(severity: String?) = when (severity) {
+    "danger" -> VIBE_HIGH_COLOR
+    "warning" -> VIBE_WARN_COLOR
+    "normal" -> MaterialTheme.colorScheme.primary
+    else -> MaterialTheme.colorScheme.surfaceVariant
 }
 
 @Composable
-private fun colorFor(value: Double) = when {
-    value.isNaN() -> MaterialTheme.colorScheme.surfaceVariant
-    value >= VIBE_HIGH -> VIBE_HIGH_COLOR
-    value >= VIBE_WARN -> VIBE_WARN_COLOR
-    else -> MaterialTheme.colorScheme.primary
-}
-
-@Composable
-private fun ScaleAxis(modifier: Modifier = Modifier) {
+private fun ScaleAxis(labels: List<String>, modifier: Modifier = Modifier) {
     Column(
         modifier = modifier.width(AXIS_WIDTH),
         verticalArrangement = Arrangement.SpaceBetween,
         horizontalAlignment = Alignment.End,
     ) {
-        SCALE_LABELS.forEach { label ->
+        labels.forEach { label ->
             Text(text = label, style = MaterialTheme.typography.labelSmall)
         }
     }
 }
 
 @Composable
-private fun VibrationBarGraphic(value: Double, modifier: Modifier = Modifier) {
-    val fraction = barFraction(value)
+private fun VibrationBarGraphic(axis: VibrationAxis, modifier: Modifier = Modifier) {
+    val fraction = axis.fraction
     Box(modifier, contentAlignment = Alignment.BottomCenter) {
         Box(
             Modifier
@@ -99,13 +140,13 @@ private fun VibrationBarGraphic(value: Double, modifier: Modifier = Modifier) {
                 Modifier
                     .fillMaxWidth()
                     .fillMaxHeight(fraction)
-                    .background(colorFor(value)),
+                    .background(colorFor(axis.severity)),
             )
             Column(
                 modifier = Modifier.fillMaxSize(),
                 verticalArrangement = Arrangement.SpaceBetween,
             ) {
-                SCALE_LABELS.forEach { _ ->
+                repeat(SCALE_STEPS) {
                     HorizontalDivider(color = MaterialTheme.colorScheme.onSurfaceVariant)
                 }
             }
@@ -114,17 +155,17 @@ private fun VibrationBarGraphic(value: Double, modifier: Modifier = Modifier) {
 }
 
 @Composable
-private fun VibrationReadout(label: String, value: Double, modifier: Modifier = Modifier) {
+private fun VibrationReadout(axis: VibrationAxis, modifier: Modifier = Modifier) {
     Column(
         modifier = modifier,
         horizontalAlignment = Alignment.CenterHorizontally,
     ) {
         Text(
-            text = if (value.isNaN()) "--" else String.format(Locale.US, "%.1f", value),
+            text = axis.value?.let { String.format(Locale.US, "%.1f", it) } ?: "--",
             style = MaterialTheme.typography.titleMedium,
         )
-        Text(text = label, style = MaterialTheme.typography.labelLarge)
-        Text(text = verdictFor(value), style = MaterialTheme.typography.labelMedium)
+        Text(text = axis.axis.uppercase(Locale.US), style = MaterialTheme.typography.labelLarge)
+        Text(text = severityLabel(axis.severity), style = MaterialTheme.typography.labelMedium)
     }
 }
 
@@ -153,9 +194,9 @@ private fun EmptyState(message: String, detail: String, modifier: Modifier = Mod
 @Composable
 fun VibrationScreen(modifier: Modifier = Modifier) {
     val hasVehicle by qgcBool("vehicles.activeVehicleAvailable")
-    val values = AXES.map { (label, path) -> label to qgcDouble(path).value }
-    val clips = CLIPS.map { (label, path) -> label to qgcDouble(path).value }
-    val reporting = values.any { !it.second.isNaN() }
+    val view by qgcPath(VIBRATION)
+    val reading = remember(view) { vibrationReading(view) }
+    val reporting = reading?.axes?.any { it.value != null } == true
 
     if (!hasVehicle) {
         EmptyState(
@@ -182,7 +223,7 @@ fun VibrationScreen(modifier: Modifier = Modifier) {
         verticalArrangement = Arrangement.spacedBy(12.dp),
     ) {
         Text(
-            text = "Vibration ($VIBE_UNITS)",
+            text = vibrationHeading(reading!!.units),
             style = MaterialTheme.typography.titleSmall,
         )
 
@@ -191,21 +232,24 @@ fun VibrationScreen(modifier: Modifier = Modifier) {
                 .fillMaxWidth()
                 .weight(1f),
         ) {
-            ScaleAxis(Modifier.fillMaxHeight())
-            values.forEach { (_, value) ->
-                VibrationBarGraphic(value, Modifier.fillMaxHeight().weight(1f))
+            ScaleAxis(
+                scaleLabels(reading!!.scaleMaximum, reading.warningLevel, reading.dangerLevel),
+                Modifier.fillMaxHeight(),
+            )
+            reading.axes.forEach { axis ->
+                VibrationBarGraphic(axis, Modifier.fillMaxHeight().weight(1f))
             }
         }
 
         Row(modifier = Modifier.fillMaxWidth()) {
             Spacer(Modifier.width(AXIS_WIDTH))
-            values.forEach { (label, value) ->
-                VibrationReadout(label, value, Modifier.weight(1f))
+            reading.axes.forEach { axis ->
+                VibrationReadout(axis, Modifier.weight(1f))
             }
         }
 
         Text(
-            text = "Under 30 healthy · 30-60 watch · over 60 unsafe",
+            text = bandCaption(reading.warningLevel, reading.dangerLevel),
             style = MaterialTheme.typography.bodySmall,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
         )
@@ -220,13 +264,10 @@ fun VibrationScreen(modifier: Modifier = Modifier) {
             modifier = Modifier.fillMaxWidth(),
             horizontalArrangement = Arrangement.SpaceEvenly,
         ) {
-            clips.forEach { (label, value) ->
+            reading.clipCounts.forEachIndexed { index, count ->
                 Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                    Text(
-                        text = if (value.isNaN()) "--" else value.toInt().toString(),
-                        style = MaterialTheme.typography.titleMedium,
-                    )
-                    Text(text = label, style = MaterialTheme.typography.labelMedium)
+                    Text(text = count.toString(), style = MaterialTheme.typography.titleMedium)
+                    Text(text = "Accel ${index + 1}", style = MaterialTheme.typography.labelMedium)
                 }
             }
         }
