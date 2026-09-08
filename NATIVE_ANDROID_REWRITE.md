@@ -1094,9 +1094,20 @@ in 28 seconds and never accepted it** — no camera appeared, in the QML view or
 So the handshake is incomplete in a way the sim log cannot see, and the sim replies happily
 while QGC discards them.
 
-Recorded rather than chased: the next person needs either a real MAVLink camera, or to
-work out what `QGCCameraManager` rejects about that `CAMERA_INFORMATION` — the retry is
-the only symptom, and it is on QGC's side of the exchange.
+A second, bounded attempt narrowed it and then hit a different wall. Reading
+`_handleCameraInfo`: it needs the sending compid to be in `_cameraInfoRequest`, which it is,
+since the requests are going out. So the reply either never reaches
+`_mavlinkMessageReceived` or does not decode — the retry means `infoReceived` never became
+true, so `_handleCameraInfo` did not run at all.
+
+**The log route to that answer is closed.** `CameraManagerLog` is registered as
+`qgc.camera.qgccameramanager`, but adding it to `[LoggingFilters]` does not take: the rules
+the app loads at startup contain the video categories and not that one. So the standard
+technique for this exact question does not work here, which is worth knowing before someone
+else spends an evening on it.
+
+Recorded rather than chased further: the next person needs either a real MAVLink camera, or
+a way to see inside `QGCCameraManager` that is not `[LoggingFilters]`.
 
 **Obstacle distance is built, and finding a bridge defect along the way.** QGC draws a
 proximity ring from `OBSTACLE_DISTANCE`; on a phone the useful form is a sentence, so the
