@@ -795,6 +795,25 @@ func checkMissionItemKinds() {
     expect(area[0].longitude < 149.165 && area[2].longitude > 149.165, "on both axes")
     let span = (area[2].latitude - area[0].latitude) * 111_320
     expect(abs(span - 2 * MissionItemKind.defaultAreaMetres) < 1, "and is the intended size across")
+    expect(MissionItemKind.simpleKinds.map(\.rawValue).joined(separator: ","),
+           "waypoint,takeoff,land,roi",
+           "the simple items are the ones the head inserts by their own call")
+    expect(MissionItemKind.forComplexName("Corridor Scan") == .corridor,
+           "a pattern the head knows is matched by the name the controller uses")
+    expect(MissionItemKind.forComplexName("Fixed Wing Landing Pattern") == nil,
+           "and one it does not know is simply unknown, not mistaken for another")
+
+    expect(MissionItemKind.title(forPattern: "Survey"), "Survey",
+           "a known pattern keeps the head's own title")
+    expect(MissionItemKind.title(forPattern: "Fixed Wing Landing Pattern"),
+           "Fixed Wing Landing Pattern",
+           "an unknown one is offered under the name the vehicle gave it, not hidden")
+    expect(MissionItemKind.symbol(forPattern: "VTOL Landing Pattern"), "square.on.square.dashed",
+           "and still gets a glyph")
+    expect(MissionItemKind.placementHint(forPattern: "Fixed Wing Landing Pattern"),
+           "Click the map to place a fixed wing landing pattern.",
+           "with a hint that names it")
+
     expect(MissionItemKind(rawValue: "") == nil,
            "an empty raw value is no kind, which is how the Empty template asks for nothing")
     expect(MissionItemKind(rawValue: "survey") == .survey,

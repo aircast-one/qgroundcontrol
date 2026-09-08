@@ -156,7 +156,7 @@ struct PlanInspector: View {
                 summary
 
                 if let arming = mission.arming, selection.page == "Mission" {
-                    Text(arming.placementHint)
+                    Text(MissionItemKind.placementHint(forPattern: arming))
                         .font(.callout)
                         .foregroundColor(Overlay.mission)
                 }
@@ -672,6 +672,12 @@ struct PlanInspector: View {
 
     private var placing: Bool { mission.arming != nil || fenceRally.armingRally }
 
+    private var importable: [MissionItemKind] {
+        MissionItemKind.shapeImportable.filter {
+            mission.patterns.contains($0.complexName ?? "")
+        }
+    }
+
     private var addHelp: String {
         switch selection.page {
         case "Fence": return "Add a fence around what the map is showing"
@@ -700,15 +706,23 @@ struct PlanInspector: View {
             }
             .disabled(!fenceRally.rallySupported)
         default:
-            ForEach(MissionItemKind.allCases) { kind in
-                Button { mission.arming = kind } label: {
+            ForEach(MissionItemKind.simpleKinds) { kind in
+                Button { mission.arming = kind.rawValue } label: {
                     Label(kind.title, systemImage: kind.symbol)
                 }
             }
-            Divider()
-            ForEach(MissionItemKind.shapeImportable) { kind in
-                Button { importShape(kind) } label: {
-                    Label("\(kind.title) from KML or SHP\u{2026}", systemImage: kind.symbol)
+            ForEach(mission.patterns, id: \.self) { pattern in
+                Button { mission.arming = pattern } label: {
+                    Label(MissionItemKind.title(forPattern: pattern),
+                          systemImage: MissionItemKind.symbol(forPattern: pattern))
+                }
+            }
+            if !importable.isEmpty {
+                Divider()
+                ForEach(importable) { kind in
+                    Button { importShape(kind) } label: {
+                        Label("\(kind.title) from KML or SHP\u{2026}", systemImage: kind.symbol)
+                    }
                 }
             }
         }
@@ -752,7 +766,7 @@ struct PlanInspector: View {
                 Divider()
                 Menu("New Plan") {
                     Button("Empty") { startPlan(nil) }
-                    ForEach(MissionItemKind.shapeImportable) { kind in
+                    ForEach(importable) { kind in
                         Button(kind.title) { startPlan(kind) }
                     }
                 }

@@ -11,7 +11,8 @@ final class MissionStore: ObservableObject, Probeable {
     @Published private(set) var vehiclePosition: VehicleMarker?
     @Published private(set) var dirty = false
     @Published private(set) var connected = false
-    @Published var arming: MissionItemKind?
+    @Published var arming: String?
+    @Published private(set) var patterns: [String] = []
     @Published private(set) var canUndo = false
     @Published private(set) var canRedo = false
     @Published private(set) var commands: [MissionCommand] = []
@@ -39,8 +40,12 @@ final class MissionStore: ObservableObject, Probeable {
         guard controller["kind"] as? String == "object" else {
             status = "No vehicle is connected."
             items = []
+            patterns = []
             return
         }
+
+        let offered = (controller["complexMissionItemNames"] as? [String]) ?? []
+        if offered != patterns { patterns = offered }
 
         let model = Bridge.group("plan.missionController.visualItems")
         items = ((model["elements"] as? [[String: Any]]) ?? [])
@@ -134,16 +139,18 @@ final class MissionStore: ObservableObject, Probeable {
     }
 
     func addWaypoint(latitude: Double, longitude: Double) {
-        let kind = arming ?? .waypoint
+        let asked = arming ?? MissionItemKind.waypoint.rawValue
         let index = items.count
+        let at = ["latitude": latitude, "longitude": longitude]
 
-        if let complex = kind.complexName {
-            Bridge.invoke("plan.missionController.\(kind.invokable)",
-                          [complex, ["latitude": latitude, "longitude": longitude], index, true])
-            seed(kind, at: index, latitude: latitude, longitude: longitude)
+        if let simple = MissionItemKind(rawValue: asked), simple.complexName == nil {
+            Bridge.invoke("plan.missionController.\(simple.invokable)", [at, index, true])
         } else {
-            Bridge.invoke("plan.missionController.\(kind.invokable)",
-                          [["latitude": latitude, "longitude": longitude], index, true])
+            Bridge.invoke("plan.missionController.insertComplexMissionItem",
+                          [asked, at, index, true])
+            if let known = MissionItemKind.forComplexName(asked) {
+                seed(known, at: index, latitude: latitude, longitude: longitude)
+            }
         }
 
         arming = nil
@@ -515,7 +522,8 @@ final class MissionStore: ObservableObject, Probeable {
          "commandNames": commands.map(\.name),
          "commandsWithSummary": commands.filter { !$0.summary.isEmpty }.count,
          "selected": items.first(where: \.isCurrent)?.sequence ?? -1,
-         "arming": arming?.rawValue ?? "",
+         "arming": arming ?? "",
+         "patterns": patterns,
          "planFile": planFile, "planName": planName,
          "canUndo": canUndo, "canRedo": canRedo,
          "commands": commands.map(\.name),
@@ -595,7 +603,7 @@ final class MissionStore: ObservableObject, Probeable {
         case "editing":
             args["on"] == "0" ? stopEditing() : startEditing()
         case "arm":
-            arming = args["on"] == "0" ? nil : MissionItemKind(rawValue: args["kind"] ?? "waypoint")
+            arming = args["on"] == "0" ? nil : (args["kind"] ?? "waypoint")
         case "move":
             guard let latitude = Double(args["latitude"] ?? ""),
                   let longitude = Double(args["longitude"] ?? "") else {
