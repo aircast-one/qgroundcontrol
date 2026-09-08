@@ -58,6 +58,21 @@ final class GotoAnnotation: NSObject, MKAnnotation {
     }
 }
 
+final class VertexAnnotation: NSObject, MKAnnotation {
+    @objc dynamic var coordinate: CLLocationCoordinate2D
+    let polygon: Int
+    let index: Int
+    let midpoint: Bool
+    var title: String? { midpoint ? "Add a corner" : "Corner \(index + 1)" }
+
+    init(polygon: Int, index: Int, point: GeoPoint, midpoint: Bool) {
+        coordinate = CLLocationCoordinate2D(latitude: point.latitude, longitude: point.longitude)
+        self.polygon = polygon
+        self.index = index
+        self.midpoint = midpoint
+    }
+}
+
 final class RoiAnnotation: NSObject, MKAnnotation {
     let coordinate: CLLocationCoordinate2D
     let title: String? = "Looking here"
@@ -95,6 +110,9 @@ struct MissionMap: NSViewRepresentable {
     var surveys: [[GeoPoint]] = []
     var corridors: [[GeoPoint]] = []
     var focus: MapFrame?
+    var polygons: [EditablePolygon] = []
+    var moveVertex: (Int, Int, Double, Double) -> Void = { _, _, _, _ in }
+    var splitSegment: (Int, Int) -> Void = { _, _ in }
     var overlays = FlyOverlays.none
     var follow = false
     var tracking = false
@@ -111,6 +129,8 @@ struct MissionMap: NSViewRepresentable {
         context.coordinator.add = add
         context.coordinator.move = move
         context.coordinator.secondary = secondary
+        context.coordinator.moveVertex = moveVertex
+        context.coordinator.splitSegment = splitSegment
         map.showsCompass = true
         map.showsScale = false
         map.isPitchEnabled = false
@@ -121,6 +141,8 @@ struct MissionMap: NSViewRepresentable {
         context.coordinator.add = add
         context.coordinator.move = move
         context.coordinator.secondary = secondary
+        context.coordinator.moveVertex = moveVertex
+        context.coordinator.splitSegment = splitSegment
         context.coordinator.arm(adding, on: map)
         context.coordinator.armSecondary(on: map)
         map.removeAnnotations(map.annotations)
@@ -136,6 +158,17 @@ struct MissionMap: NSViewRepresentable {
 
         if let vehicle {
             map.addAnnotation(VehicleAnnotation(marker: vehicle))
+        }
+
+        polygons.enumerated().forEach { polygonIndex, polygon in
+            polygon.points.enumerated().forEach { index, point in
+                map.addAnnotation(VertexAnnotation(polygon: polygonIndex, index: index,
+                                                   point: point, midpoint: false))
+            }
+            polygon.midpoints().enumerated().forEach { index, point in
+                map.addAnnotation(VertexAnnotation(polygon: polygonIndex, index: index,
+                                                   point: point, midpoint: true))
+            }
         }
 
         if let going = overlays.goingTo {
@@ -403,13 +436,43 @@ struct MissionMap: NSViewRepresentable {
         func mapView(_ mapView: MKMapView, annotationView view: MKAnnotationView,
                      didChange newState: MKAnnotationView.DragState,
                      fromOldState oldState: MKAnnotationView.DragState) {
-            guard newState == .ending, let item = view.annotation as? MissionAnnotation else { return }
+            guard newState == .ending else { return }
+            if let vertex = view.annotation as? VertexAnnotation, !vertex.midpoint {
+                moveVertex(vertex.polygon, vertex.index,
+                           vertex.coordinate.latitude, vertex.coordinate.longitude)
+                return
+            }
+            guard let item = view.annotation as? MissionAnnotation else { return }
             move(item.sequence, item.coordinate.latitude, item.coordinate.longitude)
         }
 
         func mapView(_ mapView: MKMapView, didSelect view: MKAnnotationView) {
+            if let vertex = view.annotation as? VertexAnnotation {
+                if vertex.midpoint { splitSegment(vertex.polygon, vertex.index) }
+                mapView.deselectAnnotation(vertex, animated: false)
+                return
+            }
             guard let item = view.annotation as? MissionAnnotation else { return }
             select(item.sequence)
+        }
+
+        var moveVertex: (Int, Int, Double, Double) -> Void = { _, _, _, _ in }
+        var splitSegment: (Int, Int) -> Void = { _, _ in }
+
+        static let vertexDot = Coordinator.dot(NSColor.controlAccentColor, 12)
+        static let midpointDot = Coordinator.dot(NSColor.white.withAlphaComponent(0.85), 9)
+
+        static func dot(_ colour: NSColor, _ size: CGFloat) -> NSImage {
+            let image = NSImage(size: NSSize(width: size, height: size))
+            image.lockFocus()
+            colour.setFill()
+            NSBezierPath(ovalIn: NSRect(x: 0, y: 0, width: size, height: size)).fill()
+            NSColor.black.withAlphaComponent(0.4).setStroke()
+            let ring = NSBezierPath(ovalIn: NSRect(x: 0.5, y: 0.5, width: size - 1, height: size - 1))
+            ring.lineWidth = 1
+            ring.stroke()
+            image.unlockFocus()
+            return image
         }
         var overlay: CachedTileOverlay?
         var tilesServed = 0
@@ -473,6 +536,17 @@ struct MissionMap: NSViewRepresentable {
                 view.canShowCallout = true
                 view.glyphText = "R"
                 view.markerTintColor = .systemGreen
+                return view
+            }
+
+            if let vertex = annotation as? VertexAnnotation {
+                let id = vertex.midpoint ? "midpoint" : "vertex"
+                let view = mapView.dequeueReusableAnnotationView(withIdentifier: id)
+                    ?? MKAnnotationView(annotation: vertex, reuseIdentifier: id)
+                view.annotation = vertex
+                view.image = vertex.midpoint ? Coordinator.midpointDot : Coordinator.vertexDot
+                view.isDraggable = !vertex.midpoint
+                view.canShowCallout = true
                 return view
             }
 

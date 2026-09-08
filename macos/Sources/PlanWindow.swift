@@ -1072,7 +1072,17 @@ struct PlanView: View {
                        move: mission.move(sequence:latitude:longitude:),
                        surveys: mission.surveyAreas,
                        corridors: mission.corridorPaths,
-                       focus: mission.focus)
+                       focus: mission.focus,
+                       polygons: mission.editablePolygons,
+                       moveVertex: { polygon, index, latitude, longitude in
+                           guard mission.editablePolygons.indices.contains(polygon) else { return }
+                           mission.moveVertex(mission.editablePolygons[polygon], index,
+                                              latitude: latitude, longitude: longitude)
+                       },
+                       splitSegment: { polygon, index in
+                           guard mission.editablePolygons.indices.contains(polygon) else { return }
+                           mission.splitSegment(mission.editablePolygons[polygon], after: index)
+                       })
                 .ignoresSafeArea()
 
             VStack(alignment: .leading, spacing: Overlay.step) {

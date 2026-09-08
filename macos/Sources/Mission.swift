@@ -288,6 +288,36 @@ final class MissionStore: ObservableObject, Probeable {
         items.map(surveyPolygon).filter { $0.count >= 3 }
     }
 
+    var editablePolygons: [EditablePolygon] {
+        items.compactMap { item in
+            guard let property = MissionItemKind.areaProperty(forCommand: item.command) else {
+                return nil
+            }
+            let path = "plan.missionController.visualItems.\(item.index).\(property)"
+            return EditablePolygon.read(path: path, json: Bridge.group(path))
+        }
+    }
+
+    func moveVertex(_ polygon: EditablePolygon, _ index: Int,
+                    latitude: Double, longitude: Double) {
+        guard PolygonEdit.adjust(index, in: polygon) != nil else { return }
+        Bridge.invoke("\(polygon.path).adjustVertex",
+                      [index, ["latitude": latitude, "longitude": longitude, "altitude": 0]])
+        reload()
+    }
+
+    func removeVertex(_ polygon: EditablePolygon, _ index: Int) {
+        guard PolygonEdit.removes(index, in: polygon) else { return }
+        Bridge.invoke("\(polygon.path).removeVertex", [index])
+        reload()
+    }
+
+    func splitSegment(_ polygon: EditablePolygon, after index: Int) {
+        guard PolygonEdit.splits(index, in: polygon) else { return }
+        Bridge.invoke("\(polygon.path).splitPolygonSegment", [index])
+        reload()
+    }
+
     var terrain: TerrainProfile {
         var profile = TerrainProfile(points: items.filter(\.hasPosition).map {
             TerrainPoint(distance: $0.distanceFromStart,
@@ -696,6 +726,8 @@ final class MissionStore: ObservableObject, Probeable {
          "itemAltitudeMode": AltitudeMode.title(for: itemAltitudeMode),
          "globalAltitudeMode": AltitudeMode.title(for: globalAltitudeMode), "defaultAltitude": defaultAltitude,
          "scale": scaleBar.text,
+         "polygons": editablePolygons.map { ["path": $0.path, "vertices": $0.points.count,
+                                             "canRemove": $0.canRemoveVertex] },
          "centre": ["open": centreMenuOpen,
                     "focused": focus != nil,
                     "enabled": MapCentre.allCases
@@ -829,6 +861,26 @@ final class MissionStore: ObservableObject, Probeable {
                 return ["ok": false, "error": "setLaunchAltitude needs a value"]
             }
             setLaunchAltitude(value)
+        case "moveVertex":
+            guard let which = Int(args["which"] ?? ""), let vertex = Int(args["vertex"] ?? ""),
+                  let latitude = Double(args["latitude"] ?? ""),
+                  let longitude = Double(args["longitude"] ?? ""),
+                  editablePolygons.indices.contains(which) else {
+                return ["ok": false, "error": "moveVertex needs which, vertex, latitude, longitude"]
+            }
+            moveVertex(editablePolygons[which], vertex, latitude: latitude, longitude: longitude)
+        case "removeVertex":
+            guard let which = Int(args["which"] ?? ""), let vertex = Int(args["vertex"] ?? ""),
+                  editablePolygons.indices.contains(which) else {
+                return ["ok": false, "error": "removeVertex needs which and vertex"]
+            }
+            removeVertex(editablePolygons[which], vertex)
+        case "splitSegment":
+            guard let which = Int(args["which"] ?? ""), let vertex = Int(args["vertex"] ?? ""),
+                  editablePolygons.indices.contains(which) else {
+                return ["ok": false, "error": "splitSegment needs which and vertex"]
+            }
+            splitSegment(editablePolygons[which], after: vertex)
         case "centreMenu":
             centreMenuOpen = args["open"] != "0"
         case "centre":

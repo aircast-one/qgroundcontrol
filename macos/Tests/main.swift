@@ -2276,6 +2276,7 @@ checkTerrainUnits()
 checkMotorTest()
 checkMapClick()
 checkMapCentre()
+checkPolygonEdit()
 checkMapFollow()
 checkMapScale()
 checkTerrainDownload()
@@ -2800,4 +2801,55 @@ func checkTerrainDownload() {
     expect(TerrainDownload.read([]) == .none, "and a vehicle with no terrain facts reports nothing")
     expect(TerrainDownload.read([["name": "blocksLoaded"]]) == .none,
            "as does one whose fact carries no value")
+}
+
+func checkPolygonEdit() {
+    let square = [GeoPoint(latitude: 0, longitude: 0), GeoPoint(latitude: 0, longitude: 2),
+                  GeoPoint(latitude: 2, longitude: 2), GeoPoint(latitude: 2, longitude: 0)]
+    let polygon = EditablePolygon(path: "p", points: square, minimumVertices: 3)
+
+    expect(polygon.closed, "four corners make a polygon")
+    expect(polygon.canRemoveVertex, "and one can be taken away without breaking it")
+
+    let midpoints = polygon.midpoints()
+    expect(midpoints.count == 4, "every side gets a handle to split it, including the closing one")
+    expect(midpoints[0] == GeoPoint(latitude: 0, longitude: 1), "each sits halfway along its side")
+    expect(midpoints[3] == GeoPoint(latitude: 1, longitude: 0),
+           "and the last wraps to the first corner rather than being dropped")
+
+    let triangle = EditablePolygon(path: "p", points: Array(square.prefix(3)), minimumVertices: 3)
+    expect(!triangle.canRemoveVertex,
+           "a triangle is already at the minimum, so removing a corner is refused")
+    expect(!PolygonEdit.removes(0, in: triangle), "which the edit rule enforces")
+    expect(PolygonEdit.removes(0, in: polygon), "while a square allows it")
+    expect(!PolygonEdit.removes(9, in: polygon), "and an index off the end is refused either way")
+
+    expect(PolygonEdit.adjust(2, in: polygon) != nil, "a real corner can be dragged")
+    expect(PolygonEdit.adjust(-1, in: polygon) == nil, "a negative index cannot")
+    expect(PolygonEdit.adjust(4, in: polygon) == nil, "nor one past the last corner")
+    expect(PolygonEdit.splits(3, in: polygon), "the closing side can be split like any other")
+    expect(!PolygonEdit.splits(4, in: polygon), "but there is no fifth side to split")
+
+    let short = EditablePolygon(path: "p", points: Array(square.prefix(2)), minimumVertices: 3)
+    expect(!short.closed, "two points are not a polygon")
+    expect(short.midpoints().isEmpty, "so they get no split handles")
+    expect(!PolygonEdit.splits(0, in: short), "and nothing to split")
+
+    expect(EditablePolygon.read(path: "p", json: ["path": []]) == nil,
+           "an empty path is no polygon to edit")
+    expect(EditablePolygon.read(path: "p", json: [:]) == nil, "nor a missing one")
+
+    let live = EditablePolygon.read(path: "p", json: [
+        "minVertexCount": 3 as NSNumber,
+        "path": square.map { ["latitude": $0.latitude as NSNumber,
+                              "longitude": $0.longitude as NSNumber] }])
+    expect(live?.points.count == 4, "the shape the live survey polygon actually reports is read")
+    expect(live?.minimumVertices == 3, "with the minimum the polygon itself declares")
+
+    let strict = EditablePolygon.read(path: "p", json: [
+        "minVertexCount": 4 as NSNumber,
+        "path": square.map { ["latitude": $0.latitude as NSNumber,
+                              "longitude": $0.longitude as NSNumber] }])
+    expect(strict?.canRemoveVertex == false,
+           "a polygon that demands four corners does not let you drop to three")
 }

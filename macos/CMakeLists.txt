@@ -74,6 +74,7 @@ add_library(QGCNativeUI STATIC
     Sources/MapFollowModel.swift
     Sources/MapScaleModel.swift
     Sources/TerrainDownloadModel.swift
+    Sources/PolygonEditModel.swift
     Sources/MotorTestModel.swift
     Sources/RemoteSupportModel.swift
     Sources/AppUnits.swift
