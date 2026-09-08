@@ -1066,7 +1066,7 @@ exists natively today:
 | vehicle messages / warnings | **`VehicleMessageBanner`** | |
 | status (sats, HDOP) | **`StatusStrip`** | |
 | `PipView` map/video swap | **partial** | inset expands to full screen and back; still not a *swap* — the map cannot become the inset |
-| `CameraControlLayer` | **built** | mode and shutter, verified on the wire; camera *selection* still missing |
+| `CameraControlLayer` | **built** | selection, mode and shutter, all verified on the wire |
 | `VideoTilesLayer` | **missing** | multiple streams |
 | `RcControlsLayer` | **built** | renders the configured controls and sends `setRcChannelOverride`; editing the list is still desktop-only |
 | `ObstacleDistanceOverlay` (map and video) | **built, in another form** | a sentence — "3.2 m right" — rather than a proximity ring |
@@ -1095,8 +1095,20 @@ the button changing:
 
 A camera in a mode it cannot do offers no shutter rather than a button that fails, an
 undefined mode offers nothing rather than guessing photo, and a photo already in progress
-disables the button rather than queueing another. Camera *selection* between multiple
-cameras is still missing.
+disables the button rather than queueing another.
+
+Camera *selection* is built. The chip appears only when `cameraManager.cameraLabels` holds
+more than one entry, names the current camera, and cycles `currentCamera`; a vehicle with a
+single camera sees no control rather than one with nothing to choose. Verified against a sim
+advertising two camera components: QGC queried both compid 100 and 101 for
+`CAMERA_INFORMATION`, and the chip moved from SimCam to SimCam Thermal.
+
+The UX pass caught a collision worth recording, because it is the kind a screenshot shows and
+a test does not. The mode chip and the shutter sat adjacent and both read "Photo" - the first
+toggled the mode, the second took the picture. Users satisfice, so the one they reach for
+first was the one that did not take a photo. Video mode had always labelled its shutter with a
+verb; photo mode now does too ("Take Photo"), and a test asserts no mode's shutter label
+equals that mode's chip label, so a mode added later cannot reintroduce it.
 
 **Getting a log out of `CameraControlLog` needed one more correction.** It is an old-style
 category name with no `qgc.` prefix, so the blanket `*Log.debug=false` rule silences it and
