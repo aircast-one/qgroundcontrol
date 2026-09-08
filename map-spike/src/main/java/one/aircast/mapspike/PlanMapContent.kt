@@ -15,7 +15,11 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.foundation.layout.height
+import androidx.compose.material3.Button
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.VerticalDivider
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Switch
@@ -47,6 +51,17 @@ private const val PLAN_POLL_MS = 700L
 private const val FAILURE_MESSAGE_MS = 2500L
 private const val CONFIRM_TIMEOUT_MS = 5000L
 private val CONTROLS_MAX_HEIGHT = 320.dp
+private val PRIMARY_PADDING = PaddingValues(horizontal = 16.dp, vertical = 4.dp)
+
+// The row mixed vehicle sync, item creation and view control with nothing to
+// say where one kind ended and the next began.
+@Composable
+private fun GroupBreak() {
+    VerticalDivider(
+        Modifier.height(24.dp).padding(horizontal = 6.dp),
+        color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.25f),
+    )
+}
 
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
@@ -287,7 +302,11 @@ internal fun MapSpikeScreen(mapStyle: String, onClear: (() -> Unit)? = null) {
                         }
                     }) { Text(if (loadArmed) "Discard & download" else "Download") }
 
-                    TextButton(onClick = {
+                    // Upload is the action that finishes the job — the mission
+                    // reaching the aircraft — and it read as one of twelve
+                    // identical choices, indistinguishable from Fit, which only
+                    // moves the camera. One filled button says which one matters.
+                    Button(onClick = {
                         val refusal = syncRefusal(
                             vehicleSyncState(planOffline, planSyncing), "upload to",
                         )
@@ -302,7 +321,9 @@ internal fun MapSpikeScreen(mapStyle: String, onClear: (() -> Unit)? = null) {
                                 busy = null
                             }
                         }
-                    }) { Text("Upload") }
+                    }, contentPadding = PRIMARY_PADDING) { Text("Upload") }
+
+                    GroupBreak()
 
                     TextButton(onClick = {
                         val at = placeAt()
@@ -349,6 +370,8 @@ internal fun MapSpikeScreen(mapStyle: String, onClear: (() -> Unit)? = null) {
                             at != null && PlanBridge.appendLanding(at.latitude, at.longitude)
                         }
                     }) { Text("Land") }
+                    GroupBreak()
+
                     TextButton(onClick = {
                         follow = false
                         fitRequest += 1

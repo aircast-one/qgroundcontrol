@@ -359,6 +359,16 @@ distance to the surface, which is what the survey editor labels Altitude. `camer
 object, so it needs its own read, and that read happens when a survey is selected rather than every
 poll, since the poll already costs one call per survey.
 
+## Weight
+
+Upload is a filled button and everything else is text. It is the action that finishes the job — the
+mission reaching the aircraft — and it used to be one of twelve controls of identical weight, styled
+exactly like Fit, which only moves the camera. A screen with every command and no primary action
+makes the pilot find the important one unaided on every pass.
+
+Dividers separate the three kinds: vehicle sync, item creation, view control. They were adjacent
+with nothing to say where one ended.
+
 ## Naming
 
 The vehicle sync buttons are `Download` and `Upload`, which is what QGC calls them — "Download from
