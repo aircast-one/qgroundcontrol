@@ -14,6 +14,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import one.aircast.android.bridge.Qgc
+import org.json.JSONArray
 import java.io.File
 
 private const val PLAN_ROOT = "plan"
@@ -25,89 +26,6 @@ private const val MISSION_ROOT = "plan.missionController"
 internal const val PLAN_MIME = "*/*"
 
 internal val PLAN_OPEN_TYPES = arrayOf(PLAN_MIME)
-
-internal const val DEFAULT_PLAN_NAME = "mission.plan"
-internal const val DEFAULT_KML_NAME = "mission.kml"
-internal const val DEFAULT_BOUNDARY_EXT = "kml"
-
-// QGCMapPolygon picks its parser off the suffix, so a boundary copied into the cache
-// under a fixed name would always be read as the wrong format.
-internal fun boundaryCacheName(displayName: String?): String {
-    val ext = displayName?.substringAfterLast('.', "")?.lowercase()?.takeIf { it.isNotBlank() }
-    return "boundary.${ext ?: DEFAULT_BOUNDARY_EXT}"
-}
-
-// QGCMapPolygon reports a parse failure through showAppMessage and inserts the item
-// regardless, so a file with no usable area leaves an empty pattern in the plan.
-internal fun importedNothing(distance: Double?): Boolean = distance == null || distance <= 0.0
-
-data class PlanActions(
-    val open: Boolean,
-    val save: Boolean,
-    val exportKml: Boolean,
-    val newPlan: Boolean,
-    val clearMission: Boolean,
-)
-
-internal fun planActions(
-    syncing: Boolean,
-    containsItems: Boolean,
-    hasMissionItems: Boolean,
-    offline: Boolean,
-) = PlanActions(
-    open = !syncing,
-    save = !syncing && containsItems,
-    exportKml = !syncing && hasMissionItems,
-    newPlan = !syncing,
-    clearMission = !offline && !syncing,
-)
-
-internal const val READY_FOR_SAVE = 0
-internal const val NOT_READY_TERRAIN = 1
-internal const val NOT_READY_DATA = 2
-
-internal fun saveBlockedReason(state: Int?): String? = when (state) {
-    READY_FOR_SAVE -> null
-    NOT_READY_TERRAIN -> "Waiting on terrain data. Saving now would store wrong altitudes."
-    NOT_READY_DATA -> "Some items still need a position or a value."
-    else -> "The plan could not be checked for saving."
-}
-
-enum class PlanConfirm { Open, NewPlan, ClearMission }
-
-data class ConfirmCopy(
-    val title: String,
-    val body: String,
-    val confirm: String,
-    val destructive: Boolean = false,
-)
-
-internal fun confirmCopy(kind: PlanConfirm): ConfirmCopy = when (kind) {
-    PlanConfirm.Open -> ConfirmCopy(
-        "Discard unsaved changes?",
-        "Opening a plan replaces the one you have. Your unsaved changes cannot be recovered.",
-        "Discard and open",
-    )
-    PlanConfirm.NewPlan -> ConfirmCopy(
-        "Discard unsaved changes?",
-        "Starting a new plan clears the one you have. Your unsaved changes cannot be recovered.",
-        "Discard and start new",
-    )
-    PlanConfirm.ClearMission -> ConfirmCopy(
-        "Clear the mission from the vehicle?",
-        "This removes the mission from the aircraft as well as from this plan. It cannot be undone.",
-        "Clear mission",
-        destructive = true,
-    )
-}
-
-internal fun planStatusText(name: String?, dirty: Boolean, offline: Boolean): String = when {
-    name == null && !dirty -> "New plan"
-    name == null -> "Unsaved plan"
-    !dirty -> name
-    offline -> "$name \u00b7 unsaved changes"
-    else -> "$name \u00b7 not uploaded"
-}
 
 class PatternChoice(
     val options: () -> List<String>,
@@ -162,17 +80,15 @@ private fun copyOut(context: Context, from: File, uri: Uri): Boolean = runCatchi
 
 private fun patternNames(): List<String> {
     val value = Qgc.get("$MISSION_ROOT.complexMissionItemNames").opt("value")
-    val array = value as? org.json.JSONArray ?: return emptyList()
+    val array = value as? JSONArray ?: return emptyList()
     return (0 until array.length()).map { array.optString(it) }.filter { it.isNotBlank() }
 }
 
-private fun visualItemCount(): Int =
-    (Qgc.get("$MISSION_ROOT.visualItems").opt("elements") as? org.json.JSONArray)?.length() ?: 0
+private fun visualItems(): JSONArray =
+    Qgc.get("$MISSION_ROOT.visualItems").opt("elements") as? JSONArray ?: JSONArray()
 
-private fun lastItemDistance(): Double? {
-    val elements = Qgc.get("$MISSION_ROOT.visualItems").opt("elements") as? org.json.JSONArray
-        ?: return null
-    val last = elements.optJSONObject(elements.length() - 1) ?: return null
+private fun lastDistance(items: JSONArray): Double? {
+    val last = items.optJSONObject(items.length() - 1) ?: return null
     return (last.opt("complexDistance") as? Number)?.toDouble()
 }
 
@@ -222,16 +138,17 @@ fun rememberPlanFileActions(onResult: (String) -> Unit = {}): PlanFileActions {
                 if (!copyIn(context, uri, staged)) {
                     return@withContext "That file could not be read."
                 }
-                val before = visualItemCount()
+                val before = visualItems().length()
                 Qgc.invoke(
                     "$MISSION_ROOT.insertComplexMissionItemFromKMLOrSHP",
                     pattern, staged.absolutePath, before, true,
                 )
-                if (visualItemCount() <= before) {
+                val after = visualItems()
+                if (after.length() <= before) {
                     return@withContext "${label ?: "That file"} added nothing to the plan."
                 }
-                if (importedNothing(lastItemDistance())) {
-                    Qgc.invoke("$MISSION_ROOT.removeVisualItem", visualItemCount() - 1)
+                if (importedNothing(lastDistance(after))) {
+                    Qgc.invoke("$MISSION_ROOT.removeVisualItem", after.length() - 1)
                     return@withContext "${label ?: "That file"} holds no area for a $pattern."
                 }
                 null
