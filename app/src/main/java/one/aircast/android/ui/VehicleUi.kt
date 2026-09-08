@@ -2,6 +2,8 @@ package one.aircast.android.ui
 
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
+import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
@@ -16,6 +18,7 @@ import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
+import androidx.compose.material3.Slider
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
@@ -41,6 +44,7 @@ import one.aircast.android.bridge.Qgc
 import one.aircast.android.bridge.offMainDetached
 import one.aircast.android.bridge.qgcBool
 import one.aircast.android.bridge.qgcFacts
+import one.aircast.android.bridge.qgcDouble
 import one.aircast.android.bridge.qgcString
 import one.aircast.android.bridge.qgcStrings
 
@@ -57,6 +61,7 @@ internal data class GuidedAvailability(
     val takeoff: Boolean,
     val land: Boolean,
     val rtl: Boolean,
+    val changeAltitude: Boolean,
 )
 
 internal fun guidedAvailability(
@@ -72,6 +77,7 @@ internal fun guidedAvailability(
     takeoff = takeoffSupported && !flying,
     land = guidedModeSupported && armed && !fixedWing && !flightMode.equals(landFlightMode, ignoreCase = true),
     rtl = guidedModeSupported && armed && flying && !flightMode.equals(rtlFlightMode, ignoreCase = true),
+    changeAltitude = guidedModeSupported && armed && flying,
 )
 
 internal fun telemetryLabel(fact: Fact): String = fact.description.ifBlank { fact.name }
@@ -143,6 +149,7 @@ fun TelemetryRow(modifier: Modifier = Modifier) {
     }
 }
 
+@OptIn(ExperimentalLayoutApi::class)
 @Composable
 fun FlightActions(modifier: Modifier = Modifier) {
     val available by qgcBool("vehicles.activeVehicleAvailable")
@@ -154,6 +161,10 @@ fun FlightActions(modifier: Modifier = Modifier) {
     var takeoffLabel by remember { mutableStateOf("") }
     val flying by qgcBool("vehicle.flying")
     val guidedModeSupported by qgcBool("vehicle.guidedModeSupported")
+    var altitudeTarget by remember { mutableStateOf<Double?>(null) }
+    val altitudeNow by qgcDouble("vehicle.altitudeRelative.value", 0.0)
+    val guidedMinAltitude by qgcDouble("settings.flyViewSettings.guidedMinimumAltitude.value", 0.0)
+    val guidedMaxAltitude by qgcDouble("settings.flyViewSettings.guidedMaximumAltitude.value", 121.0)
     val landFlightMode by qgcString("vehicle.landFlightMode")
     val rtlFlightMode by qgcString("vehicle.rtlFlightMode")
     val takeoffSupported by qgcBool("vehicle.takeoffVehicleSupported")
@@ -193,7 +204,10 @@ fun FlightActions(modifier: Modifier = Modifier) {
 
         FlightModePicker { refusal = it }
 
-        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+        FlowRow(
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+            verticalArrangement = Arrangement.spacedBy(8.dp),
+        ) {
             Button(
                 onClick = {
                     pending = GuidedAction(
@@ -246,9 +260,44 @@ fun FlightActions(modifier: Modifier = Modifier) {
                     offMainDetached { Qgc.invoke("vehicle.guidedModeRTL", false) }
                 }
             }) { Text("RTL") }
+
+            OutlinedButton(enabled = can.changeAltitude, onClick = {
+                altitudeTarget = altitudeNow
+            }) { Text("Alt") }
         }
 
         TelemetryRow()
+    }
+
+    altitudeTarget?.let { target ->
+        val range = altitudeRange(guidedMinAltitude, guidedMaxAltitude, altitudeNow)
+        AlertDialog(
+            onDismissRequest = { altitudeTarget = null },
+            title = { Text("Change altitude") },
+            text = {
+                Column {
+                    Text(altitudeChangeSummary(target, altitudeNow))
+                    Slider(
+                        value = target.toFloat(),
+                        onValueChange = { altitudeTarget = it.toDouble() },
+                        valueRange = range.min.toFloat()..range.max.toFloat(),
+                    )
+                }
+            },
+            confirmButton = {
+                TextButton(
+                    enabled = altitudeChangeIsUseful(target, altitudeNow),
+                    onClick = {
+                        val delta = altitudeDelta(target, altitudeNow)
+                        altitudeTarget = null
+                        offMainDetached { Qgc.invoke("vehicle.guidedModeChangeAltitude", delta, false) }
+                    },
+                ) { Text("Change") }
+            },
+            dismissButton = {
+                TextButton(onClick = { altitudeTarget = null }) { Text("Cancel") }
+            },
+        )
     }
 
     pending?.let { action ->
