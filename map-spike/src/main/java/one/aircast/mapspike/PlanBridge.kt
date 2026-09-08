@@ -37,7 +37,7 @@ fun planShape(json: JSONObject?): List<String> {
     )
 }
 
-fun insertedItem(raw: String): Boolean =
+fun insertedAnItem(raw: String): Boolean =
     runCatching {
         val answer = JSONObject(raw)
         answer.optBoolean("ok") &&
@@ -144,7 +144,7 @@ object PlanBridge {
                 "[{\"latitude\":$latitude,\"longitude\":$longitude,\"altitude\":0}, $count]",
             )
         }.getOrDefault("")
-        return if (insertedItem(raw)) count else null
+        return if (insertedAnItem(raw)) count else null
     }
 
     private fun writeCoordinate(path: String, latitude: Double, longitude: Double): Boolean =

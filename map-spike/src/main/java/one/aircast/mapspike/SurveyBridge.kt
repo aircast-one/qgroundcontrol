@@ -104,7 +104,7 @@ object SurveyBridge {
         val count = PlanBridge.rawItemCount()?.takeIf { it > 0 } ?: return false
 
         val args = "[\"$name\", ${coordinate(latitude, longitude)}, $count]"
-        val inserted = insertedItem(
+        val inserted = insertedAnItem(
             runCatching {
                 QGCBridge.invoke("$MISSION_CONTROLLER.insertComplexMissionItem", args)
             }.getOrDefault(""),

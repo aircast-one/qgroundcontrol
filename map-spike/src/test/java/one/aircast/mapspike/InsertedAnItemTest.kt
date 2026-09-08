@@ -7,28 +7,28 @@ import org.junit.Test
 class InsertedAnItemTest {
     @Test
     fun `an item comes back as an object`() {
-        assertTrue(insertedItem("""{"ok":true,"result":{"kind":"object","command":22}}"""))
+        assertTrue(insertedAnItem("""{"ok":true,"result":{"kind":"object","command":22}}"""))
     }
 
     @Test
     fun `a refused insert answers ok with a null item`() {
-        assertFalse(insertedItem("""{"ok":true,"result":{"kind":"null"}}"""))
+        assertFalse(insertedAnItem("""{"ok":true,"result":{"kind":"null"}}"""))
     }
 
     @Test
     fun `ok on its own is not evidence that anything was created`() {
-        assertFalse(insertedItem("""{"ok":true}"""))
+        assertFalse(insertedAnItem("""{"ok":true}"""))
     }
 
     @Test
     fun `a call that did not run is not an insert`() {
-        assertFalse(insertedItem("""{"ok":false}"""))
-        assertFalse(insertedItem("""{"ok":false,"result":{"kind":"object"}}"""))
+        assertFalse(insertedAnItem("""{"ok":false}"""))
+        assertFalse(insertedAnItem("""{"ok":false,"result":{"kind":"object"}}"""))
     }
 
     @Test
     fun `nothing readable is not an insert`() {
-        assertFalse(insertedItem(""))
-        assertFalse(insertedItem("not json"))
+        assertFalse(insertedAnItem(""))
+        assertFalse(insertedAnItem("not json"))
     }
 }
