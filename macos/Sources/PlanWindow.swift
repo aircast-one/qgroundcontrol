@@ -5,6 +5,7 @@ import UniformTypeIdentifiers
 struct AltitudeField: View {
     let metres: Double?
     var units = "m"
+    var decimals = 0
     let commit: (Double) -> Void
 
     @State private var draft = ""
@@ -18,8 +19,10 @@ struct AltitudeField: View {
                 .font(.body.monospacedDigit())
                 .frame(width: 46)
                 .focused($editing)
-                .onAppear { draft = AltitudeField.text(metres) }
-                .onChange(of: metres) { latest in if !editing { draft = AltitudeField.text(latest) } }
+                .onAppear { draft = AltitudeField.text(metres, decimals) }
+                .onChange(of: metres) { latest in
+                    if !editing { draft = AltitudeField.text(latest, decimals) }
+                }
                 .onSubmit(send)
                 .onChange(of: editing) { focused in if !focused { send() } }
             Text(units).font(.caption).foregroundColor(.secondary).fixedSize()
@@ -32,16 +35,16 @@ struct AltitudeField: View {
 
     private func send() {
         guard let value = Double(draft.trimmingCharacters(in: .whitespaces)), value.isFinite else {
-            draft = AltitudeField.text(metres)
+            draft = AltitudeField.text(metres, decimals)
             return
         }
         guard value != metres else { return }
         commit(value)
     }
 
-    private static func text(_ metres: Double?) -> String {
+    static func text(_ metres: Double?, _ decimals: Int) -> String {
         guard let metres, metres.isFinite else { return "" }
-        return String(format: "%.0f", metres)
+        return String(format: "%.\(decimals)f", metres)
     }
 }
 
@@ -427,6 +430,10 @@ struct PlanInspector: View {
             surveyCard
         }
 
+        if mission.selectedSpeed.available {
+            speedCard
+        }
+
         ForEach([ItemFact.cameraGroup, ItemFact.itemGroup], id: \.self) { group in
             let facts = mission.selectedFacts.filter { $0.group == group }
             if !facts.isEmpty || showsAltitudeMode(in: group) {
@@ -469,6 +476,34 @@ struct PlanInspector: View {
                     }
                 })
             }
+        }
+    }
+
+    private var speedCard: some View {
+        VStack(alignment: .leading, spacing: Overlay.unit * 0.35) {
+            SectionLabel(text: "Speed")
+            GroupCard {
+                GroupRow(title: "Fly this item at its own speed", showSeparator: false, trailing: {
+                    Toggle("", isOn: Binding(
+                        get: { mission.selectedSpeed.specified },
+                        set: { mission.setItemSpeedSpecified($0) }))
+                        .labelsHidden()
+                        .toggleStyle(.switch)
+                        .controlSize(.small)
+                })
+                if mission.selectedSpeed.specified {
+                    GroupRow(title: "Speed", trailing: {
+                        AltitudeField(metres: mission.selectedSpeed.value,
+                                      units: mission.selectedSpeed.units, decimals: 1,
+                                      commit: mission.setItemSpeed)
+                    })
+                }
+            }
+            Text(mission.selectedSpeed.note)
+                .font(.caption)
+                .foregroundColor(.secondary)
+                .fixedSize(horizontal: false, vertical: true)
+                .padding(.horizontal, Overlay.horizontalPadding)
         }
     }
 

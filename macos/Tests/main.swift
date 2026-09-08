@@ -695,6 +695,30 @@ func checkFlyDetail() {
 
 checkFlyDetail()
 
+func checkItemSpeed() {
+    let off = ItemSpeed(json: ["available": true, "specifyFlightSpeed": false,
+                               "facts": [["name": "FlightSpeed", "value": 8.0, "units": "m/s"]]])
+    expect(off.available && !off.specified, "an item that can set a speed but does not")
+    expect(off.note, "This item flies at whatever speed the one before it set.",
+           "and says where its speed comes from instead, which is what QGC's unchecked box means")
+
+    let on = ItemSpeed(json: ["available": true, "specifyFlightSpeed": true,
+                              "facts": [["name": "FlightSpeed", "value": 4.5, "units": "ft/s"]]])
+    expect(on.specified && on.value == 4.5, "one that does carries its own value")
+    expect(on.units, "ft/s", "in the units the fact came with, not a hard-coded m/s")
+    expect(on.note, "This item flies at its own speed.", "and says so")
+
+    expect(ItemSpeed.factName != ItemSpeed.property,
+           "the fact is named FlightSpeed and the property is flightSpeed; reading and writing use different keys")
+
+    expect(!ItemSpeed(json: [:]).available,
+           "an item with no speed section offers nothing rather than a dead control")
+    expect(ItemSpeed(json: ["available": true, "specifyFlightSpeed": true]).value == nil,
+           "and one whose speed fact is missing shows no number rather than a zero")
+}
+
+checkItemSpeed()
+
 func checkTelemetryUnits() {
     var feet = FlyTelemetry()
     feet.altitude = 1916.2

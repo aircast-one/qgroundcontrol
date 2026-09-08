@@ -21,6 +21,7 @@ final class MissionStore: ObservableObject, Probeable {
 
     @Published private(set) var pickerCategory = ""
     @Published private(set) var selectedFacts: [ItemFact] = []
+    @Published private(set) var selectedSpeed = ItemSpeed.unavailable
     @Published private(set) var surveyStats = SurveyStats.none
     @Published private(set) var camera = CameraChoice.empty
     @Published private(set) var distanceMode = ""
@@ -285,9 +286,14 @@ final class MissionStore: ObservableObject, Probeable {
     private func loadSelectedFacts() {
         guard let item = items.first(where: \.isCurrent) else {
             selectedFacts = []
+            if selectedSpeed != .unavailable { selectedSpeed = .unavailable }
             if surveyStats != .none { surveyStats = .none }
             return
         }
+        let speed = ItemSpeed(json: Bridge.group(
+            "plan.missionController.visualItems.\(item.index).speedSection"))
+        if speed != selectedSpeed { selectedSpeed = speed }
+
         let listed = ItemFact.lists.flatMap { list in
             ItemFact.from(
                 (Bridge.group("plan.missionController.visualItems.\(item.index).\(list)")["elements"] as? [Any]) ?? [],
@@ -502,6 +508,20 @@ final class MissionStore: ObservableObject, Probeable {
         reload()
     }
 
+    func setItemSpeedSpecified(_ specified: Bool) {
+        guard let item = items.first(where: \.isCurrent) else { return }
+        write("plan.missionController.visualItems.\(item.index).speedSection.specifyFlightSpeed",
+              specified, "whether this item sets its own speed")
+        reload()
+    }
+
+    func setItemSpeed(_ value: Double) {
+        guard let item = items.first(where: \.isCurrent) else { return }
+        write("plan.missionController.visualItems.\(item.index).speedSection.\(ItemSpeed.property)",
+              value, "this item's speed")
+        reload()
+    }
+
     func setAltitude(of item: MissionItem, metres: Double) {
         write("plan.missionController.visualItems.\(item.index).altitude", metres,
               "this item's altitude")
@@ -578,6 +598,10 @@ final class MissionStore: ObservableObject, Probeable {
          "commandNames": commands.map(\.name),
          "commandsWithSummary": commands.filter { !$0.summary.isEmpty }.count,
          "selected": items.first(where: \.isCurrent)?.sequence ?? -1,
+         "itemSpeed": ["available": selectedSpeed.available,
+                       "specified": selectedSpeed.specified,
+                       "value": selectedSpeed.value ?? -1,
+                       "units": selectedSpeed.units],
          "arming": arming ?? "",
          "patterns": patterns,
          "planFile": planFile, "planName": planName,
@@ -679,6 +703,9 @@ final class MissionStore: ObservableObject, Probeable {
         case "failWrite":
             write(args["path"] ?? "plan.missionController.visualItems.0.commandName",
                   args["value"] ?? "x", args["what"] ?? "this item")
+        case "itemSpeed":
+            if let on = args["on"] { setItemSpeedSpecified(on != "0") }
+            if let value = Double(args["value"] ?? "") { setItemSpeed(value) }
         case "uploadPreCheck":
             let check = preCheck()
             if args["show"] == "1" { uploadWarning = check == .ok ? nil : check }
