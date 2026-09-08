@@ -67,6 +67,9 @@ import org.mavlink.qgroundcontrol.QGCUsbSerialManager
 import org.qtproject.qt.android.QtQmlStatus
 import org.qtproject.qt.android.QtQuickView
 
+private val VIDEO_INSET_WIDTH = 200.dp
+private val VIDEO_INSET_HEIGHT = 112.dp
+
 private const val QML_URI = "qrc:/qml/QGroundControl/MainWindow/AndroidHost.qml"
 private const val QML_LIBRARY = "AircastQGC"
 private const val QML_DEFAULT_PAGE = "fly"
@@ -245,7 +248,7 @@ fun AircastShell(quickView: QtQuickView) {
                         Modifier
                             .align(Alignment.TopEnd)
                             .padding(12.dp)
-                            .size(width = 200.dp, height = 112.dp)
+                            .size(width = VIDEO_INSET_WIDTH, height = VIDEO_INSET_HEIGHT)
                     },
                     expanded = videoExpanded,
                     onClick = { videoExpanded = !videoExpanded },
@@ -264,11 +267,12 @@ fun AircastShell(quickView: QtQuickView) {
                     else -> Unit
                 }
 
-                if (tab == Tab.Fly && !videoExpanded) {
+                if (tab == Tab.Fly) {
                     Column(
                         Modifier
                             .align(Alignment.TopStart)
-                            .padding(12.dp),
+                            .padding(12.dp)
+                            .padding(top = if (videoExpanded) 0.dp else VIDEO_INSET_HEIGHT + 12.dp),
                         verticalArrangement = Arrangement.spacedBy(8.dp),
                     ) {
                         ObstacleReadout()
