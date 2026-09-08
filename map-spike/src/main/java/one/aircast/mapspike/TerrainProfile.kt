@@ -117,11 +117,26 @@ fun terrainProfile(
 ): TerrainProfile {
     val elements = json?.optJSONArray("elements") ?: return TerrainProfile(emptyList())
 
+    // QGC counts the leg out of the launch point only when the first item is a
+    // takeoff and home is valid - "Link back to home if first item is takeoff",
+    // its linkStartToHome. Without that the settings item is a planned home
+    // rather than a leg, which is why it is otherwise left out.
+    //
+    // isTakeoffItem, not the command name: commandName is a tr() string and
+    // matching "Takeoff" would work until the app is localised.
+    //
+    // It seeds where the walk starts from rather than adding a point, so the
+    // leg is measured without charting the settings item's 0 m entry altitude
+    // as a dive to sea level.
+    val home = elements.optJSONObject(0)
+        ?.takeIf { elements.optJSONObject(1)?.optBoolean("isTakeoffItem") == true }
+        ?.let { point(it, "coordinate") }
+
     return TerrainProfile(
         (1 until elements.length())
             .mapNotNull { index -> elements.optJSONObject(index)?.let { index to it } }
             .filter { (_, element) -> element.optBoolean("specifiesCoordinate") }
-            .fold(Walk(null, 0.0, emptyList())) { walk, (index, element) ->
+            .fold(Walk(home, 0.0, emptyList())) { walk, (index, element) ->
                 val entry = point(element, "coordinate") ?: return@fold walk
                 val terrain = element.optDouble("terrainAltitude", Double.NaN).takeIf { !it.isNaN() }
                 val entryAlt = element.optDouble("amslEntryAlt", Double.NaN)

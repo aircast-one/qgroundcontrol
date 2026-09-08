@@ -339,6 +339,43 @@ class SegmentTerrainTest {
 }
 
 
+class LaunchLegTest {
+    private val home =
+        """{"specifiesCoordinate":true,"coordinate":{"latitude":47.0,"longitude":8.0},""" +
+            """"amslEntryAlt":0.0}"""
+
+    private fun takeoff(isTakeoff: Boolean) =
+        """{"specifiesCoordinate":false,"isTakeoffItem":$isTakeoff,"amslEntryAlt":50.0}"""
+
+    private val waypoint =
+        """{"specifiesCoordinate":true,"coordinate":{"latitude":47.0,"longitude":8.01},""" +
+            """"amslEntryAlt":100.0}"""
+
+    private fun plan(vararg items: String) =
+        terrainProfile(
+            JSONObject("""{"kind":"object","elements":[${items.joinToString(",")}]}"""),
+        )
+
+    private val launchLeg = metresBetween(TrackPoint(47.0, 8.0), TrackPoint(47.0, 8.01))
+
+    @Test
+    fun `a takeoff first means the leg out of the launch point counts`() {
+        assertEquals(launchLeg, plan(home, takeoff(true), waypoint).distance, 1e-6)
+    }
+
+    @Test
+    fun `without a takeoff the launch point is a planned home and not a leg`() {
+        assertEquals(0.0, plan(home, takeoff(false), waypoint).distance, 1e-6)
+    }
+
+    @Test
+    fun `the launch point contributes no altitude of its own`() {
+        val profile = plan(home, takeoff(true), waypoint)
+
+        assertEquals(listOf(100.0), profile.points.map { it.planned })
+    }
+}
+
 class ProfileLabelTest {
     private fun profile(vararg points: ProfilePoint) = TerrainProfile(points.toList())
 
