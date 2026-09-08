@@ -22,6 +22,7 @@ private slots:
     void _warningsFollowTheVehicle();
     void _labelsAreHumanised();
     void _instrumentsResolveTheSelection();
+    void _vibrationBandsAreServed();
 
 private:
     static bool _unavailable(const char *path);

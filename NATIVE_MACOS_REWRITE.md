@@ -549,6 +549,7 @@ About 58 developer-weeks. Flight-test time, not code, is the schedule.
 - 2026-09-08: `view.label(identifier)` — one humanised label rule for fact names without a description.
 - 2026-09-08: `view.instruments(group/name, …)` — telemetry chips with label, value and display units resolved
   in the core; the selection stays with the head.
+- 2026-09-08: `view.vibration` — axes with fraction and severity band, worst axis, clip counts.
 
 ### Stream F · Core
 

@@ -12,6 +12,7 @@ mod read;
 mod speed;
 mod takeoff;
 mod router;
+mod vibration;
 mod view;
 mod warnings;
 

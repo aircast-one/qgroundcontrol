@@ -254,3 +254,13 @@ void QGCCoreCTest::_instrumentsResolveTheSelection()
     QCOMPARE(chosen.count(), 2);
     QCOMPARE(chosen.first().toObject().value(QStringLiteral("id")).toString(), QStringLiteral("gps/count"));
 }
+
+void QGCCoreCTest::_vibrationBandsAreServed()
+{
+    const QJsonObject offline = take(qgc_bridge_get("view.vibration"));
+    QCOMPARE(offline.value(QStringLiteral("class")).toString(), QStringLiteral("Vibration"));
+    QCOMPARE(offline.value(QStringLiteral("warningLevel")).toDouble(), 30.0);
+    QCOMPARE(offline.value(QStringLiteral("dangerLevel")).toDouble(), 60.0);
+    QCOMPARE(offline.value(QStringLiteral("axes")).toArray().count(), 3);
+    QCOMPARE(offline.value(QStringLiteral("clipCounts")).toArray().count(), 3);
+}
