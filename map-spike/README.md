@@ -475,6 +475,12 @@ one corner and leaves from the far one, so the route runs entry, transects,
 exit, next item. Drawing only the entry made the line jump back to the corner it
 came in at.
 
+Both branches are verified against a vehicle rather than only in tests:
+`SIM_SEED=land` seeds a waypoint, a real `NAV_LAND` and a waypoint after it, and
+Download pulls it in. The route runs to the landing and stops, the trailing
+waypoint draws with no line reaching it, and the panel reads "3 items (1 after
+the landing) · 152 m" against 0.15 km in the profile.
+
 The route stops at a landing. QGC uses two tests for this and so does this
 module: `isLandCommand`, which the bridge answers from the command tree, and
 `mavCommand() == MAV_CMD_NAV_RETURN_TO_LAUNCH`, which it does not - an RTL
