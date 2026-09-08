@@ -47,7 +47,15 @@ internal data class Calibration(
     val method: String,
     val instruction: String,
     val warning: String = "",
+    // APMSensorsComponent.qml blocks these two while the accelerometer needs calibrating.
+    // A compass calibration against an uncalibrated accelerometer produces a result the
+    // operator has no reason to distrust, which is worse than refusing to start it. The
+    // accelerometer itself is never blocked, because it is the way out.
+    val needsAccelFirst: Boolean = false,
 )
+
+internal fun blockedByAccel(calibration: Calibration, accelNeeded: Boolean): Boolean =
+    calibration.needsAccelFirst && accelNeeded
 
 internal val CALIBRATIONS = listOf(
     Calibration(
@@ -59,12 +67,14 @@ internal val CALIBRATIONS = listOf(
     Calibration(
         name = "Compass",
         method = "calibrateCompass",
+        needsAccelFirst = true,
         instruction = "Rotate the vehicle slowly around all axes until the bar fills. " +
             "Stand away from metal, cars and reinforced concrete.",
     ),
     Calibration(
         name = "Level Horizon",
         method = "levelHorizon",
+        needsAccelFirst = true,
         instruction = "Place the vehicle in its level flight position and leave it still.",
         warning = "Sets what the vehicle considers level. Get this wrong and it will drift in flight.",
     ),
@@ -305,19 +315,22 @@ fun SensorsScreen(modifier: Modifier = Modifier) {
                 "Compass" -> compassNeeded
                 else -> null
             }
+            val blocked = blockedByAccel(calibration, accelNeeded)
             SetupRow(
                 title = calibration.name,
-                status = when (needed) {
-                    true -> "Not calibrated"
-                    false -> "Calibrated"
-                    null -> ""
+                status = when {
+                    blocked -> "Calibrate the accelerometer first"
+                    needed == true -> "Not calibrated"
+                    needed == false -> "Calibrated"
+                    else -> ""
                 },
-                state = when (needed) {
-                    true -> SetupState.NeedsAttention
-                    false -> SetupState.Done
-                    null -> SetupState.Neutral
+                state = when {
+                    blocked -> SetupState.Neutral
+                    needed == true -> SetupState.NeedsAttention
+                    needed == false -> SetupState.Done
+                    else -> SetupState.Neutral
                 },
-                onClick = { pending = calibration },
+                onClick = if (blocked) null else ({ pending = calibration }),
             )
         }
 
