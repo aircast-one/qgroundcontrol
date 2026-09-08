@@ -40,6 +40,7 @@ import one.aircast.android.bridge.qgcString
 
 private const val LOG_ROOT = "logDownload"
 private const val LOG_MODEL = "logDownload.model"
+private const val LOGS_VIEW = "view.logs"
 
 internal data class LogEntry(
     val index: Int,
@@ -51,25 +52,47 @@ internal data class LogEntry(
     val status: String,
 )
 
-internal fun parseLogEntries(model: JSONObject?): List<LogEntry> {
-    val elements = model?.optJSONArray("elements") ?: return emptyList()
-    return (0 until elements.length()).mapNotNull { index ->
-        elements.optJSONObject(index)?.let { entry ->
-            LogEntry(
-                index = index,
-                id = entry.optInt("id"),
-                time = entry.optString("time"),
-                sizeStr = entry.optString("sizeStr"),
-                received = entry.optBoolean("received"),
-                selected = entry.optBoolean("selected"),
-                status = entry.optString("status"),
-            )
-        }
-    }
-}
+internal data class LogsView(
+    val connected: Boolean,
+    val entries: List<LogEntry>,
+    val emptyText: String,
+    val eraseWarning: String,
+    val canRefresh: Boolean,
+    val canDownload: Boolean,
+    val canCancel: Boolean,
+    val canErase: Boolean,
+    val busy: Boolean,
+    val anyDownloaded: Boolean,
+)
 
-internal fun formatLogTime(raw: String): String =
-    raw.replace('T', ' ').substringBefore('.').ifBlank { "Unknown date" }
+internal fun logsView(view: JSONObject?): LogsView? {
+    if (view == null) return null
+    val items = view.optJSONArray("entries")
+    return LogsView(
+        connected = view.optBoolean("connected"),
+        entries = (0 until (items?.length() ?: 0)).mapNotNull { index ->
+            items!!.optJSONObject(index)?.let { entry ->
+                LogEntry(
+                    index = entry.optInt("index", index),
+                    id = entry.optInt("id"),
+                    time = entry.optString("timeText"),
+                    sizeStr = entry.optString("sizeText"),
+                    received = entry.optBoolean("received"),
+                    selected = entry.optBoolean("selected"),
+                    status = entry.optString("status"),
+                )
+            }
+        },
+        emptyText = view.optString("emptyText"),
+        eraseWarning = view.optString("eraseWarning"),
+        canRefresh = view.optBoolean("canRefresh"),
+        canDownload = view.optBoolean("canDownload"),
+        canCancel = view.optBoolean("canCancel"),
+        canErase = view.optBoolean("canErase"),
+        busy = view.optBoolean("busy"),
+        anyDownloaded = view.optBoolean("anyDownloaded"),
+    )
+}
 
 @Composable
 private fun EraseConfirmDialog(onConfirm: () -> Unit, onDismiss: () -> Unit) {
@@ -101,7 +124,7 @@ private fun LogRow(entry: LogEntry, enabled: Boolean, onToggle: (Boolean) -> Uni
             )
         },
         headlineContent = { Text("Log ${entry.id}") },
-        supportingContent = { Text(formatLogTime(entry.time)) },
+        supportingContent = { Text(entry.time) },
         trailingContent = {
             Column(horizontalAlignment = Alignment.End) {
                 Text(entry.sizeStr, style = MaterialTheme.typography.labelLarge)
@@ -128,23 +151,19 @@ internal fun shouldAutoRefreshLogs(hasVehicle: Boolean, hasEntries: Boolean, bus
 
 @Composable
 fun LogDownloadScreen(modifier: Modifier = Modifier) {
-    val hasVehicle by qgcBool("vehicles.activeVehicleAvailable")
-    val root by qgcPath(LOG_ROOT)
-    val model by qgcPath(LOG_MODEL)
+    val json by qgcPath(LOGS_VIEW)
+    val logs = remember(json) { logsView(json) }
     val savePath by qgcString("settings.appSettings.logSavePath")
     var confirmErase by remember { mutableStateOf(false) }
     val scope = rememberCoroutineScope()
 
-    val listing = root?.optBoolean("requestingList") == true
-    val downloading = root?.optBoolean("downloadingLogs") == true
-    val entries = parseLogEntries(model)
+    val entries = logs?.entries.orEmpty()
     val selectedCount = entries.count { it.selected }
     val selectable = entries.filter { it.received }
-    val busy = listing || downloading
-    val anyDownloaded = entries.any { it.status == "Downloaded" }
+    val busy = logs?.busy == true
 
-    if (!hasVehicle) {
-        Message("Connect a vehicle to download its flight logs.", modifier)
+    if (logs?.connected != true) {
+        Message(logs?.emptyText?.ifBlank { null } ?: "Connect a vehicle to download its flight logs.", modifier)
         return
     }
 
@@ -155,8 +174,8 @@ fun LogDownloadScreen(modifier: Modifier = Modifier) {
         )
     }
 
-    LaunchedEffect(hasVehicle) {
-        if (shouldAutoRefreshLogs(hasVehicle, entries.isNotEmpty(), busy)) {
+    LaunchedEffect(logs.connected) {
+        if (shouldAutoRefreshLogs(logs.connected, entries.isNotEmpty(), busy)) {
             offMain { Qgc.invoke("$LOG_ROOT.refresh") }
         }
     }
@@ -171,15 +190,15 @@ fun LogDownloadScreen(modifier: Modifier = Modifier) {
         ) {
             OutlinedButton(
                 onClick = { scope.offMain { Qgc.invoke("$LOG_ROOT.refresh") } },
-                enabled = !busy,
+                enabled = logs.canRefresh,
             ) { Text("Refresh") }
 
             Button(
                 onClick = { scope.offMain { Qgc.invoke("$LOG_ROOT.download") } },
-                enabled = !busy && selectedCount > 0,
+                enabled = logs.canDownload && selectedCount > 0,
             ) { Text(if (selectedCount > 0) "Download ($selectedCount)" else "Download") }
 
-            if (busy) {
+            if (logs.canCancel) {
                 OutlinedButton(onClick = { scope.offMain { Qgc.invoke("$LOG_ROOT.cancel") } }) { Text("Cancel") }
             }
         }
@@ -216,8 +235,9 @@ fun LogDownloadScreen(modifier: Modifier = Modifier) {
         }
 
         when {
-            listing && entries.isEmpty() -> Message("Asking the vehicle for its log list.")
-            entries.isEmpty() -> Message("This vehicle reports no flight logs.")
+            entries.isEmpty() -> Message(
+                logs.emptyText.ifBlank { "This vehicle reports no flight logs." },
+            )
             else -> LazyColumn(Modifier.weight(1f)) {
                 items(entries, key = { it.index }) { entry ->
                     LogRow(entry, enabled = !busy) { checked ->
@@ -239,7 +259,7 @@ fun LogDownloadScreen(modifier: Modifier = Modifier) {
             }
         }
 
-        if (anyDownloaded && savePath.isNotBlank()) {
+        if (logs.anyDownloaded && savePath.isNotBlank()) {
             Text(
                 text = "Saved to $savePath",
                 style = MaterialTheme.typography.bodySmall,

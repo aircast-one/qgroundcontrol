@@ -2,61 +2,68 @@ package one.aircast.android.ui
 
 import org.json.JSONObject
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
+import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class LogDownloadScreenTest {
+
+    private val served = """
+        {"connected":true,"busy":false,"canRefresh":true,"canDownload":true,
+         "canCancel":false,"canErase":true,"anyDownloaded":true,
+         "emptyText":"","eraseWarning":"This erases every log on the vehicle.",
+         "entries":[
+           {"index":0,"id":1,"sizeBytes":4096,"sizeText":"4.0KB","status":"Downloaded",
+            "received":true,"selected":false,"time":"2026-09-08T01:20:00",
+            "timeText":"2026-09-08 01:20:00"},
+           {"index":1,"id":2,"sizeBytes":10240,"sizeText":"10.0KB","status":"Available",
+            "received":true,"selected":true,"time":"2026-09-08T02:20:00",
+            "timeText":"2026-09-08 02:20:00"}]}
+    """
+
     @Test
-    fun `entries are parsed from the model elements`() {
-        val model = JSONObject(
-            """
-            {"count":2,"elements":[
-              {"id":3,"time":"2026-09-06T23:48:14","sizeStr":"2.4MB","received":true,"selected":false,"status":"Available"},
-              {"id":4,"time":"2026-09-06T23:59:00","sizeStr":"1.0MB","received":false,"selected":true,"status":"Pending"}
-            ]}
-            """.trimIndent(),
-        )
-        val entries = parseLogEntries(model)
-        assertEquals(2, entries.size)
-        assertEquals(LogEntry(0, 3, "2026-09-06T23:48:14", "2.4MB", true, false, "Available"), entries[0])
-        assertTrue(entries[1].selected)
-        assertEquals(1, entries[1].index)
+    fun `the entries carry the core's formatted size and time`() {
+        val logs = logsView(JSONObject(served))!!
+
+        assertEquals(listOf("4.0KB", "10.0KB"), logs.entries.map { it.sizeStr })
+        assertEquals(listOf("2026-09-08 01:20:00", "2026-09-08 02:20:00"), logs.entries.map { it.time })
+        assertEquals(listOf(1, 2), logs.entries.map { it.id })
+        assertEquals(listOf("Downloaded", "Available"), logs.entries.map { it.status })
     }
 
     @Test
-    fun `a model without elements yields nothing`() {
-        assertEquals(emptyList<LogEntry>(), parseLogEntries(null))
-        assertEquals(emptyList<LogEntry>(), parseLogEntries(JSONObject("""{"kind":"object"}""")))
+    fun `the buttons follow the core rather than the head's own arithmetic`() {
+        val logs = logsView(JSONObject(served))!!
+
+        assertTrue(logs.canRefresh)
+        assertTrue(logs.canDownload)
+        assertFalse(logs.canCancel)
+        assertTrue(logs.anyDownloaded)
+        assertEquals("This erases every log on the vehicle.", logs.eraseWarning)
     }
 
     @Test
-    fun `missing fields fall back instead of throwing`() {
-        val entries = parseLogEntries(JSONObject("""{"elements":[{}]}"""))
-        assertEquals(1, entries.size)
-        assertEquals(0, entries[0].id)
-        assertEquals("", entries[0].status)
+    fun `a vehicle with no logs is connected with an empty list`() {
+        val logs = logsView(
+            JSONObject("""{"connected":true,"entries":[],"emptyText":"This vehicle reports no flight logs."}"""),
+        )!!
+
+        assertTrue(logs.connected)
+        assertEquals(emptyList<LogEntry>(), logs.entries)
+        assertEquals("This vehicle reports no flight logs.", logs.emptyText)
     }
 
     @Test
-    fun `log time drops the iso separator and fractional seconds`() {
-        assertEquals("2026-09-06 23:48:14", formatLogTime("2026-09-06T23:48:14.123"))
-        assertEquals("2026-09-06 23:48:14", formatLogTime("2026-09-06T23:48:14"))
+    fun `no view at all is no screen state`() {
+        assertNull(logsView(null))
     }
 
     @Test
-    fun `an empty time reads as unknown`() {
-        assertEquals("Unknown date", formatLogTime(""))
-    }
-
-    @Test
-    fun `logs are fetched on arrival only when there is nothing to show and nothing running`() {
-        assertEquals(true, shouldAutoRefreshLogs(hasVehicle = true, hasEntries = false, busy = false))
-        assertEquals(false, shouldAutoRefreshLogs(hasVehicle = false, hasEntries = false, busy = false))
-    }
-
-    @Test
-    fun `arriving back mid-download does not restart the listing`() {
-        assertEquals(false, shouldAutoRefreshLogs(hasVehicle = true, hasEntries = false, busy = true))
-        assertEquals(false, shouldAutoRefreshLogs(hasVehicle = true, hasEntries = true, busy = false))
+    fun `the auto refresh only fires for a connected vehicle with nothing listed`() {
+        assertTrue(shouldAutoRefreshLogs(hasVehicle = true, hasEntries = false, busy = false))
+        assertFalse(shouldAutoRefreshLogs(hasVehicle = true, hasEntries = true, busy = false))
+        assertFalse(shouldAutoRefreshLogs(hasVehicle = true, hasEntries = false, busy = true))
+        assertFalse(shouldAutoRefreshLogs(hasVehicle = false, hasEntries = false, busy = false))
     }
 }
