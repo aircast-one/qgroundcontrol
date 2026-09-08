@@ -308,8 +308,21 @@ model. The first version only compacted facts *when* a caller named every field,
 locked the cheap win behind the expensive one — `"*"` exists because measuring the halves
 apart showed that was backwards.
 
-Also worth keeping: bytes fell to 16% but time only to 30%, because the property walk still
-happens. The byte count alone would have overstated the win by a factor of two.
+**Bytes and time move independently, and not even in a consistent direction.** Three shapes,
+all measured:
+
+| shape | bytes | time |
+|---|---|---|
+| 21 simple waypoints (macOS Debug) | 16% | 30% |
+| 200 simple waypoints (handset) | 46% | 56% |
+| 12 surveys (handset) | 55% | **34%** |
+
+On waypoints the byte figure *overstates* the win; on surveys it *understates* it, because a
+survey drags `cameraCalc` behind it and that is facts all the way down — proportionally more
+metadata to drop. I wrote "the byte count overstates the win roughly twofold" as if it were a
+rule after seeing one shape; it was one shape. What survives is weaker and true: **the two
+quantities are not proxies for each other, and neither predicts the other without measuring
+the plan in front of you.**
 
 **At 199 items the ratio holds**: 40.2 ms whole, 16.2 ms with `"*"`, 12.4 ms with the field
 list (macOS Debug — the absolute figures are not the handset's, but it is the same code
