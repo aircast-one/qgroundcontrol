@@ -15,6 +15,13 @@ final class FlyStore: ObservableObject, Probeable {
     @Published private(set) var gpsDetail: [DetailRow] = []
     @Published private(set) var linkDetail: [DetailRow] = []
     @Published var expanded: Set<String> = []
+    @Published private(set) var modes: [FlightModeChoice] = []
+    @Published private(set) var requestedMode = ""
+    @Published var showingModes = false
+    @Published var showingAdvancedModes = false
+    @Published private(set) var confirmingMode = ""
+    private var rtlMode = ""
+    private var landMode = ""
     @Published private(set) var ticked: Set<String> = []
     @Published var showingChecklist = false
 
@@ -49,6 +56,7 @@ final class FlyStore: ObservableObject, Probeable {
             if !batteries.isEmpty { batteries = [] }
             if !gpsDetail.isEmpty { gpsDetail = [] }
             if !linkDetail.isEmpty { linkDetail = [] }
+            if !modes.isEmpty { modes = [] }
             return
         }
 
@@ -98,6 +106,15 @@ final class FlyStore: ObservableObject, Probeable {
 
         let heard = VehicleMessage.parse((vehicle["formattedMessages"] as? String) ?? "")
         if heard != messages { messages = heard }
+
+        let readModes = FlightModes.choices(
+            all: (vehicle["flightModes"] as? [String]) ?? [],
+            advanced: (vehicle["advancedFlightModes"] as? [String]) ?? [],
+            current: reading.mode)
+        if readModes != modes { modes = readModes }
+        rtlMode = (vehicle["rtlFlightMode"] as? String) ?? ""
+        landMode = (vehicle["landFlightMode"] as? String) ?? ""
+        if !requestedMode.isEmpty, requestedMode == reading.mode { requestedMode = "" }
 
         let flown = PreflightAirframe.of(
             multiRotor: FlyStore.flag(vehicle, "multiRotor"), vtol: FlyStore.flag(vehicle, "vtol"),
@@ -150,6 +167,34 @@ final class FlyStore: ObservableObject, Probeable {
         ticked = []
     }
 
+    func request(_ mode: FlightModeChoice) {
+        guard !mode.current, modes.contains(mode) else { return }
+        guard !FlightModes.needsConfirming(mode.name, flying: telemetry.flying,
+                                           rtlMode: rtlMode, landMode: landMode)
+        else {
+            confirmingMode = mode.name
+            return
+        }
+        send(mode.name)
+    }
+
+    func confirmMode() {
+        guard !confirmingMode.isEmpty else { return }
+        send(confirmingMode)
+    }
+
+    func cancelMode() {
+        confirmingMode = ""
+    }
+
+    private func send(_ name: String) {
+        requestedMode = name
+        confirmingMode = ""
+        _ = Bridge.set("vehicle.flightMode", name)
+        showingModes = false
+        refresh()
+    }
+
     static let messageLimit = 6
 
     func probeState() -> [String: Any] {
@@ -163,6 +208,12 @@ final class FlyStore: ObservableObject, Probeable {
          "warnings": warning.lines,
          "checklistOpen": showingChecklist,
          "airframe": airframe.rawValue,
+         "modes": modes.map(\.name),
+         "everydayModes": FlightModes.everyday(modes).map(\.name),
+         "foldedModes": FlightModes.folded(modes).map(\.name),
+         "requestedMode": requestedMode,
+         "modesOpen": showingModes,
+         "confirmingMode": confirmingMode,
          "expanded": Array(expanded).sorted(),
          "batteryDetail": batteries.map { pack in pack.map { "\($0.label): \($0.value)" } },
          "gpsDetail": gpsDetail.map { "\($0.label): \($0.value)" },
@@ -179,6 +230,13 @@ final class FlyStore: ObservableObject, Probeable {
         case "refresh": refresh()
         case "checklist": showingChecklist = args["open"] != "0"
         case "resetChecklist": resetChecklist()
+        case "modes":
+            showingModes = args["open"] != "0"
+            if !showingModes { showingAdvancedModes = false }
+        case "confirmMode":
+            args["on"] == "0" ? cancelMode() : confirmMode()
+        case "moreModes":
+            showingAdvancedModes = args["on"] != "0"
         case "expand":
             let row = args["row"] ?? ""
             expanded = args["on"] == "0" ? expanded.subtracting([row]) : expanded.union([row])

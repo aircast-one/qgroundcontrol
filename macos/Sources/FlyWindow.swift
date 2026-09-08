@@ -55,6 +55,87 @@ struct FlyPanel: View {
         }
         .frame(maxHeight: .infinity, alignment: .top)
         .sheet(isPresented: $fly.showingChecklist) { checklistSheet }
+        .sheet(isPresented: $fly.showingModes) { modePicker }
+    }
+
+    private var modePicker: some View {
+        VStack(alignment: .leading, spacing: Overlay.unit * 0.5) {
+            Text("Flight mode").font(.headline)
+            ScrollView {
+                GroupCard {
+                    ForEach(Array(FlightModes.everyday(fly.modes).enumerated()),
+                            id: \.element.id) { row, mode in
+                        modeRow(mode, showSeparator: row > 0)
+                    }
+                }
+                if fly.showingAdvancedModes {
+                    GroupCard {
+                        ForEach(Array(FlightModes.folded(fly.modes).enumerated()),
+                                id: \.element.id) { row, mode in
+                            modeRow(mode, showSeparator: row > 0)
+                        }
+                    }
+                    .padding(.top, Overlay.unit * 0.5)
+                }
+            }
+            .frame(maxHeight: 380)
+
+            if !FlightModes.folded(fly.modes).isEmpty {
+                Button(fly.showingAdvancedModes
+                    ? "Fewer modes"
+                    : "More modes (\(FlightModes.folded(fly.modes).count))") {
+                    fly.showingAdvancedModes.toggle()
+                }
+                .buttonStyle(.plain)
+                .font(.callout)
+                .foregroundColor(.accentColor)
+            }
+
+            Divider()
+
+            if fly.confirmingMode.isEmpty {
+                HStack {
+                    Spacer()
+                    Button("Cancel") { fly.showingModes = false }
+                        .keyboardShortcut(.cancelAction)
+                }
+            } else {
+                HStack {
+                    Text("\(fly.confirmingMode) while flying — confirm?")
+                        .font(.callout)
+                        .foregroundColor(.orange)
+                    Spacer()
+                    Button("Back", action: fly.cancelMode)
+                        .keyboardShortcut(.cancelAction)
+                    Button(fly.confirmingMode, action: fly.confirmMode)
+                        .buttonStyle(.borderedProminent)
+                }
+            }
+        }
+        .padding(Overlay.unit)
+        .frame(width: 380)
+    }
+
+    private func modeRow(_ mode: FlightModeChoice, showSeparator: Bool) -> some View {
+        Button {
+            fly.request(mode)
+        } label: {
+            GroupRow(title: mode.name, description: mode.summary,
+                     showSeparator: showSeparator, current: mode.current,
+                     leading: {
+                         Image(systemName: mode.symbol)
+                             .font(.callout)
+                             .foregroundColor(mode.current ? .accentColor : .secondary)
+                             .frame(width: 20)
+                     },
+                     trailing: {
+                         if mode.current {
+                             Image(systemName: "checkmark").font(.caption.weight(.semibold))
+                         }
+                     })
+        }
+        .buttonStyle(.plain)
+        .disabled(mode.current)
     }
 
     @ViewBuilder private func expandable(key: String, title: String, value: String,
@@ -86,8 +167,23 @@ struct FlyPanel: View {
     private var header: some View {
         HStack(spacing: Overlay.step) {
             VStack(alignment: .leading, spacing: 2) {
-                Text(fly.connected ? fly.telemetry.mode : "No vehicle")
-                    .font(.title3.weight(.semibold))
+                if fly.modes.isEmpty {
+                    Text(fly.connected ? fly.telemetry.mode : "No vehicle")
+                        .font(.title3.weight(.semibold))
+                } else {
+                    Button { fly.showingModes = true } label: {
+                        HStack(spacing: 4) {
+                            Text(fly.requestedMode.isEmpty ? fly.telemetry.mode : fly.requestedMode)
+                                .font(.title3.weight(.semibold))
+                            if fly.requestedMode.isEmpty {
+                                Image(systemName: "chevron.down").font(.caption2)
+                            } else {
+                                ProgressView().controlSize(.small).scaleEffect(0.6)
+                            }
+                        }
+                    }
+                    .buttonStyle(.plain)
+                }
                 Text(fly.connected ? fly.telemetry.stateText : "Connect a vehicle to fly")
                     .font(.callout).foregroundColor(.secondary)
             }

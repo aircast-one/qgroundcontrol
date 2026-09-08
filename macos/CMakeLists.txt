@@ -96,6 +96,7 @@ add_library(QGCNativeUI STATIC
     Sources/QtHostWindow.swift
     Sources/FlyTelemetryModel.swift
     Sources/FlyDetailModel.swift
+    Sources/FlightModeModel.swift
     Sources/Fly.swift
     Sources/FlyWindow.swift
 )

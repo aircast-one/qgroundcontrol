@@ -695,6 +695,53 @@ func checkFlyDetail() {
 
 checkFlyDetail()
 
+func checkFlightModes() {
+    let all = ["Stabilize", "Altitude Hold", "Auto", "Guided", "Loiter", "RTL", "Land",
+               "Position Hold", "Acro", "Circle", "Turtle"]
+    let advanced = ["Acro", "Circle", "Turtle"]
+
+    let choices = FlightModes.choices(all: all, advanced: advanced, current: "Guided")
+    expect(choices.count == all.count, "every mode the vehicle reported is offered")
+    expect(choices.first { $0.current }?.name ?? "", "Guided", "and the one it is in is marked")
+    expect(FlightModes.everyday(choices).map(\.name).joined(separator: ","),
+           "Stabilize,Altitude Hold,Auto,Guided,Loiter,RTL,Land,Position Hold",
+           "the everyday list is what is left once the advanced modes are folded away")
+    expect(FlightModes.folded(choices).map(\.name).joined(separator: ","), "Acro,Circle,Turtle",
+           "and the folded list is the rest")
+
+    let inAdvanced = FlightModes.choices(all: all, advanced: advanced, current: "Circle")
+    expect(FlightModes.everyday(inAdvanced).map(\.name).contains("Circle"),
+           "a vehicle already in an advanced mode still shows it without opening More modes")
+    expect(!FlightModes.folded(inAdvanced).map(\.name).contains("Circle"),
+           "and it is not listed twice")
+
+    expect(FlightModes.description(of: "RTL"), "Climbs, returns home and lands",
+           "each mode carries the sentence QGC's picker shows")
+    expect(FlightModes.description(of: "Mode 65536"), "",
+           "a mode nobody has described gets no sentence rather than a wrong one")
+
+    expect(FlightModes.symbol(for: "Smart RTL"), "house", "the glyph follows the mode's meaning")
+    expect(FlightModes.symbol(for: "QuadPlane Land"), "arrow.down.to.line",
+           "including a firmware-specific spelling of it")
+    expect(FlightModes.symbol(for: "Mode 65536"), "airplane", "and an unknown mode still gets one")
+
+    expect(FlightModes.needsConfirming("RTL", flying: true, rtlMode: "RTL", landMode: "Land"),
+           "sending a flying vehicle home is confirmed, as QGC confirms it from the guided strip")
+    expect(FlightModes.needsConfirming("Land", flying: true, rtlMode: "RTL", landMode: "Land"),
+           "so is landing it")
+    expect(!FlightModes.needsConfirming("Loiter", flying: true, rtlMode: "RTL", landMode: "Land"),
+           "holding position is not a commitment and needs no second tap")
+    expect(!FlightModes.needsConfirming("RTL", flying: false, rtlMode: "RTL", landMode: "Land"),
+           "and on the ground nothing needs confirming")
+    expect(!FlightModes.needsConfirming("", flying: true, rtlMode: "", landMode: ""),
+           "a vehicle that has not named its return mode does not turn every mode into a commitment")
+
+    expect(FlightModes.choices(all: [], advanced: [], current: "").isEmpty,
+           "a vehicle that has not reported its modes offers none, rather than a stale list")
+}
+
+checkFlightModes()
+
 func checkFenceUsable() {
     let square = (0..<4).map { _ in ["latitude": -35.36, "longitude": 149.16] }
     let polygon = FenceShape(json: ["count": 4, "path": square,
