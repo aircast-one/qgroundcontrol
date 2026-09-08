@@ -604,12 +604,24 @@ another GCS does not.
 
 Demonstrated rather than reasoned: with a vehicle pushing an unsolicited
 `PARAM_VALUE` every few seconds, a `WPNAV_SPEED` row read 220.000 when opened and
-still read 220.000 twenty-five seconds and eight changes later. The obvious fix —
-watch only the rows on screen, which after the lazy-row change is about eight —
-is not available, because `Qgc.watch` only ever adds. Scrolling the list would
-accumulate every path it passed and arrive at the two hundred the design avoids.
-Per-row watching needs an unwatch first, and the Java side takes a union across
-clients, so removing a path means recomputing that union.
+still read 220.000 twenty-five seconds and eight changes later.
+
+**`Qgc.unwatch` now exists** (reference-counted, since several screens read the
+same path and only the last one out may drop it; `qgcPath` holds through a
+`DisposableEffect`, so every reader pairs automatically). That closed a real leak:
+the poll set used to grow monotonically for the life of the process, because every
+path any screen had ever read stayed in it.
+
+It does **not** make per-row parameter watching the right answer, which is why the
+rows are still on demand. The watcher *polls*; watching the eight visible rows would
+turn a rare re-read on write into a continuous one on every tick, for values that
+essentially only change when someone writes them. The cheap part of the fix was
+worth taking, though: the revision counter that invalidated a row lived on the
+screen, so one edit re-read every visible row. Each row now owns its own.
+
+The stale-row case above therefore stands, and the honest framing is that it is a
+**deliberate trade** — a parameter changed by another GCS is not reflected until the
+row is reopened — not a missing primitive.
 
 Two corollaries, both found by auditing against that rule rather than by a
 failure:
