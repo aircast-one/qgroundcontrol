@@ -1146,6 +1146,19 @@ Caution was a hard amber; High was `colorScheme.error`, which in this dark theme
 pink meant for text on a surface rather than for filling a shape. The most serious band was
 the least alarming thing on the screen. High is a saturated red now.
 
+**Sixth migration: the log list.** `parseLogEntries` and `formatLogTime` are deleted;
+`view.logs` serves each entry with its size and time already formatted, and serves
+`canRefresh`, `canDownload`, `canCancel`, `canErase` and `anyDownloaded` instead of the screen
+deriving them from a busy flag and a selection count.
+
+**And it found a hole in the contract.** `entries` is recorded as `["empty"]`, because the
+recording was taken against a vehicle with no logs - so the fixture describes the list and says
+nothing about the fields inside it, which is precisely what a decoder needs. The shape had to
+be read from the producer. This is the same blind spot as the screens further down, one level
+up: a contract recorded against a vehicle that never sends a thing cannot describe that thing.
+A recorder needs a vehicle that has logs, has multiple batteries, has an unhealthy sensor -
+not only one that is connected.
+
 **Fifth migration: the guided altitude.** `altitudeRange`, `altitudeDelta`,
 `altitudeChangeSummary` and the 0.01 m deadband are deleted; `view.guidedAltitude` serves the
 range, the sentence, the metric delta and whether the firmware will act on the change. The
