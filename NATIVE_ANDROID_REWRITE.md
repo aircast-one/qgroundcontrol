@@ -1069,7 +1069,7 @@ exists natively today:
 | `CameraControlLayer`, `CameraSwitchButton` | **missing** | shutter, mode, camera selection |
 | `VideoTilesLayer` | **missing** | multiple streams |
 | `RcControlsLayer` | **built** | renders the configured controls and sends `setRcChannelOverride`; editing the list is still desktop-only |
-| `ObstacleDistanceOverlay` (map and video) | **missing** | |
+| `ObstacleDistanceOverlay` (map and video) | **built, in another form** | a sentence — "3.2 m right" — rather than a proximity ring |
 | `FlyViewToolStrip` + action list | **missing** | waypoint actions and the Viewer3D entry |
 | `GuidedValueSlider` | **missing** | adjusting a guided value in flight, distinct from the confirm slider |
 | `DetectionOverlayVideo` | **missing** | |
@@ -1080,6 +1080,25 @@ exists natively today:
 So the tab cannot be switched yet, and not because video was missing — video works. Eight
 surfaces have no native equivalent, and two of them (camera controls, obstacle distance)
 are things an operator uses in flight.
+
+**Obstacle distance is built, and finding a bridge defect along the way.** QGC draws a
+proximity ring from `OBSTACLE_DISTANCE`; on a phone the useful form is a sentence, so the
+readout says *"3.2 m right"* and turns red inside twice the sensor's own minimum. Verified
+against a sim emitting one return at 320 cm in slot 18 of a 72-slot ring with a 5° increment
+— which is 90°, which is "right".
+
+Getting there exposed a real gap. `variantJson` special-cased `QMetaType::QVariantList` and
+let everything else fall through to `QJsonValue::fromVariant`, which converts `QStringList`
+but **not `QList<int>` or `QList<qreal>`**. Those came back null, so
+`objectAvoidance.distances` read as empty while the vehicle was sending obstacle data every
+200 ms. It now takes any registered sequential container through `QSequentialIterable`,
+which also fixes `joystickConfig.stickPositions` and `MAVLinkSystem.compIDs` — both silently
+empty until now.
+
+Worth naming the shape: the message was arriving, the sim confirmed sending it, and the
+display stayed blank. **A conversion that fails by producing nothing rather than by failing**
+is indistinguishable from a vehicle with nothing to say, and only bisecting the path found
+which end was silent.
 
 **On-screen RC is now built.** `rcControls` is a JSON list of controls bound to RC channels
 — sliders, buttons, three-position switches, momentaries — for gimbals, lights and payload
