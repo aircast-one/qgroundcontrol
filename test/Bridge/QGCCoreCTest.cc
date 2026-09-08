@@ -466,6 +466,36 @@ QJsonValue shapeOf(const QJsonValue &value)
     return value.isNull() ? QStringLiteral("null") : value.isBool() ? QStringLiteral("bool") : value.isDouble() ? QStringLiteral("number") : QStringLiteral("string");
 }
 
+QJsonValue mergeShapes(const QJsonValue &a, const QJsonValue &b)
+{
+    if (a.isObject() && b.isObject()) {
+        const QJsonObject left = a.toObject();
+        const QJsonObject right = b.toObject();
+        QJsonObject merged;
+        for (auto it = left.begin(); it != left.end(); ++it) {
+            merged.insert(it.key(), right.contains(it.key()) ? mergeShapes(it.value(), right.value(it.key())) : it.value());
+        }
+        for (auto it = right.begin(); it != right.end(); ++it) {
+            if (!left.contains(it.key())) {
+                merged.insert(it.key(), it.value());
+            }
+        }
+        return merged;
+    }
+    if (a.isArray() && b.isArray()) {
+        const QJsonValue first = a.toArray().first();
+        const QJsonValue second = b.toArray().first();
+        return QJsonArray { first.toString() == QStringLiteral("empty") ? second : second.toString() == QStringLiteral("empty") ? first : mergeShapes(first, second) };
+    }
+    if (a == b) {
+        return a;
+    }
+    QStringList types = (a.toString() + QStringLiteral("|") + b.toString()).split(QLatin1Char('|'));
+    types.removeDuplicates();
+    types.sort();
+    return types.join(QStringLiteral("|"));
+}
+
 const char *const kViewPaths[] = {
     "view.messages", "view.plan", "view.guidedActions", "view.guidedAltitude", "view.guidedAltitude(30)",
     "view.guidedTakeoff", "view.guidedTakeoff(10)", "view.guidedSpeed", "view.guidedSpeed(3)", "view.battery",
@@ -481,12 +511,18 @@ const char *const kViewPaths[] = {
 
 void QGCCoreCTest::_viewShapesMatchTheRecordedContract()
 {
+    QJsonObject offline;
+    for (const char *path : kViewPaths) {
+        offline.insert(QString::fromUtf8(path), shapeOf(take(qgc_bridge_get(path))));
+    }
+
     _connectMockLink(MAV_AUTOPILOT_PX4);
     QTRY_VERIFY_WITH_TIMEOUT(take(qgc_bridge_get("view.guidedActions")).value(QStringLiteral("connected")).toBool(false), 5000);
 
     QJsonObject recorded;
     for (const char *path : kViewPaths) {
-        recorded.insert(QString::fromUtf8(path), shapeOf(take(qgc_bridge_get(path))));
+        const QString key = QString::fromUtf8(path);
+        recorded.insert(key, mergeShapes(offline.value(key), shapeOf(take(qgc_bridge_get(path)))));
     }
     recorded.insert(QStringLiteral("view.contract"), take(qgc_bridge_get("view.contract")));
     const QByteArray current = QJsonDocument(recorded).toJson(QJsonDocument::Indented);
