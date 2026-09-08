@@ -36,6 +36,7 @@ class InspectorOpenMessageTest {
             count = 1L,
             path = "mavlinkInspector.activeSystem.messages.$index",
             compId = 1,
+            title = name,
         )
 
     @Test
@@ -94,24 +95,19 @@ class InspectorOpenMessageTest {
         assertEquals(2, messages.map { it.path }.toSet().size)
     }
 
-    @Test
-    fun `a duplicated name says which component it came from`() {
-        val a = InspectorMessage(0, 271, "CAMERA_CAPTURE_STATUS", "1.0 Hz", 9L, "p0", 100)
-        val b = InspectorMessage(1, 271, "CAMERA_CAPTURE_STATUS", "1.0 Hz", 9L, "p1", 101)
-        val solo = InspectorMessage(2, 30, "ATTITUDE", "5.0 Hz", 99L, "p2", 1)
-        val all = listOf(a, b, solo)
 
-        assertEquals("CAMERA_CAPTURE_STATUS  ·  comp 100", inspectorRowLabel(a, all))
-        assertEquals("CAMERA_CAPTURE_STATUS  ·  comp 101", inspectorRowLabel(b, all))
-        assertEquals("ATTITUDE", inspectorRowLabel(solo, all))
-    }
 
     @Test
-    fun `filtering to one of a duplicated pair keeps the component on the label`() {
-        val a = InspectorMessage(0, 271, "CAMERA_CAPTURE_STATUS", "1.0 Hz", 9L, "p0", 100)
-        val b = InspectorMessage(1, 271, "CAMERA_CAPTURE_STATUS", "1.0 Hz", 9L, "p1", 101)
-        val all = listOf(a, b)
+    fun `the row title is the core's, falling back to the name when absent`() {
+        val served = inspectorMessages(
+            JSONObject("""{"messages":[
+                {"index":0,"id":271,"name":"CAMERA_CAPTURE_STATUS","rateText":"1.0 Hz","count":9,
+                 "compId":100,"path":"p0","title":"CAMERA_CAPTURE_STATUS (comp 100)"},
+                {"index":1,"id":30,"name":"ATTITUDE","rateText":"5.0 Hz","count":99,
+                 "compId":1,"path":"p1"}]}"""),
+        )
 
-        assertEquals("CAMERA_CAPTURE_STATUS  ·  comp 100", inspectorRowLabel(a, all))
+        assertEquals("CAMERA_CAPTURE_STATUS (comp 100)", served.first { it.path == "p0" }.title)
+        assertEquals("ATTITUDE", served.first { it.path == "p1" }.title)
     }
 }

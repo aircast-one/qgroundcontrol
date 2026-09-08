@@ -44,6 +44,7 @@ internal data class InspectorMessage(
     val count: Long,
     val path: String,
     val compId: Int,
+    val title: String,
 )
 
 internal data class InspectorField(
@@ -64,6 +65,7 @@ internal fun inspectorMessages(view: JSONObject?): List<InspectorMessage> {
                 count = message.optLong("count"),
                 path = message.optString("path"),
                 compId = message.optInt("compId"),
+                title = message.optString("title").ifBlank { message.optString("name") },
             )
         }
     }.sortedBy { it.name }
@@ -87,13 +89,6 @@ private const val INSPECTOR_SELECTED = "mavlinkInspector.activeSystem.selected"
 private fun selectMessage(index: Int) {
     offMainDetached { Qgc.set(INSPECTOR_SELECTED, index) }
 }
-
-internal fun inspectorRowLabel(message: InspectorMessage, all: List<InspectorMessage>): String =
-    if (all.count { it.name == message.name } > 1) {
-        "${message.name}  ·  comp ${message.compId}"
-    } else {
-        message.name
-    }
 
 internal fun openMessageIn(messages: List<InspectorMessage>, path: String?): InspectorMessage? =
     path?.let { wanted -> messages.firstOrNull { it.path == wanted } }
@@ -201,7 +196,7 @@ fun InspectorScreen(modifier: Modifier = Modifier) {
         LazyColumn(Modifier.fillMaxSize()) {
             items(shown, key = { it.path }) { message ->
                 SetupRow(
-                    title = inspectorRowLabel(message, messages),
+                    title = message.title,
                     status = message.rateText,
                     onClick = { openPath = message.path },
                 )
