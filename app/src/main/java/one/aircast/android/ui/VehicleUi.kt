@@ -165,6 +165,10 @@ fun FlightActions(modifier: Modifier = Modifier) {
     var altitudeSettled by remember { mutableStateOf<Double?>(null) }
     val altitudeJson by qgcPath(GUIDED_ALTITUDE)
     val altitudeRange = remember(altitudeJson) { guidedAltitude(altitudeJson) }
+    var speedTarget by remember { mutableStateOf<Double?>(null) }
+    var speedSettled by remember { mutableStateOf<Double?>(null) }
+    val speedJson by qgcPath(GUIDED_SPEED)
+    val speedRange = remember(speedJson) { guidedSpeed(speedJson) }
     val actionsJson by qgcPath(GUIDED_ACTIONS)
     val offers = remember(actionsJson) { guidedOffers(actionsJson) }
 
@@ -246,6 +250,14 @@ fun FlightActions(modifier: Modifier = Modifier) {
             }) { Text("RTL") }
 
             OutlinedButton(
+                enabled = offers["changeSpeed"]?.ready == true && speedRangeUsable(speedRange),
+                onClick = {
+                    speedTarget = speedRange?.initial
+                    speedSettled = speedRange?.initial
+                },
+            ) { Text("Speed") }
+
+            OutlinedButton(
                 enabled = offers["changeAltitude"]?.ready == true &&
                     altitudeRangeUsable(altitudeRange),
                 onClick = {
@@ -256,6 +268,48 @@ fun FlightActions(modifier: Modifier = Modifier) {
         }
 
         TelemetryRow()
+    }
+
+    speedTarget?.let { target ->
+        var probe by remember(speedTarget != null) { mutableStateOf<GuidedSpeed?>(null) }
+        LaunchedEffect(speedSettled) {
+            val at = speedSettled ?: return@LaunchedEffect
+            probe = withContext(Dispatchers.Default) { guidedSpeed(Qgc.get(guidedSpeedPath(at))) }
+        }
+        AlertDialog(
+            onDismissRequest = { speedTarget = null },
+            title = { Text(speedRange?.label ?: "Speed") },
+            text = {
+                Column {
+                    Text(probe?.sentence ?: "")
+                    Slider(
+                        value = target.toFloat(),
+                        onValueChange = { speedTarget = it.toDouble() },
+                        onValueChangeFinished = { speedSettled = speedTarget },
+                        valueRange = (speedRange?.minimum ?: 0.0).toFloat()..
+                            (speedRange?.maximum ?: 0.0).toFloat(),
+                    )
+                }
+            },
+            confirmButton = {
+                TextButton(
+                    enabled = probe != null,
+                    onClick = {
+                        speedTarget = null
+                        offMainDetached {
+                            val fresh = guidedSpeed(Qgc.get(guidedSpeedPath(target)))
+                            val method = fresh?.command
+                            if (method != null) {
+                                Qgc.invoke("vehicle.$method", fresh.targetMetersSecond)
+                            }
+                        }
+                    },
+                ) { Text("Set") }
+            },
+            dismissButton = {
+                TextButton(onClick = { speedTarget = null }) { Text("Cancel") }
+            },
+        )
     }
 
     takeoffTarget?.let { target ->
