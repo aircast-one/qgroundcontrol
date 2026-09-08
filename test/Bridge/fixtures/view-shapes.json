@@ -90,6 +90,190 @@
         "vendor": "string",
         "zoomLevel": "number"
     },
+    "view.contract": {
+        "class": "Contract",
+        "enumerations": {
+            "view.battery.level": [
+                "normal",
+                "caution",
+                "warning",
+                "critical"
+            ],
+            "view.battery.packs[].level": [
+                "normal",
+                "caution",
+                "warning",
+                "critical"
+            ],
+            "view.calibration.routines[].id": [
+                "accelerometer",
+                "compass",
+                "levelHorizon",
+                "gyro",
+                "pressure"
+            ],
+            "view.calibration.sides[].stage": [
+                "waiting",
+                "inProgress",
+                "done"
+            ],
+            "view.camera.modeText": [
+                "Photo",
+                "Video",
+                "Survey",
+                "Not set"
+            ],
+            "view.control.control": [
+                "toggle",
+                "choice",
+                "text",
+                "number"
+            ],
+            "view.fences.circles[].shape": [
+                "circle"
+            ],
+            "view.fences.polygons[].shape": [
+                "polygon"
+            ],
+            "view.guidedActions.actions[].id": [
+                "arm",
+                "takeoff",
+                "startMission",
+                "continueMission",
+                "pause",
+                "changeAltitude",
+                "changeSpeed",
+                "landAbort",
+                "land",
+                "rtl",
+                "disarm",
+                "grab",
+                "release",
+                "emergencyStop"
+            ],
+            "view.guidedActions.actions[].offer": [
+                "hidden",
+                "ready",
+                "blocked"
+            ],
+            "view.guidedSpeed.command": [
+                "guidedModeChangeGroundSpeedMetersSecond",
+                "guidedModeChangeEquivalentAirspeedMetersSecond"
+            ],
+            "view.links.links[].editing": [
+                "hostAndPort",
+                "portOnly",
+                "serial",
+                "logFile",
+                "none"
+            ],
+            "view.links.links[].type": [
+                "tcp",
+                "udp",
+                "serial",
+                "bluetooth",
+                "logReplay",
+                "other"
+            ],
+            "view.missionKinds.kinds[].geometry": [
+                "area",
+                "line",
+                null
+            ],
+            "view.missionKinds.kinds[].id": [
+                "waypoint",
+                "takeoff",
+                "land",
+                "roi",
+                "survey",
+                "corridor",
+                "structure"
+            ],
+            "view.plan.readiness.state": [
+                0,
+                1,
+                2
+            ],
+            "view.plan.sync.state": [
+                "offline",
+                "busy",
+                "ready"
+            ],
+            "view.plan.upload.state": [
+                0,
+                1,
+                2,
+                3
+            ],
+            "view.preflight.groups[].checks[].verdict": [
+                "manual",
+                "passing",
+                "failing",
+                "overridable"
+            ],
+            "view.sensors.sensors[].state": [
+                "healthy",
+                "unhealthy",
+                "disabled"
+            ],
+            "view.setup.firmware": [
+                "none",
+                "apm",
+                "px4"
+            ],
+            "view.vibration.axes[].severity": [
+                "normal",
+                "warning",
+                "danger"
+            ],
+            "view.vibration.worst": [
+                "normal",
+                "warning",
+                "danger"
+            ],
+            "view.warnings.warnings[].id": [
+                "noGpsLock",
+                "prearm"
+            ]
+        },
+        "kind": "object",
+        "paths": [
+            "view.messages",
+            "view.plan",
+            "view.guidedActions",
+            "view.guidedAltitude",
+            "view.guidedTakeoff",
+            "view.guidedSpeed",
+            "view.battery",
+            "view.preflight",
+            "view.warnings",
+            "view.label",
+            "view.instruments",
+            "view.vibration",
+            "view.sensors",
+            "view.control",
+            "view.links",
+            "view.linkForm",
+            "view.mapScale",
+            "view.terrainProfile",
+            "view.missionKinds",
+            "view.missionSeed",
+            "view.calibration",
+            "view.radio",
+            "view.logs",
+            "view.inspector",
+            "view.flightModes",
+            "view.settings",
+            "view.surveyStats",
+            "view.fences",
+            "view.polygon",
+            "view.setup",
+            "view.video",
+            "view.camera",
+            "view.tlog",
+            "view.contract"
+        ]
+    },
     "view.control(settings.appSettings.audioMuted)": {
         "class": "string",
         "control": "string",

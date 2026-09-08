@@ -3,6 +3,7 @@ mod abi;
 mod altitude;
 mod battery;
 mod calibration;
+mod contract;
 mod control;
 mod fences;
 mod flightmodes;

@@ -5,6 +5,7 @@ use serde_json::{Value, json};
 use crate::altitude;
 use crate::battery;
 use crate::calibration;
+use crate::contract;
 use crate::control;
 use crate::fences;
 use crate::flightmodes;
@@ -74,6 +75,7 @@ pub const VIEWS: &[View] = &[
     View { path: "view.video", deps: video::VIDEO_DEPS, compute: video::video_view },
     View { path: "view.camera", deps: video::CAMERA_DEPS, compute: video::camera_view },
     View { path: "view.tlog", deps: tlog::DEPS, compute: tlog::tlog_view },
+    View { path: "view.contract", deps: contract::DEPS, compute: contract::contract_view },
 ];
 
 pub fn owns(path: &str) -> bool {

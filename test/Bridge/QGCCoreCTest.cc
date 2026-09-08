@@ -488,6 +488,7 @@ void QGCCoreCTest::_viewShapesMatchTheRecordedContract()
     for (const char *path : kViewPaths) {
         recorded.insert(QString::fromUtf8(path), shapeOf(take(qgc_bridge_get(path))));
     }
+    recorded.insert(QStringLiteral("view.contract"), take(qgc_bridge_get("view.contract")));
     const QByteArray current = QJsonDocument(recorded).toJson(QJsonDocument::Indented);
 
     const QString fixture = QFileInfo(QString::fromUtf8(__FILE__)).dir().filePath(QStringLiteral("fixtures/view-shapes.json"));
@@ -501,8 +502,12 @@ void QGCCoreCTest::_viewShapesMatchTheRecordedContract()
     QFile in(fixture);
     QVERIFY2(in.open(QIODevice::ReadOnly), "no recorded view contract; run with QGC_RECORD_VIEW_CONTRACT=1 once");
     const QJsonObject expected = QJsonDocument::fromJson(in.readAll()).object();
+    QStringList keys;
     for (const char *path : kViewPaths) {
-        const QString key = QString::fromUtf8(path);
+        keys.append(QString::fromUtf8(path));
+    }
+    keys.append(QStringLiteral("view.contract"));
+    for (const QString &key : keys) {
         const QByteArray was = QJsonDocument(expected.value(key).toObject()).toJson(QJsonDocument::Compact);
         const QByteArray now = QJsonDocument(recorded.value(key).toObject()).toJson(QJsonDocument::Compact);
         QVERIFY2(was == now, qPrintable(QStringLiteral("%1 changed shape\n was: %2\n now: %3").arg(key, QString::fromUtf8(was), QString::fromUtf8(now))));
