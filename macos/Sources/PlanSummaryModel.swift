@@ -48,3 +48,54 @@ enum PlanReadiness {
         }
     }
 }
+
+enum PlanUpload: Int {
+    case ok = 0
+    case noVehicle = 1
+    case firmwareMismatch = 2
+    case flyingThisMission = 3
+
+    var refusal: String {
+        switch self {
+        case .ok: return ""
+        case .noVehicle: return "No vehicle is connected, so there is nowhere to send this plan."
+        case .firmwareMismatch:
+            return "This plan was made for a different firmware or vehicle type. "
+                + "Uploading it can make the vehicle behave incorrectly."
+        case .flyingThisMission:
+            return "The vehicle is flying this mission. It has to be paused before a new plan goes up."
+        }
+    }
+
+    var heading: String {
+        canProceed ? "Upload this plan?" : "This plan cannot be uploaded"
+    }
+
+    var proceedTitle: String {
+        switch self {
+        case .firmwareMismatch: return "Upload anyway"
+        case .flyingThisMission: return "Pause and upload"
+        case .ok, .noVehicle: return ""
+        }
+    }
+
+    var canProceed: Bool {
+        self == .firmwareMismatch || self == .flyingThisMission
+    }
+
+    var pausesFirst: Bool { self == .flyingThisMission }
+
+    static func state(_ raw: Int) -> PlanUpload {
+        PlanUpload(rawValue: raw) ?? .ok
+    }
+
+    static func check(offlineVehicle: Bool, armed: Bool,
+                      flightMode: String, missionFlightMode: String) -> PlanUpload {
+        if offlineVehicle { return .noVehicle }
+        if armed, !missionFlightMode.isEmpty, flightMode == missionFlightMode {
+            return .flyingThisMission
+        }
+        return .ok
+    }
+}
+

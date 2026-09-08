@@ -795,6 +795,50 @@ func checkMissionItemKinds() {
     expect(area[0].longitude < 149.165 && area[2].longitude > 149.165, "on both axes")
     let span = (area[2].latitude - area[0].latitude) * 111_320
     expect(abs(span - 2 * MissionItemKind.defaultAreaMetres) < 1, "and is the intended size across")
+    expect(PlanUpload.state(0) == .ok, "the controller's zero is its all-clear")
+    expect(PlanUpload.ok.refusal, "", "which says nothing and uploads")
+    expect(!PlanUpload.ok.canProceed, "there is nothing to proceed past")
+
+    expect(PlanUpload.state(1) == .noVehicle, "one is no active vehicle")
+    expect(!PlanUpload.noVehicle.canProceed,
+           "and that one cannot be overridden — there is nowhere to send it")
+
+    expect(PlanUpload.state(2) == .firmwareMismatch, "two is a firmware or vehicle mismatch")
+    expect(PlanUpload.firmwareMismatch.canProceed,
+           "which QGC lets the operator accept, because only they know if it matters")
+    expect(PlanUpload.firmwareMismatch.proceedTitle, "Upload anyway", "and says so plainly")
+    expect(!PlanUpload.firmwareMismatch.pausesFirst, "without touching the vehicle")
+
+    expect(PlanUpload.state(3) == .flyingThisMission, "three is a vehicle flying this mission")
+    expect(PlanUpload.flyingThisMission.pausesFirst,
+           "which QGC pauses before uploading, so the vehicle is not flying items being replaced")
+    expect(PlanUpload.flyingThisMission.proceedTitle, "Pause and upload",
+           "and the button says the pause out loud rather than hiding it")
+
+    expect(PlanUpload.state(99) == .ok,
+           "a state the controller has not defined does not become a false refusal")
+
+    expect(PlanUpload.noVehicle.heading, "This plan cannot be uploaded",
+           "a refusal with no way past it does not ask a question it will not act on")
+    expect(PlanUpload.flyingThisMission.heading, "Upload this plan?",
+           "one the operator can accept does ask")
+
+    expect(PlanUpload.check(offlineVehicle: true, armed: false,
+                            flightMode: "", missionFlightMode: "Auto") == .noVehicle,
+           "the offline editing vehicle is what QGC calls no active vehicle, tested first")
+    expect(PlanUpload.check(offlineVehicle: false, armed: true,
+                            flightMode: "Auto", missionFlightMode: "Auto") == .flyingThisMission,
+           "armed and in the mission mode is a vehicle flying the mission being replaced")
+    expect(PlanUpload.check(offlineVehicle: false, armed: false,
+                            flightMode: "Auto", missionFlightMode: "Auto") == .ok,
+           "sitting disarmed in Auto is not flying it")
+    expect(PlanUpload.check(offlineVehicle: false, armed: true,
+                            flightMode: "Guided", missionFlightMode: "Auto") == .ok,
+           "armed in another mode is not flying it either")
+    expect(PlanUpload.check(offlineVehicle: false, armed: true,
+                            flightMode: "", missionFlightMode: "") == .ok,
+           "a vehicle that has named no mission mode is not judged to be flying one")
+
     expect(PlanReadiness.reason(for: PlanReadiness.readyForSave), "",
            "a plan that is ready to save says nothing")
     expect(PlanReadiness.reason(for: PlanReadiness.notReadyForSaveData),

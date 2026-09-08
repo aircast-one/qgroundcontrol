@@ -218,6 +218,16 @@ struct PlanInspector: View {
         } message: {
             Text("The \(mission.items.count) items already in this plan will be discarded.")
         }
+        .alert(mission.uploadWarning?.heading ?? "",
+               isPresented: Binding(get: { mission.uploadWarning != nil },
+                                    set: { if !$0 { mission.cancelUpload() } })) {
+            if let warning = mission.uploadWarning, warning.canProceed {
+                Button(warning.proceedTitle, role: .destructive, action: mission.confirmUpload)
+            }
+            Button("Cancel", role: .cancel, action: mission.cancelUpload)
+        } message: {
+            Text(mission.uploadWarning?.refusal ?? "")
+        }
         .alert("That file could not be used",
                isPresented: Binding(get: { shapeError != nil }, set: { if !$0 { shapeError = nil } })) {
             Button("OK") { shapeError = nil }

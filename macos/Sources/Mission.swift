@@ -34,6 +34,7 @@ final class MissionStore: ObservableObject, Probeable {
     @Published private(set) var planFile = ""
     @Published private(set) var readyToSave = true
     @Published private(set) var notReadyReason = ""
+    @Published var uploadWarning: PlanUpload?
 
     private var undoPoll: Timer?
 
@@ -107,6 +108,36 @@ final class MissionStore: ObservableObject, Probeable {
     }
 
     func uploadToVehicle() {
+        guard preCheck() == .ok else {
+            uploadWarning = preCheck()
+            return
+        }
+        send()
+    }
+
+    func preCheck() -> PlanUpload {
+        let manager = Bridge.group("plan.managerVehicle")
+        return PlanUpload.check(
+            offlineVehicle: (manager["isOfflineEditingVehicle"] as? NSNumber)?.boolValue ?? true,
+            armed: (manager["armed"] as? NSNumber)?.boolValue ?? false,
+            flightMode: (manager["flightMode"] as? String) ?? "",
+            missionFlightMode: (manager["missionFlightMode"] as? String) ?? "")
+    }
+
+    func confirmUpload() {
+        guard let warning = uploadWarning, warning.canProceed else { return }
+        if warning.pausesFirst {
+            Bridge.invoke("vehicle.pauseVehicle")
+        }
+        uploadWarning = nil
+        send()
+    }
+
+    func cancelUpload() {
+        uploadWarning = nil
+    }
+
+    private func send() {
         Bridge.invoke("plan.sendToVehicle")
         syncing = true
         reload()
@@ -536,6 +567,7 @@ final class MissionStore: ObservableObject, Probeable {
          "patterns": patterns,
          "planFile": planFile, "planName": planName,
          "readyToSave": readyToSave, "notReadyReason": notReadyReason,
+         "uploadWarning": uploadWarning.map(\.refusal) ?? "",
          "canUndo": canUndo, "canRedo": canRedo,
          "commands": commands.map(\.name),
          "surveys": surveyAreas.map(\.count),
@@ -628,6 +660,11 @@ final class MissionStore: ObservableObject, Probeable {
                 return ["ok": false, "error": "\(target.command) cannot be moved"]
             }
             move(sequence: sequence, latitude: latitude, longitude: longitude)
+        case "uploadPreCheck":
+            let check = preCheck()
+            if args["show"] == "1" { uploadWarning = check == .ok ? nil : check }
+            return ["ok": true, "preCheck": check.rawValue, "refusal": check.refusal,
+                    "state": probeState()]
         case "createPlan":
             let kind = MissionItemKind(rawValue: args["kind"] ?? "")
             if let failure = createPlan(kind) {
