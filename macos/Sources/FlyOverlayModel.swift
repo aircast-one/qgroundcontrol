@@ -7,6 +7,7 @@ struct FlyOverlays: Equatable {
     var roiActive = false
     var roiAt: GeoPoint?
     var goingTo: GeoPoint?
+    var clickedAt: GeoPoint?
 
     static let none = FlyOverlays()
 

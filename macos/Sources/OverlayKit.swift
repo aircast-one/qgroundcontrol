@@ -238,6 +238,15 @@ struct ContentHeightKey: PreferenceKey {
     }
 }
 
+struct ContentSizeKey: PreferenceKey {
+    static var defaultValue = CGSize.zero
+
+    static func reduce(value: inout CGSize, nextValue: () -> CGSize) {
+        let next = nextValue()
+        if next != .zero { value = next }
+    }
+}
+
 extension View {
     // Row heights vary once a label wraps, so an estimate of rows times row height
     // clipped the last one. Measure instead.
@@ -246,6 +255,12 @@ extension View {
             Color.clear.preference(key: ContentHeightKey.self, value: proxy.size.height)
         })
         .onPreferenceChange(ContentHeightKey.self) { height.wrappedValue = $0 }
+    }
+    func measuringSize(into size: Binding<CGSize>) -> some View {
+        background(GeometryReader { proxy in
+            Color.clear.preference(key: ContentSizeKey.self, value: proxy.size)
+        })
+        .onPreferenceChange(ContentSizeKey.self) { size.wrappedValue = $0 }
     }
     func writeFailureAlert(title: String = "That change was not accepted",
                            _ reports: Binding<String?>...) -> some View {

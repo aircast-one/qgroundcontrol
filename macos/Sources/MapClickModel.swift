@@ -96,3 +96,17 @@ enum MapClickAction: String, CaseIterable, Identifiable {
             : "No vehicle is connected."
     }
 }
+
+enum MapMenuPlacement {
+    static let gap = 18.0
+    static let margin = 12.0
+
+    static func place(click: Double, extent: Double, container: Double) -> Double {
+        let low = margin
+        let high = container - margin - extent
+        guard high > low else { return low }
+        let after = click + gap
+        guard after > high else { return max(low, after) }
+        return max(low, min(click - gap - extent, high))
+    }
+}

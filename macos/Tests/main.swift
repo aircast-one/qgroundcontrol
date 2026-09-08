@@ -2278,6 +2278,7 @@ checkMapClick()
 checkMapCentre()
 checkPolygonEdit()
 checkMessageRate()
+checkMenuPlacement()
 checkMapFollow()
 checkMapScale()
 checkTerrainDownload()
@@ -2877,6 +2878,21 @@ func checkPolygonEdit() {
     expect(pair?.canRemoveVertex == false, "but neither end can be dropped")
     expect(EditablePolygon.read(path: "l", json: ["path": []], ring: false) == nil,
            "and an empty line is still nothing to edit")
+}
+
+func checkMenuPlacement() {
+    let width = 220.0, screen = 1000.0
+    expect(MapMenuPlacement.place(click: 100, extent: width, container: screen) == 118,
+           "the menu opens just past the cursor, not pinned to a corner")
+    expect(MapMenuPlacement.place(click: 900, extent: width, container: screen) == 662,
+           "near the far edge it flips to the other side of the cursor")
+    expect(MapMenuPlacement.place(click: 5, extent: width, container: screen) == 23,
+           "a click at the near edge still leaves the menu inside the margin")
+    expect(MapMenuPlacement.place(click: 400, extent: 2000, container: screen) == 12,
+           "a menu larger than the window sits at the margin rather than off-screen")
+    let far = MapMenuPlacement.place(click: 995, extent: width, container: screen)
+    expect(far + width <= screen - MapMenuPlacement.margin + 0.001,
+           "a flipped menu never runs past the far edge")
 }
 
 func checkMessageRate() {

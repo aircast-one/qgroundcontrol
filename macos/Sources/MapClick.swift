@@ -11,6 +11,7 @@ final class MapClickStore: ObservableObject, Probeable {
 
     @Published private(set) var state = MapClickState()
     @Published var openAt: MapClickTarget?
+    @Published private(set) var openPoint = CGPoint.zero
     @Published var confirming: MapClickTarget?
     @Published private(set) var lastSent = ""
     @Published private(set) var overlays = FlyOverlays.none
@@ -96,9 +97,18 @@ final class MapClickStore: ObservableObject, Probeable {
 
     var offered: [MapClickAction] { MapClickAction.offered(in: state) }
 
-    func open(latitude: Double, longitude: Double) {
+    func open(latitude: Double, longitude: Double, at point: CGPoint = .zero) {
         guard !offered.isEmpty, let first = offered.first else { return }
+        openPoint = point
         openAt = MapClickTarget(action: first, latitude: latitude, longitude: longitude)
+    }
+
+    // The marker must never outlive the menu, and openAt is cleared in four places, so it
+    // is derived here rather than assigned alongside each of them.
+    var shownOverlays: FlyOverlays {
+        var shown = overlays
+        shown.clickedAt = openAt.map { GeoPoint(latitude: $0.latitude, longitude: $0.longitude) }
+        return shown
     }
 
     func close() { openAt = nil }
@@ -154,6 +164,7 @@ final class MapClickStore: ObservableObject, Probeable {
          "offered": offered.map(\.title),
          "refusal": offered.isEmpty ? MapClickAction.refusal(in: state) : "",
          "menuOpen": openAt != nil,
+         "menuAt": ["x": Double(openPoint.x), "y": Double(openPoint.y)],
          "confirming": confirming?.action.title ?? "",
          "lastSent": lastSent,
          "map": MissionMap.lastRender["fly"] ?? [:],
@@ -161,7 +172,8 @@ final class MapClickStore: ObservableObject, Probeable {
          "overlays": ["orbit": overlays.showsOrbit, "roi": overlays.roiActive,
                       "roiPlaced": overlays.showsRoi,
                       "goto": overlays.showsGoto, "summary": overlays.summary,
-                      "roiNote": overlays.roiNote]]
+                      "roiNote": overlays.roiNote,
+                      "clicked": shownOverlays.clickedAt != nil]]
     }
 
     func probeInvoke(action: String, args: [String: String]) -> [String: Any] {
@@ -172,7 +184,9 @@ final class MapClickStore: ObservableObject, Probeable {
                   let longitude = Double(args["longitude"] ?? "") else {
                 return ["ok": false, "error": "open needs latitude and longitude"]
             }
-            open(latitude: latitude, longitude: longitude)
+            open(latitude: latitude, longitude: longitude,
+                 at: CGPoint(x: Double(args["x"] ?? "") ?? 0,
+                             y: Double(args["y"] ?? "") ?? 0))
         case "close": close()
         default:
             return ["ok": false, "error": "unknown action \(action)"]

@@ -559,6 +559,8 @@ struct MapClickMenu: View {
                         .padding(.vertical, Overlay.unit * 0.4)
                 }
                 .frame(width: 220)
+                .background(Color(nsColor: .windowBackgroundColor),
+                            in: RoundedRectangle(cornerRadius: Overlay.panelRadius))
             }
         }
     }
@@ -692,6 +694,8 @@ struct FlyView: View {
     @ObservedObject var video: VideoStore
     @ObservedObject var mapClick: MapClickStore
 
+    @State private var clickMenuSize = CGSize.zero
+
     private var warningBanner: some View {
         GlassPanel {
             HStack(alignment: .top, spacing: Overlay.step) {
@@ -755,8 +759,8 @@ struct FlyView: View {
                        shapes: [], rallyPoints: [],
                        padding: NSEdgeInsets(top: 56, left: 24, bottom: 40, right: 352),
                        select: { _ in }, adding: false, add: { _, _ in }, move: { _, _, _ in },
-                       secondary: { mapClick.open(latitude: $0, longitude: $1) },
-                       overlays: mapClick.overlays,
+                       secondary: { mapClick.open(latitude: $0, longitude: $1, at: $2) },
+                       overlays: mapClick.shownOverlays,
                        follow: fly.keepCentered,
                        tracking: fly.position != nil)
                 .ignoresSafeArea()
@@ -806,9 +810,17 @@ struct FlyView: View {
                     .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottom)
             }
 
-            MapClickMenu(mapClick: mapClick)
-                .padding(Overlay.unit)
-                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+            GeometryReader { proxy in
+                MapClickMenu(mapClick: mapClick)
+                    .measuringSize(into: $clickMenuSize)
+                    .offset(x: MapMenuPlacement.place(click: mapClick.openPoint.x,
+                                                      extent: clickMenuSize.width,
+                                                      container: proxy.size.width),
+                            y: MapMenuPlacement.place(click: mapClick.openPoint.y,
+                                                      extent: clickMenuSize.height,
+                                                      container: proxy.size.height))
+                    .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+            }
 
             GuidedConfirm(guided: guided)
                 .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .center)

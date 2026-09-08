@@ -73,6 +73,15 @@ final class VertexAnnotation: NSObject, MKAnnotation {
     }
 }
 
+final class ClickAnnotation: NSObject, MKAnnotation {
+    let coordinate: CLLocationCoordinate2D
+    let title: String? = "This spot"
+
+    init(point: GeoPoint) {
+        coordinate = CLLocationCoordinate2D(latitude: point.latitude, longitude: point.longitude)
+    }
+}
+
 final class RoiAnnotation: NSObject, MKAnnotation {
     let coordinate: CLLocationCoordinate2D
     let title: String? = "Looking here"
@@ -106,7 +115,7 @@ struct MissionMap: NSViewRepresentable {
     let adding: Bool
     let add: (Double, Double) -> Void
     let move: (Int, Double, Double) -> Void
-    var secondary: ((Double, Double) -> Void)?
+    var secondary: ((Double, Double, CGPoint) -> Void)?
     var surveys: [[GeoPoint]] = []
     var corridors: [[GeoPoint]] = []
     var focus: MapFrame?
@@ -173,6 +182,10 @@ struct MissionMap: NSViewRepresentable {
 
         if let going = overlays.goingTo {
             map.addAnnotation(GotoAnnotation(point: going))
+        }
+
+        if let clicked = overlays.clickedAt {
+            map.addAnnotation(ClickAnnotation(point: clicked))
         }
 
         if overlays.showsRoi, let looking = overlays.roiAt {
@@ -381,7 +394,7 @@ struct MissionMap: NSViewRepresentable {
         let select: (Int) -> Void
         var add: (Double, Double) -> Void = { _, _ in }
         var move: (Int, Double, Double) -> Void = { _, _, _ in }
-        var secondary: ((Double, Double) -> Void)?
+        var secondary: ((Double, Double, CGPoint) -> Void)?
         private var secondaryClick: NSClickGestureRecognizer?
         var lastFrame: MapFrame?
         var lastFocus: MapFrame?
@@ -410,7 +423,7 @@ struct MissionMap: NSViewRepresentable {
             guard let map = recognizer.view as? MKMapView else { return }
             let point = recognizer.location(in: map)
             let coordinate = map.convert(point, toCoordinateFrom: map)
-            secondary?(coordinate.latitude, coordinate.longitude)
+            secondary?(coordinate.latitude, coordinate.longitude, point)
         }
 
         func arm(_ adding: Bool, on map: MKMapView) {
@@ -459,8 +472,27 @@ struct MissionMap: NSViewRepresentable {
         var moveVertex: (Int, Int, Double, Double) -> Void = { _, _, _, _ in }
         var splitSegment: (Int, Int) -> Void = { _, _ in }
 
+        static let clickRing = Coordinator.ring(18)
         static let vertexDot = Coordinator.dot(NSColor.controlAccentColor, 12)
         static let midpointDot = Coordinator.dot(NSColor.white.withAlphaComponent(0.85), 9)
+
+        static func ring(_ size: CGFloat) -> NSImage {
+            let image = NSImage(size: NSSize(width: size, height: size))
+            image.lockFocus()
+            NSColor.black.withAlphaComponent(0.6).setStroke()
+            let outer = NSBezierPath(ovalIn: NSRect(x: 2, y: 2, width: size - 4, height: size - 4))
+            outer.lineWidth = 4
+            outer.stroke()
+            NSColor.white.setStroke()
+            let inner = NSBezierPath(ovalIn: NSRect(x: 2, y: 2, width: size - 4, height: size - 4))
+            inner.lineWidth = 2
+            inner.stroke()
+            NSColor.white.setFill()
+            let centre = size / 2
+            NSBezierPath(ovalIn: NSRect(x: centre - 2, y: centre - 2, width: 4, height: 4)).fill()
+            image.unlockFocus()
+            return image
+        }
 
         static func dot(_ colour: NSColor, _ size: CGFloat) -> NSImage {
             let image = NSImage(size: NSSize(width: size, height: size))
@@ -546,6 +578,15 @@ struct MissionMap: NSViewRepresentable {
                 view.annotation = vertex
                 view.image = vertex.midpoint ? Coordinator.midpointDot : Coordinator.vertexDot
                 view.isDraggable = !vertex.midpoint
+                view.canShowCallout = true
+                return view
+            }
+
+            if let clicked = annotation as? ClickAnnotation {
+                let view = mapView.dequeueReusableAnnotationView(withIdentifier: "click")
+                    ?? MKAnnotationView(annotation: clicked, reuseIdentifier: "click")
+                view.annotation = clicked
+                view.image = Coordinator.clickRing
                 view.canShowCallout = true
                 return view
             }
