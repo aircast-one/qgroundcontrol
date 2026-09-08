@@ -638,9 +638,12 @@ Safety-critical, deliberately last.
   work natively and move onto the native map.
 - Joystick: `Joystick/` C++ survives; HID rebinds to Android's `InputDevice` API. `JoystickAndroid`
   already exists.
-- Video: GStreamer is not Qt and survives. The Android build already carries `libgstapp` and
-  `libgstandroidmedia`, so the path is `appsink` → `ImageReader`/`Surface` → Compose, replacing the
-  QML GL sink. Hardware decode via `androidmedia` is already in use.
+- Video: GStreamer is not Qt and survives, and the Android build carries `libgstapp` and
+  `libgstandroidmedia`. But **the `appsink` → `ImageReader` → Compose path written here does not
+  work**: `amcviddec` negotiates `video/x-raw(memory:GLMemory), format=RGBA`, and `videoconvert`
+  cannot take it, so the pipeline fails `not-negotiated (-4)` with zero frames. See the Phase 5
+  section above. The frames never reach system memory, so the sink has to meet the texture where it
+  is — a `Surface`/`SurfaceTexture` the decoder renders into — rather than being fed by a CPU copy.
 
 **Gate (HW):** every guided action verified on PX4 and ArduPilot. Confirmation control cannot be
 actuated accidentally. Sub-200 ms glass-to-glass on WHEP. A 30-minute flight with flat memory.
