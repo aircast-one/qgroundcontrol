@@ -453,11 +453,23 @@ A warning was attempted three times and withdrawn (`58295f8`). Each predicate �
 is the item complex, did anything on the map come from it, does it specify a
 coordinate — fired on ordinary plans, because Mission Start satisfies all three
 while being drawn or being nothing. A warning that fires on every plan is worse
-than the gap it names, since it trains the pilot to ignore the next one. Whoever
-picks this up should start from a plan that actually contains a corridor scan
-and read its real serialisation, rather than reasoning about what the fields
-ought to mean. The gate above is unaffected for surveys but cannot be claimed
-for a mixed plan.
+than the gap it names, since it trains the pilot to ignore the next one.
+
+**The reason all three failed is now fixed.** Every one was reasoning about the
+*shape* of an object because it could not ask what the object *was*: the bridge
+serialised properties, facts and children, but never the type. `objectJson` now
+carries the runtime class name, so a client can name the item exactly —
+`CorridorScanComplexItem`, `StructureScanComplexItem`, `FixedWingLandingComplexItem`,
+`VTOLLandingComplexItem` — instead of inferring from fields that several types share.
+The bridge test inserts a real corridor scan next to a simple waypoint and asserts
+each reports its own class, which is the "read the real serialisation" this note
+asked for.
+
+That supplies the discriminator and nothing more. Still to do: either draw those
+three, or warn naming the specific items, and the warning is now cheap to make
+correct because it can list what it could not draw rather than guessing that
+something is missing. **Android needs an AAR rebuild before it sees the field.**
+The gate above is unaffected for surveys but cannot be claimed for a mixed plan.
 
 ### Plan files — scope the plan missed
 
