@@ -167,8 +167,7 @@ fun FlightActions(modifier: Modifier = Modifier) {
     val altitudeRange = remember(altitudeJson) { guidedAltitude(altitudeJson) }
     var speedTarget by remember { mutableStateOf<Double?>(null) }
     var speedSettled by remember { mutableStateOf<Double?>(null) }
-    val speedJson by qgcPath(GUIDED_SPEED)
-    val speedRange = remember(speedJson) { guidedSpeed(speedJson) }
+    var speedRange by remember { mutableStateOf<GuidedSpeed?>(null) }
     val actionsJson by qgcPath(GUIDED_ACTIONS)
     val offers = remember(actionsJson) { guidedOffers(actionsJson) }
 
@@ -250,10 +249,20 @@ fun FlightActions(modifier: Modifier = Modifier) {
             }) { Text("RTL") }
 
             OutlinedButton(
-                enabled = offers["changeSpeed"]?.ready == true && speedRangeUsable(speedRange),
+                enabled = offers["changeSpeed"]?.ready == true,
                 onClick = {
-                    speedTarget = speedRange?.initial
-                    speedSettled = speedRange?.initial
+                    scope.launch {
+                        val fresh = withContext(Dispatchers.Default) {
+                            guidedSpeed(Qgc.get(GUIDED_SPEED))
+                        }
+                        if (!speedRangeUsable(fresh)) {
+                            refusal = "This vehicle did not report a speed range."
+                            return@launch
+                        }
+                        speedRange = fresh
+                        speedTarget = fresh?.initial
+                        speedSettled = fresh?.initial
+                    }
                 },
             ) { Text("Speed") }
 
