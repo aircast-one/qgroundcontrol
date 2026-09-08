@@ -1160,12 +1160,23 @@ app's plain `ComponentActivity` did not - `JNI_OnLoad` threw `NoSuchMethodError`
 library never finished loading. A no-op method fixes that, and `JNI_OnLoad` now completes with
 every native function registered and Qt started.
 
-**It still does not get past the splash, and that is unresolved.** What is known: the process
-lives, the main thread stops producing log lines just after Qt starts, and neither Compose nor
-QML draws. What is *not* known is which change caused it, and the honest reason is that the
-previous AAR was stale by a long way - the stall cannot be pinned on the C ABI reroute rather
-than on anything else that accumulated. Whoever picks this up should bisect the AAR, not guess.
-The stale artifact had been hiding this the whole time.
+**The stall was a deadlock in the reroute, and it is fixed.** `qgc_qt_watch` wrapped
+`QGCBridgeCore::watch` in a blocking hop to the Qt thread, where the JNI head had always called
+it directly and the core posts it. During start-up Qt's Android plugin blocks on the main
+thread while the head registers its first watch from that same main thread: the main thread
+waits for Qt, Qt waits for the main thread. That is exactly the shape of "the main thread goes
+quiet just after qt started". Diagnosed by the core session from that description; the fix is
+`1535fb654`, and an AAR built at that commit starts.
+
+Everything this document claims about the Android screens was **re-verified against that AAR**,
+not the stale one: battery, RC, GPS, vibration bands, message log, log list and both cameras.
+The re-run matters, because until it was done every screen result of that night rested on
+native code older than `fork/main`.
+
+The lasting lesson is about the artifact, not the deadlock. The AAR had gone unrebuilt long
+enough to hide two compile errors and a start-up deadlock, and it hid them precisely because it
+kept working. A prebuilt artifact that nobody rebuilds stops being a convenience and becomes a
+place for breakage to accumulate unseen.
 
 Auditing the rest of the sim against what the screens read turned up two more. The vehicle
 message log had never carried a message, because the sim sent no `STATUSTEXT`; fed four of
