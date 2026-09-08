@@ -2,6 +2,7 @@ package one.aircast.android.ui
 
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull
+import org.json.JSONObject
 import org.junit.Test
 
 class VehicleMessagesTest {
@@ -71,72 +72,28 @@ class VehicleMessagesTest {
         assertEquals(listOf("Land complete"), vehicleMessageLines("<font>Land complete</font>"))
     }
 
-    private fun blocker(
-        armed: Boolean = false,
-        prearmError: String = "",
-        allSensorsHealthy: Boolean = true,
-        readyToFlyAvailable: Boolean = true,
-        readyToFly: Boolean = true,
-        requiresGpsFix: Boolean = false,
-        hasPositionFix: Boolean = true,
-    ) = flightBlocker(
-        armed, prearmError, allSensorsHealthy, readyToFlyAvailable, readyToFly,
-        requiresGpsFix, hasPositionFix,
-    )
+
+
+
+
+
+
+
+
 
     @Test
-    fun `a vehicle that needs a fix and has none says so`() {
+    fun `a null blocker is no blocker, not the word null`() {
+        assertNull(armingBlocker(JSONObject("""{"armingBlocker":null}""")))
+        assertNull(armingBlocker(JSONObject("""{"armingBlocker":""}""")))
+        assertNull(armingBlocker(JSONObject("{}")))
+        assertNull(armingBlocker(null))
+    }
+
+    @Test
+    fun `a real blocker is passed through as the core worded it`() {
         assertEquals(
             "No GPS lock. This vehicle needs a position fix before it will arm.",
-            blocker(requiresGpsFix = true, hasPositionFix = false),
+            armingBlocker(JSONObject("""{"armingBlocker":"No GPS lock. This vehicle needs a position fix before it will arm."}""")),
         )
-    }
-
-    @Test
-    fun `a vehicle that does not need a fix is not warned about one`() {
-        assertNull(blocker(requiresGpsFix = false, hasPositionFix = false))
-    }
-
-    @Test
-    fun `the vehicle's own words win over my sentence about the fix`() {
-        assertEquals(
-            "PreArm: Need 3D Fix",
-            blocker(prearmError = "PreArm: Need 3D Fix", requiresGpsFix = true, hasPositionFix = false),
-        )
-    }
-
-    @Test
-    fun `an armed vehicle is never told what is blocking it`() {
-        assertNull(blocker(armed = true, prearmError = "PreArm: Need 3D Fix", allSensorsHealthy = false))
-    }
-
-    @Test
-    fun `the vehicle's own prearm text wins over anything I could word`() {
-        assertEquals(
-            "PreArm: Need 3D Fix",
-            blocker(prearmError = "PreArm: Need 3D Fix", allSensorsHealthy = false),
-        )
-    }
-
-    @Test
-    fun `an unhealthy sensor is named when the vehicle gives no prearm text`() {
-        assertEquals(
-            "A sensor is reporting unhealthy. The vehicle will refuse to arm.",
-            blocker(allSensorsHealthy = false, readyToFlyAvailable = false),
-        )
-    }
-
-    @Test
-    fun `not-ready-to-fly only counts when the vehicle signals readiness at all`() {
-        assertEquals(
-            "The vehicle is not ready to fly yet.",
-            blocker(readyToFly = false),
-        )
-        assertNull(blocker(readyToFlyAvailable = false, readyToFly = false))
-    }
-
-    @Test
-    fun `a healthy disarmed vehicle shows nothing`() {
-        assertNull(blocker())
     }
 }
