@@ -522,7 +522,8 @@ final class MissionStore: ObservableObject, Probeable, WriteReporting {
     // Built once: every centreState call reads the bridge, and asking six times over could
     // report a menu no single moment ever showed.
     private func centreProbe() -> [String: Any] {
-        let state = centreState(fence: [], rally: [])
+        let points = FenceRallyStore.planPoints()
+        let state = centreState(fence: points.fence, rally: points.rally)
         return ["open": centreMenuOpen,
                 "focused": focus != nil,
                 "access": "\(MissionStore.locationAccess)",

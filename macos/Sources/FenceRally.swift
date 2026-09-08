@@ -32,15 +32,8 @@ final class FenceRallyStore: ObservableObject, Probeable, WriteReporting {
         fenceSupported = (fence["supported"] as? NSNumber)?.boolValue ?? false
         rallySupported = (Bridge.group("plan.rallyPointController")["supported"] as? NSNumber)?.boolValue ?? false
 
-        let polygons = elements("plan.geoFenceController.polygons")
-        let circles = elements("plan.geoFenceController.circles")
-        shapes = polygons.enumerated().map { FenceShape(json: $0.element, id: $0.offset, circle: false) }
-            + circles.enumerated().map {
-                FenceShape(json: $0.element, id: polygons.count + $0.offset, circle: true)
-            }
-
-        rallyPoints = elements("plan.rallyPointController.points")
-            .enumerated().map { RallyPointRow(json: $0.element, id: $0.offset) }
+        shapes = FenceRallyStore.readShapes()
+        rallyPoints = FenceRallyStore.readRally()
 
         breachReturn = (fence["breachReturnPoint"] as? [String: Any])
             .map { RallyPointRow(json: ["coordinate": $0], id: -1) }
@@ -166,9 +159,43 @@ final class FenceRallyStore: ObservableObject, Probeable, WriteReporting {
         reload()
     }
 
-    private func elements(_ path: String) -> [[String: Any]] {
+    var framingPoints: [GeoPoint] { shapes.flatMap(\.framingPoints) }
+
+    var rallyGeoPoints: [GeoPoint] { FenceRallyStore.geoPoints(rallyPoints) }
+
+    static func geoPoints(_ rows: [RallyPointRow]) -> [GeoPoint] {
+        rows.compactMap { row in
+            guard let latitude = row.latitude, let longitude = row.longitude else { return nil }
+            return GeoPoint(latitude: latitude, longitude: longitude)
+        }
+    }
+
+    static func readShapes() -> [FenceShape] {
+        let polygons = elements("plan.geoFenceController.polygons")
+        let circles = elements("plan.geoFenceController.circles")
+        return polygons.enumerated().map { FenceShape(json: $0.element, id: $0.offset, circle: false) }
+            + circles.enumerated().map {
+                FenceShape(json: $0.element, id: polygons.count + $0.offset, circle: true)
+            }
+    }
+
+    static func readRally() -> [RallyPointRow] {
+        elements("plan.rallyPointController.points")
+            .enumerated().map { RallyPointRow(json: $0.element, id: $0.offset) }
+    }
+
+    // The mission probe reports the centre menu but cannot see this store, and a probe that
+    // computes a field differently from the screen can never disagree with it. It reads through
+    // the same two builders the view's state comes from, so a new shape kind reaches both.
+    static func planPoints() -> (fence: [GeoPoint], rally: [GeoPoint]) {
+        (readShapes().flatMap(\.framingPoints), geoPoints(readRally()))
+    }
+
+    static func elements(_ path: String) -> [[String: Any]] {
         (Bridge.group(path)["elements"] as? [[String: Any]]) ?? []
     }
+
+    private func elements(_ path: String) -> [[String: Any]] { FenceRallyStore.elements(path) }
 
     func probeState() -> [String: Any] {
         ["shapes": shapes.count, "rallyPoints": rallyPoints.count,

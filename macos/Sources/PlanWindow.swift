@@ -1136,16 +1136,9 @@ struct PlanView: View {
         }
     }
 
-    private var fencePoints: [GeoPoint] {
-        fenceRally.shapes.flatMap(\.framingPoints)
-    }
+    private var fencePoints: [GeoPoint] { fenceRally.framingPoints }
 
-    private var rallyPoints: [GeoPoint] {
-        fenceRally.rallyPoints.compactMap { point in
-            guard let latitude = point.latitude, let longitude = point.longitude else { return nil }
-            return GeoPoint(latitude: latitude, longitude: longitude)
-        }
-    }
+    private var rallyPoints: [GeoPoint] { fenceRally.rallyGeoPoints }
 
     private func place(latitude: Double, longitude: Double) {
         if fenceRally.armingRally {
