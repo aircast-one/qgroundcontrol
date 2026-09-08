@@ -73,7 +73,7 @@ internal fun vibrationReading(view: JSONObject?): VibrationReading? {
         axes = (0 until axes.length()).mapNotNull { index ->
             axes.optJSONObject(index)?.let { axis ->
                 VibrationAxis(
-                    axis = axis.optString("axis"),
+                    axis = axis.stringOrNull("label") ?: axis.optString("axis").uppercase(Locale.US),
                     value = axis.doubleOrNull("value"),
                     fraction = axis.doubleOrNull("fraction")?.toFloat() ?: 0f,
                     severity = axis.stringOrNull("severity"),
@@ -164,7 +164,7 @@ private fun VibrationReadout(axis: VibrationAxis, modifier: Modifier = Modifier)
             text = axis.value?.let { String.format(Locale.US, "%.1f", it) } ?: "--",
             style = MaterialTheme.typography.titleMedium,
         )
-        Text(text = axis.axis.uppercase(Locale.US), style = MaterialTheme.typography.labelLarge)
+        Text(text = axis.axis, style = MaterialTheme.typography.labelLarge)
         Text(text = severityLabel(axis.severity), style = MaterialTheme.typography.labelMedium)
     }
 }

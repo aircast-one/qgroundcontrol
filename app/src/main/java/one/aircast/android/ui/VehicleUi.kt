@@ -51,7 +51,8 @@ import one.aircast.android.bridge.qgcString
 import one.aircast.android.bridge.qgcStrings
 
 private const val FALLBACK_TAKEOFF_ALTITUDE_METERS = 3.0
-private const val INSTRUMENTS = "view.instruments"
+private const val INSTRUMENTS =
+    "view.instruments(altitudeRelative,groundSpeed,distanceToHome,heading)"
 
 internal data class GuidedAction(
     val name: String,
