@@ -44,6 +44,7 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import org.json.JSONObject
 import one.aircast.android.bridge.Qgc
+import one.aircast.android.bridge.offMainDetached
 import one.aircast.android.bridge.qgcBool
 import one.aircast.android.bridge.qgcPath
 
@@ -253,42 +254,17 @@ private fun AddLinkDialog(onDismiss: () -> Unit, onAdded: () -> Unit) {
     )
 }
 
-// A link call that fails leaves the row exactly as it was, which is also what a call
-// that has not finished yet looks like. Without this a refused Connect is a tap that
-// does nothing, and the pilot has no way to tell it from a slow one.
-internal fun linkFailure(action: String, done: Boolean): String? =
-    if (done) null else "Could not $action that link."
-
 @Composable
 fun LinksScreen(modifier: Modifier = Modifier) {
     val json by qgcPath(LINKS_PATH)
     val hasVehicle by qgcBool("vehicles.activeVehicleAvailable")
     val rows = configuredRows(linkRows(json))
-    val scope = rememberCoroutineScope()
 
-    var notice by remember { mutableStateOf<String?>(null) }
     var adding by remember { mutableStateOf(false) }
-
-    fun attempt(action: String, call: () -> Boolean) {
-        scope.launch {
-            val done = withContext(Dispatchers.Default) { call() }
-            notice = linkFailure(action, done)
-        }
-    }
     var confirmingDisconnect by remember { mutableStateOf<LinkRow?>(null) }
     var confirmingRemove by remember { mutableStateOf<LinkRow?>(null) }
 
-    Column(modifier.fillMaxSize()) {
-    notice?.let {
-        Text(
-            text = it,
-            style = MaterialTheme.typography.bodySmall,
-            color = MaterialTheme.colorScheme.error,
-            modifier = Modifier.padding(horizontal = 20.dp, vertical = 8.dp),
-        )
-    }
-
-    LazyColumn(Modifier.weight(1f)) {
+    LazyColumn(modifier.fillMaxSize()) {
         if (rows.isEmpty()) {
             item(key = "empty") {
                 FootNote(
@@ -301,7 +277,7 @@ fun LinksScreen(modifier: Modifier = Modifier) {
                 LinkRowItem(
                     row = row,
                     onConnect = {
-                        attempt("connect") {
+                        offMainDetached {
                             Qgc.invoke("links.createConnectedLink", "@$LINKS_PATH.${row.index}")
                         }
                     },
@@ -309,9 +285,7 @@ fun LinksScreen(modifier: Modifier = Modifier) {
                         if (hasVehicle) {
                             confirmingDisconnect = row
                         } else {
-                            attempt("disconnect") {
-                                Qgc.invoke("$LINKS_PATH.${row.index}.link.disconnect")
-                            }
+                            offMainDetached { Qgc.invoke("$LINKS_PATH.${row.index}.link.disconnect") }
                         }
                     },
                     onRemove = { confirmingRemove = row },
@@ -336,8 +310,6 @@ fun LinksScreen(modifier: Modifier = Modifier) {
         }
     }
 
-    }
-
     if (adding) {
         AddLinkDialog(onDismiss = { adding = false }, onAdded = { adding = false })
     }
@@ -354,7 +326,7 @@ fun LinksScreen(modifier: Modifier = Modifier) {
             },
             confirmButton = {
                 Button(onClick = {
-                    attempt("disconnect") { Qgc.invoke("$LINKS_PATH.${row.index}.link.disconnect") }
+                    offMainDetached { Qgc.invoke("$LINKS_PATH.${row.index}.link.disconnect") }
                     confirmingDisconnect = null
                 }) { Text("Disconnect") }
             },
@@ -380,9 +352,7 @@ fun LinksScreen(modifier: Modifier = Modifier) {
             },
             confirmButton = {
                 Button(onClick = {
-                    attempt("remove") {
-                        Qgc.invoke("links.removeConfiguration", "@$LINKS_PATH.${row.index}")
-                    }
+                    offMainDetached { Qgc.invoke("links.removeConfiguration", "@$LINKS_PATH.${row.index}") }
                     confirmingRemove = null
                 }) { Text("Remove") }
             },

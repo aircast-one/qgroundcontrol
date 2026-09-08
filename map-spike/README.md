@@ -431,6 +431,28 @@ Survey - no vehicle, and touch nothing else. Before: "1 item, 56 survey pts,
 4.92 km" at 20000 km, a black screen with one dot. After: the same plan at
 200 m with its transects and handles.
 
+## Which calls can be checked, and which cannot
+
+Worth knowing before trusting any of them, because the answer is a property of
+the C++ signature rather than of the bridge.
+
+Everything on `MissionController` that inserts returns a `VisualMissionItem*`:
+`insertSimpleMissionItem`, `insertTakeoffItem`, `insertLandItem`,
+`insertComplexMissionItem`. Those can be checked - `insertedItem` requires an
+object in `result`, and a null pointer arrives as `{"kind":"null"}` under an
+`ok` of true.
+
+Everything on the fence and rally controllers is void:
+`addInclusionPolygon`, `addInclusionCircle`, `deletePolygon`, `deleteCircle`,
+`RallyPointController::addPoint` and `removePoint`, and `QGCMapPolygon::appendVertex`.
+For those `ok` means the method was found and invoked and can mean nothing more,
+so the only check is reading the plan back on the next poll and seeing the thing
+appear. Verified that way: a fence, a circle and a rally point read back as
+"2 fences · 1 rally".
+
+So a false success is structurally possible on the void half and structurally
+impossible on the other, and the difference is not visible from the Kotlin.
+
 ## ok is not the same as done, again
 
 `insertTakeoffItem` throws away the coordinate it is handed - the parameter is
