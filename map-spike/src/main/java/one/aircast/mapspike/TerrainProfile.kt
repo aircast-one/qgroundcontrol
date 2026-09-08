@@ -1,7 +1,6 @@
 package one.aircast.mapspike
 
 import org.json.JSONObject
-import org.mavlink.qgroundcontrol.QGCBridge
 import kotlin.math.asin
 import kotlin.math.cos
 import kotlin.math.max
@@ -113,8 +112,4 @@ fun terrainProfile(json: JSONObject?): TerrainProfile {
             }
             .points,
     )
-}
-
-object TerrainBridge {
-    fun profile(): TerrainProfile = terrainProfile(PlanBridge.rawItems())
 }
