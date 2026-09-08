@@ -610,6 +610,26 @@ ways to do one thing, when one moves a plan to and from the aircraft and the oth
 file. Taking QGC's vocabulary rather than inventing keeps the two pairs distinct without anyone
 having to learn a local dialect.
 
+## Committing in a shared tree
+
+`git commit` writes the whole index, not the paths you staged. Another session
+editing `:app` or `qgroundcontrol` in the same checkout leaves entries in that
+index, and committing from here silently reverts their files inside a commit
+whose message says map-spike. It happened seven times in one day before anyone
+noticed, and only the last one stuck - the six before it were masked because the
+other session committed again afterwards and put the content back.
+
+    git commit --only map-spike -F -
+
+That takes the working-tree version of those paths and leaves the rest of the
+index alone. Verify with a scratch index rather than `git diff`, which reads the
+stale one:
+
+    IDX=$(mktemp); GIT_INDEX_FILE=$IDX sh -c 'git read-tree HEAD && git status --porcelain'; rm -f $IDX
+
+Empty means HEAD matches the tree. `git log` proves nothing here: the commit
+stays in history while its content is undone.
+
 ## Scripting the controls
 
 The control panel is anchored to the bottom and grows with what the plan contains, so every button
