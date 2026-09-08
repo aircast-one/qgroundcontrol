@@ -40,11 +40,12 @@ import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withTimeoutOrNull
 import kotlinx.coroutines.withContext
 import org.json.JSONObject
 import one.aircast.android.bridge.Qgc
-import one.aircast.android.bridge.offMainDetached
 import one.aircast.android.bridge.qgcBool
 import one.aircast.android.bridge.qgcPath
 
@@ -254,17 +255,53 @@ private fun AddLinkDialog(onDismiss: () -> Unit, onAdded: () -> Unit) {
     )
 }
 
+private const val LINK_SETTLE_MS = 4000L
+
+// createConnectedLink, disconnect and removeConfiguration are all void, so the bridge's
+// ok says the method was found and called and cannot say it worked — only
+// createAndConnectLink returns a bool. The check is therefore reading the link list back
+// until it shows what the call was supposed to do.
+internal fun linkFailure(action: String, done: Boolean): String? =
+    if (done) null else "Could not $action that link."
+
+private fun currentRows(): List<LinkRow> = linkRows(Qgc.get(LINKS_PATH))
+
 @Composable
 fun LinksScreen(modifier: Modifier = Modifier) {
     val json by qgcPath(LINKS_PATH)
     val hasVehicle by qgcBool("vehicles.activeVehicleAvailable")
     val rows = configuredRows(linkRows(json))
+    val scope = rememberCoroutineScope()
 
+    var notice by remember { mutableStateOf<String?>(null) }
     var adding by remember { mutableStateOf(false) }
+
+    fun attempt(action: String, settled: () -> Boolean, call: () -> Boolean) {
+        scope.launch {
+            val dispatched = withContext(Dispatchers.Default) { call() }
+            val done = dispatched && withTimeoutOrNull(LINK_SETTLE_MS) {
+                while (!withContext(Dispatchers.Default) { settled() }) {
+                    delay(150)
+                }
+                true
+            } == true
+            notice = linkFailure(action, done)
+        }
+    }
     var confirmingDisconnect by remember { mutableStateOf<LinkRow?>(null) }
     var confirmingRemove by remember { mutableStateOf<LinkRow?>(null) }
 
-    LazyColumn(modifier.fillMaxSize()) {
+    Column(modifier.fillMaxSize()) {
+    notice?.let {
+        Text(
+            text = it,
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.error,
+            modifier = Modifier.padding(horizontal = 20.dp, vertical = 8.dp),
+        )
+    }
+
+    LazyColumn(Modifier.weight(1f)) {
         if (rows.isEmpty()) {
             item(key = "empty") {
                 FootNote(
@@ -277,15 +314,19 @@ fun LinksScreen(modifier: Modifier = Modifier) {
                 LinkRowItem(
                     row = row,
                     onConnect = {
-                        offMainDetached {
-                            Qgc.invoke("links.createConnectedLink", "@$LINKS_PATH.${row.index}")
-                        }
+                        attempt(
+                            action = "connect",
+                            settled = { currentRows().getOrNull(row.index)?.connected == true },
+                        ) { Qgc.invoke("links.createConnectedLink", "@$LINKS_PATH.${row.index}") }
                     },
                     onDisconnect = {
                         if (hasVehicle) {
                             confirmingDisconnect = row
                         } else {
-                            offMainDetached { Qgc.invoke("$LINKS_PATH.${row.index}.link.disconnect") }
+                            attempt(
+                                action = "disconnect",
+                                settled = { currentRows().getOrNull(row.index)?.connected != true },
+                            ) { Qgc.invoke("$LINKS_PATH.${row.index}.link.disconnect") }
                         }
                     },
                     onRemove = { confirmingRemove = row },
@@ -310,6 +351,8 @@ fun LinksScreen(modifier: Modifier = Modifier) {
         }
     }
 
+    }
+
     if (adding) {
         AddLinkDialog(onDismiss = { adding = false }, onAdded = { adding = false })
     }
@@ -326,7 +369,10 @@ fun LinksScreen(modifier: Modifier = Modifier) {
             },
             confirmButton = {
                 Button(onClick = {
-                    offMainDetached { Qgc.invoke("$LINKS_PATH.${row.index}.link.disconnect") }
+                    attempt(
+                        action = "disconnect",
+                        settled = { currentRows().getOrNull(row.index)?.connected != true },
+                    ) { Qgc.invoke("$LINKS_PATH.${row.index}.link.disconnect") }
                     confirmingDisconnect = null
                 }) { Text("Disconnect") }
             },
@@ -352,7 +398,10 @@ fun LinksScreen(modifier: Modifier = Modifier) {
             },
             confirmButton = {
                 Button(onClick = {
-                    offMainDetached { Qgc.invoke("links.removeConfiguration", "@$LINKS_PATH.${row.index}") }
+                    attempt(
+                        action = "remove",
+                        settled = { currentRows().none { it.name == row.name } },
+                    ) { Qgc.invoke("links.removeConfiguration", "@$LINKS_PATH.${row.index}") }
                     confirmingRemove = null
                 }) { Text("Remove") }
             },
