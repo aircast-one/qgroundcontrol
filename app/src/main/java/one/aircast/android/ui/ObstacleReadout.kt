@@ -28,8 +28,11 @@ fun ObstacleReadout(modifier: Modifier = Modifier) {
     val angleOffset by qgcDouble("$AVOIDANCE.angleOffset")
     val minDistance by qgcDouble("$AVOIDANCE.minDistance")
     val maxDistance by qgcDouble("$AVOIDANCE.maxDistance")
+    val msSinceUpdate by qgcDouble("$AVOIDANCE.msSinceUpdate")
 
-    if (!available) {
+    // Nothing here is ever cleared, so a sensor that stops leaves the last reading in
+    // place. Without this the readout keeps naming an obstacle that may be long gone.
+    if (!available || obstacleIsStale(msSinceUpdate.toLong())) {
         return
     }
 

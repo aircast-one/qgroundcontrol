@@ -42,3 +42,8 @@ internal fun obstacleLabel(obstacle: Obstacle?): String? = obstacle?.let {
 
 internal fun obstacleIsClose(obstacle: Obstacle?, minCm: Int): Boolean =
     obstacle != null && (obstacle.metres * 100).roundToInt() <= minCm * 2
+
+internal const val OBSTACLE_STALE_MS = 3000L
+
+internal fun obstacleIsStale(msSinceUpdate: Long): Boolean =
+    msSinceUpdate < 0 || msSinceUpdate > OBSTACLE_STALE_MS

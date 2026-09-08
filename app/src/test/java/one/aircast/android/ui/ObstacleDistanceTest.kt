@@ -56,4 +56,16 @@ class ObstacleDistanceTest {
         assertEquals("3.2 m right", obstacleLabel(Obstacle(3.2, 90.0)))
         assertNull(obstacleLabel(null))
     }
+
+    @Test
+    fun `a reading older than the stale window is not shown`() {
+        assertEquals(false, obstacleIsStale(0L))
+        assertEquals(false, obstacleIsStale(OBSTACLE_STALE_MS))
+        assertEquals(true, obstacleIsStale(OBSTACLE_STALE_MS + 1))
+    }
+
+    @Test
+    fun `never having heard from the sensor is stale, not fresh`() {
+        assertEquals(true, obstacleIsStale(-1L))
+    }
 }
