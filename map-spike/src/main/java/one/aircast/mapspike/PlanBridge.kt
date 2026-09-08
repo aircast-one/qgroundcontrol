@@ -25,6 +25,17 @@ fun complexIndices(json: JSONObject?): List<Int> {
     }
 }
 
+fun complexKey(json: JSONObject?, index: Int): String {
+    val element = json?.optJSONArray("elements")?.optJSONObject(index) ?: return ""
+    val coordinate = element.optJSONObject("coordinate")
+
+    return listOf(
+        coordinate?.optDouble("latitude", Double.NaN),
+        coordinate?.optDouble("longitude", Double.NaN),
+        element.optDouble("complexDistance", 0.0),
+    ).joinToString(",")
+}
+
 fun planShape(json: JSONObject?): List<String> {
     val elements = json?.optJSONArray("elements") ?: return emptyList()
     val endsAfter = routeEndsAfter(elements)

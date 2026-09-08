@@ -18,6 +18,7 @@ import androidx.compose.ui.unit.dp
 
 private val TERRAIN_COLOUR = Color(0xFF8D6E63)
 private val PLANNED_COLOUR = Color(0xFF4FC3F7)
+private const val FULL_TERRAIN = 0.98
 
 internal fun profileOffsets(
     profile: TerrainProfile,
@@ -39,6 +40,13 @@ internal fun profileOffsets(
     }
 }
 
+internal fun groundOutline(terrain: List<Offset>, height: Float): List<Offset> =
+    if (terrain.size < 2) {
+        emptyList()
+    } else {
+        terrain + Offset(terrain.last().x, height) + Offset(terrain.first().x, height)
+    }
+
 private fun pathOf(points: List<Offset>): Path = Path().apply {
     points.forEachIndexed { index, offset ->
         if (index == 0) moveTo(offset.x, offset.y) else lineTo(offset.x, offset.y)
@@ -52,7 +60,13 @@ internal fun profileLabel(profile: TerrainProfile): String =
         "${profile.lowest.toInt()}\u2013${profile.highest.toInt()} m AMSL"
     }) +
         " \u00b7 ${(profile.distance / 1000).format2()} km" +
-        if (profile.hasTerrain) "" else " \u00b7 ground height unknown"
+        when {
+            !profile.hasTerrain -> " \u00b7 ground height unknown"
+            profile.terrainCoverage < FULL_TERRAIN ->
+                " \u00b7 ground height for ${(profile.terrainCoverage * 100).toInt().coerceAtLeast(1)}% " +
+                    "of the route"
+            else -> ""
+        }
 
 @Composable
 fun TerrainProfileView(profile: TerrainProfile, modifier: Modifier = Modifier) {
@@ -87,11 +101,7 @@ fun TerrainProfileView(profile: TerrainProfile, modifier: Modifier = Modifier) {
                 val planned = profileOffsets(profile, size.width, size.height) { it.planned }
 
                 if (terrain.size >= 2) {
-                    val ground = pathOf(terrain).apply {
-                        lineTo(size.width, size.height)
-                        lineTo(0f, size.height)
-                        close()
-                    }
+                    val ground = pathOf(groundOutline(terrain, size.height)).apply { close() }
                     drawPath(ground, TERRAIN_COLOUR.copy(alpha = 0.45f))
                     drawPath(pathOf(terrain), TERRAIN_COLOUR, style = androidx.compose.ui.graphics.drawscope.Stroke(3f))
                 }

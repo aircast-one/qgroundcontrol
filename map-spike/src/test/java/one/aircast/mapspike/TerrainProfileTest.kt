@@ -396,6 +396,34 @@ class ProfileLabelTest {
     }
 
     @Test
+    fun `ground under part of the route says how much`() {
+        assertEquals(
+            "40\u201390 m AMSL \u00b7 1.00 km \u00b7 ground height for 50% of the route",
+            profileLabel(
+                profile(
+                    ProfilePoint(0.0, 40.0, 40.0),
+                    ProfilePoint(500.0, 45.0, 65.0),
+                    ProfilePoint(1000.0, null, 90.0),
+                ),
+            ),
+        )
+    }
+
+    @Test
+    fun `a sliver of ground is never reported as none of the route`() {
+        assertEquals(
+            "40\u201390 m AMSL \u00b7 1.00 km \u00b7 ground height for 1% of the route",
+            profileLabel(
+                profile(
+                    ProfilePoint(0.0, 40.0, 40.0),
+                    ProfilePoint(1.0, 41.0, 41.0),
+                    ProfilePoint(1000.0, null, 90.0),
+                ),
+            ),
+        )
+    }
+
+    @Test
     fun `known ground height drops the caveat`() {
         assertEquals(
             "40\u201390 m AMSL \u00b7 0.50 km",

@@ -29,6 +29,13 @@ data class TerrainProfile(val points: List<ProfilePoint>) {
 
     val hasTerrain: Boolean get() = points.count { it.terrain != null } >= 2
 
+    val terrainCoverage: Double
+        get() = distance.takeIf { it > 0.0 }?.let { total ->
+            points.zipWithNext()
+                .filter { (from, to) -> from.terrain != null && to.terrain != null }
+                .sumOf { (from, to) -> to.distance - from.distance } / total
+        } ?: 0.0
+
     val span: Double get() = (highest - lowest).coerceAtLeast(MIN_SPAN_METRES)
 
     val flat: Boolean get() = highest - lowest < MIN_SPAN_METRES
@@ -148,27 +155,34 @@ fun terrainProfile(
 
 const val SEGMENT_READS_PER_POLL = 4
 
+fun stillTheSameItems(was: Map<Int, String>, now: Map<Int, String>): Set<Int> =
+    now.filterKeys { was[it] == now[it] }.keys
+
+fun readThisPoll(indices: List<Int>, from: Int): Set<Int> =
+    if (indices.isEmpty()) {
+        emptySet()
+    } else {
+        (0 until minOf(SEGMENT_READS_PER_POLL, indices.size))
+            .map { indices[(from % indices.size + it) % indices.size] }
+            .toSet()
+    }
+
 object SegmentBridge {
-    private val held = mutableMapOf<Int, JSONObject?>()
+    private var held = emptyMap<Int, JSONObject?>()
+    private var keys = emptyMap<Int, String>()
     private var next = 0
     private var refreshing = emptySet<Int>()
-    private var lastCount = -1
 
-    fun beginPoll(itemCount: Int, complexIndices: List<Int>) {
-        if (itemCount != lastCount) {
-            held.clear()
-            next = 0
-            lastCount = itemCount
-        }
-        if (complexIndices.isEmpty()) {
-            refreshing = emptySet()
-            return
-        }
-        val start = next % complexIndices.size
-        refreshing = (0 until minOf(SEGMENT_READS_PER_POLL, complexIndices.size))
-            .map { complexIndices[(start + it) % complexIndices.size] }
-            .toSet()
-        next = start + refreshing.size
+    fun beginPoll(json: JSONObject?) {
+        val indices = complexIndices(json)
+        val fresh = indices.associateWith { complexKey(json, it) }
+
+        val kept = stillTheSameItems(keys, fresh)
+
+        held = held.filterKeys { it in kept }
+        keys = fresh
+        refreshing = readThisPoll(indices, next)
+        next += refreshing.size
     }
 
     fun forItem(index: Int): JSONObject? {
@@ -180,7 +194,7 @@ object SegmentBridge {
                 QGCBridge.get("plan.missionController.visualItems.$index.flightPathSegments"),
             )
         }.getOrNull()
-        held[index] = read
+        held = held + (index to read)
         return read
     }
 }

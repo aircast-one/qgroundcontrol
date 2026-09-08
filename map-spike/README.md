@@ -96,6 +96,15 @@ chart, and in the ground curve underneath it. A second survey carries on from wh
 ended: 10.80 km in the profile against 10.80 km in the status line, with the ground running
 under both.
 
+The ground fill closed to the bottom-right corner of the chart no matter where
+terrain data actually stopped, so a route with ground under its first tenth drew
+a smooth ramp across the other nine - a confident slope over ground nobody had
+measured. It reads as terrain, not as a gap, and the AMSL range printed with it
+was real at one end and an artifact at the other. `groundOutline` now closes
+under the terrain's own extent, and the label says what fraction of the route
+has ground rather than leaving the picture to imply all of it. Partial coverage
+is the normal state on a cold tile cache, not an edge case.
+
 ## Not done, and why
 
 Takeoff and RTL are named rather than drawn. Both report `coordinate` 0,0, and the only position
@@ -681,13 +690,36 @@ refreshes four complex items per poll on a round robin and serves the rest from
 what it read last time, which makes the cost flat in survey count: twelve
 surveys went from a median 177 ms to 55 (47-67 over ten polls).
 
-The cache is not keyed on the plan, which is the trap under **Terrain** -
-terrain arrives after the plan stops changing, so a plan-keyed cache would
-freeze a profile with no ground in it. This one is keyed on nothing and expires
-by rotation, so a survey whose ground has not arrived yet gets re-read within
-three polls regardless. It is dropped whole when the item count changes, since
-indices shift and a held entry would then belong to a different item. The price
-is latency: a full refresh of twelve surveys takes three polls, about 2.1 s.
+The cache is not keyed on the plan being unchanged, which is the trap under
+**Terrain** - terrain arrives after the plan stops changing, so a plan-keyed
+cache would freeze a profile with no ground in it. Entries expire by rotation
+instead, so a survey whose ground has not arrived yet gets re-read within three
+polls regardless. The price is latency: a full refresh of twelve surveys takes
+three polls, about 2.1 s.
+
+Each entry is keyed on the item's identity - its entry coordinate and its
+`complexDistance` - rather than on its index. The first version keyed on item
+count, which is not identity: download a different plan with the same number of
+items and every index still hits, so the profile would draw the old plan's
+ground over the new plan's route for up to three polls. Not stale ground,
+ground from different geography, and nothing about the count would reveal it.
+On the identity key a plan swap misses every entry and re-reads.
+
+The two rules are `stillTheSameItems` and `readThisPoll`, plain functions rather
+than methods on the cache, because everything else in `SegmentBridge` needs the
+bridge and these do not. That is what makes the plan-swap case testable at all:
+it cannot be checked on the handset, since the difference between three polls
+stale and immediate is about 2.1 s and a screenshot lands 4-5 s late. The device
+run covers no regression; the swap is covered by tests and by nothing else.
+
+The first comparison of the two keys looked like the identity key had fixed
+terrain coverage - count-keyed drew ground over 5% of the route, identity-keyed
+over all of it. It had not. Running the same pair in the opposite order gave the
+opposite result, so the variable was run order, not the build: whichever ran
+first drew 50-528 m with a ramp and whichever ran second drew 398-535 m with
+ground throughout. QGC caches terrain tiles on disk, so the first run of a pair
+downloads them and the second reuses them. Two screenshots agreeing with a
+hypothesis is not evidence when the runs are ordered; only the reversal was.
 Verified on the handset at twelve surveys - the profile still drew ground end to
 end, 892-1115 m AMSL over 73.68 km, with `hasTerrain` true on every poll.
 
