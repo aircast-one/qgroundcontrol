@@ -499,6 +499,13 @@ VisualMissionItem* MissionController::insertComplexMissionItemFromKMLOrSHP(QStri
 
     _insertComplexMissionItemWorker(QGeoCoordinate(), newItem, visualItemIndex, makeCurrentItem);
 
+    // The worker puts every new complex item into wizard mode so the user finishes
+    // drawing it, and the item leaves wizard mode when its area becomes valid. An item
+    // built from a file loaded its area in the constructor, so that signal fired before
+    // the worker ran and nothing clears the flag afterwards. It would stay in wizard
+    // mode for ever, which reads as NotReadyForSaveData and blocks both save and upload.
+    newItem->setWizardMode(false);
+
     return newItem;
 }
 

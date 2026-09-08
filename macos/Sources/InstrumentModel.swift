@@ -116,7 +116,7 @@ struct InstrumentValue: Identifiable, Equatable {
             selection: selection,
             label: described.isEmpty ? label(for: selection.factName) : described,
             value: reading.isEmpty ? absent : reading,
-            units: Units.display((fact["units"] as? String) ?? ""))
+            units: (fact["units"] as? String) ?? "")
     }
 
     static func label(for factName: String) -> String {

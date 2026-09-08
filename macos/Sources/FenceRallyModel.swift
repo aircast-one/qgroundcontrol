@@ -19,20 +19,6 @@ struct GeoPoint: Equatable {
     }
 }
 
-struct MapWindow: Equatable {
-    let topLeft: GeoPoint
-    let bottomRight: GeoPoint
-
-    init?(centre: GeoPoint?, latitudeSpan: Double?, longitudeSpan: Double?) {
-        guard let centre, let latitudeSpan, let longitudeSpan,
-              latitudeSpan > 0, longitudeSpan > 0 else { return nil }
-        topLeft = GeoPoint(latitude: centre.latitude + latitudeSpan / 2,
-                           longitude: centre.longitude - longitudeSpan / 2)
-        bottomRight = GeoPoint(latitude: centre.latitude - latitudeSpan / 2,
-                               longitude: centre.longitude + longitudeSpan / 2)
-    }
-}
-
 struct FenceShape: Identifiable {
     enum Form {
         case polygon(vertices: Int, area: Double)
@@ -103,27 +89,6 @@ struct FenceShape: Identifiable {
             GeoPoint(latitude: centre.latitude - latitudeSpan, longitude: centre.longitude - longitudeSpan),
             GeoPoint(latitude: centre.latitude + latitudeSpan, longitude: centre.longitude + longitudeSpan),
         ]
-    }
-
-    var rowDetail: String {
-        switch form {
-        case .circle: return ""
-        case .polygon: return detailText
-        }
-    }
-
-    var shapeText: String {
-        switch form {
-        case .circle: return "Circle"
-        case .polygon: return "Polygon"
-        }
-    }
-
-    var usable: Bool {
-        switch form {
-        case .circle: return centre != nil
-        case .polygon: return vertices.count >= 3
-        }
     }
 
     var centreText: String {

@@ -196,6 +196,20 @@ void MissionControllerTest::_testNewPatternStartsInWizardMode(void)
     QVERIFY(item->wizardMode());
 }
 
+void MissionControllerTest::_testPatternFromFileIsReadyToSave(void)
+{
+    _initForFirmwareType(MAV_AUTOPILOT_PX4);
+
+    VisualMissionItem* item = _missionController->insertComplexMissionItemFromKMLOrSHP(
+                SurveyComplexItem::name, QStringLiteral(":/unittest/PolygonGood.kml"), -1);
+
+    QVERIFY(item);
+    // The area came from the file, so there is nothing left to draw. Staying in wizard
+    // mode would report NotReadyForSaveData and make an imported survey unsaveable.
+    QVERIFY(!item->wizardMode());
+    QCOMPARE(_missionController->readyForSaveState(), (int)VisualMissionItem::ReadyForSave);
+}
+
 void MissionControllerTest::_testPatternReadyMessageNamesItsOwnShape(void)
 {
     _initForFirmwareType(MAV_AUTOPILOT_PX4);

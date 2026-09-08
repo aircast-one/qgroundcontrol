@@ -69,39 +69,6 @@ enum MissionItemKind: String, CaseIterable, Identifiable {
         }
     }
 
-    var shapeNoun: String {
-        switch geometry {
-        case .line: return "path"
-        case .area: return "area"
-        case .none: return "shape"
-        }
-    }
-
-    static func forComplexName(_ name: String) -> MissionItemKind? {
-        allCases.first { $0.complexName == name }
-    }
-
-    static var simpleKinds: [MissionItemKind] {
-        allCases.filter { $0.complexName == nil }
-    }
-
-    static func title(forPattern name: String) -> String {
-        forComplexName(name)?.title ?? name
-    }
-
-    static func symbol(forPattern name: String) -> String {
-        forComplexName(name)?.symbol ?? "square.on.square.dashed"
-    }
-
-    static func placementHint(forPattern name: String) -> String {
-        forComplexName(name)?.placementHint
-            ?? "Click the map to place a \(name.lowercased())."
-    }
-
-    static var shapeImportable: [MissionItemKind] {
-        allCases.filter { $0.complexName != nil }
-    }
-
     var placementHint: String {
         switch self {
         case .roi: return "Click the map to place a region of interest."

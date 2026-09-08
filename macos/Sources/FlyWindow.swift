@@ -12,29 +12,10 @@ struct FlyPanel: View {
                 header
 
                 GroupCard {
-                    ForEach(Array(fly.batteries.enumerated()), id: \.offset) { index, pack in
-                        expandable(
-                            key: "battery\(index)",
-                            title: fly.batteries.count > 1 ? "Battery \(index + 1)" : "Battery",
-                            value: index == 0 ? fly.telemetry.batteryText : pack.first?.value ?? "",
-                            level: fly.telemetry.batteryLevel,
-                            detail: pack,
-                            showSeparator: index > 0)
-                    }
-                    if fly.batteries.isEmpty {
-                        GroupRow(title: "Battery", value: fly.telemetry.batteryText,
-                                 showSeparator: false,
-                                 leading: { dot(fly.telemetry.batteryLevel) })
-                    }
-                    expandable(key: "gps", title: "GPS", value: fly.telemetry.gpsText,
-                               level: fly.telemetry.gpsLevel, detail: fly.gpsDetail,
-                               showSeparator: true)
-                    if !fly.linkDetail.isEmpty {
-                        expandable(key: "link", title: "Link",
-                                   value: fly.linkDetail.first?.value ?? "",
-                                   level: fly.telemetry.gpsLevel, detail: fly.linkDetail,
-                                   showSeparator: true)
-                    }
+                    GroupRow(title: "Battery", value: fly.telemetry.batteryText, showSeparator: false,
+                             leading: { dot(fly.telemetry.batteryLevel) })
+                    GroupRow(title: "GPS", value: fly.telemetry.gpsText,
+                             leading: { dot(fly.telemetry.gpsLevel) })
                 }
 
                 if video.camera.present {
@@ -55,135 +36,13 @@ struct FlyPanel: View {
         }
         .frame(maxHeight: .infinity, alignment: .top)
         .sheet(isPresented: $fly.showingChecklist) { checklistSheet }
-        .sheet(isPresented: $fly.showingModes) { modePicker }
-    }
-
-    private var modePicker: some View {
-        VStack(alignment: .leading, spacing: Overlay.unit * 0.5) {
-            Text("Flight mode").font(.headline)
-            ScrollView {
-                GroupCard {
-                    ForEach(Array(FlightModes.everyday(fly.modes).enumerated()),
-                            id: \.element.id) { row, mode in
-                        modeRow(mode, showSeparator: row > 0)
-                    }
-                }
-                if fly.showingAdvancedModes {
-                    GroupCard {
-                        ForEach(Array(FlightModes.folded(fly.modes).enumerated()),
-                                id: \.element.id) { row, mode in
-                            modeRow(mode, showSeparator: row > 0)
-                        }
-                    }
-                    .padding(.top, Overlay.unit * 0.5)
-                }
-            }
-            .frame(maxHeight: 380)
-
-            if !FlightModes.folded(fly.modes).isEmpty {
-                Button(fly.showingAdvancedModes
-                    ? "Fewer modes"
-                    : "More modes (\(FlightModes.folded(fly.modes).count))") {
-                    fly.showingAdvancedModes.toggle()
-                }
-                .buttonStyle(.plain)
-                .font(.callout)
-                .foregroundColor(.accentColor)
-            }
-
-            Divider()
-
-            if fly.confirmingMode.isEmpty {
-                HStack {
-                    Spacer()
-                    Button("Cancel") { fly.showingModes = false }
-                        .keyboardShortcut(.cancelAction)
-                }
-            } else {
-                HStack {
-                    Text("\(fly.confirmingMode) while flying — confirm?")
-                        .font(.callout)
-                        .foregroundColor(.orange)
-                    Spacer()
-                    Button("Back", action: fly.cancelMode)
-                        .keyboardShortcut(.cancelAction)
-                    Button(fly.confirmingMode, action: fly.confirmMode)
-                        .buttonStyle(.borderedProminent)
-                }
-            }
-        }
-        .padding(Overlay.unit)
-        .frame(width: 380)
-    }
-
-    private func modeRow(_ mode: FlightModeChoice, showSeparator: Bool) -> some View {
-        Button {
-            fly.request(mode)
-        } label: {
-            GroupRow(title: mode.name, description: mode.summary,
-                     showSeparator: showSeparator, current: mode.current,
-                     leading: {
-                         Image(systemName: mode.symbol)
-                             .font(.callout)
-                             .foregroundColor(mode.current ? .accentColor : .secondary)
-                             .frame(width: 20)
-                     },
-                     trailing: {
-                         if mode.current {
-                             Image(systemName: "checkmark").font(.caption.weight(.semibold))
-                         }
-                     })
-        }
-        .buttonStyle(.plain)
-        .disabled(mode.current)
-    }
-
-    @ViewBuilder private func expandable(key: String, title: String, value: String,
-                                         level: FlyTelemetry.Level, detail: [DetailRow],
-                                         showSeparator: Bool) -> some View {
-        let open = fly.expanded.contains(key)
-        Button {
-            fly.expanded = open ? fly.expanded.subtracting([key]) : fly.expanded.union([key])
-        } label: {
-            GroupRow(title: title, value: value, showSeparator: showSeparator,
-                     leading: { dot(level) },
-                     trailing: {
-                         Image(systemName: open ? "chevron.up" : "chevron.down")
-                             .font(.caption2)
-                             .foregroundColor(detail.isEmpty ? .clear : Overlay.chevron)
-                     })
-        }
-        .buttonStyle(.plain)
-        .disabled(detail.isEmpty)
-
-        if open {
-            ForEach(detail) { row in
-                GroupRow(title: row.label, value: row.value, showSeparator: false)
-                    .padding(.leading, Overlay.unit * 1.5)
-            }
-        }
     }
 
     private var header: some View {
         HStack(spacing: Overlay.step) {
             VStack(alignment: .leading, spacing: 2) {
-                if fly.modes.isEmpty {
-                    Text(fly.connected ? fly.telemetry.mode : "No vehicle")
-                        .font(.title3.weight(.semibold))
-                } else {
-                    Button { fly.showingModes = true } label: {
-                        HStack(spacing: 4) {
-                            Text(fly.requestedMode.isEmpty ? fly.telemetry.mode : fly.requestedMode)
-                                .font(.title3.weight(.semibold))
-                            if fly.requestedMode.isEmpty {
-                                Image(systemName: "chevron.down").font(.caption2)
-                            } else {
-                                ProgressView().controlSize(.small).scaleEffect(0.6)
-                            }
-                        }
-                    }
-                    .buttonStyle(.plain)
-                }
+                Text(fly.connected ? fly.telemetry.mode : "No vehicle")
+                    .font(.title3.weight(.semibold))
                 Text(fly.connected ? fly.telemetry.stateText : "Connect a vehicle to fly")
                     .font(.callout).foregroundColor(.secondary)
             }
@@ -209,7 +68,7 @@ struct FlyPanel: View {
             HStack {
                 VStack(alignment: .leading, spacing: 2) {
                     Text("Pre-flight checklist").font(.title3.weight(.semibold))
-                    Text("\(fly.airframe.rawValue) · \(Preflight.progress(fly.checklist, ticked: fly.ticked))")
+                    Text(Preflight.progress(fly.checklist, ticked: fly.ticked))
                         .font(.callout).foregroundColor(.secondary)
                 }
                 Spacer()
@@ -528,9 +387,6 @@ struct GuidedConfirm: View {
                         .foregroundColor(.secondary)
                         .multilineTextAlignment(.center)
                         .fixedSize(horizontal: false, vertical: true)
-                    if let range = guided.range {
-                        valuePicker(range)
-                    }
                     SlideToConfirm(title: "Slide to \(action.title.lowercased())",
                                    destructive: action.destructive,
                                    confirm: guided.confirm)
@@ -540,25 +396,6 @@ struct GuidedConfirm: View {
                 .padding(Overlay.unit)
                 .frame(width: 320)
             }
-        }
-    }
-
-    private func valuePicker(_ range: GuidedValue) -> some View {
-        VStack(spacing: 2) {
-            HStack {
-                Text(range.label).font(.caption).foregroundColor(.secondary)
-                Spacer()
-                Text(range.text(guided.chosen))
-                    .font(.title3.monospacedDigit().weight(.medium))
-            }
-            Slider(value: $guided.chosen, in: range.minimum...range.maximum)
-            HStack {
-                Text(range.text(range.minimum))
-                Spacer()
-                Text(range.text(range.maximum))
-            }
-            .font(.caption2)
-            .foregroundColor(.secondary)
         }
     }
 }

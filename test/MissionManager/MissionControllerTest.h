@@ -36,6 +36,7 @@ private slots:
     void _testAddWaypointAtIndexAPM     (void);
     void _testAddWaypointAtIndexPX4     (void);
     void _testNewPatternStartsInWizardMode (void);
+    void _testPatternFromFileIsReadyToSave (void);
     void _testPatternReadyMessageNamesItsOwnShape (void);
     void _testVehicleYawRecalc          (void);
 

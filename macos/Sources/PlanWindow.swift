@@ -147,8 +147,6 @@ struct PlanInspector: View {
     static let maximumContentHeight: CGFloat = 460
 
     @State private var contentHeight: CGFloat = 0
-    @State private var shapeError: String?
-    @State private var replacing: String?
 
     var body: some View {
         GlassPanel {
@@ -156,14 +154,9 @@ struct PlanInspector: View {
                 summary
 
                 if let arming = mission.arming, selection.page == "Mission" {
-                    Text(MissionItemKind.placementHint(forPattern: arming))
+                    Text(arming.placementHint)
                         .font(.callout)
                         .foregroundColor(Overlay.mission)
-                }
-                if fenceRally.armingRally, selection.page == "Rally" {
-                    Text("Click the map to place a rally point.")
-                        .font(.callout)
-                        .foregroundColor(Overlay.rally)
                 }
 
                 Picker("", selection: Binding(
@@ -195,93 +188,6 @@ struct PlanInspector: View {
             .padding(Overlay.gutter)
             .frame(width: 320)
         }
-        .sheet(isPresented: Binding(get: { mission.pickingCommandFor != nil },
-                                    set: { if !$0 { mission.pickingCommandFor = nil } })) {
-            commandPicker
-        }
-        .confirmationDialog("Replace this plan?",
-                            isPresented: Binding(get: { replacing != nil },
-                                                 set: { if !$0 { replacing = nil } }),
-                            titleVisibility: .visible) {
-            Button("Replace", role: .destructive) {
-                let kind = MissionItemKind(rawValue: replacing ?? "")
-                replacing = nil
-                shapeError = mission.createPlan(kind)
-            }
-            Button("Cancel", role: .cancel) { replacing = nil }
-        } message: {
-            Text("The \(mission.items.count) items already in this plan will be discarded.")
-        }
-        .alert("That file could not be used",
-               isPresented: Binding(get: { shapeError != nil }, set: { if !$0 { shapeError = nil } })) {
-            Button("OK") { shapeError = nil }
-        } message: {
-            Text(shapeError ?? "")
-        }
-    }
-
-    private var commandPicker: some View {
-        VStack(alignment: .leading, spacing: Overlay.unit * 0.75) {
-            Text("Choose what this item does").font(.title3.weight(.semibold))
-
-            Picker("Category", selection: Binding(
-                get: { mission.pickerCategory },
-                set: { mission.showCategory($0) })
-            ) {
-                ForEach(mission.commandCategories, id: \.self) { Text($0).tag($0) }
-            }
-            .frame(maxWidth: 320)
-
-            if mission.commands.isEmpty {
-                GroupCard {
-                    EmptyStateRow(text: mission.connected
-                        ? "This category has no commands this vehicle accepts."
-                        : "Connect a vehicle to see the commands it accepts.")
-                }
-            } else {
-                ScrollView {
-                    GroupCard {
-                        ForEach(Array(mission.commands.enumerated()), id: \.element.id) { row, command in
-                            commandRow(command, showSeparator: row > 0)
-                        }
-                    }
-                }
-                .frame(height: 380)
-            }
-
-            Divider()
-
-            HStack {
-                Spacer()
-                Button("Cancel") { mission.pickingCommandFor = nil }
-                    .keyboardShortcut(.cancelAction)
-            }
-        }
-        .padding(Overlay.unit)
-        .frame(width: 520)
-    }
-
-    private func commandRow(_ command: MissionCommand, showSeparator: Bool) -> some View {
-        Button {
-            chooseCommand(command)
-        } label: {
-            GroupRow(title: command.name,
-                     description: command.summary,
-                     showSeparator: showSeparator,
-                     current: command.command == chosenCommand,
-                     titleLines: 2, descriptionLines: 4)
-        }
-        .buttonStyle(.plain)
-    }
-
-    private func chooseCommand(_ command: MissionCommand) {
-        guard let item = mission.items.first(where: { $0.sequence == mission.pickingCommandFor })
-        else { return }
-        mission.setCommand(of: item, to: command.command)
-    }
-
-    private var chosenCommand: Int {
-        mission.items.first { $0.sequence == mission.pickingCommandFor }?.commandId ?? -1
     }
 
     private var summary: some View {
@@ -364,13 +270,18 @@ struct PlanInspector: View {
                                         .font(.body.monospacedDigit())
                                         .foregroundColor(Overlay.value)
                                 }
-                                if item.isCurrent && item.canChangeCommand {
-                                    Button {
-                                        mission.pickCommand(for: item)
+                                if item.isCurrent && item.canChangeCommand && !mission.commands.isEmpty {
+                                    Menu {
+                                        ForEach(mission.commands) { command in
+                                            Button(command.name) {
+                                                mission.setCommand(of: item, to: command.command)
+                                            }
+                                        }
                                     } label: {
                                         Image(systemName: "chevron.up.chevron.down")
                                     }
-                                    .buttonStyle(.borderless)
+                                    .menuStyle(.borderlessButton)
+                                    .menuIndicator(.hidden)
                                     .frame(width: 22)
                                     .help("Change what this item does")
                                 }
@@ -595,13 +506,6 @@ struct PlanInspector: View {
     }
 
     private var fence: some View {
-        VStack(alignment: .leading, spacing: Overlay.gutter) {
-            fenceShapes
-            breachReturn
-        }
-    }
-
-    private var fenceShapes: some View {
         GroupCard {
             if fenceRally.shapes.isEmpty {
                 EmptyStateRow(text: fenceRally.connected && !fenceRally.fenceSupported
@@ -612,30 +516,12 @@ struct PlanInspector: View {
             } else {
                 ForEach(fenceRally.shapes) { shape in
                     GroupRow(
-                        title: shape.shapeText,
-                        description: shape.rowDetail,
+                        title: shape.kindText,
+                        description: shape.detailText,
                         showSeparator: shape.id > 0,
                         leading: {
                             Seal(label: shape.inclusion ? "IN" : "OUT",
                                  colour: Overlay.fence, rounded: true)
-                        },
-                        trailing: {
-                            HStack(spacing: Overlay.step * 0.5) {
-                                if let radius = shape.radius {
-                                    AltitudeField(metres: radius,
-                                                  commit: { fenceRally.setRadius(shape, metres: $0) })
-                                }
-                                Picker("", selection: Binding(
-                                    get: { shape.inclusion },
-                                    set: { fenceRally.setInclusion(shape, to: $0) })
-                                ) {
-                                    Text("Keep in").tag(true)
-                                    Text("Keep out").tag(false)
-                                }
-                                .labelsHidden()
-                                .frame(width: 92)
-                                removeButton { fenceRally.remove(shape) }
-                            }
                         })
                 }
             }
@@ -654,106 +540,12 @@ struct PlanInspector: View {
                 ForEach(fenceRally.rallyPoints) { point in
                     GroupRow(
                         title: "Rally \(point.id + 1)",
-                        description: point.positionText,
+                        value: point.altitudeText,
                         showSeparator: point.id > 0,
-                        leading: { Seal(label: "\(point.id + 1)", colour: Overlay.rally) },
-                        trailing: {
-                            HStack(spacing: Overlay.step * 0.5) {
-                                AltitudeField(
-                                    metres: point.altitude,
-                                    commit: { fenceRally.setRallyAltitude(point, metres: $0) })
-                                removeButton { fenceRally.remove(point) }
-                            }
-                        })
+                        leading: { Seal(label: "\(point.id + 1)", colour: Overlay.rally) })
                 }
             }
         }
-    }
-
-    private var placing: Bool { mission.arming != nil || fenceRally.armingRally }
-
-    private var importable: [MissionItemKind] {
-        MissionItemKind.shapeImportable.filter {
-            mission.patterns.contains($0.complexName ?? "")
-        }
-    }
-
-    private var addHelp: String {
-        switch selection.page {
-        case "Fence": return "Add a fence around what the map is showing"
-        case "Rally": return "Add a rally point by clicking the map"
-        default: return "Add an item by clicking the map"
-        }
-    }
-
-    @ViewBuilder private var addMenu: some View {
-        switch selection.page {
-        case "Fence":
-            Button { shapeError = fenceRally.addFence(circle: false) } label: {
-                Label("Keep-in polygon", systemImage: "pentagon")
-            }
-            Button { shapeError = fenceRally.addFence(circle: true) } label: {
-                Label("Keep-in circle", systemImage: "circle")
-            }
-            Divider()
-            Button { shapeError = fenceRally.addBreachReturn() } label: {
-                Label("Breach return point", systemImage: "arrow.uturn.backward")
-            }
-            .disabled(fenceRally.breachReturn != nil)
-        case "Rally":
-            Button { fenceRally.armingRally = true } label: {
-                Label("Rally point", systemImage: "mappin.and.ellipse")
-            }
-            .disabled(!fenceRally.rallySupported)
-        default:
-            ForEach(MissionItemKind.simpleKinds) { kind in
-                Button { mission.arming = kind.rawValue } label: {
-                    Label(kind.title, systemImage: kind.symbol)
-                }
-            }
-            ForEach(mission.patterns, id: \.self) { pattern in
-                Button { mission.arming = pattern } label: {
-                    Label(MissionItemKind.title(forPattern: pattern),
-                          systemImage: MissionItemKind.symbol(forPattern: pattern))
-                }
-            }
-            if !importable.isEmpty {
-                Divider()
-                ForEach(importable) { kind in
-                    Button { importShape(kind) } label: {
-                        Label("\(kind.title) from KML or SHP\u{2026}", systemImage: kind.symbol)
-                    }
-                }
-            }
-        }
-    }
-
-    private var breachReturn: some View {
-        VStack(alignment: .leading, spacing: 0) {
-            SectionLabel(text: "Breach return")
-            GroupCard {
-                if let point = fenceRally.breachReturn {
-                    GroupRow(
-                        title: "The vehicle returns here",
-                        description: point.positionText,
-                        trailing: {
-                            AltitudeField(metres: fenceRally.breachAltitude,
-                                          commit: fenceRally.setBreachAltitude)
-                        })
-                } else {
-                    EmptyStateRow(text: fenceRally.fenceSupported
-                        ? "No breach return point. On a fence breach the vehicle follows its firmware default."
-                        : "This vehicle does not accept a geofence.")
-                }
-            }
-        }
-    }
-
-    private func removeButton(_ act: @escaping () -> Void) -> some View {
-        Button(action: act) { Image(systemName: "trash") }
-            .buttonStyle(.borderless)
-            .foregroundColor(.secondary)
-            .help("Remove this from the plan")
     }
 
     private var actions: some View {
@@ -761,15 +553,6 @@ struct PlanInspector: View {
             Menu {
                 Button("Open\u{2026}", action: openPlan)
                 Button("Save As\u{2026}", action: savePlanAs)
-                Button("Export KML\u{2026}", action: exportKml)
-                    .disabled(mission.items.count < 2)
-                Divider()
-                Menu("New Plan") {
-                    Button("Empty") { startPlan(nil) }
-                    ForEach(importable) { kind in
-                        Button(kind.title) { startPlan(kind) }
-                    }
-                }
                 Divider()
                 Button("Clear", action: mission.removeAll)
             } label: {
@@ -780,25 +563,30 @@ struct PlanInspector: View {
             .frame(width: 26)
             .help("Open, save or clear this plan")
 
-            if placing {
-                Button {
-                    mission.arming = nil
-                    fenceRally.armingRally = false
-                } label: {
-                    Image(systemName: "xmark")
-                }
-                .help("Stop adding")
-            } else {
+            if mission.arming == nil {
                 Menu {
-                    addMenu
+                    ForEach(MissionItemKind.allCases) { kind in
+                        Button {
+                            mission.arming = kind
+                        } label: {
+                            Label(kind.title, systemImage: kind.symbol)
+                        }
+                    }
                 } label: {
                     Image(systemName: "plus")
                 }
                 .menuStyle(.borderlessButton)
                 .menuIndicator(.hidden)
                 .frame(width: 26)
-                .help(addHelp)
+                .help("Add an item by clicking the map")
                 .disabled(mission.syncing || !mission.connected)
+            } else {
+                Button {
+                    mission.arming = nil
+                } label: {
+                    Image(systemName: "xmark")
+                }
+                .help("Stop adding")
             }
 
             Button {
@@ -860,31 +648,6 @@ struct PlanInspector: View {
         guard panel.runModal() == .OK, let file = panel.url else { return }
         mission.save(to: file)
     }
-
-    private func startPlan(_ kind: MissionItemKind?) {
-        guard mission.items.count > 1 else {
-            shapeError = mission.createPlan(kind)
-            return
-        }
-        replacing = kind?.rawValue ?? ""
-    }
-
-    private func exportKml() {
-        let panel = NSSavePanel()
-        panel.allowedContentTypes = PlanView.kmlTypes
-        panel.nameFieldStringValue = "\(mission.planName).kml"
-        guard panel.runModal() == .OK, let file = panel.url else { return }
-        mission.exportKml(to: file)
-    }
-
-    private func importShape(_ kind: MissionItemKind) {
-        let panel = NSOpenPanel()
-        panel.allowedContentTypes = PlanView.shapeTypes
-        panel.allowsMultipleSelection = false
-        panel.message = "Choose a KML or shape file holding the \(kind.shapeNoun) to \(kind.title.lowercased())."
-        guard panel.runModal() == .OK, let file = panel.url else { return }
-        shapeError = mission.importShape(kind, from: file)
-    }
 }
 
 struct PlanView: View {
@@ -892,8 +655,6 @@ struct PlanView: View {
 
     static let mapPadding = NSEdgeInsets(top: 56, left: 24, bottom: 40, right: 372)
     static let planTypes = [UTType(filenameExtension: "plan")].compactMap { $0 }
-    static let kmlTypes = [UTType(filenameExtension: "kml")].compactMap { $0 }
-    static let shapeTypes = ["kml", "shp"].compactMap { UTType(filenameExtension: $0) }
 
     @ObservedObject var mission: MissionStore
     @ObservedObject var fenceRally: FenceRallyStore
@@ -905,8 +666,8 @@ struct PlanView: View {
                        shapes: fenceRally.shapes, rallyPoints: fenceRally.rallyPoints,
                        padding: PlanView.mapPadding,
                        select: mission.select(sequence:),
-                       adding: mission.arming != nil || fenceRally.armingRally,
-                       add: place(latitude:longitude:),
+                       adding: mission.arming != nil,
+                       add: mission.addWaypoint(latitude:longitude:),
                        move: mission.move(sequence:latitude:longitude:),
                        surveys: mission.surveyAreas,
                        corridors: mission.corridorPaths)
@@ -938,14 +699,6 @@ struct PlanView: View {
             mission.reload()
             fenceRally.reload()
             mission.startEditing()
-        }
-    }
-
-    private func place(latitude: Double, longitude: Double) {
-        if fenceRally.armingRally {
-            fenceRally.addRallyPoint(latitude: latitude, longitude: longitude)
-        } else {
-            mission.addWaypoint(latitude: latitude, longitude: longitude)
         }
     }
 }
