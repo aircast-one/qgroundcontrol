@@ -21,6 +21,7 @@ private slots:
     void _batteryAndPreflightFollowTheVehicle();
     void _warningsFollowTheVehicle();
     void _labelsAreHumanised();
+    void _instrumentsResolveTheSelection();
 
 private:
     static bool _unavailable(const char *path);

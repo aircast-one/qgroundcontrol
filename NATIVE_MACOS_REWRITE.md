@@ -547,6 +547,8 @@ About 58 developer-weeks. Flight-test time, not code, is the schedule.
   airframe with GPS, battery, sensor and sound verdicts).
 - 2026-09-08: `view.warnings` — the QML fly-view warnings plus a single prioritised arming blocker sentence.
 - 2026-09-08: `view.label(identifier)` — one humanised label rule for fact names without a description.
+- 2026-09-08: `view.instruments(group/name, …)` — telemetry chips with label, value and display units resolved
+  in the core; the selection stays with the head.
 
 ### Stream F · Core
 

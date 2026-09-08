@@ -240,3 +240,17 @@ void QGCCoreCTest::_labelsAreHumanised()
     QCOMPARE(take(qgc_bridge_get("view.label(ADSBVehicleManager)")).value(QStringLiteral("value")).toString(), QStringLiteral("ADSB Vehicle Manager"));
     QCOMPARE(take(qgc_bridge_get("view.label")).value(QStringLiteral("value")).toString(), QString());
 }
+
+void QGCCoreCTest::_instrumentsResolveTheSelection()
+{
+    QVERIFY2(_unavailable("view.instruments"), "instruments read available, or lack the field, with no vehicle");
+    _connectMockLink(MAV_AUTOPILOT_PX4);
+    QTRY_COMPARE_WITH_TIMEOUT(take(qgc_bridge_get("view.instruments")).value(QStringLiteral("available")).toBool(false), true, 5000);
+    const QJsonArray items = take(qgc_bridge_get("view.instruments")).value(QStringLiteral("items")).toArray();
+    QCOMPARE(items.count(), 6);
+    QCOMPARE(items.first().toObject().value(QStringLiteral("name")).toString(), QStringLiteral("altitudeRelative"));
+    QVERIFY(!items.first().toObject().value(QStringLiteral("label")).toString().isEmpty());
+    const QJsonArray chosen = take(qgc_bridge_get("view.instruments(gps/count,vehicle/heading)")).value(QStringLiteral("items")).toArray();
+    QCOMPARE(chosen.count(), 2);
+    QCOMPARE(chosen.first().toObject().value(QStringLiteral("id")).toString(), QStringLiteral("gps/count"));
+}

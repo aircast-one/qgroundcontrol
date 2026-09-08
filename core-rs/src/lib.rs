@@ -3,6 +3,7 @@ mod abi;
 mod altitude;
 mod battery;
 mod guided;
+mod instruments;
 mod label;
 mod messages;
 mod plan;
