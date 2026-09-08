@@ -170,6 +170,28 @@ shipped the GL bin to both and broke macOS silently — it compiles either way, 
 video is parked waiting for a stream, so nothing would have complained for a long time.
 Checking who called `qgc_video_copy_frame` before deleting it is what caught it.
 
+**A limitation the Fly view migration inherits.** `glimagesink` creates its GL context
+against the first window it is given and does not take a second one. While the surface
+lived inside the tab switch, leaving Fly destroyed it and coming back gave the sink a
+new window it ignored — the view was permanently black afterwards. The surface now sits
+outside the switch and other tabs draw over it, so it is never destroyed. That is
+sufficient today and will not be when video becomes the Fly background rather than an
+inset: something will have to restart the receiver on a genuinely new surface.
+
+**Four defects in the first version of this, all found by reading rather than running.**
+The stored sink pointer was borrowed, not referenced, so tearing the bin down left a
+handle into freed memory. `ANativeWindow_fromSurface` acquires a reference that was only
+released on failure, leaking one per surface cycle. `qgc_video_detach_overlay` was dead
+code nothing called. And the fix for the leak had its own: `qgc_video_set_window(nullptr)`
+returned false when no sink was attached, so the JNI read a legitimate *clear* as a
+failure and skipped the release — the leak survived on precisely the path the fix was
+written for. One bool was carrying "nothing to do" and "could not do it".
+
+That last one is worth generalising with the notice-slot bug: a return value that
+conflates two outcomes hides the failure on the path that needs it most, and the happy
+path passes either way. Lifetime and ownership live in the type and the call, so reading
+finds them; no amount of device time would have.
+
 The finding that forced all this:
 `c2androidavcdecoder` has **no system-memory output mode**. There is no arrangement of
 caps that gets decoded frames into system memory on this device, so `videoconvert !
