@@ -211,3 +211,116 @@ class BoundaryImportTest {
         assertEquals(false, importedNothing(5100.0))
     }
 }
+
+class WriteRefusalTest {
+    @Test
+    fun `an accepted write says nothing`() {
+        assertNull(writeRefusal(true))
+    }
+
+    @Test
+    fun `a refused write is named rather than left to look like a glitch`() {
+        assertEquals("That change was not accepted.", writeRefusal(false))
+    }
+
+    @Test
+    fun `the refusal does not guess at a cause it cannot know`() {
+        val message = writeRefusal(false)!!
+        listOf("vehicle", "property", "WRITE", "bridge")
+            .forEach { assertEquals("claims a cause: $message", false, message.contains(it)) }
+    }
+}
+
+class LinkFailureTest {
+    @Test
+    fun `a link call that finished says nothing`() {
+        assertNull(linkFailure("connect", done = true))
+    }
+
+    @Test
+    fun `a refused call names the action that did not happen`() {
+        assertEquals("Could not connect that link.", linkFailure("connect", done = false))
+        assertEquals("Could not disconnect that link.", linkFailure("disconnect", done = false))
+        assertEquals("Could not remove that link.", linkFailure("remove", done = false))
+    }
+}
+
+class AccelBlockTest {
+    private fun named(name: String) = CALIBRATIONS.first { it.name == name }
+
+    @Test
+    fun `compass and level horizon wait for the accelerometer`() {
+        assertEquals(true, blockedByAccel(named("Compass"), accelNeeded = true))
+        assertEquals(true, blockedByAccel(named("Level Horizon"), accelNeeded = true))
+    }
+
+    @Test
+    fun `the accelerometer is never blocked, because it is the way out`() {
+        assertEquals(false, blockedByAccel(named("Accelerometer"), accelNeeded = true))
+    }
+
+    @Test
+    fun `gyro and pressure do not depend on the accelerometer`() {
+        assertEquals(false, blockedByAccel(named("Gyro"), accelNeeded = true))
+        assertEquals(false, blockedByAccel(named("Pressure"), accelNeeded = true))
+    }
+
+    @Test
+    fun `nothing is blocked once the accelerometer is calibrated`() {
+        CALIBRATIONS.forEach { assertEquals(false, blockedByAccel(it, accelNeeded = false)) }
+    }
+}
+
+class CalibrationStartTest {
+    @Test
+    fun `a calibration that started says nothing`() {
+        assertNull(calibrationFailure("Compass", started = true))
+    }
+
+    @Test
+    fun `a calibration that never started names which one`() {
+        assertEquals("Compass calibration did not start.", calibrationFailure("Compass", false))
+        assertEquals(
+            "Accelerometer calibration did not start.",
+            calibrationFailure("Accelerometer", false),
+        )
+    }
+}
+
+class CalibrationBeganTest {
+    @Test
+    fun `a calibration still running has begun`() {
+        assertEquals(true, calibrationBegan(running = true, statusBefore = "", statusNow = ""))
+    }
+
+    @Test
+    fun `one that finished before the first poll left its status behind`() {
+        assertEquals(
+            true,
+            calibrationBegan(false, "", "Requesting pressure calibration... Successfully completed"),
+        )
+    }
+
+    @Test
+    fun `nothing running and nothing said means it never began`() {
+        assertEquals(false, calibrationBegan(false, "old text", "old text"))
+    }
+}
+
+class AltitudeLabelTest {
+    @Test
+    fun `the operator's own unit is used when both halves arrive`() {
+        assertEquals("33 ft", altitudeLabel(meters = 10.0, converted = 32.8, unit = "ft"))
+    }
+
+    @Test
+    fun `a missing conversion falls back to metres, not to a converted number`() {
+        assertEquals("10 m", altitudeLabel(10.0, converted = null, unit = "ft"))
+    }
+
+    @Test
+    fun `a missing unit falls back to metres, not to a bare number`() {
+        assertEquals("10 m", altitudeLabel(10.0, converted = 32.8, unit = null))
+        assertEquals("10 m", altitudeLabel(10.0, converted = 32.8, unit = ""))
+    }
+}
