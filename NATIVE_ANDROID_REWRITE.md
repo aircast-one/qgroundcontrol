@@ -1104,6 +1104,14 @@ minimum the moment the Fly view appeared — an RC override the operator never a
 latches now: the release only goes after a press, and opening the view produces zero
 `RC_CHANNELS_OVERRIDE` where it produced a stream before.
 
+**Audited every other effect that writes**, since the defect generalises: an effect that
+commands rather than reads fires once at composition and looks exactly like nothing
+happening. Two in the whole app. `MainActivity`'s `setNativeRendering` configures this app
+rather than the vehicle, so composition is the right moment. `LogDownloadScreen`'s refresh
+does command the vehicle, and is guarded by `shouldAutoRefreshLogs(hasVehicle, hasEntries,
+busy)` — a named predicate with four test cases. Recorded as a negative result because the
+next person adding an effect will not re-derive it.
+
 **That defect was in the log of the run that verified the feature.** Eleven channel-9
 minimums against five maximums, when one press and release should be one of each. I read the
 log for the values I expected and not for the counts that were in front of me — the same
