@@ -35,7 +35,7 @@ internal fun shutterFor(
         enabled = true,
     )
     mode == CAM_MODE_PHOTO && capturesPhotos -> CameraShutter(
-        label = "Photo",
+        label = "Take Photo",
         recording = false,
         enabled = photoStatus != PHOTO_CAPTURE_IN_PROGRESS,
     )

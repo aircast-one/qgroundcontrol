@@ -39,12 +39,23 @@ class CameraControlTest {
     fun `a photo already being taken disables the shutter rather than queueing another`() {
         val busy = shutterFor(CAM_MODE_PHOTO, true, true, VIDEO_CAPTURE_STOPPED, PHOTO_CAPTURE_IN_PROGRESS)
 
-        assertEquals(CameraShutter("Photo", recording = false, enabled = false), busy)
+        assertEquals(CameraShutter("Take Photo", recording = false, enabled = false), busy)
     }
 
     @Test
     fun `each defined mode is named`() {
         assertEquals("Photo", cameraModeLabel(CAM_MODE_PHOTO))
+
         assertEquals("Video", cameraModeLabel(CAM_MODE_VIDEO))
+    }
+
+    @Test
+    fun `the shutter never repeats the mode chip's word`() {
+        val modes = listOf(CAM_MODE_PHOTO, CAM_MODE_VIDEO)
+        val collisions = modes.filter { mode ->
+            val shutter = shutterFor(mode, true, true, VIDEO_CAPTURE_STOPPED, PHOTO_CAPTURE_IDLE)
+            shutter?.label == cameraModeLabel(mode)
+        }
+        assertEquals(emptyList<Int>(), collisions)
     }
 }
