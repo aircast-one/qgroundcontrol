@@ -108,10 +108,10 @@ a plan ends in a return to launch is worth knowing and was invisible before.
 QGC reconciles this properly with a mission item list, which is a bigger thing than a map and is
 not here.
 
-The `flightPathSegments` read that draws the ground is not cached. One survey costs 20 ms per poll
-against 0.1 ms without it, which is 3% of a 700 ms poll off the main thread. Nine surveys is where
-that stops being free - see **Terrain** for the number and for the trap waiting in any cache keyed
-on the plan alone.
+The `flightPathSegments` read that draws the ground refreshes four surveys a poll rather than all
+of them, so a twelve-survey plan sees ground up to three polls stale - about 2.1 s. That is
+invisible while a plan sits still and wrong only in the moment after a survey's terrain first
+arrives. Refreshing all of them cost a median 177 ms per poll, which was worse; see **Terrain**.
 
 Terrain cannot be tested at the default site at all. The tile service has no coverage for Tbilisi
 and answers HTTP 500; `fakevehicle.py` takes `SIM_LAT`/`SIM_LON` so the vehicle can be flown
