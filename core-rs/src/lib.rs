@@ -7,6 +7,7 @@ mod contract;
 mod control;
 mod fences;
 mod flightmodes;
+mod geo;
 mod guided;
 mod inspector;
 mod instruments;

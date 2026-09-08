@@ -275,7 +275,11 @@
             "view.planFile",
             "view.waypointsFile",
             "view.kmlFile",
-            "view.shapeFile"
+            "view.shapeFile",
+            "view.geoToNed",
+            "view.nedToGeo",
+            "view.geoToUtm",
+            "view.utmToGeo"
         ]
     },
     "view.control(settings.appSettings.audioMuted)": {

@@ -45,6 +45,7 @@ private slots:
     void _waypointsFileAgreesWithTheCppLoader();
     void _kmlFilesFollowTheMapPolygonTest();
     void _shapeFilesFollowShapeTest();
+    void _geoConversionsMatchGeoTest();
 
 private:
     static bool _unavailable(const char *path);

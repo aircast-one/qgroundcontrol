@@ -630,3 +630,16 @@ void QGCCoreCTest::_shapeFilesFollowShapeTest()
     QCOMPARE(line.value(QStringLiteral("shape")).toString(), QStringLiteral("polyline"));
     QCOMPARE(read("polygon.kml").value(QStringLiteral("valid")).toBool(true), false);
 }
+
+void QGCCoreCTest::_geoConversionsMatchGeoTest()
+{
+    const QJsonObject ned = take(qgc_bridge_get("view.geoToNed(47.364869,8.594398,0,47.3764,8.5481,0)"));
+    QVERIFY(qAbs(ned.value(QStringLiteral("x")).toDouble() - -1282.58731618) < 0.00001);
+    QVERIFY(qAbs(ned.value(QStringLiteral("y")).toDouble() - 3490.85591324) < 0.00001);
+    const QJsonObject utm = take(qgc_bridge_get("view.geoToUtm(47.3764,8.5481)"));
+    QCOMPARE(utm.value(QStringLiteral("zone")).toInt(), 32);
+    QVERIFY(qAbs(utm.value(QStringLiteral("easting")).toDouble() - 465886.092246) < 0.01);
+    const QJsonObject back = take(qgc_bridge_get("view.utmToGeo(465886.092246,5247092.44892,32)"));
+    QVERIFY(qAbs(back.value(QStringLiteral("latitude")).toDouble() - 47.3764) < 0.00001);
+    QCOMPARE(take(qgc_bridge_get("view.nedToGeo(1,2)")).value(QStringLiteral("kind")).toString(), QStringLiteral("null"));
+}

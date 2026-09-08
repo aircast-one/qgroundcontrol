@@ -9,6 +9,7 @@ use crate::contract;
 use crate::control;
 use crate::fences;
 use crate::flightmodes;
+use crate::geo;
 use crate::guided;
 use crate::inspector;
 use crate::instruments;
@@ -84,6 +85,10 @@ pub const VIEWS: &[View] = &[
     View { path: "view.waypointsFile", deps: waypoints::DEPS, compute: waypoints::waypoints_view },
     View { path: "view.kmlFile", deps: kml::DEPS, compute: kml::kml_view },
     View { path: "view.shapeFile", deps: shp::DEPS, compute: shp::shp_view },
+    View { path: "view.geoToNed", deps: geo::DEPS, compute: geo::geo_to_ned_view },
+    View { path: "view.nedToGeo", deps: geo::DEPS, compute: geo::ned_to_geo_view },
+    View { path: "view.geoToUtm", deps: geo::DEPS, compute: geo::geo_to_utm_view },
+    View { path: "view.utmToGeo", deps: geo::DEPS, compute: geo::utm_to_geo_view },
 ];
 
 pub fn owns(path: &str) -> bool {
