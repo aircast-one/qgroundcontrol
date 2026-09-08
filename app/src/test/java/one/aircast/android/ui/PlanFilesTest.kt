@@ -184,3 +184,30 @@ class LoadFailureTest {
         )
     }
 }
+
+class BoundaryImportTest {
+    @Test
+    fun `the cache file keeps the suffix the parser reads`() {
+        assertEquals("boundary.kml", boundaryCacheName("site.kml"))
+        assertEquals("boundary.shp", boundaryCacheName("Site Boundary.SHP"))
+        assertEquals("boundary.kml", boundaryCacheName("field.plan.kml"))
+    }
+
+    @Test
+    fun `a name with no suffix falls back rather than losing the extension`() {
+        assertEquals("boundary.kml", boundaryCacheName("boundary"))
+        assertEquals("boundary.kml", boundaryCacheName(null))
+    }
+
+    @Test
+    fun `a pattern with no area counts as nothing imported`() {
+        assertEquals(true, importedNothing(null))
+        assertEquals(true, importedNothing(0.0))
+    }
+
+    @Test
+    fun `a pattern that covers ground counts as imported`() {
+        assertEquals(false, importedNothing(0.5))
+        assertEquals(false, importedNothing(5100.0))
+    }
+}

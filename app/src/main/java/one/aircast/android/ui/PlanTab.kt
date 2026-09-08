@@ -80,6 +80,24 @@ fun PlanTab(modifier: Modifier = Modifier) {
         )
     }
 
+    files.patternChoice.options().takeIf { it.isNotEmpty() }?.let { options ->
+        AlertDialog(
+            onDismissRequest = files.patternChoice.cancel,
+            title = { Text("Import as which pattern?") },
+            text = {
+                Column {
+                    options.forEach { name ->
+                        TextButton(onClick = { files.patternChoice.pick(name) }) { Text(name) }
+                    }
+                }
+            },
+            confirmButton = {},
+            dismissButton = {
+                TextButton(onClick = files.patternChoice.cancel) { Text("Cancel") }
+            },
+        )
+    }
+
     Column(modifier.fillMaxSize()) {
         Row(
             Modifier.fillMaxWidth().padding(horizontal = 12.dp),
@@ -111,6 +129,11 @@ fun PlanTab(modifier: Modifier = Modifier) {
                         text = { Text("Export KML…") },
                         enabled = can.exportKml,
                         onClick = { menuOpen = false; files.exportKml() },
+                    )
+                    DropdownMenuItem(
+                        text = { Text("Import boundary…") },
+                        enabled = can.open,
+                        onClick = { menuOpen = false; files.importBoundary() },
                     )
                     HorizontalDivider()
                     DropdownMenuItem(

@@ -20,6 +20,7 @@ private const val PLAN_ROOT = "plan"
 private const val OPEN_CACHE = "opened.plan"
 private const val SAVE_CACHE = "saving.plan"
 private const val KML_CACHE = "export.kml"
+private const val MISSION_ROOT = "plan.missionController"
 
 internal const val PLAN_MIME = "*/*"
 
@@ -27,6 +28,18 @@ internal val PLAN_OPEN_TYPES = arrayOf(PLAN_MIME)
 
 internal const val DEFAULT_PLAN_NAME = "mission.plan"
 internal const val DEFAULT_KML_NAME = "mission.kml"
+internal const val DEFAULT_BOUNDARY_EXT = "kml"
+
+// QGCMapPolygon picks its parser off the suffix, so a boundary copied into the cache
+// under a fixed name would always be read as the wrong format.
+internal fun boundaryCacheName(displayName: String?): String {
+    val ext = displayName?.substringAfterLast('.', "")?.lowercase()?.takeIf { it.isNotBlank() }
+    return "boundary.${ext ?: DEFAULT_BOUNDARY_EXT}"
+}
+
+// QGCMapPolygon reports a parse failure through showAppMessage and inserts the item
+// regardless, so a file with no usable area leaves an empty pattern in the plan.
+internal fun importedNothing(distance: Double?): Boolean = distance == null || distance <= 0.0
 
 data class PlanActions(
     val open: Boolean,
@@ -96,11 +109,19 @@ internal fun planStatusText(name: String?, dirty: Boolean, offline: Boolean): St
     else -> "$name \u00b7 not uploaded"
 }
 
+class PatternChoice(
+    val options: () -> List<String>,
+    val pick: (String) -> Unit,
+    val cancel: () -> Unit,
+)
+
 class PlanFileActions(
     val open: () -> Unit,
     val saveAs: () -> Unit,
     val save: () -> Unit,
     val exportKml: () -> Unit,
+    val importBoundary: () -> Unit,
+    val patternChoice: PatternChoice,
     val newPlan: () -> Unit,
     val clearMission: () -> Unit,
     val documentName: () -> String?,
@@ -139,6 +160,22 @@ private fun copyOut(context: Context, from: File, uri: Uri): Boolean = runCatchi
     true
 }.getOrDefault(false)
 
+private fun patternNames(): List<String> {
+    val value = Qgc.get("$MISSION_ROOT.complexMissionItemNames").opt("value")
+    val array = value as? org.json.JSONArray ?: return emptyList()
+    return (0 until array.length()).map { array.optString(it) }.filter { it.isNotBlank() }
+}
+
+private fun visualItemCount(): Int =
+    (Qgc.get("$MISSION_ROOT.visualItems").opt("elements") as? org.json.JSONArray)?.length() ?: 0
+
+private fun lastItemDistance(): Double? {
+    val elements = Qgc.get("$MISSION_ROOT.visualItems").opt("elements") as? org.json.JSONArray
+        ?: return null
+    val last = elements.optJSONObject(elements.length() - 1) ?: return null
+    return (last.opt("complexDistance") as? Number)?.toDouble()
+}
+
 private fun displayName(context: Context, uri: Uri): String? = runCatching {
     context.contentResolver
         .query(uri, arrayOf(OpenableColumns.DISPLAY_NAME), null, null, null)
@@ -173,6 +210,33 @@ fun rememberPlanFileActions(onResult: (String) -> Unit = {}): PlanFileActions {
             } else {
                 onResult(failure)
             }
+        }
+    }
+
+    fun importFrom(uri: Uri, pattern: String) {
+        scope.launch {
+            val message = withContext(Dispatchers.Default) {
+                val label = displayName(context, uri)
+                val staged = File(context.cacheDir, boundaryCacheName(label))
+                staged.delete()
+                if (!copyIn(context, uri, staged)) {
+                    return@withContext "That file could not be read."
+                }
+                val before = visualItemCount()
+                Qgc.invoke(
+                    "$MISSION_ROOT.insertComplexMissionItemFromKMLOrSHP",
+                    pattern, staged.absolutePath, before, true,
+                )
+                if (visualItemCount() <= before) {
+                    return@withContext "${label ?: "That file"} added nothing to the plan."
+                }
+                if (importedNothing(lastItemDistance())) {
+                    Qgc.invoke("$MISSION_ROOT.removeVisualItem", visualItemCount() - 1)
+                    return@withContext "${label ?: "That file"} holds no area for a $pattern."
+                }
+                null
+            }
+            onResult(message ?: "Boundary imported.")
         }
     }
 
@@ -246,11 +310,39 @@ fun rememberPlanFileActions(onResult: (String) -> Unit = {}): PlanFileActions {
         ActivityResultContracts.CreateDocument(PLAN_MIME),
     ) { uri -> uri?.let { exportKmlTo(it) } }
 
+    val pendingImport = remember { mutableStateOf<Uri?>(null) }
+    val patterns = remember { mutableStateOf<List<String>>(emptyList()) }
+
+    val importer = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
+        val chosen = uri ?: return@rememberLauncherForActivityResult
+        scope.launch {
+            val names = withContext(Dispatchers.Default) { patternNames() }
+            when {
+                names.isEmpty() -> onResult("This vehicle offers no pattern to import into.")
+                names.size == 1 -> importFrom(chosen, names.first())
+                else -> {
+                    patterns.value = names
+                    pendingImport.value = chosen
+                }
+            }
+        }
+    }
+
     val creator = rememberLauncherForActivityResult(
         ActivityResultContracts.CreateDocument(PLAN_MIME),
     ) { uri -> uri?.let { writeTo(it) } }
 
-    return remember(opener, creator, kmlCreator) {
+    val choosePattern = PatternChoice(
+        options = { patterns.value.takeIf { pendingImport.value != null } ?: emptyList() },
+        pick = { name ->
+            val uri = pendingImport.value
+            pendingImport.value = null
+            if (uri != null) importFrom(uri, name)
+        },
+        cancel = { pendingImport.value = null },
+    )
+
+    return remember(opener, creator, kmlCreator, importer) {
         PlanFileActions(
             open = { opener.launch(PLAN_OPEN_TYPES) },
             saveAs = { guarded { creator.launch(name.value ?: DEFAULT_PLAN_NAME) } },
@@ -261,6 +353,8 @@ fun rememberPlanFileActions(onResult: (String) -> Unit = {}): PlanFileActions {
                 }
             },
             exportKml = { guarded { kmlCreator.launch(DEFAULT_KML_NAME) } },
+            importBoundary = { importer.launch(PLAN_OPEN_TYPES) },
+            patternChoice = choosePattern,
             newPlan = { discard("removeAll", "New plan.", "The plan could not be cleared.") },
             clearMission = {
                 discard(
