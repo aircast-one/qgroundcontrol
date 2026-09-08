@@ -696,6 +696,27 @@ struct FlyView: View {
         .frame(maxWidth: 380)
     }
 
+    private var terrainBanner: some View {
+        GlassPanel {
+            VStack(alignment: .leading, spacing: 4) {
+                HStack(spacing: Overlay.step) {
+                    Text(fly.terrain.text)
+                        .font(.caption)
+                    Spacer(minLength: Overlay.step)
+                    Text(fly.terrain.percentText)
+                        .font(.caption.monospacedDigit())
+                        .foregroundColor(.secondary)
+                }
+                ProgressView(value: fly.terrain.fraction)
+                    .progressViewStyle(.linear)
+                    .frame(width: 200)
+            }
+            .padding(.horizontal, Overlay.unit * 0.7)
+            .padding(.vertical, Overlay.unit * 0.4)
+        }
+        .fixedSize()
+    }
+
     private var roiBanner: some View {
         GlassPanel {
             HStack(spacing: Overlay.step) {
@@ -730,6 +751,9 @@ struct FlyView: View {
                 .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
 
             VStack(spacing: Overlay.step) {
+                if fly.terrainShowing {
+                    terrainBanner
+                }
                 if fly.warning.showing {
                     warningBanner
                 }

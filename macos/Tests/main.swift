@@ -2241,6 +2241,7 @@ checkMapClick()
 checkMapCentre()
 checkMapFollow()
 checkMapScale()
+checkTerrainDownload()
 checkMyLocation()
 checkFlyOverlays()
 checkGripper()
@@ -2723,4 +2724,43 @@ func checkMapScale() {
     expect(MapScaleBar.snapped(-5, to: MapScaleBar.metres) == nil, "nor a negative one")
     expect(MapScaleBar.snapped(5_000_000, to: MapScaleBar.metres)?.value == 2_000_000,
            "and past the largest step it holds at the largest")
+}
+
+func checkTerrainDownload() {
+    expect(!TerrainDownload.none.started, "a vehicle that has fetched no terrain shows no panel")
+    expect(TerrainDownload.none.text, "", "and says nothing")
+
+    let busy = TerrainDownload(loaded: 120, pending: 380)
+    expect(busy.busy, "blocks still pending means a download is running")
+    expect(busy.total == 500, "the total is what has landed plus what is still coming")
+    expect(busy.fraction == 0.24, "and the bar fills by that ratio, as QGC's pctComplete does")
+    expect(busy.percentText, "24%", "shown as a whole percent")
+    expect(busy.text, "Loading terrain 120 of 500", "with the counts spelled out")
+
+    let done = TerrainDownload(loaded: 504, pending: 0)
+    expect(!done.busy, "nothing pending means nothing is downloading")
+    expect(done.started, "but 504 blocks is still something to report")
+    expect(done.fraction == 1, "a finished download fills the bar")
+    expect(done.text, "Terrain loaded, 504 blocks", "and says how many arrived")
+    expect(TerrainDownload(loaded: 1, pending: 0).text, "Terrain loaded, 1 block",
+           "with the singular spelled properly")
+
+    expect(TerrainDownload.showing(busy, sinceIdle: nil),
+           "a running download is shown whether or not it has ever been idle")
+    expect(TerrainDownload.showing(busy, sinceIdle: 999),
+           "and a stale idle stamp does not hide one that started again")
+    expect(TerrainDownload.showing(done, sinceIdle: 5),
+           "a finished download lingers, which is QGC's thirty second timer")
+    expect(TerrainDownload.showing(done, sinceIdle: 29.9), "right up to the last moment")
+    expect(!TerrainDownload.showing(done, sinceIdle: 30), "and goes at thirty seconds")
+    expect(!TerrainDownload.showing(done, sinceIdle: nil),
+           "a finished download with no idle stamp is not shown, so a restart does not resurrect it")
+    expect(!TerrainDownload.showing(.none, sinceIdle: 1), "and nothing at all is never shown")
+
+    let read = TerrainDownload.read([["name": "blocksLoaded", "value": 504 as NSNumber],
+                                     ["name": "blocksPending", "value": 0 as NSNumber]])
+    expect(read == done, "which is exactly what this grounded vehicle reports")
+    expect(TerrainDownload.read([]) == .none, "and a vehicle with no terrain facts reports nothing")
+    expect(TerrainDownload.read([["name": "blocksLoaded"]]) == .none,
+           "as does one whose fact carries no value")
 }

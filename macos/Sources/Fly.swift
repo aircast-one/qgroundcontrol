@@ -41,6 +41,21 @@ final class FlyStore: ObservableObject, Probeable {
     }
 
     @Published private(set) var keepCentered = false
+    @Published private(set) var terrain = TerrainDownload.none
+    @Published private(set) var terrainShowing = false
+    private var terrainIdleSince: Date?
+
+    private func readTerrain() {
+        let read = TerrainDownload.read(
+            (Bridge.group("vehicle.terrain")["facts"] as? [[String: Any]]) ?? [])
+        if read != terrain {
+            terrainIdleSince = read.busy ? nil : (read.started ? Date() : nil)
+            terrain = read
+        }
+        let showing = TerrainDownload.showing(
+            terrain, sinceIdle: terrainIdleSince.map { Date().timeIntervalSince($0) })
+        if showing != terrainShowing { terrainShowing = showing }
+    }
 
     func refresh() {
         let muted = (Bridge.group("settings.appSettings.audioMuted")["value"] as? NSNumber)?.boolValue ?? false
@@ -49,6 +64,8 @@ final class FlyStore: ObservableObject, Probeable {
         let centred = (Bridge.group("settings.flyViewSettings.keepMapCenteredOnVehicle")["value"]
             as? NSNumber)?.boolValue ?? false
         if centred != keepCentered { keepCentered = centred }
+
+        readTerrain()
 
         let vehicle = Bridge.group("vehicle")
         guard vehicle["kind"] as? String == "object" else {
@@ -219,6 +236,9 @@ final class FlyStore: ObservableObject, Probeable {
          "altitude": telemetry.altitudeText,
          "groundSpeed": telemetry.groundSpeedText,
          "keepCentered": keepCentered,
+         "terrain": ["loaded": terrain.loaded, "pending": terrain.pending,
+                     "text": terrain.text, "percent": terrain.percentText,
+                     "showing": terrainShowing],
          "heading": FlyTelemetry.degrees(telemetry.heading),
          "battery": telemetry.batteryText, "gps": telemetry.gpsText,
          "placed": position != nil,
