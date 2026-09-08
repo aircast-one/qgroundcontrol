@@ -505,13 +505,18 @@ which the drawn route and the distance both read. They disagreed twice about the
 same plan because each decided separately, and that is the fix for the cause
 rather than for either symptom.
 
-Three of those five are verified on the handset. The standalone and incomplete
-rules are unit-tested only, because nothing in this module can produce either:
-an ROI arrives only in a plan loaded from a file or a vehicle, `insertSurvey`
-seeds its polygon in the same breath as creating it, and the app's import
-removes an empty survey rather than leaving one. They are implemented because
-they mirror explicit upstream conditions rather than guesses about behaviour,
-and the device checks are owed rather than skipped.
+Four of those five are verified on the handset. The standalone rule was
+unit-tested only until `fakevehicle.py` learned to hold a mission: `SIM_SEED=roi`
+seeds a waypoint, a `DO_SET_ROI_LOCATION` and another waypoint, and Download
+pulls it in. The ROI draws and the route runs straight between the two waypoints
+without detouring to it - 303 m in the panel and 0.30 km in the profile, both the
+direct leg.
+
+The incomplete rule is still unit-tested only. Nothing here can hold a complex
+item in that state: `insertSurvey` seeds its polygon in the same breath as
+creating it, and the app's import removes an empty survey rather than leaving
+one. Seeding a half-built survey over MAVLink is not possible either, since the
+protocol carries mission items rather than QGC's complex-item structure.
 
 ## Which calls can be checked, and which cannot
 
