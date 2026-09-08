@@ -1146,6 +1146,24 @@ Caution was a hard amber; High was `colorScheme.error`, which in this dark theme
 pink meant for text on a surface rather than for filling a shape. The most serious band was
 the least alarming thing on the screen. High is a saturated red now.
 
+**Third migration: the vibration bands.** `barFraction`, `verdictFor` and the
+`VIBE_MAX`/`WARN`/`HIGH` constants are gone. `view.vibration` serves each axis with its value,
+its fraction of the scale and its severity, plus both levels and the clip counts; the screen
+keeps the drawing, the colours and the words. The scale numbers and the band caption are now
+built from the core's levels instead of from literals that happened to agree with them.
+
+This one was **guarded before it broke**, which is the first time that has happened tonight.
+The recorded contract marks four fields on this view as nullable - `value`, `fraction`,
+`severity` and `worst` - so they were read through `isNull` from the first version rather than
+after seeing the word "null" on the handset. A contract that records nullability turns a
+class of defect from something found on a device into something known before writing the
+decoder.
+
+It still broke two things a fixture could not have caught: the heading read `Vibration ()`
+because the served units are blank on this build, and the axes came back `x`, `y`, `z` where
+the screen had always shown `X`, `Y`, `Z`. Both are the seam between an identifier the core
+serves and a label a person reads.
+
 **`optString` returns the string `"null"`, and that is how a view field lands in the UI.**
 The second migration - `flightBlocker` deleted, `view.warnings.armingBlocker` in its place -
 worked first time and then showed the word **null** in red once the blocker cleared, because
