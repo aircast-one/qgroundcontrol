@@ -482,11 +482,37 @@ Also checked, since the survey layer keys off it: a corridor scan does **not** c
 `surveyAreaPolygon` at the top level, so it is not being mis-drawn as a survey. It is
 absent from the map, as this note said — not wrong on it.
 
-That supplies the discriminator and nothing more. Still to do: either draw those
-three, or warn naming the specific items, and the warning is now cheap to make
-correct because it can list what it could not draw rather than guessing that
-something is missing. **Android needs an AAR rebuild before it sees the field.**
-The gate above is unaffected for surveys but cannot be claimed for a mixed plan.
+**The warning now exists** (`aircast-android`, `undrawnItemNames`/`undrawnItemsWarning`).
+Opening a plan reports, by name, the kinds of item the map could not draw. An item
+counts as drawable if `isSimpleItem` is true, or its class is `MissionSettingsItem`
+or `SurveyComplexItem`. Keying on `isSimpleItem` rather than a list of class names is
+the point: a takeoff reports **`TakeoffMissionItem`**, so a name list would have
+warned on almost every plan — the same false-positive that sank the earlier three,
+found by inserting a takeoff and looking rather than by reasoning.
+
+Verified on the OnePlus 6 against a `.plan` **QGC itself wrote** containing a real
+corridor scan: opening it says *"The map cannot draw Corridor Scan. Those items are
+still in the plan and will still be flown."* An out-of-date AAR under-warns rather
+than warning wrongly, since an item with no `class` field yields no name.
+
+**What that device run did not prove.** The same file also held a survey, which the
+warning correctly did not name — but that survey was **empty** (`path: []`,
+`count: 0`, `isValid: false`), because `insertComplexMissionItem` with only a map
+centre creates a pattern with no polygon for the user to draw into. So the silent
+case is covered by unit tests but not yet on hardware, and "surveys are drawn" is
+still resting on whoever wrote it, not on this run. A plan with a survey that has
+real vertices is the missing check.
+
+Still to do: actually draw corridor scans, structure scans and landing patterns.
+**Android needs an AAR rebuild before it sees the `class` field.** The gate above is
+unaffected for surveys but cannot be claimed for a mixed plan.
+
+**Unexplained, recorded so it is not rediscovered from scratch:** a temporary probe
+that called `plan.loadFromFile` inside the bridge test, read the items back, then
+`plan.removeAll`, made the suite exit 132 (SIGILL) *after* printing ALL TESTS PASSED.
+Every test passed; the crash is in teardown. Removing the probe restores exit 0. Not
+chased, and not claimed to be a real defect — but a plan load followed by teardown is
+where to look if it resurfaces.
 
 ### Plan files — scope the plan missed
 
