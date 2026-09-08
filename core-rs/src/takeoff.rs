@@ -19,6 +19,7 @@ pub fn takeoff_view(backend: &dyn Backend, args: &[String]) -> Value {
     let base = json!({
         "kind": "object",
         "class": "GuidedTakeoff",
+        "label": "Height above launch",
         "available": range.is_some(),
         "unit": unit.name,
         "minimum": range.map(|(lo, _)| unit.show(lo)),
@@ -93,6 +94,7 @@ mod tests {
         assert_eq!(view["minimum"], 10.0);
         assert_eq!(view["initial"], 10.0);
         assert_eq!(view["maximum"], 121.0);
+        assert_eq!(view["label"], "Height above launch");
     }
 
     #[test]

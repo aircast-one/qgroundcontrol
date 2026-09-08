@@ -25,6 +25,7 @@ pub fn altitude_view(backend: &dyn Backend, args: &[String]) -> Value {
     let base = json!({
         "kind": "object",
         "class": "GuidedAltitude",
+        "label": "Height above launch",
         "available": range.is_some(),
         "unit": unit.name,
         "current": range.as_ref().map(|r| unit.show(r.current)),
@@ -113,6 +114,7 @@ mod tests {
         assert_eq!(view["maximum"], 150.0);
         assert_eq!(view["current"], 150.0);
         assert_eq!(view["unit"], "m");
+        assert_eq!(view["label"], "Height above launch");
         assert!(view.get("sentence").is_none());
     }
 
