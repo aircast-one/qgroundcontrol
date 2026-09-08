@@ -75,6 +75,15 @@ Phase 5, ahead of the Fly view itself.**
 **Every hardware gate from Phase 3 onward is unmet.** Everything above was
 verified against ArduCopter SITL and a OnePlus 6, never a real airframe.
 
+**"Verified on the handset" does not cover the bridge.** `aircast-android` and
+`map-spike` both build against the prebuilt `AircastQGC.aar`, so a change to
+`QGCBridgeCore.cc` is invisible on the device until the Qt build regenerates the
+AAR. Anything a device test exercised ran against whatever bridge that AAR was
+built from. A C++ bridge change is verified by `test/Bridge` and by nothing else
+until the AAR is rebuilt — read every device claim in this document with that
+split in mind. `0f3bdbcd7` is the current example: the write path it fixes is
+proven by the suite and has never run on a phone.
+
 ## Three measurements that set the architecture
 
 **1. Android already has the library target.** Qt builds `AircastQGC.aar` via `androiddeployqt
