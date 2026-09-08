@@ -644,6 +644,11 @@ against a 700 ms poll:
     profile   4.9 ms      terrain and distance
     whole   258-306 ms
 
+It is linear in item count, not a cliff - 50 items read in 62-89 ms, 100 in
+114-130, 199 in 247-294, which is about 1.3 ms an item throughout. Halving what
+gets serialised should halve the time. Extrapolating, the read meets the 700 ms
+interval somewhere around 500 items.
+
 So the poll is one read and a rounding error. An empty plan is 5.7 ms whole, and
 the cost tracks item count because the bridge serialises every property and every
 fact of every item and hands it back as one string across JNI. There is no way
