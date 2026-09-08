@@ -1,0 +1,45 @@
+package one.aircast.android.ui
+
+import org.json.JSONObject
+
+internal const val FLIGHT_MODES = "view.flightModes"
+
+internal data class FlightModeOption(
+    val name: String,
+    val summary: String,
+    val current: Boolean,
+    val needsConfirm: Boolean,
+)
+
+internal data class FlightModesView(
+    val canSet: Boolean,
+    val current: String,
+    val currentSummary: String,
+    val everyday: List<FlightModeOption>,
+    val folded: List<FlightModeOption>,
+)
+
+private fun options(view: JSONObject?, key: String): List<FlightModeOption> {
+    val items = view?.optJSONArray(key) ?: return emptyList()
+    return (0 until items.length()).mapNotNull { index ->
+        items.optJSONObject(index)?.let { mode ->
+            FlightModeOption(
+                name = mode.optString("name"),
+                summary = mode.optString("summary"),
+                current = mode.optBoolean("current"),
+                needsConfirm = mode.optBoolean("needsConfirm"),
+            )
+        }
+    }
+}
+
+internal fun flightModesView(view: JSONObject?): FlightModesView? {
+    if (view == null || !view.optBoolean("available")) return null
+    return FlightModesView(
+        canSet = view.optBoolean("canSet"),
+        current = view.optString("current"),
+        currentSummary = view.optString("currentSummary"),
+        everyday = options(view, "everyday"),
+        folded = options(view, "folded"),
+    )
+}

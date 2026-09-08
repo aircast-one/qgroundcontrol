@@ -8,6 +8,7 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.KeyboardArrowDown
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.AssistChip
@@ -407,31 +408,55 @@ private fun readTakeoffAltitudeMeters(): Double =
 
 @Composable
 private fun FlightModePicker(onRefusal: (String?) -> Unit) {
-    val modes by qgcStrings("vehicle.flightModes")
-    val current by qgcString("vehicle.flightMode")
+    val json by qgcPath(FLIGHT_MODES)
+    val modes = remember(json) { flightModesView(json) }
     var expanded by remember { mutableStateOf(false) }
+    var showFolded by remember { mutableStateOf(false) }
     val scope = rememberCoroutineScope()
 
+    if (modes == null) {
+        TextButton(onClick = {}, enabled = false) { Text("No flight modes reported") }
+        return
+    }
+
+    fun choose(mode: FlightModeOption) {
+        expanded = false
+        scope.attemptCommand(
+            action = mode.name,
+            report = onRefusal,
+            reached = { flightModeNow() == mode.name },
+        ) { Qgc.set("vehicle.flightMode", mode.name) }
+    }
+
     Row(verticalAlignment = Alignment.CenterVertically) {
-        AssistChip(onClick = { expanded = true }, label = { Text(current.ifBlank { "Mode" }) })
+        AssistChip(
+            onClick = { expanded = true },
+            enabled = modes.canSet,
+            label = { Text(modes.current.ifBlank { "Mode" }) },
+        )
         Icon(Icons.Default.KeyboardArrowDown, null)
-        DropdownMenu(expanded = expanded, onDismissRequest = { expanded = false }) {
-            modes.forEach { mode ->
+        DropdownMenu(
+            expanded = expanded,
+            onDismissRequest = { expanded = false; showFolded = false },
+        ) {
+            val shown = if (showFolded) modes.everyday + modes.folded else modes.everyday
+            shown.forEach { mode ->
                 DropdownMenuItem(
-                    text = { Text(mode) },
-                    onClick = {
-                        expanded = false
-                        scope.attemptCommand(
-                            action = mode,
-                            report = onRefusal,
-                            reached = { flightModeNow() == mode },
-                        ) { Qgc.set("vehicle.flightMode", mode) }
+                    text = { Text(mode.name) },
+                    trailingIcon = if (mode.current) {
+                        { Icon(Icons.Default.Check, null) }
+                    } else {
+                        null
                     },
+                    onClick = { choose(mode) },
+                )
+            }
+            if (modes.folded.isNotEmpty() && !showFolded) {
+                DropdownMenuItem(
+                    text = { Text("More modes") },
+                    onClick = { showFolded = true },
                 )
             }
         }
-    }
-    if (modes.isEmpty()) {
-        TextButton(onClick = {}) { Text("No flight modes reported") }
     }
 }
