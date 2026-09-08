@@ -317,6 +317,20 @@ own. The header names the vehicle and says how many are connected, because thing
 vehicle" landing at the other one reads exactly like a broken feature. This cost several rounds
 before the header existed.
 
+The picker offers whichever vehicles are not active, and tapping one writes an @path to
+`vehicles.activeVehicle` - the property takes a `Vehicle*`, so the value names the entry in the
+manager's own list rather than a copy of it.
+
+That write was refused for most of its life, and the reason is worth keeping. `resolve` used to
+follow the last path segment into the object the property already held, so the write arrived with
+an empty property name and died in a branch that returned a bare `{"ok":false}` with no reason at
+all. It therefore worked exactly while `activeVehicle` read null - the state where there is nothing
+to switch to - and failed the moment a vehicle connected. Fixed on the bridge side; the AAR has to
+be rebuilt before a fix there reaches the phone.
+
+Verify it by the read, never by the write. "Vehicle 2 is active" is only `set` returning ok. The
+evidence is that the picker then offers Vehicle 1, which comes from `vehicle.id` on the other side.
+
 ## Tiles
 
 `QgcTileCache` reads QGroundControl's SQLite cache directly and serves tiles through an OkHttp

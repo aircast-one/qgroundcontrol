@@ -211,22 +211,3 @@ class BoundaryImportTest {
         assertEquals(false, importedNothing(5100.0))
     }
 }
-
-class WriteRefusalTest {
-    @Test
-    fun `an accepted write says nothing`() {
-        assertNull(writeRefusal(true))
-    }
-
-    @Test
-    fun `a refused write is named rather than left to look like a glitch`() {
-        assertEquals("That change was not accepted.", writeRefusal(false))
-    }
-
-    @Test
-    fun `the refusal does not guess at a cause it cannot know`() {
-        val message = writeRefusal(false)!!
-        listOf("vehicle", "property", "WRITE", "bridge")
-            .forEach { assertEquals("claims a cause: $message", false, message.contains(it)) }
-    }
-}

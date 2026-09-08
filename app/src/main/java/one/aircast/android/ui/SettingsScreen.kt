@@ -42,6 +42,7 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import one.aircast.android.bridge.Fact
 import one.aircast.android.bridge.Qgc
+import one.aircast.android.bridge.offMainDetached
 import one.aircast.android.bridge.qgcFacts
 
 data class SettingsGroup(val path: String, val title: String)
@@ -126,18 +127,6 @@ internal fun FactRow(
     subtitle: String = fact.units,
     onWrite: () -> Unit = {},
 ) {
-    val scope = rememberCoroutineScope()
-    var refusal by remember(fact.path) { mutableStateOf<String?>(null) }
-
-    fun write(block: () -> Boolean) {
-        scope.launch {
-            val accepted = withContext(Dispatchers.Default) { block() }
-            refusal = writeRefusal(accepted)
-            if (accepted) onWrite()
-        }
-    }
-
-    Column {
     Row(
         Modifier
             .fillMaxWidth()
@@ -174,26 +163,19 @@ internal fun FactRow(
                 )
                 fact.isBool -> Switch(
                     checked = fact.boolValue,
-                    onCheckedChange = { checked -> write { Qgc.set(fact.path, checked) } },
+                    onCheckedChange = { checked ->
+                        offMainDetached { Qgc.set(fact.path, checked); onWrite() }
+                    },
                 )
-                fact.isEnum && !fact.valueIsOffTheEnumList -> EnumPicker(fact, ::write)
+                fact.isEnum && !fact.valueIsOffTheEnumList -> EnumPicker(fact, onWrite)
                 else -> FactTextField(fact, onWrite)
             }
         }
     }
-    refusal?.let {
-        Text(
-            text = it,
-            style = MaterialTheme.typography.bodySmall,
-            color = MaterialTheme.colorScheme.error,
-            modifier = Modifier.padding(start = 20.dp, bottom = 8.dp),
-        )
-    }
-    }
 }
 
 @Composable
-private fun EnumPicker(fact: Fact, write: (() -> Boolean) -> Unit) {
+private fun EnumPicker(fact: Fact, onWrite: () -> Unit) {
     var expanded by remember { mutableStateOf(false) }
     val label = enumLabel(fact)
 
@@ -220,7 +202,10 @@ private fun EnumPicker(fact: Fact, write: (() -> Boolean) -> Unit) {
                     text = { Text(option) },
                     onClick = {
                         expanded = false
-                        write { Qgc.set("${fact.path}.enumIndex", index) }
+                        offMainDetached {
+                            Qgc.set("${fact.path}.enumIndex", index)
+                            onWrite()
+                        }
                     },
                 )
             }
@@ -242,13 +227,6 @@ internal fun factRebootNote(fact: Fact): String? = when {
     fact.qgcRebootRequired -> "Restart Aircast for this to take effect."
     else -> null
 }
-
-// Qgc.set returns false when the bridge refuses the write, and the reason it carries
-// names a property and a class — true, and no use to a pilot. So the row says only what
-// is known: the change did not take. Without this a refused switch flips back on the
-// next poll and reads as the app glitching.
-internal fun writeRefusal(accepted: Boolean): String? =
-    if (accepted) null else "That change was not accepted."
 
 internal fun validationMessage(result: Any?): String? =
     (result as? String)?.takeIf { it.isNotBlank() }
