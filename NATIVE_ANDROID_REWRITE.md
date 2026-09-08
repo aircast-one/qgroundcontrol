@@ -1146,6 +1146,21 @@ Caution was a hard amber; High was `colorScheme.error`, which in this dark theme
 pink meant for text on a surface rather than for filling a shape. The most serious band was
 the least alarming thing on the screen. High is a saturated red now.
 
+**Fifth migration: the guided altitude.** `altitudeRange`, `altitudeDelta`,
+`altitudeChangeSummary` and the 0.01 m deadband are deleted; `view.guidedAltitude` serves the
+range, the sentence, the metric delta and whether the firmware will act on the change. The
+head draws a slider and a dialog and nothing else.
+
+Two details it was worth getting right. The argument form is called when the slider **settles**
+and again at **confirm**, never per frame - a Compose slider fires continuously, and each call
+is a hop to the Qt thread. And the delta actually sent is the one from the confirm-time call,
+because the aircraft is climbing while the operator drags: a delta computed against the
+altitude at drag time is already stale when it is sent.
+
+Verified on the handset: "already at 25.0 m and will not move" with the button disabled, then
+"will climb 43.3 m to 68.3 m" after a drag, then exactly one `SET_POSITION_TARGET_LOCAL_NED`
+with frame 7 and `z=-43.29`.
+
 **Two open items closed by rebuilding, and one self-inflicted lesson.** An AAR at
 `9491c6132` starts, the whole regression passes, the four-name argument form resolves now that
 the watch splits on top-level commas only, and `FLTMODE1` through `FLTMODE6` are all editable
