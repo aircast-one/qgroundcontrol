@@ -255,6 +255,20 @@ Hardest phase. `MissionManager` (20.7k C++) survives entirely; the map-editing U
 
 **Gate (HW):** a 200+ waypoint survey planned, uploaded, flown and downloaded byte-identical.
 
+**Task-level UX review of the finished tab (2026-09-08).** Every command from
+`PlanView.qml` is now present, and that is the problem: twelve controls of
+identical weight, so the action that completes the job — Upload — is styled
+exactly like Fit, which recentres the view. There is no primary action. Measured
+off the handset, the map gets 34% of the screen (header 18, map 34, terrain
+profile 11, Follow 5, button grid 11, nav 21), so on a screen whose job is
+editing a map the chrome outweighs the canvas about two to one. The bottom grid
+also mixes vehicle sync, item creation and view control with nothing separating
+them. None of this is a bug; it is the difference between a tab that has every
+command and one that shows a pilot which to press. The fix spans both the shell
+and the map module — the file row should collapse to a single File button as QGC
+has, but only once Upload is visually primary, or Save goes two taps away while
+the text beside it says "unsaved changes".
+
 **Known gap — the map draws less than the plan holds.** Waypoints, fences, rally
 points and surveys are drawn; corridor scans, structure scans and landing
 patterns are not. They still count in the distance and duration and they still
