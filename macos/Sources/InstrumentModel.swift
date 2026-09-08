@@ -119,13 +119,5 @@ struct InstrumentValue: Identifiable, Equatable {
             units: Units.display((fact["units"] as? String) ?? ""))
     }
 
-    static func label(for factName: String) -> String {
-        let spaced = factName.reduce(into: "") { result, character in
-            if character.isUppercase, !result.isEmpty, result.last != " " {
-                result.append(" ")
-            }
-            result.append(character)
-        }
-        return spaced.prefix(1).uppercased() + spaced.dropFirst()
-    }
+    static func label(for factName: String) -> String { Fact.humanise(factName) }
 }

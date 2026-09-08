@@ -2078,9 +2078,10 @@ func checkInstrumentValues() {
     expect(absent.missing, "a fact this firmware does not report reads as missing")
     expect(absent.label, "Nothing Here", "but is still named, so the slot is not blank")
 
-    expect(InstrumentValue.label(for: "gps"), "Gps", "a single lowercase word is capitalised")
-    expect(InstrumentValue.label(for: "altitudeAMSL"), "Altitude A M S L",
-           "runs of capitals split; the vehicle's own description is preferred for a reason")
+    expect(InstrumentValue.label(for: "gps"), "GPS",
+           "a known acronym keeps its casing even when the vehicle reports it lowercase")
+    expect(InstrumentValue.label(for: "altitudeAMSL"), "Altitude AMSL",
+           "and a run of capitals stays one word instead of becoming A M S L")
 
     expect(InstrumentSelection.vehicle("heading").path, "vehicle",
            "the vehicle's own facts come from the vehicle itself")
@@ -2101,7 +2102,7 @@ func checkInstrumentGroups() {
     ]
 
     let groups = InstrumentGroup.assemble(read)
-    expect(groups.map(\.title).joined(separator: ","), "Vehicle,Gps,Battery 1",
+    expect(groups.map(\.title).joined(separator: ","), "Vehicle,GPS,Battery 1",
            "a child carrying no facts is dropped, so rpm never reaches the picker")
     expect(groups[0].facts.map(\.label).joined(separator: ","), "Heading,Air Speed Setpoint",
            "a fact with no description falls back to its split name")
@@ -2123,8 +2124,9 @@ func checkInstrumentGroups() {
         ("gps", ["facts": [["name": "lat"], ["name": "lon"]]]),
         ("gps2", ["facts": [["name": "lat"], ["name": "lon"]]]),
     ]
-    expect(InstrumentGroup.assemble(aliased).map(\.title).joined(separator: ","), "Vehicle,Gps,Gps2",
-           "the vehicle lists itself among its children, so that one alias goes; two GPS units share a schema and both stay")
+    expect(InstrumentGroup.assemble(aliased).map(\.title).joined(separator: ","), "Vehicle,GPS,GPS 2",
+           "the vehicle lists itself among its children, so that one alias goes; two GPS units share a schema and both stay, "
+           + "named the way Battery 1 is rather than as Gps2")
 }
 
 checkInstrumentGroups()
@@ -2282,6 +2284,7 @@ checkMenuPlacement()
 checkOverlayArrange()
 checkCentreNotes()
 checkPlanReadiness()
+checkInstrumentLabels()
 checkMapFollow()
 checkMapScale()
 checkTerrainDownload()
@@ -2881,6 +2884,21 @@ func checkPolygonEdit() {
     expect(pair?.canRemoveVertex == false, "but neither end can be dropped")
     expect(EditablePolygon.read(path: "l", json: ["path": []], ring: false) == nil,
            "and an empty line is still nothing to edit")
+}
+
+func checkInstrumentLabels() {
+    expect(InstrumentValue.label(for: "groundSpeed") == "Ground Speed",
+           "a plain camelCase fact name splits into words")
+    expect(InstrumentValue.label(for: "altitudeAMSL") == "Altitude AMSL",
+           "an acronym stays one word rather than becoming A M S L")
+    expect(InstrumentValue.label(for: "distanceToGCS") == "Distance To GCS",
+           "and so does a trailing acronym")
+    expect(InstrumentValue.label(for: "hdop") == "Hdop",
+           "a single lowercase word is just capitalised")
+    expect(InstrumentValue.label(for: "groundSpeed") == Fact.humanise("groundSpeed"),
+           "the instrument grid and the fact rows name a fact the same way")
+    expect(InstrumentValue.label(for: "altitudeAMSL") == Fact.humanise("altitudeAMSL"),
+           "including when it carries an acronym")
 }
 
 func checkPlanReadiness() {
