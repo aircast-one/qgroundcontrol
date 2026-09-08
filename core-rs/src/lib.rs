@@ -4,6 +4,7 @@ pub mod altitude;
 pub mod batteryfacts;
 pub mod battery;
 pub mod calibration;
+pub mod cmdinfo;
 pub mod contract;
 pub mod control;
 pub mod fences;

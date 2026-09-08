@@ -591,6 +591,7 @@ About 58 developer-weeks. Flight-test time, not code, is the schedule.
 - 2026-09-09: `.plan` writer and `.waypoints` to `.plan` conversion in the core (`view.planFromWaypoints`), loaded back by Qt in the C ABI suite.
 - 2026-09-09: `view.inspector` messages carry `title` (name, or name with comp id when the name repeats across components).
 - 2026-09-09: QGC WPL waypoint writer in the core with a read-back round trip.
+- 2026-09-09: mission command metadata (18 MavCmdInfo files) compiled into the core and collapsed like the command tree.
 
 ### Stream F · Core
 
