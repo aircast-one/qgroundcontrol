@@ -4,62 +4,34 @@ final class GuidedStore: ObservableObject, Probeable, WriteReporting {
     @Published var writeFailure: String?
     static let probeID = "guided"
 
-    @Published private(set) var state = GuidedState()
-    @Published private(set) var pending: GuidedAction?
+    @Published private(set) var offers: [GuidedOffer] = []
+    @Published private(set) var connected = false
+    @Published private(set) var missionActive = false
+    @Published private(set) var pending: GuidedOffer?
     @Published private(set) var lastSent = ""
     @Published private(set) var range: GuidedValue?
     @Published var chosen = 0.0
 
-    var actions: [GuidedAction] { GuidedAction.offered(in: state) }
+    var actions: [GuidedOffer] { offers.filter(\.shown) }
 
-    func offer(_ action: GuidedAction) -> GuidedAction.Offer { action.offer(in: state) }
-
-    func refresh(prearmClear: Bool) {
-        let vehicle = Bridge.group("vehicle")
-        guard vehicle["kind"] as? String == "object" else {
-            if state != GuidedState() { state = GuidedState() }
-            return
-        }
-
-        func flag(_ name: String) -> Bool {
-            (vehicle[name] as? NSNumber)?.boolValue ?? false
-        }
-
-        let mission = Bridge.group("plan.missionController")
-        var read = GuidedState()
-        read.connected = true
-        read.armed = flag("armed")
-        read.flying = flag("flying")
-        read.guidedSupported = flag("guidedModeSupported")
-        read.takeoffSupported = flag("takeoffVehicleSupported")
-        read.pauseSupported = flag("pauseVehicleSupported")
-        read.fixedWing = flag("fixedWing")
-        read.forwardFlight = flag("vtolInFwdFlight") || flag("fixedWing")
-        read.speedLimitsAvailable = read.forwardFlight
-            ? flag("haveFWSpeedLimits")
-            : flag("haveMRSpeedLimits")
-        read.landing = flag("landing")
-        read.hasGripper = flag("hasGripper")
-        read.readyToArm = prearmClear
-        read.flightMode = (vehicle["flightMode"] as? String) ?? ""
-        read.rtlMode = (vehicle["rtlFlightMode"] as? String) ?? ""
-        read.landMode = (vehicle["landFlightMode"] as? String) ?? ""
-        read.missionMode = (vehicle["missionFlightMode"] as? String) ?? ""
-        read.missionAvailable = (mission["containsItems"] as? NSNumber)?.boolValue ?? false
-        read.missionItemCount = (mission["missionItemCount"] as? NSNumber)?.intValue ?? 0
-        read.currentMissionIndex = (mission["currentMissionIndex"] as? NSNumber)?.intValue ?? -1
-
-        if read != state { state = read }
-        if let pending, !pending.available(in: read) { self.pending = nil }
+    func refresh() {
+        let view = Bridge.group("view.guidedActions")
+        let read = GuidedOffer.list(view["actions"])
+        if read != offers { offers = read }
+        let live = (view["connected"] as? NSNumber)?.boolValue ?? false
+        if live != connected { connected = live }
+        let active = (view["missionActive"] as? NSNumber)?.boolValue ?? false
+        if active != missionActive { missionActive = active }
+        if let pending, !(offers.first { $0.id == pending.id }?.ready ?? false) { self.pending = nil }
     }
 
-    func ask(_ action: GuidedAction) {
-        guard action.available(in: state) else { return }
-        let built = action.carriesValue ? limits(for: action) : nil
-        guard !action.carriesValue || built != nil else { return }
+    func ask(_ offer: GuidedOffer) {
+        guard offer.ready else { return }
+        let built = offer.carriesValue ? limits(for: offer.action) : nil
+        guard !offer.carriesValue || built != nil else { return }
         range = built
         chosen = built?.initial ?? 0
-        pending = action
+        pending = offer
     }
 
     func cancel() {
@@ -70,7 +42,7 @@ final class GuidedStore: ObservableObject, Probeable, WriteReporting {
     func confirm() {
         guard let action = pending else { return }
         guard !action.carriesValue || range != nil else { return }
-        send(action)
+        send(action.action)
         pending = nil
         range = nil
     }
@@ -88,7 +60,7 @@ final class GuidedStore: ObservableObject, Probeable, WriteReporting {
                                         measure: AppUnits.measure(AppUnits.vertical))
         case .changeSpeed:
             return GuidedValue.speed(maximum: number("vehicle.maximumHorizontalSpeedMultirotor"),
-                                     forwardFlight: state.forwardFlight,
+                                     forwardFlight: forwardFlight,
                                      minimumAirspeed: number("vehicle.minimumEquivalentAirspeed"),
                                      maximumAirspeed: number("vehicle.maximumEquivalentAirspeed"),
                                      measure: AppUnits.measure(AppUnits.speed))
@@ -100,6 +72,12 @@ final class GuidedStore: ObservableObject, Probeable, WriteReporting {
     static let climbOutAltitude = 50.0
     static let gripperRelease = 0
     static let gripperGrab = 1
+
+    private var forwardFlight: Bool {
+        let vehicle = Bridge.group("vehicle")
+        func flag(_ name: String) -> Bool { (vehicle[name] as? NSNumber)?.boolValue ?? false }
+        return flag("vtolInFwdFlight") || flag("fixedWing")
+    }
 
     private func number(_ path: String) -> Double {
         (Bridge.invoke(path)["result"] as? NSNumber)?.doubleValue ?? .nan
@@ -128,7 +106,7 @@ final class GuidedStore: ObservableObject, Probeable, WriteReporting {
         case .changeAltitude:
             Bridge.invoke("vehicle.guidedModeChangeAltitude", [chosen - currentAltitude, false])
         case .changeSpeed:
-            Bridge.invoke(state.forwardFlight
+            Bridge.invoke(forwardFlight
                 ? "vehicle.guidedModeChangeEquivalentAirspeedMetersSecond"
                 : "vehicle.guidedModeChangeGroundSpeedMetersSecond", [chosen])
         case .startMission, .continueMission: Bridge.invoke("vehicle.startMission")
@@ -143,27 +121,27 @@ final class GuidedStore: ObservableObject, Probeable, WriteReporting {
 
     func probeState() -> [String: Any] {
         ["writeFailure": writeFailure ?? "",
-         "connected": state.connected, "armed": state.armed, "flying": state.flying,
-         "flightMode": state.flightMode, "readyToArm": state.readyToArm,
-         "missionActive": state.missionActive, "lastSent": lastSent,
-         "pending": pending?.rawValue ?? "",
+         "connected": connected, "missionActive": missionActive, "lastSent": lastSent,
+         "pending": pending?.id ?? "",
          "range": range.map {
              ["label": $0.label, "units": $0.measure.suffix, "min": $0.minimum,
               "max": $0.maximum, "initial": $0.initial]
          } ?? [:],
          "chosen": range.map { $0.text(chosen) } ?? "",
-         "offered": actions.map(\.rawValue),
-         "available": GuidedAction.available(in: state).map(\.rawValue)]
+         "offered": actions.map(\.id),
+         "available": actions.filter(\.ready).map(\.id),
+         "blocked": Dictionary(uniqueKeysWithValues:
+             actions.filter(\.blocked).map { ($0.id, $0.reason) })]
     }
 
     func probeInvoke(action: String, args: [String: String]) -> [String: Any] {
         switch action {
-        case "refresh": refresh(prearmClear: args["ready"] == "1")
+        case "refresh": refresh()
         case "ask":
-            guard let wanted = GuidedAction(rawValue: args["what"] ?? "") else {
+            guard let wanted = offers.first(where: { $0.id == args["what"] }) else {
                 return ["ok": false, "error": "no action \(args["what"] ?? "")"]
             }
-            guard wanted.available(in: state) else {
+            guard wanted.ready else {
                 return ["ok": false, "error": "\(wanted.title) is not available in this state"]
             }
             ask(wanted)

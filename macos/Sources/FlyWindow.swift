@@ -649,36 +649,29 @@ struct GuidedConfirm: View {
 struct GuidedStrip: View {
     @ObservedObject var guided: GuidedStore
 
-    static func explain(_ offer: GuidedAction.Offer, _ action: GuidedAction) -> String {
-        if case .blocked(let reason) = offer { return reason }
-        return action.prompt
-    }
-
     var body: some View {
         GlassPanel {
             VStack(spacing: Overlay.step) {
-                ForEach(guided.actions) { action in
-                    let offer = guided.offer(action)
-                    let blocked = offer != .ready
+                ForEach(guided.actions) { offer in
                     Button {
-                        guided.ask(action)
+                        guided.ask(offer)
                     } label: {
                         VStack(spacing: 2) {
-                            Image(systemName: action.symbol)
+                            Image(systemName: offer.action.symbol)
                                 .font(.system(size: 18))
-                            Text(action.title)
+                            Text(offer.title)
                                 .font(.caption2)
                                 .lineLimit(1)
                         }
-                        .foregroundColor(action.destructive ? Overlay.vehicle : .primary)
-                        .opacity(blocked ? 0.35 : 1)
+                        .foregroundColor(offer.destructive ? Overlay.vehicle : .primary)
+                        .opacity(offer.blocked ? 0.35 : 1)
                         .frame(width: 68)
                         .padding(.vertical, 5)
                         .contentShape(Rectangle())
                     }
                     .buttonStyle(.plain)
-                    .disabled(blocked)
-                    .help(GuidedStrip.explain(offer, action))
+                    .disabled(offer.blocked)
+                    .help(offer.explanation)
                 }
             }
             .padding(Overlay.step)
@@ -833,7 +826,7 @@ struct FlyView: View {
             mission.reload()
             fly.start()
             instruments.refresh()
-            guided.refresh(prearmClear: !fly.warning.showing)
+            guided.refresh()
             video.useNativeRendering()
             video.refresh()
             mapClick.start()
@@ -846,7 +839,7 @@ struct FlyView: View {
         }
         .onChange(of: fly.telemetry) { _ in
             instruments.refresh()
-            guided.refresh(prearmClear: !fly.warning.showing)
+            guided.refresh()
             video.refresh()
         }
         .writeFailureAlert($fly.writeFailure, $guided.writeFailure, $video.writeFailure)
