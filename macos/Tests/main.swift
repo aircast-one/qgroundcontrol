@@ -2574,6 +2574,53 @@ func checkViewContract() {
          ["name", "prompt", "verdict", "reason", "blocked"]),
     ]
 
+    let enumerations = (shapes["view.contract"] as? [String: Any])?["enumerations"] as? [String: Any]
+    func recorded(_ key: String) -> [String] {
+        ((enumerations?[key] as? [Any]) ?? []).compactMap { $0 as? String }
+    }
+
+    let actionIds = recorded("view.guidedActions.actions[].id")
+    expect(!actionIds.isEmpty, "the core records which guided actions it can name")
+    expect(actionIds.filter { GuidedAction(rawValue: $0) == nil }.joined(separator: ","), "",
+           "every action the core can emit decodes, because GuidedOffer drops one it cannot name "
+           + "and the operator would simply never see that button")
+    expect(GuidedAction.allCases.map(\.rawValue).filter { !actionIds.contains($0) }
+        .joined(separator: ","), "",
+           "and this head carries no action the core never emits")
+
+    expect(recorded("view.guidedActions.actions[].offer").sorted().joined(separator: ","),
+           "blocked,hidden,ready",
+           "the three offer states this head branches on are the three the core emits; a fourth "
+           + "would silently read as shown and unblocked")
+
+    ["view.battery.level", "view.battery.packs[].level"].forEach { key in
+        let levels = recorded(key)
+        expect(!levels.isEmpty, "the core records \(key)")
+        expect(levels.filter { FlyTelemetry.Level($0) == .unknown }.joined(separator: ","), "",
+               "every battery level the core emits maps to a colour; an unmapped one drew a grey "
+               + "dot for a vehicle-reported low battery once already")
+    }
+
+    expect(recorded("view.preflight.groups[].checks[].verdict").sorted().joined(separator: ","),
+           "failing,manual,overridable,passing",
+           "the four verdicts are the four this head was written against")
+
+    let neverNull: [(String, [String], [String])] = [
+        ("view.battery", ["packs"], ["level", "text", "secondaryText"]),
+        ("view.preflight", ["groups", "checks"], ["name", "prompt", "verdict", "reason"]),
+        ("view.guidedActions", ["actions"], ["id", "offer", "title", "prompt", "reason"]),
+    ]
+    neverNull.forEach { view, inner, keys in
+        let place = inner.isEmpty ? view : "\(view).\(inner.joined(separator: "."))"
+        guard let shown = shape(view, inner) else {
+            return expect(false, "\(place) is in the recorded contract")
+        }
+        let nullable = keys.filter { ((shown[$0] as? String) ?? "").contains("null|") }.sorted()
+        expect(nullable.joined(separator: ","), "",
+               "this head renders \(place) straight into the interface with no fallback, so a "
+               + "field the core can send as null would put an empty row in front of the operator")
+    }
+
     required.forEach { view, inner, keys in
         let where_ = inner.isEmpty ? view : "\(view).\(inner.joined(separator: "."))"
         guard let recorded = shape(view, inner) else {
