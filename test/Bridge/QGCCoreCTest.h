@@ -33,6 +33,7 @@ private slots:
     void _radioFollowsTheVehicle();
     void _logsFollowTheController();
     void _inspectorListsMessages();
+    void _flightModesFollowTheVehicle();
 
 private:
     static bool _unavailable(const char *path);

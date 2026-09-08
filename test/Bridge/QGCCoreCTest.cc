@@ -373,3 +373,15 @@ void QGCCoreCTest::_inspectorListsMessages()
     QVERIFY(!first.value(QStringLiteral("name")).toString().isEmpty());
     QVERIFY(first.value(QStringLiteral("path")).toString().startsWith(QStringLiteral("mavlinkInspector.systems.0.messages.")));
 }
+
+void QGCCoreCTest::_flightModesFollowTheVehicle()
+{
+    QVERIFY2(_unavailable("view.flightModes"), "flight modes read available, or lack the field, with no vehicle");
+    _connectMockLink(MAV_AUTOPILOT_PX4);
+    QTRY_COMPARE_WITH_TIMEOUT(take(qgc_bridge_get("view.flightModes")).value(QStringLiteral("available")).toBool(false), true, 5000);
+    const QJsonObject view = take(qgc_bridge_get("view.flightModes"));
+    QVERIFY(!view.value(QStringLiteral("modes")).toArray().isEmpty());
+    QVERIFY(!view.value(QStringLiteral("everyday")).toArray().isEmpty());
+    const QString current = view.value(QStringLiteral("current")).toString();
+    QVERIFY(std::any_of(view.value(QStringLiteral("modes")).toArray().begin(), view.value(QStringLiteral("modes")).toArray().end(), [&current](const QJsonValue &m) { return m.toObject().value(QStringLiteral("name")).toString() == current; }));
+}

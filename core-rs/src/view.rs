@@ -6,6 +6,7 @@ use crate::altitude;
 use crate::battery;
 use crate::calibration;
 use crate::control;
+use crate::flightmodes;
 use crate::guided;
 use crate::inspector;
 use crate::instruments;
@@ -58,6 +59,7 @@ pub const VIEWS: &[View] = &[
     View { path: "view.radio", deps: radio::DEPS, compute: radio::radio_view },
     View { path: "view.logs", deps: logs::DEPS, compute: logs::logs_view },
     View { path: "view.inspector", deps: inspector::DEPS, compute: inspector::inspector_view },
+    View { path: "view.flightModes", deps: flightmodes::DEPS, compute: flightmodes::flight_modes_view },
 ];
 
 pub fn owns(path: &str) -> bool {
