@@ -19,4 +19,5 @@ private slots:
     void _guidedAltitudeTakesATarget();
     void _takeoffAndSpeedRangesFollowTheVehicle();
     void _batteryAndPreflightFollowTheVehicle();
+    void _warningsFollowTheVehicle();
 };

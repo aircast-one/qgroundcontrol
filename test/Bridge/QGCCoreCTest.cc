@@ -213,3 +213,17 @@ void QGCCoreCTest::_batteryAndPreflightFollowTheVehicle()
     QCOMPARE(first.at(1).toObject().value(QStringLiteral("name")).toString(), QStringLiteral("Battery"));
     QVERIFY(!first.at(1).toObject().value(QStringLiteral("reason")).toString().contains(QStringLiteral("No vehicle")));
 }
+
+void QGCCoreCTest::_warningsFollowTheVehicle()
+{
+    const QJsonObject offline = take(qgc_bridge_get("view.warnings"));
+    QCOMPARE(offline.value(QStringLiteral("class")).toString(), QStringLiteral("VehicleWarnings"));
+    QCOMPARE(offline.value(QStringLiteral("showing")).toBool(true), false);
+    QVERIFY(offline.value(QStringLiteral("armingBlocker")).isNull());
+
+    _connectMockLink(MAV_AUTOPILOT_PX4);
+    QTRY_VERIFY_WITH_TIMEOUT(take(qgc_bridge_get("view.guidedActions")).value(QStringLiteral("connected")).toBool(false), 5000);
+    const QJsonObject online = take(qgc_bridge_get("view.warnings"));
+    QVERIFY(online.value(QStringLiteral("warnings")).isArray());
+    QCOMPARE(online.value(QStringLiteral("showing")).toBool(), !online.value(QStringLiteral("warnings")).toArray().isEmpty());
+}

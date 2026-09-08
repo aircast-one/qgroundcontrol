@@ -11,5 +11,6 @@ mod speed;
 mod takeoff;
 mod router;
 mod view;
+mod warnings;
 
 pub use router::{Backend, Core};

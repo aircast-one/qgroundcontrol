@@ -11,6 +11,7 @@ use crate::preflight;
 use crate::read::value_string;
 use crate::speed;
 use crate::takeoff;
+use crate::warnings;
 use crate::router::Backend;
 
 pub struct View {
@@ -28,6 +29,7 @@ pub const VIEWS: &[View] = &[
     View { path: "view.guidedSpeed", deps: speed::DEPS, compute: speed::speed_view },
     View { path: "view.battery", deps: battery::DEPS, compute: battery::battery_view },
     View { path: "view.preflight", deps: preflight::DEPS, compute: preflight::preflight_view },
+    View { path: "view.warnings", deps: warnings::DEPS, compute: warnings::warnings_view },
 ];
 
 pub fn owns(path: &str) -> bool {
