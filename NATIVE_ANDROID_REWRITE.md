@@ -80,11 +80,25 @@ sender verified at 93 fps encoder throughput so it is not the limit:
 | frame copy out of the buffer | 1.3–1.7 ms for 8.29 MB, about 5 GB/s |
 
 So the copy the JNI does is **not** the problem — at 30 fps it would cost around
-5% of a core. A third of the frames are lost upstream of it. Where has not been
-isolated: decode, the NV12-to-BGRA `videoconvert`, or the appsink are all
-candidates, and the conversion is the one that would defeat hardware decode. That
-measurement decides whether this path ships or is replaced by rendering into a
-Surface, and it has not been made.
+5% of a core. The loss is upstream of it, and it has now been isolated.
+
+Sampling the frame counter every 100 ms shows the arrivals are **evenly spaced**
+— 2 per sample with a 3 every fifth — not the clusters and gaps a sink dropping
+on full would produce. So it is a steady throughput ceiling, not backpressure.
+And it scales with pixels rather than frames:
+
+| source | delivered |
+|---|---|
+| 1280x720 30 fps | 30 fps, even |
+| 1920x1080 30 fps | ~22 fps, even |
+
+That is about 45 Mpx/s either way, which is a per-pixel CPU cost sitting upstream
+of the copy — the NV12-to-BGRA `videoconvert` is the candidate that fits.
+
+**So the appsink path is viable at 720p and short at 1080p**, and the fix for
+1080p is to stop doing the colour conversion on the CPU — rendering into a
+Surface — rather than to stop copying. The copy was the thing this plan
+previously assumed was unaffordable; it is not.
 
 **The native Fly view is blocked on video, not on the map.** `map-spike` already
 has `VehicleMap` — vehicle position, heading, home, trail, link-loss and a follow
