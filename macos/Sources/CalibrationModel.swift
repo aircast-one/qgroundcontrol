@@ -113,7 +113,10 @@ enum CalibrationRoutine: String, CaseIterable, Identifiable {
     var id: String { rawValue }
 
     var needsAccelerometerFirst: Bool {
-        self == .compass || self == .levelHorizon
+        switch self {
+        case .compass, .levelHorizon: return true
+        case .accelerometer, .gyro, .pressure: return false
+        }
     }
 
     func blocked(whenAccelNeeded accelNeeded: Bool) -> Bool {

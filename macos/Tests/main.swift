@@ -695,6 +695,50 @@ func checkFlyDetail() {
 
 checkFlyDetail()
 
+func checkLogDownloadRules() {
+    expect(LogDownloadRules.canRefresh(connected: true, requestingList: false, downloading: false),
+           "a connected and idle vehicle can be asked for its logs")
+    expect(!LogDownloadRules.canRefresh(connected: false, requestingList: false, downloading: false),
+           "with no vehicle there is nothing to ask, which QGC checks and the native head did not")
+    expect(!LogDownloadRules.canRefresh(connected: true, requestingList: true, downloading: false),
+           "a second list request while one is in flight would confuse the transfer")
+    expect(!LogDownloadRules.canRefresh(connected: true, requestingList: false, downloading: true),
+           "and neither is asked for while a log is coming down")
+
+    expect(LogDownloadRules.canDownload(requestingList: false, downloading: false),
+           "an idle vehicle can be asked for a log")
+    expect(!LogDownloadRules.canDownload(requestingList: true, downloading: false),
+           "but not while the list is still arriving, which the native head allowed")
+    expect(!LogDownloadRules.canDownload(requestingList: false, downloading: true),
+           "nor while another log is already coming down")
+
+    expect(LogDownloadRules.canCancel(requestingList: true, downloading: false),
+           "cancel is live while a list is on its way")
+    expect(LogDownloadRules.canCancel(requestingList: false, downloading: true),
+           "and while a log is")
+    expect(!LogDownloadRules.canCancel(requestingList: false, downloading: false),
+           "and dead when there is nothing to cancel")
+
+    expect(!LogDownloadRules.canErase(count: 0, requestingList: false, downloading: false),
+           "erasing nothing is not offered")
+    expect(LogDownloadRules.canErase(count: 3, requestingList: false, downloading: false),
+           "erasing three logs is")
+    expect(!LogDownloadRules.canErase(count: 3, requestingList: false, downloading: true),
+           "but not out from under a download in progress")
+
+    expect(LogDownloadRules.emptyText(connected: false, requestingList: false),
+           "Connect a vehicle to list its logs.",
+           "the empty list does not tell the operator to press a button that is disabled")
+    expect(LogDownloadRules.emptyText(connected: true, requestingList: false),
+           "No logs listed yet. Refresh to ask the vehicle.",
+           "and does point at Refresh once Refresh can be pressed")
+    expect(LogDownloadRules.emptyText(connected: true, requestingList: true),
+           "Asking the vehicle for its logs\u{2026}",
+           "a request in flight says so rather than either of those")
+}
+
+checkLogDownloadRules()
+
 func checkCalibrationOrder() {
     expect(CalibrationRoutine.compass.blocked(whenAccelNeeded: true),
            "a compass calibration on an uncalibrated accelerometer gives a result to distrust")

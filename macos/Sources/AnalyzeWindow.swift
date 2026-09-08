@@ -162,9 +162,8 @@ struct LogDownloadView: View {
                 if !store.status.isEmpty {
                     EmptyStateRow(text: store.status)
                 } else if store.logs.isEmpty {
-                    EmptyStateRow(text: store.requestingList
-                        ? "Asking the vehicle for its logs\u{2026}"
-                        : "No logs listed yet. Refresh to ask the vehicle.")
+                    EmptyStateRow(text: LogDownloadRules.emptyText(
+                        connected: store.connected, requestingList: store.requestingList))
                 } else {
                     ForEach(Array(store.logs.enumerated()), id: \.element.id) { index, entry in
                         GroupRow(title: "Log \(entry.id)",
@@ -178,7 +177,7 @@ struct LogDownloadView: View {
                                  },
                                  trailing: {
                                      Button("Download") { store.download(entry) }
-                                         .disabled(store.downloading)
+                                         .disabled(!store.canDownload)
                                  })
                     }
                 }
@@ -186,7 +185,10 @@ struct LogDownloadView: View {
 
             HStack(spacing: Overlay.step) {
                 Button("Refresh", action: store.refresh)
-                    .disabled(store.requestingList || store.downloading)
+                    .disabled(!store.canRefresh)
+                    .help(store.connected
+                        ? "Ask the vehicle for its logs"
+                        : "Connect a vehicle to list its logs")
                 if store.downloading || store.requestingList {
                     ProgressView().controlSize(.small)
                     Button("Cancel", action: store.cancel)

@@ -56,3 +56,29 @@ struct LogEntry: Identifiable, Equatable {
         return formatter
     }()
 }
+
+enum LogDownloadRules {
+    static func canRefresh(connected: Bool, requestingList: Bool, downloading: Bool) -> Bool {
+        connected && !requestingList && !downloading
+    }
+
+    static func canDownload(requestingList: Bool, downloading: Bool) -> Bool {
+        !requestingList && !downloading
+    }
+
+    static func canCancel(requestingList: Bool, downloading: Bool) -> Bool {
+        requestingList || downloading
+    }
+
+    static func emptyText(connected: Bool, requestingList: Bool) -> String {
+        if requestingList { return "Asking the vehicle for its logs\u{2026}" }
+        return connected
+            ? "No logs listed yet. Refresh to ask the vehicle."
+            : "Connect a vehicle to list its logs."
+    }
+
+    static func canErase(count: Int, requestingList: Bool, downloading: Bool) -> Bool {
+        count > 0 && !requestingList && !downloading
+    }
+}
+
