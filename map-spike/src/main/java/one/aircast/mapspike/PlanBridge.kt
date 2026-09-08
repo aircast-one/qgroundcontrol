@@ -71,12 +71,7 @@ object PlanBridge {
     // wipes the aircraft as well, behind a modal confirmation. Starting a plan
     // over is the local intent and does not need to touch the vehicle; Upload is
     // there for anyone who does want the empty plan flown.
-    fun clearPlan(): Boolean {
-        val raw = runCatching { QGCBridge.invoke("$PLAN_ROOT.removeAll", "[]") }
-            .getOrElse { "threw: ${it.message}" }
-        android.util.Log.i("MapSpikeClear", "removeAll -> $raw")
-        return runCatching { JSONObject(raw).optBoolean("ok") }.getOrDefault(false)
-    }
+    fun clearPlan() = invoke("$PLAN_ROOT.removeAll")
 
     fun sendToVehicle() = invoke("$PLAN_ROOT.sendToVehicle")
 
@@ -102,19 +97,39 @@ object PlanBridge {
         )
     }
 
-    private fun appendAt(method: String, latitude: Double, longitude: Double): Boolean {
-        val count = rawItemCount()?.takeIf { it > 0 } ?: return false
-        return invoke(
+    private fun insertAt(method: String, latitude: Double, longitude: Double): Int? {
+        val count = rawItemCount()?.takeIf { it > 0 } ?: return null
+        val placed = invoke(
             "$PLAN_ROOT.missionController.$method",
             "[{\"latitude\":$latitude,\"longitude\":$longitude,\"altitude\":0}, $count]",
         )
+        return if (placed) count else null
     }
 
-    fun appendTakeoff(latitude: Double, longitude: Double): Boolean =
-        appendAt("insertTakeoffItem", latitude, longitude)
+    private fun writeCoordinate(path: String, latitude: Double, longitude: Double): Boolean =
+        runCatching {
+            JSONObject(
+                QGCBridge.set(
+                    path,
+                    "{\"value\":{\"latitude\":$latitude,\"longitude\":$longitude}}",
+                ),
+            ).optBoolean("ok")
+        }.getOrDefault(false)
 
+    // insertTakeoffItem throws the coordinate away - the parameter is commented
+    // out in MissionController - so the item arrives at 0,0 with
+    // specifiesCoordinate false and readyForSaveMessage "Set its location". It
+    // is not drawn, it is not counted, and the panel read "Empty plan" over a
+    // plan that had a takeoff in it. Writing launchCoordinate is what places it,
+    // and it sets the planned home the takeoff is measured from at the same time.
+    fun appendTakeoff(latitude: Double, longitude: Double): Boolean =
+        insertAt("insertTakeoffItem", latitude, longitude)?.let { index ->
+            writeCoordinate("$PLAN_ITEMS.$index.launchCoordinate", latitude, longitude)
+        } ?: false
+
+    // insertLandItem passes its coordinate through, so it needs no such help.
     fun appendLanding(latitude: Double, longitude: Double): Boolean =
-        appendAt("insertLandItem", latitude, longitude)
+        insertAt("insertLandItem", latitude, longitude) != null
 
     fun setAltitude(index: Int, metres: Double): Boolean =
         runCatching {

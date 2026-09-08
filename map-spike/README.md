@@ -366,6 +366,23 @@ distance to the surface, which is what the survey editor labels Altitude. `camer
 object, so it needs its own read, and that read happens when a survey is selected rather than every
 poll, since the poll already costs one call per survey.
 
+## ok is not the same as done, again
+
+`insertTakeoffItem` throws away the coordinate it is handed - the parameter is
+commented out in `MissionController` - so the item arrives at 0,0 with
+`specifiesCoordinate` false and `readyForSaveMessage` "Set its location". The
+invoke returns `{"ok":true}` with a whole item in `result`, because the method
+was found and did run. Nothing was wrong with the call. The item simply had no
+location, so it was not drawn and not counted, and the panel read "Empty plan"
+over a plan that had a takeoff in it.
+
+Writing `launchCoordinate` on the returned item is what places it, and it sets
+the planned home the takeoff is measured from at the same time. `insertLandItem`
+passes its coordinate through and needs no such help.
+
+The bridge does return what an invoke returned - `result` carries the object, or
+`{"kind":"null"}` for a null pointer. Reading only `ok` throws that away.
+
 ## Terrain
 
 Ground height comes from a tile service, and it does not cover our test site.
