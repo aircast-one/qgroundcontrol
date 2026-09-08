@@ -67,7 +67,7 @@ fun CameraControlLayer(modifier: Modifier = Modifier) {
             Button(
                 onClick = {
                     offMainDetached {
-                        if (shutter.recording || mode.toInt() == CAM_MODE_VIDEO) {
+                        if (mode.toInt() == CAM_MODE_VIDEO) {
                             Qgc.invoke("$CAMERA.toggleVideoRecording")
                         } else {
                             Qgc.invoke("$CAMERA.takePhoto")
