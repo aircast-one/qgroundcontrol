@@ -466,10 +466,15 @@ land on a different number. What saves this module is that the poll re-reads
 every value it writes, so a clamped one shows up within 700 ms and the map
 disagrees with the request rather than hiding it.
 
-The clamp itself is unobserved rather than ruled out. Twenty-eight presses of
-Smaller kept shrinking the circle without reaching the radius Fact's minimum, so
-the window where the panel says one thing and the Fact holds another was never
-reached. Recorded as untested, not as safe.
+For the one control that could reach a clamp, it turns out it cannot. The
+`Radius` Fact declares `min: 0.1` in `QGCMapCircle.Facts.json`, and Smaller is
+`enabled = radius > 20.0` - it greys itself out two hundred times above the
+Fact's floor. Twenty-eight presses looked like a circle that kept shrinking and
+were mostly a disabled button.
+
+That guard was a usability choice, not a clamp defence, and it forecloses the
+clamp anyway. Worth knowing if anyone lowers it: at that point `set` starts
+being able to land on a number nobody asked for, and only the poll would say so.
 
 So a false success is structurally possible on the void half, structurally
 impossible on the returning half, and possible but self-correcting on writes -
