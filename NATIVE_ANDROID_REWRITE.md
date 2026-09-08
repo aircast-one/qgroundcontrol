@@ -482,13 +482,30 @@ Also checked, since the survey layer keys off it: a corridor scan does **not** c
 `surveyAreaPolygon` at the top level, so it is not being mis-drawn as a survey. It is
 absent from the map, as this note said — not wrong on it.
 
-**The warning now exists** (`aircast-android`, `undrawnItemNames`/`undrawnItemsWarning`).
-Opening a plan reports, by name, the kinds of item the map could not draw. An item
-counts as drawable if `isSimpleItem` is true, or its class is `MissionSettingsItem`
-or `SurveyComplexItem`. Keying on `isSimpleItem` rather than a list of class names is
-the point: a takeoff reports **`TakeoffMissionItem`**, so a name list would have
-warned on almost every plan — the same false-positive that sank the earlier three,
-found by inserting a takeoff and looking rather than by reasoning.
+**The warning now exists** (`aircast-android`, `undrawnItemNames`/`undrawnItemsWarning`)
+as a **persistent banner between the toolbar and the map**, for as long as the plan
+holding those items is open.
+
+It shipped first through the transient notice slot, which was wrong twice over: it
+cleared after four seconds while the hazard stayed true, and while showing it replaced
+the plan filename. A plan is missing from the map for as long as it is open, not for
+four seconds. Deriving the banner from the plan rather than from the open event also
+covers a plan downloaded from the vehicle, and clears it on New plan for free.
+
+**The rule contains no class names.** An item is drawable if it says `isSimpleItem` or
+`isSurveyItem` about itself; element 0 is structurally the settings item, so the scan
+starts at 1. Two earlier drafts each hard-coded names, and both were the failure that
+sank the previous three attempts wearing a new coat — a takeoff reports
+**`TakeoffMissionItem`**, not `SimpleMissionItem`, so a class-name allow-list warns on
+almost every plan. `SimpleMissionItem::isSimpleItem` and
+`SurveyComplexItem::isSurveyItem` are both `final { return true; }` with the base
+returning false, so neither can be wrong and no subclass can change them. The class
+name survives only as the label when `patternName` is blank: a good name and a bad
+predicate.
+
+That distinction is worth keeping generally. *What is it* can be settled by reading a
+signature — type identity has no state to be wrong about. *What does it do when* cannot,
+and that is where the device runs earn their keep.
 
 Verified on the OnePlus 6 against a `.plan` **QGC itself wrote** containing a real
 corridor scan: opening it says *"The map cannot draw Corridor Scan. Those items are
