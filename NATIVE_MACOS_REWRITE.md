@@ -464,79 +464,78 @@ stream-owned C file instead of growing these), `src/Bridge/module.modulemap`, `t
   session's instance holds mock links; a full-suite failure in `VehicleLinkManagerTest` or a
   `SysStatusSensorInfoTest` mismatch is checked alone before it is reported.
 
-## Rust core (decided 2026-09-08)
+## Rust core (decided 2026-09-08, plan revised the same day after investigation)
 
-The end state is no Qt and no C++: one core in Rust, exposed to Swift and Kotlin through the C ABI
-the heads already consume. One protocol stack, one set of hardware gates. Risk 5 above is
-withdrawn; the upstream merge stream ends the day the first subsystem moves, and that is accepted.
+The end state is no Qt and no C++: **one core in Rust** behind the C ABI the heads already
+consume, serving SwiftUI (macOS, iOS), Compose (Android) and a thin QML shim (Windows, Linux).
+The full plan, with the four surveys it rests on, lives in the handbook vault:
+`Aircast/plans/2026-09-08 Unified Native Heads on a Rust Core.md`. This section is the summary
+the streams work from.
 
-Sequencing does not change. macOS ships on the reflection bridge first, exactly as planned through
-Phase 6. The Rust core is a strangler that starts after that and replaces C++ subsystems one at a
-time behind the same seam. Nothing is scaffolded until the first subsystem starts; what happens now
-is keeping the seam cheap to cross.
+Upstream is not a cost: the fork is 1,344 commits behind `mavlink/qgroundcontrol` with a merge
+base of 2025-06-18. Risk 5 above is withdrawn.
 
-### Why the seam already fits
+### What changed after investigation
 
-- `src/Bridge/QGC*C.h` are pure C: `char *` in, JSON `char *` out, function pointers for events and
-  tiles, `void *` for GStreamer and native windows. Swift imports them through `module.modulemap`
-  and no Qt type reaches either head. `cbindgen` emits the same headers from Rust.
-- The surface is finite. The heads use **179 distinct path prefixes** today (Swift 108, Kotlin 94;
-  79 under `vehicle`, 45 under `plan`, 21 under `settings`, 8 under `links`, the rest in
-  `mavlinkInspector`, `logDownload`, `video`, `vehicles`, `mission`, `mavlinkConsole`,
-  `positionManager`), against 1,677 `Q_PROPERTY`s in the core. A Rust core serves an explicit
-  path table, not reflection, so this list is its contract. Regenerate it with:
-
-  ```
-  roots='settings|vehicle|vehicles|links|logDownload|mavlinkConsole|mavlinkInspector|positionManager|mission|plan|video|joystick'
-  grep -rhoE "\"($roots)(\.[A-Za-z0-9_()\-,\.\[\]]+)?\"" macos/Sources ../aircast-android --include='*.kt' --include='*.swift' | sort -u
-  ```
-
-- The root dispatcher in `QGCBridgeCore.cc` (`settings` / `vehicle` / `vehicles` / `links` ...) is
-  the router. During the strangler both cores live in one process and a root or path prefix owned
-  by Rust forwards there; the watcher already unions client path sets, so a Rust-owned subtree
-  reports through the same event handler.
+- **The core serves view-ready state, not a mirror of the QObject tree.** 80 of 103 Swift files
+  and 25 of 59 Kotlin files are logic, about 3,400 and 2,000 lines respectively, computing the
+  same things twice and disagreeing in seven places (one is a shipped bug: the save-readiness
+  enum in `PlanSummaryModel.swift:36-38` is inverted). That layer moves into Rust **first**,
+  before any protocol subsystem, so heads become thin renderers early.
+- **Rust enters between the heads and the Qt bridge.** The crate is the sole client of
+  `QGCBridgeCore`; heads call Rust; Rust forwards roots it does not yet own. Subsystems are then
+  strangled underneath in include-graph order.
+- **Four things are host-owned by design**: Android USB serial (the Java stays), classic
+  Bluetooth, joystick input, iOS accessories. The core exposes push-bytes and push-input entry
+  points; no Rust crate solves these portably.
+- **GStreamer inside a Rust staticlib on mobile is unproven**; it gets a one-week spike, and
+  video stays C++ behind `QGCVideoC.h` if the spike fails.
 
 ### Rules in force from now
 
-1. **Heads see the C ABI only.** No Qt type, enum value or `QVariant` shape crosses into Swift or
-   Kotlin. Every new stream-owned C file is Qt-free in its signature and stays that way.
-2. **Paths are literals.** Compose a path from a literal prefix and an index or name; never
-   discover paths at runtime. If the grep above cannot see it, the Rust core cannot serve it.
-3. **JSON shapes are the contract too.** The Fact object, list items, `class`, `fields_csv` and
-   the `*` compaction are what Rust reproduces. Changes to them land in `QGCBridgeCore` with the
-   heads updated in the same commit, so the shape has one definition at any time.
-4. **Add to core, never to a head.** Unchanged. A head that needs a value the bridge does not expose
-   gets a path, not a platform-specific workaround.
-5. **GStreamer stays.** `gstreamer-rs` replaces `VideoManager`, not GStreamer. `void *` sinks and
-   windows in `QGCVideoC.h` are GStreamer and AppKit, never Qt.
+1. Heads see the C ABI only; no Qt type, enum or `QVariant` shape crosses into Swift or Kotlin.
+2. Paths are literals composed from a literal prefix; never discovered at runtime.
+3. JSON shapes change only in `QGCBridgeCore` with both heads updated in the same commit.
+4. Add to core, never to a head.
+5. GStreamer stays; `gstreamer-rs` replaces `VideoManager`, not GStreamer.
+6. Logic that appears in both heads, or needs no platform API, belongs in the core.
 
-### Subsystem order
+### R0 — background preparation, no Rust, starts now
 
-Each step replaces one C++ subsystem, serves **both heads** before the next starts, and runs its
-gate on hardware. The order is by isolation and by how much a bug costs.
+- Fix `PlanSummaryModel.swift:36-38`.
+- Extend the bridge guard `APPLE AND NOT IOS` (`src/Bridge/CMakeLists.txt:11`) to every platform.
+- Revive the ten commented-out suites at `test/UnitTestList.cc:181-303`.
+- Rewrite `QGCBridgeCoreTest` to assert convergence rather than 200 ms ticks; extract its cases
+  as JSON fixtures; record a golden dump of every inventoried path against SITL and hardware.
+- Swift moves from polling timers to `qgc_bridge_watch`; port the Kotlin refcounted registry.
+- Android: add the missing `WAKE_LOCK`, `USB_PERMISSION` and storage permissions; stop reading
+  the tile SQLite directly and use `QGCMapTileC.h`.
+- Wire `cmake/SignMacBundle.cmake` into the release job.
+- Write the hardware inventory for gates.
 
-| # | Replaces | C++ today | Rust | Gate |
-|---|---|---|---|---|
-| 1 | Links and MAVLink framing | `Comms/` 11k, `MAVLink/` 2.5k | `mavlink` crate, `tokio-serial`, UDP/TCP; wfb over its own socket | serial, UDP, TCP connect on both heads; message and drop counts match the Qt build on the same stream |
-| 2 | Parameters | `FactSystem/` 5k, `ParameterManager`, PX4 `parameters.json` and APM `apm.pdef.xml` loaders | `serde` metadata, protocol state machine | full tree loads and writes on PX4 and ArduPilot (Phase 3 gate, re-run) |
-| 3 | Vehicle state | `Vehicle/` 24k fact groups and firmware quirks | per-message decoders into the path table | every fly-view value matches the Qt build over a replayed tlog |
-| 4 | Mission protocol | `MissionManager/` upload, download, fence, rally | | 200+ item round trip byte-identical (Phase 4 gate, re-run) |
-| 5 | Complex items | survey, corridor, structure scan, terrain profile | `geo` crate | generated waypoints identical to the Qt output on a fixture set of plans |
-| 6 | Calibration and setup flows | `AutoPilotPlugins/` C++ 9k, motor test, radio | | accel, compass, radio calibration complete on hardware (Phase 3 gate, re-run) |
-| 7 | Tile cache | `QtLocationPlugin/` 5.7k | `rusqlite`, same schema | the existing cache file opens and serves; no re-download |
-| 8 | Video | `VideoManager/` 7.8k | `gstreamer-rs` | sub-200 ms glass-to-glass on WHEP (Phase 5 gate, re-run) |
-| 9 | Joystick | `Joystick/` 2.5k | mapping in Rust; GameController on macOS, input events on Android | every axis and button action verified on hardware |
-| 10 | The rest | `GPS/` RTK 12k, `Camera/` 5k, `Gimbal/`, `ADSB/`, `FollowMe/`, `Terrain/` | | per subsystem; `UTMSP/` is dropped, not ported |
+### Phases after macOS Phase 6
 
-QtCore and QtSerialPort leave with step 10; `QObject` leaves the process when the last row lands.
-Bluetooth links have no cross-platform Rust answer and are decided at step 1: drop on macOS, or keep
-a platform shim behind `QGCLinksC.h`.
+| Phase | Replaces | Weeks | Gate |
+|---|---|---|---|
+| R1 | view-state logic in both heads | 6 | both heads render from Rust; golden dump unchanged |
+| R2 | MAVLink framing, Utilities, GPS drivers, Terrain | 4 | mission/terrain/geo fixtures pass; tlog counts match |
+| R3 | FactSystem, Settings, ParameterManager | 6 | HW: full tree on PX4 and ArduPilot; existing INI read |
+| R4 | Comms, tlog, log replay; iOS enters | 6 | HW: every link type on every platform; one iOS flight |
+| R5 | Vehicle hub, ComponentInformation, calibration | 12 | HW: tlog replay parity; guided actions; calibrations |
+| R6 | MissionManager, complex items, tile cache | 10 | HW: byte-identical survey; existing cache served |
+| R7 | camera, gimbal, ADSB, follow-me, joystick mapping, analyze roots, video if spiked | 6 | HW: SIYI control; joystick; WHEP sub-200 ms |
+| R8 | QML shim for Windows/Linux; entry points; DebugApi; QtCore leaves | 8 | Windows and Linux ship from the Rust core |
 
-### Kickoff checklist (not before Phase 6 ships)
+About 58 developer-weeks. Flight-test time, not code, is the schedule.
 
-- Golden dump: record `qgc_bridge_get` for every inventoried path against SITL and one real
-  vehicle per firmware. That dump is the Rust core's conformance suite from day one.
-- `core-rs/` crate with `cbindgen` producing `QGCBridgeC.h` byte-for-byte, linked into the same
-  `libAircastQGC.dylib` and `.aar`; `qgc_bridge_get` routes step-1 roots to it.
-- Android binds through the existing `QGCBridge.cc` JNI head unchanged; it already speaks the C
-  surface.
+### Stream F · Core
+
+Owns `core-rs/`, the generated `QGCBridgeC.h`, the golden dump and fixtures, the router in
+`QGCBridgeCore.cc`, and this section. B, C and D consume Rust view-state paths as F publishes
+them and delete their model files in the same commit. E records every hardware gate.
+
+### Open decisions
+
+When R1 starts (after Phase 6, or from a cut-off for new screens); the QML shim versus a fifth
+native head for Windows and Linux; Bluetooth on macOS; confirming `UTMSP` and `Viewer3D` are
+dropped. Recommendations are in the vault plan.
