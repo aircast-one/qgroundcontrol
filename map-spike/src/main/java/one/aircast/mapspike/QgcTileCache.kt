@@ -12,8 +12,6 @@ private const val CACHE_FILE = "qgcMapCache.db"
 
 data class TileProvider(val prefix: String, val type: String, val count: Int, val format: String)
 
-// QGC stores each tile under a 29 character key: a 10 digit provider hash then
-// x, y and z zero padded to 8, 8 and 3. See UrlFactory::getTileHash.
 fun tileHash(prefix: String, z: Int, x: Int, y: Int): String =
     prefix + "%08d".format(x) + "%08d".format(y) + "%03d".format(z)
 
@@ -43,10 +41,6 @@ class QgcTileCache(private val database: SQLiteDatabase) : AutoCloseable {
         }
     }
 
-    // QGroundControl writes this database while we read it. A read-only
-    // connection cannot roll back a journal it finds mid-write, and the throw
-    // lands on OkHttp's thread where it takes the process down. A missing tile
-    // is the right answer to that.
     fun tile(prefix: String, z: Int, x: Int, y: Int): ByteArray? = runCatching {
         val hash = tileHash(prefix, z, x, y)
         database.rawQuery("SELECT tile FROM Tiles WHERE hash = ? LIMIT 1", arrayOf(hash))

@@ -11,10 +11,6 @@ import org.maplibre.android.module.http.HttpRequestUtil
 
 private val TILE_PATH = Regex("""^/(\d+)/(\d+)/(\d+)$""")
 
-// The regex and QGC_TILE_URL have to agree on the shape of a tile path, and
-// nothing connects them. A template that grew a .png suffix, or a path that
-// stopped being three segments, would match nothing, every tile would 404 and
-// the map would come up blank with no error anywhere.
 internal fun tileCoords(path: String): Triple<Int, Int, Int>? =
     TILE_PATH.find(path)?.destructured?.let { (z, x, y) ->
         runCatching { Triple(z.toInt(), x.toInt(), y.toInt()) }.getOrNull()
@@ -70,7 +66,6 @@ class QgcTileInterceptor(
     }
 }
 
-// Returns the style to use: QGC's own cache when it holds tiles, OSM otherwise.
 fun installQgcTileSource(context: Context): String {
     val cache = QgcTileCache.open(context) ?: return OSM_RASTER_STYLE
     val provider = cache.providers().firstOrNull { it.count > 0 }

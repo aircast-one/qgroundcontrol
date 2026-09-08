@@ -1,8 +1,5 @@
 package one.aircast.mapspike
 
-// The app's own shell paints the vehicle, its mode and its telemetry, so the
-// map says only what nothing else does: what is in the plan, what it costs and
-// what is selected.
 fun planSummary(
     itemCount: Int,
     shape: List<String>,

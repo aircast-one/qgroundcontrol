@@ -27,13 +27,8 @@ data class TerrainProfile(val points: List<ProfilePoint>) {
     val highest: Double
         get() = points.maxOfOrNull { max(it.terrain ?: it.planned, it.planned) } ?: 0.0
 
-    // Ground height comes from a terrain server and is often unknown. The
-    // planned altitude alone is still worth showing, so only that is required.
     val hasTerrain: Boolean get() = points.count { it.terrain != null } >= 2
 
-    // A survey flies at one altitude, so with no terrain under it the range is a
-    // single value. That is a flat profile, not an absent one, and refusing to
-    // draw it told the pilot to add altitudes they had already set.
     val span: Double get() = (highest - lowest).coerceAtLeast(MIN_SPAN_METRES)
 
     val flat: Boolean get() = highest - lowest < MIN_SPAN_METRES
@@ -65,17 +60,6 @@ private fun point(json: JSONObject, name: String): TrackPoint? {
     return if (isPlottable(latitude, longitude)) TrackPoint(latitude, longitude) else null
 }
 
-// One terrain height per item is one sample of the ground, and stretching it
-// across a survey drew flat ground under a flight that climbs 100 m. The
-// segments each carry their own run of heights, which is the shape QGC's own
-// profile draws, so the ground comes from them.
-//
-// Only the ground. Every segment of a 5.9 km survey reported coord1AMSLAlt as
-// 50, the height above launch, while the item's amslEntryAlt read 1099 against
-// terrain of 1049 - the item is the one resolved to AMSL. Taking the planned
-// line from the segments put a relative 50 on an AMSL chart and pinned the
-// floor 900 m under the flight, so it is interpolated across the item's own
-// entry and exit instead.
 private fun segmentTerrain(
     segments: JSONObject?,
     from: Double,
@@ -117,17 +101,6 @@ fun terrainProfile(
 ): TerrainProfile {
     val elements = json?.optJSONArray("elements") ?: return TerrainProfile(emptyList())
 
-    // QGC counts the leg out of the launch point only when the first item is a
-    // takeoff and home is valid - "Link back to home if first item is takeoff",
-    // its linkStartToHome. Without that the settings item is a planned home
-    // rather than a leg, which is why it is otherwise left out.
-    //
-    // isTakeoffItem, not the command name: commandName is a tr() string and
-    // matching "Takeoff" would work until the app is localised.
-    //
-    // It seeds where the walk starts from rather than adding a point, so the
-    // leg is measured without charting the settings item's 0 m entry altitude
-    // as a dive to sea level.
     val home = elements.optJSONObject(0)
         ?.takeIf { linksStartToHome(json) }
         ?.let { point(it, "coordinate") }
@@ -163,10 +136,6 @@ fun terrainProfile(
                     listOf(ProfilePoint(reached + span, terrain, exitAlt))
                 }
 
-                // The segments carry their own entry altitude, and it is the one
-                // resolved against terrain. The item's amslEntryAlt reads back as
-                // the height above ground until that resolves, and mixing a
-                // relative 50 into an AMSL chart pinned the floor 900 m low.
                 Walk(
                     at = point(element, "exitCoordinate") ?: entry,
                     travelled = flown?.last()?.distance ?: (reached + (span ?: 0.0)),

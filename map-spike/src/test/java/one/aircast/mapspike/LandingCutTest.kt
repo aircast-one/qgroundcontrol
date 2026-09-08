@@ -60,10 +60,6 @@ class LandingCutTest {
         assertEquals(2, routeEndsAfter(byFlag))
     }
 
-    // QGC's source adds "the final segment back to home" when it finds an RTL,
-    // and on the handset it does not: a survey plus an RTL reported 5896 m in the
-    // panel, the survey's own distance, with no leg back to the launch point.
-    // Whatever gates it upstream, the measurement is what this has to match.
     @Test
     fun `an RTL ends the route without adding a leg home`() {
         val homeward = terrainProfile(plan(settings, placed(44.1), rtl))

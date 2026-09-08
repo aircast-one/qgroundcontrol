@@ -36,8 +36,6 @@ class MapScaleTest {
         assertEquals(scale.metres / metresPerPixel(-35.36, 16.0), scale.pixels, 1e-6)
     }
 
-    // Reconstructing a pixel width from a distance can land a hair under it, so
-    // the nudge keeps the intended distance reachable rather than the next one down.
     private fun labelForExactly(metres: Double): String {
         val perPixel = metresPerPixel(0.0, 14.0)
         return mapScale(0.0, 14.0, metres / perPixel * (1 + 1e-9))!!.label

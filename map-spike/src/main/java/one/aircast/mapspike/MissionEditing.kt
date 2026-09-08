@@ -26,17 +26,6 @@ sealed interface MapHit {
     data class CircleCentre(val index: Int) : MapHit
 }
 
-// Fence handles win a tie. They sit on the fence outline, which a waypoint can
-// easily overlap, and a handle is the smaller target of the two.
-// queryRenderedFeatures returns everything the box touches in source order, so
-// firstOrNull picks by list position rather than by distance. Where markers sit
-// close together — a launch point and the first waypoint routinely do — that
-// grabs whichever was drawn first, and the wrong item moves. Fills are exempt:
-// being inside one is not a matter of degree.
-// Split out from the projection so the rule can be tested without a map. A null
-// entry is something that did not project to a point; it sorts last but still
-// wins if nothing else is there, which is what the map-backed version did before
-// and what the callers rely on to read properties off a non-point feature.
 internal fun nearestIndex(x: Float, y: Float, points: List<Pair<Float, Float>?>): Int? =
     points.indices.minByOrNull { index ->
         points[index]?.let { (px, py) ->
@@ -108,8 +97,6 @@ fun attachMissionEditing(
     var moved = false
     var lastWriteAt = 0L
 
-    // Long press adds. It never deletes, because a slow drag begins with a long
-    // press and deleting the waypoint the user meant to move is unrecoverable.
     map.addOnMapLongClickListener { latLng ->
         onAdd(latLng.latitude, latLng.longitude)
         true
@@ -120,8 +107,6 @@ fun attachMissionEditing(
             MotionEvent.ACTION_DOWN -> {
                 val hit = hitTest(map, event.x, event.y)
                 if (hit == null) {
-                    // A drag the system steals never delivers its release, which
-                    // would otherwise leave the map's own gestures switched off.
                     map.uiSettings.setAllGesturesEnabled(true)
                     false
                 } else {
@@ -141,12 +126,6 @@ fun attachMissionEditing(
                 ) {
                     moved = true
                 }
-                // Every write is a blocking trip into the Qt thread, and a drag
-                // delivers touch moves far faster than those can complete. Writing
-                // one per event floods the bridge with overlapping calls whose
-                // order is not guaranteed, so the item can settle somewhere the
-                // finger never was. Intermediate positions are dropped instead;
-                // the release below always writes the real one.
                 val now = event.eventTime
                 if (moved && now - lastWriteAt >= DRAG_WRITE_INTERVAL_MS) {
                     lastWriteAt = now

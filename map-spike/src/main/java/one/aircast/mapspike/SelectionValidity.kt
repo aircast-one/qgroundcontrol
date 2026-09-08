@@ -1,10 +1,5 @@
 package one.aircast.mapspike
 
-// A selection names an index, and indices only mean anything against the plan
-// they came from. Loading from the vehicle replaces the plan wholesale, so a
-// selection made before it points at whatever now happens to sit at that index,
-// and the buttons act on that instead. Deletes clear it themselves; this covers
-// every other way the plan can change underneath a selection.
 fun selectionSurvives(
     selected: MapHit?,
     items: List<MissionItem>,
@@ -26,8 +21,5 @@ fun selectionSurvives(
     is MapHit.CircleCentre -> circles.any { it.index == selected.index }
 }
 
-// Rotate used to act on the first survey in the plan whatever was selected, so
-// with two surveys it turned the wrong grid. Every other control on that row
-// follows the selection and this one has to as well.
 fun selectedSurvey(selected: MapHit?, surveys: List<Survey>): Survey? =
     (selected as? MapHit.SurveyVertex)?.let { hit -> surveys.firstOrNull { it.index == hit.item } }

@@ -11,9 +11,6 @@ data class PlanBounds(
     val spanDegrees: Double get() = maxOf(north - south, east - west)
 }
 
-// Everything the plan draws, so a fit frames the whole thing rather than the
-// mission alone. A circle contributes its ring, not its centre, or a fit would
-// cut the circle in half.
 fun planPoints(
     items: List<MissionItem> = emptyList(),
     polygons: List<FencePolygon> = emptyList(),
@@ -27,8 +24,6 @@ fun planPoints(
         rally.map { TrackPoint(it.latitude, it.longitude) } +
         surveys.flatMap { it.area + it.transects }
 
-// An empty plan is not a reason to refuse to move the camera: the aircraft is
-// what to frame then, and framing it is how a viewer gets back to it.
 fun fitPoints(plan: List<TrackPoint>, latitude: Double, longitude: Double): List<TrackPoint> =
     plan.ifEmpty {
         if (isPlottable(latitude, longitude)) listOf(TrackPoint(latitude, longitude)) else emptyList()

@@ -14,7 +14,6 @@ data class Survey(
     val gridAngle: Double = Double.NaN,
 )
 
-
 private fun points(array: JSONArray?): List<TrackPoint> {
     if (array == null) return emptyList()
     return (0 until array.length()).mapNotNull { index ->
@@ -25,8 +24,6 @@ private fun points(array: JSONArray?): List<TrackPoint> {
     }
 }
 
-// A survey is a visual item that owns a survey area polygon. Reading the whole
-// item list and picking those out avoids having to track which index we created.
 fun surveys(json: JSONObject?): List<Survey> {
     val elements = json?.optJSONArray("elements") ?: return emptyList()
     return (0 until elements.length()).mapNotNull { index ->
@@ -48,8 +45,6 @@ fun surveys(json: JSONObject?): List<Survey> {
 }
 
 object SurveyBridge {
-    // The bridge lists a child object by name rather than nesting it, so the
-    // survey's polygon needs its own read.
     fun surveys(): List<Survey> = surveysFrom(PlanBridge.rawItems())
 
     fun surveysFrom(json: JSONObject?): List<Survey> {
@@ -79,10 +74,6 @@ object SurveyBridge {
                 .optJSONArray("path")
         }.getOrNull()
 
-    // A survey's height is its camera distance to surface, not an Altitude fact
-    // on the item, and cameraCalc is a child object so it needs its own read.
-    // Read when a survey is selected rather than every poll, since the poll
-    // already costs one call per survey.
     private fun altitudePath(itemIndex: Int) =
         "$PLAN_ITEMS.$itemIndex.cameraCalc.distanceToSurface"
 
@@ -102,8 +93,6 @@ object SurveyBridge {
             JSONObject(QGCBridge.get("$MISSION_CONTROLLER.surveyComplexItemName")).optString("value")
         }.getOrDefault("")
 
-    // A survey arrives with an empty polygon and so draws nothing. Seeding a
-    // square around the centre is what makes it generate transects at all.
     fun insertSurvey(latitude: Double, longitude: Double, halfSize: Double = 0.002): Boolean {
         if (!isPlottable(latitude, longitude)) {
             return false
@@ -124,10 +113,6 @@ object SurveyBridge {
             return false
         }
 
-        // Re-read rather than reuse the count: the insert added an item. A failed
-        // read here would have made the index -1 and quietly produced a survey
-        // with no area, so it refuses instead. The corners report whether they
-        // landed, because a survey missing them is not a survey that worked.
         val index = (PlanBridge.rawItemCount()?.takeIf { it > 0 } ?: return false) - 1
         return listOf(
             latitude + halfSize to longitude - halfSize,

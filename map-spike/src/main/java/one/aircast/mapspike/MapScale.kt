@@ -11,13 +11,9 @@ private const val TILE_PIXELS = 512.0
 
 data class MapScale(val metres: Double, val pixels: Double, val label: String)
 
-// MapLibre counts zoom against a 512 pixel tile, and a degree of longitude
-// shrinks towards the poles, so the ground a pixel covers depends on both.
 fun metresPerPixel(latitude: Double, zoom: Double): Double =
     EQUATOR_METRES * cos(Math.toRadians(latitude)) / (TILE_PIXELS * 2.0.pow(zoom))
 
-// A bar reads as a measurement only if it ends on a number worth reading, so
-// the width follows the distance rather than the other way round.
 fun niceDistance(metres: Double): Double {
     if (metres <= 0 || metres.isNaN() || metres.isInfinite()) {
         return 0.0
@@ -29,8 +25,6 @@ fun niceDistance(metres: Double): Double {
         ?: magnitude
 }
 
-// Zoomed all the way in a bar can span half a metre, and truncating that to a
-// whole number labels it 0 m, which reads as a broken map rather than a close one.
 private fun scaleLabel(metres: Double): String = when {
     metres >= 1000 -> {
         val km = metres / 1000

@@ -56,9 +56,6 @@ internal fun profileLabel(profile: TerrainProfile): String =
 
 @Composable
 fun TerrainProfileView(profile: TerrainProfile, modifier: Modifier = Modifier) {
-    // Screen is the scarcest thing on a phone, and before anything is planned
-    // the profile has nothing to say. Nothing planned shows nothing at all; a
-    // plan that simply carries no altitudes gets one line rather than a panel.
     if (profile.points.isEmpty()) {
         return
     }
@@ -71,9 +68,6 @@ fun TerrainProfileView(profile: TerrainProfile, modifier: Modifier = Modifier) {
         return
     }
 
-    // A survey flies level, so its chart is a horizontal line and the label
-    // already says the altitude it sits at. Spending 110dp to draw that took
-    // the space from the map, which is the part with something to show.
     if (profile.flat) {
         Text(
             profileLabel(profile),

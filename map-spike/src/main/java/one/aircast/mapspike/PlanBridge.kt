@@ -7,27 +7,11 @@ import org.mavlink.qgroundcontrol.QGCBridge
 const val PLAN_ROOT = "plan"
 const val PLAN_ITEMS = "$PLAN_ROOT.missionController.visualItems"
 
-// Not every mission item is drawable. A multirotor Land inserts an RTL, which
-// has no coordinate of its own, and a multirotor Takeoff goes straight up from
-// the launch point. Counting what is on the map reported "1 item" over a plan
-// holding a takeoff and a return to launch. Element 0 is the settings item,
-// which is a planned home rather than something the pilot added.
 fun planItemCount(json: JSONObject?): Int =
     ((json?.optJSONArray("elements")?.length() ?: 0) - 1).coerceAtLeast(0)
 
-// A takeoff and a return to launch are both in the plan and neither is on the
-// map: both report coordinate 0,0, and the only position either has is the
-// launch point, which the settings item already draws. Stacking markers there
-// would be clutter rather than information, so the panel names them instead.
-//
-// isTakeoffItem and the numeric command, never commandName - that is a tr()
-// string and matching it works until the app is localised.
 const val MAV_CMD_NAV_RETURN_TO_LAUNCH = 20
 
-// QGC links the planned home to the first item only when that item is a takeoff:
-// its linkStartToHome, "Link back to home if first item is takeoff". Both the
-// drawn path and the distance have to ask this the same way, or the map shows a
-// leg the panel does not count.
 fun linksStartToHome(json: JSONObject?): Boolean =
     json?.optJSONArray("elements")?.optJSONObject(1)?.optBoolean("isTakeoffItem") == true
 
@@ -46,9 +30,6 @@ fun planShape(json: JSONObject?): List<String> {
         }
         .distinct()
 
-    // Anything past the landing is in the plan, counted, and never flown - a
-    // mission ends there. Adding one is easy, because every creator appends,
-    // and the only sign otherwise is a marker the route does not reach.
     val stranded = (1 until elements.length()).count { it > endsAfter }
 
     return named + listOfNotNull(
@@ -56,9 +37,6 @@ fun planShape(json: JSONObject?): List<String> {
     )
 }
 
-// An insert that returns a null pointer still answers ok:true, because the
-// method was found and did run. The item it hands back is the only evidence
-// that anything was created, and a null one serialises as kind "null".
 fun insertedItem(raw: String): Boolean =
     runCatching {
         val answer = JSONObject(raw)
@@ -66,9 +44,6 @@ fun insertedItem(raw: String): Boolean =
             answer.optJSONObject("result")?.optString("kind") == "object"
     }.getOrDefault(false)
 
-// Several of QGroundControl's settings arrive as Facts in an object's fact
-// list rather than as plain fields: a circle's radius, a survey's grid angle,
-// an item's altitude.
 fun factValue(element: JSONObject, name: String): Double {
     val facts = element.optJSONArray("facts") ?: return Double.NaN
     for (index in 0 until facts.length()) {
@@ -88,42 +63,16 @@ data class MissionItem(
     val command: String,
     val current: Boolean,
     val altitude: Double = Double.NaN,
-    // Where the aircraft leaves this item, which for a survey is the far corner
-    // rather than the one it arrived at. Null when the item is a single point.
     val exit: TrackPoint? = null,
-    // Whether the route runs through this item. Drawn either way: a camera
-    // target has a place on the map, it is just not somewhere the aircraft
-    // goes, and neither is anything past the landing.
     val routed: Boolean = true,
 )
 
-// One question, asked once. The map and the profile disagreed twice about the
-// same plan because each decided separately what counted as a leg, so the
-// decision lives here and both read it.
-//
-// specifiesCoordinate: it has a place at all.
-// isStandaloneCoordinate: "true: Waypoint line does not go through item" -
-//   a region of interest, a set-home, a land-start.
-// isIncomplete: "We don't link lines from a valid item to an incomplete item",
-//   because it "may not yet have valid entry/exit coordinates".
 fun isFlownLeg(element: JSONObject?): Boolean =
     element != null &&
         element.optBoolean("specifiesCoordinate") &&
         !element.optBoolean("isStandaloneCoordinate") &&
         !element.optBoolean("isIncomplete")
 
-// "Don't draw segments immediately after a landing item", and "No need to add
-// waypoint segments after an RTL". The aircraft is down; a leg onward is one
-// nobody flies, and QGC leaves it out of missionTotalDistance too.
-//
-// The cut comes from the plan rather than from the items that reach the map,
-// because the ending usually is not one of them: a multirotor Land inserts an
-// RTL, which has no coordinate of its own and is never drawn.
-//
-// Two different tests, because QGC uses two. isLandCommand is a command-tree
-// question the bridge answers for us. An RTL is not one of those - QGC finds it
-// with `mavCommand() == MAV_CMD_NAV_RETURN_TO_LAUNCH` - which is why testing
-// only the first left the route running straight past a Land.
 fun routeEndsAfter(elements: JSONArray?): Int =
     (0 until (elements?.length() ?: 0))
         .firstOrNull { index ->
@@ -169,9 +118,6 @@ fun missionItems(json: JSONObject?): List<MissionItem> {
 }
 
 object PlanBridge {
-    // The item list feeds mission items, surveys and the terrain profile. Read
-    // once and hand the same JSON to each, rather than three trips over the
-    // bridge for the same data.
     fun rawItems(): JSONObject? =
         runCatching { JSONObject(QGCBridge.get(PLAN_ITEMS)) }.getOrNull()
 
@@ -179,24 +125,10 @@ object PlanBridge {
 
     fun loadFromVehicle() = invoke("$PLAN_ROOT.loadFromVehicle")
 
-    // The controller only. QGC's Clear Mission calls removeAllFromVehicle and
-    // wipes the aircraft as well, behind a modal confirmation. Starting a plan
-    // over is the local intent and does not need to touch the vehicle; Upload is
-    // there for anyone who does want the empty plan flown.
     fun clearPlan() = invoke("$PLAN_ROOT.removeAll")
 
     fun sendToVehicle() = invoke("$PLAN_ROOT.sendToVehicle")
 
-
-    // The insert index addresses the whole visual item list, which starts with a
-    // settings item and can hold items that carry no coordinate. Counting only the
-    // ones drawn on the map gives an index past the end, and MissionController
-    // walks off the list rather than refusing it.
-    // Null when the plan could not be read at all. Folding that into 0 made a
-    // failed call indistinguishable from an empty plan, and they need opposite
-    // responses: an empty plan is a thing to add to, a failed read is a thing to
-    // stop on. A started controller always holds at least the settings item, so
-    // a genuine 0 does not occur and a 0 was always a failure wearing a count.
     fun rawItemCount(): Int? =
         runCatching { JSONObject(QGCBridge.get(PLAN_ITEMS)).optJSONArray("elements")?.length() }
             .getOrNull()
@@ -225,15 +157,6 @@ object PlanBridge {
             ).optBoolean("ok")
         }.getOrDefault(false)
 
-    // insertTakeoffItem throws the coordinate away - the parameter is commented
-    // out in MissionController - so the item arrives at 0,0 with
-    // specifiesCoordinate false and readyForSaveMessage "Set its location". It
-    // is not drawn, it is not counted, and the panel read "Empty plan" over a
-    // plan that had a takeoff in it. Writing launchCoordinate is what places it,
-    // and it sets the planned home the takeoff is measured from at the same time.
-    // The item is already in the plan by the time its location is written, so a
-    // refused write would leave a takeoff behind while reporting that nothing
-    // was added - and the panel counts items whether or not they can be drawn.
     fun appendTakeoff(latitude: Double, longitude: Double): Boolean {
         val index = insertAt("insertTakeoffItem", latitude, longitude) ?: return false
         if (writeCoordinate("$PLAN_ITEMS.$index.launchCoordinate", latitude, longitude)) {
@@ -243,7 +166,6 @@ object PlanBridge {
         return false
     }
 
-    // insertLandItem passes its coordinate through, so it needs no such help.
     fun appendLanding(latitude: Double, longitude: Double): Boolean =
         insertAt("insertLandItem", latitude, longitude) != null
 

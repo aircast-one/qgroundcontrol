@@ -19,12 +19,6 @@ fun vehicleEntries(json: JSONObject?, activeId: Int): List<VehicleEntry> {
 }
 
 object VehicleBridge {
-    // activeVehicle takes a Vehicle*, so the write is an @path naming the entry
-    // in the manager's own list rather than a copy of it. The bridge resolves
-    // the reference and type-checks it against the property.
-    //
-    // It refuses with a reason, and discarding that was how a failing picker
-    // became "did not work" with nothing to chase.
     var lastRefusal: String? = null
         private set
 

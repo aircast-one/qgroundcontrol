@@ -52,8 +52,6 @@ private const val TRAIL_LAYER = "aircast-trail-layer"
 private const val DEFAULT_ZOOM = 16.0
 private const val MAX_TRAIL_POINTS = 500
 
-// No aircraft covers this between samples. A jump this large means the active
-// vehicle changed, and joining the two tracks draws a line across the world.
 const val TRAIL_BREAK_DEGREES = 0.5
 private const val MIN_FIT_SPAN_DEGREES = 1e-5
 private const val FIT_PADDING_PIXELS = 80
@@ -62,7 +60,6 @@ private const val STALE_COLOUR = "#9E9E9E"
 
 const val DEMO_STYLE_URL = "https://demotiles.maplibre.org/style.json"
 
-// Demo only. Production points at QGC's existing SQLite tile cache.
 const val OSM_RASTER_STYLE = """
 {
   "version": 8,
@@ -86,8 +83,6 @@ fun isPlottable(latitude: Double, longitude: Double): Boolean =
         !(latitude == 0.0 && longitude == 0.0) &&
         latitude in -90.0..90.0 && longitude in -180.0..180.0
 
-// A vehicle that has gone away has no position, and leaving its last one on the
-// map draws an aircraft that is not there, which is worse than drawing nothing.
 fun vehicleFeatures(
     latitude: Double,
     longitude: Double,
@@ -100,9 +95,6 @@ fun vehicleFeatures(
         FeatureCollection.fromFeatures(emptyList())
     }
 
-// Heading only means something once the vehicle reports it. Without it the
-// feature carries no heading property and the arrow layer filters itself out,
-// leaving the plain position dot.
 fun vehicleFeature(
     latitude: Double,
     longitude: Double,
@@ -116,10 +108,6 @@ fun vehicleFeature(
         }
     }
 
-// The plan is re-read from the bridge every poll, so it comes back on its own.
-// A flown trail cannot: it is accumulated over time and nothing can replay it.
-// Scoped to a composition it was lost on every tab switch, which is the one
-// piece of state here that has to outlive the screen showing it.
 object VehicleTrail {
     val track = VehicleTrack()
 }
@@ -192,10 +180,6 @@ fun VehicleMap(
         MapView(context)
     }
 
-    // A MapView holds native resources and frees them only on onDestroy. As its
-    // own activity that always arrived. Hosted as a tab the composable can leave
-    // composition while the activity lives on, so leaving has to wind the view
-    // down itself or every visit to the tab strands a map.
     val lifecycleOwner = LocalLifecycleOwner.current
     DisposableEffect(lifecycleOwner, mapView) {
         var started = false
@@ -226,8 +210,6 @@ fun VehicleMap(
     DisposableEffect(mapView, mapStyle) {
         mapView.getMapAsync { loaded ->
             map = loaded
-            // Camera idle only fires once the map moves, so report where it
-            // already is too, or nothing can be placed until the user pans.
             fun reportCentre() {
                 val target = loaded.cameraPosition.target ?: return
                 onCentreChanged(TrackPoint(target.latitude, target.longitude), loaded.cameraPosition.zoom)
@@ -260,10 +242,6 @@ fun VehicleMap(
         onDispose { }
     }
 
-    // Keyed on the values it draws, not just position: a vehicle rotating on the
-    // spot changes heading without moving, and the arrow was never redrawn for it.
-    // The old early return also skipped the markers whenever the position was
-    // unchanged or unusable, so a vehicle that disconnected stayed on the map.
     LaunchedEffect(style, latitude, longitude, heading, home, linkLost) {
         val currentStyle = style ?: return@LaunchedEffect
 
@@ -290,10 +268,6 @@ fun VehicleMap(
         }
     }
 
-    // MapLibre's logo and attribution sit at the bottom left, under the control
-    // panel, and attribution is a licence condition rather than decoration. The
-    // panel measures itself after the map loads, so this follows its height
-    // instead of reading it once while it is still zero.
     LaunchedEffect(map, bottomInsetPx) {
         val settings = map?.uiSettings ?: return@LaunchedEffect
         settings.setLogoMargins(LOGO_EDGE_MARGIN_PX, 0, 0, bottomInsetPx + LOGO_EDGE_MARGIN_PX)
@@ -303,8 +277,6 @@ fun VehicleMap(
     LaunchedEffect(fitRequest) {
         if (fitRequest == 0) return@LaunchedEffect
         val currentMap = map ?: return@LaunchedEffect
-        // Fit means show me what matters. With nothing planned that is the
-        // aircraft, which is also the way back when a zoom has lost it.
         val bounds = planBounds(
             fitPoints(
                 planPoints(missionItems, fencePolygons, fenceCircles, rallyPoints, surveys),
@@ -313,8 +285,6 @@ fun VehicleMap(
             ),
         ) ?: return@LaunchedEffect onFitFailed()
 
-        // A plan of one point has no extent, so bounds would be a zero-sized box
-        // that MapLibre cannot frame. Centring on it at a sane zoom is the fit.
         if (bounds.spanDegrees < MIN_FIT_SPAN_DEGREES) {
             currentMap.animateCamera(
                 CameraUpdateFactory.newLatLngZoom(
@@ -382,10 +352,6 @@ private fun installLayers(style: Style) {
 
 }
 
-// The aircraft is installed after every plan layer so nothing can bury it.
-// Waypoints, rally points and home all land on the same spot as the vehicle
-// when a plan is built where it stands, and the one marker that must stay
-// visible is the one showing where the aircraft actually is.
 private fun installVehicleLayer(style: Style) {
     if (style.getSource(VEHICLE_SOURCE) == null) {
         style.addSource(GeoJsonSource(VEHICLE_SOURCE))
@@ -421,7 +387,6 @@ private fun installVehicleLayer(style: Style) {
     }
 }
 
-// A triangle pointing north, so iconRotate can read as a compass bearing.
 private fun headingArrow(): Bitmap {
     val size = 48
     val bitmap = Bitmap.createBitmap(size, size, Bitmap.Config.ARGB_8888)

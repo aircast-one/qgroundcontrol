@@ -24,7 +24,6 @@ private fun coordinate(json: JSONObject?): TrackPoint? {
 
 private fun elements(json: JSONObject?): JSONArray? = json?.optJSONArray("elements")
 
-// A polygon is only worth drawing once it closes, which needs three vertices.
 fun fencePolygons(json: JSONObject?): List<FencePolygon> {
     val list = elements(json) ?: return emptyList()
     return (0 until list.length()).mapNotNull { index ->
@@ -97,8 +96,6 @@ object FenceBridge {
 
     fun deleteCircle(index: Int): Boolean = invoke("$FENCE_ROOT.deleteCircle", "[$index]")
 
-    // removePoint takes the point itself, so the bridge's object reference form
-    // hands it the one at that index rather than a copy.
     fun removeRallyPoint(index: Int): Boolean =
         invoke("$RALLY_ROOT.removePoint", "[\"@$RALLY_POINTS.$index\"]")
 
@@ -121,8 +118,6 @@ object FenceBridge {
 private const val EARTH_RADIUS_M = 6_371_000.0
 private const val CIRCLE_SEGMENTS = 48
 
-// MapLibre's circle layer is sized in screen pixels, so a fence circle has to
-// become a ring on the ground or it would keep its size as the map zooms.
 fun circleRing(
     centre: TrackPoint,
     radiusMetres: Double,

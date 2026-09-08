@@ -32,10 +32,6 @@ const val LOITER_COLOUR = "#26A69A"
 const val START_COLOUR = "#7E57C2"
 const val WAYPOINT_COLOUR = "#FFB300"
 
-// The command name is what the plan actually reports, and a plan reads wrong
-// when a takeoff, a landing and a return all draw as the same amber dot.
-// Mission Start is the planned launch point rather than somewhere the aircraft
-// flies to, so it is the one that most needs telling apart from a waypoint.
 fun waypointColour(command: String): String {
     val name = command.lowercase()
     return when {
@@ -95,9 +91,6 @@ fun installMissionLayers(style: Style) {
     }
 }
 
-// Tapping a waypoint changed the buttons but nothing on the map, and markers
-// routinely sit on top of each other where a plan starts, so there was no way
-// to tell which one had been picked.
 fun missionFeatures(items: List<MissionItem>, selectedIndex: Int? = null): FeatureCollection {
     val features = items.map { item ->
         Feature.fromGeometry(Point.fromLngLat(item.longitude, item.latitude)).apply {
@@ -110,15 +103,9 @@ fun missionFeatures(items: List<MissionItem>, selectedIndex: Int? = null): Featu
     return FeatureCollection.fromFeatures(features)
 }
 
-// Element 0 is the planned home. QGC draws a line out of it only when the first
-// item is a takeoff, and so does this, or the route on the map would include a
-// leg that missionTotalDistance leaves out.
 fun missionPath(items: List<MissionItem>, linkStartToHome: Boolean): Feature? {
     val flown = (if (linkStartToHome) items else items.filterNot { it.index == 0 })
         .filter { it.routed }
-    // An item with an exit is flown through, not touched: a survey enters at one
-    // corner and leaves from the far one. Drawing only the entry made the route
-    // leave the survey from the corner it arrived at.
     val points = flown.flatMap { item ->
         listOfNotNull(
             Point.fromLngLat(item.longitude, item.latitude),
@@ -193,8 +180,6 @@ private fun ringFeature(vertices: List<TrackPoint>): Feature {
     return Feature.fromGeometry(Polygon.fromLngLats(listOf(closed)))
 }
 
-// A circle carries its index so tapping its ring can find it again. A polygon
-// needs no tag: it is selected by one of its vertex handles.
 fun fenceFeatures(
     polygons: List<FencePolygon>,
     circles: List<FencePolygon> = emptyList(),
@@ -262,10 +247,6 @@ private fun handleFeatures(kind: String, owner: Int, vertices: List<TrackPoint>)
         }
     }
 
-// Fence and survey handles share one source. They behave identically under the
-// finger, and only the path they write differs.
-// A circle gets one handle at its centre rather than being dragged by its fill.
-// A fence large enough to fill the screen would otherwise swallow every pan.
 fun vertexHandleFeatures(
     polygons: List<FencePolygon>,
     surveys: List<Survey>,

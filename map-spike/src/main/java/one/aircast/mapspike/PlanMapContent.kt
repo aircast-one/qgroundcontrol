@@ -56,8 +56,6 @@ private const val CONFIRM_TIMEOUT_MS = 5000L
 private val CONTROLS_MAX_HEIGHT = 320.dp
 private val PRIMARY_PADDING = PaddingValues(horizontal = 16.dp, vertical = 4.dp)
 
-// The row mixed vehicle sync, item creation and view control with nothing to
-// say where one kind ended and the next began.
 @Composable
 private fun GroupBreak() {
     VerticalDivider(
@@ -93,8 +91,6 @@ internal fun MapSpikeScreen(
     var zoom by remember { mutableDoubleStateOf(0.0) }
     var controlsHeightPx by remember { mutableIntStateOf(0) }
 
-    // A bridge call that fails returns false rather than throwing, so without
-    // this a refused operation looks exactly like one that worked.
     fun say(message: String) {
         busy = message
         scope.launch {
@@ -128,31 +124,16 @@ internal fun MapSpikeScreen(
     val vehicleId by mapInt("vehicle.id")
     val vehicleCount by mapCount("vehicles.vehicles")
 
-    // Placing something needs a position. The vehicle's is the useful one, but
-    // the map centre lets the spike be driven with no vehicle connected.
     fun placeAt(): TrackPoint? = when {
         isPlottable(latitude, longitude) -> TrackPoint(latitude, longitude)
         else -> centre?.takeIf { isPlottable(it.latitude, it.longitude) }
     }
 
-    // With no vehicle to follow the map opens on MapLibre's world view, and a
-    // plan that is already loaded sits somewhere in it as a single dot while
-    // every readout insists it is real and kilometres long. QGC's Plan view fits
-    // the mission, so this does too.
-    //
-    // Once, and only while there is no vehicle position, so it never argues with
-    // a camera the pilot is flying. It is also what keeps the world view from
-    // being used as a placement anchor: its centre is a valid coordinate in the
-    // North Atlantic, and items were being created there.
     var fittedToPlan by remember { mutableStateOf(false) }
     val planIsDrawn = items.isNotEmpty() || surveyList.isNotEmpty() ||
         fences.isNotEmpty() || circles.isNotEmpty() || rally.isNotEmpty()
 
     LaunchedEffect(planIsDrawn, isPlottable(latitude, longitude)) {
-        // A vehicle having been seen disarms this for good. Keyed only on there
-        // being no position, losing the link mid-flight would count as "no
-        // vehicle" and throw the camera across the map at the moment the pilot
-        // least wants it moved.
         if (isPlottable(latitude, longitude)) {
             fittedToPlan = true
         } else if (planIsDrawn && !fittedToPlan) {
@@ -193,8 +174,6 @@ internal fun MapSpikeScreen(
         }
     }
 
-    // An armed Load that stays armed is a trap: the next stray tap discards the
-    // plan. It goes back to asking on its own.
     LaunchedEffect(loadArmed) {
         if (loadArmed) {
             delay(CONFIRM_TIMEOUT_MS)
@@ -209,9 +188,6 @@ internal fun MapSpikeScreen(
         }
     }
 
-    // Every poll is a blocking trip into the Qt thread. Hosted as a tab the
-    // screen stays composed while the app is in the background, so an ungated
-    // loop would go on paying that for a map nobody is looking at.
     val lifecycleOwner = LocalLifecycleOwner.current
     LaunchedEffect(lifecycleOwner) {
         lifecycleOwner.lifecycle.repeatOnLifecycle(Lifecycle.State.STARTED) {
@@ -243,8 +219,6 @@ internal fun MapSpikeScreen(
                         is MapHit.SurveyVertex -> SurveyBridge.adjustAreaVertex(hit.item, hit.vertex, lat, lon)
                         is MapHit.Rally -> FenceBridge.moveRallyPoint(hit.index, lat, lon)
                         is MapHit.CircleCentre -> FenceBridge.moveCircle(hit.index, lat, lon)
-                        // Tapping the fill selects a circle; its centre handle moves
-                        // it. Nothing to do here is not a failure.
                         is MapHit.Circle -> true
                     }
                 }
@@ -261,8 +235,6 @@ internal fun MapSpikeScreen(
             onFitFailed = { onBridge("Fitting the plan") { false } },
         )
 
-        // On the map rather than in the panel. It steers the map and nothing
-        // else, and a whole row of the panel is a row the map does not get.
         FilterChip(
             selected = follow,
             onClick = { follow = !follow },
@@ -285,9 +257,6 @@ internal fun MapSpikeScreen(
                 val ready by MapBridge.bridgeReady.collectAsState()
                 Text(
                     busy ?: if (!ready) {
-                        // What is known is that no read has come back. Why is a
-                        // guess, and in the app's Plan tab the old guess — start
-                        // the main app — is advice to do the thing already done.
                         "Waiting for QGroundControl"
                     } else {
                         planSummary(
@@ -310,11 +279,6 @@ internal fun MapSpikeScreen(
                 .onGloballyPositioned { controlsHeightPx = it.size.height },
             color = MaterialTheme.colorScheme.surface.copy(alpha = 0.88f),
         ) {
-            // The panel grows with what is selected, and it had grown past the
-            // screen: the survey altitude field and Delete survey were rendering
-            // below the fold with nothing to say so. Capping it and letting it
-            // scroll means adding a control can never again make an existing one
-            // unreachable.
             Column(
                 Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
                     .heightIn(max = CONTROLS_MAX_HEIGHT)
@@ -322,9 +286,6 @@ internal fun MapSpikeScreen(
             ) {
                 TerrainProfileView(profile)
 
-                // Wrapping beats scrolling here: a scrolled row cut a button off
-                // mid-word at the right edge, which reads as a rendering fault
-                // rather than an invitation to scroll.
                 FlowRow(
                     Modifier.fillMaxWidth(),
                     horizontalArrangement = Arrangement.spacedBy(4.dp),
@@ -351,10 +312,6 @@ internal fun MapSpikeScreen(
                         }
                     }) { Text(if (loadArmed) "Discard & download" else "Download") }
 
-                    // Upload is the action that finishes the job — the mission
-                    // reaching the aircraft — and it read as one of twelve
-                    // identical choices, indistinguishable from Fit, which only
-                    // moves the camera. One filled button says which one matters.
                     Button(onClick = {
                         val refusal = syncRefusal(
                             vehicleSyncState(planOffline, planSyncing), "upload to",
@@ -372,8 +329,6 @@ internal fun MapSpikeScreen(
                         }
                     }, contentPadding = PRIMARY_PADDING) { Text("Upload") }
 
-                    // Only when there is a choice. One vehicle needs no picker,
-                    // and none needs it less.
                     if (vehicleCount > 1) {
                         var vehicles by remember(vehicleCount, vehicleId) {
                             mutableStateOf<List<VehicleEntry>>(emptyList())
@@ -455,10 +410,6 @@ internal fun MapSpikeScreen(
                         fitRequest += 1
                     }) { Text("Fit") }
 
-                    // Only offered when the host supplies one. Clearing the plan
-                    // from in here would empty it behind a shell that still holds
-                    // the opened document, leaving the next Save to write a blank
-                    // plan over the user's file and report success.
                     onClear?.let { clear ->
                         TextButton(onClick = {
                             if (!clearArmed) {
@@ -473,9 +424,6 @@ internal fun MapSpikeScreen(
 
                 }
 
-                // Actions for what is selected live on their own line. They used
-                // to sit at the end of the row above, where they scrolled out of
-                // sight and read as missing.
                 val survey = selectedSurvey(selected, surveyList)
                 val waypoint = (selected as? MapHit.Waypoint)
                     ?.let { hit -> items.firstOrNull { it.index == hit.index } }
@@ -504,18 +452,6 @@ internal fun MapSpikeScreen(
 
                         waypoint?.let { item ->
                             if (!item.altitude.isNaN()) {
-                                // Stepping by ten is fine for a nudge and hopeless for
-                                // reaching a particular height, which is the usual reason
-                                // to touch an altitude at all.
-                                // Keyed on the altitude as well as the item, so a
-                                // change from anywhere - the steppers beside it, or
-                                // another station - reaches the field. Keyed on the
-                                // item alone it showed the height the waypoint had
-                                // when it was selected, which after two taps of +10
-                                // is a number nothing in the plan agrees with.
-                                //
-                                // Typing survives, because a poll that reads back the
-                                // same altitude does not change the key.
                                 var typed by remember(item.index, item.altitude) {
                                     mutableStateOf(altitudeFieldText(item.altitude))
                                 }
@@ -570,9 +506,6 @@ internal fun MapSpikeScreen(
                         }
 
                         surveyHit?.let { hit ->
-                            // Read once when the survey is picked. Polling it would
-                            // add a call per survey per poll for a value that only
-                            // changes when someone changes it.
                             var surveyAlt by remember(hit.item) { mutableStateOf("") }
                             LaunchedEffect(hit.item) {
                                 val metres = withContext(Dispatchers.Default) {

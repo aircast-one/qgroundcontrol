@@ -4,8 +4,6 @@ import org.junit.Assert.assertEquals
 import org.junit.Test
 
 class QgcTileCacheTest {
-    // Taken from a real qgcMapCache.db row written by QGroundControl:
-    // 0308415137 00000000 00000002 002 -> Bing Hybrid, x=0, y=2, z=2
     private val bingPrefix = "0308415137"
 
     @Test

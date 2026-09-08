@@ -23,11 +23,6 @@ object MapBridge {
     private val _bridgeReady = MutableStateFlow(false)
     val bridgeReady: StateFlow<Boolean> = _bridgeReady.asStateFlow()
 
-    // The bridge keeps a path set and a listener per client and watches the
-    // union, so arming these no longer disarms the app's other screens. Reads
-    // were the interim while it was single-owner; watching is event driven and
-    // does not spend a blocking call per path per poll.
-
     fun start() {
         runCatching {
             QGCBridge.setEventListener(CLIENT) { path, json ->
@@ -38,9 +33,6 @@ object MapBridge {
         }
     }
 
-    // Clearing this client's paths leaves every other client's alone, so the
-    // watcher can stop for a map nobody is looking at without taking the app's
-    // telemetry down with it.
     @Synchronized
     fun release() {
         watched.clear()
@@ -48,8 +40,6 @@ object MapBridge {
         runCatching { QGCBridge.watch(CLIENT, "") }
     }
 
-    // A watch registered before Qt has its natives in place throws, and the path
-    // has to come back out of the set or nothing ever retries it.
     @Synchronized
     fun watch(path: String) {
         if (!watched.add(path)) {
@@ -109,15 +99,12 @@ fun mapInt(path: String, fallback: Int = -1): State<Int> {
     }
 }
 
-// The number of elements a list model holds, without reading the elements.
 @Composable
 fun mapCount(path: String): State<Int> {
     val json by mapPath(path)
     return remember(path) { derivedStateOf { json?.optJSONArray("elements")?.length() ?: 0 } }
 }
 
-// A coordinate the vehicle has not established yet still arrives with
-// latitude and longitude of zero, so the validity flag decides, not the numbers.
 fun coordinateOf(json: JSONObject?): TrackPoint? {
     val coordinate = json?.takeIf { it.optBoolean("valid") } ?: return null
     val latitude = coordinate.optDouble("latitude", Double.NaN)

@@ -14,8 +14,6 @@ private fun durationText(seconds: Double): String {
     }
 }
 
-// An unflown plan reports zero for both, and a plan the controller has not
-// costed yet reports nothing at all. Neither is worth a line of its own.
 fun missionSummary(distanceMetres: Double, seconds: Double): String {
     val distance = distanceMetres.takeIf { !it.isNaN() && it > 0.0 }
     val duration = seconds.takeIf { !it.isNaN() && it > 0.0 }
