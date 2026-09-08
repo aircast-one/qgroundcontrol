@@ -21,6 +21,7 @@ mod read;
 mod sensors;
 mod settings;
 mod speed;
+mod survey;
 mod takeoff;
 mod terrain;
 mod router;

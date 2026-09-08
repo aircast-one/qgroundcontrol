@@ -399,3 +399,12 @@ void QGCCoreCTest::_settingsPagesDecodeTheirControls()
     QVERIFY(!controls.first().toObject().value(QStringLiteral("control")).toString().isEmpty());
     QVERIFY(controls.first().toObject().value(QStringLiteral("path")).toString().startsWith(QStringLiteral("settings.appSettings.")));
 }
+
+void QGCCoreCTest::_surveyStatsNeedAnItem()
+{
+    QCOMPARE(take(qgc_bridge_get("view.surveyStats")).value(QStringLiteral("kind")).toString(), QStringLiteral("null"));
+    const QJsonObject missing = take(qgc_bridge_get("view.surveyStats(7)"));
+    QCOMPARE(missing.value(QStringLiteral("class")).toString(), QStringLiteral("SurveyStats"));
+    QCOMPARE(missing.value(QStringLiteral("available")).toBool(true), false);
+    QCOMPARE(missing.value(QStringLiteral("shotsText")).toString(), QStringLiteral("\u2014"));
+}

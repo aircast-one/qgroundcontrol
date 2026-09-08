@@ -35,6 +35,7 @@ private slots:
     void _inspectorListsMessages();
     void _flightModesFollowTheVehicle();
     void _settingsPagesDecodeTheirControls();
+    void _surveyStatsNeedAnItem();
 
 private:
     static bool _unavailable(const char *path);

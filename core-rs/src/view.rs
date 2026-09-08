@@ -23,6 +23,7 @@ use crate::read::value_string;
 use crate::sensors;
 use crate::settings;
 use crate::speed;
+use crate::survey;
 use crate::takeoff;
 use crate::terrain;
 use crate::vibration;
@@ -62,6 +63,7 @@ pub const VIEWS: &[View] = &[
     View { path: "view.inspector", deps: inspector::DEPS, compute: inspector::inspector_view },
     View { path: "view.flightModes", deps: flightmodes::DEPS, compute: flightmodes::flight_modes_view },
     View { path: "view.settings", deps: settings::DEPS, compute: settings::settings_view },
+    View { path: "view.surveyStats", deps: survey::DEPS, compute: survey::survey_stats_view },
 ];
 
 pub fn owns(path: &str) -> bool {

@@ -63,6 +63,10 @@ impl Unit {
         Unit::read(backend, "metersToAppSettingsHorizontalDistanceUnits", "appSettingsHorizontalDistanceUnitsString", "m")
     }
 
+    pub fn area(backend: &dyn Backend) -> Unit {
+        Unit::read(backend, "squareMetersToAppSettingsAreaUnits", "appSettingsAreaUnitsString", "m\u{b2}")
+    }
+
     pub fn speed(backend: &dyn Backend) -> Unit {
         Unit::read(backend, "metersSecondToAppSettingsSpeedUnits", "appSettingsSpeedUnitsString", "m/s")
     }
