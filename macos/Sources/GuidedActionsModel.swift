@@ -8,6 +8,9 @@ struct GuidedState: Equatable {
     var takeoffSupported = false
     var pauseSupported = false
     var fixedWing = false
+    var forwardFlight = false
+    var speedLimitsAvailable = false
+    var landing = false
     var readyToArm = false
     var flightMode = ""
     var rtlMode = ""
@@ -21,6 +24,7 @@ struct GuidedState: Equatable {
     var inLand: Bool { !landMode.isEmpty && flightMode == landMode }
     var inMission: Bool { !missionMode.isEmpty && flightMode == missionMode }
     var missionActive: Bool { armed && (inLand || inRTL || inMission) }
+    var onApproach: Bool { fixedWing && landing }
     var hasMoreMission: Bool { currentMissionIndex < missionItemCount - 1 }
 }
 
@@ -30,6 +34,9 @@ enum GuidedAction: String, CaseIterable, Identifiable {
     case startMission
     case continueMission
     case pause
+    case changeAltitude
+    case changeSpeed
+    case landAbort
     case land
     case rtl
     case disarm
@@ -44,6 +51,9 @@ enum GuidedAction: String, CaseIterable, Identifiable {
         case .startMission: return "Start Mission"
         case .continueMission: return "Continue Mission"
         case .pause: return "Pause"
+        case .changeAltitude: return "Change Altitude"
+        case .changeSpeed: return "Change Speed"
+        case .landAbort: return "Abort Landing"
         case .land: return "Land"
         case .rtl: return "Return"
         case .disarm: return "Disarm"
@@ -58,6 +68,9 @@ enum GuidedAction: String, CaseIterable, Identifiable {
         case .startMission: return "play.circle"
         case .continueMission: return "forward.circle"
         case .pause: return "pause.circle"
+        case .changeAltitude: return "arrow.up.arrow.down.circle"
+        case .changeSpeed: return "speedometer"
+        case .landAbort: return "arrow.uturn.up.circle"
         case .land: return "arrow.down.circle"
         case .rtl: return "house.circle"
         case .disarm: return "bolt.slash.circle"
@@ -70,10 +83,13 @@ enum GuidedAction: String, CaseIterable, Identifiable {
     var prompt: String {
         switch self {
         case .arm: return "Arm the vehicle. Propellers will be live."
-        case .takeoff: return "Take off and climb to the mission altitude."
+        case .takeoff: return "Take off and climb to the height you set."
         case .startMission: return "Fly the mission from the beginning."
         case .continueMission: return "Fly the rest of the mission from the current item."
-        case .pause: return "Hold position where it is."
+        case .pause: return "Hold position, at the height you set."
+        case .changeAltitude: return "Climb or descend to a new height."
+        case .changeSpeed: return "Fly at a new speed."
+        case .landAbort: return "Break off the landing and climb away."
         case .land: return "Land where it is."
         case .rtl: return "Fly home and land."
         case .disarm: return "Disarm the vehicle."
@@ -101,9 +117,20 @@ enum GuidedAction: String, CaseIterable, Identifiable {
         case .continueMission:
             return state.missionAvailable && !state.missionActive && state.armed
                 && state.flying && state.hasMoreMission
-        case .pause: return state.armed && state.pauseSupported && state.flying
+        case .pause:
+            return state.armed && state.pauseSupported && state.flying && !state.onApproach
+        case .landAbort: return state.flying && state.onApproach
+        case .changeAltitude:
+            return state.armed && state.guidedSupported && state.flying && !state.missionActive
+        case .changeSpeed:
+            return state.armed && state.guidedSupported && state.flying
+                && !state.missionActive && state.speedLimitsAvailable
         case .emergencyStop: return state.armed
         }
+    }
+
+    var carriesValue: Bool {
+        self == .takeoff || self == .changeAltitude || self == .changeSpeed || self == .pause
     }
 
     var needsPrearm: Bool {

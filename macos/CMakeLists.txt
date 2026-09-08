@@ -75,6 +75,7 @@ add_library(QGCNativeUI STATIC
     Sources/InstrumentModel.swift
     Sources/Instruments.swift
     Sources/GuidedActionsModel.swift
+    Sources/GuidedValueModel.swift
     Sources/GuidedActions.swift
     Sources/Frame.swift
     Sources/OverlayKit.swift
@@ -94,6 +95,8 @@ add_library(QGCNativeUI STATIC
     Sources/Probeable.swift
     Sources/QtHostWindow.swift
     Sources/FlyTelemetryModel.swift
+    Sources/FlyDetailModel.swift
+    Sources/FlightModeModel.swift
     Sources/Fly.swift
     Sources/FlyWindow.swift
 )

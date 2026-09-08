@@ -28,6 +28,8 @@ swiftc -Onone -o "$out" \
     "$root/macos/Sources/MissionCommandModel.swift" \
     "$root/macos/Sources/MissionItemKind.swift" \
     "$root/macos/Sources/FlyTelemetryModel.swift" \
+    "$root/macos/Sources/FlyDetailModel.swift" \
+    "$root/macos/Sources/FlightModeModel.swift" \
     "$root/macos/Sources/VehicleMarkerModel.swift" \
     "$root/macos/Sources/ItemFactModel.swift" \
     "$root/macos/Sources/CameraChoiceModel.swift" \
@@ -44,6 +46,7 @@ swiftc -Onone -o "$out" \
     "$root/macos/Sources/VehicleWarningModel.swift" \
     "$root/macos/Sources/InstrumentModel.swift" \
     "$root/macos/Sources/GuidedActionsModel.swift" \
+    "$root/macos/Sources/GuidedValueModel.swift" \
     "$root/macos/Sources/TerrainProfileModel.swift" \
     "$root/macos/Sources/MapFraming.swift" \
     "$root/macos/Sources/FenceRallyModel.swift" \

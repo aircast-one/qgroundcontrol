@@ -262,6 +262,15 @@ func checkFenceGeometry() {
 
     let exclusion = FenceShape(json: ["inclusion": false, "count": 3, "path": []], id: 1, circle: false)
     expect(exclusion.kindText, "Keep-out polygon", "an exclusion polygon reads as keep-out")
+    expect(polygon.rowDetail, polygon.detailText,
+           "a polygon's row carries its vertex count and area")
+    expect(FenceShape(json: ["center": ["latitude": -35.36, "longitude": 149.16],
+                             "facts": [["name": "Radius", "value": 250]]],
+                      id: 1, circle: true).rowDetail, "",
+           "a circle's row does not repeat the radius the field beside it already shows")
+
+    expect(polygon.shapeText, "Polygon",
+           "the row names only the shape; the seal and the picker beside it carry keep-in or keep-out")
 
     let circle = FenceShape(json: [
         "inclusion": true,
@@ -473,6 +482,17 @@ func checkMissionCommands() {
     expect(commands.count == 2, "duplicates, nameless and numberless commands are dropped")
     expect(commands.first?.name == "Waypoint", "the friendly name is what an operator picks from")
 
+    let described = MissionCommand.from([
+        ["command": 19, "friendlyName": "Loiter (time)", "category": "Loiter",
+         "description": "Loiter around the specified position for an amount of time."],
+        ["command": 16, "friendlyName": "Waypoint", "category": "Basic"],
+    ])
+    expect(described[0].summary, "Loiter around the specified position for an amount of time.",
+           "the description QGC lists beside the name comes through")
+    expect(described[0].category, "Loiter", "and so does the category it was listed under")
+    expect(described[1].summary, "",
+           "a command with no description reads as empty, not as a missing row")
+
     let waypoint = MissionItem(json: [
         "sequenceNumber": 1, "commandName": "Waypoint", "isSimpleItem": true,
     ], index: 1)
@@ -564,6 +584,203 @@ func checkUnplacedCommands() {
 
 checkUnplacedCommands()
 
+func checkMapWindow() {
+    let centre = GeoPoint(latitude: -35.36, longitude: 149.16)
+    guard let window = MapWindow(centre: centre, latitudeSpan: 0.02, longitudeSpan: 0.04) else {
+        expect(false, "a map with a span makes a window")
+        return
+    }
+    expect(abs(window.topLeft.latitude - (-35.35)) < 1e-9,
+           "the top-left corner is north of centre")
+    expect(abs(window.topLeft.longitude - 149.14) < 1e-9,
+           "and west of it")
+    expect(abs(window.bottomRight.latitude - (-35.37)) < 1e-9,
+           "the bottom-right corner is south")
+    expect(abs(window.bottomRight.longitude - 149.18) < 1e-9,
+           "and east")
+
+    expect(MapWindow(centre: centre, latitudeSpan: 0, longitudeSpan: 0.04) == nil,
+           "a map with no height gives no window to put a fence in")
+    expect(MapWindow(centre: nil, latitudeSpan: 0.02, longitudeSpan: 0.04) == nil,
+           "and neither does one that has not settled on a centre")
+}
+
+checkMapWindow()
+
+func checkGuidedValue() {
+    expect(GuidedValue(label: "x", units: "m", minimum: 10, maximum: 10, initial: 10) == nil,
+           "a range with no span is no range; a slider over it cannot be moved")
+    expect(GuidedValue(label: "x", units: "m", minimum: 5, maximum: 120, initial: .nan) == nil,
+           "and a vehicle that has not reported the value gives none either")
+
+    guard let takeoff = GuidedValue.takeoff(minimumAltitude: 3, maximumAltitude: 121) else {
+        expect(false, "a takeoff range is built from the firmware minimum and the setting maximum")
+        return
+    }
+    expect(takeoff.initial == 3, "takeoff starts at the lowest the firmware allows, as QGC does")
+    expect(takeoff.clamped(500) == 121, "and nothing above the setting maximum can be chosen")
+    expect(takeoff.clamped(0) == 3, "nor below the firmware minimum")
+    expect(takeoff.text(50), "50 m", "a height reads in whole metres")
+
+    guard let above = GuidedValue.altitude(minimum: 5, maximum: 121, current: 40) else {
+        expect(false, "a change-altitude range is built from the settings and the current height")
+        return
+    }
+    expect(above.initial == 40, "it opens at the height the vehicle is already at")
+
+    let clipped = GuidedValue.altitude(minimum: 5, maximum: 121, current: 400)
+    expect(clipped?.initial == 121,
+           "a vehicle already above the ceiling opens at the ceiling, not off the end of the slider")
+
+    let ground = GuidedValue.speed(maximum: 12, forwardFlight: false,
+                                   minimumAirspeed: 15, maximumAirspeed: 30)
+    expect(ground?.label ?? "", "Ground speed", "a multirotor changes ground speed")
+    expect(ground?.initial == 6, "opening at half the limit, as QGC does")
+    expect(ground?.text(6.25) ?? "", "6.2 m/s", "and a speed reads to a tenth")
+
+    let air = GuidedValue.speed(maximum: 12, forwardFlight: true,
+                                minimumAirspeed: 15, maximumAirspeed: 30)
+    expect(air?.label ?? "", "Airspeed", "a vehicle in forward flight changes airspeed instead")
+    expect(air?.initial == 22.5, "opening midway between the firmware's own limits")
+}
+
+checkGuidedValue()
+
+func checkFlyDetail() {
+    let battery = [
+        FactReading(name: "voltage", value: "12.60", units: "v"),
+        FactReading(name: "current", value: "0.00", units: "A"),
+        FactReading(name: "mahConsumed", value: "0", units: "mAh"),
+        FactReading(name: "temperature", value: "--.--", units: "C"),
+        FactReading(name: "timeRemainingStr", value: "--:--:--", units: ""),
+        FactReading(name: "instantPower", value: "0.00", units: "W"),
+        FactReading(name: "chargeState", value: "1", units: ""),
+    ]
+    let pack = FlyDetail.battery(battery)
+    expect(pack.map(\.label).joined(separator: ","), "Voltage,Current,Power,Consumed",
+           "a temperature and a time the pack never reported are left out, not shown as dashes")
+    expect(pack[0].value, "12.60 V",
+           "a reading carries its units, with the volt capitalised as the summary row has it")
+
+    expect(FlyDetail.battery([]).isEmpty, "a vehicle with no battery facts has no detail to open")
+
+    let gps = FlyDetail.gps([
+        FactReading(name: "lat", value: "-35.3632621", units: ""),
+        FactReading(name: "lon", value: "149.1652374", units: ""),
+        FactReading(name: "hdop", value: "1.2", units: ""),
+        FactReading(name: "count", value: "10", units: ""),
+        FactReading(name: "courseOverGround", value: "0.0", units: "deg"),
+    ])
+    expect(gps.first?.label ?? "", "Position", "position leads, because it is what an operator looks for")
+    expect(gps.first?.value ?? "", "-35.3632621, 149.1652374", "and reads as one pair")
+    expect(gps.map(\.label).joined(separator: ","),
+           "Position,Satellites,HDOP,Course over ground",
+           "the rest follow in the order QGC lists them, minus what was not reported")
+
+    expect(FlyDetail.gps([FactReading(name: "lat", value: "1.0", units: "")]).isEmpty,
+           "half a position is no position")
+
+    expect(FlyDetail.link(rcRSSI: 255, localRSSI: 0, remoteRSSI: 0).isEmpty,
+           "a TCP link reports no radio at all, so the link row stays away")
+    expect(FlyDetail.link(rcRSSI: 84, localRSSI: -70, remoteRSSI: -68).map(\.label)
+        .joined(separator: ","), "RC signal,Telemetry here,Telemetry on the vehicle",
+           "a real radio reports all three")
+    expect(FlyDetail.link(rcRSSI: 0, localRSSI: nil, remoteRSSI: nil).isEmpty,
+           "and a zero RC reading is absence, not a dead stick")
+
+    expect(Units.display("v"), "V",
+           "the vehicle spells volts in lower case; the whole window spells it the same way")
+    expect(Units.display("m/s"), "m/s", "everything else is left as the vehicle sent it")
+}
+
+checkFlyDetail()
+
+func checkFlightModes() {
+    let all = ["Stabilize", "Altitude Hold", "Auto", "Guided", "Loiter", "RTL", "Land",
+               "Position Hold", "Acro", "Circle", "Turtle"]
+    let advanced = ["Acro", "Circle", "Turtle"]
+
+    let choices = FlightModes.choices(all: all, advanced: advanced, current: "Guided")
+    expect(choices.count == all.count, "every mode the vehicle reported is offered")
+    expect(choices.first { $0.current }?.name ?? "", "Guided", "and the one it is in is marked")
+    expect(FlightModes.everyday(choices).map(\.name).joined(separator: ","),
+           "Stabilize,Altitude Hold,Auto,Guided,Loiter,RTL,Land,Position Hold",
+           "the everyday list is what is left once the advanced modes are folded away")
+    expect(FlightModes.folded(choices).map(\.name).joined(separator: ","), "Acro,Circle,Turtle",
+           "and the folded list is the rest")
+
+    let inAdvanced = FlightModes.choices(all: all, advanced: advanced, current: "Circle")
+    expect(FlightModes.everyday(inAdvanced).map(\.name).contains("Circle"),
+           "a vehicle already in an advanced mode still shows it without opening More modes")
+    expect(!FlightModes.folded(inAdvanced).map(\.name).contains("Circle"),
+           "and it is not listed twice")
+
+    expect(FlightModes.description(of: "RTL"), "Climbs, returns home and lands",
+           "each mode carries the sentence QGC's picker shows")
+    expect(FlightModes.description(of: "Mode 65536"), "",
+           "a mode nobody has described gets no sentence rather than a wrong one")
+
+    expect(FlightModes.symbol(for: "Smart RTL"), "house", "the glyph follows the mode's meaning")
+    expect(FlightModes.symbol(for: "QuadPlane Land"), "arrow.down.to.line",
+           "including a firmware-specific spelling of it")
+    expect(FlightModes.symbol(for: "Mode 65536"), "airplane", "and an unknown mode still gets one")
+
+    expect(FlightModes.needsConfirming("RTL", flying: true, rtlMode: "RTL", landMode: "Land"),
+           "sending a flying vehicle home is confirmed, as QGC confirms it from the guided strip")
+    expect(FlightModes.needsConfirming("Land", flying: true, rtlMode: "RTL", landMode: "Land"),
+           "so is landing it")
+    expect(!FlightModes.needsConfirming("Loiter", flying: true, rtlMode: "RTL", landMode: "Land"),
+           "holding position is not a commitment and needs no second tap")
+    expect(!FlightModes.needsConfirming("RTL", flying: false, rtlMode: "RTL", landMode: "Land"),
+           "and on the ground nothing needs confirming")
+    expect(!FlightModes.needsConfirming("", flying: true, rtlMode: "", landMode: ""),
+           "a vehicle that has not named its return mode does not turn every mode into a commitment")
+
+    expect(FlightModes.choices(all: [], advanced: [], current: "").isEmpty,
+           "a vehicle that has not reported its modes offers none, rather than a stale list")
+}
+
+checkFlightModes()
+
+func checkFenceUsable() {
+    let square = (0..<4).map { _ in ["latitude": -35.36, "longitude": 149.16] }
+    let polygon = FenceShape(json: ["count": 4, "path": square,
+                                    "center": ["latitude": -35.36, "longitude": 149.16]],
+                             id: 0, circle: false)
+    expect(polygon.usable, "a polygon with its vertices is usable")
+
+    let hollow = FenceShape(json: ["count": 4, "path": [NSNull(), NSNull(), NSNull(), NSNull()]],
+                            id: 0, circle: false)
+    expect(!hollow.usable,
+           "a polygon that counts four vertices but carries none is not; it draws nothing")
+
+    let circle = FenceShape(json: ["center": ["latitude": -35.36, "longitude": 149.16],
+                                   "facts": [["name": "Radius", "value": 200]]],
+                            id: 1, circle: true)
+    expect(circle.usable, "a circle needs a centre, not vertices")
+    expect(!FenceShape(json: [:], id: 1, circle: true).usable, "and without one it is not usable")
+}
+
+checkFenceUsable()
+
+func checkRallyAndBreach() {
+    let placed = RallyPointRow(json: ["coordinate": ["latitude": -35.3628, "longitude": 149.1665,
+                                                     "altitude": 60.0]], id: 0)
+    expect(placed.altitudeText, "60.0 m", "a rally point shows the height it holds")
+    expect(placed.positionText, "-35.362800, 149.166500", "and where it is")
+
+    let bare = RallyPointRow(json: [:], id: 1)
+    expect(bare.altitudeText, "—", "a point with no coordinate claims no height")
+    expect(bare.positionText, "—", "nor a position")
+
+    let nan = RallyPointRow(json: ["coordinate": ["latitude": -35.36, "longitude": 149.16,
+                                                  "altitude": Double.nan]], id: 2)
+    expect(nan.altitudeText, "—",
+           "and a height the vehicle reported as not-a-number is not shown as one")
+}
+
+checkRallyAndBreach()
+
 func checkMissionItemKinds() {
     expect(MissionItemKind.allCases.count == 7,
            "the add menu offers every item type, including the three survey patterns")
@@ -578,6 +795,50 @@ func checkMissionItemKinds() {
     expect(area[0].longitude < 149.165 && area[2].longitude > 149.165, "on both axes")
     let span = (area[2].latitude - area[0].latitude) * 111_320
     expect(abs(span - 2 * MissionItemKind.defaultAreaMetres) < 1, "and is the intended size across")
+    expect(PlanReadiness.reason(for: PlanReadiness.readyForSave), "",
+           "a plan that is ready to save says nothing")
+    expect(PlanReadiness.reason(for: PlanReadiness.notReadyForSaveData),
+           "An item is still being drawn, so the plan cannot be saved or sent.",
+           "and one that is not says why, because QGC's own message told the operator to draw an area already on their map")
+    expect(PlanReadiness.reason(for: PlanReadiness.notReadyForSaveTerrain),
+           "Waiting for terrain heights before the plan can be saved or sent.",
+           "waiting on terrain is a different reason and reads as one")
+    expect(PlanReadiness.reason(for: 99), "",
+           "a state the controller has not defined is not turned into a scary sentence")
+
+    expect(MissionItemKind.simpleKinds.map(\.rawValue).joined(separator: ","),
+           "waypoint,takeoff,land,roi",
+           "the simple items are the ones the head inserts by their own call")
+    expect(MissionItemKind.forComplexName("Corridor Scan") == .corridor,
+           "a pattern the head knows is matched by the name the controller uses")
+    expect(MissionItemKind.forComplexName("Fixed Wing Landing Pattern") == nil,
+           "and one it does not know is simply unknown, not mistaken for another")
+
+    expect(MissionItemKind.title(forPattern: "Survey"), "Survey",
+           "a known pattern keeps the head's own title")
+    expect(MissionItemKind.title(forPattern: "Fixed Wing Landing Pattern"),
+           "Fixed Wing Landing Pattern",
+           "an unknown one is offered under the name the vehicle gave it, not hidden")
+    expect(MissionItemKind.symbol(forPattern: "VTOL Landing Pattern"), "square.on.square.dashed",
+           "and still gets a glyph")
+    expect(MissionItemKind.placementHint(forPattern: "Fixed Wing Landing Pattern"),
+           "Click the map to place a fixed wing landing pattern.",
+           "with a hint that names it")
+
+    expect(MissionItemKind(rawValue: "") == nil,
+           "an empty raw value is no kind, which is how the Empty template asks for nothing")
+    expect(MissionItemKind(rawValue: "survey") == .survey,
+           "and a kind survives the round trip through its raw value")
+
+    expect(MissionItemKind.shapeImportable.map(\.rawValue).joined(separator: ","),
+           "survey,corridor,structure",
+           "only the three complex patterns can be drawn from a shape file")
+    expect(MissionItemKind.shapeImportable.allSatisfy { $0.complexName != nil },
+           "and every one of them has a name the controller inserts by")
+    expect(MissionItemKind.corridor.shapeNoun, "path", "a corridor is imported from a path")
+    expect(MissionItemKind.survey.shapeNoun, "area", "a survey from an area")
+    expect(MissionItemKind.structure.shapeNoun, "area", "a structure scan from an area too")
+
     expect(MissionItemKind.waypoint.invokable, "insertSimpleMissionItem", "a waypoint inserts a simple item")
     expect(MissionItemKind.takeoff.invokable, "insertTakeoffItem", "takeoff has its own insert")
     expect(MissionItemKind.land.invokable, "insertLandItem", "land has its own insert")
@@ -1388,16 +1649,56 @@ func checkPreflight() {
     expect(Preflight.sensors(unhealthyBits: 3).verdict == .failing("Gyro, Accelerometer unhealthy."),
            "several sensors are all named")
 
-    let groups = Preflight.groups(lock: 6, satellites: 10, batteryPercent: 100, unhealthyBits: 0)
-    expect(Preflight.total(groups) == 9, "the multirotor list is nine checks long")
-    expect(Preflight.progress(groups, ticked: []), "0 of 9 checked", "and starts at none")
+    expect(Preflight.sound(muted: false).verdict == .passing, "audible QGC passes the sound check")
+    expect(Preflight.sound(muted: true).blocked, "a muted QGC blocks it; warnings would go unheard")
+
+    let list2 = Preflight.groups(airframe: .rover, lock: 6, satellites: 10, batteryPercent: 100,
+                                 unhealthyBits: 0, audioMuted: false)
+
+    func list(_ airframe: PreflightAirframe) -> [String] {
+        Preflight.groups(airframe: airframe, lock: 6, satellites: 10, batteryPercent: 100,
+                         unhealthyBits: 0, audioMuted: false).flatMap(\.checks).map(\.name)
+    }
+
+    let groups = Preflight.groups(airframe: .multiRotor, lock: 6, satellites: 10,
+                                  batteryPercent: 100, unhealthyBits: 0, audioMuted: false)
+    expect(Preflight.total(groups) == 11, "the multirotor list is eleven checks long")
+    expect(Preflight.progress(groups, ticked: []), "0 of 11 checked", "and starts at none")
     expect(!Preflight.ready(groups, ticked: []), "an untouched list is not ready")
 
     let every = Set(groups.flatMap(\.checks).map(\.name))
     expect(Preflight.ready(groups, ticked: every), "ticking every check is ready")
-    expect(Preflight.progress(groups, ticked: every), "9 of 9 checked", "and says so")
+    expect(Preflight.progress(groups, ticked: every), "11 of 11 checked", "and says so")
     expect(!Preflight.ready(groups, ticked: every.subtracting(["Payload"])),
            "one missing check is not ready")
+
+    expect(PreflightAirframe.of(multiRotor: false, vtol: true, rover: false, sub: false,
+                                fixedWing: true) == .vtol,
+           "a VTOL also reports fixedWing; the VTOL list wins")
+    expect(PreflightAirframe.of(multiRotor: false, vtol: false, rover: false, sub: false,
+                                fixedWing: false) == .generic,
+           "an airframe that claims nothing gets the generic list")
+
+    expect(!list(.multiRotor).contains("Actuators"),
+           "a multirotor has no control surfaces to sweep")
+    expect(list(.fixedWing).contains("Actuators"), "a fixed wing does")
+    expect(!list(.rover).contains("Motors"),
+           "a rover is not asked to throttle its props up")
+    expect(list(.rover).contains("Mission area") && !list(.rover).contains("Flight area"),
+           "a rover drives a mission area, it does not launch into a flight area")
+    expect(!list(.sub).contains("Wind and weather") && !list(.sub).contains("Flight area"),
+           "wind and a launch area mean nothing underwater")
+    expect(list(.sub).contains("Payload"), "a submarine still carries a payload")
+    expect(list(.multiRotor).contains("Radio control") && list(.multiRotor).contains("Sound output"),
+           "every list asks about the radio link and QGC's audio")
+
+    expect(Preflight.progress(list2, ticked: ["Motors", "Payload"]), "1 of 10 checked",
+           "a tick left over from another airframe is not counted against a list it is not on")
+
+    expect(PreflightAirframe.multiRotor.hardwarePrompt, "Props mounted and secured?",
+           "the hardware prompt names what this airframe actually has")
+    expect(PreflightAirframe.sub.hardwarePrompt, "All seals in place?",
+           "and a submarine is asked about its seals, not its props")
 }
 
 checkPreflight()
@@ -1594,12 +1895,39 @@ func checkGuidedActions() {
 
     var flying = armed
     flying.flying = true
-    expect(names(flying), "continueMission,pause,land,rtl,emergencyStop",
-           "in the air it can continue, hold, land, return or be stopped, but never disarmed")
+    expect(names(flying), "continueMission,pause,changeAltitude,land,rtl,emergencyStop",
+           "in the air it can continue, hold, climb, land, return or be stopped, but never disarmed")
+
+    var approaching = flying
+    approaching.fixedWing = true
+    approaching.landing = true
+    expect(names(approaching).contains("landAbort"),
+           "a fixed wing on approach is offered the abort")
+    expect(!names(approaching).contains("pause"),
+           "and holding position is withdrawn while it is on approach, as QGC does")
+    expect(!names(flying).contains("landAbort"),
+           "a multirotor in the cruise is never offered a landing abort")
+
+    var landingMultiRotor = flying
+    landingMultiRotor.landing = true
+    expect(!names(landingMultiRotor).contains("landAbort"),
+           "nor is a multirotor that is landing; the abort is a fixed-wing manoeuvre")
+
+    expect(!names(flying).contains("changeSpeed"),
+           "changing speed is withheld until the vehicle has reported its speed limits")
+    var withLimits = flying
+    withLimits.speedLimitsAvailable = true
+    expect(names(withLimits).contains("changeSpeed"), "and offered once it has")
+
+    var onMission = withLimits
+    onMission.flightMode = onMission.missionMode
+    expect(!names(onMission).contains("changeAltitude")
+           && !names(onMission).contains("changeSpeed"),
+           "neither is offered while the vehicle is flying its mission")
 
     var flyingUnready = flying
     flyingUnready.readyToArm = false
-    expect(names(flyingUnready), "continueMission,pause,land,rtl,emergencyStop",
+    expect(names(flyingUnready), "continueMission,pause,changeAltitude,land,rtl,emergencyStop",
            "a failing prearm never withholds getting a flying vehicle back down")
 
     var returning = flying

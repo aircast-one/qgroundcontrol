@@ -143,6 +143,7 @@ struct MissionMap: NSViewRepresentable {
             "framed": context.coordinator.lastFrame != nil,
             "centre": ["lat": map.centerCoordinate.latitude, "lon": map.centerCoordinate.longitude],
             "spanLat": map.region.span.latitudeDelta,
+            "spanLon": map.region.span.longitudeDelta,
             "tileOverlay": context.coordinator.overlay != nil,
             "mapType": CachedTileOverlay.currentMapType(),
             "size": ["w": Double(map.bounds.width), "h": Double(map.bounds.height)],
@@ -185,6 +186,7 @@ struct MissionMap: NSViewRepresentable {
         MissionMap.lastRender[owner]?["centre"] =
             ["lat": map.centerCoordinate.latitude, "lon": map.centerCoordinate.longitude]
         MissionMap.lastRender[owner]?["spanLat"] = map.region.span.latitudeDelta
+        MissionMap.lastRender[owner]?["spanLon"] = map.region.span.longitudeDelta
     }
 
     static func overlay(for shape: FenceShape) -> MKOverlay? {

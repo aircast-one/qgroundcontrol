@@ -6,6 +6,8 @@ final class GuidedStore: ObservableObject, Probeable {
     @Published private(set) var state = GuidedState()
     @Published private(set) var pending: GuidedAction?
     @Published private(set) var lastSent = ""
+    @Published private(set) var range: GuidedValue?
+    @Published var chosen = 0.0
 
     var actions: [GuidedAction] { GuidedAction.offered(in: state) }
 
@@ -31,6 +33,11 @@ final class GuidedStore: ObservableObject, Probeable {
         read.takeoffSupported = flag("takeoffVehicleSupported")
         read.pauseSupported = flag("pauseVehicleSupported")
         read.fixedWing = flag("fixedWing")
+        read.forwardFlight = flag("vtolInFwdFlight") || flag("fixedWing")
+        read.speedLimitsAvailable = read.forwardFlight
+            ? flag("haveFWSpeedLimits")
+            : flag("haveMRSpeedLimits")
+        read.landing = flag("landing")
         read.readyToArm = prearmClear
         read.flightMode = (vehicle["flightMode"] as? String) ?? ""
         read.rtlMode = (vehicle["rtlFlightMode"] as? String) ?? ""
@@ -46,17 +53,59 @@ final class GuidedStore: ObservableObject, Probeable {
 
     func ask(_ action: GuidedAction) {
         guard action.available(in: state) else { return }
+        let built = action.carriesValue ? limits(for: action) : nil
+        guard !action.carriesValue || built != nil else { return }
+        range = built
+        chosen = built?.initial ?? 0
         pending = action
     }
 
     func cancel() {
         pending = nil
+        range = nil
     }
 
     func confirm() {
         guard let action = pending else { return }
+        guard !action.carriesValue || range != nil else { return }
         send(action)
         pending = nil
+        range = nil
+    }
+
+    private func limits(for action: GuidedAction) -> GuidedValue? {
+        switch action {
+        case .takeoff:
+            return GuidedValue.takeoff(minimumAltitude: number("vehicle.minimumTakeoffAltitudeMeters"),
+                                       maximumAltitude: setting("guidedMaximumAltitude"))
+        case .changeAltitude, .pause:
+            return GuidedValue.altitude(minimum: setting("guidedMinimumAltitude"),
+                                        maximum: setting("guidedMaximumAltitude"),
+                                        current: currentAltitude)
+        case .changeSpeed:
+            return GuidedValue.speed(maximum: number("vehicle.maximumHorizontalSpeedMultirotor"),
+                                     forwardFlight: state.forwardFlight,
+                                     minimumAirspeed: number("vehicle.minimumEquivalentAirspeed"),
+                                     maximumAirspeed: number("vehicle.maximumEquivalentAirspeed"))
+        default:
+            return nil
+        }
+    }
+
+    static let climbOutAltitude = 50.0
+
+    private func number(_ path: String) -> Double {
+        (Bridge.invoke(path)["result"] as? NSNumber)?.doubleValue ?? .nan
+    }
+
+    private func setting(_ name: String) -> Double {
+        (Bridge.group("settings.flyViewSettings.\(name)")["value"] as? NSNumber)?.doubleValue ?? .nan
+    }
+
+    private var currentAltitude: Double {
+        let facts = (Bridge.group("vehicle")["facts"] as? [[String: Any]]) ?? []
+        let match = facts.first { ($0["name"] as? String) == "altitudeRelative" }
+        return (match?["value"] as? NSNumber)?.doubleValue ?? .nan
     }
 
     private func send(_ action: GuidedAction) {
@@ -66,16 +115,19 @@ final class GuidedStore: ObservableObject, Probeable {
         case .disarm: _ = Bridge.set("vehicle.armed", false)
         case .rtl: Bridge.invoke("vehicle.guidedModeRTL", [false])
         case .land: Bridge.invoke("vehicle.guidedModeLand")
-        case .takeoff: Bridge.invoke("vehicle.guidedModeTakeoff", [takeoffAltitude])
+        case .takeoff: Bridge.invoke("vehicle.guidedModeTakeoff", [chosen])
+        case .changeAltitude:
+            Bridge.invoke("vehicle.guidedModeChangeAltitude", [chosen - currentAltitude, false])
+        case .changeSpeed:
+            Bridge.invoke(state.forwardFlight
+                ? "vehicle.guidedModeChangeEquivalentAirspeedMetersSecond"
+                : "vehicle.guidedModeChangeGroundSpeedMetersSecond", [chosen])
         case .startMission, .continueMission: Bridge.invoke("vehicle.startMission")
-        case .pause: Bridge.invoke("vehicle.pauseVehicle")
+        case .pause:
+            Bridge.invoke("vehicle.guidedModeChangeAltitude", [chosen - currentAltitude, true])
+        case .landAbort: Bridge.invoke("vehicle.abortLanding", [GuidedStore.climbOutAltitude])
         case .emergencyStop: Bridge.invoke("vehicle.emergencyStop")
         }
-    }
-
-    private var takeoffAltitude: Double {
-        let fact = Bridge.group("settings.appSettings.defaultMissionItemAltitude")
-        return (fact["value"] as? NSNumber)?.doubleValue ?? 10
     }
 
     func probeState() -> [String: Any] {
@@ -83,6 +135,11 @@ final class GuidedStore: ObservableObject, Probeable {
          "flightMode": state.flightMode, "readyToArm": state.readyToArm,
          "missionActive": state.missionActive, "lastSent": lastSent,
          "pending": pending?.rawValue ?? "",
+         "range": range.map {
+             ["label": $0.label, "units": $0.units, "min": $0.minimum,
+              "max": $0.maximum, "initial": $0.initial]
+         } ?? [:],
+         "chosen": range.map { $0.text(chosen) } ?? "",
          "offered": actions.map(\.rawValue),
          "available": GuidedAction.available(in: state).map(\.rawValue)]
     }
@@ -98,7 +155,16 @@ final class GuidedStore: ObservableObject, Probeable {
                 return ["ok": false, "error": "\(wanted.title) is not available in this state"]
             }
             ask(wanted)
+            guard pending == wanted else {
+                return ["ok": false,
+                        "error": "\(wanted.title) needs a range the vehicle has not reported"]
+            }
         case "cancel": cancel()
+        case "choose":
+            guard let range, let wanted = Double(args["value"] ?? "") else {
+                return ["ok": false, "error": "choose needs a value and an action that takes one"]
+            }
+            chosen = range.clamped(wanted)
         default: return ["ok": false, "error": "unknown action \(action)"]
         }
         return ["ok": true, "state": probeState()]

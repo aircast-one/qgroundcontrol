@@ -9,6 +9,19 @@ final class FlyStore: ObservableObject, Probeable {
     @Published private(set) var messages: [VehicleMessage] = []
     @Published private(set) var unhealthyBits: Int?
     @Published private(set) var warning = VehicleWarning.none
+    @Published private(set) var airframe = PreflightAirframe.generic
+    @Published private(set) var audioMuted = false
+    @Published private(set) var batteries: [[DetailRow]] = []
+    @Published private(set) var gpsDetail: [DetailRow] = []
+    @Published private(set) var linkDetail: [DetailRow] = []
+    @Published var expanded: Set<String> = []
+    @Published private(set) var modes: [FlightModeChoice] = []
+    @Published private(set) var requestedMode = ""
+    @Published var showingModes = false
+    @Published var showingAdvancedModes = false
+    @Published private(set) var confirmingMode = ""
+    private var rtlMode = ""
+    private var landMode = ""
     @Published private(set) var ticked: Set<String> = []
     @Published var showingChecklist = false
 
@@ -28,6 +41,9 @@ final class FlyStore: ObservableObject, Probeable {
     }
 
     func refresh() {
+        let muted = (Bridge.group("settings.appSettings.audioMuted")["value"] as? NSNumber)?.boolValue ?? false
+        if muted != audioMuted { audioMuted = muted }
+
         let vehicle = Bridge.group("vehicle")
         guard vehicle["kind"] as? String == "object" else {
             if connected { connected = false }
@@ -36,6 +52,11 @@ final class FlyStore: ObservableObject, Probeable {
             if !messages.isEmpty { messages = [] }
             if unhealthyBits != nil { unhealthyBits = nil }
             if warning != .none { warning = .none }
+            if airframe != .generic { airframe = .generic }
+            if !batteries.isEmpty { batteries = [] }
+            if !gpsDetail.isEmpty { gpsDetail = [] }
+            if !linkDetail.isEmpty { linkDetail = [] }
+            if !modes.isEmpty { modes = [] }
             return
         }
 
@@ -50,11 +71,25 @@ final class FlyStore: ObservableObject, Probeable {
         reading.climbRate = facts["climbRate"]
         reading.heading = facts["heading"]
 
-        let gps = FlyStore.facts(Bridge.group("vehicle.gps"))
+        let gpsGroup = Bridge.group("vehicle.gps")
+        let readGps = FlyDetail.gps(FactReading.from((gpsGroup["facts"] as? [Any]) ?? []))
+        if readGps != gpsDetail { gpsDetail = readGps }
+
+        let gps = FlyStore.facts(gpsGroup)
         reading.satellites = gps["count"].map { Int($0) }
         reading.gpsLock = gps["lock"].map { Int($0) }
 
-        let battery = ((Bridge.group("vehicle.batteries")["elements"] as? [[String: Any]]) ?? []).first
+        let packs = (Bridge.group("vehicle.batteries")["elements"] as? [[String: Any]]) ?? []
+        let readPacks = packs.map { FlyDetail.battery(FactReading.from(($0["facts"] as? [Any]) ?? [])) }
+        if readPacks != batteries { batteries = readPacks }
+
+        let readLink = FlyDetail.link(
+            rcRSSI: (vehicle["rcRSSI"] as? NSNumber)?.intValue,
+            localRSSI: (vehicle["telemetryLRSSI"] as? NSNumber)?.intValue,
+            remoteRSSI: (vehicle["telemetryRRSSI"] as? NSNumber)?.intValue)
+        if readLink != linkDetail { linkDetail = readLink }
+
+        let battery = packs.first
         let batteryFacts = battery.map(FlyStore.facts) ?? [:]
         reading.batteryPercent = batteryFacts["percentRemaining"]
         reading.batteryVolts = batteryFacts["voltage"]
@@ -72,6 +107,21 @@ final class FlyStore: ObservableObject, Probeable {
         let heard = VehicleMessage.parse((vehicle["formattedMessages"] as? String) ?? "")
         if heard != messages { messages = heard }
 
+        let readModes = FlightModes.choices(
+            all: (vehicle["flightModes"] as? [String]) ?? [],
+            advanced: (vehicle["advancedFlightModes"] as? [String]) ?? [],
+            current: reading.mode)
+        if readModes != modes { modes = readModes }
+        rtlMode = (vehicle["rtlFlightMode"] as? String) ?? ""
+        landMode = (vehicle["landFlightMode"] as? String) ?? ""
+        if !requestedMode.isEmpty, requestedMode == reading.mode { requestedMode = "" }
+
+        let flown = PreflightAirframe.of(
+            multiRotor: FlyStore.flag(vehicle, "multiRotor"), vtol: FlyStore.flag(vehicle, "vtol"),
+            rover: FlyStore.flag(vehicle, "rover"), sub: FlyStore.flag(vehicle, "sub"),
+            fixedWing: FlyStore.flag(vehicle, "fixedWing"))
+        if flown != airframe { airframe = flown }
+
         let bits = (vehicle["sensorsUnhealthyBits"] as? NSNumber)?.intValue
         if bits != unhealthyBits { unhealthyBits = bits }
 
@@ -86,6 +136,10 @@ final class FlyStore: ObservableObject, Probeable {
         if assessed != warning { warning = assessed }
     }
 
+    private static func flag(_ vehicle: [String: Any], _ name: String) -> Bool {
+        (vehicle[name] as? NSNumber)?.boolValue ?? false
+    }
+
     private static func facts(_ object: [String: Any]) -> [String: Double] {
         ((object["facts"] as? [[String: Any]]) ?? []).reduce(into: [String: Double]()) { values, fact in
             guard let name = fact["name"] as? String,
@@ -97,8 +151,9 @@ final class FlyStore: ObservableObject, Probeable {
     var latestMessages: [VehicleMessage] { Array(messages.prefix(FlyStore.messageLimit)) }
 
     var checklist: [PreflightGroup] {
-        Preflight.groups(lock: telemetry.gpsLock, satellites: telemetry.satellites,
-                         batteryPercent: telemetry.batteryPercent, unhealthyBits: unhealthyBits)
+        Preflight.groups(airframe: airframe, lock: telemetry.gpsLock, satellites: telemetry.satellites,
+                         batteryPercent: telemetry.batteryPercent, unhealthyBits: unhealthyBits,
+                         audioMuted: audioMuted)
     }
 
     func toggle(_ check: PreflightCheck) {
@@ -110,6 +165,34 @@ final class FlyStore: ObservableObject, Probeable {
 
     func resetChecklist() {
         ticked = []
+    }
+
+    func request(_ mode: FlightModeChoice) {
+        guard !mode.current, modes.contains(mode) else { return }
+        guard !FlightModes.needsConfirming(mode.name, flying: telemetry.flying,
+                                           rtlMode: rtlMode, landMode: landMode)
+        else {
+            confirmingMode = mode.name
+            return
+        }
+        send(mode.name)
+    }
+
+    func confirmMode() {
+        guard !confirmingMode.isEmpty else { return }
+        send(confirmingMode)
+    }
+
+    func cancelMode() {
+        confirmingMode = ""
+    }
+
+    private func send(_ name: String) {
+        requestedMode = name
+        confirmingMode = ""
+        _ = Bridge.set("vehicle.flightMode", name)
+        showingModes = false
+        refresh()
     }
 
     static let messageLimit = 6
@@ -124,6 +207,18 @@ final class FlyStore: ObservableObject, Probeable {
          "worstMessage": VehicleMessage.worst(latestMessages).rawValue,
          "warnings": warning.lines,
          "checklistOpen": showingChecklist,
+         "airframe": airframe.rawValue,
+         "modes": modes.map(\.name),
+         "everydayModes": FlightModes.everyday(modes).map(\.name),
+         "foldedModes": FlightModes.folded(modes).map(\.name),
+         "requestedMode": requestedMode,
+         "modesOpen": showingModes,
+         "confirmingMode": confirmingMode,
+         "expanded": Array(expanded).sorted(),
+         "batteryDetail": batteries.map { pack in pack.map { "\($0.label): \($0.value)" } },
+         "gpsDetail": gpsDetail.map { "\($0.label): \($0.value)" },
+         "linkDetail": linkDetail.map { "\($0.label): \($0.value)" },
+         "checklistNames": checklist.flatMap(\.checks).map(\.name),
          "checklistProgress": Preflight.progress(checklist, ticked: ticked),
          "checklistReady": Preflight.ready(checklist, ticked: ticked),
          "checklistBlocked": checklist.flatMap(\.checks).filter(\.blocked).map(\.name),
@@ -135,6 +230,16 @@ final class FlyStore: ObservableObject, Probeable {
         case "refresh": refresh()
         case "checklist": showingChecklist = args["open"] != "0"
         case "resetChecklist": resetChecklist()
+        case "modes":
+            showingModes = args["open"] != "0"
+            if !showingModes { showingAdvancedModes = false }
+        case "confirmMode":
+            args["on"] == "0" ? cancelMode() : confirmMode()
+        case "moreModes":
+            showingAdvancedModes = args["on"] != "0"
+        case "expand":
+            let row = args["row"] ?? ""
+            expanded = args["on"] == "0" ? expanded.subtracting([row]) : expanded.union([row])
         case "tick":
             guard let check = checklist.flatMap(\.checks).first(where: { $0.name == args["check"] ?? "" }) else {
                 return ["ok": false, "error": "no check named \(args["check"] ?? "")"]

@@ -31,3 +31,20 @@ struct PlanSummary: Equatable {
             : String(format: "%d:%02d", minutes, remainder)
     }
 }
+
+enum PlanReadiness {
+    static let readyForSave = 0
+    static let notReadyForSaveData = 1
+    static let notReadyForSaveTerrain = 2
+
+    static func reason(for state: Int) -> String {
+        switch state {
+        case notReadyForSaveData:
+            return "An item is still being drawn, so the plan cannot be saved or sent."
+        case notReadyForSaveTerrain:
+            return "Waiting for terrain heights before the plan can be saved or sent."
+        default:
+            return ""
+        }
+    }
+}
