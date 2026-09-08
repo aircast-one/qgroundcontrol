@@ -463,3 +463,80 @@ stream-owned C file instead of growing these), `src/Bridge/module.modulemap`, `t
 - **Tests run from a renamed clone with `--allow-multiple`**, one suite at a time while another
   session's instance holds mock links; a full-suite failure in `VehicleLinkManagerTest` or a
   `SysStatusSensorInfoTest` mismatch is checked alone before it is reported.
+
+## Rust core (decided 2026-09-08)
+
+The end state is no Qt and no C++: one core in Rust, exposed to Swift and Kotlin through the C ABI
+the heads already consume. One protocol stack, one set of hardware gates. Risk 5 above is
+withdrawn; the upstream merge stream ends the day the first subsystem moves, and that is accepted.
+
+Sequencing does not change. macOS ships on the reflection bridge first, exactly as planned through
+Phase 6. The Rust core is a strangler that starts after that and replaces C++ subsystems one at a
+time behind the same seam. Nothing is scaffolded until the first subsystem starts; what happens now
+is keeping the seam cheap to cross.
+
+### Why the seam already fits
+
+- `src/Bridge/QGC*C.h` are pure C: `char *` in, JSON `char *` out, function pointers for events and
+  tiles, `void *` for GStreamer and native windows. Swift imports them through `module.modulemap`
+  and no Qt type reaches either head. `cbindgen` emits the same headers from Rust.
+- The surface is finite. The heads use **179 distinct path prefixes** today (Swift 108, Kotlin 94;
+  79 under `vehicle`, 45 under `plan`, 21 under `settings`, 8 under `links`, the rest in
+  `mavlinkInspector`, `logDownload`, `video`, `vehicles`, `mission`, `mavlinkConsole`,
+  `positionManager`), against 1,677 `Q_PROPERTY`s in the core. A Rust core serves an explicit
+  path table, not reflection, so this list is its contract. Regenerate it with:
+
+  ```
+  roots='settings|vehicle|vehicles|links|logDownload|mavlinkConsole|mavlinkInspector|positionManager|mission|plan|video|joystick'
+  grep -rhoE "\"($roots)(\.[A-Za-z0-9_()\-,\.\[\]]+)?\"" macos/Sources ../aircast-android --include='*.kt' --include='*.swift' | sort -u
+  ```
+
+- The root dispatcher in `QGCBridgeCore.cc` (`settings` / `vehicle` / `vehicles` / `links` ...) is
+  the router. During the strangler both cores live in one process and a root or path prefix owned
+  by Rust forwards there; the watcher already unions client path sets, so a Rust-owned subtree
+  reports through the same event handler.
+
+### Rules in force from now
+
+1. **Heads see the C ABI only.** No Qt type, enum value or `QVariant` shape crosses into Swift or
+   Kotlin. Every new stream-owned C file is Qt-free in its signature and stays that way.
+2. **Paths are literals.** Compose a path from a literal prefix and an index or name; never
+   discover paths at runtime. If the grep above cannot see it, the Rust core cannot serve it.
+3. **JSON shapes are the contract too.** The Fact object, list items, `class`, `fields_csv` and
+   the `*` compaction are what Rust reproduces. Changes to them land in `QGCBridgeCore` with the
+   heads updated in the same commit, so the shape has one definition at any time.
+4. **Add to core, never to a head.** Unchanged. A head that needs a value the bridge does not expose
+   gets a path, not a platform-specific workaround.
+5. **GStreamer stays.** `gstreamer-rs` replaces `VideoManager`, not GStreamer. `void *` sinks and
+   windows in `QGCVideoC.h` are GStreamer and AppKit, never Qt.
+
+### Subsystem order
+
+Each step replaces one C++ subsystem, serves **both heads** before the next starts, and runs its
+gate on hardware. The order is by isolation and by how much a bug costs.
+
+| # | Replaces | C++ today | Rust | Gate |
+|---|---|---|---|---|
+| 1 | Links and MAVLink framing | `Comms/` 11k, `MAVLink/` 2.5k | `mavlink` crate, `tokio-serial`, UDP/TCP; wfb over its own socket | serial, UDP, TCP connect on both heads; message and drop counts match the Qt build on the same stream |
+| 2 | Parameters | `FactSystem/` 5k, `ParameterManager`, PX4 `parameters.json` and APM `apm.pdef.xml` loaders | `serde` metadata, protocol state machine | full tree loads and writes on PX4 and ArduPilot (Phase 3 gate, re-run) |
+| 3 | Vehicle state | `Vehicle/` 24k fact groups and firmware quirks | per-message decoders into the path table | every fly-view value matches the Qt build over a replayed tlog |
+| 4 | Mission protocol | `MissionManager/` upload, download, fence, rally | | 200+ item round trip byte-identical (Phase 4 gate, re-run) |
+| 5 | Complex items | survey, corridor, structure scan, terrain profile | `geo` crate | generated waypoints identical to the Qt output on a fixture set of plans |
+| 6 | Calibration and setup flows | `AutoPilotPlugins/` C++ 9k, motor test, radio | | accel, compass, radio calibration complete on hardware (Phase 3 gate, re-run) |
+| 7 | Tile cache | `QtLocationPlugin/` 5.7k | `rusqlite`, same schema | the existing cache file opens and serves; no re-download |
+| 8 | Video | `VideoManager/` 7.8k | `gstreamer-rs` | sub-200 ms glass-to-glass on WHEP (Phase 5 gate, re-run) |
+| 9 | Joystick | `Joystick/` 2.5k | mapping in Rust; GameController on macOS, input events on Android | every axis and button action verified on hardware |
+| 10 | The rest | `GPS/` RTK 12k, `Camera/` 5k, `Gimbal/`, `ADSB/`, `FollowMe/`, `Terrain/` | | per subsystem; `UTMSP/` is dropped, not ported |
+
+QtCore and QtSerialPort leave with step 10; `QObject` leaves the process when the last row lands.
+Bluetooth links have no cross-platform Rust answer and are decided at step 1: drop on macOS, or keep
+a platform shim behind `QGCLinksC.h`.
+
+### Kickoff checklist (not before Phase 6 ships)
+
+- Golden dump: record `qgc_bridge_get` for every inventoried path against SITL and one real
+  vehicle per firmware. That dump is the Rust core's conformance suite from day one.
+- `core-rs/` crate with `cbindgen` producing `QGCBridgeC.h` byte-for-byte, linked into the same
+  `libAircastQGC.dylib` and `.aar`; `qgc_bridge_get` routes step-1 roots to it.
+- Android binds through the existing `QGCBridge.cc` JNI head unchanged; it already speaks the C
+  surface.
