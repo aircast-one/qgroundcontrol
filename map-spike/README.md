@@ -666,7 +666,20 @@ It is linear in item count, not a cliff - 50 items read in 62-89 ms, 100 in
 gets serialised should halve the time. Extrapolating, the read meets the 700 ms
 interval somewhere around 500 items.
 
-So the poll is one read and a rounding error. An empty plan is 5.7 ms whole, and
+So for a plan of simple items the poll is one read and a rounding error.
+
+Not for surveys. The terrain profile reads `flightPathSegments` once per complex
+item per poll, and with twelve surveys that is 145-225 ms, median about 177 -
+ten times the projected plan read and the largest single cost in the poll. At
+200 waypoints the same profile call was 4.9 ms, because no complex items means
+no segment reads, which is why the first breakdown here made it look free.
+
+The projection does not help: `FlightPathSegment` has no Fact properties, so
+there is no metadata to drop, and `amslTerrainHeights` is the bulk and is wanted.
+The fix would have to be reading them less often rather than reading less, and
+the trap in that is the one under **Terrain** - terrain arrives after the plan
+stops changing, so a cache keyed on the plan would freeze a profile with no
+ground in it. An empty plan is 5.7 ms whole, and
 the cost tracks item count because the bridge serialises every property and every
 fact of every item and hands it back as one string across JNI. There is no way
 to ask it for less; `objectJson` walks the whole object.
