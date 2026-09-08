@@ -19,6 +19,7 @@ use crate::mapscale;
 use crate::messages;
 use crate::missionkinds;
 use crate::plan;
+use crate::planfile;
 use crate::preflight;
 use crate::radio;
 use crate::read::value_string;
@@ -76,6 +77,7 @@ pub const VIEWS: &[View] = &[
     View { path: "view.camera", deps: video::CAMERA_DEPS, compute: video::camera_view },
     View { path: "view.tlog", deps: tlog::DEPS, compute: tlog::tlog_view },
     View { path: "view.contract", deps: contract::DEPS, compute: contract::contract_view },
+    View { path: "view.planFile", deps: planfile::DEPS, compute: planfile::plan_file_view },
 ];
 
 pub fn owns(path: &str) -> bool {
@@ -85,6 +87,28 @@ pub fn owns(path: &str) -> bool {
 pub fn lookup(path: &str) -> Option<&'static View> {
     let (base, _) = split(path);
     VIEWS.iter().find(|view| view.path == base)
+}
+
+pub fn split_paths(csv: &str) -> Vec<String> {
+    let (paths, last, _) = csv.chars().fold((Vec::new(), String::new(), 0usize), |(mut paths, mut current, depth), c| match (c, depth) {
+        (',', 0) => {
+            paths.push(std::mem::take(&mut current));
+            (paths, current, depth)
+        }
+        ('(', _) => {
+            current.push(c);
+            (paths, current, depth + 1)
+        }
+        (')', _) => {
+            current.push(c);
+            (paths, current, depth.saturating_sub(1))
+        }
+        _ => {
+            current.push(c);
+            (paths, current, depth)
+        }
+    });
+    paths.into_iter().chain(std::iter::once(last)).map(|p| p.trim().to_string()).filter(|p| !p.is_empty()).collect()
 }
 
 pub fn split(path: &str) -> (&str, Vec<String>) {

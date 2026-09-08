@@ -41,6 +41,7 @@ private slots:
     void _videoAndCameraAreServed();
     void _viewShapesMatchTheRecordedContract();
     void _tlogSummaryDecodesTheSampleLog();
+    void _planFileAgreesWithTheCppLoader();
 
 private:
     static bool _unavailable(const char *path);

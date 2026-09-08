@@ -573,6 +573,8 @@ About 58 developer-weeks. Flight-test time, not code, is the schedule.
   still routes straight to Qt until Rust and cargo-ndk are added to the Android job.
 - 2026-09-09: R2 begins — the `mavlink` crate (ArduPilot dialect) is in the core; `view.tlog(path)` decodes a
   telemetry log frame by frame, checked against an independent frame count on the sample log.
+- 2026-09-09: `view.planFile(path)` reads .plan files in the core (checked against the C++ loader); watch
+  lists keep argument commas whole.
 
 ### Stream F · Core
 

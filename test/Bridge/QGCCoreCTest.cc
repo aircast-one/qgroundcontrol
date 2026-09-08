@@ -524,3 +524,25 @@ void QGCCoreCTest::_tlogSummaryDecodesTheSampleLog()
     QCOMPARE(take(qgc_bridge_get("view.tlog(/nonexistent.tlog)")).value(QStringLiteral("readable")).toBool(true), false);
     QCOMPARE(take(qgc_bridge_get("view.tlog")).value(QStringLiteral("kind")).toString(), QStringLiteral("null"));
 }
+
+void QGCCoreCTest::_planFileAgreesWithTheCppLoader()
+{
+    const QString fixture = QFileInfo(QString::fromUtf8(__FILE__)).dir().filePath(QStringLiteral("../MissionManager/SectionTest.plan"));
+    const QJsonObject read = take(qgc_bridge_get(QStringLiteral("view.planFile(%1)").arg(fixture).toUtf8().constData()));
+    QCOMPARE(read.value(QStringLiteral("valid")).toBool(false), true);
+    const int rustCount = read.value(QStringLiteral("itemCount")).toInt();
+    QVERIFY(rustCount > 0);
+
+    (void) take(qgc_bridge_invoke("plan.start", "[]"));
+    const QJsonObject loaded = take(qgc_bridge_invoke("plan.loadFromFile", QJsonDocument(QJsonArray { fixture }).toJson(QJsonDocument::Compact).constData()));
+    QVERIFY2(loaded.value(QStringLiteral("ok")).toBool(false) && loaded.value(QStringLiteral("result")).toBool(false), qPrintable(QStringLiteral("the C++ loader refused the fixture: %1").arg(QString::fromUtf8(QJsonDocument(loaded).toJson(QJsonDocument::Compact)))));
+    const auto lastSequence = []() {
+        const QJsonArray elements = take(qgc_bridge_get_fields("plan.missionController.visualItems", "lastSequenceNumber")).value(QStringLiteral("elements")).toArray();
+        return elements.isEmpty() ? -1 : elements.last().toObject().value(QStringLiteral("lastSequenceNumber")).toInt(-1);
+    };
+    QTRY_COMPARE_WITH_TIMEOUT(lastSequence(), rustCount, 5000);
+    const QJsonObject home = take(qgc_bridge_get("plan.missionController.plannedHomePosition"));
+    QVERIFY(qAbs(home.value(QStringLiteral("latitude")).toDouble() - read.value(QStringLiteral("home")).toObject().value(QStringLiteral("latitude")).toDouble()) < 1e-6);
+    (void) take(qgc_bridge_invoke("plan.removeAll", "[]"));
+    QCOMPARE(take(qgc_bridge_get("view.planFile(/nonexistent.plan)")).value(QStringLiteral("readable")).toBool(true), false);
+}

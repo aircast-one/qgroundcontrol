@@ -17,6 +17,7 @@ mod mapscale;
 mod messages;
 mod missionkinds;
 mod plan;
+mod planfile;
 mod preflight;
 mod radio;
 mod read;

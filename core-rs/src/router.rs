@@ -235,6 +235,10 @@ mod tests {
         assert_eq!(view::split("view.instruments(gps/count, vehicle/heading)").1.len(), 2);
         assert_eq!(view::split("view.linkForm(udp,,14550)").1, vec!["udp".to_string(), String::new(), "14550".to_string()]);
         assert!(view::split("view.plan()").1.is_empty());
+        assert_eq!(
+            view::split_paths("vehicle.armed,view.instruments(altitudeRelative,groundSpeed),view.plan"),
+            vec!["vehicle.armed".to_string(), "view.instruments(altitudeRelative,groundSpeed)".to_string(), "view.plan".to_string()]
+        );
         assert!(view::lookup("view.guidedAltitude(1, 2)").is_some());
         let core = Core::new(Fake::default());
         assert_eq!(parsed(&core.get("view.messages(anything)"))["class"], "VehicleMessages");

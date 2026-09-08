@@ -93,7 +93,7 @@ pub unsafe extern "C" fn qgc_core_watch_client(client: *const c_char, paths_csv:
 }
 
 fn split(paths_csv: *const c_char) -> Vec<String> {
-    text(paths_csv).split(',').filter(|p| !p.is_empty()).map(str::to_string).collect()
+    crate::view::split_paths(&text(paths_csv))
 }
 
 #[unsafe(no_mangle)]
