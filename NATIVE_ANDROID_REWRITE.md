@@ -281,6 +281,41 @@ maths types in QtGui with no rendering. The genuine GUI dependencies are concent
 
 72k lines of QML that are pure UI. The seam is real.
 
+### The bridge read got a projection, and the measurement redirected it
+
+`plan.missionController.visualItems` with 199 items costs **247–294 ms** on the handset,
+which is 95% of what the native map does per 700 ms poll. The `map-spike` session measured
+the curve at 50, 100 and 199 items — about **1.3 ms an item, no knee** — which is the fact
+the fix depended on: with a straight line, halving what gets serialised halves the time,
+where a cliff would have meant something else dominated and a narrower read bought nothing.
+
+Parsing the whole thing in Kotlin is 3.2 ms, so it was never the traversal. `objectJson`
+walked every property *and every fact* of every item into one string, and a Fact carries
+`min`, `max`, `enumStrings`, `enumValues` and both bound strings.
+
+`getFields(path, csv)` now serialises only the named properties and emits facts as
+`name`/`value`/`valueString`. Measured over 21 items:
+
+| read | bytes | time |
+|---|---|---|
+| whole | 80,873 | 4,322 µs |
+| `"*"` — every property, compact facts | 37,026 | 1,647 µs |
+| explicit field list | 13,088 | 1,307 µs |
+
+**The field list is the smaller half.** Compacting facts carries ~88% of the saving; naming
+sixteen fields buys the last 340 µs and costs a list that has to be kept in step with the
+model. The first version only compacted facts *when* a caller named every field, which
+locked the cheap win behind the expensive one — `"*"` exists because measuring the halves
+apart showed that was backwards.
+
+Also worth keeping: bytes fell to 16% but time only to 30%, because the property walk still
+happens. The byte count alone would have overstated the win by a factor of two.
+
+**This does not fix how change is detected.** `Watcher` still polls and diffs by serialising
+to a string, so watching a large list would run this same serialisation on the Qt thread
+carrying MAVLink. Notify connections remain the answer; this makes the string smaller
+meanwhile.
+
 ## The hosting model
 
 **`aircast-android` is the app. QGC is a library inside it.** Already true today.
