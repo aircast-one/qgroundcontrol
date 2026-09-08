@@ -9,6 +9,8 @@ final class FlyStore: ObservableObject, Probeable {
     @Published private(set) var messages: [VehicleMessage] = []
     @Published private(set) var unhealthyBits: Int?
     @Published private(set) var warning = VehicleWarning.none
+    @Published private(set) var airframe = PreflightAirframe.generic
+    @Published private(set) var audioMuted = false
     @Published private(set) var ticked: Set<String> = []
     @Published var showingChecklist = false
 
@@ -28,6 +30,9 @@ final class FlyStore: ObservableObject, Probeable {
     }
 
     func refresh() {
+        let muted = (Bridge.group("settings.appSettings.audioMuted")["value"] as? NSNumber)?.boolValue ?? false
+        if muted != audioMuted { audioMuted = muted }
+
         let vehicle = Bridge.group("vehicle")
         guard vehicle["kind"] as? String == "object" else {
             if connected { connected = false }
@@ -36,6 +41,7 @@ final class FlyStore: ObservableObject, Probeable {
             if !messages.isEmpty { messages = [] }
             if unhealthyBits != nil { unhealthyBits = nil }
             if warning != .none { warning = .none }
+            if airframe != .generic { airframe = .generic }
             return
         }
 
@@ -72,6 +78,12 @@ final class FlyStore: ObservableObject, Probeable {
         let heard = VehicleMessage.parse((vehicle["formattedMessages"] as? String) ?? "")
         if heard != messages { messages = heard }
 
+        let flown = PreflightAirframe.of(
+            multiRotor: FlyStore.flag(vehicle, "multiRotor"), vtol: FlyStore.flag(vehicle, "vtol"),
+            rover: FlyStore.flag(vehicle, "rover"), sub: FlyStore.flag(vehicle, "sub"),
+            fixedWing: FlyStore.flag(vehicle, "fixedWing"))
+        if flown != airframe { airframe = flown }
+
         let bits = (vehicle["sensorsUnhealthyBits"] as? NSNumber)?.intValue
         if bits != unhealthyBits { unhealthyBits = bits }
 
@@ -86,6 +98,10 @@ final class FlyStore: ObservableObject, Probeable {
         if assessed != warning { warning = assessed }
     }
 
+    private static func flag(_ vehicle: [String: Any], _ name: String) -> Bool {
+        (vehicle[name] as? NSNumber)?.boolValue ?? false
+    }
+
     private static func facts(_ object: [String: Any]) -> [String: Double] {
         ((object["facts"] as? [[String: Any]]) ?? []).reduce(into: [String: Double]()) { values, fact in
             guard let name = fact["name"] as? String,
@@ -97,8 +113,9 @@ final class FlyStore: ObservableObject, Probeable {
     var latestMessages: [VehicleMessage] { Array(messages.prefix(FlyStore.messageLimit)) }
 
     var checklist: [PreflightGroup] {
-        Preflight.groups(lock: telemetry.gpsLock, satellites: telemetry.satellites,
-                         batteryPercent: telemetry.batteryPercent, unhealthyBits: unhealthyBits)
+        Preflight.groups(airframe: airframe, lock: telemetry.gpsLock, satellites: telemetry.satellites,
+                         batteryPercent: telemetry.batteryPercent, unhealthyBits: unhealthyBits,
+                         audioMuted: audioMuted)
     }
 
     func toggle(_ check: PreflightCheck) {
@@ -124,6 +141,8 @@ final class FlyStore: ObservableObject, Probeable {
          "worstMessage": VehicleMessage.worst(latestMessages).rawValue,
          "warnings": warning.lines,
          "checklistOpen": showingChecklist,
+         "airframe": airframe.rawValue,
+         "checklistNames": checklist.flatMap(\.checks).map(\.name),
          "checklistProgress": Preflight.progress(checklist, ticked: ticked),
          "checklistReady": Preflight.ready(checklist, ticked: ticked),
          "checklistBlocked": checklist.flatMap(\.checks).filter(\.blocked).map(\.name),
