@@ -377,8 +377,10 @@ internal fun MapSpikeScreen(mapStyle: String, onClear: (() -> Unit)? = null) {
                         fitRequest += 1
                     }) { Text("Fit") }
 
-                    // Only when there is a choice. One vehicle needs no picker,
-                    // and none needs it less.
+                    // Reads only. Making a vehicle active means writing a
+                    // Vehicle* to vehicles.activeVehicle, and the bridge resolves
+                    // that path to the vehicle itself rather than to the writable
+                    // property, so the write cannot be expressed yet.
                     if (vehicleCount > 1) {
                         var vehicles by remember(vehicleCount, vehicleId) {
                             mutableStateOf<List<VehicleEntry>>(emptyList())
@@ -388,12 +390,8 @@ internal fun MapSpikeScreen(mapStyle: String, onClear: (() -> Unit)? = null) {
                                 VehicleBridge.entries(vehicleId)
                             }
                         }
-                        vehicles.filterNot { it.active }.forEach { entry ->
-                            TextButton(onClick = {
-                                onBridge("Switching to vehicle ${entry.id}") {
-                                    VehicleBridge.makeActive(entry.index)
-                                }
-                            }) { Text("Vehicle ${entry.id}") }
+                        vehicleSummary(vehicles)?.let {
+                            Text(it, style = MaterialTheme.typography.labelSmall)
                         }
                     }
 

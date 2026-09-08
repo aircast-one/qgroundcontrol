@@ -18,23 +18,18 @@ fun vehicleEntries(json: JSONObject?, activeId: Int): List<VehicleEntry> {
     }
 }
 
+fun vehicleSummary(entries: List<VehicleEntry>): String? {
+    if (entries.size < 2) {
+        return null
+    }
+    val active = entries.firstOrNull { it.active } ?: return null
+    return entries.sortedBy { it.id }.joinToString(", ") { "Vehicle ${it.id}" } + " \u00b7 ${active.id} active"
+}
+
 object VehicleBridge {
     fun entries(activeId: Int): List<VehicleEntry> =
         vehicleEntries(
             runCatching { JSONObject(QGCBridge.get(VEHICLE_LIST)) }.getOrNull(),
             activeId,
         )
-
-    // activeVehicle takes a Vehicle*, so the write is an @path naming the entry
-    // in the manager's own list rather than a copy of it. The bridge resolves the
-    // reference and type-checks it against the property.
-    fun makeActive(index: Int): Boolean =
-        runCatching {
-            JSONObject(
-                QGCBridge.set(
-                    "$VEHICLES_ROOT.activeVehicle",
-                    "{\"value\":\"@$VEHICLE_LIST.$index\"}",
-                ),
-            ).optBoolean("ok")
-        }.getOrDefault(false)
 }
