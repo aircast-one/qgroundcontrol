@@ -1146,6 +1146,27 @@ Caution was a hard amber; High was `colorScheme.error`, which in this dark theme
 pink meant for text on a surface rather than for filling a shape. The most serious band was
 the least alarming thing on the screen. High is a saturated red now.
 
+**The Android AAR had not been rebuilt in a long time, and rebuilding it broke the app.**
+Nothing verified the claim that the C ABI reroute left Android unchanged, so the rebuild was
+the check. It did not compile: `DebugApiServer.cc` includes `QGCBridgeC.h` inside
+`#ifdef Q_OS_MACOS` while calling `qgc_bridge_*` unguarded, and `QGCBridge.cc` used
+`kJniQGCBridgeClassName` unqualified from the anonymous namespace. Neither is reachable from a
+macOS build, which is why both had sat committed.
+
+With those fixed the AAR builds, and the app then stops on the Android splash screen. The first
+cause was ours: `AndroidInit.cc` calls `QAndroidApplication::hideSplashScreen`, which Qt
+resolves by JNI against the current activity, and Qt's `QtActivity` has that method while this
+app's plain `ComponentActivity` did not - `JNI_OnLoad` threw `NoSuchMethodError` and the native
+library never finished loading. A no-op method fixes that, and `JNI_OnLoad` now completes with
+every native function registered and Qt started.
+
+**It still does not get past the splash, and that is unresolved.** What is known: the process
+lives, the main thread stops producing log lines just after Qt starts, and neither Compose nor
+QML draws. What is *not* known is which change caused it, and the honest reason is that the
+previous AAR was stale by a long way - the stall cannot be pinned on the C ABI reroute rather
+than on anything else that accumulated. Whoever picks this up should bisect the AAR, not guess.
+The stale artifact had been hiding this the whole time.
+
 Auditing the rest of the sim against what the screens read turned up two more. The vehicle
 message log had never carried a message, because the sim sent no `STATUSTEXT`; fed four of
 varying severity it was **correct** - counts, severity classification, colours in the right
