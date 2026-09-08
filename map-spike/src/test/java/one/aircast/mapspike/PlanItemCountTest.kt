@@ -29,12 +29,31 @@ class PlanItemCountTest {
                 """{"specifiesCoordinate":true}]}""",
         )
 
-        assertEquals(listOf("takeoff", "RTL"), planShape(plan))
+        assertEquals(listOf("takeoff", "RTL", "1 after the landing"), planShape(plan))
     }
 
     @Test
     fun `a plan with neither names nothing`() {
         assertEquals(emptyList<String>(), planShape(model(3)))
         assertEquals(emptyList<String>(), planShape(null))
+    }
+
+    @Test
+    fun `an item added after the landing is named as such`() {
+        val plan = JSONObject(
+            """{"kind":"object","elements":[{},{"specifiesCoordinate":true},""" +
+                """{"command":20},{"specifiesCoordinate":true},{"specifiesCoordinate":true}]}""",
+        )
+
+        assertEquals(listOf("RTL", "2 after the landing"), planShape(plan))
+    }
+
+    @Test
+    fun `a plan that ends at its landing strands nothing`() {
+        val plan = JSONObject(
+            """{"kind":"object","elements":[{},{"specifiesCoordinate":true},{"command":20}]}""",
+        )
+
+        assertEquals(listOf("RTL"), planShape(plan))
     }
 }

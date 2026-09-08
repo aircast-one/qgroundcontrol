@@ -33,9 +33,10 @@ fun linksStartToHome(json: JSONObject?): Boolean =
 
 fun planShape(json: JSONObject?): List<String> {
     val elements = json?.optJSONArray("elements") ?: return emptyList()
+    val endsAfter = routeEndsAfter(elements)
 
-    return (1 until elements.length())
-        .mapNotNull { elements.optJSONObject(it) }
+    val named = (1 until elements.length())
+        .mapNotNull { index -> elements.optJSONObject(index) }
         .mapNotNull { element ->
             when {
                 element.optBoolean("isTakeoffItem") -> "takeoff"
@@ -44,6 +45,15 @@ fun planShape(json: JSONObject?): List<String> {
             }
         }
         .distinct()
+
+    // Anything past the landing is in the plan, counted, and never flown - a
+    // mission ends there. Adding one is easy, because every creator appends,
+    // and the only sign otherwise is a marker the route does not reach.
+    val stranded = (1 until elements.length()).count { it > endsAfter }
+
+    return named + listOfNotNull(
+        stranded.takeIf { it > 0 }?.let { "$it after the landing" },
+    )
 }
 
 // An insert that returns a null pointer still answers ok:true, because the
