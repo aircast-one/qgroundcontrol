@@ -35,6 +35,7 @@ final class MissionStore: ObservableObject, Probeable {
     @Published private(set) var readyToSave = true
     @Published private(set) var notReadyReason = ""
     @Published var uploadWarning: PlanUpload?
+    @Published var writeFailure: String?
 
     private var undoPoll: Timer?
 
@@ -113,6 +114,15 @@ final class MissionStore: ObservableObject, Probeable {
             return
         }
         send()
+    }
+
+    @discardableResult
+    func write(_ path: String, _ value: Any, _ what: String) -> Bool {
+        guard Bridge.set(path, value) else {
+            writeFailure = WriteReport.failure(what)
+            return false
+        }
+        return true
     }
 
     func preCheck() -> PlanUpload {
@@ -267,8 +277,8 @@ final class MissionStore: ObservableObject, Probeable {
 
     func move(sequence: Int, latitude: Double, longitude: Double) {
         guard let item = items.first(where: { $0.sequence == sequence }), item.canRemove else { return }
-        _ = Bridge.set("plan.missionController.visualItems.\(item.index).coordinate",
-                       ["latitude": latitude, "longitude": longitude])
+        write("plan.missionController.visualItems.\(item.index).coordinate",
+              ["latitude": latitude, "longitude": longitude], "where this item is")
         reload()
     }
 
@@ -305,20 +315,21 @@ final class MissionStore: ObservableObject, Probeable {
     func setCamera(brand: String? = nil, model: String? = nil) {
         guard let item = items.first(where: \.isCurrent) else { return }
         let path = "plan.missionController.visualItems.\(item.index).cameraCalc"
-        if let brand { _ = Bridge.set("\(path).cameraBrand", brand) }
-        if let model { _ = Bridge.set("\(path).cameraModel", model) }
+        if let brand { write("\(path).cameraBrand", brand, "the camera") }
+        if let model { write("\(path).cameraModel", model, "the camera model") }
         reload()
     }
 
     func setGlobalAltitudeMode(_ raw: String) {
         guard AltitudeMode.isMissionChoice(raw) else { return }
-        _ = Bridge.set("plan.missionController.globalAltitudeMode", raw)
+        write("plan.missionController.globalAltitudeMode", raw, "the altitude mode")
         reload()
     }
 
     func setDefaultAltitude(_ value: String) {
         guard let metres = Double(value), metres.isFinite else { return }
-        _ = Bridge.set("settings.appSettings.defaultMissionItemAltitude", metres)
+        write("settings.appSettings.defaultMissionItemAltitude", metres,
+              "the altitude for new items")
         reload()
     }
 
@@ -334,26 +345,28 @@ final class MissionStore: ObservableObject, Probeable {
         guard let speed = Double(value), speed.isFinite else { return }
         let path = "settings.appSettings.\(setting)"
         let slowest = (Bridge.group(path)["min"] as? NSNumber)?.doubleValue ?? 1
-        _ = Bridge.set(path, max(speed, slowest))
+        write(path, max(speed, slowest), "the speed")
         reload()
     }
 
     func setItemAltitudeMode(_ raw: String) {
         guard let item = items.first(where: \.isCurrent), AltitudeMode.isChoice(raw) else { return }
-        _ = Bridge.set("plan.missionController.visualItems.\(item.index).altitudeMode", raw)
+        write("plan.missionController.visualItems.\(item.index).altitudeMode", raw,
+              "this item's altitude mode")
         reload()
     }
 
     func setDistanceMode(_ raw: String) {
         guard let item = items.first(where: \.isCurrent), AltitudeMode.isChoice(raw) else { return }
-        _ = Bridge.set("plan.missionController.visualItems.\(item.index).cameraCalc.distanceMode", raw)
+        write("plan.missionController.visualItems.\(item.index).cameraCalc.distanceMode", raw,
+              "the camera distance mode")
         reload()
     }
 
     func setFact(_ fact: ItemFact, to value: String) {
         guard let item = items.first(where: \.isCurrent) else { return }
-        _ = Bridge.set("plan.missionController.visualItems.\(item.index).\(fact.pathSuffix)",
-                       Double(value) ?? value)
+        write("plan.missionController.visualItems.\(item.index).\(fact.pathSuffix)",
+              Double(value) ?? value, fact.name)
         reload()
     }
 
@@ -386,7 +399,8 @@ final class MissionStore: ObservableObject, Probeable {
                 "plan.missionController.visualItems.\(item.index).setMapCenterHintForCommandChange",
                 [["latitude": centre.latitude, "longitude": centre.longitude]])
         }
-        _ = Bridge.set("plan.missionController.visualItems.\(item.index).command", command)
+        write("plan.missionController.visualItems.\(item.index).command", command,
+              "what this item does")
         pickingCommandFor = nil
         reload()
     }
@@ -489,7 +503,8 @@ final class MissionStore: ObservableObject, Probeable {
     }
 
     func setAltitude(of item: MissionItem, metres: Double) {
-        _ = Bridge.set("plan.missionController.visualItems.\(item.index).altitude", metres)
+        write("plan.missionController.visualItems.\(item.index).altitude", metres,
+              "this item's altitude")
         reload()
     }
 
@@ -568,6 +583,7 @@ final class MissionStore: ObservableObject, Probeable {
          "planFile": planFile, "planName": planName,
          "readyToSave": readyToSave, "notReadyReason": notReadyReason,
          "uploadWarning": uploadWarning.map(\.refusal) ?? "",
+         "writeFailure": writeFailure ?? "",
          "canUndo": canUndo, "canRedo": canRedo,
          "commands": commands.map(\.name),
          "surveys": surveyAreas.map(\.count),
@@ -660,6 +676,9 @@ final class MissionStore: ObservableObject, Probeable {
                 return ["ok": false, "error": "\(target.command) cannot be moved"]
             }
             move(sequence: sequence, latitude: latitude, longitude: longitude)
+        case "failWrite":
+            write(args["path"] ?? "plan.missionController.visualItems.0.commandName",
+                  args["value"] ?? "x", args["what"] ?? "this item")
         case "uploadPreCheck":
             let check = preCheck()
             if args["show"] == "1" { uploadWarning = check == .ok ? nil : check }

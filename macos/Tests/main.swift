@@ -818,6 +818,12 @@ func checkMissionItemKinds() {
     expect(PlanUpload.state(99) == .ok,
            "a state the controller has not defined does not become a false refusal")
 
+    expect(WriteReport.failure("the fence radius"),
+           "Could not change the fence radius. It is unchanged.",
+           "a refused write names what did not change and says the old value still stands")
+    expect(WriteReport.failure("this item's altitude").contains("unchanged"),
+           "because the control snapping back on the next poll reads as the app glitching")
+
     expect(PlanUpload.noVehicle.heading, "This plan cannot be uploaded",
            "a refusal with no way past it does not ask a question it will not act on")
     expect(PlanUpload.flyingThisMission.heading, "Upload this plan?",

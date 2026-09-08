@@ -218,6 +218,14 @@ struct PlanInspector: View {
         } message: {
             Text("The \(mission.items.count) items already in this plan will be discarded.")
         }
+        .alert("That change was not accepted",
+               isPresented: Binding(
+                   get: { mission.writeFailure != nil || fenceRally.writeFailure != nil },
+                   set: { if !$0 { mission.writeFailure = nil; fenceRally.writeFailure = nil } })) {
+            Button("OK") { mission.writeFailure = nil; fenceRally.writeFailure = nil }
+        } message: {
+            Text(mission.writeFailure ?? fenceRally.writeFailure ?? "")
+        }
         .alert(mission.uploadWarning?.heading ?? "",
                isPresented: Binding(get: { mission.uploadWarning != nil },
                                     set: { if !$0 { mission.cancelUpload() } })) {

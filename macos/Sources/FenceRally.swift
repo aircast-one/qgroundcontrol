@@ -13,6 +13,7 @@ final class FenceRallyStore: ObservableObject, Probeable {
     @Published private(set) var syncing = false
     @Published var armingRally = false
     @Published private(set) var breachAltitude: Double?
+    @Published var writeFailure: String?
 
     func reload() {
         let fence = Bridge.group("plan.geoFenceController")
@@ -86,6 +87,15 @@ final class FenceRallyStore: ObservableObject, Probeable {
         return nil
     }
 
+    @discardableResult
+    func write(_ path: String, _ value: Any, _ what: String) -> Bool {
+        guard Bridge.set(path, value) else {
+            writeFailure = WriteReport.failure(what)
+            return false
+        }
+        return true
+    }
+
     private func circlePath(_ shape: FenceShape) -> String? {
         guard shape.radius != nil else { return nil }
         let polygons = elements("plan.geoFenceController.polygons").count
@@ -94,14 +104,15 @@ final class FenceRallyStore: ObservableObject, Probeable {
 
     func setRadius(_ shape: FenceShape, metres: Double) {
         guard let path = circlePath(shape), metres > 0 else { return }
-        _ = Bridge.set("\(path).radius", metres)
+        write("\(path).radius", metres, "the fence radius")
         reload()
     }
 
     func setRallyAltitude(_ point: RallyPointRow, metres: Double) {
         guard let latitude = point.latitude, let longitude = point.longitude else { return }
-        _ = Bridge.set("plan.rallyPointController.points.\(point.id).coordinate",
-                       ["latitude": latitude, "longitude": longitude, "altitude": metres])
+        write("plan.rallyPointController.points.\(point.id).coordinate",
+              ["latitude": latitude, "longitude": longitude, "altitude": metres],
+              "the rally point height")
         reload()
     }
 
@@ -111,15 +122,16 @@ final class FenceRallyStore: ObservableObject, Probeable {
             return "The map has not settled yet, so there is nowhere to put it."
         }
 
-        _ = Bridge.set("plan.geoFenceController.breachReturnPoint",
-                       ["latitude": centre.latitude, "longitude": centre.longitude,
-                        "altitude": breachAltitude ?? 0])
+        write("plan.geoFenceController.breachReturnPoint",
+              ["latitude": centre.latitude, "longitude": centre.longitude,
+               "altitude": breachAltitude ?? 0], "the breach return point")
         reload()
         return breachReturn == nil ? "The breach return point was not accepted." : nil
     }
 
     func setBreachAltitude(_ metres: Double) {
-        _ = Bridge.set("plan.geoFenceController.breachReturnAltitude", metres)
+        write("plan.geoFenceController.breachReturnAltitude", metres,
+              "the breach return altitude")
         reload()
     }
 
@@ -128,7 +140,7 @@ final class FenceRallyStore: ObservableObject, Probeable {
         let path = shape.radius != nil
             ? "plan.geoFenceController.circles.\(shape.id - polygons)"
             : "plan.geoFenceController.polygons.\(shape.id)"
-        _ = Bridge.set("\(path).inclusion", inclusion)
+        write("\(path).inclusion", inclusion, "whether the fence keeps in or out")
         reload()
     }
 
@@ -173,6 +185,7 @@ final class FenceRallyStore: ObservableObject, Probeable {
          "breachReturn": breachReturn?.positionText ?? "none",
          "breachAltitude": breachAltitude ?? -1,
          "status": status, "syncing": syncing, "armingRally": armingRally,
+         "writeFailure": writeFailure ?? "",
          "map": MissionMap.lastRender["plan"] ?? [:],
          "fence": shapes.prefix(8).map {
              ["kind": $0.kindText, "detail": $0.detailText, "centre": $0.centreText,
