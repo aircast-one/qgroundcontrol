@@ -553,6 +553,24 @@ void QGCBridgeCoreTest::_writesAnObjectPropertyFromAnAtPath()
              qPrintable(wrongType.value(QStringLiteral("reason")).toString()));
 }
 
+// resolve() follows the last segment into whatever the property holds, so a write to a
+// property that already points at an object used to arrive with no property name and be
+// refused with a bare ok:false. unitsSettings is the reachable case: a QObject* that is
+// never null. activeVehicle has the same shape but reads null in this fixture, which is
+// exactly why the older test above passes either way.
+void QGCBridgeCoreTest::_findsThePropertyEvenWhenItAlreadyHoldsAnObject()
+{
+    const QJsonObject held = parse(QGCBridgeCore::set(
+        QStringLiteral("settings.unitsSettings"), QStringLiteral("{\"value\": \"@settings.appSettings\"}")));
+
+    QCOMPARE(held.value(QStringLiteral("ok")).toBool(), false);
+
+    const QString reason = held.value(QStringLiteral("reason")).toString();
+    QVERIFY2(!reason.isEmpty(), "a refused write must say why");
+    QVERIFY2(reason.contains(QStringLiteral("unitsSettings")), qPrintable(reason));
+    QVERIFY2(reason.contains(QStringLiteral("WRITE")), qPrintable(reason));
+}
+
 void QGCBridgeCoreTest::_planStartsWithItsSettingsItemAndNoVehicle()
 {
     const QJsonObject items = parse(QGCBridgeCore::get(

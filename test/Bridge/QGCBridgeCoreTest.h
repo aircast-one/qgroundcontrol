@@ -29,6 +29,7 @@ private slots:
     void _factCarriesWhatQGCKnowsAboutItsRange();
     void _watchFromAnotherThreadDoesNotBlockTheCaller();
     void _writesAnObjectPropertyFromAnAtPath();
+    void _findsThePropertyEvenWhenItAlreadyHoldsAnObject();
     void _planStartsWithItsSettingsItemAndNoVehicle();
     void _planSaveReportsWhetherItWrote();
     void _aRefusedLoadLeavesTheExistingPlanAlone();

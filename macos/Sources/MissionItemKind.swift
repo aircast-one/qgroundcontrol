@@ -69,18 +69,6 @@ enum MissionItemKind: String, CaseIterable, Identifiable {
         }
     }
 
-    var shapeNoun: String {
-        switch geometry {
-        case .line: return "path"
-        case .area: return "area"
-        case .none: return "shape"
-        }
-    }
-
-    static var shapeImportable: [MissionItemKind] {
-        allCases.filter { $0.complexName != nil }
-    }
-
     var placementHint: String {
         switch self {
         case .roi: return "Click the map to place a region of interest."

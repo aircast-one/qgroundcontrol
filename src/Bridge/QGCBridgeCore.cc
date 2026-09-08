@@ -378,9 +378,35 @@ QJsonObject readPath(const QString &path)
     };
 }
 
+// resolve() follows the last segment into whatever object the property holds, which is
+// what a read wants and the opposite of what a write wants. A property that currently
+// reads null keeps its name and is writable; the same path with a live object under it
+// arrives here with no property name at all. This re-resolves against the parent so a
+// PointerToQObject property can be written whether or not it is already pointing at
+// something.
+Resolved resolveForWrite(const QString &path)
+{
+    const QStringList parts = path.split(QLatin1Char('.'), Qt::SkipEmptyParts);
+    if (parts.size() < 2) {
+        return Resolved();
+    }
+
+    const Resolved parent = resolve(parts.mid(0, parts.size() - 1).join(QLatin1Char('.')));
+    if (!parent.object || !parent.property.isEmpty()) {
+        return Resolved();
+    }
+
+    const QByteArray name = parts.last().toUtf8();
+    if (parent.object->metaObject()->indexOfProperty(name.constData()) < 0) {
+        return Resolved();
+    }
+
+    return Resolved { parent.object, parts.last() };
+}
+
 QJsonObject writePath(const QString &path, const QVariant &value)
 {
-    const Resolved resolved = resolve(path);
+    Resolved resolved = resolve(path);
     if (!resolved.object) {
         return QJsonObject {
             { QStringLiteral("ok"), false },
@@ -388,10 +414,21 @@ QJsonObject writePath(const QString &path, const QVariant &value)
         };
     }
 
+    if (resolved.property.isEmpty() && !qobject_cast<Fact *>(resolved.object)) {
+        const Resolved viaParent = resolveForWrite(path);
+        if (viaParent.object) {
+            resolved = viaParent;
+        }
+    }
+
     if (resolved.property.isEmpty()) {
         Fact *const fact = qobject_cast<Fact *>(resolved.object);
         if (!fact) {
-            return QJsonObject { { QStringLiteral("ok"), false } };
+            return QJsonObject {
+                { QStringLiteral("ok"), false },
+                { QStringLiteral("reason"), QStringLiteral("%1 names an object, not a writable "
+                                                           "property").arg(path) },
+            };
         }
         fact->setCookedValue(value);
         return QJsonObject { { QStringLiteral("ok"), true } };

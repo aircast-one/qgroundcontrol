@@ -473,17 +473,6 @@ func checkMissionCommands() {
     expect(commands.count == 2, "duplicates, nameless and numberless commands are dropped")
     expect(commands.first?.name == "Waypoint", "the friendly name is what an operator picks from")
 
-    let described = MissionCommand.from([
-        ["command": 19, "friendlyName": "Loiter (time)", "category": "Loiter",
-         "description": "Loiter around the specified position for an amount of time."],
-        ["command": 16, "friendlyName": "Waypoint", "category": "Basic"],
-    ])
-    expect(described[0].summary, "Loiter around the specified position for an amount of time.",
-           "the description QGC lists beside the name comes through")
-    expect(described[0].category, "Loiter", "and so does the category it was listed under")
-    expect(described[1].summary, "",
-           "a command with no description reads as empty, not as a missing row")
-
     let waypoint = MissionItem(json: [
         "sequenceNumber": 1, "commandName": "Waypoint", "isSimpleItem": true,
     ], index: 1)
@@ -589,20 +578,6 @@ func checkMissionItemKinds() {
     expect(area[0].longitude < 149.165 && area[2].longitude > 149.165, "on both axes")
     let span = (area[2].latitude - area[0].latitude) * 111_320
     expect(abs(span - 2 * MissionItemKind.defaultAreaMetres) < 1, "and is the intended size across")
-    expect(MissionItemKind(rawValue: "") == nil,
-           "an empty raw value is no kind, which is how the Empty template asks for nothing")
-    expect(MissionItemKind(rawValue: "survey") == .survey,
-           "and a kind survives the round trip through its raw value")
-
-    expect(MissionItemKind.shapeImportable.map(\.rawValue).joined(separator: ","),
-           "survey,corridor,structure",
-           "only the three complex patterns can be drawn from a shape file")
-    expect(MissionItemKind.shapeImportable.allSatisfy { $0.complexName != nil },
-           "and every one of them has a name the controller inserts by")
-    expect(MissionItemKind.corridor.shapeNoun, "path", "a corridor is imported from a path")
-    expect(MissionItemKind.survey.shapeNoun, "area", "a survey from an area")
-    expect(MissionItemKind.structure.shapeNoun, "area", "a structure scan from an area too")
-
     expect(MissionItemKind.waypoint.invokable, "insertSimpleMissionItem", "a waypoint inserts a simple item")
     expect(MissionItemKind.takeoff.invokable, "insertTakeoffItem", "takeoff has its own insert")
     expect(MissionItemKind.land.invokable, "insertLandItem", "land has its own insert")
@@ -1413,56 +1388,16 @@ func checkPreflight() {
     expect(Preflight.sensors(unhealthyBits: 3).verdict == .failing("Gyro, Accelerometer unhealthy."),
            "several sensors are all named")
 
-    expect(Preflight.sound(muted: false).verdict == .passing, "audible QGC passes the sound check")
-    expect(Preflight.sound(muted: true).blocked, "a muted QGC blocks it; warnings would go unheard")
-
-    let list2 = Preflight.groups(airframe: .rover, lock: 6, satellites: 10, batteryPercent: 100,
-                                 unhealthyBits: 0, audioMuted: false)
-
-    func list(_ airframe: PreflightAirframe) -> [String] {
-        Preflight.groups(airframe: airframe, lock: 6, satellites: 10, batteryPercent: 100,
-                         unhealthyBits: 0, audioMuted: false).flatMap(\.checks).map(\.name)
-    }
-
-    let groups = Preflight.groups(airframe: .multiRotor, lock: 6, satellites: 10,
-                                  batteryPercent: 100, unhealthyBits: 0, audioMuted: false)
-    expect(Preflight.total(groups) == 11, "the multirotor list is eleven checks long")
-    expect(Preflight.progress(groups, ticked: []), "0 of 11 checked", "and starts at none")
+    let groups = Preflight.groups(lock: 6, satellites: 10, batteryPercent: 100, unhealthyBits: 0)
+    expect(Preflight.total(groups) == 9, "the multirotor list is nine checks long")
+    expect(Preflight.progress(groups, ticked: []), "0 of 9 checked", "and starts at none")
     expect(!Preflight.ready(groups, ticked: []), "an untouched list is not ready")
 
     let every = Set(groups.flatMap(\.checks).map(\.name))
     expect(Preflight.ready(groups, ticked: every), "ticking every check is ready")
-    expect(Preflight.progress(groups, ticked: every), "11 of 11 checked", "and says so")
+    expect(Preflight.progress(groups, ticked: every), "9 of 9 checked", "and says so")
     expect(!Preflight.ready(groups, ticked: every.subtracting(["Payload"])),
            "one missing check is not ready")
-
-    expect(PreflightAirframe.of(multiRotor: false, vtol: true, rover: false, sub: false,
-                                fixedWing: true) == .vtol,
-           "a VTOL also reports fixedWing; the VTOL list wins")
-    expect(PreflightAirframe.of(multiRotor: false, vtol: false, rover: false, sub: false,
-                                fixedWing: false) == .generic,
-           "an airframe that claims nothing gets the generic list")
-
-    expect(!list(.multiRotor).contains("Actuators"),
-           "a multirotor has no control surfaces to sweep")
-    expect(list(.fixedWing).contains("Actuators"), "a fixed wing does")
-    expect(!list(.rover).contains("Motors"),
-           "a rover is not asked to throttle its props up")
-    expect(list(.rover).contains("Mission area") && !list(.rover).contains("Flight area"),
-           "a rover drives a mission area, it does not launch into a flight area")
-    expect(!list(.sub).contains("Wind and weather") && !list(.sub).contains("Flight area"),
-           "wind and a launch area mean nothing underwater")
-    expect(list(.sub).contains("Payload"), "a submarine still carries a payload")
-    expect(list(.multiRotor).contains("Radio control") && list(.multiRotor).contains("Sound output"),
-           "every list asks about the radio link and QGC's audio")
-
-    expect(Preflight.progress(list2, ticked: ["Motors", "Payload"]), "1 of 10 checked",
-           "a tick left over from another airframe is not counted against a list it is not on")
-
-    expect(PreflightAirframe.multiRotor.hardwarePrompt, "Props mounted and secured?",
-           "the hardware prompt names what this airframe actually has")
-    expect(PreflightAirframe.sub.hardwarePrompt, "All seals in place?",
-           "and a submarine is asked about its seals, not its props")
 }
 
 checkPreflight()

@@ -15,10 +15,6 @@ final class MissionStore: ObservableObject, Probeable {
     @Published private(set) var canUndo = false
     @Published private(set) var canRedo = false
     @Published private(set) var commands: [MissionCommand] = []
-    @Published private(set) var commandCategories: [String] = []
-    @Published var pickingCommandFor: Int?
-
-    @Published private(set) var pickerCategory = ""
     @Published private(set) var selectedFacts: [ItemFact] = []
     @Published private(set) var surveyStats = SurveyStats.none
     @Published private(set) var camera = CameraChoice.empty
@@ -310,36 +306,15 @@ final class MissionStore: ObservableObject, Probeable {
     }
 
     func loadCommands() {
-        guard commandCategories.isEmpty, connected else { return }
-        commandCategories = (Bridge.invoke("missionCommandTree.categoriesForVehicle",
-                                           ["@vehicle"])["result"] as? [String]) ?? []
-        showCategory(commandCategories.first ?? "")
-    }
-
-    func showCategory(_ category: String) {
-        pickerCategory = category
+        guard commands.isEmpty, connected else { return }
         commands = MissionCommand.from(
             (Bridge.invoke("missionCommandTree.getCommandsForCategory",
-                           ["@vehicle", category, true])["result"] as? [Any]) ?? [])
-    }
-
-    func pickCommand(for item: MissionItem) {
-        loadCommands()
-        showCategory(commandCategories.contains(item.category)
-            ? item.category
-            : commandCategories.first ?? "")
-        pickingCommandFor = item.sequence
+                           ["@vehicle", "Basic", true])["result"] as? [Any]) ?? [])
     }
 
     func setCommand(of item: MissionItem, to command: Int) {
         guard item.canChangeCommand else { return }
-        if let centre = mapCentre {
-            _ = Bridge.invoke(
-                "plan.missionController.visualItems.\(item.index).setMapCenterHintForCommandChange",
-                [["latitude": centre.latitude, "longitude": centre.longitude]])
-        }
         _ = Bridge.set("plan.missionController.visualItems.\(item.index).command", command)
-        pickingCommandFor = nil
         reload()
     }
 
@@ -356,67 +331,6 @@ final class MissionStore: ObservableObject, Probeable {
     func removeAll() {
         Bridge.invoke("plan.removeAll")
         reload()
-    }
-
-    var mapCentre: GeoPoint? {
-        guard let centre = MissionMap.lastRender["plan"]?["centre"] as? [String: Double],
-              let latitude = centre["lat"], let longitude = centre["lon"] else { return nil }
-        return GeoPoint(latitude: latitude, longitude: longitude)
-    }
-
-    func createPlan(_ kind: MissionItemKind?) -> String? {
-        Bridge.invoke("plan.removeAll")
-
-        guard let kind, let complex = kind.complexName else {
-            reload()
-            return nil
-        }
-        guard let centre = mapCentre else {
-            reload()
-            return "The map has not settled yet, so there is nowhere to put the plan."
-        }
-
-        let at = ["latitude": centre.latitude, "longitude": centre.longitude]
-        Bridge.invoke("plan.missionController.insertTakeoffItem", [at, -1, false])
-        Bridge.invoke("plan.missionController.insertComplexMissionItem", [complex, at, -1, false])
-        Bridge.invoke("plan.missionController.insertLandItem", [at, -1, false])
-        reload()
-
-        guard let pattern = items.first(where: { $0.command == complex }) else {
-            return "\(kind.title) could not be added to the plan."
-        }
-        seed(kind, at: pattern.index,
-             latitude: centre.latitude, longitude: centre.longitude)
-
-        if let takeoff = items.first(where: { $0.isLaunch && $0.sequence > 0 }) {
-            Bridge.invoke("plan.missionController.setCurrentPlanViewSeqNum",
-                          [takeoff.sequence, true])
-        }
-        reload()
-        return nil
-    }
-
-    func exportKml(to file: URL) {
-        Bridge.invoke("plan.saveToKml", [file.path])
-    }
-
-    func importShape(_ kind: MissionItemKind, from file: URL) -> String? {
-        guard let complex = kind.complexName else {
-            return "\(kind.title) is not drawn from a shape file."
-        }
-        Bridge.invoke("plan.missionController.insertComplexMissionItemFromKMLOrSHP",
-                      [complex, file.path, items.count, true])
-        reload()
-
-        guard let placed = items.last, placed.command == complex else {
-            return "\(file.lastPathComponent) added nothing to the plan."
-        }
-        let vertices = max(surveyPolygon(of: placed).count, corridorPath(of: placed).count)
-        guard vertices >= 2 else {
-            remove(placed)
-            return "\(file.lastPathComponent) holds no \(kind.shapeNoun) for a \(kind.title.lowercased())."
-        }
-        return nil
     }
 
     var planName: String {
@@ -509,11 +423,6 @@ final class MissionStore: ObservableObject, Probeable {
          "placed": items.filter(\.hasPosition).count,
          "vehiclePlaced": vehiclePosition != nil,
          "map": MissionMap.lastRender["plan"] ?? [:],
-         "commandCategories": commandCategories,
-         "pickerCategory": pickerCategory,
-         "pickingCommandFor": pickingCommandFor ?? -1,
-         "commandNames": commands.map(\.name),
-         "commandsWithSummary": commands.filter { !$0.summary.isEmpty }.count,
          "selected": items.first(where: \.isCurrent)?.sequence ?? -1,
          "arming": arming?.rawValue ?? "",
          "planFile": planFile, "planName": planName,
@@ -575,19 +484,6 @@ final class MissionStore: ObservableObject, Probeable {
                 return ["ok": false, "error": "addWaypoint needs latitude and longitude"]
             }
             addWaypoint(latitude: latitude, longitude: longitude)
-        case "importShape":
-            guard let kind = MissionItemKind(rawValue: args["kind"] ?? ""),
-                  let path = args["file"] else {
-                return ["ok": false, "error": "importShape needs kind and file"]
-            }
-            if let failure = importShape(kind, from: URL(fileURLWithPath: path)) {
-                return ["ok": false, "error": failure]
-            }
-        case "exportKml":
-            guard let path = args["file"] else {
-                return ["ok": false, "error": "exportKml needs file"]
-            }
-            exportKml(to: URL(fileURLWithPath: path))
         case "undo":
             undo()
         case "redo":
@@ -609,21 +505,6 @@ final class MissionStore: ObservableObject, Probeable {
                 return ["ok": false, "error": "\(target.command) cannot be moved"]
             }
             move(sequence: sequence, latitude: latitude, longitude: longitude)
-        case "createPlan":
-            let kind = MissionItemKind(rawValue: args["kind"] ?? "")
-            if let failure = createPlan(kind) {
-                return ["ok": false, "error": failure]
-            }
-        case "pickCommand":
-            guard let target = items.first(where: {
-                $0.sequence == Int(args["sequence"] ?? "") ?? -1
-            }) else {
-                return ["ok": false, "error": "no item at that sequence"]
-            }
-            pickCommand(for: target)
-        case "commandCategory":
-            loadCommands()
-            showCategory(args["category"] ?? pickerCategory)
         case "setCommand":
             guard let target = items.first(where: { $0.sequence == Int(args["sequence"] ?? "") ?? -1 }) else {
                 return ["ok": false, "error": "no item with that sequence"]

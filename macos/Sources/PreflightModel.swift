@@ -1,58 +1,5 @@
 import Foundation
 
-enum PreflightAirframe: String, Equatable {
-    case multiRotor = "Multirotor"
-    case vtol = "VTOL"
-    case rover = "Rover"
-    case sub = "Submarine"
-    case fixedWing = "Fixed wing"
-    case generic = "Generic"
-
-    static func of(multiRotor: Bool, vtol: Bool, rover: Bool, sub: Bool, fixedWing: Bool) -> PreflightAirframe {
-        multiRotor ? .multiRotor
-            : vtol ? .vtol
-            : rover ? .rover
-            : sub ? .sub
-            : fixedWing ? .fixedWing
-            : .generic
-    }
-
-    var hardwarePrompt: String {
-        switch self {
-        case .multiRotor: return "Props mounted and secured?"
-        case .rover: return "Battery mounted and secured?"
-        case .sub: return "All seals in place?"
-        case .vtol, .fixedWing, .generic: return "Props mounted? Wings secured? Tail secured?"
-        }
-    }
-
-    var checksActuators: Bool {
-        switch self {
-        case .multiRotor, .rover: return false
-        case .vtol, .sub, .fixedWing, .generic: return true
-        }
-    }
-
-    var checksMotors: Bool { self != .rover }
-
-    var windPrompt: String? {
-        switch self {
-        case .sub: return nil
-        case .multiRotor, .rover: return "Within limits for this airframe?"
-        case .vtol, .fixedWing, .generic: return "Within limits, and are you launching into the wind?"
-        }
-    }
-
-    var area: (name: String, prompt: String)? {
-        switch self {
-        case .sub: return nil
-        case .rover: return ("Mission area", "Mission area and path clear of obstacles and people?")
-        case .multiRotor, .vtol, .fixedWing, .generic:
-            return ("Flight area", "Launch area and path clear of obstacles and people?")
-        }
-    }
-}
-
 struct PreflightCheck: Identifiable, Equatable {
     enum Verdict: Equatable {
         case manual
@@ -151,40 +98,24 @@ enum Preflight {
         PreflightCheck(name: name, prompt: prompt, verdict: .manual)
     }
 
-    static func sound(muted: Bool) -> PreflightCheck {
-        let prompt = "QGC audio warnings are on. Is the system output on too?"
-        guard muted else {
-            return PreflightCheck(name: "Sound output", prompt: prompt, verdict: .passing)
-        }
-        return PreflightCheck(
-            name: "Sound output", prompt: prompt,
-            verdict: .failing("QGC audio output is muted; enable it in Settings to hear warnings."))
-    }
-
-    static func groups(airframe: PreflightAirframe, lock: Int?, satellites: Int?,
-                       batteryPercent: Double?, unhealthyBits: Int?,
-                       audioMuted: Bool) -> [PreflightGroup] {
+    static func groups(lock: Int?, satellites: Int?, batteryPercent: Double?,
+                       unhealthyBits: Int?) -> [PreflightGroup] {
         [
             PreflightGroup(name: "Before you power up", checks: [
-                manual("Hardware", airframe.hardwarePrompt),
+                manual("Hardware", "Props mounted and secured?"),
                 battery(percent: batteryPercent),
                 sensors(unhealthyBits: unhealthyBits),
                 gps(lock: lock, satellites: satellites),
-                manual("Radio control", "Receiving signal. Range test done and confirmed?"),
             ]),
             PreflightGroup(name: "Arm the vehicle here", checks: [
-                airframe.checksActuators
-                    ? manual("Actuators", "Move every control surface. Did they all work properly?") : nil,
-                airframe.checksMotors
-                    ? manual("Motors", "Propellers free? Throttle up gently — working properly?") : nil,
+                manual("Motors", "Propellers free? Throttle up gently — working properly?"),
                 manual("Mission", "Waypoints valid and no terrain collision?"),
-                sound(muted: audioMuted),
-            ].compactMap { $0 }),
+            ]),
             PreflightGroup(name: "Before launch", checks: [
                 manual("Payload", "Configured, started, and the lid closed?"),
-                airframe.windPrompt.map { manual("Wind and weather", $0) },
-                airframe.area.map { manual($0.name, $0.prompt) },
-            ].compactMap { $0 }),
+                manual("Wind and weather", "Within limits for this airframe?"),
+                manual("Flight area", "Launch area and path clear of obstacles and people?"),
+            ]),
         ]
     }
 
@@ -193,8 +124,7 @@ enum Preflight {
     }
 
     static func progress(_ groups: [PreflightGroup], ticked: Set<String>) -> String {
-        let present = Set(groups.flatMap(\.checks).map(\.name))
-        return "\(ticked.intersection(present).count) of \(total(groups)) checked"
+        "\(ticked.count) of \(total(groups)) checked"
     }
 
     static func ready(_ groups: [PreflightGroup], ticked: Set<String>) -> Bool {

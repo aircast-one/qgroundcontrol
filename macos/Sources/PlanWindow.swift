@@ -147,8 +147,6 @@ struct PlanInspector: View {
     static let maximumContentHeight: CGFloat = 460
 
     @State private var contentHeight: CGFloat = 0
-    @State private var shapeError: String?
-    @State private var replacing: String?
 
     var body: some View {
         GlassPanel {
@@ -190,93 +188,6 @@ struct PlanInspector: View {
             .padding(Overlay.gutter)
             .frame(width: 320)
         }
-        .sheet(isPresented: Binding(get: { mission.pickingCommandFor != nil },
-                                    set: { if !$0 { mission.pickingCommandFor = nil } })) {
-            commandPicker
-        }
-        .confirmationDialog("Replace this plan?",
-                            isPresented: Binding(get: { replacing != nil },
-                                                 set: { if !$0 { replacing = nil } }),
-                            titleVisibility: .visible) {
-            Button("Replace", role: .destructive) {
-                let kind = MissionItemKind(rawValue: replacing ?? "")
-                replacing = nil
-                shapeError = mission.createPlan(kind)
-            }
-            Button("Cancel", role: .cancel) { replacing = nil }
-        } message: {
-            Text("The \(mission.items.count) items already in this plan will be discarded.")
-        }
-        .alert("That file could not be used",
-               isPresented: Binding(get: { shapeError != nil }, set: { if !$0 { shapeError = nil } })) {
-            Button("OK") { shapeError = nil }
-        } message: {
-            Text(shapeError ?? "")
-        }
-    }
-
-    private var commandPicker: some View {
-        VStack(alignment: .leading, spacing: Overlay.unit * 0.75) {
-            Text("Choose what this item does").font(.title3.weight(.semibold))
-
-            Picker("Category", selection: Binding(
-                get: { mission.pickerCategory },
-                set: { mission.showCategory($0) })
-            ) {
-                ForEach(mission.commandCategories, id: \.self) { Text($0).tag($0) }
-            }
-            .frame(maxWidth: 320)
-
-            if mission.commands.isEmpty {
-                GroupCard {
-                    EmptyStateRow(text: mission.connected
-                        ? "This category has no commands this vehicle accepts."
-                        : "Connect a vehicle to see the commands it accepts.")
-                }
-            } else {
-                ScrollView {
-                    GroupCard {
-                        ForEach(Array(mission.commands.enumerated()), id: \.element.id) { row, command in
-                            commandRow(command, showSeparator: row > 0)
-                        }
-                    }
-                }
-                .frame(height: 380)
-            }
-
-            Divider()
-
-            HStack {
-                Spacer()
-                Button("Cancel") { mission.pickingCommandFor = nil }
-                    .keyboardShortcut(.cancelAction)
-            }
-        }
-        .padding(Overlay.unit)
-        .frame(width: 520)
-    }
-
-    private func commandRow(_ command: MissionCommand, showSeparator: Bool) -> some View {
-        Button {
-            chooseCommand(command)
-        } label: {
-            GroupRow(title: command.name,
-                     description: command.summary,
-                     showSeparator: showSeparator,
-                     current: command.command == chosenCommand,
-                     titleLines: 2, descriptionLines: 4)
-        }
-        .buttonStyle(.plain)
-    }
-
-    private func chooseCommand(_ command: MissionCommand) {
-        guard let item = mission.items.first(where: { $0.sequence == mission.pickingCommandFor })
-        else { return }
-        mission.setCommand(of: item, to: command.command)
-    }
-
-    private var chosenCommand: Int {
-        mission.items.first { $0.sequence == mission.pickingCommandFor }?.commandId ?? -1
     }
 
     private var summary: some View {
@@ -359,13 +270,18 @@ struct PlanInspector: View {
                                         .font(.body.monospacedDigit())
                                         .foregroundColor(Overlay.value)
                                 }
-                                if item.isCurrent && item.canChangeCommand {
-                                    Button {
-                                        mission.pickCommand(for: item)
+                                if item.isCurrent && item.canChangeCommand && !mission.commands.isEmpty {
+                                    Menu {
+                                        ForEach(mission.commands) { command in
+                                            Button(command.name) {
+                                                mission.setCommand(of: item, to: command.command)
+                                            }
+                                        }
                                     } label: {
                                         Image(systemName: "chevron.up.chevron.down")
                                     }
-                                    .buttonStyle(.borderless)
+                                    .menuStyle(.borderlessButton)
+                                    .menuIndicator(.hidden)
                                     .frame(width: 22)
                                     .help("Change what this item does")
                                 }
@@ -637,15 +553,6 @@ struct PlanInspector: View {
             Menu {
                 Button("Open\u{2026}", action: openPlan)
                 Button("Save As\u{2026}", action: savePlanAs)
-                Button("Export KML\u{2026}", action: exportKml)
-                    .disabled(mission.items.count < 2)
-                Divider()
-                Menu("New Plan") {
-                    Button("Empty") { startPlan(nil) }
-                    ForEach(MissionItemKind.shapeImportable) { kind in
-                        Button(kind.title) { startPlan(kind) }
-                    }
-                }
                 Divider()
                 Button("Clear", action: mission.removeAll)
             } label: {
@@ -663,14 +570,6 @@ struct PlanInspector: View {
                             mission.arming = kind
                         } label: {
                             Label(kind.title, systemImage: kind.symbol)
-                        }
-                    }
-                    Divider()
-                    ForEach(MissionItemKind.shapeImportable) { kind in
-                        Button {
-                            importShape(kind)
-                        } label: {
-                            Label("\(kind.title) from KML or SHP\u{2026}", systemImage: kind.symbol)
                         }
                     }
                 } label: {
@@ -749,31 +648,6 @@ struct PlanInspector: View {
         guard panel.runModal() == .OK, let file = panel.url else { return }
         mission.save(to: file)
     }
-
-    private func startPlan(_ kind: MissionItemKind?) {
-        guard mission.items.count > 1 else {
-            shapeError = mission.createPlan(kind)
-            return
-        }
-        replacing = kind?.rawValue ?? ""
-    }
-
-    private func exportKml() {
-        let panel = NSSavePanel()
-        panel.allowedContentTypes = PlanView.kmlTypes
-        panel.nameFieldStringValue = "\(mission.planName).kml"
-        guard panel.runModal() == .OK, let file = panel.url else { return }
-        mission.exportKml(to: file)
-    }
-
-    private func importShape(_ kind: MissionItemKind) {
-        let panel = NSOpenPanel()
-        panel.allowedContentTypes = PlanView.shapeTypes
-        panel.allowsMultipleSelection = false
-        panel.message = "Choose a KML or shape file holding the \(kind.shapeNoun) to \(kind.title.lowercased())."
-        guard panel.runModal() == .OK, let file = panel.url else { return }
-        shapeError = mission.importShape(kind, from: file)
-    }
 }
 
 struct PlanView: View {
@@ -781,8 +655,6 @@ struct PlanView: View {
 
     static let mapPadding = NSEdgeInsets(top: 56, left: 24, bottom: 40, right: 372)
     static let planTypes = [UTType(filenameExtension: "plan")].compactMap { $0 }
-    static let kmlTypes = [UTType(filenameExtension: "kml")].compactMap { $0 }
-    static let shapeTypes = ["kml", "shp"].compactMap { UTType(filenameExtension: $0) }
 
     @ObservedObject var mission: MissionStore
     @ObservedObject var fenceRally: FenceRallyStore
