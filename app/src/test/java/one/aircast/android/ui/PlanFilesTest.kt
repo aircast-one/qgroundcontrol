@@ -150,3 +150,26 @@ class ClearHonestyTest {
         assertEquals(false, confirmCopy(PlanConfirm.NewPlan).destructive)
     }
 }
+
+class LoadFailureTest {
+    @Test
+    fun `a loaded plan reports nothing`() {
+        assertNull(loadFailureMessage(true))
+    }
+
+    @Test
+    fun `a rejected file is named as the wrong kind of file`() {
+        assertEquals(
+            "That is not a plan file. The current plan is unchanged.",
+            loadFailureMessage(false),
+        )
+    }
+
+    @Test
+    fun `a bridge that never answered does not get to blame the file`() {
+        assertEquals(
+            "The plan could not be loaded. The current plan is unchanged.",
+            loadFailureMessage(null),
+        )
+    }
+}

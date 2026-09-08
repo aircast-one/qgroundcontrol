@@ -108,8 +108,14 @@ class PlanFileActions(
 private fun planReadyForSave(): Int? =
     (Qgc.invokeResult("$PLAN_ROOT.readyForSaveState") as? Number)?.toInt()
 
-internal fun planLoad(path: String): Boolean =
-    Qgc.invokeResult("$PLAN_ROOT.loadFromFile", path) == true
+internal fun planLoad(path: String): Boolean? =
+    Qgc.invokeResult("$PLAN_ROOT.loadFromFile", path) as? Boolean
+
+internal fun loadFailureMessage(loaded: Boolean?): String? = when (loaded) {
+    true -> null
+    false -> "That is not a plan file. The current plan is unchanged."
+    null -> "The plan could not be loaded. The current plan is unchanged."
+}
 
 internal fun planSave(path: String): String? {
     if (Qgc.invokeResult("$PLAN_ROOT.saveToFile", path) != true) {
@@ -206,10 +212,7 @@ fun rememberPlanFileActions(onResult: (String) -> Unit = {}): PlanFileActions {
                 if (!copyIn(context, chosen, staged)) {
                     return@withContext "That file could not be read."
                 }
-                if (!planLoad(staged.absolutePath)) {
-                    return@withContext "That is not a plan file. The current plan is unchanged."
-                }
-                null
+                loadFailureMessage(planLoad(staged.absolutePath))
             }
             if (message == null) {
                 adopt(chosen)

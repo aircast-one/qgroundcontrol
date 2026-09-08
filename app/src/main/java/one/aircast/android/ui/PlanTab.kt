@@ -125,7 +125,7 @@ fun PlanTab(modifier: Modifier = Modifier) {
                 text = notice ?: planStatusText(files.documentName(), dirty),
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
-                maxLines = 1,
+                maxLines = if (notice == null) 1 else 3,
                 overflow = TextOverflow.Ellipsis,
                 modifier = Modifier.padding(start = 8.dp),
             )
