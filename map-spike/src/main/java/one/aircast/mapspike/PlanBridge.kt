@@ -77,6 +77,9 @@ data class MissionItem(
     val command: String,
     val current: Boolean,
     val altitude: Double = Double.NaN,
+    // Where the aircraft leaves this item, which for a survey is the far corner
+    // rather than the one it arrived at. Null when the item is a single point.
+    val exit: TrackPoint? = null,
 )
 
 // A mission item only sits on the map when it specifies a coordinate; takeoff
@@ -101,6 +104,15 @@ fun missionItems(json: JSONObject?): List<MissionItem> {
             command = element.optString("commandName"),
             current = element.optBoolean("isCurrentItem"),
             altitude = factValue(element, "Altitude"),
+            exit = element.optJSONObject("exitCoordinate")?.let { at ->
+                val exitLatitude = at.optDouble("latitude", Double.NaN)
+                val exitLongitude = at.optDouble("longitude", Double.NaN)
+                TrackPoint(exitLatitude, exitLongitude)
+                    .takeIf {
+                        isPlottable(exitLatitude, exitLongitude) &&
+                            (exitLatitude != latitude || exitLongitude != longitude)
+                    }
+            },
         )
     }
 }

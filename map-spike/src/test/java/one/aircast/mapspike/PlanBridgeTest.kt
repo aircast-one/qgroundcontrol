@@ -100,4 +100,23 @@ class PlanBridgeTest {
         assertTrue(missionItems(model(plain)).single().altitude.isNaN())
         assertTrue(missionItems(model(otherFact)).single().altitude.isNaN())
     }
+
+    @Test
+    fun `an item reads where it leaves as well as where it starts`() {
+        val withExit = """{"specifiesCoordinate":true,"coordinate":{"latitude":41.0,"longitude":44.0},""" +
+            """"exitCoordinate":{"latitude":41.5,"longitude":44.5}}"""
+
+        assertEquals(TrackPoint(41.5, 44.5), missionItems(model(withExit)).single().exit)
+    }
+
+    @Test
+    fun `an exit that repeats the entry or cannot be plotted is not carried`() {
+        val same = """{"specifiesCoordinate":true,"coordinate":{"latitude":41.0,"longitude":44.0},""" +
+            """"exitCoordinate":{"latitude":41.0,"longitude":44.0}}"""
+        val unusable = """{"specifiesCoordinate":true,"coordinate":{"latitude":41.0,"longitude":44.0},""" +
+            """"exitCoordinate":{"latitude":0.0,"longitude":0.0}}"""
+
+        assertEquals(null, missionItems(model(same)).single().exit)
+        assertEquals(null, missionItems(model(unusable)).single().exit)
+    }
 }

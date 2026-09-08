@@ -36,6 +36,23 @@ class MissionPathTest {
     }
 
     @Test
+    fun `an item with an exit is flown through rather than touched`() {
+        val survey = MissionItem(
+            1, 2, 41.0, 44.1, "Survey", false, Double.NaN, TrackPoint(41.0, 44.15),
+        )
+
+        assertEquals(
+            listOf(44.1, 44.15, 44.2),
+            longitudes(listOf(home, survey, second), link = false),
+        )
+    }
+
+    @Test
+    fun `an exit equal to the entry is not a second point`() {
+        assertEquals(listOf(44.1, 44.2), longitudes(listOf(home, first, second), link = false))
+    }
+
+    @Test
     fun `the rule is the same one the distance uses`() {
         val takeoffFirst = JSONObject(
             """{"kind":"object","elements":[{},{"isTakeoffItem":true},{}]}""",
