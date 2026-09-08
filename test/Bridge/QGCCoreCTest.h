@@ -38,6 +38,7 @@ private slots:
     void _surveyStatsNeedAnItem();
     void _fencesAndPolygonsAreServed();
     void _setupOverviewFollowsTheVehicle();
+    void _videoAndCameraAreServed();
 
 private:
     static bool _unavailable(const char *path);

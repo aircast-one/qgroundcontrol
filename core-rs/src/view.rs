@@ -29,6 +29,7 @@ use crate::survey;
 use crate::takeoff;
 use crate::terrain;
 use crate::vibration;
+use crate::video;
 use crate::warnings;
 use crate::router::Backend;
 
@@ -69,6 +70,8 @@ pub const VIEWS: &[View] = &[
     View { path: "view.fences", deps: fences::DEPS, compute: fences::fences_view },
     View { path: "view.polygon", deps: &[], compute: fences::polygon_view },
     View { path: "view.setup", deps: setup::DEPS, compute: setup::setup_view },
+    View { path: "view.video", deps: video::VIDEO_DEPS, compute: video::video_view },
+    View { path: "view.camera", deps: video::CAMERA_DEPS, compute: video::camera_view },
 ];
 
 pub fn owns(path: &str) -> bool {

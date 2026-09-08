@@ -431,3 +431,14 @@ void QGCCoreCTest::_setupOverviewFollowsTheVehicle()
     QCOMPARE(online.value(QStringLiteral("firmware")).toString(), QStringLiteral("px4"));
     QVERIFY(!online.value(QStringLiteral("headline")).toString().isEmpty());
 }
+
+void QGCCoreCTest::_videoAndCameraAreServed()
+{
+    const QJsonObject video = take(qgc_bridge_get("view.video"));
+    QCOMPARE(video.value(QStringLiteral("class")).toString(), QStringLiteral("Video"));
+    QVERIFY(!video.value(QStringLiteral("summary")).toString().isEmpty());
+    QVERIFY(video.value(QStringLiteral("cameras")).isArray());
+    const QJsonObject camera = take(qgc_bridge_get("view.camera"));
+    QCOMPARE(camera.value(QStringLiteral("present")).toBool(true), false);
+    QCOMPARE(camera.value(QStringLiteral("shotsText")).toString(), QStringLiteral("00000"));
+}

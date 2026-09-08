@@ -28,6 +28,7 @@ mod takeoff;
 mod terrain;
 mod router;
 mod vibration;
+mod video;
 mod view;
 mod warnings;
 
