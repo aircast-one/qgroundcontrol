@@ -8,11 +8,14 @@
 #include <gst/app/gstappsink.h>
 #include <gst/gst.h>
 #include <gst/video/video.h>
+#include <gst/video/videooverlay.h>
 #endif
 
 namespace {
 
 std::mutex frameMutex;
+std::mutex overlayMutex;
+void *overlayWindow = nullptr;
 std::vector<uint8_t> latestFrame;
 int frameWidth = 0;
 int frameHeight = 0;
@@ -23,6 +26,7 @@ std::string lastError;
 #ifdef QGC_GST_STREAMING
 GstElement *pipeline = nullptr;
 GstElement *sink = nullptr;
+GstElement *overlaySink = nullptr;
 
 GstFlowReturn onNewSample(GstAppSink *appsink, gpointer)
 {
@@ -53,6 +57,57 @@ GstFlowReturn onNewSample(GstAppSink *appsink, gpointer)
 #endif
 
 } // namespace
+
+bool qgc_video_set_window(void *native_window)
+{
+#ifdef QGC_GST_STREAMING
+    const std::lock_guard<std::mutex> lock(overlayMutex);
+    overlayWindow = native_window;
+    if (!overlaySink) {
+        lastError.clear();
+        return native_window != nullptr;
+    }
+    gst_video_overlay_set_window_handle(GST_VIDEO_OVERLAY(overlaySink),
+                                        reinterpret_cast<guintptr>(native_window));
+    lastError.clear();
+    return true;
+#else
+    (void)native_window;
+    lastError = "this build has no GStreamer";
+    return false;
+#endif
+}
+
+bool qgc_video_attach_overlay(void *element)
+{
+#ifdef QGC_GST_STREAMING
+    if (!element || !GST_IS_VIDEO_OVERLAY(element)) {
+        lastError = "the sink is not a video overlay";
+        return false;
+    }
+
+    const std::lock_guard<std::mutex> lock(overlayMutex);
+    overlaySink = GST_ELEMENT(element);
+    if (overlayWindow) {
+        gst_video_overlay_set_window_handle(GST_VIDEO_OVERLAY(overlaySink),
+                                            reinterpret_cast<guintptr>(overlayWindow));
+    }
+    lastError.clear();
+    return true;
+#else
+    (void)element;
+    lastError = "this build has no GStreamer";
+    return false;
+#endif
+}
+
+void qgc_video_detach_overlay(void)
+{
+#ifdef QGC_GST_STREAMING
+    const std::lock_guard<std::mutex> lock(overlayMutex);
+    overlaySink = nullptr;
+#endif
+}
 
 bool qgc_video_attach_appsink(void *appsink)
 {

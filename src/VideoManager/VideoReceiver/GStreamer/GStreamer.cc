@@ -533,8 +533,12 @@ void *createNativeSink(QObject *parent)
     Q_UNUSED(parent);
 
     GError *error = nullptr;
-    GstElement *const bin = gst_parse_bin_from_description(
-        "videoconvert ! appsink name=nativesink sync=false", TRUE, &error);
+#ifdef Q_OS_ANDROID
+    const char *const description = "glupload ! glcolorconvert ! glimagesink name=nativesink sync=false";
+#else
+    const char *const description = "videoconvert ! appsink name=nativesink sync=false";
+#endif
+    GstElement *const bin = gst_parse_bin_from_description(description, TRUE, &error);
     if (!bin) {
         qCCritical(GStreamerLog) << "native sink bin failed" << (error ? error->message : "");
         if (error) {
@@ -546,15 +550,19 @@ void *createNativeSink(QObject *parent)
         g_error_free(error);
     }
 
-    GstElement *const appsink = gst_bin_get_by_name(GST_BIN(bin), "nativesink");
-    if (!appsink) {
-        qCCritical(GStreamerLog) << "native sink bin has no appsink";
+    GstElement *const nativeSink = gst_bin_get_by_name(GST_BIN(bin), "nativesink");
+    if (!nativeSink) {
+        qCCritical(GStreamerLog) << "native sink bin has no sink";
         gst_object_unref(bin);
         return nullptr;
     }
 
-    const bool attached = qgc_video_attach_appsink(appsink);
-    gst_object_unref(appsink);
+#ifdef Q_OS_ANDROID
+    const bool attached = qgc_video_attach_overlay(nativeSink);
+#else
+    const bool attached = qgc_video_attach_appsink(nativeSink);
+#endif
+    gst_object_unref(nativeSink);
     if (!attached) {
         qCCritical(GStreamerLog) << "native sink could not be attached";
         gst_object_unref(bin);

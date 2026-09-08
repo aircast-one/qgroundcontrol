@@ -5,6 +5,8 @@
 #include "QGCVideoC.h"
 #include "QGCLoggingCategory.h"
 
+#include <android/native_window_jni.h>
+
 #include <QtCore/QJniEnvironment>
 #include <QtCore/QJniObject>
 
@@ -74,8 +76,6 @@ jlong jniVideoFrames(JNIEnv *, jclass)
     return static_cast<jlong>(qgc_video_frames());
 }
 
-// The appsink fills the frame buffer on GStreamer's thread while this reads it on
-// whichever thread Kotlin asks from; qgc_video_copy_frame holds the lock for the copy.
 jboolean jniVideoCopyFrame(JNIEnv *env, jclass, jobject buffer)
 {
     if (!buffer) {
@@ -94,6 +94,16 @@ jboolean jniVideoCopyFrame(JNIEnv *env, jclass, jobject buffer)
     return qgc_video_copy_frame(destination, static_cast<int>(capacity), &width, &height, &stride)
         ? JNI_TRUE
         : JNI_FALSE;
+}
+
+jboolean jniVideoSetSurface(JNIEnv *env, jclass, jobject surface)
+{
+    ANativeWindow *const window = surface ? ANativeWindow_fromSurface(env, surface) : nullptr;
+    const bool applied = qgc_video_set_window(window);
+    if (!applied && window) {
+        ANativeWindow_release(window);
+    }
+    return applied ? JNI_TRUE : JNI_FALSE;
 }
 
 } // namespace
@@ -123,6 +133,7 @@ void setNativeMethods()
         { "videoHeight", "()I", reinterpret_cast<void *>(jniVideoHeight) },
         { "videoFrames", "()J", reinterpret_cast<void *>(jniVideoFrames) },
         { "videoCopyFrame", "(Ljava/nio/ByteBuffer;)Z", reinterpret_cast<void *>(jniVideoCopyFrame) },
+        { "videoSetSurface", "(Landroid/view/Surface;)Z", reinterpret_cast<void *>(jniVideoSetSurface) },
     };
 
     QJniEnvironment jniEnv;

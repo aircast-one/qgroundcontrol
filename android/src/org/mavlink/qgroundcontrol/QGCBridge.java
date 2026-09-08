@@ -86,6 +86,8 @@ public final class QGCBridge {
     /** dest must be a direct ByteBuffer; returns false when no frame has arrived yet. */
     public static native boolean videoCopyFrame(java.nio.ByteBuffer dest);
 
+    public static native boolean videoSetSurface(android.view.Surface surface);
+
     public static void onSystemBarAppearance(final boolean lightBars) {
         final Host current = host;
         if (current == null) {
