@@ -12,6 +12,7 @@ use crate::flightmodes;
 use crate::guided;
 use crate::inspector;
 use crate::instruments;
+use crate::kml;
 use crate::label;
 use crate::links;
 use crate::logs;
@@ -80,6 +81,7 @@ pub const VIEWS: &[View] = &[
     View { path: "view.contract", deps: contract::DEPS, compute: contract::contract_view },
     View { path: "view.planFile", deps: planfile::DEPS, compute: planfile::plan_file_view },
     View { path: "view.waypointsFile", deps: waypoints::DEPS, compute: waypoints::waypoints_view },
+    View { path: "view.kmlFile", deps: kml::DEPS, compute: kml::kml_view },
 ];
 
 pub fn owns(path: &str) -> bool {

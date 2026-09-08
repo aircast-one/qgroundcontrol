@@ -10,6 +10,7 @@ mod flightmodes;
 mod guided;
 mod inspector;
 mod instruments;
+mod kml;
 mod label;
 mod links;
 mod logs;

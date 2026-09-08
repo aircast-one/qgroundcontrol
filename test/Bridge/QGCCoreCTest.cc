@@ -604,3 +604,16 @@ void QGCCoreCTest::_waypointsFileAgreesWithTheCppLoader()
     QVERIFY(qAbs(home.value(QStringLiteral("latitude")).toDouble() - read.value(QStringLiteral("home")).toObject().value(QStringLiteral("latitude")).toDouble()) < 1e-6);
     (void) take(qgc_bridge_invoke("plan.removeAll", "[]"));
 }
+
+void QGCCoreCTest::_kmlFilesFollowTheMapPolygonTest()
+{
+    const QDir fixtures = QFileInfo(QString::fromUtf8(__FILE__)).dir();
+    const auto read = [&fixtures](const char *name) { return take(qgc_bridge_get(QStringLiteral("view.kmlFile(%1)").arg(fixtures.filePath(QStringLiteral("../MissionManager/") + QString::fromUtf8(name))).toUtf8().constData())); };
+    const QJsonObject good = read("PolygonGood.kml");
+    QCOMPARE(good.value(QStringLiteral("valid")).toBool(false), true);
+    QCOMPARE(good.value(QStringLiteral("shape")).toString(), QStringLiteral("polygon"));
+    QVERIFY(good.value(QStringLiteral("count")).toInt() >= 4);
+    QCOMPARE(read("PolygonBadXml.kml").value(QStringLiteral("valid")).toBool(true), false);
+    QCOMPARE(read("PolygonMissingNode.kml").value(QStringLiteral("valid")).toBool(true), false);
+    QCOMPARE(read("PolygonBadCoordinatesNode.kml").value(QStringLiteral("valid")).toBool(true), false);
+}

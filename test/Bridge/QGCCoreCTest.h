@@ -43,6 +43,7 @@ private slots:
     void _tlogSummaryDecodesTheSampleLog();
     void _planFileAgreesWithTheCppLoader();
     void _waypointsFileAgreesWithTheCppLoader();
+    void _kmlFilesFollowTheMapPolygonTest();
 
 private:
     static bool _unavailable(const char *path);
