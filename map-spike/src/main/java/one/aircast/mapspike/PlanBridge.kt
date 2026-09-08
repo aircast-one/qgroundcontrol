@@ -71,7 +71,12 @@ object PlanBridge {
     // wipes the aircraft as well, behind a modal confirmation. Starting a plan
     // over is the local intent and does not need to touch the vehicle; Upload is
     // there for anyone who does want the empty plan flown.
-    fun clearPlan() = invoke("$PLAN_ROOT.removeAll")
+    fun clearPlan(): Boolean {
+        val raw = runCatching { QGCBridge.invoke("$PLAN_ROOT.removeAll", "[]") }
+            .getOrElse { "threw: ${it.message}" }
+        android.util.Log.i("MapSpikeClear", "removeAll -> $raw")
+        return runCatching { JSONObject(raw).optBoolean("ok") }.getOrDefault(false)
+    }
 
     fun sendToVehicle() = invoke("$PLAN_ROOT.sendToVehicle")
 

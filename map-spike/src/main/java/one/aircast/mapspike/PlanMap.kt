@@ -37,7 +37,11 @@ private fun planMapStyle(context: Context): String =
 // through whatever owns the opened document. The dependency runs app to map, so
 // a clear living in here cannot reach that reference and would leave the shell
 // naming a file whose plan is gone.
-fun PlanMapScreen(modifier: Modifier = Modifier, onClear: (() -> Unit)? = null) {
+fun PlanMapScreen(
+    modifier: Modifier = Modifier,
+    onClear: (() -> Unit)? = null,
+    onCentre: ((Double, Double) -> Unit)? = null,
+) {
     val context = LocalContext.current
     val style = remember(context) { planMapStyle(context) }
 
@@ -49,6 +53,6 @@ fun PlanMapScreen(modifier: Modifier = Modifier, onClear: (() -> Unit)? = null) 
     }
 
     Surface(modifier, color = MaterialTheme.colorScheme.surface) {
-        MapSpikeScreen(style, onClear)
+        MapSpikeScreen(style, onClear, onCentre)
     }
 }

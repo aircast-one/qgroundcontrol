@@ -66,7 +66,11 @@ private fun GroupBreak() {
 
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
-internal fun MapSpikeScreen(mapStyle: String, onClear: (() -> Unit)? = null) {
+internal fun MapSpikeScreen(
+    mapStyle: String,
+    onClear: (() -> Unit)? = null,
+    onCentre: ((Double, Double) -> Unit)? = null,
+) {
     var follow by remember { mutableStateOf(true) }
     var fitRequest by remember { mutableStateOf(0) }
     var loadArmed by remember { mutableStateOf(false) }
@@ -212,6 +216,7 @@ internal fun MapSpikeScreen(mapStyle: String, onClear: (() -> Unit)? = null) {
             onCentreChanged = { at, level ->
                 centre = at
                 zoom = level
+                onCentre?.invoke(at.latitude, at.longitude)
             },
             bottomInsetPx = controlsHeightPx,
             fitRequest = fitRequest,
