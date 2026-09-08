@@ -97,7 +97,7 @@ fun AnalyzeScreen(
                 AnalyzePage.LogDownload -> LogDownloadScreen()
                 AnalyzePage.Console -> ConsoleScreen()
                 AnalyzePage.Inspector -> InspectorScreen()
-                else -> VibrationScreen()
+                AnalyzePage.Vibration -> VibrationScreen()
             }
         }
     }
