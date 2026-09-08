@@ -23,6 +23,7 @@ private slots:
     void _labelsAreHumanised();
     void _instrumentsResolveTheSelection();
     void _vibrationBandsAreServed();
+    void _sensorHealthIsOrdered();
 
 private:
     static bool _unavailable(const char *path);

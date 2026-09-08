@@ -9,6 +9,7 @@ mod messages;
 mod plan;
 mod preflight;
 mod read;
+mod sensors;
 mod speed;
 mod takeoff;
 mod router;

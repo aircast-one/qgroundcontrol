@@ -264,3 +264,14 @@ void QGCCoreCTest::_vibrationBandsAreServed()
     QCOMPARE(offline.value(QStringLiteral("axes")).toArray().count(), 3);
     QCOMPARE(offline.value(QStringLiteral("clipCounts")).toArray().count(), 3);
 }
+
+void QGCCoreCTest::_sensorHealthIsOrdered()
+{
+    QVERIFY2(_unavailable("view.sensors"), "sensors read available, or lack the field, with no vehicle");
+    QVERIFY(!take(qgc_bridge_get("view.sensors")).value(QStringLiteral("status")).toString().isEmpty());
+    _connectMockLink(MAV_AUTOPILOT_PX4);
+    QTRY_COMPARE_WITH_TIMEOUT(take(qgc_bridge_get("view.sensors")).value(QStringLiteral("available")).toBool(false), true, 5000);
+    const QJsonArray listed = take(qgc_bridge_get("view.sensors")).value(QStringLiteral("sensors")).toArray();
+    QVERIFY(!listed.isEmpty());
+    QVERIFY(!listed.first().toObject().value(QStringLiteral("label")).toString().isEmpty());
+}

@@ -550,6 +550,7 @@ About 58 developer-weeks. Flight-test time, not code, is the schedule.
 - 2026-09-08: `view.instruments(group/name, …)` — telemetry chips with label, value and display units resolved
   in the core; the selection stays with the head.
 - 2026-09-08: `view.vibration` — axes with fraction and severity band, worst axis, clip counts.
+- 2026-09-08: `view.sensors` — SYS_STATUS sensor health as healthy/unhealthy/disabled, failing first.
 
 ### Stream F · Core
 

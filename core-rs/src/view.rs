@@ -11,6 +11,7 @@ use crate::messages;
 use crate::plan;
 use crate::preflight;
 use crate::read::value_string;
+use crate::sensors;
 use crate::speed;
 use crate::takeoff;
 use crate::vibration;
@@ -36,6 +37,7 @@ pub const VIEWS: &[View] = &[
     View { path: "view.label", deps: label::DEPS, compute: label::label_view },
     View { path: "view.instruments", deps: instruments::DEPS, compute: instruments::instruments_view },
     View { path: "view.vibration", deps: vibration::DEPS, compute: vibration::vibration_view },
+    View { path: "view.sensors", deps: sensors::DEPS, compute: sensors::sensors_view },
 ];
 
 pub fn owns(path: &str) -> bool {
