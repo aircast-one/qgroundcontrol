@@ -535,6 +535,23 @@ creating it, and the app's import removes an empty survey rather than leaving
 one. Seeding a half-built survey over MAVLink is not possible either, since the
 protocol carries mission items rather than QGC's complex-item structure.
 
+## Every write is a gesture
+
+Nothing here commands the vehicle or changes the plan except in response to a
+touch. Audited rather than assumed, after the other session found momentary RC
+controls driving their channels to minimum at composition - a `LaunchedEffect`
+on press state runs once with the state it starts in, and "not pressed" is a
+value like any other.
+
+The effects in this module read: the poll, the vehicle list, a survey's
+altitude, the one-shot fit. The writes are all `onClick`, `onDone`, `onAdd` or
+`onMove`. `onFitFailed` is the only non-gesture caller and it reports a message
+without commanding anything.
+
+Worth re-running that audit rather than trusting this paragraph if effects are
+added: the failure is silent, it happens once at composition, and it looks
+exactly like nothing happening.
+
 ## Which calls can be checked, and which cannot
 
 Worth knowing before trusting any of them, because the answer is a property of
