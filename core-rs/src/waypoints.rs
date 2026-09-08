@@ -66,6 +66,29 @@ pub fn parse(text: &str) -> Result<Waypoints, String> {
     Ok(Waypoints { version, home, items })
 }
 
+fn line(r: &Row) -> String {
+    [
+        r.sequence.to_string(),
+        (r.current as u8).to_string(),
+        r.frame.to_string(),
+        r.command.to_string(),
+        r.params[0].to_string(),
+        r.params[1].to_string(),
+        r.params[2].to_string(),
+        r.params[3].to_string(),
+        r.latitude.to_string(),
+        r.longitude.to_string(),
+        r.altitude.to_string(),
+        (r.auto_continue as u8).to_string(),
+    ]
+    .join("\t")
+}
+
+pub fn write(file: &Waypoints) -> String {
+    let rows = file.home.iter().chain(&file.items).map(line);
+    std::iter::once(format!("QGC WPL {}", file.version)).chain(rows).map(|l| l + "\n").collect()
+}
+
 fn row_json(r: &Row) -> Value {
     json!({
         "sequence": r.sequence,
@@ -136,5 +159,18 @@ mod tests {
         assert_eq!(file.version, 110);
         assert!(file.home.is_some());
         assert!(file.items.len() > 3);
+    }
+
+    #[test]
+    fn a_written_file_reads_back_equal() {
+        let text = std::fs::read_to_string(concat!(env!("CARGO_MANIFEST_DIR"), "/../test/MissionManager/MissionPlanner.waypoints")).unwrap();
+        let file = parse(&text).unwrap();
+        let written = write(&file);
+        assert!(written.starts_with("QGC WPL 110\n"));
+        assert_eq!(written.lines().count(), 1 + file.home.iter().count() + file.items.len());
+        assert_eq!(parse(&written).unwrap(), file);
+        let nan_row = Row { sequence: 1, current: false, frame: 3, command: 16, params: [0.0, 0.0, 0.0, f64::NAN, 0.0, 0.0, 0.0][..4].try_into().unwrap(), latitude: 1.5, longitude: -2.25, altitude: 30.0, auto_continue: true };
+        let round = parse(&write(&Waypoints { version: 120, home: None, items: vec![nan_row] })).unwrap();
+        assert!(round.items[0].params[3].is_nan() && round.items[0].latitude == 1.5 && round.version == 120);
     }
 }
