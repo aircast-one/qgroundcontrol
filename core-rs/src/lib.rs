@@ -4,6 +4,7 @@ mod altitude;
 mod battery;
 mod calibration;
 mod control;
+mod fences;
 mod flightmodes;
 mod guided;
 mod inspector;

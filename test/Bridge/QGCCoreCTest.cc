@@ -408,3 +408,13 @@ void QGCCoreCTest::_surveyStatsNeedAnItem()
     QCOMPARE(missing.value(QStringLiteral("available")).toBool(true), false);
     QCOMPARE(missing.value(QStringLiteral("shotsText")).toString(), QStringLiteral("\u2014"));
 }
+
+void QGCCoreCTest::_fencesAndPolygonsAreServed()
+{
+    const QJsonObject fences = take(qgc_bridge_get("view.fences"));
+    QCOMPARE(fences.value(QStringLiteral("class")).toString(), QStringLiteral("Fences"));
+    QVERIFY(fences.value(QStringLiteral("polygons")).isArray());
+    QVERIFY(fences.value(QStringLiteral("rallyPoints")).isArray());
+    QCOMPARE(take(qgc_bridge_get("view.polygon")).value(QStringLiteral("kind")).toString(), QStringLiteral("null"));
+    QCOMPARE(take(qgc_bridge_get("view.polygon(plan.geoFenceController.polygons.99)")).value(QStringLiteral("kind")).toString(), QStringLiteral("null"));
+}

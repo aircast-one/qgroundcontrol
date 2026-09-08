@@ -6,6 +6,7 @@ use crate::altitude;
 use crate::battery;
 use crate::calibration;
 use crate::control;
+use crate::fences;
 use crate::flightmodes;
 use crate::guided;
 use crate::inspector;
@@ -64,6 +65,8 @@ pub const VIEWS: &[View] = &[
     View { path: "view.flightModes", deps: flightmodes::DEPS, compute: flightmodes::flight_modes_view },
     View { path: "view.settings", deps: settings::DEPS, compute: settings::settings_view },
     View { path: "view.surveyStats", deps: survey::DEPS, compute: survey::survey_stats_view },
+    View { path: "view.fences", deps: fences::DEPS, compute: fences::fences_view },
+    View { path: "view.polygon", deps: &[], compute: fences::polygon_view },
 ];
 
 pub fn owns(path: &str) -> bool {
