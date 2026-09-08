@@ -333,11 +333,10 @@ final class MissionStore: ObservableObject, Probeable {
 
     func setCommand(of item: MissionItem, to command: Int) {
         guard item.canChangeCommand else { return }
-        if let centre = MissionMap.lastRender["plan"]?["centre"] as? [String: Double],
-           let latitude = centre["lat"], let longitude = centre["lon"] {
+        if let centre = mapCentre {
             _ = Bridge.invoke(
                 "plan.missionController.visualItems.\(item.index).setMapCenterHintForCommandChange",
-                [["latitude": latitude, "longitude": longitude]])
+                [["latitude": centre.latitude, "longitude": centre.longitude]])
         }
         _ = Bridge.set("plan.missionController.visualItems.\(item.index).command", command)
         pickingCommandFor = nil
@@ -357,6 +356,44 @@ final class MissionStore: ObservableObject, Probeable {
     func removeAll() {
         Bridge.invoke("plan.removeAll")
         reload()
+    }
+
+    var mapCentre: GeoPoint? {
+        guard let centre = MissionMap.lastRender["plan"]?["centre"] as? [String: Double],
+              let latitude = centre["lat"], let longitude = centre["lon"] else { return nil }
+        return GeoPoint(latitude: latitude, longitude: longitude)
+    }
+
+    func createPlan(_ kind: MissionItemKind?) -> String? {
+        Bridge.invoke("plan.removeAll")
+
+        guard let kind, let complex = kind.complexName else {
+            reload()
+            return nil
+        }
+        guard let centre = mapCentre else {
+            reload()
+            return "The map has not settled yet, so there is nowhere to put the plan."
+        }
+
+        let at = ["latitude": centre.latitude, "longitude": centre.longitude]
+        Bridge.invoke("plan.missionController.insertTakeoffItem", [at, -1, false])
+        Bridge.invoke("plan.missionController.insertComplexMissionItem", [complex, at, -1, false])
+        Bridge.invoke("plan.missionController.insertLandItem", [at, -1, false])
+        reload()
+
+        guard let pattern = items.first(where: { $0.command == complex }) else {
+            return "\(kind.title) could not be added to the plan."
+        }
+        seed(kind, at: pattern.index,
+             latitude: centre.latitude, longitude: centre.longitude)
+
+        if let takeoff = items.first(where: { $0.isLaunch && $0.sequence > 0 }) {
+            Bridge.invoke("plan.missionController.setCurrentPlanViewSeqNum",
+                          [takeoff.sequence, true])
+        }
+        reload()
+        return nil
     }
 
     func exportKml(to file: URL) {
@@ -572,6 +609,11 @@ final class MissionStore: ObservableObject, Probeable {
                 return ["ok": false, "error": "\(target.command) cannot be moved"]
             }
             move(sequence: sequence, latitude: latitude, longitude: longitude)
+        case "createPlan":
+            let kind = MissionItemKind(rawValue: args["kind"] ?? "")
+            if let failure = createPlan(kind) {
+                return ["ok": false, "error": failure]
+            }
         case "pickCommand":
             guard let target = items.first(where: {
                 $0.sequence == Int(args["sequence"] ?? "") ?? -1

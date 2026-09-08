@@ -148,6 +148,7 @@ struct PlanInspector: View {
 
     @State private var contentHeight: CGFloat = 0
     @State private var shapeError: String?
+    @State private var replacing: String?
 
     var body: some View {
         GlassPanel {
@@ -192,6 +193,19 @@ struct PlanInspector: View {
         .sheet(isPresented: Binding(get: { mission.pickingCommandFor != nil },
                                     set: { if !$0 { mission.pickingCommandFor = nil } })) {
             commandPicker
+        }
+        .confirmationDialog("Replace this plan?",
+                            isPresented: Binding(get: { replacing != nil },
+                                                 set: { if !$0 { replacing = nil } }),
+                            titleVisibility: .visible) {
+            Button("Replace", role: .destructive) {
+                let kind = MissionItemKind(rawValue: replacing ?? "")
+                replacing = nil
+                shapeError = mission.createPlan(kind)
+            }
+            Button("Cancel", role: .cancel) { replacing = nil }
+        } message: {
+            Text("The \(mission.items.count) items already in this plan will be discarded.")
         }
         .alert("That file could not be used",
                isPresented: Binding(get: { shapeError != nil }, set: { if !$0 { shapeError = nil } })) {
@@ -626,6 +640,13 @@ struct PlanInspector: View {
                 Button("Export KML\u{2026}", action: exportKml)
                     .disabled(mission.items.count < 2)
                 Divider()
+                Menu("New Plan") {
+                    Button("Empty") { startPlan(nil) }
+                    ForEach(MissionItemKind.shapeImportable) { kind in
+                        Button(kind.title) { startPlan(kind) }
+                    }
+                }
+                Divider()
                 Button("Clear", action: mission.removeAll)
             } label: {
                 Image(systemName: "folder")
@@ -727,6 +748,14 @@ struct PlanInspector: View {
         panel.nameFieldStringValue = "\(mission.planName).plan"
         guard panel.runModal() == .OK, let file = panel.url else { return }
         mission.save(to: file)
+    }
+
+    private func startPlan(_ kind: MissionItemKind?) {
+        guard mission.items.count > 1 else {
+            shapeError = mission.createPlan(kind)
+            return
+        }
+        replacing = kind?.rawValue ?? ""
     }
 
     private func exportKml() {

@@ -589,6 +589,11 @@ func checkMissionItemKinds() {
     expect(area[0].longitude < 149.165 && area[2].longitude > 149.165, "on both axes")
     let span = (area[2].latitude - area[0].latitude) * 111_320
     expect(abs(span - 2 * MissionItemKind.defaultAreaMetres) < 1, "and is the intended size across")
+    expect(MissionItemKind(rawValue: "") == nil,
+           "an empty raw value is no kind, which is how the Empty template asks for nothing")
+    expect(MissionItemKind(rawValue: "survey") == .survey,
+           "and a kind survives the round trip through its raw value")
+
     expect(MissionItemKind.shapeImportable.map(\.rawValue).joined(separator: ","),
            "survey,corridor,structure",
            "only the three complex patterns can be drawn from a shape file")
