@@ -17,7 +17,8 @@ struct FlyPanel: View {
                             key: "battery\(index)",
                             title: fly.batteries.count > 1 ? "Battery \(index + 1)" : "Battery",
                             value: index == 0 ? fly.telemetry.batteryText : pack.first?.value ?? "",
-                            level: fly.telemetry.batteryLevel,
+                            level: fly.batteryLevels.indices.contains(index)
+                                ? fly.batteryLevels[index] : fly.telemetry.batteryLevel,
                             detail: pack,
                             showSeparator: index > 0)
                     }

@@ -13,6 +13,7 @@ final class FlyStore: ObservableObject, Probeable, WriteReporting {
     @Published private(set) var airframe = PreflightAirframe.generic
     @Published private(set) var audioMuted = false
     @Published private(set) var batteries: [[DetailRow]] = []
+    @Published private(set) var batteryLevels: [FlyTelemetry.Level] = []
     @Published private(set) var gpsDetail: [DetailRow] = []
     @Published private(set) var linkDetail: [DetailRow] = []
     @Published var expanded: Set<String> = []
@@ -116,10 +117,14 @@ final class FlyStore: ObservableObject, Probeable, WriteReporting {
             remoteRSSI: (vehicle["telemetryRRSSI"] as? NSNumber)?.intValue)
         if readLink != linkDetail { linkDetail = readLink }
 
-        let battery = packs.first
-        let batteryFacts = battery.map(FlyStore.facts) ?? [:]
-        reading.batteryPercent = batteryFacts["percentRemaining"]
-        reading.batteryVolts = batteryFacts["voltage"]
+        let batteryView = Bridge.group("view.battery")
+        let batteryPacks = (batteryView["packs"] as? [[String: Any]]) ?? []
+        let first = batteryPacks.first
+        reading.batteryPercent = (first?["percent"] as? NSNumber)?.doubleValue
+        reading.batteryVolts = (first?["voltage"] as? NSNumber)?.doubleValue
+        reading.batteryLevel = FlyTelemetry.Level(batteryView["level"] as? String)
+        let readLevels = batteryPacks.map { FlyTelemetry.Level($0["level"] as? String) }
+        if readLevels != batteryLevels { batteryLevels = readLevels }
 
         let coordinate = vehicle["coordinate"] as? [String: Any]
         let placed = VehicleMarker(

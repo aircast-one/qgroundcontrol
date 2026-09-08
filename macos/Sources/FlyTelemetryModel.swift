@@ -6,6 +6,15 @@ struct FlyTelemetry: Equatable {
         case warning
         case critical
         case unknown
+
+        init(_ reported: String?) {
+            switch reported {
+            case "normal": self = .good
+            case "caution": self = .warning
+            case "critical": self = .critical
+            default: self = .unknown
+            }
+        }
     }
 
     var mode = ""
@@ -22,15 +31,7 @@ struct FlyTelemetry: Equatable {
     var speedUnits = "m/s"
     var gpsLock: Int?
 
-    static let lowBattery = 25.0
-    static let criticalBattery = 15.0
-
-    var batteryLevel: Level {
-        guard let batteryPercent else { return .unknown }
-        if batteryPercent <= FlyTelemetry.criticalBattery { return .critical }
-        if batteryPercent <= FlyTelemetry.lowBattery { return .warning }
-        return .good
-    }
+    var batteryLevel = Level.unknown
 
     // A 3D fix is the point at which position is trustworthy enough to fly on; below
     // that the vehicle knows roughly where it is at best.

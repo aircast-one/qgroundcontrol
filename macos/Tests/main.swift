@@ -1083,13 +1083,16 @@ func checkFlyTelemetry() {
 
     reading.batteryPercent = 100
     reading.batteryVolts = 12.6
-    expect(reading.batteryLevel == .good, "a full battery is good")
-    expect(reading.batteryText, "100% \u{00B7} 12.6 V", "and reads as percent and volts")
+    expect(reading.batteryText, "100% \u{00B7} 12.6 V", "reads as percent and volts")
 
-    reading.batteryPercent = 20
-    expect(reading.batteryLevel == .warning, "a fifth of a battery is a warning")
-    reading.batteryPercent = 10
-    expect(reading.batteryLevel == .critical, "a tenth of a battery is critical")
+    expect(FlyTelemetry.Level("normal") == .good, "the core's normal is a good battery")
+    expect(FlyTelemetry.Level("caution") == .warning, "its caution is a warning")
+    expect(FlyTelemetry.Level("critical") == .critical, "and its critical is critical")
+    expect(FlyTelemetry.Level(nil) == .unknown,
+           "no answer is unknown, never good, because the head no longer decides this from a "
+           + "percentage and must not invent a level when the core has not given one")
+    expect(FlyTelemetry.Level("nonsense") == .unknown,
+           "and a level this head does not recognise is unknown rather than the safest-looking one")
 
     reading.gpsLock = 6
     reading.satellites = 10

@@ -4,6 +4,7 @@ final class PowerStore: ObservableObject, Probeable {
     static let probeID = "power"
 
     @Published private(set) var battery = BatteryReading.unavailable
+    @Published private(set) var level = FlyTelemetry.Level.unknown
 
     private var timer: Timer?
 
@@ -21,28 +22,32 @@ final class PowerStore: ObservableObject, Probeable {
     }
 
     func refresh() {
-        let batteries = (Bridge.group("vehicle.batteries")["elements"] as? [[String: Any]]) ?? []
-        guard let first = batteries.first else {
+        let view = Bridge.group("view.battery")
+        guard let first = (view["packs"] as? [[String: Any]])?.first else {
             if battery != .unavailable { battery = .unavailable }
+            if level != .unknown { level = .unknown }
             return
         }
 
-        let facts = (first["facts"] as? [[String: Any]]) ?? []
         func value(_ name: String) -> Double? {
-            guard let raw = facts.first(where: { $0["name"] as? String == name })?["value"],
-                  let number = raw as? NSNumber else { return nil }
-            return number.doubleValue.isFinite ? number.doubleValue : nil
+            guard let number = first[name] as? NSNumber, number.doubleValue.isFinite else {
+                return nil
+            }
+            return number.doubleValue
         }
 
         let reading = BatteryReading(voltage: value("voltage"),
                                      current: value("current"),
-                                     percent: value("percentRemaining"))
+                                     percent: value("percent"))
         if reading != battery { battery = reading }
+        let read = FlyTelemetry.Level(view["level"] as? String)
+        if read != level { level = read }
     }
 
     func probeState() -> [String: Any] {
         ["available": battery.available, "voltage": battery.voltageText,
-         "current": battery.currentText, "percent": battery.percentText]
+         "current": battery.currentText, "percent": battery.percentText,
+         "level": String(describing: level)]
     }
 
     func probeInvoke(action: String, args: [String: String]) -> [String: Any] {
