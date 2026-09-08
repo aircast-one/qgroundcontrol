@@ -33,9 +33,12 @@ struct PlanSummary: Equatable {
 }
 
 enum PlanReadiness {
+    // Ordered as VisualMissionItem.h declares them: ReadyForSave, NotReadyForSaveTerrain,
+    // NotReadyForSaveData. These were swapped, so a plan waiting on terrain told the operator
+    // an item was unfinished, and an unfinished item blamed the terrain.
     static let readyForSave = 0
-    static let notReadyForSaveData = 1
-    static let notReadyForSaveTerrain = 2
+    static let notReadyForSaveTerrain = 1
+    static let notReadyForSaveData = 2
 
     static func reason(for state: Int) -> String {
         switch state {

@@ -2281,6 +2281,7 @@ checkMessageRate()
 checkMenuPlacement()
 checkOverlayArrange()
 checkCentreNotes()
+checkPlanReadiness()
 checkMapFollow()
 checkMapScale()
 checkTerrainDownload()
@@ -2880,6 +2881,21 @@ func checkPolygonEdit() {
     expect(pair?.canRemoveVertex == false, "but neither end can be dropped")
     expect(EditablePolygon.read(path: "l", json: ["path": []], ring: false) == nil,
            "and an empty line is still nothing to edit")
+}
+
+func checkPlanReadiness() {
+    // VisualMissionItem.h:39-43 declares ReadyForSave, NotReadyForSaveTerrain,
+    // NotReadyForSaveData in that order, so terrain is 1 and data is 2.
+    expect(PlanReadiness.readyForSave == 0, "a ready plan is zero, as the header declares it")
+    expect(PlanReadiness.notReadyForSaveTerrain == 1,
+           "terrain is the FIRST not-ready value in the C++ enum")
+    expect(PlanReadiness.notReadyForSaveData == 2,
+           "and an incomplete item is the second")
+    expect(PlanReadiness.reason(for: 1).contains("terrain"),
+           "so state 1 must tell the operator it is waiting for terrain")
+    expect(PlanReadiness.reason(for: 2).contains("still being drawn"),
+           "and state 2 that an item is unfinished")
+    expect(PlanReadiness.reason(for: 0).isEmpty, "a ready plan explains nothing")
 }
 
 func checkCentreNotes() {
