@@ -1146,6 +1146,26 @@ Caution was a hard amber; High was `colorScheme.error`, which in this dark theme
 pink meant for text on a surface rather than for filling a shape. The most serious band was
 the least alarming thing on the screen. High is a saturated red now.
 
+**Seventh migration: the battery, and a question asked before the work.** `batteryLevel`,
+`batteryText`, `firstBattery`, the four charge-state constants and the 98.9% rounding rule are
+deleted. `view.battery` serves the level and the text.
+
+The order matters more than the result. The core session had said "time remaining and charge
+state stay Qt-side for now", which could have meant the view no longer carries `chargeState` -
+and migrating on that reading would have silently dropped the charge-state branch and left the
+strip threshold-only. **It would have looked correct**, because this sim's battery reports a
+state and a percentage that agree. Asking first cost one message; finding out afterwards would
+have cost a regression this rig cannot see.
+
+Both branches then verified on the handset: a LOW state at 90% renders Warning, so the state
+beats a healthy percentage, and an undefined state at 70% renders Caution, so the threshold
+path still runs. Measured off the pixels, hue 36 against hue 46, because those two ambers are
+not distinguishable by eye.
+
+One regression caught in the doing: the core's `text` is the primary value alone and the pack's
+`secondaryText` carries the voltage, where the old code joined them itself, so the first
+version showed "90%" where it used to show "90% · 11.10V".
+
 **Sixth migration: the log list.** `parseLogEntries` and `formatLogTime` are deleted;
 `view.logs` serves each entry with its size and time already formatted, and serves
 `canRefresh`, `canDownload`, `canCancel`, `canErase` and `anyDownloaded` instead of the screen
