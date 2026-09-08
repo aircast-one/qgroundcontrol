@@ -1,3 +1,4 @@
+#![allow(deprecated)]
 use mavlink::dialects::ardupilotmega::{EstimatorStatusFlags, MavMessage, MavSensorOrientation};
 use std::collections::BTreeMap;
 
@@ -82,6 +83,10 @@ impl WindFacts {
                 self.vertical_speed = d.wind_z as f64;
                 true
             }
+            MavMessage::HIGH_LATENCY(d) => {
+                self.speed = d.airspeed as f64 / 5.0;
+                true
+            }
             MavMessage::HIGH_LATENCY2(d) => {
                 self.direction = d.wind_heading as f64 * 2.0;
                 self.speed = d.windspeed as f64 / 5.0;
@@ -111,6 +116,10 @@ impl TemperatureFacts {
             }
             MavMessage::SCALED_PRESSURE3(d) => {
                 self.temperature3 = d.temperature as f64 / 100.0;
+                true
+            }
+            MavMessage::HIGH_LATENCY(d) => {
+                self.temperature1 = d.temperature_air as f64;
                 true
             }
             MavMessage::HIGH_LATENCY2(d) => {
@@ -237,7 +246,7 @@ mod tests {
             applied = std::array::from_fn(|i| applied[i] + hits[i] as usize);
         });
         assert!(applied.iter().any(|n| *n > 0), "no sensor fact messages in the sample log");
-        assert!((0.0..360.0).contains(&wind.direction));
-        assert!(temperature.temperature1.abs() < 100.0);
+        assert!(applied[0] == 0 || (0.0..360.0).contains(&wind.direction));
+        assert!(applied[1] == 0 || temperature.temperature1.abs() < 100.0);
     }
 }

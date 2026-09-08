@@ -1,3 +1,4 @@
+#![allow(deprecated)]
 use mavlink::dialects::ardupilotmega::MavMessage;
 use std::f64::consts::{FRAC_PI_2, PI};
 
@@ -23,6 +24,7 @@ pub struct VehicleFacts {
     pub range_finder_dist: f64,
     altitude_tuning_offset: Option<f64>,
     receiving_quaternion: bool,
+    vehicle: (u8, u8),
 }
 
 pub fn limit_angle_to_pm_pi(angle: f64) -> f64 {
@@ -64,19 +66,23 @@ fn zero_if_nan(value: f32) -> f64 {
 }
 
 impl VehicleFacts {
+    pub fn for_vehicle(system_id: u8, component_id: u8) -> Self {
+        VehicleFacts { vehicle: (system_id, component_id), ..Default::default() }
+    }
+
     fn set_attitude(&mut self, roll: f64, pitch: f64, yaw: f64) {
         (self.roll, self.pitch, self.heading) = attitude_degrees(roll, pitch, yaw);
     }
 
-    pub fn apply(&mut self, message: &MavMessage) -> bool {
+    pub fn apply(&mut self, from: (u8, u8), message: &MavMessage) -> bool {
         match message {
             MavMessage::ATTITUDE(d) => {
-                if !self.receiving_quaternion {
+                if from == self.vehicle && !self.receiving_quaternion {
                     self.set_attitude(d.roll as f64, d.pitch as f64, d.yaw as f64);
                 }
                 true
             }
-            MavMessage::ATTITUDE_QUATERNION(d) => {
+            MavMessage::ATTITUDE_QUATERNION(d) if from == self.vehicle => {
                 self.receiving_quaternion = true;
                 let (roll, pitch, yaw) = quaternion_to_euler([d.q1 as f64, d.q2 as f64, d.q3 as f64, d.q4 as f64]);
                 self.set_attitude(roll, pitch, yaw);
@@ -95,7 +101,8 @@ impl VehicleFacts {
                 self.ground_speed = zero_if_nan(d.groundspeed);
                 self.climb_rate = zero_if_nan(d.climb);
                 self.throttle_pct = d.throttle as i16;
-                let offset = *self.altitude_tuning_offset.get_or_insert(d.alt as f64);
+                let offset = self.altitude_tuning_offset.filter(|o| !o.is_nan()).unwrap_or(d.alt as f64);
+                self.altitude_tuning_offset = Some(offset);
                 self.altitude_tuning = d.alt as f64 - offset;
                 true
             }
@@ -108,6 +115,17 @@ impl VehicleFacts {
             }
             MavMessage::RANGEFINDER(d) => {
                 self.range_finder_dist = zero_if_nan(d.distance);
+                true
+            }
+            MavMessage::HIGH_LATENCY(d) => {
+                self.altitude_amsl = d.altitude_amsl as f64;
+                self.air_speed = d.airspeed as f64;
+                self.ground_speed = d.groundspeed as f64;
+                self.climb_rate = d.climb_rate as f64;
+                self.throttle_pct = d.throttle as i16;
+                self.heading = (d.heading as f64 / 100.0).trunc();
+                self.roll = d.roll as f64 / 100.0;
+                self.pitch = d.pitch as f64 / 100.0;
                 true
             }
             _ => false,
@@ -126,57 +144,62 @@ mod tests {
 
     #[test]
     fn attitude_becomes_degrees_with_a_truncated_compass_heading() {
-        let mut facts = VehicleFacts::default();
+        let mut facts = VehicleFacts::for_vehicle(1, 1);
         let mut data = ATTITUDE_DATA::default();
         data.roll = 0.5;
         data.pitch = -0.25;
         data.yaw = -1.5;
-        facts.apply(&MavMessage::ATTITUDE(data.clone()));
+        facts.apply((1, 1), &MavMessage::ATTITUDE(data.clone()));
         assert!(near(facts.roll, 28.6479) && near(facts.pitch, -14.3239));
         assert_eq!(facts.heading, 274.0);
         data.yaw = 7.0;
-        facts.apply(&MavMessage::ATTITUDE(data));
+        facts.apply((1, 1), &MavMessage::ATTITUDE(data));
         assert_eq!(facts.heading, 41.0);
     }
 
     #[test]
     fn a_quaternion_takes_over_from_plain_attitude() {
-        let mut facts = VehicleFacts::default();
-        let half = (FRAC_PI_2 / 2.0) as f32;
+        let mut facts = VehicleFacts::for_vehicle(1, 1);
+        let half = 0.5f32;
         let mut quat = ATTITUDE_QUATERNION_DATA::default();
         (quat.q1, quat.q4, quat.yawspeed) = (half.cos(), half.sin(), 0.1);
-        facts.apply(&MavMessage::ATTITUDE_QUATERNION(quat));
-        assert_eq!((facts.roll, facts.pitch, facts.heading), (0.0, 0.0, 90.0));
+        facts.apply((1, 1), &MavMessage::ATTITUDE_QUATERNION(quat.clone()));
+        assert_eq!((facts.roll, facts.pitch, facts.heading), (0.0, 0.0, 57.0));
+        let mut other = VehicleFacts::for_vehicle(1, 1);
+        other.apply((1, 154), &MavMessage::ATTITUDE_QUATERNION(quat));
+        assert_eq!(other.heading, 0.0);
         assert!(near(facts.yaw_rate, 5.7296));
         let mut plain = ATTITUDE_DATA::default();
         plain.yaw = 1.0;
-        facts.apply(&MavMessage::ATTITUDE(plain));
-        assert_eq!(facts.heading, 90.0);
+        facts.apply((1, 1), &MavMessage::ATTITUDE(plain));
+        assert_eq!(facts.heading, 57.0);
     }
 
     #[test]
     fn tuning_offsets_are_taken_from_the_first_hud() {
-        let mut facts = VehicleFacts::default();
+        let mut facts = VehicleFacts::for_vehicle(1, 1);
         let mut hud = VFR_HUD_DATA::default();
-        (hud.alt, hud.airspeed, hud.groundspeed, hud.throttle) = (100.0, f32::NAN, 4.5, 55);
-        facts.apply(&MavMessage::VFR_HUD(hud.clone()));
+        (hud.alt, hud.airspeed, hud.groundspeed, hud.throttle) = (f32::NAN, f32::NAN, 4.5, 55);
+        facts.apply((1, 1), &MavMessage::VFR_HUD(hud.clone()));
+        hud.alt = 100.0;
+        facts.apply((1, 1), &MavMessage::VFR_HUD(hud.clone()));
         hud.alt = 112.5;
-        facts.apply(&MavMessage::VFR_HUD(hud));
+        facts.apply((1, 1), &MavMessage::VFR_HUD(hud));
         assert_eq!((facts.altitude_tuning, facts.air_speed, facts.ground_speed, facts.throttle_pct), (12.5, 0.0, 4.5, 55));
         let mut nav = NAV_CONTROLLER_OUTPUT_DATA::default();
         (nav.alt_error, nav.wp_dist) = (2.5, 40);
-        facts.apply(&MavMessage::NAV_CONTROLLER_OUTPUT(nav));
+        facts.apply((1, 1), &MavMessage::NAV_CONTROLLER_OUTPUT(nav));
         assert_eq!((facts.altitude_tuning_setpoint, facts.distance_to_next_wp), (10.0, 40.0));
-        assert!(!facts.apply(&MavMessage::HEARTBEAT(Default::default())));
+        assert!(!facts.apply((1, 1), &MavMessage::HEARTBEAT(Default::default())));
     }
 
     #[test]
     fn the_sample_log_keeps_the_heading_on_the_compass() {
         let bytes = std::fs::read(concat!(env!("CARGO_MANIFEST_DIR"), "/../mav.tlog")).unwrap();
-        let mut facts = VehicleFacts::default();
+        let mut facts = VehicleFacts::for_vehicle(1, 1);
         let mut headings = Vec::new();
-        crate::tlog::for_each(&bytes, |_, _, message| {
-            if facts.apply(message) {
+        crate::tlog::for_each(&bytes, |_, header, message| {
+            if facts.apply((header.system_id, header.component_id), message) {
                 headings.push(facts.heading);
             }
         });

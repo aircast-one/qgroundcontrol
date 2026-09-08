@@ -1,14 +1,39 @@
 use std::io::{Cursor, Read};
 
-pub fn inflate_gzip(bytes: &[u8]) -> Result<Vec<u8>, String> {
+pub const INFLATE_LIMIT: u64 = 256 * 1024 * 1024;
+
+fn bounded(mut reader: impl Read, codec: &str) -> Result<Vec<u8>, String> {
     let mut out = Vec::new();
-    flate2::read::MultiGzDecoder::new(bytes).read_to_end(&mut out).map_err(|e| format!("gzip: {e}"))?;
-    Ok(out)
+    reader.by_ref().take(INFLATE_LIMIT + 1).read_to_end(&mut out).map_err(|e| format!("{codec}: {e}"))?;
+    (out.len() as u64 <= INFLATE_LIMIT).then_some(out).ok_or_else(|| format!("{codec}: inflated payload exceeds {INFLATE_LIMIT} bytes"))
+}
+
+struct LimitedSink<'a> {
+    out: &'a mut Vec<u8>,
+}
+
+impl std::io::Write for LimitedSink<'_> {
+    fn write(&mut self, buf: &[u8]) -> std::io::Result<usize> {
+        if (self.out.len() + buf.len()) as u64 > INFLATE_LIMIT {
+            return Err(std::io::Error::other(format!("inflated payload exceeds {INFLATE_LIMIT} bytes")));
+        }
+        self.out.extend_from_slice(buf);
+        Ok(buf.len())
+    }
+
+    fn flush(&mut self) -> std::io::Result<()> {
+        Ok(())
+    }
+}
+
+pub fn inflate_gzip(bytes: &[u8]) -> Result<Vec<u8>, String> {
+    bounded(flate2::read::MultiGzDecoder::new(bytes), "gzip")
 }
 
 pub fn inflate_xz(bytes: &[u8]) -> Result<Vec<u8>, String> {
     let mut out = Vec::new();
-    lzma_rs::xz_decompress(&mut Cursor::new(bytes), &mut out).map_err(|e| format!("xz: {e:?}"))?;
+    let mut sink = LimitedSink { out: &mut out };
+    lzma_rs::xz_decompress(&mut Cursor::new(bytes), &mut sink).map_err(|e| format!("xz: {e:?}"))?;
     Ok(out)
 }
 
@@ -16,10 +41,9 @@ pub fn unzip(bytes: &[u8]) -> Result<Vec<(String, Vec<u8>)>, String> {
     let mut archive = zip::ZipArchive::new(Cursor::new(bytes)).map_err(|e| format!("zip: {e}"))?;
     (0..archive.len())
         .map(|i| {
-            let mut entry = archive.by_index(i).map_err(|e| format!("zip entry {i}: {e}"))?;
-            let mut content = Vec::new();
-            entry.read_to_end(&mut content).map_err(|e| format!("zip entry {i}: {e}"))?;
-            Ok((entry.name().to_string(), content))
+            let entry = archive.by_index(i).map_err(|e| format!("zip entry {i}: {e}"))?;
+            let name = entry.name().to_string();
+            Ok((name, bounded(entry, "zip")?))
         })
         .filter(|entry| !matches!(entry, Ok((name, _)) if name.ends_with('/')))
         .collect()

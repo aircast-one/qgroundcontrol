@@ -618,17 +618,28 @@ void QGCCoreCTest::_missionFileAgreesWithTheCppLoader()
     QCOMPARE(read.value(QStringLiteral("valid")).toBool(false), true);
     const int rustCount = read.value(QStringLiteral("itemCount")).toInt();
     QVERIFY(rustCount > 0);
-
-    (void) take(qgc_bridge_invoke("plan.start", "[]"));
-    const QJsonObject loaded = take(qgc_bridge_invoke("plan.loadFromFile", QJsonDocument(QJsonArray { fixture }).toJson(QJsonDocument::Compact).constData()));
-    QVERIFY2(loaded.value(QStringLiteral("result")).toBool(false), "the C++ loader refused the legacy mission fixture");
     const auto lastSequence = []() {
         const QJsonArray elements = take(qgc_bridge_get_fields("plan.missionController.visualItems", "lastSequenceNumber")).value(QStringLiteral("elements")).toArray();
         return elements.isEmpty() ? -1 : elements.last().toObject().value(QStringLiteral("lastSequenceNumber")).toInt(-1);
     };
+    const auto homeLatitude = []() { return take(qgc_bridge_get("plan.missionController.plannedHomePosition")).value(QStringLiteral("latitude")).toDouble(); };
+    const double rustHome = read.value(QStringLiteral("home")).toObject().value(QStringLiteral("latitude")).toDouble();
+
+    (void) take(qgc_bridge_invoke("plan.start", "[]"));
+    const QJsonObject loaded = take(qgc_bridge_invoke("plan.loadFromFile", QJsonDocument(QJsonArray { fixture }).toJson(QJsonDocument::Compact).constData()));
+    QVERIFY2(loaded.value(QStringLiteral("result")).toBool(false), "the C++ loader refused the legacy mission fixture");
     QTRY_COMPARE_WITH_TIMEOUT(lastSequence(), rustCount, 5000);
-    const QJsonObject home = take(qgc_bridge_get("plan.missionController.plannedHomePosition"));
-    QVERIFY(qAbs(home.value(QStringLiteral("latitude")).toDouble() - read.value(QStringLiteral("home")).toObject().value(QStringLiteral("latitude")).toDouble()) < 1e-6);
+    QVERIFY(qAbs(homeLatitude() - rustHome) < 1e-6);
+    (void) take(qgc_bridge_invoke("plan.removeAll", "[]"));
+
+    QTemporaryFile written(QDir::tempPath() + QStringLiteral("/core-mission-XXXXXX.plan"));
+    QVERIFY(written.open());
+    written.write(read.value(QStringLiteral("plan")).toString().toUtf8());
+    written.close();
+    const QJsonObject reloaded = take(qgc_bridge_invoke("plan.loadFromFile", QJsonDocument(QJsonArray { written.fileName() }).toJson(QJsonDocument::Compact).constData()));
+    QVERIFY2(reloaded.value(QStringLiteral("ok")).toBool(false) && reloaded.value(QStringLiteral("result")).toBool(false), qPrintable(QStringLiteral("the C++ loader refused the rewritten mission: %1").arg(QString::fromUtf8(QJsonDocument(reloaded).toJson(QJsonDocument::Compact)))));
+    QTRY_COMPARE_WITH_TIMEOUT(lastSequence(), rustCount, 5000);
+    QVERIFY(qAbs(homeLatitude() - rustHome) < 1e-6);
     (void) take(qgc_bridge_invoke("plan.removeAll", "[]"));
     QCOMPARE(take(qgc_bridge_get("view.missionFile(/nonexistent.mission)")).value(QStringLiteral("readable")).toBool(true), false);
 }

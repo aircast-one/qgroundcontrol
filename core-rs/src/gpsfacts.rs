@@ -1,3 +1,4 @@
+#![allow(deprecated)]
 use mavlink::dialects::ardupilotmega::MavMessage;
 
 #[derive(Debug, Default, Clone, PartialEq)]
@@ -30,6 +31,13 @@ impl GpsFacts {
                 self.vdop = hundredths(d.epv);
                 self.course_over_ground = hundredths(d.cog);
                 self.lock = d.fix_type as u32;
+                true
+            }
+            MavMessage::HIGH_LATENCY(d) => {
+                self.latitude = Some(d.latitude as f64 * 1e-7);
+                self.longitude = Some(d.longitude as f64 * 1e-7);
+                self.count = 0;
+                self.lock = d.gps_fix_type as u32;
                 true
             }
             MavMessage::HIGH_LATENCY2(d) => {

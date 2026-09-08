@@ -33,6 +33,7 @@ pub struct Command {
     pub is_land: bool,
     pub is_loiter: bool,
     pub params: BTreeMap<u8, Value>,
+    pub hidden: BTreeSet<u8>,
 }
 
 const COMMON: &str = include_str!("../../src/MissionManager/MavCmdInfoCommon.json");
@@ -127,12 +128,14 @@ fn collapse(commands: BTreeMap<i64, Layered>, text: &str) -> BTreeMap<i64, Layer
 fn command(id: i64, layered: Layered) -> Command {
     let text = |key: &str| layered.info.get(key).and_then(Value::as_str).unwrap_or("").to_string();
     let flag = |key: &str| layered.info.get(key).and_then(Value::as_bool).unwrap_or(false);
+    let or = |value: String, fallback: &str| if value.is_empty() { fallback.to_string() } else { value };
+    let raw_name = text("rawName");
     Command {
         id,
-        raw_name: text("rawName"),
-        friendly_name: text("friendlyName"),
+        friendly_name: or(text("friendlyName"), &raw_name),
+        category: or(text("category"), "Advanced"),
+        raw_name,
         description: text("description"),
-        category: text("category"),
         specifies_coordinate: flag("specifiesCoordinate"),
         specifies_altitude_only: flag("specifiesAltitudeOnly"),
         standalone_coordinate: flag("standaloneCoordinate"),
@@ -140,7 +143,8 @@ fn command(id: i64, layered: Layered) -> Command {
         is_takeoff: flag("isTakeoffCommand"),
         is_land: flag("isLandCommand"),
         is_loiter: flag("isLoiterCommand"),
-        params: layered.params.into_iter().filter(|(i, _)| !layered.removed.contains(i)).collect(),
+        params: layered.params,
+        hidden: layered.removed,
     }
 }
 
@@ -175,17 +179,20 @@ mod tests {
         assert_eq!(base[&95].friendly_name, "Home Position");
         assert!(base[&95].specifies_coordinate && base.values().all(|c| !c.raw_name.is_empty()));
         assert!(base[&22].is_takeoff && base[&21].is_land && base[&17].is_loiter);
+        assert_eq!(base[&220].friendly_name, base[&220].raw_name);
+        assert_eq!(base[&23].category, "Advanced");
     }
 
     #[test]
     fn a_vehicle_override_removes_parameters_without_touching_the_rest() {
         let generic = tree(Firmware::Generic, VehicleClass::Generic);
         let multi = tree(Firmware::Generic, VehicleClass::MultiRotor);
-        assert!(generic[&17].params.contains_key(&3));
-        assert!(!multi[&17].params.contains_key(&3));
-        assert!(multi[&17].params.contains_key(&4));
+        assert!(generic[&17].hidden.is_empty() && generic[&17].params.contains_key(&3));
+        assert_eq!(multi[&17].hidden, BTreeSet::from([3]));
+        assert_eq!(multi[&17].params[&3]["default"], 50.0);
+        assert!(multi[&17].params.contains_key(&4) && !multi[&17].hidden.contains(&4));
         assert_eq!(multi[&17].friendly_name, generic[&17].friendly_name);
-        assert!(multi[&18].params.keys().all(|i| *i > 4));
+        assert_eq!(multi[&18].hidden, BTreeSet::from([1, 2, 3, 4]));
     }
 
     #[test]
@@ -194,6 +201,6 @@ mod tests {
         let apm = tree(Firmware::ArduPilot, VehicleClass::MultiRotor);
         assert!(px4.len() >= 90 && apm.len() >= 90);
         assert_ne!(px4, apm);
-        assert!(!px4[&17].params.contains_key(&3));
+        assert!(px4[&17].hidden.contains(&3));
     }
 }

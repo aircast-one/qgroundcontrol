@@ -45,6 +45,9 @@ pub fn parse(text: &str) -> Result<Mission, String> {
     if !(1..=2).contains(&version) {
         return Err(format!("mission file version {version} is not 1 or 2"));
     }
+    if root.get("complexItems").and_then(Value::as_array).is_some_and(|c| !c.is_empty()) {
+        return Err("complex items in a legacy mission file are not supported".to_string());
+    }
     let items = root.get("items").and_then(Value::as_array).ok_or("no items array")?;
     let items: Vec<SimpleItem> = items.iter().enumerate().map(|(i, item)| simple_item(item).map_err(|e| format!("item {}: {e}", i + 1))).collect::<Result<_, _>>()?;
     let home_object = root.get("plannedHomePosition").and_then(|h| h.get("coordinate")).and_then(coordinate);
@@ -53,10 +56,10 @@ pub fn parse(text: &str) -> Result<Mission, String> {
     Ok(Mission {
         home,
         firmware_type: root.get("firmwareType").or(root.get("MAV_AUTOPILOT")).and_then(Value::as_i64).unwrap_or(0),
-        vehicle_type: 2,
+        vehicle_type: root.get("vehicleType").and_then(Value::as_i64).unwrap_or(2),
         cruise_speed: root.get("cruiseSpeed").map(number).unwrap_or(15.0),
         hover_speed: root.get("hoverSpeed").map(number).unwrap_or(5.0),
-        global_altitude_mode: planfile::ALTITUDE_MODE_RELATIVE,
+        global_altitude_mode: planfile::ALTITUDE_MODE_MIXED,
         items,
     })
 }
@@ -97,6 +100,7 @@ mod tests {
         assert_eq!((mission.items[0].command, mission.items[0].frame, mission.items[5].command), (22, 2, 21));
         assert_eq!(mission.items[5].params[6], 3.0);
         assert_eq!(planfile::parse(&planfile::write(&mission)).unwrap().items.len(), 6);
+        assert_eq!(mission.global_altitude_mode, planfile::ALTITUDE_MODE_MIXED);
     }
 
     #[test]
@@ -114,5 +118,7 @@ mod tests {
         assert_eq!(parse(r#"{"version":3,"items":[]}"#).unwrap_err(), "mission file version 3 is not 1 or 2");
         assert!(parse(r#"{"items":[{"type":"SimpleItem","frame":3}]}"#).unwrap_err().starts_with("item 1: command missing"));
         assert!(parse(r#"{"items":[{"type":"ComplexItem","frame":3,"command":16}]}"#).unwrap_err().contains("not a simple item"));
+        assert!(parse(r#"{"items":[],"complexItems":[{"id":1}]}"#).unwrap_err().contains("complex items"));
+        assert_eq!(parse(r#"{"version":2,"vehicleType":1,"items":[]}"#).unwrap().vehicle_type, 1);
     }
 }

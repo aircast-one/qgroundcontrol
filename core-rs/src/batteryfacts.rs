@@ -1,3 +1,4 @@
+#![allow(deprecated)]
 use mavlink::dialects::ardupilotmega::MavMessage;
 use std::collections::BTreeMap;
 
@@ -33,6 +34,10 @@ fn unless<T: PartialEq>(raw: T, sentinel: T, scale: impl Fn(T) -> f64) -> Option
 impl Batteries {
     pub fn apply(&mut self, message: &MavMessage) -> bool {
         match message {
+            MavMessage::HIGH_LATENCY(d) => {
+                self.by_id.entry(0).or_default().percent_remaining = unless(d.battery_remaining, u8::MAX, f64::from);
+                true
+            }
             MavMessage::HIGH_LATENCY2(d) => {
                 self.by_id.entry(0).or_default().percent_remaining = unless(d.battery, -1, f64::from);
                 true

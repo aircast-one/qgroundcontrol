@@ -83,6 +83,7 @@ pub struct Mission {
     pub items: Vec<SimpleItem>,
 }
 
+pub const ALTITUDE_MODE_MIXED: i64 = 0;
 pub const ALTITUDE_MODE_RELATIVE: i64 = 1;
 pub const ALTITUDE_MODE_ABSOLUTE: i64 = 2;
 pub const ALTITUDE_MODE_TERRAIN_FRAME: i64 = 4;
@@ -135,6 +136,12 @@ pub fn altitude_mode_for_frame(frame: i64) -> Option<i64> {
     }
 }
 
+const DO_JUMP: i64 = 177;
+
+fn jump_target(version: i64, row: &crate::waypoints::Row) -> f64 {
+    if version == 120 && row.command == DO_JUMP { row.params[0] + 1.0 } else { row.params[0] }
+}
+
 pub fn from_waypoints(file: &Waypoints, firmware_type: i64, vehicle_type: i64) -> Mission {
     let home = file.home.as_ref().or(file.items.first()).map(|r| (r.latitude, r.longitude, r.altitude)).unwrap_or_default();
     Mission {
@@ -150,7 +157,7 @@ pub fn from_waypoints(file: &Waypoints, firmware_type: i64, vehicle_type: i64) -
             .map(|r| SimpleItem {
                 frame: r.frame,
                 command: r.command,
-                params: [r.params[0], r.params[1], r.params[2], r.params[3], r.latitude, r.longitude, r.altitude],
+                params: [jump_target(file.version, r), r.params[1], r.params[2], r.params[3], r.latitude, r.longitude, r.altitude],
                 auto_continue: r.auto_continue,
                 altitude_mode: altitude_mode_for_frame(r.frame),
             })
@@ -165,7 +172,7 @@ pub fn plan_from_waypoints_view(_backend: &dyn Backend, args: &[String]) -> Valu
         Err(e) => return json!({ "kind": "planFromWaypoints", "readable": false, "valid": false, "error": e.to_string() }),
     };
     let (firmware_type, vehicle_type) = (
-        args.get(1).and_then(|a| a.parse().ok()).unwrap_or(12),
+        args.get(1).and_then(|a| a.parse().ok()).unwrap_or(3),
         args.get(2).and_then(|a| a.parse().ok()).unwrap_or(2),
     );
     match crate::waypoints::parse(&text) {
@@ -270,6 +277,10 @@ mod tests {
         assert_eq!(mission.items.len(), file.items.len());
         assert!(mission.items.iter().zip(&file.items).all(|(m, r)| m.params[4] == r.latitude && m.altitude_mode == altitude_mode_for_frame(r.frame)));
         assert_eq!(parse(&write(&mission)).unwrap().items.len(), file.items.len());
+        let zero_based = crate::waypoints::parse("QGC WPL 120\n0\t0\t3\t22\t0\t0\t0\t0\t1\t2\t30\t1\n1\t0\t3\t16\t0\t0\t0\t0\t1\t2\t30\t1\n2\t0\t2\t177\t1\t3\t0\t0\t0\t0\t0\t1\n").unwrap();
+        let converted = from_waypoints(&zero_based, 3, 2);
+        assert_eq!(converted.items[2].params[0], 2.0);
+        assert_eq!(from_waypoints(&file, 3, 2).items.iter().filter(|i| i.command == DO_JUMP).count(), file.items.iter().filter(|r| r.command == DO_JUMP).count());
     }
 
     #[test]
