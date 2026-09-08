@@ -775,7 +775,7 @@ struct PlanInspector: View {
                     GroupRow(
                         title: shape.shapeText,
                         description: shape.rowDetail,
-                        showSeparator: shape.id > 0,
+                        showSeparator: shape.id != fenceRally.shapes.first?.id,
                         leading: {
                             Seal(label: shape.inclusion ? "IN" : "OUT",
                                  colour: Overlay.fence, rounded: true)

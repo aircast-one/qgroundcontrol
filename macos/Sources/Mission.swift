@@ -275,40 +275,42 @@ final class MissionStore: ObservableObject, Probeable, WriteReporting {
         items.map(surveyPolygon).filter { $0.count >= 3 }
     }
 
+    private func polygon(at path: String, ring: Bool) -> EditablePolygon? {
+        EditablePolygon(Bridge.group("view.polygon(\(path)\(ring ? "" : ",line"))"))
+    }
+
     var editablePolygons: [EditablePolygon] {
         let areas = items.compactMap { item -> EditablePolygon? in
             guard let property = MissionItemKind.areaProperty(forCommand: item.command) else {
                 return nil
             }
-            let path = "plan.missionController.visualItems.\(item.index).\(property)"
-            return EditablePolygon.read(path: path, json: Bridge.group(path), ring: true)
+            return polygon(at: "plan.missionController.visualItems.\(item.index).\(property)",
+                           ring: true)
         }
         let lines = items.compactMap { item -> EditablePolygon? in
             guard let property = MissionItemKind.lineProperty(forCommand: item.command) else {
                 return nil
             }
-            let path = "plan.missionController.visualItems.\(item.index).\(property)"
-            return EditablePolygon.read(path: path, json: Bridge.group(path), ring: false)
+            return polygon(at: "plan.missionController.visualItems.\(item.index).\(property)",
+                           ring: false)
         }
-        let fences = ((Bridge.group("plan.geoFenceController.polygons")["elements"]
-            as? [[String: Any]]) ?? []).enumerated().compactMap { index, json in
-            EditablePolygon.read(path: "plan.geoFenceController.polygons.\(index)",
-                                 json: json, ring: true)
+        let fences = FenceShape.list(Bridge.group("view.fences")["polygons"]).compactMap {
+            polygon(at: $0.path, ring: true)
         }
         return areas + lines + fences
     }
 
     func moveVertex(_ polygon: EditablePolygon, _ index: Int,
                     latitude: Double, longitude: Double) {
-        guard PolygonEdit.adjust(index, in: polygon) != nil else { return }
-        Bridge.invoke("\(polygon.path).adjustVertex",
+        guard polygon.points.indices.contains(index) else { return }
+        Bridge.invoke("\(polygon.path).\(polygon.adjustInvokable)",
                       [index, ["latitude": latitude, "longitude": longitude, "altitude": 0]])
         reload()
     }
 
     func removeVertex(_ polygon: EditablePolygon, _ index: Int) {
         guard PolygonEdit.removes(index, in: polygon) else { return }
-        Bridge.invoke("\(polygon.path).removeVertex", [index])
+        Bridge.invoke("\(polygon.path).\(polygon.removeInvokable)", [index])
         reload()
     }
 

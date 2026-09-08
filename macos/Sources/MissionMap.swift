@@ -174,7 +174,7 @@ struct MissionMap: NSViewRepresentable {
                 map.addAnnotation(VertexAnnotation(polygon: polygonIndex, index: index,
                                                    point: point, midpoint: false))
             }
-            polygon.midpoints().enumerated().forEach { index, point in
+            polygon.midpoints.enumerated().forEach { index, point in
                 map.addAnnotation(VertexAnnotation(polygon: polygonIndex, index: index,
                                                    point: point, midpoint: true))
             }
@@ -334,10 +334,11 @@ struct MissionMap: NSViewRepresentable {
     }
 
     static func overlay(for shape: FenceShape) -> MKOverlay? {
-        if let radius = shape.radius {
-            guard let latitude = shape.latitude, let longitude = shape.longitude else { return nil }
+        if shape.isCircle {
+            guard let centre = shape.centre, let radius = shape.radius else { return nil }
             let circle = FenceCircle(
-                center: CLLocationCoordinate2D(latitude: latitude, longitude: longitude),
+                center: CLLocationCoordinate2D(latitude: centre.latitude,
+                                               longitude: centre.longitude),
                 radius: radius)
             circle.inclusion = shape.inclusion
             return circle

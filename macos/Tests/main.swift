@@ -312,52 +312,47 @@ func checkMapFraming() {
 checkMapFraming()
 
 func checkFenceGeometry() {
-    let polygon = FenceShape(json: [
-        "inclusion": true, "count": 4, "area": 85268.0,
-        "center": ["latitude": -35.3635, "longitude": 149.1655],
-        "path": [["latitude": -35.3607, "longitude": 149.1612],
-                 ["latitude": -35.3607, "longitude": 149.1687],
-                 ["latitude": -35.3652, "longitude": 149.1687],
-                 ["latitude": -35.3652, "longitude": 149.1612]],
-    ], id: 0, circle: false)
-    expect(polygon.vertices.count == 4, "a polygon keeps every vertex the bridge sent")
-    expect(polygon.radius == nil, "a polygon has no radius")
-    expect(polygon.framingPoints.count == 4, "a polygon frames from its vertices")
-    expect(polygon.kindText, "Keep-in polygon", "an inclusion polygon reads as keep-in")
+    let polygon = FenceShape([
+        "index": 0 as NSNumber, "path": "plan.geoFenceController.polygons.0",
+        "shape": "polygon", "inclusion": true as NSNumber,
+        "kindText": "Keep-in polygon", "detailText": "4 vertices \u{00B7} 85268 m\u{00B2}",
+        "usable": true as NSNumber,
+        "vertices": [["latitude": -35.3607 as NSNumber, "longitude": 149.1612 as NSNumber],
+                     ["latitude": -35.3607 as NSNumber, "longitude": 149.1698 as NSNumber]],
+        "framing": [["latitude": -35.3607 as NSNumber, "longitude": 149.1612 as NSNumber],
+                    ["latitude": -35.3607 as NSNumber, "longitude": 149.1698 as NSNumber]],
+    ])
+    expect(polygon?.kindText ?? "", "Keep-in polygon",
+           "the core names the fence, so both heads call a keep-in the same thing")
+    expect(polygon?.shapeText ?? "", "Polygon", "the row title reads from the shape word")
+    expect(polygon?.id ?? "", "plan.geoFenceController.polygons.0",
+           "the path is the identity, so the head no longer subtracts one array's length from "
+           + "the other's to tell a circle from a polygon")
 
-    let exclusion = FenceShape(json: ["inclusion": false, "count": 3, "path": []], id: 1, circle: false)
-    expect(exclusion.kindText, "Keep-out polygon", "an exclusion polygon reads as keep-out")
-    expect(polygon.rowDetail, polygon.detailText,
-           "a polygon's row carries its vertex count and area")
-    expect(FenceShape(json: ["center": ["latitude": -35.36, "longitude": 149.16],
-                             "facts": [["name": "Radius", "value": 250]]],
-                      id: 1, circle: true).rowDetail, "",
-           "a circle's row does not repeat the radius the field beside it already shows")
+    let circle = FenceShape([
+        "index": 0 as NSNumber, "path": "plan.geoFenceController.circles.0",
+        "shape": "circle", "inclusion": false as NSNumber,
+        "kindText": "Keep-out circle", "detailText": "250 ft radius",
+        "centre": ["latitude": -35.36 as NSNumber, "longitude": 149.16 as NSNumber],
+        "centreText": "-35.360000, 149.160000",
+        "radius": 250.0 as NSNumber, "radiusUnits": "ft", "usable": true as NSNumber,
+        "framing": [["latitude": -35.3611 as NSNumber, "longitude": 149.1587 as NSNumber],
+                    ["latitude": -35.3589 as NSNumber, "longitude": 149.1613 as NSNumber]],
+    ])
+    expect(circle?.isCircle == true, "a circle knows it is one from the core's shape word")
+    expect(circle?.detailText ?? "", "250 ft radius",
+           "and names the units its radius fact came in, which the core writes")
+    expect(circle?.rowDetail ?? "x", "",
+           "its row shows no detail, because the radius is already the row's value")
+    expect(circle?.framing.count == 2,
+           "the framing box is the core's, computed from the radius rather than here")
+    expect(circle?.usable == true, "and the core decides whether it has enough geometry to draw")
 
-    expect(polygon.shapeText, "Polygon",
-           "the row names only the shape; the seal and the picker beside it carry keep-in or keep-out")
-
-    let circle = FenceShape(json: [
-        "inclusion": true,
-        "center": ["latitude": -35.3635, "longitude": 149.1655],
-        "facts": [["name": "Radius", "value": 100.0]],
-    ], id: 2, circle: true)
-    expect(circle.radius != nil, "a circle carries its radius")
-    expect(circle.vertices.isEmpty, "a circle has no vertices")
-    expect(circle.framingPoints.count == 2, "a circle frames from a box around its radius")
-    let span = circle.framingPoints[1].latitude - circle.framingPoints[0].latitude
-    expect(abs(span - 200.0 / 111_320.0) < 1e-6, "the framing box spans the circle's diameter")
-
-    let headless = FenceShape(json: ["inclusion": true, "facts": []], id: 3, circle: true)
-    expect(headless.framingPoints.isEmpty, "a circle with no centre contributes no framing points")
-
-    let bogus = FenceShape(json: [
-        "count": 2, "path": [["latitude": "north", "longitude": 149.16],
-                             ["latitude": -35.36, "longitude": 149.17]],
-    ], id: 4, circle: false)
-    expect(bogus.vertices.count == 1, "a malformed vertex is dropped rather than read as zero")
+    expect(FenceShape(["path": "p", "shape": "circle"]) == nil, "a shape with no index is dropped")
+    expect(FenceShape(["index": 0 as NSNumber]) == nil,
+           "and one with no shape word is dropped rather than guessed at")
+    expect(FenceShape.list(nil).isEmpty, "no answer is no fences")
 }
-
 checkFenceGeometry()
 
 func checkTilePyramid() {
@@ -951,22 +946,12 @@ func checkFlightModes() {
 checkFlightModes()
 
 func checkFenceUsable() {
-    let square = (0..<4).map { _ in ["latitude": -35.36, "longitude": 149.16] }
-    let polygon = FenceShape(json: ["count": 4, "path": square,
-                                    "center": ["latitude": -35.36, "longitude": 149.16]],
-                             id: 0, circle: false)
-    expect(polygon.usable, "a polygon with its vertices is usable")
-
-    let hollow = FenceShape(json: ["count": 4, "path": [NSNull(), NSNull(), NSNull(), NSNull()]],
-                            id: 0, circle: false)
-    expect(!hollow.usable,
-           "a polygon that counts four vertices but carries none is not; it draws nothing")
-
-    let circle = FenceShape(json: ["center": ["latitude": -35.36, "longitude": 149.16],
-                                   "facts": [["name": "Radius", "value": 200]]],
-                            id: 1, circle: true)
-    expect(circle.usable, "a circle needs a centre, not vertices")
-    expect(!FenceShape(json: [:], id: 1, circle: true).usable, "and without one it is not usable")
+    expect(FenceShape(["index": 0 as NSNumber, "shape": "polygon",
+                       "usable": true as NSNumber])?.usable == true,
+           "the core decides whether a fence has enough geometry to draw")
+    expect(FenceShape(["index": 0 as NSNumber, "shape": "circle",
+                       "usable": false as NSNumber])?.usable == false,
+           "a circle with no centre is not usable, and the head no longer works that out")
 }
 
 checkFenceUsable()
@@ -995,11 +980,6 @@ func checkRallyAndBreach() {
 
     let nan = RallyPointRow(json: ["coordinate": ["latitude": -35.36, "longitude": 149.16,
                                                   "altitude": Double.nan]], id: 2)
-    expect(FenceShape(json: ["center": ["latitude": -35.36, "longitude": 149.16],
-                             "facts": [["name": "Radius", "value": 250, "units": "ft"]]],
-                      id: 1, circle: true).detailText, "250 ft radius",
-           "a circle names the units its radius fact came in")
-
     expect(nan.altitudeText, "—",
            "and a height the vehicle reported as not-a-number is not shown as one")
 }
@@ -2497,6 +2477,7 @@ func checkViewContract() {
           "isTakingPhoto", "stateText", "clockText", "storageStatus", "storageText", "shots",
           "shotsText", "batteryRemaining", "batteryText", "hasZoom", "zoomLevel", "canRecord",
           "canPhoto", "hasModes"]),
+    ("view.fences", [], ["polygons", "circles", "rallyPoints", "count"]),
     ]
 
     let enumerations = (shapes["view.contract"] as? [String: Any])?["enumerations"] as? [String: Any]
@@ -2568,6 +2549,11 @@ func checkViewContract() {
     expect(recorded("view.camera.modeText").sorted().joined(separator: ","),
            "Not set,Photo,Survey,Video",
            "the four mode words are the core's, so neither head writes its own")
+
+    expect(recorded("view.fences.polygons[].shape").joined(separator: ","), "polygon",
+           "a polygon's shape word is only ever polygon")
+    expect(recorded("view.fences.circles[].shape").joined(separator: ","), "circle",
+           "and a circle's only ever circle, which is what isCircle reads")
 
     let neverNull: [(String, [String], [String])] = [
         ("view.battery", ["packs"], ["level", "text", "secondaryText"]),
@@ -2720,78 +2706,43 @@ func checkTerrainDownload() {
 }
 
 func checkPolygonEdit() {
-    let square = [GeoPoint(latitude: 0, longitude: 0), GeoPoint(latitude: 0, longitude: 2),
-                  GeoPoint(latitude: 2, longitude: 2), GeoPoint(latitude: 2, longitude: 0)]
-    let polygon = EditablePolygon(path: "p", points: square, minimumVertices: 3, ring: true)
+    func corner(_ lat: Double, _ lon: Double) -> [String: Any] {
+        ["latitude": lat as NSNumber, "longitude": lon as NSNumber]
+    }
+    let polygon = EditablePolygon([
+        "path": "p", "ring": true as NSNumber, "closed": true as NSNumber,
+        "minimumVertices": 3 as NSNumber, "canRemoveVertex": true as NSNumber,
+        "segments": 4 as NSNumber, "splitInvokable": "splitPolygonSegment",
+        "adjustInvokable": "adjustVertex", "removeInvokable": "removeVertex",
+        "vertices": [corner(0, 0), corner(0, 2), corner(2, 2), corner(2, 0)],
+        "midpoints": [corner(0, 1), corner(1, 2), corner(2, 1), corner(1, 0)],
+    ])
+    expect(polygon?.closed == true, "the core says whether four corners make a polygon")
+    expect(polygon?.canRemoveVertex == true, "and whether one can go without breaking it")
+    expect(polygon?.segments == 4, "a ring has as many segments as corners")
+    expect(polygon?.midpoints.count == 4,
+           "with a midpoint on each, which the core places rather than this head averaging pairs")
+    expect(polygon?.splitInvokable ?? "", "splitPolygonSegment",
+           "a ring splits with the polygon call, and the core names it")
 
-    expect(polygon.closed, "four corners make a polygon")
-    expect(polygon.canRemoveVertex, "and one can be taken away without breaking it")
+    let line = EditablePolygon([
+        "path": "l", "ring": false as NSNumber, "closed": true as NSNumber,
+        "minimumVertices": 2 as NSNumber, "canRemoveVertex": false as NSNumber,
+        "segments": 1 as NSNumber, "splitInvokable": "splitSegment",
+        "vertices": [corner(0, 0), corner(0, 2)], "midpoints": [corner(0, 1)],
+    ])
+    expect(line?.segments == 1, "a two-point line has one segment, not two")
+    expect(line?.canRemoveVertex == false,
+           "and neither end can go, because two points are the minimum the core states")
 
-    let midpoints = polygon.midpoints()
-    expect(midpoints.count == 4, "every side gets a handle to split it, including the closing one")
-    expect(midpoints[0] == GeoPoint(latitude: 0, longitude: 1), "each sits halfway along its side")
-    expect(midpoints[3] == GeoPoint(latitude: 1, longitude: 0),
-           "and the last wraps to the first corner rather than being dropped")
+    expect(PolygonEdit.splits(0, in: polygon!), "a segment index inside the ring can be split")
+    expect(!PolygonEdit.splits(4, in: polygon!), "one past the last cannot")
+    expect(PolygonEdit.removes(0, in: polygon!), "a corner can be removed from a square")
+    expect(!PolygonEdit.removes(0, in: line!), "but not from a two-point line")
 
-    let triangle = EditablePolygon(path: "p", points: Array(square.prefix(3)), minimumVertices: 3, ring: true)
-    expect(!triangle.canRemoveVertex,
-           "a triangle is already at the minimum, so removing a corner is refused")
-    expect(!PolygonEdit.removes(0, in: triangle), "which the edit rule enforces")
-    expect(PolygonEdit.removes(0, in: polygon), "while a square allows it")
-    expect(!PolygonEdit.removes(9, in: polygon), "and an index off the end is refused either way")
-
-    expect(PolygonEdit.adjust(2, in: polygon) != nil, "a real corner can be dragged")
-    expect(PolygonEdit.adjust(-1, in: polygon) == nil, "a negative index cannot")
-    expect(PolygonEdit.adjust(4, in: polygon) == nil, "nor one past the last corner")
-    expect(PolygonEdit.splits(3, in: polygon), "the closing side can be split like any other")
-    expect(!PolygonEdit.splits(4, in: polygon), "but there is no fifth side to split")
-
-    let short = EditablePolygon(path: "p", points: Array(square.prefix(2)), minimumVertices: 3, ring: true)
-    expect(!short.closed, "two points are not a polygon")
-    expect(short.midpoints().isEmpty, "so they get no split handles")
-    expect(!PolygonEdit.splits(0, in: short), "and nothing to split")
-
-    expect(EditablePolygon.read(path: "p", json: ["path": []], ring: true) == nil,
-           "an empty path is no polygon to edit")
-    expect(EditablePolygon.read(path: "p", json: [:], ring: true) == nil, "nor a missing one")
-
-    let live = EditablePolygon.read(path: "p", json: [
-        "minVertexCount": 3 as NSNumber,
-        "path": square.map { ["latitude": $0.latitude as NSNumber,
-                              "longitude": $0.longitude as NSNumber] }], ring: true)
-    expect(live?.points.count == 4, "the shape the live survey polygon actually reports is read")
-    expect(live?.minimumVertices == 3, "with the minimum the polygon itself declares")
-
-    let strict = EditablePolygon.read(path: "p", json: [
-        "minVertexCount": 4 as NSNumber,
-        "path": square.map { ["latitude": $0.latitude as NSNumber,
-                              "longitude": $0.longitude as NSNumber] }], ring: true)
-    expect(strict?.canRemoveVertex == false,
-           "a polygon that demands four corners does not let you drop to three")
-
-    let line = EditablePolygon(path: "l", points: Array(square.prefix(3)),
-                               minimumVertices: 2, ring: false)
-    expect(line.segments == 2,
-           "a corridor is an open line, so three points give two sides rather than three")
-    expect(line.midpoints().count == 2, "and two handles to split them")
-    expect(!PolygonEdit.splits(2, in: line),
-           "there is no closing side on a line, which is the wrap a ring has and a line does not")
-    expect(PolygonEdit.splits(2, in: polygon),
-           "while the square's closing side is real")
-    expect(line.splitInvokable, EditablePolygon.lineSplit,
-           "QGCMapPolyline calls it splitSegment, not splitPolygonSegment")
-    expect(polygon.splitInvokable, EditablePolygon.ringSplit,
-           "and QGCMapPolygon calls it splitPolygonSegment, which is the name that would have no-opped")
-
-    let pair = EditablePolygon.read(path: "l", json: [
-        "minVertexCount": 2 as NSNumber,
-        "path": Array(square.prefix(2)).map { ["latitude": $0.latitude as NSNumber,
-                                               "longitude": $0.longitude as NSNumber] }], ring: false)
-    expect(pair?.points.count == 2,
-           "a two-point corridor is editable, which is what this vehicle's corridor actually reports")
-    expect(pair?.canRemoveVertex == false, "but neither end can be dropped")
-    expect(EditablePolygon.read(path: "l", json: ["path": []], ring: false) == nil,
-           "and an empty line is still nothing to edit")
+    expect(EditablePolygon(["ring": true as NSNumber]) == nil,
+           "a polygon with no path is dropped, because the path is what an edit is invoked on")
+    expect(EditablePolygon(nil) == nil, "and no answer is no polygon")
 }
 
 func checkInstrumentLabels() {

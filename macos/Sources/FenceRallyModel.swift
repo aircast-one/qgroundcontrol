@@ -33,112 +33,52 @@ struct MapWindow: Equatable {
     }
 }
 
-struct FenceShape: Identifiable {
-    enum Form {
-        case polygon(vertices: Int, area: Double)
-        case circle(radius: Double)
-    }
-
-    let id: Int
+struct FenceShape: Identifiable, Equatable {
+    let index: Int
+    let path: String
+    let shape: String
     let inclusion: Bool
-    let form: Form
-    let latitude: Double?
-    let longitude: Double?
+    let kindText: String
+    let detailText: String
     let vertices: [GeoPoint]
+    let framing: [GeoPoint]
+    let usable: Bool
+    let centre: GeoPoint?
+    let centreText: String
+    let radius: Double?
     let radiusUnits: String
 
-    init(json: [String: Any], id: Int, circle: Bool) {
-        self.id = id
+    var id: String { path }
+
+    var isCircle: Bool { shape == "circle" }
+
+    var shapeText: String { isCircle ? "Circle" : "Polygon" }
+
+    var rowDetail: String { isCircle ? "" : detailText }
+
+    var framingPoints: [GeoPoint] { framing }
+
+    init?(_ json: Any?) {
+        guard let json = json as? [String: Any],
+              let index = (json["index"] as? NSNumber)?.intValue,
+              let shape = json["shape"] as? String else { return nil }
+        self.index = index
+        self.shape = shape
+        path = (json["path"] as? String) ?? ""
         inclusion = (json["inclusion"] as? NSNumber)?.boolValue ?? true
-
-        let center = json["center"] as? [String: Any]
-        latitude = (center?["latitude"] as? NSNumber)?.doubleValue
-        longitude = (center?["longitude"] as? NSNumber)?.doubleValue
-        vertices = circle ? [] : ((json["path"] as? [Any]) ?? []).compactMap(GeoPoint.init(json:))
-
-        radiusUnits = (((json["facts"] as? [[String: Any]]) ?? [])
-            .first { ($0["name"] as? String) == "Radius" }?["units"] as? String) ?? "m"
-
-        form = circle
-            ? .circle(radius: ((json["facts"] as? [[String: Any]]) ?? [])
-                .first { ($0["name"] as? String) == "Radius" }
-                .flatMap { ($0["value"] as? NSNumber)?.doubleValue } ?? 0)
-            : .polygon(vertices: (json["count"] as? NSNumber)?.intValue ?? 0,
-                       area: (json["area"] as? NSNumber)?.doubleValue ?? 0)
+        kindText = (json["kindText"] as? String) ?? ""
+        detailText = (json["detailText"] as? String) ?? ""
+        vertices = ((json["vertices"] as? [Any]) ?? []).compactMap(GeoPoint.init(json:))
+        framing = ((json["framing"] as? [Any]) ?? []).compactMap(GeoPoint.init(json:))
+        usable = (json["usable"] as? NSNumber)?.boolValue ?? false
+        centre = GeoPoint(json: json["centre"])
+        centreText = (json["centreText"] as? String) ?? "\u{2014}"
+        radius = (json["radius"] as? NSNumber)?.doubleValue
+        radiusUnits = (json["radiusUnits"] as? String) ?? "m"
     }
 
-    var kindText: String {
-        switch form {
-        case .circle: return inclusion ? "Keep-in circle" : "Keep-out circle"
-        case .polygon: return inclusion ? "Keep-in polygon" : "Keep-out polygon"
-        }
-    }
-
-    var detailText: String {
-        switch form {
-        case let .circle(radius):
-            return String(format: "%.0f %@ radius", radius, radiusUnits)
-        case let .polygon(vertices, area):
-            let vertexText = "\(vertices) vertice\(vertices == 1 ? "" : "s")"
-            return area > 0
-                ? "\(vertexText) · \(FenceShape.areaText(area))"
-                : vertexText
-        }
-    }
-
-    var radius: Double? {
-        switch form {
-        case let .circle(radius): return radius
-        case .polygon: return nil
-        }
-    }
-
-    var centre: GeoPoint? {
-        guard let latitude, let longitude else { return nil }
-        return GeoPoint(latitude: latitude, longitude: longitude)
-    }
-
-    var framingPoints: [GeoPoint] {
-        guard let radius, let centre else { return vertices }
-        let metresPerDegree = 111_320.0
-        let latitudeSpan = radius / metresPerDegree
-        let longitudeSpan = radius / (metresPerDegree * max(cos(centre.latitude * .pi / 180), 0.01))
-        return [
-            GeoPoint(latitude: centre.latitude - latitudeSpan, longitude: centre.longitude - longitudeSpan),
-            GeoPoint(latitude: centre.latitude + latitudeSpan, longitude: centre.longitude + longitudeSpan),
-        ]
-    }
-
-    var rowDetail: String {
-        switch form {
-        case .circle: return ""
-        case .polygon: return detailText
-        }
-    }
-
-    var shapeText: String {
-        switch form {
-        case .circle: return "Circle"
-        case .polygon: return "Polygon"
-        }
-    }
-
-    var usable: Bool {
-        switch form {
-        case .circle: return centre != nil
-        case .polygon: return vertices.count >= 3
-        }
-    }
-
-    var centreText: String {
-        guard let latitude, let longitude else { return "—" }
-        return String(format: "%.6f, %.6f", latitude, longitude)
-    }
-
-    static func areaText(_ area: Double) -> String {
-        area >= 10000
-            ? String(format: "%.2f km²", area / 1_000_000)
-            : String(format: "%.0f m²", area)
+    static func list(_ json: Any?) -> [FenceShape] {
+        ((json as? [Any]) ?? []).compactMap(FenceShape.init)
     }
 }
 

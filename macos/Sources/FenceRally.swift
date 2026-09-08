@@ -83,9 +83,7 @@ final class FenceRallyStore: ObservableObject, Probeable, WriteReporting {
     }
 
     private func circlePath(_ shape: FenceShape) -> String? {
-        guard shape.radius != nil else { return nil }
-        let polygons = elements("plan.geoFenceController.polygons").count
-        return "plan.geoFenceController.circles.\(shape.id - polygons)"
+        shape.isCircle ? shape.path : nil
     }
 
     // A Fact write is COOKED, so this is whatever unit the operator is working in, not
@@ -123,20 +121,15 @@ final class FenceRallyStore: ObservableObject, Probeable, WriteReporting {
     }
 
     func setInclusion(_ shape: FenceShape, to inclusion: Bool) {
-        let polygons = elements("plan.geoFenceController.polygons").count
-        let path = shape.radius != nil
-            ? "plan.geoFenceController.circles.\(shape.id - polygons)"
-            : "plan.geoFenceController.polygons.\(shape.id)"
-        write("\(path).inclusion", inclusion, "whether the fence keeps in or out")
+        write("\(shape.path).inclusion", inclusion, "whether the fence keeps in or out")
         reload()
     }
 
     func remove(_ shape: FenceShape) {
-        let polygons = elements("plan.geoFenceController.polygons").count
-        if shape.radius != nil {
-            Bridge.invoke("plan.geoFenceController.deleteCircle", [shape.id - polygons])
+        if shape.isCircle {
+            Bridge.invoke("plan.geoFenceController.deleteCircle", [shape.index])
         } else {
-            Bridge.invoke("plan.geoFenceController.deletePolygon", [shape.id])
+            Bridge.invoke("plan.geoFenceController.deletePolygon", [shape.index])
         }
         reload()
     }
@@ -173,12 +166,8 @@ final class FenceRallyStore: ObservableObject, Probeable, WriteReporting {
     }
 
     static func readShapes() -> [FenceShape] {
-        let polygons = elements("plan.geoFenceController.polygons")
-        let circles = elements("plan.geoFenceController.circles")
-        return polygons.enumerated().map { FenceShape(json: $0.element, id: $0.offset, circle: false) }
-            + circles.enumerated().map {
-                FenceShape(json: $0.element, id: polygons.count + $0.offset, circle: true)
-            }
+        let view = Bridge.group("view.fences")
+        return FenceShape.list(view["polygons"]) + FenceShape.list(view["circles"])
     }
 
     static func readRally() -> [RallyPointRow] {
@@ -232,7 +221,7 @@ final class FenceRallyStore: ObservableObject, Probeable, WriteReporting {
             }
             addRallyPoint(latitude: latitude, longitude: longitude)
         case "setRadius":
-            guard let shape = shapes.first(where: { $0.id == Int(args["which"] ?? "") ?? -1 }),
+            guard let shape = shapes.first(where: { $0.id == (args["which"] ?? "") }),
                   let value = Double(args["value"] ?? "") else {
                 return ["ok": false, "error": "setRadius needs a circle id and a value in the "
                     + "units the fence is shown in, which is not always metres"]
@@ -256,12 +245,12 @@ final class FenceRallyStore: ObservableObject, Probeable, WriteReporting {
             }
             setBreachAltitude(value)
         case "setInclusion":
-            guard let shape = shapes.first(where: { $0.id == Int(args["which"] ?? "") ?? -1 }) else {
+            guard let shape = shapes.first(where: { $0.id == (args["which"] ?? "") }) else {
                 return ["ok": false, "error": "no fence shape with that id"]
             }
             setInclusion(shape, to: args["on"] != "0")
         case "removeFence":
-            guard let shape = shapes.first(where: { $0.id == Int(args["which"] ?? "") ?? -1 }) else {
+            guard let shape = shapes.first(where: { $0.id == (args["which"] ?? "") }) else {
                 return ["ok": false, "error": "no fence shape with that id"]
             }
             remove(shape)
