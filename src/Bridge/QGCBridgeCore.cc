@@ -18,6 +18,7 @@
 #include "SettingsManager.h"
 #include "Vehicle.h"
 
+#include <QtCore/QSequentialIterable>
 #include <QtCore/QSet>
 #include <QtCore/QCoreApplication>
 #include <QtPositioning/QGeoCoordinate>
@@ -264,10 +265,13 @@ QJsonValue variantJson(const QVariant &value)
         break;
     }
 
-    if (value.metaType().id() == QMetaType::QVariantList) {
+    // Any registered sequential container, not just QVariantList: QList<int> and
+    // QList<qreal> reach QJsonValue::fromVariant as themselves and come back null, so a
+    // property like objectAvoidance.distances read as empty with nothing reporting why.
+    if (value.canConvert<QSequentialIterable>() && value.metaType().id() != QMetaType::QString) {
         QJsonArray array;
-        const QVariantList list = value.toList();
-        for (const QVariant &element : list) {
+        const QSequentialIterable iterable = value.value<QSequentialIterable>();
+        for (const QVariant &element : iterable) {
             if (QObject *const child = element.value<QObject *>()) {
                 array.append(objectJson(child));
                 continue;
