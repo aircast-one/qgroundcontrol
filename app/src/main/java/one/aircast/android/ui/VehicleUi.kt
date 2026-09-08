@@ -51,7 +51,6 @@ import one.aircast.android.bridge.qgcDouble
 import one.aircast.android.bridge.qgcString
 import one.aircast.android.bridge.qgcStrings
 
-private const val FALLBACK_TAKEOFF_ALTITUDE_METERS = 3.0
 private const val INSTRUMENTS =
     "view.instruments(altitudeRelative,groundSpeed,distanceToHome,heading)"
 
@@ -156,8 +155,10 @@ fun FlightActions(modifier: Modifier = Modifier) {
     var pending by remember { mutableStateOf<GuidedAction?>(null) }
     var refusal by remember { mutableStateOf<String?>(null) }
     val scope = rememberCoroutineScope()
-    var takeoffAltitude by remember { mutableStateOf(FALLBACK_TAKEOFF_ALTITUDE_METERS) }
-    var takeoffLabel by remember { mutableStateOf("") }
+    var takeoffTarget by remember { mutableStateOf<Double?>(null) }
+    var takeoffSettled by remember { mutableStateOf<Double?>(null) }
+    val takeoffJson by qgcPath(GUIDED_TAKEOFF)
+    val takeoffRange = remember(takeoffJson) { guidedTakeoff(takeoffJson) }
     val flying by qgcBool("vehicle.flying")
     val guidedModeSupported by qgcBool("vehicle.guidedModeSupported")
     var altitudeTarget by remember { mutableStateOf<Double?>(null) }
@@ -166,16 +167,6 @@ fun FlightActions(modifier: Modifier = Modifier) {
     val altitudeRange = remember(altitudeJson) { guidedAltitude(altitudeJson) }
     val actionsJson by qgcPath(GUIDED_ACTIONS)
     val offers = remember(actionsJson) { guidedOffers(actionsJson) }
-
-    LaunchedEffect(available) {
-        if (available) {
-            withContext(Dispatchers.Default) {
-                val meters = readTakeoffAltitudeMeters()
-                takeoffAltitude = meters
-                takeoffLabel = altitudeLabel(meters, verticalOf(meters), verticalUnits())
-            }
-        }
-    }
 
     if (!available) {
         Text("Connect a vehicle to enable flight controls.", modifier.padding(16.dp))
@@ -225,16 +216,13 @@ fun FlightActions(modifier: Modifier = Modifier) {
                 else ButtonDefaults.buttonColors(),
             ) { Text(if (armed) "Disarm" else "Arm") }
 
-            OutlinedButton(enabled = offers["takeoff"]?.ready == true, onClick = {
-                val altitude = takeoffAltitude
-                pending = GuidedAction(
-                    name = offers["takeoff"]?.title ?: "Take off",
-                    confirm = "The aircraft will climb to $takeoffLabel and hold.",
-                    destructive = false,
-                ) {
-                    offMainDetached { Qgc.invoke("vehicle.guidedModeTakeoff", altitude) }
-                }
-            }) { Text("Takeoff") }
+            OutlinedButton(
+                enabled = offers["takeoff"]?.ready == true && takeoffRangeUsable(takeoffRange),
+                onClick = {
+                    takeoffTarget = takeoffRange?.initial
+                    takeoffSettled = takeoffRange?.initial
+                },
+            ) { Text(offers["takeoff"]?.title ?: "Takeoff") }
 
             OutlinedButton(enabled = offers["land"]?.ready == true, onClick = {
                 pending = GuidedAction(
@@ -268,6 +256,47 @@ fun FlightActions(modifier: Modifier = Modifier) {
         }
 
         TelemetryRow()
+    }
+
+    takeoffTarget?.let { target ->
+        var probe by remember(takeoffTarget != null) { mutableStateOf<GuidedTakeoff?>(null) }
+        LaunchedEffect(takeoffSettled) {
+            val at = takeoffSettled ?: return@LaunchedEffect
+            probe = withContext(Dispatchers.Default) { guidedTakeoff(Qgc.get(guidedTakeoffPath(at))) }
+        }
+        AlertDialog(
+            onDismissRequest = { takeoffTarget = null },
+            title = { Text(takeoffRange?.label?.ifBlank { null } ?: "Takeoff") },
+            text = {
+                Column {
+                    Text(probe?.sentence ?: "")
+                    Slider(
+                        value = target.toFloat(),
+                        onValueChange = { takeoffTarget = it.toDouble() },
+                        onValueChangeFinished = { takeoffSettled = takeoffTarget },
+                        valueRange = (takeoffRange?.minimum ?: 0.0).toFloat()..
+                            (takeoffRange?.maximum ?: 0.0).toFloat(),
+                    )
+                }
+            },
+            confirmButton = {
+                TextButton(
+                    enabled = probe != null,
+                    onClick = {
+                        takeoffTarget = null
+                        offMainDetached {
+                            val fresh = guidedTakeoff(Qgc.get(guidedTakeoffPath(target)))
+                            if (fresh != null) {
+                                Qgc.invoke("vehicle.guidedModeTakeoff", fresh.targetMeters)
+                            }
+                        }
+                    },
+                ) { Text("Take off") }
+            },
+            dismissButton = {
+                TextButton(onClick = { takeoffTarget = null }) { Text("Cancel") }
+            },
+        )
     }
 
     altitudeTarget?.let { target ->
@@ -369,18 +398,6 @@ internal fun altitudeLabel(meters: Double, converted: Double?, unit: String?): S
     } else {
         "${meters.roundToInt()} m"
     }
-
-private fun verticalOf(meters: Double): Double? =
-    (Qgc.invokeResult("units.metersToAppSettingsVerticalDistanceUnits", meters) as? Number)
-        ?.toDouble()
-
-private fun verticalUnits(): String? =
-    Qgc.get("units").opt("appSettingsVerticalDistanceUnitsString")?.toString()
-
-private fun readTakeoffAltitudeMeters(): Double =
-    (Qgc.invokeResult("vehicle.minimumTakeoffAltitudeMeters") as? Number)?.toDouble()
-        ?.takeIf { it > 0.0 }
-        ?: FALLBACK_TAKEOFF_ALTITUDE_METERS
 
 @Composable
 private fun FlightModePicker(onRefusal: (String?) -> Unit) {
