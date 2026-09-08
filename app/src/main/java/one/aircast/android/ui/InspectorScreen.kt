@@ -86,8 +86,14 @@ internal fun parseInspectorFields(model: JSONObject?): List<InspectorField> {
 
 private const val INSPECTOR_SELECTED = "mavlinkInspector.activeSystem.selected"
 
-private fun selectMessage(index: Int) {
-    offMainDetached { Qgc.set(INSPECTOR_SELECTED, index) }
+internal fun selectedPathFor(messagePath: String): String =
+    messagePath.substringBefore(".messages.") + ".selected"
+
+internal fun messageIndexIn(messagePath: String): Int =
+    messagePath.substringAfterLast('.').toIntOrNull() ?: -1
+
+private fun selectMessage(messagePath: String) {
+    offMainDetached { Qgc.set(selectedPathFor(messagePath), messageIndexIn(messagePath)) }
 }
 
 internal fun openMessageIn(messages: List<InspectorMessage>, path: String?): InspectorMessage? =
@@ -106,10 +112,10 @@ private fun InspectorNotice(text: String, modifier: Modifier = Modifier) {
 }
 
 @Composable
-private fun FieldList(messageIndex: Int, modifier: Modifier = Modifier) {
-    LaunchedEffect(messageIndex) { selectMessage(messageIndex) }
+private fun FieldList(messagePath: String, modifier: Modifier = Modifier) {
+    LaunchedEffect(messagePath) { selectMessage(messagePath) }
 
-    val fields by qgcPath("$INSPECTOR_MESSAGES.$messageIndex.fields")
+    val fields by qgcPath("$messagePath.fields")
     val rows = parseInspectorFields(fields)
 
     if (rows.isEmpty()) {
@@ -165,7 +171,7 @@ fun InspectorScreen(modifier: Modifier = Modifier) {
                 )
             }
             HorizontalDivider()
-            FieldList(open.index, Modifier.weight(1f))
+            FieldList(open.path, Modifier.weight(1f))
         }
         return
     }

@@ -110,4 +110,21 @@ class InspectorOpenMessageTest {
         assertEquals("CAMERA_CAPTURE_STATUS (comp 100)", served.first { it.path == "p0" }.title)
         assertEquals("ATTITUDE", served.first { it.path == "p1" }.title)
     }
+
+    @Test
+    fun `the fields and the selection follow the served path, not a rebuilt one`() {
+        val path = "mavlinkInspector.systems.0.messages.3"
+
+        assertEquals("mavlinkInspector.systems.0.selected", selectedPathFor(path))
+        assertEquals(3, messageIndexIn(path))
+    }
+
+    @Test
+    fun `a path the core words differently still yields its own system`() {
+        assertEquals(
+            "mavlinkInspector.systems.2.selected",
+            selectedPathFor("mavlinkInspector.systems.2.messages.11"),
+        )
+        assertEquals(11, messageIndexIn("mavlinkInspector.systems.2.messages.11"))
+    }
 }
