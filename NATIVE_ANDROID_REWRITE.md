@@ -340,8 +340,20 @@ bridge.
 - Vibration → a Compose chart.
 - `Viewer3D` (1.7k) → decide keep-or-drop; it is the cheapest moment to drop it.
 
-Needs from the bridge: a table/list model reader. `QAbstractTableModel` is not yet traversable —
-`QmlObjectListModel` is. That is the one bridge addition this phase requires.
+~~Needs from the bridge: a table/list model reader.~~ **That requirement does not exist.**
+Nothing under `src/AnalyzeView/` uses `QAbstractTableModel` or `QAbstractListModel`: Log
+Download, the inspector and the console all expose `QmlObjectListModel`, which the bridge
+already traverses, plus `QStringList`. The only `QAbstractListModel` subclasses in the tree
+are `FactValueSliderListModel`, `ParameterEditorController` and `QmlObjectListModel` itself,
+and none of them is on an Analyze path. Left as a struck-through line rather than deleted
+because a reader who remembers the original would otherwise assume it was overlooked.
+
+### Status — all four pages are built
+
+Log Download, Vibration, MAVLink Console and MAVLink Inspector all exist natively
+(`LogDownloadScreen`, `VibrationScreen`, `ConsoleScreen`, `InspectorScreen`), reached from
+a picker. `Viewer3D` is still an open keep-or-drop decision, and the QML deletion in the
+gate below has not happened.
 
 **Gate (HW):** log download from real hardware; chart values match the Qt build. `src/AnalyzeView/`
 QML deleted.
