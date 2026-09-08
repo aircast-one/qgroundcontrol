@@ -341,6 +341,26 @@ QJsonObject compactFactJson(Fact *fact)
     };
 }
 
+QObject *pointerWithoutDereference(const QVariant &value)
+{
+    if (!(value.metaType().flags() & QMetaType::PointerToQObject)) {
+        return nullptr;
+    }
+    return *static_cast<QObject *const *>(value.constData());
+}
+
+Fact *factByStaticType(const QVariant &value, QObject *child)
+{
+    if (!child) {
+        return nullptr;
+    }
+    const QMetaObject *const declared = value.metaType().metaObject();
+    if (declared == &QObject::staticMetaObject) {
+        return qobject_cast<Fact *>(child);
+    }
+    return declared && declared->inherits(&Fact::staticMetaObject) ? static_cast<Fact *>(child) : nullptr;
+}
+
 QJsonObject objectJson(QObject *object, const QSet<QString> &fields, bool compactFacts,
                        QSet<QString> *seen)
 {
@@ -364,13 +384,11 @@ QJsonObject objectJson(QObject *object, const QSet<QString> &fields, bool compac
 
         const QVariant value = property.read(object);
 
-        QObject *const child = value.value<QObject *>();
-        if (Fact *const fact = qobject_cast<Fact *>(child)) {
+        QObject *const child = pointerWithoutDereference(value);
+        if (Fact *const fact = factByStaticType(value, child)) {
             if (!wanted) {
                 continue;
             }
-            // Without the property it came from, a fact can be read and never written:
-            // its name is a label, not a path segment.
             QJsonObject described = compactFacts ? compactFactJson(fact) : factJson(fact);
             described.insert(QStringLiteral("property"), name);
             facts.append(described);
