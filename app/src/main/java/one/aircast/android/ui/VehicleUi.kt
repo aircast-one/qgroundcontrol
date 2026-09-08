@@ -162,9 +162,9 @@ fun FlightActions(modifier: Modifier = Modifier) {
     val flying by qgcBool("vehicle.flying")
     val guidedModeSupported by qgcBool("vehicle.guidedModeSupported")
     var altitudeTarget by remember { mutableStateOf<Double?>(null) }
-    val altitudeNow by qgcDouble("vehicle.altitudeRelative.value", 0.0)
-    val guidedMinAltitude by qgcDouble("settings.flyViewSettings.guidedMinimumAltitude.value", 0.0)
-    val guidedMaxAltitude by qgcDouble("settings.flyViewSettings.guidedMaximumAltitude.value", 121.0)
+    val altitudeNow by qgcDouble("vehicle.altitudeRelative.rawValue", 0.0)
+    val guidedMinAltitude by qgcDouble("settings.flyViewSettings.guidedMinimumAltitude.rawValue", 0.0)
+    val guidedMaxAltitude by qgcDouble("settings.flyViewSettings.guidedMaximumAltitude.rawValue", 121.0)
     val landFlightMode by qgcString("vehicle.landFlightMode")
     val rtlFlightMode by qgcString("vehicle.rtlFlightMode")
     val takeoffSupported by qgcBool("vehicle.takeoffVehicleSupported")
