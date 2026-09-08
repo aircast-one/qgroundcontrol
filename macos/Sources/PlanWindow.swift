@@ -595,6 +595,13 @@ struct PlanInspector: View {
     }
 
     private var fence: some View {
+        VStack(alignment: .leading, spacing: Overlay.gutter) {
+            fenceShapes
+            breachReturn
+        }
+    }
+
+    private var fenceShapes: some View {
         GroupCard {
             if fenceRally.shapes.isEmpty {
                 EmptyStateRow(text: fenceRally.connected && !fenceRally.fenceSupported
@@ -606,7 +613,7 @@ struct PlanInspector: View {
                 ForEach(fenceRally.shapes) { shape in
                     GroupRow(
                         title: shape.shapeText,
-                        description: shape.detailText,
+                        description: shape.rowDetail,
                         showSeparator: shape.id > 0,
                         leading: {
                             Seal(label: shape.inclusion ? "IN" : "OUT",
@@ -614,6 +621,10 @@ struct PlanInspector: View {
                         },
                         trailing: {
                             HStack(spacing: Overlay.step * 0.5) {
+                                if let radius = shape.radius {
+                                    AltitudeField(metres: radius,
+                                                  commit: { fenceRally.setRadius(shape, metres: $0) })
+                                }
                                 Picker("", selection: Binding(
                                     get: { shape.inclusion },
                                     set: { fenceRally.setInclusion(shape, to: $0) })
@@ -643,10 +654,17 @@ struct PlanInspector: View {
                 ForEach(fenceRally.rallyPoints) { point in
                     GroupRow(
                         title: "Rally \(point.id + 1)",
-                        value: point.altitudeText,
+                        description: point.positionText,
                         showSeparator: point.id > 0,
                         leading: { Seal(label: "\(point.id + 1)", colour: Overlay.rally) },
-                        trailing: { removeButton { fenceRally.remove(point) } })
+                        trailing: {
+                            HStack(spacing: Overlay.step * 0.5) {
+                                AltitudeField(
+                                    metres: point.altitude,
+                                    commit: { fenceRally.setRallyAltitude(point, metres: $0) })
+                                removeButton { fenceRally.remove(point) }
+                            }
+                        })
                 }
             }
         }
@@ -671,6 +689,11 @@ struct PlanInspector: View {
             Button { shapeError = fenceRally.addFence(circle: true) } label: {
                 Label("Keep-in circle", systemImage: "circle")
             }
+            Divider()
+            Button { shapeError = fenceRally.addBreachReturn() } label: {
+                Label("Breach return point", systemImage: "arrow.uturn.backward")
+            }
+            .disabled(fenceRally.breachReturn != nil)
         case "Rally":
             Button { fenceRally.armingRally = true } label: {
                 Label("Rally point", systemImage: "mappin.and.ellipse")
@@ -686,6 +709,27 @@ struct PlanInspector: View {
             ForEach(MissionItemKind.shapeImportable) { kind in
                 Button { importShape(kind) } label: {
                     Label("\(kind.title) from KML or SHP\u{2026}", systemImage: kind.symbol)
+                }
+            }
+        }
+    }
+
+    private var breachReturn: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            SectionLabel(text: "Breach return")
+            GroupCard {
+                if let point = fenceRally.breachReturn {
+                    GroupRow(
+                        title: "The vehicle returns here",
+                        description: point.positionText,
+                        trailing: {
+                            AltitudeField(metres: fenceRally.breachAltitude,
+                                          commit: fenceRally.setBreachAltitude)
+                        })
+                } else {
+                    EmptyStateRow(text: fenceRally.fenceSupported
+                        ? "No breach return point. On a fence breach the vehicle follows its firmware default."
+                        : "This vehicle does not accept a geofence.")
                 }
             }
         }

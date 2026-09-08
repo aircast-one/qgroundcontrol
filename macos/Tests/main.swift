@@ -262,6 +262,13 @@ func checkFenceGeometry() {
 
     let exclusion = FenceShape(json: ["inclusion": false, "count": 3, "path": []], id: 1, circle: false)
     expect(exclusion.kindText, "Keep-out polygon", "an exclusion polygon reads as keep-out")
+    expect(polygon.rowDetail, polygon.detailText,
+           "a polygon's row carries its vertex count and area")
+    expect(FenceShape(json: ["center": ["latitude": -35.36, "longitude": 149.16],
+                             "facts": [["name": "Radius", "value": 250]]],
+                      id: 1, circle: true).rowDetail, "",
+           "a circle's row does not repeat the radius the field beside it already shows")
+
     expect(polygon.shapeText, "Polygon",
            "the row names only the shape; the seal and the picker beside it carry keep-in or keep-out")
 
@@ -659,6 +666,24 @@ func checkFenceUsable() {
 }
 
 checkFenceUsable()
+
+func checkRallyAndBreach() {
+    let placed = RallyPointRow(json: ["coordinate": ["latitude": -35.3628, "longitude": 149.1665,
+                                                     "altitude": 60.0]], id: 0)
+    expect(placed.altitudeText, "60.0 m", "a rally point shows the height it holds")
+    expect(placed.positionText, "-35.362800, 149.166500", "and where it is")
+
+    let bare = RallyPointRow(json: [:], id: 1)
+    expect(bare.altitudeText, "—", "a point with no coordinate claims no height")
+    expect(bare.positionText, "—", "nor a position")
+
+    let nan = RallyPointRow(json: ["coordinate": ["latitude": -35.36, "longitude": 149.16,
+                                                  "altitude": Double.nan]], id: 2)
+    expect(nan.altitudeText, "—",
+           "and a height the vehicle reported as not-a-number is not shown as one")
+}
+
+checkRallyAndBreach()
 
 func checkMissionItemKinds() {
     expect(MissionItemKind.allCases.count == 7,

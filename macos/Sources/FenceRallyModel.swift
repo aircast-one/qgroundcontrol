@@ -105,6 +105,13 @@ struct FenceShape: Identifiable {
         ]
     }
 
+    var rowDetail: String {
+        switch form {
+        case .circle: return ""
+        case .polygon: return detailText
+        }
+    }
+
     var shapeText: String {
         switch form {
         case .circle: return "Circle"
