@@ -383,7 +383,13 @@ failure:
 - **A property that correlates with success is not evidence of it.** `dirty`
   falling to false after a sync means the controller has no unsent changes — a
   statement about the controller, not about the aircraft. It reads like an
-  acknowledgement and is not one.
+  acknowledgement and is not one. The same bit caught the Android head from the
+  other side: `saveToFile` clears it *only when offline* — QGC's own comment says
+  so — because `dirty` means "not sent to the vehicle", not "not written to a
+  file". A saved plan therefore kept reading "unsaved changes" with a vehicle
+  attached. With no vehicle the two meanings coincide; with one, the honest claim
+  is the weaker one that always holds when the bit is set: the plan is not on the
+  aircraft (`7cff5b5`).
 - **Do not claim to know why you failed.** `planLoad` reported both a rejected
   file and a bridge call that never answered as "That is not a plan file",
   printing our own failure as an accusation against the user's document. The two
