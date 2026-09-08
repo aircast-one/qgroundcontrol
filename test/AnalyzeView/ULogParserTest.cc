@@ -6,7 +6,7 @@
 
 void ULogParserTest::_getTagsFromLogTest()
 {
-    QFile file(":/SampleULog.ulg");
+    QFile file(":/unittest/SampleULog.ulg");
     QVERIFY(file.open(QIODevice::ReadOnly));
 
     const QByteArray logBuffer = file.readAll();
@@ -19,6 +19,5 @@ void ULogParserTest::_getTagsFromLogTest()
     QVERIFY(!cameraFeedback.isEmpty());
 
     const GeoTagWorker::CameraFeedbackPacket firstCameraFeedback = cameraFeedback.constFirst();
-    // QVERIFY(!qFuzzyIsNull(firstCameraFeedback.timestamp));
     QVERIFY(firstCameraFeedback.imageSequence != 0);
 }

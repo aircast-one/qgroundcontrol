@@ -25,11 +25,11 @@
 
 // AnalyzeView
 #include "ExifParserTest.h"
-// #include "GeoTagControllerTest.h"
-// #include "MavlinkLogTest.h"
+#include "GeoTagControllerTest.h"
+#include "MavlinkLogTest.h"
 #include "LogDownloadTest.h"
 #include "PX4LogParserTest.h"
-// #include "ULogParserTest.h"
+#include "ULogParserTest.h"
 
 
 
@@ -73,9 +73,9 @@
 #include "CameraCalcTest.h"
 #include "CameraSectionTest.h"
 #include "CorridorScanComplexItemTest.h"
-// #include "FWLandingPatternTest.h"
-// #include "LandingComplexItemTest.h"
-// #include "MissionCommandTreeEditorTest.h"
+#include "FWLandingPatternTest.h"
+#include "LandingComplexItemTest.h"
+#include "MissionCommandTreeEditorTest.h"
 #include "MissionCommandTreeTest.h"
 #include "MissionControllerManagerTest.h"
 #include "MissionControllerTest.h"
@@ -85,13 +85,13 @@
 #include "PlanMasterControllerTest.h"
 #include "QGCMapPolygonTest.h"
 #include "QGCMapPolylineTest.h"
-// #include "SectionTest.h"
+#include "SectionTest.h"
 #include "SimpleMissionItemTest.h"
 #include "SpeedSectionTest.h"
 #include "StructureScanComplexItemTest.h"
 #include "SurveyComplexItemTest.h"
 #include "TransectStyleComplexItemTest.h"
-// #include "VisualMissionItemTest.h"
+#include "VisualMissionItemTest.h"
 
 // qgcunittest
 #include "ComponentInformationCacheTest.h"
@@ -184,11 +184,11 @@ int runTests(bool stress, QStringView unitTestOptions)
 
     // AnalyzeView
     UT_REGISTER_TEST(ExifParserTest)
-    // UT_REGISTER_TEST(GeoTagControllerTest)
-    // UT_REGISTER_TEST(MavlinkLogTest)
+    UT_REGISTER_TEST(GeoTagControllerTest)
+    UT_REGISTER_TEST(MavlinkLogTest)
     UT_REGISTER_TEST(LogDownloadTest)
     UT_REGISTER_TEST(PX4LogParserTest)
-    // UT_REGISTER_TEST(ULogParserTest)
+    UT_REGISTER_TEST(ULogParserTest)
 
     // AutoPilotPlugins
     // UT_REGISTER_TEST(RadioConfigTest)
@@ -219,7 +219,7 @@ int runTests(bool stress, QStringView unitTestOptions)
     UT_REGISTER_TEST(FollowMeTest)
 
     // GPS
-    // UT_REGISTER_TEST(GpsTest)
+    UT_REGISTER_TEST(GpsTest)
 
     // MAVLink
     UT_REGISTER_TEST(StatusTextHandlerTest)
@@ -230,9 +230,9 @@ int runTests(bool stress, QStringView unitTestOptions)
     UT_REGISTER_TEST(CameraCalcTest)
     UT_REGISTER_TEST(CameraSectionTest)
     UT_REGISTER_TEST(CorridorScanComplexItemTest)
-    // UT_REGISTER_TEST(FWLandingPatternTest)
-    // UT_REGISTER_TEST(LandingComplexItemTest)
-    // UT_REGISTER_TEST_STANDALONE(MissionCommandTreeEditorTest)
+    UT_REGISTER_TEST(FWLandingPatternTest)
+    UT_REGISTER_TEST(LandingComplexItemTest)
+    UT_REGISTER_TEST_STANDALONE(MissionCommandTreeEditorTest)
     UT_REGISTER_TEST(MissionCommandTreeTest)
     UT_REGISTER_TEST(MissionControllerManagerTest)
     UT_REGISTER_TEST(MissionControllerTest)
@@ -242,13 +242,13 @@ int runTests(bool stress, QStringView unitTestOptions)
     UT_REGISTER_TEST(PlanMasterControllerTest)
     UT_REGISTER_TEST(QGCMapPolygonTest)
     UT_REGISTER_TEST(QGCMapPolylineTest)
-    // UT_REGISTER_TEST(SectionTest)
+    UT_REGISTER_TEST(SectionTest)
     UT_REGISTER_TEST(SimpleMissionItemTest)
     UT_REGISTER_TEST(SpeedSectionTest)
     UT_REGISTER_TEST(StructureScanComplexItemTest)
     UT_REGISTER_TEST(SurveyComplexItemTest)
     UT_REGISTER_TEST(TransectStyleComplexItemTest)
-    // UT_REGISTER_TEST(VisualMissionItemTest)
+    UT_REGISTER_TEST(VisualMissionItemTest)
 
     // qgcunittest
 
