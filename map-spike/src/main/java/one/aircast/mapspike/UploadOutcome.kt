@@ -14,3 +14,13 @@ fun uploadMessage(outcome: UploadOutcome): String = when (outcome) {
     UploadOutcome.Sent -> "Upload sent to vehicle"
     UploadOutcome.NotStarted -> "Upload did not start"
 }
+
+// loadFromVehicle is void for the same reason and carries the same trap in the
+// other direction: a download that never arrived leaves the plan alone, which
+// is indistinguishable from one that returned exactly what was already there.
+// Believing you hold the aircraft's mission when you hold your own is how an
+// edit gets made against the wrong baseline.
+fun downloadMessage(outcome: UploadOutcome): String = when (outcome) {
+    UploadOutcome.Sent -> "Download requested from vehicle"
+    UploadOutcome.NotStarted -> "Download did not start"
+}

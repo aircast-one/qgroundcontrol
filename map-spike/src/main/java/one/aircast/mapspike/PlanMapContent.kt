@@ -271,7 +271,15 @@ internal fun MapSpikeScreen(mapStyle: String, onClear: (() -> Unit)? = null) {
                             loadStep(planDirty, loadArmed) == LoadStep.Confirm -> loadArmed = true
                             else -> {
                                 loadArmed = false
-                                onBridge("Downloading from vehicle") { PlanBridge.loadFromVehicle() }
+                                busy = "Downloading from vehicle"
+                                scope.launch {
+                                    val outcome = withContext(Dispatchers.Default) {
+                                        uploadOutcome(PlanBridge.loadFromVehicle())
+                                    }
+                                    busy = downloadMessage(outcome)
+                                    delay(FAILURE_MESSAGE_MS)
+                                    busy = null
+                                }
                             }
                         }
                     }) { Text(if (loadArmed) "Discard & download" else "Download") }
