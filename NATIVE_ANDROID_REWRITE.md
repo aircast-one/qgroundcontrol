@@ -495,13 +495,18 @@ corridor scan: opening it says *"The map cannot draw Corridor Scan. Those items 
 still in the plan and will still be flown."* An out-of-date AAR under-warns rather
 than warning wrongly, since an item with no `class` field yields no name.
 
-**What that device run did not prove.** The same file also held a survey, which the
-warning correctly did not name — but that survey was **empty** (`path: []`,
-`count: 0`, `isValid: false`), because `insertComplexMissionItem` with only a map
-centre creates a pattern with no polygon for the user to draw into. So the silent
-case is covered by unit tests but not yet on hardware, and "surveys are drawn" is
-still resting on whoever wrote it, not on this run. A plan with a survey that has
-real vertices is the missing check.
+The first attempt at this proved less than it looked. That file also held a survey
+which the warning correctly did not name — but the survey was **empty** (`path: []`,
+`count: 0`, `isValid: false`), because `insertComplexMissionItem` given only a map
+centre leaves the polygon for the user to draw. A warning staying silent about an
+item with no shape is not evidence it stays silent about one with a shape.
+
+So the check was redone with a survey given four real vertices
+(`surveyAreaPolygon.appendVertex`, confirmed by read-back at `count: 4`,
+`area: 503300 m²`, `isValid: true`, not by the `ok` of a void call). Opening that
+plan on the phone draws the survey polygon with its vertex handles **and still names
+only Corridor Scan**. That is the over-firing mode that sank the previous three
+attempts, now disproved on hardware rather than argued.
 
 Still to do: actually draw corridor scans, structure scans and landing patterns.
 **Android needs an AAR rebuild before it sees the `class` field.** The gate above is
