@@ -10,8 +10,8 @@ final class FlyStore: ObservableObject, Probeable, WriteReporting {
     @Published private(set) var messages: [VehicleMessage] = []
     @Published private(set) var unhealthyBits: Int?
     @Published private(set) var warning = VehicleWarning.none
-    @Published private(set) var airframe = PreflightAirframe.generic
-    @Published private(set) var audioMuted = false
+    @Published private(set) var airframe = "Generic"
+    @Published private(set) var checklist: [PreflightGroup] = []
     @Published private(set) var batteries: [[DetailRow]] = []
     @Published private(set) var batteryLevels: [FlyTelemetry.Level] = []
     @Published private(set) var gpsDetail: [DetailRow] = []
@@ -60,9 +60,6 @@ final class FlyStore: ObservableObject, Probeable, WriteReporting {
     }
 
     func refresh() {
-        let muted = (Bridge.group("settings.appSettings.audioMuted")["value"] as? NSNumber)?.boolValue ?? false
-        if muted != audioMuted { audioMuted = muted }
-
         let centred = (Bridge.group("settings.flyViewSettings.keepMapCenteredOnVehicle")["value"]
             as? NSNumber)?.boolValue ?? false
         if centred != keepCentered { keepCentered = centred }
@@ -77,7 +74,8 @@ final class FlyStore: ObservableObject, Probeable, WriteReporting {
             if !messages.isEmpty { messages = [] }
             if unhealthyBits != nil { unhealthyBits = nil }
             if warning != .none { warning = .none }
-            if airframe != .generic { airframe = .generic }
+            if airframe != "Generic" { airframe = "Generic" }
+            if !checklist.isEmpty { checklist = [] }
             if !batteries.isEmpty { batteries = [] }
             if !gpsDetail.isEmpty { gpsDetail = [] }
             if !linkDetail.isEmpty { linkDetail = [] }
@@ -150,11 +148,11 @@ final class FlyStore: ObservableObject, Probeable, WriteReporting {
         landMode = (vehicle["landFlightMode"] as? String) ?? ""
         if !requestedMode.isEmpty, requestedMode == reading.mode { requestedMode = "" }
 
-        let flown = PreflightAirframe.of(
-            multiRotor: FlyStore.flag(vehicle, "multiRotor"), vtol: FlyStore.flag(vehicle, "vtol"),
-            rover: FlyStore.flag(vehicle, "rover"), sub: FlyStore.flag(vehicle, "sub"),
-            fixedWing: FlyStore.flag(vehicle, "fixedWing"))
+        let preflight = Bridge.group("view.preflight")
+        let flown = (preflight["airframe"] as? String) ?? "Generic"
         if flown != airframe { airframe = flown }
+        let readChecklist = Preflight.groups(preflight["groups"])
+        if readChecklist != checklist { checklist = readChecklist }
 
         let bits = (vehicle["sensorsUnhealthyBits"] as? NSNumber)?.intValue
         if bits != unhealthyBits { unhealthyBits = bits }
@@ -168,10 +166,6 @@ final class FlyStore: ObservableObject, Probeable, WriteReporting {
             prearmError: (vehicle["prearmError"] as? String) ?? "",
             healthReportSupported: (health["supported"] as? NSNumber)?.boolValue ?? false)
         if assessed != warning { warning = assessed }
-    }
-
-    private static func flag(_ vehicle: [String: Any], _ name: String) -> Bool {
-        (vehicle[name] as? NSNumber)?.boolValue ?? false
     }
 
     private static func units(_ object: [String: Any]) -> [String: String] {
@@ -191,12 +185,6 @@ final class FlyStore: ObservableObject, Probeable, WriteReporting {
     }
 
     var latestMessages: [VehicleMessage] { Array(messages.prefix(FlyStore.messageLimit)) }
-
-    var checklist: [PreflightGroup] {
-        Preflight.groups(airframe: airframe, lock: telemetry.gpsLock, satellites: telemetry.satellites,
-                         batteryPercent: telemetry.batteryPercent, unhealthyBits: unhealthyBits,
-                         audioMuted: audioMuted)
-    }
 
     func toggle(_ check: PreflightCheck) {
         guard !check.blocked else { return }
@@ -253,7 +241,7 @@ final class FlyStore: ObservableObject, Probeable, WriteReporting {
          "worstMessage": VehicleMessage.worst(latestMessages).rawValue,
          "warnings": warning.lines,
          "checklistOpen": showingChecklist,
-         "airframe": airframe.rawValue,
+         "airframe": airframe,
          "modes": modes.map(\.name),
          "everydayModes": FlightModes.everyday(modes).map(\.name),
          "foldedModes": FlightModes.folded(modes).map(\.name),

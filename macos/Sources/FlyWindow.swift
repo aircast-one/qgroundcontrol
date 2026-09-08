@@ -210,7 +210,7 @@ struct FlyPanel: View {
             HStack {
                 VStack(alignment: .leading, spacing: 2) {
                     Text("Pre-flight checklist").font(.title3.weight(.semibold))
-                    Text("\(fly.airframe.rawValue) · \(Preflight.progress(fly.checklist, ticked: fly.ticked))")
+                    Text("\(fly.airframe) · \(Preflight.progress(fly.checklist, ticked: fly.ticked))")
                         .font(.callout).foregroundColor(.secondary)
                 }
                 Spacer()

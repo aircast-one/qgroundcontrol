@@ -1896,82 +1896,45 @@ func checkVehicleMessages() {
 checkVehicleMessages()
 
 func checkPreflight() {
-    expect(Preflight.gps(lock: 6, satellites: 10).verdict == .passing,
-           "an RTK fix with ten satellites passes")
-    expect(Preflight.gps(lock: 2, satellites: 20).verdict == .failing("Waiting for 3D lock."),
-           "satellites do not make up for a missing 3D lock")
-    expect(Preflight.gps(lock: 3, satellites: 5).verdict
-               == .overridable("Only 5 satellites; 9 wanted."),
-           "a thin constellation is the operator's call, not a block")
-    expect(Preflight.gps(lock: 3, satellites: 1).verdict
-               == .overridable("Only 1 satellite; 9 wanted."), "and one satellite is singular")
-    expect(Preflight.gps(lock: nil, satellites: nil).blocked, "no vehicle blocks the GPS check")
-
-    expect(Preflight.battery(percent: 100).verdict == .passing, "a full pack passes")
-    expect(Preflight.battery(percent: 39).blocked, "below forty percent blocks; it cannot be waved through")
-    expect(Preflight.battery(percent: 40).verdict == .passing, "exactly forty is allowed")
-    expect(Preflight.battery(percent: nil).blocked, "no battery reading blocks too")
-
-    expect(Preflight.sensors(unhealthyBits: 0).verdict == .passing, "no unhealthy bits passes")
-    expect(Preflight.sensors(unhealthyBits: 268435456).verdict == .passing,
-           "a bit outside the mask is not one of the sensors this check covers")
-    expect(Preflight.sensors(unhealthyBits: 268435488).verdict == .failing("GPS unhealthy."),
-           "the live SITL case: GPS unhealthy alongside a bit we ignore")
-    expect(Preflight.sensors(unhealthyBits: 3).verdict == .failing("Gyro, Accelerometer unhealthy."),
-           "several sensors are all named")
-
-    expect(Preflight.sound(muted: false).verdict == .passing, "audible QGC passes the sound check")
-    expect(Preflight.sound(muted: true).blocked, "a muted QGC blocks it; warnings would go unheard")
-
-    let list2 = Preflight.groups(airframe: .rover, lock: 6, satellites: 10, batteryPercent: 100,
-                                 unhealthyBits: 0, audioMuted: false)
-
-    func list(_ airframe: PreflightAirframe) -> [String] {
-        Preflight.groups(airframe: airframe, lock: 6, satellites: 10, batteryPercent: 100,
-                         unhealthyBits: 0, audioMuted: false).flatMap(\.checks).map(\.name)
+    func check(_ name: String, _ verdict: String, _ blocked: Bool) -> [String: Any] {
+        ["name": name, "prompt": "P", "verdict": verdict, "reason": "R",
+         "blocked": blocked as NSNumber]
     }
+    let json: [Any] = [
+        ["name": "Before you power up",
+         "checks": [check("Hardware", "manual", false),
+                    check("Battery", "failing", true),
+                    check("GPS", "overridable", false)]],
+        ["name": "Arm the vehicle here", "checks": [check("Motors", "passing", false)]],
+    ]
 
-    let groups = Preflight.groups(airframe: .multiRotor, lock: 6, satellites: 10,
-                                  batteryPercent: 100, unhealthyBits: 0, audioMuted: false)
-    expect(Preflight.total(groups) == 11, "the multirotor list is eleven checks long")
-    expect(Preflight.progress(groups, ticked: []), "0 of 11 checked", "and starts at none")
-    expect(!Preflight.ready(groups, ticked: []), "an untouched list is not ready")
+    let groups = Preflight.groups(json)
+    expect(groups.count == 2, "each group the core describes is carried across")
+    expect(groups.map(\.name).joined(separator: "|"), "Before you power up|Arm the vehicle here",
+           "in the order the core listed them, because it is a sequence the operator works down")
+    expect(Preflight.total(groups) == 4, "and every check in them is counted")
 
-    let every = Set(groups.flatMap(\.checks).map(\.name))
+    let battery = groups[0].checks[1]
+    expect(battery.blocked, "a failing check blocks, so it cannot be ticked off")
+    expect(battery.reason, "R", "and shows the core's reason rather than the prompt")
+
+    expect(!groups[0].checks[2].blocked,
+           "an overridable check does not block, which is the whole difference between it and "
+           + "failing, and reading only two verdicts would have made a soft GPS warning unclearable")
+
+    expect(Preflight.progress(groups, ticked: []), "0 of 4 checked", "an untouched list starts at none")
+    expect(!Preflight.ready(groups, ticked: []), "and is not ready")
+    let every: Set<String> = ["Hardware", "Battery", "GPS", "Motors"]
     expect(Preflight.ready(groups, ticked: every), "ticking every check is ready")
-    expect(Preflight.progress(groups, ticked: every), "11 of 11 checked", "and says so")
-    expect(!Preflight.ready(groups, ticked: every.subtracting(["Payload"])),
-           "one missing check is not ready")
-
-    expect(PreflightAirframe.of(multiRotor: false, vtol: true, rover: false, sub: false,
-                                fixedWing: true) == .vtol,
-           "a VTOL also reports fixedWing; the VTOL list wins")
-    expect(PreflightAirframe.of(multiRotor: false, vtol: false, rover: false, sub: false,
-                                fixedWing: false) == .generic,
-           "an airframe that claims nothing gets the generic list")
-
-    expect(!list(.multiRotor).contains("Actuators"),
-           "a multirotor has no control surfaces to sweep")
-    expect(list(.fixedWing).contains("Actuators"), "a fixed wing does")
-    expect(!list(.rover).contains("Motors"),
-           "a rover is not asked to throttle its props up")
-    expect(list(.rover).contains("Mission area") && !list(.rover).contains("Flight area"),
-           "a rover drives a mission area, it does not launch into a flight area")
-    expect(!list(.sub).contains("Wind and weather") && !list(.sub).contains("Flight area"),
-           "wind and a launch area mean nothing underwater")
-    expect(list(.sub).contains("Payload"), "a submarine still carries a payload")
-    expect(list(.multiRotor).contains("Radio control") && list(.multiRotor).contains("Sound output"),
-           "every list asks about the radio link and QGC's audio")
-
-    expect(Preflight.progress(list2, ticked: ["Motors", "Payload"]), "1 of 10 checked",
+    expect(Preflight.progress(groups, ticked: every.union(["Payload"])), "4 of 4 checked",
            "a tick left over from another airframe is not counted against a list it is not on")
 
-    expect(PreflightAirframe.multiRotor.hardwarePrompt, "Props mounted and secured?",
-           "the hardware prompt names what this airframe actually has")
-    expect(PreflightAirframe.sub.hardwarePrompt, "All seals in place?",
-           "and a submarine is asked about its seals, not its props")
+    expect(PreflightCheck(["name": "", "verdict": "manual"]) == nil,
+           "a check with no name is dropped, because the name is the identity a tick is stored under")
+    expect(PreflightCheck(["name": "GPS"]) == nil,
+           "and one with no verdict is dropped rather than read as passing")
+    expect(Preflight.groups(nil).isEmpty, "no answer is no checklist")
 }
-
 checkPreflight()
 
 func checkVehicleWarning() {
@@ -2605,6 +2568,10 @@ func checkViewContract() {
         ("view.battery", [], ["level", "packs"]),
         ("view.battery", ["packs"],
          ["level", "text", "secondaryText", "percent", "voltage", "current"]),
+        ("view.preflight", [], ["airframe", "groups"]),
+        ("view.preflight", ["groups"], ["name", "checks"]),
+        ("view.preflight", ["groups", "checks"],
+         ["name", "prompt", "verdict", "reason", "blocked"]),
     ]
 
     required.forEach { view, inner, keys in
