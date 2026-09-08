@@ -27,6 +27,7 @@ mod sensors;
 mod settings;
 mod shp;
 mod setup;
+mod signing;
 mod speed;
 mod survey;
 mod takeoff;
