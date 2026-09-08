@@ -31,6 +31,7 @@ pub mod signing;
 pub mod speed;
 pub mod statustext;
 pub mod survey;
+pub mod sysstatus;
 pub mod takeoff;
 pub mod terrain;
 pub mod terraintile;

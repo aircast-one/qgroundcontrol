@@ -583,6 +583,7 @@ About 58 developer-weeks. Flight-test time, not code, is the schedule.
 - 2026-09-09: `view.terrainTile(path[,lat,lon])` — the cached terrain tile format and lookup in the core.
 - 2026-09-09: MAVLink 2 signing key derivation and timestamps in the core (SigningTest parity); not exposed over the bridge.
 - 2026-09-09: STATUSTEXT chunk reassembly, counting and formatting in the core (StatusTextHandlerTest parity).
+- 2026-09-09: SYS_STATUS sensor decoding in the core (SysStatusSensorInfoTest parity).
 
 ### Stream F · Core
 
