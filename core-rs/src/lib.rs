@@ -43,6 +43,7 @@ pub mod terrain;
 pub mod terraintile;
 pub mod tlog;
 pub mod router;
+pub mod rtcm;
 pub mod vibration;
 pub mod video;
 pub mod vehiclefacts;
