@@ -6,28 +6,7 @@ import org.junit.Assert.assertNull
 import org.junit.Test
 
 class InspectorScreenTest {
-    @Test
-    fun `messages are parsed and sorted by name`() {
-        val model = JSONObject(
-            """
-            {"count":2,"elements":[
-              {"id":30,"name":"ATTITUDE","actualRateHz":10.0,"count":49},
-              {"id":0,"name":"AHRS","actualRateHz":3.0,"count":15}
-            ]}
-            """.trimIndent(),
-        )
-        val messages = parseInspectorMessages(model)
-        assertEquals(listOf("AHRS", "ATTITUDE"), messages.map { it.name })
-        assertEquals(1, messages[0].index)
-        assertEquals(0, messages[1].index)
-        assertEquals(10.0, messages[1].rateHz, 1e-9)
-    }
 
-    @Test
-    fun `an absent message model yields nothing`() {
-        assertEquals(emptyList<InspectorMessage>(), parseInspectorMessages(null))
-        assertEquals(emptyList<InspectorMessage>(), parseInspectorMessages(JSONObject("{}")))
-    }
 
     @Test
     fun `fields keep their declared order`() {
@@ -44,30 +23,28 @@ class InspectorScreenTest {
         assertEquals(InspectorField("roll", "float", "0.001"), fields[0])
     }
 
-    @Test
-    fun `rate formatting is fixed to one decimal`() {
-        assertEquals("10.0 Hz", formatRate(10.0))
-        assertEquals("3.5 Hz", formatRate(3.46))
-        assertEquals("0.0 Hz", formatRate(0.0))
-    }
 
-    @Test
-    fun `an unknown rate reads as unavailable`() {
-        assertEquals("--", formatRate(Double.NaN))
-    }
 }
 
 class InspectorOpenMessageTest {
     private fun message(index: Int, name: String) =
-        InspectorMessage(index = index, id = index, name = name, rateHz = 1.0, count = 1L)
+        InspectorMessage(
+            index = index,
+            id = index,
+            name = name,
+            rateText = "1.0 Hz",
+            count = 1L,
+            path = "mavlinkInspector.activeSystem.messages.$index",
+            compId = 1,
+        )
 
     @Test
     fun `the open message follows its name when the model is rebuilt at other indices`() {
         val before = listOf(message(0, "HEARTBEAT"), message(1, "ATTITUDE"))
         val after = listOf(message(0, "SYS_STATUS"), message(1, "HEARTBEAT"), message(2, "ATTITUDE"))
 
-        assertEquals(1, openMessageIn(before, "ATTITUDE")?.index)
-        assertEquals(2, openMessageIn(after, "ATTITUDE")?.index)
+        assertEquals(1, openMessageIn(before, "mavlinkInspector.activeSystem.messages.1")?.index)
+        assertEquals(2, openMessageIn(after, "mavlinkInspector.activeSystem.messages.2")?.index)
     }
 
     @Test
@@ -80,5 +57,52 @@ class InspectorOpenMessageTest {
     @Test
     fun `nothing open resolves to nothing`() {
         assertNull(openMessageIn(listOf(message(0, "HEARTBEAT")), null))
+    }
+
+    @Test
+    fun `the table reads the core's rate text and path`() {
+        val messages = inspectorMessages(
+            JSONObject("""{"messages":[
+                {"index":1,"id":30,"name":"ATTITUDE","rateText":"10.0 Hz","count":420,
+                 "path":"mavlinkInspector.activeSystem.messages.1"},
+                {"index":0,"id":0,"name":"HEARTBEAT","rateText":"1.0 Hz","count":42,
+                 "path":"mavlinkInspector.activeSystem.messages.0"}]}"""),
+        )
+
+        assertEquals(listOf("ATTITUDE", "HEARTBEAT"), messages.map { it.name })
+        assertEquals(listOf("10.0 Hz", "1.0 Hz"), messages.map { it.rateText })
+        assertEquals(listOf(1, 0), messages.map { it.index })
+    }
+
+    @Test
+    fun `no messages is an empty table, not a crash`() {
+        assertEquals(emptyList<InspectorMessage>(), inspectorMessages(null))
+        assertEquals(emptyList<InspectorMessage>(), inspectorMessages(JSONObject("{}")))
+    }
+
+    @Test
+    fun `two components sending the same message are distinct rows`() {
+        val messages = inspectorMessages(
+            JSONObject("""{"messages":[
+                {"index":0,"id":271,"name":"CAMERA_CAPTURE_STATUS","rateText":"1.0 Hz","count":9,
+                 "compId":100,"path":"mavlinkInspector.systems.1.messages.0"},
+                {"index":1,"id":271,"name":"CAMERA_CAPTURE_STATUS","rateText":"1.0 Hz","count":9,
+                 "compId":101,"path":"mavlinkInspector.systems.1.messages.1"}]}"""),
+        )
+
+        assertEquals(2, messages.size)
+        assertEquals(2, messages.map { it.path }.toSet().size)
+    }
+
+    @Test
+    fun `a duplicated name says which component it came from`() {
+        val a = InspectorMessage(0, 271, "CAMERA_CAPTURE_STATUS", "1.0 Hz", 9L, "p0", 100)
+        val b = InspectorMessage(1, 271, "CAMERA_CAPTURE_STATUS", "1.0 Hz", 9L, "p1", 101)
+        val solo = InspectorMessage(2, 30, "ATTITUDE", "5.0 Hz", 99L, "p2", 1)
+        val all = listOf(a, b, solo)
+
+        assertEquals("CAMERA_CAPTURE_STATUS  ·  comp 100", inspectorRowLabel(a, all))
+        assertEquals("CAMERA_CAPTURE_STATUS  ·  comp 101", inspectorRowLabel(b, all))
+        assertEquals("ATTITUDE", inspectorRowLabel(solo, all))
     }
 }

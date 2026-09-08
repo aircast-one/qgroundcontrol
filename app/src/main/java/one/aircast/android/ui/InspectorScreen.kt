@@ -34,13 +34,16 @@ import one.aircast.android.bridge.qgcBool
 import one.aircast.android.bridge.qgcPath
 
 private const val INSPECTOR_MESSAGES = "mavlinkInspector.activeSystem.messages"
+private const val INSPECTOR_VIEW = "view.inspector"
 
 internal data class InspectorMessage(
     val index: Int,
     val id: Int,
     val name: String,
-    val rateHz: Double,
+    val rateText: String,
     val count: Long,
+    val path: String,
+    val compId: Int,
 )
 
 internal data class InspectorField(
@@ -49,16 +52,18 @@ internal data class InspectorField(
     val value: String,
 )
 
-internal fun parseInspectorMessages(model: JSONObject?): List<InspectorMessage> {
-    val elements = model?.optJSONArray("elements") ?: return emptyList()
-    return (0 until elements.length()).mapNotNull { index ->
-        elements.optJSONObject(index)?.let { message ->
+internal fun inspectorMessages(view: JSONObject?): List<InspectorMessage> {
+    val items = view?.optJSONArray("messages") ?: return emptyList()
+    return (0 until items.length()).mapNotNull { index ->
+        items.optJSONObject(index)?.let { message ->
             InspectorMessage(
-                index = index,
+                index = message.optInt("index", index),
                 id = message.optInt("id"),
                 name = message.optString("name"),
-                rateHz = message.optDouble("actualRateHz", 0.0),
+                rateText = message.optString("rateText"),
                 count = message.optLong("count"),
+                path = message.optString("path"),
+                compId = message.optInt("compId"),
             )
         }
     }.sortedBy { it.name }
@@ -83,11 +88,15 @@ private fun selectMessage(index: Int) {
     offMainDetached { Qgc.set(INSPECTOR_SELECTED, index) }
 }
 
-internal fun openMessageIn(messages: List<InspectorMessage>, name: String?): InspectorMessage? =
-    name?.let { wanted -> messages.firstOrNull { it.name == wanted } }
+internal fun inspectorRowLabel(message: InspectorMessage, all: List<InspectorMessage>): String =
+    if (all.count { it.name == message.name } > 1) {
+        "${message.name}  ·  comp ${message.compId}"
+    } else {
+        message.name
+    }
 
-internal fun formatRate(rateHz: Double): String =
-    if (rateHz.isNaN()) "--" else String.format(Locale.US, "%.1f Hz", rateHz)
+internal fun openMessageIn(messages: List<InspectorMessage>, path: String?): InspectorMessage? =
+    path?.let { wanted -> messages.firstOrNull { it.path == wanted } }
 
 @Composable
 private fun InspectorNotice(text: String, modifier: Modifier = Modifier) {
@@ -132,13 +141,13 @@ private fun FieldList(messageIndex: Int, modifier: Modifier = Modifier) {
 @Composable
 fun InspectorScreen(modifier: Modifier = Modifier) {
     val hasVehicle by qgcBool("vehicles.activeVehicleAvailable")
-    val messagesModel by qgcPath(INSPECTOR_MESSAGES)
-    var openName by rememberSaveable { mutableStateOf<String?>(null) }
+    val inspectorJson by qgcPath(INSPECTOR_VIEW)
+    var openPath by rememberSaveable { mutableStateOf<String?>(null) }
     var filter by rememberSaveable { mutableStateOf("") }
-    val messages = parseInspectorMessages(messagesModel)
-    val open = openMessageIn(messages, openName)
+    val messages = inspectorMessages(inspectorJson)
+    val open = openMessageIn(messages, openPath)
 
-    BackHandler(enabled = open != null) { openName = null }
+    BackHandler(enabled = open != null) { openPath = null }
 
     if (!hasVehicle) {
         InspectorNotice("Connect a vehicle to inspect its MAVLink traffic.", modifier)
@@ -150,7 +159,7 @@ fun InspectorScreen(modifier: Modifier = Modifier) {
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .clickable { openName = null }
+                    .clickable { openPath = null }
                     .padding(16.dp),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
@@ -190,11 +199,11 @@ fun InspectorScreen(modifier: Modifier = Modifier) {
         }
 
         LazyColumn(Modifier.fillMaxSize()) {
-            items(shown, key = { it.name }) { message ->
+            items(shown, key = { it.path }) { message ->
                 SetupRow(
-                    title = message.name,
-                    status = formatRate(message.rateHz),
-                    onClick = { openName = message.name },
+                    title = inspectorRowLabel(message, shown),
+                    status = message.rateText,
+                    onClick = { openPath = message.path },
                 )
             }
         }
