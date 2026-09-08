@@ -141,3 +141,12 @@ class DestructiveActionsTest {
             .forEach { assertEquals("no warning in: $it", true, it.contains("cannot be recovered")) }
     }
 }
+
+class ClearHonestyTest {
+    @Test
+    fun `only the action that touches the aircraft is styled destructive`() {
+        assertEquals(true, confirmCopy(PlanConfirm.ClearMission).destructive)
+        assertEquals(false, confirmCopy(PlanConfirm.Open).destructive)
+        assertEquals(false, confirmCopy(PlanConfirm.NewPlan).destructive)
+    }
+}

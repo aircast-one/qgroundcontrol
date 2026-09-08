@@ -8,6 +8,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.HorizontalDivider
@@ -64,7 +65,14 @@ fun PlanTab(modifier: Modifier = Modifier) {
             title = { Text(copy.title) },
             text = { Text(copy.body) },
             confirmButton = {
-                TextButton(onClick = { pending = null; act() }) { Text(copy.confirm) }
+                TextButton(
+                    colors = if (copy.destructive) {
+                        ButtonDefaults.textButtonColors(contentColor = MaterialTheme.colorScheme.error)
+                    } else {
+                        ButtonDefaults.textButtonColors()
+                    },
+                    onClick = { pending = null; act() },
+                ) { Text(copy.confirm) }
             },
             dismissButton = {
                 TextButton(onClick = { pending = null }) { Text("Keep editing") }

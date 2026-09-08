@@ -62,7 +62,12 @@ internal fun saveBlockedReason(state: Int?): String? = when (state) {
 
 enum class PlanConfirm { Open, NewPlan, ClearMission }
 
-data class ConfirmCopy(val title: String, val body: String, val confirm: String)
+data class ConfirmCopy(
+    val title: String,
+    val body: String,
+    val confirm: String,
+    val destructive: Boolean = false,
+)
 
 internal fun confirmCopy(kind: PlanConfirm): ConfirmCopy = when (kind) {
     PlanConfirm.Open -> ConfirmCopy(
@@ -79,6 +84,7 @@ internal fun confirmCopy(kind: PlanConfirm): ConfirmCopy = when (kind) {
         "Clear the mission from the vehicle?",
         "This removes the mission from the aircraft as well as from this plan. It cannot be undone.",
         "Clear mission",
+        destructive = true,
     )
 }
 
@@ -255,8 +261,8 @@ fun rememberPlanFileActions(onResult: (String) -> Unit = {}): PlanFileActions {
             clearMission = {
                 discard(
                     "removeAllFromVehicle",
-                    "Mission cleared from the vehicle.",
-                    "The mission could not be cleared from the vehicle.",
+                    "Clear sent to the vehicle.",
+                    "The clear could not be sent to the vehicle.",
                 )
             },
             documentName = { name.value },
