@@ -289,13 +289,26 @@ final class MissionStore: ObservableObject, Probeable {
     }
 
     var editablePolygons: [EditablePolygon] {
-        items.compactMap { item in
+        let areas = items.compactMap { item -> EditablePolygon? in
             guard let property = MissionItemKind.areaProperty(forCommand: item.command) else {
                 return nil
             }
             let path = "plan.missionController.visualItems.\(item.index).\(property)"
-            return EditablePolygon.read(path: path, json: Bridge.group(path))
+            return EditablePolygon.read(path: path, json: Bridge.group(path), ring: true)
         }
+        let lines = items.compactMap { item -> EditablePolygon? in
+            guard let property = MissionItemKind.lineProperty(forCommand: item.command) else {
+                return nil
+            }
+            let path = "plan.missionController.visualItems.\(item.index).\(property)"
+            return EditablePolygon.read(path: path, json: Bridge.group(path), ring: false)
+        }
+        let fences = ((Bridge.group("plan.geoFenceController.polygons")["elements"]
+            as? [[String: Any]]) ?? []).enumerated().compactMap { index, json in
+            EditablePolygon.read(path: "plan.geoFenceController.polygons.\(index)",
+                                 json: json, ring: true)
+        }
+        return areas + lines + fences
     }
 
     func moveVertex(_ polygon: EditablePolygon, _ index: Int,
@@ -314,7 +327,7 @@ final class MissionStore: ObservableObject, Probeable {
 
     func splitSegment(_ polygon: EditablePolygon, after index: Int) {
         guard PolygonEdit.splits(index, in: polygon) else { return }
-        Bridge.invoke("\(polygon.path).splitPolygonSegment", [index])
+        Bridge.invoke("\(polygon.path).\(polygon.splitInvokable)", [index])
         reload()
     }
 
@@ -727,7 +740,9 @@ final class MissionStore: ObservableObject, Probeable {
          "globalAltitudeMode": AltitudeMode.title(for: globalAltitudeMode), "defaultAltitude": defaultAltitude,
          "scale": scaleBar.text,
          "polygons": editablePolygons.map { ["path": $0.path, "vertices": $0.points.count,
-                                             "canRemove": $0.canRemoveVertex] },
+                                             "canRemove": $0.canRemoveVertex,
+                                             "ring": $0.ring, "segments": $0.segments,
+                                             "split": $0.splitInvokable] },
          "centre": ["open": centreMenuOpen,
                     "focused": focus != nil,
                     "enabled": MapCentre.allCases

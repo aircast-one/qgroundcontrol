@@ -2806,7 +2806,7 @@ func checkTerrainDownload() {
 func checkPolygonEdit() {
     let square = [GeoPoint(latitude: 0, longitude: 0), GeoPoint(latitude: 0, longitude: 2),
                   GeoPoint(latitude: 2, longitude: 2), GeoPoint(latitude: 2, longitude: 0)]
-    let polygon = EditablePolygon(path: "p", points: square, minimumVertices: 3)
+    let polygon = EditablePolygon(path: "p", points: square, minimumVertices: 3, ring: true)
 
     expect(polygon.closed, "four corners make a polygon")
     expect(polygon.canRemoveVertex, "and one can be taken away without breaking it")
@@ -2817,7 +2817,7 @@ func checkPolygonEdit() {
     expect(midpoints[3] == GeoPoint(latitude: 1, longitude: 0),
            "and the last wraps to the first corner rather than being dropped")
 
-    let triangle = EditablePolygon(path: "p", points: Array(square.prefix(3)), minimumVertices: 3)
+    let triangle = EditablePolygon(path: "p", points: Array(square.prefix(3)), minimumVertices: 3, ring: true)
     expect(!triangle.canRemoveVertex,
            "a triangle is already at the minimum, so removing a corner is refused")
     expect(!PolygonEdit.removes(0, in: triangle), "which the edit rule enforces")
@@ -2830,26 +2830,50 @@ func checkPolygonEdit() {
     expect(PolygonEdit.splits(3, in: polygon), "the closing side can be split like any other")
     expect(!PolygonEdit.splits(4, in: polygon), "but there is no fifth side to split")
 
-    let short = EditablePolygon(path: "p", points: Array(square.prefix(2)), minimumVertices: 3)
+    let short = EditablePolygon(path: "p", points: Array(square.prefix(2)), minimumVertices: 3, ring: true)
     expect(!short.closed, "two points are not a polygon")
     expect(short.midpoints().isEmpty, "so they get no split handles")
     expect(!PolygonEdit.splits(0, in: short), "and nothing to split")
 
-    expect(EditablePolygon.read(path: "p", json: ["path": []]) == nil,
+    expect(EditablePolygon.read(path: "p", json: ["path": []], ring: true) == nil,
            "an empty path is no polygon to edit")
-    expect(EditablePolygon.read(path: "p", json: [:]) == nil, "nor a missing one")
+    expect(EditablePolygon.read(path: "p", json: [:], ring: true) == nil, "nor a missing one")
 
     let live = EditablePolygon.read(path: "p", json: [
         "minVertexCount": 3 as NSNumber,
         "path": square.map { ["latitude": $0.latitude as NSNumber,
-                              "longitude": $0.longitude as NSNumber] }])
+                              "longitude": $0.longitude as NSNumber] }], ring: true)
     expect(live?.points.count == 4, "the shape the live survey polygon actually reports is read")
     expect(live?.minimumVertices == 3, "with the minimum the polygon itself declares")
 
     let strict = EditablePolygon.read(path: "p", json: [
         "minVertexCount": 4 as NSNumber,
         "path": square.map { ["latitude": $0.latitude as NSNumber,
-                              "longitude": $0.longitude as NSNumber] }])
+                              "longitude": $0.longitude as NSNumber] }], ring: true)
     expect(strict?.canRemoveVertex == false,
            "a polygon that demands four corners does not let you drop to three")
+
+    let line = EditablePolygon(path: "l", points: Array(square.prefix(3)),
+                               minimumVertices: 2, ring: false)
+    expect(line.segments == 2,
+           "a corridor is an open line, so three points give two sides rather than three")
+    expect(line.midpoints().count == 2, "and two handles to split them")
+    expect(!PolygonEdit.splits(2, in: line),
+           "there is no closing side on a line, which is the wrap a ring has and a line does not")
+    expect(PolygonEdit.splits(2, in: polygon),
+           "while the square's closing side is real")
+    expect(line.splitInvokable, EditablePolygon.lineSplit,
+           "QGCMapPolyline calls it splitSegment, not splitPolygonSegment")
+    expect(polygon.splitInvokable, EditablePolygon.ringSplit,
+           "and QGCMapPolygon calls it splitPolygonSegment, which is the name that would have no-opped")
+
+    let pair = EditablePolygon.read(path: "l", json: [
+        "minVertexCount": 2 as NSNumber,
+        "path": Array(square.prefix(2)).map { ["latitude": $0.latitude as NSNumber,
+                                               "longitude": $0.longitude as NSNumber] }], ring: false)
+    expect(pair?.points.count == 2,
+           "a two-point corridor is editable, which is what this vehicle's corridor actually reports")
+    expect(pair?.canRemoveVertex == false, "but neither end can be dropped")
+    expect(EditablePolygon.read(path: "l", json: ["path": []], ring: false) == nil,
+           "and an empty line is still nothing to edit")
 }
