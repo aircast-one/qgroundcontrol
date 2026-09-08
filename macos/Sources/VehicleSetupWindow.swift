@@ -72,7 +72,7 @@ struct SensorsView: View {
                                 : "\(store.failing.count) sensor\(store.failing.count == 1 ? "" : "s") reporting a fault",
                              description: store.failing.isEmpty
                                 ? ""
-                                : store.failing.map(\.name).joined(separator: ", "),
+                                : store.failing.joined(separator: ", "),
                              showSeparator: false,
                              leading: {
                                  Image(systemName: store.failing.isEmpty
@@ -92,7 +92,7 @@ struct SensorsView: View {
                             GroupRow(title: sensor.name,
                                      showSeparator: index > 0,
                                      trailing: {
-                                         Text(SensorsView.label(sensor.state))
+                                         Text(sensor.label)
                                              .font(.callout)
                                              .foregroundColor(SensorsView.colour(sensor.state))
                                      })
@@ -183,19 +183,11 @@ struct SensorsView: View {
         }
     }
 
-    static func label(_ state: SensorHealth.State) -> String {
-        switch state {
-        case .healthy: return "Healthy"
-        case .unhealthy: return "Fault"
-        case .disabled: return "Not enabled"
-        }
-    }
-
     static func colour(_ state: SensorHealth.State) -> Color {
         switch state {
         case .healthy: return .green
         case .unhealthy: return .orange
-        case .disabled: return .secondary
+        case .disabled, .unknown: return .secondary
         }
     }
 }
@@ -775,7 +767,7 @@ struct SetupSummaryView: View {
     @ObservedObject var selection: PageSelection
 
     private var readiness: VehicleReadiness {
-        store.readiness(sensorFaults: sensors.failing.map(\.name))
+        store.readiness(sensorFaults: sensors.failing)
     }
 
     var body: some View {

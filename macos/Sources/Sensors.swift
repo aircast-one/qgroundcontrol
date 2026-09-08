@@ -10,7 +10,7 @@ final class SensorsStore: ObservableObject, Probeable {
 
     private var timer: Timer?
 
-    var failing: [SensorHealth] { sensors.filter { $0.state == .unhealthy } }
+    @Published private(set) var failing: [String] = []
 
     func start() {
         guard timer == nil else { return }
@@ -26,10 +26,13 @@ final class SensorsStore: ObservableObject, Probeable {
     }
 
     func refresh() {
-        let json = Bridge.group("vehicle.sysStatusSensorInfo")
-        let parsed = SensorHealth.from(json: json)
-        sensors = SensorHealth.ordered(parsed)
-        status = parsed.isEmpty ? "No vehicle is reporting sensor status." : ""
+        let view = Bridge.group("view.sensors")
+        let listed = SensorHealth.list(view["sensors"])
+        if listed != sensors { sensors = listed }
+        let faults = ((view["failing"] as? [Any]) ?? []).compactMap { $0 as? String }
+        if faults != failing { failing = faults }
+        let reported = (view["status"] as? String) ?? ""
+        if reported != status { status = reported }
 
         let read = Calibration.read(Bridge.group("sensorsCal"))
         if read != calibration { calibration = read }
@@ -66,7 +69,7 @@ final class SensorsStore: ObservableObject, Probeable {
                              .map(\.rawValue),
                          "sides": calibration.visibleSides.map(\.title),
                          "lastStarted": lastStarted],
-         "failing": failing.map(\.name),
+         "failing": failing,
          "status": status,
          "order": sensors.prefix(6).map(\.name)]
     }

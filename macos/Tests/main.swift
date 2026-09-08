@@ -137,30 +137,26 @@ expect(Parameter(name: "FORMAT", componentId: 1, json: [:]).group, "FORMAT", "an
 expect(Parameter(name: "ATC_ANG_PIT_P", componentId: 1, json: [:]).path,
        "vehicle.parameterManager.getParameter(1,ATC_ANG_PIT_P)", "path calls getParameter")
 
-// A disabled sensor also reports unhealthy. Treating that as a fault would put
-// Geofence and Logging beside a failed GPS and cry wolf before every flight.
-expect(SensorHealth(name: "Geofence", enabled: false, healthy: false).state == .disabled,
-       "a disabled sensor is not a fault")
-expect(SensorHealth(name: "GPS", enabled: true, healthy: false).state == .unhealthy,
-       "an enabled sensor that is unhealthy is a fault")
-expect(SensorHealth(name: "Gyro", enabled: true, healthy: true).state == .healthy,
-       "an enabled healthy sensor is healthy")
+let sensorItems: [Any] = [
+    ["name": "GPS", "state": "unhealthy", "label": "Fault"],
+    ["name": "Gyro", "state": "healthy", "label": "Healthy"],
+    ["name": "Logging", "state": "disabled", "label": "Not enabled"],
+]
+let listedSensors = SensorHealth.list(sensorItems)
+expect(listedSensors.map(\.name).joined(separator: ","), "GPS,Gyro,Logging",
+       "the core has already put faults first, and the head keeps that order rather than re-sorting")
+expect(listedSensors[0].state == .unhealthy, "an enabled sensor that is unhealthy is a fault")
+expect(listedSensors[2].state == .disabled,
+       "and a disabled sensor is not a fault, which is why Geofence and Logging do not cry wolf")
+expect(listedSensors[2].label, "Not enabled", "each row carries the core's own wording")
 
-let parsed = SensorHealth.from(json: [
-    "sensorNames": ["GPS", "Gyro", "Logging"],
-    "sensorEnabled": [true, true, false],
-    "sensorHealthy": [false, true, false]])
-expect(String(parsed.count), "3", "all three sensors parse")
-
-// Faults first: the operator is looking for what is wrong.
-let ordered = SensorHealth.ordered(parsed)
-expect(ordered.map(\.name).joined(separator: ","), "GPS,Gyro,Logging", "faults sort ahead of healthy, disabled last")
-
-// Mismatched array lengths mean a malformed payload; inventing sensors would be worse.
-expect(SensorHealth.from(json: ["sensorNames": ["GPS", "Gyro"],
-                                "sensorEnabled": [true],
-                                "sensorHealthy": [true]]).isEmpty,
-       "a ragged payload yields nothing rather than guessing")
+expect(SensorHealth(["name": "GPS"]) == nil,
+       "a sensor with no state is dropped rather than drawn as healthy")
+expect(SensorHealth(["state": "healthy"]) == nil,
+       "and one with no name is dropped, because the name is what the row is keyed by")
+expect(SensorHealth(["name": "GPS", "state": "molten"])?.state == SensorHealth.State.unknown,
+       "a state this head does not know reads as unknown, not as the reassuring one")
+expect(SensorHealth.list(nil).isEmpty, "no answer is no sensors")
 
 // A section listing parameters the firmware does not have would imply settings the
 // operator cannot change; an empty section is dropped entirely.
@@ -2564,6 +2560,8 @@ func checkViewContract() {
         ("view.instruments", [], ["available", "items"]),
         ("view.instruments", ["items"],
          ["id", "group", "name", "label", "value", "units", "missing"]),
+        ("view.sensors", [], ["available", "status", "failing", "sensors"]),
+        ("view.sensors", ["sensors"], ["name", "state", "label"]),
     ]
 
     let enumerations = (shapes["view.contract"] as? [String: Any])?["enumerations"] as? [String: Any]
@@ -2607,12 +2605,20 @@ func checkViewContract() {
            + "before a bridge read is safe; core-rs instruments::DEFAULTS is the same list in the "
            + "same order, and this pins the copy so the two cannot drift apart unnoticed")
 
+    let sensorStates = recorded("view.sensors.sensors[].state")
+    expect(sensorStates.sorted().joined(separator: ","), "disabled,healthy,unhealthy",
+           "the three sensor states are the three this head colours; a fourth would take the "
+           + "secondary grey of a disabled sensor and read as switched off rather than broken")
+    expect(sensorStates.filter { SensorHealth.State($0) == .unknown }.joined(separator: ","), "",
+           "and every one of them decodes to a state the row can draw")
+
     let neverNull: [(String, [String], [String])] = [
         ("view.battery", ["packs"], ["level", "text", "secondaryText"]),
         ("view.preflight", ["groups", "checks"], ["name", "prompt", "verdict", "reason"]),
         ("view.guidedActions", ["actions"], ["id", "offer", "title", "prompt", "reason"]),
         ("view.warnings", ["warnings"], ["id", "text", "detail"]),
         ("view.instruments", ["items"], ["id", "label", "value", "units"]),
+        ("view.sensors", ["sensors"], ["name", "state", "label"]),
     ]
     neverNull.forEach { view, inner, keys in
         let place = inner.isEmpty ? view : "\(view).\(inner.joined(separator: "."))"
