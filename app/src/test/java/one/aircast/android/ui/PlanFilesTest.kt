@@ -2,6 +2,8 @@ package one.aircast.android.ui
 
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull
+import org.json.JSONArray
+import org.json.JSONObject
 import org.junit.Test
 
 class SaveGuardTest {
@@ -322,5 +324,68 @@ class AltitudeLabelTest {
     fun `a missing unit falls back to metres, not to a bare number`() {
         assertEquals("10 m", altitudeLabel(10.0, converted = 32.8, unit = null))
         assertEquals("10 m", altitudeLabel(10.0, converted = 32.8, unit = ""))
+    }
+}
+
+class UndrawnItemsTest {
+    private fun item(cls: String, simple: Boolean = false, pattern: String = "") = JSONObject()
+        .put("class", cls)
+        .put("isSimpleItem", simple)
+        .put("patternName", pattern)
+
+    private fun plan(vararg items: JSONObject) = JSONArray().also { items.forEach(it::put) }
+
+    @Test
+    fun `an ordinary plan raises no warning`() {
+        val ordinary = plan(
+            item("MissionSettingsItem"),
+            item("TakeoffMissionItem", simple = true),
+            item("SimpleMissionItem", simple = true),
+            item("SurveyComplexItem", pattern = "Survey"),
+        )
+
+        assertEquals(emptyList<String>(), undrawnItemNames(ordinary))
+        assertNull(undrawnItemsWarning(undrawnItemNames(ordinary)))
+    }
+
+    @Test
+    fun `a corridor scan is named in the warning`() {
+        val mixed = plan(
+            item("MissionSettingsItem"),
+            item("SimpleMissionItem", simple = true),
+            item("CorridorScanComplexItem", pattern = "Corridor Scan"),
+        )
+
+        assertEquals(listOf("Corridor Scan"), undrawnItemNames(mixed))
+        assertEquals(
+            "The map cannot draw Corridor Scan. Those items are still in the plan and will still be flown.",
+            undrawnItemsWarning(undrawnItemNames(mixed)),
+        )
+    }
+
+    @Test
+    fun `each undrawn kind is named once however many the plan holds`() {
+        val many = plan(
+            item("CorridorScanComplexItem", pattern = "Corridor Scan"),
+            item("CorridorScanComplexItem", pattern = "Corridor Scan"),
+            item("StructureScanComplexItem", pattern = "Structure Scan"),
+        )
+
+        assertEquals(listOf("Corridor Scan", "Structure Scan"), undrawnItemNames(many))
+    }
+
+    @Test
+    fun `an item with no pattern name falls back to its class`() {
+        assertEquals(
+            listOf("FixedWingLandingComplexItem"),
+            undrawnItemNames(plan(item("FixedWingLandingComplexItem"))),
+        )
+    }
+
+    @Test
+    fun `a build whose bridge does not send the class stays quiet rather than warning wrongly`() {
+        val older = JSONArray().put(JSONObject().put("isSimpleItem", false))
+
+        assertEquals(emptyList<String>(), undrawnItemNames(older))
     }
 }
