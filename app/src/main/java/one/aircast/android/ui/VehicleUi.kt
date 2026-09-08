@@ -412,6 +412,7 @@ private fun FlightModePicker(onRefusal: (String?) -> Unit) {
     val modes = remember(json) { flightModesView(json) }
     var expanded by remember { mutableStateOf(false) }
     var showFolded by remember { mutableStateOf(false) }
+    var confirming by remember { mutableStateOf<FlightModeOption?>(null) }
     val scope = rememberCoroutineScope()
 
     if (modes == null) {
@@ -419,13 +420,32 @@ private fun FlightModePicker(onRefusal: (String?) -> Unit) {
         return
     }
 
-    fun choose(mode: FlightModeOption) {
-        expanded = false
+    fun send(mode: FlightModeOption) {
         scope.attemptCommand(
             action = mode.name,
             report = onRefusal,
             reached = { flightModeNow() == mode.name },
         ) { Qgc.set("vehicle.flightMode", mode.name) }
+    }
+
+    fun choose(mode: FlightModeOption) {
+        expanded = false
+        showFolded = false
+        if (mode.needsConfirm) confirming = mode else send(mode)
+    }
+
+    confirming?.let { mode ->
+        AlertDialog(
+            onDismissRequest = { confirming = null },
+            title = { Text("Switch to ${mode.name}?") },
+            text = { Text(mode.summary.ifBlank { "This mode changes how the aircraft responds." }) },
+            confirmButton = {
+                TextButton(onClick = { confirming = null; send(mode) }) { Text("Switch") }
+            },
+            dismissButton = {
+                TextButton(onClick = { confirming = null }) { Text("Cancel") }
+            },
+        )
     }
 
     Row(verticalAlignment = Alignment.CenterVertically) {

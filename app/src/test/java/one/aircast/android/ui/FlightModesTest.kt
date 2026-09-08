@@ -2,6 +2,7 @@ package one.aircast.android.ui
 
 import org.json.JSONObject
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
@@ -18,7 +19,7 @@ class FlightModesTest {
             "advanced":false,"needsConfirm":false}],
          "folded":[
            {"name":"Acro","summary":"Rate mode, no self-levelling.","current":false,
-            "advanced":true,"needsConfirm":true}]}
+            "advanced":true,"needsConfirm":false}]}
     """
 
     @Test
@@ -38,10 +39,20 @@ class FlightModesTest {
     }
 
     @Test
-    fun `a mode that wants confirming says so`() {
-        val modes = flightModesView(JSONObject(served))!!
+    fun `the confirm flag is read from the mode, not guessed from its name`() {
+        val flying = flightModesView(
+            JSONObject("""{"available":true,"canSet":true,"current":"Loiter",
+                "everyday":[
+                  {"name":"RTL","summary":"Flies home.","current":false,
+                   "advanced":false,"needsConfirm":true},
+                  {"name":"Loiter","summary":"Holds position.","current":true,
+                   "advanced":false,"needsConfirm":false}],
+                "folded":[]}"""),
+        )!!
 
-        assertTrue(modes.folded.first { it.name == "Acro" }.needsConfirm)
+        assertTrue(flying.everyday.first { it.name == "RTL" }.needsConfirm)
+        assertFalse(flying.everyday.first { it.name == "Loiter" }.needsConfirm)
+        assertFalse(flightModesView(JSONObject(served))!!.folded.first { it.name == "Acro" }.needsConfirm)
     }
 
     @Test
