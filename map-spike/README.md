@@ -7,6 +7,21 @@ Phase 4 of `NATIVE_ANDROID_REWRITE.md`. It began as a spike asking whether a nat
 replace the QML one. It does: `:app` hosts it as the Plan tab. The module name has outlived the
 question it was named after, and renaming it would touch `:app`, so it stands for now.
 
+The sections below are in the order they were learned, which is not the order
+anyone needs them. Roughly:
+
+- **To run it at all**: Running it standalone, Scripting the controls, One block
+  per interaction, Committing in a shared tree. The last two are about sharing a
+  handset and a checkout with another session, and both are ways to lose work
+  quietly.
+- **Before changing anything**: Which calls can be checked and which cannot, and
+  What the route is drawn through. The first says when the bridge can tell you a
+  write landed; the second is five rules this module got wrong one at a time.
+- **Before believing a measurement**: Terrain, Tiles, Two vehicles, and The map
+  centre is a real coordinate before it is a meaningful one. Each is a case where
+  the readout was fine and the thing behind it was not.
+- **What is deliberately missing**: Not done, and why.
+
 ## Where things live
 
 `PlanMapContent.kt` holds `MapSpikeScreen`, the composable both routes render. `PlanMap.kt` holds
