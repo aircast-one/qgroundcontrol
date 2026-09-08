@@ -47,6 +47,17 @@ final class FenceCircle: MKCircle {
     var inclusion = true
 }
 
+final class OrbitCircle: MKCircle {}
+
+final class GotoAnnotation: NSObject, MKAnnotation {
+    let coordinate: CLLocationCoordinate2D
+    let title: String? = "Flying here"
+
+    init(point: GeoPoint) {
+        coordinate = CLLocationCoordinate2D(latitude: point.latitude, longitude: point.longitude)
+    }
+}
+
 final class VehicleAnnotation: NSObject, MKAnnotation {
     let coordinate: CLLocationCoordinate2D
     let title: String? = "Vehicle"
@@ -75,6 +86,7 @@ struct MissionMap: NSViewRepresentable {
     var surveys: [[GeoPoint]] = []
     var corridors: [[GeoPoint]] = []
     var focus: MapFrame?
+    var overlays = FlyOverlays.none
 
     func makeNSView(context: Context) -> MKMapView {
         let map = MKMapView()
@@ -113,6 +125,17 @@ struct MissionMap: NSViewRepresentable {
 
         if let vehicle {
             map.addAnnotation(VehicleAnnotation(marker: vehicle))
+        }
+
+        if let going = overlays.goingTo {
+            map.addAnnotation(GotoAnnotation(point: going))
+        }
+
+        if overlays.showsOrbit, let centre = overlays.orbitCentre {
+            map.addOverlay(OrbitCircle(center: CLLocationCoordinate2D(latitude: centre.latitude,
+                                                                     longitude: centre.longitude),
+                                       radius: overlays.orbitRadius),
+                           level: .aboveLabels)
         }
 
         let rally = rallyPoints.filter { $0.latitude != nil && $0.longitude != nil }
@@ -340,6 +363,13 @@ struct MissionMap: NSViewRepresentable {
             if let tiles = overlay as? CachedTileOverlay {
                 return MKTileOverlayRenderer(tileOverlay: tiles)
             }
+            if let orbit = overlay as? OrbitCircle {
+                let renderer = MKCircleRenderer(circle: orbit)
+                renderer.strokeColor = .systemOrange
+                renderer.fillColor = NSColor.systemOrange.withAlphaComponent(0.12)
+                renderer.lineWidth = 2
+                return renderer
+            }
             if let corridor = overlay as? CorridorPolyline {
                 let renderer = MKPolylineRenderer(polyline: corridor)
                 renderer.strokeColor = .controlAccentColor
@@ -385,6 +415,17 @@ struct MissionMap: NSViewRepresentable {
                 view.canShowCallout = true
                 view.glyphText = "R"
                 view.markerTintColor = .systemGreen
+                return view
+            }
+
+            if let going = annotation as? GotoAnnotation {
+                let view = mapView.dequeueReusableAnnotationView(withIdentifier: "goto") as? MKMarkerAnnotationView
+                    ?? MKMarkerAnnotationView(annotation: going, reuseIdentifier: "goto")
+                view.annotation = going
+                view.canShowCallout = true
+                view.glyphImage = NSImage(systemSymbolName: "arrow.right.to.line",
+                                          accessibilityDescription: nil)
+                view.markerTintColor = .systemBlue
                 return view
             }
 

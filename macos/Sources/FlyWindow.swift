@@ -696,20 +696,43 @@ struct FlyView: View {
         .frame(maxWidth: 380)
     }
 
+    private var roiBanner: some View {
+        GlassPanel {
+            HStack(spacing: Overlay.step) {
+                Image(systemName: "viewfinder")
+                    .foregroundColor(.orange)
+                Text(mapClick.overlays.roiNote)
+                    .font(.caption)
+                    .fixedSize(horizontal: false, vertical: true)
+                Button("Stop looking") { mapClick.stopLooking() }
+                    .controlSize(.small)
+            }
+            .padding(.horizontal, Overlay.unit * 0.9)
+            .padding(.vertical, Overlay.unit * 0.5)
+        }
+        .frame(maxWidth: 460)
+    }
+
     var body: some View {
         ZStack(alignment: .top) {
             MissionMap(owner: "fly", items: mission.items, vehicle: fly.position,
                        shapes: [], rallyPoints: [],
                        padding: NSEdgeInsets(top: 56, left: 24, bottom: 40, right: 352),
                        select: { _ in }, adding: false, add: { _, _ in }, move: { _, _, _ in },
-                       secondary: { mapClick.open(latitude: $0, longitude: $1) })
+                       secondary: { mapClick.open(latitude: $0, longitude: $1) },
+                       overlays: mapClick.overlays)
                 .ignoresSafeArea()
 
-            if fly.warning.showing {
-                warningBanner
-                    .padding(.top, Overlay.unit)
-                    .transition(.opacity)
+            VStack(spacing: Overlay.step) {
+                if fly.warning.showing {
+                    warningBanner
+                }
+                if mapClick.overlays.roiActive {
+                    roiBanner
+                }
             }
+            .padding(.top, Overlay.unit)
+            .transition(.opacity)
 
             FlyPanel(fly: fly, video: video)
                 .padding(Overlay.unit)

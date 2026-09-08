@@ -2239,6 +2239,7 @@ checkTerrainUnits()
 checkMotorTest()
 checkMapClick()
 checkMapCentre()
+checkFlyOverlays()
 checkSetupPages()
 checkRemoteSupport()
 
@@ -2515,4 +2516,61 @@ func checkMapCentre() {
 
     expect(Set(MapCentre.allCases.map(\.title)).count == MapCentre.allCases.count,
            "no two destinations read alike")
+}
+
+func checkFlyOverlays() {
+    expect(!FlyOverlays.none.showsOrbit, "a vehicle on the ground draws no orbit")
+    expect(!FlyOverlays.none.showsGoto, "nor a fly-to marker")
+    expect(FlyOverlays.none.summary, "nothing in progress", "and says so")
+    expect(FlyOverlays.none.roiNote, "", "with nothing to explain about the camera")
+
+    let grounded = FlyOverlays.read(orbitCircle: ["center": NSNull()], radius: 0,
+                                    orbitActive: false, roiActive: false)
+    expect(grounded == FlyOverlays.none,
+           "which is exactly what this SITL reports: a null centre, a zero radius and both flags false")
+
+    let flying = FlyOverlays.read(
+        orbitCircle: ["center": ["latitude": -35.363 as NSNumber, "longitude": 149.165 as NSNumber]],
+        radius: 60, orbitActive: true, roiActive: false)
+    expect(flying.showsOrbit, "an active orbit with a centre and a radius is drawn")
+    expect(flying.orbitRadius == 60, "at the radius the vehicle reports")
+
+    let noRadius = FlyOverlays.read(
+        orbitCircle: ["center": ["latitude": -35.363 as NSNumber, "longitude": 149.165 as NSNumber]],
+        radius: 0, orbitActive: true, roiActive: false)
+    expect(!noRadius.showsOrbit, "a circle with no radius is not a circle")
+
+    let noCentre = FlyOverlays.read(orbitCircle: ["center": NSNull()], radius: 60,
+                                    orbitActive: true, roiActive: false)
+    expect(!noCentre.showsOrbit,
+           "and an orbit flag with no centre draws nothing rather than a circle at null island")
+
+    let stale = FlyOverlays.read(
+        orbitCircle: ["center": ["latitude": -35.363 as NSNumber, "longitude": 149.165 as NSNumber]],
+        radius: 60, orbitActive: false, roiActive: false)
+    expect(!stale.showsOrbit, "a centre left over from a finished orbit is not drawn either")
+
+    let looking = FlyOverlays.read(orbitCircle: nil, radius: 0, orbitActive: false, roiActive: true)
+    expect(looking.roiActive, "an ROI the vehicle reports is shown")
+    expect(looking.roiNote.contains("does not say where"),
+           "and the head says it cannot place it, because roiCoord reaches QML by signal and the bridge cannot read a signal")
+    expect(looking.summary, "look-at", "which is what is in progress")
+
+    var sent = FlyOverlays.none
+    sent.goingTo = GeoPoint(latitude: -35.363, longitude: 149.165)
+    expect(sent.showsGoto, "a fly-to the operator issued is marked")
+    expect(sent.summary, "fly-to", "and named")
+
+    expect(FlyOverlays.keepsGoto(flightMode: "Guided", gotoFlightMode: "Guided"),
+           "the marker survives while the vehicle is still in its goto mode")
+    expect(!FlyOverlays.keepsGoto(flightMode: "Loiter", gotoFlightMode: "Guided"),
+           "and goes the moment it leaves, which is QGC's onInGotoFlightModeChanged rule")
+    expect(!FlyOverlays.keepsGoto(flightMode: "", gotoFlightMode: ""),
+           "a vehicle reporting no mode at all keeps nothing")
+
+    var everything = FlyOverlays.read(
+        orbitCircle: ["center": ["latitude": -35.363 as NSNumber, "longitude": 149.165 as NSNumber]],
+        radius: 60, orbitActive: true, roiActive: true)
+    everything.goingTo = GeoPoint(latitude: -35.36, longitude: 149.16)
+    expect(everything.summary, "orbit, look-at, fly-to", "all three read out together")
 }

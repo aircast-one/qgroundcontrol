@@ -13,6 +13,8 @@ final class MapClickStore: ObservableObject, Probeable {
     @Published var openAt: MapClickTarget?
     @Published var confirming: MapClickTarget?
     @Published private(set) var lastSent = ""
+    @Published private(set) var overlays = FlyOverlays.none
+    private var goingTo: GeoPoint?
 
     private var timer: Timer?
 
@@ -35,6 +37,8 @@ final class MapClickStore: ObservableObject, Probeable {
         let vehicle = Bridge.group("vehicle")
         guard vehicle["kind"] as? String == "object" else {
             if state != MapClickState() { state = MapClickState() }
+            goingTo = nil
+            if overlays != .none { overlays = .none }
             dismissIfUnavailable()
             return
         }
@@ -63,6 +67,20 @@ final class MapClickStore: ObservableObject, Probeable {
         read.roiActive = flag("isROIEnabled")
 
         if read != state { state = read }
+
+        if !FlyOverlays.keepsGoto(flightMode: mode,
+                                  gotoFlightMode: (vehicle["gotoFlightMode"] as? String) ?? "") {
+            goingTo = nil
+        }
+        var drawn = FlyOverlays.read(
+            orbitCircle: vehicle["orbitMapCircle"] as? [String: Any],
+            radius: (Bridge.group("vehicle.orbitMapCircle.radius")["value"] as? NSNumber)?
+                .doubleValue ?? 0,
+            orbitActive: flag("orbitActive"),
+            roiActive: read.roiActive)
+        drawn.goingTo = goingTo
+        if drawn != overlays { overlays = drawn }
+
         dismissIfUnavailable()
     }
 
@@ -79,6 +97,11 @@ final class MapClickStore: ObservableObject, Probeable {
     }
 
     func close() { openAt = nil }
+
+    func stopLooking() {
+        guard state.roiActive, MapClickAction.cancelRoi.shown(in: state) else { return }
+        confirming = MapClickTarget(action: .cancelRoi, latitude: 0, longitude: 0)
+    }
 
     func choose(_ action: MapClickAction) {
         guard let openAt, action.shown(in: state) else { return }
@@ -111,6 +134,9 @@ final class MapClickStore: ObservableObject, Probeable {
         case .goTo: Bridge.invoke(path, [coordinate, 0])
         default: Bridge.invoke(path, [coordinate])
         }
+        if target.action == .goTo {
+            goingTo = GeoPoint(latitude: target.latitude, longitude: target.longitude)
+        }
         lastSent = target.action.rawValue
     }
 
@@ -124,7 +150,10 @@ final class MapClickStore: ObservableObject, Probeable {
          "refusal": offered.isEmpty ? MapClickAction.refusal(in: state) : "",
          "menuOpen": openAt != nil,
          "confirming": confirming?.action.title ?? "",
-         "lastSent": lastSent]
+         "lastSent": lastSent,
+         "overlays": ["orbit": overlays.showsOrbit, "roi": overlays.roiActive,
+                      "goto": overlays.showsGoto, "summary": overlays.summary,
+                      "roiNote": overlays.roiNote]]
     }
 
     func probeInvoke(action: String, args: [String: String]) -> [String: Any] {
