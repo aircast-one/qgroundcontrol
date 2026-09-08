@@ -311,10 +311,31 @@ apart showed that was backwards.
 Also worth keeping: bytes fell to 16% but time only to 30%, because the property walk still
 happens. The byte count alone would have overstated the win by a factor of two.
 
-**This does not fix how change is detected.** `Watcher` still polls and diffs by serialising
-to a string, so watching a large list would run this same serialisation on the Qt thread
-carrying MAVLink. Notify connections remain the answer; this makes the string smaller
-meanwhile.
+**At 199 items the ratio holds**: 40.2 ms whole, 16.2 ms with `"*"`, 12.4 ms with the field
+list (macOS Debug — the absolute figures are not the handset's, but it is the same code
+doing the same work, so the proportions transfer). Applied to the handset's measured
+250 ms that is roughly **100 ms**, which takes the map's poll from 36% of its 700 ms
+interval to about 14%, and pushes the saturation point from ~500 items to well past a
+thousand.
+
+**Notify connections are *not* the answer, and the note above `Watcher` said they were.**
+That note told the next person to move to generic `QMetaMethod` notify connections when
+the poll cost bit. The poll cost bit, someone read the note, and reached exactly that
+conclusion. It is wrong:
+
+- `Vehicle` declares `NOTIFY` on **96 of 164** properties.
+- `TransectStyleComplexItem` on **5 of 15**. `SurveyComplexItem` on **none of its 4**.
+- `QmlObjectListModel` emits only `countChanged` and `dirtyChanged`, so **an element's own
+  property changing is invisible to the model that holds it** — which is precisely the read
+  that raised the question.
+
+A notify-only `Watcher` would go silently stale on the majority of the properties the map
+reads. On a flight display that is the worst failure available: no error, a number that
+stops moving. The real upgrade is a hybrid — connect where a `NOTIFY` exists, keep polling
+the rest — and the code comment now carries these counts so it is not rediscovered.
+
+Polling was the right choice and remains it. It re-resolves each path every tick, which is
+why it survives the active vehicle changing and a list being rebuilt underneath it.
 
 ## The hosting model
 
