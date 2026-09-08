@@ -697,10 +697,23 @@ struct FlyView: View {
                 Image(systemName: "exclamationmark.triangle.fill")
                     .foregroundColor(.orange)
                 VStack(alignment: .leading, spacing: 3) {
-                    ForEach(fly.warning.lines, id: \.self) { line in
-                        Text(line)
+                    if fly.warnings.isEmpty, let blocker = fly.armingBlocker {
+                        Text(blocker)
                             .font(.callout.weight(.medium))
                             .fixedSize(horizontal: false, vertical: true)
+                    }
+                    ForEach(fly.warnings) { warning in
+                        VStack(alignment: .leading, spacing: 1) {
+                            Text(warning.text)
+                                .font(.callout.weight(.medium))
+                                .fixedSize(horizontal: false, vertical: true)
+                            if !warning.detail.isEmpty {
+                                Text(warning.detail)
+                                    .font(.caption)
+                                    .foregroundColor(.secondary)
+                                    .fixedSize(horizontal: false, vertical: true)
+                            }
+                        }
                     }
                 }
             }
@@ -768,7 +781,7 @@ struct FlyView: View {
                 if fly.terrainShowing {
                     terrainBanner
                 }
-                if fly.warning.showing {
+                if !fly.warnings.isEmpty || fly.armingBlocker != nil {
                     warningBanner
                 }
                 if mapClick.overlays.roiActive {

@@ -1938,46 +1938,36 @@ func checkPreflight() {
 checkPreflight()
 
 func checkVehicleWarning() {
-    expect(!VehicleWarning.none.showing, "nothing wrong shows nothing")
+    let live: [Any] = [
+        ["id": "prearm", "text": "PreArm: GPS 1: not healthy",
+         "detail": "The vehicle has failed a pre-arm check. In order to arm the vehicle, resolve the failure."],
+        ["id": "noGpsLock", "text": "No GPS lock for vehicle",
+         "detail": "This vehicle needs a position fix before it will arm."],
+    ]
+    let listed = VehicleWarning.list(live)
+    expect(listed.count == 2, "each warning the core raises is carried across")
+    expect(listed.map(\.id).joined(separator: "|"), "prearm|noGpsLock",
+           "in the order the core listed them")
+    expect(listed[0].text, "PreArm: GPS 1: not healthy",
+           "a prearm refusal is shown as the vehicle worded it")
+    expect(listed[0].detail.contains("resolve the failure"),
+           "with the core's explanation of what to do about it, which this banner could not say before")
 
-    let disconnected = VehicleWarning.assess(
-        connected: false, requiresGpsFix: true, hasCoordinate: false, armed: false,
-        prearmError: "PreArm: GPS 1: not healthy", healthReportSupported: false)
-    expect(!disconnected.showing, "with no vehicle there is nothing to warn about")
+    expect(VehicleWarning.list([]).isEmpty, "no warnings is an empty banner, not an empty line")
+    expect(VehicleWarning.list(nil).isEmpty, "and no answer is the same")
 
-    let live = VehicleWarning.assess(
-        connected: true, requiresGpsFix: true, hasCoordinate: true, armed: false,
-        prearmError: "PreArm: GPS 1: not healthy", healthReportSupported: false)
-    expect(live.lines.joined(separator: "|"), "PreArm: GPS 1: not healthy",
-           "the live SITL case: a prearm refusal is shown as the vehicle worded it")
+    expect(VehicleWarning(["id": "prearm"]) == nil,
+           "a warning with no text is dropped rather than drawn as a blank row")
+    expect(VehicleWarning(["text": "something is wrong"]) == nil,
+           "and one with no id is dropped, because the id is what the row is keyed by")
+    expect(VehicleWarning(["id": "noGpsLock", "text": "No GPS lock for vehicle"])?.detail ?? "x", "",
+           "a warning the core sends without detail shows its headline alone")
 
-    let flying = VehicleWarning.assess(
-        connected: true, requiresGpsFix: true, hasCoordinate: true, armed: true,
-        prearmError: "PreArm: GPS 1: not healthy", healthReportSupported: false)
-    expect(!flying.showing, "an armed vehicle is past prearm, so the refusal is stale")
-
-    let px4 = VehicleWarning.assess(
-        connected: true, requiresGpsFix: true, hasCoordinate: true, armed: false,
-        prearmError: "PreArm: GPS 1: not healthy", healthReportSupported: true)
-    expect(!px4.showing, "firmware with its own arming report owns the message instead")
-
-    let lost = VehicleWarning.assess(
-        connected: true, requiresGpsFix: true, hasCoordinate: false, armed: false,
-        prearmError: "", healthReportSupported: false)
-    expect(lost.lines.joined(separator: "|"), VehicleWarning.noGpsLockText,
-           "a vehicle that needs GPS and has no position says so")
-
-    let both = VehicleWarning.assess(
-        connected: true, requiresGpsFix: true, hasCoordinate: false, armed: false,
-        prearmError: "PreArm: GPS 1: not healthy", healthReportSupported: false)
-    expect(both.lines.count == 2, "both faults are listed rather than one hiding the other")
-
-    let noGpsNeeded = VehicleWarning.assess(
-        connected: true, requiresGpsFix: false, hasCoordinate: false, armed: false,
-        prearmError: "", healthReportSupported: false)
-    expect(!noGpsNeeded.showing, "a vehicle that needs no GPS is not missing one")
+    expect(VehicleWarning.list([["id": "prearm", "text": "PreArm: GPS 1: not healthy"]])
+        .map(\.text).joined(separator: "|"), "PreArm: GPS 1: not healthy",
+           "when a prearm warning is raised the banner shows it, and the arming blocker repeats "
+           + "that same sentence, which is why the blocker is only drawn when no warning is")
 }
-
 checkVehicleWarning()
 
 func checkInstrumentValues() {
@@ -2572,6 +2562,8 @@ func checkViewContract() {
         ("view.preflight", ["groups"], ["name", "checks"]),
         ("view.preflight", ["groups", "checks"],
          ["name", "prompt", "verdict", "reason", "blocked"]),
+        ("view.warnings", [], ["showing", "warnings"]),
+        ("view.warnings", ["warnings"], ["id", "text", "detail"]),
     ]
 
     let enumerations = (shapes["view.contract"] as? [String: Any])?["enumerations"] as? [String: Any]
@@ -2605,10 +2597,15 @@ func checkViewContract() {
            "failing,manual,overridable,passing",
            "the four verdicts are the four this head was written against")
 
+    let warningIds = recorded("view.warnings.warnings[].id")
+    expect(warningIds.sorted().joined(separator: ","), "noGpsLock,prearm",
+           "the two warnings the core can raise are the two the banner was written against")
+
     let neverNull: [(String, [String], [String])] = [
         ("view.battery", ["packs"], ["level", "text", "secondaryText"]),
         ("view.preflight", ["groups", "checks"], ["name", "prompt", "verdict", "reason"]),
         ("view.guidedActions", ["actions"], ["id", "offer", "title", "prompt", "reason"]),
+        ("view.warnings", ["warnings"], ["id", "text", "detail"]),
     ]
     neverNull.forEach { view, inner, keys in
         let place = inner.isEmpty ? view : "\(view).\(inner.joined(separator: "."))"

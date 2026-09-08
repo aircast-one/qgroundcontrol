@@ -8,8 +8,8 @@ final class FlyStore: ObservableObject, Probeable, WriteReporting {
     @Published private(set) var connected = false
     @Published private(set) var position: VehicleMarker?
     @Published private(set) var messages: [VehicleMessage] = []
-    @Published private(set) var unhealthyBits: Int?
-    @Published private(set) var warning = VehicleWarning.none
+    @Published private(set) var warnings: [VehicleWarning] = []
+    @Published private(set) var armingBlocker: String?
     @Published private(set) var airframe = "Generic"
     @Published private(set) var checklist: [PreflightGroup] = []
     @Published private(set) var batteries: [[DetailRow]] = []
@@ -72,8 +72,8 @@ final class FlyStore: ObservableObject, Probeable, WriteReporting {
             if telemetry != FlyTelemetry() { telemetry = FlyTelemetry() }
             if position != nil { position = nil }
             if !messages.isEmpty { messages = [] }
-            if unhealthyBits != nil { unhealthyBits = nil }
-            if warning != .none { warning = .none }
+            if !warnings.isEmpty { warnings = [] }
+            if armingBlocker != nil { armingBlocker = nil }
             if airframe != "Generic" { airframe = "Generic" }
             if !checklist.isEmpty { checklist = [] }
             if !batteries.isEmpty { batteries = [] }
@@ -154,18 +154,11 @@ final class FlyStore: ObservableObject, Probeable, WriteReporting {
         let readChecklist = Preflight.groups(preflight["groups"])
         if readChecklist != checklist { checklist = readChecklist }
 
-        let bits = (vehicle["sensorsUnhealthyBits"] as? NSNumber)?.intValue
-        if bits != unhealthyBits { unhealthyBits = bits }
-
-        let health = Bridge.group("vehicle.healthAndArmingCheckReport")
-        let assessed = VehicleWarning.assess(
-            connected: true,
-            requiresGpsFix: (vehicle["requiresGpsFix"] as? NSNumber)?.boolValue ?? false,
-            hasCoordinate: placed != nil,
-            armed: reading.armed,
-            prearmError: (vehicle["prearmError"] as? String) ?? "",
-            healthReportSupported: (health["supported"] as? NSNumber)?.boolValue ?? false)
-        if assessed != warning { warning = assessed }
+        let raised = Bridge.group("view.warnings")
+        let assessed = VehicleWarning.list(raised["warnings"])
+        if assessed != warnings { warnings = assessed }
+        let blocker = raised["armingBlocker"] as? String
+        if blocker != armingBlocker { armingBlocker = blocker }
     }
 
     private static func units(_ object: [String: Any]) -> [String: String] {
@@ -239,7 +232,9 @@ final class FlyStore: ObservableObject, Probeable, WriteReporting {
          "battery": telemetry.batteryText, "gps": telemetry.gpsText,
          "placed": position != nil,
          "worstMessage": VehicleMessage.worst(latestMessages).rawValue,
-         "warnings": warning.lines,
+         "warnings": warnings.map(\.text),
+         "warningDetails": warnings.map(\.detail),
+         "armingBlocker": armingBlocker ?? "",
          "checklistOpen": showingChecklist,
          "airframe": airframe,
          "modes": modes.map(\.name),
