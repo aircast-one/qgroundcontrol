@@ -192,6 +192,12 @@ poll, from a median of 66 ms to 32 ms on an 84 point survey. Each call serialise
 subtree to JSON and blocks the Qt thread while it does, so the cost is in the trip, not the
 parsing.
 
+**An upload can be reported as asked, never as done.** `sendToVehicle` returns void and nothing
+reachable through the bridge says the aircraft accepted the plan. `plan.dirty` looks like that
+signal and is not: measured against a vehicle that never acknowledges, it went false anyway and the
+map said "Uploaded to vehicle". The wording is "Upload sent to vehicle", which is the part actually
+known.
+
 **Most of the editing calls cannot report failure at all.** Nine of the ten methods this module
 invokes return void — `addInclusionPolygon`, `addInclusionCircle`, `addPoint`, `adjustVertex`,
 `appendVertex`, `deletePolygon`, `deleteCircle`, `removePoint`, `removeVisualItem`. For those `ok`

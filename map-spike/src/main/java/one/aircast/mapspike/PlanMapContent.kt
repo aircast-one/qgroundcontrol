@@ -281,7 +281,15 @@ internal fun MapSpikeScreen(mapStyle: String, onClear: (() -> Unit)? = null) {
                             vehicleSyncState(planOffline, planSyncing), "upload to",
                         )
                         if (refusal != null) say(refusal) else {
-                            onBridge("Uploading to vehicle") { PlanBridge.sendToVehicle() }
+                            busy = "Uploading to vehicle"
+                            scope.launch {
+                                val outcome = withContext(Dispatchers.Default) {
+                                    uploadOutcome(PlanBridge.sendToVehicle())
+                                }
+                                busy = uploadMessage(outcome)
+                                delay(FAILURE_MESSAGE_MS)
+                                busy = null
+                            }
                         }
                     }) { Text("Upload") }
 
