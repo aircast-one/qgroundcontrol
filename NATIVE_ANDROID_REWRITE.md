@@ -1138,6 +1138,20 @@ firmware will act on: `APMFirmwarePlugin` drops anything under 0.01 m, so an ena
 below that is a control that reports success and does nothing. One constant decides both the
 button and the sentence, so they cannot disagree.
 
+**The same blind spot, a third time: the Vibration screen had never drawn a coloured bar.**
+Every value it had ever been shown was zero, because the sim sent no `VIBRATION` message. The
+thresholds, the verdicts and the three colours existed and had never rendered. Sending 15, 45
+and 75 across the bands showed them working - and showed the colours in the wrong order.
+Caution was a hard amber; High was `colorScheme.error`, which in this dark theme is the pale
+pink meant for text on a surface rather than for filling a shape. The most serious band was
+the least alarming thing on the screen. High is a saturated red now.
+
+Three screens tonight looked finished because nothing exercised them: the GPS branch behind an
+empty sensors-present mask, the log list behind a sim with no logs, and this one behind a sim
+with no vibration. **An empty screen is not evidence that a screen works.** The question to ask
+of any surface that looks correct is what the simulator never sends, because that is exactly
+the set of paths no one has seen.
+
 **The no-GPS-lock warning was missing and the sim could not have caught it.** `VehicleWarnings.qml`
 shows two things - the vehicle's prearm text, which the banner already had, and a no-GPS-lock
 warning, which nothing in the native head had. It is gated on `requiresGpsFix`, which is the
