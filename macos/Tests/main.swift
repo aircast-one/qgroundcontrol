@@ -2277,6 +2277,7 @@ checkMotorTest()
 checkMapClick()
 checkMapCentre()
 checkPolygonEdit()
+checkMessageRate()
 checkMapFollow()
 checkMapScale()
 checkTerrainDownload()
@@ -2876,4 +2877,41 @@ func checkPolygonEdit() {
     expect(pair?.canRemoveVertex == false, "but neither end can be dropped")
     expect(EditablePolygon.read(path: "l", json: ["path": []], ring: false) == nil,
            "and an empty line is still nothing to edit")
+}
+
+func checkMessageRate() {
+    expect(MessageRate.title(MessageRate.disabled), "Off",
+           "asking for no messages reads as Off rather than minus one")
+    expect(MessageRate.title(MessageRate.useDefault), "Default",
+           "and zero is the vehicle's own choice, not a rate of zero")
+    expect(MessageRate.title(10), "10 Hz", "a real rate names its unit")
+    expect(MessageRate.title(100), "100 Hz", "including the fastest QGC offers")
+
+    expect(MessageRate.choices.count == 15, "QGC offers fifteen rates and so does this")
+    expect(MessageRate.choices.first == MessageRate.disabled, "Off is first, as QGC orders it")
+    expect(MessageRate.choices[1] == MessageRate.useDefault, "then Default")
+    expect(Set(MessageRate.choices).count == MessageRate.choices.count, "and none is listed twice")
+
+    expect(MessageRate.offered(25), "25 Hz is one of them")
+    expect(!MessageRate.offered(17), "17 Hz is not, so the picker will not send it")
+    expect(!MessageRate.offered(-5), "nor is a negative that is not Off")
+
+    expect(MessageRate.shown(4) == 4, "a rate the vehicle reports and the picker offers is shown as itself")
+    expect(MessageRate.shown(17) == MessageRate.useDefault,
+           "and a rate the picker cannot show falls back to Default rather than selecting nothing")
+    expect(MessageRate.shown(MessageRate.disabled) == MessageRate.disabled, "Off shows as Off")
+
+    let live = MavlinkMessage(json: ["name": "AHRS", "id": 163 as NSNumber,
+                                     "count": 12 as NSNumber,
+                                     "actualRateHz": 2.9952 as NSNumber,
+                                     "targetRateHz": 0 as NSNumber,
+                                     "compId": 1 as NSNumber], index: 0)
+    expect(live?.targetRateHz == MessageRate.useDefault,
+           "which is what this vehicle actually reports for a message nobody has asked about")
+    expect(live?.rateText ?? "", "3.0 Hz", "beside the rate it is really arriving at")
+
+    let quiet = MavlinkMessage(json: ["name": "X", "actualRateHz": 0.01 as NSNumber], index: 0)
+    expect(quiet?.rateText ?? "", "<0.1 Hz", "a trickle is not rounded away to zero")
+    let silent = MavlinkMessage(json: ["name": "X"], index: 0)
+    expect(silent?.rateText ?? "", "\u{2014}", "and a message never seen shows nothing")
 }

@@ -7,6 +7,7 @@ struct MavlinkMessage: Identifiable, Equatable {
     let compId: Int
     let count: Int
     let rateHz: Double
+    let targetRateHz: Int
     let selected: Bool
 
     var rateText: String {
@@ -25,12 +26,32 @@ struct MavlinkMessage: Identifiable, Equatable {
         compId = (object["compId"] as? NSNumber)?.intValue ?? 0
         count = (object["count"] as? NSNumber)?.intValue ?? 0
         rateHz = (object["actualRateHz"] as? NSNumber)?.doubleValue ?? 0
+        targetRateHz = (object["targetRateHz"] as? NSNumber)?.intValue ?? MessageRate.useDefault
         selected = (object["selected"] as? NSNumber)?.boolValue ?? false
     }
 
     static func from(_ elements: [Any]) -> [MavlinkMessage] {
         elements.enumerated().compactMap { MavlinkMessage(json: $0.element, index: $0.offset) }
     }
+}
+
+enum MessageRate {
+    static let disabled = -1
+    static let useDefault = 0
+
+    static let choices = [disabled, useDefault, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 25, 50, 100]
+
+    static func title(_ rate: Int) -> String {
+        switch rate {
+        case disabled: return "Off"
+        case useDefault: return "Default"
+        default: return "\(rate) Hz"
+        }
+    }
+
+    static func offered(_ rate: Int) -> Bool { choices.contains(rate) }
+
+    static func shown(_ rate: Int) -> Int { offered(rate) ? rate : useDefault }
 }
 
 struct MavlinkField: Identifiable, Equatable {

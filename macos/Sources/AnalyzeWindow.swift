@@ -333,6 +333,22 @@ struct MavlinkInspectorView: View {
             if let message = store.selected {
                 SectionLabel(text: "\(message.name) \u{00B7} \(message.countText) received")
                 GroupCard {
+                    GroupRow(title: "Arriving at", value: message.rateText,
+                             showSeparator: false)
+                    GroupRow(title: "Ask for", trailing: {
+                        Picker("", selection: Binding(
+                            get: { MessageRate.shown(message.targetRateHz) },
+                            set: { store.setRate($0) })
+                        ) {
+                            ForEach(MessageRate.choices, id: \.self) {
+                                Text(MessageRate.title($0)).tag($0)
+                            }
+                        }
+                        .labelsHidden()
+                        .frame(width: 110)
+                    })
+                }
+                GroupCard {
                     ScrollView {
                         VStack(spacing: 0) {
                             if store.fields.isEmpty {

@@ -61,9 +61,16 @@ final class MavlinkInspectorStore: ObservableObject, Probeable {
          "selected": selected?.name ?? "",
          "messages": messages.prefix(6).map {
              ["name": $0.name, "id": $0.id, "rate": $0.rateText,
-              "count": $0.count, "selected": $0.selected]
+              "count": $0.count, "selected": $0.selected,
+              "target": MessageRate.title($0.targetRateHz)]
          },
          "fields": fields.prefix(8).map { ["name": $0.name, "type": $0.type, "value": $0.value] }]
+    }
+
+    func setRate(_ rate: Int) {
+        guard selected != nil, MessageRate.offered(rate) else { return }
+        Bridge.invoke("mavlinkInspector.setMessageInterval", [rate])
+        refresh()
     }
 
     func probeInvoke(action: String, args: [String: String]) -> [String: Any] {
