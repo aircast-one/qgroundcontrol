@@ -20,4 +20,8 @@ private slots:
     void _takeoffAndSpeedRangesFollowTheVehicle();
     void _batteryAndPreflightFollowTheVehicle();
     void _warningsFollowTheVehicle();
+    void _labelsAreHumanised();
+
+private:
+    static bool _unavailable(const char *path);
 };

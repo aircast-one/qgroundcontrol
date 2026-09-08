@@ -56,9 +56,15 @@ void QGCCoreCTest::cleanup()
     qgc_bridge_watch("");
     qgc_bridge_watch_client("fly", "");
     qgc_bridge_watch_client("plan", "");
-    qgc_bridge_set_event_handler(nullptr);
     _disconnectMockLink();
+    QTRY_VERIFY_WITH_TIMEOUT(!take(qgc_bridge_get("vehicles")).value(QStringLiteral("activeVehicleAvailable")).toBool(true), 5000);
     UnitTest::cleanup();
+}
+
+bool QGCCoreCTest::_unavailable(const char *path)
+{
+    const QJsonObject view = take(qgc_bridge_get(path));
+    return view.contains(QStringLiteral("available")) && !view.value(QStringLiteral("available")).toBool(true);
 }
 
 void QGCCoreCTest::_viewMessagesReachTheHeadThroughTheRustCore()
@@ -157,7 +163,7 @@ void QGCCoreCTest::_guidedActionsFollowTheVehicle()
 
 void QGCCoreCTest::_guidedAltitudeTakesATarget()
 {
-    QCOMPARE(take(qgc_bridge_get("view.guidedAltitude")).value(QStringLiteral("available")).toBool(true), false);
+    QVERIFY2(_unavailable("view.guidedAltitude"), "altitude reads available, or lacks the field, with no vehicle");
 
     _connectMockLink(MAV_AUTOPILOT_PX4);
     QTRY_COMPARE_WITH_TIMEOUT(take(qgc_bridge_get("view.guidedAltitude")).value(QStringLiteral("available")).toBool(false), true, 5000);
@@ -176,8 +182,8 @@ void QGCCoreCTest::_guidedAltitudeTakesATarget()
 
 void QGCCoreCTest::_takeoffAndSpeedRangesFollowTheVehicle()
 {
-    QCOMPARE(take(qgc_bridge_get("view.guidedTakeoff")).value(QStringLiteral("available")).toBool(true), false);
-    QCOMPARE(take(qgc_bridge_get("view.guidedSpeed")).value(QStringLiteral("available")).toBool(true), false);
+    QVERIFY2(_unavailable("view.guidedTakeoff"), "takeoff reads available, or lacks the field, with no vehicle");
+    QVERIFY2(_unavailable("view.guidedSpeed"), "speed reads available, or lacks the field, with no vehicle");
 
     _connectMockLink(MAV_AUTOPILOT_PX4);
     QTRY_COMPARE_WITH_TIMEOUT(take(qgc_bridge_get("view.guidedTakeoff")).value(QStringLiteral("available")).toBool(false), true, 5000);
@@ -195,7 +201,7 @@ void QGCCoreCTest::_takeoffAndSpeedRangesFollowTheVehicle()
 
 void QGCCoreCTest::_batteryAndPreflightFollowTheVehicle()
 {
-    QCOMPARE(take(qgc_bridge_get("view.battery")).value(QStringLiteral("available")).toBool(true), false);
+    QVERIFY2(_unavailable("view.battery"), "battery reads available, or lacks the field, with no vehicle");
     const QJsonObject offline = take(qgc_bridge_get("view.preflight"));
     QCOMPARE(offline.value(QStringLiteral("groups")).toArray().count(), 3);
     QVERIFY(offline.value(QStringLiteral("blocked")).toArray().contains(QJsonValue(QStringLiteral("GPS"))));
@@ -226,4 +232,11 @@ void QGCCoreCTest::_warningsFollowTheVehicle()
     const QJsonObject online = take(qgc_bridge_get("view.warnings"));
     QVERIFY(online.value(QStringLiteral("warnings")).isArray());
     QCOMPARE(online.value(QStringLiteral("showing")).toBool(), !online.value(QStringLiteral("warnings")).toArray().isEmpty());
+}
+
+void QGCCoreCTest::_labelsAreHumanised()
+{
+    QCOMPARE(take(qgc_bridge_get("view.label(altitudeRelative)")).value(QStringLiteral("value")).toString(), QStringLiteral("Altitude Relative"));
+    QCOMPARE(take(qgc_bridge_get("view.label(ADSBVehicleManager)")).value(QStringLiteral("value")).toString(), QStringLiteral("ADSB Vehicle Manager"));
+    QCOMPARE(take(qgc_bridge_get("view.label")).value(QStringLiteral("value")).toString(), QString());
 }

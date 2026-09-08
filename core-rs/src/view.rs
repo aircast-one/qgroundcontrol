@@ -5,6 +5,7 @@ use serde_json::{Value, json};
 use crate::altitude;
 use crate::battery;
 use crate::guided;
+use crate::label;
 use crate::messages;
 use crate::plan;
 use crate::preflight;
@@ -30,6 +31,7 @@ pub const VIEWS: &[View] = &[
     View { path: "view.battery", deps: battery::DEPS, compute: battery::battery_view },
     View { path: "view.preflight", deps: preflight::DEPS, compute: preflight::preflight_view },
     View { path: "view.warnings", deps: warnings::DEPS, compute: warnings::warnings_view },
+    View { path: "view.label", deps: label::DEPS, compute: label::label_view },
 ];
 
 pub fn owns(path: &str) -> bool {
