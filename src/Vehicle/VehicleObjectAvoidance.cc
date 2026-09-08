@@ -28,6 +28,7 @@ VehicleObjectAvoidance::update(mavlink_obstacle_distance_t* message)
     } else {
         _increment = static_cast<qreal>(message->increment);
     }
+    _lastUpdate.start();
     _minDistance = message->min_distance;
     _maxDistance = message->max_distance;
     _angleOffset = static_cast<qreal>(message->angle_offset);

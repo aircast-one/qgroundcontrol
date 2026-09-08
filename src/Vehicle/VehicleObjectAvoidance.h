@@ -11,6 +11,7 @@
 
 #include "QGCMAVLink.h"
 
+#include <QtCore/QElapsedTimer>
 #include <QtCore/QObject>
 #include <QtCore/QVector>
 #include <QtCore/QPointF>
@@ -31,6 +32,7 @@ public:
     Q_PROPERTY(int              maxDistance READ maxDistance    NOTIFY objectAvoidanceChanged)
     Q_PROPERTY(qreal            angleOffset READ angleOffset    NOTIFY objectAvoidanceChanged)
     Q_PROPERTY(int              gridSize    READ gridSize       NOTIFY objectAvoidanceChanged)
+    Q_PROPERTY(qint64           msSinceUpdate READ msSinceUpdate NOTIFY objectAvoidanceChanged)
 
     //-- Start collision avoidance. Argument is minimum distance the vehicle should keep to all obstacles
     Q_INVOKABLE void    start   (int minDistance);
@@ -48,6 +50,9 @@ public:
     int             maxDistance () const{ return _maxDistance; }
     qreal           angleOffset () const{ return _angleOffset; }
     int             gridSize    () { return _objGrid.count(); }
+    // -1 until the first message. A reader cannot otherwise tell a live obstacle from one
+    // reported before the sensor stopped: nothing here is ever cleared.
+    qint64          msSinceUpdate () const { return _lastUpdate.isValid() ? _lastUpdate.elapsed() : -1; }
 
     void            update      (mavlink_obstacle_distance_t* message);
 
@@ -56,6 +61,7 @@ signals:
 
 private:
     QList<int>      _distances;
+    QElapsedTimer   _lastUpdate;
     QVector<QPointF>_objGrid;
     QVector<qreal>  _objDistance;
     qreal           _increment      = 0;
