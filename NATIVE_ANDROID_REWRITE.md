@@ -475,8 +475,16 @@ exists rather than the one it also serves.
 watch, so any value on screen comes from the poll and a change from any source
 surfaces. Parameters rows are not watched — each loads on demand and re-reads
 after its own write, so a clamp surfaces once and a change made by the vehicle or
-another GCS never does. That is the right trade at two hundred paths, but it is
-not the settings contract and reads identically in the code.
+another GCS does not.
+
+Demonstrated rather than reasoned: with a vehicle pushing an unsolicited
+`PARAM_VALUE` every few seconds, a `WPNAV_SPEED` row read 220.000 when opened and
+still read 220.000 twenty-five seconds and eight changes later. The obvious fix —
+watch only the rows on screen, which after the lazy-row change is about eight —
+is not available, because `Qgc.watch` only ever adds. Scrolling the list would
+accumulate every path it passed and arrive at the two hundred the design avoids.
+Per-row watching needs an unwatch first, and the Java side takes a union across
+clients, so removing a path means recomputing that union.
 
 Two corollaries, both found by auditing against that rule rather than by a
 failure:
