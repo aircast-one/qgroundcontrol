@@ -15,4 +15,5 @@ private slots:
     void _viewFieldsProjectAndNameTheUnknown();
     void _clientsWatchIndependently();
     void _planViewFollowsTheVehicle();
+    void _guidedActionsFollowTheVehicle();
 };

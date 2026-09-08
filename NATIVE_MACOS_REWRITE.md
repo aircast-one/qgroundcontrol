@@ -536,6 +536,8 @@ About 58 developer-weeks. Flight-test time, not code, is the schedule.
   suite. Without cargo, or on universal and non-macOS builds, the bridge routes straight to Qt.
 - 2026-09-08: `view.plan` — readiness, upload pre-check, file actions, sync state and status line with
   the sentences included; watched through the plan and vehicle properties it derives from.
+- 2026-09-08: `view.guidedActions` — the fourteen guided actions with offer hidden/ready/blocked, the
+  blocked reason, titles and prompts; derived from vehicle, arming report, mission cursor and checklist.
 
 ### Stream F · Core
 

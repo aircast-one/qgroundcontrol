@@ -2,6 +2,7 @@ use std::collections::BTreeSet;
 
 use serde_json::{Value, json};
 
+use crate::guided;
 use crate::messages;
 use crate::plan;
 use crate::router::Backend;
@@ -15,6 +16,7 @@ pub struct View {
 pub const VIEWS: &[View] = &[
     View { path: "view.messages", deps: &["vehicle.formattedMessages"], compute: messages_view },
     View { path: "view.plan", deps: plan::DEPS, compute: plan::plan_view },
+    View { path: "view.guidedActions", deps: guided::DEPS, compute: guided::guided_view },
 ];
 
 pub fn owns(path: &str) -> bool {

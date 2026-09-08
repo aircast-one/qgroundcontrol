@@ -8,6 +8,8 @@
 #include <QtCore/QJsonObject>
 #include <QtTest/QTest>
 
+#include <algorithm>
+
 namespace
 {
 
@@ -128,4 +130,27 @@ void QGCCoreCTest::_planViewFollowsTheVehicle()
     const QJsonObject online = take(qgc_bridge_get("view.plan"));
     QVERIFY2(online.value(QStringLiteral("upload")).toObject().value(QStringLiteral("state")).toInt(-1) != 1, "a connected vehicle still reads as absent");
     QCOMPARE(online.value(QStringLiteral("actions")).toObject().value(QStringLiteral("clearMission")).toBool(), true);
+}
+
+void QGCCoreCTest::_guidedActionsFollowTheVehicle()
+{
+    const QJsonObject none = take(qgc_bridge_get("view.guidedActions"));
+    QCOMPARE(none.value(QStringLiteral("class")).toString(), QStringLiteral("GuidedActions"));
+    QCOMPARE(none.value(QStringLiteral("connected")).toBool(true), false);
+    const QJsonArray hidden = none.value(QStringLiteral("actions")).toArray();
+    QCOMPARE(hidden.count(), 14);
+    QVERIFY(std::all_of(hidden.begin(), hidden.end(), [](const QJsonValue &a) { return a.toObject().value(QStringLiteral("offer")).toString() == QStringLiteral("hidden"); }));
+
+    _connectMockLink(MAV_AUTOPILOT_PX4);
+    QTRY_COMPARE_WITH_TIMEOUT(take(qgc_bridge_get("view.guidedActions")).value(QStringLiteral("connected")).toBool(false), true, 5000);
+    const QJsonObject online = take(qgc_bridge_get("view.guidedActions"));
+    const QJsonArray actions = online.value(QStringLiteral("actions")).toArray();
+    const auto offer = [&actions](const QString &id) {
+        const auto it = std::find_if(actions.begin(), actions.end(), [&id](const QJsonValue &a) { return a.toObject().value(QStringLiteral("id")).toString() == id; });
+        return it == actions.end() ? QString() : it->toObject().value(QStringLiteral("offer")).toString();
+    };
+    QCOMPARE(offer(QStringLiteral("arm")), QStringLiteral("ready"));
+    QCOMPARE(offer(QStringLiteral("takeoff")), QStringLiteral("ready"));
+    QCOMPARE(offer(QStringLiteral("rtl")), QStringLiteral("hidden"));
+    QCOMPARE(offer(QStringLiteral("emergencyStop")), QStringLiteral("hidden"));
 }
