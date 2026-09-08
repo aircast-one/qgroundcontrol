@@ -368,6 +368,7 @@ QJsonObject objectJson(QObject *object)
     }
 
     json.insert(QStringLiteral("kind"), QStringLiteral("object"));
+    json.insert(QStringLiteral("class"), QString::fromUtf8(object->metaObject()->className()));
     json.insert(QStringLiteral("facts"), facts);
     json.insert(QStringLiteral("children"), children);
     return json;

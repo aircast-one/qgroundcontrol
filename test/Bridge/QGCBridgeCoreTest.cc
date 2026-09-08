@@ -613,6 +613,40 @@ void QGCBridgeCoreTest::_convertsUnitsForNativeHeads()
              qPrintable(QJsonDocument(units).toJson(QJsonDocument::Compact)));
 }
 
+void QGCBridgeCoreTest::_anObjectSaysWhatClassItIs()
+{
+    const QJsonObject simple = parse(QGCBridgeCore::invoke(
+        QStringLiteral("plan.missionController.insertSimpleMissionItem"),
+        QStringLiteral("[{\"latitude\": 47.397, \"longitude\": 8.545, \"altitude\": 50}, -1, false]")));
+    QVERIFY2(simple.value(QStringLiteral("ok")).toBool(),
+             qPrintable(QJsonDocument(simple).toJson(QJsonDocument::Compact)));
+
+    const QJsonObject corridor = parse(QGCBridgeCore::invoke(
+        QStringLiteral("plan.missionController.insertComplexMissionItem"),
+        QStringLiteral("[\"Corridor Scan\", {\"latitude\": 47.397, \"longitude\": 8.545}, -1, false]")));
+    QVERIFY2(corridor.value(QStringLiteral("ok")).toBool(),
+             qPrintable(QJsonDocument(corridor).toJson(QJsonDocument::Compact)));
+
+    const QJsonArray elements = parse(QGCBridgeCore::get(
+        QStringLiteral("plan.missionController.visualItems")))
+        .value(QStringLiteral("elements")).toArray();
+    QVERIFY(elements.size() >= 3);
+
+    const QStringList classes = [&elements]() {
+        QStringList found;
+        for (const QJsonValue &element : elements) {
+            found.append(element.toObject().value(QStringLiteral("class")).toString());
+        }
+        return found;
+    }();
+
+    QVERIFY2(classes.contains(QStringLiteral("SimpleMissionItem")), qPrintable(classes.join(QChar(','))));
+    QVERIFY2(classes.contains(QStringLiteral("CorridorScanComplexItem")), qPrintable(classes.join(QChar(','))));
+    QVERIFY2(!classes.contains(QString()), qPrintable(classes.join(QChar(','))));
+
+    (void) QGCBridgeCore::invoke(QStringLiteral("plan.removeAll"), QStringLiteral("[]"));
+}
+
 // A coordinate read directly carries "valid"; nested in an object read it did not, so a
 // caller checking that key could not tell a good coordinate from a missing field. The
 // macOS head read nil there and would have hidden Orbit from a vehicle with a valid home.

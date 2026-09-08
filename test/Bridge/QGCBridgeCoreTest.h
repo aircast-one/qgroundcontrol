@@ -46,6 +46,7 @@ private slots:
     void _resolvesMavlinkConsoleRoot();
     void _resolvesMavlinkInspectorRoot();
     void _invokeReturnsAFactObject();
+    void _anObjectSaysWhatClassItIs();
     void _invokeRejectsUnresolvableObjectReference();
     void _invokeRejectsTooManyArguments();
     void _accessorCallNeedsAQObjectReturn();
