@@ -66,8 +66,13 @@ driven with no vehicle connected.
 
 Mission items, geofence polygons, geofence circles, rally points and surveys can each be created,
 moved and deleted. Surveys generate transects and their grid rotates. Waypoint altitude is
-editable. A terrain profile plots planned altitude against distance. All verified on a device
-against a live vehicle.
+editable. A terrain profile plots planned altitude and ground height against distance. All
+verified on a device against a live vehicle.
+
+The whole of that in one gesture: dragging a survey's corner handle - the same handle built for
+fence polygons - reshapes the area, regenerates the grid through the bridge, redraws the
+transects, and moves the profile with it. 5.90 km became 4.16 km in the status line, in the
+chart, and in the ground curve underneath it.
 
 ## What the bridge taught us
 
