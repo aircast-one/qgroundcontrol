@@ -6,6 +6,7 @@ final class ParametersStore: ObservableObject, Probeable {
     @Published private(set) var parameters: [Parameter] = []
     @Published private(set) var loading = false
     @Published private(set) var status = ""
+    @Published var writeFailure: String?
     @Published var search = "" { didSet { refilter() } }
     @Published var group = "" { didSet { refilter() } }
     @Published private(set) var visible: [Parameter] = []
@@ -62,7 +63,10 @@ final class ParametersStore: ObservableObject, Probeable {
     }
 
     func write(_ parameter: Parameter, _ value: String) {
-        Bridge.set(parameter.path, Double(value) ?? value)
+        guard Bridge.set(parameter.path, Double(value) ?? value) else {
+            writeFailure = WriteReport.failure(parameter.name)
+            return
+        }
         let json = Bridge.group(parameter.path)
         guard json["kind"] as? String == "fact" else { return }
         let updated = Parameter(name: parameter.name, componentId: parameter.componentId, json: json)
@@ -73,7 +77,8 @@ final class ParametersStore: ObservableObject, Probeable {
     }
 
     func probeState() -> [String: Any] {
-        ["count": parameters.count, "visible": visible.count, "loading": loading,
+        ["writeFailure": writeFailure ?? "",
+         "count": parameters.count, "visible": visible.count, "loading": loading,
          "search": search, "group": group, "status": status,
          "groups": groups.prefix(12).map { $0 },
          "sample": visible.prefix(5).map { ["name": $0.name, "value": $0.value, "units": $0.units] }]
@@ -81,6 +86,11 @@ final class ParametersStore: ObservableObject, Probeable {
 
     func probeInvoke(action: String, args: [String: String]) -> [String: Any] {
         switch action {
+        case "failWrite":
+            guard let sample = parameters.first else {
+                return ["ok": false, "error": "no parameters loaded"]
+            }
+            writeFailure = WriteReport.failure(sample.name)
         case "load":
             load()
         case "search": search = args["text"] ?? ""

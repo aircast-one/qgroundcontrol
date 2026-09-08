@@ -11,6 +11,7 @@ final class LinksStore: ObservableObject, Probeable {
     @Published var editingIndex: Int?
     @Published private(set) var connectingName = ""
     @Published private(set) var failedName = ""
+    @Published var writeFailure: String?
 
     private var timer: Timer?
 
@@ -60,18 +61,27 @@ final class LinksStore: ObservableObject, Probeable {
         return ok
     }
 
+    @discardableResult
+    func write(_ path: String, _ value: Any, _ what: String) -> Bool {
+        guard Bridge.set(path, value) else {
+            writeFailure = WriteReport.failure(what)
+            return false
+        }
+        return true
+    }
+
     var linkTypes: [String] {
         (Bridge.group("links")["linkTypeStrings"] as? [String]) ?? []
     }
 
     func setAutoConnect(_ link: LinkConfig, _ enabled: Bool) {
-        Bridge.set("\(link.path).autoConnect", enabled)
+        write("\(link.path).autoConnect", enabled, "whether this link connects on its own")
         reload()
     }
 
     func rename(_ link: LinkConfig, to name: String) {
         guard !name.trimmingCharacters(in: .whitespaces).isEmpty else { return }
-        Bridge.set("\(link.path).name", name)
+        write("\(link.path).name", name, "the link name")
         reload()
     }
 
@@ -87,27 +97,27 @@ final class LinksStore: ObservableObject, Probeable {
 
     func setLogFile(_ link: LinkConfig, _ path: String) {
         guard !path.isEmpty else { return }
-        Bridge.set("\(link.path).filename", path)
+        write("\(link.path).filename", path, "the log file")
         reload()
     }
 
     func setHost(_ link: LinkConfig, _ host: String) {
-        Bridge.set("\(link.path).host", host)
+        write("\(link.path).host", host, "the host")
         reload()
     }
 
     func setPort(_ link: LinkConfig, _ port: Int) {
-        Bridge.set("\(link.path).\(link.type == "TypeUdp" ? "localPort" : "port")", port)
+        write("\(link.path).\(link.type == "TypeUdp" ? "localPort" : "port")", port, "the port")
         reload()
     }
 
     func setPortName(_ link: LinkConfig, _ name: String) {
-        Bridge.set("\(link.path).portName", name)
+        write("\(link.path).portName", name, "the serial port")
         reload()
     }
 
     func setBaud(_ link: LinkConfig, _ baud: Int) {
-        Bridge.set("\(link.path).baud", baud)
+        write("\(link.path).baud", baud, "the baud rate")
         reload()
     }
 
@@ -126,6 +136,7 @@ final class LinksStore: ObservableObject, Probeable {
 extension LinksStore {
     func probeState() -> [String: Any] {
         ["connecting": connectingName, "failed": failedName,
+         "writeFailure": writeFailure ?? "",
          "adding": adding, "editing": editingIndex ?? -1,
          "linkTypes": linkTypes, "serialPorts": serialPorts.map(\.label),
          "links": links.map { ["index": $0.index, "name": $0.name, "type": $0.typeLabel,
@@ -139,6 +150,9 @@ extension LinksStore {
         let link = links.indices.contains(index) ? links[index] : nil
 
         switch action {
+        case "failWrite":
+            write(args["path"] ?? "links.linkConfigurations.0.linkType",
+                  args["value"] ?? "x", args["what"] ?? "the link type")
         case "connect":
             guard let link else { return ["ok": false, "error": "no link at index \(index)"] }
             connect(link)

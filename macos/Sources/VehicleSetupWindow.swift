@@ -20,6 +20,13 @@ struct ParametersView: View {
             }
         }
         .onAppear(perform: store.load)
+        .alert("That parameter was not accepted",
+               isPresented: Binding(get: { store.writeFailure != nil },
+                                    set: { if !$0 { store.writeFailure = nil } })) {
+            Button("OK") { store.writeFailure = nil }
+        } message: {
+            Text(store.writeFailure ?? "")
+        }
     }
 
     private var filters: some View {
