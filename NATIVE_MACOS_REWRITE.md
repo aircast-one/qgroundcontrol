@@ -543,6 +543,8 @@ About 58 developer-weeks. Flight-test time, not code, is the schedule.
   arguments in parentheses.
 - 2026-09-08: `view.guidedTakeoff(target)` and `view.guidedSpeed(target)` — the remaining guided value ranges;
   speed carries the vehicle method name to invoke.
+- 2026-09-08: `view.battery` (the QML indicator rule, worst pack first) and `view.preflight` (the checklist by
+  airframe with GPS, battery, sensor and sound verdicts).
 
 ### Stream F · Core
 

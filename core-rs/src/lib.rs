@@ -1,9 +1,11 @@
 #[cfg(not(test))]
 mod abi;
 mod altitude;
+mod battery;
 mod guided;
 mod messages;
 mod plan;
+mod preflight;
 mod read;
 mod speed;
 mod takeoff;

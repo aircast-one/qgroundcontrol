@@ -3,9 +3,11 @@ use std::collections::BTreeSet;
 use serde_json::{Value, json};
 
 use crate::altitude;
+use crate::battery;
 use crate::guided;
 use crate::messages;
 use crate::plan;
+use crate::preflight;
 use crate::read::value_string;
 use crate::speed;
 use crate::takeoff;
@@ -24,6 +26,8 @@ pub const VIEWS: &[View] = &[
     View { path: "view.guidedAltitude", deps: altitude::DEPS, compute: altitude::altitude_view },
     View { path: "view.guidedTakeoff", deps: takeoff::DEPS, compute: takeoff::takeoff_view },
     View { path: "view.guidedSpeed", deps: speed::DEPS, compute: speed::speed_view },
+    View { path: "view.battery", deps: battery::DEPS, compute: battery::battery_view },
+    View { path: "view.preflight", deps: preflight::DEPS, compute: preflight::preflight_view },
 ];
 
 pub fn owns(path: &str) -> bool {

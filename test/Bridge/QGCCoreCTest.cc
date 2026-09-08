@@ -192,3 +192,24 @@ void QGCCoreCTest::_takeoffAndSpeedRangesFollowTheVehicle()
     QVERIFY(speed.value(QStringLiteral("targetMetersSecond")).toDouble() > 0);
     QVERIFY(!speed.value(QStringLiteral("unit")).toString().isEmpty());
 }
+
+void QGCCoreCTest::_batteryAndPreflightFollowTheVehicle()
+{
+    QCOMPARE(take(qgc_bridge_get("view.battery")).value(QStringLiteral("available")).toBool(true), false);
+    const QJsonObject offline = take(qgc_bridge_get("view.preflight"));
+    QCOMPARE(offline.value(QStringLiteral("groups")).toArray().count(), 3);
+    QVERIFY(offline.value(QStringLiteral("blocked")).toArray().contains(QJsonValue(QStringLiteral("GPS"))));
+
+    _connectMockLink(MAV_AUTOPILOT_PX4);
+    QTRY_COMPARE_WITH_TIMEOUT(take(qgc_bridge_get("view.battery")).value(QStringLiteral("available")).toBool(false), true, 5000);
+    const QJsonObject battery = take(qgc_bridge_get("view.battery"));
+    QVERIFY(!battery.value(QStringLiteral("level")).toString().isEmpty());
+    QVERIFY(battery.value(QStringLiteral("packs")).toArray().count() >= 1);
+
+    const QJsonObject online = take(qgc_bridge_get("view.preflight"));
+    QCOMPARE(online.value(QStringLiteral("airframe")).toString(), QStringLiteral("Multirotor"));
+    const QJsonArray first = online.value(QStringLiteral("groups")).toArray().first().toObject().value(QStringLiteral("checks")).toArray();
+    QCOMPARE(first.count(), 5);
+    QCOMPARE(first.at(1).toObject().value(QStringLiteral("name")).toString(), QStringLiteral("Battery"));
+    QVERIFY(!first.at(1).toObject().value(QStringLiteral("reason")).toString().contains(QStringLiteral("No vehicle")));
+}
