@@ -4,12 +4,18 @@ struct SurveyStats: Equatable {
     let shots: Int
     let secondsBetweenShots: Double
     let areaSquareMetres: Double
+    let distanceMetres: Double
     let footprintSide: Double
     let footprintFrontal: Double
+    let footprintUnits: String
     let minimumInterval: Double
+    let areaMeasure: Measure
+    let distanceMeasure: Measure
 
     static let none = SurveyStats(shots: 0, secondsBetweenShots: 0, areaSquareMetres: 0,
-                                  footprintSide: 0, footprintFrontal: 0, minimumInterval: 0)
+                                  distanceMetres: 0, footprintSide: 0, footprintFrontal: 0,
+                                  footprintUnits: "m", minimumInterval: 0,
+                                  areaMeasure: .squareMetres, distanceMeasure: .metres)
 
     var describes: Bool { shots > 0 || areaSquareMetres > 0 }
 
@@ -17,11 +23,18 @@ struct SurveyStats: Equatable {
 
     var intervalText: String { SurveyStats.interval(secondsBetweenShots) }
 
-    var areaText: String { SurveyStats.area(areaSquareMetres) }
+    var areaText: String {
+        areaSquareMetres > 0 ? areaMeasure.text(areaSquareMetres) : "\u{2014}"
+    }
+
+    var distanceText: String {
+        distanceMetres > 0 ? distanceMeasure.text(distanceMetres) : "\u{2014}"
+    }
 
     var footprintText: String {
         guard footprintSide > 0, footprintFrontal > 0 else { return "\u{2014}" }
-        return String(format: "%.1f \u{00D7} %.1f m", footprintSide, footprintFrontal)
+        return String(format: "%.1f \u{00D7} %.1f %@", footprintSide, footprintFrontal,
+                      Measure.pretty(footprintUnits))
     }
 
     var tooFast: Bool {
@@ -36,17 +49,6 @@ struct SurveyStats: Equatable {
 
     static func interval(_ seconds: Double) -> String {
         guard seconds.isFinite, seconds > 0 else { return "\u{2014}" }
-        return String(format: "%.2f s", seconds)
-    }
-
-    static func area(_ squareMetres: Double) -> String {
-        guard squareMetres.isFinite, squareMetres > 0 else { return "\u{2014}" }
-        if squareMetres >= 1_000_000 {
-            return String(format: "%.2f km\u{00B2}", squareMetres / 1_000_000)
-        }
-        if squareMetres >= 10_000 {
-            return String(format: "%.1f ha", squareMetres / 10_000)
-        }
-        return String(format: "%.0f m\u{00B2}", squareMetres)
+        return String(format: "%.1f s", seconds)
     }
 }

@@ -35,7 +35,7 @@ struct MissionItem: Identifiable {
 
     var canChangeCommand: Bool { isSimpleItem && sequence > 0 && !isLaunch }
 
-    init(json: [String: Any], index: Int) {
+    init(json: [String: Any], index: Int, verticalMeasure: Measure = .metres) {
         self.index = index
         sequence = (json["sequenceNumber"] as? NSNumber)?.intValue ?? 0
         command = (json["commandName"] as? String) ?? ""
@@ -59,14 +59,22 @@ struct MissionItem: Identifiable {
         longitude = (coordinate?["longitude"] as? NSNumber)?.doubleValue
 
         let facts = (json["facts"] as? [[String: Any]]) ?? []
-        let altitudeFact = facts.first { ($0["name"] as? String) == "Altitude" }
-        altitudeUnits = (altitudeFact?["units"] as? String) ?? "m"
-        if let value = (altitudeFact?["value"] as? NSNumber)?.doubleValue, value.isFinite {
-            altitude = value
+        let altitudeFact = MissionItem.altitudeFactNames
+            .lazy
+            .compactMap { name in facts.first { ($0["name"] as? String) == name } }
+            .first { ($0["value"] as? NSNumber)?.doubleValue.isFinite ?? false }
+
+        if let altitudeFact {
+            altitudeUnits = (altitudeFact["units"] as? String) ?? "m"
+            altitude = (altitudeFact["value"] as? NSNumber)?.doubleValue
         } else {
-            altitude = (coordinate?["altitude"] as? NSNumber)?.doubleValue
+            altitudeUnits = verticalMeasure.units
+            altitude = ((coordinate?["altitude"] as? NSNumber)?.doubleValue)
+                .map(verticalMeasure.convert)
         }
     }
+
+    static let altitudeFactNames = ["Altitude", "PlannedHomePositionAltitude"]
 
     var positionText: String {
         guard hasPosition, let latitude, let longitude else { return "—" }
@@ -75,6 +83,6 @@ struct MissionItem: Identifiable {
 
     var altitudeText: String {
         guard let altitude, altitude.isFinite else { return "—" }
-        return String(format: "%.1f m", altitude)
+        return String(format: "%.1f %@", altitude, Measure.pretty(altitudeUnits))
     }
 }

@@ -13,9 +13,23 @@ struct TerrainProfile: Equatable {
     let maxAltitude: Double
     let totalDistance: Double
     let unknownTerrain: Int
+    var distanceMeasure = Measure.metres
+    var altitudeMeasure = Measure.metres
 
     static let empty = TerrainProfile(points: [], minAltitude: 0, maxAltitude: 0,
                                       totalDistance: 0, unknownTerrain: 0)
+
+    var distanceText: String {
+        String(format: "%.0f %@", distanceMeasure.convert(totalDistance), distanceMeasure.suffix)
+    }
+
+    var lowestText: String {
+        String(format: "%.0f %@", altitudeMeasure.convert(minAltitude), altitudeMeasure.suffix)
+    }
+
+    var highestText: String {
+        String(format: "%.0f %@", altitudeMeasure.convert(maxAltitude), altitudeMeasure.suffix)
+    }
 
     init(points: [TerrainPoint]) {
         self.points = points

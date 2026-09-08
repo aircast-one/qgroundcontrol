@@ -4,20 +4,20 @@ struct PlanSummary: Equatable {
     let distanceMetres: Double
     let seconds: Double
     let maxTelemetryMetres: Double
+    let measure: Measure
 
-    static let empty = PlanSummary(distanceMetres: 0, seconds: 0, maxTelemetryMetres: 0)
+    static let empty = PlanSummary(distanceMetres: 0, seconds: 0, maxTelemetryMetres: 0,
+                                   measure: .metres)
 
     var hasFlight: Bool { distanceMetres > 0 || seconds > 0 }
 
-    var distanceText: String { PlanSummary.distance(distanceMetres) }
-    var telemetryText: String { PlanSummary.distance(maxTelemetryMetres) }
+    var distanceText: String { PlanSummary.distance(distanceMetres, measure) }
+    var telemetryText: String { PlanSummary.distance(maxTelemetryMetres, measure) }
     var durationText: String { PlanSummary.duration(seconds) }
 
-    static func distance(_ metres: Double) -> String {
+    static func distance(_ metres: Double, _ measure: Measure) -> String {
         guard metres.isFinite, metres > 0 else { return "—" }
-        return metres < 1000
-            ? String(format: "%.0f m", metres)
-            : String(format: "%.1f km", metres / 1000)
+        return String(format: "%.0f %@", measure.convert(metres), measure.suffix)
     }
 
     static func duration(_ seconds: Double) -> String {

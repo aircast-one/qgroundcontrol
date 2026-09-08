@@ -66,7 +66,7 @@ struct TerrainProfileSheet: View {
                             .foregroundColor(.secondary)
                     }
                     Spacer()
-                    Text(String(format: "%.0f m", profile.totalDistance))
+                    Text(profile.distanceText)
                         .font(.caption.monospacedDigit())
                         .foregroundColor(.secondary)
                 }
@@ -74,9 +74,9 @@ struct TerrainProfileSheet: View {
                 plot.frame(height: 90)
 
                 HStack {
-                    Text(String(format: "%.0f m", profile.minAltitude))
+                    Text(profile.lowestText)
                     Spacer()
-                    Text(String(format: "%.0f m", profile.maxAltitude))
+                    Text(profile.highestText)
                 }
                 .font(.caption2.monospacedDigit())
                 .foregroundColor(.secondary)
@@ -540,6 +540,7 @@ struct PlanInspector: View {
                 GroupRow(title: "Photos", value: mission.surveyStats.shotsText, showSeparator: false)
                 GroupRow(title: "Between shots", value: mission.surveyStats.intervalText)
                 GroupRow(title: "Area covered", value: mission.surveyStats.areaText)
+                GroupRow(title: "Distance flown", value: mission.surveyStats.distanceText)
                 GroupRow(title: "Each photo covers", value: mission.surveyStats.footprintText)
             }
             if !mission.surveyStats.warning.isEmpty {

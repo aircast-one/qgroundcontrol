@@ -199,9 +199,10 @@ expect(FlightModePosition.present(in: []).isEmpty, "a vehicle without them shows
 let waypoint = MissionItem(json: [
     "sequenceNumber": 1, "commandName": "Waypoint", "isCurrentItem": false,
     "coordinate": ["latitude": -35.3629, "longitude": 149.165, "altitude": NSNull()],
-    "facts": [["name": "Altitude", "value": 50.0]],
+    "facts": [["name": "Altitude", "value": 50.0, "units": "ft"]],
     "specifiesAltitude": true], index: 1)
-expect(waypoint.altitudeText, "50.0 m", "altitude comes from the fact")
+expect(waypoint.altitudeText, "50.0 ft",
+       "altitude comes from the fact, and so does the unit beside it")
 expect(waypoint.positionText, "-35.362900, 149.165000", "position formats to six decimals")
 expect(waypoint.hasPosition, "a waypoint with a coordinate has a position")
 
@@ -210,6 +211,20 @@ let start = MissionItem(json: [
     "coordinate": ["latitude": -35.36, "longitude": 149.16, "altitude": 584.09],
     "facts": []], index: 0)
 expect(start.altitudeText, "584.1 m", "falls back to the coordinate altitude")
+
+let startFact = MissionItem(json: [
+    "sequenceNumber": 0, "commandName": "Mission Start",
+    "coordinate": ["latitude": -35.36, "longitude": 149.16, "altitude": 584.09],
+    "facts": [["name": "PlannedHomePositionAltitude", "value": 1916.3, "units": "ft"]]], index: 0)
+expect(startFact.altitudeText, "1916.3 ft",
+       "but mission start has its own altitude fact, and the row must not disagree with the field below it")
+
+let startInFeet = MissionItem(json: [
+    "sequenceNumber": 0, "commandName": "Mission Start",
+    "coordinate": ["latitude": -35.36, "longitude": 149.16, "altitude": 584.09],
+    "facts": []], index: 0, verticalMeasure: Measure(units: "ft", factor: 3.28084))
+expect(startInFeet.altitudeText, "1916.3 ft",
+       "and when only the coordinate is left, its metres are converted rather than relabelled")
 expect(start.isCurrent, "the current item is flagged")
 expect(waypoint.index == 1, "an item remembers the list position its bridge path needs")
 expect(waypoint.specifiesAltitude, "a waypoint's altitude is editable")
@@ -608,38 +623,52 @@ func checkMapWindow() {
 checkMapWindow()
 
 func checkGuidedValue() {
-    expect(GuidedValue(label: "x", units: "m", minimum: 10, maximum: 10, initial: 10) == nil,
+    expect(GuidedValue(label: "x", measure: .metres, minimum: 10, maximum: 10, initial: 10) == nil,
            "a range with no span is no range; a slider over it cannot be moved")
-    expect(GuidedValue(label: "x", units: "m", minimum: 5, maximum: 120, initial: .nan) == nil,
+    expect(GuidedValue(label: "x", measure: .metres, minimum: 5, maximum: 120, initial: .nan) == nil,
            "and a vehicle that has not reported the value gives none either")
 
-    guard let takeoff = GuidedValue.takeoff(minimumAltitude: 3, maximumAltitude: 121) else {
+    guard let takeoff = GuidedValue.takeoff(minimumAltitude: 3, maximumAltitude: 121,
+                                            measure: .metres) else {
         expect(false, "a takeoff range is built from the firmware minimum and the setting maximum")
         return
     }
     expect(takeoff.initial == 3, "takeoff starts at the lowest the firmware allows, as QGC does")
     expect(takeoff.clamped(500) == 121, "and nothing above the setting maximum can be chosen")
     expect(takeoff.clamped(0) == 3, "nor below the firmware minimum")
-    expect(takeoff.text(50), "50 m", "a height reads in whole metres")
+    expect(takeoff.text(50), "50.0 m", "a height reads with its unit")
 
-    guard let above = GuidedValue.altitude(minimum: 5, maximum: 121, current: 40) else {
+    guard let feet = GuidedValue.takeoff(minimumAltitude: 3, maximumAltitude: 121,
+                                         measure: Measure(units: "ft", factor: 3.28084)) else {
+        expect(false, "the same range can be shown in feet")
+        return
+    }
+    expect(feet.clamped(500) == 121,
+           "the range stays metric, because the command that follows it wants metres")
+    expect(feet.text(121), "397 ft",
+           "but the operator reads feet, instead of the 121 that would have said metres")
+
+    guard let above = GuidedValue.altitude(minimum: 5, maximum: 121, current: 40,
+                                           measure: .metres) else {
         expect(false, "a change-altitude range is built from the settings and the current height")
         return
     }
     expect(above.initial == 40, "it opens at the height the vehicle is already at")
 
-    let clipped = GuidedValue.altitude(minimum: 5, maximum: 121, current: 400)
+    let clipped = GuidedValue.altitude(minimum: 5, maximum: 121, current: 400, measure: .metres)
     expect(clipped?.initial == 121,
            "a vehicle already above the ceiling opens at the ceiling, not off the end of the slider")
 
     let ground = GuidedValue.speed(maximum: 12, forwardFlight: false,
-                                   minimumAirspeed: 15, maximumAirspeed: 30)
+                                   minimumAirspeed: 15, maximumAirspeed: 30,
+                                   measure: .metresPerSecond)
     expect(ground?.label ?? "", "Ground speed", "a multirotor changes ground speed")
     expect(ground?.initial == 6, "opening at half the limit, as QGC does")
     expect(ground?.text(6.25) ?? "", "6.2 m/s", "and a speed reads to a tenth")
 
     let air = GuidedValue.speed(maximum: 12, forwardFlight: true,
-                                minimumAirspeed: 15, maximumAirspeed: 30)
+                                minimumAirspeed: 15, maximumAirspeed: 30,
+                                measure: .metresPerSecond)
     expect(air?.label ?? "", "Airspeed", "a vehicle in forward flight changes airspeed instead")
     expect(air?.initial == 22.5, "opening midway between the firmware's own limits")
 }
@@ -1236,28 +1265,34 @@ func checkAltitudeMode() {
 checkAltitudeMode()
 
 func checkPlanSummary() {
-    expect(PlanSummary.distance(0), "—", "a plan that goes nowhere shows no distance")
-    expect(PlanSummary.distance(-1), "—", "nor does a nonsense one")
-    expect(PlanSummary.distance(.nan), "—", "nor does an unset one")
-    expect(PlanSummary.distance(500.397), "500 m", "metres below a kilometre, rounded")
-    expect(PlanSummary.distance(999.6), "1000 m", "just under the switch is still metres")
-    expect(PlanSummary.distance(1000), "1.0 km", "a kilometre reads as kilometres")
-    expect(PlanSummary.distance(12345), "12.3 km", "and keeps one decimal")
+    let metres = Measure.metres
+    expect(PlanSummary.distance(0, metres), "\u{2014}", "a plan that goes nowhere shows no distance")
+    expect(PlanSummary.distance(-1, metres), "\u{2014}", "nor does a nonsense one")
+    expect(PlanSummary.distance(.nan, metres), "\u{2014}", "nor does an unset one")
+    expect(PlanSummary.distance(500.397, metres), "500 m", "a distance is whole, as QGC gives it")
+    expect(PlanSummary.distance(7047, metres), "7047 m",
+           "and stays in the operator's unit rather than rolling into a kilometre I invented")
 
-    expect(PlanSummary.duration(0), "—", "no flight time means no duration")
-    expect(PlanSummary.duration(.infinity), "—", "an infinite estimate is not shown")
+    let feet = Measure(units: "ft", factor: 3.28084)
+    expect(PlanSummary.distance(7047, feet), "23120 ft",
+           "on feet the same plan converts instead of printing metres under a foot label")
+
+    expect(PlanSummary.duration(0), "\u{2014}", "no flight time means no duration")
+    expect(PlanSummary.duration(.infinity), "\u{2014}", "an infinite estimate is not shown")
     expect(PlanSummary.duration(100.079), "1:40", "minutes and seconds, zero padded")
     expect(PlanSummary.duration(9), "0:09", "under a minute still shows the minute")
     expect(PlanSummary.duration(3661), "1:01:01", "past an hour the hour appears")
 
-    let flight = PlanSummary(distanceMetres: 500.4, seconds: 100.1, maxTelemetryMetres: 457.3)
+    let flight = PlanSummary(distanceMetres: 500.4, seconds: 100.1,
+                             maxTelemetryMetres: 457.3, measure: metres)
     expect(flight.hasFlight, "a plan with distance and time has a flight to describe")
     expect(flight.distanceText, "500 m", "the summary formats its own distance")
     expect(flight.durationText, "1:40", "and its own duration")
     expect(flight.telemetryText, "457 m", "and the furthest it gets from launch")
 
     expect(!PlanSummary.empty.hasFlight, "an empty plan has nothing to summarise")
-    expect(!PlanSummary(distanceMetres: 0, seconds: 0, maxTelemetryMetres: 0).hasFlight,
+    expect(!PlanSummary(distanceMetres: 0, seconds: 0, maxTelemetryMetres: 0,
+                        measure: metres).hasFlight,
            "a launch point alone is not a flight")
 }
 
@@ -1267,32 +1302,68 @@ func checkSurveyStats() {
     expect(!SurveyStats.none.describes, "an item that is not a survey describes nothing")
 
     let live = SurveyStats(shots: 1043, secondsBetweenShots: 0.8446969696969697,
-                           areaSquareMetres: 89999.17662726832, footprintSide: 15.20,
-                           footprintFrontal: 6.76, minimumInterval: 0)
+                           areaSquareMetres: 89999.17662726832, distanceMetres: 7261.4,
+                           footprintSide: 15.20, footprintFrontal: 6.76,
+                           footprintUnits: "m", minimumInterval: 0,
+                           areaMeasure: .squareMetres, distanceMeasure: .metres)
     expect(live.describes, "a real survey does")
     expect(live.shotsText, "1043", "the photo count is whole")
-    expect(live.intervalText, "0.84 s", "the interval is to a hundredth, as the camera is set")
-    expect(live.areaText, "9.0 ha", "nine hectares reads as hectares, not ninety thousand metres")
-    expect(live.footprintText, "15.2 \u{00D7} 6.8 m", "and each photo's ground footprint is given")
+    expect(live.intervalText, "0.8 s", "the interval is to a tenth, as QGC gives it")
+    expect(live.areaText, "89999 m\u{00B2}", "the area is the operator's own unit, not a hectare I invented")
+    expect(live.distanceText, "7261 m", "and the survey says how far the vehicle flies to cover it")
+    expect(live.footprintText, "15.2 \u{00D7} 6.8 m", "each photo's ground footprint is given")
     expect(!live.tooFast, "a camera with no stated minimum is never too fast")
 
-    expect(SurveyStats.area(500), "500 m\u{00B2}", "a small plot stays in square metres")
-    expect(SurveyStats.area(10_000), "1.0 ha", "a hectare is the switch")
-    expect(SurveyStats.area(2_500_000), "2.50 km\u{00B2}", "and a large one reads in square kilometres")
-    expect(SurveyStats.area(0), "\u{2014}", "no area is not zero area")
+    let feet = SurveyStats(shots: 1, secondsBetweenShots: 1, areaSquareMetres: 100,
+                           distanceMetres: 100, footprintSide: 50, footprintFrontal: 22,
+                           footprintUnits: "ft", minimumInterval: 0,
+                           areaMeasure: Measure(units: "ft^2", factor: 10.7639),
+                           distanceMeasure: Measure(units: "ft", factor: 3.28084))
+    expect(feet.areaText, "1076 ft\u{00B2}", "on feet the area converts and carries its own unit")
+    expect(feet.distanceText, "328 ft", "so does the distance")
+    expect(feet.footprintText, "50.0 \u{00D7} 22.0 ft",
+           "and the footprint takes its unit from its fact rather than saying metres")
+
+    let empty = SurveyStats(shots: 0, secondsBetweenShots: 0, areaSquareMetres: 0,
+                            distanceMetres: 0, footprintSide: 0, footprintFrontal: 0,
+                            footprintUnits: "m", minimumInterval: 0,
+                            areaMeasure: .squareMetres, distanceMeasure: .metres)
+    expect(empty.areaText, "\u{2014}", "no area is not zero area")
+    expect(empty.distanceText, "\u{2014}", "nor is no distance")
     expect(SurveyStats.interval(0), "\u{2014}", "nor is no interval")
 
     let strained = SurveyStats(shots: 1043, secondsBetweenShots: 0.84, areaSquareMetres: 1,
-                               footprintSide: 1, footprintFrontal: 1, minimumInterval: 2)
+                               distanceMetres: 1, footprintSide: 1, footprintFrontal: 1,
+                               footprintUnits: "m", minimumInterval: 2,
+                               areaMeasure: .squareMetres, distanceMeasure: .metres)
     expect(strained.tooFast, "a camera that needs two seconds cannot shoot every 0.84")
     expect(strained.warning.contains("2.00 s"), "and the warning names what the camera needs")
     expect(strained.warning.contains("0.84 s"), "alongside what the survey asks for")
 
     let stationary = SurveyStats(shots: 0, secondsBetweenShots: 0, areaSquareMetres: 0,
-                                 footprintSide: 0, footprintFrontal: 0, minimumInterval: 2)
+                                 distanceMetres: 0, footprintSide: 0, footprintFrontal: 0,
+                                 footprintUnits: "m", minimumInterval: 2,
+                                 areaMeasure: .squareMetres, distanceMeasure: .metres)
     expect(!stationary.tooFast, "a survey that takes no photos cannot outrun the camera")
 }
 
+func checkMeasure() {
+    expect(Measure.format(99.4, "m"), "99.4 m", "below a hundred a measure keeps a tenth")
+    expect(Measure.format(100, "m"), "100 m", "at a hundred QGC drops to whole numbers")
+    expect(Measure.format(89999.17, "m^2"), "89999 m\u{00B2}", "and squares render as a superscript")
+    expect(Measure.format(.nan, "m"), "\u{2014}", "a measure that is not a number is not shown as one")
+
+    let feet = Measure(units: "ft", factor: 3.28084)
+    expect(feet.text(100), "328 ft", "a metric value crosses into the operator's units before it is shown")
+    expect(feet.convert(1) == 3.28084, "the factor is the one the app settings table gives, not one I typed")
+
+    expect(Measure(units: "ft", factor: 0).factor == 1,
+           "a factor the bridge could not give falls back to metric rather than collapsing the value")
+    expect(Measure(units: "ft", factor: .nan).factor == 1, "so does one that is not a number")
+    expect(Measure.metres.text(42), "42.0 m", "and the metric measure is the identity")
+}
+
+checkMeasure()
 checkSurveyStats()
 
 func checkCalibration() {
@@ -2164,6 +2235,7 @@ func checkGuidedActions() {
 }
 
 checkGuidedActions()
+checkTerrainUnits()
 
 if failures == 0 {
     print("all Swift checks passed")
@@ -2227,3 +2299,22 @@ func checkLaunchAltitudeIsNotListedTwice() {
     expect(facts.count == 1, "the launch altitude is left out of the generic settings list")
     expect(facts.first?.title ?? "", "Hold", "the item's own facts are still listed")
 }
+
+func checkTerrainUnits() {
+    let points = [
+        TerrainPoint(distance: 0, missionAltitude: 600, terrainAltitude: 536, collision: false),
+        TerrainPoint(distance: 7047, missionAltitude: 660, terrainAltitude: 640, collision: false),
+    ]
+    let metric = TerrainProfile(points: points)
+    expect(metric.distanceText, "7047 m", "the profile says how far the mission runs")
+    expect(metric.lowestText, "511 m", "and the band it draws between")
+    expect(metric.highestText, "685 m", "at both ends")
+
+    var feet = TerrainProfile(points: points)
+    feet.distanceMeasure = Measure(units: "ft", factor: 3.28084)
+    feet.altitudeMeasure = Measure(units: "ft", factor: 3.28084)
+    expect(feet.distanceText, "23120 ft", "on feet it converts rather than labelling metres as feet")
+    expect(feet.lowestText, "1677 ft", "and so do the axis labels")
+    expect(feet.highestText, "2247 ft", "at both ends")
+}
+

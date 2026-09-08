@@ -63,7 +63,10 @@ final class MissionStore: ObservableObject, Probeable {
 
         let model = Bridge.group("plan.missionController.visualItems")
         items = ((model["elements"] as? [[String: Any]]) ?? [])
-            .enumerated().map { MissionItem(json: $0.element, index: $0.offset) }
+            .enumerated().map {
+                MissionItem(json: $0.element, index: $0.offset,
+                            verticalMeasure: AppUnits.measure(AppUnits.vertical))
+            }
         let plan = Bridge.group("plan")
         syncing = (plan["syncInProgress"] as? NSNumber)?.boolValue ?? false
         dirty = (plan["dirty"] as? NSNumber)?.boolValue ?? false
@@ -75,7 +78,8 @@ final class MissionStore: ObservableObject, Probeable {
         summary = PlanSummary(
             distanceMetres: hover + cruise,
             seconds: (controller["missionTime"] as? NSNumber)?.doubleValue ?? 0,
-            maxTelemetryMetres: (controller["missionMaxTelemetry"] as? NSNumber)?.doubleValue ?? 0)
+            maxTelemetryMetres: (controller["missionMaxTelemetry"] as? NSNumber)?.doubleValue ?? 0,
+            measure: AppUnits.measure(AppUnits.horizontal))
         defaultAltitude = (Bridge.group("settings.appSettings.defaultMissionItemAltitude")["valueString"] as? String) ?? ""
 
         let controllerVehicle = Bridge.group("plan.controllerVehicle")
@@ -235,19 +239,25 @@ final class MissionStore: ObservableObject, Probeable {
         func number(_ json: [String: Any], _ key: String) -> Double {
             (json[key] as? NSNumber)?.doubleValue ?? 0
         }
+        func fact(_ json: [String: Any], _ property: String) -> [String: Any] {
+            ((json["facts"] as? [[String: Any]]) ?? [])
+                .first { $0["property"] as? String == property } ?? [:]
+        }
         func factValue(_ json: [String: Any], _ property: String) -> Double {
-            let facts = (json["facts"] as? [[String: Any]]) ?? []
-            let match = facts.first { $0["property"] as? String == property }
-            return (match?["value"] as? NSNumber)?.doubleValue ?? 0
+            (fact(json, property)["value"] as? NSNumber)?.doubleValue ?? 0
         }
 
         let read = SurveyStats(
             shots: (survey["cameraShots"] as? NSNumber)?.intValue ?? 0,
             secondsBetweenShots: number(survey, "timeBetweenShots"),
             areaSquareMetres: number(survey, "coveredArea"),
+            distanceMetres: number(survey, "complexDistance"),
             footprintSide: factValue(calc, "adjustedFootprintSide"),
             footprintFrontal: factValue(calc, "adjustedFootprintFrontal"),
-            minimumInterval: factValue(calc, "minTriggerInterval"))
+            footprintUnits: (fact(calc, "adjustedFootprintSide")["units"] as? String) ?? "m",
+            minimumInterval: factValue(calc, "minTriggerInterval"),
+            areaMeasure: AppUnits.measure(AppUnits.area),
+            distanceMeasure: AppUnits.measure(AppUnits.horizontal))
         if read != surveyStats { surveyStats = read }
     }
 
@@ -274,12 +284,15 @@ final class MissionStore: ObservableObject, Probeable {
     }
 
     var terrain: TerrainProfile {
-        TerrainProfile(points: items.filter(\.hasPosition).map {
+        var profile = TerrainProfile(points: items.filter(\.hasPosition).map {
             TerrainPoint(distance: $0.distanceFromStart,
                          missionAltitude: $0.amslAltitude ?? 0,
                          terrainAltitude: $0.terrainAltitude,
                          collision: $0.terrainCollision)
         })
+        profile.distanceMeasure = AppUnits.measure(AppUnits.horizontal)
+        profile.altitudeMeasure = AppUnits.measure(AppUnits.vertical)
+        return profile
     }
 
     func move(sequence: Int, latitude: Double, longitude: Double) {
@@ -639,7 +652,7 @@ final class MissionStore: ObservableObject, Probeable {
          "commands": commands.map(\.name),
          "surveys": surveyAreas.map(\.count),
          "corridors": corridorPaths.map(\.count),
-         "surveyStats": ["shots": surveyStats.shotsText, "interval": surveyStats.intervalText,
+         "surveyStats": ["shots": surveyStats.shotsText, "distance": surveyStats.distanceText, "interval": surveyStats.intervalText,
                          "area": surveyStats.areaText, "footprint": surveyStats.footprintText,
                          "warning": surveyStats.warning],
          "distanceMode": AltitudeMode.title(for: distanceMode),

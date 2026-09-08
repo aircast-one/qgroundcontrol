@@ -77,16 +77,19 @@ final class GuidedStore: ObservableObject, Probeable {
         switch action {
         case .takeoff:
             return GuidedValue.takeoff(minimumAltitude: number("vehicle.minimumTakeoffAltitudeMeters"),
-                                       maximumAltitude: setting("guidedMaximumAltitude"))
+                                       maximumAltitude: setting("guidedMaximumAltitude"),
+                                       measure: AppUnits.measure(AppUnits.vertical))
         case .changeAltitude, .pause:
             return GuidedValue.altitude(minimum: setting("guidedMinimumAltitude"),
                                         maximum: setting("guidedMaximumAltitude"),
-                                        current: currentAltitude)
+                                        current: currentAltitude,
+                                        measure: AppUnits.measure(AppUnits.vertical))
         case .changeSpeed:
             return GuidedValue.speed(maximum: number("vehicle.maximumHorizontalSpeedMultirotor"),
                                      forwardFlight: state.forwardFlight,
                                      minimumAirspeed: number("vehicle.minimumEquivalentAirspeed"),
-                                     maximumAirspeed: number("vehicle.maximumEquivalentAirspeed"))
+                                     maximumAirspeed: number("vehicle.maximumEquivalentAirspeed"),
+                                     measure: AppUnits.measure(AppUnits.speed))
         default:
             return nil
         }
@@ -138,7 +141,7 @@ final class GuidedStore: ObservableObject, Probeable {
          "missionActive": state.missionActive, "lastSent": lastSent,
          "pending": pending?.rawValue ?? "",
          "range": range.map {
-             ["label": $0.label, "units": $0.units, "min": $0.minimum,
+             ["label": $0.label, "units": $0.measure.suffix, "min": $0.minimum,
               "max": $0.maximum, "initial": $0.initial]
          } ?? [:],
          "chosen": range.map { $0.text(chosen) } ?? "",
