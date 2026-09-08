@@ -174,7 +174,7 @@ QObject *callSegment(QObject *object, const QString &segment)
 
         QObject *returned = nullptr;
         const bool ok = method.invoke(object, Qt::DirectConnection,
-                                      QGenericReturnArgument(method.returnMetaType().name(), &returned),
+                                      QGenericReturnArgument(method.typeName(), &returned),
                                       generic[0], generic[1], generic[2], generic[3]);
         return ok ? returned : nullptr;
     }
@@ -253,6 +253,17 @@ QJsonValue variantJson(const QVariant &value)
             array.append(variantJson(element));
         }
         return array;
+    }
+
+    // A Q_ENUM has no QJsonValue conversion, so fromVariant yields null and a native head
+    // silently loses the state instead of erroring. The number is what a caller wants; the
+    // printed name changes with translations and refactors.
+    if (value.metaType().flags().testFlag(QMetaType::IsEnumeration)) {
+        bool numeric = false;
+        const int enumerator = value.toInt(&numeric);
+        if (numeric) {
+            return QJsonValue(enumerator);
+        }
     }
 
     return QJsonValue::fromVariant(value);
@@ -580,9 +591,12 @@ QJsonObject invokePath(const QString &path, const QJsonArray &args)
             return QJsonObject { { QStringLiteral("ok"), ok } };
         }
 
+        // The metaobject records the return type as it was written, so a Q_ENUM declared
+        // inside a class is "State" there and "Class::State" in the metatype. invoke compares
+        // the two names and refuses, so the declared spelling is the one to hand it.
         QVariant returned(returnType);
         const bool ok = method.invoke(resolved.object, Qt::DirectConnection,
-                                      QGenericReturnArgument(returnType.name(), returned.data()),
+                                      QGenericReturnArgument(method.typeName(), returned.data()),
                                       generic[0], generic[1], generic[2], generic[3]);
         if (!ok) {
             return QJsonObject { { QStringLiteral("ok"), false } };

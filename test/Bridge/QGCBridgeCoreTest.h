@@ -30,6 +30,7 @@ private slots:
     void _watchFromAnotherThreadDoesNotBlockTheCaller();
     void _writesAnObjectPropertyFromAnAtPath();
     void _findsThePropertyEvenWhenItAlreadyHoldsAnObject();
+    void _readsEnumsAsNumbers();
     void _planStartsWithItsSettingsItemAndNoVehicle();
     void _planSaveReportsWhetherItWrote();
     void _aRefusedLoadLeavesTheExistingPlanAlone();

@@ -571,6 +571,27 @@ void QGCBridgeCoreTest::_findsThePropertyEvenWhenItAlreadyHoldsAnObject()
     QVERIFY2(reason.contains(QStringLiteral("WRITE")), qPrintable(reason));
 }
 
+// A Q_ENUM is state a native head needs like any other. Read as null, or an invoke that
+// fails outright, loses it silently rather than erroring — the failure shape this bridge
+// keeps producing. The numeric value is what a caller wants; the printed name is a trap.
+void QGCBridgeCoreTest::_readsEnumsAsNumbers()
+{
+    const QJsonObject precheck = parse(QGCBridgeCore::invoke(
+        QStringLiteral("plan.missionController.sendToVehiclePreCheck"), QStringLiteral("[]")));
+    QVERIFY2(precheck.value(QStringLiteral("ok")).toBool(),
+             "an enum-returning invokable must not fail");
+    QVERIFY2(precheck.value(QStringLiteral("result")).isDouble(),
+             qPrintable(QJsonDocument(precheck).toJson(QJsonDocument::Compact)));
+
+    // readyForSaveState is a Q_ENUM property, which fromVariant renders as null.
+    const QJsonObject items = parse(QGCBridgeCore::get(
+        QStringLiteral("plan.missionController.visualItems")));
+    const QJsonArray elements = items.value(QStringLiteral("elements")).toArray();
+    QVERIFY(!elements.isEmpty());
+    QVERIFY2(elements.first().toObject().value(QStringLiteral("readyForSaveState")).isDouble(),
+             qPrintable(QJsonDocument(elements.first().toObject()).toJson(QJsonDocument::Compact)));
+}
+
 void QGCBridgeCoreTest::_planStartsWithItsSettingsItemAndNoVehicle()
 {
     const QJsonObject items = parse(QGCBridgeCore::get(
