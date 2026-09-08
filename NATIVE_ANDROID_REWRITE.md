@@ -253,6 +253,19 @@ reports `MAV_AUTOPILOT_PX4` takes the conventional `PARAM_REQUEST_LIST` path and
 can serve parameters in a few lines. That is enough to exercise the list, the
 search and a write end to end; it is not enough for anything firmware-specific.
 
+**A refused setting said nothing.** The switch and the dropdown wrote through a
+detached thread and discarded `Qgc.set`'s result, so a refused write left the
+control showing the new value until the next poll put it back — which reads as
+the app glitching rather than as a refusal. The text field already reported, so
+two of three controls were silent and one was not. All three share one write path
+now. The message says only that the change was not accepted: the reason the
+bridge carries names a property and a class, which is true and no use to a pilot.
+
+The same fire-and-forget shape is still in `VehicleUi`, `LinksScreen`,
+`SensorsScreen`, `UnitsPage` and `InspectorScreen`. Arming and the guided actions
+are covered by other surfaces — the prearm banner and the vehicle's own state —
+but the link and calibration calls are not, and that is where to look next.
+
 **Deliberately not built:** the motor test and CompassMot. Both spin the
 propellers, `APMMotorComponent` sets `allowSetupWhileArmed`, and their gate needs
 a supervised airframe. `Vehicle::motorTest` is already `Q_INVOKABLE` through the
