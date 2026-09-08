@@ -313,6 +313,22 @@ class SegmentTerrainTest {
     }
 
     @Test
+    fun `a waypoint after a survey continues from where the segments ended`() {
+        val profile = terrainProfile(
+            JSONObject(
+                """{"kind":"object","elements":[""" +
+                    """{"specifiesCoordinate":true,"amslEntryAlt":0.0},$survey,""" +
+                    """{"specifiesCoordinate":true,"coordinate":{"latitude":47.0,"longitude":8.02},""" +
+                    """"amslEntryAlt":1200.0}]}""",
+            ),
+        ) { segments(segment(1099.0, 1099.0, 200.0, 948.0, 1049.0)) }
+
+        val exitToNext = metresBetween(TrackPoint(47.0, 8.01), TrackPoint(47.0, 8.02))
+        assertEquals(200.0 + exitToNext, profile.distance, 1e-6)
+        assertEquals(1200.0, profile.points.last().planned, 1e-9)
+    }
+
+    @Test
     fun `segments that cannot be read fall back to the item itself`() {
         val profile = plan { null }
 
