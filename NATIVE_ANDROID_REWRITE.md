@@ -2493,6 +2493,34 @@ is green through the new path: Fly, the Actions sheet, Vibration, Log Download, 
 back, with the sim confirming its statustexts, the log list request and both camera
 components.
 
+### The whole flight, once, in order
+
+Every piece of the Fly tab had been checked on its own; the happy path had never been walked
+end to end. Driven through the guarded input helper, with each dialog's sentence checked
+against what the vehicle actually received:
+
+| step | the screen said | the vehicle received |
+|---|---|---|
+| Takeoff | "The aircraft will take off and climb to 48.6 m." | `MODE -> 4` (Guided), `ARM armed`, `TAKEOFF alt=48.6` |
+| Change altitude | "The aircraft will climb 47.5 m to 72.5 m." | `SET_POSITION_TARGET` frame 7, `z=-47.47` |
+| Return | "The aircraft will fly back to its launch point and land." | `MODE -> 6` (RTL), header reads "RTL · Armed" |
+
+Three things worth naming. The takeoff sequence is the full guided one — mode, then arm, then
+the climb — not just a takeoff command, and the altitude in it matches the sentence to the
+decimal. The altitude change carries its sign correctly: frame 7 is `LOCAL_OFFSET_NED` where up
+is negative, so a promised 47.5 m climb is `z=-47.47` on the wire. And the row showed exactly
+the offered actions at each phase without being asked twice: Arm, Takeoff, Actions on the
+ground; Land, RTL, Speed, Alt, Actions in flight, with no Disarm anywhere in the air.
+
+The altitude dialog also refused itself correctly. Opened in level flight it read "The aircraft
+is already at 25.0 m and will not move" with Change greyed out — the core's `sends` gate, which
+is exactly the gate that had to be relaxed for pause and is right to keep here.
+
+One small finding, not fixed: the takeoff slider opens pinned at the far left, because the
+default is the vehicle's minimum takeoff height, and there are no end labels. The sentence
+carries the number so nothing is ambiguous, but the control gives no sense of its range until
+you drag it.
+
 ## Phase 6 — Shell · 2 weeks
 
 Cheaper than macOS, because Qt is already off the main thread.
