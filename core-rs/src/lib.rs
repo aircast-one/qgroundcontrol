@@ -55,6 +55,7 @@ pub mod terrain;
 pub mod terraintile;
 pub mod tlog;
 pub mod transport;
+pub mod udplink;
 pub mod router;
 pub mod rtcm;
 pub mod vibration;

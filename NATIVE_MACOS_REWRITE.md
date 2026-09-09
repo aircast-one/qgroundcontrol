@@ -615,6 +615,7 @@ About 58 developer-weeks. Flight-test time, not code, is the schedule.
 - 2026-09-09: review pass over the R3/R4 core slices, sixteen findings fixed (QSettings unescaping, metadata guards, tlog resync, replay rewind, parameter machine parity).
 - 2026-09-09: link registry in the core (owner core/host, per-link framing and counters), first slice of the R4 transport seam.
 - 2026-09-09: `view.fences` rally points carry altitude, altitudeUnits and altitudePath.
+- 2026-09-09: core-owned UDP link (std::net + socket2: shared bind, multicast join, session targets) with loopback tests.
 
 ### Stream F · Core
 

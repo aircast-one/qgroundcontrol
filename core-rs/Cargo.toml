@@ -21,3 +21,4 @@ flate2 = "1.1.10"
 lzma-rs = "0.3.0"
 zip = { version = "8.6.0", default-features = false, features = ["deflate"] }
 regex = "1.13.1"
+socket2 = { version = "0.6.5", features = ["all"] }
