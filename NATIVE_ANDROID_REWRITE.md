@@ -2516,10 +2516,16 @@ The altitude dialog also refused itself correctly. Opened in level flight it rea
 is already at 25.0 m and will not move" with Change greyed out — the core's `sends` gate, which
 is exactly the gate that had to be relaxed for pause and is right to keep here.
 
-One small finding, not fixed: the takeoff slider opens pinned at the far left, because the
-default is the vehicle's minimum takeoff height, and there are no end labels. The sentence
-carries the number so nothing is ambiguous, but the control gives no sense of its range until
-you drag it.
+One small finding from that walk, now fixed: the takeoff slider opened pinned at the far left,
+because the default is the vehicle's minimum takeoff height, and there were no end labels. The
+sentence carried the number so nothing was ambiguous, but the control gave no sense of its
+range until you dragged it. All three value dialogs now print their ends under the slider from
+the range the core already serves — "3.0 to 121.9 m" for takeoff, "2.0 to 121.9 m" for altitude,
+and the same for speed.
+
+The two altitude numbers differing is the point rather than a bug: takeoff's floor is the
+vehicle's minimum takeoff height and the altitude slider's is the guided-altitude setting, and
+seeing both told me the label reads its own source rather than a shared constant.
 
 ## Phase 6 — Shell · 2 weeks
 
