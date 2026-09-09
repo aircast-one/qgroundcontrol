@@ -77,44 +77,46 @@ expect(SettingsControl(["control": "toggle"]) == nil,
 expect(SettingsControl(["path": "g.y", "control": "invented"])?.kind == .unknown,
        "a control kind this head does not know is unknown, and falls through to a plain field")
 
-// A live LinkInterface is reported by the bridge as a child, not a value; reading
-// json["link"] instead reports every connected link as disconnected.
-let liveLink = LinkConfig(index: 0, json: ["name": "sitl", "settingsURL": LinkConfig.tcp,
-                                           "children": ["link"], "link": NSNull()])
-expect(liveLink.connected, "a link listed in children reads as connected")
-let deadLink = LinkConfig(index: 1, json: ["name": "sitl", "settingsURL": LinkConfig.tcp,
-                                           "children": [], "link": NSNull()])
-expect(!deadLink.connected, "a link absent from children reads as disconnected")
-expect(liveLink.typeLabel, "TCP", "TypeTcp renders as TCP")
-expect(LinkConfig(index: 2, json: ["settingsURL": LinkConfig.logReplay]).typeLabel, "Log Replay",
-       "a log replay link renders readably")
-expect(LinkConfig(index: 3, json: ["settingsURL": "AirLinkSettings.qml",
-                                   "settingsTitle": "AirLink Link Settings"]).typeLabel, "AirLink",
-       "and a link type this head has never heard of takes its name from the title QGC gives it")
-expect(LinkConfig(index: 4, json: ["linkType": 2 as NSNumber]).typeLabel, "",
-       "reading linkType as a name gives nothing, which is how every link label read for hours")
-
-// A TCP link with no host cannot connect; "TCP · :5760" hid that.
-expect(LinkConfig(index: 0, json: ["settingsURL": LinkConfig.tcp, "host": "", "summary": ":5760"]).displaySummary,
-       "No host set", "hostless TCP link says so")
-expect(LinkConfig(index: 0, json: ["settingsURL": LinkConfig.tcp, "host": "h", "summary": "h:5760"]).displaySummary,
-       "h:5760", "TCP link with a host keeps its summary")
-expect(LinkConfig(index: 0, json: ["settingsURL": LinkConfig.udp, "summary": "UDP port 14550"]).displaySummary,
-       "UDP port 14550", "UDP has no host and is not flagged")
-
-// UDP exposes localPort, TCP exposes port; reading only "port" reported UDP links as port 0.
-expect(String(LinkConfig(index: 0, json: ["settingsURL": LinkConfig.udp, "localPort": 14550]).port),
-       "14550", "UDP port comes from localPort")
-expect(String(LinkConfig(index: 0, json: ["settingsURL": LinkConfig.tcp, "port": 5760]).port),
-       "5760", "TCP port comes from port")
-
-func expectEditing(_ type: String, _ want: LinkConfig.Editing, _ label: String) {
-    expect(LinkConfig(index: 0, json: ["settingsURL": type]).editing == want, label)
+func link(_ overrides: [String: Any]) -> LinkConfig? {
+    var json: [String: Any] = ["index": 0 as NSNumber, "type": "tcp"]
+    overrides.forEach { json[$0.key] = $0.value }
+    return LinkConfig(json)
 }
-expectEditing(LinkConfig.tcp, .hostAndPort, "TCP edits host and port")
-expectEditing(LinkConfig.udp, .portOnly, "UDP edits only its local port")
-expectEditing(LinkConfig.serial, .serial, "serial edits device and baud")
-expectEditing("TypeMock", LinkConfig.Editing.none, "mock link has nothing to edit")
+
+expect(link(["connected": true as NSNumber])?.connected == true,
+       "the core decides whether a link is connected, from the LinkInterface it sees as a child "
+       + "rather than from a value that reads null on every connected link")
+expect(link(["connected": false as NSNumber])?.connected == false, "and when it is not")
+expect(link(["typeLabel": "TCP"])?.typeLabel ?? "", "TCP", "the type label is the core's")
+expect(link(["type": "logReplay", "typeLabel": "Log Replay"])?.typeLabel ?? "", "Log Replay",
+       "a log replay link renders readably")
+expect(link(["type": "other", "typeLabel": "AirLink"])?.typeLabel ?? "", "AirLink",
+       "and a link type neither side has heard of takes the name QGC gives its settings page")
+
+expect(link(["displaySummary": "No host set"])?.displaySummary ?? "", "No host set",
+       "a hostless TCP link says so, because \"TCP \u{00B7} :5760\" hid that it cannot connect")
+expect(link(["displaySummary": "UDP port 14550"])?.displaySummary ?? "", "UDP port 14550",
+       "and a UDP link keeps its summary, having no host to be missing")
+
+expect(link(["port": 14550 as NSNumber])?.port == 14550,
+       "the port is whichever of port and localPort the link actually has, which the core picks; "
+       + "reading only port reported every UDP link as port 0")
+expect(link(["logFileName": "flight.tlog", "filename": "/tmp/flight.tlog"])?.logFileName ?? "",
+       "flight.tlog", "and the log file shows its last path component, not the whole path")
+
+expect(link(["editing": "hostAndPort"])?.editing == .hostAndPort, "TCP edits host and port")
+expect(link(["editing": "portOnly"])?.editing == .portOnly, "UDP edits only its local port")
+expect(link(["editing": "serial"])?.editing == .serial, "serial edits device and baud")
+expect(link(["editing": "logFile"])?.editing == .logFile, "a replay link chooses a file")
+expect(link(["editing": "none"])?.editing == LinkConfig.Editing.none,
+       "and a mock link has nothing to edit")
+expect(link(["editing": "somethingNew"])?.editing == .unknown,
+       "an editing mode this head does not know edits nothing, rather than falling into the "
+       + "host-and-port form and offering fields the link has no use for")
+
+expect(LinkConfig(["type": "tcp"]) == nil, "a link with no index is dropped")
+expect(LinkConfig(["index": 0 as NSNumber]) == nil, "and one with no type is dropped")
+expect(LinkConfig.list(nil).isEmpty, "no answer is no links")
 
 let vibrationJson: [String: Any] = [
     "available": true as NSNumber, "units": "", "scaleMaximum": 90.0 as NSNumber,
@@ -1606,19 +1608,19 @@ func checkCameraControl() {
 checkCameraControl()
 
 func checkLogReplayLink() {
-    let empty = LinkConfig(index: 0, json: ["settingsURL": LinkConfig.logReplay, "name": "Replay"])
-    expect(empty.editing == .logFile, "a log replay link is edited by choosing a file")
-    expect(empty.displaySummary, "No log chosen",
-           "and says so rather than showing an empty summary")
+    let empty = LinkConfig(["index": 0 as NSNumber, "type": "logReplay", "name": "Replay",
+                            "editing": "logFile", "displaySummary": "No log chosen"])
+    expect(empty?.editing == .logFile, "a log replay link is edited by choosing a file")
+    expect(empty?.displaySummary ?? "", "No log chosen",
+           "and the core says so rather than leaving an empty summary")
 
-    let chosen = LinkConfig(index: 0, json: ["settingsURL": LinkConfig.logReplay, "name": "Replay",
-                                             "filename": "/Users/pilot/logs/flight.tlog",
-                                             "summary": "Log Replay"])
-    expect(chosen.logFileName, "flight.tlog", "the row shows the log's name, not its whole path")
-    expect(chosen.displaySummary, "Log Replay", "and the summary is left to the link once set")
-
-    let tcp = LinkConfig(index: 0, json: ["settingsURL": LinkConfig.tcp, "host": "1.2.3.4"])
-    expect(tcp.editing == .hostAndPort, "other link types are unaffected")
+    let chosen = LinkConfig(["index": 0 as NSNumber, "type": "logReplay", "name": "Replay",
+                             "editing": "logFile", "filename": "/Users/pilot/logs/flight.tlog",
+                             "logFileName": "flight.tlog", "displaySummary": "Log Replay"])
+    expect(chosen?.logFileName ?? "", "flight.tlog",
+           "a chosen log shows its file name, because the full path does not fit the row")
+    expect(chosen?.filename ?? "", "/Users/pilot/logs/flight.tlog",
+           "while the whole path is kept for the tooltip")
 }
 
 checkLogReplayLink()
@@ -2490,7 +2492,20 @@ func checkViewContract() {
           "isTakingPhoto", "stateText", "clockText", "storageStatus", "storageText", "shots",
           "shotsText", "batteryRemaining", "batteryText", "hasZoom", "zoomLevel", "canRecord",
           "canPhoto", "hasModes"]),
-    ("view.fences", [], ["polygons", "circles", "rallyPoints", "count"]),
+        ("view.fences", [], ["polygons", "circles", "rallyPoints", "count"]),
+        ("view.fences", ["polygons"],
+         ["index", "path", "shape", "inclusion", "kindText", "detailText", "vertices", "usable",
+          "framing"]),
+        ("view.fences", ["circles"],
+         ["index", "path", "shape", "inclusion", "kindText", "detailText", "centre", "centreText",
+          "radius", "radiusUnits", "usable", "framing"]),
+        ("view.fences", ["rallyPoints"],
+         ["index", "path", "latitude", "longitude", "altitude", "altitudeUnits", "altitudePath"]),
+        ("view.links", [], ["available", "links", "configured", "linkTypes", "baudRates"]),
+        ("view.links", ["links"],
+         ["index", "path", "name", "type", "typeLabel", "editing", "displaySummary", "connected",
+          "autoConnect", "host", "port", "portName", "baud", "filename", "logFileName",
+          "lastError"]),
     ]
 
     let enumerations = (shapes["view.contract"] as? [String: Any])?["enumerations"] as? [String: Any]
@@ -2568,6 +2583,16 @@ func checkViewContract() {
     expect(recorded("view.fences.circles[].shape").joined(separator: ","), "circle",
            "and a circle's only ever circle, which is what isCircle reads")
 
+    let linkKinds = recorded("view.links.links[].type")
+    expect(linkKinds.sorted().joined(separator: ","), "bluetooth,logReplay,other,serial,tcp,udp",
+           "the six link kinds are the six this head labels")
+    let editingModes = recorded("view.links.links[].editing")
+    expect(editingModes.sorted().joined(separator: ","),
+           "hostAndPort,logFile,none,portOnly,serial",
+           "and the five editing modes are the five the form draws")
+    expect(editingModes.filter { LinkConfig.Editing($0) == .unknown }.joined(separator: ","), "",
+           "every one of them decodes to a form, rather than falling through to editing nothing")
+
     let neverNull: [(String, [String], [String])] = [
         ("view.battery", ["packs"], ["level", "text", "secondaryText"]),
         ("view.preflight", ["groups", "checks"], ["name", "prompt", "verdict", "reason"]),
@@ -2582,6 +2607,7 @@ func checkViewContract() {
         ("view.video", [], ["summary"]),
         ("view.video", ["cameras"], ["title", "status"]),
         ("view.camera", [], ["title", "modeText", "stateText", "storageText", "shotsText"]),
+        ("view.links", ["links"], ["name", "typeLabel", "displaySummary"]),
     ]
     neverNull.forEach { view, inner, keys in
         let place = inner.isEmpty ? view : "\(view).\(inner.joined(separator: "."))"

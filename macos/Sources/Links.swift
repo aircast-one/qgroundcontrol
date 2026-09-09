@@ -7,6 +7,8 @@ final class LinksStore: ObservableObject, Probeable, WriteReporting {
     static let probeID = "links"
 
     @Published private(set) var links: [LinkConfig] = []
+    @Published private(set) var linkTypes: [String] = []
+    @Published private(set) var baudRates: [Int] = []
     @Published var adding = false
     @Published var editingIndex: Int?
     @Published private(set) var connectingName = ""
@@ -17,13 +19,18 @@ final class LinksStore: ObservableObject, Probeable, WriteReporting {
 
     func reload() {
         let root = Bridge.group("links")
-        connectingName = (root["connectingLinkName"] as? String) ?? ""
-        failedName = (root["failedLinkName"] as? String) ?? ""
+        let connecting = (root["connectingLinkName"] as? String) ?? ""
+        if connecting != connectingName { connectingName = connecting }
+        let failed = (root["failedLinkName"] as? String) ?? ""
+        if failed != failedName { failedName = failed }
 
-        let model = Bridge.group("links.linkConfigurations")
-        links = ((model["elements"] as? [[String: Any]]) ?? [])
-            .enumerated()
-            .map { LinkConfig(index: $0.offset, json: $0.element) }
+        let view = Bridge.group("view.links")
+        let read = LinkConfig.list(view["configured"])
+        if read != links { links = read }
+        let types = ((view["linkTypes"] as? [Any]) ?? []).compactMap { $0 as? String }
+        if types != linkTypes { linkTypes = types }
+        let rates = ((view["baudRates"] as? [Any]) ?? []).compactMap { ($0 as? NSNumber)?.intValue }
+        if rates != baudRates { baudRates = rates }
     }
 
     func startPolling() {
@@ -59,10 +66,6 @@ final class LinksStore: ObservableObject, Probeable, WriteReporting {
         let ok = qgc_links_create(Int32(type), name, host, Int32(port)) == 1
         reload()
         return ok
-    }
-
-    var linkTypes: [String] {
-        (Bridge.group("links")["linkTypeStrings"] as? [String]) ?? []
     }
 
     func setAutoConnect(_ link: LinkConfig, _ enabled: Bool) {
@@ -118,10 +121,6 @@ final class LinksStore: ObservableObject, Probeable, WriteReporting {
         let devices = (root["serialPorts"] as? [String]) ?? []
         return zip(labels, devices).map { ($0, $1) }
     }
-
-    var baudRates: [Int] {
-        ((Bridge.group("links")["serialBaudRates"] as? [String]) ?? []).compactMap(Int.init)
-    }
 }
 
 extension LinksStore {
@@ -138,7 +137,7 @@ extension LinksStore {
     func probeInvoke(action: String, args: [String: String]) -> [String: Any] {
         reload()
         let index = Int(args["index"] ?? "") ?? -1
-        let link = links.indices.contains(index) ? links[index] : nil
+        let link = links.first { $0.index == index }
 
         switch action {
         case "failWrite":

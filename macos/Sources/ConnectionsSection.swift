@@ -152,7 +152,7 @@ struct ConnectionsSection: View {
                 LabelledPicker(label: "Baud",
                                options: store.baudRates.map { (String($0), String($0)) },
                                selection: String(link.baud)) { store.setBaud(link, Int($0) ?? link.baud) }
-            case .none:
+            case .none, .unknown:
                 EmptyView()
             }
             Toggle("Connect automatically on start", isOn: Binding(
