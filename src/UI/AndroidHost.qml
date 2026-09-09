@@ -14,6 +14,7 @@ Item {
 
     property string page:       "fly"
     property string toolSource: ""
+    property bool   renderViews: true
 
     readonly property Item  contentItem:            mainWindow
     readonly property Item  header:                 headerStub
@@ -104,7 +105,7 @@ Item {
         id:             flyView
         anchors.fill:   parent
         toolbarVisible: false
-        visible:        !toolLoader.active
+        visible:        mainWindow.renderViews && !toolLoader.active
     }
 
     PlanView {
@@ -113,7 +114,7 @@ Item {
         map:            flyView.mapControl
         planActive:     !mainWindow.flyViewActive
         opacity:        mainWindow.flyViewActive ? 0 : 1
-        visible:        opacity > 0 && !toolLoader.active
+        visible:        mainWindow.renderViews && opacity > 0 && !toolLoader.active
         enabled:        !mainWindow.flyViewActive
 
         Behavior on opacity { NumberAnimation { duration: 180; easing.type: Easing.InOutQuad } }

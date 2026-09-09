@@ -1929,6 +1929,39 @@ probe string came back empty twice before the instrument, not the artifact, turn
 at fault. The stale-artifact rule has a sibling: before believing an artifact is stale, check
 that the thing reading it can see anything at all.
 
+### The QML views stop drawing, and where the CPU actually goes
+
+`AndroidHost.qml` instantiates a full `FlyView` and `PlanView` — a second ground station, with
+its own map and its own tile fetches, drawing every frame underneath an opaque native one.
+Now that no QML is visible on any tab, the host takes a `renderViews` property and the head
+sets it false once QML reports ready. The objects still exist, so `flyView.mapControl`, the
+guided controller and the tool `Loader` are untouched; they simply stop rendering. Phase 6
+deletes the host outright, which needs the C++ boot path; this is the part that needs neither.
+
+Measured on the handset, Fly tab, sim connected, five samples five seconds apart:
+
+| | RSS | private | CPU |
+|---|---|---|---|
+| views drawing | 528 MB | 250 MB | 86, 107, 125, 110, 103 |
+| views hidden | 473 MB | 196 MB | 103, 114, 90, 144, 93 |
+
+**About 55 MB back, and no CPU change at all.** That second half matters more than the first:
+the expectation going into Phase 6 was that deleting the QML host would be a throughput win,
+and on this evidence it is a memory win only.
+
+The CPU is somewhere else. Per thread, at the same moment:
+
+| thread | share |
+|---|---|
+| `qtMainLoopThread` | 44.8% |
+| Android main | 24.1% |
+| Compose `RenderThread` | 20.6% |
+| `QtThread` | 3.4% |
+
+Nearly half of it is inside QGC's own event loop, which is where MAVLink parsing and the
+bridge's watcher polling live — Risk 5's 200 ms diff loop, now with a number against it. Any
+real throughput work on this head starts there, not with QtQuick.
+
 ## Phase 6 — Shell · 2 weeks
 
 Cheaper than macOS, because Qt is already off the main thread.
