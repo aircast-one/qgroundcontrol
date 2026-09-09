@@ -42,7 +42,7 @@ def main():
                            srcComponent=mavlink.MAV_COMP_ID_AUTOPILOT1)
     parser = mavlink.MAVLink(None, srcSystem=255, srcComponent=0)
     # A second component so QGC's camera manager has something to discover.
-    sent_status = [False]
+    sent_status = [0]
     cameras = {
         mavlink.MAV_COMP_ID_CAMERA: b"SimCam",
         mavlink.MAV_COMP_ID_CAMERA2: b"SimCam Thermal",
@@ -142,8 +142,13 @@ def main():
                             base_mode, mode, mavlink.MAV_STATE_ACTIVE)
         nofix = os.environ.get("NOFIX") == "1" and elapsed < float(os.environ.get("NOFIX_SECONDS", "1e9"))
         link.sys_status_send(GPS_SENSOR, GPS_SENSOR, GPS_SENSOR, 250, 12100, 3200, 78, 0, 0, 0, 0, 0, 0)
-        if int(elapsed) >= 8 and not sent_status[0]:
-            sent_status[0] = True
+        # Sent well after start, and again periodically: a ground station takes half a
+        # minute to bring its link up, and anything the vehicle says before that is said
+        # to nobody. Once cost an afternoon deciding the message banner was broken.
+        status_at = float(os.environ.get("STATUS_AT", "45"))
+        status_every = float(os.environ.get("STATUS_EVERY", "60"))
+        if elapsed >= status_at + sent_status[0] * status_every:
+            sent_status[0] += 1
             for severity, text in STATUS_TEXTS:
                 link.statustext_send(severity, text.ljust(50, b"\0"))
                 print("STATUSTEXT sev=%d %s" % (severity, text.decode()), flush=True)

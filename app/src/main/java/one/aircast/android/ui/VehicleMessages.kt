@@ -31,40 +31,44 @@ import one.aircast.android.bridge.qgcBool
 import org.json.JSONObject
 import one.aircast.android.bridge.qgcPath
 import one.aircast.android.bridge.qgcDouble
-import one.aircast.android.bridge.qgcString
 
-private val SEVERITY_TOKEN_RE = Regex("<#[ENI]>")
-
-private val TAG_RE = Regex("<[^>]*>")
+internal const val MESSAGES = "view.messages"
 
 enum class MessageSeverity { Error, Warning, Normal }
 
-data class VehicleMessage(val text: String, val severity: MessageSeverity)
-
-private val ENTITIES = listOf(
-    "&lt;" to "<",
-    "&gt;" to ">",
-    "&quot;" to "\"",
-    "&#39;" to "'",
-    "&nbsp;" to " ",
-    "&amp;" to "&",
+data class VehicleMessage(
+    val index: Int,
+    val time: String,
+    val severity: String,
+    val level: MessageSeverity,
+    val text: String,
 )
 
-internal fun severityOf(chunk: String): MessageSeverity = when {
-    chunk.contains("<#E>") -> MessageSeverity.Error
-    chunk.contains("<#I>") -> MessageSeverity.Warning
+internal fun levelOf(name: String): MessageSeverity = when (name) {
+    "error" -> MessageSeverity.Error
+    "warning" -> MessageSeverity.Warning
     else -> MessageSeverity.Normal
 }
 
-internal fun vehicleMessages(html: String): List<VehicleMessage> =
-    html.split("<br/>", "<br>", ignoreCase = true)
-        .mapNotNull { chunk ->
-            val stripped = TAG_RE.replace(SEVERITY_TOKEN_RE.replace(chunk, ""), "")
-            val text = ENTITIES.fold(stripped) { acc, (from, to) -> acc.replace(from, to) }.trim()
-            if (text.isBlank()) null else VehicleMessage(text, severityOf(chunk))
+internal fun vehicleMessages(view: JSONObject?): List<VehicleMessage> {
+    val items = view?.optJSONArray("items") ?: return emptyList()
+    return (0 until items.length()).mapNotNull { at ->
+        items.optJSONObject(at)?.let { item ->
+            val text = item.optString("text")
+            if (text.isBlank()) {
+                null
+            } else {
+                VehicleMessage(
+                    index = item.optInt("index", at),
+                    time = item.optString("time"),
+                    severity = item.optString("severity"),
+                    level = levelOf(item.optString("level")),
+                    text = text,
+                )
+            }
         }
-
-internal fun vehicleMessageLines(html: String): List<String> = vehicleMessages(html).map { it.text }
+    }
+}
 
 
 private const val WARNINGS = "view.warnings"
@@ -123,8 +127,8 @@ fun VehicleMessageBanner(modifier: Modifier = Modifier) {
 
 @Composable
 private fun VehicleMessageLog(onDismiss: () -> Unit) {
-    val formatted by qgcString("vehicle.formattedMessages")
-    val lines = remember(formatted) { vehicleMessages(formatted).asReversed() }
+    val json by qgcPath(MESSAGES)
+    val lines = remember(json) { vehicleMessages(json).asReversed() }
 
     AlertDialog(
         onDismissRequest = onDismiss,
@@ -137,9 +141,11 @@ private fun VehicleMessageLog(onDismiss: () -> Unit) {
                     itemsIndexed(lines) { index, message ->
                         Column(Modifier.padding(vertical = 6.dp)) {
                             Text(
-                                text = message.text,
+                                text = listOf(message.time, message.text)
+                                    .filter { it.isNotBlank() }
+                                    .joinToString("  "),
                                 style = MaterialTheme.typography.bodySmall,
-                                color = when (message.severity) {
+                                color = when (message.level) {
                                     MessageSeverity.Error -> MaterialTheme.colorScheme.error
                                     MessageSeverity.Warning -> MaterialTheme.colorScheme.tertiary
                                     MessageSeverity.Normal -> MaterialTheme.colorScheme.onSurface
