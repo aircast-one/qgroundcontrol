@@ -28,6 +28,7 @@ pub mod linkconfig;
 pub mod linkhost;
 pub mod logs;
 pub mod mapscale;
+pub mod mavcmd;
 pub mod messages;
 pub mod metacache;
 pub mod mission;
