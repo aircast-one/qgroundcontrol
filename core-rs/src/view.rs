@@ -166,6 +166,7 @@ impl View {
     pub fn deps_for(&self, args: &[String]) -> Vec<String> {
         match self.path {
             "view.instruments" => instruments::deps_for(args),
+            "view.battery" => battery::deps(),
             _ => self.deps.iter().map(|d| d.to_string()).collect(),
         }
     }

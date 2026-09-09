@@ -1,7 +1,6 @@
 use serde::Serialize;
 use serde_json::{Value, json};
 
-use crate::battery;
 use crate::read::{flag, integer, object, value_number};
 use crate::router::Backend;
 
@@ -13,8 +12,9 @@ pub const DEPS: &[&str] = &[
     "vehicle.sub",
     "vehicle.fixedWing",
     "vehicle.sensorsUnhealthyBits",
-    "vehicle.gps",
-    "vehicle.batteries",
+    "vehicle.gps.lock",
+    "vehicle.gps.count",
+    "vehicle.batteries.0.percentRemaining",
     "settings.appSettings.audioMuted",
 ];
 
@@ -229,14 +229,12 @@ pub fn preflight_view(backend: &dyn Backend, _args: &[String]) -> Value {
 
 fn read_inputs(backend: &dyn Backend) -> Inputs {
     let vehicle = object(&backend.get_fields("vehicle", "multiRotor,vtol,rover,sub,fixedWing,sensorsUnhealthyBits"));
-    let gps = object(&backend.get("vehicle.gps"));
-    let gps_fact = |name: &str| gps.get("facts").and_then(Value::as_array).and_then(|f| f.iter().find(|x| x.get("name").and_then(Value::as_str) == Some(name))).and_then(|f| f.get("value")).and_then(Value::as_f64).filter(|v| v.is_finite());
-    let packs = battery::packs(&object(&backend.get("vehicle.batteries")));
+    let gps_fact = |name: &str| value_number(&backend.get(&format!("vehicle.gps.{name}")));
     Inputs {
         airframe: Airframe::of(flag(&vehicle, "multiRotor"), flag(&vehicle, "vtol"), flag(&vehicle, "rover"), flag(&vehicle, "sub"), flag(&vehicle, "fixedWing")),
         lock: gps_fact("lock").map(|v| v as i64),
         satellites: gps_fact("count").map(|v| v as i64),
-        battery_percent: packs.first().and_then(|p| p.percent),
+        battery_percent: value_number(&backend.get("vehicle.batteries.0.percentRemaining")),
         unhealthy_bits: integer(&vehicle, "sensorsUnhealthyBits"),
         audio_muted: value_number(&backend.get("settings.appSettings.audioMuted.rawValue")).map(|v| v != 0.0).unwrap_or(false),
     }
@@ -285,5 +283,37 @@ mod tests {
         let muted = Inputs { airframe: Airframe::Generic, lock: Some(3), satellites: Some(12), battery_percent: Some(90.0), unhealthy_bits: Some(0), audio_muted: true };
         let sound = groups(&muted)[1].checks.iter().find(|c| c.name == "Sound output").unwrap().blocked;
         assert!(sound);
+    }
+
+    #[test]
+    fn the_view_reads_its_facts_one_by_one() {
+        struct Fake;
+        impl Backend for Fake {
+            fn get(&self, path: &str) -> String {
+                match path {
+                    "vehicle.gps.lock" => json!({ "kind": "fact", "name": "lock", "value": 3 }),
+                    "vehicle.gps.count" => json!({ "kind": "fact", "name": "count", "value": 12 }),
+                    "vehicle.batteries.0.percentRemaining" => json!({ "kind": "fact", "name": "percentRemaining", "value": 35.0 }),
+                    _ => json!({ "kind": "value", "value": null }),
+                }
+                .to_string()
+            }
+            fn get_fields(&self, _p: &str, _f: &str) -> String { json!({ "kind": "object", "multiRotor": true, "sensorsUnhealthyBits": 0 }).to_string() }
+            fn set(&self, _p: &str, _v: &str) -> String { String::new() }
+            fn invoke(&self, _p: &str, _a: &str) -> String { String::new() }
+            fn watch(&self, _p: &[String]) {}
+        }
+        let inputs = read_inputs(&Fake);
+        assert_eq!((inputs.lock, inputs.satellites, inputs.battery_percent, inputs.airframe), (Some(3), Some(12), Some(35.0), Airframe::MultiRotor));
+        struct Bare;
+        impl Backend for Bare {
+            fn get(&self, _p: &str) -> String { json!({ "kind": "value", "value": null }).to_string() }
+            fn get_fields(&self, _p: &str, _f: &str) -> String { json!({ "kind": "null" }).to_string() }
+            fn set(&self, _p: &str, _v: &str) -> String { String::new() }
+            fn invoke(&self, _p: &str, _a: &str) -> String { String::new() }
+            fn watch(&self, _p: &[String]) {}
+        }
+        let bare = read_inputs(&Bare);
+        assert_eq!((bare.lock, bare.satellites, bare.battery_percent), (None, None, None));
     }
 }

@@ -6,10 +6,25 @@ use crate::router::Backend;
 
 pub const DEPS: &[&str] = &[
     "vehicles.activeVehicleAvailable",
-    "vehicle.batteries",
+    "vehicle.batteries.count",
     "settings.batteryIndicatorSettings.threshold1",
     "settings.batteryIndicatorSettings.threshold2",
 ];
+
+const MAX_PACKS: usize = 4;
+const PACK_FACTS: [&str; 6] = ["voltage", "current", "percentRemaining", "chargeState", "timeRemaining", "timeRemainingStr"];
+
+fn pack_fact_path(index: usize, name: &str) -> String {
+    format!("vehicle.batteries.{index}.{name}")
+}
+
+fn pack_paths() -> Vec<String> {
+    (0..MAX_PACKS).flat_map(|i| PACK_FACTS.iter().map(move |name| pack_fact_path(i, name))).collect()
+}
+
+pub fn deps() -> Vec<String> {
+    DEPS.iter().map(|d| d.to_string()).chain(pack_paths()).collect()
+}
 
 const CHARGE_UNDEFINED: i64 = 0;
 const CHARGE_OK: i64 = 1;
@@ -60,37 +75,32 @@ pub fn secondary_text(pack: &Pack) -> String {
     }
 }
 
-pub fn packs(batteries: &Value) -> Vec<Pack> {
-    batteries
-        .get("elements")
-        .and_then(Value::as_array)
-        .map(|elements| elements.iter().map(pack).collect())
-        .unwrap_or_default()
+fn pack_count(backend: &dyn Backend) -> usize {
+    value_number(&backend.get("vehicle.batteries.count")).map(|n| n as usize).unwrap_or(0).min(MAX_PACKS)
 }
 
-fn pack(element: &Value) -> Pack {
-    let fact = |name: &str| element.get("facts").and_then(Value::as_array).and_then(|f| f.iter().find(|x| x.get("name").and_then(Value::as_str) == Some(name)));
-    let number = |name: &str| fact(name).and_then(|f| f.get("value")).and_then(Value::as_f64).filter(|v| v.is_finite());
-    let shown = |name: &str| {
-        fact(name)
-            .map(|f| format!("{}{}", f.get("valueString").and_then(Value::as_str).unwrap_or(""), display_units(f.get("units").and_then(Value::as_str).unwrap_or(""))))
-            .unwrap_or_default()
-    };
+fn packs(backend: &dyn Backend) -> Vec<Pack> {
+    (0..pack_count(backend)).map(|index| pack(&|name: &str| object(&backend.get(&pack_fact_path(index, name))))).collect()
+}
+
+fn pack(fact: &dyn Fn(&str) -> Value) -> Pack {
+    let text = |name: &str, key: &str| fact(name).get(key).and_then(Value::as_str).map(str::to_string).unwrap_or_default();
+    let number = |name: &str| fact(name).get("value").and_then(Value::as_f64).filter(|v| v.is_finite());
+    let shown = |name: &str| format!("{}{}", text(name, "valueString"), display_units(&text(name, "units")));
     Pack {
         voltage: number("voltage"),
         current: number("current"),
         percent: number("percentRemaining"),
-        charge_state: fact("chargeState").and_then(|f| f.get("value")).and_then(Value::as_i64).unwrap_or(CHARGE_UNDEFINED),
-        charge_label: fact("chargeState").and_then(|f| f.get("enumOrValueString")).and_then(Value::as_str).unwrap_or("").to_string(),
+        charge_state: fact("chargeState").get("value").and_then(Value::as_i64).unwrap_or(CHARGE_UNDEFINED),
+        charge_label: text("chargeState", "enumOrValueString"),
         percent_text: shown("percentRemaining"),
         voltage_text: shown("voltage"),
-        time_remaining_text: number("timeRemaining").and_then(|_| fact("timeRemainingStr")).and_then(|f| f.get("valueString")).and_then(Value::as_str).filter(|t| !t.is_empty()).map(str::to_string),
+        time_remaining_text: number("timeRemaining").map(|_| text("timeRemainingStr", "valueString")).filter(|t| !t.is_empty()),
     }
 }
 
 pub fn battery_view(backend: &dyn Backend, _args: &[String]) -> Value {
-    let batteries = object(&backend.get("vehicle.batteries"));
-    let packs = packs(&batteries);
+    let packs = packs(backend);
     let threshold1 = value_number(&backend.get("settings.batteryIndicatorSettings.threshold1.rawValue")).unwrap_or(80.0);
     let threshold2 = value_number(&backend.get("settings.batteryIndicatorSettings.threshold2.rawValue")).unwrap_or(60.0);
     let described: Vec<Value> = packs
@@ -129,16 +139,19 @@ pub fn battery_view(backend: &dyn Backend, _args: &[String]) -> Value {
 mod tests {
     use super::*;
 
-    fn pack_json(percent: Option<f64>, state: i64, label: &str) -> Value {
-        let facts: Vec<Value> = [
-            Some(json!({ "name": "voltage", "value": 15.8, "valueString": "15.80", "units": "V" })),
-            Some(json!({ "name": "chargeState", "value": state, "enumOrValueString": label })),
-            percent.map(|p| json!({ "name": "percentRemaining", "value": p, "valueString": format!("{p:.0}"), "units": "%" })),
+    fn pack_facts(percent: Option<f64>, state: i64, label: &str) -> Vec<(String, Value)> {
+        [
+            Some(("voltage".to_string(), json!({ "kind": "fact", "name": "voltage", "value": 15.8, "valueString": "15.80", "units": "V" }))),
+            Some(("chargeState".to_string(), json!({ "kind": "fact", "name": "chargeState", "value": state, "enumOrValueString": label }))),
+            percent.map(|p| ("percentRemaining".to_string(), json!({ "kind": "fact", "name": "percentRemaining", "value": p, "valueString": format!("{p:.0}"), "units": "%" }))),
         ]
         .into_iter()
         .flatten()
-        .collect();
-        json!({ "facts": facts })
+        .collect()
+    }
+
+    fn pack_of(facts: &[(String, Value)]) -> Pack {
+        pack(&|name: &str| facts.iter().find(|(n, _)| n == name).map(|(_, f)| f.clone()).unwrap_or(Value::Null))
     }
 
     #[test]
@@ -156,7 +169,7 @@ mod tests {
 
     #[test]
     fn nearly_full_reads_as_full_and_a_missing_percent_falls_back_to_voltage_then_charge_state() {
-        let packs = packs(&json!({ "elements": [pack_json(Some(99.2), CHARGE_OK, "OK"), pack_json(Some(72.0), CHARGE_UNDEFINED, "Undefined"), pack_json(None, CHARGE_LOW, "Low")] }));
+        let packs: Vec<Pack> = [pack_facts(Some(99.2), CHARGE_OK, "OK"), pack_facts(Some(72.0), CHARGE_UNDEFINED, "Undefined"), pack_facts(None, CHARGE_LOW, "Low")].iter().map(|f| pack_of(f)).collect();
         assert_eq!(text(&packs[0]), "100%");
         assert_eq!(text(&packs[1]), "72%");
         assert_eq!(text(&packs[2]), "15.80V");
@@ -173,10 +186,13 @@ mod tests {
         struct Fake;
         impl Backend for Fake {
             fn get(&self, path: &str) -> String {
-                match path {
-                    "vehicle.batteries" => json!({ "kind": "object", "elements": [pack_json(Some(90.0), CHARGE_OK, "OK"), pack_json(Some(50.0), CHARGE_UNDEFINED, "Undefined")] }),
-                    "settings.batteryIndicatorSettings.threshold1.rawValue" => json!({ "kind": "value", "value": 80 }),
-                    "settings.batteryIndicatorSettings.threshold2.rawValue" => json!({ "kind": "value", "value": 60 }),
+                let packs = [pack_facts(Some(90.0), CHARGE_OK, "OK"), pack_facts(Some(50.0), CHARGE_UNDEFINED, "Undefined")];
+                let fact = path.strip_prefix("vehicle.batteries.").and_then(|rest| rest.split_once('.')).and_then(|(index, name)| packs.get(index.parse::<usize>().ok()?)?.iter().find(|(n, _)| n == name).map(|(_, f)| f.clone()));
+                match (path, fact) {
+                    (_, Some(fact)) => fact,
+                    ("vehicle.batteries.count", _) => json!({ "kind": "value", "value": 2 }),
+                    ("settings.batteryIndicatorSettings.threshold1.rawValue", _) => json!({ "kind": "value", "value": 80 }),
+                    ("settings.batteryIndicatorSettings.threshold2.rawValue", _) => json!({ "kind": "value", "value": 60 }),
                     _ => json!({ "kind": "null" }),
                 }
                 .to_string()
@@ -186,6 +202,8 @@ mod tests {
             fn invoke(&self, _p: &str, _a: &str) -> String { String::new() }
             fn watch(&self, _p: &[String]) {}
         }
+        assert_eq!(deps().len(), 4 + 24);
+        assert!(deps().contains(&"vehicle.batteries.1.chargeState".to_string()));
         let view = battery_view(&Fake, &[]);
         assert_eq!(view["available"], true);
         assert_eq!(view["level"], "warning");

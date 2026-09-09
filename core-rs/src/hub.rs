@@ -903,6 +903,7 @@ mod tests {
     }
 
     #[test]
+    #[allow(deprecated)]
     fn a_px4_vehicle_asks_for_its_protocol_version_and_collects_its_standard_modes() {
         use mavlink::dialects::ardupilotmega::{AUTOPILOT_VERSION_DATA, AVAILABLE_MODES_DATA, HEARTBEAT_DATA, MavAutopilot, MavModeFlag, MavStandardMode, MavType, PROTOCOL_VERSION_DATA};
         let autopilot = MavHeader { system_id: 2, component_id: 1, sequence: 0 };
@@ -914,7 +915,6 @@ mod tests {
         hub.on_frame(4, false, &autopilot, &MavMessage::HEARTBEAT(px4), 0, 0);
         let after_version = hub.on_frame(4, false, &autopilot, &MavMessage::AUTOPILOT_VERSION(AUTOPILOT_VERSION_DATA::default()), 100_000, 100);
         assert_eq!(request_of(&after_version[0].1), (512, 300.0));
-        #[allow(deprecated)]
         let protocol = MavMessage::PROTOCOL_VERSION(PROTOCOL_VERSION_DATA { version: 200, min_version: 100, max_version: 200, ..Default::default() });
         let after_protocol = hub.on_frame(4, false, &autopilot, &protocol, 200_000, 200);
         assert_eq!(request_of(&after_protocol[0].1), (512, 435.0));

@@ -641,6 +641,7 @@ About 58 developer-weeks. Flight-test time, not code, is the schedule.
 - 2026-09-09: `view.instruments(...)` depends on and reads the selected facts (`vehicle.gps.count`, `vehicle.batteries.0.voltage`) instead of whole groups; a view's dependencies may now derive from its arguments. Level-horizon text is QGC's.
 - 2026-09-09: `view.detections` replaces DetectionOverlayVideo.qml's logic: host and camera from the RTSP URL setting, the agent's SSE detections stream followed in the core, boxes normalised with `confidence`, stale after a second, pushed to the head on every frame.
 - 2026-09-09: a vehicle on a core link is walked through the initial connect sequence by the core (autopilot version, protocol version, standard modes, parameters with Qt's timers); `view.coreVehicle` reports the step, firmware, modes and parameter state; `view.coreParameter(name)` serves a value. `settings.appSettings.detectionsHttpPort` (0 = agent default) picks the detections stream port for rigs.
+- 2026-09-09: `view.battery` and `view.preflight` depend on and read single facts (`vehicle.batteries.count`, six facts per pack up to four packs, `vehicle.gps.lock`, `vehicle.gps.count`) instead of the battery list and GPS group objects.
 
 ### Stream F · Core
 
