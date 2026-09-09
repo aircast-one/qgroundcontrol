@@ -94,23 +94,8 @@ final class LogDownloadStore: ObservableObject, Probeable {
         case "reload": reload()
         case "refresh": refresh()
         case "cancel": cancel()
-        case "askToEraseAll":
-            guard canErase else {
-                return ["ok": false, "error": "there is nothing to erase, or the vehicle is busy"]
-            }
-            askToEraseAll()
-        case "eraseAll":
-            guard confirmingErase else {
-                return ["ok": false, "error": "erasing every log needs confirming first"]
-            }
-            eraseAll()
         case "cancelErase":
             confirmingErase = false
-        case "download":
-            guard let entry = logs.first(where: { $0.id == Int(args["log"] ?? "") ?? -1 }) else {
-                return ["ok": false, "error": "no log numbered \(args["log"] ?? "")"]
-            }
-            download(entry)
         default: return ["ok": false, "error": "unknown action \(action)"]
         }
         return ["ok": true, "state": probeState()]
