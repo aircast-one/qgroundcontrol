@@ -2240,8 +2240,9 @@ smaller peak, but no peak.
 
 Process CPU stayed where it was all night, 114–140% against 85–125% at the start. The poll fell
 by an order of magnitude and the process did not get cheaper, which is worth stating plainly:
-whatever the Fly tab costs on this handset, the watcher was never the bulk of it. Two map
-renderers, a video pipeline and MAVLink at 60 messages a second are.
+whatever the Fly tab costs on this handset, the watcher was never the bulk of it. Where it does
+go is measured in the section below, and the guess offered here first — two map renderers and a
+video pipeline — was wrong about the emphasis.
 
 ### The last two desktop-only settings
 
@@ -2378,6 +2379,42 @@ produce. Opening one gives name, type and live value per field in monospace.
 
 Recording a review that found nothing is worth as much as one that found something. The
 alternative is a habit of manufacturing findings to justify the look.
+
+### Where the CPU actually goes
+
+Measured with a vehicle connected, six samples on the Fly tab and four on Settings, after
+confirming on a screenshot that the Fly tab was fully drawn rather than trusting the numbers:
+
+| screen | CPU |
+|---|---|
+| Fly | 76–144% |
+| Settings | 41–86% |
+
+**Half the Fly tab's cost is present on a settings list that draws almost nothing.** That is not
+the map, the overlays or the video surface; it is what a connected vehicle costs — MAVLink
+parsing, Qt's `Vehicle` and its fact groups, and the bridge emitting events to the head. The
+watcher's poll, at 46–72 ms per five seconds, is about one percent of a core and is not in this
+picture at all.
+
+**Shrinking the covered QuickView makes it worse, not better.** The obvious saving — the QML
+scene is invisible under an opaque native map, so give it a 1 dp box — was tested and refuted:
+Settings went from 41–86% to 90–129%, and reverting restored it. An A/B where B looks worse
+deserves the A re-measured before it is believed, and it held. Covering the view is cheaper than
+shrinking it, so Phase 6's *deletion* of the host is the only version of that idea that helps;
+there is no cheap approximation of it.
+
+Two instrument notes from the same session, both of which cost a measurement before they were
+caught:
+
+**The handset's address moved.** DHCP gave it a new lease during an idle stretch, the sim went
+on sending MAVLink to the old one, and the app showed "No vehicle" — indistinguishable from a
+broken app until you look. `tools/handset-ip.sh` asks `adb` now and `regress.sh` refuses to
+start without an answer.
+
+**`git diff` lies in this tree.** It compares against the shared index, which private-index
+commits never update, so it reported 37 phantom uncommitted lines in a file that matched `HEAD`
+exactly. `git diff HEAD` is the one to trust here, for the same reason the staged-deletion check
+needs `GIT_INDEX_FILE` unset.
 
 ## Phase 6 — Shell · 2 weeks
 
