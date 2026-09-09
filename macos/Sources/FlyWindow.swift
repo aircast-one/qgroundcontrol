@@ -809,6 +809,8 @@ struct FlyView: View {
 
             if video.nativeFrames > 0 {
                 NativeVideoView()
+                    .overlay(DetectionOverlay(detections: video.detections,
+                                              source: video.status.sourceSize))
                     .frame(width: 320, height: 180)
                     .clipShape(RoundedRectangle(cornerRadius: Overlay.panelRadius))
                     .overlay(RoundedRectangle(cornerRadius: Overlay.panelRadius)
@@ -816,6 +818,8 @@ struct FlyView: View {
                     .shadow(color: .black.opacity(0.3), radius: 10, y: 3)
                     .padding(.bottom, Overlay.unit * 5)
                     .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottom)
+                    .onAppear { video.startDetections() }
+                    .onDisappear { video.stopDetections() }
             }
 
             GeometryReader { proxy in
@@ -909,5 +913,41 @@ final class FlyWindow: NSObject, NSWindowDelegate {
     func windowWillClose(_ notification: Notification) {
         fly.stop()
         window = nil
+    }
+}
+
+struct DetectionOverlay: View {
+    let detections: Detections
+    let source: SourceSize?
+
+    static let stroke = Color(red: 0, green: 0.902, blue: 0.463)
+
+    var body: some View {
+        GeometryReader { proxy in
+            if detections.draws,
+               let picture = source?.painted(inWidth: proxy.size.width,
+                                             height: proxy.size.height) {
+                ForEach(Array(detections.boxes.enumerated()), id: \.offset) { _, found in
+                    boxView(picture.place(found), caption: found.caption)
+                }
+            }
+        }
+    }
+
+    private func boxView(_ at: PaintedPicture, caption: String) -> some View {
+        let font = max(9, at.height * 0.14)
+        return ZStack(alignment: .topLeading) {
+            Rectangle()
+                .strokeBorder(DetectionOverlay.stroke, lineWidth: 2)
+                .frame(width: at.width, height: at.height)
+            Text(caption)
+                .font(.system(size: font, weight: .bold))
+                .foregroundColor(.black)
+                .padding(.horizontal, 3)
+                .background(DetectionOverlay.stroke)
+                .offset(y: -(font + 6))
+        }
+        .frame(width: at.width, height: at.height, alignment: .topLeading)
+        .position(x: at.x + at.width / 2, y: at.y + at.height / 2)
     }
 }

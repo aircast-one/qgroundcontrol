@@ -78,7 +78,33 @@ final class VideoStore: ObservableObject, Probeable, WriteReporting {
 
     func clear() {
         if status != .unavailable { status = .unavailable }
+        stopDetections()
         pollNative()
+    }
+
+    @Published private(set) var detections = Detections.none
+
+    private var detectionPoll: Timer?
+
+    // The boxes come from the camera host, not the vehicle, so they cannot ride the telemetry
+    // change that drives refresh(): a silent vehicle would freeze them on screen.
+    func startDetections() {
+        guard detectionPoll == nil else { return }
+        refreshDetections()
+        detectionPoll = Timer.scheduledTimer(withTimeInterval: 0.1, repeats: true) { [weak self] _ in
+            self?.refreshDetections()
+        }
+    }
+
+    func stopDetections() {
+        detectionPoll?.invalidate()
+        detectionPoll = nil
+        if detections != .none { detections = .none }
+    }
+
+    func refreshDetections() {
+        let read = Detections(Bridge.group("view.detections"))
+        if read != detections { detections = read }
     }
 
     @Published private(set) var nativeFrames = 0
@@ -116,6 +142,14 @@ final class VideoStore: ObservableObject, Probeable, WriteReporting {
          "configured": status.configuredCameras.count,
          "cameras": status.cameras.map { ["title": $0.title, "status": $0.status,
                                           "connecting": $0.connecting] },
+         "sourceSize": status.sourceSize.map { ["width": $0.width, "height": $0.height] } ?? [:],
+         "detections": ["available": detections.available, "stale": detections.stale,
+                        "draws": detections.draws, "error": detections.error,
+                        "polling": detectionPoll != nil,
+                        "boxes": detections.boxes.map {
+                            ["caption": $0.caption, "x": $0.x, "y": $0.y,
+                             "w": $0.width, "h": $0.height]
+                        }],
          "nativeAvailable": qgc_video_available(), "nativeRunning": nativeRunning,
          "nativeRequested": askedForNative,
          "camera": ["present": camera.present, "title": camera.title, "mode": camera.modeText,

@@ -1804,6 +1804,82 @@ func checkVehicleMessages() {
 
 checkVehicleMessages()
 
+func checkDetections() {
+    func box(_ label: String, _ x: Double, _ y: Double, _ w: Double, _ h: Double,
+             conf: Double? = 0.91) -> [String: Any] {
+        var made: [String: Any] = ["label": label, "x": x as NSNumber, "y": y as NSNumber,
+                                   "w": w as NSNumber, "h": h as NSNumber]
+        if let conf { made["conf"] = conf as NSNumber }
+        return made
+    }
+    func placed(_ picture: PaintedPicture?, _ json: [String: Any]) -> String {
+        guard let picture, let decoded = DetectionBox(json) else { return "none" }
+        return rect(picture.place(decoded))
+    }
+    func rect(_ picture: PaintedPicture?) -> String {
+        guard let picture else { return "none" }
+        func round(_ value: Double) -> String { String(format: "%.1f", value) }
+        return "\(round(picture.x)),\(round(picture.y)) \(round(picture.width))x\(round(picture.height))"
+    }
+
+    let read = Detections(["available": true as NSNumber, "stale": false as NSNumber,
+                           "boxes": [box("car", 0.1, 0.2, 0.3, 0.4),
+                                     box("person", 0.5, 0.5, 0.2, 0.2, conf: nil)],
+                           "error": ""])
+    expect(read.boxes.count == 2, "every box the core sends is drawn")
+    expect(read.boxes[0].caption, "car 91%", "a box says what it is and how sure it is")
+    expect(read.boxes[1].caption, "person",
+           "and one with no confidence says only what it is; the QML wrote \"person NaN%\"")
+    expect(read.draws, "a fresh frame with boxes is drawn")
+
+    expect(Detections(["available": true as NSNumber, "stale": true as NSNumber,
+                       "boxes": [box("car", 0, 0, 1, 1)]]).draws == false,
+           "a stale frame is not drawn, even carrying boxes, because a box a second old is "
+           + "somewhere the object has already left")
+    expect(Detections(["available": false as NSNumber, "stale": false as NSNumber,
+                       "boxes": [box("car", 0, 0, 1, 1)]]).draws == false,
+           "and nothing is drawn for a camera the core is not watching")
+    expect(Detections.none.draws == false, "the resting state draws nothing")
+
+    expect(Detections(["available": true as NSNumber, "stale": false as NSNumber,
+                       "boxes": [["label": "car", "x": 0 as NSNumber, "y": 0 as NSNumber,
+                                  "w": 0 as NSNumber, "h": 0.5 as NSNumber],
+                                 box("", 0, 0, 1, 1),
+                                 box("nan", Double.nan, 0, 1, 1)]]).boxes.isEmpty,
+           "a box with no width, no label, or a coordinate that is not a number is dropped "
+           + "rather than drawn as a line or thrown at the corner")
+
+    let pane = (width: 320.0, height: 180.0)
+    let wide = SourceSize(["width": 1920 as NSNumber, "height": 1080 as NSNumber])
+    expect(rect(wide?.painted(inWidth: pane.width, height: pane.height)), "0.0,0.0 320.0x180.0",
+           "a source of the pane's own ratio fills it exactly")
+
+    let squarish = SourceSize(["width": 640 as NSNumber, "height": 480 as NSNumber])
+    let picture = squarish?.painted(inWidth: pane.width, height: pane.height)
+    expect(rect(picture), "40.0,0.0 240.0x180.0",
+           "a 4:3 source in a 16:9 pane is pillarboxed with a 40 point bar down each side")
+
+    expect(placed(picture, box("all", 0, 0, 1, 1)), "40.0,0.0 240.0x180.0",
+           "a box covering the whole frame covers the painted picture and not the bars; "
+           + "normalising to the pane instead would put 40 points of it in black")
+    expect(placed(picture, box("half", 0.5, 0.5, 0.25, 0.25)), "160.0,90.0 60.0x45.0",
+           "and a box at the middle of the frame is at the middle of the picture")
+
+    let tall = SourceSize(["width": 480 as NSNumber, "height": 640 as NSNumber])
+    expect(rect(tall?.painted(inWidth: pane.width, height: pane.height)), "92.5,0.0 135.0x180.0",
+           "a portrait source is bounded by the pane's height, not its width")
+
+    expect(SourceSize(["width": 0 as NSNumber, "height": 480 as NSNumber]) == nil,
+           "a source with no width is no source at all")
+    expect(SourceSize(nil) == nil,
+           "and the core sends null until a frame is decoding, which is why the head draws "
+           + "nothing rather than guessing the pane is the picture")
+    expect(rect(wide?.painted(inWidth: 0, height: 180)), "none",
+           "a pane that has not been laid out yet has no picture in it either")
+}
+
+checkDetections()
+
 func checkPreflight() {
     func check(_ name: String, _ verdict: String, _ blocked: Bool) -> [String: Any] {
         ["name": name, "prompt": "P", "verdict": verdict, "reason": "R",
@@ -2482,8 +2558,8 @@ func checkViewContract() {
          ["path", "name", "label", "control", "valueString", "display", "units", "options"]),
         ("view.video", [],
          ["available", "gstreamer", "streamSource", "decoding", "streaming", "recording",
-          "activeSource", "multipleSources", "anyConnecting", "configuredCount", "summary",
-          "cameras"]),
+          "sourceSize", "activeSource", "multipleSources", "anyConnecting", "configuredCount",
+          "summary", "cameras"]),
         ("view.video", ["cameras"],
          ["slot", "title", "status", "connecting", "recording", "configured"]),
         ("view.camera", [],

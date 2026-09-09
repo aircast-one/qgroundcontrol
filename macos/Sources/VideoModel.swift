@@ -1,5 +1,42 @@
 import Foundation
 
+struct SourceSize: Equatable {
+    let width: Double
+    let height: Double
+
+    init?(_ json: Any?) {
+        guard let json = json as? [String: Any],
+              let width = (json["width"] as? NSNumber)?.doubleValue,
+              let height = (json["height"] as? NSNumber)?.doubleValue,
+              width.isFinite, height.isFinite, width > 0, height > 0 else { return nil }
+        self.width = width
+        self.height = height
+    }
+
+    // VideoLayerView paints the frame with .resizeAspect, so a source whose ratio differs from
+    // the pane is letterboxed and anything normalised to the pane lands in the bars instead.
+    func painted(inWidth paneWidth: Double, height paneHeight: Double) -> PaintedPicture? {
+        guard paneWidth > 0, paneHeight > 0 else { return nil }
+        let scale = min(paneWidth / width, paneHeight / height)
+        let shown = (width: width * scale, height: height * scale)
+        return PaintedPicture(x: (paneWidth - shown.width) / 2,
+                              y: (paneHeight - shown.height) / 2,
+                              width: shown.width, height: shown.height)
+    }
+}
+
+struct PaintedPicture: Equatable {
+    let x: Double
+    let y: Double
+    let width: Double
+    let height: Double
+
+    func place(_ box: DetectionBox) -> PaintedPicture {
+        PaintedPicture(x: x + box.x * width, y: y + box.y * height,
+                       width: box.width * width, height: box.height * height)
+    }
+}
+
 struct VideoCamera: Identifiable, Equatable {
     let slot: Int
     let title: String
@@ -29,6 +66,7 @@ struct VideoStatus: Equatable {
     let decoding: Bool
     let streaming: Bool
     let recording: Bool
+    let sourceSize: SourceSize?
     let activeSource: Int
     let multipleSources: Bool
     let anyConnecting: Bool
@@ -45,6 +83,7 @@ struct VideoStatus: Equatable {
         decoding = false
         streaming = false
         recording = false
+        sourceSize = nil
         activeSource = 0
         multipleSources = false
         anyConnecting = false
@@ -61,6 +100,7 @@ struct VideoStatus: Equatable {
         decoding = flag("decoding")
         streaming = flag("streaming")
         recording = flag("recording")
+        sourceSize = SourceSize(json["sourceSize"])
         activeSource = (json["activeSource"] as? NSNumber)?.intValue ?? 0
         multipleSources = flag("multipleSources")
         anyConnecting = flag("anyConnecting")
