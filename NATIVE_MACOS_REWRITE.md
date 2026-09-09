@@ -632,6 +632,7 @@ About 58 developer-weeks. Flight-test time, not code, is the schedule.
 - 2026-09-09: ULog stream processor (LOGGING_DATA sequence, drops, reassembly) in the core.
 - 2026-09-09: vehicle hub in the core (`view.coreVehicle`, frames from core links to the fact groups, 3.5 s expiry); recorder adds mission items so terrainProfile points record.
 - 2026-09-09: R5 gate test replays mav.tlog through both models and compares; vehicle altitude/position fallbacks ported.
+- 2026-09-09: flight-mode name tables in the core; gate compares mode text, armed and battery.
 
 ### Stream F · Core
 

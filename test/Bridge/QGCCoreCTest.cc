@@ -650,6 +650,17 @@ void QGCCoreCTest::_replayedLogAgreesBetweenTheModels()
     const QJsonObject coreCoordinate = core.value(QStringLiteral("coordinate")).toObject();
     const QString latitude = close(qtCoordinate.value(QStringLiteral("latitude")).toDouble(), coreCoordinate.value(QStringLiteral("latitude")).toDouble(), 1e-6, "coordinate.latitude");
     QVERIFY2(latitude.isEmpty(), qPrintable(latitude));
+    QCOMPARE(take(qgc_bridge_get("vehicle.armed")).value(QStringLiteral("value")).toBool(!core.value(QStringLiteral("armed")).toBool()), core.value(QStringLiteral("armed")).toBool());
+    QCOMPARE(take(qgc_bridge_get("vehicle.flightMode")).value(QStringLiteral("value")).toString(), core.value(QStringLiteral("flightMode")).toString());
+    const QJsonArray coreBatteries = core.value(QStringLiteral("batteries")).toArray();
+    const QJsonArray qtBatteries = take(qgc_bridge_get("vehicle.batteries")).value(QStringLiteral("elements")).toArray();
+    QCOMPARE(coreBatteries.count(), qtBatteries.count());
+    if (!coreBatteries.isEmpty()) {
+        const QString voltage = close(factValue("vehicle.batteries.0.voltage"), coreBatteries.first().toObject().value(QStringLiteral("voltage")).toDouble(), 0.01, "battery voltage");
+        QVERIFY2(voltage.isEmpty(), qPrintable(voltage));
+        const QString percent = close(factValue("vehicle.batteries.0.percentRemaining"), coreBatteries.first().toObject().value(QStringLiteral("percentRemaining")).toDouble(), 0.5, "battery percent");
+        QVERIFY2(percent.isEmpty(), qPrintable(percent));
+    }
 #else
     QSKIP("the Rust core is not linked into this build");
 #endif

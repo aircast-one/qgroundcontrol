@@ -121,6 +121,7 @@ impl Vehicle {
             "vehicleType": self.vehicle_type,
             "armed": self.armed(),
             "customMode": self.custom_mode,
+            "flightMode": crate::modes::name(self.autopilot, self.vehicle_type, self.base_mode, self.custom_mode),
             "baseMode": self.base_mode,
             "systemStatus": self.system_status,
             "heartbeats": self.heartbeats,
