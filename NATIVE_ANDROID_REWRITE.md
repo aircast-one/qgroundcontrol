@@ -2444,6 +2444,19 @@ station takes about thirty to bring its link up, so the first check of the banne
 empty one and looked like a bug in the code I had just changed. It now speaks at forty-five
 seconds and repeats every minute, with a comment saying why.
 
+**The banner now counts what the log can show.** It had been reading `vehicle.messageCount`,
+`vehicle.messageTypeError` and `vehicle.messageTypeWarning` — three more watched paths, and
+three more chances to disagree with the list underneath. All three come off the same
+`view.messages` the log reads, so the count and the colour cannot drift from the rows any more.
+On the handset the banner says "4 messages from the vehicle" and the log shows exactly four.
+
+Auditing the rest of the head for the same shape: what is left of the raw paths it reads are
+invocations (`guidedModeLand`, `sendGripperAction`, `setRcChannelOverride`), single scalars with
+no view behind them (`armed`, `flying`, `flightMode`, `latitude`, `rcRSSI`,
+`communicationLost`), and `vehicle.objectAvoidance.distances` and `.msSinceUpdate`, which are
+the two facts the obstacle readout draws and not a group read. No remaining place where this
+head computes an answer the core already serves.
+
 ## Phase 6 — Shell · 2 weeks
 
 Cheaper than macOS, because Qt is already off the main thread.
