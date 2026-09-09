@@ -17,7 +17,7 @@ pub fn human_size(bytes: i64) -> String {
     }
 }
 
-pub const CLOCK_SET_YEAR: i64 = 2010;
+const CLOCK_SET_YEAR: i64 = 2010;
 
 pub fn time_state(received: bool, raw: &str) -> &'static str {
     let year = raw.get(..4).and_then(|y| y.parse::<i64>().ok());
@@ -98,7 +98,7 @@ mod tests {
     use super::*;
 
     #[test]
-    fn sizes_and_times_read_like_a_person_wrote_them() {
+    fn sizes_read_like_a_person_wrote_them_and_times_name_their_branch() {
         assert_eq!(human_size(0), "0 bytes");
         assert_eq!(human_size(900), "900 bytes");
         assert_eq!(human_size(4096), "4.0 KB");
@@ -107,6 +107,7 @@ mod tests {
         assert_eq!(time_state(true, "1970-01-01T00:00:12.000"), "unknown", "a clock that was never set reads as the QGC page's Date Unknown");
         assert_eq!(time_state(false, "2026-09-08T14:42:51.000"), "unreceived", "an entry not yet received shows no time at all");
         assert_eq!(time_state(true, "garbage"), "unknown");
+        assert_eq!(time_state(true, ""), "unknown");
         assert!(erase_warning(1).starts_with("The one log"));
         assert!(erase_warning(3).starts_with("All 3 logs"));
     }
@@ -127,9 +128,9 @@ mod tests {
             fn invoke(&self, _p: &str, _a: &str) -> String { String::new() }
             fn watch(&self, _p: &[String]) {}
         }
-        let idle = logs_view(&Fake { connected: true, requesting: false, entries: json!([{ "id": 1, "size": 4096, "status": "Downloaded", "received": true, "selected": true, "time": "2026-09-08T14:42:51.000" }]) }, &[]);
+        let idle = logs_view(&Fake { connected: true, requesting: false, entries: json!([{ "id": 1, "size": 4096, "status": "Downloaded", "received": true, "selected": false, "time": "2026-09-08T14:42:51.000" }]) }, &[]);
         assert_eq!(idle["canRefresh"], true);
-        assert_eq!(idle["canDownload"], true);
+        assert_eq!(idle["canDownload"], true, "nothing selected and not busy still enables download, as the QGC page does");
         assert_eq!(idle["canErase"], true);
         assert_eq!(idle["anyDownloaded"], true);
         assert_eq!(idle["entries"][0]["sizeText"], "4.0 KB");
