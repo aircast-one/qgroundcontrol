@@ -247,7 +247,10 @@ def main():
                         else message.param_id.decode().strip("\x00")
                     if setting in params:
                         params[setting] = message.param_value
+                        print("PARAM_SET %s = %g" % (setting, message.param_value), flush=True)
                         send_param(setting)
+                    else:
+                        print("PARAM_SET %s (unknown) ignored" % setting, flush=True)
                 elif kind == "COMMAND_LONG" and message.command == mavlink.MAV_CMD_COMPONENT_ARM_DISARM:
                     armed = message.param1 > 0.5
                     print("ARM %s (param1=%.1f force=%.1f) from %d/%d" % (
