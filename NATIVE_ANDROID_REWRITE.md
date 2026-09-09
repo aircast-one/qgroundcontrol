@@ -1085,8 +1085,8 @@ exists natively today:
 | `VideoTilesLayer` | **missing** | multiple streams |
 | `RcControlsLayer` | **built** | renders the configured controls and sends `setRcChannelOverride`; editing the list is still desktop-only |
 | `ObstacleDistanceOverlay` (map and video) | **built, in another form** | a sentence — "3.2 m right" — rather than a proximity ring |
-| `FlyViewToolStrip` + action list | **missing** | waypoint actions and the Viewer3D entry |
-| `GuidedValueSlider` | **built, for altitude** | speed and takeoff-value variants not yet built |
+| `FlyViewToolStrip` + action list | **built, as an Actions sheet** | pause, gripper, emergency stop, mission start/continue, land abort; Viewer3D dropped, preflight sits under Analyze |
+| `GuidedValueSlider` | **built** | altitude, speed, takeoff height, and pause all read their range from the core |
 | `DetectionOverlayVideo` | **missing** | |
 | `FlyViewCustomLayer` | **missing** | plugin extension point |
 | `OverlayGlass` / `OverlayRig` / `FlyViewInsetViewer` | **missing** | the overlay layout system the above sit in |
@@ -1706,6 +1706,50 @@ rather than creeping up on it.
 
 **Gate (HW):** every guided action verified on PX4 and ArduPilot. Confirmation control cannot be
 actuated accidentally. Sub-200 ms glass-to-glass on WHEP. A 30-minute flight with flat memory.
+
+### The Actions sheet
+
+The row on the Fly tab carries the six actions an operator reaches for constantly — arm,
+takeoff, land, return, speed, height. The core offers fourteen. The other seven had no
+native home, so `FlyViewToolStrip`'s "Actions" hamburger becomes a sheet listing exactly the
+offers the core marks shown and this head knows how to send: start mission, continue
+mission, pause, abort landing, grab, release, emergency stop. The button appears only when
+that list is non-empty, so a vehicle with nothing extra to offer shows no control rather
+than an empty sheet.
+
+The head does not decide what belongs there. Each row's title, one-line prompt, destructive
+flag and blocked reason are the core's, and an offer the core hides is not drawn. Verified
+on the handset against the APM sim, each by what the vehicle received rather than by the
+button changing:
+
+| action | evidence |
+|---|---|
+| Grab | `MAV_CMD_DO_GRIPPER` (211) with action 1 |
+| Release | `MAV_CMD_DO_GRIPPER` (211) with action 0 |
+| Pause | flight mode became Brake, and Pause then left the sheet on its own |
+| Emergency Stop | `MAV_CMD_COMPONENT_ARM_DISARM` (400) with the 21196 force magic |
+
+Start mission, continue mission and abort landing are wired but unexercised: the first two
+need a plan loaded and the third a fixed-wing on approach, and the sim gives neither.
+
+**An action this head cannot send is not offered.** The sheet filters on a named list rather
+than on "everything the core shows minus the row", because the other shape draws a row for
+any action the core adds later and does nothing when it is tapped. A dead row on a flight
+screen is worse than a missing one.
+
+**Pause is not a height change, and gating it like one made it impossible.** The confirm
+button read `view.guidedAltitude.sends`, which is false when the target equals the current
+height — exactly the case where an operator wants to stop where they are. QGC's own
+`guidedModeChangeAltitude(0, pauseVehicle: true)` switches to the pause flight mode and then
+returns before sending a position target, so a zero delta is the *normal* pause, not a
+no-op. The head now sends when pausing regardless of delta. The core is still the better
+home for this rule: `view.guidedAltitude` reports a change it would send, and pause needs
+`sends` to mean something else. Flagged for the core session; nothing else depends on it.
+
+**The slide-to-confirm label sat under the thumb.** "Slide to emergency stop" rendered as
+"lide to emergency stop" — the instruction on the most dangerous control in the app was the
+one you could not read. The label now centres in the track to the right of the thumb rather
+than in the whole track. Short labels are unaffected.
 
 ## Phase 6 — Shell · 2 weeks
 
