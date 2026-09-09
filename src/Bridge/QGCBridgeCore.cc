@@ -705,12 +705,6 @@ QString jsonToString(const QJsonObject &json)
 }
 
 
-// ponytail: watched paths are polled and diffed, not signal-connected. Notify
-// connections cannot replace this and the upgrade path is a hybrid: Vehicle declares
-// NOTIFY on 96 of 164 properties, TransectStyleComplexItem on 5 of 15, SurveyComplexItem
-// on none of 4, and QmlObjectListModel signals only countChanged and dirtyChanged, so an
-// element's own property changing is invisible to the model. Connect where a NOTIFY
-// exists and keep polling the rest; a notify-only Watcher goes silently stale.
 class Watcher : public QObject
 {
 public:
@@ -723,6 +717,7 @@ public:
 
     void setPaths(const QStringList &paths)
     {
+        _unbindAll();
         _paths = paths;
         _last.clear();
         if (_paths.isEmpty()) {
@@ -740,17 +735,53 @@ private:
             return;
         }
         for (const QString &path : std::as_const(_paths)) {
-            const QString json = jsonToString(readPath(path));
-            if (_last.value(path) == json) {
+            if (_bound.contains(path)) {
                 continue;
             }
-            _last.insert(path, json);
-            g_eventHandler(path, json);
+            (void) _bind(path);
+            _emit(path);
         }
+    }
+
+    bool _bind(const QString &path)
+    {
+        const Resolved resolved = resolve(path);
+        Fact *const fact = qobject_cast<Fact *>(resolved.object);
+        if (!fact || resolved.property.contains(QLatin1Char('.'))) {
+            return false;
+        }
+        _bound.insert(path, {
+            connect(fact, &Fact::rawValueChanged, this, [this, path]() { _emit(path); }),
+            connect(fact, &QObject::destroyed, this, [this, path]() { _bound.remove(path); }),
+        });
+        return true;
+    }
+
+    void _emit(const QString &path)
+    {
+        if (!g_eventHandler) {
+            return;
+        }
+        const QString json = jsonToString(readPath(path));
+        if (_last.value(path) == json) {
+            return;
+        }
+        _last.insert(path, json);
+        g_eventHandler(path, json);
+    }
+
+    void _unbindAll()
+    {
+        for (const auto &connections : std::as_const(_bound)) {
+            (void) disconnect(connections.first);
+            (void) disconnect(connections.second);
+        }
+        _bound.clear();
     }
 
     QStringList _paths;
     QHash<QString, QString> _last;
+    QHash<QString, std::pair<QMetaObject::Connection, QMetaObject::Connection>> _bound;
     QTimer _timer;
 };
 
