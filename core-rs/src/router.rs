@@ -17,6 +17,7 @@ pub trait Backend {
 struct Watching {
     clients: BTreeMap<String, BTreeSet<String>>,
     last: BTreeMap<String, String>,
+    upstream: Vec<String>,
 }
 
 impl Watching {
@@ -76,6 +77,10 @@ impl<B: Backend> Core<B> {
             watching.last.retain(|path, _| asked.contains(path));
             asked
         };
+        self.rewatch(&asked);
+    }
+
+    fn rewatch(&self, asked: &BTreeSet<String>) {
         let upstream: Vec<String> = asked
             .iter()
             .flat_map(|path| match view::lookup(path) {
@@ -85,7 +90,15 @@ impl<B: Backend> Core<B> {
             .collect::<BTreeSet<_>>()
             .into_iter()
             .collect();
-        self.backend.watch(&upstream);
+        let changed = {
+            let mut watching = self.watching.lock().unwrap();
+            let changed = watching.upstream != upstream;
+            watching.upstream = upstream.clone();
+            changed
+        };
+        if changed {
+            self.backend.watch(&upstream);
+        }
     }
 
     pub fn on_event(&self, path: &str, json: &str) -> Vec<(String, String)> {
@@ -102,13 +115,17 @@ impl<B: Backend> Core<B> {
         };
         let recomputed: Vec<(String, String)> =
             dependents.iter().map(|(asked_path, v)| (asked_path.clone(), v.render(&self.backend, asked_path))).collect();
-        let changed: Vec<(String, String)> = {
+        let (changed, asked): (Vec<(String, String)>, BTreeSet<String>) = {
             let mut watching = self.watching.lock().unwrap();
-            recomputed
+            let changed = recomputed
                 .into_iter()
                 .filter(|(p, j)| watching.last.insert(p.clone(), j.clone()).as_deref() != Some(j.as_str()))
-                .collect()
+                .collect();
+            (changed, watching.asked())
         };
+        if !dependents.is_empty() {
+            self.rewatch(&asked);
+        }
         direct.then(|| (path.to_string(), json.to_string())).into_iter().chain(changed).collect()
     }
 }
@@ -130,6 +147,7 @@ mod tests {
     struct Fake {
         messages: RefCell<String>,
         watched: RefCell<Vec<String>>,
+        pack_count: RefCell<usize>,
     }
 
     impl Backend for Fake {
@@ -137,6 +155,7 @@ mod tests {
             match path {
                 "vehicle.formattedMessages" => json!({ "kind": "value", "value": *self.messages.borrow() }).to_string(),
                 "vehicle.armed" => json!({ "kind": "value", "value": true }).to_string(),
+                "vehicle.batteries.count" => json!({ "kind": "value", "value": *self.pack_count.borrow() }).to_string(),
                 _ => null(),
             }
         }
@@ -203,6 +222,18 @@ mod tests {
         assert_eq!(*core.backend.watched.borrow(), vec!["vehicle.gps.count".to_string(), "vehicle.heading".to_string(), "vehicles.activeVehicleAvailable".to_string()]);
         assert_eq!(core.on_event("vehicle.heading", "{}").len(), 1);
         assert!(core.on_event("vehicle.vehicle", "{}").is_empty(), "the whole vehicle object is no longer a dependency");
+    }
+
+    #[test]
+    fn a_view_whose_dependencies_grow_after_a_read_is_re_watched() {
+        let core = Core::new(Fake::default());
+        core.watch("fly", &["view.battery".to_string()]);
+        assert!(core.backend.watched.borrow().contains(&"vehicle.batteries.count".to_string()));
+        assert!(!core.backend.watched.borrow().contains(&"vehicle.batteries.2.voltage".to_string()), "a third pack is not watched until a vehicle reports one");
+        *core.backend.pack_count.borrow_mut() = 3;
+        core.on_event("vehicle.batteries.count", "{\"kind\":\"value\",\"value\":3}");
+        let after = core.backend.watched.borrow().clone();
+        assert!(after.contains(&"vehicle.batteries.2.voltage".to_string()), "the third pack's facts joined the watch after the count moved");
     }
 
     #[test]

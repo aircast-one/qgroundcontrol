@@ -1,4 +1,5 @@
 use serde_json::{Value, json};
+use std::sync::atomic::{AtomicUsize, Ordering};
 
 use crate::instruments::display_units;
 use crate::read::{object, value_number};
@@ -11,15 +12,16 @@ pub const DEPS: &[&str] = &[
     "settings.batteryIndicatorSettings.threshold2",
 ];
 
-const MAX_PACKS: usize = 4;
+const MAX_PACKS: usize = 8;
 const PACK_FACTS: [&str; 6] = ["voltage", "current", "percentRemaining", "chargeState", "timeRemaining", "timeRemainingStr"];
+static PACKS_SEEN: AtomicUsize = AtomicUsize::new(0);
 
 fn pack_fact_path(index: usize, name: &str) -> String {
     format!("vehicle.batteries.{index}.{name}")
 }
 
 fn pack_paths() -> Vec<String> {
-    (0..MAX_PACKS).flat_map(|i| PACK_FACTS.iter().map(move |name| pack_fact_path(i, name))).collect()
+    (0..PACKS_SEEN.load(Ordering::Relaxed).clamp(1, MAX_PACKS)).flat_map(|i| PACK_FACTS.iter().map(move |name| pack_fact_path(i, name))).collect()
 }
 
 pub fn deps() -> Vec<String> {
@@ -76,7 +78,9 @@ pub fn secondary_text(pack: &Pack) -> String {
 }
 
 fn pack_count(backend: &dyn Backend) -> usize {
-    value_number(&backend.get("vehicle.batteries.count")).map(|n| n as usize).unwrap_or(0).min(MAX_PACKS)
+    let count = value_number(&backend.get("vehicle.batteries.count")).map(|n| n as usize).unwrap_or(0).min(MAX_PACKS);
+    PACKS_SEEN.fetch_max(count, Ordering::Relaxed);
+    count
 }
 
 fn packs(backend: &dyn Backend) -> Vec<Pack> {
@@ -202,9 +206,9 @@ mod tests {
             fn invoke(&self, _p: &str, _a: &str) -> String { String::new() }
             fn watch(&self, _p: &[String]) {}
         }
-        assert_eq!(deps().len(), 4 + 24);
-        assert!(deps().contains(&"vehicle.batteries.1.chargeState".to_string()));
         let view = battery_view(&Fake, &[]);
+        assert!(deps().len() >= 4 + 12, "after a read the packs the vehicle reported are watched");
+        assert!(deps().contains(&"vehicle.batteries.1.chargeState".to_string()));
         assert_eq!(view["available"], true);
         assert_eq!(view["level"], "warning");
         assert_eq!(view["text"], "90%");

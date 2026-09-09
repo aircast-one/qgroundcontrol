@@ -645,6 +645,7 @@ About 58 developer-weeks. Flight-test time, not code, is the schedule.
 - 2026-09-09: `qgc_core_parameter({"vehicle","name","value"|"refresh"})` writes or re-reads a parameter on a core link through the core's parameter machine; `view.coreParameters(id)` lists what the core knows.
 - 2026-09-09: `view.video.sourceSize` {width, height} of the decoded frame (null until decoding) so heads letterbox overlays to the painted picture.
 - 2026-09-09: component metadata is fetched over MAVLink FTP for core-served vehicles (general file, then parameter descriptions, one-second ack timer, slow-download abort); `view.coreParameter(id, NAME).meta` carries description, units, range and enums.
+- 2026-09-09: `view.camera` depends on the camera's properties, not the camera object; battery pack dependencies follow the pack count the vehicle reported; the router re-watches upstream when a view's dependencies change after a recompute.
 
 ### Stream F · Core
 

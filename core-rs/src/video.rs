@@ -4,7 +4,26 @@ use crate::read::{flag, integer, object, text};
 use crate::router::Backend;
 
 pub const VIDEO_DEPS: &[&str] = &["video.hasVideo", "video.decoding", "video.streaming", "video.recording", "video.activeVideoSource", "video.videoSize", "video.cameraStatuses", "video.cameraConnecting", "video.cameraRecording"];
-pub const CAMERA_DEPS: &[&str] = &["vehicles.activeVehicleAvailable", "vehicle.cameraManager.currentCameraInstance", "vehicle.cameraTriggerPoints.count"];
+pub const CAMERA_FIELDS: &str = "modelName,vendor,cameraMode,photoCaptureStatus,videoCaptureStatus,recordTimeStr,storageStatus,storageFreeStr,capturesPhotos,capturesVideo,hasModes,batteryRemaining,hasZoom,zoomLevel";
+pub const CAMERA_DEPS: &[&str] = &[
+    "vehicles.activeVehicleAvailable",
+    "vehicle.cameraManager.currentCameraInstance.modelName",
+    "vehicle.cameraManager.currentCameraInstance.vendor",
+    "vehicle.cameraManager.currentCameraInstance.cameraMode",
+    "vehicle.cameraManager.currentCameraInstance.photoCaptureStatus",
+    "vehicle.cameraManager.currentCameraInstance.videoCaptureStatus",
+    "vehicle.cameraManager.currentCameraInstance.recordTimeStr",
+    "vehicle.cameraManager.currentCameraInstance.storageStatus",
+    "vehicle.cameraManager.currentCameraInstance.storageFreeStr",
+    "vehicle.cameraManager.currentCameraInstance.capturesPhotos",
+    "vehicle.cameraManager.currentCameraInstance.capturesVideo",
+    "vehicle.cameraManager.currentCameraInstance.hasModes",
+    "vehicle.cameraManager.currentCameraInstance.batteryRemaining",
+    "vehicle.cameraManager.currentCameraInstance.hasZoom",
+    "vehicle.cameraManager.currentCameraInstance.zoomLevel",
+    "vehicle.cameraManager.currentCamera",
+    "vehicle.cameraTriggerPoints.count",
+];
 
 const NO_URL_STATUS: &str = "No stream URL";
 const UNDEFINED_MODE: i64 = -1;
@@ -77,7 +96,7 @@ pub fn video_view(backend: &dyn Backend, _args: &[String]) -> Value {
 }
 
 pub fn camera_view(backend: &dyn Backend, _args: &[String]) -> Value {
-    let camera = object(&backend.get("vehicle.cameraManager.currentCameraInstance"));
+    let camera = object(&backend.get_fields("vehicle.cameraManager.currentCameraInstance", CAMERA_FIELDS));
     let model = text(&camera, "modelName");
     let present = camera.get("kind").and_then(Value::as_str) == Some("object") && !model.is_empty();
     let shots = integer(&object(&backend.get_fields("vehicle.cameraTriggerPoints", "count")), "count").unwrap_or(0);
@@ -131,10 +150,11 @@ mod tests {
 
     struct Fake { video: Value, camera: Value }
     impl Backend for Fake {
-        fn get(&self, _p: &str) -> String { self.camera.to_string() }
+        fn get(&self, _p: &str) -> String { json!({ "kind": "null" }).to_string() }
         fn get_fields(&self, path: &str, _f: &str) -> String {
             match path {
                 "video" => self.video.to_string(),
+                "vehicle.cameraManager.currentCameraInstance" => self.camera.to_string(),
                 _ => json!({ "kind": "object", "count": 42 }).to_string(),
             }
         }
