@@ -61,6 +61,7 @@ import one.aircast.android.ui.SettingsScreen
 import one.aircast.android.ui.SetupScreen
 import one.aircast.android.ui.StatusStrip
 import one.aircast.android.ui.VehicleTitle
+import one.aircast.android.ui.VideoSourceLayer
 import one.aircast.android.ui.VideoSurface
 import org.mavlink.qgroundcontrol.QGCBridge
 import org.mavlink.qgroundcontrol.QGCUsbSerialManager
@@ -276,6 +277,7 @@ fun AircastShell(quickView: QtQuickView) {
                         verticalArrangement = Arrangement.spacedBy(8.dp),
                     ) {
                         ObstacleReadout()
+                        VideoSourceLayer()
                         CameraControlLayer()
                         RcControlsLayer()
                     }

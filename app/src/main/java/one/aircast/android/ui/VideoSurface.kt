@@ -14,10 +14,11 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.viewinterop.AndroidView
-import one.aircast.android.bridge.qgcBool
+import one.aircast.android.bridge.qgcPath
 import org.mavlink.qgroundcontrol.QGCBridge
 
 @Composable
@@ -26,7 +27,8 @@ fun VideoSurface(
     expanded: Boolean = false,
     onClick: () -> Unit = {},
 ) {
-    val streaming by qgcBool("video.streaming")
+    val videoJson by qgcPath(VIDEO_VIEW)
+    val video = remember(videoJson) { videoReading(videoJson) }
 
     Box(modifier.clickable { onClick() }) {
         AndroidView(
@@ -55,14 +57,14 @@ fun VideoSurface(
             },
         )
 
-        if (!streaming) {
+        if (video?.decoding != true) {
             Surface(
                 Modifier.fillMaxSize(),
                 color = MaterialTheme.colorScheme.surfaceVariant,
             ) {
                 Box(contentAlignment = Alignment.Center) {
                     Text(
-                        text = "No video",
+                        text = video?.summary ?: "No video",
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
@@ -70,8 +72,6 @@ fun VideoSurface(
             }
         }
 
-        // Enlarging is recoverable by guessing; a full-bleed video hiding the map is not,
-        // so the way back is a button rather than a convention.
         if (expanded) {
             IconButton(
                 onClick = onClick,
