@@ -2457,6 +2457,31 @@ no view behind them (`armed`, `flying`, `flightMode`, `latitude`, `rcRSSI`,
 the two facts the obstacle readout draws and not a group read. No remaining place where this
 head computes an answer the core already serves.
 
+### A style fix reverted for want of a verification
+
+Reviewing the night's own code turned up one thing worth changing: both settings editors build
+their JSON with `JSONArray().also { array -> entries.forEach { array.put(it) } }`, a statement
+mutation where `JSONArray(entries)` is an expression. The change was made, the unit tests
+passed, and then it was reverted.
+
+The unit tests run against `org.json:json:20240303` — the reference implementation — and the
+handset runs Android's `libcore` version. They agree on `JSONArray(Collection)` as far as the
+documentation goes, but "as far as the documentation goes" is the phrase that has been wrong
+most often this session. Verifying it meant driving the editor on the device, and two attempts
+at that put taps into the user's own applications because the app had not come forward yet.
+
+So: a cosmetic improvement, on the path that writes settings, with no verification available
+at proportionate cost. The previous form was correct and had been exercised on the handset. It
+stays.
+
+The rest of the review found nothing to change. No comments in any of the new files, every
+`forEach` is Compose emitting a list, every `var` is Compose state. The two editors are
+near-identical in shape, which is two occurrences and therefore not yet a shared abstraction.
+
+**And a rule for the rig, learned twice in one session:** confirm `topResumedActivity` is the
+app before sending input, not after. `am start` returns before the window is up, and a tap sent
+into that gap lands in whatever the user had open.
+
 ## Phase 6 — Shell · 2 weeks
 
 Cheaper than macOS, because Qt is already off the main thread.
