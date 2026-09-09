@@ -773,25 +773,25 @@ impl Vehicle {
                 self.home_altitude = Some(h.altitude as f64 / 1000.0);
                 self.home = Some((h.latitude as f64 / 1e7, h.longitude as f64 / 1e7, h.altitude as f64 / 1000.0));
             }
-            MavMessage::MISSION_COUNT(m) if matches!(m.target_system, 0 | mavout::GCS_SYSTEM) => {
+            MavMessage::MISSION_COUNT(m) if matches!(m.target_system, 0 | mavout::GCS_SYSTEM) && m.mission_type == mavout::MISSION => {
                 let outs = self.mission.on_count(m.count);
                 return self.follow_mission(outs, now_ms);
             }
-            MavMessage::MISSION_ITEM_INT(m) if matches!(m.target_system, 0 | mavout::GCS_SYSTEM) => {
+            MavMessage::MISSION_ITEM_INT(m) if matches!(m.target_system, 0 | mavout::GCS_SYSTEM) && m.mission_type == mavout::MISSION => {
                 let scale = |v: i32| if m.frame as u8 == plantransfer::FRAME_MISSION { v as f64 } else { v as f64 * 1e-7 };
                 let item = plantransfer::Item { seq: m.seq, frame: m.frame as u8, command: m.command as u32 as u16, current: m.current != 0, auto_continue: m.autocontinue != 0, params: [m.param1 as f64, m.param2 as f64, m.param3 as f64, m.param4 as f64, scale(m.x), scale(m.y), m.z as f64] };
                 let outs = self.mission.on_item(item);
                 return self.follow_mission(outs, now_ms);
             }
-            MavMessage::MISSION_REQUEST_INT(m) if matches!(m.target_system, 0 | mavout::GCS_SYSTEM) => {
+            MavMessage::MISSION_REQUEST_INT(m) if matches!(m.target_system, 0 | mavout::GCS_SYSTEM) && m.mission_type == mavout::MISSION => {
                 let outs = self.mission.on_request(m.seq);
                 return self.follow_mission(outs, now_ms);
             }
-            MavMessage::MISSION_REQUEST(m) if matches!(m.target_system, 0 | mavout::GCS_SYSTEM) => {
+            MavMessage::MISSION_REQUEST(m) if matches!(m.target_system, 0 | mavout::GCS_SYSTEM) && m.mission_type == mavout::MISSION => {
                 let outs = self.mission.on_request(m.seq);
                 return self.follow_mission(outs, now_ms);
             }
-            MavMessage::MISSION_ACK(m) if matches!(m.target_system, 0 | mavout::GCS_SYSTEM) => {
+            MavMessage::MISSION_ACK(m) if matches!(m.target_system, 0 | mavout::GCS_SYSTEM) && m.mission_type == mavout::MISSION => {
                 let outs = self.mission.on_ack(m.mavtype as u8);
                 return self.follow_mission(outs, now_ms);
             }
@@ -1156,7 +1156,7 @@ mod tests {
         assert_eq!((set_mode.command, set_mode.param2, set_mode.target_system), (MavCmd::MAV_CMD_DO_SET_MODE, 4.0, 1));
         assert_eq!(hub.guided_snapshot(None)["guided"]["state"], "running");
         assert!(hub.guided(None, &json!({ "action": "land" }), 1_200).is_err(), "one action at a time");
-        let ack = MavMessage::COMMAND_ACK(COMMAND_ACK_DATA { command: MavCmd::MAV_CMD_DO_SET_MODE, result: MavResult::MAV_RESULT_ACCEPTED });
+        let ack = MavMessage::COMMAND_ACK(COMMAND_ACK_DATA { command: MavCmd::MAV_CMD_DO_SET_MODE, result: MavResult::MAV_RESULT_ACCEPTED, ..Default::default() });
         assert!(hub.on_frame(4, false, &autopilot, &ack, 1_300_000, 1300).is_empty());
         let armed = hub.on_frame(4, false, &autopilot, &copter_heartbeat(4, false), 2_000_000, 2000);
         let MavMessage::COMMAND_LONG(arm) = decode(&armed[0].1) else { panic!() };
@@ -1166,13 +1166,13 @@ mod tests {
         let MavMessage::COMMAND_LONG(t) = decode(&takeoff[0].1) else { panic!() };
         assert_eq!((t.command, t.param7), (MavCmd::MAV_CMD_NAV_TAKEOFF, 10.0));
         assert_eq!(hub.guided_snapshot(Some(1))["guided"]["state"], "done");
-        let denied = MavMessage::COMMAND_ACK(COMMAND_ACK_DATA { command: MavCmd::MAV_CMD_NAV_TAKEOFF, result: MavResult::MAV_RESULT_DENIED });
+        let denied = MavMessage::COMMAND_ACK(COMMAND_ACK_DATA { command: MavCmd::MAV_CMD_NAV_TAKEOFF, result: MavResult::MAV_RESULT_DENIED, ..Default::default() });
         hub.on_frame(4, false, &autopilot, &denied, 3_100_000, 3100);
         assert_eq!(hub.guided_snapshot(None)["guided"]["errors"][0], "MAV_CMD 22 command denied");
         let goto = hub.guided(None, &json!({ "action": "goto", "latitude": 47.5, "longitude": 8.6 }), 3_200).unwrap();
         assert!(matches!(decode(&goto[0].1), MavMessage::COMMAND_INT(c) if c.command == MavCmd::MAV_CMD_DO_REPOSITION && c.x == 475000000));
         assert!(matches!(decode(&goto[1].1), MavMessage::MISSION_ITEM(i) if i.current == 2));
-        let unsupported = MavMessage::COMMAND_ACK(COMMAND_ACK_DATA { command: MavCmd::MAV_CMD_DO_REPOSITION, result: MavResult::MAV_RESULT_UNSUPPORTED });
+        let unsupported = MavMessage::COMMAND_ACK(COMMAND_ACK_DATA { command: MavCmd::MAV_CMD_DO_REPOSITION, result: MavResult::MAV_RESULT_UNSUPPORTED, ..Default::default() });
         hub.on_frame(4, false, &autopilot, &unsupported, 3_300_000, 3300);
         assert_eq!(hub.guided_snapshot(None)["guided"]["repositionSupported"], false);
         let rtl = hub.guided(None, &json!({ "action": "rtl" }), 3_400).unwrap();
@@ -1189,7 +1189,7 @@ mod tests {
     fn connect_copter(hub: &mut Hub, autopilot: &MavHeader) {
         use mavlink::dialects::ardupilotmega::{COMMAND_ACK_DATA, MavCmd, MavResult};
         hub.on_frame(4, false, autopilot, &copter_heartbeat(5, false), 0, 0);
-        let refused = MavMessage::COMMAND_ACK(COMMAND_ACK_DATA { command: MavCmd::MAV_CMD_REQUEST_MESSAGE, result: MavResult::MAV_RESULT_UNSUPPORTED });
+        let refused = MavMessage::COMMAND_ACK(COMMAND_ACK_DATA { command: MavCmd::MAV_CMD_REQUEST_MESSAGE, result: MavResult::MAV_RESULT_UNSUPPORTED, ..Default::default() });
         hub.on_frame(4, false, autopilot, &refused, 1, 1);
         hub.on_frame(4, false, autopilot, &refused, 2, 2);
         hub.on_frame(4, false, autopilot, &refused, 3, 3);
@@ -1201,12 +1201,12 @@ mod tests {
     #[allow(deprecated)]
     fn mission_item(seq: u16, latitude: f64) -> MavMessage {
         use mavlink::dialects::ardupilotmega::{MISSION_ITEM_INT_DATA, MavCmd, MavFrame};
-        MavMessage::MISSION_ITEM_INT(MISSION_ITEM_INT_DATA { param1: 0.0, param2: 0.0, param3: 0.0, param4: 0.0, x: (latitude * 1e7) as i32, y: 85000000, z: 50.0, seq, command: MavCmd::MAV_CMD_NAV_WAYPOINT, target_system: 255, target_component: 190, frame: MavFrame::MAV_FRAME_GLOBAL_RELATIVE_ALT_INT, current: 0, autocontinue: 1 })
+        MavMessage::MISSION_ITEM_INT(MISSION_ITEM_INT_DATA { param1: 0.0, param2: 0.0, param3: 0.0, param4: 0.0, x: (latitude * 1e7) as i32, y: 85000000, z: 50.0, seq, command: MavCmd::MAV_CMD_NAV_WAYPOINT, target_system: 255, target_component: 190, frame: MavFrame::MAV_FRAME_GLOBAL_RELATIVE_ALT_INT, current: 0, autocontinue: 1, ..Default::default() })
     }
 
     fn mission_count(count: u16) -> MavMessage {
         use mavlink::dialects::ardupilotmega::MISSION_COUNT_DATA;
-        MavMessage::MISSION_COUNT(MISSION_COUNT_DATA { count, target_system: 255, target_component: 190 })
+        MavMessage::MISSION_COUNT(MISSION_COUNT_DATA { count, target_system: 255, target_component: 190, ..Default::default() })
     }
 
     fn request_of(bytes: &[u8]) -> (u32, f32) {
@@ -1235,7 +1235,7 @@ mod tests {
         assert_eq!(request_of(&after_version[0].1), (512, 435.0), "ArduPilot skips the protocol version and goes to standard modes");
         assert_eq!(hub.snapshot()["vehicle"]["capabilities"], 12);
         assert_eq!(hub.snapshot()["vehicle"]["firmware"]["version"], "4.5.6 (0)");
-        let unsupported = MavMessage::COMMAND_ACK(COMMAND_ACK_DATA { command: MavCmd::MAV_CMD_REQUEST_MESSAGE, result: MavResult::MAV_RESULT_UNSUPPORTED });
+        let unsupported = MavMessage::COMMAND_ACK(COMMAND_ACK_DATA { command: MavCmd::MAV_CMD_REQUEST_MESSAGE, result: MavResult::MAV_RESULT_UNSUPPORTED, ..Default::default() });
         let after_modes = hub.on_frame(4, false, &autopilot, &unsupported, 1_200_000, 1_200);
         assert_eq!(request_of(&after_modes[0].1), (512, 397.0), "modes refused, component metadata asked for next");
         let after_metadata = hub.on_frame(4, false, &autopilot, &unsupported, 1_250_000, 1_250);
@@ -1247,6 +1247,9 @@ mod tests {
         assert!(matches!(decode(&listed[0].1), MavMessage::MISSION_REQUEST_LIST(_)), "with the parameters in, the mission is read from the vehicle");
         assert_eq!(hub.snapshot()["vehicle"]["parameters"], json!({ "ready": true, "progress": 1.0, "count": 2 }));
         assert_eq!(hub.snapshot()["vehicle"]["initialConnectComplete"], false);
+        use mavlink::dialects::ardupilotmega::{MISSION_COUNT_DATA, MavMissionType};
+        let fence = MavMessage::MISSION_COUNT(MISSION_COUNT_DATA { count: 3, target_system: 255, target_component: 190, mission_type: MavMissionType::MAV_MISSION_TYPE_FENCE, ..Default::default() });
+        assert!(hub.on_frame(4, false, &autopilot, &fence, 1_450_000, 1_450).is_empty(), "a fence count from another transfer on the link is not the mission count");
         let requested = hub.on_frame(4, false, &autopilot, &mission_count(1), 1_500_000, 1_500);
         assert!(matches!(decode(&requested[0].1), MavMessage::MISSION_REQUEST_INT(r) if r.seq == 0));
         let acked = hub.on_frame(4, false, &autopilot, &mission_item(0, 47.4), 1_600_000, 1_600);
@@ -1301,7 +1304,7 @@ mod tests {
         let autopilot = MavHeader { system_id: 1, component_id: 1, sequence: 0 };
         let mut hub = Hub::default();
         hub.on_frame(4, false, &autopilot, &copter_heartbeat(5, false), 0, 0);
-        let refused = MavMessage::COMMAND_ACK(COMMAND_ACK_DATA { command: MavCmd::MAV_CMD_REQUEST_MESSAGE, result: MavResult::MAV_RESULT_UNSUPPORTED });
+        let refused = MavMessage::COMMAND_ACK(COMMAND_ACK_DATA { command: MavCmd::MAV_CMD_REQUEST_MESSAGE, result: MavResult::MAV_RESULT_UNSUPPORTED, ..Default::default() });
         hub.on_frame(4, false, &autopilot, &refused, 100_000, 100);
         hub.on_frame(4, false, &autopilot, &refused, 150_000, 150);
         let listed = hub.on_frame(4, false, &autopilot, &refused, 200_000, 200);
@@ -1378,7 +1381,7 @@ mod tests {
         let autopilot = MavHeader { system_id: 1, component_id: 1, sequence: 0 };
         let mut hub = Hub::default();
         hub.on_frame(4, false, &autopilot, &copter_heartbeat(5, false), 0, 0);
-        let refused = MavMessage::COMMAND_ACK(COMMAND_ACK_DATA { command: MavCmd::MAV_CMD_REQUEST_MESSAGE, result: MavResult::MAV_RESULT_UNSUPPORTED });
+        let refused = MavMessage::COMMAND_ACK(COMMAND_ACK_DATA { command: MavCmd::MAV_CMD_REQUEST_MESSAGE, result: MavResult::MAV_RESULT_UNSUPPORTED, ..Default::default() });
         hub.on_frame(4, false, &autopilot, &refused, 1, 1);
         let asked = hub.on_frame(4, false, &autopilot, &refused, 2, 2);
         assert_eq!(request_of(&asked[0].1), (512, 397.0));
@@ -1424,7 +1427,7 @@ mod tests {
         let autopilot = MavHeader { system_id: 1, component_id: 1, sequence: 0 };
         let mut hub = Hub::default();
         hub.on_frame(4, false, &autopilot, &copter_heartbeat(5, false), 0, 0);
-        let refused = MavMessage::COMMAND_ACK(COMMAND_ACK_DATA { command: MavCmd::MAV_CMD_REQUEST_MESSAGE, result: MavResult::MAV_RESULT_UNSUPPORTED });
+        let refused = MavMessage::COMMAND_ACK(COMMAND_ACK_DATA { command: MavCmd::MAV_CMD_REQUEST_MESSAGE, result: MavResult::MAV_RESULT_UNSUPPORTED, ..Default::default() });
         hub.on_frame(4, false, &autopilot, &refused, 1, 1);
         hub.on_frame(4, false, &autopilot, &refused, 2, 2);
         let mut uri = [0u8; 100];
@@ -1453,12 +1456,12 @@ mod tests {
         let started = hub.mission_request(None, &json!({ "action": "write", "items": items }), 10_000).unwrap();
         assert!(matches!(decode(&started[0].1), MavMessage::MISSION_COUNT(c) if c.count == 2), "ArduPilot does not take the home item");
         assert!(hub.mission_request(None, &json!({ "action": "load" }), 10_000).is_err(), "one transfer at a time");
-        let request = |seq: u16| MavMessage::MISSION_REQUEST_INT(MISSION_REQUEST_INT_DATA { seq, target_system: 255, target_component: 190 });
+        let request = |seq: u16| MavMessage::MISSION_REQUEST_INT(MISSION_REQUEST_INT_DATA { seq, target_system: 255, target_component: 190, ..Default::default() });
         let first = hub.on_frame(4, false, &autopilot, &request(0), 10_100_000, 10_100);
         assert!(matches!(decode(&first[0].1), MavMessage::MISSION_ITEM_INT(i) if i.seq == 0 && i.current == 1 && i.x == 471000000));
         let second = hub.on_frame(4, false, &autopilot, &request(1), 10_200_000, 10_200);
         assert!(matches!(decode(&second[0].1), MavMessage::MISSION_ITEM_INT(i) if i.seq == 1 && i.param1 == 0.0), "the jump target follows the dropped home item");
-        hub.on_frame(4, false, &autopilot, &MavMessage::MISSION_ACK(MISSION_ACK_DATA { target_system: 255, target_component: 190, mavtype: MavMissionResult::MAV_MISSION_ACCEPTED }), 10_300_000, 10_300);
+        hub.on_frame(4, false, &autopilot, &MavMessage::MISSION_ACK(MISSION_ACK_DATA { target_system: 255, target_component: 190, mavtype: MavMissionResult::MAV_MISSION_ACCEPTED, ..Default::default() }), 10_300_000, 10_300);
         let mission = hub.active().unwrap().mission_snapshot();
         assert_eq!((mission["inProgress"].as_bool(), mission["count"].as_u64(), mission["error"].is_null()), (Some(false), Some(2), true));
         assert!(hub.tick(12_000).is_empty());
@@ -1469,7 +1472,7 @@ mod tests {
         let again = hub.mission_request(None, &json!({ "action": "write", "items": [{ "frame": 0, "command": 16, "params": [0, 0, 0, 0, 47.0, 8.0, 0] }, { "frame": 3, "command": 16, "params": [0, 0, 0, 0, 47.2, 8.2, 60] }] }), 13_000).unwrap();
         assert!(matches!(decode(&again[0].1), MavMessage::MISSION_COUNT(c) if c.count == 1));
         use mavlink::dialects::ardupilotmega::MISSION_REQUEST_DATA;
-        let plain = hub.on_frame(4, false, &autopilot, &MavMessage::MISSION_REQUEST(MISSION_REQUEST_DATA { seq: 0, target_system: 0, target_component: 190 }), 13_100_000, 13_100);
+        let plain = hub.on_frame(4, false, &autopilot, &MavMessage::MISSION_REQUEST(MISSION_REQUEST_DATA { seq: 0, target_system: 0, target_component: 190, ..Default::default() }), 13_100_000, 13_100);
         assert!(matches!(decode(&plain[0].1), MavMessage::MISSION_ITEM_INT(i) if i.seq == 0), "the float request form and a broadcast target are served too");
     }
 }
