@@ -4,12 +4,13 @@ The scripts that drive a handset against a simulated vehicle. They were written 
 scratchpad, which does not survive the session; they live here so the next one does not rebuild
 them.
 
-Everything assumes `adb` on the PATH and the handset on `192.168.1.58`. Paths inside the scripts
+Everything assumes `adb` on the PATH. Ask `handset-ip.sh` for the address rather than remembering one: DHCP moved it mid-session once, and a stale address looks exactly like a broken app — "No vehicle" and nothing on the wire. Paths inside the scripts
 still point at the scratchpad they were written in — fix those before use, or run them from a
 copy there.
 
 | script | what it does |
 |---|---|
+| `handset-ip.sh` | The handset's Wi-Fi address, from `adb`. |
 | `apmvehicle.py` | An ArduCopter-shaped MAVLink vehicle: heartbeats, GPS, battery, RC, vibration, two camera components, log download, and a print for every command it receives. `RC_RSSI`, `BATT_PCT`, `BATT_STATE`, `NOFIX` and `VIBRATION` are environment knobs. |
 | `device-lock.sh` | `take`/`drop` around `/tmp/aircast-device.lock`, and stops the handset dozing while held. |
 | `regress.sh` | Drives Fly, the Actions sheet, Vibration, Log Download and Settings, captures each, and fails a capture under 100 000 bytes because a sleeping screen photographs as a small black rectangle. |

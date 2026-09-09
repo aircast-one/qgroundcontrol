@@ -7,7 +7,10 @@ TAG="${1:-run}"
 set -u
 
 pkill -f apmvehicle.py 2>/dev/null
-RC_RSSI=203 BATT_PCT=70 BATT_STATE=0 nohup python3 "$S/apmvehicle.py" 192.168.1.58 > "$S/regress_$TAG.simlog" 2>&1 &
+HANDSET="$("$S/handset-ip.sh")"
+[ -n "$HANDSET" ] || { echo "FAIL: no handset address - is it attached and on Wi-Fi?"; exit 1; }
+echo "handset at $HANDSET"
+RC_RSSI=203 BATT_PCT=70 BATT_STATE=0 nohup python3 "$S/apmvehicle.py" "$HANDSET" > "$S/regress_$TAG.simlog" 2>&1 &
 python3 -c "import time; time.sleep(5)"
 pgrep -f apmvehicle.py >/dev/null || { echo "FAIL: sim did not start"; tail -3 "$S/regress_$TAG.simlog"; exit 1; }
 
