@@ -2,6 +2,7 @@ package one.aircast.android.ui
 
 import one.aircast.android.bridge.Fact
 
+
 data class SettingsSection(val title: String, val factNames: List<String>)
 
 internal const val OTHER_SECTION = "Other"
@@ -9,21 +10,14 @@ internal const val OTHER_SECTION = "Other"
 internal val INTERNAL_FACTS = setOf(
     "firstRunPromptIdsShown",
     "instrumentQmlFile2",
+)
+
+internal val FACTS_WITH_EDITORS = setOf(
     "rcControls",
+    "extraVideoSources",
 )
 
-internal val DESKTOP_ONLY_FACTS = mapOf(
-    "extraVideoSources" to "additional cameras",
-)
-
-internal fun hiddenFacts(): Set<String> = INTERNAL_FACTS + DESKTOP_ONLY_FACTS.keys
-
-internal fun desktopOnlyNote(facts: List<Fact>): String? {
-    val present = facts.mapNotNull { DESKTOP_ONLY_FACTS[it.name] }
-    if (present.isEmpty()) return null
-    return "Set up ${present.joinToString(" and ")} on the desktop - they are stored as JSON " +
-        "that is not editable here."
-}
+internal fun hiddenFacts(): Set<String> = INTERNAL_FACTS + FACTS_WITH_EDITORS
 
 private val APP_SECTIONS = listOf(
     SettingsSection(

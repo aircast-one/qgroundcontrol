@@ -45,23 +45,11 @@ class SettingsSectionsTest {
     }
 
     @Test
-    fun `a feature with no phone editor is named rather than silently dropped`() {
-        val facts = listOf(fact("extraVideoSources"))
-        assertTrue(sectionedFacts("settings.unmapped", facts).flatMap { it.second }.isEmpty())
-        assertTrue(desktopOnlyNote(facts)!!.contains("additional cameras"))
-    }
+    fun `a fact with its own editor is hidden from the fact list`() {
+        val facts = listOf(fact("rcControls"), fact("extraVideoSources"), fact("audioMuted"))
+        val shown = sectionedFacts("settings.unmapped", facts).flatMap { it.second }
 
-    @Test
-    fun `a fact with its own editor is hidden without a note pointing at the desktop`() {
-        val facts = listOf(fact("rcControls"))
-
-        assertTrue(sectionedFacts("settings.flyViewSettings", facts).flatMap { it.second }.isEmpty())
-        assertEquals(null, desktopOnlyNote(facts))
-    }
-
-    @Test
-    fun `a page with no desktop-only facts gets no note`() {
-        assertEquals(null, desktopOnlyNote(listOf(fact("audioMuted"))))
+        assertEquals(listOf("audioMuted"), shown.map { it.name })
     }
 
     @Test

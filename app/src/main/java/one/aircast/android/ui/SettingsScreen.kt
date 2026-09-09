@@ -49,11 +49,13 @@ data class SettingsGroup(val path: String, val title: String)
 const val LINKS_GROUP_PATH = "links"
 const val UNITS_GROUP_PATH = "settings.unitsSettings"
 const val RC_CONTROLS_GROUP_PATH = "settings.flyViewSettings.rcControls"
+const val EXTRA_SOURCES_GROUP_PATH = "settings.videoSettings.extraVideoSources"
 
 val SETTINGS_GROUPS = listOf(
     SettingsGroup(LINKS_GROUP_PATH, "Comm Links"),
     SettingsGroup(UNITS_GROUP_PATH, "Units"),
     SettingsGroup("settings.videoSettings", "Video"),
+    SettingsGroup(EXTRA_SOURCES_GROUP_PATH, "Extra cameras"),
     SettingsGroup("settings.flyViewSettings", "Fly View"),
     SettingsGroup(RC_CONTROLS_GROUP_PATH, "On-screen RC controls"),
     SettingsGroup("settings.planViewSettings", "Plan View"),
@@ -89,6 +91,8 @@ fun SettingsScreen(modifier: Modifier = Modifier) {
             UnitsPage(Modifier.fillMaxSize())
         } else if (current.path == RC_CONTROLS_GROUP_PATH) {
             RcControlsEditor(Modifier.fillMaxSize())
+        } else if (current.path == EXTRA_SOURCES_GROUP_PATH) {
+            ExtraVideoSourcesEditor(Modifier.fillMaxSize())
         } else {
             FactList(current.path, Modifier.fillMaxSize())
         }
@@ -113,9 +117,6 @@ fun FactList(groupPath: String, modifier: Modifier = Modifier) {
                 FactRow(fact)
                 HorizontalDivider()
             }
-        }
-        desktopOnlyNote(facts)?.let { note ->
-            item(key = "desktoponly") { FootNote(note) }
         }
     }
 }
