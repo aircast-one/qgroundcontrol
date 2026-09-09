@@ -2360,6 +2360,25 @@ cannot complete. Adding it means a new flag in the setup page table, and that ta
 screen around it belong to another session's work in progress, so this is a note rather than a
 patch. The cost today is one tap and a corrected expectation, on a page worth opening anyway.
 
+### The console and the inspector, reviewed: nothing found
+
+Both were built earlier and neither had been looked at since. Reviewed on the handset against
+the sim; no issues.
+
+The console does the honest thing with a vehicle it cannot serve. Against ArduPilot it opens
+with "This vehicle does not report PX4 firmware. The shell answers on PX4; other autopilots may
+not reply to anything you send", then "No output yet. Send a command, for example help." It
+warns before the operator spends time on it, names a first command, and still lets them try —
+rather than hiding the screen or letting them type into silence.
+
+The inspector lists what is arriving with its rate, and the per-component disambiguation added
+after the duplicate-key crash is visible and doing its job: `CAMERA_CAPTURE_STATUS (comp 100)`
+and `(comp 101)` sit as separate rows, which is what the sim's two camera components should
+produce. Opening one gives name, type and live value per field in monospace.
+
+Recording a review that found nothing is worth as much as one that found something. The
+alternative is a habit of manufacturing findings to justify the look.
+
 ## Phase 6 — Shell · 2 weeks
 
 Cheaper than macOS, because Qt is already off the main thread.
