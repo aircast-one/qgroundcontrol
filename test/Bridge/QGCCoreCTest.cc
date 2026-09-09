@@ -598,11 +598,26 @@ void QGCCoreCTest::_viewShapesMatchTheRecordedContract()
     QTRY_VERIFY_WITH_TIMEOUT(take(qgc_bridge_get("view.fences")).value(QStringLiteral("rallyPoints")).toArray().count() == 1, 5000);
     QTRY_VERIFY_WITH_TIMEOUT(take(qgc_bridge_get("view.fences")).value(QStringLiteral("circles")).toArray().count() == 1, 5000);
     QTRY_VERIFY_WITH_TIMEOUT(take(qgc_bridge_get("view.fences")).value(QStringLiteral("polygons")).toArray().count() == 1, 5000);
+    (void) take(qgc_bridge_invoke("links.createAndConnectLink", QJsonDocument(QJsonArray { QStringLiteral("tcp"), QStringLiteral("Recorder TCP"), QStringLiteral("127.0.0.1"), 1 }).toJson(QJsonDocument::Compact).constData()));
+    const auto recorderIndex = []() {
+        const QJsonArray configured = take(qgc_bridge_get("view.links")).value(QStringLiteral("configured")).toArray();
+        for (const QJsonValue &link : configured) {
+            if (link.toObject().value(QStringLiteral("name")).toString() == QStringLiteral("Recorder TCP")) {
+                return link.toObject().value(QStringLiteral("index")).toInt(-1);
+            }
+        }
+        return -1;
+    };
+    QTRY_VERIFY_WITH_TIMEOUT(recorderIndex() >= 0, 5000);
     for (const char *path : kViewPaths) {
         const QString key = QString::fromUtf8(path);
         recorded.insert(key, mergeShapes(recorded.value(key), shapeOf(take(qgc_bridge_get(path)))));
     }
     (void) take(qgc_bridge_invoke("plan.removeAll", "[]"));
+    const int recorder = recorderIndex();
+    if (recorder >= 0) {
+        (void) take(qgc_bridge_invoke("links.removeConfiguration", QJsonDocument(QJsonArray { QStringLiteral("@links.linkConfigurations.%1").arg(recorder) }).toJson(QJsonDocument::Compact).constData()));
+    }
     recorded.insert(QStringLiteral("view.contract"), take(qgc_bridge_get("view.contract")));
     const QByteArray current = QJsonDocument(recorded).toJson(QJsonDocument::Indented);
 

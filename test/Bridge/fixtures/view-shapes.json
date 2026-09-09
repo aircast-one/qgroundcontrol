@@ -562,7 +562,27 @@
         ],
         "class": "string",
         "configured": [
-            "empty"
+            {
+                "autoConnect": "bool",
+                "baud": "number",
+                "connected": "bool",
+                "displaySummary": "string",
+                "dynamic": "bool",
+                "editing": "string",
+                "filename": "string",
+                "host": "string",
+                "index": "number",
+                "lastError": "string",
+                "logFileName": "string",
+                "name": "string",
+                "path": "string",
+                "port": "number",
+                "portName": "string",
+                "statusLine": "string",
+                "summary": "string",
+                "type": "string",
+                "typeLabel": "string"
+            }
         ],
         "kind": "string",
         "linkTypes": [
