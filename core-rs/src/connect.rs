@@ -63,9 +63,9 @@ pub const MSG_AUTOPILOT_VERSION: u32 = 148;
 pub const MSG_PROTOCOL_VERSION: u32 = 300;
 pub const CAP_MISSION_INT: u64 = 4;
 pub const CAP_COMMAND_INT: u64 = 8;
-pub const CAP_MAVLINK2: u64 = 4096;
-pub const CAP_MISSION_FENCE: u64 = 8192;
-pub const CAP_MISSION_RALLY: u64 = 16384;
+pub const CAP_MAVLINK2: u64 = 8192;
+pub const CAP_MISSION_FENCE: u64 = 16384;
+pub const CAP_MISSION_RALLY: u64 = 32768;
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct AutopilotVersion {

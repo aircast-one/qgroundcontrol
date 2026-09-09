@@ -724,36 +724,51 @@ void QGCCoreCTest::_coreConnectSequenceReachesParameters()
         const uint16_t len = mavlink_msg_to_send_buffer(frame, &message);
         peer.writeDatagram(reinterpret_cast<const char *>(frame), len, QHostAddress::LocalHost, port);
     };
-    const auto expectRequest = [&peer](int messageId, uint32_t requested) {
+    QList<mavlink_message_t> seen;
+    const auto expectRequest = [&peer, &seen](int messageId, uint32_t requested) {
+        const auto matches = [messageId, requested](const mavlink_message_t &message) {
+            if (message.msgid != static_cast<uint32_t>(messageId)) {
+                return false;
+            }
+            if (messageId == MAVLINK_MSG_ID_MISSION_REQUEST_LIST) {
+                mavlink_mission_request_list_t list{};
+                mavlink_msg_mission_request_list_decode(&message, &list);
+                return list.mission_type == requested;
+            }
+            if (messageId != MAVLINK_MSG_ID_COMMAND_LONG) {
+                return true;
+            }
+            mavlink_command_long_t command{};
+            mavlink_msg_command_long_decode(&message, &command);
+            return command.command == MAV_CMD_REQUEST_MESSAGE && static_cast<uint32_t>(command.param1) == requested;
+        };
         mavlink_message_t parsing{};
         mavlink_status_t parsingStatus{};
-        mavlink_message_t received{};
-        mavlink_status_t status{};
         QElapsedTimer waited;
         waited.start();
         while (waited.elapsed() < 4000) {
+            const int found = static_cast<int>(std::distance(seen.cbegin(), std::find_if(seen.cbegin(), seen.cend(), matches)));
+            if (found < seen.count()) {
+                seen.remove(0, found + 1);
+                return true;
+            }
             if (!peer.hasPendingDatagrams()) {
                 QTest::qWait(20);
                 continue;
             }
             const QByteArray datagram = peer.receiveDatagram().data();
             for (const char byte : datagram) {
-                if (mavlink_frame_char_buffer(&parsing, &parsingStatus, static_cast<uint8_t>(byte), &received, &status) != MAVLINK_FRAMING_OK || received.msgid != static_cast<uint32_t>(messageId)) {
-                    continue;
-                }
-                if (messageId != MAVLINK_MSG_ID_COMMAND_LONG) {
-                    return true;
-                }
-                mavlink_command_long_t command{};
-                mavlink_msg_command_long_decode(&received, &command);
-                if (command.command == MAV_CMD_REQUEST_MESSAGE && static_cast<uint32_t>(command.param1) == requested) {
-                    return true;
+                mavlink_message_t received{};
+                mavlink_status_t status{};
+                if (mavlink_frame_char_buffer(&parsing, &parsingStatus, static_cast<uint8_t>(byte), &received, &status) == MAVLINK_FRAMING_OK) {
+                    seen.append(received);
                 }
             }
         }
         return false;
     };
 
+    mavlink_get_channel_status(MAVLINK_COMM_0)->flags &= ~MAVLINK_STATUS_FLAG_OUT_MAVLINK1;
     mavlink_message_t heartbeat{};
     mavlink_msg_heartbeat_pack(11, 1, &heartbeat, MAV_TYPE_QUADROTOR, MAV_AUTOPILOT_ARDUPILOTMEGA, MAV_MODE_FLAG_CUSTOM_MODE_ENABLED, 0, MAV_STATE_STANDBY);
     const auto coreSeesVehicle = []() { return take(qgc_bridge_get("view.coreVehicle(11)")).value(QStringLiteral("available")).toBool(false); };
@@ -767,7 +782,8 @@ void QGCCoreCTest::_coreConnectSequenceReachesParameters()
     mavlink_message_t version{};
     const uint8_t custom[8]{};
     const uint8_t uid2[18]{};
-    mavlink_msg_autopilot_version_pack(11, 1, &version, MAV_PROTOCOL_CAPABILITY_COMMAND_INT | MAV_PROTOCOL_CAPABILITY_MISSION_INT, 0x04050600, 0, 0, 0, custom, custom, custom, 0, 0, 0, uid2);
+    const uint64_t capabilities = MAV_PROTOCOL_CAPABILITY_COMMAND_INT | MAV_PROTOCOL_CAPABILITY_MISSION_INT | MAV_PROTOCOL_CAPABILITY_MISSION_FENCE | MAV_PROTOCOL_CAPABILITY_MISSION_RALLY;
+    mavlink_msg_autopilot_version_pack(11, 1, &version, capabilities, 0x04050600, 0, 0, 0, custom, custom, custom, 0, 0, 0, uid2);
     send(version);
     QVERIFY2(expectRequest(MAVLINK_MSG_ID_COMMAND_LONG, MAVLINK_MSG_ID_AVAILABLE_MODES), "no standard modes request reached the peer");
     mavlink_message_t ack{};
@@ -781,15 +797,34 @@ void QGCCoreCTest::_coreConnectSequenceReachesParameters()
     send(value);
     mavlink_msg_param_value_pack(11, 1, &value, "WPNAV_SPEED", 250.0f, MAV_PARAM_TYPE_REAL32, 2, 1);
     send(value);
-    QVERIFY2(expectRequest(MAVLINK_MSG_ID_MISSION_REQUEST_LIST, 0), "no mission request list reached the peer");
+    QVERIFY2(expectRequest(MAVLINK_MSG_ID_MISSION_REQUEST_LIST, MAV_MISSION_TYPE_MISSION), "no mission request list reached the peer");
     mavlink_message_t count{};
     mavlink_msg_mission_count_pack(11, 1, &count, 255, MAV_COMP_ID_MISSIONPLANNER, 0, MAV_MISSION_TYPE_MISSION, 0);
     send(count);
     QVERIFY2(expectRequest(MAVLINK_MSG_ID_MISSION_ACK, 0), "the empty mission was not acknowledged");
+    const auto coreState = []() {
+        const QJsonObject vehicle = take(qgc_bridge_get("view.coreVehicle(11)")).value(QStringLiteral("vehicle")).toObject();
+        const QJsonObject plans = take(qgc_bridge_get("view.coreMission(11)")).value(QStringLiteral("plans")).toObject();
+        const QJsonArray errors = take(qgc_bridge_get("view.coreGuided(11)")).value(QStringLiteral("guided")).toObject().value(QStringLiteral("errors")).toArray();
+        return QStringLiteral("proto %1 caps %2 step %3 complete %4 plans %5 errors %6").arg(vehicle.value(QStringLiteral("maxProtoVersion")).toInt(-1)).arg(vehicle.value(QStringLiteral("capabilities")).toInt(-1)).arg(vehicle.value(QStringLiteral("connectStep")).toString()).arg(vehicle.value(QStringLiteral("initialConnectComplete")).toBool()).arg(QString::fromUtf8(QJsonDocument(plans).toJson(QJsonDocument::Compact))).arg(QString::fromUtf8(QJsonDocument(errors).toJson(QJsonDocument::Compact)));
+    };
+    const auto leftovers = [&seen]() {
+        QStringList ids;
+        for (const mavlink_message_t &message : std::as_const(seen)) {
+            ids << QString::number(message.msgid) + QStringLiteral("/") + QString::number(message.len);
+        }
+        return ids.join(QLatin1Char(' '));
+    };
+    QVERIFY2(expectRequest(MAVLINK_MSG_ID_MISSION_REQUEST_LIST, MAV_MISSION_TYPE_FENCE), qPrintable(QStringLiteral("no fence request list reached the peer; heartbeat magic %1, %2, leftovers %3").arg(heartbeat.magic).arg(coreState()).arg(leftovers())));
+    mavlink_msg_mission_count_pack(11, 1, &count, 255, MAV_COMP_ID_MISSIONPLANNER, 0, MAV_MISSION_TYPE_FENCE, 0);
+    send(count);
+    QVERIFY2(expectRequest(MAVLINK_MSG_ID_MISSION_REQUEST_LIST, MAV_MISSION_TYPE_RALLY), "no rally request list reached the peer");
+    mavlink_msg_mission_count_pack(11, 1, &count, 255, MAV_COMP_ID_MISSIONPLANNER, 0, MAV_MISSION_TYPE_RALLY, 0);
+    send(count);
     const auto connected = []() { return take(qgc_bridge_get("view.coreVehicle(11)")).value(QStringLiteral("vehicle")).toObject().value(QStringLiteral("initialConnectComplete")).toBool(false); };
     QTRY_VERIFY_WITH_TIMEOUT(connected(), 3000);
     const QJsonObject vehicle = take(qgc_bridge_get("view.coreVehicle(11)")).value(QStringLiteral("vehicle")).toObject();
-    QCOMPARE(vehicle.value(QStringLiteral("capabilities")).toInt(), MAV_PROTOCOL_CAPABILITY_COMMAND_INT | MAV_PROTOCOL_CAPABILITY_MISSION_INT);
+    QCOMPARE(vehicle.value(QStringLiteral("capabilities")).toInt(), static_cast<int>(capabilities));
     QCOMPARE(vehicle.value(QStringLiteral("firmware")).toObject().value(QStringLiteral("version")).toString(), QStringLiteral("4.5.6 (0)"));
     QCOMPARE(vehicle.value(QStringLiteral("parameters")).toObject().value(QStringLiteral("count")).toInt(), 2);
     const QJsonObject parameter = take(qgc_bridge_get("view.coreParameter(11, RTL_ALT)"));
@@ -817,7 +852,7 @@ void QGCCoreCTest::_coreConnectSequenceReachesParameters()
     mavlink_message_t accepted{};
     mavlink_msg_mission_ack_pack(11, 1, &accepted, 255, MAV_COMP_ID_MISSIONPLANNER, MAV_MISSION_ACCEPTED, MAV_MISSION_TYPE_MISSION, 0);
     send(accepted);
-    const auto missionCount = []() { return take(qgc_bridge_get("view.coreMission(11)")).value(QStringLiteral("mission")).toObject().value(QStringLiteral("count")).toInt(-1); };
+    const auto missionCount = []() { return take(qgc_bridge_get("view.coreMission(11)")).value(QStringLiteral("plans")).toObject().value(QStringLiteral("mission")).toObject().value(QStringLiteral("count")).toInt(-1); };
     QTRY_COMPARE_WITH_TIMEOUT(missionCount(), 1, 3000);
 
     config->link()->disconnect();

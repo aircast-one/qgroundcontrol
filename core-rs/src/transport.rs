@@ -1,3 +1,4 @@
+use mavlink::MavlinkVersion;
 use mavlink::dialects::ardupilotmega::MavMessage;
 use mavlink::peek_reader::PeekReader;
 use mavlink::{MavHeader, ReadVersion, read_versioned_msg};
@@ -51,6 +52,7 @@ pub struct Registry {
 pub struct Frame {
     pub link: LinkId,
     pub replay: bool,
+    pub v2: bool,
     pub header: MavHeader,
     pub message: MavMessage,
     pub raw: Vec<u8>,
@@ -74,7 +76,7 @@ fn drain(buffer: &mut Vec<u8>, stats: &mut Stats, link: LinkId, replay: bool) ->
         match read_versioned_msg::<MavMessage, _>(&mut PeekReader::new(raw), ReadVersion::Single(version)) {
             Ok((header, message)) => {
                 stats.frames_in += 1;
-                frames.push(Frame { link, replay, header, message, raw: raw.to_vec() });
+                frames.push(Frame { link, replay, v2: version == MavlinkVersion::V2, header, message, raw: raw.to_vec() });
                 at += length;
             }
             Err(_) => {

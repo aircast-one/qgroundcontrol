@@ -8,7 +8,9 @@ use std::sync::atomic::{AtomicU8, Ordering};
 pub const GCS_SYSTEM: u8 = 255;
 pub const GCS_COMPONENT: u8 = 190;
 pub const GUIDED_ITEM_CURRENT: u8 = 2;
-pub const MISSION: MavMissionType = MavMissionType::MAV_MISSION_TYPE_MISSION;
+fn plan_type(plan: u8) -> Option<MavMissionType> {
+    MavMissionType::from_u8(plan)
+}
 
 static SEQUENCE: AtomicU8 = AtomicU8::new(0);
 
@@ -23,11 +25,11 @@ pub enum Outbound {
     ParamRequestRead { target: (u8, u8), name: Option<String>, index: i16 },
     ParamSet { target: (u8, u8), name: String, bits: f32, param_type: u8 },
     Ftp { target: (u8, u8), payload: [u8; 251] },
-    MissionRequestList { target: (u8, u8) },
-    MissionRequestInt { target: (u8, u8), seq: u16 },
-    MissionCount { target: (u8, u8), count: u16 },
-    MissionItemInt { target: (u8, u8), item: crate::plantransfer::Item },
-    MissionAck { target: (u8, u8), result: u8 },
+    MissionRequestList { target: (u8, u8), plan: u8 },
+    MissionRequestInt { target: (u8, u8), plan: u8, seq: u16 },
+    MissionCount { target: (u8, u8), plan: u8, count: u16 },
+    MissionItemInt { target: (u8, u8), plan: u8, item: crate::plantransfer::Item },
+    MissionAck { target: (u8, u8), plan: u8, result: u8 },
 }
 
 pub fn command_known(command: u16) -> bool {
@@ -104,11 +106,11 @@ pub fn message(send: &Outbound) -> Option<MavMessage> {
         Outbound::SetMode { .. } => None,
         Outbound::ParamRequestList { target } => Some(MavMessage::PARAM_REQUEST_LIST(PARAM_REQUEST_LIST_DATA { target_system: target.0, target_component: target.1 })),
         Outbound::ParamRequestRead { target, name, index } => Some(MavMessage::PARAM_REQUEST_READ(PARAM_REQUEST_READ_DATA { param_index: if name.is_some() { -1 } else { *index }, target_system: target.0, target_component: target.1, param_id: param_id(name.as_deref().unwrap_or("")) })),
-        Outbound::MissionRequestList { target } => Some(MavMessage::MISSION_REQUEST_LIST(MISSION_REQUEST_LIST_DATA { target_system: target.0, target_component: target.1, mission_type: MISSION })),
-        Outbound::MissionRequestInt { target, seq } => Some(MavMessage::MISSION_REQUEST_INT(MISSION_REQUEST_INT_DATA { seq: *seq, target_system: target.0, target_component: target.1, mission_type: MISSION })),
-        Outbound::MissionCount { target, count } => Some(MavMessage::MISSION_COUNT(MISSION_COUNT_DATA { count: *count, target_system: target.0, target_component: target.1, mission_type: MISSION, opaque_id: 0 })),
-        Outbound::MissionAck { target, result } => Some(MavMessage::MISSION_ACK(MISSION_ACK_DATA { target_system: target.0, target_component: target.1, mavtype: MavMissionResult::from_u8(*result)?, mission_type: MISSION, opaque_id: 0 })),
-        Outbound::MissionItemInt { target, item } => {
+        Outbound::MissionRequestList { target, plan } => Some(MavMessage::MISSION_REQUEST_LIST(MISSION_REQUEST_LIST_DATA { target_system: target.0, target_component: target.1, mission_type: plan_type(*plan)? })),
+        Outbound::MissionRequestInt { target, plan, seq } => Some(MavMessage::MISSION_REQUEST_INT(MISSION_REQUEST_INT_DATA { seq: *seq, target_system: target.0, target_component: target.1, mission_type: plan_type(*plan)? })),
+        Outbound::MissionCount { target, plan, count } => Some(MavMessage::MISSION_COUNT(MISSION_COUNT_DATA { count: *count, target_system: target.0, target_component: target.1, mission_type: plan_type(*plan)?, opaque_id: 0 })),
+        Outbound::MissionAck { target, plan, result } => Some(MavMessage::MISSION_ACK(MISSION_ACK_DATA { target_system: target.0, target_component: target.1, mavtype: MavMissionResult::from_u8(*result)?, mission_type: plan_type(*plan)?, opaque_id: 0 })),
+        Outbound::MissionItemInt { target, plan, item } => {
             let scale = |v: f64| if item.frame == crate::plantransfer::FRAME_MISSION { v as i32 } else { (v * 1e7).round() as i32 };
             Some(MavMessage::MISSION_ITEM_INT(MISSION_ITEM_INT_DATA {
                 param1: item.params[0] as f32,
@@ -125,7 +127,7 @@ pub fn message(send: &Outbound) -> Option<MavMessage> {
                 frame: MavFrame::from_u8(item.frame)?,
                 current: u8::from(item.current),
                 autocontinue: u8::from(item.auto_continue),
-                mission_type: MISSION,
+                mission_type: plan_type(*plan)?,
             }))
         }
         Outbound::Ftp { target, payload } => Some(MavMessage::FILE_TRANSFER_PROTOCOL(FILE_TRANSFER_PROTOCOL_DATA { target_network: 0, target_system: target.0, target_component: target.1, payload: *payload })),

@@ -239,7 +239,7 @@ pub unsafe extern "C" fn qgc_core_guided(action_json: *const c_char) -> *mut c_c
 fn install_hub_sink() {
     HUB_SINK.get_or_init(|| {
         let sink: crate::linkhost::FrameSink = std::sync::Arc::new(|frame: &crate::transport::Frame| {
-            let outbound = crate::hub::lock().on_frame(frame.link, frame.replay, &frame.header, &frame.message, crate::hub::now_us(), crate::hub::now_ms());
+            let outbound = crate::hub::lock().on_frame(crate::hub::Origin { link: frame.link, replay: frame.replay, v2: frame.v2 }, &frame.header, &frame.message, crate::hub::now_us(), crate::hub::now_ms());
             deliver(outbound);
         });
         crate::linkhost::TRANSPORTS.lock().unwrap().set_frame_sink(Some(sink));
