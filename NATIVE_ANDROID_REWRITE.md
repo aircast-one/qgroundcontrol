@@ -2184,6 +2184,35 @@ would still need polling, and `vehicle.gps` would then be almost all of what rem
 Process CPU did not move: 100–111% here against 85–125% before. Thread shares from a single
 sample are too noisy to read anything into, and the poll was never the whole of it.
 
+### The poll, end to end: 570 ms to 100 ms
+
+Four changes, three of them the core session's and one this head's, measured the same way each
+time — every `readPath` inside `Watcher::_poll` timed and summed over 25 polls on the Fly tab
+with the sim connected.
+
+| | watched | still polled | poll work per 5 s |
+|---|---|---|---|
+| whole-object deps | 70 | 70 | 490–635 ms |
+| `view.instruments` deps from its arguments | 71 | 71 | 562–615 ms |
+| facts bound to `rawValueChanged` | 97 | 79 | 265–300 ms |
+| properties bound to their NOTIFY | 98 | 22 unbound, 58 re-read | 223–238 ms |
+| the status strip watching two facts | 98 | 21 unbound, 58 re-read | **83–127 ms** |
+
+The last row is the head's own doing and it was the largest single step. `StatusStrip` read
+`vehicle.gps` — the whole `FactGroup`, twenty facts each rendering fourteen properties — to
+show two numbers, satellites and HDOP. Watching `vehicle.gps.count` and `vehicle.gps.hdop`
+instead binds both to their Facts' change signals and takes them out of the poll entirely. The
+strip shows exactly what it showed before, "11" and "1.2", checked on the handset.
+
+That is the same mistake the core made with `view.instruments`, made independently in the head,
+and it is worth stating as a rule rather than an anecdote: **watch the fact you display, not
+the group that contains it.** A group read is convenient and costs the whole group every tick.
+
+What remains is `vehicle.cameraManager.currentCameraInstance` at 28–36 ms, an object that
+`view.camera` depends on whole, and about 20 ms of tail from `vehicle.batteries.1..3.*` — the
+packs a one-battery vehicle does not have, which cannot bind and so are re-resolved every tick.
+Neither is this head's to fix.
+
 ## Phase 6 — Shell · 2 weeks
 
 Cheaper than macOS, because Qt is already off the main thread.
