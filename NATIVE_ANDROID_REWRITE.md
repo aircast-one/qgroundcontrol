@@ -1883,6 +1883,14 @@ link, so the view itself is fine.
 The flag is definitely being read: the only change between the runs was that line in the ini,
 and the app went from a connected vehicle to none.
 
+The cause turned out to be the guard added after this head's own reuse-port finding. That
+guard refuses a core UDP link on a port a Qt link already serves; `LinkManager` sets the
+configuration's link to the `CoreLink` before calling connect, so at open time the core saw a
+Qt link on 14550 that *was* the configuration it was opening, refused itself, and stayed
+unconnected — the one closed qt-owned entry. The macOS suite opened on port 0, so the guard
+never fired there. A guard written for one head's footgun fired on the other head's legitimate
+path, and only a real link on a real port showed it.
+
 **A watch is not a read when the value never changes.** The first pass at this used `qgcPath`,
 which is a subscription, and every reading came back null — easy to misread as "the view is
 empty" when it means "nothing has changed since you subscribed". Switching the probe to a
