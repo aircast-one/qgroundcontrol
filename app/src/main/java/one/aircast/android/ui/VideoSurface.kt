@@ -5,10 +5,6 @@ import android.view.SurfaceView
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Close
-import androidx.compose.material3.Icon
-import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
@@ -30,7 +26,7 @@ fun VideoSurface(
     val videoJson by qgcPath(VIDEO_VIEW)
     val video = remember(videoJson) { videoReading(videoJson) }
 
-    Box(modifier.clickable { onClick() }) {
+    Box(if (expanded) modifier else modifier.clickable { onClick() }) {
         AndroidView(
             modifier = Modifier.fillMaxSize(),
             factory = { context ->
@@ -72,17 +68,5 @@ fun VideoSurface(
             }
         }
 
-        if (expanded) {
-            IconButton(
-                onClick = onClick,
-                modifier = Modifier.align(Alignment.TopEnd),
-            ) {
-                Icon(
-                    imageVector = Icons.Default.Close,
-                    contentDescription = "Shrink the video",
-                    tint = MaterialTheme.colorScheme.onSurface,
-                )
-            }
-        }
     }
 }
