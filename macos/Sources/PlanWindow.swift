@@ -241,7 +241,7 @@ struct PlanInspector: View {
                 summary
 
                 if let arming = mission.arming, selection.page == "Mission" {
-                    Text(MissionItemKind.placementHint(forPattern: arming))
+                    Text(mission.kinds.placementHint(forPattern: arming))
                         .font(.callout)
                         .foregroundColor(Overlay.mission)
                 }
@@ -295,7 +295,7 @@ struct PlanInspector: View {
                                                  set: { if !$0 { replacing = nil } }),
                             titleVisibility: .visible) {
             Button("Replace", role: .destructive) {
-                let kind = MissionItemKind(rawValue: replacing ?? "")
+                let kind = mission.kinds.byId(replacing ?? "")
                 replacing = nil
                 shapeError = mission.createPlan(kind)
             }
@@ -834,7 +834,7 @@ struct PlanInspector: View {
     private var placing: Bool { mission.arming != nil || fenceRally.armingRally }
 
     private var importable: [MissionItemKind] {
-        MissionItemKind.shapeImportable.filter {
+        mission.kinds.shapeImportable.filter {
             mission.patterns.contains($0.complexName ?? "")
         }
     }
@@ -867,15 +867,15 @@ struct PlanInspector: View {
             }
             .disabled(!fenceRally.rallySupported)
         default:
-            ForEach(MissionItemKind.simpleKinds) { kind in
-                Button { mission.arming = kind.rawValue } label: {
+            ForEach(mission.kinds.simple) { kind in
+                Button { mission.arming = kind.id } label: {
                     Label(kind.title, systemImage: kind.symbol)
                 }
             }
             ForEach(mission.patterns, id: \.self) { pattern in
                 Button { mission.arming = pattern } label: {
-                    Label(MissionItemKind.title(forPattern: pattern),
-                          systemImage: MissionItemKind.symbol(forPattern: pattern))
+                    Label(mission.kinds.title(forPattern: pattern),
+                          systemImage: mission.kinds.symbol(forPattern: pattern))
                 }
             }
             if !importable.isEmpty {
@@ -1033,7 +1033,7 @@ struct PlanInspector: View {
             shapeError = mission.createPlan(kind)
             return
         }
-        replacing = kind?.rawValue ?? ""
+        replacing = kind?.id ?? ""
     }
 
     private func exportKml() {

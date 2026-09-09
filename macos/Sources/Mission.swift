@@ -43,6 +43,7 @@ final class MissionStore: ObservableObject, Probeable, WriteReporting {
     @Published var centreMenuOpen = false
     @Published private(set) var scaleBar = MapScaleBar.none
     @Published private(set) var terrain = TerrainProfile.empty
+    @Published private(set) var kinds = MissionKinds.empty
 
     private var undoPoll: Timer?
 
@@ -80,6 +81,8 @@ final class MissionStore: ObservableObject, Probeable, WriteReporting {
         if bar != scaleBar { scaleBar = bar }
         let profile = TerrainProfile(Bridge.group("view.terrainProfile"))
         if profile != terrain { terrain = profile }
+        let catalogue = MissionKinds(Bridge.group("view.missionKinds"))
+        if !catalogue.all.isEmpty, catalogue != kinds { kinds = catalogue }
         let mode = AltitudeMode.read(controller["globalAltitudeMode"])
         if mode != globalAltitudeMode { globalAltitudeMode = mode }
 
@@ -196,16 +199,16 @@ final class MissionStore: ObservableObject, Probeable, WriteReporting {
     }
 
     func addWaypoint(latitude: Double, longitude: Double) {
-        let asked = arming ?? MissionItemKind.waypoint.rawValue
+        let asked = arming ?? "waypoint"
         let index = items.count
         let at = ["latitude": latitude, "longitude": longitude]
 
-        if let simple = MissionItemKind(rawValue: asked), simple.complexName == nil {
+        if let simple = kinds.byId(asked), simple.simple {
             Bridge.invoke("plan.missionController.\(simple.invokable)", [at, index, true])
         } else {
             Bridge.invoke("plan.missionController.insertComplexMissionItem",
                           [asked, at, index, true])
-            if let known = MissionItemKind.forComplexName(asked) {
+            if let known = kinds.byComplexName(asked) {
                 seed(known, at: index, latitude: latitude, longitude: longitude)
             }
         }
@@ -215,8 +218,8 @@ final class MissionStore: ObservableObject, Probeable, WriteReporting {
     }
 
     private func seed(_ kind: MissionItemKind, at index: Int, latitude: Double, longitude: Double) {
-        guard let plan = MissionItemKind.seed(for: kind, latitude: latitude, longitude: longitude)
-        else { return }
+        guard let plan = MissionSeed(
+            Bridge.group("view.missionSeed(\(kind.id),\(latitude),\(longitude))")) else { return }
         let path = "plan.missionController.visualItems.\(index).\(plan.property)"
         plan.points.forEach { point in
             Bridge.invoke("\(path).appendVertex",
@@ -257,14 +260,14 @@ final class MissionStore: ObservableObject, Probeable, WriteReporting {
     }
 
     private func surveyPolygon(of item: MissionItem) -> [GeoPoint] {
-        guard let property = MissionItemKind.areaProperty(forCommand: item.command)
+        guard let property = kinds.areaProperty(forCommand: item.command)
         else { return [] }
         let polygon = Bridge.group("plan.missionController.visualItems.\(item.index).\(property)")
         return ((polygon["path"] as? [Any]) ?? []).compactMap(GeoPoint.init(json:))
     }
 
     private func corridorPath(of item: MissionItem) -> [GeoPoint] {
-        guard let property = MissionItemKind.lineProperty(forCommand: item.command)
+        guard let property = kinds.lineProperty(forCommand: item.command)
         else { return [] }
         let line = Bridge.group("plan.missionController.visualItems.\(item.index).\(property)")
         return ((line["path"] as? [Any]) ?? []).compactMap(GeoPoint.init(json:))
@@ -284,14 +287,14 @@ final class MissionStore: ObservableObject, Probeable, WriteReporting {
 
     var editablePolygons: [EditablePolygon] {
         let areas = items.compactMap { item -> EditablePolygon? in
-            guard let property = MissionItemKind.areaProperty(forCommand: item.command) else {
+            guard let property = kinds.areaProperty(forCommand: item.command) else {
                 return nil
             }
             return polygon(at: "plan.missionController.visualItems.\(item.index).\(property)",
                            ring: true)
         }
         let lines = items.compactMap { item -> EditablePolygon? in
-            guard let property = MissionItemKind.lineProperty(forCommand: item.command) else {
+            guard let property = kinds.lineProperty(forCommand: item.command) else {
                 return nil
             }
             return polygon(at: "plan.missionController.visualItems.\(item.index).\(property)",
@@ -805,7 +808,7 @@ final class MissionStore: ObservableObject, Probeable, WriteReporting {
             }
             addWaypoint(latitude: latitude, longitude: longitude)
         case "importShape":
-            guard let kind = MissionItemKind(rawValue: args["kind"] ?? ""),
+            guard let kind = kinds.byId(args["kind"] ?? ""),
                   let path = args["file"] else {
                 return ["ok": false, "error": "importShape needs kind and file"]
             }
@@ -850,7 +853,7 @@ final class MissionStore: ObservableObject, Probeable, WriteReporting {
             return ["ok": true, "canSend": check?.canSend ?? false,
                     "refusal": check?.refusal ?? "", "state": probeState()]
         case "createPlan":
-            let kind = MissionItemKind(rawValue: args["kind"] ?? "")
+            let kind = kinds.byId(args["kind"] ?? "")
             if let failure = createPlan(kind) {
                 return ["ok": false, "error": failure]
             }

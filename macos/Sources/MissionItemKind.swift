@@ -1,160 +1,106 @@
 import Foundation
 
-enum MissionItemKind: String, CaseIterable, Identifiable {
-    case waypoint
-    case takeoff
-    case land
-    case roi
-    case survey
-    case corridor
-    case structure
+struct MissionItemKind: Identifiable, Equatable {
+    let id: String
+    let title: String
+    let invokable: String
+    let complexName: String?
+    let geometry: String?
+    let geometryProperty: String?
+    let shapeNoun: String
+    let placementHint: String
+    let simple: Bool
 
-    var id: String { rawValue }
+    var symbol: String { MissionItemKind.symbol(forId: id) }
 
-    var title: String {
-        switch self {
-        case .waypoint: return "Waypoint"
-        case .takeoff: return "Takeoff"
-        case .land: return "Land"
-        case .roi: return "Region of Interest"
-        case .survey: return "Survey"
-        case .corridor: return "Corridor Scan"
-        case .structure: return "Structure Scan"
+    static func symbol(forId id: String) -> String {
+        switch id {
+        case "waypoint": return "mappin"
+        case "takeoff": return "arrow.up.right"
+        case "land": return "arrow.down.right"
+        case "roi": return "eye"
+        case "survey": return "square.grid.3x3"
+        case "corridor": return "road.lanes"
+        case "structure": return "building.2"
+        default: return MissionKinds.unknownSymbol
         }
     }
 
-    var symbol: String {
-        switch self {
-        case .waypoint: return "mappin"
-        case .takeoff: return "arrow.up.right"
-        case .land: return "arrow.down.right"
-        case .roi: return "eye"
-        case .survey: return "square.grid.3x3"
-        case .corridor: return "road.lanes"
-        case .structure: return "building.2"
-        }
+    init?(_ json: Any?) {
+        guard let json = json as? [String: Any],
+              let id = json["id"] as? String,
+              let title = json["title"] as? String else { return nil }
+        self.id = id
+        self.title = title
+        invokable = (json["invokable"] as? String) ?? ""
+        complexName = json["complexName"] as? String
+        geometry = json["geometry"] as? String
+        geometryProperty = json["geometryProperty"] as? String
+        shapeNoun = (json["shapeNoun"] as? String) ?? "shape"
+        placementHint = (json["placementHint"] as? String) ?? ""
+        simple = (json["simple"] as? NSNumber)?.boolValue ?? false
+    }
+}
+
+struct MissionKinds: Equatable {
+    let all: [MissionItemKind]
+
+    static let empty = MissionKinds(all: [])
+    static let unknownSymbol = "square.on.square.dashed"
+
+    init(all: [MissionItemKind]) { self.all = all }
+
+    init(_ json: [String: Any]) {
+        all = ((json["kinds"] as? [Any]) ?? []).compactMap(MissionItemKind.init)
     }
 
-    var invokable: String {
-        switch self {
-        case .waypoint: return "insertSimpleMissionItem"
-        case .takeoff: return "insertTakeoffItem"
-        case .land: return "insertLandItem"
-        case .roi: return "insertROIMissionItem"
-        case .survey, .corridor, .structure: return "insertComplexMissionItem"
-        }
+    func byId(_ id: String) -> MissionItemKind? { all.first { $0.id == id } }
+
+    func byComplexName(_ name: String) -> MissionItemKind? {
+        all.first { $0.complexName == name }
     }
 
-    var complexName: String? {
-        switch self {
-        case .survey: return "Survey"
-        case .corridor: return "Corridor Scan"
-        case .structure: return "Structure Scan"
-        default: return nil
-        }
+    var simple: [MissionItemKind] { all.filter(\.simple) }
+
+    var shapeImportable: [MissionItemKind] { all.filter { !$0.simple } }
+
+    // QGC has complex items the catalogue does not name — a Landing Pattern is one —
+    // so a plan can carry a pattern the core cannot describe, and it still has to draw.
+    func title(forPattern name: String) -> String {
+        byComplexName(name)?.title ?? name
     }
 
-    enum Geometry: Equatable {
-        case none
-        case area(String)
-        case line(String)
+    func symbol(forPattern name: String) -> String {
+        byComplexName(name).map(\.symbol) ?? MissionKinds.unknownSymbol
     }
 
-    var geometry: Geometry {
-        switch self {
-        case .survey: return .area("surveyAreaPolygon")
-        case .structure: return .area("structurePolygon")
-        case .corridor: return .line("corridorPolyline")
-        default: return .none
-        }
-    }
-
-    var shapeNoun: String {
-        switch geometry {
-        case .line: return "path"
-        case .area: return "area"
-        case .none: return "shape"
-        }
-    }
-
-    static func forComplexName(_ name: String) -> MissionItemKind? {
-        allCases.first { $0.complexName == name }
-    }
-
-    static var simpleKinds: [MissionItemKind] {
-        allCases.filter { $0.complexName == nil }
-    }
-
-    static func title(forPattern name: String) -> String {
-        forComplexName(name)?.title ?? name
-    }
-
-    static func symbol(forPattern name: String) -> String {
-        forComplexName(name)?.symbol ?? "square.on.square.dashed"
-    }
-
-    static func placementHint(forPattern name: String) -> String {
-        forComplexName(name)?.placementHint
+    func placementHint(forPattern name: String) -> String {
+        byComplexName(name)?.placementHint
             ?? "Click the map to place a \(name.lowercased())."
     }
 
-    static var shapeImportable: [MissionItemKind] {
-        allCases.filter { $0.complexName != nil }
+    func areaProperty(forCommand command: String) -> String? {
+        byComplexName(command).flatMap { $0.geometry == "area" ? $0.geometryProperty : nil }
     }
 
-    var placementHint: String {
-        switch self {
-        case .roi: return "Click the map to place a region of interest."
-        case .survey: return "Click the map to place a survey area."
-        case .corridor: return "Click the map to place a corridor to scan along."
-        case .structure: return "Click the map to place a structure to scan around."
-        default: return "Click the map to place a \(title.lowercased())."
-        }
+    func lineProperty(forCommand command: String) -> String? {
+        byComplexName(command).flatMap { $0.geometry == "line" ? $0.geometryProperty : nil }
     }
+}
 
-    static let defaultAreaMetres = 150.0
+struct MissionSeed: Equatable {
+    let property: String
+    let points: [GeoPoint]
 
-    static func defaultArea(latitude: Double, longitude: Double) -> [GeoPoint] {
-        let metresPerDegree = 111_320.0
-        let latitudeSpan = defaultAreaMetres / metresPerDegree
-        let longitudeSpan = defaultAreaMetres / (metresPerDegree * max(cos(latitude * .pi / 180), 0.01))
-        return [
-            GeoPoint(latitude: latitude - latitudeSpan, longitude: longitude - longitudeSpan),
-            GeoPoint(latitude: latitude - latitudeSpan, longitude: longitude + longitudeSpan),
-            GeoPoint(latitude: latitude + latitudeSpan, longitude: longitude + longitudeSpan),
-            GeoPoint(latitude: latitude + latitudeSpan, longitude: longitude - longitudeSpan),
-        ]
-    }
-
-    static func defaultLine(latitude: Double, longitude: Double) -> [GeoPoint] {
-        let metresPerDegree = 111_320.0
-        let span = defaultAreaMetres / metresPerDegree
-        return [
-            GeoPoint(latitude: latitude - span, longitude: longitude),
-            GeoPoint(latitude: latitude + span, longitude: longitude),
-        ]
-    }
-
-    static func areaProperty(forCommand command: String) -> String? {
-        guard let kind = allCases.first(where: { $0.complexName == command }) else { return nil }
-        if case .area(let property) = kind.geometry { return property }
-        return nil
-    }
-
-    static func lineProperty(forCommand command: String) -> String? {
-        guard let kind = allCases.first(where: { $0.complexName == command }) else { return nil }
-        if case .line(let property) = kind.geometry { return property }
-        return nil
-    }
-
-    static func seed(for kind: MissionItemKind, latitude: Double, longitude: Double) -> (property: String, points: [GeoPoint])? {
-        switch kind.geometry {
-        case .none:
-            return nil
-        case .area(let property):
-            return (property, defaultArea(latitude: latitude, longitude: longitude))
-        case .line(let property):
-            return (property, defaultLine(latitude: latitude, longitude: longitude))
+    init?(_ json: [String: Any]) {
+        guard let property = json["property"] as? String,
+              let listed = json["points"] as? [Any], !listed.isEmpty else { return nil }
+        self.property = property
+        points = listed.compactMap { entry in
+            guard let entry = entry as? [String: Any],
+                  let latitude = (entry["latitude"] as? NSNumber)?.doubleValue,
+                  let longitude = (entry["longitude"] as? NSNumber)?.doubleValue else { return nil }
+            return GeoPoint(latitude: latitude, longitude: longitude)
         }
     }
 }

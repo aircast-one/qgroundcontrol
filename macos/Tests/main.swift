@@ -1016,109 +1016,84 @@ func checkRallyAndBreach() {
 checkRallyAndBreach()
 
 func checkMissionItemKinds() {
-    expect(MissionItemKind.allCases.count == 7,
-           "the add menu offers every item type, including the three survey patterns")
-    expect(MissionItemKind.survey.complexName == "Survey", "a survey inserts by name as a complex item")
-    expect(MissionItemKind.waypoint.complexName == nil, "a waypoint is not a complex item")
-    expect(MissionItemKind.survey.placementHint, "Click the map to place a survey area.",
-           "the hint says area rather than survey")
+    func kind(_ id: String, _ title: String, _ invokable: String, _ complex: Any = NSNull(),
+              _ geometry: Any = NSNull(), _ property: Any = NSNull(), _ noun: String = "shape",
+              _ hint: String = "") -> [String: Any] {
+        ["id": id, "title": title, "invokable": invokable, "complexName": complex,
+         "geometry": geometry, "geometryProperty": property, "shapeNoun": noun,
+         "placementHint": hint, "simple": (complex is NSNull) as NSNumber]
+    }
+    let catalogue = MissionKinds(["kinds": [
+        kind("waypoint", "Waypoint", "insertSimpleMissionItem", NSNull(), NSNull(), NSNull(),
+             "shape", "Click the map to place a waypoint."),
+        kind("takeoff", "Takeoff", "insertTakeoffItem"),
+        kind("land", "Land", "insertLandItem"),
+        kind("roi", "Region of Interest", "insertROIMissionItem", NSNull(), NSNull(), NSNull(),
+             "shape", "Click the map to place a region of interest."),
+        kind("survey", "Survey", "insertComplexMissionItem", "Survey", "area",
+             "surveyAreaPolygon", "area", "Click the map to place a survey area."),
+        kind("corridor", "Corridor Scan", "insertComplexMissionItem", "Corridor Scan", "line",
+             "corridorPolyline", "path", "Click the map to place a corridor to scan along."),
+        kind("structure", "Structure Scan", "insertComplexMissionItem", "Structure Scan", "area",
+             "structurePolygon", "area", "Click the map to place a structure to scan around."),
+    ]])
 
-    let area = MissionItemKind.defaultArea(latitude: -35.363, longitude: 149.165)
-    expect(area.count == 4, "a new survey gets a four cornered area rather than an empty one")
-    expect(area[0].latitude < -35.363 && area[2].latitude > -35.363, "the area straddles the point")
-    expect(area[0].longitude < 149.165 && area[2].longitude > 149.165, "on both axes")
-    let span = (area[2].latitude - area[0].latitude) * 111_320
-    expect(abs(span - 2 * MissionItemKind.defaultAreaMetres) < 1, "and is the intended size across")
+    expect(catalogue.all.count == 7,
+           "the add menu offers every item type the core catalogues")
+    expect(catalogue.simple.map(\.id).joined(separator: ","), "waypoint,takeoff,land,roi",
+           "the simple items are the ones the head inserts by their own call")
+    expect(catalogue.shapeImportable.map(\.id).joined(separator: ","), "survey,corridor,structure",
+           "only the three complex patterns can be drawn from a shape file")
+    expect(catalogue.byId("survey")?.invokable ?? "", "insertComplexMissionItem",
+           "and each carries the controller call that inserts it")
+    expect(catalogue.byId("helix") == nil, "an unknown kind is not invented")
+    expect(catalogue.byId("") == nil,
+           "an empty id is no kind, which is how the Empty template asks for nothing")
+
+    expect(catalogue.byComplexName("Corridor Scan")?.id ?? "", "corridor",
+           "a pattern the core knows is matched by the name the controller uses")
+    expect(catalogue.areaProperty(forCommand: "Survey") ?? "", "surveyAreaPolygon",
+           "an area pattern reports the polygon it draws from")
+    expect(catalogue.lineProperty(forCommand: "Corridor Scan") ?? "", "corridorPolyline",
+           "and a line pattern its polyline")
+    expect(catalogue.lineProperty(forCommand: "Survey") == nil,
+           "an area is not offered as a line, which would append vertices to the wrong property")
+    expect(catalogue.areaProperty(forCommand: "Corridor Scan") == nil, "nor the reverse")
+
+    expect(catalogue.byComplexName("Fixed Wing Landing Pattern") == nil,
+           "a Landing Pattern is a real QGC complex item the catalogue does not name, so it is "
+           + "unknown rather than mistaken for another")
+    expect(catalogue.title(forPattern: "Fixed Wing Landing Pattern"), "Fixed Wing Landing Pattern",
+           "an unknown one is offered under the name the vehicle gave it, not hidden")
+    expect(catalogue.symbol(forPattern: "VTOL Landing Pattern"), "square.on.square.dashed",
+           "and still gets a glyph")
+    expect(catalogue.placementHint(forPattern: "Fixed Wing Landing Pattern"),
+           "Click the map to place a fixed wing landing pattern.",
+           "with a hint that names it")
+    expect(catalogue.title(forPattern: "Survey"), "Survey", "a known pattern keeps its own title")
+    expect(catalogue.symbol(forPattern: "Survey"), "square.grid.3x3",
+           "and the glyph this head draws for it, which is the head's own and not the core's")
+
+    expect(MissionKinds.empty.title(forPattern: "Survey"), "Survey",
+           "before the catalogue has loaded a pattern still names itself rather than vanishing")
+
+    let seed = MissionSeed(["property": "surveyAreaPolygon", "points": [
+        ["latitude": -35.3644 as NSNumber, "longitude": 149.1636 as NSNumber],
+        ["latitude": -35.3644 as NSNumber, "longitude": 149.1663 as NSNumber],
+        ["latitude": -35.3617 as NSNumber, "longitude": 149.1663 as NSNumber],
+        ["latitude": -35.3617 as NSNumber, "longitude": 149.1636 as NSNumber],
+    ]])
+    expect(seed?.points.count == 4, "a new survey gets a four cornered area rather than an empty one")
+    expect(seed?.property ?? "", "surveyAreaPolygon", "appended to the property the core named")
+    expect(MissionSeed(["property": "surveyAreaPolygon", "points": []]) == nil,
+           "a seed with no points is no seed, rather than an empty shape on the map")
+    expect(MissionSeed([:]) == nil, "and a kind with no geometry seeds nothing at all")
+
     expect(WriteReport.failure("the fence radius"),
            "Could not change the fence radius. It is unchanged.",
            "a refused write names what did not change and says the old value still stands")
     expect(WriteReport.failure("this item's altitude").contains("unchanged"),
            "because the control snapping back on the next poll reads as the app glitching")
-
-    expect(MissionItemKind.simpleKinds.map(\.rawValue).joined(separator: ","),
-           "waypoint,takeoff,land,roi",
-           "the simple items are the ones the head inserts by their own call")
-    expect(MissionItemKind.forComplexName("Corridor Scan") == .corridor,
-           "a pattern the head knows is matched by the name the controller uses")
-    expect(MissionItemKind.forComplexName("Fixed Wing Landing Pattern") == nil,
-           "and one it does not know is simply unknown, not mistaken for another")
-
-    expect(MissionItemKind.title(forPattern: "Survey"), "Survey",
-           "a known pattern keeps the head's own title")
-    expect(MissionItemKind.title(forPattern: "Fixed Wing Landing Pattern"),
-           "Fixed Wing Landing Pattern",
-           "an unknown one is offered under the name the vehicle gave it, not hidden")
-    expect(MissionItemKind.symbol(forPattern: "VTOL Landing Pattern"), "square.on.square.dashed",
-           "and still gets a glyph")
-    expect(MissionItemKind.placementHint(forPattern: "Fixed Wing Landing Pattern"),
-           "Click the map to place a fixed wing landing pattern.",
-           "with a hint that names it")
-
-    expect(MissionItemKind(rawValue: "") == nil,
-           "an empty raw value is no kind, which is how the Empty template asks for nothing")
-    expect(MissionItemKind(rawValue: "survey") == .survey,
-           "and a kind survives the round trip through its raw value")
-
-    expect(MissionItemKind.shapeImportable.map(\.rawValue).joined(separator: ","),
-           "survey,corridor,structure",
-           "only the three complex patterns can be drawn from a shape file")
-    expect(MissionItemKind.shapeImportable.allSatisfy { $0.complexName != nil },
-           "and every one of them has a name the controller inserts by")
-    expect(MissionItemKind.corridor.shapeNoun, "path", "a corridor is imported from a path")
-    expect(MissionItemKind.survey.shapeNoun, "area", "a survey from an area")
-    expect(MissionItemKind.structure.shapeNoun, "area", "a structure scan from an area too")
-
-    expect(MissionItemKind.waypoint.invokable, "insertSimpleMissionItem", "a waypoint inserts a simple item")
-    expect(MissionItemKind.takeoff.invokable, "insertTakeoffItem", "takeoff has its own insert")
-    expect(MissionItemKind.land.invokable, "insertLandItem", "land has its own insert")
-    expect(MissionItemKind.roi.invokable, "insertROIMissionItem", "a region of interest has its own insert")
-    expect(MissionItemKind(rawValue: "takeoff") == .takeoff, "a kind round-trips through its raw value")
-    expect(MissionItemKind(rawValue: "helix") == nil, "an unknown kind is not invented")
-
-    expect(MissionItemKind.corridor.complexName ?? "", "Corridor Scan",
-           "the pattern names match what the vehicle offers in complexMissionItemNames")
-    expect(MissionItemKind.structure.complexName ?? "", "Structure Scan", "for all three")
-    expect(MissionItemKind.corridor.invokable, "insertComplexMissionItem",
-           "every pattern goes in through the complex insert")
-
-    expect(MissionItemKind.survey.geometry == .area("surveyAreaPolygon"),
-           "a survey is seeded with an area")
-    expect(MissionItemKind.structure.geometry == .area("structurePolygon"),
-           "so is a structure scan, but into its own polygon")
-    expect(MissionItemKind.corridor.geometry == .line("corridorPolyline"),
-           "a corridor is a line, not an area, so a four-corner box would be wrong")
-    expect(MissionItemKind.waypoint.geometry == .none, "a simple item has no geometry to seed")
-
-    let seededArea = MissionItemKind.seed(for: .survey, latitude: -35.36, longitude: 149.16)
-    expect(seededArea?.points.count == 4, "an area is seeded as a box")
-    expect(seededArea?.property ?? "", "surveyAreaPolygon", "on the property that item uses")
-    let seededLine = MissionItemKind.seed(for: .corridor, latitude: -35.36, longitude: 149.16)
-    expect(seededLine?.points.count == 2, "a corridor is seeded as two ends")
-    expect(seededLine?.property ?? "", "corridorPolyline", "on its polyline")
-    expect(MissionItemKind.seed(for: .waypoint, latitude: 0, longitude: 0) == nil,
-           "and a waypoint is seeded with nothing at all")
-
-    expect(MissionItemKind.areaProperty(forCommand: "Survey") ?? "", "surveyAreaPolygon",
-           "the map finds a survey's outline by the item's own command name")
-    expect(MissionItemKind.areaProperty(forCommand: "Structure Scan") ?? "", "structurePolygon",
-           "and a structure scan's, which is a different property entirely")
-    expect(MissionItemKind.areaProperty(forCommand: "Corridor Scan") == nil,
-           "a corridor is a line and has no area to draw, so it is not offered one")
-    expect(MissionItemKind.areaProperty(forCommand: "Waypoint") == nil,
-           "and a simple item has none either")
-
-    expect(MissionItemKind.lineProperty(forCommand: "Corridor Scan") ?? "", "corridorPolyline",
-           "a corridor's path is found the same way, by the item's command name")
-    expect(MissionItemKind.lineProperty(forCommand: "Survey") == nil,
-           "a survey is an area, so it is never asked for a line")
-    expect(MissionItemKind.lineProperty(forCommand: "Structure Scan") == nil,
-           "nor is a structure scan")
-    expect(MissionItemKind.lineProperty(forCommand: "Waypoint") == nil,
-           "and a simple item has no path of its own")
-    expect(MissionItemKind.roi.placementHint, "Click the map to place a region of interest.",
-           "the hint reads as English rather than a lowercased title")
-    expect(MissionItemKind.takeoff.placementHint, "Click the map to place a takeoff.",
-           "and names the kind being placed")
 }
 
 checkMissionItemKinds()
@@ -2504,6 +2479,12 @@ func checkViewContract() {
           "maxAltitudeMeters", "distanceText", "lowestText", "highestText", "points"]),
         ("view.terrainProfile", ["points"],
          ["x", "missionAltitude", "terrainAltitude", "collision"]),
+        ("view.missionKinds", [], ["kinds"]),
+        ("view.missionKinds", ["kinds"],
+         ["id", "title", "invokable", "complexName", "geometry", "geometryProperty", "shapeNoun",
+          "placementHint", "simple"]),
+        ("view.missionSeed(survey,47,8)", [], ["property", "points"]),
+        ("view.missionSeed(survey,47,8)", ["points"], ["latitude", "longitude"]),
         ("view.links", ["configured"],
          ["index", "path", "name", "type", "typeLabel", "editing", "displaySummary", "connected",
           "autoConnect", "host", "port", "portName", "baud", "filename", "logFileName",
@@ -2585,6 +2566,15 @@ func checkViewContract() {
     expect(recorded("view.fences.circles[].shape").joined(separator: ","), "circle",
            "and a circle's only ever circle, which is what isCircle reads")
 
+    let itemKinds = recorded("view.missionKinds.kinds[].id")
+    expect(itemKinds.filter { MissionItemKind.symbol(forId: $0) == MissionKinds.unknownSymbol }
+        .joined(separator: ","), "",
+           "every item kind the core catalogues has a glyph of its own in this head, because a "
+           + "kind added to the core would otherwise appear in the add menu drawn as unknown")
+    let geometries = recorded("view.missionKinds.kinds[].geometry")
+    expect(geometries.filter { !["area", "line", "null"].contains($0) }.joined(separator: ","), "",
+           "and the only geometries are the two the head turns into a property plus none at all")
+
     let linkKinds = recorded("view.links.links[].type")
     expect(linkKinds.sorted().joined(separator: ","), "bluetooth,logReplay,other,serial,tcp,udp",
            "the six link kinds are the six this head labels")
@@ -2613,6 +2603,7 @@ func checkViewContract() {
         ("view.mapScale(120)", [], ["text"]),
         ("view.terrainProfile", [],
          ["distanceText", "lowestText", "highestText", "minAltitudeMeters", "maxAltitudeMeters"]),
+        ("view.missionKinds", ["kinds"], ["title", "shapeNoun", "placementHint"]),
     ]
     neverNull.forEach { view, inner, keys in
         let place = inner.isEmpty ? view : "\(view).\(inner.joined(separator: "."))"
