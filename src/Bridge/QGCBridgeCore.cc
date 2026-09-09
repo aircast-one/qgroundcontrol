@@ -20,6 +20,7 @@
 
 #include <QtCore/QSequentialIterable>
 #include <QtCore/QSet>
+#include <QtCore/QSize>
 #include <QtCore/QCoreApplication>
 #include <QtPositioning/QGeoCoordinate>
 #include <QtCore/QHash>
@@ -32,6 +33,7 @@
 #include <QtCore/QThread>
 
 #include <optional>
+#include <QtCore/QElapsedTimer>
 #include <QtCore/QTimer>
 
 namespace
@@ -261,6 +263,10 @@ QJsonValue variantJson(const QVariant &value)
     case QMetaType::SChar:
     case QMetaType::Char:
         return QJsonValue(value.toInt());
+    case QMetaType::QSize: {
+        const QSize size = value.toSize();
+        return size.isValid() ? QJsonValue(QJsonObject { { QStringLiteral("width"), size.width() }, { QStringLiteral("height"), size.height() } }) : QJsonValue();
+    }
     default:
         break;
     }
@@ -734,14 +740,43 @@ private:
         if (!g_eventHandler) {
             return;
         }
+        QElapsedTimer probeTimer;
+        probeTimer.start();
+        int polled = 0;
         for (const QString &path : std::as_const(_paths)) {
             if (_bound.contains(path)) {
                 continue;
             }
+            const qint64 before = probeTimer.nsecsElapsed();
             (void) _bind(path);
             _emit(path);
+            _probeCost[path] += probeTimer.nsecsElapsed() - before;
+            polled += 1;
+        }
+        _probePolls += 1;
+        if (_probePolls >= 25) {
+            QList<QPair<qint64, QString>> ranked;
+            for (auto it = _probeCost.cbegin(); it != _probeCost.cend(); ++it) {
+                ranked.append({ it.value(), it.key() });
+            }
+            std::sort(ranked.begin(), ranked.end(), [](const auto &a, const auto &b) { return a.first > b.first; });
+            qint64 total = 0;
+            for (const auto &entry : std::as_const(ranked)) {
+                total += entry.first;
+            }
+            QString line = QStringLiteral("WATCHPROBE watched=%1 polled=%2 total=%3ms")
+                               .arg(_paths.size()).arg(polled).arg(total / 1000000.0, 0, 'f', 1);
+            for (int i = 0; i < ranked.size() && i < 8; ++i) {
+                line += QStringLiteral(" | %1=%2ms").arg(ranked.at(i).second).arg(ranked.at(i).first / 1000000.0, 0, 'f', 1);
+            }
+            qWarning("%s", qPrintable(line));
+            _probeCost.clear();
+            _probePolls = 0;
         }
     }
+
+    QHash<QString, qint64> _probeCost;
+    int _probePolls = 0;
 
     bool _bind(const QString &path)
     {

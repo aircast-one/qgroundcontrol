@@ -643,6 +643,7 @@ About 58 developer-weeks. Flight-test time, not code, is the schedule.
 - 2026-09-09: a vehicle on a core link is walked through the initial connect sequence by the core (autopilot version, protocol version, standard modes, parameters with Qt's timers); `view.coreVehicle` reports the step, firmware, modes and parameter state; `view.coreParameter(name)` serves a value. `settings.appSettings.detectionsHttpPort` (0 = agent default) picks the detections stream port for rigs.
 - 2026-09-09: `view.battery` and `view.preflight` depend on and read single facts (`vehicle.batteries.count`, six facts per pack up to four packs, `vehicle.gps.lock`, `vehicle.gps.count`) instead of the battery list and GPS group objects.
 - 2026-09-09: `qgc_core_parameter({"vehicle","name","value"|"refresh"})` writes or re-reads a parameter on a core link through the core's parameter machine; `view.coreParameters(id)` lists what the core knows.
+- 2026-09-09: `view.video.sourceSize` {width, height} of the decoded frame (null until decoding) so heads letterbox overlays to the painted picture.
 
 ### Stream F · Core
 

@@ -1003,6 +1003,7 @@
         "kind": "string",
         "multipleSources": "bool",
         "recording": "bool",
+        "sourceSize": "null",
         "streamSource": "bool",
         "streaming": "bool",
         "summary": "string"

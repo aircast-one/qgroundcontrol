@@ -3,7 +3,7 @@ use serde_json::{Value, json};
 use crate::read::{flag, integer, object, text};
 use crate::router::Backend;
 
-pub const VIDEO_DEPS: &[&str] = &["video.hasVideo", "video.decoding", "video.streaming", "video.recording", "video.activeVideoSource", "video.cameraStatuses", "video.cameraConnecting", "video.cameraRecording"];
+pub const VIDEO_DEPS: &[&str] = &["video.hasVideo", "video.decoding", "video.streaming", "video.recording", "video.activeVideoSource", "video.videoSize", "video.cameraStatuses", "video.cameraConnecting", "video.cameraRecording"];
 pub const CAMERA_DEPS: &[&str] = &["vehicles.activeVehicleAvailable", "vehicle.cameraManager.currentCameraInstance", "vehicle.cameraTriggerPoints.count"];
 
 const NO_URL_STATUS: &str = "No stream URL";
@@ -28,7 +28,7 @@ pub fn video_summary(available: bool, decoding: bool, recording: bool, connectin
 }
 
 pub fn video_view(backend: &dyn Backend, _args: &[String]) -> Value {
-    let video = object(&backend.get_fields("video", "hasVideo,gstreamerEnabled,isStreamSource,decoding,streaming,recording,activeVideoSource,hasMultipleVideoSources,cameraStatuses,cameraConnecting,cameraRecording"));
+    let video = object(&backend.get_fields("video", "hasVideo,gstreamerEnabled,isStreamSource,decoding,streaming,recording,activeVideoSource,videoSize,hasMultipleVideoSources,cameraStatuses,cameraConnecting,cameraRecording"));
     let strings = |key: &str| -> Vec<String> { video.get(key).and_then(Value::as_array).map(|a| a.iter().map(|v| v.as_str().unwrap_or("").to_string()).collect()).unwrap_or_default() };
     let flags = |key: &str| -> Vec<bool> { video.get(key).and_then(Value::as_array).map(|a| a.iter().map(|v| v.as_bool().unwrap_or(false)).collect()).unwrap_or_default() };
     let (statuses, connecting, recording_flags) = (strings("cameraStatuses"), flags("cameraConnecting"), flags("cameraRecording"));
@@ -48,6 +48,12 @@ pub fn video_view(backend: &dyn Backend, _args: &[String]) -> Value {
         .collect();
     let available = flag(&video, "hasVideo");
     let decoding = flag(&video, "decoding");
+    let source_size = video
+        .get("videoSize")
+        .filter(|_| decoding)
+        .and_then(|size| Some((size.get("width")?.as_i64()?, size.get("height")?.as_i64()?)))
+        .filter(|(w, h)| *w > 0 && *h > 0)
+        .map(|(width, height)| json!({ "width": width, "height": height }));
     let recording = flag(&video, "recording");
     let any_connecting = cameras.iter().any(|c| c["connecting"] == true);
     let configured = cameras.iter().filter(|c| c["configured"] == true).count();
@@ -60,6 +66,7 @@ pub fn video_view(backend: &dyn Backend, _args: &[String]) -> Value {
         "decoding": decoding,
         "streaming": flag(&video, "streaming"),
         "recording": recording,
+        "sourceSize": source_size,
         "activeSource": integer(&video, "activeVideoSource").unwrap_or(0),
         "multipleSources": flag(&video, "hasMultipleVideoSources"),
         "anyConnecting": any_connecting,
@@ -143,7 +150,10 @@ mod tests {
         assert_eq!(video_summary(true, false, false, true, 1), "Waiting for a stream.");
         assert_eq!(video_summary(true, false, false, false, 0), "No stream URL is set.");
         assert_eq!(video_summary(true, false, false, false, 2), "Not streaming.");
-        let view = video_view(&Fake { video: json!({ "kind": "object", "hasVideo": true, "decoding": false, "cameraStatuses": ["Connecting", "No stream URL"], "cameraConnecting": [true, false], "cameraRecording": [] }), camera: json!({ "kind": "null" }) }, &[]);
+        let view = video_view(&Fake { video: json!({ "kind": "object", "hasVideo": true, "decoding": false, "videoSize": { "width": 640, "height": 480 }, "cameraStatuses": ["Connecting", "No stream URL"], "cameraConnecting": [true, false], "cameraRecording": [] }), camera: json!({ "kind": "null" }) }, &[]);
+        assert_eq!(view["sourceSize"], Value::Null, "a size only counts while a frame is decoding");
+        let decoding = video_view(&Fake { video: json!({ "kind": "object", "hasVideo": true, "decoding": true, "videoSize": { "width": 640, "height": 480 }, "cameraStatuses": [], "cameraConnecting": [], "cameraRecording": [] }), camera: json!({ "kind": "null" }) }, &[]);
+        assert_eq!(decoding["sourceSize"], json!({ "width": 640, "height": 480 }));
         assert_eq!(view["cameras"][0]["configured"], true);
         assert_eq!(view["cameras"][1]["configured"], false);
         assert_eq!(view["configuredCount"], 1);
