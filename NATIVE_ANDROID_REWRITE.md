@@ -1083,7 +1083,7 @@ exists natively today:
 | `PipView` map/video swap | **built** | either view can be the small one; the inset is the control and the main view is not |
 | `CameraControlLayer` | **built** | selection, mode and shutter, all verified on the wire |
 | `VideoTilesLayer` | **built, as a source picker** | the streams the core lists, and switching between them; the tile grid, dock and tuck belong to the overlay rig |
-| `RcControlsLayer` | **built** | renders the configured controls and sends `setRcChannelOverride`; editing the list is still desktop-only |
+| `RcControlsLayer` | **built** | renders the configured controls and sends `setRcChannelOverride`; the list is now editable on the phone |
 | `ObstacleDistanceOverlay` (map and video) | **built, in another form** | a sentence — "3.2 m right" — rather than a proximity ring |
 | `FlyViewToolStrip` + action list | **built, as an Actions sheet** | the checklist plus pause, gripper, emergency stop, mission start/continue, land abort; Viewer3D dropped |
 | `GuidedValueSlider` | **built** | altitude, speed, takeoff height, and pause all read their range from the core |
@@ -2212,6 +2212,34 @@ What remains is `vehicle.cameraManager.currentCameraInstance` at 28–36 ms, an 
 `view.camera` depends on whole, and about 20 ms of tail from `vehicle.batteries.1..3.*` — the
 packs a one-battery vehicle does not have, which cannot bind and so are re-resolved every tick.
 Neither is this head's to fix.
+
+### The last desktop-only setting
+
+`rcControls` is a JSON array in a settings fact, and the head could render the controls but not
+change them — Settings carried a footnote telling the operator to go and find a desktop. For a
+product whose ground station is the phone, that is a hole rather than a gap. There is now an
+editor under Settings, beside Comm Links and Units, which are the other two settings pages that
+are screens rather than fact rows.
+
+It adds, renames, re-channels, re-types and removes, and it warns when a channel is already
+driving something — another control, or one of the five camera channels the Fly view settings
+reserve for gimbal tilt and pan, zoom, light and record. A new control lands on the first
+channel nothing else is using. Save is refused, not corrected, while a channel is out of range
+or taken.
+
+**It edits the entries rather than rebuilding them.** The desktop editor writes a fourth field,
+`orientation`, that this head neither shows nor understands; rebuilding each entry from the
+head's own model would silently drop it the first time anyone touched a control on a phone. The
+edit functions patch the JSON objects in place and a test pins that `orientation` survives a
+rename, a re-channel and a neighbour's removal. An editor should not quietly discard what it
+cannot read.
+
+Verified on the handset end to end: added a control, watched it appear on the Fly tab as a live
+slider, and removed it again.
+
+**Four chips did not fit on one row.** The type picker was a `Row`, so "Momentary" — the fourth
+of four — was off the edge of the dialog and unreachable. It is a `FlowRow` now and wraps to two
+lines. The control that cannot be chosen is the one nobody reports.
 
 ## Phase 6 — Shell · 2 weeks
 
