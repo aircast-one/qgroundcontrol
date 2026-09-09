@@ -27,6 +27,7 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
@@ -168,6 +169,10 @@ fun FlightActions(modifier: Modifier = Modifier) {
     var speedRange by remember { mutableStateOf<GuidedSpeed?>(null) }
     var altitudePauses by remember { mutableStateOf(false) }
     var showMore by remember { mutableStateOf(false) }
+    var showChecklist by remember { mutableStateOf(false) }
+    var checklistTicked by rememberSaveable { mutableStateOf(setOf<String>()) }
+    val preflightJson by qgcPath(PREFLIGHT)
+    val checks = remember(preflightJson) { preflight(preflightJson) }
     val actionsJson by qgcPath(GUIDED_ACTIONS)
     val offers = remember(actionsJson) { guidedOffers(actionsJson) }
     val extras = remember(offers) { moreActions(offers) }
@@ -296,9 +301,7 @@ fun FlightActions(modifier: Modifier = Modifier) {
                 onClick = { openAltitude(false) },
             ) { Text("Alt") }
 
-            if (extras.isNotEmpty()) {
-                OutlinedButton(onClick = { showMore = true }) { Text("Actions") }
-            }
+            OutlinedButton(onClick = { showMore = true }) { Text("Actions") }
         }
 
         TelemetryRow()
@@ -437,6 +440,26 @@ fun FlightActions(modifier: Modifier = Modifier) {
             title = { Text("Actions") },
             text = {
                 Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    TextButton(
+                        onClick = {
+                            showMore = false
+                            showChecklist = true
+                        },
+                        modifier = Modifier.fillMaxWidth(),
+                    ) {
+                        Column(Modifier.fillMaxWidth()) {
+                            Text(
+                                text = "Pre-Flight Checklist",
+                                fontWeight = FontWeight.Bold,
+                                color = MaterialTheme.colorScheme.primary,
+                            )
+                            Text(
+                                text = preflightSummary(checks, checklistTicked),
+                                style = MaterialTheme.typography.bodySmall,
+                            )
+                        }
+                    }
+
                     extras.forEach { offer ->
                         TextButton(
                             enabled = offer.ready,
@@ -475,6 +498,22 @@ fun FlightActions(modifier: Modifier = Modifier) {
             },
             confirmButton = {},
             dismissButton = { TextButton(onClick = { showMore = false }) { Text("Close") } },
+        )
+    }
+
+    if (showChecklist) {
+        AlertDialog(
+            onDismissRequest = { showChecklist = false },
+            title = { Text("Pre-Flight Checklist") },
+            text = {
+                PreflightScreen(
+                    modifier = Modifier.fillMaxWidth(),
+                    ticked = checklistTicked,
+                    onTicked = { checklistTicked = it },
+                )
+            },
+            confirmButton = {},
+            dismissButton = { TextButton(onClick = { showChecklist = false }) { Text("Close") } },
         )
     }
 
