@@ -625,6 +625,7 @@ About 58 developer-weeks. Flight-test time, not code, is the schedule.
 - 2026-09-09: `CoreLink` lets LinkManager build UDP/TCP/serial links on the core behind `QGC_CORE_LINKS=1`; a vehicle comes up over a core-backed link in the suite.
 - 2026-09-09: CoreLink sources actually land (dbb35f05c missed src/Comms); `settings.appSettings.coreLinks` switch; view.video titles from cameraName; connect state machine ported to the core.
 - 2026-09-09: command-ack retry machine and request-message protocol in the core (R5).
+- 2026-09-09: MAVLink FTP codec and download state machine in the core (R5).
 
 ### Stream F · Core
 
