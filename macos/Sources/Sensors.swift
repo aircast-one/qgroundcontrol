@@ -34,14 +34,13 @@ final class SensorsStore: ObservableObject, Probeable {
         let reported = (view["status"] as? String) ?? ""
         if reported != status { status = reported }
 
-        let read = Calibration.read(Bridge.group("sensorsCal"))
+        let read = CalibrationState(Bridge.group("view.calibration"))
         if read != calibration { calibration = read }
     }
 
     func start(_ routine: CalibrationRoutine) {
-        guard calibration.connected, !calibration.busy,
-              !routine.blocked(whenAccelNeeded: calibration.accelNeeded) else { return }
-        lastStarted = routine.rawValue
+        guard routine.enabled else { return }
+        lastStarted = routine.id
         Bridge.invoke(routine.invocation, routine.arguments)
         refresh()
     }
@@ -64,9 +63,7 @@ final class SensorsStore: ObservableObject, Probeable {
                          "progress": calibration.progressText, "help": calibration.helpText,
                          "statusText": calibration.statusText, "busy": calibration.busy,
                          "needs": calibration.needsAttention,
-                         "blocked": CalibrationRoutine.allCases
-                             .filter { $0.blocked(whenAccelNeeded: calibration.accelNeeded) }
-                             .map(\.rawValue),
+                         "blocked": calibration.routines.filter(\.blocked).map(\.id),
                          "sides": calibration.visibleSides.map(\.title),
                          "lastStarted": lastStarted],
          "failing": failing,

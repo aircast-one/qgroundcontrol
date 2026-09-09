@@ -118,17 +118,17 @@ struct SensorsView: View {
             }
 
             GroupCard {
-                ForEach(Array(CalibrationRoutine.allCases.enumerated()), id: \.element.id) { row, routine in
-                    let blocked = routine.blocked(whenAccelNeeded: store.calibration.accelNeeded)
+                ForEach(Array(store.calibration.routines.enumerated()), id: \.element.id) { row, routine in
                     GroupRow(title: routine.title,
-                             description: routine.description(whenAccelNeeded:
-                                 store.calibration.accelNeeded),
+                             description: routine.warning.isEmpty
+                                 ? routine.description
+                                 : "\(routine.description) \(routine.warning)",
                              showSeparator: row > 0,
                              trailing: {
                                  Button("Start") { store.start(routine) }
-                                     .disabled(store.calibration.busy || blocked)
+                                     .disabled(!routine.enabled)
                              })
-                        .foregroundColor(blocked ? .secondary : .primary)
+                        .foregroundColor(routine.blocked ? .secondary : .primary)
                 }
             }
 

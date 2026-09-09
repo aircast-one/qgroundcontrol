@@ -891,25 +891,34 @@ func checkLogDownloadRules() {
 checkLogDownloadRules()
 
 func checkCalibrationOrder() {
-    expect(CalibrationRoutine.compass.blocked(whenAccelNeeded: true),
-           "a compass calibration on an uncalibrated accelerometer gives a result to distrust")
-    expect(CalibrationRoutine.levelHorizon.blocked(whenAccelNeeded: true),
-           "and so does levelling the horizon against one")
-    expect(!CalibrationRoutine.accelerometer.blocked(whenAccelNeeded: true),
-           "the accelerometer itself is the way out, so it is never blocked")
-    expect(!CalibrationRoutine.gyro.blocked(whenAccelNeeded: true),
-           "the gyro does not depend on it")
-    expect(!CalibrationRoutine.pressure.blocked(whenAccelNeeded: true),
-           "nor does the barometer")
-    expect(!CalibrationRoutine.compass.blocked(whenAccelNeeded: false),
-           "and once the accelerometer is done the compass is offered again")
+    func routine(_ id: String, _ blocked: Bool, _ enabled: Bool,
+                 _ description: String) -> [String: Any] {
+        ["id": id, "title": id, "invocation": "sensorsCal.\(id)", "arguments": [],
+         "blocked": blocked as NSNumber, "enabled": enabled as NSNumber,
+         "description": description, "warning": ""]
+    }
+    let needsAccel = CalibrationState(["connected": true as NSNumber, "routines": [
+        routine("accelerometer", false, true, "Hold the vehicle in each orientation it asks for."),
+        routine("compass", true, false, "Calibrate the accelerometer first."),
+        routine("levelHorizon", true, false, "Calibrate the accelerometer first."),
+        routine("gyro", false, true, "Leave the vehicle still while the gyros settle."),
+        routine("pressure", false, true, "Zero the barometer at the current altitude."),
+    ]])
+    let by = { (id: String) in needsAccel.routines.first { $0.id == id } }
 
-    expect(CalibrationRoutine.compass.description(whenAccelNeeded: true),
-           "Calibrate the accelerometer first.",
-           "a blocked row says what to do instead of how to do what it will not let you")
-    expect(CalibrationRoutine.compass.description(whenAccelNeeded: false),
-           CalibrationRoutine.compass.explanation,
-           "and goes back to its own instructions when it is available")
+    expect(needsAccel.routines.count == 5, "five routines are offered")
+    expect(by("compass")?.blocked ?? false,
+           "a compass calibration on an uncalibrated accelerometer gives a result to distrust")
+    expect(by("levelHorizon")?.blocked ?? false,
+           "and so does levelling the horizon against one")
+    expect(!(by("accelerometer")?.blocked ?? true),
+           "the accelerometer itself is the way out, so it is never blocked")
+    expect(!(by("gyro")?.blocked ?? true), "the gyro does not depend on it")
+    expect(!(by("pressure")?.blocked ?? true), "nor does the barometer")
+    expect(by("compass")?.description ?? "", "Calibrate the accelerometer first.",
+           "a blocked routine says why rather than only greying out")
+    expect(!(by("compass")?.enabled ?? true),
+           "and cannot be started, which is the only gate the head has left")
 }
 
 checkCalibrationOrder()
@@ -1343,55 +1352,62 @@ checkMeasure()
 checkSurveyStats()
 
 func checkCalibration() {
-    expect(!Calibration.read(["kind": "value"]).connected,
+    func side(_ key: String, _ title: String, _ stage: String, _ rotate: Bool = false) -> [String: Any] {
+        ["key": key, "title": title, "stage": stage, "rotate": rotate as NSNumber]
+    }
+    func routine(_ id: String, _ title: String, _ method: String, _ args: [Any] = [],
+                 _ blocked: Bool = false, _ enabled: Bool = true, _ description: String = "d",
+                 _ warning: String = "") -> [String: Any] {
+        ["id": id, "title": title, "invocation": "sensorsCal.\(method)", "arguments": args,
+         "blocked": blocked as NSNumber, "enabled": enabled as NSNumber,
+         "description": description, "warning": warning]
+    }
+
+    expect(!CalibrationState.disconnected.connected,
            "with no controller there is nothing to calibrate")
+    expect(!CalibrationState([:]).connected, "and a read that returned nothing is not connected")
 
-    expect(Calibration.property("UpsideDown", "InProgress"), "orientationCalUpsideDownSideInProgress",
-           "the side properties are derived from the key, matching what the controller exposes")
-    expect(Calibration.property("Down", "Done"), "orientationCalDownSideDone", "for every suffix")
-
-    let idle = Calibration.read(["kind": "object", "calProgress": 0])
-    expect(idle.connected, "an idle controller is still connected")
-    expect(!idle.busy, "and not busy")
-    expect(idle.visibleSides.isEmpty, "with no sides to show")
-    expect(idle.needsAttention, "", "and nothing demanding attention")
-
-    let needy = Calibration.read(["kind": "object", "accelSetupNeeded": true,
-                                  "compassSetupNeeded": true])
-    expect(needy.needsAttention, "The accelerometer and compass both need calibrating.",
-           "both outstanding calibrations are named together")
-    expect(Calibration.read(["kind": "object", "accelSetupNeeded": true]).needsAttention,
-           "The accelerometer needs calibrating.", "and one on its own reads singly")
-
-    let running: [String: Any] = [
-        "kind": "object", "calibrationInProgress": true, "calProgress": 33.4,
-        "showOrientationCalArea": true, "nextEnabled": true, "cancelEnabled": true,
-        "orientationHelpText": "Hold still", "statusText": "Rotate the vehicle",
-        "orientationCalDownSideVisible": true, "orientationCalDownSideDone": true,
-        "orientationCalLeftSideVisible": true, "orientationCalLeftSideInProgress": true,
-        "orientationCalLeftSideRotate": true,
-        "orientationCalRightSideVisible": true,
-    ]
-    let live = Calibration.read(running)
+    let live = CalibrationState([
+        "connected": true as NSNumber, "inProgress": true as NSNumber, "busy": true as NSNumber,
+        "showsSides": true as NSNumber, "nextEnabled": true as NSNumber,
+        "cancelEnabled": true as NSNumber, "progress": 33.4 as NSNumber, "progressText": "33%",
+        "helpText": "Hold still", "statusText": "Rotate the vehicle",
+        "needsAttention": "The accelerometer and compass both need calibrating.",
+        "visibleSides": [side("Down", "Level", "done"),
+                         side("Left", "Left side", "inProgress", true),
+                         side("Right", "Right side", "waiting")],
+        "routines": [routine("accelerometer", "Accelerometer", "calibrateAccel",
+                             [false as NSNumber])],
+    ])
     expect(live.busy, "a running calibration is busy")
-    expect(live.progressText, "33%", "progress is whole percent")
+    expect(live.progressText, "33%", "progress is the core's whole percent")
     expect(live.visibleSides.map(\.title).joined(separator: ","), "Level,Left side,Right side",
            "only the sides this calibration asks for are shown, in the vehicle's order")
-    expect(live.sides[0].stage == .done, "a finished side is done")
-    expect(live.sides[2].stage == .inProgress, "the one being held is in progress")
-    expect(live.sides[3].stage == .waiting, "and one not yet reached is waiting")
-    expect(live.sides[2].symbol, "arrow.triangle.2.circlepath",
+    expect(live.visibleSides[0].stage == .done, "a finished side is done")
+    expect(live.visibleSides[1].stage == .inProgress, "the one being held is in progress")
+    expect(live.visibleSides[2].stage == .waiting, "and one not yet reached is waiting")
+    expect(live.visibleSides[1].symbol, "arrow.triangle.2.circlepath",
            "a side that must be rotated says so rather than showing a plain arrow")
+    expect(live.needsAttention, "The accelerometer and compass both need calibrating.",
+           "and the core names both outstanding calibrations together")
 
-    let cancelling = Calibration.read(["kind": "object", "waitingForCancel": true])
-    expect(cancelling.busy, "a calibration being cancelled is still busy, so nothing else can start")
+    expect(CalibrationSide(side("X", "X", "somethingNew"))?.stage == .unknown,
+           "a stage the core adds later is unknown rather than silently drawn as waiting")
+    expect(CalibrationSide(side("X", "X", "somethingNew"))?.symbol ?? "", "circle",
+           "and it still gets a glyph rather than nothing at all")
+    expect(CalibrationSide(["title": "no key"]) == nil, "a side with no key is dropped")
 
-    expect(CalibrationRoutine.accelerometer.invocation, "sensorsCal.calibrateAccel",
-           "each routine names the controller method it calls")
-    expect(CalibrationRoutine.accelerometer.arguments.count == 1,
-           "the accelerometer takes its simple-calibration flag")
-    expect(CalibrationRoutine.gyro.arguments.isEmpty, "the others take none")
-    expect(CalibrationRoutine.allCases.count == 5, "five routines are offered")
+    let accel = CalibrationRoutine(routine("accelerometer", "Accelerometer", "calibrateAccel",
+                                           [false as NSNumber]))
+    expect(accel?.invocation ?? "", "sensorsCal.calibrateAccel",
+           "each routine names the controller method the core says to call")
+    expect(accel?.arguments == [false], "the accelerometer carries its simple-calibration flag")
+    expect(CalibrationRoutine(routine("gyro", "Gyro", "calibrateGyro"))?.arguments.isEmpty ?? false,
+           "the others take none")
+    expect(CalibrationRoutine(["id": "compass", "title": "Compass"]) == nil,
+           "a routine with no invocation is dropped rather than starting nothing on a press")
+    expect(CalibrationRoutine(["id": "compass", "invocation": ""]) == nil,
+           "and so is one whose invocation is empty")
 }
 
 checkCalibration()
@@ -2474,6 +2490,14 @@ func checkViewContract() {
         ("view.surveyStats(0)", [],
          ["available", "shotsText", "intervalText", "footprintText", "tooFast", "warning",
           "areaText", "distanceText"]),
+        ("view.calibration", [],
+         ["connected", "inProgress", "busy", "showsSides", "nextEnabled", "cancelEnabled",
+          "progress", "progressText", "helpText", "statusText", "needsAttention", "visibleSides",
+          "routines"]),
+        ("view.calibration", ["sides"], ["key", "title", "stage", "rotate"]),
+        ("view.calibration", ["routines"],
+         ["id", "title", "invocation", "arguments", "blocked", "enabled", "description",
+          "warning"]),
         ("view.missionSeed(survey,47,8)", ["points"], ["latitude", "longitude"]),
         ("view.links", ["configured"],
          ["index", "path", "name", "type", "typeLabel", "editing", "displaySummary", "connected",
@@ -2556,6 +2580,11 @@ func checkViewContract() {
     expect(recorded("view.fences.circles[].shape").joined(separator: ","), "circle",
            "and a circle's only ever circle, which is what isCircle reads")
 
+    let stages = recorded("view.calibration.sides[].stage")
+    expect(stages.filter { CalibrationSide.Stage($0) == .unknown }.joined(separator: ","), "",
+           "every calibration stage the core reports is one this head draws a glyph for, because a "
+           + "stage added later would otherwise show a plain circle for a side already done")
+
     let itemKinds = recorded("view.missionKinds.kinds[].id")
     expect(itemKinds.filter { MissionItemKind.symbol(forId: $0) == MissionKinds.unknownSymbol }
         .joined(separator: ","), "",
@@ -2596,6 +2625,8 @@ func checkViewContract() {
         ("view.missionKinds", ["kinds"], ["title", "shapeNoun", "placementHint"]),
         ("view.surveyStats(0)", [],
          ["shotsText", "intervalText", "footprintText", "warning", "areaText", "distanceText"]),
+        ("view.calibration", [], ["progressText", "helpText", "statusText", "needsAttention"]),
+        ("view.calibration", ["routines"], ["title", "description", "invocation"]),
     ]
     neverNull.forEach { view, inner, keys in
         let place = inner.isEmpty ? view : "\(view).\(inner.joined(separator: "."))"
