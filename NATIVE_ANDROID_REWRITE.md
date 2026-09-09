@@ -1087,7 +1087,7 @@ exists natively today:
 | `ObstacleDistanceOverlay` (map and video) | **built, in another form** | a sentence — "3.2 m right" — rather than a proximity ring |
 | `FlyViewToolStrip` + action list | **built, as an Actions sheet** | the checklist plus pause, gripper, emergency stop, mission start/continue, land abort; Viewer3D dropped |
 | `GuidedValueSlider` | **built** | altitude, speed, takeoff height, and pause all read their range from the core |
-| `DetectionOverlayVideo` | **built, live half unexercised** | draws `view.detections` over the painted video; no rig here can produce a feed |
+| `DetectionOverlayVideo` | **built and driven** | boxes verified on real video; they normalise to the surface, not the picture, which is wrong when the source is letterboxed |
 | `FlyViewCustomLayer` | **dropped** | a placeholder for downstream forks to override; nothing to port |
 | `OverlayGlass` / `OverlayRig` / `FlyViewInsetViewer` | **partly replaced** | Compose does the layout; what remains of the rig's job is the camera inset, and the bottom one is fed from the measured controls panel |
 | `Viewer3D` | **dropped** | decided in Phase 2; goes with `FlyView.qml` |
@@ -2081,11 +2081,40 @@ decode of the core's shape, the stale and unconfigured gates, the trouble messag
 caption — five unit tests — plus a device pass confirming the Fly tab is unaffected by
 mounting it.
 
-**The endpoint's port is what makes it unverifiable here.** The core builds
-`http://<host>/api/streams/<camera>/detections/stream` with no port, so standing up a fake feed
-means binding port 80, which on this machine needs root. With a port in the URL — or a
-configurable one — any rig could serve boxes on 8080 and watch them move. Raised with the core
-session as a testability note rather than a defect.
+**The endpoint's port was what made it unverifiable.** The core built
+`http://<host>/api/streams/<camera>/detections/stream` with no port, so a fake feed meant
+binding port 80 and that needs root here. Raised as a testability note; the core answered with
+`settings.appSettings.detectionsHttpPort`, and with a port the whole thing can be driven.
+
+### Driving the detection overlay
+
+`scratchpad/detrig.sh up` stands the rig up and `down` puts the device back. Both halves go
+through `adb reverse`, so nothing depends on which subnet the handset is on:
+
+- `detfeed.py` serves the agent's SSE shape on 8099 with two boxes, one of them the target and
+  one of them moving.
+- `gst-launch` sends a 640×480 test pattern with a burnt-in clock over TCP on 8100.
+- the device ini points `rtspUrl` at `rtsp://127.0.0.1:8554/front` for the host and camera name,
+  `tcpUrl` at `127.0.0.1:8100`, and `[General] detectionsHttpPort=8099`.
+
+**It works.** The core followed the stream, `view.detections` populated, and the overlay drew
+"car 91%" in the target colour and "person 47%" beside it, moving with the feed, over live
+decoding video — in the inset and again full screen.
+
+Two things the rig taught that reading could not.
+
+**`tcpUrl` must not carry its scheme.** With `tcpUrl=tcp://127.0.0.1:8100` GStreamer tried to
+resolve a host called `tcp`, because QGC prepends the scheme itself: `Failed to resolve host
+'tcp'`, from a URL logged as `tcp://tcp://127.0.0.1:8100`. The setting takes `host:port`.
+
+**The boxes normalise to the surface, not to the picture.** Full screen, a 4:3 source in a
+portrait surface is letterboxed: the picture occupies 1080×810 of a 1080×1770 surface, starting
+810 px down. The overlay spreads the same 0..1 over the whole surface, so a box at y=0.30 lands
+190 px high and is drawn 2.2× too tall — plainly visible as boxes running off the picture into
+the controls panel. The burnt-in clock, which GStreamer draws at the frame's top-left, is what
+pins the picture's real top edge. In the inset the source nearly filled the surface, which is
+why it looked right there. The head cannot fix this alone: it needs the source dimensions or
+the painted rect, and `view.video` serves neither. Raised with the core session.
 
 ### The shared index had a night's work staged for deletion
 
