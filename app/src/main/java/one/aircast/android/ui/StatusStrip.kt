@@ -17,10 +17,9 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
-import one.aircast.android.bridge.Fact
 import one.aircast.android.bridge.qgcBool
 import one.aircast.android.bridge.qgcDouble
-import one.aircast.android.bridge.qgcFacts
+import one.aircast.android.bridge.qgcString
 import one.aircast.android.bridge.qgcPath
 import one.aircast.android.bridge.Qgc
 import org.json.JSONObject
@@ -65,14 +64,13 @@ fun StatusStrip(modifier: Modifier = Modifier) {
     val available by qgcBool("vehicles.activeVehicleAvailable")
     if (!available) return
 
-    val gps by qgcFacts(GPS)
     val batteryJson by qgcPath(BATTERY)
     val rcRssi by qgcDouble("vehicle.rcRSSI", Double.NaN)
     val supportsRadio by qgcBool("vehicle.supportsRadio")
     val battery = remember(batteryJson) { batteryReading(batteryJson) }
-    val satellites = remember(gps) { gps.firstOrNull { it.name == "count" }?.valueString }
-    val hdop = remember(gps) { gps.firstOrNull { it.name == "hdop" }?.valueString }
-    val lock = remember(gps) { gps.firstOrNull { it.name == "lock" }?.valueString }
+    val satellites by qgcString("$GPS.count")
+    val hdop by qgcString("$GPS.hdop")
+    val lock by qgcString("$GPS.lock")
 
     Row(
         modifier
@@ -85,8 +83,8 @@ fun StatusStrip(modifier: Modifier = Modifier) {
         battery?.let { reading ->
             StatusCell("Battery", reading.text, batteryLevelColour(reading.level))
         }
-        satellites?.let { StatusCell("Sats", it, gpsColour(lock)) }
-        hdop?.let { StatusCell("HDOP", it, Color.Unspecified) }
+        satellites.ifBlank { null }?.let { StatusCell("Sats", it, gpsColour(lock)) }
+        hdop.ifBlank { null }?.let { StatusCell("HDOP", it, Color.Unspecified) }
         rcSignalText(supportsRadio, rcRssi.takeIf { !it.isNaN() }?.toInt())?.let {
             StatusCell("RC", it, Color.Unspecified)
         }
@@ -106,12 +104,6 @@ private fun StatusCell(label: String, value: String, colour: Color) {
     }
 }
 
-
-private fun factDouble(fact: Fact?): Double? = when (val value = fact?.value) {
-    is Number -> value.toDouble()
-    is String -> value.toDoubleOrNull()
-    else -> null
-}
 
 private fun batteryLevelColour(level: BatteryLevel): Color = when (level) {
     BatteryLevel.Normal -> Color.Unspecified
