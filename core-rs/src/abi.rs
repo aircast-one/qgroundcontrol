@@ -139,7 +139,8 @@ fn outcome(result: Result<u32, String>) -> *mut c_char {
 
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn qgc_core_link_open(config_json: *const c_char) -> *mut c_char {
-    outcome(crate::linkhost::TRANSPORTS.lock().unwrap().open_json(&text(config_json)))
+    let reserved = crate::linkhost::qt_udp_ports(&QtBackend);
+    outcome(crate::linkhost::TRANSPORTS.lock().unwrap().open_json(&text(config_json), &reserved))
 }
 
 #[unsafe(no_mangle)]

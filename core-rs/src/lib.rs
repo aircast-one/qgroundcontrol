@@ -40,6 +40,8 @@ pub mod radio;
 pub mod read;
 pub mod replay;
 pub mod sensors;
+#[cfg(not(target_os = "android"))]
+pub mod seriallink;
 pub mod sensorfacts;
 pub mod settings;
 pub mod settingsgroups;
