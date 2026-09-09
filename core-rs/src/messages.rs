@@ -2,9 +2,11 @@ use serde::Serialize;
 
 #[derive(Serialize, PartialEq, Debug)]
 pub struct Message {
+    pub index: usize,
     pub time: String,
     pub component: Option<u32>,
     pub severity: String,
+    pub level: &'static str,
     pub text: String,
 }
 
@@ -13,19 +15,31 @@ pub fn parse(formatted: &str) -> Vec<Message> {
         .split("</font><br/>")
         .filter(|chunk| !chunk.trim().is_empty())
         .filter_map(parse_one)
+        .enumerate()
+        .map(|(index, message)| Message { index, ..message })
         .collect()
 }
 
+pub fn level_of(style: &str) -> &'static str {
+    match (style.contains("#E"), style.contains("#I")) {
+        (true, _) => "error",
+        (_, true) => "warning",
+        _ => "normal",
+    }
+}
+
 fn parse_one(chunk: &str) -> Option<Message> {
-    let body = chunk.split_once("\">").map_or(chunk, |(_, rest)| rest);
+    let (style, body) = chunk.split_once("\">").unwrap_or(("", chunk));
     let (head, rest) = body.strip_prefix('[')?.split_once(']')?;
     let (time, component_tag) = head.split_once(' ').unwrap_or((head, ""));
     let component = component_tag.strip_prefix("COMP:").and_then(|id| id.parse().ok());
     let (severity, html) = rest.trim_start().split_once(": ").unwrap_or(("", rest.trim_start()));
     Some(Message {
+        index: 0,
         time: time.to_string(),
         component,
         severity: severity.to_string(),
+        level: level_of(style),
         text: plain_text(html),
     })
 }
@@ -50,8 +64,8 @@ mod tests {
     use super::*;
 
     const TWO: &str = concat!(
-        "<font style=\"color:orange\">[12:34:56.789 ] Warning: PreArm: Compass &amp; GPS &lt;inconsistent&gt;</font><br/>",
-        "<font style=\"color:white\">[12:34:55.000 COMP:1] Info: ArduCopter V4.5.7</font><br/>",
+        "<font style=\"<#I>\">[12:34:56.789 ] Warning: PreArm: Compass &amp; GPS &lt;inconsistent&gt;</font><br/>",
+        "<font style=\"<#N>\">[12:34:55.000 COMP:1] Info: ArduCopter V4.5.7</font><br/>",
     );
 
     #[test]
@@ -61,9 +75,14 @@ mod tests {
         assert_eq!(parsed[0].time, "12:34:56.789");
         assert_eq!(parsed[0].component, None);
         assert_eq!(parsed[0].severity, "Warning");
+        assert_eq!(parsed[0].level, "warning", "the level comes from the style token, not the translated word");
         assert_eq!(parsed[0].text, "PreArm: Compass & GPS <inconsistent>");
+        assert_eq!((parsed[0].index, parsed[1].index), (0, 1));
         assert_eq!(parsed[1].component, Some(1));
+        assert_eq!(parsed[1].level, "normal");
         assert_eq!(parsed[1].text, "ArduCopter V4.5.7");
+        assert_eq!(parse("<font style=\"<#E>\">[1:2:3.4 ] Fehler: kaputt</font><br/>")[0].level, "error", "a localized severity word still buckets by the token");
+        assert_eq!(parse("<font style=\"<#I>\">[1:2:3.4 ] Notice: heads up</font><br/>")[0].level, "warning", "a notice buckets as a warning, as the Qt handler colours it");
     }
 
     #[test]
