@@ -1179,11 +1179,12 @@ command now, with its parameters, plus arm, disarm and takeoff. The first run wi
 
 With the gate fixed the speed dialog opens and reads correctly - title "Ground speed" chosen by
 the core for a multirotor, its sentence, the slider seeded at 2.5 in a 0.1 to 5 range, and the
-sentence following the slider to 3.0 m/s. **Its confirm is still unobserved**: repeated taps at
-the measured centre of the Set button leave the dialog open, so the handler is not being reached
-by `input tap` at all. That is a harness problem rather than a code one - the same confirm path
-is verified sending on takeoff and on altitude - and it is recorded as unverified rather than
-assumed.
+sentence following the slider to 3.0 m/s. Its confirm went unobserved for a long time: taps at
+what I had measured as the centre of the Set button left the dialog open. It was a harness
+problem, as suspected. **It is now observed on the wire**: with the dialog reading "The aircraft
+will fly at 3.6 m/s.", tapping Set at (809, 1326) sent `MAV_CMD_DO_CHANGE_SPEED` (178) with
+speed type 1 and 3.56 m/s. The rule that closed it is the same one that keeps biting: measure
+the button on the frame you are about to tap, not on an earlier one.
 
 **The same double gate was on all three guided buttons.** Auditing for the pattern found
 takeoff and altitude gated exactly as speed had been - the core's offer *and* a locally watched
@@ -2001,6 +2002,27 @@ work; this is the measurement, handed over.
 
 Unwatching is healthy, incidentally: leaving the Fly tab takes the watch list from 70 paths to
 18 and back again, so nothing accumulates.
+
+### Arming said it had failed, every time it worked
+
+Chasing the speed confirm turned up a banner reading "Arm was not confirmed by the aircraft."
+on a vehicle that had plainly armed — the button already said Disarm and Land, Return and Speed
+had all come alive behind it.
+
+`attemptCommand` polls a `reached` predicate until it holds or four seconds pass. The arm
+button passed `{ armedNow() == !armed }`, and `armed` there is a Compose state read, not a
+captured value, so it is re-read on every poll. The instant the vehicle armed, `armed` flipped
+true, `!armed` became false, and the predicate started asking whether an armed vehicle is
+disarmed. It could only ever time out. The faster the vehicle armed, the more certainly the
+head called it a failure.
+
+The fix is to capture the target once, before the polling starts, which is also what the flight
+mode picker already did — its predicate compares against a captured `mode.name` and has never
+misreported. Verified both directions on the handset: arm and disarm, no banner either time.
+
+A false refusal on the arm path is worse than it looks. It teaches an operator that the
+message means nothing, which is exactly the wrong lesson for the one control that has to be
+believed.
 
 ## Phase 6 — Shell · 2 weeks
 
