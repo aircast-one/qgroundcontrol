@@ -1880,6 +1880,35 @@ func checkDetections() {
 
 checkDetections()
 
+final class ProbeStub: Probeable {
+    static let probeID = "stub"
+    private(set) var invoked: [String] = []
+    func probeState() -> [String: Any] { ["count": 2, "where": "the real store"] }
+    func probeInvoke(action: String, args: [String: String]) -> [String: Any] {
+        invoked.append(action)
+        return ["ok": true]
+    }
+}
+
+func checkReadOnlyProbe() {
+    let store = ProbeStub()
+    let reader = ReadOnlyProbe(store, as: "flyMission")
+
+    expect((reader.probeState()["where"] as? String) ?? "", "the real store",
+           "a read-only handle shows the store's own state, which is the whole point of having it")
+    expect((reader.probeState()["count"] as? Int) == 2, "every field, not a chosen few")
+
+    let refused = reader.probeInvoke(action: "upload", args: [:])
+    expect((refused["ok"] as? Bool) ?? true == false, "and refuses an action rather than running it")
+    expect((refused["error"] as? String) ?? "", "flyMission is read-only",
+           "naming itself, so a refusal in a log says which handle was used")
+    expect(store.invoked.joined(separator: ","), "",
+           "the refusal is a refusal, not a report: the plan store never saw the upload, which is "
+           + "why the Fly view's copy is registered through this and not directly")
+}
+
+checkReadOnlyProbe()
+
 func checkPreflight() {
     func check(_ name: String, _ verdict: String, _ blocked: Bool) -> [String: Any] {
         ["name": name, "prompt": "P", "verdict": verdict, "reason": "R",

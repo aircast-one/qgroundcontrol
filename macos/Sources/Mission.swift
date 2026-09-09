@@ -46,6 +46,23 @@ final class MissionStore: ObservableObject, Probeable, WriteReporting {
     @Published private(set) var kinds = MissionKinds.empty
 
     private var undoPoll: Timer?
+    private var watchPoll: Timer?
+
+    // The Fly view only reads this plan; the Plan window is what edits it, and a plan can also
+    // arrive from the vehicle or a file. So a reader has to look again rather than wait for a
+    // telemetry tick that a vehicle on the ground never sends.
+    func startWatching() {
+        guard watchPoll == nil else { return }
+        reload()
+        watchPoll = Timer.scheduledTimer(withTimeInterval: 0.5, repeats: true) { [weak self] _ in
+            self?.reload()
+        }
+    }
+
+    func stopWatching() {
+        watchPoll?.invalidate()
+        watchPoll = nil
+    }
 
     func reload() {
         let controller = Bridge.group("plan.missionController")
@@ -714,7 +731,7 @@ final class MissionStore: ObservableObject, Probeable, WriteReporting {
                        "units": selectedSpeed.units],
          "arming": arming ?? "",
          "patterns": patterns,
-         "planFile": planFile, "planName": planName,
+         "planFile": planFile, "watching": watchPoll != nil, "planName": planName,
          "readyToSave": readyToSave, "notReadyReason": notReadyReason,
          "uploadWarning": uploadWarning.map(\.refusal) ?? "",
          "writeFailure": writeFailure ?? "",

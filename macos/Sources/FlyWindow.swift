@@ -842,7 +842,7 @@ struct FlyView: View {
         }
         .frame(minWidth: 820, minHeight: 600)
         .onAppear {
-            mission.reload()
+            mission.startWatching()
             fly.start()
             instruments.refresh()
             guided.refresh()
@@ -853,6 +853,7 @@ struct FlyView: View {
         .onDisappear {
             fly.stop()
             mapClick.stop()
+            mission.stopWatching()
             instruments.clear()
             video.clear()
         }
@@ -879,6 +880,7 @@ final class FlyWindow: NSObject, NSWindowDelegate {
     override init() {
         super.init()
         NativeProbe.register(fly)
+        NativeProbe.register(ReadOnlyProbe(mission, as: "flyMission"), as: "flyMission")
         NativeProbe.register(instruments)
         NativeProbe.register(guided)
         NativeProbe.register(mapClick)
@@ -912,6 +914,8 @@ final class FlyWindow: NSObject, NSWindowDelegate {
 
     func windowWillClose(_ notification: Notification) {
         fly.stop()
+        mission.stopWatching()
+        video.stopDetections()
         window = nil
     }
 }
