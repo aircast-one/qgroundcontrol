@@ -280,6 +280,7 @@
             "view.coreVehicle",
             "view.coreGuided",
             "view.coreParameter",
+            "view.coreParameters",
             "view.detections",
             "view.kmlFile",
             "view.shapeFile",

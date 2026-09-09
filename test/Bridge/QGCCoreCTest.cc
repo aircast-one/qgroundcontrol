@@ -788,6 +788,17 @@ void QGCCoreCTest::_coreConnectSequenceReachesParameters()
     const QJsonObject parameter = take(qgc_bridge_get("view.coreParameter(11, RTL_ALT)"));
     QVERIFY2(parameter.value(QStringLiteral("available")).toBool(false), qPrintable(QString::fromUtf8(QJsonDocument(parameter).toJson(QJsonDocument::Compact))));
     QCOMPARE(parameter.value(QStringLiteral("value")).toDouble(), 1500.0);
+    QCOMPARE(take(qgc_bridge_get("view.coreParameters(11)")).value(QStringLiteral("count")).toInt(), 2);
+
+    const QJsonObject written = take(qgc_core_parameter("{\"vehicle\":11,\"name\":\"RTL_ALT\",\"value\":2000}"));
+    QVERIFY2(written.value(QStringLiteral("ok")).toBool(false), qPrintable(written.value(QStringLiteral("reason")).toString()));
+    QVERIFY2(expectRequest(MAVLINK_MSG_ID_PARAM_SET, 0), "no PARAM_SET reached the peer");
+    mavlink_msg_param_value_pack(11, 1, &value, "RTL_ALT", 2000.0f, MAV_PARAM_TYPE_REAL32, 2, 0);
+    send(value);
+    const auto rtlAltitude = []() { return take(qgc_bridge_get("view.coreParameter(11, RTL_ALT)")).value(QStringLiteral("value")).toDouble(); };
+    QTRY_COMPARE_WITH_TIMEOUT(rtlAltitude(), 2000.0, 3000);
+    QCOMPARE(take(qgc_core_parameter("{\"vehicle\":11,\"name\":\"UNKNOWN\",\"value\":1}")).value(QStringLiteral("ok")).toBool(true), false);
+    QCOMPARE(take(qgc_core_parameter("{\"vehicle\":11,\"name\":\"RTL_ALT\",\"value\":1e40}")).value(QStringLiteral("ok")).toBool(true), false);
 
     config->link()->disconnect();
     QTRY_VERIFY_WITH_TIMEOUT(!coreSeesVehicle(), 10000);

@@ -38,6 +38,24 @@ impl ParamValue {
         })
     }
 
+    pub fn from_f64(param_type: u8, value: f64) -> Option<ParamValue> {
+        if !value.is_finite() {
+            return None;
+        }
+        let whole = (value.fract() == 0.0).then(|| value as i64);
+        Some(match param_type {
+            1 => ParamValue::U8(u8::try_from(whole?).ok()?),
+            2 => ParamValue::I8(i8::try_from(whole?).ok()?),
+            3 => ParamValue::U16(u16::try_from(whole?).ok()?),
+            4 => ParamValue::I16(i16::try_from(whole?).ok()?),
+            5 => ParamValue::U32(u32::try_from(whole?).ok()?),
+            6 => ParamValue::I32(i32::try_from(whole?).ok()?),
+            9 => ParamValue::F32((value as f32).is_finite().then_some(value as f32)?),
+            _ => return None,
+        })
+    }
+
+
     pub fn param_type(self) -> u8 {
         match self {
             ParamValue::U8(_) => 1,
@@ -132,6 +150,10 @@ impl Params {
 
     pub fn value(&self, component: u8, name: &str) -> Option<ParamValue> {
         self.facts.get(&component)?.get(name).copied()
+    }
+
+    pub fn entries(&self, component: u8) -> impl Iterator<Item = (&String, &ParamValue)> {
+        self.facts.get(&component).into_iter().flatten()
     }
 
     pub fn names(&self, component: u8) -> Vec<String> {

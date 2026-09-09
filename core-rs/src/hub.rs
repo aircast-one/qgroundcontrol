@@ -143,6 +143,31 @@ impl Vehicle {
         self.params.value(component, name)
     }
 
+    pub fn parameters(&self, component: u8) -> Vec<(String, ParamValue)> {
+        self.params.entries(component).map(|(name, value)| (name.clone(), *value)).collect()
+    }
+
+    pub fn parameter_request(&mut self, request: &Value, now_ms: u64) -> Result<Vec<Vec<u8>>, String> {
+        if !self.params.ready() {
+            return Err("Parameters are still loading.".to_string());
+        }
+        let component = request.get("component").and_then(Value::as_u64).filter(|c| (1..=255).contains(c)).map(|c| c as u8).unwrap_or(self.component);
+        let name = request
+            .get("name")
+            .and_then(Value::as_str)
+            .filter(|n| !n.is_empty() && n.len() <= 16 && n.bytes().all(|b| b.is_ascii_graphic()))
+            .ok_or_else(|| "A parameter name of at most sixteen printable characters is required.".to_string())?;
+        if request.get("refresh").and_then(Value::as_bool).unwrap_or(false) {
+            let actions = self.params.refresh(component, name);
+            return Ok(self.follow_params(actions, now_ms));
+        }
+        let number = request.get("value").and_then(Value::as_f64).ok_or_else(|| format!("A numeric value is required to set {name}."))?;
+        let known = self.params.value(component, name).ok_or_else(|| format!("{name} is not a parameter of component {component}."))?;
+        let value = ParamValue::from_f64(known.param_type(), number).ok_or_else(|| format!("{number} is out of range for {name} (type {}).", known.param_type()))?;
+        let actions = self.params.write(component, name, value);
+        Ok(self.follow_params(actions, now_ms))
+    }
+
     fn begin_connect(&mut self, now_ms: u64) -> Vec<Vec<u8>> {
         let actions = self.connect.start(&self.connect_link(), &self.connect_vehicle());
         self.follow_connect(actions, now_ms)
@@ -609,6 +634,13 @@ impl Hub {
         vehicle.start_guided(action, now_ms).map(|frames| frames.into_iter().map(|bytes| (link, bytes)).collect())
     }
 
+    pub fn parameter_request(&mut self, id: Option<u8>, request: &Value, now_ms: u64) -> Result<Vec<(LinkId, Vec<u8>)>, String> {
+        let chosen = id.or(self.active).ok_or_else(|| "No vehicle is connected through the core.".to_string())?;
+        let vehicle = self.vehicles.get_mut(&chosen).ok_or_else(|| format!("Vehicle {chosen} is not connected through the core."))?;
+        let link = vehicle.link;
+        vehicle.parameter_request(request, now_ms).map(|frames| frames.into_iter().map(|bytes| (link, bytes)).collect())
+    }
+
     pub fn guided_snapshot(&self, id: Option<u8>) -> Value {
         let chosen = id.and_then(|id| self.vehicles.get(&id)).or_else(|| self.active());
         json!({
@@ -678,6 +710,21 @@ pub fn core_vehicle_view(_backend: &dyn crate::router::Backend, args: &[String])
 
 pub fn core_guided_view(_backend: &dyn crate::router::Backend, args: &[String]) -> Value {
     lock().guided_snapshot(args.first().and_then(|a| a.trim().parse().ok()))
+}
+
+pub fn core_parameters_view(_backend: &dyn crate::router::Backend, args: &[String]) -> Value {
+    let hub = lock();
+    let vehicle = args.first().and_then(|a| a.trim().parse().ok()).and_then(|id| hub.vehicles.get(&id)).or_else(|| hub.active());
+    let listed: serde_json::Map<String, Value> = vehicle.map(|v| v.parameters(v.component).into_iter().map(|(name, value)| (name, json!({ "value": value.as_f64(), "type": value.param_type() }))).collect()).unwrap_or_default();
+    json!({
+        "kind": "object",
+        "class": "CoreParameters",
+        "available": vehicle.is_some(),
+        "vehicleId": vehicle.map(|v| v.id),
+        "ready": vehicle.is_some_and(|v| v.params.ready()),
+        "count": listed.len(),
+        "parameters": listed,
+    })
 }
 
 pub fn core_parameter_view(_backend: &dyn crate::router::Backend, args: &[String]) -> Value {
@@ -876,6 +923,31 @@ mod tests {
         assert_eq!(snapshot["vehicle"]["connectProgress"], 1.0);
         assert_eq!(hub.active().unwrap().parameter(1, "RTL_ALT").map(ParamValue::as_f64), Some(1500.0));
         assert!(hub.tick(10_000).is_empty(), "nothing is pending once connected");
+        let written = hub.parameter_request(None, &json!({ "name": "RTL_ALT", "value": 2000.0 }), 11_000).unwrap();
+        let MavMessage::PARAM_SET(set) = decode(&written[0].1) else { panic!() };
+        assert_eq!((set.param_id.to_str().unwrap(), set.param_value, set.param_type as u8, set.target_component), ("RTL_ALT", 2000.0, 9, 1));
+        assert_eq!(hub.parameter_request(None, &json!({ "name": "NEW_ONE", "value": 1.0 }), 11_000).unwrap_err(), "NEW_ONE is not a parameter of component 1.");
+        assert!(hub.parameter_request(None, &json!({ "name": "RTL ALT", "value": 1.0 }), 11_000).is_err(), "a name with a space never goes on the wire");
+        hub.on_frame(4, false, &autopilot, &param_value("RTL_ALT", 2, 0, 2000.0), 11_100_000, 11_100);
+        assert_eq!(hub.active().unwrap().parameter(1, "RTL_ALT").map(ParamValue::as_f64), Some(2000.0));
+        let refreshed = hub.parameter_request(Some(1), &json!({ "name": "WPNAV_SPEED", "refresh": true }), 12_000).unwrap();
+        assert!(matches!(decode(&refreshed[0].1), MavMessage::PARAM_REQUEST_READ(r) if r.param_index == -1 && r.param_id.to_str().unwrap() == "WPNAV_SPEED"));
+        assert!(hub.parameter_request(Some(9), &json!({ "name": "X", "value": 1.0 }), 12_000).is_err());
+    }
+
+    #[test]
+    fn a_write_waits_for_the_parameter_list_and_refuses_values_the_type_cannot_hold() {
+        let autopilot = MavHeader { system_id: 1, component_id: 1, sequence: 0 };
+        let mut hub = Hub::default();
+        hub.on_frame(4, false, &autopilot, &copter_heartbeat(5, false), 0, 0);
+        assert_eq!(hub.parameter_request(None, &json!({ "name": "RTL_ALT", "value": 1.0 }), 10).unwrap_err(), "Parameters are still loading.");
+        assert_eq!(ParamValue::from_f64(1, 300.0), None);
+        assert_eq!(ParamValue::from_f64(1, -1.0), None);
+        assert_eq!(ParamValue::from_f64(6, 1.5), None);
+        assert_eq!(ParamValue::from_f64(6, f64::NAN), None);
+        assert_eq!(ParamValue::from_f64(9, 1e40), None);
+        assert_eq!(ParamValue::from_f64(3, 65535.0), Some(ParamValue::U16(65535)));
+        assert_eq!(ParamValue::from_f64(9, 1.5), Some(ParamValue::F32(1.5)));
     }
 
     #[test]
