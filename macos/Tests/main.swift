@@ -2502,6 +2502,8 @@ func checkViewContract() {
         ("view.terrainProfile", [],
          ["usable", "groundKnown", "hasCollision", "unknownTerrain", "minAltitudeMeters",
           "maxAltitudeMeters", "distanceText", "lowestText", "highestText", "points"]),
+        ("view.terrainProfile", ["points"],
+         ["x", "missionAltitude", "terrainAltitude", "collision"]),
         ("view.links", ["configured"],
          ["index", "path", "name", "type", "typeLabel", "editing", "displaySummary", "connected",
           "autoConnect", "host", "port", "portName", "baud", "filename", "logFileName",
