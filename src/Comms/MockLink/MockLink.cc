@@ -1756,6 +1756,9 @@ bool MockLink::_handleRequestMessage(const mavlink_command_long_t &request, bool
     }
     case MAVLINK_MSG_ID_AVAILABLE_MODES:
     {
+        if (_firmwareType != MAV_AUTOPILOT_PX4) {
+            return false;
+        }
         if (request.param2 == 0) {
             // Request for available modes to be streamed out
             if (_availableModesWorkerNextModeIndex != 0) {
@@ -1956,6 +1959,9 @@ void MockLink::_availableModesWorker()
 
 void MockLink::_sendAvailableModesMonitor()
 {
+    if (_firmwareType != MAV_AUTOPILOT_PX4) {
+        return;
+    }
     mavlink_message_t msg{};
 
     (void) mavlink_msg_available_modes_monitor_pack_chan(
