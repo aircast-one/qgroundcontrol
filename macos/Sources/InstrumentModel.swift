@@ -64,29 +64,30 @@ struct InstrumentGroup: Identifiable, Equatable {
 
     static let vehicleTitle = "Vehicle"
 
-    static func title(for group: String) -> String {
+    static func title(for group: String, label: (String) -> String) -> String {
         guard !group.isEmpty else { return vehicleTitle }
         if group == "batteries.0" { return "Battery 1" }
-        return Fact.humanise(group)
+        return label(group)
     }
 
-    static func facts(in json: [String: Any]) -> [InstrumentFact] {
+    static func facts(in json: [String: Any], label: (String) -> String) -> [InstrumentFact] {
         ((json["facts"] as? [[String: Any]]) ?? []).compactMap { fact in
             guard let name = fact["name"] as? String, !name.isEmpty else { return nil }
             let described = (fact["shortDescription"] as? String) ?? ""
-            return InstrumentFact(name: name,
-                                  label: described.isEmpty ? Fact.humanise(name) : described)
+            return InstrumentFact(name: name, label: described.isEmpty ? label(name) : described)
         }
     }
 
     static let vehicleAlias = "vehicle"
 
-    static func assemble(_ read: [(group: String, json: [String: Any])]) -> [InstrumentGroup] {
+    static func assemble(_ read: [(group: String, json: [String: Any])],
+                         label: (String) -> String) -> [InstrumentGroup] {
         read.compactMap { entry in
             guard entry.group != vehicleAlias else { return nil }
-            let listed = facts(in: entry.json)
+            let listed = facts(in: entry.json, label: label)
             guard !listed.isEmpty else { return nil }
-            return InstrumentGroup(group: entry.group, title: title(for: entry.group), facts: listed)
+            return InstrumentGroup(group: entry.group,
+                                   title: title(for: entry.group, label: label), facts: listed)
         }
     }
 }

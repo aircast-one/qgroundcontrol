@@ -16,17 +16,6 @@ func expect(_ condition: Bool, _ label: String) {
     }
 }
 
-// humanise turns C++ identifiers into sidebar and row labels. It was wrong twice:
-// splitting every capital ("Remote I D") and losing lowercase-leading acronyms ("Rtk").
-expect(Fact.humanise("remoteIDSettings"), "Remote ID Settings", "acronym run kept together")
-expect(Fact.humanise("adsbVehicleManager"), "ADSB Vehicle Manager", "leading lowercase acronym")
-expect(Fact.humanise("rtkSettings"), "RTK Settings", "short leading acronym")
-expect(Fact.humanise("viewer3D"), "Viewer 3D", "letter to digit boundary")
-expect(Fact.humanise("apmMavlinkStreamRate"), "APM Mavlink Stream Rate", "acronym then words")
-expect(Fact.humanise("offlineEditingCruiseSpeed"), "Offline Editing Cruise Speed", "plain camel case")
-expect(Fact.humanise(""), "", "empty identifier")
-expect(Fact.humanise("x"), "X", "single character")
-
 let controlJson: [String: Any] = [
     "path": "settings.appSettings.audioMuted", "name": "audioMuted", "label": "Audio muted",
     "control": "toggle", "value": true as NSNumber, "valueString": "true", "display": "On",
@@ -599,7 +588,7 @@ func checkItemFacts() {
         ["name": "Delay", "valueString": "45", "units": "secs"],
         ["name": "Mode", "valueString": "Hold", "units": "", "enumStrings": ["Hold", "Continue"]],
         ["valueString": "12"],
-    ], list: "textFieldFacts")
+    ], list: "textFieldFacts", label: { "<\($0)>" })
 
     expect(facts.count == 2, "a fact with no name is dropped")
     expect(facts[0].id, "textFieldFacts.0", "a fact is addressed by its list and position")
@@ -609,24 +598,27 @@ func checkItemFacts() {
         ["name": "Grid angle", "property": "gridAngle", "valueString": "0", "units": "deg"],
         ["name": "Refly", "property": "refly90Degrees", "valueString": "false", "readOnly": true],
         ["name": "No property", "valueString": "1"],
-    ])
+    ], label: { "<\($0)>" })
     expect(owned.count == 2, "a fact with no property is not addressable and is dropped")
     expect(owned[0].id, "gridAngle", "an item's own fact is addressed by its property")
     expect(!owned[0].readOnly, "an editable fact is editable")
     expect(owned[1].readOnly, "a read-only fact says so")
-    expect(owned[0].title, "Grid angle", "a described fact shows its description")
+    expect(owned[0].title, "<Grid angle>",
+           "a fact the vehicle did not describe is named by the core \u{2014} this fixture has no "
+           + "shortDescription, and the old assertion only looked right because humanising "
+           + "\"Grid angle\" returned it unchanged")
 
     let identifiers = ItemFact.owned([
         ["name": "TurnAroundDistanceMultiRotor", "property": "turnAroundDistance", "valueString": "10"],
         ["name": "HoverAndCapture", "property": "hoverAndCapture", "valueString": "false", "typeIsBool": true],
-    ])
+    ], label: { "<\($0)>" })
     let cameraFacts = ItemFact.camera([
         ["name": "SensorWidth", "property": "sensorWidth", "valueString": "7.6", "units": "mm"],
         ["name": "FrontalOverlap", "property": "frontalOverlap", "valueString": "70", "units": "%"],
         ["name": "DistanceToSurface", "property": "distanceToSurface", "valueString": "50", "units": "m"],
         ["name": "SideOverlap", "property": "sideOverlap", "valueString": "70", "units": "%"],
         ["name": "ImageDensity", "property": "imageDensity", "valueString": "1.8", "units": "cm/px"],
-    ])
+    ], label: { "<\($0)>" })
     expect(cameraFacts.count == 4, "only the four that decide a survey are offered")
     expect(cameraFacts[0].id, "cameraCalc.distanceToSurface", "a camera fact is addressed through cameraCalc")
     expect(cameraFacts[0].group, ItemFact.cameraGroup, "and is grouped as camera")
@@ -1907,21 +1899,25 @@ func checkInstrumentGroups() {
         ("batteries.0", ["facts": [["name": "voltage", "shortDescription": "Voltage"]]]),
     ]
 
-    let groups = InstrumentGroup.assemble(read)
-    expect(groups.map(\.title).joined(separator: ","), "Vehicle,GPS,Battery 1",
-           "a child carrying no facts is dropped, so rpm never reaches the picker")
-    expect(groups[0].facts.map(\.label).joined(separator: ","), "Heading,Air Speed Setpoint",
-           "a fact with no description falls back to its split name")
+    let groups = InstrumentGroup.assemble(read, label: { "<\($0)>" })
+    expect(groups.map(\.title).joined(separator: ","), "Vehicle,<gps>,Battery 1",
+           "a child carrying no facts is dropped, so rpm never reaches the picker, and a group "
+           + "the head does not name itself is labelled by the core")
+    expect(groups[0].facts.map(\.label).joined(separator: ","), "Heading,<airSpeedSetpoint>",
+           "a described fact keeps the vehicle's own description, and only one without falls "
+           + "back to the core's label for its name")
     expect(groups[0].facts.map(\.name).joined(separator: ","), "heading,airSpeedSetpoint",
            "while the name stays exactly as the vehicle reports it")
 
-    expect(InstrumentGroup.title(for: ""), "Vehicle", "the vehicle's own facts are titled for it")
-    expect(InstrumentGroup.title(for: "batteries.0"), "Battery 1",
-           "an indexed battery reads as a battery, not as a path")
-    expect(InstrumentGroup.title(for: "estimatorStatus"), "Estimator Status",
-           "and a plain group is split into words")
+    expect(InstrumentGroup.title(for: "", label: { $0 }), "Vehicle",
+           "the vehicle's own facts are titled for it without asking the core")
+    expect(InstrumentGroup.title(for: "batteries.0", label: { $0 }), "Battery 1",
+           "an indexed battery reads as a battery, not as a path, and also without asking")
+    expect(InstrumentGroup.title(for: "estimatorStatus", label: { "<\($0)>" }), "<estimatorStatus>",
+           "while any other group is named by the core")
 
-    expect(InstrumentGroup.assemble([("gps", ["facts": [["shortDescription": "no name"]]])]).isEmpty,
+    expect(InstrumentGroup.assemble([("gps", ["facts": [["shortDescription": "no name"]]])],
+                                    label: { $0 }).isEmpty,
            "a fact with no name is not offered, so an empty group is dropped entirely")
 
     let aliased: [(group: String, json: [String: Any])] = [
@@ -1930,9 +1926,10 @@ func checkInstrumentGroups() {
         ("gps", ["facts": [["name": "lat"], ["name": "lon"]]]),
         ("gps2", ["facts": [["name": "lat"], ["name": "lon"]]]),
     ]
-    expect(InstrumentGroup.assemble(aliased).map(\.title).joined(separator: ","), "Vehicle,GPS,GPS 2",
-           "the vehicle lists itself among its children, so that one alias goes; two GPS units share a schema and both stay, "
-           + "named the way Battery 1 is rather than as Gps2")
+    expect(InstrumentGroup.assemble(aliased, label: { "<\($0)>" }).map(\.title)
+        .joined(separator: ","), "Vehicle,<gps>,<gps2>",
+           "the vehicle lists itself among its children, so that one alias goes, and two GPS "
+           + "units share a schema so both stay and both are named by the core")
 }
 
 checkInstrumentGroups()
@@ -1984,7 +1981,6 @@ checkMenuPlacement()
 checkOverlayArrange()
 checkCentreNotes()
 checkPlanViewState()
-checkInstrumentLabels()
 checkMapFollow()
 checkMapScale()
 checkTerrainDownload()
@@ -2051,9 +2047,9 @@ func checkLaunchAltitudeIsNotListedTwice() {
         ["property": "plannedHomePositionAltitude", "name": "PlannedHomePositionAltitude",
          "units": "m", "valueString": "0.0"],
         ["property": "holdTime", "name": "Hold", "units": "secs", "valueString": "0"],
-    ])
+    ], label: { "<\($0)>" })
     expect(facts.count == 1, "the launch altitude is left out of the generic settings list")
-    expect(facts.first?.title ?? "", "Hold", "the item's own facts are still listed")
+    expect(facts.first?.title ?? "", "<Hold>", "the item's own facts are still listed")
 }
 
 
@@ -2524,6 +2520,7 @@ func checkViewContract() {
         ("view.logs", [],
          ["connected", "requestingList", "downloading", "canRefresh", "canDownload", "canCancel",
           "canErase", "emptyText", "eraseWarning", "entries"]),
+        ("view.label(altitudeRelative)", [], ["value"]),
         ("view.missionSeed(survey,47,8)", ["points"], ["latitude", "longitude"]),
         ("view.links", ["configured"],
          ["index", "path", "name", "type", "typeLabel", "editing", "displaySummary", "connected",
@@ -2659,6 +2656,7 @@ func checkViewContract() {
         ("view.inspector", ["messages"], ["title", "rateText", "targetRateTitle"]),
         ("view.inspector", ["rateChoices"], ["title"]),
         ("view.logs", [], ["emptyText", "eraseWarning"]),
+        ("view.label(altitudeRelative)", [], ["value"]),
     ]
     neverNull.forEach { view, inner, keys in
         let place = inner.isEmpty ? view : "\(view).\(inner.joined(separator: "."))"
@@ -2826,16 +2824,6 @@ func checkPolygonEdit() {
     expect(EditablePolygon(nil) == nil, "and no answer is no polygon")
 }
 
-func checkInstrumentLabels() {
-    expect(Fact.humanise("groundSpeed") == "Ground Speed",
-           "a plain camelCase fact name splits into words")
-    expect(Fact.humanise("altitudeAMSL") == "Altitude AMSL",
-           "an acronym stays one word rather than becoming A M S L")
-    expect(Fact.humanise("distanceToGCS") == "Distance To GCS",
-           "and so does a trailing acronym")
-    expect(Fact.humanise("hdop") == "Hdop",
-           "a single lowercase word is just capitalised")
-}
 
 
 func checkPlanViewState() {

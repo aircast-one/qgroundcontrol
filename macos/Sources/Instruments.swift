@@ -88,7 +88,7 @@ final class InstrumentsStore: ObservableObject, Probeable {
                  ? vehicle
                  : Bridge.group("vehicle.\(group)"))
         }
-        let assembled = InstrumentGroup.assemble(read)
+        let assembled = InstrumentGroup.assemble(read, label: Labels.humanise)
         if assembled != groups { groups = assembled }
     }
 

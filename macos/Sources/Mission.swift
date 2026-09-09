@@ -324,7 +324,7 @@ final class MissionStore: ObservableObject, Probeable, WriteReporting {
         let listed = ItemFact.lists.flatMap { list in
             ItemFact.from(
                 (Bridge.group("plan.missionController.visualItems.\(item.index).\(list)")["elements"] as? [Any]) ?? [],
-                list: list)
+                list: list, label: Labels.humanise)
         }
 
         let calc = item.isSimpleItem
@@ -338,10 +338,11 @@ final class MissionStore: ObservableObject, Probeable, WriteReporting {
             : AltitudeMode.none
 
         let cameraFacts = item.isSimpleItem ? [] : ItemFact.camera(
-            (calc["facts"] as? [Any]) ?? [])
+            (calc["facts"] as? [Any]) ?? [], label: Labels.humanise)
 
         selectedFacts = cameraFacts + (listed.isEmpty && !item.isSimpleItem
-            ? ItemFact.owned((Bridge.group("plan.missionController.visualItems.\(item.index)")["facts"] as? [Any]) ?? [])
+            ? ItemFact.owned((Bridge.group("plan.missionController.visualItems.\(item.index)")["facts"] as? [Any]) ?? [],
+                          label: Labels.humanise)
             : listed)
     }
 
@@ -744,7 +745,8 @@ final class MissionStore: ObservableObject, Probeable, WriteReporting {
                     "brands": camera.brands.count, "models": camera.models.count,
                     "describes": camera.describes],
          "facts": selectedFacts.map {
-             ["name": $0.name, "value": $0.value, "units": $0.units, "group": $0.group, "path": $0.pathSuffix]
+             ["name": $0.name, "title": $0.title, "value": $0.value, "units": $0.units,
+              "group": $0.group, "path": $0.pathSuffix]
          },
          "terrain": ["points": terrain.points.count, "usable": terrain.usable,
                      "collision": terrain.hasCollision,

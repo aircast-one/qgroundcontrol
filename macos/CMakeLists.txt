@@ -100,7 +100,7 @@ add_library(QGCNativeUI STATIC
     Sources/OverlayKit.swift
     Sources/AppShell.swift
     Sources/Bridge.swift
-    Sources/Fact.swift
+    Sources/Labels.swift
     Sources/SettingsPages.swift
     Sources/AboutModel.swift
     Sources/SettingsStore.swift
