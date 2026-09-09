@@ -2416,6 +2416,34 @@ commits never update, so it reported 37 phantom uncommitted lines in a file that
 exactly. `git diff HEAD` is the one to trust here, for the same reason the staged-deletion check
 needs `GIT_INDEX_FILE` unset.
 
+### Vehicle messages stop being parsed twice
+
+The head was splitting QGC's `formattedMessages` HTML itself — its own tag stripper, its own
+entity table, its own reading of the `<#E>` and `<#I>` style tokens. The core serves
+`view.messages`, so that parser is deleted. The head gained timestamps and a severity word it
+never had, and the log now reads "02:11:25.196  EKF variance" in the error colour instead of
+just the text.
+
+It was already immune to the bug the Mac head hit — the level came from the style token, not
+the translated severity word — but immunity by coincidence in duplicated code is not the same
+as not duplicating it.
+
+**And then the device caught what the unit tests could not.** The banner read "12 messages from
+the vehicle" while the log underneath said "The vehicle has not said anything yet". The core
+serves the array as `items` inside a `VehicleMessages` class; I had guessed `messages` inside
+`Messages`, and **the test passed because I wrote the fixture from the same guess.** A decoder
+and its test derived from one assumption agree with each other and with nothing else.
+
+The recorded contract in `test/Bridge/fixtures/view-shapes.json` had the answer the whole time:
+`view.messages` is `{class, count, items[], kind}`. There is now a test that reads the recorded
+shape and asserts the invented one produces nothing, so the same mistake fails loudly next
+time.
+
+**The sim was talking to nobody.** Its four STATUSTEXTs went out at eight seconds, and a ground
+station takes about thirty to bring its link up, so the first check of the banner showed an
+empty one and looked like a bug in the code I had just changed. It now speaks at forty-five
+seconds and repeats every minute, with a comment saying why.
+
 ## Phase 6 — Shell · 2 weeks
 
 Cheaper than macOS, because Qt is already off the main thread.
