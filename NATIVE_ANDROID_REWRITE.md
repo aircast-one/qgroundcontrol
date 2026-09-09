@@ -1074,7 +1074,7 @@ exists natively today:
 
 | QML layer | Native | Note |
 |---|---|---|
-| vehicle marker, trail, follow | **`VehicleMap`** | in `map-spike`, public, all-default parameters |
+| vehicle marker, trail, follow | **`VehicleMap`**, on the Fly tab | `FlyMap` draws it with the plan read-only; the QML view is covered on Fly |
 | telemetry readouts | **`TelemetryRow`** | |
 | flight mode | **`FlightModePicker`** | reports refusals |
 | arm / takeoff / land / RTL | **`FlightActions`** | slide-to-confirm; arm and mode report refusals |
@@ -1089,7 +1089,7 @@ exists natively today:
 | `GuidedValueSlider` | **built** | altitude, speed, takeoff height, and pause all read their range from the core |
 | `DetectionOverlayVideo` | **missing** | |
 | `FlyViewCustomLayer` | **dropped** | a placeholder for downstream forks to override; nothing to port |
-| `OverlayGlass` / `OverlayRig` / `FlyViewInsetViewer` | **missing** | the overlay layout system the above sit in |
+| `OverlayGlass` / `OverlayRig` / `FlyViewInsetViewer` | **partly replaced** | Compose does the layout; what remains of the rig's job is the camera inset, and the bottom one is fed from the measured controls panel |
 | `Viewer3D` | **dropped** | decided in Phase 2; goes with `FlyView.qml` |
 
 So the tab cannot be switched yet, and not because video was missing — video works. Eight
@@ -1779,6 +1779,45 @@ answer the head had been re-deriving and getting slightly wrong.
 `VideoManager::cameraName(index)` returns the operator's own name and already falls back to
 exactly that string, so the core can serve real names with no change in behaviour for an
 unnamed source. Raised with the core session; the head must not look the name up itself.
+
+### The Fly tab flies on the native map
+
+`VehicleMap` had been sitting in `map-spike` behind the Plan tab while the Fly tab still
+showed the QML `FlyView`. `FlyMap` wraps it for flight: the vehicle marker, its trail and
+follow, plus the mission, fences, circles, rally points and surveys read back through the
+same `PlanBridge`/`FenceBridge`/`SurveyBridge` the Plan screen uses — read-only, `editable`
+false, polled every two seconds rather than the Plan screen's 700 ms, because a plan does not
+change much in flight. It is drawn over the QML view whenever the Fly tab is showing, so
+nothing of QGC's QML is visible on this head any more.
+
+The QuickView stays in the tree rather than being removed: `VideoManager` initialises against
+a `QQuickWindow`, and the video inset is worth more than the frames the covered view costs.
+Removing it is a separate change with its own verification.
+
+**The vehicle sat behind the controls panel.** `follow` centred it on the whole map surface,
+and the bottom 40% of that surface is under the flight-controls panel, so the aircraft rode
+the lower edge of the part you can see. `VehicleMap` grew a `cameraBottomPx` that calls
+MapLibre's `setPadding`, defaulting to zero so the Plan screen is untouched, and the Fly tab
+measures the panel with `onSizeChanged` and feeds its real height in. The marker now sits in
+the middle of the visible band. This is the one piece of `OverlayRig`'s job that Compose does
+not do for free.
+
+A matching top inset for the overlay column was deliberately not added. That column changes
+height as the obstacle readout and the video source chips come and go, and a camera that
+jumps whenever an overlay appears is worse than a marker that occasionally sits near a chip.
+The panel at the bottom is always there and always the same size, which is why its inset is
+safe.
+
+`MapBridge` is a singleton with one watch set and a `release()` that clears all of it, so two
+map screens composed at once would tear down each other's watches. The Fly and Plan maps are
+mutually exclusive by construction — the tab decides which one exists — and the Fly → Plan →
+Fly round trip was verified on the handset with both maps drawing the vehicle and its trail
+afterwards. It is still a latent trap for whoever composes two maps first.
+
+**Named video sources arrive.** With `view.video` titles now coming from
+`video.cameraName(slot)`, a source configured as "Thermal" reads as Thermal and an unnamed
+one still reads "Camera 1". Confirmed on the handset against the same two-source ini, which
+was restored afterwards.
 
 ## Phase 6 — Shell · 2 weeks
 
