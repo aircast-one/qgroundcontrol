@@ -33,7 +33,6 @@
 #include <QtCore/QThread>
 
 #include <optional>
-#include <QtCore/QElapsedTimer>
 #include <QtCore/QTimer>
 
 namespace
@@ -42,6 +41,7 @@ namespace
 QGCBridgeCore::EventHandler g_eventHandler;
 
 constexpr int kPollIntervalMSecs = 200;
+constexpr int kBoundPropertyRereadTicks = 5;
 constexpr int kMaxInvokeArgs = 4;
 
 struct Resolved {
@@ -713,6 +713,7 @@ QString jsonToString(const QJsonObject &json)
 
 class Watcher : public QObject
 {
+    Q_OBJECT
 public:
     explicit Watcher(QObject *parent = nullptr)
         : QObject(parent)
@@ -740,56 +741,59 @@ private:
         if (!g_eventHandler) {
             return;
         }
-        QElapsedTimer probeTimer;
-        probeTimer.start();
-        int polled = 0;
+        _tick++;
         for (const QString &path : std::as_const(_paths)) {
-            if (_bound.contains(path)) {
+            const auto bound = _bound.constFind(path);
+            if (bound != _bound.constEnd()) {
+                if (!bound->fact && (_tick % kBoundPropertyRereadTicks) == 0) {
+                    _emit(path);
+                }
                 continue;
             }
-            const qint64 before = probeTimer.nsecsElapsed();
             (void) _bind(path);
             _emit(path);
-            _probeCost[path] += probeTimer.nsecsElapsed() - before;
-            polled += 1;
-        }
-        _probePolls += 1;
-        if (_probePolls >= 25) {
-            QList<QPair<qint64, QString>> ranked;
-            for (auto it = _probeCost.cbegin(); it != _probeCost.cend(); ++it) {
-                ranked.append({ it.value(), it.key() });
-            }
-            std::sort(ranked.begin(), ranked.end(), [](const auto &a, const auto &b) { return a.first > b.first; });
-            qint64 total = 0;
-            for (const auto &entry : std::as_const(ranked)) {
-                total += entry.first;
-            }
-            QString line = QStringLiteral("WATCHPROBE watched=%1 polled=%2 total=%3ms")
-                               .arg(_paths.size()).arg(polled).arg(total / 1000000.0, 0, 'f', 1);
-            for (int i = 0; i < ranked.size() && i < 8; ++i) {
-                line += QStringLiteral(" | %1=%2ms").arg(ranked.at(i).second).arg(ranked.at(i).first / 1000000.0, 0, 'f', 1);
-            }
-            qWarning("%s", qPrintable(line));
-            _probeCost.clear();
-            _probePolls = 0;
         }
     }
-
-    QHash<QString, qint64> _probeCost;
-    int _probePolls = 0;
 
     bool _bind(const QString &path)
     {
         const Resolved resolved = resolve(path);
-        Fact *const fact = qobject_cast<Fact *>(resolved.object);
-        if (!fact || resolved.property.contains(QLatin1Char('.'))) {
+        QObject *const object = resolved.object;
+        if (!object || resolved.property.contains(QLatin1Char('.'))) {
             return false;
         }
-        _bound.insert(path, {
-            connect(fact, &Fact::rawValueChanged, this, [this, path]() { _emit(path); }),
-            connect(fact, &QObject::destroyed, this, [this, path]() { _bound.remove(path); }),
+        const QMetaMethod signal = _changeSignal(object, resolved.property);
+        if (!signal.isValid()) {
+            return false;
+        }
+        static const QMetaMethod notified = staticMetaObject.method(staticMetaObject.indexOfSlot("_notified()"));
+        const QMetaObject::Connection change = connect(object, signal, this, notified);
+        if (!change) {
+            return false;
+        }
+        _bound.insert(path, Binding {
+            qobject_cast<Fact *>(object) != nullptr,
+            change,
+            connect(object, &QObject::destroyed, this, [this, path, object]() {
+                _bound.remove(path);
+                _byObject[object].removeAll(path);
+            }),
         });
+        _byObject[object].append(path);
         return true;
+    }
+
+    static QMetaMethod _changeSignal(QObject *object, const QString &property)
+    {
+        if (qobject_cast<Fact *>(object)) {
+            return QMetaMethod::fromSignal(&Fact::rawValueChanged);
+        }
+        if (property.isEmpty()) {
+            return QMetaMethod();
+        }
+        const QMetaObject *const meta = object->metaObject();
+        const int index = meta->indexOfProperty(property.toUtf8().constData());
+        return (index >= 0 && meta->property(index).hasNotifySignal()) ? meta->property(index).notifySignal() : QMetaMethod();
     }
 
     void _emit(const QString &path)
@@ -807,17 +811,36 @@ private:
 
     void _unbindAll()
     {
-        for (const auto &connections : std::as_const(_bound)) {
-            (void) disconnect(connections.first);
-            (void) disconnect(connections.second);
+        for (const Binding &binding : std::as_const(_bound)) {
+            (void) disconnect(binding.change);
+            (void) disconnect(binding.gone);
         }
         _bound.clear();
+        _byObject.clear();
     }
+
+private slots:
+    void _notified()
+    {
+        const QStringList paths = _byObject.value(sender());
+        for (const QString &path : paths) {
+            _emit(path);
+        }
+    }
+
+private:
+    struct Binding {
+        bool fact;
+        QMetaObject::Connection change;
+        QMetaObject::Connection gone;
+    };
 
     QStringList _paths;
     QHash<QString, QString> _last;
-    QHash<QString, std::pair<QMetaObject::Connection, QMetaObject::Connection>> _bound;
+    QHash<QString, Binding> _bound;
+    QHash<QObject *, QStringList> _byObject;
     QTimer _timer;
+    quint64 _tick = 0;
 };
 
 Watcher *watcher()
@@ -948,3 +971,5 @@ void setEventHandler(EventHandler handler)
 }
 
 } // namespace QGCBridgeCore
+
+#include "QGCBridgeCore.moc"
