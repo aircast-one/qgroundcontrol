@@ -2310,6 +2310,34 @@ scripts and a README naming what each one is for, so the next session measures i
 rebuilding the instruments. Their internal paths still point at the scratchpad they were born
 in; the README says so rather than pretending otherwise.
 
+### The parameter screen, reviewed
+
+The job is to find a parameter and change it to a value the aircraft will take, without
+breaking the aircraft. Search is the first thing on the screen and the only sane path through
+217 rows, the constraint line carries the bounds, and the write is verified end to end — typing
+2000 into RTL_ALT and tapping Set put `PARAM_SET RTL_ALT = 2000` on the wire. Two defects, both
+in what the screen says rather than what it does.
+
+**"Default null".** `FLTMODE_CH` claimed a default of `null`, in those words. `optString` on a
+JSON null returns the four-character string "null", which is not blank, so it survived every
+`isNotBlank()` guard on the way to the screen. This is the same trap already recorded here for
+`armingBlocker`, which is why the fix went into `Qgc.fact()` rather than the display: every
+string a fact carries — description, units, value, min, max, default — now reads empty when the
+bridge sends null. Fixing it once at the parser is the only version of this fix that stays
+fixed.
+
+**A parameter did not say what it was measured in.** The row read `RTL_ALT · RTL Altitude ·
+1500`, and RTL_ALT is in centimetres. The subtitle was `description.ifBlank { units }`, so any
+parameter with a description — which is all the documented ones — hid its units behind it. An
+operator setting 20 for twenty metres would have got twenty centimetres. It reads "RTL Altitude
+· Centimeters" now.
+
+**Enter does not commit, and that is left alone.** Typing a value and pressing the keyboard's
+done key does nothing; the "Set" affordance that appears inside the field when the value differs
+is the commit. That is mildly surprising and deliberately kept: on a screen where a keystroke
+can change how an aircraft behaves, an explicit tap is worth the friction, and QGroundControl's
+own desktop parameter editor asks for one too.
+
 ## Phase 6 — Shell · 2 weeks
 
 Cheaper than macOS, because Qt is already off the main thread.
