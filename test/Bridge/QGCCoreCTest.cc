@@ -589,6 +589,20 @@ void QGCCoreCTest::_viewShapesMatchTheRecordedContract()
         const QString key = QString::fromUtf8(path);
         recorded.insert(key, mergeShapes(offline.value(key), shapeOf(take(qgc_bridge_get(path)))));
     }
+    (void) take(qgc_bridge_invoke("plan.start", "[]"));
+    const auto corner = [](double latitude, double longitude) { return QJsonObject { { QStringLiteral("latitude"), latitude }, { QStringLiteral("longitude"), longitude }, { QStringLiteral("altitude"), 0.0 } }; };
+    const QByteArray box = QJsonDocument(QJsonArray { corner(47.398, 8.545), corner(47.396, 8.548) }).toJson(QJsonDocument::Compact);
+    (void) take(qgc_bridge_invoke("plan.rallyPointController.addPoint", QJsonDocument(QJsonArray { corner(47.397, 8.546) }).toJson(QJsonDocument::Compact).constData()));
+    (void) take(qgc_bridge_invoke("plan.geoFenceController.addInclusionPolygon", box.constData()));
+    (void) take(qgc_bridge_invoke("plan.geoFenceController.addInclusionCircle", box.constData()));
+    QTRY_VERIFY_WITH_TIMEOUT(take(qgc_bridge_get("view.fences")).value(QStringLiteral("rallyPoints")).toArray().count() == 1, 5000);
+    QTRY_VERIFY_WITH_TIMEOUT(take(qgc_bridge_get("view.fences")).value(QStringLiteral("circles")).toArray().count() == 1, 5000);
+    QTRY_VERIFY_WITH_TIMEOUT(take(qgc_bridge_get("view.fences")).value(QStringLiteral("polygons")).toArray().count() == 1, 5000);
+    for (const char *path : kViewPaths) {
+        const QString key = QString::fromUtf8(path);
+        recorded.insert(key, mergeShapes(recorded.value(key), shapeOf(take(qgc_bridge_get(path)))));
+    }
+    (void) take(qgc_bridge_invoke("plan.removeAll", "[]"));
     recorded.insert(QStringLiteral("view.contract"), take(qgc_bridge_get("view.contract")));
     const QByteArray current = QJsonDocument(recorded).toJson(QJsonDocument::Indented);
 

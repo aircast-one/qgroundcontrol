@@ -308,16 +308,65 @@
     },
     "view.fences": {
         "circles": [
-            "empty"
+            {
+                "centre": {
+                    "latitude": "number",
+                    "longitude": "number"
+                },
+                "centreText": "string",
+                "detailText": "string",
+                "framing": [
+                    {
+                        "latitude": "number",
+                        "longitude": "number"
+                    }
+                ],
+                "inclusion": "bool",
+                "index": "number",
+                "kindText": "string",
+                "path": "string",
+                "radius": "number",
+                "radiusUnits": "string",
+                "shape": "string",
+                "usable": "bool"
+            }
         ],
         "class": "string",
         "count": "number",
         "kind": "string",
         "polygons": [
-            "empty"
+            {
+                "detailText": "string",
+                "framing": [
+                    {
+                        "latitude": "number",
+                        "longitude": "number"
+                    }
+                ],
+                "inclusion": "bool",
+                "index": "number",
+                "kindText": "string",
+                "path": "string",
+                "shape": "string",
+                "usable": "bool",
+                "vertices": [
+                    {
+                        "latitude": "number",
+                        "longitude": "number"
+                    }
+                ]
+            }
         ],
         "rallyPoints": [
-            "empty"
+            {
+                "altitude": "number",
+                "altitudePath": "string",
+                "altitudeUnits": "string",
+                "index": "number",
+                "latitude": "number",
+                "longitude": "number",
+                "path": "string"
+            }
         ]
     },
     "view.flightModes": {
