@@ -2087,6 +2087,28 @@ means binding port 80, which on this machine needs root. With a port in the URL 
 configurable one — any rig could serve boxes on 8080 and watch them move. Raised with the core
 session as a testability note rather than a defect.
 
+### The shared index had a night's work staged for deletion
+
+Sessions in this tree share one git index, which is why every commit here goes through a
+private `GIT_INDEX_FILE`. That protects the commit being made; it does not protect the shared
+index from going stale. Checked it tonight and found nine files staged as deleted —
+`Detections.kt`, `DetectionOverlay.kt`, `MoreActions.kt`, `VideoSourceLayer.kt`,
+`VideoView.kt`, three of their tests, and `map-spike/FlyMap.kt` — every one present on disk and
+every one already in `HEAD`. A commit from any session using that index would have removed
+about a thousand lines of landed work, silently, as a side effect of committing something else.
+
+The fix is surgical rather than a blanket `git reset`, so nobody else's staged work is
+disturbed: list the paths staged as deleted that still exist on disk, and reset only those.
+
+```
+git diff --cached --name-status HEAD | awk '$1=="D"{print $2}' | while read f; do [ -f "$f" ] && echo "$f"; done
+git reset -q HEAD -- <those paths>
+```
+
+A path staged as deleted while it is still on disk is the tell, and nothing looked wrong
+before the check — the working tree was correct, the commits were correct, and only the index
+disagreed.
+
 ## Phase 6 — Shell · 2 weeks
 
 Cheaper than macOS, because Qt is already off the main thread.
