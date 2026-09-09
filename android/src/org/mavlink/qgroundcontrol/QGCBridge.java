@@ -67,6 +67,8 @@ public final class QGCBridge {
 
     public static native String getFields(String path, String fieldsCsv);
 
+    public static native String coreLinkOpen(String configJson);
+
     public static native String set(String path, String json);
 
     public static native String invoke(String path, String jsonArgs);

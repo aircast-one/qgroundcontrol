@@ -2,6 +2,7 @@
 
 #include "AndroidInterface.h"
 #include "QGCBridgeC.h"
+#include "QGCCoreC.h"
 #include "QGCVideoC.h"
 #include "QGCLoggingCategory.h"
 
@@ -22,6 +23,15 @@ jstring jniGet(JNIEnv *env, jclass clazz, jstring pathA)
     jstring out = env->NewStringUTF(result);
     qgc_bridge_free(result);
     return out;
+}
+
+jstring jniCoreLinkOpen(JNIEnv *env, jclass clazz, jstring configA)
+{
+    Q_UNUSED(clazz);
+    char *const result = qgc_core_link_open(QJniObject(configA).toString().toUtf8().constData());
+    jstring answer = env->NewStringUTF(result ? result : "");
+    qgc_bridge_free(result);
+    return answer;
 }
 
 jstring jniGetFields(JNIEnv *env, jclass clazz, jstring pathA, jstring fieldsA)
@@ -152,6 +162,7 @@ void setNativeMethods()
     const JNINativeMethod javaMethods[] {
         { "get", "(Ljava/lang/String;)Ljava/lang/String;", reinterpret_cast<void *>(jniGet) },
         { "getFields", "(Ljava/lang/String;Ljava/lang/String;)Ljava/lang/String;", reinterpret_cast<void *>(jniGetFields) },
+        { "coreLinkOpen", "(Ljava/lang/String;)Ljava/lang/String;", reinterpret_cast<void *>(jniCoreLinkOpen) },
         { "set", "(Ljava/lang/String;Ljava/lang/String;)Ljava/lang/String;", reinterpret_cast<void *>(jniSet) },
         { "invoke", "(Ljava/lang/String;Ljava/lang/String;)Ljava/lang/String;", reinterpret_cast<void *>(jniInvoke) },
         { "nativeWatch", "(Ljava/lang/String;)V", reinterpret_cast<void *>(jniWatch) },
