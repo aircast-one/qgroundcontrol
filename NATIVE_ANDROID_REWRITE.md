@@ -2000,6 +2000,31 @@ its arguments. Either the core derives a view's dependencies from its arguments,
 learns a cheaper way to tell that an object changed than rendering it to JSON. Both are core
 work; this is the measurement, handed over.
 
+**The core took the first option, and the total did not move.** On `1446b17c1`,
+`view.instruments` declares the facts its arguments name. Re-timed on the handset, same
+screen, same sim, disarmed both times:
+
+| | paths | poll work per 5 s | `vehicle.vehicle` | `vehicle.batteries` | `vehicle.gps` |
+|---|---|---|---|---|---|
+| before | 70 | 490–635 ms | 230–242 ms | 118–141 ms | 80–89 ms |
+| after | 71 | 562–615 ms | **gone** | 192–224 ms | 102–104 ms |
+
+The change did exactly what it said — the whole-vehicle read is absent and
+`vehicle.altitudeRelative`, `vehicle.distanceToHome` and `vehicle.groundSpeed` appear in its
+place at 25, 19 and 13 ms — and the poll costs the same as before, because `vehicle.batteries`
+grew by very nearly what `vehicle.vehicle` used to cost.
+
+The likeliest reading is that the reads were sharing work: `vehicle.vehicle` came first in the
+poll and warmed the object graph that `vehicle.batteries` and `vehicle.gps` then walked
+cheaply. Remove the first reader and the second pays full price. If that is right, the
+remaining lever is not removing more readers — it is making an object read cheaper, or giving
+`view.battery` and `view.preflight` the same argument-derived deps `view.instruments` just got.
+That is a hypothesis from two measurements, not a proof.
+
+Process note: the first re-timing was taken with the vehicle armed and the baseline had been
+disarmed. Re-running it disarmed changed nothing, but the comparison was not sound until it
+was re-run.
+
 Unwatching is healthy, incidentally: leaving the Fly tab takes the watch list from 70 paths to
 18 and back again, so nothing accumulates.
 
