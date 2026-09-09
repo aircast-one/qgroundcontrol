@@ -215,92 +215,104 @@ fun FlightActions(modifier: Modifier = Modifier) {
             verticalArrangement = Arrangement.spacedBy(8.dp),
         ) {
             val armAction = offers[if (armed) "disarm" else "arm"]
-            Button(
-                enabled = armAction?.blocked != true,
-                onClick = {
-                    blockedReasonFor(armAction)?.let { refusal = it; return@Button }
+            Offered(armAction) {
+                Button(
+                    enabled = armAction?.blocked != true,
+                    onClick = {
+                        blockedReasonFor(armAction)?.let { refusal = it; return@Button }
+                        pending = GuidedAction(
+                            name = armAction?.title ?: if (armed) "Disarm" else "Arm",
+                            confirm = armAction?.prompt?.ifBlank { null } ?: if (armed) {
+                                "Disarming cuts the motors. In flight the aircraft will fall."
+                            } else {
+                                "Arming spins the propellers. Stand clear of the aircraft."
+                            },
+                            destructive = armAction?.destructive ?: true,
+                        ) {
+                            val target = !armed
+                            scope.attemptCommand(
+                                action = if (target) "Arm" else "Disarm",
+                                report = { refusal = it },
+                                reached = { armedNow() == target },
+                            ) { Qgc.set("vehicle.armed", target) }
+                        }
+                    },
+                    colors = if (armed) ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.error)
+                    else ButtonDefaults.buttonColors(),
+                ) { Text(if (armed) "Disarm" else "Arm") }
+            }
+
+            Offered(offers["takeoff"]) {
+                OutlinedButton(
+                    enabled = offers["takeoff"]?.ready == true,
+                    onClick = {
+                        scope.launch {
+                            val fresh = withContext(Dispatchers.Default) {
+                                guidedTakeoff(Qgc.get(GUIDED_TAKEOFF))
+                            }
+                            if (!takeoffRangeUsable(fresh)) {
+                                refusal = "This vehicle did not report a takeoff height range."
+                                return@launch
+                            }
+                            takeoffRange = fresh
+                            takeoffTarget = fresh?.initial
+                            takeoffSettled = fresh?.initial
+                        }
+                    },
+                ) { Text(offers["takeoff"]?.title ?: "Takeoff") }
+            }
+
+            Offered(offers["land"]) {
+                OutlinedButton(enabled = offers["land"]?.ready == true, onClick = {
                     pending = GuidedAction(
-                        name = armAction?.title ?: if (armed) "Disarm" else "Arm",
-                        confirm = armAction?.prompt?.ifBlank { null } ?: if (armed) {
-                            "Disarming cuts the motors. In flight the aircraft will fall."
-                        } else {
-                            "Arming spins the propellers. Stand clear of the aircraft."
-                        },
-                        destructive = armAction?.destructive ?: true,
+                        name = offers["land"]?.title ?: "Land",
+                        confirm = offers["land"]?.prompt?.ifBlank { null }
+                            ?: "The aircraft will descend and land where it is now.",
+                        destructive = false,
                     ) {
-                        val target = !armed
-                        scope.attemptCommand(
-                            action = if (target) "Arm" else "Disarm",
-                            report = { refusal = it },
-                            reached = { armedNow() == target },
-                        ) { Qgc.set("vehicle.armed", target) }
+                        offMainDetached { Qgc.invoke("vehicle.guidedModeLand") }
                     }
-                },
-                colors = if (armed) ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.error)
-                else ButtonDefaults.buttonColors(),
-            ) { Text(if (armed) "Disarm" else "Arm") }
+                }) { Text("Land") }
+            }
 
-            OutlinedButton(
-                enabled = offers["takeoff"]?.ready == true,
-                onClick = {
-                    scope.launch {
-                        val fresh = withContext(Dispatchers.Default) {
-                            guidedTakeoff(Qgc.get(GUIDED_TAKEOFF))
-                        }
-                        if (!takeoffRangeUsable(fresh)) {
-                            refusal = "This vehicle did not report a takeoff height range."
-                            return@launch
-                        }
-                        takeoffRange = fresh
-                        takeoffTarget = fresh?.initial
-                        takeoffSettled = fresh?.initial
+            Offered(offers["rtl"]) {
+                OutlinedButton(enabled = offers["rtl"]?.ready == true, onClick = {
+                    pending = GuidedAction(
+                        name = "Return",
+                        confirm = "The aircraft will fly back to its launch point and land.",
+                        destructive = false,
+                    ) {
+                        offMainDetached { Qgc.invoke("vehicle.guidedModeRTL", false) }
                     }
-                },
-            ) { Text(offers["takeoff"]?.title ?: "Takeoff") }
+                }) { Text("RTL") }
+            }
 
-            OutlinedButton(enabled = offers["land"]?.ready == true, onClick = {
-                pending = GuidedAction(
-                    name = offers["land"]?.title ?: "Land",
-                    confirm = offers["land"]?.prompt?.ifBlank { null }
-                        ?: "The aircraft will descend and land where it is now.",
-                    destructive = false,
-                ) {
-                    offMainDetached { Qgc.invoke("vehicle.guidedModeLand") }
-                }
-            }) { Text("Land") }
-
-            OutlinedButton(enabled = offers["rtl"]?.ready == true, onClick = {
-                pending = GuidedAction(
-                    name = "Return",
-                    confirm = "The aircraft will fly back to its launch point and land.",
-                    destructive = false,
-                ) {
-                    offMainDetached { Qgc.invoke("vehicle.guidedModeRTL", false) }
-                }
-            }) { Text("RTL") }
-
-            OutlinedButton(
-                enabled = offers["changeSpeed"]?.ready == true,
-                onClick = {
-                    scope.launch {
-                        val fresh = withContext(Dispatchers.Default) {
-                            guidedSpeed(Qgc.get(GUIDED_SPEED))
+            Offered(offers["changeSpeed"]) {
+                OutlinedButton(
+                    enabled = offers["changeSpeed"]?.ready == true,
+                    onClick = {
+                        scope.launch {
+                            val fresh = withContext(Dispatchers.Default) {
+                                guidedSpeed(Qgc.get(GUIDED_SPEED))
+                            }
+                            if (!speedRangeUsable(fresh)) {
+                                refusal = "This vehicle did not report a speed range."
+                                return@launch
+                            }
+                            speedRange = fresh
+                            speedTarget = fresh?.initial
+                            speedSettled = fresh?.initial
                         }
-                        if (!speedRangeUsable(fresh)) {
-                            refusal = "This vehicle did not report a speed range."
-                            return@launch
-                        }
-                        speedRange = fresh
-                        speedTarget = fresh?.initial
-                        speedSettled = fresh?.initial
-                    }
-                },
-            ) { Text("Speed") }
+                    },
+                ) { Text("Speed") }
+            }
 
-            OutlinedButton(
-                enabled = offers["changeAltitude"]?.ready == true,
-                onClick = { openAltitude(false) },
-            ) { Text("Alt") }
+            Offered(offers["changeAltitude"]) {
+                OutlinedButton(
+                    enabled = offers["changeAltitude"]?.ready == true,
+                    onClick = { openAltitude(false) },
+                ) { Text("Alt") }
+            }
 
             OutlinedButton(onClick = { showMore = true }) { Text("Actions") }
         }
@@ -537,6 +549,13 @@ fun FlightActions(modifier: Modifier = Modifier) {
             confirmButton = {},
             dismissButton = { TextButton(onClick = { pending = null }) { Text("Cancel") } },
         )
+    }
+}
+
+@Composable
+private fun Offered(offer: GuidedOffer?, content: @Composable () -> Unit) {
+    if (offer?.shown == true) {
+        content()
     }
 }
 
