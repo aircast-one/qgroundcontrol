@@ -1438,56 +1438,70 @@ func checkAbout() {
 checkAbout()
 
 func checkRadio() {
-    expect(!Radio.read(["kind": "value"]).connected, "with no controller there is no radio page to fill")
+    func channel(_ index: Int, _ pwm: Int, _ live: Bool = true) -> [String: Any] {
+        ["index": index as NSNumber, "label": "\(index + 1)", "value": pwm as NSNumber,
+         "valueText": live ? "\(pwm)" : "\u{2014}",
+         "fraction": (live ? Double(pwm - 1000) / 1000 : 0) as NSNumber, "live": live as NSNumber]
+    }
+    func stick(_ key: String, _ title: String, _ pwm: Int, _ mapped: Bool = true,
+               _ reversed: Bool = false) -> [String: Any] {
+        ["key": key, "title": title, "mapped": mapped as NSNumber, "value": pwm as NSNumber,
+         "valueText": mapped ? "\(pwm)" : "Not mapped",
+         "fraction": (Double(pwm - 1000) / 1000) as NSNumber, "reversed": reversed as NSNumber]
+    }
 
-    expect(Radio.property("throttle", "RCValue"), "throttleChannelRCValue",
-           "stick properties are derived from the key, matching what the controller exposes")
-    expect(Radio.property("roll", "Mapped"), "rollChannelMapped", "for every suffix")
+    expect(!RadioState.disconnected.connected, "with no controller there is no radio page to fill")
+    expect(!RadioState([:]).connected, "and a read that returned nothing is not connected")
 
-    expect(RadioState.fraction(1000) == 0, "the low end of the travel is the left of the bar")
-    expect(RadioState.fraction(2000) == 1, "and the high end fills it")
-    expect(RadioState.fraction(1500) == 0.5, "centre sits in the middle")
-    expect(RadioState.fraction(0) == 0, "a channel carrying nothing is empty, not centred")
-    expect(RadioState.fraction(2500) == 1, "a value beyond the travel is clamped rather than overflowing")
-    expect(RadioState.fraction(500) == 0, "at both ends")
-
-    let live: [String: Any] = [
-        "kind": "object", "channelCount": 16, "minChannelCount": 5,
-        "rcValues": [1500, 1500, 1000, 1500, 1800, 1000, 1000, 1800, 0, 0],
-        "rollChannelMapped": true, "rollChannelRCValue": 1500,
-        "pitchChannelMapped": true, "pitchChannelRCValue": 1500,
-        "yawChannelMapped": true, "yawChannelRCValue": 1500, "yawChannelReversed": 1,
-        "throttleChannelMapped": true, "throttleChannelRCValue": 1000,
-        "nextText": "Calibrate", "nextEnabled": true, "transmitterMode": 2,
-    ]
-    let state = Radio.read(live)
-    expect(state.channelCount == 16, "the reported channel count is kept")
+    let state = RadioState([
+        "connected": true as NSNumber, "channelCount": 16 as NSNumber,
+        "summary": "16 channels reported, 8 carrying a signal.", "shortfall": "",
+        "calibrating": false as NSNumber, "nextText": "Calibrate",
+        "nextEnabled": true as NSNumber, "transmitterMode": 2 as NSNumber,
+        "channels": [channel(0, 1500), channel(1, 1500), channel(2, 1000), channel(3, 1500),
+                     channel(4, 1800), channel(5, 1000), channel(6, 1000), channel(7, 1800),
+                     channel(8, 0, false), channel(9, 0, false)],
+        "sticks": [stick("roll", "Roll", 1500), stick("pitch", "Pitch", 1500),
+                   stick("yaw", "Yaw", 1500, true, true), stick("throttle", "Throttle", 1000)],
+    ])
+    expect(state.channelCount == 16, "the reported channel count is the core's")
     expect(state.liveChannels.count == 8,
            "only channels carrying a signal are listed; the silent ones are not drawn as empty bars")
     expect(state.summary, "16 channels reported, 8 carrying a signal.", "and the summary says both")
-    expect(state.enoughChannels, "sixteen is more than the five needed to fly")
     expect(state.shortfall, "", "so nothing is wanting")
     expect(!state.calibrating, "an idle controller is not calibrating")
+    expect(state.channels[0].fraction == 0.5, "centre sits in the middle of the bar")
+    expect(state.channels[8].valueText, "\u{2014}",
+           "a channel carrying nothing shows a dash rather than a zero")
 
     expect(state.sticks.map(\.title).joined(separator: ","), "Roll,Pitch,Yaw,Throttle",
            "the four sticks are named in the order a pilot reads them")
     expect(state.sticks[3].valueText, "1000", "throttle down reads as its pulse width")
     expect(state.sticks[2].reversed, "a reversed channel is marked")
     expect(!state.sticks[0].reversed, "and an unreversed one is not")
+    expect(RadioStick(stick("roll", "Roll", 0, false))?.valueText ?? "", "Not mapped",
+           "a stick with no channel assigned says so instead of showing a dash")
 
-    let thin = Radio.read(["kind": "object", "channelCount": 4, "minChannelCount": 5])
-    expect(!thin.enoughChannels, "four channels is not enough to fly")
+    let thin = RadioState([
+        "connected": true as NSNumber, "channelCount": 4 as NSNumber,
+        "shortfall": "At least 5 channels are needed to fly; the transmitter reports 4.",
+    ])
     expect(thin.shortfall, "At least 5 channels are needed to fly; the transmitter reports 4.",
            "and the page says so in the pilot's terms")
 
-    let silent = Radio.read(["kind": "object", "channelCount": 0, "minChannelCount": 5])
-    expect(silent.summary, "No transmitter is being heard.",
+    expect(RadioState(["connected": true as NSNumber,
+                       "summary": "No transmitter is being heard."]).summary,
+           "No transmitter is being heard.",
            "a vehicle with no transmitter says that rather than reporting zero channels")
-    expect(silent.shortfall, "", "and is not also scolded for having too few")
 
-    let unmapped = Radio.sticks(from: ["kind": "object"])
-    expect(unmapped[0].valueText, "Not mapped",
-           "a stick with no channel assigned says so instead of showing a dash")
+    expect(RadioState([:]).transmitterMode == 2,
+           "a reply with no transmitter mode reads as mode 2, which is where QGC's own controller "
+           + "starts \u{2014} mode 0 is not a mode any transmitter has")
+    expect(RadioState(["transmitterMode": 1 as NSNumber]).transmitterMode == 1,
+           "and a mode the core does report is taken as given")
+
+    expect(RadioChannel(["label": "1"]) == nil, "a channel with no index is dropped")
+    expect(RadioStick(["title": "Roll"]) == nil, "and so is a stick with no key")
 }
 
 checkRadio()
@@ -2498,6 +2512,12 @@ func checkViewContract() {
         ("view.calibration", ["routines"],
          ["id", "title", "invocation", "arguments", "blocked", "enabled", "description",
           "warning"]),
+        ("view.radio", [],
+         ["connected", "channelCount", "summary", "shortfall", "calibrating", "statusText",
+          "nextText", "nextEnabled", "cancelEnabled", "skipEnabled", "transmitterMode", "channels",
+          "sticks"]),
+        ("view.radio", ["sticks"],
+         ["key", "title", "mapped", "value", "valueText", "fraction", "reversed"]),
         ("view.missionSeed(survey,47,8)", ["points"], ["latitude", "longitude"]),
         ("view.links", ["configured"],
          ["index", "path", "name", "type", "typeLabel", "editing", "displaySummary", "connected",
@@ -2627,6 +2647,8 @@ func checkViewContract() {
          ["shotsText", "intervalText", "footprintText", "warning", "areaText", "distanceText"]),
         ("view.calibration", [], ["progressText", "helpText", "statusText", "needsAttention"]),
         ("view.calibration", ["routines"], ["title", "description", "invocation"]),
+        ("view.radio", [], ["summary", "shortfall", "statusText", "nextText"]),
+        ("view.radio", ["sticks"], ["title", "valueText"]),
     ]
     neverNull.forEach { view, inner, keys in
         let place = inner.isEmpty ? view : "\(view).\(inner.joined(separator: "."))"

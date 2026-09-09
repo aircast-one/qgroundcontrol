@@ -22,7 +22,7 @@ final class RadioStore: ObservableObject, Probeable, WriteReporting {
     }
 
     func refresh() {
-        let read = Radio.read(Bridge.group("radioCal"))
+        let read = RadioState(Bridge.group("view.radio"))
         if read != state { state = read }
     }
 
