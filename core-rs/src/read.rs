@@ -39,7 +39,7 @@ pub fn result_number(json: &str) -> Option<f64> {
     ok_result(json)?.as_f64().filter(|v| v.is_finite())
 }
 
-fn ok_result(json: &str) -> Option<Value> {
+pub fn ok_result(json: &str) -> Option<Value> {
     let reply = object(json);
     (reply.get("ok") == Some(&Value::Bool(true))).then(|| reply.get("result").cloned()).flatten()
 }

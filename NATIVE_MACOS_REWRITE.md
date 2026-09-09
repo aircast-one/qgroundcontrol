@@ -623,6 +623,7 @@ About 58 developer-weeks. Flight-test time, not code, is the schedule.
 - 2026-09-09: contract recorder adds a saved TCP link; `view.links` configured carries an element shape.
 - 2026-09-09: transport review fixes (no lock across I/O, reaping, state events, resync by length) and `view.guidedAltitude(target,pause)`.
 - 2026-09-09: `CoreLink` lets LinkManager build UDP/TCP/serial links on the core behind `QGC_CORE_LINKS=1`; a vehicle comes up over a core-backed link in the suite.
+- 2026-09-09: CoreLink sources actually land (dbb35f05c missed src/Comms); `settings.appSettings.coreLinks` switch; view.video titles from cameraName; connect state machine ported to the core.
 
 ### Stream F · Core
 

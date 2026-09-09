@@ -38,7 +38,7 @@ pub fn video_view(backend: &dyn Backend, _args: &[String]) -> Value {
         .map(|(slot, status)| {
             json!({
                 "slot": slot,
-                "title": format!("Camera {}", slot + 1),
+                "title": crate::read::ok_result(&backend.invoke("video.cameraName", &json!([slot]).to_string())).and_then(|v| v.as_str().map(str::to_string)).filter(|n| !n.is_empty()).unwrap_or_else(|| format!("Camera {}", slot + 1)),
                 "status": status,
                 "connecting": connecting.get(slot).copied().unwrap_or(false),
                 "recording": recording_flags.get(slot).copied().unwrap_or(false),

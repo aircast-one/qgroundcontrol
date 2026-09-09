@@ -264,6 +264,12 @@
     "shortDesc": "AirLink Password",
     "type": "string",
     "default": ""
+},
+{
+    "name": "coreLinks",
+    "shortDesc": "Open UDP, TCP and serial links on the Rust core",
+    "type": "bool",
+    "default": false
 }
 ]
 }

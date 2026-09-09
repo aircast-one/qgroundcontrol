@@ -175,6 +175,7 @@ DECLARE_SETTINGSFACT(AppSettings, disableAllPersistence)
 DECLARE_SETTINGSFACT(AppSettings, firstRunPromptIdsShown)
 DECLARE_SETTINGSFACT(AppSettings, loginAirLink)
 DECLARE_SETTINGSFACT(AppSettings, passAirLink)
+DECLARE_SETTINGSFACT(AppSettings, coreLinks)
 
 DECLARE_SETTINGSFACT_NO_FUNC(AppSettings, indoorPalette)
 {

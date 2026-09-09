@@ -8,6 +8,7 @@ pub mod battery;
 pub mod boards;
 pub mod calibration;
 pub mod compression;
+pub mod connect;
 pub mod compinfo;
 pub mod cmdinfo;
 pub mod contract;
