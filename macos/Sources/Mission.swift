@@ -227,35 +227,14 @@ final class MissionStore: ObservableObject, Probeable, WriteReporting {
         }
     }
 
-    private func loadSurveyStats(for item: MissionItem, calc: [String: Any]) {
+    private func loadSurveyStats(for item: MissionItem) {
         guard item.isSurveyItem else {
             if surveyStats != .none { surveyStats = .none }
             return
         }
-
-        let survey = Bridge.group("plan.missionController.visualItems.\(item.index)")
-        func number(_ json: [String: Any], _ key: String) -> Double {
-            (json[key] as? NSNumber)?.doubleValue ?? 0
-        }
-        func fact(_ json: [String: Any], _ property: String) -> [String: Any] {
-            ((json["facts"] as? [[String: Any]]) ?? [])
-                .first { $0["property"] as? String == property } ?? [:]
-        }
-        func factValue(_ json: [String: Any], _ property: String) -> Double {
-            (fact(json, property)["value"] as? NSNumber)?.doubleValue ?? 0
-        }
-
-        let read = SurveyStats(
-            shots: (survey["cameraShots"] as? NSNumber)?.intValue ?? 0,
-            secondsBetweenShots: number(survey, "timeBetweenShots"),
-            areaSquareMetres: number(survey, "coveredArea"),
-            distanceMetres: number(survey, "complexDistance"),
-            footprintSide: factValue(calc, "adjustedFootprintSide"),
-            footprintFrontal: factValue(calc, "adjustedFootprintFrontal"),
-            footprintUnits: (fact(calc, "adjustedFootprintSide")["units"] as? String) ?? "m",
-            minimumInterval: factValue(calc, "minTriggerInterval"),
-            areaMeasure: AppUnits.measure(AppUnits.area),
-            distanceMeasure: AppUnits.measure(AppUnits.horizontal))
+        var read = SurveyStats(Bridge.group("view.surveyStats(\(item.index))"))
+        read.areaMeasure = AppUnits.measure(AppUnits.area)
+        read.distanceMeasure = AppUnits.measure(AppUnits.horizontal)
         if read != surveyStats { surveyStats = read }
     }
 
@@ -354,7 +333,7 @@ final class MissionStore: ObservableObject, Probeable, WriteReporting {
             ? [:]
             : Bridge.group("plan.missionController.visualItems.\(item.index).cameraCalc")
         camera = CameraChoice(json: calc)
-        loadSurveyStats(for: item, calc: calc)
+        loadSurveyStats(for: item)
         distanceMode = AltitudeMode.read(calc["distanceMode"])
         itemAltitudeMode = item.specifiesAltitude
             ? AltitudeMode.read(Bridge.group("plan.missionController.visualItems.\(item.index)")["altitudeMode"])

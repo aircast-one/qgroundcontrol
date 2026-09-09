@@ -1,54 +1,52 @@
 import Foundation
 
 struct SurveyStats: Equatable {
-    let shots: Int
-    let secondsBetweenShots: Double
+    let available: Bool
+    let shotsText: String
+    let intervalText: String
+    let footprintText: String
+    let tooFast: Bool
+    let warning: String
     let areaSquareMetres: Double
     let distanceMetres: Double
-    let footprintSide: Double
-    let footprintFrontal: Double
-    let footprintUnits: String
-    let minimumInterval: Double
-    let areaMeasure: Measure
-    let distanceMeasure: Measure
+    var areaMeasure = Measure.squareMetres
+    var distanceMeasure = Measure.metres
 
-    static let none = SurveyStats(shots: 0, secondsBetweenShots: 0, areaSquareMetres: 0,
-                                  distanceMetres: 0, footprintSide: 0, footprintFrontal: 0,
-                                  footprintUnits: "m", minimumInterval: 0,
-                                  areaMeasure: .squareMetres, distanceMeasure: .metres)
+    static let none = SurveyStats()
 
-    var describes: Bool { shots > 0 || areaSquareMetres > 0 }
+    private init() {
+        available = false
+        shotsText = ""
+        intervalText = ""
+        footprintText = ""
+        tooFast = false
+        warning = ""
+        areaSquareMetres = 0
+        distanceMetres = 0
+    }
 
-    var shotsText: String { shots > 0 ? "\(shots)" : "\u{2014}" }
+    init(_ json: [String: Any]) {
+        func text(_ name: String) -> String { (json[name] as? String) ?? "" }
+        available = (json["available"] as? NSNumber)?.boolValue ?? false
+        shotsText = text("shotsText")
+        intervalText = text("intervalText")
+        footprintText = text("footprintText")
+        tooFast = (json["tooFast"] as? NSNumber)?.boolValue ?? false
+        warning = text("warning")
+        areaSquareMetres = (json["areaSquareMetres"] as? NSNumber)?.doubleValue ?? 0
+        distanceMetres = (json["distanceMetres"] as? NSNumber)?.doubleValue ?? 0
+    }
 
-    var intervalText: String { SurveyStats.interval(secondsBetweenShots) }
+    var describes: Bool { available }
 
+    // QGC's formatMeasure takes one decimal below a hundred and none above, and writes the
+    // area unit as m² rather than the m^2 the settings string carries. The core does
+    // neither yet, so these two texts stay here rather than regress the display.
     var areaText: String {
         areaSquareMetres > 0 ? areaMeasure.text(areaSquareMetres) : "\u{2014}"
     }
 
     var distanceText: String {
         distanceMetres > 0 ? distanceMeasure.text(distanceMetres) : "\u{2014}"
-    }
-
-    var footprintText: String {
-        guard footprintSide > 0, footprintFrontal > 0 else { return "\u{2014}" }
-        return String(format: "%.1f \u{00D7} %.1f %@", footprintSide, footprintFrontal,
-                      Measure.pretty(footprintUnits))
-    }
-
-    var tooFast: Bool {
-        minimumInterval > 0 && secondsBetweenShots > 0 && secondsBetweenShots < minimumInterval
-    }
-
-    var warning: String {
-        guard tooFast else { return "" }
-        return String(format: "The camera needs %.2f s between shots but the survey asks for %.2f s.",
-                      minimumInterval, secondsBetweenShots)
-    }
-
-    static func interval(_ seconds: Double) -> String {
-        guard seconds.isFinite, seconds > 0 else { return "\u{2014}" }
-        return String(format: "%.1f s", seconds)
     }
 }
