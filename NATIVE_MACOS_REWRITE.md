@@ -616,6 +616,7 @@ About 58 developer-weeks. Flight-test time, not code, is the schedule.
 - 2026-09-09: link registry in the core (owner core/host, per-link framing and counters), first slice of the R4 transport seam.
 - 2026-09-09: `view.fences` rally points carry altitude, altitudeUnits and altitudePath.
 - 2026-09-09: core-owned UDP link (std::net + socket2: shared bind, multicast join, session targets) with loopback tests.
+- 2026-09-09: core-owned TCP link (connect timeout, reader thread, disconnect events) with loopback tests.
 
 ### Stream F · Core
 

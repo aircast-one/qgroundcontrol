@@ -51,6 +51,7 @@ pub mod statustext;
 pub mod survey;
 pub mod sysstatus;
 pub mod takeoff;
+pub mod tcplink;
 pub mod terrain;
 pub mod terraintile;
 pub mod tlog;
