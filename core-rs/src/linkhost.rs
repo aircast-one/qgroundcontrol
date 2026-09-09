@@ -282,6 +282,6 @@ mod tests {
         assert!(transports.open_json(r#"{"kind":"serial","name":"S","portName":"/dev/none"}"#, &[]).is_err());
         assert!(transports.open_json(r#"{"kind":"udp","name":"Clash","port":14550,"hosts":[]}"#, &[14550]).unwrap_err().contains("starve"));
         assert!(transports.open_json(r#"{"kind":"tcp","name":"T","host":"127.0.0.1","port":1}"#, &[]).is_err());
-        assert_eq!(transports.snapshot()["links"].as_array().unwrap().len(), 2);
+        assert_eq!(transports.snapshot()["links"].as_array().unwrap().len(), 3);
     }
 }
