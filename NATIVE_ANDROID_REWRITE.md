@@ -1146,6 +1146,17 @@ Caution was a hard amber; High was `colorScheme.error`, which in this dark theme
 pink meant for text on a surface rather than for filling a shape. The most serious band was
 the least alarming thing on the screen. High is a saturated red now.
 
+**A core-owned link opens on Android, and it starves the Qt one.** One JNI entry point
+(`coreLinkOpen`) reaches `qgc_core_link_open`. A core UDP link on port 14550 opened beside the
+Qt link and took **984 frames in twenty seconds with none dropped** - the Rust transport works
+on this platform. But the Qt link took **zero** in the same window and the vehicle went to
+"Communication lost".
+
+**The bind is not shared on Android.** The core socket gets the datagrams and the Qt one
+starves, so the parallel counter comparison the transport plan describes cannot be run on one
+port here. It needs two ports with the simulator sending to both, or a sequential comparison.
+Worth knowing before that gate is designed around a measurement this platform will not give.
+
 **The preflight checklist, which Android never had.** `view.preflight` serves the airframe's
 checks in groups with a verdict each, so the screen can distinguish what the vehicle can answer
 from what only a person can. A passing check shows ticked and cannot be unticked; a failing one
