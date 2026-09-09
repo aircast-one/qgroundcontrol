@@ -54,3 +54,25 @@ class GuidedAltitudeTest {
         assertEquals("view.guidedAltitude(25.00,pause)", guidedAltitudePath(25.0, pause = true))
     }
 }
+
+class RangeLabelTest {
+
+    @org.junit.Test
+    fun `a slider says what its ends are`() {
+        org.junit.Assert.assertEquals("3.0 to 121.9 m", rangeLabel(3.0, 121.92, "m"))
+        org.junit.Assert.assertEquals("0.1 to 5.0 m/s", rangeLabel(0.1, 5.0, "m/s"))
+    }
+
+    @org.junit.Test
+    fun `a range with no unit still reads`() {
+        org.junit.Assert.assertEquals("1.0 to 8.0", rangeLabel(1.0, 8.0, ""))
+    }
+
+    @org.junit.Test
+    fun `a range that is not a range says nothing`() {
+        org.junit.Assert.assertNull(rangeLabel(null, 5.0, "m"))
+        org.junit.Assert.assertNull(rangeLabel(1.0, null, "m"))
+        org.junit.Assert.assertNull(rangeLabel(5.0, 5.0, "m"))
+        org.junit.Assert.assertNull(rangeLabel(9.0, 5.0, "m"))
+    }
+}

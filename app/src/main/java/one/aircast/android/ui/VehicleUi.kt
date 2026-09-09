@@ -339,6 +339,8 @@ fun FlightActions(modifier: Modifier = Modifier) {
                         valueRange = (speedRange?.minimum ?: 0.0).toFloat()..
                             (speedRange?.maximum ?: 0.0).toFloat(),
                     )
+                    rangeLabel(speedRange?.minimum, speedRange?.maximum, speedRange?.unit.orEmpty())
+                        ?.let { RangeHint(it) }
                 }
             },
             confirmButton = {
@@ -381,6 +383,8 @@ fun FlightActions(modifier: Modifier = Modifier) {
                         valueRange = (takeoffRange?.minimum ?: 0.0).toFloat()..
                             (takeoffRange?.maximum ?: 0.0).toFloat(),
                     )
+                    rangeLabel(takeoffRange?.minimum, takeoffRange?.maximum, takeoffRange?.unit.orEmpty())
+                        ?.let { RangeHint(it) }
                 }
             },
             confirmButton = {
@@ -424,6 +428,8 @@ fun FlightActions(modifier: Modifier = Modifier) {
                         valueRange = (altitudeRange?.minimum ?: 0.0).toFloat()..
                             (altitudeRange?.maximum ?: 0.0).toFloat(),
                     )
+                    rangeLabel(altitudeRange?.minimum, altitudeRange?.maximum, altitudeRange?.unit.orEmpty())
+                        ?.let { RangeHint(it) }
                 }
             },
             confirmButton = {
@@ -550,6 +556,15 @@ fun FlightActions(modifier: Modifier = Modifier) {
             dismissButton = { TextButton(onClick = { pending = null }) { Text("Cancel") } },
         )
     }
+}
+
+@Composable
+private fun RangeHint(text: String) {
+    Text(
+        text = text,
+        style = MaterialTheme.typography.bodySmall,
+        color = MaterialTheme.colorScheme.onSurfaceVariant,
+    )
 }
 
 @Composable
