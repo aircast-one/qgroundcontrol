@@ -845,22 +845,22 @@ struct FlyView: View {
             mission.startWatching()
             fly.start()
             instruments.refresh()
-            guided.refresh()
+            guided.startWatching()
             video.useNativeRendering()
-            video.refresh()
+            video.startWatching()
             mapClick.start()
         }
         .onDisappear {
             fly.stop()
             mapClick.stop()
             mission.stopWatching()
+            guided.stopWatching()
+            video.stopWatching()
             instruments.clear()
             video.clear()
         }
         .onChange(of: fly.telemetry) { _ in
             instruments.refresh()
-            guided.refresh()
-            video.refresh()
         }
         .writeFailureAlert($fly.writeFailure, $guided.writeFailure, $video.writeFailure)
     }
@@ -915,6 +915,8 @@ final class FlyWindow: NSObject, NSWindowDelegate {
     func windowWillClose(_ notification: Notification) {
         fly.stop()
         mission.stopWatching()
+        guided.stopWatching()
+        video.stopWatching()
         video.stopDetections()
         window = nil
     }

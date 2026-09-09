@@ -46,7 +46,27 @@ final class VideoStore: ObservableObject, Probeable, WriteReporting {
         refresh()
     }
 
+    private var watchPoll: Timer?
+
+    // view.video is built entirely from video.* -- the manager and the settings, not one vehicle
+    // path -- so a source configured while no vehicle is talking must still reach the Fly view.
+    func startWatching() {
+        guard watchPoll == nil else { return }
+        refresh()
+        watchPoll = Timer.scheduledTimer(withTimeInterval: 0.5, repeats: true) { [weak self] _ in
+            self?.refresh()
+        }
+    }
+
+    func stopWatching() {
+        watchPoll?.invalidate()
+        watchPoll = nil
+    }
+
+    private(set) var refreshes = 0
+
     func refresh() {
+        refreshes += 1
         let read = VideoStatus(Bridge.group("view.video"))
         if read != status { status = read }
         pollNative()
@@ -142,6 +162,7 @@ final class VideoStore: ObservableObject, Probeable, WriteReporting {
          "configured": status.configuredCameras.count,
          "cameras": status.cameras.map { ["title": $0.title, "status": $0.status,
                                           "connecting": $0.connecting] },
+         "refreshes": refreshes, "watching": watchPoll != nil,
          "sourceSize": status.sourceSize.map { ["width": $0.width, "height": $0.height] } ?? [:],
          "detections": ["available": detections.available, "stale": detections.stale,
                         "draws": detections.draws, "error": detections.error,

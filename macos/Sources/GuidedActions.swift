@@ -14,7 +14,27 @@ final class GuidedStore: ObservableObject, Probeable, WriteReporting {
 
     var actions: [GuidedOffer] { offers.filter(\.shown) }
 
+    private var watchPoll: Timer?
+
+    // view.guidedActions depends on plan.missionController.containsItems and the checklist
+    // settings as well as the vehicle, so a mission created next door has to reach these buttons.
+    func startWatching() {
+        guard watchPoll == nil else { return }
+        refresh()
+        watchPoll = Timer.scheduledTimer(withTimeInterval: 0.5, repeats: true) { [weak self] _ in
+            self?.refresh()
+        }
+    }
+
+    func stopWatching() {
+        watchPoll?.invalidate()
+        watchPoll = nil
+    }
+
+    private(set) var refreshes = 0
+
     func refresh() {
+        refreshes += 1
         let view = Bridge.group("view.guidedActions")
         let read = GuidedOffer.list(view["actions"])
         if read != offers { offers = read }
@@ -102,6 +122,7 @@ final class GuidedStore: ObservableObject, Probeable, WriteReporting {
     func probeState() -> [String: Any] {
         ["writeFailure": writeFailure ?? "",
          "connected": connected, "missionActive": missionActive, "lastSent": lastSent,
+         "refreshes": refreshes, "watching": watchPoll != nil,
          "pending": pending?.id ?? "",
          "range": range.map {
              ["label": $0.label, "units": $0.unit, "min": $0.minimum,
