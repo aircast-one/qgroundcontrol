@@ -10,6 +10,7 @@ final class LogDownloadStore: ObservableObject, Probeable {
     @Published private(set) var status = ""
     @Published private(set) var savePath = ""
     @Published private(set) var canRefresh = false
+    @Published private(set) var canDownload = false
     @Published private(set) var canCancel = false
     @Published private(set) var canErase = false
     @Published private(set) var emptyText = ""
@@ -34,6 +35,7 @@ final class LogDownloadStore: ObservableObject, Probeable {
         if flag("requestingList") != requestingList { requestingList = flag("requestingList") }
         if flag("downloading") != downloading { downloading = flag("downloading") }
         if flag("canRefresh") != canRefresh { canRefresh = flag("canRefresh") }
+        if flag("canDownload") != canDownload { canDownload = flag("canDownload") }
         if flag("canCancel") != canCancel { canCancel = flag("canCancel") }
         if flag("canErase") != canErase { canErase = flag("canErase") }
         if text("emptyText") != emptyText { emptyText = text("emptyText") }
@@ -52,8 +54,8 @@ final class LogDownloadStore: ObservableObject, Probeable {
     }
 
     func download(_ entry: LogEntry) {
-        guard canDownload, let index = logs.firstIndex(of: entry) else { return }
-        _ = Bridge.set("logDownload.model.\(index).selected", true)
+        guard canDownload else { return }
+        _ = Bridge.set("logDownload.model.\(entry.index).selected", true)
         Bridge.invoke("logDownload.download")
         downloading = true
         reload()
@@ -75,11 +77,6 @@ final class LogDownloadStore: ObservableObject, Probeable {
         Bridge.invoke("logDownload.eraseAll")
         reload()
     }
-
-    var canDownload: Bool {
-        LogEntry.canDownload(requestingList: requestingList, downloading: downloading)
-    }
-
 
     func probeState() -> [String: Any] {
         ["count": logs.count, "requestingList": requestingList, "savePath": savePath,

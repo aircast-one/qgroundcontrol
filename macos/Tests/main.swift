@@ -473,7 +473,8 @@ func checkLogEntry() {
     func entry(_ overrides: [String: Any]) -> LogEntry? {
         LogEntry(["index": 0 as NSNumber, "id": 3 as NSNumber, "sizeText": "1.5 MB",
                   "status": "Available", "received": true as NSNumber,
-                  "selected": false as NSNumber, "time": "2026-09-09T05:25:33.000"]
+                  "timeState": "known",
+                  "time": "2026-09-09T05:25:33.000"]
             .merging(overrides) { _, new in new })
     }
 
@@ -481,16 +482,21 @@ func checkLogEntry() {
     expect(entry([:])?.id == 3, "and the log keeps the number the vehicle gave it")
     expect(LogEntry(["sizeText": "1 KB"]) == nil, "an entry with no number is not a log")
 
-    expect(entry(["received": false as NSNumber])?.timeText ?? "?", "",
+    expect(entry(["timeState": "unreceived"])?.timeText ?? "?", "",
            "a log the vehicle has not sent yet shows no time at all, as QGC shows none")
-    expect(entry(["time": "2001-01-01T00:00:00.000"])?.timeText ?? "", "Date Unknown",
-           "a clock that was never set says so rather than claiming a date in 2001")
-    expect(entry(["time": "not a date"])?.timeText ?? "", "not a date",
+    expect(entry(["timeState": "unknown"])?.timeText ?? "", "Date Unknown",
+           "a clock that was never set says so rather than claiming a date")
+    expect(entry(["timeState": "known", "time": "not a date"])?.timeText ?? "", "not a date",
            "and something unparseable is shown as sent rather than swallowed")
     expect(!(entry([:])?.timeText ?? "").isEmpty,
-           "a received log with a real clock is formatted for the reader")
+           "a log with a real clock is formatted for the reader")
     expect(!(entry([:])?.timeText ?? "").contains("T"),
            "in the reader's own locale rather than the wire's ISO spelling")
+
+    expect(entry(["timeState": "somethingNew"])?.timeState == .unrecognised,
+           "a state the core adds later is unrecognised rather than silently read as known")
+    expect(entry(["timeState": "somethingNew"])?.timeText ?? "?", "",
+           "and shows nothing rather than a date it cannot vouch for")
 }
 
 checkLogEntry()
@@ -853,16 +859,7 @@ func checkVehicleSetupText() {
 
 checkVehicleSetupText()
 
-func checkLogDownloadRules() {
-    expect(LogEntry.canDownload(requestingList: false, downloading: false),
-           "an idle vehicle can be asked for a log")
-    expect(!LogEntry.canDownload(requestingList: true, downloading: false),
-           "but not while the list is still arriving")
-    expect(!LogEntry.canDownload(requestingList: false, downloading: true),
-           "nor while another log is already coming down")
-}
 
-checkLogDownloadRules()
 
 func checkCalibrationOrder() {
     func routine(_ id: String, _ blocked: Bool, _ enabled: Bool,
@@ -2525,8 +2522,8 @@ func checkViewContract() {
           "targetRateTitle", "selected"]),
         ("view.inspector", ["rateChoices"], ["rate", "title"]),
         ("view.logs", [],
-         ["connected", "requestingList", "downloading", "canRefresh", "canCancel", "canErase",
-          "emptyText", "eraseWarning", "entries"]),
+         ["connected", "requestingList", "downloading", "canRefresh", "canDownload", "canCancel",
+          "canErase", "emptyText", "eraseWarning", "entries"]),
         ("view.missionSeed(survey,47,8)", ["points"], ["latitude", "longitude"]),
         ("view.links", ["configured"],
          ["index", "path", "name", "type", "typeLabel", "editing", "displaySummary", "connected",
