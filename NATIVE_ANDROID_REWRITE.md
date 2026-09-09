@@ -2243,7 +2243,7 @@ by an order of magnitude and the process did not get cheaper, which is worth sta
 whatever the Fly tab costs on this handset, the watcher was never the bulk of it. Two map
 renderers, a video pipeline and MAVLink at 60 messages a second are.
 
-### The last desktop-only setting
+### The last two desktop-only settings
 
 `rcControls` is a JSON array in a settings fact, and the head could render the controls but not
 change them — Settings carried a footnote telling the operator to go and find a desktop. For a
@@ -2270,6 +2270,23 @@ slider, and removed it again.
 **Four chips did not fit on one row.** The type picker was a `Row`, so "Momentary" — the fourth
 of four — was off the edge of the dialog and unreachable. It is a `FlowRow` now and wraps to two
 lines. The control that cannot be chosen is the one nobody reports.
+
+`extraVideoSources` was the other one, and it is the setting this head needed to hand-edit an
+ini for earlier the same night to test the video source picker. It has an editor now, under
+Settings beside Video, on the same pattern: entries patched rather than rebuilt, so fields this
+head does not know survive; the stream kinds read from `videoSource`'s own enum rather than a
+list copied into the head; the address field appearing only for the kinds that need one; and
+save refused, with the reason, while a kind is unchosen or an address missing. Verified end to
+end — added a camera named Thermal on the phone, saw it appear in the Fly tab's source picker
+beside Camera 1, removed it again.
+
+**It refuses an address that carries its own scheme**, because `tcp://127.0.0.1:8100` is what
+cost this session a rig cycle: QGroundControl prepends the scheme, GStreamer gets
+`tcp://tcp://...` and tries to resolve a host called `tcp`. The editor now says so before the
+save rather than after the stream fails.
+
+With those two, no setting the head hides is hidden because a phone cannot edit it. The
+`DESKTOP_ONLY_FACTS` map and the footnote that named them are gone rather than left empty.
 
 ## Phase 6 — Shell · 2 weeks
 
