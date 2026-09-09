@@ -16,32 +16,63 @@ final class FenceRallyStore: ObservableObject, Probeable, WriteReporting {
     @Published private(set) var breachAltitudeUnits = "m"
     @Published var writeFailure: String?
 
+    private var watchPoll: Timer?
+
+    // The Fly view reads these while the Plan window edits them, and a fence is plan state that no
+    // telemetry tick announces, so a reader has to look again.
+    func startWatching() {
+        guard watchPoll == nil else { return }
+        reload()
+        watchPoll = Timer.scheduledTimer(withTimeInterval: 0.5, repeats: true) { [weak self] _ in
+            self?.reload()
+        }
+    }
+
+    func stopWatching() {
+        watchPoll?.invalidate()
+        watchPoll = nil
+    }
+
+    private(set) var reloads = 0
+    private(set) var publishes = 0
+
     func reload() {
+        reloads += 1
         let fence = Bridge.group("plan.geoFenceController")
         guard fence["kind"] as? String == "object" else {
-            status = "The plan is not available."
-            shapes = []
-            rallyPoints = []
-            fenceSupported = false
-            rallySupported = false
+            set(\.status, "The plan is not available.")
+            set(\.shapes, [])
+            set(\.rallyPoints, [])
+            set(\.fenceSupported, false)
+            set(\.rallySupported, false)
             return
         }
-        status = ""
+        set(\.status, "")
 
-        connected = Bridge.group("vehicle")["kind"] as? String == "object"
-        fenceSupported = (fence["supported"] as? NSNumber)?.boolValue ?? false
-        rallySupported = (Bridge.group("plan.rallyPointController")["supported"] as? NSNumber)?.boolValue ?? false
+        set(\.connected, Bridge.group("vehicle")["kind"] as? String == "object")
+        set(\.fenceSupported, (fence["supported"] as? NSNumber)?.boolValue ?? false)
+        set(\.rallySupported,
+            (Bridge.group("plan.rallyPointController")["supported"] as? NSNumber)?.boolValue ?? false)
 
-        shapes = FenceRallyStore.readShapes()
-        rallyPoints = FenceRallyStore.readRally()
+        set(\.shapes, FenceRallyStore.readShapes())
+        set(\.rallyPoints, FenceRallyStore.readRally())
 
-        breachReturn = (fence["breachReturnPoint"] as? [String: Any])
-            .map { RallyPointRow(coordinate: $0) }
+        set(\.breachReturn, (fence["breachReturnPoint"] as? [String: Any])
+            .map { RallyPointRow(coordinate: $0) })
         let breachFact = Bridge.group("plan.geoFenceController.breachReturnAltitude")
-        breachAltitude = (breachFact["value"] as? NSNumber)?.doubleValue
-        breachAltitudeUnits = (breachFact["units"] as? String) ?? "m"
+        set(\.breachAltitude, (breachFact["value"] as? NSNumber)?.doubleValue)
+        set(\.breachAltitudeUnits, (breachFact["units"] as? String) ?? "m")
 
-        syncing = (Bridge.group("plan")["syncInProgress"] as? NSNumber)?.boolValue ?? false
+        set(\.syncing, (Bridge.group("plan")["syncInProgress"] as? NSNumber)?.boolValue ?? false)
+    }
+
+    // Every one of these feeds the map. Assigning an unchanged value republishes the store and
+    // rebuilds the overlays, which is invisible at one reload per edit and twice a second once
+    // the Fly view is watching.
+    private func set<T: Equatable>(_ key: ReferenceWritableKeyPath<FenceRallyStore, T>, _ value: T) {
+        guard self[keyPath: key] != value else { return }
+        self[keyPath: key] = value
+        publishes += 1
     }
 
     var mapCentre: GeoPoint? {
@@ -183,6 +214,7 @@ final class FenceRallyStore: ObservableObject, Probeable, WriteReporting {
 
     func probeState() -> [String: Any] {
         ["shapes": shapes.count, "rallyPoints": rallyPoints.count,
+         "reloads": reloads, "publishes": publishes, "watching": watchPoll != nil,
          "fenceSupported": fenceSupported, "rallySupported": rallySupported,
          "connected": connected,
          "breachReturn": breachReturn?.positionText ?? "none",

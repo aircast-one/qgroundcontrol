@@ -684,6 +684,7 @@ struct GuidedStrip: View {
 struct FlyView: View {
     @ObservedObject var fly: FlyStore
     @ObservedObject var mission: MissionStore
+    @ObservedObject var fenceRally: FenceRallyStore
     @ObservedObject var instruments: InstrumentsStore
     @ObservedObject var guided: GuidedStore
     @ObservedObject var video: VideoStore
@@ -764,7 +765,7 @@ struct FlyView: View {
     var body: some View {
         ZStack(alignment: .top) {
             MissionMap(owner: "fly", items: mission.items, vehicle: fly.position,
-                       shapes: [], rallyPoints: [],
+                       shapes: fenceRally.shapes, rallyPoints: [],
                        padding: NSEdgeInsets(top: 56, left: 24, bottom: 40, right: 352),
                        select: { _ in }, adding: false, add: { _, _ in }, move: { _, _, _ in },
                        secondary: { mapClick.open(latitude: $0, longitude: $1, at: $2) },
@@ -843,6 +844,7 @@ struct FlyView: View {
         .frame(minWidth: 820, minHeight: 600)
         .onAppear {
             mission.startWatching()
+            fenceRally.startWatching()
             fly.start()
             instruments.refresh()
             guided.startWatching()
@@ -854,6 +856,7 @@ struct FlyView: View {
             fly.stop()
             mapClick.stop()
             mission.stopWatching()
+            fenceRally.stopWatching()
             guided.stopWatching()
             video.stopWatching()
             instruments.clear()
@@ -871,6 +874,7 @@ final class FlyWindow: NSObject, NSWindowDelegate {
 
     private let fly = FlyStore()
     private let mission = MissionStore()
+    private let fenceRally = FenceRallyStore()
     private let instruments = InstrumentsStore()
     private let guided = GuidedStore()
     private let video = VideoStore.shared
@@ -881,6 +885,7 @@ final class FlyWindow: NSObject, NSWindowDelegate {
         super.init()
         NativeProbe.register(fly)
         NativeProbe.register(ReadOnlyProbe(mission, as: "flyMission"), as: "flyMission")
+        NativeProbe.register(ReadOnlyProbe(fenceRally, as: "flyFences"), as: "flyFences")
         NativeProbe.register(instruments)
         NativeProbe.register(guided)
         NativeProbe.register(mapClick)
@@ -906,7 +911,7 @@ final class FlyWindow: NSObject, NSWindowDelegate {
         window.titlebarAppearsTransparent = true
         window.isReleasedWhenClosed = false
         window.delegate = self
-        window.contentView = NSHostingView(rootView: FlyView(fly: fly, mission: mission, instruments: instruments, guided: guided, video: video, mapClick: mapClick))
+        window.contentView = NSHostingView(rootView: FlyView(fly: fly, mission: mission, fenceRally: fenceRally, instruments: instruments, guided: guided, video: video, mapClick: mapClick))
         window.center()
         window.makeKeyAndOrderFront(nil)
         self.window = window
@@ -915,6 +920,7 @@ final class FlyWindow: NSObject, NSWindowDelegate {
     func windowWillClose(_ notification: Notification) {
         fly.stop()
         mission.stopWatching()
+        fenceRally.stopWatching()
         guided.stopWatching()
         video.stopWatching()
         video.stopDetections()
