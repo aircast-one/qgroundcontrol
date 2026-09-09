@@ -278,6 +278,7 @@
             "view.missionFile",
             "view.transports",
             "view.coreVehicle",
+            "view.coreGuided",
             "view.kmlFile",
             "view.shapeFile",
             "view.geoToNed",

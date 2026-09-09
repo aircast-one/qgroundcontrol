@@ -138,12 +138,77 @@ fn outcome(result: Result<u32, String>) -> *mut c_char {
 }
 
 static HUB_SINK: std::sync::OnceLock<()> = std::sync::OnceLock::new();
+static PUMP: std::sync::OnceLock<()> = std::sync::OnceLock::new();
+const PUMP_PERIOD: std::time::Duration = std::time::Duration::from_millis(100);
+
+fn deliver(outbound: Vec<(u32, Vec<u8>)>) {
+    let failed: Vec<u32> = outbound.iter().filter(|(link, bytes)| !crate::linkhost::write(&crate::linkhost::TRANSPORTS, *link, bytes)).map(|(link, _)| *link).collect();
+    if !failed.is_empty() {
+        let mut hub = crate::hub::lock();
+        failed.iter().for_each(|link| hub.link_closed(*link));
+    }
+}
+
+static GUIDED_ANNOUNCED: Mutex<String> = Mutex::new(String::new());
+
+fn announce_guided() {
+    let handler = *HEAD.lock().unwrap();
+    let Some(handler) = handler else { return };
+    let snapshot = crate::hub::lock().guided_snapshot(None).to_string();
+    let changed = {
+        let mut last = GUIDED_ANNOUNCED.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
+        let changed = *last != snapshot;
+        *last = snapshot.clone();
+        changed
+    };
+    if changed {
+        let path = c("view.coreGuided");
+        let json = c(&snapshot);
+        unsafe { handler(path.as_ptr(), json.as_ptr()) };
+    }
+}
+
+fn start_pump() {
+    PUMP.get_or_init(|| {
+        std::thread::Builder::new()
+            .name("qgc-core-pump".to_string())
+            .spawn(|| loop {
+                std::thread::sleep(PUMP_PERIOD);
+                let open = crate::linkhost::TRANSPORTS.lock().unwrap().open_ids();
+                let outbound = {
+                    let mut hub = crate::hub::lock();
+                    hub.retain_links(&open);
+                    hub.expire(crate::hub::now_us());
+                    hub.tick(crate::hub::now_ms())
+                };
+                deliver(outbound);
+                announce_guided();
+            })
+            .expect("pump thread");
+    });
+}
+
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn qgc_core_guided(action_json: *const c_char) -> *mut c_char {
+    let action: serde_json::Value = serde_json::from_str(&text(action_json)).unwrap_or(serde_json::Value::Null);
+    let vehicle = action.get("vehicle").and_then(serde_json::Value::as_u64).map(|id| id as u8);
+    let started = crate::hub::lock().guided(vehicle, &action, crate::hub::now_ms());
+    give(match started {
+        Ok(outbound) => {
+            start_pump();
+            deliver(outbound);
+            announce_guided();
+            serde_json::json!({ "ok": true }).to_string()
+        }
+        Err(reason) => serde_json::json!({ "ok": false, "reason": reason }).to_string(),
+    })
+}
 
 fn install_hub_sink() {
     HUB_SINK.get_or_init(|| {
         let sink: crate::linkhost::FrameSink = std::sync::Arc::new(|frame: &crate::transport::Frame| {
-            let now_us = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map(|d| d.as_micros() as u64).unwrap_or(0);
-            crate::hub::HUB.lock().unwrap().on_frame(&frame.header, &frame.message, now_us);
+            let outbound = crate::hub::lock().on_frame(frame.link, &frame.header, &frame.message, crate::hub::now_us(), crate::hub::now_ms());
+            deliver(outbound);
         });
         crate::linkhost::TRANSPORTS.lock().unwrap().set_frame_sink(Some(sink));
     });
@@ -158,7 +223,9 @@ pub unsafe extern "C" fn qgc_core_link_open(config_json: *const c_char) -> *mut 
 
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn qgc_core_link_close(id: u32, reason: *const c_char) -> bool {
-    crate::linkhost::close(&crate::linkhost::TRANSPORTS, id, &text(reason))
+    let closed = crate::linkhost::close(&crate::linkhost::TRANSPORTS, id, &text(reason));
+    crate::hub::lock().link_closed(id);
+    closed
 }
 
 #[unsafe(no_mangle)]
@@ -187,7 +254,9 @@ pub unsafe extern "C" fn qgc_core_host_link_bytes(id: u32, bytes: *const u8, len
 
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn qgc_core_host_link_closed(id: u32, reason: *const c_char) -> bool {
-    crate::linkhost::host_closed(&crate::linkhost::TRANSPORTS, id, &text(reason))
+    let closed = crate::linkhost::host_closed(&crate::linkhost::TRANSPORTS, id, &text(reason));
+    crate::hub::lock().link_closed(id);
+    closed
 }
 
 #[unsafe(no_mangle)]

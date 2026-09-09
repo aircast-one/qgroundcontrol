@@ -571,6 +571,98 @@ void QGCCoreCTest::_coreBackedLinkBringsUpAVehicle()
 #endif
 }
 
+void QGCCoreCTest::_coreGuidedTakeoffReachesThePeer()
+{
+#ifdef QGC_RUST_CORE
+    qputenv("QGC_CORE_LINKS", "1");
+    QUdpSocket peer;
+    QVERIFY(peer.bind(QHostAddress::LocalHost, 0));
+    UDPConfiguration *const udp = new UDPConfiguration(QStringLiteral("Core Guided UDP"));
+    udp->setLocalPort(0);
+    udp->addHost(QStringLiteral("127.0.0.1"), peer.localPort());
+    udp->setDynamic(true);
+    SharedLinkConfigurationPtr config = LinkManager::instance()->addConfiguration(udp);
+    const auto tearDown = qScopeGuard([&config]() {
+        if (config->link()) {
+            config->link()->disconnect();
+        }
+        LinkManager::instance()->removeConfiguration(config.get());
+        qunsetenv("QGC_CORE_LINKS");
+    });
+    QVERIFY(LinkManager::instance()->createConnectedLink(config));
+    QVERIFY(qobject_cast<CoreLink *>(config->link()));
+
+    const auto coreLocalPort = []() {
+        const QJsonArray links = take(qgc_bridge_get("view.transports")).value(QStringLiteral("links")).toArray();
+        for (const QJsonValue &link : links) {
+            if (link.toObject().value(QStringLiteral("name")).toString() == QStringLiteral("Core Guided UDP") && link.toObject().value(QStringLiteral("owner")).toString() == QStringLiteral("core")) {
+                return link.toObject().value(QStringLiteral("localPort")).toInt(0);
+            }
+        }
+        return 0;
+    };
+    QTRY_VERIFY_WITH_TIMEOUT(coreLocalPort() > 0, 3000);
+    const quint16 port = static_cast<quint16>(coreLocalPort());
+
+    const auto send = [&peer, port](const mavlink_message_t &message) {
+        uint8_t frame[MAVLINK_MAX_PACKET_LEN]{};
+        const uint16_t len = mavlink_msg_to_send_buffer(frame, &message);
+        peer.writeDatagram(reinterpret_cast<const char *>(frame), len, QHostAddress::LocalHost, port);
+    };
+    mavlink_message_t heartbeat{};
+    mavlink_msg_heartbeat_pack(9, 1, &heartbeat, MAV_TYPE_QUADROTOR, MAV_AUTOPILOT_PX4, MAV_MODE_FLAG_CUSTOM_MODE_ENABLED, 0, MAV_STATE_STANDBY);
+    mavlink_message_t position{};
+    mavlink_msg_global_position_int_pack(9, 1, &position, 0, 474000000, 85000000, 500000, 0, 0, 0, 0, UINT16_MAX);
+    const auto coreSeesVehicle = []() { return take(qgc_bridge_get("view.coreVehicle(9)")).value(QStringLiteral("available")).toBool(false); };
+    for (int attempt = 0; attempt < 30 && !coreSeesVehicle(); ++attempt) {
+        send(heartbeat);
+        send(position);
+        QTest::qWait(100);
+    }
+    QVERIFY2(coreSeesVehicle(), "the core did not see the vehicle");
+    send(position);
+    QTest::qWait(100);
+
+    const QJsonObject started = take(qgc_core_guided("{\"vehicle\":9,\"action\":\"takeoff\",\"altitude\":15}"));
+    QVERIFY2(started.value(QStringLiteral("ok")).toBool(false), qPrintable(started.value(QStringLiteral("reason")).toString()));
+
+    mavlink_message_t parsing{};
+    mavlink_status_t parsingStatus{};
+    mavlink_message_t received{};
+    mavlink_status_t status{};
+    bool takeoffSeen = false;
+    QTRY_VERIFY_WITH_TIMEOUT(peer.hasPendingDatagrams(), 3000);
+    while (peer.hasPendingDatagrams() && !takeoffSeen) {
+        const QByteArray datagram = peer.receiveDatagram().data();
+        for (const char byte : datagram) {
+            if (mavlink_frame_char_buffer(&parsing, &parsingStatus, static_cast<uint8_t>(byte), &received, &status) == MAVLINK_FRAMING_OK && received.msgid == MAVLINK_MSG_ID_COMMAND_LONG) {
+                mavlink_command_long_t command{};
+                mavlink_msg_command_long_decode(&received, &command);
+                if (command.command == MAV_CMD_NAV_TAKEOFF) {
+                    QCOMPARE(command.target_system, 9);
+                    QCOMPARE(received.sysid, 255);
+                    QCOMPARE(received.compid, MAV_COMP_ID_MISSIONPLANNER);
+                    QCOMPARE(command.param7, 515.0f);
+                    takeoffSeen = true;
+                }
+            }
+        }
+    }
+    QVERIFY2(takeoffSeen, "no NAV_TAKEOFF reached the peer");
+    const QJsonObject guided = take(qgc_bridge_get("view.coreGuided(9)"));
+    QCOMPARE(guided.value(QStringLiteral("guided")).toObject().value(QStringLiteral("state")).toString(), QStringLiteral("done"));
+
+    const QJsonObject refused = take(qgc_core_guided("{\"vehicle\":42,\"action\":\"land\"}"));
+    QCOMPARE(refused.value(QStringLiteral("ok")).toBool(true), false);
+    QVERIFY(!refused.value(QStringLiteral("reason")).toString().isEmpty());
+
+    config->link()->disconnect();
+    QTRY_VERIFY_WITH_TIMEOUT(!coreSeesVehicle(), 10000);
+#else
+    QSKIP("the Rust core is not linked into this build");
+#endif
+}
+
 void QGCCoreCTest::_replayedLogAgreesBetweenTheModels()
 {
 #ifdef QGC_RUST_CORE
@@ -605,7 +697,6 @@ void QGCCoreCTest::_replayedLogAgreesBetweenTheModels()
         qgc_core_host_link_bytes(id, reinterpret_cast<const uint8_t *>(bytes.constData() + start), static_cast<size_t>(length));
         at = start + length;
     }
-    (void) qgc_core_host_link_closed(id, "replay complete");
     QVERIFY(logSystemId > 0);
     QJsonObject core;
     for (const QJsonValue &candidate : take(qgc_bridge_get("view.coreVehicle")).value(QStringLiteral("vehicleIds")).toArray()) {
@@ -614,7 +705,9 @@ void QGCCoreCTest::_replayedLogAgreesBetweenTheModels()
             core = vehicle;
         }
     }
+    (void) qgc_core_host_link_closed(id, "replay complete");
     QVERIFY2(core.value(QStringLiteral("heartbeats")).toInt() > 0, qPrintable(QStringLiteral("first frame system %1, no core vehicle with heartbeats").arg(logSystemId)));
+    QVERIFY2(!take(qgc_bridge_get(QStringLiteral("view.coreVehicle(%1)").arg(core.value(QStringLiteral("id")).toInt()).toUtf8().constData())).value(QStringLiteral("available")).toBool(true), "the core vehicle leaves with its link");
 
     const auto vehicleUp = []() { return take(qgc_bridge_get("vehicles.activeVehicleAvailable")).value(QStringLiteral("value")).toBool(false); };
     QTRY_VERIFY_WITH_TIMEOUT(!vehicleUp() && !MultiVehicleManager::instance()->activeVehicle(), 10000);
@@ -651,7 +744,19 @@ void QGCCoreCTest::_replayedLogAgreesBetweenTheModels()
     const QString latitude = close(qtCoordinate.value(QStringLiteral("latitude")).toDouble(), coreCoordinate.value(QStringLiteral("latitude")).toDouble(), 1e-6, "coordinate.latitude");
     QVERIFY2(latitude.isEmpty(), qPrintable(latitude));
     QCOMPARE(take(qgc_bridge_get("vehicle.armed")).value(QStringLiteral("value")).toBool(!core.value(QStringLiteral("armed")).toBool()), core.value(QStringLiteral("armed")).toBool());
-    QCOMPARE(take(qgc_bridge_get("vehicle.flightMode")).value(QStringLiteral("value")).toString(), core.value(QStringLiteral("flightMode")).toString());
+    const QString qtMode = take(qgc_bridge_get("vehicle.flightMode")).value(QStringLiteral("value")).toString();
+    const QString modeContext = QStringLiteral("qt mode %1 (type %2 firmware %3 id %4) core mode %5 (type %6 autopilot %7 id %8 base %9 custom %10)")
+                                    .arg(qtMode)
+                                    .arg(take(qgc_bridge_get("vehicle.vehicleTypeString")).value(QStringLiteral("value")).toString())
+                                    .arg(take(qgc_bridge_get("vehicle.firmwareTypeString")).value(QStringLiteral("value")).toString())
+                                    .arg(factValue("vehicle.id"))
+                                    .arg(core.value(QStringLiteral("flightMode")).toString())
+                                    .arg(core.value(QStringLiteral("vehicleType")).toInt())
+                                    .arg(core.value(QStringLiteral("autopilot")).toInt())
+                                    .arg(core.value(QStringLiteral("id")).toInt())
+                                    .arg(core.value(QStringLiteral("baseMode")).toInt())
+                                    .arg(core.value(QStringLiteral("customMode")).toInt());
+    QVERIFY2(qtMode == core.value(QStringLiteral("flightMode")).toString(), qPrintable(modeContext));
     const QJsonArray coreBatteries = core.value(QStringLiteral("batteries")).toArray();
     const QJsonArray qtBatteries = take(qgc_bridge_get("vehicle.batteries")).value(QStringLiteral("elements")).toArray();
     QCOMPARE(coreBatteries.count(), qtBatteries.count());

@@ -100,6 +100,10 @@ fn result_text(command: u16, result: u8) -> Option<String> {
 }
 
 impl Commands {
+    pub fn for_firmware(px4: bool) -> Commands {
+        Commands { px4, ..Commands::default() }
+    }
+
     pub fn pending(&self, component: u8, command: u16) -> bool {
         self.entries.iter().any(|e| e.command.component == component && e.command.command == command)
     }

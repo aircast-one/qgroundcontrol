@@ -107,6 +107,10 @@ impl Transports {
         *self.shared.state_sink.lock().unwrap() = sink;
     }
 
+    pub fn open_ids(&self) -> Vec<LinkId> {
+        self.shared.registry.lock().unwrap().open_ids()
+    }
+
     pub fn local_port(&self, id: LinkId) -> Option<u16> {
         match self.owned.get(&id).map(|l| &**l) {
             Some(Owned::Udp(link)) => Some(link.local_port()),
