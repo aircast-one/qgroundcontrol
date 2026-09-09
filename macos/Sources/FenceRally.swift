@@ -36,7 +36,7 @@ final class FenceRallyStore: ObservableObject, Probeable, WriteReporting {
         rallyPoints = FenceRallyStore.readRally()
 
         breachReturn = (fence["breachReturnPoint"] as? [String: Any])
-            .map { RallyPointRow(json: ["coordinate": $0], id: -1) }
+            .map { RallyPointRow(coordinate: $0) }
         let breachFact = Bridge.group("plan.geoFenceController.breachReturnAltitude")
         breachAltitude = (breachFact["value"] as? NSNumber)?.doubleValue
         breachAltitudeUnits = (breachFact["units"] as? String) ?? "m"
@@ -95,9 +95,8 @@ final class FenceRallyStore: ObservableObject, Probeable, WriteReporting {
     }
 
     func setRallyAltitude(_ point: RallyPointRow, value: Double) {
-        guard let index = point.altitudeIndex else { return }
-        write("plan.rallyPointController.points.\(point.id).textFieldFacts.\(index)",
-              value, "the rally point height")
+        guard !point.altitudePath.isEmpty else { return }
+        write(point.altitudePath, value, "the rally point height")
         reload()
     }
 
@@ -171,8 +170,7 @@ final class FenceRallyStore: ObservableObject, Probeable, WriteReporting {
     }
 
     static func readRally() -> [RallyPointRow] {
-        elements("plan.rallyPointController.points")
-            .enumerated().map { RallyPointRow(json: $0.element, id: $0.offset) }
+        RallyPointRow.list(Bridge.group("view.fences")["rallyPoints"])
     }
 
     // The mission probe reports the centre menu but cannot see this store, and a probe that
@@ -182,11 +180,6 @@ final class FenceRallyStore: ObservableObject, Probeable, WriteReporting {
         (readShapes().flatMap(\.framingPoints), geoPoints(readRally()))
     }
 
-    static func elements(_ path: String) -> [[String: Any]] {
-        (Bridge.group(path)["elements"] as? [[String: Any]]) ?? []
-    }
-
-    private func elements(_ path: String) -> [[String: Any]] { FenceRallyStore.elements(path) }
 
     func probeState() -> [String: Any] {
         ["shapes": shapes.count, "rallyPoints": rallyPoints.count,

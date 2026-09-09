@@ -82,38 +82,48 @@ struct FenceShape: Identifiable, Equatable {
     }
 }
 
-struct RallyPointRow: Identifiable {
-    static let altitudeFact = "RelativeAltitude"
-
+struct RallyPointRow: Identifiable, Equatable {
     let id: Int
+    let path: String
     let latitude: Double?
     let longitude: Double?
     let altitude: Double?
     let altitudeUnits: String
-    let altitudeIndex: Int?
+    let altitudePath: String
 
-    init(json: [String: Any], id: Int) {
-        self.id = id
-        let coordinate = json["coordinate"] as? [String: Any]
+    init?(_ json: Any?) {
+        guard let json = json as? [String: Any],
+              let index = (json["index"] as? NSNumber)?.intValue else { return nil }
+        id = index
+        path = (json["path"] as? String) ?? ""
+        latitude = (json["latitude"] as? NSNumber)?.doubleValue
+        longitude = (json["longitude"] as? NSNumber)?.doubleValue
+        altitude = (json["altitude"] as? NSNumber)?.doubleValue
+        altitudeUnits = (json["altitudeUnits"] as? String) ?? ""
+        altitudePath = (json["altitudePath"] as? String) ?? ""
+    }
+
+    init(coordinate: [String: Any]?) {
+        id = -1
+        path = ""
         latitude = (coordinate?["latitude"] as? NSNumber)?.doubleValue
         longitude = (coordinate?["longitude"] as? NSNumber)?.doubleValue
+        altitude = nil
+        altitudeUnits = ""
+        altitudePath = ""
+    }
 
-        let fields = (json["textFieldFacts"] as? [[String: Any]]) ?? []
-        let found = fields.firstIndex { ($0["name"] as? String) == RallyPointRow.altitudeFact }
-        altitudeIndex = found
-        let fact = found.map { fields[$0] }
-        altitude = (fact?["value"] as? NSNumber)?.doubleValue
-            ?? (coordinate?["altitude"] as? NSNumber)?.doubleValue
-        altitudeUnits = (fact?["units"] as? String) ?? "m"
+    static func list(_ json: Any?) -> [RallyPointRow] {
+        ((json as? [Any]) ?? []).compactMap(RallyPointRow.init)
     }
 
     var positionText: String {
-        guard let latitude, let longitude else { return "—" }
+        guard let latitude, let longitude else { return "\u{2014}" }
         return String(format: "%.6f, %.6f", latitude, longitude)
     }
 
     var altitudeText: String {
-        guard let altitude, altitude.isFinite else { return "—" }
+        guard let altitude, altitude.isFinite else { return "\u{2014}" }
         return String(format: "%.1f %@", altitude, altitudeUnits)
     }
 }

@@ -957,31 +957,44 @@ func checkFenceUsable() {
 checkFenceUsable()
 
 func checkRallyAndBreach() {
-    let inFeet = RallyPointRow(json: [
-        "coordinate": ["latitude": -35.36, "longitude": 149.16, "altitude": 18.3],
-        "textFieldFacts": [["name": "Longitude", "value": 149.16, "units": ""],
-                           ["name": "Latitude", "value": -35.36, "units": ""],
-                           ["name": "RelativeAltitude", "value": 60.0, "units": "ft"]],
-    ], id: 0)
-    expect(inFeet.altitudeText, "60.0 ft",
-           "the height comes from the fact, which the vehicle already converted")
-    expect(inFeet.altitudeIndex == 2, "and the write goes back to that same fact, not the coordinate")
+    let listed = RallyPointRow.list([
+        ["index": 0 as NSNumber, "path": "plan.rallyPointController.points.0",
+         "latitude": -35.3628 as NSNumber, "longitude": 149.1665 as NSNumber,
+         "altitude": 30.0 as NSNumber, "altitudeUnits": "m",
+         "altitudePath": "plan.rallyPointController.points.0.textFieldFacts.2"],
+        ["index": 1 as NSNumber, "path": "plan.rallyPointController.points.1",
+         "latitude": -35.36 as NSNumber, "longitude": 149.16 as NSNumber,
+         "altitude": 164.0 as NSNumber, "altitudeUnits": "ft",
+         "altitudePath": "plan.rallyPointController.points.1.textFieldFacts.2"],
+    ])
+    expect(listed.count == 2, "each rally point the core lists is carried across")
+    expect(listed[0].positionText, "-35.362800, 149.166500", "with its position to six places")
+    expect(listed[0].altitudeText, "30.0 m",
+           "and its height in the operator's units, which the core cooked")
+    expect(listed[1].altitudeText, "164.0 ft",
+           "so a station in feet reads in feet rather than being converted twice")
+    expect(listed[1].altitudePath, "plan.rallyPointController.points.1.textFieldFacts.2",
+           "the core names the fact to write, so the head no longer hunts the textFieldFacts "
+           + "array for one called RelativeAltitude")
 
-    let placed = RallyPointRow(json: ["coordinate": ["latitude": -35.3628, "longitude": 149.1665,
-                                                     "altitude": 60.0]], id: 0)
-    expect(placed.altitudeText, "60.0 m",
-           "a point with no facts yet falls back to its coordinate, which is always metres")
-    expect(placed.altitudeIndex == nil, "and offers no fact to write to")
-    expect(placed.positionText, "-35.362800, 149.166500", "and where it is")
+    expect(RallyPointRow(["path": "p"]) == nil, "a point with no index is dropped")
+    expect(RallyPointRow.list(nil).isEmpty, "no answer is no rally points")
 
-    let bare = RallyPointRow(json: [:], id: 1)
-    expect(bare.altitudeText, "—", "a point with no coordinate claims no height")
-    expect(bare.positionText, "—", "nor a position")
+    let noHeight = RallyPointRow(["index": 0 as NSNumber, "latitude": -35.36 as NSNumber,
+                                  "longitude": 149.16 as NSNumber])
+    expect(noHeight?.altitudeText ?? "", "\u{2014}",
+           "a point whose altitude fact the core could not read shows a dash, not a zero height")
 
-    let nan = RallyPointRow(json: ["coordinate": ["latitude": -35.36, "longitude": 149.16,
-                                                  "altitude": Double.nan]], id: 2)
-    expect(nan.altitudeText, "—",
-           "and a height the vehicle reported as not-a-number is not shown as one")
+    let breach = RallyPointRow(coordinate: ["latitude": -35.36 as NSNumber,
+                                            "longitude": 149.16 as NSNumber])
+    expect(breach.positionText, "-35.360000, 149.160000",
+           "the breach return point is still built from a bare coordinate, because it is not "
+           + "a rally point and the core does not list it")
+    expect(breach.altitudeText, "\u{2014}",
+           "and carries no height of its own; the fence's breach altitude is a separate fact")
+
+    let nowhere = RallyPointRow(coordinate: nil)
+    expect(nowhere.positionText, "\u{2014}", "with no coordinate it claims no position")
 }
 
 checkRallyAndBreach()
