@@ -399,6 +399,89 @@ impl Download {
     }
 }
 
+#[derive(Debug, Clone, PartialEq)]
+pub enum ListOut {
+    Send(Request),
+    StartTimer,
+    StopTimer,
+    Complete { entries: Vec<String>, error: String },
+}
+
+#[derive(Debug, Default)]
+pub struct Listing {
+    pub path: String,
+    pub component: u8,
+    expected_seq: u16,
+    expected_offset: u32,
+    entries: Vec<String>,
+    retries: u32,
+    active: bool,
+}
+
+impl Listing {
+    pub fn start(from_component: u8, uri: &str) -> Result<(Listing, Vec<ListOut>), String> {
+        let (path, component) = parse_uri(from_component, uri)?;
+        let mut listing = Listing { path, component, active: true, ..Default::default() };
+        let out = listing.request(true);
+        Ok((listing, out))
+    }
+
+    pub fn in_progress(&self) -> bool {
+        self.active
+    }
+
+    fn request(&mut self, first: bool) -> Vec<ListOut> {
+        if first {
+            self.retries = 0;
+        } else {
+            self.expected_seq = self.expected_seq.wrapping_sub(2);
+        }
+        let request = Request { seq: self.expected_seq.wrapping_add(1), session: 0, opcode: CMD_LIST_DIRECTORY, offset: self.expected_offset, data: self.path.as_bytes().iter().copied().take(DATA_LEN).collect(), ..Default::default() };
+        self.expected_seq = self.expected_seq.wrapping_add(2);
+        vec![ListOut::StartTimer, ListOut::Send(request)]
+    }
+
+    fn complete(&mut self, error: &str) -> Vec<ListOut> {
+        self.active = false;
+        let entries = if error.is_empty() { std::mem::take(&mut self.entries) } else { Vec::new() };
+        vec![ListOut::StopTimer, ListOut::Complete { entries, error: error.to_string() }]
+    }
+
+    pub fn on_timeout(&mut self) -> Vec<ListOut> {
+        if !self.active {
+            return Vec::new();
+        }
+        self.retries += 1;
+        if self.retries > MAX_RETRY { self.complete("List directory failed") } else { self.request(false) }
+    }
+
+    pub fn on_payload(&mut self, payload: &[u8]) -> Vec<ListOut> {
+        let Some(reply) = Request::decode(payload) else { return Vec::new() };
+        if !self.active || reply.req_opcode != CMD_LIST_DIRECTORY || self.expected_seq.wrapping_sub(1).wrapping_sub(reply.seq) < u16::MAX / 2 {
+            return Vec::new();
+        }
+        match reply.opcode {
+            RSP_ACK => {
+                if reply.seq < self.expected_seq {
+                    return vec![ListOut::StopTimer];
+                }
+                let entries: Vec<String> = reply.data.split(|b| *b == 0).filter(|e| !e.is_empty()).map(|e| String::from_utf8_lossy(e).into_owned()).collect();
+                self.expected_offset += entries.len() as u32;
+                self.entries.extend(entries);
+                self.expected_seq = reply.seq;
+                let mut out = vec![ListOut::StopTimer];
+                out.append(&mut self.request(true));
+                out
+            }
+            RSP_NAK if reply.data.first() == Some(&ERR_EOF) => {
+                if reply.seq != self.expected_seq { vec![ListOut::StartTimer] } else { self.complete("") }
+            }
+            RSP_NAK => self.complete("List directory failed"),
+            _ => Vec::new(),
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -479,5 +562,25 @@ mod tests {
         short_file.on_payload(&ack(2, 2, CMD_OPEN_FILE_RO, 0, &50u32.to_le_bytes(), false));
         let short = short_file.on_payload(&nak(4, 2, CMD_BURST_READ_FILE, ERR_EOF));
         assert!(matches!(short.last(), Some(Out::Complete { ok: false, .. })), "a short file with checksize fails");
+    }
+
+    #[test]
+    fn a_directory_listing_pages_by_entry_count_until_the_end_of_file() {
+        let (mut listing, out) = Listing::start(1, "/fs/microsd").unwrap();
+        let first = out.iter().find_map(|o| match o { ListOut::Send(r) => Some(r.clone()), _ => None }).unwrap();
+        assert_eq!((first.opcode, first.offset, first.seq, first.data.as_slice()), (CMD_LIST_DIRECTORY, 0, 1, b"/fs/microsd".as_slice()));
+        let page = b"Flog1.bin\t4096\0Dlogs\0S\0".to_vec();
+        let next = listing.on_payload(&Request { seq: 2, opcode: RSP_ACK, req_opcode: CMD_LIST_DIRECTORY, data: page, ..Default::default() }.encode());
+        let second = next.iter().find_map(|o| match o { ListOut::Send(r) => Some(r.clone()), _ => None }).unwrap();
+        assert_eq!((second.offset, second.seq), (3, 3));
+        let stale = listing.on_payload(&Request { seq: 1, opcode: RSP_ACK, req_opcode: CMD_LIST_DIRECTORY, data: b"Fx\0".to_vec(), ..Default::default() }.encode());
+        assert!(stale.is_empty());
+        let done = listing.on_payload(&Request { seq: 4, opcode: RSP_NAK, req_opcode: CMD_LIST_DIRECTORY, data: vec![ERR_EOF], ..Default::default() }.encode());
+        assert_eq!(done.last(), Some(&ListOut::Complete { entries: vec!["Flog1.bin\t4096".into(), "Dlogs".into(), "S".into()], error: String::new() }));
+        assert!(!listing.in_progress());
+        let (mut failing, _) = Listing::start(1, "/nope").unwrap();
+        let retried: Vec<Vec<ListOut>> = (0..4).map(|_| failing.on_timeout()).collect();
+        assert!(retried[2].iter().any(|o| matches!(o, ListOut::Send(r) if r.seq == 1)));
+        assert!(matches!(retried[3].last(), Some(ListOut::Complete { error, .. }) if error == "List directory failed"));
     }
 }
