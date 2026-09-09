@@ -2502,6 +2502,7 @@ func checkViewContract() {
         ("view.fences", ["rallyPoints"],
          ["index", "path", "latitude", "longitude", "altitude", "altitudeUnits", "altitudePath"]),
         ("view.links", [], ["available", "links", "configured", "linkTypes", "baudRates"]),
+        ("view.mapScale(120)", [], ["available", "text", "fraction"]),
         ("view.links", ["configured"],
          ["index", "path", "name", "type", "typeLabel", "editing", "displaySummary", "connected",
           "autoConnect", "host", "port", "portName", "baud", "filename", "logFileName",
@@ -2608,6 +2609,7 @@ func checkViewContract() {
         ("view.video", ["cameras"], ["title", "status"]),
         ("view.camera", [], ["title", "modeText", "stateText", "storageText", "shotsText"]),
         ("view.links", ["configured"], ["name", "typeLabel", "displaySummary"]),
+        ("view.mapScale(120)", [], ["text"]),
     ]
     neverNull.forEach { view, inner, keys in
         let place = inner.isEmpty ? view : "\(view).\(inner.joined(separator: "."))"
@@ -2672,37 +2674,28 @@ func checkGuidedOffers() {
 }
 
 func checkMapScale() {
-    expect(MapScaleBar.bar(metresAcross: 0, imperial: false) == .none,
-           "a map that has not laid out yet draws no scale")
-    expect(MapScaleBar.bar(metresAcross: .nan, imperial: false) == .none, "nor one measuring nothing")
+    func bar(_ overrides: [String: Any]) -> MapScaleBar? {
+        MapScaleBar(["available": true as NSNumber, "text": "100 m",
+                     "fraction": 1.0 as NSNumber].merging(overrides) { _, new in new })
+    }
 
-    let hundred = MapScaleBar.bar(metresAcross: 100, imperial: false)
-    expect(hundred.text, "100 m", "a hundred metres across reads as a hundred metres")
-    expect(hundred.fraction == 1, "and the bar spans the whole measured length")
+    expect(bar([:])?.text ?? "", "100 m", "the bar reads the label the core snapped")
+    expect(bar(["fraction": 1.25 as NSNumber])?.fraction == 1.25,
+           "and the share of the measured width the core says to draw")
 
-    let snapped = MapScaleBar.bar(metresAcross: 90, imperial: false)
-    expect(snapped.text, "100 m", "ninety snaps up to the nearest step QGC offers")
-    expect(snapped.fraction > 1, "so the bar is drawn longer than what was measured")
+    expect(bar(["available": false as NSNumber]) == nil,
+           "a width the core could not snap draws no bar at all")
+    expect(MapScaleBar([:]) == nil, "and neither does a read that returned nothing")
+    expect(bar(["fraction": NSNull()]) == nil,
+           "fraction arrives null whenever available is false, so it is never read as a zero-length "
+           + "bar drawn over the map")
 
-    expect(MapScaleBar.bar(metresAcross: 1500, imperial: false).text, "2.0 km",
-           "past a kilometre it reads in kilometres to a tenth")
-    expect(MapScaleBar.bar(metresAcross: 600000, imperial: false).text, "500 km",
-           "and past a hundred kilometres it drops the tenth, as QGC does")
-    expect(MapScaleBar.bar(metresAcross: 3, imperial: false).text, "5 m",
-           "below the smallest step it snaps up rather than vanishing")
-
-    let feet = MapScaleBar.bar(metresAcross: 100, imperial: true)
-    expect(feet.text, "250 ft",
-           "the same map on Feet reads in feet, which is the whole point of not using MapKit's own bar")
-    expect(MapScaleBar.bar(metresAcross: 3000, imperial: true).text, "2 miles",
-           "and rolls into miles past 5280 feet")
-    expect(MapScaleBar.bar(metresAcross: 1600, imperial: true).text, "1 mile",
-           "with the singular spelled properly, as QGC spells it")
-
-    expect(MapScaleBar.snapped(0, to: MapScaleBar.metres) == nil, "no length snaps to nothing")
-    expect(MapScaleBar.snapped(-5, to: MapScaleBar.metres) == nil, "nor a negative one")
-    expect(MapScaleBar.snapped(5_000_000, to: MapScaleBar.metres)?.value == 2_000_000,
-           "and past the largest step it holds at the largest")
+    expect(MapScaleBar.across(0) == nil, "a map that has not laid out yet asks for no scale")
+    expect(MapScaleBar.across(.nan) == nil,
+           "nor one measuring nothing \u{2014} and the guard runs before the width becomes an Int, "
+           + "because Int(Double.nan) is a trap and not a zero")
+    expect(MapScaleBar.across(.infinity) == nil, "nor one measuring everything")
+    expect(MapScaleBar.across(120.0) == 120, "a real width is asked for as a whole number of metres")
 }
 
 func checkTerrainDownload() {

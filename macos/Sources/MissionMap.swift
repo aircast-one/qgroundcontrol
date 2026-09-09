@@ -310,7 +310,7 @@ struct MissionMap: NSViewRepresentable {
         MissionMap.recordCentre(owner: owner, map: map)
     }
 
-    static func scale(of map: MKMapView, imperial: Bool) -> MapScaleBar {
+    static func scale(of map: MKMapView) -> MapScaleBar {
         let width = map.bounds.width
         guard width > MissionMap.scalePixels else { return .none }
         let left = map.convert(CGPoint(x: 0, y: map.bounds.midY), toCoordinateFrom: map)
@@ -318,7 +318,8 @@ struct MissionMap: NSViewRepresentable {
                                 toCoordinateFrom: map)
         let metres = CLLocation(latitude: left.latitude, longitude: left.longitude)
             .distance(from: CLLocation(latitude: right.latitude, longitude: right.longitude))
-        return MapScaleBar.bar(metresAcross: metres.rounded(), imperial: imperial)
+        guard let across = MapScaleBar.across(metres.rounded()) else { return .none }
+        return MapScaleBar(Bridge.group("view.mapScale(\(across))")) ?? .none
     }
 
     static let scalePixels = 100.0
@@ -328,7 +329,7 @@ struct MissionMap: NSViewRepresentable {
             ["lat": map.centerCoordinate.latitude, "lon": map.centerCoordinate.longitude]
         lastRender[owner]?["spanLat"] = map.region.span.latitudeDelta
         lastRender[owner]?["spanLon"] = map.region.span.longitudeDelta
-        let bar = scale(of: map, imperial: AppUnits.measure(AppUnits.horizontal).units != "m")
+        let bar = scale(of: map)
         lastRender[owner]?["scale"] = bar.text
         lastScale[owner] = bar
     }
