@@ -17,7 +17,27 @@ final class LogDownloadStore: ObservableObject, Probeable {
     @Published private(set) var eraseWarning = ""
     @Published var confirmingErase = false
 
+    private var watchPoll: Timer?
+
+    // The vehicle answers a list request over several seconds and reports a download's progress
+    // the same way, so a page that read once when it opened would sit there looking broken.
+    func startWatching() {
+        guard watchPoll == nil else { return }
+        reload()
+        watchPoll = Timer.scheduledTimer(withTimeInterval: 0.5, repeats: true) { [weak self] _ in
+            self?.reload()
+        }
+    }
+
+    func stopWatching() {
+        watchPoll?.invalidate()
+        watchPoll = nil
+    }
+
+    private(set) var reloads = 0
+
     func reload() {
+        reloads += 1
         let view = Bridge.group("view.logs")
         guard view["kind"] as? String == "object" else {
             if status.isEmpty { status = "Log download is not available." }
@@ -80,6 +100,7 @@ final class LogDownloadStore: ObservableObject, Probeable {
 
     func probeState() -> [String: Any] {
         ["count": logs.count, "requestingList": requestingList, "savePath": savePath,
+         "reloads": reloads, "watching": watchPoll != nil,
          "downloading": downloading, "status": status, "canErase": canErase,
          "connected": connected, "canRefresh": canRefresh,
          "canDownload": canDownload, "canCancel": canCancel,

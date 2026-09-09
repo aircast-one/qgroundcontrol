@@ -203,7 +203,8 @@ struct LogDownloadView: View {
                     .disabled(!store.canErase)
             }
         }
-        .onAppear(perform: store.reload)
+        .onAppear(perform: store.startWatching)
+        .onDisappear(perform: store.stopWatching)
         .alert("Erase every log on the vehicle?", isPresented: $store.confirmingErase) {
             Button("Cancel", role: .cancel) { }
             Button("Erase All", role: .destructive, action: store.eraseAll)
@@ -462,6 +463,8 @@ final class AnalyzeWindow: NSObject, NSWindowDelegate {
 
     func windowWillClose(_ notification: Notification) {
         vibration.stop()
+        inspector.stop()
+        logs.stopWatching()
         window = nil
     }
 }
