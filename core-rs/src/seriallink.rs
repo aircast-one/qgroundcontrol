@@ -60,7 +60,7 @@ pub fn flow_control(qt: i64) -> FlowControl {
 pub struct SerialLink {
     port: Arc<Mutex<Box<dyn SerialPort>>>,
     stop: Arc<AtomicBool>,
-    reader: Option<JoinHandle<()>>,
+    reader: Mutex<Option<JoinHandle<()>>>,
 }
 
 impl SerialLink {
@@ -87,7 +87,10 @@ impl SerialLink {
                 let mut buffer = vec![0u8; 4096];
                 while !stop.load(Ordering::Relaxed) {
                     match reader_port.read(&mut buffer) {
-                        Ok(0) => {}
+                        Ok(0) => {
+                            sink(Event::Disconnected("device returned no data".into()));
+                            return;
+                        }
                         Ok(len) => sink(Event::Bytes(buffer[..len].to_vec())),
                         Err(e) if matches!(e.kind(), io::ErrorKind::WouldBlock | io::ErrorKind::TimedOut | io::ErrorKind::Interrupted) => {}
                         Err(e) => {
@@ -98,7 +101,7 @@ impl SerialLink {
                 }
             })?
         };
-        Ok(SerialLink { port: Arc::new(Mutex::new(port)), stop, reader: Some(reader) })
+        Ok(SerialLink { port: Arc::new(Mutex::new(port)), stop, reader: Mutex::new(Some(reader)) })
     }
 
     pub fn write(&self, bytes: &[u8]) -> io::Result<usize> {
@@ -111,9 +114,10 @@ impl SerialLink {
         Ok(bytes.len())
     }
 
-    pub fn close(&mut self) {
+    pub fn close(&self) {
         self.stop.store(true, Ordering::Relaxed);
-        if let Some(reader) = self.reader.take() {
+        let handle = self.reader.lock().unwrap().take();
+        if let Some(reader) = handle {
             let _ = reader.join();
         }
     }

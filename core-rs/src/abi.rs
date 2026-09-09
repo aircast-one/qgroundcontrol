@@ -140,18 +140,21 @@ fn outcome(result: Result<u32, String>) -> *mut c_char {
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn qgc_core_link_open(config_json: *const c_char) -> *mut c_char {
     let reserved = crate::linkhost::qt_udp_ports(&QtBackend);
-    outcome(crate::linkhost::TRANSPORTS.lock().unwrap().open_json(&text(config_json), &reserved))
+    outcome(crate::linkhost::open_json(&crate::linkhost::TRANSPORTS, &text(config_json), &reserved))
 }
 
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn qgc_core_link_close(id: u32, reason: *const c_char) -> bool {
-    crate::linkhost::TRANSPORTS.lock().unwrap().close(id, &text(reason))
+    crate::linkhost::close(&crate::linkhost::TRANSPORTS, id, &text(reason))
 }
 
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn qgc_core_link_write(id: u32, bytes: *const u8, len: usize) -> bool {
-    let data = if bytes.is_null() { &[][..] } else { unsafe { std::slice::from_raw_parts(bytes, len) } };
-    crate::linkhost::TRANSPORTS.lock().unwrap().write(id, data)
+    if bytes.is_null() || len == 0 {
+        return false;
+    }
+    let data = unsafe { std::slice::from_raw_parts(bytes, len) };
+    crate::linkhost::write(&crate::linkhost::TRANSPORTS, id, data)
 }
 
 #[unsafe(no_mangle)]
@@ -165,7 +168,7 @@ pub unsafe extern "C" fn qgc_core_host_link_bytes(id: u32, bytes: *const u8, len
         return;
     }
     let copied = unsafe { std::slice::from_raw_parts(bytes, len) }.to_vec();
-    crate::linkhost::TRANSPORTS.lock().unwrap().host_bytes(id, &copied)
+    crate::linkhost::host_bytes(&crate::linkhost::TRANSPORTS, id, &copied)
 }
 
 #[unsafe(no_mangle)]
@@ -181,4 +184,19 @@ pub unsafe extern "C" fn qgc_core_set_link_writer(writer: LinkWriterFn, user: *m
         std::sync::Arc::new(move |id: u32, bytes: &[u8]| unsafe { w(id, bytes.as_ptr(), bytes.len(), holder.ptr()) }) as crate::linkhost::Writer
     });
     crate::linkhost::TRANSPORTS.lock().unwrap().set_writer(boxed);
+}
+
+fn announce_transports() {
+    let handler = *HEAD.lock().unwrap();
+    if let Some(handler) = handler {
+        let snapshot = crate::linkhost::TRANSPORTS.lock().unwrap().snapshot().to_string();
+        let path = c("view.transports");
+        let json = c(&snapshot);
+        unsafe { handler(path.as_ptr(), json.as_ptr()) };
+    }
+}
+
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn qgc_core_link_announce_on_state() {
+    crate::linkhost::TRANSPORTS.lock().unwrap().set_state_hook(Some(std::sync::Arc::new(announce_transports)));
 }

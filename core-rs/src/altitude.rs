@@ -22,6 +22,7 @@ pub fn altitude_view(backend: &dyn Backend, args: &[String]) -> Value {
     let unit = Unit::vertical(backend);
     let range = range_meters(backend);
     let target = args.first().and_then(|a| a.parse::<f64>().ok()).filter(|t| t.is_finite());
+    let pause = args.get(1).is_some_and(|a| a.trim().eq_ignore_ascii_case("pause"));
     let base = json!({
         "kind": "object",
         "class": "GuidedAltitude",
@@ -34,19 +35,23 @@ pub fn altitude_view(backend: &dyn Backend, args: &[String]) -> Value {
         "currentMeters": range.as_ref().map(|r| r.current),
     });
     match (range, target) {
-        (Some(range), Some(target)) => merge(base, with_target(&range, target, &unit)),
+        (Some(range), Some(target)) => merge(base, with_target(&range, target, &unit, pause)),
         _ => base,
     }
 }
 
-fn with_target(range: &Range, target: f64, unit: &Unit) -> Value {
+fn with_target(range: &Range, target: f64, unit: &Unit, pause: bool) -> Value {
     let target_meters = unit.meters(target);
     let delta_meters = target_meters - range.current;
-    let sends = delta_meters.abs() >= SMALLEST_CHANGE_METERS;
-    let sentence = match (sends, delta_meters > 0.0) {
-        (false, _) => format!("The aircraft is already at {} and will not move.", unit.label(range.current)),
-        (true, true) => format!("The aircraft will climb {} to {}.", unit.label(delta_meters), unit.label(target_meters)),
-        (true, false) => format!("The aircraft will descend {} to {}.", unit.label(-delta_meters), unit.label(target_meters)),
+    let changes = delta_meters.abs() >= SMALLEST_CHANGE_METERS;
+    let sends = pause || changes;
+    let sentence = match (pause, changes, delta_meters > 0.0) {
+        (true, false, _) => format!("The aircraft will stop and hold at {}.", unit.label(range.current)),
+        (true, true, true) => format!("The aircraft will stop, then climb {} to {}.", unit.label(delta_meters), unit.label(target_meters)),
+        (true, true, false) => format!("The aircraft will stop, then descend {} to {}.", unit.label(-delta_meters), unit.label(target_meters)),
+        (false, false, _) => format!("The aircraft is already at {} and will not move.", unit.label(range.current)),
+        (false, true, true) => format!("The aircraft will climb {} to {}.", unit.label(delta_meters), unit.label(target_meters)),
+        (false, true, false) => format!("The aircraft will descend {} to {}.", unit.label(-delta_meters), unit.label(target_meters)),
     };
     json!({
         "target": target,
@@ -54,6 +59,7 @@ fn with_target(range: &Range, target: f64, unit: &Unit) -> Value {
         "delta": unit.show(delta_meters),
         "deltaMeters": delta_meters,
         "sends": sends,
+        "pause": pause,
         "sentence": sentence,
     })
 }
@@ -135,6 +141,12 @@ mod tests {
         assert_eq!(same["sentence"], "The aircraft is already at 25.0 m and will not move.");
         let just = altitude_view(&Fake { current: Some(25.0), feet: false }, &["25.03".to_string()]);
         assert_eq!(just["sends"], true);
+        let hold = altitude_view(&Fake { current: Some(25.0), feet: false }, &["25.0".to_string(), "pause".to_string()]);
+        assert_eq!((hold["sends"].clone(), hold["pause"].clone()), (json!(true), json!(true)));
+        assert_eq!(hold["sentence"], "The aircraft will stop and hold at 25.0 m.");
+        let stop_then_climb = altitude_view(&Fake { current: Some(25.0), feet: false }, &["30".to_string(), "pause".to_string()]);
+        assert_eq!(stop_then_climb["sentence"], "The aircraft will stop, then climb 5.0 m to 30.0 m.");
+        assert_eq!(same["pause"], false);
     }
 
     #[test]

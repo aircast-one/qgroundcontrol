@@ -7,6 +7,10 @@ use std::sync::{Arc, Mutex};
 use std::thread::JoinHandle;
 use std::time::Duration;
 
+pub fn local_addresses() -> BTreeSet<Ipv4Addr> {
+    if_addrs::get_if_addrs().map(|list| list.into_iter().filter_map(|i| match i.ip() { std::net::IpAddr::V4(v4) => Some(v4), _ => None }).collect()).unwrap_or_default()
+}
+
 pub const MULTICAST_GROUP: Ipv4Addr = Ipv4Addr::new(224, 0, 0, 1);
 const READ_TIMEOUT: Duration = Duration::from_millis(200);
 const MAX_DATAGRAM: usize = 65535;
@@ -22,7 +26,7 @@ pub struct UdpLink {
     configured: Vec<SocketAddr>,
     session: Arc<Mutex<BTreeSet<SocketAddr>>>,
     stop: Arc<AtomicBool>,
-    reader: Option<JoinHandle<()>>,
+    reader: Mutex<Option<JoinHandle<()>>>,
 }
 
 fn resolve(host: &str, port: u16) -> Option<SocketAddr> {
@@ -72,7 +76,7 @@ impl UdpLink {
                 }
             })?
         };
-        Ok(UdpLink { socket, configured, session, stop, reader: Some(reader) })
+        Ok(UdpLink { socket, configured, session, stop, reader: Mutex::new(Some(reader)) })
     }
 
     pub fn local_port(&self) -> u16 {
@@ -88,9 +92,10 @@ impl UdpLink {
         self.targets().iter().filter(|target| self.socket.send_to(bytes, target).is_ok()).count()
     }
 
-    pub fn close(&mut self) {
+    pub fn close(&self) {
         self.stop.store(true, Ordering::Relaxed);
-        if let Some(reader) = self.reader.take() {
+        let handle = self.reader.lock().unwrap().take();
+        if let Some(reader) = handle {
             let _ = reader.join();
         }
     }
@@ -115,7 +120,7 @@ mod tests {
     #[test]
     fn a_peer_that_sends_first_becomes_a_session_target_and_gets_the_replies() {
         let (tx, rx) = mpsc::channel();
-        let mut link = UdpLink::open(&UdpConfig { local_port: 0, targets: vec![] }, BTreeSet::new(), move |bytes| tx.send(bytes.to_vec()).unwrap()).unwrap();
+        let link = UdpLink::open(&UdpConfig { local_port: 0, targets: vec![] }, BTreeSet::new(), move |bytes| tx.send(bytes.to_vec()).unwrap()).unwrap();
         let port = link.local_port();
         assert!(port > 0);
         let peer = UdpSocket::bind("127.0.0.1:0").unwrap();
@@ -137,7 +142,7 @@ mod tests {
         peer.set_read_timeout(Some(Duration::from_secs(2))).unwrap();
         let peer_port = peer.local_addr().unwrap().port();
         let (tx, rx) = mpsc::channel();
-        let mut link = UdpLink::open(&UdpConfig { local_port: 0, targets: vec![("localhost".into(), peer_port), ("nonexistent.invalid".into(), 1)] }, BTreeSet::new(), move |bytes| tx.send(bytes.len()).unwrap()).unwrap();
+        let link = UdpLink::open(&UdpConfig { local_port: 0, targets: vec![("localhost".into(), peer_port), ("nonexistent.invalid".into(), 1)] }, BTreeSet::new(), move |bytes| tx.send(bytes.len()).unwrap()).unwrap();
         assert_eq!(link.targets().len(), 1);
         let frame = heartbeat();
         assert_eq!(link.write(&frame), 1);

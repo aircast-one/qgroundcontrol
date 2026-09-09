@@ -492,10 +492,17 @@ void QGCCoreCTest::_coreUdpLinkFramesAPeer()
         return -1;
     };
     QTRY_COMPARE_WITH_TIMEOUT(framesIn(), 1, 3000);
-    const QJsonArray links = take(qgc_bridge_get("view.transports")).value(QStringLiteral("links")).toArray();
-    QVERIFY(!links.isEmpty());
-    QCOMPARE(links.last().toObject().value(QStringLiteral("owner")).toString(), QStringLiteral("core"));
-    QCOMPARE(links.last().toObject().value(QStringLiteral("bytesOut")).toInt(), static_cast<int>(len));
+    const auto linkById = [id]() {
+        const QJsonArray links = take(qgc_bridge_get("view.transports")).value(QStringLiteral("links")).toArray();
+        for (const QJsonValue &link : links) {
+            if (link.toObject().value(QStringLiteral("id")).toInt() == static_cast<int>(id)) {
+                return link.toObject();
+            }
+        }
+        return QJsonObject();
+    };
+    QCOMPARE(linkById().value(QStringLiteral("owner")).toString(), QStringLiteral("core"));
+    QCOMPARE(linkById().value(QStringLiteral("bytesOut")).toInt(), static_cast<int>(len));
     QVERIFY(qgc_core_link_close(id, "test done"));
     QVERIFY(!qgc_core_link_write(id, frame, len));
 }

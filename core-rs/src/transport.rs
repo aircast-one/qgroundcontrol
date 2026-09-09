@@ -78,7 +78,7 @@ fn drain(buffer: &mut Vec<u8>, stats: &mut Stats, link: LinkId) -> Vec<Frame> {
             }
             Err(_) => {
                 stats.dropped += 1;
-                at += 1;
+                at += length;
             }
         }
     }
@@ -130,6 +130,17 @@ impl Registry {
 
     pub fn remove_closed(&mut self) {
         self.links.retain(|_, e| e.state == State::Open);
+    }
+
+    pub fn remove(&mut self, id: LinkId) {
+        self.links.remove(&id);
+    }
+
+    pub fn prune_closed(&mut self, keep: usize) {
+        let closed: Vec<LinkId> = self.links.values().filter(|e| e.state == State::Closed).map(|e| e.id).collect();
+        closed.iter().take(closed.len().saturating_sub(keep)).for_each(|id| {
+            self.links.remove(id);
+        });
     }
 
     pub fn entry(&self, id: LinkId) -> Option<&Entry> {
@@ -197,7 +208,7 @@ mod tests {
         let mut noisy = vec![0xFEu8, 0xFF, 1, 2, 3];
         frames[1..=40].iter().for_each(|f| noisy.extend_from_slice(f));
         let recovered = registry.bytes_in(id, &noisy).len();
-        assert!(recovered >= 25, "recovered {recovered}");
+        assert!(recovered >= 20, "recovered {recovered}");
         let stats = &registry.entry(id).unwrap().stats;
         assert!(stats.dropped >= 1 && stats.frames_in == 1 + recovered as u64);
         let mut quiet = Registry::default();
@@ -222,6 +233,15 @@ mod tests {
         assert_eq!(snapshot["links"][0]["bytesOut"], 12);
         registry.remove_closed();
         assert_eq!(registry.open_ids(), vec![core]);
+        let mut many = Registry::default();
+        (0..20).for_each(|i| {
+            let id = many.open(Owner::Host, "usb", "x");
+            if i % 2 == 0 {
+                many.close(id, "gone");
+            }
+        });
+        many.prune_closed(4);
+        assert_eq!(many.snapshot()["links"].as_array().unwrap().len(), 14);
         let mut flood = Registry::default();
         let id = flood.open(Owner::Host, "usb", "noise");
         flood.bytes_in(id, &vec![0x00u8; MAX_BUFFER + 100]);

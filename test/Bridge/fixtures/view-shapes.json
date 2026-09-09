@@ -444,6 +444,7 @@
         "label": "string",
         "maximum": "null|number",
         "minimum": "null|number",
+        "pause": "bool",
         "sends": "bool",
         "sentence": "string",
         "target": "number",

@@ -7,6 +7,7 @@ use std::time::Duration;
 
 pub const CONNECT_TIMEOUT: Duration = Duration::from_millis(1000);
 const READ_TIMEOUT: Duration = Duration::from_millis(200);
+const WRITE_TIMEOUT: Duration = Duration::from_millis(2000);
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct TcpConfig {
@@ -21,9 +22,9 @@ pub enum Event {
 }
 
 pub struct TcpLink {
-    stream: Arc<Mutex<TcpStream>>,
+    stream: TcpStream,
     stop: Arc<AtomicBool>,
-    reader: Option<JoinHandle<()>>,
+    reader: Mutex<Option<JoinHandle<()>>>,
     peer: SocketAddr,
 }
 
@@ -36,6 +37,7 @@ impl TcpLink {
             .find_map(Result::ok)
             .ok_or_else(|| io::Error::new(io::ErrorKind::ConnectionRefused, format!("Connection to {}:{} failed", config.host, config.port)))?;
         stream.set_read_timeout(Some(READ_TIMEOUT))?;
+        stream.set_write_timeout(Some(WRITE_TIMEOUT))?;
         stream.set_nodelay(true)?;
         let peer = stream.peer_addr()?;
         let stop = Arc::new(AtomicBool::new(false));
@@ -51,7 +53,7 @@ impl TcpLink {
                             return;
                         }
                         Ok(len) => sink(Event::Bytes(buffer[..len].to_vec())),
-                        Err(e) if matches!(e.kind(), io::ErrorKind::WouldBlock | io::ErrorKind::TimedOut) => {}
+                        Err(e) if matches!(e.kind(), io::ErrorKind::WouldBlock | io::ErrorKind::TimedOut | io::ErrorKind::Interrupted) => {}
                         Err(e) => {
                             sink(Event::Disconnected(e.to_string()));
                             return;
@@ -60,7 +62,7 @@ impl TcpLink {
                 }
             })?
         };
-        Ok(TcpLink { stream: Arc::new(Mutex::new(stream)), stop, reader: Some(reader), peer })
+        Ok(TcpLink { stream, stop, reader: Mutex::new(Some(reader)), peer })
     }
 
     pub fn peer(&self) -> SocketAddr {
@@ -71,13 +73,14 @@ impl TcpLink {
         if bytes.is_empty() {
             return Err(io::Error::new(io::ErrorKind::InvalidInput, "Data to Send is Empty"));
         }
-        self.stream.lock().unwrap().write_all(bytes).map(|_| bytes.len())
+        (&self.stream).write_all(bytes).map(|_| bytes.len())
     }
 
-    pub fn close(&mut self) {
+    pub fn close(&self) {
         self.stop.store(true, Ordering::Relaxed);
-        let _ = self.stream.lock().unwrap().shutdown(Shutdown::Both);
-        if let Some(reader) = self.reader.take() {
+        let _ = self.stream.shutdown(Shutdown::Both);
+        let handle = self.reader.lock().unwrap().take();
+        if let Some(reader) = handle {
             let _ = reader.join();
         }
     }
@@ -107,7 +110,7 @@ mod tests {
             first
         });
         let (tx, rx) = mpsc::channel();
-        let mut link = TcpLink::open(&TcpConfig { host: "localhost".into(), port }, move |e| tx.send(e).unwrap()).unwrap();
+        let link = TcpLink::open(&TcpConfig { host: "localhost".into(), port }, move |e| tx.send(e).unwrap()).unwrap();
         assert_eq!(link.peer().port(), port);
         assert_eq!(link.write(b"hello").unwrap(), 5);
         assert_eq!(rx.recv_timeout(Duration::from_secs(2)).unwrap(), Event::Bytes(b"pong".to_vec()));

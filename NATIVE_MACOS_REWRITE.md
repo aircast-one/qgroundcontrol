@@ -621,6 +621,7 @@ About 58 developer-weeks. Flight-test time, not code, is the schedule.
 - 2026-09-09: contract recorder adds a populated-plan state; view.fences circles, polygons and rally points carry element shapes.
 - 2026-09-09: core serial link (serialport crate, non-Android); `view.transports` lists Qt links with owner "qt"; core refuses a UDP port a Qt link serves (Android found SO_REUSEPORT load-balances).
 - 2026-09-09: contract recorder adds a saved TCP link; `view.links` configured carries an element shape.
+- 2026-09-09: transport review fixes (no lock across I/O, reaping, state events, resync by length) and `view.guidedAltitude(target,pause)`.
 
 ### Stream F · Core
 
