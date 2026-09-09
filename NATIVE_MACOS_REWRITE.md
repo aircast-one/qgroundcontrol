@@ -644,6 +644,7 @@ About 58 developer-weeks. Flight-test time, not code, is the schedule.
 - 2026-09-09: `view.battery` and `view.preflight` depend on and read single facts (`vehicle.batteries.count`, six facts per pack up to four packs, `vehicle.gps.lock`, `vehicle.gps.count`) instead of the battery list and GPS group objects.
 - 2026-09-09: `qgc_core_parameter({"vehicle","name","value"|"refresh"})` writes or re-reads a parameter on a core link through the core's parameter machine; `view.coreParameters(id)` lists what the core knows.
 - 2026-09-09: `view.video.sourceSize` {width, height} of the decoded frame (null until decoding) so heads letterbox overlays to the painted picture.
+- 2026-09-09: component metadata is fetched over MAVLink FTP for core-served vehicles (general file, then parameter descriptions, one-second ack timer, slow-download abort); `view.coreParameter(id, NAME).meta` carries description, units, range and enums.
 
 ### Stream F · Core
 

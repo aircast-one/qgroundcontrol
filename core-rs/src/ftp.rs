@@ -2,7 +2,7 @@ pub const HEADER_LEN: usize = 12;
 pub const PAYLOAD_LEN: usize = 251;
 pub const DATA_LEN: usize = PAYLOAD_LEN - HEADER_LEN;
 pub const MAX_RETRY: u32 = 3;
-pub const SCHEME: &str = "mavlinkftp";
+pub const SCHEME: &str = "mftp";
 pub const COMP_ID_ALL: u8 = 0;
 pub const COMP_ID_AUTOPILOT1: u8 = 1;
 
@@ -532,12 +532,12 @@ mod tests {
         assert_eq!((payload.len(), payload[4], payload[6]), (PAYLOAD_LEN, 5, 1));
         assert_eq!(Request::decode(&payload).unwrap(), request);
         assert_eq!(Request::decode(&payload[..5]), None);
-        assert_eq!(parse_uri(COMP_ID_ALL, "mavlinkftp://@PARAM/param.pck").unwrap(), ("/@PARAM/param.pck".to_string(), 1));
+        assert_eq!(parse_uri(COMP_ID_ALL, "mftp://@PARAM/param.pck").unwrap(), ("/@PARAM/param.pck".to_string(), 1));
         assert_eq!(parse_uri(0, "/[;comp=100]/fs/microsd/log.bin").unwrap(), ("//fs/microsd/log.bin".to_string(), 100));
         assert_eq!(parse_uri(1, "/fs/file").unwrap(), ("/fs/file".to_string(), 1));
         assert!(parse_uri(1, "http://x").is_err());
         assert_eq!(parse_uri(1, "/fs/microsd/логи").unwrap().0, "/fs/microsd/логи");
-        assert_eq!(parse_uri(1, "MAVLINKFTP://a/b").unwrap().0, "/a/b");
+        assert_eq!(parse_uri(1, "MFTP://a/b").unwrap().0, "/a/b");
         assert!(parse_uri(1, "[;comp=x]/f").is_err());
         assert_eq!(Request { data: vec![ERR_FAIL_ERRNO, 13], ..Default::default() }.nak_error(), "errno 13");
         assert_eq!(Request { data: vec![10], ..Default::default() }.nak_error(), "FailFileNotFound");

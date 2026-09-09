@@ -19,6 +19,24 @@ pub enum ValueType {
     Custom,
 }
 
+impl ValueType {
+    pub fn from_param_type(param_type: u8) -> Option<ValueType> {
+        Some(match param_type {
+            1 => ValueType::Uint8,
+            2 => ValueType::Int8,
+            3 => ValueType::Uint16,
+            4 => ValueType::Int16,
+            5 => ValueType::Uint32,
+            6 => ValueType::Int32,
+            7 => ValueType::Uint64,
+            8 => ValueType::Int64,
+            9 => ValueType::Float,
+            10 => ValueType::Double,
+            _ => return None,
+        })
+    }
+}
+
 const TYPE_NAMES: [(&str, ValueType); 14] = [
     ("uint8", ValueType::Uint8),
     ("int8", ValueType::Int8),

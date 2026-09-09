@@ -773,6 +773,8 @@ void QGCCoreCTest::_coreConnectSequenceReachesParameters()
     mavlink_message_t ack{};
     mavlink_msg_command_ack_pack(11, 1, &ack, MAV_CMD_REQUEST_MESSAGE, MAV_RESULT_UNSUPPORTED, 0, 0, 255, MAV_COMP_ID_MISSIONPLANNER);
     send(ack);
+    QVERIFY2(expectRequest(MAVLINK_MSG_ID_COMMAND_LONG, MAVLINK_MSG_ID_COMPONENT_METADATA), "no component metadata request reached the peer");
+    send(ack);
     QVERIFY2(expectRequest(MAVLINK_MSG_ID_PARAM_REQUEST_LIST, 0), "no parameter list request reached the peer");
     mavlink_message_t value{};
     mavlink_msg_param_value_pack(11, 1, &value, "RTL_ALT", 1500.0f, MAV_PARAM_TYPE_REAL32, 2, 0);

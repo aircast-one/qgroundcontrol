@@ -148,6 +148,7 @@ impl Connect {
             Step::AutopilotVersion => actions.push(Action::RequestMessage { message_id: MSG_AUTOPILOT_VERSION }),
             Step::ProtocolVersion if quiet || vehicle.apm => chain(self.advance(link, vehicle), &mut actions),
             Step::ProtocolVersion => actions.push(Action::RequestMessage { message_id: MSG_PROTOCOL_VERSION }),
+            Step::ComponentInformation if quiet => chain(self.advance(link, vehicle), &mut actions),
             Step::ComponentInformation => actions.push(Action::RequestComponentInformation),
             Step::StandardModes => actions.push(Action::RequestStandardModes),
             Step::Parameters => actions.push(Action::RefreshParameters),
@@ -258,14 +259,12 @@ mod tests {
         let started = connect.start(&link, &vehicle);
         assert_eq!(requests(&started), vec![&Action::RequestStandardModes]);
         assert_eq!(connect.current(), Some(Step::StandardModes));
-        connect.on_step_done(&link, &vehicle);
-        connect.on_step_done(&link, &vehicle);
+        assert_eq!(requests(&connect.on_step_done(&link, &vehicle)), vec![&Action::RefreshParameters], "component information is skipped on a quiet link");
         assert_eq!(requests(&connect.on_step_done(&link, &vehicle)), vec![&Action::FirstMissionLoadComplete]);
         assert!((connect.progress(0.5) - (13.0 + 1.0) / 18.0).abs() < 1e-9);
         let mut absent = Connect::default();
         let none = Link { present: false, high_latency: false, log_replay: false };
         absent.start(&none, &vehicle);
-        absent.on_step_done(&none, &vehicle);
         absent.on_step_done(&none, &vehicle);
         let end = absent.on_step_done(&none, &vehicle);
         assert_eq!(requests(&end), vec![&Action::InitialConnectComplete]);

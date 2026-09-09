@@ -11,6 +11,7 @@ pub mod calibration;
 pub mod compression;
 pub mod connect;
 pub mod compinfo;
+pub mod compmeta;
 pub mod cmdinfo;
 pub mod detections;
 pub mod contract;

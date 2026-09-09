@@ -6,7 +6,10 @@ use std::sync::{LazyLock, Mutex, MutexGuard, PoisonError};
 
 use crate::batteryfacts::Batteries;
 use crate::gpsfacts::GpsFacts;
+use crate::compinfo::ComponentParameters;
+use crate::compmeta::{self, MSG_COMPONENT_METADATA, TYPE_GENERAL, TYPE_PARAMETER, Uris};
 use crate::connect::{self, Action, AutopilotVersion, Connect, Firmware, MSG_AUTOPILOT_VERSION, MSG_PROTOCOL_VERSION};
+use crate::ftp::{self, Download};
 use crate::guidedcmd::{self, CMD_DO_REPOSITION, Plan, VehicleState};
 use crate::guidedexec::{Emit, Executor, Observed};
 use crate::mavcmd::{Command, Commands, Failure, Out, RESULT_ACCEPTED};
@@ -76,6 +79,20 @@ pub struct Vehicle {
     params: Params,
     initial_due: Option<u64>,
     waiting_due: Option<u64>,
+    metadata_types: BTreeMap<u8, Uris>,
+    parameter_metadata: Option<ComponentParameters>,
+    fetch: Option<Fetch>,
+    ftp_due: Option<u64>,
+    ftp_seq: u16,
+}
+
+#[derive(Debug)]
+struct Fetch {
+    kind: u8,
+    uri: String,
+    download: Download,
+    started_ms: u64,
+    progress: f64,
 }
 
 impl Vehicle {
@@ -122,7 +139,118 @@ impl Vehicle {
             params: Params::new(component, autopilot == crate::modes::AUTOPILOT_PX4),
             initial_due: None,
             waiting_due: None,
+            metadata_types: BTreeMap::new(),
+            parameter_metadata: None,
+            fetch: None,
+            ftp_due: None,
+            ftp_seq: 0,
         }
+    }
+
+    fn start_fetch(&mut self, kind: u8, uri: &str, now_ms: u64) -> Vec<Vec<u8>> {
+        match Download::start_from(self.component, uri, true, self.ftp_seq) {
+            Ok((download, outs)) => {
+                self.fetch = Some(Fetch { kind, uri: uri.to_string(), download, started_ms: now_ms, progress: 0.0 });
+                self.follow_ftp(outs, now_ms)
+            }
+            Err(reason) => {
+                self.note(format!("Component metadata at {uri} is not fetched: {reason}"));
+                self.step_done(connect::Step::ComponentInformation, now_ms)
+            }
+        }
+    }
+
+    fn follow_ftp(&mut self, outs: Vec<ftp::Out>, now_ms: u64) -> Vec<Vec<u8>> {
+        outs.into_iter()
+            .flat_map(|out| match out {
+                ftp::Out::Send(request) => {
+                    let Some(fetch) = self.fetch.as_ref() else { return Vec::new() };
+                    self.ftp_seq = fetch.download.expected_seq();
+                    self.encode(&Outbound::Ftp { target: (self.id, fetch.download.component), payload: request.encode() }).into_iter().collect()
+                }
+                ftp::Out::StartTimer => {
+                    self.ftp_due = Some(now_ms + compmeta::FTP_ACK_TIMEOUT_MS);
+                    Vec::new()
+                }
+                ftp::Out::StopTimer => {
+                    self.ftp_due = None;
+                    Vec::new()
+                }
+                ftp::Out::Progress(progress) => {
+                    if let Some(fetch) = self.fetch.as_mut() {
+                        fetch.progress = progress;
+                    }
+                    Vec::new()
+                }
+                ftp::Out::Complete { ok, error, bytes } => {
+                    self.ftp_due = None;
+                    let Some(fetch) = self.fetch.take() else { return Vec::new() };
+                    self.ftp_seq = fetch.download.expected_seq();
+                    match ok {
+                        false => {
+                            self.note(format!("Component metadata download failed: {error}"));
+                            self.step_done(connect::Step::ComponentInformation, now_ms)
+                        }
+                        true => self.metadata_received(fetch.kind, &fetch.uri, &bytes, now_ms),
+                    }
+                }
+            })
+            .collect()
+    }
+
+    fn metadata_received(&mut self, kind: u8, uri: &str, bytes: &[u8], now_ms: u64) -> Vec<Vec<u8>> {
+        let text = compmeta::inflate(uri, bytes).map(|b| String::from_utf8_lossy(&b).to_string());
+        match (kind, text) {
+            (_, Err(reason)) => {
+                self.note(format!("Component metadata could not be read: {reason}"));
+                self.step_done(connect::Step::ComponentInformation, now_ms)
+            }
+            (TYPE_GENERAL, Ok(text)) => match compmeta::parse_general(&text) {
+                Ok(types) => {
+                    self.metadata_types = types;
+                    match self.metadata_types.get(&TYPE_PARAMETER).map(|u| u.uri.clone()) {
+                        Some(uri) => self.start_fetch(TYPE_PARAMETER, &uri, now_ms),
+                        None => self.step_done(connect::Step::ComponentInformation, now_ms),
+                    }
+                }
+                Err(reason) => {
+                    self.note(reason);
+                    self.step_done(connect::Step::ComponentInformation, now_ms)
+                }
+            },
+            (_, Ok(text)) => {
+                match crate::compinfo::parse(&text) {
+                    Ok(parsed) => self.parameter_metadata = Some(parsed),
+                    Err(reason) => self.note(format!("Parameter metadata could not be parsed: {reason}")),
+                }
+                self.step_done(connect::Step::ComponentInformation, now_ms)
+            }
+        }
+    }
+
+    pub fn parameter_meta(&self, name: &str, value: Option<ParamValue>) -> Option<Value> {
+        let described = self.parameter_metadata.as_ref()?;
+        let value_type = value.and_then(|v| crate::factmeta::ValueType::from_param_type(v.param_type())).unwrap_or(crate::factmeta::ValueType::Float);
+        let meta = described.metadata_for(name, value_type, self.component);
+        if !described.named.contains_key(name) && meta.short_description.is_empty() {
+            return None;
+        }
+        Some(json!({
+            "shortDescription": meta.short_description,
+            "longDescription": meta.long_description,
+            "units": meta.units,
+            "min": meta.min,
+            "max": meta.max,
+            "decimalPlaces": meta.decimal_places,
+            "increment": meta.increment,
+            "readOnly": meta.read_only,
+            "rebootRequired": meta.vehicle_reboot_required,
+            "group": meta.group,
+            "category": meta.category,
+            "default": meta.default,
+            "bitmask": meta.bitmask,
+            "enums": meta.enums.iter().map(|e| json!({ "label": e.label, "value": e.value })).collect::<Vec<_>>(),
+        }))
     }
 
     fn connect_link(&self) -> connect::Link {
@@ -199,7 +327,10 @@ impl Vehicle {
                     let actions = self.params.start();
                     self.follow_params(actions, now_ms)
                 }
-                Action::RequestComponentInformation => self.step_done(connect::Step::ComponentInformation, now_ms),
+                Action::RequestComponentInformation => {
+                    let outs = self.commands.request_message(MSG_COMPONENT_METADATA as u64, self.component, MSG_COMPONENT_METADATA, [0.0; 5], now_ms);
+                    self.handle(outs, now_ms)
+                }
                 Action::LoadMission => self.step_done(connect::Step::Mission, now_ms),
                 Action::LoadGeoFence => self.step_done(connect::Step::GeoFence, now_ms),
                 Action::LoadRallyPoints => self.step_done(connect::Step::RallyPoints, now_ms),
@@ -414,6 +545,7 @@ impl Vehicle {
                     let actions = self.connect.on_protocol_version(&self.connect_link(), &self.connect_vehicle(), self.max_proto_version);
                     self.follow_connect(actions, now_ms)
                 }
+                Out::RequestResult { message_id: MSG_COMPONENT_METADATA, failure, .. } if failure != crate::mavcmd::RequestFailure::None => self.step_done(connect::Step::ComponentInformation, now_ms),
                 Out::RequestResult { message_id: MSG_AVAILABLE_MODES, failure, .. } if failure != crate::mavcmd::RequestFailure::None => {
                     let outs = self.modes.on_message(false, None);
                     self.follow_modes(outs, now_ms)
@@ -435,6 +567,20 @@ impl Vehicle {
             self.waiting_due = None;
             let actions = self.params.on_waiting_timeout();
             bytes.extend(self.follow_params(actions, now_ms));
+        }
+        if self.ftp_due.is_some_and(|due| now_ms >= due) {
+            self.ftp_due = None;
+            let outs = self.fetch.as_mut().map(|f| f.download.on_timeout()).unwrap_or_default();
+            bytes.extend(self.follow_ftp(outs, now_ms));
+        }
+        let slow = self.fetch.as_ref().is_some_and(|f| compmeta::too_slow(now_ms.saturating_sub(f.started_ms), f.progress));
+        if slow {
+            let outs = self.fetch.as_mut().map(|f| f.download.cancel()).unwrap_or_default();
+            bytes.extend(self.follow_ftp(outs, now_ms));
+            self.fetch = None;
+            self.ftp_due = None;
+            self.note("Component metadata download abandoned: too slow.".to_string());
+            bytes.extend(self.step_done(connect::Step::ComponentInformation, now_ms));
         }
         let emits = self.guided.advance(&self.observed(), now_ms);
         bytes.extend(self.carry(emits, now_ms));
@@ -486,6 +632,18 @@ impl Vehicle {
                 }
                 self.max_proto_version = Some(p.max_version as u32);
                 return self.handle(outs, now_ms);
+            }
+            MavMessage::COMPONENT_METADATA(m) => {
+                if self.commands.on_message(header.component_id, MSG_COMPONENT_METADATA).is_empty() {
+                    return Vec::new();
+                }
+                let uri = m.uri.to_str().unwrap_or("").to_string();
+                return self.start_fetch(TYPE_GENERAL, &uri, now_ms);
+            }
+            MavMessage::FILE_TRANSFER_PROTOCOL(f) if matches!(f.target_system, 0 | mavout::GCS_SYSTEM) => {
+                let Some(fetch) = self.fetch.as_mut().filter(|fetch| fetch.download.component == header.component_id) else { return Vec::new() };
+                let outs = fetch.download.on_payload(&f.payload);
+                return self.follow_ftp(outs, now_ms);
             }
             MavMessage::AVAILABLE_MODES(m) => {
                 if self.commands.on_message(header.component_id, MSG_AVAILABLE_MODES).is_empty() {
@@ -573,6 +731,7 @@ impl Vehicle {
             "firmware": firmware,
             "flightModes": flight_modes,
             "parameters": parameters,
+            "componentInformation": { "types": self.metadata_types.keys().collect::<Vec<_>>(), "parameterMetadata": self.parameter_metadata.as_ref().map(|p| p.named.len() + p.indexed.len()).unwrap_or(0) },
             "messages": self.recent.iter().rev().take(50).map(|m| json!({ "component": m.component, "severity": m.severity, "text": m.text })).collect::<Vec<_>>(),
             "byName": self.by_name,
         })
@@ -745,6 +904,7 @@ pub fn core_parameter_view(_backend: &dyn crate::router::Backend, args: &[String
         "value": value.map(ParamValue::as_f64),
         "type": value.map(ParamValue::param_type),
         "ready": vehicle.is_some_and(|v| v.params.ready()),
+        "meta": vehicle.and_then(|v| v.parameter_meta(name, value)),
     })
 }
 
@@ -880,7 +1040,8 @@ mod tests {
         let refused = MavMessage::COMMAND_ACK(COMMAND_ACK_DATA { command: MavCmd::MAV_CMD_REQUEST_MESSAGE, result: MavResult::MAV_RESULT_UNSUPPORTED });
         hub.on_frame(4, false, autopilot, &refused, 1, 1);
         hub.on_frame(4, false, autopilot, &refused, 2, 2);
-        hub.on_frame(4, false, autopilot, &param_value("RTL_ALT", 1, 0, 1500.0), 3, 3);
+        hub.on_frame(4, false, autopilot, &refused, 3, 3);
+        hub.on_frame(4, false, autopilot, &param_value("RTL_ALT", 1, 0, 1500.0), 4, 4);
         assert_eq!(hub.snapshot()["vehicle"]["initialConnectComplete"], true);
     }
 
@@ -912,7 +1073,9 @@ mod tests {
         assert_eq!(hub.snapshot()["vehicle"]["firmware"]["version"], "4.5.6 (0)");
         let unsupported = MavMessage::COMMAND_ACK(COMMAND_ACK_DATA { command: MavCmd::MAV_CMD_REQUEST_MESSAGE, result: MavResult::MAV_RESULT_UNSUPPORTED });
         let after_modes = hub.on_frame(4, false, &autopilot, &unsupported, 1_200_000, 1_200);
-        assert!(matches!(decode(&after_modes[0].1), MavMessage::PARAM_REQUEST_LIST(l) if l.target_system == 1 && l.target_component == 0), "modes refused, parameters requested from every component");
+        assert_eq!(request_of(&after_modes[0].1), (512, 397.0), "modes refused, component metadata asked for next");
+        let after_metadata = hub.on_frame(4, false, &autopilot, &unsupported, 1_250_000, 1_250);
+        assert!(matches!(decode(&after_metadata[0].1), MavMessage::PARAM_REQUEST_LIST(l) if l.target_system == 1 && l.target_component == 0), "metadata refused, parameters requested from every component");
         assert_eq!(hub.snapshot()["vehicle"]["connectStep"], "Parameters");
         assert!(hub.on_frame(4, false, &autopilot, &param_value("RTL_ALT", 2, 0, 1500.0), 1_300_000, 1_300).is_empty());
         assert_eq!(hub.snapshot()["vehicle"]["parameters"]["ready"], false);
@@ -967,6 +1130,7 @@ mod tests {
         hub.on_frame(4, false, &autopilot, &copter_heartbeat(5, false), 0, 0);
         let refused = MavMessage::COMMAND_ACK(COMMAND_ACK_DATA { command: MavCmd::MAV_CMD_REQUEST_MESSAGE, result: MavResult::MAV_RESULT_UNSUPPORTED });
         hub.on_frame(4, false, &autopilot, &refused, 100_000, 100);
+        hub.on_frame(4, false, &autopilot, &refused, 150_000, 150);
         let listed = hub.on_frame(4, false, &autopilot, &refused, 200_000, 200);
         assert!(matches!(decode(&listed[0].1), MavMessage::PARAM_REQUEST_LIST(_)));
         assert!(hub.tick(5_199).is_empty());
@@ -997,11 +1161,107 @@ mod tests {
         };
         let second = hub.on_frame(4, false, &autopilot, &mode(1, "Manual", 65536), 300_000, 300);
         assert_eq!(request_of(&second[0].1), (512, 435.0), "the next mode is requested");
-        let listed = hub.on_frame(4, false, &autopilot, &mode(2, "Position", 196608), 400_000, 400);
-        assert!(matches!(decode(&listed[0].1), MavMessage::PARAM_REQUEST_LIST(_)));
+        let metadata = hub.on_frame(4, false, &autopilot, &mode(2, "Position", 196608), 400_000, 400);
+        assert_eq!(request_of(&metadata[0].1), (512, 397.0));
         let modes = hub.snapshot()["vehicle"]["flightModes"].clone();
         assert_eq!(modes.as_array().unwrap().len(), 2);
         assert_eq!(modes[1]["name"], "Position");
         assert_eq!(hub.snapshot()["vehicle"]["maxProtoVersion"], 200);
+    }
+
+    fn ftp_request(bytes: &[u8]) -> ftp::Request {
+        match decode(bytes) {
+            MavMessage::FILE_TRANSFER_PROTOCOL(f) => ftp::Request::decode(&f.payload).unwrap(),
+            other => panic!("not an ftp frame: {other:?}"),
+        }
+    }
+
+    fn ftp_reply(reply: ftp::Request) -> MavMessage {
+        use mavlink::dialects::ardupilotmega::FILE_TRANSFER_PROTOCOL_DATA;
+        MavMessage::FILE_TRANSFER_PROTOCOL(FILE_TRANSFER_PROTOCOL_DATA { target_network: 0, target_system: 255, target_component: 190, payload: reply.encode() })
+    }
+
+    fn serve(files: &BTreeMap<String, Vec<u8>>, request: &ftp::Request) -> ftp::Request {
+        let ack = |req_opcode: u8, offset: u32, data: Vec<u8>, burst_complete: bool| ftp::Request { seq: request.seq + 1, session: 9, opcode: ftp::RSP_ACK, req_opcode, burst_complete, offset, data };
+        let nak = |req_opcode: u8, code: u8| ftp::Request { seq: request.seq + 1, session: 9, opcode: ftp::RSP_NAK, req_opcode, burst_complete: false, offset: 0, data: vec![code] };
+        let open_path = String::from_utf8_lossy(&request.data).to_string();
+        let file = files.values().next().cloned().unwrap_or_default();
+        match request.opcode {
+            ftp::CMD_OPEN_FILE_RO => files.get(&open_path).map(|f| ack(ftp::CMD_OPEN_FILE_RO, 0, (f.len() as u32).to_le_bytes().to_vec(), false)).unwrap_or_else(|| nak(ftp::CMD_OPEN_FILE_RO, 10)),
+            ftp::CMD_BURST_READ_FILE | ftp::CMD_READ_FILE => {
+                let at = request.offset as usize;
+                match at >= file.len() {
+                    true => nak(request.opcode, ftp::ERR_EOF),
+                    false => ack(request.opcode, request.offset, file[at..].iter().copied().take(ftp::DATA_LEN).collect(), true),
+                }
+            }
+            other => ack(other, 0, Vec::new(), false),
+        }
+    }
+
+    #[test]
+    fn component_metadata_is_fetched_over_ftp_and_describes_the_parameters() {
+        use mavlink::dialects::ardupilotmega::{COMMAND_ACK_DATA, COMPONENT_METADATA_DATA, MavCmd, MavResult};
+        let autopilot = MavHeader { system_id: 1, component_id: 1, sequence: 0 };
+        let mut hub = Hub::default();
+        hub.on_frame(4, false, &autopilot, &copter_heartbeat(5, false), 0, 0);
+        let refused = MavMessage::COMMAND_ACK(COMMAND_ACK_DATA { command: MavCmd::MAV_CMD_REQUEST_MESSAGE, result: MavResult::MAV_RESULT_UNSUPPORTED });
+        hub.on_frame(4, false, &autopilot, &refused, 1, 1);
+        let asked = hub.on_frame(4, false, &autopilot, &refused, 2, 2);
+        assert_eq!(request_of(&asked[0].1), (512, 397.0));
+        let mut uri = [0u8; 100];
+        let text = b"mftp://etc/extras/component_general.json";
+        uri[..text.len()].copy_from_slice(text);
+        let metadata = MavMessage::COMPONENT_METADATA(COMPONENT_METADATA_DATA { time_boot_ms: 0, file_crc: 7, uri: uri.into() });
+        let general = br#"{"version":1,"metadataTypes":[{"type":1,"uri":"mftp://etc/extras/parameters.json.xz","fileCrc":99}]}"#.to_vec();
+        let plain = br#"{"version":1,"parameters":[{"name":"RTL_ALT","type":"float","shortDesc":"Return altitude","units":"m","min":0,"max":8000},{"name":"CAM_{n}_MODE","type":"uint8","shortDesc":"Camera {n} mode"}]}"#;
+        let mut parameters = Vec::new();
+        lzma_rs::xz_compress(&mut std::io::Cursor::new(plain.as_slice()), &mut parameters).unwrap();
+        let mut files = BTreeMap::new();
+        files.insert("/etc/extras/component_general.json".to_string(), general);
+        let mut pending = hub.on_frame(4, false, &autopilot, &metadata, 3, 3);
+        let mut parameter_file_opened = false;
+        (0..40).for_each(|i| {
+            let Some((_, bytes)) = pending.first().cloned() else { return };
+            if !matches!(decode(&bytes), MavMessage::FILE_TRANSFER_PROTOCOL(_)) {
+                return;
+            }
+            let request = ftp_request(&bytes);
+            if request.opcode == ftp::CMD_OPEN_FILE_RO && String::from_utf8_lossy(&request.data).contains("parameters.json.xz") {
+                parameter_file_opened = true;
+                files = BTreeMap::from([("/etc/extras/parameters.json.xz".to_string(), parameters.clone())]);
+            }
+            let reply = serve(&files, &request);
+            pending = hub.on_frame(4, false, &autopilot, &ftp_reply(reply), 10 + i, 10 + i);
+        });
+        assert!(parameter_file_opened, "the general file named the parameter file, which was fetched next");
+        assert!(matches!(decode(&pending[0].1), MavMessage::PARAM_REQUEST_LIST(_)), "after the metadata the connect sequence moves on to the parameters");
+        let snapshot = hub.snapshot();
+        assert_eq!(snapshot["vehicle"]["componentInformation"], json!({ "types": [1], "parameterMetadata": 2 }));
+        let meta = hub.active().unwrap().parameter_meta("RTL_ALT", Some(ParamValue::F32(0.0))).unwrap();
+        assert_eq!((meta["shortDescription"].as_str(), meta["units"].as_str(), meta["max"].as_f64()), (Some("Return altitude"), Some("m"), Some(8000.0)));
+        assert_eq!(hub.active().unwrap().parameter_meta("CAM_2_MODE", Some(ParamValue::U8(0))).unwrap()["shortDescription"], "Camera 2 mode");
+        assert!(hub.active().unwrap().parameter_meta("NOPE", None).is_none());
+        assert!(hub.active().unwrap().ftp_seq > 0, "the ftp sequence carries across downloads as it does in the Qt manager");
+    }
+
+    #[test]
+    fn a_metadata_download_that_never_answers_times_out_and_the_sequence_moves_on() {
+        use mavlink::dialects::ardupilotmega::{COMMAND_ACK_DATA, COMPONENT_METADATA_DATA, MavCmd, MavResult};
+        let autopilot = MavHeader { system_id: 1, component_id: 1, sequence: 0 };
+        let mut hub = Hub::default();
+        hub.on_frame(4, false, &autopilot, &copter_heartbeat(5, false), 0, 0);
+        let refused = MavMessage::COMMAND_ACK(COMMAND_ACK_DATA { command: MavCmd::MAV_CMD_REQUEST_MESSAGE, result: MavResult::MAV_RESULT_UNSUPPORTED });
+        hub.on_frame(4, false, &autopilot, &refused, 1, 1);
+        hub.on_frame(4, false, &autopilot, &refused, 2, 2);
+        let mut uri = [0u8; 100];
+        uri[..18].copy_from_slice(b"mftp://etc/g.json ");
+        let metadata = MavMessage::COMPONENT_METADATA(COMPONENT_METADATA_DATA { time_boot_ms: 0, file_crc: 7, uri: uri.into() });
+        let opened = hub.on_frame(4, false, &autopilot, &metadata, 3, 3);
+        assert_eq!(ftp_request(&opened[0].1).opcode, ftp::CMD_OPEN_FILE_RO);
+        assert!(hub.tick(1_000).is_empty(), "nothing happens before the one second ack timer");
+        let frames: Vec<MavMessage> = hub.tick(1_100).into_iter().map(|(_, b)| decode(&b)).collect();
+        assert!(matches!(frames.last(), Some(MavMessage::PARAM_REQUEST_LIST(_))), "an unanswered open fails the fetch and the parameters are requested anyway");
+        assert!(hub.guided_snapshot(None)["guided"]["errors"].as_array().unwrap().iter().any(|e| e.as_str().unwrap().contains("Download failed")));
     }
 }
