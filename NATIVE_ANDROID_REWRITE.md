@@ -1862,6 +1862,39 @@ look at something and reopening would have silently wiped every manual check. Th
 lives on the Fly screen and the screen takes it as a parameter. Verified on the handset — a
 check ticked, dialog closed, sheet reopened, dialog reopened, still ticked.
 
+### The sequential counter comparison, and why it did not finish
+
+`settings.appSettings.coreLinks` was added so the same stream could be run once through the
+Qt link and once through a core-built one, with `vehicle.messagesReceived` read both times.
+The Qt half is measured. The core half does not run on this head yet.
+
+| run | setting | messages in 60 s | commands the sim received | vehicle |
+|---|---|---|---|---|
+| A | default | 3224 → 6928, so **3704** | 71 | present, flying |
+| B | `coreLinks=true` | 0 | 0 | "No vehicle" |
+
+With the flag on, nothing moves in either direction. `view.transports` — read
+synchronously — holds exactly one entry, and it is the autoconnect UDP configuration with
+`"owner":"qt"`, `"state":"closed"`, `"reason":""`. So no core-owned link is created and the
+Qt link does not open either. `view.coreVehicle` and `view.coreVehicle(1)` are both served
+and both correctly report `available:false`, which is the documented behaviour off a core
+link, so the view itself is fine.
+
+The flag is definitely being read: the only change between the runs was that line in the ini,
+and the app went from a connected vehicle to none.
+
+**A watch is not a read when the value never changes.** The first pass at this used `qgcPath`,
+which is a subscription, and every reading came back null — easy to misread as "the view is
+empty" when it means "nothing has changed since you subscribed". Switching the probe to a
+polled `Qgc.get` turned three nulls into `available:false` and a populated transports list,
+which is what actually produced the finding. The same trap sits under any probe that watches
+a path expected to be quiet.
+
+**`strings` on macOS needs `-a` to scan a dex.** Checking whether the APK really carried a new
+probe string came back empty twice before the instrument, not the artifact, turned out to be
+at fault. The stale-artifact rule has a sibling: before believing an artifact is stale, check
+that the thing reading it can see anything at all.
+
 ## Phase 6 — Shell · 2 weeks
 
 Cheaper than macOS, because Qt is already off the main thread.
