@@ -1744,7 +1744,9 @@ height — exactly the case where an operator wants to stop where they are. QGC'
 returns before sending a position target, so a zero delta is the *normal* pause, not a
 no-op. The head now sends when pausing regardless of delta. The core is still the better
 home for this rule: `view.guidedAltitude` reports a change it would send, and pause needs
-`sends` to mean something else. Flagged for the core session; nothing else depends on it.
+`sends` to mean something else. Agreed with the core session as `view.guidedAltitude(target,pause)`
+— `sends` true regardless of delta, `pause` on every reply so the field is in the contract, and a
+sentence that says the aircraft will stop and hold. The head clause goes when that lands.
 
 **The slide-to-confirm label sat under the thumb.** "Slide to emergency stop" rendered as
 "lide to emergency stop" — the instruction on the most dangerous control in the app was the
