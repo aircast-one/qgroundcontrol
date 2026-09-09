@@ -1092,9 +1092,15 @@ exists natively today:
 | `OverlayGlass` / `OverlayRig` / `FlyViewInsetViewer` | **partly replaced** | Compose does the layout; what remains of the rig's job is the camera inset, and the bottom one is fed from the measured controls panel |
 | `Viewer3D` | **dropped** | decided in Phase 2; goes with `FlyView.qml` |
 
-So the tab cannot be switched yet, and not because video was missing — video works. Eight
-surfaces have no native equivalent, and two of them (camera controls, obstacle distance)
-are things an operator uses in flight.
+That inventory is now closed. Every layer above is built, built in another form, or dropped
+with a reason, and the Fly tab draws the native map with `AndroidHost.qml`'s `FlyView` and
+`PlanView` told not to render at all — so nothing of QGC's QML is visible on this head on any
+tab. What is left of `FlyView.qml` for Android is the `QQuickWindow` that `VideoManager`
+initialises against, and Phase 6's deletion of the host.
+
+The paragraph that used to stand here said the tab could not be switched because eight
+surfaces had no native equivalent. That was true when it was written and is kept in the
+history rather than the present.
 
 **Camera control is built and verified on the wire.** The Fly view shows the current mode
 and a shutter that takes a photo or toggles recording, through the same `takePhoto` and
