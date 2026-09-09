@@ -251,20 +251,20 @@ let start = MissionItem(json: [
     "sequenceNumber": 0, "commandName": "Mission Start", "isCurrentItem": true,
     "coordinate": ["latitude": -35.36, "longitude": 149.16, "altitude": 584.09],
     "facts": []], index: 0)
-expect(start.altitudeText, "584.1 m", "falls back to the coordinate altitude")
+expect(start.altitudeText, "584 m", "falls back to the coordinate altitude")
 
 let startFact = MissionItem(json: [
     "sequenceNumber": 0, "commandName": "Mission Start",
     "coordinate": ["latitude": -35.36, "longitude": 149.16, "altitude": 584.09],
     "facts": [["name": "PlannedHomePositionAltitude", "value": 1916.3, "units": "ft"]]], index: 0)
-expect(startFact.altitudeText, "1916.3 ft",
+expect(startFact.altitudeText, "1916 ft",
        "but mission start has its own altitude fact, and the row must not disagree with the field below it")
 
 let startInFeet = MissionItem(json: [
     "sequenceNumber": 0, "commandName": "Mission Start",
     "coordinate": ["latitude": -35.36, "longitude": 149.16, "altitude": 584.09],
     "facts": []], index: 0, verticalMeasure: Measure(units: "ft", factor: 3.28084))
-expect(startInFeet.altitudeText, "1916.3 ft",
+expect(startInFeet.altitudeText, "1916 ft",
        "and when only the coordinate is left, its metres are converted rather than relabelled")
 expect(start.isCurrent, "the current item is flagged")
 expect(waypoint.index == 1, "an item remembers the list position its bridge path needs")
@@ -965,7 +965,7 @@ func checkRallyAndBreach() {
     expect(listed[0].positionText, "-35.362800, 149.166500", "with its position to six places")
     expect(listed[0].altitudeText, "30.0 m",
            "and its height in the operator's units, which the core cooked")
-    expect(listed[1].altitudeText, "164.0 ft",
+    expect(listed[1].altitudeText, "164 ft",
            "so a station in feet reads in feet rather than being converted twice")
     expect(listed[1].altitudePath, "plan.rallyPointController.points.1.textFieldFacts.2",
            "the core names the fact to write, so the head no longer hunts the textFieldFacts "
@@ -1909,6 +1909,35 @@ func checkReadOnlyProbe() {
 
 checkReadOnlyProbe()
 
+func checkPlanMeasuresMatchTheCore() {
+    // core-rs read.rs format_measure: a tenth under a hundred, whole numbers at or above it.
+    // Measure.format is the head's copy of that rule and its tests pin the same cases; these
+    // check that everything in the Plan window actually goes through it, because the terrain
+    // sheet and the survey stats on the same screen are the core's own strings.
+    expect(Measure.format(40, "m"), "40.0 m", "the shared formatter keeps a tenth under a hundred")
+    expect(Measure.format(120, "m"), "120 m", "and drops it at a hundred and above")
+
+    expect(PlanSummary.distance(40, .metres), "40.0 m",
+           "a short plan reads the same as a short survey leg, which the core spells 40.0 m")
+    expect(PlanSummary.distance(7047, .metres), "7047 m", "and a long one is unchanged")
+    expect(PlanSummary.distance(0, .metres), "\u{2014}",
+           "a plan with no flight in it still shows a dash rather than 0.0 m")
+    expect(PlanSummary.distance(Double.nan, .metres), "\u{2014}", "and so does a number that is not one")
+
+    expect(Measure.reading(120, "m"), "120 m",
+           "an item's altitude reads the same as the terrain sheet under it, which the core "
+           + "spells 120 m; the head used to write 120.0 m beside it")
+    expect(Measure.reading(45.26, "m"), "45.3 m", "and a low one keeps its tenth")
+    expect(Measure.reading(0, "m"), "0.0 m",
+           "zero is a real altitude, not a missing one, so it is not dashed away")
+    expect(Measure.reading(nil, "m"), "\u{2014}", "but an absent one is")
+    expect(Measure.format(40, ""), "40.0",
+           "a fact with no units reads as a bare number rather than one with a space stranded "
+           + "on the end of it")
+}
+
+checkPlanMeasuresMatchTheCore()
+
 func checkPreflight() {
     func check(_ name: String, _ verdict: String, _ blocked: Bool) -> [String: Any] {
         ["name": name, "prompt": "P", "verdict": verdict, "reason": "R",
@@ -2134,13 +2163,13 @@ func checkLaunchPosition() {
                                    altitude: ["value": 583.0 as NSNumber, "units": "m"])
     expect(!onVehicle.editable, "the vehicle's own home position wins over the plan's")
     expect(onVehicle.altitude == 583.0, "the launch altitude comes from its fact")
-    expect(onVehicle.altitudeText, "583.0 m", "and reads out with the fact's own units")
+    expect(onVehicle.altitudeText, "583 m", "and reads out with the fact's own units")
     expect(onVehicle.positionText == "-35.360000, 149.160000", "a placed launch position reads out")
 
     let feet = LaunchPosition(home: ["valid": false], item: [:],
                               altitude: ["value": 100.0 as NSNumber, "units": "ft"])
     expect(feet.units == "ft", "the launch altitude takes its units from the fact")
-    expect(feet.altitudeText, "100.0 ft", "so an operator on feet is not told metres")
+    expect(feet.altitudeText, "100 ft", "so an operator on feet is not told metres")
     expect(feet.note.contains("ground height"),
            "and the note says the terrain fills that altitude in, which QGC does two seconds later")
 }

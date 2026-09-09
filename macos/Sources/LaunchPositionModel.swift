@@ -26,8 +26,7 @@ struct LaunchPosition: Equatable {
     var editable: Bool { !vehicleHasHome }
 
     var altitudeText: String {
-        guard let altitude, altitude.isFinite else { return "—" }
-        return String(format: "%.1f %@", altitude, units)
+        Measure.reading(altitude, units)
     }
 
     var positionText: String {

@@ -74,7 +74,6 @@ struct MissionItem: Identifiable, Equatable {
     }
 
     var altitudeText: String {
-        guard let altitude, altitude.isFinite else { return "—" }
-        return String(format: "%.1f %@", altitude, Measure.pretty(altitudeUnits))
+        Measure.reading(altitude, altitudeUnits)
     }
 }

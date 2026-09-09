@@ -123,7 +123,6 @@ struct RallyPointRow: Identifiable, Equatable {
     }
 
     var altitudeText: String {
-        guard let altitude, altitude.isFinite else { return "\u{2014}" }
-        return String(format: "%.1f %@", altitude, altitudeUnits)
+        Measure.reading(altitude, altitudeUnits)
     }
 }

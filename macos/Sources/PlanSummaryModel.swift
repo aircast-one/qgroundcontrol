@@ -17,7 +17,7 @@ struct PlanSummary: Equatable {
 
     static func distance(_ metres: Double, _ measure: Measure) -> String {
         guard metres.isFinite, metres > 0 else { return "—" }
-        return String(format: "%.0f %@", measure.convert(metres), measure.suffix)
+        return measure.text(metres)
     }
 
     static func duration(_ seconds: Double) -> String {
