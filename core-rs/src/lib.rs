@@ -45,6 +45,7 @@ pub mod modes;
 pub mod plan;
 pub mod params;
 pub mod planfile;
+pub mod plantransfer;
 pub mod preflight;
 pub mod px4meta;
 pub mod radio;

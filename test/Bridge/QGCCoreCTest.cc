@@ -781,6 +781,11 @@ void QGCCoreCTest::_coreConnectSequenceReachesParameters()
     send(value);
     mavlink_msg_param_value_pack(11, 1, &value, "WPNAV_SPEED", 250.0f, MAV_PARAM_TYPE_REAL32, 2, 1);
     send(value);
+    QVERIFY2(expectRequest(MAVLINK_MSG_ID_MISSION_REQUEST_LIST, 0), "no mission request list reached the peer");
+    mavlink_message_t count{};
+    mavlink_msg_mission_count_pack(11, 1, &count, 255, MAV_COMP_ID_MISSIONPLANNER, 0, MAV_MISSION_TYPE_MISSION, 0);
+    send(count);
+    QVERIFY2(expectRequest(MAVLINK_MSG_ID_MISSION_ACK, 0), "the empty mission was not acknowledged");
     const auto connected = []() { return take(qgc_bridge_get("view.coreVehicle(11)")).value(QStringLiteral("vehicle")).toObject().value(QStringLiteral("initialConnectComplete")).toBool(false); };
     QTRY_VERIFY_WITH_TIMEOUT(connected(), 3000);
     const QJsonObject vehicle = take(qgc_bridge_get("view.coreVehicle(11)")).value(QStringLiteral("vehicle")).toObject();
@@ -801,6 +806,19 @@ void QGCCoreCTest::_coreConnectSequenceReachesParameters()
     QTRY_COMPARE_WITH_TIMEOUT(rtlAltitude(), 2000.0, 3000);
     QCOMPARE(take(qgc_core_parameter("{\"vehicle\":11,\"name\":\"UNKNOWN\",\"value\":1}")).value(QStringLiteral("ok")).toBool(true), false);
     QCOMPARE(take(qgc_core_parameter("{\"vehicle\":11,\"name\":\"RTL_ALT\",\"value\":1e40}")).value(QStringLiteral("ok")).toBool(true), false);
+
+    const QJsonObject writing = take(qgc_core_mission("{\"vehicle\":11,\"action\":\"write\",\"items\":[{\"frame\":0,\"command\":16,\"params\":[0,0,0,0,47.0,8.0,0]},{\"frame\":3,\"command\":16,\"params\":[0,0,0,0,47.2,8.2,60]}]}"));
+    QVERIFY2(writing.value(QStringLiteral("ok")).toBool(false), qPrintable(writing.value(QStringLiteral("reason")).toString()));
+    QVERIFY2(expectRequest(MAVLINK_MSG_ID_MISSION_COUNT, 0), "no mission count reached the peer");
+    mavlink_message_t request{};
+    mavlink_msg_mission_request_int_pack(11, 1, &request, 255, MAV_COMP_ID_MISSIONPLANNER, 0, MAV_MISSION_TYPE_MISSION);
+    send(request);
+    QVERIFY2(expectRequest(MAVLINK_MSG_ID_MISSION_ITEM_INT, 0), "the requested item did not reach the peer");
+    mavlink_message_t accepted{};
+    mavlink_msg_mission_ack_pack(11, 1, &accepted, 255, MAV_COMP_ID_MISSIONPLANNER, MAV_MISSION_ACCEPTED, MAV_MISSION_TYPE_MISSION, 0);
+    send(accepted);
+    const auto missionCount = []() { return take(qgc_bridge_get("view.coreMission(11)")).value(QStringLiteral("mission")).toObject().value(QStringLiteral("count")).toInt(-1); };
+    QTRY_COMPARE_WITH_TIMEOUT(missionCount(), 1, 3000);
 
     config->link()->disconnect();
     QTRY_VERIFY_WITH_TIMEOUT(!coreSeesVehicle(), 10000);

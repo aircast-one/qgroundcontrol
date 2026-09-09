@@ -646,6 +646,7 @@ About 58 developer-weeks. Flight-test time, not code, is the schedule.
 - 2026-09-09: `view.video.sourceSize` {width, height} of the decoded frame (null until decoding) so heads letterbox overlays to the painted picture.
 - 2026-09-09: component metadata is fetched over MAVLink FTP for core-served vehicles (general file, then parameter descriptions, one-second ack timer, slow-download abort); `view.coreParameter(id, NAME).meta` carries description, units, range and enums.
 - 2026-09-09: `view.camera` depends on the camera's properties, not the camera object; battery pack dependencies follow the pack count the vehicle reported; the router re-watches upstream when a view's dependencies change after a recompute.
+- 2026-09-09: missions are read and written on core links with the Qt plan manager's protocol and timers (`qgc_core_mission`, `view.coreMission(id)`); the connect sequence loads the vehicle's mission. Fence and rally remain stepped over.
 
 ### Stream F · Core
 

@@ -1,5 +1,5 @@
 #[allow(deprecated)]
-use mavlink::dialects::ardupilotmega::{COMMAND_INT_DATA, COMMAND_LONG_DATA, FILE_TRANSFER_PROTOCOL_DATA, MISSION_ITEM_DATA, MavCmd, MavFrame, MavMessage, MavParamType, PARAM_REQUEST_LIST_DATA, PARAM_REQUEST_READ_DATA, PARAM_SET_DATA, PositionTargetTypemask, SET_POSITION_TARGET_LOCAL_NED_DATA};
+use mavlink::dialects::ardupilotmega::{COMMAND_INT_DATA, COMMAND_LONG_DATA, FILE_TRANSFER_PROTOCOL_DATA, MISSION_ACK_DATA, MISSION_COUNT_DATA, MISSION_ITEM_DATA, MISSION_ITEM_INT_DATA, MISSION_REQUEST_INT_DATA, MISSION_REQUEST_LIST_DATA, MavCmd, MavMissionResult, MavFrame, MavMessage, MavParamType, PARAM_REQUEST_LIST_DATA, PARAM_REQUEST_READ_DATA, PARAM_SET_DATA, PositionTargetTypemask, SET_POSITION_TARGET_LOCAL_NED_DATA};
 use mavlink::types::CharArray;
 use mavlink::{MAVLinkV2MessageRaw, MavHeader, MavlinkVersion, MessageData};
 use num_traits::FromPrimitive;
@@ -22,6 +22,19 @@ pub enum Outbound {
     ParamRequestRead { target: (u8, u8), name: Option<String>, index: i16 },
     ParamSet { target: (u8, u8), name: String, bits: f32, param_type: u8 },
     Ftp { target: (u8, u8), payload: [u8; 251] },
+    MissionRequestList { target: (u8, u8) },
+    MissionRequestInt { target: (u8, u8), seq: u16 },
+    MissionCount { target: (u8, u8), count: u16 },
+    MissionItemInt { target: (u8, u8), item: crate::plantransfer::Item },
+    MissionAck { target: (u8, u8), result: u8 },
+}
+
+pub fn command_known(command: u16) -> bool {
+    MavCmd::from_u32(command as u32).is_some()
+}
+
+pub fn frame_known(frame: u8) -> bool {
+    MavFrame::from_u8(frame).is_some()
 }
 
 pub fn param_id(name: &str) -> CharArray<16> {
@@ -90,6 +103,29 @@ pub fn message(send: &Outbound) -> Option<MavMessage> {
         Outbound::SetMode { .. } => None,
         Outbound::ParamRequestList { target } => Some(MavMessage::PARAM_REQUEST_LIST(PARAM_REQUEST_LIST_DATA { target_system: target.0, target_component: target.1 })),
         Outbound::ParamRequestRead { target, name, index } => Some(MavMessage::PARAM_REQUEST_READ(PARAM_REQUEST_READ_DATA { param_index: if name.is_some() { -1 } else { *index }, target_system: target.0, target_component: target.1, param_id: param_id(name.as_deref().unwrap_or("")) })),
+        Outbound::MissionRequestList { target } => Some(MavMessage::MISSION_REQUEST_LIST(MISSION_REQUEST_LIST_DATA { target_system: target.0, target_component: target.1 })),
+        Outbound::MissionRequestInt { target, seq } => Some(MavMessage::MISSION_REQUEST_INT(MISSION_REQUEST_INT_DATA { seq: *seq, target_system: target.0, target_component: target.1 })),
+        Outbound::MissionCount { target, count } => Some(MavMessage::MISSION_COUNT(MISSION_COUNT_DATA { count: *count, target_system: target.0, target_component: target.1 })),
+        Outbound::MissionAck { target, result } => Some(MavMessage::MISSION_ACK(MISSION_ACK_DATA { target_system: target.0, target_component: target.1, mavtype: MavMissionResult::from_u8(*result)? })),
+        Outbound::MissionItemInt { target, item } => {
+            let scale = |v: f64| if item.frame == crate::plantransfer::FRAME_MISSION { v as i32 } else { (v * 1e7).round() as i32 };
+            Some(MavMessage::MISSION_ITEM_INT(MISSION_ITEM_INT_DATA {
+                param1: item.params[0] as f32,
+                param2: item.params[1] as f32,
+                param3: item.params[2] as f32,
+                param4: item.params[3] as f32,
+                x: scale(item.params[4]),
+                y: scale(item.params[5]),
+                z: item.params[6] as f32,
+                seq: item.seq,
+                command: MavCmd::from_u32(item.command as u32)?,
+                target_system: target.0,
+                target_component: target.1,
+                frame: MavFrame::from_u8(item.frame)?,
+                current: u8::from(item.current),
+                autocontinue: u8::from(item.auto_continue),
+            }))
+        }
         Outbound::Ftp { target, payload } => Some(MavMessage::FILE_TRANSFER_PROTOCOL(FILE_TRANSFER_PROTOCOL_DATA { target_network: 0, target_system: target.0, target_component: target.1, payload: *payload })),
         Outbound::ParamSet { target, name, bits, param_type } => Some(MavMessage::PARAM_SET(PARAM_SET_DATA { param_value: *bits, target_system: target.0, target_component: target.1, param_id: param_id(name), param_type: MavParamType::from_u8(*param_type)? })),
         Outbound::PositionTargetLocalNed { target, frame: f, type_mask, x, y, z } => Some(MavMessage::SET_POSITION_TARGET_LOCAL_NED(SET_POSITION_TARGET_LOCAL_NED_DATA {

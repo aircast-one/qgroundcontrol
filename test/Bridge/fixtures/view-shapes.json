@@ -281,6 +281,7 @@
             "view.coreGuided",
             "view.coreParameter",
             "view.coreParameters",
+            "view.coreMission",
             "view.detections",
             "view.kmlFile",
             "view.shapeFile",

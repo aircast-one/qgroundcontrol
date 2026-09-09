@@ -15,6 +15,7 @@ use crate::guidedexec::{Emit, Executor, Observed};
 use crate::mavcmd::{Command, Commands, Failure, Out, RESULT_ACCEPTED};
 use crate::mavout::{self, Outbound};
 use crate::params::{self, INITIAL_REQUEST_TIMEOUT_MS, ParamValue, Params, WAITING_TIMEOUT_MS};
+use crate::plantransfer::{self, Transfer};
 use crate::standardmodes::{self, AvailableMode, FlightMode, MSG_AVAILABLE_MODES, StandardModes};
 use crate::transport::LinkId;
 use crate::sensorfacts::{DistanceSensorFacts, EstimatorStatusFacts, LocalPositionFacts, TemperatureFacts, WindFacts};
@@ -63,6 +64,7 @@ pub struct Vehicle {
     pub by_name: BTreeMap<String, u64>,
     pub capabilities: u64,
     pub home_altitude: Option<f64>,
+    pub home: Option<(f64, f64, f64)>,
     pub reposition_supported: Option<bool>,
     pub errors: Vec<String>,
     pub replay: bool,
@@ -84,6 +86,10 @@ pub struct Vehicle {
     fetch: Option<Fetch>,
     ftp_due: Option<u64>,
     ftp_seq: u16,
+    mission: Transfer,
+    mission_due: Option<u64>,
+    mission_progress: f64,
+    mission_error: Option<String>,
 }
 
 #[derive(Debug)]
@@ -123,6 +129,7 @@ impl Vehicle {
             by_name: BTreeMap::new(),
             capabilities: 0,
             home_altitude: None,
+            home: None,
             reposition_supported: None,
             errors: Vec::new(),
             replay,
@@ -144,7 +151,98 @@ impl Vehicle {
             fetch: None,
             ftp_due: None,
             ftp_seq: 0,
+            mission: Transfer::new(autopilot == crate::modes::AUTOPILOT_ARDUPILOT),
+            mission_due: None,
+            mission_progress: 0.0,
+            mission_error: None,
         }
+    }
+
+    fn follow_mission(&mut self, outs: Vec<plantransfer::Out>, now_ms: u64) -> Vec<Vec<u8>> {
+        let target = (self.id, self.component);
+        outs.into_iter()
+            .flat_map(|out| match out {
+                plantransfer::Out::RequestList => self.encode(&Outbound::MissionRequestList { target }).into_iter().collect(),
+                plantransfer::Out::RequestItem(seq) => self.encode(&Outbound::MissionRequestInt { target, seq }).into_iter().collect(),
+                plantransfer::Out::SendCount(count) => self.encode(&Outbound::MissionCount { target, count }).into_iter().collect(),
+                plantransfer::Out::SendItem(item) => self.encode(&Outbound::MissionItemInt { target, item }).into_iter().collect(),
+                plantransfer::Out::SendAck => self.encode(&Outbound::MissionAck { target, result: plantransfer::RESULT_ACCEPTED }).into_iter().collect(),
+                plantransfer::Out::StartTimer(ms) => {
+                    self.mission_due = Some(now_ms + ms);
+                    Vec::new()
+                }
+                plantransfer::Out::StopTimer => {
+                    self.mission_due = None;
+                    Vec::new()
+                }
+                plantransfer::Out::Progress(progress) => {
+                    self.mission_progress = progress;
+                    Vec::new()
+                }
+                plantransfer::Out::HomePosition(latitude, longitude, altitude) => {
+                    self.home_altitude = Some(altitude);
+                    self.home = Some((latitude, longitude, altitude));
+                    Vec::new()
+                }
+                plantransfer::Out::Done { success, error } => {
+                    self.mission_due = None;
+                    self.mission_error = (!success).then_some(error.clone());
+                    if !success {
+                        self.note(error);
+                    }
+                    self.step_done(connect::Step::Mission, now_ms)
+                }
+            })
+            .collect()
+    }
+
+    pub fn mission_request(&mut self, request: &Value, now_ms: u64) -> Result<Vec<Vec<u8>>, String> {
+        if self.mission.in_progress() {
+            return Err("A mission transfer is still in progress.".to_string());
+        }
+        match request.get("action").and_then(Value::as_str).unwrap_or("") {
+            "load" => {
+                let outs = self.mission.load();
+                Ok(self.follow_mission(outs, now_ms))
+            }
+            "write" => {
+                let items: Vec<plantransfer::Item> = request
+                    .get("items")
+                    .and_then(Value::as_array)
+                    .filter(|items| !items.is_empty())
+                    .ok_or_else(|| "A write needs a non-empty items array.".to_string())?
+                    .iter()
+                    .map(|item| {
+                        let params: Vec<f64> = item.get("params").and_then(Value::as_array)?.iter().map(|v| v.as_f64().filter(|f| f.is_finite())).collect::<Option<Vec<_>>>()?;
+                        let frame = u8::try_from(item.get("frame").and_then(Value::as_u64)?).ok().filter(|f| mavout::frame_known(*f))?;
+                        let command = u16::try_from(item.get("command").and_then(Value::as_u64)?).ok().filter(|c| mavout::command_known(*c))?;
+                        Some(plantransfer::Item {
+                            seq: 0,
+                            frame,
+                            command,
+                            current: false,
+                            auto_continue: item.get("autoContinue").and_then(Value::as_bool).unwrap_or(true),
+                            params: params.get(..7).and_then(|p| p.try_into().ok())?,
+                        })
+                    })
+                    .collect::<Option<Vec<_>>>()
+                    .ok_or_else(|| "Every item needs a known frame and command and seven finite params.".to_string())?;
+                let outs = self.mission.write(items);
+                Ok(self.follow_mission(outs, now_ms))
+            }
+            other => Err(format!("Unknown mission action {other:?}")),
+        }
+    }
+
+    pub fn mission_snapshot(&self) -> Value {
+        json!({
+            "inProgress": self.mission.in_progress(),
+            "transaction": self.mission.transaction().map(|t| format!("{t:?}")),
+            "progress": self.mission_progress,
+            "error": self.mission_error,
+            "count": self.mission.items.len(),
+            "items": self.mission.items.iter().map(|i| json!({ "seq": i.seq, "frame": i.frame, "command": i.command, "current": i.current, "autoContinue": i.auto_continue, "params": i.params })).collect::<Vec<_>>(),
+        })
     }
 
     fn start_fetch(&mut self, kind: u8, uri: &str, now_ms: u64) -> Vec<Vec<u8>> {
@@ -331,7 +429,10 @@ impl Vehicle {
                     let outs = self.commands.request_message(MSG_COMPONENT_METADATA as u64, self.component, MSG_COMPONENT_METADATA, [0.0; 5], now_ms);
                     self.handle(outs, now_ms)
                 }
-                Action::LoadMission => self.step_done(connect::Step::Mission, now_ms),
+                Action::LoadMission => {
+                    let outs = self.mission.load();
+                    self.follow_mission(outs, now_ms)
+                }
                 Action::LoadGeoFence => self.step_done(connect::Step::GeoFence, now_ms),
                 Action::LoadRallyPoints => self.step_done(connect::Step::RallyPoints, now_ms),
                 Action::FirstMissionLoadComplete => self.step_done(connect::Step::Mission, now_ms),
@@ -568,6 +669,11 @@ impl Vehicle {
             let actions = self.params.on_waiting_timeout();
             bytes.extend(self.follow_params(actions, now_ms));
         }
+        if self.mission_due.is_some_and(|due| now_ms >= due) {
+            self.mission_due = None;
+            let outs = self.mission.on_timeout();
+            bytes.extend(self.follow_mission(outs, now_ms));
+        }
         if self.ftp_due.is_some_and(|due| now_ms >= due) {
             self.ftp_due = None;
             let outs = self.fetch.as_mut().map(|f| f.download.on_timeout()).unwrap_or_default();
@@ -663,7 +769,32 @@ impl Vehicle {
                 let actions = self.params.on_param_value(header.component_id, &name, p.param_count, p.param_index, value);
                 return self.follow_params(actions, now_ms);
             }
-            MavMessage::HOME_POSITION(h) => self.home_altitude = Some(h.altitude as f64 / 1000.0),
+            MavMessage::HOME_POSITION(h) => {
+                self.home_altitude = Some(h.altitude as f64 / 1000.0);
+                self.home = Some((h.latitude as f64 / 1e7, h.longitude as f64 / 1e7, h.altitude as f64 / 1000.0));
+            }
+            MavMessage::MISSION_COUNT(m) if matches!(m.target_system, 0 | mavout::GCS_SYSTEM) => {
+                let outs = self.mission.on_count(m.count);
+                return self.follow_mission(outs, now_ms);
+            }
+            MavMessage::MISSION_ITEM_INT(m) if matches!(m.target_system, 0 | mavout::GCS_SYSTEM) => {
+                let scale = |v: i32| if m.frame as u8 == plantransfer::FRAME_MISSION { v as f64 } else { v as f64 * 1e-7 };
+                let item = plantransfer::Item { seq: m.seq, frame: m.frame as u8, command: m.command as u32 as u16, current: m.current != 0, auto_continue: m.autocontinue != 0, params: [m.param1 as f64, m.param2 as f64, m.param3 as f64, m.param4 as f64, scale(m.x), scale(m.y), m.z as f64] };
+                let outs = self.mission.on_item(item);
+                return self.follow_mission(outs, now_ms);
+            }
+            MavMessage::MISSION_REQUEST_INT(m) if matches!(m.target_system, 0 | mavout::GCS_SYSTEM) => {
+                let outs = self.mission.on_request(m.seq);
+                return self.follow_mission(outs, now_ms);
+            }
+            MavMessage::MISSION_REQUEST(m) if matches!(m.target_system, 0 | mavout::GCS_SYSTEM) => {
+                let outs = self.mission.on_request(m.seq);
+                return self.follow_mission(outs, now_ms);
+            }
+            MavMessage::MISSION_ACK(m) if matches!(m.target_system, 0 | mavout::GCS_SYSTEM) => {
+                let outs = self.mission.on_ack(m.mavtype as u8);
+                return self.follow_mission(outs, now_ms);
+            }
             MavMessage::SYS_STATUS(s) => {
                 self.sensors.update(s.onboard_control_sensors_present.bits(), s.onboard_control_sensors_enabled.bits(), s.onboard_control_sensors_health.bits());
             }
@@ -731,6 +862,8 @@ impl Vehicle {
             "firmware": firmware,
             "flightModes": flight_modes,
             "parameters": parameters,
+            "mission": { "inProgress": self.mission.in_progress(), "count": self.mission.items.len(), "progress": self.mission_progress, "error": self.mission_error },
+            "home": self.home.map(|(lat, lon, alt)| json!({ "latitude": lat, "longitude": lon, "altitude": alt })),
             "componentInformation": { "types": self.metadata_types.keys().collect::<Vec<_>>(), "parameterMetadata": self.parameter_metadata.as_ref().map(|p| p.named.len() + p.indexed.len()).unwrap_or(0) },
             "messages": self.recent.iter().rev().take(50).map(|m| json!({ "component": m.component, "severity": m.severity, "text": m.text })).collect::<Vec<_>>(),
             "byName": self.by_name,
@@ -798,6 +931,13 @@ impl Hub {
         let vehicle = self.vehicles.get_mut(&chosen).ok_or_else(|| format!("Vehicle {chosen} is not connected through the core."))?;
         let link = vehicle.link;
         vehicle.parameter_request(request, now_ms).map(|frames| frames.into_iter().map(|bytes| (link, bytes)).collect())
+    }
+
+    pub fn mission_request(&mut self, id: Option<u8>, request: &Value, now_ms: u64) -> Result<Vec<(LinkId, Vec<u8>)>, String> {
+        let chosen = id.or(self.active).ok_or_else(|| "No vehicle is connected through the core.".to_string())?;
+        let vehicle = self.vehicles.get_mut(&chosen).ok_or_else(|| format!("Vehicle {chosen} is not connected through the core."))?;
+        let link = vehicle.link;
+        vehicle.mission_request(request, now_ms).map(|frames| frames.into_iter().map(|bytes| (link, bytes)).collect())
     }
 
     pub fn guided_snapshot(&self, id: Option<u8>) -> Value {
@@ -869,6 +1009,18 @@ pub fn core_vehicle_view(_backend: &dyn crate::router::Backend, args: &[String])
 
 pub fn core_guided_view(_backend: &dyn crate::router::Backend, args: &[String]) -> Value {
     lock().guided_snapshot(args.first().and_then(|a| a.trim().parse().ok()))
+}
+
+pub fn core_mission_view(_backend: &dyn crate::router::Backend, args: &[String]) -> Value {
+    let hub = lock();
+    let vehicle = args.first().and_then(|a| a.trim().parse().ok()).and_then(|id| hub.vehicles.get(&id)).or_else(|| hub.active());
+    json!({
+        "kind": "object",
+        "class": "CoreMission",
+        "available": vehicle.is_some(),
+        "vehicleId": vehicle.map(|v| v.id),
+        "mission": vehicle.map(Vehicle::mission_snapshot).unwrap_or(Value::Null),
+    })
 }
 
 pub fn core_parameters_view(_backend: &dyn crate::router::Backend, args: &[String]) -> Value {
@@ -1042,7 +1194,19 @@ mod tests {
         hub.on_frame(4, false, autopilot, &refused, 2, 2);
         hub.on_frame(4, false, autopilot, &refused, 3, 3);
         hub.on_frame(4, false, autopilot, &param_value("RTL_ALT", 1, 0, 1500.0), 4, 4);
+        hub.on_frame(4, false, autopilot, &mission_count(0), 5, 5);
         assert_eq!(hub.snapshot()["vehicle"]["initialConnectComplete"], true);
+    }
+
+    #[allow(deprecated)]
+    fn mission_item(seq: u16, latitude: f64) -> MavMessage {
+        use mavlink::dialects::ardupilotmega::{MISSION_ITEM_INT_DATA, MavCmd, MavFrame};
+        MavMessage::MISSION_ITEM_INT(MISSION_ITEM_INT_DATA { param1: 0.0, param2: 0.0, param3: 0.0, param4: 0.0, x: (latitude * 1e7) as i32, y: 85000000, z: 50.0, seq, command: MavCmd::MAV_CMD_NAV_WAYPOINT, target_system: 255, target_component: 190, frame: MavFrame::MAV_FRAME_GLOBAL_RELATIVE_ALT_INT, current: 0, autocontinue: 1 })
+    }
+
+    fn mission_count(count: u16) -> MavMessage {
+        use mavlink::dialects::ardupilotmega::MISSION_COUNT_DATA;
+        MavMessage::MISSION_COUNT(MISSION_COUNT_DATA { count, target_system: 255, target_component: 190 })
     }
 
     fn request_of(bytes: &[u8]) -> (u32, f32) {
@@ -1079,10 +1243,19 @@ mod tests {
         assert_eq!(hub.snapshot()["vehicle"]["connectStep"], "Parameters");
         assert!(hub.on_frame(4, false, &autopilot, &param_value("RTL_ALT", 2, 0, 1500.0), 1_300_000, 1_300).is_empty());
         assert_eq!(hub.snapshot()["vehicle"]["parameters"]["ready"], false);
-        hub.on_frame(4, false, &autopilot, &param_value("WPNAV_SPEED", 2, 1, 250.0), 1_400_000, 1_400);
+        let listed = hub.on_frame(4, false, &autopilot, &param_value("WPNAV_SPEED", 2, 1, 250.0), 1_400_000, 1_400);
+        assert!(matches!(decode(&listed[0].1), MavMessage::MISSION_REQUEST_LIST(_)), "with the parameters in, the mission is read from the vehicle");
+        assert_eq!(hub.snapshot()["vehicle"]["parameters"], json!({ "ready": true, "progress": 1.0, "count": 2 }));
+        assert_eq!(hub.snapshot()["vehicle"]["initialConnectComplete"], false);
+        let requested = hub.on_frame(4, false, &autopilot, &mission_count(1), 1_500_000, 1_500);
+        assert!(matches!(decode(&requested[0].1), MavMessage::MISSION_REQUEST_INT(r) if r.seq == 0));
+        let acked = hub.on_frame(4, false, &autopilot, &mission_item(0, 47.4), 1_600_000, 1_600);
+        assert!(matches!(decode(&acked[0].1), MavMessage::MISSION_ACK(a) if a.mavtype as u8 == 0));
         let snapshot = hub.snapshot();
-        assert_eq!(snapshot["vehicle"]["parameters"], json!({ "ready": true, "progress": 1.0, "count": 2 }));
         assert_eq!(snapshot["vehicle"]["initialConnectComplete"], true);
+        assert_eq!(snapshot["vehicle"]["mission"], json!({ "inProgress": false, "count": 1, "progress": 1.0, "error": null }));
+        let mission = hub.active().unwrap().mission_snapshot();
+        assert_eq!((mission["items"][0]["command"].as_u64(), mission["items"][0]["params"][4].as_f64()), (Some(16), Some(47.4)));
         assert_eq!(snapshot["vehicle"]["connectProgress"], 1.0);
         assert_eq!(hub.active().unwrap().parameter(1, "RTL_ALT").map(ParamValue::as_f64), Some(1500.0));
         assert!(hub.tick(10_000).is_empty(), "nothing is pending once connected");
@@ -1263,5 +1436,40 @@ mod tests {
         let frames: Vec<MavMessage> = hub.tick(1_100).into_iter().map(|(_, b)| decode(&b)).collect();
         assert!(matches!(frames.last(), Some(MavMessage::PARAM_REQUEST_LIST(_))), "an unanswered open fails the fetch and the parameters are requested anyway");
         assert!(hub.guided_snapshot(None)["guided"]["errors"].as_array().unwrap().iter().any(|e| e.as_str().unwrap().contains("Download failed")));
+    }
+
+    #[test]
+    #[allow(deprecated)]
+    fn a_mission_write_serves_the_vehicle_requests_and_becomes_the_known_mission() {
+        use mavlink::dialects::ardupilotmega::{MISSION_ACK_DATA, MISSION_REQUEST_INT_DATA, MavMissionResult};
+        let autopilot = MavHeader { system_id: 1, component_id: 1, sequence: 0 };
+        let mut hub = Hub::default();
+        connect_copter(&mut hub, &autopilot);
+        let items = json!([
+            { "frame": 0, "command": 16, "params": [0, 0, 0, 0, 47.0, 8.0, 0] },
+            { "frame": 3, "command": 16, "params": [0, 0, 0, 0, 47.1, 8.1, 50] },
+            { "frame": 2, "command": 177, "params": [1, 2, 0, 0, 0, 0, 0] }
+        ]);
+        let started = hub.mission_request(None, &json!({ "action": "write", "items": items }), 10_000).unwrap();
+        assert!(matches!(decode(&started[0].1), MavMessage::MISSION_COUNT(c) if c.count == 2), "ArduPilot does not take the home item");
+        assert!(hub.mission_request(None, &json!({ "action": "load" }), 10_000).is_err(), "one transfer at a time");
+        let request = |seq: u16| MavMessage::MISSION_REQUEST_INT(MISSION_REQUEST_INT_DATA { seq, target_system: 255, target_component: 190 });
+        let first = hub.on_frame(4, false, &autopilot, &request(0), 10_100_000, 10_100);
+        assert!(matches!(decode(&first[0].1), MavMessage::MISSION_ITEM_INT(i) if i.seq == 0 && i.current == 1 && i.x == 471000000));
+        let second = hub.on_frame(4, false, &autopilot, &request(1), 10_200_000, 10_200);
+        assert!(matches!(decode(&second[0].1), MavMessage::MISSION_ITEM_INT(i) if i.seq == 1 && i.param1 == 0.0), "the jump target follows the dropped home item");
+        hub.on_frame(4, false, &autopilot, &MavMessage::MISSION_ACK(MISSION_ACK_DATA { target_system: 255, target_component: 190, mavtype: MavMissionResult::MAV_MISSION_ACCEPTED }), 10_300_000, 10_300);
+        let mission = hub.active().unwrap().mission_snapshot();
+        assert_eq!((mission["inProgress"].as_bool(), mission["count"].as_u64(), mission["error"].is_null()), (Some(false), Some(2), true));
+        assert!(hub.tick(12_000).is_empty());
+        assert!(hub.mission_request(None, &json!({ "action": "write", "items": [{ "frame": 0 }] }), 12_000).is_err());
+        assert!(hub.mission_request(None, &json!({ "action": "write", "items": [{ "frame": 0, "command": 16, "params": [0, "x", 0, 0, 47, 8, 50] }] }), 12_000).is_err(), "a non-numeric param is refused before anything is sent");
+        assert!(hub.mission_request(None, &json!({ "action": "write", "items": [{ "frame": 0, "command": 65000, "params": [0, 0, 0, 0, 47, 8, 50] }] }), 12_000).is_err(), "a command the dialect cannot name is refused");
+        assert!(hub.mission_request(None, &json!({ "action": "write", "items": [] }), 12_000).is_err());
+        let again = hub.mission_request(None, &json!({ "action": "write", "items": [{ "frame": 0, "command": 16, "params": [0, 0, 0, 0, 47.0, 8.0, 0] }, { "frame": 3, "command": 16, "params": [0, 0, 0, 0, 47.2, 8.2, 60] }] }), 13_000).unwrap();
+        assert!(matches!(decode(&again[0].1), MavMessage::MISSION_COUNT(c) if c.count == 1));
+        use mavlink::dialects::ardupilotmega::MISSION_REQUEST_DATA;
+        let plain = hub.on_frame(4, false, &autopilot, &MavMessage::MISSION_REQUEST(MISSION_REQUEST_DATA { seq: 0, target_system: 0, target_component: 190 }), 13_100_000, 13_100);
+        assert!(matches!(decode(&plain[0].1), MavMessage::MISSION_ITEM_INT(i) if i.seq == 0), "the float request form and a broadcast target are served too");
     }
 }
