@@ -2113,8 +2113,16 @@ portrait surface is letterboxed: the picture occupies 1080×810 of a 1080×1770 
 190 px high and is drawn 2.2× too tall — plainly visible as boxes running off the picture into
 the controls panel. The burnt-in clock, which GStreamer draws at the frame's top-left, is what
 pins the picture's real top edge. In the inset the source nearly filled the surface, which is
-why it looked right there. The head cannot fix this alone: it needs the source dimensions or
-the painted rect, and `view.video` serves neither. Raised with the core session.
+why it looked right there. The head could not fix this alone: it needed the source dimensions,
+and `view.video` served neither. The core added `sourceSize` — `{width, height}` of the decoded
+frame, null until a frame is decoding — and the overlay now letterboxes against it, computing
+the painted rect the way the sink does and placing every box inside it.
+
+**Checked against the clock rather than by eye.** Full screen, the content area is 540×825 dp
+and a 4:3 source paints 540×405 of it starting 210 dp down. The person box is served at a fixed
+x=0.62, w=0.12, y=0.55, so it must land at x 335–400 and y 618. Measured on the screenshot:
+x 335–400, y 617. The moving box tracks inside the picture too, and neither runs into the
+controls panel any more.
 
 ### The shared index had a night's work staged for deletion
 
@@ -2130,9 +2138,16 @@ The fix is surgical rather than a blanket `git reset`, so nobody else's staged w
 disturbed: list the paths staged as deleted that still exist on disk, and reset only those.
 
 ```
+unset GIT_INDEX_FILE   # or the check reads the private index, not the shared one
 git diff --cached --name-status HEAD | awk '$1=="D"{print $2}' | while read f; do [ -f "$f" ] && echo "$f"; done
 git reset -q HEAD -- <those paths>
 ```
+
+The `unset` matters more than it looks. Run the check in a shell that still exports
+`GIT_INDEX_FILE` from a commit — pointing at a private index file that has since been deleted —
+and git reports every file in the repository as staged for deletion. That happened here, and
+the false alarm is indistinguishable from the real one until you unset the variable and look
+again.
 
 A path staged as deleted while it is still on disk is the tell, and nothing looked wrong
 before the check — the working tree was correct, the commits were correct, and only the index
