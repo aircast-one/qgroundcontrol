@@ -184,6 +184,7 @@ fun AircastShell(quickView: QtQuickView) {
         quickView.setStatusChangeListener { status ->
             qmlReady = status == QtQmlStatus.READY
             if (qmlReady && listeners.isEmpty()) {
+                quickView.setProperty("renderViews", false)
                 listeners += quickView.connectSignalListener(
                     "navigateRequest",
                     String::class.java,
