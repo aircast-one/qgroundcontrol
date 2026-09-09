@@ -2138,6 +2138,37 @@ A path staged as deleted while it is still on disk is the tell, and nothing look
 before the check — the working tree was correct, the commits were correct, and only the index
 disagreed.
 
+### The watcher after signal binding: half the cost, and why only a fifth of the paths
+
+`c5fd6e918` binds a watched path that resolves to a `Fact` to its `rawValueChanged` and stops
+polling it; `541339df6` gives `view.battery` and `view.preflight` fact-level dependencies.
+Timed on the Fly tab, same rig, 25 polls a sample:
+
+| | watched | polled | poll work per 5 s |
+|---|---|---|---|
+| whole-object deps | 70 | 70 | 490–635 ms |
+| argument-derived deps | 71 | 71 | 562–615 ms |
+| signal-bound facts | 97 | **79** | **265–300 ms** |
+
+`vehicle.batteries` is gone from the poll entirely, and the total is roughly halved even though
+there are more paths watched than before.
+
+**Only 18 of the 97 bind.** The remaining 79 are re-resolved and re-read every tick, and the
+reason is in `_bind`: it takes a path only if `qobject_cast<Fact *>` succeeds. Most of what a
+Fly tab watches is not a `Fact` — `vehicle.latitude`, `vehicle.coordinate`,
+`vehicle.flightModes`, `plan.missionController.containsItems` are plain `Q_PROPERTY`s with their
+own NOTIFY signals, and `vehicle.gps` and `vehicle.cameraManager.currentCameraInstance` are
+objects. What is left is led by `vehicle.gps` at 90–99 ms, `vehicle.coordinate` at 28–33 ms and
+`currentCameraInstance` at 17–20 ms.
+
+So the lever worked and reached a fifth of the list. The obvious extension is to bind any
+property that declares a NOTIFY signal — `QMetaProperty::notifySignal()` — rather than only
+Facts, which would take `vehicle.latitude` and its neighbours out of the poll too. Objects
+would still need polling, and `vehicle.gps` would then be almost all of what remains.
+
+Process CPU did not move: 100–111% here against 85–125% before. Thread shares from a single
+sample are too noisy to read anything into, and the poll was never the whole of it.
+
 ## Phase 6 — Shell · 2 weeks
 
 Cheaper than macOS, because Qt is already off the main thread.
