@@ -1862,7 +1862,33 @@ look at something and reopening would have silently wiped every manual check. Th
 lives on the Fly screen and the screen takes it as a parameter. Verified on the handset — a
 check ticked, dialog closed, sheet reopened, dialog reopened, still ticked.
 
-### The sequential counter comparison, and why it did not finish
+### The sequential counter comparison passes
+
+Re-run on `e2ce7026c`, which stops the shared-port guard firing on the link manager's own
+configuration. Same APK, same sim, one line of ini between the runs, a 60 second window in
+each:
+
+| run | link | messages in the window | sim commands |
+|---|---|---|---|
+| A | Qt UDP | 3207 → 6108, so **2901** | 60 |
+| B | core UDP | 2384 → 5363, so **2979** | 54 |
+
+The few percent between them is the sim's own timing — its obstacle stream stops at 45
+seconds and the window does not fall in exactly the same place twice — not the transport.
+
+The stronger result is inside run B. `vehicle.messagesReceived`, counted by Qt's model, and
+`view.coreVehicle(1).vehicle.messagesReceived`, counted by the core's own model off the same
+bytes, read **2384 and 2384** at the first sample and **5363 and 5363** sixty seconds later.
+Not close: equal, twice. The core link carried 104 kB in that window with 476 heartbeats seen.
+
+`view.coreVehicle`'s fields are nested under a `vehicle` object, not at the top level — the
+top level is `available`, `class`, `kind`, `vehicle`, `vehicleIds`. Reading
+`messagesReceived` at the root returns nothing and looks exactly like a counter that does not
+work.
+
+### Before the fix: a core link that never opened
+
+
 
 `settings.appSettings.coreLinks` was added so the same stream could be run once through the
 Qt link and once through a core-built one, with `vehicle.messagesReceived` read both times.
