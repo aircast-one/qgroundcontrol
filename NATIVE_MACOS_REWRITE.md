@@ -636,6 +636,7 @@ About 58 developer-weeks. Flight-test time, not code, is the schedule.
 - 2026-09-09: core links opened by LinkManager bypass the shared-port guard (Android found the guard refusing its own link).
 - 2026-09-09: R5 review pass, ten findings fixed (reap outside the lock, FTP bounds, hub heartbeat rules, retry cadence).
 - 2026-09-09: guided action planners in the core (takeoff, goto, altitude, pause, RTL, land, speed) per firmware.
+- 2026-09-09: survey and terrain texts format measures the way the Qt head does (one decimal below a hundred, none above, ^2 as the superscript); heads drop their own formatters.
 
 ### Stream F · Core
 

@@ -99,3 +99,24 @@ impl Unit {
         format!("{:.1} {}", self.show(meters), self.name)
     }
 }
+
+pub const WHOLE_NUMBER_FROM: f64 = 100.0;
+
+pub fn format_measure(value: f64, units: &str) -> String {
+    let number = if value >= WHOLE_NUMBER_FROM { format!("{value:.0}") } else { format!("{value:.1}") };
+    format!("{number} {}", units.replace("^2", "\u{b2}"))
+}
+
+#[cfg(test)]
+mod measure_tests {
+    use super::format_measure;
+
+    #[test]
+    fn measures_keep_a_tenth_under_a_hundred_and_write_squared_units() {
+        assert_eq!(format_measure(45.26, "m^2"), "45.3 m\u{b2}");
+        assert_eq!(format_measure(89999.4, "m^2"), "89999 m\u{b2}");
+        assert_eq!(format_measure(100.0, "ft"), "100 ft");
+        assert_eq!(format_measure(99.96, "m"), "100.0 m");
+        assert_eq!(format_measure(40.0, "m"), "40.0 m");
+    }
+}
