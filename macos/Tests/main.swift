@@ -2502,7 +2502,7 @@ func checkViewContract() {
         ("view.fences", ["rallyPoints"],
          ["index", "path", "latitude", "longitude", "altitude", "altitudeUnits", "altitudePath"]),
         ("view.links", [], ["available", "links", "configured", "linkTypes", "baudRates"]),
-        ("view.links", ["links"],
+        ("view.links", ["configured"],
          ["index", "path", "name", "type", "typeLabel", "editing", "displaySummary", "connected",
           "autoConnect", "host", "port", "portName", "baud", "filename", "logFileName",
           "lastError"]),
@@ -2607,7 +2607,7 @@ func checkViewContract() {
         ("view.video", [], ["summary"]),
         ("view.video", ["cameras"], ["title", "status"]),
         ("view.camera", [], ["title", "modeText", "stateText", "storageText", "shotsText"]),
-        ("view.links", ["links"], ["name", "typeLabel", "displaySummary"]),
+        ("view.links", ["configured"], ["name", "typeLabel", "displaySummary"]),
     ]
     neverNull.forEach { view, inner, keys in
         let place = inner.isEmpty ? view : "\(view).\(inner.joined(separator: "."))"
