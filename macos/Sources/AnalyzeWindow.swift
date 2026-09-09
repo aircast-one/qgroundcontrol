@@ -312,8 +312,8 @@ struct MavlinkInspectorView: View {
                                     Button {
                                         store.select(message)
                                     } label: {
-                                        GroupRow(title: message.name,
-                                                 description: "#\(message.id)",
+                                        GroupRow(title: message.title,
+                                                 description: "#\(message.messageId)",
                                                  value: message.rateText,
                                                  showSeparator: row > 0,
                                                  current: message.selected)
@@ -338,17 +338,17 @@ struct MavlinkInspectorView: View {
     @ViewBuilder private var fields: some View {
         VStack(alignment: .leading, spacing: Overlay.unit * 0.35) {
             if let message = store.selected {
-                SectionLabel(text: "\(message.name) \u{00B7} \(message.countText) received")
+                SectionLabel(text: "\(message.title) \u{00B7} \(message.countText) received")
                 GroupCard {
                     GroupRow(title: "Arriving at", value: message.rateText,
                              showSeparator: false)
                     GroupRow(title: "Ask for", trailing: {
                         Picker("", selection: Binding(
-                            get: { MessageRate.shown(message.targetRateHz) },
+                            get: { MessageRateChoice.shown(message.targetRateHz, in: store.rateChoices) },
                             set: { store.setRate($0) })
                         ) {
-                            ForEach(MessageRate.choices, id: \.self) {
-                                Text(MessageRate.title($0)).tag($0)
+                            ForEach(store.rateChoices) {
+                                Text($0.title).tag($0.rate)
                             }
                         }
                         .labelsHidden()

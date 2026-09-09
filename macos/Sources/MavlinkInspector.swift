@@ -4,6 +4,7 @@ final class MavlinkInspectorStore: ObservableObject, Probeable {
     static let probeID = "mavlinkInspector"
 
     @Published private(set) var messages: [MavlinkMessage] = []
+    @Published private(set) var rateChoices: [MessageRateChoice] = []
     @Published private(set) var fields: [MavlinkField] = []
     @Published private(set) var systemId = 0
     @Published private(set) var listening = false
@@ -26,6 +27,10 @@ final class MavlinkInspectorStore: ObservableObject, Probeable {
     }
 
     func refresh() {
+        let view = Bridge.group("view.inspector")
+        let rates = MessageRateChoice.list(view["rateChoices"])
+        if !rates.isEmpty, rates != rateChoices { rateChoices = rates }
+
         let systems = (Bridge.group("mavlinkInspector.systems")["elements"] as? [[String: Any]]) ?? []
         guard let system = systems.first else {
             if listening { listening = false }
@@ -38,8 +43,7 @@ final class MavlinkInspectorStore: ObservableObject, Probeable {
         let id = (system["id"] as? NSNumber)?.intValue ?? 0
         if id != systemId { systemId = id }
 
-        let listed = MavlinkMessage.from(
-            (Bridge.group("mavlinkInspector.systems.0.messages")["elements"] as? [Any]) ?? [])
+        let listed = MavlinkMessage.list(view["messages"])
         if listed != messages { messages = listed }
 
         guard let current = listed.first(where: \.selected) else {
@@ -58,17 +62,18 @@ final class MavlinkInspectorStore: ObservableObject, Probeable {
 
     func probeState() -> [String: Any] {
         ["systemId": systemId, "listening": listening, "count": messages.count,
-         "selected": selected?.name ?? "",
+         "selected": selected?.title ?? "",
+         "rateChoices": rateChoices.map(\.title),
          "messages": messages.prefix(6).map {
-             ["name": $0.name, "id": $0.id, "rate": $0.rateText,
+             ["title": $0.title, "id": $0.messageId, "rate": $0.rateText,
               "count": $0.count, "selected": $0.selected,
-              "target": MessageRate.title($0.targetRateHz)]
+              "target": $0.targetRateTitle]
          },
          "fields": fields.prefix(8).map { ["name": $0.name, "type": $0.type, "value": $0.value] }]
     }
 
     func setRate(_ rate: Int) {
-        guard selected != nil, MessageRate.offered(rate) else { return }
+        guard selected != nil, MessageRateChoice.offered(rate, in: rateChoices) else { return }
         Bridge.invoke("mavlinkInspector.setMessageInterval", [rate])
         refresh()
     }

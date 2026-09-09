@@ -1727,18 +1727,44 @@ func checkGeoTagJob() {
 checkGeoTagJob()
 
 func checkMavlinkMessage() {
-    func rate(_ hz: Double) -> String {
-        MavlinkMessage(json: ["name": "ATTITUDE", "id": 30, "actualRateHz": hz], index: 0)?.rateText ?? "?"
+    func message(_ overrides: [String: Any]) -> MavlinkMessage? {
+        MavlinkMessage(["path": "mavlinkInspector.systems.0.messages.0", "index": 0 as NSNumber,
+                        "id": 30 as NSNumber, "compId": 1 as NSNumber, "name": "ATTITUDE",
+                        "title": "ATTITUDE", "count": 12 as NSNumber, "rateText": "10.0 Hz",
+                        "targetRateHz": 0 as NSNumber, "targetRateTitle": "Default",
+                        "selected": false as NSNumber]
+            .merging(overrides) { _, new in new })
     }
 
-    expect(rate(10), "10.0 Hz", "a steady message reads in hertz")
-    expect(rate(0), "—", "one that has never repeated has no rate")
-    expect(rate(0.01), "<0.1 Hz", "a rare one is rare, not zero")
-    expect(rate(3.04), "3.0 Hz", "the rate is rounded to a tenth")
+    expect(message([:])?.rateText ?? "", "10.0 Hz", "the rate is the core's sentence")
+    expect(message(["rateText": "\u{2014}"])?.rateText ?? "", "\u{2014}",
+           "and a message that has never repeated shows the core's dash")
+    expect(message([:])?.countText ?? "", "12", "the count is drawn beside it")
+    expect(message([:])?.targetRateTitle ?? "", "Default",
+           "and the requested rate reads as the core titles it")
 
-    expect(MavlinkMessage(json: ["id": 30], index: 0) == nil, "a message without a name is not one")
-    expect(MavlinkField(json: ["name": "roll", "type": "float", "value": "-0.01"])?.value ?? "", "-0.01",
-           "a field carries the value the vehicle sent, unrounded")
+    expect(message(["path": ""]) == nil, "a message with no path cannot be identified and is dropped")
+    expect(message(["name": ""]) == nil, "nor is a nameless one a message")
+
+    let first = message(["path": "mavlinkInspector.systems.0.messages.2", "id": 262 as NSNumber,
+                         "compId": 100 as NSNumber, "name": "CAMERA_CAPTURE_STATUS",
+                         "title": "CAMERA_CAPTURE_STATUS (comp 100)"])
+    let second = message(["path": "mavlinkInspector.systems.0.messages.3", "id": 262 as NSNumber,
+                          "compId": 101 as NSNumber, "name": "CAMERA_CAPTURE_STATUS",
+                          "title": "CAMERA_CAPTURE_STATUS (comp 101)"])
+    expect(first?.id != second?.id,
+           "two cameras sending the same message id are two rows, because identity is the path "
+           + "\u{2014} keying on the message id gave SwiftUI duplicate identities and crashed the "
+           + "Android head")
+    expect(first?.messageId == second?.messageId,
+           "even though the message id they report is the same one")
+    expect(first?.title ?? "", "CAMERA_CAPTURE_STATUS (comp 100)",
+           "and the core says which component each row is, so the list is readable")
+    expect(message([:])?.title ?? "", "ATTITUDE",
+           "while a message only one component sends keeps its bare name")
+
+    expect(MavlinkField(json: ["name": "roll", "type": "float", "value": "-0.01"])?.value ?? "",
+           "-0.01", "a field carries the value the vehicle sent, unrounded")
     expect(MavlinkField(json: ["type": "float"]) == nil, "a field without a name is not one")
 }
 
@@ -2527,6 +2553,11 @@ func checkViewContract() {
         ("view.flightModes", [], ["canSet", "modes"]),
         ("view.flightModes", ["modes"],
          ["name", "summary", "advanced", "current", "needsConfirm"]),
+        ("view.inspector", [], ["messages", "rateChoices"]),
+        ("view.inspector", ["messages"],
+         ["index", "path", "id", "name", "title", "count", "rateText", "targetRateHz",
+          "targetRateTitle", "selected"]),
+        ("view.inspector", ["rateChoices"], ["rate", "title"]),
         ("view.missionSeed(survey,47,8)", ["points"], ["latitude", "longitude"]),
         ("view.links", ["configured"],
          ["index", "path", "name", "type", "typeLabel", "editing", "displaySummary", "connected",
@@ -2659,6 +2690,8 @@ func checkViewContract() {
         ("view.radio", [], ["summary", "shortfall", "statusText", "nextText"]),
         ("view.radio", ["sticks"], ["title", "valueText"]),
         ("view.flightModes", ["modes"], ["name", "summary"]),
+        ("view.inspector", ["messages"], ["title", "rateText", "targetRateTitle"]),
+        ("view.inspector", ["rateChoices"], ["title"]),
     ]
     neverNull.forEach { view, inner, keys in
         let place = inner.isEmpty ? view : "\(view).\(inner.joined(separator: "."))"
@@ -2959,38 +2992,34 @@ func checkMenuPlacement() {
 }
 
 func checkMessageRate() {
-    expect(MessageRate.title(MessageRate.disabled), "Off",
-           "asking for no messages reads as Off rather than minus one")
-    expect(MessageRate.title(MessageRate.useDefault), "Default",
-           "and zero is the vehicle's own choice, not a rate of zero")
-    expect(MessageRate.title(10), "10 Hz", "a real rate names its unit")
-    expect(MessageRate.title(100), "100 Hz", "including the fastest QGC offers")
+    func choice(_ rate: Int, _ title: String) -> [String: Any] {
+        ["rate": rate as NSNumber, "title": title]
+    }
+    let choices = MessageRateChoice.list([
+        choice(-1, "Off"), choice(0, "Default"), choice(1, "1 Hz"), choice(2, "2 Hz"),
+        choice(3, "3 Hz"), choice(4, "4 Hz"), choice(5, "5 Hz"), choice(6, "6 Hz"),
+        choice(7, "7 Hz"), choice(8, "8 Hz"), choice(9, "9 Hz"), choice(10, "10 Hz"),
+        choice(25, "25 Hz"), choice(50, "50 Hz"), choice(100, "100 Hz"),
+    ])
 
-    expect(MessageRate.choices.count == 15, "QGC offers fifteen rates and so does this")
-    expect(MessageRate.choices.first == MessageRate.disabled, "Off is first, as QGC orders it")
-    expect(MessageRate.choices[1] == MessageRate.useDefault, "then Default")
-    expect(Set(MessageRate.choices).count == MessageRate.choices.count, "and none is listed twice")
+    expect(choices.count == 15, "QGC offers fifteen rates and the core lists all of them")
+    expect(choices.first?.title ?? "", "Off",
+           "asking for no messages reads as Off rather than minus one, and is first as QGC orders it")
+    expect(choices[1].title, "Default", "then the vehicle's own choice, not a rate of zero")
+    expect(Set(choices.map(\.rate)).count == choices.count, "and none is listed twice")
 
-    expect(MessageRate.offered(25), "25 Hz is one of them")
-    expect(!MessageRate.offered(17), "17 Hz is not, so the picker will not send it")
-    expect(!MessageRate.offered(-5), "nor is a negative that is not Off")
+    expect(MessageRateChoice.offered(25, in: choices), "25 Hz is one of them")
+    expect(!MessageRateChoice.offered(17, in: choices),
+           "17 Hz is not, so the picker will not send it")
+    expect(!MessageRateChoice.offered(-5, in: choices), "nor is a negative that is not Off")
+    expect(!MessageRateChoice.offered(0, in: []),
+           "and before the choices have loaded nothing is offered, so no rate can be sent")
 
-    expect(MessageRate.shown(4) == 4, "a rate the vehicle reports and the picker offers is shown as itself")
-    expect(MessageRate.shown(17) == MessageRate.useDefault,
+    expect(MessageRateChoice.shown(4, in: choices) == 4,
+           "a rate the vehicle reports and the picker offers is shown as itself")
+    expect(MessageRateChoice.shown(17, in: choices) == 0,
            "and a rate the picker cannot show falls back to Default rather than selecting nothing")
-    expect(MessageRate.shown(MessageRate.disabled) == MessageRate.disabled, "Off shows as Off")
+    expect(MessageRateChoice.shown(-1, in: choices) == -1, "Off shows as Off")
 
-    let live = MavlinkMessage(json: ["name": "AHRS", "id": 163 as NSNumber,
-                                     "count": 12 as NSNumber,
-                                     "actualRateHz": 2.9952 as NSNumber,
-                                     "targetRateHz": 0 as NSNumber,
-                                     "compId": 1 as NSNumber], index: 0)
-    expect(live?.targetRateHz == MessageRate.useDefault,
-           "which is what this vehicle actually reports for a message nobody has asked about")
-    expect(live?.rateText ?? "", "3.0 Hz", "beside the rate it is really arriving at")
-
-    let quiet = MavlinkMessage(json: ["name": "X", "actualRateHz": 0.01 as NSNumber], index: 0)
-    expect(quiet?.rateText ?? "", "<0.1 Hz", "a trickle is not rounded away to zero")
-    let silent = MavlinkMessage(json: ["name": "X"], index: 0)
-    expect(silent?.rateText ?? "", "\u{2014}", "and a message never seen shows nothing")
+    expect(MessageRateChoice(["title": "5 Hz"]) == nil, "a choice with no rate is dropped")
 }
