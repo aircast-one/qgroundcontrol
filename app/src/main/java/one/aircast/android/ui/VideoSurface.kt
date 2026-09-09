@@ -53,6 +53,10 @@ fun VideoSurface(
             },
         )
 
+        if (video?.decoding == true) {
+            DetectionOverlay(Modifier.fillMaxSize())
+        }
+
         if (video?.decoding != true) {
             Surface(
                 Modifier.fillMaxSize(),
