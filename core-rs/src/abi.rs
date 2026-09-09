@@ -146,11 +146,9 @@ static PUMP: std::sync::OnceLock<()> = std::sync::OnceLock::new();
 const PUMP_PERIOD: std::time::Duration = std::time::Duration::from_millis(100);
 
 fn deliver(outbound: Vec<(u32, Vec<u8>)>) {
-    let failed: Vec<u32> = outbound.iter().filter(|(link, bytes)| !crate::linkhost::write(&crate::linkhost::TRANSPORTS, *link, bytes)).map(|(link, _)| *link).collect();
-    if !failed.is_empty() {
-        let mut hub = crate::hub::lock();
-        failed.iter().for_each(|link| hub.link_closed(*link));
-    }
+    outbound.iter().for_each(|(link, bytes)| {
+        crate::linkhost::write(&crate::linkhost::TRANSPORTS, *link, bytes);
+    });
 }
 
 static GUIDED_ANNOUNCED: Mutex<String> = Mutex::new(String::new());
@@ -213,7 +211,7 @@ pub unsafe extern "C" fn qgc_core_guided(action_json: *const c_char) -> *mut c_c
 fn install_hub_sink() {
     HUB_SINK.get_or_init(|| {
         let sink: crate::linkhost::FrameSink = std::sync::Arc::new(|frame: &crate::transport::Frame| {
-            let outbound = crate::hub::lock().on_frame(frame.link, &frame.header, &frame.message, crate::hub::now_us(), crate::hub::now_ms());
+            let outbound = crate::hub::lock().on_frame(frame.link, frame.replay, &frame.header, &frame.message, crate::hub::now_us(), crate::hub::now_ms());
             deliver(outbound);
         });
         crate::linkhost::TRANSPORTS.lock().unwrap().set_frame_sink(Some(sink));

@@ -270,6 +270,12 @@
     "shortDesc": "Open UDP, TCP and serial links on the Rust core",
     "type": "bool",
     "default": false
+},
+{
+    "name": "detectionsHttpPort",
+    "shortDesc": "HTTP port of the detections agent, 0 for the default",
+    "type": "uint32",
+    "default": 0
 }
 ]
 }

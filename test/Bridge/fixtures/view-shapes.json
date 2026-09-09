@@ -279,6 +279,7 @@
             "view.transports",
             "view.coreVehicle",
             "view.coreGuided",
+            "view.coreParameter",
             "view.detections",
             "view.kmlFile",
             "view.shapeFile",

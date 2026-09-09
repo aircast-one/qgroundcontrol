@@ -1,5 +1,6 @@
 #[allow(deprecated)]
-use mavlink::dialects::ardupilotmega::{COMMAND_INT_DATA, COMMAND_LONG_DATA, MISSION_ITEM_DATA, MavCmd, MavFrame, MavMessage, PositionTargetTypemask, SET_POSITION_TARGET_LOCAL_NED_DATA};
+use mavlink::dialects::ardupilotmega::{COMMAND_INT_DATA, COMMAND_LONG_DATA, MISSION_ITEM_DATA, MavCmd, MavFrame, MavMessage, MavParamType, PARAM_REQUEST_LIST_DATA, PARAM_REQUEST_READ_DATA, PARAM_SET_DATA, PositionTargetTypemask, SET_POSITION_TARGET_LOCAL_NED_DATA};
+use mavlink::types::CharArray;
 use mavlink::{MAVLinkV2MessageRaw, MavHeader, MavlinkVersion, MessageData};
 use num_traits::FromPrimitive;
 use std::sync::atomic::{AtomicU8, Ordering};
@@ -17,6 +18,14 @@ pub enum Outbound {
     SetMode { system: u8, base_mode: u8, custom_mode: u32 },
     PositionTargetLocalNed { target: (u8, u8), frame: u8, type_mask: u16, x: f64, y: f64, z: f64 },
     GuidedMissionItem { target: (u8, u8), latitude: f64, longitude: f64, altitude_relative: f64 },
+    ParamRequestList { target: (u8, u8) },
+    ParamRequestRead { target: (u8, u8), name: Option<String>, index: i16 },
+    ParamSet { target: (u8, u8), name: String, bits: f32, param_type: u8 },
+}
+
+pub fn param_id(name: &str) -> CharArray<16> {
+    let bytes = name.as_bytes();
+    CharArray::from(std::array::from_fn(|i| bytes.get(i).copied().unwrap_or(0)))
 }
 
 pub struct SetModeBits {
@@ -78,6 +87,9 @@ pub fn message(send: &Outbound) -> Option<MavMessage> {
             autocontinue: 0,
         })),
         Outbound::SetMode { .. } => None,
+        Outbound::ParamRequestList { target } => Some(MavMessage::PARAM_REQUEST_LIST(PARAM_REQUEST_LIST_DATA { target_system: target.0, target_component: target.1 })),
+        Outbound::ParamRequestRead { target, name, index } => Some(MavMessage::PARAM_REQUEST_READ(PARAM_REQUEST_READ_DATA { param_index: if name.is_some() { -1 } else { *index }, target_system: target.0, target_component: target.1, param_id: param_id(name.as_deref().unwrap_or("")) })),
+        Outbound::ParamSet { target, name, bits, param_type } => Some(MavMessage::PARAM_SET(PARAM_SET_DATA { param_value: *bits, target_system: target.0, target_component: target.1, param_id: param_id(name), param_type: MavParamType::from_u8(*param_type)? })),
         Outbound::PositionTargetLocalNed { target, frame: f, type_mask, x, y, z } => Some(MavMessage::SET_POSITION_TARGET_LOCAL_NED(SET_POSITION_TARGET_LOCAL_NED_DATA {
             x: *x as f32,
             y: *y as f32,
@@ -146,6 +158,12 @@ mod tests {
         let item = encode(6, &Outbound::GuidedMissionItem { target: (1, 1), latitude: 47.4, longitude: 8.5, altitude_relative: 20.0 }).unwrap();
         let MavMessage::MISSION_ITEM(i) = decode(&item).1 else { panic!() };
         assert_eq!((i.seq, i.current, i.autocontinue, i.frame, i.z), (0, 2, 1, MavFrame::MAV_FRAME_GLOBAL_RELATIVE_ALT, 20.0));
+        let MavMessage::PARAM_REQUEST_LIST(l) = decode(&encode(7, &Outbound::ParamRequestList { target: (1, 0) }).unwrap()).1 else { panic!() };
+        assert_eq!((l.target_system, l.target_component), (1, 0));
+        let MavMessage::PARAM_REQUEST_READ(r) = decode(&encode(8, &Outbound::ParamRequestRead { target: (1, 1), name: Some("WPNAV_SPEED".into()), index: 0 }).unwrap()).1 else { panic!() };
+        assert_eq!((r.param_index, r.param_id.to_str().unwrap()), (-1, "WPNAV_SPEED"));
+        let MavMessage::PARAM_SET(p) = decode(&encode(9, &Outbound::ParamSet { target: (1, 1), name: "RTL_ALT".into(), bits: 1500.0, param_type: 9 }).unwrap()).1 else { panic!() };
+        assert_eq!((p.param_value, p.param_type), (1500.0, MavParamType::MAV_PARAM_TYPE_REAL32));
     }
 
     #[test]

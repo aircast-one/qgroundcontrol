@@ -49,6 +49,7 @@ private slots:
     void _coreBackedLinkBringsUpAVehicle();
     void _coreGuidedTakeoffReachesThePeer();
     void _detectionsFollowTheRtspUrl();
+    void _coreConnectSequenceReachesParameters();
     void _replayedLogAgreesBetweenTheModels();
     void _planWrittenFromWaypointsLoadsInCpp();
     void _kmlFilesFollowTheMapPolygonTest();

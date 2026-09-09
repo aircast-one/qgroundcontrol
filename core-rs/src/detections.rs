@@ -6,7 +6,7 @@ use std::time::Duration;
 use crate::read::value_string;
 use crate::router::Backend;
 
-pub const DEPS: &[&str] = &["settings.videoSettings.rtspUrl.rawValue"];
+pub const DEPS: &[&str] = &["settings.videoSettings.rtspUrl.rawValue", "settings.appSettings.detectionsHttpPort.rawValue"];
 pub const STALE_MS: u64 = 1000;
 const RETRY: Duration = Duration::from_secs(1);
 const CONNECT_TIMEOUT: Duration = Duration::from_secs(3);
@@ -16,11 +16,13 @@ const SILENCE_TIMEOUT: Duration = Duration::from_secs(60);
 pub struct Source {
     pub host: String,
     pub camera: String,
+    pub port: Option<u16>,
 }
 
 impl Source {
     pub fn stream_url(&self) -> String {
-        format!("http://{}/api/streams/{}/detections/stream", self.host, self.camera)
+        let authority = self.port.map(|p| format!("{}:{p}", self.host)).unwrap_or_else(|| self.host.clone());
+        format!("http://{authority}/api/streams/{}/detections/stream", self.camera)
     }
 }
 
@@ -47,7 +49,7 @@ pub fn lock() -> MutexGuard<'static, Feed> {
     FEED.lock().unwrap_or_else(PoisonError::into_inner)
 }
 
-pub fn parse(url: &str) -> Option<Source> {
+pub fn parse(url: &str, port: Option<u16>) -> Option<Source> {
     let parsed = url::Url::parse(url).ok()?;
     let host = parsed.host_str()?.to_string();
     let segments: Vec<&str> = parsed.path_segments()?.filter(|s| !s.is_empty()).collect();
@@ -56,7 +58,7 @@ pub fn parse(url: &str) -> Option<Source> {
         [.., before, last] if matches!(*last, "whep" | "whip") => before,
         [.., last] => last,
     };
-    Some(Source { host, camera: camera.to_string() })
+    Some(Source { host, camera: camera.to_string(), port })
 }
 
 pub fn frame_from(payload: &Value, received_ms: u64) -> Frame {
@@ -181,7 +183,8 @@ fn follow(source: Source, generation: u64) {
 }
 
 pub fn detections_view(backend: &dyn Backend, _args: &[String]) -> Value {
-    let source = parse(&value_string(&backend.get(DEPS[0])));
+    let port = crate::read::value_number(&backend.get(DEPS[1])).filter(|p| *p > 0.0 && *p <= 65535.0).map(|p| p as u16);
+    let source = parse(&value_string(&backend.get(DEPS[0])), port);
     let mut feed = lock();
     if feed.retarget(source.clone())
         && let Some(source) = source
@@ -198,23 +201,26 @@ mod tests {
 
     #[test]
     fn the_rtsp_url_names_the_host_and_the_camera_as_the_qml_overlay_did() {
-        assert_eq!(parse("rtsp://10.0.0.5:8554/front"), Some(Source { host: "10.0.0.5".into(), camera: "front".into() }));
-        assert_eq!(parse("rtsp://user:pw@drone.local:8554/cams/rear/whep?x=1"), Some(Source { host: "drone.local".into(), camera: "rear".into() }));
-        assert_eq!(parse("rtsp://drone.local/whep"), Some(Source { host: "drone.local".into(), camera: "whep".into() }));
-        assert_eq!(parse("rtsp://cam:pw@cam/whep"), Some(Source { host: "cam".into(), camera: "whep".into() }), "the host text inside the credentials does not confuse the path");
-        assert_eq!(parse("rtsp://[::1]:8554/front"), Some(Source { host: "[::1]".into(), camera: "front".into() }));
-        assert_eq!(parse("rtsp://drone.local:8554/"), None);
-        assert_eq!(parse("not a url"), None);
-        assert!(parse("").is_none());
-        assert_eq!(parse("rtsp://10.0.0.5:8554/front").unwrap().stream_url(), "http://10.0.0.5/api/streams/front/detections/stream");
+        let source = |host: &str, camera: &str| Some(Source { host: host.into(), camera: camera.into(), port: None });
+        assert_eq!(parse("rtsp://10.0.0.5:8554/front", None), source("10.0.0.5", "front"));
+        assert_eq!(parse("rtsp://user:pw@drone.local:8554/cams/rear/whep?x=1", None), source("drone.local", "rear"));
+        assert_eq!(parse("rtsp://drone.local/whep", None), source("drone.local", "whep"));
+        assert_eq!(parse("rtsp://cam:pw@cam/whep", None), source("cam", "whep"), "the host text inside the credentials does not confuse the path");
+        assert_eq!(parse("rtsp://[::1]:8554/front", None), source("[::1]", "front"));
+        assert_eq!(parse("rtsp://drone.local:8554/", None), None);
+        assert_eq!(parse("not a url", None), None);
+        assert!(parse("", None).is_none());
+        assert_eq!(parse("rtsp://10.0.0.5:8554/front", None).unwrap().stream_url(), "http://10.0.0.5/api/streams/front/detections/stream");
+        assert_eq!(parse("rtsp://10.0.0.5:8554/front", Some(8080)).unwrap().stream_url(), "http://10.0.0.5:8080/api/streams/front/detections/stream", "a rig can serve the stream on an unprivileged port");
     }
 
     #[test]
     fn frames_arrive_as_sse_lines_and_go_stale_after_a_second() {
         let mut feed = Feed::default();
         assert_eq!(feed.snapshot(0)["available"], false);
-        assert!(feed.retarget(parse("rtsp://h:8554/cam")));
-        assert!(!feed.retarget(parse("rtsp://h:8554/cam")), "the same source does not restart the stream");
+        assert!(feed.retarget(parse("rtsp://h:8554/cam", None)));
+        assert!(!feed.retarget(parse("rtsp://h:8554/cam", None)), "the same source does not restart the stream");
+        assert!(feed.retarget(parse("rtsp://h:8554/cam", Some(8080))), "a changed port is a new source");
         let generation = feed.generation;
         let payload = event_payload(r#"data: {"boxes":[{"label":"car","conf":0.91,"x":0.1,"y":0.2,"w":0.3,"h":0.4,"target":true}],"ageMs":0}"#).unwrap();
         assert!(event_payload(": keepalive").is_none());

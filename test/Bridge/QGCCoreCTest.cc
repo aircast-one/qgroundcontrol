@@ -11,6 +11,7 @@
 #include "MAVLinkLib.h"
 
 #include <QtCore/QDir>
+#include <QtCore/QElapsedTimer>
 #include <QtCore/QFile>
 #include <QtCore/QFileInfo>
 #include <QtCore/QScopeGuard>
@@ -508,7 +509,7 @@ void QGCCoreCTest::_coreUdpLinkFramesAPeer()
         return QJsonObject();
     };
     QCOMPARE(linkById().value(QStringLiteral("owner")).toString(), QStringLiteral("core"));
-    QCOMPARE(linkById().value(QStringLiteral("bytesOut")).toInt(), static_cast<int>(len));
+    QVERIFY2(linkById().value(QStringLiteral("bytesOut")).toInt() >= static_cast<int>(len), "the peer's bytes and the core's own connect requests both count as sent");
     QVERIFY(qgc_core_link_close(id, "test done"));
     QVERIFY(!qgc_core_link_write(id, frame, len));
 }
@@ -687,6 +688,114 @@ void QGCCoreCTest::_detectionsFollowTheRtspUrl()
 #endif
 }
 
+void QGCCoreCTest::_coreConnectSequenceReachesParameters()
+{
+#ifdef QGC_RUST_CORE
+    qputenv("QGC_CORE_LINKS", "1");
+    QUdpSocket peer;
+    QVERIFY(peer.bind(QHostAddress::LocalHost, 0));
+    UDPConfiguration *const udp = new UDPConfiguration(QStringLiteral("Core Connect UDP"));
+    udp->setLocalPort(0);
+    udp->addHost(QStringLiteral("127.0.0.1"), peer.localPort());
+    udp->setDynamic(true);
+    SharedLinkConfigurationPtr config = LinkManager::instance()->addConfiguration(udp);
+    const auto tearDown = qScopeGuard([&config]() {
+        if (config->link()) {
+            config->link()->disconnect();
+        }
+        LinkManager::instance()->removeConfiguration(config.get());
+        qunsetenv("QGC_CORE_LINKS");
+    });
+    QVERIFY(LinkManager::instance()->createConnectedLink(config));
+    QVERIFY(qobject_cast<CoreLink *>(config->link()));
+    const auto coreLocalPort = []() {
+        const QJsonArray links = take(qgc_bridge_get("view.transports")).value(QStringLiteral("links")).toArray();
+        for (const QJsonValue &link : links) {
+            if (link.toObject().value(QStringLiteral("name")).toString() == QStringLiteral("Core Connect UDP") && link.toObject().value(QStringLiteral("owner")).toString() == QStringLiteral("core")) {
+                return link.toObject().value(QStringLiteral("localPort")).toInt(0);
+            }
+        }
+        return 0;
+    };
+    QTRY_VERIFY_WITH_TIMEOUT(coreLocalPort() > 0, 3000);
+    const quint16 port = static_cast<quint16>(coreLocalPort());
+    const auto send = [&peer, port](const mavlink_message_t &message) {
+        uint8_t frame[MAVLINK_MAX_PACKET_LEN]{};
+        const uint16_t len = mavlink_msg_to_send_buffer(frame, &message);
+        peer.writeDatagram(reinterpret_cast<const char *>(frame), len, QHostAddress::LocalHost, port);
+    };
+    const auto expectRequest = [&peer](int messageId, uint32_t requested) {
+        mavlink_message_t parsing{};
+        mavlink_status_t parsingStatus{};
+        mavlink_message_t received{};
+        mavlink_status_t status{};
+        QElapsedTimer waited;
+        waited.start();
+        while (waited.elapsed() < 4000) {
+            if (!peer.hasPendingDatagrams()) {
+                QTest::qWait(20);
+                continue;
+            }
+            const QByteArray datagram = peer.receiveDatagram().data();
+            for (const char byte : datagram) {
+                if (mavlink_frame_char_buffer(&parsing, &parsingStatus, static_cast<uint8_t>(byte), &received, &status) != MAVLINK_FRAMING_OK || received.msgid != static_cast<uint32_t>(messageId)) {
+                    continue;
+                }
+                if (messageId != MAVLINK_MSG_ID_COMMAND_LONG) {
+                    return true;
+                }
+                mavlink_command_long_t command{};
+                mavlink_msg_command_long_decode(&received, &command);
+                if (command.command == MAV_CMD_REQUEST_MESSAGE && static_cast<uint32_t>(command.param1) == requested) {
+                    return true;
+                }
+            }
+        }
+        return false;
+    };
+
+    mavlink_message_t heartbeat{};
+    mavlink_msg_heartbeat_pack(11, 1, &heartbeat, MAV_TYPE_QUADROTOR, MAV_AUTOPILOT_ARDUPILOTMEGA, MAV_MODE_FLAG_CUSTOM_MODE_ENABLED, 0, MAV_STATE_STANDBY);
+    const auto coreSeesVehicle = []() { return take(qgc_bridge_get("view.coreVehicle(11)")).value(QStringLiteral("available")).toBool(false); };
+    for (int attempt = 0; attempt < 30 && !coreSeesVehicle(); ++attempt) {
+        send(heartbeat);
+        QTest::qWait(100);
+    }
+    QVERIFY2(coreSeesVehicle(), "the core did not see the vehicle");
+    QVERIFY2(expectRequest(MAVLINK_MSG_ID_COMMAND_LONG, MAVLINK_MSG_ID_AUTOPILOT_VERSION), "no autopilot version request reached the peer");
+
+    mavlink_message_t version{};
+    const uint8_t custom[8]{};
+    const uint8_t uid2[18]{};
+    mavlink_msg_autopilot_version_pack(11, 1, &version, MAV_PROTOCOL_CAPABILITY_COMMAND_INT | MAV_PROTOCOL_CAPABILITY_MISSION_INT, 0x04050600, 0, 0, 0, custom, custom, custom, 0, 0, 0, uid2);
+    send(version);
+    QVERIFY2(expectRequest(MAVLINK_MSG_ID_COMMAND_LONG, MAVLINK_MSG_ID_AVAILABLE_MODES), "no standard modes request reached the peer");
+    mavlink_message_t ack{};
+    mavlink_msg_command_ack_pack(11, 1, &ack, MAV_CMD_REQUEST_MESSAGE, MAV_RESULT_UNSUPPORTED, 0, 0, 255, MAV_COMP_ID_MISSIONPLANNER);
+    send(ack);
+    QVERIFY2(expectRequest(MAVLINK_MSG_ID_PARAM_REQUEST_LIST, 0), "no parameter list request reached the peer");
+    mavlink_message_t value{};
+    mavlink_msg_param_value_pack(11, 1, &value, "RTL_ALT", 1500.0f, MAV_PARAM_TYPE_REAL32, 2, 0);
+    send(value);
+    mavlink_msg_param_value_pack(11, 1, &value, "WPNAV_SPEED", 250.0f, MAV_PARAM_TYPE_REAL32, 2, 1);
+    send(value);
+    const auto connected = []() { return take(qgc_bridge_get("view.coreVehicle(11)")).value(QStringLiteral("vehicle")).toObject().value(QStringLiteral("initialConnectComplete")).toBool(false); };
+    QTRY_VERIFY_WITH_TIMEOUT(connected(), 3000);
+    const QJsonObject vehicle = take(qgc_bridge_get("view.coreVehicle(11)")).value(QStringLiteral("vehicle")).toObject();
+    QCOMPARE(vehicle.value(QStringLiteral("capabilities")).toInt(), MAV_PROTOCOL_CAPABILITY_COMMAND_INT | MAV_PROTOCOL_CAPABILITY_MISSION_INT);
+    QCOMPARE(vehicle.value(QStringLiteral("firmware")).toObject().value(QStringLiteral("version")).toString(), QStringLiteral("4.5.6 (0)"));
+    QCOMPARE(vehicle.value(QStringLiteral("parameters")).toObject().value(QStringLiteral("count")).toInt(), 2);
+    const QJsonObject parameter = take(qgc_bridge_get("view.coreParameter(11, RTL_ALT)"));
+    QVERIFY2(parameter.value(QStringLiteral("available")).toBool(false), qPrintable(QString::fromUtf8(QJsonDocument(parameter).toJson(QJsonDocument::Compact))));
+    QCOMPARE(parameter.value(QStringLiteral("value")).toDouble(), 1500.0);
+
+    config->link()->disconnect();
+    QTRY_VERIFY_WITH_TIMEOUT(!coreSeesVehicle(), 10000);
+#else
+    QSKIP("the Rust core is not linked into this build");
+#endif
+}
+
 void QGCCoreCTest::_replayedLogAgreesBetweenTheModels()
 {
 #ifdef QGC_RUST_CORE
@@ -695,7 +804,7 @@ void QGCCoreCTest::_replayedLogAgreesBetweenTheModels()
     QVERIFY(file.open(QIODevice::ReadOnly));
     const QByteArray bytes = file.readAll();
 
-    const QJsonObject opened = take(qgc_core_host_link_open("replay", "tlog replay"));
+    const QJsonObject opened = take(qgc_core_host_link_open("logReplay", "tlog replay"));
     QVERIFY(opened.value(QStringLiteral("ok")).toBool(false));
     const uint32_t id = static_cast<uint32_t>(opened.value(QStringLiteral("id")).toInt());
     int logSystemId = -1;
@@ -731,7 +840,8 @@ void QGCCoreCTest::_replayedLogAgreesBetweenTheModels()
     }
     (void) qgc_core_host_link_closed(id, "replay complete");
     QVERIFY2(core.value(QStringLiteral("heartbeats")).toInt() > 0, qPrintable(QStringLiteral("first frame system %1, no core vehicle with heartbeats").arg(logSystemId)));
-    QVERIFY2(!take(qgc_bridge_get(QStringLiteral("view.coreVehicle(%1)").arg(core.value(QStringLiteral("id")).toInt()).toUtf8().constData())).value(QStringLiteral("available")).toBool(true), "the core vehicle leaves with its link");
+    const QJsonObject lingering = take(qgc_bridge_get(QStringLiteral("view.coreVehicle(%1)").arg(core.value(QStringLiteral("id")).toInt()).toUtf8().constData()));
+    QVERIFY2(!lingering.value(QStringLiteral("available")).toBool(true), qPrintable(QStringLiteral("the core vehicle should leave with its link %1 but is still on link %2 among %3").arg(id).arg(lingering.value(QStringLiteral("vehicle")).toObject().value(QStringLiteral("link")).toInt()).arg(QString::fromUtf8(QJsonDocument(lingering.value(QStringLiteral("vehicleIds")).toArray()).toJson(QJsonDocument::Compact)))));
 
     const auto vehicleUp = []() { return take(qgc_bridge_get("vehicles.activeVehicleAvailable")).value(QStringLiteral("value")).toBool(false); };
     QTRY_VERIFY_WITH_TIMEOUT(!vehicleUp() && !MultiVehicleManager::instance()->activeVehicle(), 10000);

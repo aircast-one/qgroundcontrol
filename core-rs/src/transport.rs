@@ -50,12 +50,13 @@ pub struct Registry {
 #[derive(Debug, Clone, PartialEq)]
 pub struct Frame {
     pub link: LinkId,
+    pub replay: bool,
     pub header: MavHeader,
     pub message: MavMessage,
     pub raw: Vec<u8>,
 }
 
-fn drain(buffer: &mut Vec<u8>, stats: &mut Stats, link: LinkId) -> Vec<Frame> {
+fn drain(buffer: &mut Vec<u8>, stats: &mut Stats, link: LinkId, replay: bool) -> Vec<Frame> {
     let mut frames = Vec::new();
     let mut at = 0usize;
     while at < buffer.len() {
@@ -73,7 +74,7 @@ fn drain(buffer: &mut Vec<u8>, stats: &mut Stats, link: LinkId) -> Vec<Frame> {
         match read_versioned_msg::<MavMessage, _>(&mut PeekReader::new(raw), ReadVersion::Single(version)) {
             Ok((header, message)) => {
                 stats.frames_in += 1;
-                frames.push(Frame { link, header, message, raw: raw.to_vec() });
+                frames.push(Frame { link, replay, header, message, raw: raw.to_vec() });
                 at += length;
             }
             Err(_) => {
@@ -103,7 +104,8 @@ impl Registry {
         let Some(entry) = self.links.get_mut(&id).filter(|e| e.state == State::Open) else { return Vec::new() };
         entry.stats.bytes_in += bytes.len() as u64;
         entry.buffer.extend_from_slice(bytes);
-        drain(&mut entry.buffer, &mut entry.stats, id)
+        let replay = entry.kind == "logReplay";
+        drain(&mut entry.buffer, &mut entry.stats, id, replay)
     }
 
     pub fn wrote(&mut self, id: LinkId, len: usize) -> bool {
