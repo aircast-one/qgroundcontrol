@@ -1146,6 +1146,20 @@ Caution was a hard amber; High was `colorScheme.error`, which in this dark theme
 pink meant for text on a surface rather than for filling a shape. The most serious band was
 the least alarming thing on the screen. High is a saturated red now.
 
+**The simulator was hiding every command it received.** Its generic `COMMAND_LONG` branch
+acknowledged and did not print; only the camera branch printed `CMD n`. So "no command on the
+wire" meant "no *camera* command", and several checks tonight rested on that. It logs every
+command now, with its parameters, plus arm, disarm and takeoff. The first run with it showed
+`SET_MESSAGE_INTERVAL` traffic that had been invisible all night.
+
+With the gate fixed the speed dialog opens and reads correctly - title "Ground speed" chosen by
+the core for a multirotor, its sentence, the slider seeded at 2.5 in a 0.1 to 5 range, and the
+sentence following the slider to 3.0 m/s. **Its confirm is still unobserved**: repeated taps at
+the measured centre of the Set button leave the dialog open, so the handler is not being reached
+by `input tap` at all. That is a harness problem rather than a code one - the same confirm path
+is verified sending on takeoff and on altitude - and it is recorded as unverified rather than
+assumed.
+
 **The same double gate was on all three guided buttons.** Auditing for the pattern found
 takeoff and altitude gated exactly as speed had been - the core's offer *and* a locally watched
 range. All three follow the offer alone now and read the range when the dialog opens. Altitude
