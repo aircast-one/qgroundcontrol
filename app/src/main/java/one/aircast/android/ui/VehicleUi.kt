@@ -166,12 +166,29 @@ fun FlightActions(modifier: Modifier = Modifier) {
     var speedTarget by remember { mutableStateOf<Double?>(null) }
     var speedSettled by remember { mutableStateOf<Double?>(null) }
     var speedRange by remember { mutableStateOf<GuidedSpeed?>(null) }
+    var altitudePauses by remember { mutableStateOf(false) }
+    var showMore by remember { mutableStateOf(false) }
     val actionsJson by qgcPath(GUIDED_ACTIONS)
     val offers = remember(actionsJson) { guidedOffers(actionsJson) }
+    val extras = remember(offers) { moreActions(offers) }
 
     if (!available) {
         Text("Connect a vehicle to enable flight controls.", modifier.padding(16.dp))
         return
+    }
+
+    val openAltitude: (Boolean) -> Unit = { pauses ->
+        altitudePauses = pauses
+        scope.launch {
+            val fresh = withContext(Dispatchers.Default) { guidedAltitude(Qgc.get(GUIDED_ALTITUDE)) }
+            if (altitudeRangeUsable(fresh)) {
+                altitudeRange = fresh
+                altitudeTarget = fresh?.current
+                altitudeSettled = fresh?.current
+            } else {
+                refusal = "This vehicle did not report an altitude range."
+            }
+        }
     }
 
     Column(modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
@@ -276,21 +293,12 @@ fun FlightActions(modifier: Modifier = Modifier) {
 
             OutlinedButton(
                 enabled = offers["changeAltitude"]?.ready == true,
-                onClick = {
-                    scope.launch {
-                        val fresh = withContext(Dispatchers.Default) {
-                            guidedAltitude(Qgc.get(GUIDED_ALTITUDE))
-                        }
-                        if (!altitudeRangeUsable(fresh)) {
-                            refusal = "This vehicle did not report an altitude range."
-                            return@launch
-                        }
-                        altitudeRange = fresh
-                        altitudeTarget = fresh?.current
-                        altitudeSettled = fresh?.current
-                    }
-                },
+                onClick = { openAltitude(false) },
             ) { Text("Alt") }
+
+            if (extras.isNotEmpty()) {
+                OutlinedButton(onClick = { showMore = true }) { Text("Actions") }
+            }
         }
 
         TelemetryRow()
@@ -387,7 +395,7 @@ fun FlightActions(modifier: Modifier = Modifier) {
         }
         AlertDialog(
             onDismissRequest = { altitudeTarget = null },
-            title = { Text("Change altitude") },
+            title = { Text(if (altitudePauses) "Pause" else "Change altitude") },
             text = {
                 Column {
                     Text(probe?.sentence ?: "")
@@ -402,21 +410,69 @@ fun FlightActions(modifier: Modifier = Modifier) {
             },
             confirmButton = {
                 TextButton(
-                    enabled = probe?.sends == true,
+                    enabled = altitudePauses || probe?.sends == true,
                     onClick = {
                         altitudeTarget = null
+                        val pauses = altitudePauses
                         offMainDetached {
                             val fresh = guidedAltitude(Qgc.get(guidedAltitudePath(target)))
-                            if (fresh?.sends == true) {
-                                Qgc.invoke("vehicle.guidedModeChangeAltitude", fresh.deltaMeters, false)
+                            if (pauses || fresh?.sends == true) {
+                                Qgc.invoke("vehicle.guidedModeChangeAltitude", fresh?.deltaMeters ?: 0.0, pauses)
                             }
                         }
                     },
-                ) { Text("Change") }
+                ) { Text(if (altitudePauses) "Pause" else "Change") }
             },
             dismissButton = {
                 TextButton(onClick = { altitudeTarget = null }) { Text("Cancel") }
             },
+        )
+    }
+
+    if (showMore) {
+        AlertDialog(
+            onDismissRequest = { showMore = false },
+            title = { Text("Actions") },
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    extras.forEach { offer ->
+                        TextButton(
+                            enabled = offer.ready,
+                            onClick = {
+                                showMore = false
+                                if (offer.id == PAUSE) {
+                                    openAltitude(true)
+                                } else {
+                                    guidedCommand(offer.id)?.let { command ->
+                                        pending = GuidedAction(
+                                            name = offer.title,
+                                            confirm = offer.prompt,
+                                            destructive = offer.destructive,
+                                            run = command,
+                                        )
+                                    }
+                                }
+                            },
+                            modifier = Modifier.fillMaxWidth(),
+                        ) {
+                            Column(Modifier.fillMaxWidth()) {
+                                Text(
+                                    text = offer.title,
+                                    fontWeight = FontWeight.Bold,
+                                    color = if (offer.destructive) MaterialTheme.colorScheme.error
+                                    else MaterialTheme.colorScheme.primary,
+                                )
+                                Text(
+                                    text = blockedReasonFor(offer) ?: offer.prompt,
+                                    style = MaterialTheme.typography.bodySmall,
+                                )
+                            }
+                        }
+                    }
+                }
+            },
+            confirmButton = {},
+            dismissButton = { TextButton(onClick = { showMore = false }) { Text("Close") } },
         )
     }
 
@@ -442,7 +498,6 @@ fun FlightActions(modifier: Modifier = Modifier) {
     }
 }
 
-// The command takes metres and the operator may be reading feet. Converting only the
 private fun armedNow(): Boolean = Qgc.get("vehicle.armed").opt("value") == true
 
 private fun flightModeNow(): String =
