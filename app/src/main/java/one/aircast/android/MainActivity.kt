@@ -37,11 +37,13 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.viewinterop.AndroidView
@@ -61,6 +63,7 @@ import one.aircast.android.ui.SettingsScreen
 import one.aircast.android.ui.SetupScreen
 import one.aircast.android.ui.StatusStrip
 import one.aircast.android.ui.VehicleTitle
+import one.aircast.mapspike.FlyMap
 import one.aircast.android.ui.VideoSourceLayer
 import one.aircast.android.ui.VideoSurface
 import org.mavlink.qgroundcontrol.QGCBridge
@@ -166,6 +169,7 @@ fun AircastShell(quickView: QtQuickView) {
     var tab by remember { mutableStateOf(Tab.Fly) }
     var qmlReady by remember { mutableStateOf(false) }
     var controlsExpanded by remember { mutableStateOf(true) }
+    var actionsHeightPx by remember { mutableIntStateOf(0) }
     var analyzePage by remember { mutableStateOf<AnalyzePage?>(null) }
     var videoExpanded by remember { mutableStateOf(false) }
 
@@ -242,6 +246,13 @@ fun AircastShell(quickView: QtQuickView) {
             Box(Modifier.padding(padding).fillMaxSize()) {
                 AndroidView(factory = { quickView }, modifier = Modifier.fillMaxSize())
 
+                if (tab == Tab.Fly) {
+                    FlyMap(
+                        modifier = Modifier.fillMaxSize(),
+                        cameraBottomPx = if (controlsExpanded) actionsHeightPx else 0,
+                    )
+                }
+
                 VideoSurface(
                     modifier = if (videoExpanded) {
                         Modifier.fillMaxSize()
@@ -288,7 +299,7 @@ fun AircastShell(quickView: QtQuickView) {
                     modifier = Modifier.align(Alignment.BottomCenter),
                 ) {
                     Surface(
-                        Modifier.fillMaxWidth(),
+                        Modifier.fillMaxWidth().onSizeChanged { actionsHeightPx = it.height },
                         color = MaterialTheme.colorScheme.surface.copy(alpha = 0.92f),
                     ) { FlightActions() }
                 }
