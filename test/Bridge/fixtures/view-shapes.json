@@ -276,6 +276,7 @@
             "view.waypointsFile",
             "view.planFromWaypoints",
             "view.missionFile",
+            "view.transports",
             "view.kmlFile",
             "view.shapeFile",
             "view.geoToNed",

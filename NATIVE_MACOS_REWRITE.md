@@ -617,6 +617,7 @@ About 58 developer-weeks. Flight-test time, not code, is the schedule.
 - 2026-09-09: `view.fences` rally points carry altitude, altitudeUnits and altitudePath.
 - 2026-09-09: core-owned UDP link (std::net + socket2: shared bind, multicast join, session targets) with loopback tests.
 - 2026-09-09: core-owned TCP link (connect timeout, reader thread, disconnect events) with loopback tests.
+- 2026-09-09: link ABI (qgc_core_link_open/close/write, host_link_open/bytes/closed, set_link_writer) with `view.transports`; C ABI suite exchanges a heartbeat over a core UDP link.
 
 ### Stream F · Core
 

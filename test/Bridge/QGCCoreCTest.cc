@@ -2,6 +2,7 @@
 
 #include "MockLink.h"
 #include "QGCBridgeC.h"
+#include "QGCCoreC.h"
 #include "MAVLinkLib.h"
 
 #include <QtCore/QDir>
@@ -11,6 +12,8 @@
 #include <QtCore/QJsonArray>
 #include <QtCore/QJsonDocument>
 #include <QtCore/QJsonObject>
+#include <QtNetwork/QNetworkDatagram>
+#include <QtNetwork/QUdpSocket>
 #include <QtTest/QTest>
 
 #include <algorithm>
@@ -458,6 +461,43 @@ void QGCCoreCTest::_setupPageServesApmParameters()
     }
     const QJsonObject control = take(qgc_bridge_get("view.control(vehicle.parameterManager.getParameter(-1,RTL_ALT))"));
     QCOMPARE(control.value(QStringLiteral("name")).toString(), QStringLiteral("RTL_ALT"));
+}
+
+void QGCCoreCTest::_coreUdpLinkFramesAPeer()
+{
+    QUdpSocket peer;
+    QVERIFY(peer.bind(QHostAddress::LocalHost, 0));
+    const QString config = QStringLiteral("{\"kind\":\"udp\",\"name\":\"Probe\",\"port\":0,\"hosts\":[{\"host\":\"127.0.0.1\",\"port\":%1}]}").arg(peer.localPort());
+    const QJsonObject opened = take(qgc_core_link_open(config.toUtf8().constData()));
+    QVERIFY2(opened.value(QStringLiteral("ok")).toBool(false), qPrintable(QString::fromUtf8(QJsonDocument(opened).toJson(QJsonDocument::Compact))));
+    const uint32_t id = static_cast<uint32_t>(opened.value(QStringLiteral("id")).toInt());
+
+    mavlink_message_t message{};
+    mavlink_msg_heartbeat_pack(1, 1, &message, MAV_TYPE_QUADROTOR, MAV_AUTOPILOT_PX4, 0, 0, MAV_STATE_ACTIVE);
+    uint8_t frame[MAVLINK_MAX_PACKET_LEN]{};
+    const uint16_t len = mavlink_msg_to_send_buffer(frame, &message);
+    QVERIFY(qgc_core_link_write(id, frame, len));
+    QTRY_VERIFY_WITH_TIMEOUT(peer.hasPendingDatagrams(), 2000);
+    const QNetworkDatagram datagram = peer.receiveDatagram();
+    QCOMPARE(datagram.data().size(), static_cast<qsizetype>(len));
+    QVERIFY(peer.writeDatagram(datagram.data(), datagram.senderAddress(), datagram.senderPort()) == len);
+
+    const auto framesIn = [id]() {
+        const QJsonArray links = take(qgc_bridge_get("view.transports")).value(QStringLiteral("links")).toArray();
+        for (const QJsonValue &link : links) {
+            if (link.toObject().value(QStringLiteral("id")).toInt() == static_cast<int>(id)) {
+                return link.toObject().value(QStringLiteral("framesIn")).toInt();
+            }
+        }
+        return -1;
+    };
+    QTRY_COMPARE_WITH_TIMEOUT(framesIn(), 1, 3000);
+    const QJsonArray links = take(qgc_bridge_get("view.transports")).value(QStringLiteral("links")).toArray();
+    QVERIFY(!links.isEmpty());
+    QCOMPARE(links.last().toObject().value(QStringLiteral("owner")).toString(), QStringLiteral("core"));
+    QCOMPARE(links.last().toObject().value(QStringLiteral("bytesOut")).toInt(), static_cast<int>(len));
+    QVERIFY(qgc_core_link_close(id, "test done"));
+    QVERIFY(!qgc_core_link_write(id, frame, len));
 }
 
 void QGCCoreCTest::_videoAndCameraAreServed()

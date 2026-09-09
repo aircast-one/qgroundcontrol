@@ -24,6 +24,7 @@ pub mod kml;
 pub mod label;
 pub mod links;
 pub mod linkconfig;
+pub mod linkhost;
 pub mod logs;
 pub mod mapscale;
 pub mod messages;

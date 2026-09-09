@@ -117,3 +117,67 @@ pub unsafe extern "C" fn qgc_core_free(text: *mut c_char) {
         drop(unsafe { CString::from_raw(text) });
     }
 }
+
+type LinkWriterFn = Option<unsafe extern "C" fn(u32, *const u8, usize, *mut std::ffi::c_void)>;
+
+struct WriterUser(*mut std::ffi::c_void);
+unsafe impl Send for WriterUser {}
+unsafe impl Sync for WriterUser {}
+
+impl WriterUser {
+    fn ptr(&self) -> *mut std::ffi::c_void {
+        self.0
+    }
+}
+
+fn outcome(result: Result<u32, String>) -> *mut c_char {
+    give(match result {
+        Ok(id) => serde_json::json!({ "ok": true, "id": id }).to_string(),
+        Err(reason) => serde_json::json!({ "ok": false, "reason": reason }).to_string(),
+    })
+}
+
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn qgc_core_link_open(config_json: *const c_char) -> *mut c_char {
+    outcome(crate::linkhost::TRANSPORTS.lock().unwrap().open_json(&text(config_json)))
+}
+
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn qgc_core_link_close(id: u32, reason: *const c_char) -> bool {
+    crate::linkhost::TRANSPORTS.lock().unwrap().close(id, &text(reason))
+}
+
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn qgc_core_link_write(id: u32, bytes: *const u8, len: usize) -> bool {
+    let data = if bytes.is_null() { &[][..] } else { unsafe { std::slice::from_raw_parts(bytes, len) } };
+    crate::linkhost::TRANSPORTS.lock().unwrap().write(id, data)
+}
+
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn qgc_core_host_link_open(kind: *const c_char, name: *const c_char) -> *mut c_char {
+    outcome(Ok(crate::linkhost::TRANSPORTS.lock().unwrap().host_open(&text(kind), &text(name))))
+}
+
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn qgc_core_host_link_bytes(id: u32, bytes: *const u8, len: usize) {
+    if bytes.is_null() || len == 0 {
+        return;
+    }
+    let copied = unsafe { std::slice::from_raw_parts(bytes, len) }.to_vec();
+    crate::linkhost::TRANSPORTS.lock().unwrap().host_bytes(id, &copied)
+}
+
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn qgc_core_host_link_closed(id: u32, reason: *const c_char) -> bool {
+    crate::linkhost::TRANSPORTS.lock().unwrap().host_closed(id, &text(reason))
+}
+
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn qgc_core_set_link_writer(writer: LinkWriterFn, user: *mut std::ffi::c_void) {
+    let user = WriterUser(user);
+    let boxed: Option<crate::linkhost::Writer> = writer.map(|w| {
+        let holder = user;
+        std::sync::Arc::new(move |id: u32, bytes: &[u8]| unsafe { w(id, bytes.as_ptr(), bytes.len(), holder.ptr()) }) as crate::linkhost::Writer
+    });
+    crate::linkhost::TRANSPORTS.lock().unwrap().set_writer(boxed);
+}
