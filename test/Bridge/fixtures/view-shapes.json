@@ -277,6 +277,7 @@
             "view.planFromWaypoints",
             "view.missionFile",
             "view.transports",
+            "view.coreVehicle",
             "view.kmlFile",
             "view.shapeFile",
             "view.geoToNed",
@@ -941,7 +942,14 @@
         "maxAltitudeMeters": "number",
         "minAltitudeMeters": "number",
         "points": [
-            "empty"
+            {
+                "collision": "bool",
+                "distance": "number",
+                "missionAltitude": "number",
+                "sequence": "number",
+                "terrainAltitude": "null",
+                "x": "number"
+            }
         ],
         "totalDistanceMeters": "number",
         "unknownTerrain": "number",

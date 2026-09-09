@@ -11,6 +11,7 @@
 #include <QtCore/QDir>
 #include <QtCore/QFile>
 #include <QtCore/QFileInfo>
+#include <QtCore/QScopeGuard>
 #include <QtCore/QTemporaryFile>
 #include <QtCore/QJsonArray>
 #include <QtCore/QJsonDocument>
@@ -521,6 +522,13 @@ void QGCCoreCTest::_coreBackedLinkBringsUpAVehicle()
     udp->addHost(QStringLiteral("127.0.0.1"), peer.localPort());
     udp->setDynamic(true);
     SharedLinkConfigurationPtr config = LinkManager::instance()->addConfiguration(udp);
+    const auto tearDown = qScopeGuard([&config]() {
+        if (config->link()) {
+            config->link()->disconnect();
+        }
+        LinkManager::instance()->removeConfiguration(config.get());
+        qunsetenv("QGC_CORE_LINKS");
+    });
     QVERIFY(LinkManager::instance()->createConnectedLink(config));
     QVERIFY(config->link());
     QVERIFY(qobject_cast<CoreLink *>(config->link()));
@@ -548,11 +556,14 @@ void QGCCoreCTest::_coreBackedLinkBringsUpAVehicle()
     }
     QVERIFY2(vehicleUp(), "no vehicle appeared over the core-backed link");
     QTRY_VERIFY_WITH_TIMEOUT(peer.hasPendingDatagrams(), 3000);
+    const QJsonObject core = take(qgc_bridge_get("view.coreVehicle(7)"));
+    QCOMPARE(core.value(QStringLiteral("available")).toBool(false), true);
+    QVERIFY(core.value(QStringLiteral("vehicle")).toObject().value(QStringLiteral("heartbeats")).toInt() > 0);
+    QCOMPARE(core.value(QStringLiteral("vehicle")).toObject().value(QStringLiteral("id")).toInt(), 7);
+    QVERIFY(core.value(QStringLiteral("vehicleIds")).toArray().contains(7));
 
     config->link()->disconnect();
     QTRY_VERIFY_WITH_TIMEOUT(!vehicleUp(), 10000);
-    LinkManager::instance()->removeConfiguration(config.get());
-    qunsetenv("QGC_CORE_LINKS");
 #else
     QSKIP("the Rust core is not linked into this build");
 #endif
@@ -653,6 +664,8 @@ void QGCCoreCTest::_viewShapesMatchTheRecordedContract()
     (void) take(qgc_bridge_invoke("plan.rallyPointController.addPoint", QJsonDocument(QJsonArray { corner(47.397, 8.546) }).toJson(QJsonDocument::Compact).constData()));
     (void) take(qgc_bridge_invoke("plan.geoFenceController.addInclusionPolygon", box.constData()));
     (void) take(qgc_bridge_invoke("plan.geoFenceController.addInclusionCircle", box.constData()));
+    (void) take(qgc_bridge_invoke("plan.missionController.insertSimpleMissionItem", QJsonDocument(QJsonArray { corner(47.397, 8.546), 1, true }).toJson(QJsonDocument::Compact).constData()));
+    (void) take(qgc_bridge_invoke("plan.missionController.insertSimpleMissionItem", QJsonDocument(QJsonArray { corner(47.3975, 8.5465), 2, true }).toJson(QJsonDocument::Compact).constData()));
     QTRY_VERIFY_WITH_TIMEOUT(take(qgc_bridge_get("view.fences")).value(QStringLiteral("rallyPoints")).toArray().count() == 1, 5000);
     QTRY_VERIFY_WITH_TIMEOUT(take(qgc_bridge_get("view.fences")).value(QStringLiteral("circles")).toArray().count() == 1, 5000);
     QTRY_VERIFY_WITH_TIMEOUT(take(qgc_bridge_get("view.fences")).value(QStringLiteral("polygons")).toArray().count() == 1, 5000);

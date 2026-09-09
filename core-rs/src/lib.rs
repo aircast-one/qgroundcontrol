@@ -20,6 +20,7 @@ pub mod ftp;
 pub mod geo;
 pub mod gpsfacts;
 pub mod guided;
+pub mod hub;
 pub mod inspector;
 pub mod instruments;
 pub mod kml;

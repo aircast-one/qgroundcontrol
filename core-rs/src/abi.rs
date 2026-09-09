@@ -137,8 +137,21 @@ fn outcome(result: Result<u32, String>) -> *mut c_char {
     })
 }
 
+static HUB_SINK: std::sync::OnceLock<()> = std::sync::OnceLock::new();
+
+fn install_hub_sink() {
+    HUB_SINK.get_or_init(|| {
+        let sink: crate::linkhost::FrameSink = std::sync::Arc::new(|frame: &crate::transport::Frame| {
+            let now_us = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map(|d| d.as_micros() as u64).unwrap_or(0);
+            crate::hub::HUB.lock().unwrap().on_frame(&frame.header, &frame.message, now_us);
+        });
+        crate::linkhost::TRANSPORTS.lock().unwrap().set_frame_sink(Some(sink));
+    });
+}
+
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn qgc_core_link_open(config_json: *const c_char) -> *mut c_char {
+    install_hub_sink();
     let reserved = crate::linkhost::qt_udp_ports(&QtBackend);
     outcome(crate::linkhost::open_json(&crate::linkhost::TRANSPORTS, &text(config_json), &reserved))
 }
@@ -159,6 +172,7 @@ pub unsafe extern "C" fn qgc_core_link_write(id: u32, bytes: *const u8, len: usi
 
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn qgc_core_host_link_open(kind: *const c_char, name: *const c_char) -> *mut c_char {
+    install_hub_sink();
     outcome(Ok(crate::linkhost::TRANSPORTS.lock().unwrap().host_open(&text(kind), &text(name))))
 }
 
