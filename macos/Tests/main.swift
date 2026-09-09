@@ -1198,9 +1198,20 @@ func checkCameraChoice() {
 checkCameraChoice()
 
 func checkAltitudeMode() {
+    // QGroundControlQmlGlobal.h AltMode in declaration order: Mixed, Relative, Absolute,
+    // CalcAboveTerrain, TerrainFrame, None. These numbers are written back through
+    // plan.missionController, so a reordering upstream must not pass unnoticed.
+    expect([AltitudeMode.mixedRaw, AltitudeMode.relativeRaw, AltitudeMode.absoluteRaw,
+            AltitudeMode.calcAboveTerrainRaw, AltitudeMode.terrainFrameRaw,
+            AltitudeMode.unrelatedRaw].map(String.init).joined(separator: ","),
+           "0,1,2,3,4,5", "each mode is the number of its C++ enum case, in that order")
+
     expect(AltitudeMode.choices.count == 4, "a survey offers four altitude modes")
     expect(!AltitudeMode.isChoice(AltitudeMode.mixedRaw), "mixed belongs to a whole mission, not a survey")
-    expect(!AltitudeMode.isChoice(5), "none means the distance is not about the ground")
+    expect(!AltitudeMode.isChoice(AltitudeMode.unrelatedRaw),
+           "none means the distance is not about the ground")
+    expect(!AltitudeMode.isMissionChoice(AltitudeMode.unrelatedRaw),
+           "and a whole mission cannot be set to it either")
     expect(AltitudeMode.isChoice(AltitudeMode.terrainFrameRaw), "terrain frame is a survey mode")
 
     expect(AltitudeMode.read(4 as NSNumber) == AltitudeMode.terrainFrameRaw,
@@ -1216,6 +1227,10 @@ func checkAltitudeMode() {
            "an unknown mode is shown as sent rather than hidden")
     expect(AltitudeMode.title(for: AltitudeMode.none), "",
            "but an item that carries no altitude at all names no mode")
+    expect(AltitudeMode.title(for: AltitudeMode.unrelatedRaw), "",
+           "and neither does AltitudeModeNone, which QGC draws as an empty string; this head "
+           + "knew the number well enough to refuse writing it and still showed the operator "
+           + "\u{201C}Mode 5\u{201D} when one arrived")
 
     expect(AltitudeMode.usesTerrain(AltitudeMode.terrainFrameRaw), "terrain frame uses the terrain settings")
     expect(AltitudeMode.usesTerrain(AltitudeMode.calcAboveTerrainRaw), "so does calculated above terrain")

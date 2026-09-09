@@ -11,6 +11,14 @@ struct AltitudeMode: Identifiable, Equatable {
     static let absoluteRaw = 2
     static let calcAboveTerrainRaw = 3
     static let terrainFrameRaw = 4
+
+    // QGroundControlQmlGlobal::AltMode 5, which QGC names AltitudeModeNone and describes as a
+    // "distance value unrelated to ground"; its own menus use it for nothing-selected. It is not
+    // a mode an operator picks, and QGC draws it as an empty string.
+    static let unrelatedRaw = 5
+
+    // Distinct from the above on purpose: -1 says this head has not been given a value at all,
+    // and cannot be confused with a number the enum defines.
     static let none = -1
 
     static let choices = [
@@ -29,7 +37,8 @@ struct AltitudeMode: Identifiable, Equatable {
     }
 
     static func title(for raw: Int) -> String {
-        raw == none ? "" : missionChoices.first { $0.raw == raw }?.title ?? "Mode \(raw)"
+        guard raw != none, raw != unrelatedRaw else { return "" }
+        return missionChoices.first { $0.raw == raw }?.title ?? "Mode \(raw)"
     }
 
     static func isChoice(_ raw: Int) -> Bool {
