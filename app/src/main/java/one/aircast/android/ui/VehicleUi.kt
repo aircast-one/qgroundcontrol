@@ -228,11 +228,12 @@ fun FlightActions(modifier: Modifier = Modifier) {
                         },
                         destructive = armAction?.destructive ?: true,
                     ) {
+                        val target = !armed
                         scope.attemptCommand(
-                            action = if (armed) "Disarm" else "Arm",
+                            action = if (target) "Arm" else "Disarm",
                             report = { refusal = it },
-                            reached = { armedNow() == !armed },
-                        ) { Qgc.set("vehicle.armed", !armed) }
+                            reached = { armedNow() == target },
+                        ) { Qgc.set("vehicle.armed", target) }
                     }
                 },
                 colors = if (armed) ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.error)
