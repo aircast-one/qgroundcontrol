@@ -17,10 +17,14 @@ pub fn human_size(bytes: i64) -> String {
     }
 }
 
-pub fn human_time(raw: &str) -> String {
-    match raw.split_once('T') {
-        Some((date, clock)) => format!("{date} {}", clock.chars().take(5).collect::<String>()),
-        None => raw.to_string(),
+pub const CLOCK_SET_YEAR: i64 = 2010;
+
+pub fn time_state(received: bool, raw: &str) -> &'static str {
+    let year = raw.get(..4).and_then(|y| y.parse::<i64>().ok());
+    match (received, year) {
+        (false, _) => "unreceived",
+        (true, Some(y)) if y >= CLOCK_SET_YEAR => "known",
+        _ => "unknown",
     }
 }
 
@@ -64,7 +68,7 @@ pub fn logs_view(backend: &dyn Backend, _args: &[String]) -> Value {
                         "received": flag(e, "received"),
                         "selected": flag(e, "selected"),
                         "time": time,
-                        "timeText": human_time(time),
+                        "timeState": time_state(flag(e, "received"), time),
                     }))
                 })
                 .collect()
@@ -79,7 +83,7 @@ pub fn logs_view(backend: &dyn Backend, _args: &[String]) -> Value {
         "downloading": downloading,
         "busy": busy,
         "canRefresh": connected && !busy,
-        "canDownload": !busy && entries.iter().any(|e| e["selected"] == true),
+        "canDownload": !busy,
         "canCancel": busy,
         "canErase": !entries.is_empty() && !busy,
         "anyDownloaded": entries.iter().any(|e| e["status"] == "Downloaded"),
@@ -99,8 +103,10 @@ mod tests {
         assert_eq!(human_size(900), "900 bytes");
         assert_eq!(human_size(4096), "4.0 KB");
         assert_eq!(human_size(5 * 1024 * 1024), "5.0 MB");
-        assert_eq!(human_time("2026-09-08T14:42:51.000"), "2026-09-08 14:42");
-        assert_eq!(human_time("unknown"), "unknown");
+        assert_eq!(time_state(true, "2026-09-08T14:42:51.000"), "known");
+        assert_eq!(time_state(true, "1970-01-01T00:00:12.000"), "unknown", "a clock that was never set reads as the QGC page's Date Unknown");
+        assert_eq!(time_state(false, "2026-09-08T14:42:51.000"), "unreceived", "an entry not yet received shows no time at all");
+        assert_eq!(time_state(true, "garbage"), "unknown");
         assert!(erase_warning(1).starts_with("The one log"));
         assert!(erase_warning(3).starts_with("All 3 logs"));
     }
@@ -127,8 +133,11 @@ mod tests {
         assert_eq!(idle["canErase"], true);
         assert_eq!(idle["anyDownloaded"], true);
         assert_eq!(idle["entries"][0]["sizeText"], "4.0 KB");
+        assert_eq!(idle["entries"][0]["timeState"], "known");
+        assert!(idle["entries"][0].get("timeText").is_none(), "the head renders the time in its own locale");
         let asking = logs_view(&Fake { connected: true, requesting: true, entries: json!([]) }, &[]);
         assert_eq!(asking["canRefresh"], false);
+        assert_eq!(asking["canDownload"], false, "download follows busy-ness alone, as the QGC page does");
         assert_eq!(asking["canCancel"], true);
         assert_eq!(asking["emptyText"], "Asking the vehicle for its logs\u{2026}");
         let none = logs_view(&Fake { connected: false, requesting: false, entries: json!([]) }, &[]);
