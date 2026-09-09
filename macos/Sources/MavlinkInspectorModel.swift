@@ -57,12 +57,18 @@ struct MessageRateChoice: Identifiable, Equatable {
         ((json as? [Any]) ?? []).compactMap(MessageRateChoice.init)
     }
 
+    // core-rs inspector.rs RATE_DISABLED and RATE_DEFAULT, which it titles Off and Default.
+    static let offRate = -1
+    static let defaultRate = 0
+
     static func offered(_ rate: Int, in choices: [MessageRateChoice]) -> Bool {
         choices.contains { $0.rate == rate }
     }
 
+    // The same fallback as the core's shown_rate. It has to land on a rate the picker lists, or
+    // the selection binds to a tag that is not there and the control draws blank.
     static func shown(_ rate: Int, in choices: [MessageRateChoice]) -> Int {
-        offered(rate, in: choices) ? rate : 0
+        offered(rate, in: choices) ? rate : defaultRate
     }
 }
 

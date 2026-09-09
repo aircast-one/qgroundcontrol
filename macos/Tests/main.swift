@@ -1953,6 +1953,28 @@ func checkPlanMeasuresMatchTheCore() {
 
 checkPlanMeasuresMatchTheCore()
 
+func checkMeasureMatchesTheCoresOwnCases() {
+    // These are the exact assertions in core-rs read.rs measure_tests, run against this head's
+    // copy of the rule. Measure.format and format_measure are two implementations of one
+    // decision, and the Plan window puts their output side by side -- the terrain sheet is the
+    // core's string, the item altitude is this one. Reading them and agreeing is not enough;
+    // if either moves, this fails with the number that moved.
+    expect(Measure.format(45.26, "m^2"), "45.3 m\u{00B2}", "a tenth under a hundred, squared unit")
+    expect(Measure.format(89999.4, "m^2"), "89999 m\u{00B2}", "whole above it, squared unit")
+    expect(Measure.format(100.0, "ft"), "100 ft", "the threshold itself is whole")
+    expect(Measure.format(99.96, "m"), "100.0 m",
+           "and just under it keeps its tenth even when rounding carries it to the threshold, "
+           + "because the digit count is chosen from the value before it is rounded")
+    expect(Measure.format(40.0, "m"), "40.0 m", "a plain low measurement")
+
+    expect(Measure.wholeNumberFrom == 100.0,
+           "the threshold is core-rs read.rs WHOLE_NUMBER_FROM; nothing else pinned it, so the "
+           + "head could have drifted back to spelling the same altitude differently from the "
+           + "terrain sheet beside it")
+}
+
+checkMeasureMatchesTheCoresOwnCases()
+
 func checkPreflight() {
     func check(_ name: String, _ verdict: String, _ blocked: Bool) -> [String: Any] {
         ["name": name, "prompt": "P", "verdict": verdict, "reason": "R",
@@ -3195,9 +3217,19 @@ func checkMessageRate() {
 
     expect(MessageRateChoice.shown(4, in: choices) == 4,
            "a rate the vehicle reports and the picker offers is shown as itself")
-    expect(MessageRateChoice.shown(17, in: choices) == 0,
+    expect(MessageRateChoice.shown(17, in: choices) == MessageRateChoice.defaultRate,
            "and a rate the picker cannot show falls back to Default rather than selecting nothing")
-    expect(MessageRateChoice.shown(-1, in: choices) == -1, "Off shows as Off")
+    expect(MessageRateChoice.shown(MessageRateChoice.offRate, in: choices)
+        == MessageRateChoice.offRate, "Off shows as Off")
+
+    expect(MessageRateChoice.offered(MessageRateChoice.defaultRate, in: choices),
+           "the rate that shown() falls back to is itself one the picker lists; if the core ever "
+           + "dropped Default from its choices the control would bind to a tag that is not there "
+           + "and draw blank, which is the failure this pins rather than the fallback value")
+    expect(choices.map(\.rate).map(String.init).joined(separator: ","),
+           "-1,0,1,2,3,4,5,6,7,8,9,10,25,50,100",
+           "and the fifteen are core-rs inspector.rs RATE_CHOICES in its order, so this fixture "
+           + "cannot quietly stop being what the core actually sends")
 
     expect(MessageRateChoice(["title": "5 Hz"]) == nil, "a choice with no rate is dropped")
 }
