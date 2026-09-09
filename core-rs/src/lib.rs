@@ -51,6 +51,7 @@ pub mod px4meta;
 pub mod radio;
 pub mod read;
 pub mod remoteid;
+pub mod remoteidview;
 pub mod replay;
 pub mod sensors;
 #[cfg(not(target_os = "android"))]

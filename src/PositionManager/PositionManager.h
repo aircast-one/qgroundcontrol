@@ -30,6 +30,7 @@ class QGCPositionManager : public QObject
     Q_PROPERTY(QGeoCoordinate gcsPosition                   READ gcsPosition                    NOTIFY gcsPositionChanged)
     Q_PROPERTY(qreal          gcsHeading                    READ gcsHeading                     NOTIFY gcsHeadingChanged)
     Q_PROPERTY(qreal          gcsPositionHorizontalAccuracy READ gcsPositionHorizontalAccuracy  NOTIFY gcsPositionHorizontalAccuracyChanged)
+    Q_PROPERTY(qint64         gcsPositionTimestamp          READ gcsPositionTimestamp           NOTIFY positionInfoUpdated)
 
 public:
     QGCPositionManager(QObject *parent = nullptr);
@@ -45,6 +46,7 @@ public:
     qreal gcsHeading() const { return _gcsHeading; }
     qreal gcsPositionHorizontalAccuracy() const { return _gcsPositionHorizontalAccuracy; }
     QGeoPositionInfo geoPositionInfo() const { return _geoPositionInfo; }
+    qint64 gcsPositionTimestamp() const { return _geoPositionInfo.timestamp().isValid() ? _geoPositionInfo.timestamp().toMSecsSinceEpoch() : 0; }
     int updateInterval() const { return _updateInterval; }
 
     void setNmeaSourceDevice(QIODevice *device);

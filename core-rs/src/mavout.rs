@@ -1,5 +1,5 @@
 #[allow(deprecated)]
-use mavlink::dialects::ardupilotmega::{COMMAND_INT_DATA, COMMAND_LONG_DATA, FILE_TRANSFER_PROTOCOL_DATA, MISSION_ACK_DATA, MISSION_COUNT_DATA, MISSION_ITEM_DATA, MISSION_ITEM_INT_DATA, MISSION_REQUEST_INT_DATA, MISSION_REQUEST_LIST_DATA, MavCmd, MavMissionResult, MavMissionType, MavFrame, MavMessage, MavParamType, PARAM_REQUEST_LIST_DATA, PARAM_REQUEST_READ_DATA, PARAM_SET_DATA, PositionTargetTypemask, SET_POSITION_TARGET_LOCAL_NED_DATA};
+use mavlink::dialects::ardupilotmega::{COMMAND_INT_DATA, COMMAND_LONG_DATA, FILE_TRANSFER_PROTOCOL_DATA, MavOdidCategoryEu, MavOdidClassEu, MavOdidClassificationType, MavOdidDescType, MavOdidIdType, MavOdidOperatorIdType, MavOdidOperatorLocationType, MavOdidUaType, OPEN_DRONE_ID_BASIC_ID_DATA, OPEN_DRONE_ID_OPERATOR_ID_DATA, OPEN_DRONE_ID_SELF_ID_DATA, OPEN_DRONE_ID_SYSTEM_DATA, MISSION_ACK_DATA, MISSION_COUNT_DATA, MISSION_ITEM_DATA, MISSION_ITEM_INT_DATA, MISSION_REQUEST_INT_DATA, MISSION_REQUEST_LIST_DATA, MavCmd, MavMissionResult, MavMissionType, MavFrame, MavMessage, MavParamType, PARAM_REQUEST_LIST_DATA, PARAM_REQUEST_READ_DATA, PARAM_SET_DATA, PositionTargetTypemask, SET_POSITION_TARGET_LOCAL_NED_DATA};
 use mavlink::types::CharArray;
 use mavlink::{MAVLinkV2MessageRaw, MavHeader, MavlinkVersion, MessageData};
 use num_traits::FromPrimitive;
@@ -30,6 +30,12 @@ pub enum Outbound {
     MissionCount { target: (u8, u8), plan: u8, count: u16 },
     MissionItemInt { target: (u8, u8), plan: u8, item: crate::plantransfer::Item },
     MissionAck { target: (u8, u8), plan: u8, result: u8 },
+    Odid { target: (u8, u8), message: crate::remoteid::Message },
+}
+
+pub fn chars<const N: usize>(text: &str) -> CharArray<N> {
+    let bytes = text.as_bytes();
+    CharArray::from(std::array::from_fn(|i| bytes.get(i).copied().unwrap_or(0)))
 }
 
 pub fn command_known(command: u16) -> bool {
@@ -41,8 +47,7 @@ pub fn frame_known(frame: u8) -> bool {
 }
 
 pub fn param_id(name: &str) -> CharArray<16> {
-    let bytes = name.as_bytes();
-    CharArray::from(std::array::from_fn(|i| bytes.get(i).copied().unwrap_or(0)))
+    chars(name)
 }
 
 pub struct SetModeBits {
@@ -130,6 +135,47 @@ pub fn message(send: &Outbound) -> Option<MavMessage> {
                 mission_type: plan_type(*plan)?,
             }))
         }
+        Outbound::Odid { target, message } => Some(match message {
+            crate::remoteid::Message::System { location_type, classification_type, latitude, longitude, area_count, area_radius, category_eu, class_eu, altitude, timestamp_2019, .. } => MavMessage::OPEN_DRONE_ID_SYSTEM(OPEN_DRONE_ID_SYSTEM_DATA {
+                operator_latitude: *latitude,
+                operator_longitude: *longitude,
+                area_ceiling: -1000.0,
+                area_floor: -1000.0,
+                operator_altitude_geo: *altitude,
+                timestamp: *timestamp_2019,
+                area_count: *area_count,
+                area_radius: *area_radius,
+                target_system: target.0,
+                target_component: target.1,
+                id_or_mac: [0; 20],
+                operator_location_type: MavOdidOperatorLocationType::from_u32(*location_type)?,
+                classification_type: MavOdidClassificationType::from_u32(*classification_type)?,
+                category_eu: MavOdidCategoryEu::from_u32(*category_eu)?,
+                class_eu: MavOdidClassEu::from_u32(*class_eu)?,
+            }),
+            crate::remoteid::Message::BasicId { id_type, ua_type, uas_id } => MavMessage::OPEN_DRONE_ID_BASIC_ID(OPEN_DRONE_ID_BASIC_ID_DATA {
+                target_system: target.0,
+                target_component: target.1,
+                id_or_mac: [0; 20],
+                id_type: MavOdidIdType::from_u32(*id_type)?,
+                ua_type: MavOdidUaType::from_u32(*ua_type)?,
+                uas_id: std::array::from_fn(|i| uas_id.as_bytes().get(i).copied().unwrap_or(0)),
+            }),
+            crate::remoteid::Message::SelfId { description_type, description } => MavMessage::OPEN_DRONE_ID_SELF_ID(OPEN_DRONE_ID_SELF_ID_DATA {
+                target_system: target.0,
+                target_component: target.1,
+                id_or_mac: [0; 20],
+                description_type: MavOdidDescType::from_u32(*description_type)?,
+                description: chars(description),
+            }),
+            crate::remoteid::Message::OperatorId { id_type, operator_id } => MavMessage::OPEN_DRONE_ID_OPERATOR_ID(OPEN_DRONE_ID_OPERATOR_ID_DATA {
+                target_system: target.0,
+                target_component: target.1,
+                id_or_mac: [0; 20],
+                operator_id_type: MavOdidOperatorIdType::from_u32(*id_type)?,
+                operator_id: chars(operator_id),
+            }),
+        }),
         Outbound::Ftp { target, payload } => Some(MavMessage::FILE_TRANSFER_PROTOCOL(FILE_TRANSFER_PROTOCOL_DATA { target_network: 0, target_system: target.0, target_component: target.1, payload: *payload })),
         Outbound::ParamSet { target, name, bits, param_type } => Some(MavMessage::PARAM_SET(PARAM_SET_DATA { param_value: *bits, target_system: target.0, target_component: target.1, param_id: param_id(name), param_type: MavParamType::from_u8(*param_type)? })),
         Outbound::PositionTargetLocalNed { target, frame: f, type_mask, x, y, z } => Some(MavMessage::SET_POSITION_TARGET_LOCAL_NED(SET_POSITION_TARGET_LOCAL_NED_DATA {

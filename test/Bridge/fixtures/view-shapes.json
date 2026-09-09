@@ -282,6 +282,7 @@
             "view.coreParameter",
             "view.coreParameters",
             "view.coreMission",
+            "view.coreRemoteId",
             "view.detections",
             "view.kmlFile",
             "view.shapeFile",

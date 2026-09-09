@@ -50,7 +50,7 @@ pub fn eu_operator_id_valid(operator_id: &str) -> bool {
     luhn_mod36(&format!("{number}{secret}")) == Some(checksum)
 }
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Default)]
 pub struct Settings {
     pub region: i64,
     pub operator_id: String,

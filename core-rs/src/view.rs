@@ -96,6 +96,7 @@ pub const VIEWS: &[View] = &[
     View { path: "view.coreParameter", deps: &[], compute: hub::core_parameter_view },
     View { path: "view.coreParameters", deps: &[], compute: hub::core_parameters_view },
     View { path: "view.coreMission", deps: &[], compute: hub::core_mission_view },
+    View { path: "view.coreRemoteId", deps: &[], compute: hub::core_remote_id_view },
     View { path: "view.detections", deps: detections::DEPS, compute: detections::detections_view },
     View { path: "view.kmlFile", deps: kml::DEPS, compute: kml::kml_view },
     View { path: "view.shapeFile", deps: shp::DEPS, compute: shp::shp_view },
@@ -169,6 +170,7 @@ impl View {
         match self.path {
             "view.instruments" => instruments::deps_for(args),
             "view.battery" => battery::deps(),
+            "view.coreRemoteId" => crate::remoteidview::deps(),
             _ => self.deps.iter().map(|d| d.to_string()).collect(),
         }
     }

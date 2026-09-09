@@ -16,6 +16,7 @@ use crate::mavcmd::{Command, Commands, Failure, Out, RESULT_ACCEPTED};
 use crate::mavout::{self, Outbound};
 use crate::params::{self, INITIAL_REQUEST_TIMEOUT_MS, ParamValue, Params, WAITING_TIMEOUT_MS};
 use crate::plantransfer::{self, PLAN_FENCE, PLAN_MISSION, PLAN_RALLY, Transfer};
+use crate::remoteid::{self, GcsFix, RemoteId};
 use crate::standardmodes::{self, AvailableMode, FlightMode, MSG_AVAILABLE_MODES, StandardModes};
 use crate::transport::LinkId;
 use crate::sensorfacts::{DistanceSensorFacts, EstimatorStatusFacts, LocalPositionFacts, TemperatureFacts, WindFacts};
@@ -37,12 +38,21 @@ pub const RESULT_UNSUPPORTED: u8 = 3;
 pub const MINIMUM_TAKEOFF_ALTITUDE: f64 = 2.5;
 pub const MAX_ERRORS: usize = 10;
 pub const PROTO_MAVLINK2: u32 = 200;
+pub const ODID_SEND_MS: u64 = 1000;
+pub const ODID_TIMEOUT_MS: u64 = 2500;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct Origin {
     pub link: LinkId,
     pub replay: bool,
     pub v2: bool,
+}
+
+#[derive(Debug, Clone)]
+struct RemoteInputs {
+    settings: remoteid::Settings,
+    fix: GcsFix,
+    pushed_ms: u64,
 }
 
 #[derive(Debug)]
@@ -104,6 +114,9 @@ pub struct Vehicle {
     ftp_due: Option<u64>,
     ftp_seq: u16,
     plans: [PlanSlot; 3],
+    remote: RemoteId,
+    odid_due: Option<u64>,
+    odid_send_due: Option<u64>,
 }
 
 #[derive(Debug)]
@@ -167,7 +180,41 @@ impl Vehicle {
             ftp_due: None,
             ftp_seq: 0,
             plans: [PLAN_MISSION, PLAN_FENCE, PLAN_RALLY].map(|kind| PlanSlot { transfer: Transfer::new(autopilot == crate::modes::AUTOPILOT_ARDUPILOT, kind), due: None, progress: 0.0, error: None }),
+            remote: RemoteId::default(),
+            odid_due: None,
+            odid_send_due: None,
         }
+    }
+
+    fn follow_remote(&mut self, outs: Vec<remoteid::Out>, now_ms: u64) {
+        outs.into_iter().for_each(|out| match out {
+            remoteid::Out::StartSendTimer => self.odid_send_due = Some(now_ms + ODID_SEND_MS),
+            remoteid::Out::StopSendTimer => self.odid_send_due = None,
+            remoteid::Out::StartOdidTimeout => self.odid_due = Some(now_ms + ODID_TIMEOUT_MS),
+            _ => {}
+        });
+    }
+
+    fn send_remote_id(&mut self, inputs: Option<&RemoteInputs>, now_ms: u64, now_s: u64) -> Vec<Vec<u8>> {
+        let unknown = GcsFix { valid: false, latitude: f64::NAN, longitude: f64::NAN, altitude: f64::NAN, age_ms: u64::MAX };
+        let (settings, fix) = inputs.map(|i| (i.settings.clone(), GcsFix { age_ms: i.fix.age_ms.saturating_add(now_ms.saturating_sub(i.pushed_ms)), ..i.fix })).unwrap_or((remoteid::Settings::default(), unknown));
+        let (messages, outs) = self.remote.messages(&settings, fix, now_s);
+        self.follow_remote(outs, now_ms);
+        let target = (self.id, self.component);
+        messages.into_iter().filter_map(|message| self.encode(&Outbound::Odid { target, message })).collect()
+    }
+
+    pub fn remote_snapshot(&self) -> Value {
+        json!({
+            "available": self.remote.available,
+            "commsGood": self.remote.comms_good,
+            "armStatusGood": self.remote.arm_status_good,
+            "armStatusError": self.remote.arm_status_error,
+            "basicIdGood": self.remote.basic_id_good,
+            "gcsGpsGood": self.remote.gcs_gps_good,
+            "emergency": self.remote.emergency,
+            "sending": self.odid_send_due.is_some(),
+        })
     }
 
     fn plan_step(kind: u8) -> connect::Step {
@@ -719,8 +766,21 @@ impl Vehicle {
     }
 
     pub fn pump(&mut self, now_ms: u64) -> Vec<Vec<u8>> {
+        self.pump_with(now_ms, None, 0)
+    }
+
+    fn pump_with(&mut self, now_ms: u64, remote_inputs: Option<&RemoteInputs>, now_s: u64) -> Vec<Vec<u8>> {
         let ticked = self.commands.tick(now_ms);
         let mut bytes = self.handle(ticked, now_ms);
+        if self.odid_due.is_some_and(|due| now_ms >= due) {
+            self.odid_due = None;
+            let outs = self.remote.on_odid_timeout();
+            self.follow_remote(outs, now_ms);
+        }
+        if self.odid_send_due.is_some_and(|due| now_ms >= due) {
+            self.odid_send_due = Some(now_ms + ODID_SEND_MS);
+            bytes.extend(self.send_remote_id(remote_inputs, now_ms, now_s));
+        }
         if self.initial_due.is_some_and(|due| now_ms >= due) {
             self.initial_due = None;
             let actions = self.params.on_initial_timeout();
@@ -833,6 +893,10 @@ impl Vehicle {
                 let actions = self.params.on_param_value(header.component_id, &name, p.param_count, p.param_index, value);
                 return self.follow_params(actions, now_ms);
             }
+            MavMessage::OPEN_DRONE_ID_ARM_STATUS(a) => {
+                let outs = self.remote.on_arm_status(self.id, header.system_id, header.component_id, a.status as u8, a.error.to_str().unwrap_or(""));
+                self.follow_remote(outs, now_ms);
+            }
             MavMessage::HOME_POSITION(h) => {
                 self.home_altitude = Some(h.altitude as f64 / 1000.0);
                 self.home = Some((h.latitude as f64 / 1e7, h.longitude as f64 / 1e7, h.altitude as f64 / 1000.0));
@@ -936,6 +1000,7 @@ impl Vehicle {
             "fence": self.plan_state(PLAN_FENCE),
             "rally": self.plan_state(PLAN_RALLY),
             "home": self.home.map(|(lat, lon, alt)| json!({ "latitude": lat, "longitude": lon, "altitude": alt })),
+            "remoteId": self.remote_snapshot(),
             "componentInformation": { "types": self.metadata_types.keys().collect::<Vec<_>>(), "parameterMetadata": self.parameter_metadata.as_ref().map(|p| p.named.len() + p.indexed.len()).unwrap_or(0) },
             "messages": self.recent.iter().rev().take(50).map(|m| json!({ "component": m.component, "severity": m.severity, "text": m.text })).collect::<Vec<_>>(),
             "byName": self.by_name,
@@ -947,6 +1012,7 @@ impl Vehicle {
 pub struct Hub {
     vehicles: BTreeMap<u8, Vehicle>,
     active: Option<u8>,
+    remote_inputs: Option<RemoteInputs>,
 }
 
 pub static HUB: LazyLock<Mutex<Hub>> = LazyLock::new(|| Mutex::new(Hub::default()));
@@ -967,13 +1033,14 @@ impl Hub {
                 self.active.get_or_insert(header.system_id);
             }
         }
+        let inputs = self.remote_inputs.as_ref();
         let Some(vehicle) = self.vehicles.get_mut(&header.system_id) else { return Vec::new() };
         if origin.v2 {
             vehicle.max_proto_version = Some(PROTO_MAVLINK2);
         }
         bytes.extend(vehicle.apply(header, message, timestamp_us, now_ms));
         let link = vehicle.link;
-        bytes.extend(vehicle.pump(now_ms));
+        bytes.extend(vehicle.pump_with(now_ms, inputs, timestamp_us / 1_000_000));
         match vehicle.replay {
             true => Vec::new(),
             false => bytes.into_iter().map(|bytes| (link, bytes)).collect(),
@@ -991,10 +1058,39 @@ impl Hub {
     }
 
     pub fn tick(&mut self, now_ms: u64) -> Vec<(LinkId, Vec<u8>)> {
+        self.tick_with(now_ms, 0)
+    }
+
+    pub fn tick_with(&mut self, now_ms: u64, now_s: u64) -> Vec<(LinkId, Vec<u8>)> {
+        let inputs = self.remote_inputs.as_ref();
         self.vehicles.values_mut().flat_map(|vehicle| {
             let (link, replay) = (vehicle.link, vehicle.replay);
-            vehicle.pump(now_ms).into_iter().filter(move |_| !replay).map(move |bytes| (link, bytes))
+            vehicle.pump_with(now_ms, inputs, now_s).into_iter().filter(move |_| !replay).map(move |bytes| (link, bytes))
         }).collect()
+    }
+
+    pub fn set_remote_inputs(&mut self, settings: remoteid::Settings, fix: GcsFix, now_ms: u64) {
+        self.remote_inputs = Some(RemoteInputs { settings, fix, pushed_ms: now_ms });
+    }
+
+    pub fn remote_request(&mut self, id: Option<u8>, request: &Value) -> Result<(), String> {
+        let chosen = id.or(self.active).ok_or_else(|| "No vehicle is connected through the core.".to_string())?;
+        let vehicle = self.vehicles.get_mut(&chosen).ok_or_else(|| format!("Vehicle {chosen} is not connected through the core."))?;
+        let declare = request.get("emergency").and_then(Value::as_bool).ok_or_else(|| "A remote ID request needs an emergency flag.".to_string())?;
+        vehicle.remote.set_emergency(declare);
+        Ok(())
+    }
+
+    pub fn remote_snapshot(&self, id: Option<u8>) -> Value {
+        let vehicle = id.and_then(|id| self.vehicles.get(&id)).or_else(|| self.active());
+        json!({
+            "kind": "object",
+            "class": "CoreRemoteId",
+            "available": vehicle.is_some(),
+            "vehicleId": vehicle.map(|v| v.id),
+            "inputs": self.remote_inputs.as_ref().map(|i| json!({ "region": i.settings.region, "locationType": i.settings.location_type, "gcsFixValid": i.fix.valid, "gcsFixAgeMs": i.fix.age_ms.saturating_add(now_ms().saturating_sub(i.pushed_ms)) })),
+            "remoteId": vehicle.map(Vehicle::remote_snapshot).unwrap_or(Value::Null),
+        })
     }
 
     pub fn guided(&mut self, id: Option<u8>, action: &Value, now_ms: u64) -> Result<Vec<(LinkId, Vec<u8>)>, String> {
@@ -1098,6 +1194,13 @@ pub fn core_mission_view(_backend: &dyn crate::router::Backend, args: &[String])
         "vehicleId": vehicle.map(|v| v.id),
         "plans": vehicle.map(Vehicle::mission_snapshot).unwrap_or(Value::Null),
     })
+}
+
+pub fn core_remote_id_view(backend: &dyn crate::router::Backend, args: &[String]) -> Value {
+    let (settings, fix) = crate::remoteidview::inputs(backend, now_us() / 1000);
+    let mut hub = lock();
+    hub.set_remote_inputs(settings, fix, now_ms());
+    hub.remote_snapshot(args.first().and_then(|a| a.trim().parse().ok()))
 }
 
 pub fn core_parameters_view(_backend: &dyn crate::router::Backend, args: &[String]) -> Value {
@@ -1601,5 +1704,52 @@ mod tests {
         assert!(hub.mission_request(None, &json!({ "plan": "fence", "action": "write", "polygons": [{ "vertices": [[47.0, 8.0], [47.1, 8.0]] }] }), 22_000).is_err(), "two vertices are not a polygon");
         assert!(hub.mission_request(None, &json!({ "plan": "fence", "action": "write", "breachReturn": [47.0, 8.0] }), 22_000).is_err(), "a breach return point needs its altitude");
         assert!(hub.mission_request(None, &json!({ "plan": "walls", "action": "load" }), 22_000).is_err());
+    }
+
+    #[test]
+    fn an_arm_status_starts_the_remote_id_broadcast_and_silence_stops_it() {
+        use mavlink::dialects::ardupilotmega::{MavOdidArmStatus, OPEN_DRONE_ID_ARM_STATUS_DATA};
+        let autopilot = MavHeader { system_id: 1, component_id: 1, sequence: 0 };
+        let mut hub = Hub::default();
+        connect_copter(&mut hub, &autopilot);
+        let settings = remoteid::Settings { region: remoteid::REGION_FAA, operator_id: "FIN87astrdge12k8".into(), operator_id_type: 0, operator_id_valid: false, send_operator_id: true, basic_id: "1234".into(), basic_id_type: 1, basic_id_ua_type: 2, send_basic_id: true, send_self_id: false, self_id_type: 0, self_id_free: "Survey".into(), self_id_emergency: "Emergency".into(), self_id_extended: "Extended".into(), location_type: remoteid::LOCATION_LIVE, classification_type: 0, latitude_fixed: 0.0, longitude_fixed: 0.0, altitude_fixed: 0.0, category_eu: 0, class_eu: 0 };
+        hub.set_remote_inputs(settings, GcsFix { valid: true, latitude: 47.5, longitude: 8.5, altitude: 400.0, age_ms: 100 }, 30_000);
+        let status = MavMessage::OPEN_DRONE_ID_ARM_STATUS(OPEN_DRONE_ID_ARM_STATUS_DATA { status: MavOdidArmStatus::MAV_ODID_ARM_STATUS_GOOD_TO_ARM, error: mavout::chars("") });
+        assert!(hub.on_frame(origin(4), &MavHeader { system_id: 1, component_id: 236, sequence: 0 }, &status, (remoteid::EPOCH_2019_S + 60) * 1_000_000, 30_000).is_empty(), "the first broadcast waits one second, as the Qt timer does");
+        let remote = hub.remote_snapshot(None)["remoteId"].clone();
+        assert_eq!((remote["available"].as_bool(), remote["commsGood"].as_bool(), remote["armStatusGood"].as_bool(), remote["sending"].as_bool()), (Some(true), Some(true), Some(true), Some(true)));
+        assert!(hub.tick_with(30_900, remoteid::EPOCH_2019_S + 60).is_empty());
+        let first: Vec<MavMessage> = hub.tick_with(31_000, remoteid::EPOCH_2019_S + 61).into_iter().map(|(_, b)| decode(&b)).collect();
+        assert!(matches!(first[0], MavMessage::OPEN_DRONE_ID_SYSTEM(ref m) if m.operator_latitude == 475000000 && m.target_system == 1 && m.target_component == 1 && m.timestamp == 61));
+        assert!(matches!(first[1], MavMessage::OPEN_DRONE_ID_BASIC_ID(_)));
+        assert!(matches!(first[2], MavMessage::OPEN_DRONE_ID_OPERATOR_ID(_)));
+        assert!(hub.tick_with(31_900, remoteid::EPOCH_2019_S + 61).is_empty(), "one second between broadcasts");
+        hub.remote_request(None, &json!({ "emergency": true })).unwrap();
+        let emergency: Vec<MavMessage> = hub.tick_with(32_100, remoteid::EPOCH_2019_S + 62).into_iter().map(|(_, b)| decode(&b)).collect();
+        assert!(emergency.iter().any(|m| matches!(m, MavMessage::OPEN_DRONE_ID_SELF_ID(d) if d.description_type as u32 == remoteid::SELF_ID_EMERGENCY)));
+        hub.remote_request(None, &json!({ "emergency": false })).unwrap();
+        hub.on_frame(origin(4), &MavHeader { system_id: 1, component_id: 236, sequence: 0 }, &status, (remoteid::EPOCH_2019_S + 62) * 1_000_000, 32_200);
+        let cleared: Vec<MavMessage> = hub.tick_with(33_100, remoteid::EPOCH_2019_S + 63).into_iter().map(|(_, b)| decode(&b)).collect();
+        assert!(cleared.iter().any(|m| matches!(m, MavMessage::OPEN_DRONE_ID_SELF_ID(d) if d.description_type as u32 == 0)), "once declared, the self id keeps going after the emergency is cleared");
+        hub.on_frame(origin(4), &MavHeader { system_id: 1, component_id: 236, sequence: 0 }, &status, (remoteid::EPOCH_2019_S + 65) * 1_000_000, 35_500);
+        let stale: Vec<MavMessage> = hub.tick_with(36_600, remoteid::EPOCH_2019_S + 66).into_iter().map(|(_, b)| decode(&b)).collect();
+        assert!(matches!(stale[0], MavMessage::OPEN_DRONE_ID_SYSTEM(ref m) if m.operator_latitude == 0), "a fix older than five seconds is sent as unknown");
+        assert_eq!(hub.remote_snapshot(None)["remoteId"]["gcsGpsGood"], false);
+        assert!(hub.tick_with(38_800, remoteid::EPOCH_2019_S + 68).is_empty(), "silence for two and a half seconds stops the broadcast");
+        assert_eq!(hub.remote_snapshot(None)["remoteId"]["commsGood"], false);
+        assert!(hub.remote_request(None, &json!({})).is_err());
+    }
+
+    #[test]
+    fn without_any_inputs_the_system_message_still_goes_out_with_an_unknown_position() {
+        use mavlink::dialects::ardupilotmega::{MavOdidArmStatus, OPEN_DRONE_ID_ARM_STATUS_DATA};
+        let autopilot = MavHeader { system_id: 1, component_id: 1, sequence: 0 };
+        let mut hub = Hub::default();
+        connect_copter(&mut hub, &autopilot);
+        let status = MavMessage::OPEN_DRONE_ID_ARM_STATUS(OPEN_DRONE_ID_ARM_STATUS_DATA { status: MavOdidArmStatus::MAV_ODID_ARM_STATUS_GOOD_TO_ARM, error: mavout::chars("") });
+        hub.on_frame(origin(4), &autopilot, &status, 40_000_000, 40_000);
+        let sent: Vec<MavMessage> = hub.tick_with(41_000, remoteid::EPOCH_2019_S).into_iter().map(|(_, b)| decode(&b)).collect();
+        assert_eq!(sent.len(), 1);
+        assert!(matches!(sent[0], MavMessage::OPEN_DRONE_ID_SYSTEM(ref m) if m.operator_latitude == 0 && m.operator_altitude_geo == -1000.0));
     }
 }

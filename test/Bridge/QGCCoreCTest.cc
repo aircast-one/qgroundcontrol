@@ -659,6 +659,7 @@ void QGCCoreCTest::_coreGuidedTakeoffReachesThePeer()
 
     config->link()->disconnect();
     QTRY_VERIFY_WITH_TIMEOUT(!coreSeesVehicle(), 10000);
+    QTRY_VERIFY_WITH_TIMEOUT(!MultiVehicleManager::instance()->activeVehicle(), 10000);
 #else
     QSKIP("the Rust core is not linked into this build");
 #endif
@@ -857,6 +858,7 @@ void QGCCoreCTest::_coreConnectSequenceReachesParameters()
 
     config->link()->disconnect();
     QTRY_VERIFY_WITH_TIMEOUT(!coreSeesVehicle(), 10000);
+    QTRY_VERIFY_WITH_TIMEOUT(!MultiVehicleManager::instance()->activeVehicle(), 10000);
 #else
     QSKIP("the Rust core is not linked into this build");
 #endif
