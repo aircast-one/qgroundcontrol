@@ -11,6 +11,7 @@ out="${TMPDIR:-/tmp}/qgc-swift-checks"
 
 swiftc -Onone -o "$out" \
     "$root/macos/Sources/DetectionModel.swift" \
+    "$root/macos/Sources/SetupCatalogueModel.swift" \
     "$root/macos/Sources/SettingsPages.swift" \
     "$root/macos/Sources/AboutModel.swift" \
     "$root/macos/Sources/LinkConfigModel.swift" \

@@ -725,7 +725,7 @@ struct SetupSummaryView: View {
                                 : "Connect a vehicle to see what it needs.")
                         } else {
                             ForEach(store.components) { component in
-                                let opens = SetupPage.all.contains(component.name)
+                                let opens = store.pageNames.contains(component.name)
                                 let faulted = component.name == "Sensors" && !sensors.failing.isEmpty
                                 let good = !component.needsAttention && !faulted
                                 GroupRow(title: component.name,
@@ -797,6 +797,31 @@ extension SetupPage {
     }
 }
 
+struct ParameterSectionsView: View {
+    @ObservedObject var store: ParametersStore
+    let page: String
+
+    var body: some View {
+        SetupPageBody(title: page,
+                      note: "Settings the vehicle groups under \(page.lowercased()).",
+                      connected: store.connected) {
+            if store.loading {
+                GroupCard { EmptyStateRow(text: VehicleSetupText.waiting(connected: store.connected, for: "parameters")) }
+            } else if sections.isEmpty {
+                GroupCard {
+                    EmptyStateRow(text: VehicleSetupText.absent(connected: store.connected,
+                        "reports none of the parameters this page knows about."))
+                }
+            } else {
+                SetupSections(sections: sections, store: store)
+            }
+        }
+        .onAppear(perform: store.load)
+    }
+
+    private var sections: [SettingsSection] { store.sections(of: page) }
+}
+
 struct VehicleSetupView: View {
     @ObservedObject var parameters: ParametersStore
     @ObservedObject var sensors: SensorsStore
@@ -814,10 +839,11 @@ struct VehicleSetupView: View {
                 get: { Optional(selection.page) },
                 set: { selection.page = $0 ?? selection.page })
             ) {
-                ForEach(SetupPage.sections, id: \.title) { section in
-                    Section(section.title) {
-                        ForEach(section.pages, id: \.self) { page in
-                            row(page, badge: page == "Sensors" && !sensors.failing.isEmpty)
+                ForEach(components.groups) { group in
+                    Section(group.title) {
+                        ForEach(group.pages, id: \.name) { page in
+                            row(page.name,
+                                badge: page.name == "Sensors" && !sensors.failing.isEmpty)
                         }
                     }
                 }
@@ -831,7 +857,12 @@ struct VehicleSetupView: View {
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
         }
         .frame(minWidth: 860, minHeight: 560)
-        .onAppear(perform: components.reload)
+        .onAppear {
+            components.startWatching()
+            selection.offer(components.pageNames)
+        }
+        .onDisappear(perform: components.stopWatching)
+        .onChange(of: components.groups) { _ in selection.offer(components.pageNames) }
     }
 
     private func row(_ name: String, badge: Bool = false) -> some View {
@@ -857,7 +888,15 @@ struct VehicleSetupView: View {
         case "Remote Support": RemoteSupportView(support: support)
         case "Flight Modes": FlightModesView(store: parameters)
         case "Sensors": SensorsView(store: sensors)
-        default: SetupSummaryView(store: components, sensors: sensors, selection: selection)
+        default:
+            // A page the core lists with parameter sections and this head has no bespoke view for
+            // still has everything it needs to draw; falling through to the summary would look
+            // like the window forgetting which page was asked for.
+            if SetupCatalogue.page(selection.page, in: components.groups)?.parameterSections == true {
+                ParameterSectionsView(store: parameters, page: selection.page)
+            } else {
+                SetupSummaryView(store: components, sensors: sensors, selection: selection)
+            }
         }
     }
 }
@@ -873,7 +912,7 @@ final class VehicleSetupWindow: NSObject, NSWindowDelegate {
     private let radio = RadioStore()
     private let motors = MotorsStore()
     private let support = RemoteSupportStore()
-    private let selection = PageSelection(owner: "vehicleSetup", pages: SetupPage.all)
+    private let selection = PageSelection(owner: "vehicleSetup", pages: ["Summary"])
     private var window: NSWindow?
 
     override init() {
@@ -919,6 +958,10 @@ final class VehicleSetupWindow: NSObject, NSWindowDelegate {
     func windowWillClose(_ notification: Notification) {
         sensors.stop()
         motors.stop()
+        components.stopWatching()
+        power.stop()
+        frame.stop()
+        radio.stop()
         window = nil
     }
 }

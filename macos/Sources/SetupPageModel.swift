@@ -1,14 +1,7 @@
 import Foundation
 
 enum SetupPage {
-    static let sections: [(title: String, pages: [String])] = [
-        ("Vehicle", ["Summary"]),
-        ("Setup", ["Sensors", "Radio", "Frame", "Flight Modes", "Safety", "Power", "Motors",
-                   "Tuning", "Camera", "Lights"]),
-        ("Advanced", ["Remote Support", "Parameters"]),
-    ]
-
-    static let all = sections.flatMap(\.pages)
+    static let unknownSymbol = "gearshape.fill"
 
     static func symbol(for page: String) -> String {
         switch page {
@@ -25,7 +18,8 @@ enum SetupPage {
         case "Lights": return "lightbulb.fill"
         case "Remote Support": return "lifepreserver.fill"
         case "Tuning": return "dial.min"
-        default: return "gearshape.fill"
+        case "Flight Behavior": return "wind"
+        default: return unknownSymbol
         }
     }
 }

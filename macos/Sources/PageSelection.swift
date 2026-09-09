@@ -7,14 +7,22 @@ final class PageSelection: ObservableObject, Probeable {
     static var probeID: String { "pages" }
 
     @Published var page: String
+    @Published private(set) var pages: [String]
 
     private let owner: String
-    private let pages: [String]
 
     init(owner: String, pages: [String]) {
         self.owner = owner
         self.pages = pages
         page = pages.first ?? ""
+    }
+
+    // The vehicle setup pages come from the core and change with the firmware. An empty answer is
+    // a read that failed rather than a window with no pages, so it is ignored.
+    func offer(_ listed: [String]) {
+        guard !listed.isEmpty, listed != pages else { return }
+        pages = listed
+        if !listed.contains(page) { page = listed.first ?? page }
     }
 
     var identifier: String { "\(owner).pages" }

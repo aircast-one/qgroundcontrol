@@ -2233,16 +2233,65 @@ func checkRemoteSupport() {
 }
 
 func checkSetupPages() {
-    expect(SetupPage.all == SetupPage.sections.flatMap(\.pages),
-           "the sidebar and the page list are the same list, so a page cannot be reachable by probe and invisible in the sidebar")
-    expect(SetupPage.all.contains("Motors"), "Motors is one of them")
-    expect(SetupPage.all.contains("Remote Support"), "so is Remote Support")
-    expect(Set(SetupPage.all).count == SetupPage.all.count, "and no page is listed twice")
-    let symbols = SetupPage.all.map(SetupPage.symbol(for:))
+    // The names core-rs setup.rs PAGES ships. The head no longer keeps this list -- it decodes
+    // view.setup.groups -- so this is an assertion about the glyph table, not a second catalogue.
+    // The contract cannot pin it until the recorder captures view.setup.groups, which needs no
+    // vehicle and has been asked for.
+    let known = ["Summary", "Sensors", "Radio", "Frame", "Flight Modes", "Safety", "Power",
+                 "Motors", "Tuning", "Camera", "Lights", "Flight Behavior",
+                 "Remote Support", "Parameters"]
+    let symbols = known.map(SetupPage.symbol(for:))
     expect(Set(symbols).count == symbols.count,
            "no two pages share an icon, which is how Motors and Remote Support ended up looking alike")
-    expect(!symbols.contains(SetupPage.symbol(for: "Anything Unknown")),
-           "and none of them is the fallback icon")
+    expect(known.filter { SetupPage.symbol(for: $0) == SetupPage.unknownSymbol }
+        .joined(separator: ","), "",
+           "every page the core can list has a glyph of its own; Flight Behavior had none until "
+           + "the head stopped keeping its own page list and noticed the core had one more")
+    expect(SetupPage.symbol(for: "Anything Unknown"), SetupPage.unknownSymbol,
+           "and a page added to the core tomorrow draws as unknown rather than as something else")
+
+    let decoded = SetupCatalogue.groups([
+        ["title": "Vehicle", "pages": [["name": "Summary", "native": true as NSNumber,
+                                        "parameterSections": false as NSNumber]]],
+        ["title": "Setup", "pages": [["name": "Safety", "native": true as NSNumber,
+                                      "parameterSections": true as NSNumber],
+                                     ["name": "Flight Behavior", "native": false as NSNumber,
+                                      "parameterSections": false as NSNumber]]],
+        ["title": "Empty", "pages": [["name": "Sensors", "native": false as NSNumber,
+                                      "parameterSections": false as NSNumber]]],
+    ])
+    expect(SetupCatalogue.names(decoded).joined(separator: ","),
+           "Summary,Safety,Flight Behavior,Sensors",
+           "every page the core lists is decoded, native or not")
+
+    let offered = SetupCatalogue.offered(decoded)
+    expect(SetupCatalogue.names(offered).joined(separator: ","), "Summary,Safety",
+           "a page the core does not claim as native is not offered, because this head has "
+           + "nothing to draw for it and the sidebar would open the summary instead")
+    expect(offered.map(\.title).joined(separator: ","), "Vehicle,Setup",
+           "and a group left with no pages at all goes with them, rather than sitting empty")
+    expect(SetupCatalogue.page("Safety", in: offered)?.parameterSections == true,
+           "a page carries whether the core has parameter sections for it, which is what lets an "
+           + "unknown page still draw instead of falling through to the summary")
+    expect(SetupCatalogue.page("Sensors", in: offered) == nil, "and a filtered page is gone")
+
+    expect(SetupCatalogue.groups(nil).isEmpty, "no answer is no pages")
+    expect(SetupCatalogue.groups([["pages": []], ["title": ""]]).isEmpty,
+           "a group with no title is dropped rather than drawn as a blank heading")
+
+    let selection = PageSelection(owner: "test", pages: ["Summary"])
+    selection.offer(["Summary", "Safety", "Tuning"])
+    expect(selection.pages.joined(separator: ","), "Summary,Safety,Tuning",
+           "the window navigates by the list the core gave it")
+    selection.page = "Tuning"
+    selection.offer([])
+    expect(selection.pages.count == 3,
+           "an empty read is a read that failed, not a window with no pages, so it is ignored")
+    expect(selection.page, "Tuning", "and the page the operator was on is left alone")
+    selection.offer(["Summary", "Safety"])
+    expect(selection.page, "Summary",
+           "but a page that stops existing -- Sensors on PX4 -- moves the operator somewhere real "
+           + "rather than leaving the sidebar pointing at nothing")
 }
 
 func checkMapClick() {
