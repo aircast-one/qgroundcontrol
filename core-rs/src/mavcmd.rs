@@ -125,10 +125,9 @@ impl Commands {
         self.transmit(index, now_ms)
     }
 
-    fn transmit(&mut self, index: usize, now_ms: u64) -> Vec<Out> {
+    fn transmit(&mut self, index: usize, _now_ms: u64) -> Vec<Out> {
         let entry = &mut self.entries[index];
         entry.tries += 1;
-        entry.sent_at_ms = now_ms;
         if entry.tries > entry.max_tries {
             let entry = self.entries.remove(index);
             let c = entry.command;
@@ -148,7 +147,8 @@ impl Commands {
 
     pub fn tick(&mut self, now_ms: u64) -> Vec<Out> {
         let due: Vec<usize> = (0..self.entries.len()).rev().filter(|i| now_ms.saturating_sub(self.entries[*i].sent_at_ms) > self.entries[*i].ack_timeout_ms).collect();
-        let mut out: Vec<Out> = due.into_iter().flat_map(|i| self.transmit(i, now_ms)).collect();
+        let raw: Vec<Out> = due.into_iter().flat_map(|i| self.transmit(i, now_ms)).collect();
+        let mut out = self.resolve(raw);
         let expired = self.requests.iter().find(|(_, r)| r.wait_started_ms.is_some_and(|started| now_ms.saturating_sub(started) > MESSAGE_WAIT_MS)).map(|(k, r)| (*k, r.tag));
         if let Some(((component, message_id), tag)) = expired {
             self.requests.remove(&(component, message_id));
@@ -230,7 +230,7 @@ impl Commands {
         self.requests.remove(&(component, message_id)).map(|r| vec![Out::RequestResult { tag: r.tag, component, message_id, result: RESULT_FAILED, failure: RequestFailure::CommandNotAcked }]).unwrap_or_default()
     }
 
-    pub fn resolve(&mut self, out: Vec<Out>) -> Vec<Out> {
+    fn resolve(&mut self, out: Vec<Out>) -> Vec<Out> {
         out.into_iter()
             .flat_map(|o| match o {
                 Out::Result { component, command: CMD_REQUEST_MESSAGE, failure: Failure::NoResponse, tag, .. } => {
@@ -287,9 +287,10 @@ mod tests {
         let mut commands = Commands::default();
         let check = Command { command: CMD_RUN_PREARM_CHECKS, show_error: false, ..arm(5) };
         assert_eq!(commands.send(check, 0).len(), 1);
+        assert!(commands.tick(ACK_TIMEOUT_MS).is_empty());
         assert_eq!(commands.tick(ACK_TIMEOUT_MS + 1).len(), 1);
-        assert_eq!(commands.tick(2 * ACK_TIMEOUT_MS + 2).len(), 1);
-        assert_eq!(commands.tick(3 * ACK_TIMEOUT_MS + 3), vec![Out::Result { tag: 5, component: 1, command: CMD_RUN_PREARM_CHECKS, result: RESULT_FAILED, failure: Failure::NoResponse }]);
+        assert_eq!(commands.tick(ACK_TIMEOUT_MS + 501).len(), 1, "retries follow the tick, the clock is not restarted");
+        assert_eq!(commands.tick(ACK_TIMEOUT_MS + 1001), vec![Out::Result { tag: 5, component: 1, command: CMD_RUN_PREARM_CHECKS, result: RESULT_FAILED, failure: Failure::NoResponse }]);
         let mut slow = Commands { high_latency: true, ..Default::default() };
         slow.send(Command { command: CMD_RUN_PREARM_CHECKS, ..arm(6) }, 0);
         assert!(slow.tick(ACK_TIMEOUT_MS + 1).is_empty());
@@ -325,8 +326,8 @@ mod tests {
         assert!(duplicate.contains(&Out::RequestResult { tag: 16, component: 1, message_id: 148, result: RESULT_FAILED, failure: RequestFailure::DuplicateCommand }));
         let mut unanswered = Commands::default();
         unanswered.request_message(17, 1, 148, [0.0; 5], 0);
-        let gave_up = (1..=3).flat_map(|n| unanswered.tick(n * (ACK_TIMEOUT_MS + 1))).collect::<Vec<_>>();
-        let resolved = unanswered.resolve(gave_up);
-        assert!(resolved.contains(&Out::RequestResult { tag: 17, component: 1, message_id: 148, result: RESULT_FAILED, failure: RequestFailure::CommandNotAcked }));
+        let gave_up = (1..=3).flat_map(|n| unanswered.tick(ACK_TIMEOUT_MS + n)).collect::<Vec<_>>();
+        assert!(gave_up.contains(&Out::RequestResult { tag: 17, component: 1, message_id: 148, result: RESULT_FAILED, failure: RequestFailure::CommandNotAcked }));
+        assert!(unanswered.requests.is_empty());
     }
 }

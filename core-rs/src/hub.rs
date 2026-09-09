@@ -12,6 +12,10 @@ use crate::sysstatus::SysStatusSensors;
 use crate::vehiclefacts::VehicleFacts;
 
 pub const TYPE_GCS: u8 = 6;
+pub const TYPE_ONBOARD_CONTROLLER: u8 = 18;
+pub const TYPE_GIMBAL: u8 = 26;
+pub const TYPE_ADSB: u8 = 27;
+pub const COMP_AUTOPILOT1: u8 = 1;
 pub const AUTOPILOT_INVALID: u8 = 8;
 pub const ARMED_FLAG: u8 = 128;
 pub const CUSTOM_MODE_FLAG: u8 = 1;
@@ -161,7 +165,8 @@ impl Hub {
     pub fn on_frame(&mut self, header: &MavHeader, message: &MavMessage, timestamp_us: u64) {
         if let MavMessage::HEARTBEAT(h) = message {
             let (kind, autopilot) = (h.mavtype as u8, h.autopilot as u8);
-            if kind != TYPE_GCS && autopilot != AUTOPILOT_INVALID && header.system_id != 0 && !self.vehicles.contains_key(&header.system_id) {
+            let excluded_type = matches!(kind, TYPE_GCS | TYPE_ONBOARD_CONTROLLER | TYPE_GIMBAL | TYPE_ADSB);
+            if header.component_id == COMP_AUTOPILOT1 && !excluded_type && autopilot != AUTOPILOT_INVALID && header.system_id != 0 && !self.vehicles.contains_key(&header.system_id) {
                 self.vehicles.insert(header.system_id, Vehicle::new(header.system_id, header.component_id, autopilot, kind));
                 self.active.get_or_insert(header.system_id);
             }
@@ -253,6 +258,14 @@ mod tests {
         gcs.autopilot = MavAutopilot::MAV_AUTOPILOT_INVALID;
         hub.on_frame(&MavHeader { system_id: 255, component_id: 190, sequence: 0 }, &MavMessage::HEARTBEAT(gcs), 0);
         assert_eq!(hub.snapshot()["available"], false);
+        let mut companion = HEARTBEAT_DATA::default();
+        companion.mavtype = MavType::MAV_TYPE_QUADROTOR;
+        companion.autopilot = MavAutopilot::MAV_AUTOPILOT_PX4;
+        hub.on_frame(&MavHeader { system_id: 1, component_id: 191, sequence: 0 }, &MavMessage::HEARTBEAT(companion.clone()), 1);
+        assert_eq!(hub.snapshot()["available"], false, "a heartbeat from a non-autopilot component makes no vehicle");
+        companion.mavtype = MavType::MAV_TYPE_ONBOARD_CONTROLLER;
+        hub.on_frame(&MavHeader { system_id: 1, component_id: 1, sequence: 0 }, &MavMessage::HEARTBEAT(companion), 2);
+        assert_eq!(hub.snapshot()["available"], false, "an onboard controller type makes no vehicle");
         let mut quad = HEARTBEAT_DATA::default();
         quad.mavtype = MavType::MAV_TYPE_QUADROTOR;
         quad.autopilot = MavAutopilot::MAV_AUTOPILOT_PX4;

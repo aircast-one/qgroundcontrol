@@ -127,7 +127,7 @@ pub enum Out {
     GcsGpsGood(bool),
 }
 
-#[derive(Debug, Default)]
+#[derive(Debug)]
 pub struct RemoteId {
     pub available: bool,
     pub comms_good: bool,
@@ -138,6 +138,12 @@ pub struct RemoteId {
     pub emergency: bool,
     pub enforce_self_id: bool,
     pub target_system: u8,
+}
+
+impl Default for RemoteId {
+    fn default() -> Self {
+        RemoteId { available: false, comms_good: false, arm_status_good: false, arm_status_error: String::new(), basic_id_good: true, gcs_gps_good: false, emergency: false, enforce_self_id: false, target_system: 0 }
+    }
 }
 
 impl RemoteId {
@@ -265,7 +271,7 @@ mod tests {
         assert!(remote.on_arm_status(1, 2, COMP_ID_ODID_TXRX_1, ARM_STATUS_GOOD_TO_ARM, "").is_empty());
         assert!(remote.on_arm_status(1, 1, 42, ARM_STATUS_GOOD_TO_ARM, "").is_empty());
         let first = remote.on_arm_status(1, 1, COMP_ID_AUTOPILOT1, ARM_STATUS_GOOD_TO_ARM, "");
-        assert_eq!(first, vec![Out::Available, Out::StartSendTimer, Out::CommsGood(true), Out::StartOdidTimeout, Out::BasicIdGood(true), Out::ArmStatus { good: true, error: String::new() }]);
+        assert_eq!(first, vec![Out::Available, Out::StartSendTimer, Out::CommsGood(true), Out::StartOdidTimeout, Out::ArmStatus { good: true, error: String::new() }]);
         let failed = remote.on_arm_status(1, 1, COMP_ID_ODID_TXRX_1, ARM_STATUS_PRE_ARM_FAIL_GENERIC, "missing basic_id message");
         assert_eq!(failed, vec![Out::StartOdidTimeout, Out::BasicIdGood(false), Out::ArmStatus { good: false, error: "missing basic_id message".into() }]);
         assert_eq!(remote.on_odid_timeout(), vec![Out::StopSendTimer, Out::CommsGood(false)]);

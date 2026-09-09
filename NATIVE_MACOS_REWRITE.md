@@ -634,6 +634,7 @@ About 58 developer-weeks. Flight-test time, not code, is the schedule.
 - 2026-09-09: R5 gate test replays mav.tlog through both models and compares; vehicle altitude/position fallbacks ported.
 - 2026-09-09: flight-mode name tables in the core; gate compares mode text, armed and battery.
 - 2026-09-09: core links opened by LinkManager bypass the shared-port guard (Android found the guard refusing its own link).
+- 2026-09-09: R5 review pass, ten findings fixed (reap outside the lock, FTP bounds, hub heartbeat rules, retry cadence).
 
 ### Stream F · Core
 

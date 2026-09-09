@@ -173,7 +173,7 @@ pub unsafe extern "C" fn qgc_core_link_write(id: u32, bytes: *const u8, len: usi
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn qgc_core_host_link_open(kind: *const c_char, name: *const c_char) -> *mut c_char {
     install_hub_sink();
-    outcome(Ok(crate::linkhost::TRANSPORTS.lock().unwrap().host_open(&text(kind), &text(name))))
+    outcome(Ok(crate::linkhost::host_open(&crate::linkhost::TRANSPORTS, &text(kind), &text(name))))
 }
 
 #[unsafe(no_mangle)]
@@ -187,7 +187,7 @@ pub unsafe extern "C" fn qgc_core_host_link_bytes(id: u32, bytes: *const u8, len
 
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn qgc_core_host_link_closed(id: u32, reason: *const c_char) -> bool {
-    crate::linkhost::TRANSPORTS.lock().unwrap().host_closed(id, &text(reason))
+    crate::linkhost::host_closed(&crate::linkhost::TRANSPORTS, id, &text(reason))
 }
 
 #[unsafe(no_mangle)]

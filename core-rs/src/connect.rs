@@ -79,26 +79,20 @@ pub struct AutopilotVersion {
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct Firmware {
-    pub major: u8,
-    pub minor: u8,
-    pub patch: u8,
-    pub version_type: u8,
+    pub version: Option<(u8, u8, u8, u8)>,
     pub custom: Option<(u8, u8, u8)>,
     pub git_hash: String,
 }
 
-pub fn firmware_from(version: &AutopilotVersion, px4: bool) -> Option<Firmware> {
+pub fn firmware_from(version: &AutopilotVersion, px4: bool) -> Firmware {
     let sw = version.flight_sw_version;
     let custom = version.flight_custom_version;
     let git_hash = if px4 { custom.iter().rev().map(|b| format!("{b:02x}")).collect() } else { String::from_utf8_lossy(&custom).trim_end_matches('\0').to_string() };
-    (sw != 0).then(|| Firmware {
-        major: ((sw >> 24) & 0xFF) as u8,
-        minor: ((sw >> 16) & 0xFF) as u8,
-        patch: ((sw >> 8) & 0xFF) as u8,
-        version_type: (sw & 0xFF) as u8,
+    Firmware {
+        version: (sw != 0).then(|| (((sw >> 24) & 0xFF) as u8, ((sw >> 16) & 0xFF) as u8, ((sw >> 8) & 0xFF) as u8, (sw & 0xFF) as u8)),
         custom: px4.then_some((custom[2], custom[1], custom[0])),
         git_hash,
-    })
+    }
 }
 
 pub fn assumed_capabilities(vehicle: &Vehicle) -> u64 {
@@ -230,8 +224,8 @@ mod tests {
         assert_eq!(requests(&done), vec![&Action::InitialConnectComplete]);
         assert_eq!(connect.current(), None);
         assert!(connect.on_step_done(&link, &vehicle).is_empty());
-        let firmware = firmware_from(&version, true).unwrap();
-        assert_eq!((firmware.major, firmware.minor, firmware.patch, firmware.version_type), (1, 15, 2, 255));
+        let firmware = firmware_from(&version, true);
+        assert_eq!(firmware.version, Some((1, 15, 2, 255)));
         assert_eq!(firmware.custom, Some((0xcc, 0xbb, 0xaa)));
         assert_eq!(firmware.git_hash, "0504030201ccbbaa");
     }
@@ -250,9 +244,10 @@ mod tests {
         assert_eq!(requests(&connect.on_step_done(&link, &vehicle)), vec![&Action::FirstGeoFenceLoadComplete]);
         assert_eq!(requests(&connect.on_step_done(&link, &vehicle)), vec![&Action::LoadRallyPoints]);
         let apm = AutopilotVersion { capabilities: 0, flight_sw_version: 0, flight_custom_version: *b"abc12345", uid: 0, vendor_id: 0, product_id: 0 };
-        assert_eq!(firmware_from(&apm, false), None);
+        let unstamped = firmware_from(&apm, false);
+        assert_eq!((unstamped.version, unstamped.git_hash.as_str()), (None, "abc12345"));
         let stamped = AutopilotVersion { flight_sw_version: 0x04_05_06_00, ..apm };
-        assert_eq!(firmware_from(&stamped, false).unwrap().git_hash, "abc12345");
+        assert_eq!(firmware_from(&stamped, false).version, Some((4, 5, 6, 0)));
     }
 
     #[test]

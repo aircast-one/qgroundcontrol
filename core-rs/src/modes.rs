@@ -18,7 +18,7 @@ pub enum VehicleClass {
 
 pub fn vehicle_class(mav_type: u8) -> VehicleClass {
     match mav_type {
-        1 | 16 | 19 | 20 | 21 | 22 | 23 | 24 | 25 => VehicleClass::FixedWing,
+        1 | 19 | 20 | 21 | 22 | 23 | 24 | 25 => VehicleClass::FixedWing,
         2 | 3 | 4 | 13 | 14 | 15 => VehicleClass::MultiRotor,
         10 | 11 => VehicleClass::Rover,
         12 => VehicleClass::Sub,
@@ -154,7 +154,7 @@ pub fn table(autopilot: u8, mav_type: u8) -> &'static [Mode] {
         (AUTOPILOT_ARDUPILOT, VehicleClass::FixedWing) => &PLANE_MODES,
         (AUTOPILOT_ARDUPILOT, VehicleClass::Rover) => &ROVER_MODES,
         (AUTOPILOT_ARDUPILOT, VehicleClass::Sub) => &SUB_MODES,
-        (AUTOPILOT_ARDUPILOT, _) => &COPTER_MODES,
+        (AUTOPILOT_ARDUPILOT, VehicleClass::MultiRotor) => &COPTER_MODES,
         _ => &[],
     }
 }
@@ -163,7 +163,7 @@ pub fn name(autopilot: u8, mav_type: u8, base_mode: u8, custom_mode: u32) -> Str
     let modes = table(autopilot, mav_type);
     let known = || modes.iter().find(|m| m.custom_mode == custom_mode).map(|m| m.name.to_string());
     match autopilot {
-        AUTOPILOT_PX4 | AUTOPILOT_ARDUPILOT => {
+        AUTOPILOT_PX4 | AUTOPILOT_ARDUPILOT if !modes.is_empty() => {
             if base_mode & FLAG_CUSTOM != 0 { known().unwrap_or_else(|| format!("Mode {custom_mode}")) } else { String::new() }
         }
         _ if base_mode == 0 => "PreFlight".to_string(),
@@ -206,6 +206,7 @@ mod tests {
         assert_eq!(name(0, 2, 0, 0), "PreFlight");
         assert_eq!(name(0, 2, FLAG_MANUAL | FLAG_STABILIZE, 0), "Manual Stabilize");
         assert_eq!(name(0, 2, FLAG_CUSTOM, 0x1f), "Custom:0x1f");
+        assert_eq!(name(AUTOPILOT_ARDUPILOT, 7, FLAG_CUSTOM, 1), "Custom:0x1", "a blimp has no ArduPilot table");
         assert_eq!(custom_mode_for(AUTOPILOT_ARDUPILOT, 2, "Smart RTL"), Some(21));
     }
 }

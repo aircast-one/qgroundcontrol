@@ -86,7 +86,8 @@ pub fn error_text(code: u8) -> &'static str {
 
 pub fn parse_uri(from_component: u8, uri: &str) -> Result<(String, u8), String> {
     let prefix = format!("{SCHEME}://");
-    let mut path = if uri.len() >= prefix.len() && uri[..prefix.len()].eq_ignore_ascii_case(&prefix) { uri[prefix.len() - 1..].to_string() } else { uri.to_string() };
+    let has_scheme = uri.as_bytes().len() >= prefix.len() && uri.as_bytes()[..prefix.len()].eq_ignore_ascii_case(prefix.as_bytes());
+    let mut path = if has_scheme { format!("/{}", &uri[prefix.len()..]) } else { uri.to_string() };
     if path.contains("://") {
         return Err(format!("Incorrect uri scheme or format {uri}"));
     }
@@ -147,8 +148,12 @@ pub struct Download {
 
 impl Download {
     pub fn start(from_component: u8, uri: &str, check_size: bool) -> Result<(Download, Vec<Out>), String> {
+        Self::start_from(from_component, uri, check_size, 0)
+    }
+
+    pub fn start_from(from_component: u8, uri: &str, check_size: bool, expected_seq: u16) -> Result<(Download, Vec<Out>), String> {
         let (path, component) = parse_uri(from_component, uri)?;
-        let mut download = Download { path, component, check_size, phase: Some(Phase::Open), ..Default::default() };
+        let mut download = Download { path, component, check_size, phase: Some(Phase::Open), expected_seq, ..Default::default() };
         let mut request = Request { session: 0, opcode: CMD_OPEN_FILE_RO, data: download.path.as_bytes().iter().copied().take(DATA_LEN).collect(), ..Default::default() };
         let out = download.send(&mut request);
         Ok((download, out))
@@ -156,6 +161,10 @@ impl Download {
 
     pub fn in_progress(&self) -> bool {
         self.phase.is_some_and(|p| p != Phase::Idle)
+    }
+
+    pub fn expected_seq(&self) -> u16 {
+        self.expected_seq
     }
 
     fn send(&mut self, request: &mut Request) -> Vec<Out> {
@@ -198,6 +207,10 @@ impl Download {
         self.phase = Some(Phase::Reset);
         let mut request = Request { opcode: CMD_RESET_SESSIONS, ..Default::default() };
         self.send(&mut request)
+    }
+
+    fn within_file(&self, offset: u32, len: usize) -> bool {
+        (offset as u64 + len as u64) <= self.file_size as u64
     }
 
     fn write_at(&mut self, offset: u32, data: &[u8]) {
@@ -305,6 +318,9 @@ impl Download {
                 if reply.seq < self.expected_seq {
                     return vec![Out::StopTimer];
                 }
+                if !self.within_file(reply.offset, reply.data.len()) {
+                    return self.fail("Download failed");
+                }
                 if reply.offset != self.expected_offset {
                     if reply.offset > self.expected_offset {
                         self.missing.push(Missing { offset: self.expected_offset, bytes: reply.offset - self.expected_offset });
@@ -355,6 +371,9 @@ impl Download {
                 if reply.offset != self.expected_offset {
                     self.retries += 1;
                     return if self.retries > MAX_RETRY { self.fail("Download failed") } else { self.fill(false) };
+                }
+                if !self.within_file(reply.offset, reply.data.len()) {
+                    return self.fail("Download failed");
                 }
                 self.write_at(reply.offset, &reply.data);
                 let done = {
@@ -420,14 +439,22 @@ pub struct Listing {
 
 impl Listing {
     pub fn start(from_component: u8, uri: &str) -> Result<(Listing, Vec<ListOut>), String> {
+        Self::start_from(from_component, uri, 0)
+    }
+
+    pub fn start_from(from_component: u8, uri: &str, expected_seq: u16) -> Result<(Listing, Vec<ListOut>), String> {
         let (path, component) = parse_uri(from_component, uri)?;
-        let mut listing = Listing { path, component, active: true, ..Default::default() };
+        let mut listing = Listing { path, component, active: true, expected_seq, ..Default::default() };
         let out = listing.request(true);
         Ok((listing, out))
     }
 
     pub fn in_progress(&self) -> bool {
         self.active
+    }
+
+    pub fn expected_seq(&self) -> u16 {
+        self.expected_seq
     }
 
     fn request(&mut self, first: bool) -> Vec<ListOut> {
@@ -509,6 +536,8 @@ mod tests {
         assert_eq!(parse_uri(0, "/[;comp=100]/fs/microsd/log.bin").unwrap(), ("//fs/microsd/log.bin".to_string(), 100));
         assert_eq!(parse_uri(1, "/fs/file").unwrap(), ("/fs/file".to_string(), 1));
         assert!(parse_uri(1, "http://x").is_err());
+        assert_eq!(parse_uri(1, "/fs/microsd/логи").unwrap().0, "/fs/microsd/логи");
+        assert_eq!(parse_uri(1, "MAVLINKFTP://a/b").unwrap().0, "/a/b");
         assert!(parse_uri(1, "[;comp=x]/f").is_err());
         assert_eq!(Request { data: vec![ERR_FAIL_ERRNO, 13], ..Default::default() }.nak_error(), "errno 13");
         assert_eq!(Request { data: vec![10], ..Default::default() }.nak_error(), "FailFileNotFound");
@@ -562,6 +591,13 @@ mod tests {
         short_file.on_payload(&ack(2, 2, CMD_OPEN_FILE_RO, 0, &50u32.to_le_bytes(), false));
         let short = short_file.on_payload(&nak(4, 2, CMD_BURST_READ_FILE, ERR_EOF));
         assert!(matches!(short.last(), Some(Out::Complete { ok: false, .. })), "a short file with checksize fails");
+        let (mut hostile, _) = Download::start(1, "/fs/e", false).unwrap();
+        hostile.on_payload(&ack(2, 3, CMD_OPEN_FILE_RO, 0, &600u32.to_le_bytes(), false));
+        let bomb = hostile.on_payload(&ack(4, 3, CMD_BURST_READ_FILE, 0xFFFF_FF00, &[1, 2, 3], false));
+        assert!(matches!(bomb.last(), Some(Out::Complete { ok: false, .. })), "an offset past the file size is refused");
+        let (seeded, out) = Download::start_from(1, "/fs/f", false, 40).unwrap();
+        assert_eq!(sent(&out).seq, 41);
+        assert_eq!(seeded.expected_seq(), 42);
     }
 
     #[test]

@@ -114,7 +114,7 @@ impl Transports {
         }
     }
 
-    fn reap(&mut self) {
+    fn take_dead(&mut self) -> Vec<Arc<Owned>> {
         let dead: Vec<LinkId> = {
             let registry = self.shared.registry.lock().unwrap();
             self.owned.keys().copied().filter(|id| registry.entry(*id).is_none_or(|e| e.state == State::Closed)).collect()
@@ -123,19 +123,8 @@ impl Transports {
         dead.iter().for_each(|id| {
             self.configs.remove(id);
         });
-        links.iter().for_each(|l| l.close());
         self.shared.registry.lock().unwrap().prune_closed(KEEP_CLOSED);
-    }
-
-    pub fn host_open(&mut self, kind: &str, name: &str) -> LinkId {
-        self.reap();
-        self.shared.registry.lock().unwrap().open(Owner::Host, kind, name)
-    }
-
-    pub fn host_closed(&mut self, id: LinkId, reason: &str) -> bool {
-        let closed = self.shared.registry.lock().unwrap().close(id, reason);
-        self.reap();
-        closed
+        links
     }
 
     pub fn snapshot(&self) -> Value {
@@ -205,9 +194,9 @@ pub fn open(transports: &Mutex<Transports>, config: LinkConfig, reserved_udp_por
             return Err(format!("port {local_port} is already served by a Qt link; opening a core link there would starve it"));
         }
     }
+    reap(transports);
     let (shared, id) = {
-        let mut guard = transports.lock().unwrap();
-        guard.reap();
+        let guard = transports.lock().unwrap();
         let id = guard.shared.registry.lock().unwrap().open(Owner::Core, kind_name(&config.kind), &config.name);
         (guard.shared.clone(), id)
     };
@@ -229,6 +218,25 @@ pub fn open_json(transports: &Mutex<Transports>, json: &str, reserved_udp_ports:
     let value: Value = serde_json::from_str(json).map_err(|e| format!("not JSON: {e}"))?;
     let via_link_manager = value.get("viaLinkManager").and_then(Value::as_bool).unwrap_or(false);
     open(transports, linkconfig::from_json(&value)?, if via_link_manager { &[] } else { reserved_udp_ports })
+}
+
+pub fn reap(transports: &Mutex<Transports>) {
+    let dead = transports.lock().unwrap().take_dead();
+    dead.iter().for_each(|l| l.close());
+}
+
+pub fn host_open(transports: &Mutex<Transports>, kind: &str, name: &str) -> LinkId {
+    reap(transports);
+    let shared = transports.lock().unwrap().shared.clone();
+    let id = shared.registry.lock().unwrap().open(Owner::Host, kind, name);
+    id
+}
+
+pub fn host_closed(transports: &Mutex<Transports>, id: LinkId, reason: &str) -> bool {
+    let shared = transports.lock().unwrap().shared.clone();
+    let closed = shared.registry.lock().unwrap().close(id, reason);
+    reap(transports);
+    closed
 }
 
 pub fn host_bytes(transports: &Mutex<Transports>, id: LinkId, bytes: &[u8]) {
@@ -272,7 +280,7 @@ pub fn close(transports: &Mutex<Transports>, id: LinkId, reason: &str) -> bool {
         link.close();
     }
     let closed = shared.registry.lock().unwrap().close(id, reason);
-    transports.lock().unwrap().reap();
+    reap(transports);
     closed
 }
 
@@ -399,7 +407,7 @@ mod tests {
         let written = Arc::new(Mutex::new(Vec::new()));
         let sink = Arc::clone(&written);
         transports.lock().unwrap().set_writer(Some(Arc::new(move |id, bytes| sink.lock().unwrap().push((id, bytes.to_vec())))));
-        let id = transports.lock().unwrap().host_open("usb", "Pixhawk");
+        let id = host_open(&transports, "usb", "Pixhawk");
         let frame = heartbeat();
         host_bytes(&transports, id, &frame[..10]);
         host_bytes(&transports, id, &frame[10..]);
@@ -407,7 +415,7 @@ mod tests {
         assert_eq!(*written.lock().unwrap(), vec![(id, b"cmd".to_vec())]);
         let snapshot = transports.lock().unwrap().snapshot();
         assert_eq!((snapshot["links"][0]["owner"].as_str(), snapshot["links"][0]["framesIn"].as_u64()), (Some("host"), Some(1)));
-        assert!(transports.lock().unwrap().host_closed(id, "unplugged"));
+        assert!(host_closed(&transports, id, "unplugged"));
         assert!(!write(&transports, id, b"x"));
         assert_eq!(written.lock().unwrap().len(), 1);
         assert!(open_json(&transports, r#"{"kind":"serial","name":"S","portName":"/dev/none"}"#, &[]).is_err());
@@ -441,7 +449,7 @@ mod tests {
         assert!(!write(&transports, id, b"x"));
         let snapshot = transports.lock().unwrap().snapshot();
         assert_eq!(snapshot["links"][0]["state"], "closed");
-        transports.lock().unwrap().host_open("usb", "next");
+        host_open(&transports, "usb", "next");
         assert!(transports.lock().unwrap().owned.is_empty(), "the dead link was reaped");
     }
 }
