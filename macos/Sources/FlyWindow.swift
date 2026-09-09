@@ -136,7 +136,7 @@ struct FlyPanel: View {
                      })
         }
         .buttonStyle(.plain)
-        .disabled(mode.current)
+        .disabled(mode.current || !fly.canSetMode)
     }
 
     @ViewBuilder private func expandable(key: String, title: String, value: String,

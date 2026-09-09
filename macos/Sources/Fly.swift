@@ -18,12 +18,11 @@ final class FlyStore: ObservableObject, Probeable, WriteReporting {
     @Published private(set) var linkDetail: [DetailRow] = []
     @Published var expanded: Set<String> = []
     @Published private(set) var modes: [FlightModeChoice] = []
+    @Published private(set) var canSetMode = false
     @Published private(set) var requestedMode = ""
     @Published var showingModes = false
     @Published var showingAdvancedModes = false
     @Published private(set) var confirmingMode = ""
-    private var rtlMode = ""
-    private var landMode = ""
     @Published private(set) var ticked: Set<String> = []
     @Published var showingChecklist = false
 
@@ -139,13 +138,11 @@ final class FlyStore: ObservableObject, Probeable, WriteReporting {
         let heard = VehicleMessage.parse((vehicle["formattedMessages"] as? String) ?? "")
         if heard != messages { messages = heard }
 
-        let readModes = FlightModes.choices(
-            all: (vehicle["flightModes"] as? [String]) ?? [],
-            advanced: (vehicle["advancedFlightModes"] as? [String]) ?? [],
-            current: reading.mode)
+        let flightModes = Bridge.group("view.flightModes")
+        let readModes = FlightModes.list(flightModes["modes"])
         if readModes != modes { modes = readModes }
-        rtlMode = (vehicle["rtlFlightMode"] as? String) ?? ""
-        landMode = (vehicle["landFlightMode"] as? String) ?? ""
+        let settable = (flightModes["canSet"] as? NSNumber)?.boolValue ?? false
+        if settable != canSetMode { canSetMode = settable }
         if !requestedMode.isEmpty, requestedMode == reading.mode { requestedMode = "" }
 
         let preflight = Bridge.group("view.preflight")
@@ -191,10 +188,8 @@ final class FlyStore: ObservableObject, Probeable, WriteReporting {
     }
 
     func request(_ mode: FlightModeChoice) {
-        guard !mode.current, modes.contains(mode) else { return }
-        guard !FlightModes.needsConfirming(mode.name, flying: telemetry.flying,
-                                           rtlMode: rtlMode, landMode: landMode)
-        else {
+        guard canSetMode, !mode.current, modes.contains(mode) else { return }
+        guard !mode.needsConfirm else {
             confirmingMode = mode.name
             return
         }

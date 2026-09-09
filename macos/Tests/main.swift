@@ -924,12 +924,20 @@ func checkCalibrationOrder() {
 checkCalibrationOrder()
 
 func checkFlightModes() {
-    let all = ["Stabilize", "Altitude Hold", "Auto", "Guided", "Loiter", "RTL", "Land",
-               "Position Hold", "Acro", "Circle", "Turtle"]
-    let advanced = ["Acro", "Circle", "Turtle"]
+    func mode(_ name: String, _ advanced: Bool = false, _ current: Bool = false,
+              _ needsConfirm: Bool = false, _ summary: String = "") -> [String: Any] {
+        ["name": name, "summary": summary, "advanced": advanced as NSNumber,
+         "current": current as NSNumber, "needsConfirm": needsConfirm as NSNumber]
+    }
 
-    let choices = FlightModes.choices(all: all, advanced: advanced, current: "Guided")
-    expect(choices.count == all.count, "every mode the vehicle reported is offered")
+    let choices = FlightModes.list([
+        mode("Stabilize"), mode("Altitude Hold"), mode("Auto"),
+        mode("Guided", false, true), mode("Loiter"),
+        mode("RTL", false, false, true, "Climbs, returns home and lands"),
+        mode("Land", false, false, true), mode("Position Hold"),
+        mode("Acro", true), mode("Circle", true), mode("Turtle", true),
+    ])
+    expect(choices.count == 11, "every mode the core listed is offered")
     expect(choices.first { $0.current }?.name ?? "", "Guided", "and the one it is in is marked")
     expect(FlightModes.everyday(choices).map(\.name).joined(separator: ","),
            "Stabilize,Altitude Hold,Auto,Guided,Loiter,RTL,Land,Position Hold",
@@ -937,35 +945,33 @@ func checkFlightModes() {
     expect(FlightModes.folded(choices).map(\.name).joined(separator: ","), "Acro,Circle,Turtle",
            "and the folded list is the rest")
 
-    let inAdvanced = FlightModes.choices(all: all, advanced: advanced, current: "Circle")
+    let inAdvanced = FlightModes.list([mode("Loiter"), mode("Circle", true, true),
+                                       mode("Turtle", true)])
     expect(FlightModes.everyday(inAdvanced).map(\.name).contains("Circle"),
            "a vehicle already in an advanced mode still shows it without opening More modes")
     expect(!FlightModes.folded(inAdvanced).map(\.name).contains("Circle"),
            "and it is not listed twice")
 
-    expect(FlightModes.description(of: "RTL"), "Climbs, returns home and lands",
-           "each mode carries the sentence QGC's picker shows")
-    expect(FlightModes.description(of: "Mode 65536"), "",
-           "a mode nobody has described gets no sentence rather than a wrong one")
+    expect(choices.first { $0.name == "RTL" }?.summary ?? "", "Climbs, returns home and lands",
+           "each mode carries the sentence the core writes for it")
+    expect(choices.first { $0.name == "Stabilize" }?.summary ?? "", "",
+           "and a mode the core has no sentence for gets none rather than a wrong one")
+
+    expect(choices.first { $0.name == "RTL" }?.needsConfirm ?? false,
+           "sending a flying vehicle home is confirmed, and the core decides that now, from the "
+           + "vehicle's own rtlFlightMode and landFlightMode rather than two strings kept here")
+    expect(choices.first { $0.name == "Land" }?.needsConfirm ?? false, "so is landing it")
+    expect(!(choices.first { $0.name == "Loiter" }?.needsConfirm ?? true),
+           "holding position is not a commitment and needs no second tap")
 
     expect(FlightModes.symbol(for: "Smart RTL"), "house", "the glyph follows the mode's meaning")
     expect(FlightModes.symbol(for: "QuadPlane Land"), "arrow.down.to.line",
            "including a firmware-specific spelling of it")
     expect(FlightModes.symbol(for: "Mode 65536"), "airplane", "and an unknown mode still gets one")
 
-    expect(FlightModes.needsConfirming("RTL", flying: true, rtlMode: "RTL", landMode: "Land"),
-           "sending a flying vehicle home is confirmed, as QGC confirms it from the guided strip")
-    expect(FlightModes.needsConfirming("Land", flying: true, rtlMode: "RTL", landMode: "Land"),
-           "so is landing it")
-    expect(!FlightModes.needsConfirming("Loiter", flying: true, rtlMode: "RTL", landMode: "Land"),
-           "holding position is not a commitment and needs no second tap")
-    expect(!FlightModes.needsConfirming("RTL", flying: false, rtlMode: "RTL", landMode: "Land"),
-           "and on the ground nothing needs confirming")
-    expect(!FlightModes.needsConfirming("", flying: true, rtlMode: "", landMode: ""),
-           "a vehicle that has not named its return mode does not turn every mode into a commitment")
-
-    expect(FlightModes.choices(all: [], advanced: [], current: "").isEmpty,
+    expect(FlightModes.list([]).isEmpty,
            "a vehicle that has not reported its modes offers none, rather than a stale list")
+    expect(FlightModes.list([mode("")]).isEmpty, "and a nameless mode is dropped")
 }
 
 checkFlightModes()
@@ -2518,6 +2524,9 @@ func checkViewContract() {
           "sticks"]),
         ("view.radio", ["sticks"],
          ["key", "title", "mapped", "value", "valueText", "fraction", "reversed"]),
+        ("view.flightModes", [], ["canSet", "modes"]),
+        ("view.flightModes", ["modes"],
+         ["name", "summary", "advanced", "current", "needsConfirm"]),
         ("view.missionSeed(survey,47,8)", ["points"], ["latitude", "longitude"]),
         ("view.links", ["configured"],
          ["index", "path", "name", "type", "typeLabel", "editing", "displaySummary", "connected",
@@ -2649,6 +2658,7 @@ func checkViewContract() {
         ("view.calibration", ["routines"], ["title", "description", "invocation"]),
         ("view.radio", [], ["summary", "shortfall", "statusText", "nextText"]),
         ("view.radio", ["sticks"], ["title", "valueText"]),
+        ("view.flightModes", ["modes"], ["name", "summary"]),
     ]
     neverNull.forEach { view, inner, keys in
         let place = inner.isEmpty ? view : "\(view).\(inner.joined(separator: "."))"
