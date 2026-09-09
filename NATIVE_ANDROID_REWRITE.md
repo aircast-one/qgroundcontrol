@@ -1085,7 +1085,7 @@ exists natively today:
 | `VideoTilesLayer` | **built, as a source picker** | the streams the core lists, and switching between them; the tile grid, dock and tuck belong to the overlay rig |
 | `RcControlsLayer` | **built** | renders the configured controls and sends `setRcChannelOverride`; editing the list is still desktop-only |
 | `ObstacleDistanceOverlay` (map and video) | **built, in another form** | a sentence — "3.2 m right" — rather than a proximity ring |
-| `FlyViewToolStrip` + action list | **built, as an Actions sheet** | pause, gripper, emergency stop, mission start/continue, land abort; Viewer3D dropped, preflight sits under Analyze |
+| `FlyViewToolStrip` + action list | **built, as an Actions sheet** | the checklist plus pause, gripper, emergency stop, mission start/continue, land abort; Viewer3D dropped |
 | `GuidedValueSlider` | **built** | altitude, speed, takeoff height, and pause all read their range from the core |
 | `DetectionOverlayVideo` | **missing** | |
 | `FlyViewCustomLayer` | **dropped** | a placeholder for downstream forks to override; nothing to port |
@@ -1838,6 +1838,29 @@ for the same corner.
 The map's camera inset is dropped to zero while it is the small view: the flight-controls
 panel does not cover a corner inset, and padding a 190 dp box by the height of that panel
 would push the aircraft out of it entirely.
+
+### The checklist moves to the Fly tab
+
+It had been parked under Analyze because the Fly tab was still QML and there was nowhere
+native to put it. There is now: `FlyViewToolStrip` carries `PreFlightCheckListShowAction`, and
+the Actions sheet is that strip, so the checklist is its first entry and the Analyze page is
+gone rather than duplicated.
+
+**The Actions button now always shows.** It used to appear only when the core offered
+something extra, which meant it was hidden in exactly the state a checklist is for — on the
+ground, disarmed, nothing to pause or abort. A button that disappears when its most important
+item is most needed is not a button.
+
+Its subtitle is the checklist's own summary, so the sheet says what is wrong before you open
+anything: on the sim it read "1 of 11 will stop the flight." with the battery at 25%. A
+blocker outranks progress in that sentence by the core's rule, which is right — the count of
+things you have ticked is not the headline when one of them will stop the flight.
+
+**The ticks had to be hoisted out of the screen.** `PreflightScreen` owned its own ticked set,
+which is fine for a page you navigate to and stay on, and wrong for a dialog: closing it to
+look at something and reopening would have silently wiped every manual check. The set now
+lives on the Fly screen and the screen takes it as a parameter. Verified on the handset — a
+check ticked, dialog closed, sheet reopened, dialog reopened, still ticked.
 
 ## Phase 6 — Shell · 2 weeks
 
