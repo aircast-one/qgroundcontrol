@@ -11,6 +11,7 @@ copy there.
 | script | what it does |
 |---|---|
 | `handset-ip.sh` | The handset's Wi-Fi address, from `adb`. |
+| `ui.sh` | `front`, `tap`, `swipe`, `text`, `key`, `shot`. Every input checks `topResumedActivity` first and refuses rather than guess: `am start` returns before the window is up, and a tap sent into that gap lands in whatever the user had open. |
 | `apmvehicle.py` | An ArduCopter-shaped MAVLink vehicle: heartbeats, GPS, battery, RC, vibration, two camera components, log download, and a print for every command it receives. `RC_RSSI`, `BATT_PCT`, `BATT_STATE`, `NOFIX` and `VIBRATION` are environment knobs. |
 | `device-lock.sh` | `take`/`drop` around `/tmp/aircast-device.lock`, and stops the handset dozing while held. |
 | `regress.sh` | Drives Fly, the Actions sheet, Vibration, Log Download and Settings, captures each, and fails a capture under 100 000 bytes because a sleeping screen photographs as a small black rectangle. |
