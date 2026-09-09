@@ -2184,7 +2184,7 @@ would still need polling, and `vehicle.gps` would then be almost all of what rem
 Process CPU did not move: 100–111% here against 85–125% before. Thread shares from a single
 sample are too noisy to read anything into, and the poll was never the whole of it.
 
-### The poll, end to end: 570 ms to 100 ms
+### The poll, end to end: 570 ms to 55 ms
 
 Four changes, three of them the core session's and one this head's, measured the same way each
 time — every `readPath` inside `Watcher::_poll` timed and summed over 25 polls on the Fly tab
@@ -2196,7 +2196,8 @@ with the sim connected.
 | `view.instruments` deps from its arguments | 71 | 71 | 562–615 ms |
 | facts bound to `rawValueChanged` | 97 | 79 | 265–300 ms |
 | properties bound to their NOTIFY | 98 | 22 unbound, 58 re-read | 223–238 ms |
-| the status strip watching two facts | 98 | 21 unbound, 58 re-read | **83–127 ms** |
+| the status strip watching two facts | 98 | 21 unbound, 58 re-read | 83–127 ms |
+| camera per-fact deps, pack deps from the count | 93 | 2 unbound, 72 re-read | **46–72 ms** |
 
 The last row is the head's own doing and it was the largest single step. `StatusStrip` read
 `vehicle.gps` — the whole `FactGroup`, twenty facts each rendering fourteen properties — to
@@ -2208,10 +2209,21 @@ That is the same mistake the core made with `view.instruments`, made independent
 and it is worth stating as a rule rather than an anecdote: **watch the fact you display, not
 the group that contains it.** A group read is convenient and costs the whole group every tick.
 
-What remains is `vehicle.cameraManager.currentCameraInstance` at 28–36 ms, an object that
-`view.camera` depends on whole, and about 20 ms of tail from `vehicle.batteries.1..3.*` — the
-packs a one-battery vehicle does not have, which cannot bind and so are re-resolved every tick.
-Neither is this head's to fix.
+Both of those went the same way. `view.camera` now depends on the camera's own properties
+rather than the object, and `view.battery` declares one pack's facts until a render has seen
+the vehicle's pack count and then as many as it reports, with the router re-watching after a
+recompute whose dependencies changed. The whole-object read and the phantom packs are gone:
+only `currentCameraInstance.recordTimeStr` remains, at about a millisecond.
+
+**Nothing dominates any more.** Of 93 watched paths, 2 are unbound and 72 are properties
+re-read every fifth tick; the largest single line is `vehicle.guidedModeSupported` at 5–8 ms
+and the rest are one or two. That is the shape you want at the end of an optimisation — not a
+smaller peak, but no peak.
+
+Process CPU stayed where it was all night, 114–140% against 85–125% at the start. The poll fell
+by an order of magnitude and the process did not get cheaper, which is worth stating plainly:
+whatever the Fly tab costs on this handset, the watcher was never the bulk of it. Two map
+renderers, a video pipeline and MAVLink at 60 messages a second are.
 
 ### The last desktop-only setting
 
