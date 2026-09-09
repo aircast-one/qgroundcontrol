@@ -627,6 +627,7 @@ About 58 developer-weeks. Flight-test time, not code, is the schedule.
 - 2026-09-09: command-ack retry machine and request-message protocol in the core (R5).
 - 2026-09-09: MAVLink FTP codec and download state machine in the core (R5).
 - 2026-09-09: MAVLink FTP directory listing in the core.
+- 2026-09-09: standard flight mode collection (AVAILABLE_MODES) in the core.
 
 ### Stream F · Core
 

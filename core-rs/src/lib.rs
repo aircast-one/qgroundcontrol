@@ -53,6 +53,7 @@ pub mod shp;
 pub mod setup;
 pub mod signing;
 pub mod speed;
+pub mod standardmodes;
 pub mod statustext;
 pub mod survey;
 pub mod sysstatus;
