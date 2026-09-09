@@ -27,10 +27,8 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import one.aircast.android.bridge.Qgc
 import one.aircast.android.bridge.offMainDetached
-import one.aircast.android.bridge.qgcBool
 import org.json.JSONObject
 import one.aircast.android.bridge.qgcPath
-import one.aircast.android.bridge.qgcDouble
 
 internal const val MESSAGES = "view.messages"
 
@@ -81,14 +79,15 @@ internal fun armingBlocker(view: JSONObject?): String? =
 @Composable
 fun VehicleMessageBanner(modifier: Modifier = Modifier) {
     val warnings by qgcPath(WARNINGS)
-    val messageCount by qgcDouble("vehicle.messageCount", 0.0)
-    val hasError by qgcBool("vehicle.messageTypeError")
-    val hasWarning by qgcBool("vehicle.messageTypeWarning")
+    val messagesJson by qgcPath(MESSAGES)
+    val messages = remember(messagesJson) { vehicleMessages(messagesJson) }
 
     var showing by remember { mutableStateOf(false) }
 
     val blocker = armingBlocker(warnings)
-    val count = messageCount.toInt()
+    val count = messages.size
+    val hasError = messages.any { it.level == MessageSeverity.Error }
+    val hasWarning = messages.any { it.level == MessageSeverity.Warning }
 
     if (blocker == null && count == 0) return
 
@@ -121,14 +120,13 @@ fun VehicleMessageBanner(modifier: Modifier = Modifier) {
     }
 
     if (showing) {
-        VehicleMessageLog(onDismiss = { showing = false })
+        VehicleMessageLog(messages = messages, onDismiss = { showing = false })
     }
 }
 
 @Composable
-private fun VehicleMessageLog(onDismiss: () -> Unit) {
-    val json by qgcPath(MESSAGES)
-    val lines = remember(json) { vehicleMessages(json).asReversed() }
+private fun VehicleMessageLog(messages: List<VehicleMessage>, onDismiss: () -> Unit) {
+    val lines = remember(messages) { messages.asReversed() }
 
     AlertDialog(
         onDismissRequest = onDismiss,
