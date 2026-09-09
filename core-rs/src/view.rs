@@ -160,6 +160,13 @@ pub fn split(path: &str) -> (&str, Vec<String>) {
 }
 
 impl View {
+    pub fn deps_for(&self, args: &[String]) -> Vec<String> {
+        match self.path {
+            "view.instruments" => instruments::deps_for(args),
+            _ => self.deps.iter().map(|d| d.to_string()).collect(),
+        }
+    }
+
     pub fn render(&self, backend: &dyn Backend, path: &str) -> String {
         (self.compute)(backend, &split(path).1).to_string()
     }

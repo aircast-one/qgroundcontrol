@@ -79,7 +79,7 @@ impl<B: Backend> Core<B> {
         let upstream: Vec<String> = asked
             .iter()
             .flat_map(|path| match view::lookup(path) {
-                Some(v) => v.deps.iter().map(|d| d.to_string()).collect::<Vec<_>>(),
+                Some(v) => v.deps_for(&view::split(path).1),
                 None => vec![path.clone()],
             })
             .collect::<BTreeSet<_>>()
@@ -96,7 +96,7 @@ impl<B: Backend> Core<B> {
                 asked
                     .iter()
                     .filter_map(|p| view::lookup(p).map(|v| (p.clone(), v)))
-                    .filter(|(_, v)| v.deps.contains(&path))
+                    .filter(|(p, v)| v.deps_for(&view::split(p).1).iter().any(|d| d == path))
                     .collect(),
             )
         };
@@ -194,6 +194,15 @@ mod tests {
         let core = Core::new(Fake::default());
         core.watch("", &["view.messages".to_string(), "vehicle.armed".to_string()]);
         assert_eq!(*core.backend.watched.borrow(), vec!["vehicle.armed".to_string(), "vehicle.formattedMessages".to_string()]);
+    }
+
+    #[test]
+    fn a_view_with_arguments_watches_the_facts_those_arguments_name() {
+        let core = Core::new(Fake::default());
+        core.watch("fly", &["view.instruments(gps/count, vehicle/heading)".to_string()]);
+        assert_eq!(*core.backend.watched.borrow(), vec!["vehicle.gps.count".to_string(), "vehicle.heading".to_string(), "vehicles.activeVehicleAvailable".to_string()]);
+        assert_eq!(core.on_event("vehicle.heading", "{}").len(), 1);
+        assert!(core.on_event("vehicle.vehicle", "{}").is_empty(), "the whole vehicle object is no longer a dependency");
     }
 
     #[test]

@@ -1,12 +1,10 @@
-use std::collections::BTreeMap;
-
 use serde_json::{Value, json};
 
 use crate::label::humanise;
 use crate::read::object;
 use crate::router::Backend;
 
-pub const DEPS: &[&str] = &["vehicles.activeVehicleAvailable", "vehicle.vehicle", "vehicle.gps", "vehicle.batteries", "vehicle.wind"];
+pub const DEPS: &[&str] = &["vehicles.activeVehicleAvailable"];
 
 pub const DEFAULTS: &[&str] = &["vehicle/altitudeRelative", "vehicle/groundSpeed", "vehicle/climbRate", "vehicle/distanceToHome", "vehicle/heading", "vehicle/altitudeAMSL"];
 
@@ -19,10 +17,10 @@ pub fn display_units(units: &str) -> &str {
     }
 }
 
-pub fn group_path(group: &str) -> String {
+pub fn fact_path(group: &str, name: &str) -> String {
     match group {
-        "" | "vehicle" => "vehicle.vehicle".to_string(),
-        other => format!("vehicle.{other}"),
+        "" | "vehicle" => format!("vehicle.{name}"),
+        other => format!("vehicle.{other}.{name}"),
     }
 }
 
@@ -33,28 +31,31 @@ fn split_selection(selection: &str) -> (String, String) {
     }
 }
 
-pub fn instruments_view(backend: &dyn Backend, args: &[String]) -> Value {
-    let selections: Vec<(String, String)> = match args.is_empty() {
+fn selections(args: &[String]) -> Vec<(String, String)> {
+    let chosen: Vec<(String, String)> = match args.is_empty() {
         true => DEFAULTS.iter().map(|s| split_selection(s)).collect(),
         false => args.iter().map(|s| split_selection(s)).collect(),
     };
-    let groups: BTreeMap<String, Value> = selections
-        .iter()
-        .map(|(group, _)| group.clone())
+    chosen.into_iter().filter(|(_, name)| !name.is_empty()).collect()
+}
+
+pub fn deps_for(args: &[String]) -> Vec<String> {
+    DEPS.iter()
+        .map(|d| d.to_string())
+        .chain(selections(args).iter().map(|(group, name)| fact_path(group, name)))
         .collect::<std::collections::BTreeSet<_>>()
         .into_iter()
-        .map(|group| {
-            let read = object(&backend.get(&group_path(&group)));
-            (group, read)
-        })
-        .collect();
-    let items: Vec<Value> = selections
+        .collect()
+}
+
+pub fn instruments_view(backend: &dyn Backend, args: &[String]) -> Value {
+    let items: Vec<Value> = selections(args)
         .iter()
         .map(|(group, name)| {
-            let fact = groups.get(group).and_then(|g| g.get("facts")).and_then(Value::as_array).and_then(|facts| facts.iter().find(|f| f.get("name").and_then(Value::as_str) == Some(name)));
-            let described = fact.and_then(|f| f.get("shortDescription")).and_then(Value::as_str).filter(|d| !d.is_empty());
-            let value = fact.and_then(|f| f.get("valueString")).and_then(Value::as_str).filter(|v| !v.is_empty());
-            let units = fact.and_then(|f| f.get("units")).and_then(Value::as_str).map(display_units).unwrap_or("");
+            let fact = object(&backend.get(&fact_path(group, name)));
+            let described = fact.get("shortDescription").and_then(Value::as_str).filter(|d| !d.is_empty());
+            let value = fact.get("valueString").and_then(Value::as_str).filter(|v| !v.is_empty());
+            let units = fact.get("units").and_then(Value::as_str).map(display_units).unwrap_or("");
             json!({
                 "id": format!("{group}/{name}"),
                 "group": group,
@@ -82,11 +83,9 @@ mod tests {
     impl Backend for Fake {
         fn get(&self, path: &str) -> String {
             match path {
-                "vehicle.vehicle" => json!({ "kind": "object", "facts": [
-                    { "name": "altitudeRelative", "shortDescription": "Alt (Rel)", "valueString": "25.0", "units": "m" },
-                    { "name": "groundSpeed", "shortDescription": "", "valueString": "", "units": "m/s" },
-                ] }),
-                "vehicle.batteries.0" => json!({ "kind": "object", "facts": [ { "name": "voltage", "shortDescription": "Voltage", "valueString": "15.80", "units": "v" } ] }),
+                "vehicle.altitudeRelative" => json!({ "kind": "fact", "name": "altitudeRelative", "shortDescription": "Alt (Rel)", "valueString": "25.0", "units": "m" }),
+                "vehicle.groundSpeed" => json!({ "kind": "fact", "name": "groundSpeed", "shortDescription": "", "valueString": "", "units": "m/s" }),
+                "vehicle.batteries.0.voltage" => json!({ "kind": "fact", "name": "voltage", "shortDescription": "Voltage", "valueString": "15.80", "units": "v" }),
                 _ => json!({ "kind": "null" }),
             }
             .to_string()
@@ -120,5 +119,14 @@ mod tests {
         assert_eq!(items[0]["units"], "V");
         assert_eq!(items[1]["group"], "vehicle");
         assert_eq!(items[1]["value"], "25.0");
+    }
+
+    #[test]
+    fn dependencies_are_the_selected_facts_not_their_groups() {
+        assert_eq!(deps_for(&["gps/count".to_string(), "vehicle/heading".to_string(), "batteries.0/voltage".to_string()]), vec!["vehicle.batteries.0.voltage", "vehicle.gps.count", "vehicle.heading", "vehicles.activeVehicleAvailable"]);
+        assert_eq!(deps_for(&[]).len(), 7);
+        assert!(deps_for(&[]).contains(&"vehicle.altitudeRelative".to_string()));
+        assert_eq!(deps_for(&["/".to_string(), "".to_string(), "gps/".to_string()]), vec!["vehicles.activeVehicleAvailable"], "an empty name never turns into a read of the whole vehicle");
+        assert!(instruments_view(&Fake, &["vehicle/".to_string()])["items"].as_array().unwrap().is_empty());
     }
 }

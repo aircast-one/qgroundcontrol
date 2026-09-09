@@ -638,6 +638,7 @@ About 58 developer-weeks. Flight-test time, not code, is the schedule.
 - 2026-09-09: guided action planners in the core (takeoff, goto, altitude, pause, RTL, land, speed) per firmware.
 - 2026-09-09: survey and terrain texts format measures the way the Qt head does (one decimal below a hundred, none above, ^2 as the superscript); heads drop their own formatters.
 - 2026-09-09: guided actions execute in the core: `qgc_core_guided({"vehicle","action",...})` runs the planned steps on the vehicle's core link (mode change retried three times over 1.3 s each, arming once over 1.5 s, as the Qt head does); `view.coreGuided(id)` shows state, step, label, errors.
+- 2026-09-09: `view.instruments(...)` depends on and reads the selected facts (`vehicle.gps.count`, `vehicle.batteries.0.voltage`) instead of whole groups; a view's dependencies may now derive from its arguments. Level-horizon text is QGC's.
 
 ### Stream F · Core
 

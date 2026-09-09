@@ -21,7 +21,7 @@ struct Routine {
 const ROUTINES: &[Routine] = &[
     Routine { id: "accelerometer", title: "Accelerometer", method: "calibrateAccel", arguments: &[false], needs_accel_first: false, explanation: "Hold the vehicle in each orientation it asks for.", warning: "" },
     Routine { id: "compass", title: "Compass", method: "calibrateCompass", arguments: &[], needs_accel_first: true, explanation: "Rotate the vehicle about every axis until each side is done.", warning: "" },
-    Routine { id: "levelHorizon", title: "Level Horizon", method: "levelHorizon", arguments: &[], needs_accel_first: true, explanation: "Set the current attitude as level. Stand the vehicle flat first.", warning: "Sets what the vehicle considers level. Get this wrong and it will drift in flight." },
+    Routine { id: "levelHorizon", title: "Level Horizon", method: "levelHorizon", arguments: &[], needs_accel_first: true, explanation: "Place the vehicle in its level flight position", warning: "" },
     Routine { id: "gyro", title: "Gyro", method: "calibrateGyro", arguments: &[], needs_accel_first: false, explanation: "Leave the vehicle still while the gyros settle.", warning: "" },
     Routine { id: "pressure", title: "Pressure", method: "calibratePressure", arguments: &[], needs_accel_first: false, explanation: "Zero the barometer at the current altitude.", warning: "" },
 ];
