@@ -10,6 +10,8 @@ use crate::udplink::{UdpConfig, UdpLink};
 pub type Writer = Arc<dyn Fn(LinkId, &[u8]) + Send + Sync>;
 pub type FrameSink = Arc<dyn Fn(&Frame) + Send + Sync>;
 pub type StateHook = Arc<dyn Fn() + Send + Sync>;
+pub type BytesSink = Arc<dyn Fn(LinkId, &[u8]) + Send + Sync>;
+pub type StateSink = Arc<dyn Fn(LinkId, bool, &str) + Send + Sync>;
 const KEEP_CLOSED: usize = 16;
 
 pub enum Owned {
@@ -44,11 +46,17 @@ pub struct Shared {
     registry: Arc<Mutex<Registry>>,
     sink: Arc<Mutex<Option<FrameSink>>>,
     state_hook: Arc<Mutex<Option<StateHook>>>,
+    bytes_sink: Arc<Mutex<Option<BytesSink>>>,
+    state_sink: Arc<Mutex<Option<StateSink>>>,
 }
 
 impl Shared {
     fn deliver(&self, id: LinkId, bytes: &[u8]) {
         let frames = self.registry.lock().unwrap().bytes_in(id, bytes);
+        let raw = self.bytes_sink.lock().unwrap().clone();
+        if let Some(raw) = raw {
+            raw(id, bytes);
+        }
         let sink = self.sink.lock().unwrap().clone();
         if let Some(sink) = sink {
             frames.iter().for_each(|f| sink(f));
@@ -57,6 +65,10 @@ impl Shared {
 
     fn closed_by_reader(&self, id: LinkId, reason: &str) {
         self.registry.lock().unwrap().close(id, reason);
+        let state = self.state_sink.lock().unwrap().clone();
+        if let Some(state) = state {
+            state(id, false, reason);
+        }
         let hook = self.state_hook.lock().unwrap().clone();
         if let Some(hook) = hook {
             hook();
@@ -85,6 +97,21 @@ impl Transports {
 
     pub fn set_state_hook(&mut self, hook: Option<StateHook>) {
         *self.shared.state_hook.lock().unwrap() = hook;
+    }
+
+    pub fn set_bytes_sink(&mut self, sink: Option<BytesSink>) {
+        *self.shared.bytes_sink.lock().unwrap() = sink;
+    }
+
+    pub fn set_state_sink(&mut self, sink: Option<StateSink>) {
+        *self.shared.state_sink.lock().unwrap() = sink;
+    }
+
+    pub fn local_port(&self, id: LinkId) -> Option<u16> {
+        match self.owned.get(&id).map(|l| &**l) {
+            Some(Owned::Udp(link)) => Some(link.local_port()),
+            _ => None,
+        }
     }
 
     fn reap(&mut self) {
@@ -121,6 +148,7 @@ impl Transports {
                 let frames = link.get("framesIn").and_then(Value::as_u64).unwrap_or(0);
                 link["summary"] = json!(format!("{} link, {owner}-owned, {state}, {frames} frames", link.get("kind").and_then(Value::as_str).unwrap_or("")));
                 link["config"] = self.configs.get(&id).map(linkconfig::to_json).unwrap_or(Value::Null);
+                link["localPort"] = self.local_port(id).map(Value::from).unwrap_or(Value::Null);
             });
         }
         snapshot
@@ -338,12 +366,19 @@ mod tests {
         transports.lock().unwrap().set_frame_sink(Some(Arc::new(move |_| {
             counter.fetch_add(1, Ordering::Relaxed);
         })));
+        let raw_seen = Arc::new(AtomicUsize::new(0));
+        let raw_counter = Arc::clone(&raw_seen);
+        transports.lock().unwrap().set_bytes_sink(Some(Arc::new(move |_, bytes| {
+            raw_counter.fetch_add(bytes.len(), Ordering::Relaxed);
+        })));
         let port = local_port(&transports, id);
+        assert_eq!(transports.lock().unwrap().snapshot()["links"][0]["localPort"], json!(port));
         let peer = UdpSocket::bind("127.0.0.1:0").unwrap();
         peer.set_read_timeout(Some(Duration::from_secs(2))).unwrap();
         let frame = heartbeat();
         peer.send_to(&frame, ("127.0.0.1", port)).unwrap();
         assert!(wait_for(|| seen.load(Ordering::Relaxed) == 1), "a sink set after open still receives frames");
+        assert_eq!(raw_seen.load(Ordering::Relaxed), 21);
         assert!(write(&transports, id, &frame));
         let mut back = [0u8; 64];
         assert_eq!(peer.recv_from(&mut back).unwrap().0, frame.len());
@@ -390,10 +425,16 @@ mod tests {
         transports.lock().unwrap().set_state_hook(Some(Arc::new(move || {
             hook.fetch_add(1, Ordering::Relaxed);
         })));
+        let reasons = Arc::new(Mutex::new(Vec::new()));
+        let reasons_sink = Arc::clone(&reasons);
+        transports.lock().unwrap().set_state_sink(Some(Arc::new(move |id, open, reason| reasons_sink.lock().unwrap().push((id, open, reason.to_string())))));
         let id = open_json(&transports, &format!(r#"{{"kind":"tcp","name":"SITL","host":"127.0.0.1","port":{port}}}"#), &[]).unwrap();
         let (socket, _) = listener.accept().unwrap();
         drop(socket);
         assert!(wait_for(|| fired.load(Ordering::Relaxed) == 1));
+        let recorded = reasons.lock().unwrap().clone();
+        assert_eq!(recorded.len(), 1);
+        assert_eq!((recorded[0].0, recorded[0].1), (id, false));
         assert!(!write(&transports, id, b"x"));
         let snapshot = transports.lock().unwrap().snapshot();
         assert_eq!(snapshot["links"][0]["state"], "closed");

@@ -1,6 +1,9 @@
 #include "QGCCoreCTest.h"
 
 #include "MockLink.h"
+#include "UDPLink.h"
+#include "LinkManager.h"
+#include "CoreLink.h"
 #include "QGCBridgeC.h"
 #include "QGCCoreC.h"
 #include "MAVLinkLib.h"
@@ -505,6 +508,54 @@ void QGCCoreCTest::_coreUdpLinkFramesAPeer()
     QCOMPARE(linkById().value(QStringLiteral("bytesOut")).toInt(), static_cast<int>(len));
     QVERIFY(qgc_core_link_close(id, "test done"));
     QVERIFY(!qgc_core_link_write(id, frame, len));
+}
+
+void QGCCoreCTest::_coreBackedLinkBringsUpAVehicle()
+{
+#ifdef QGC_RUST_CORE
+    qputenv("QGC_CORE_LINKS", "1");
+    QUdpSocket peer;
+    QVERIFY(peer.bind(QHostAddress::LocalHost, 0));
+    UDPConfiguration *const udp = new UDPConfiguration(QStringLiteral("Core UDP"));
+    udp->setLocalPort(0);
+    udp->addHost(QStringLiteral("127.0.0.1"), peer.localPort());
+    udp->setDynamic(true);
+    SharedLinkConfigurationPtr config = LinkManager::instance()->addConfiguration(udp);
+    QVERIFY(LinkManager::instance()->createConnectedLink(config));
+    QVERIFY(config->link());
+    QVERIFY(qobject_cast<CoreLink *>(config->link()));
+
+    const auto coreLocalPort = []() {
+        const QJsonArray links = take(qgc_bridge_get("view.transports")).value(QStringLiteral("links")).toArray();
+        for (const QJsonValue &link : links) {
+            if (link.toObject().value(QStringLiteral("name")).toString() == QStringLiteral("Core UDP") && link.toObject().value(QStringLiteral("owner")).toString() == QStringLiteral("core")) {
+                return link.toObject().value(QStringLiteral("localPort")).toInt(0);
+            }
+        }
+        return 0;
+    };
+    QTRY_VERIFY_WITH_TIMEOUT(coreLocalPort() > 0, 3000);
+    const int port = coreLocalPort();
+
+    mavlink_message_t message{};
+    mavlink_msg_heartbeat_pack(7, 1, &message, MAV_TYPE_QUADROTOR, MAV_AUTOPILOT_PX4, MAV_MODE_FLAG_CUSTOM_MODE_ENABLED, 0, MAV_STATE_STANDBY);
+    uint8_t frame[MAVLINK_MAX_PACKET_LEN]{};
+    const uint16_t len = mavlink_msg_to_send_buffer(frame, &message);
+    const auto vehicleUp = []() { return take(qgc_bridge_get("vehicles.activeVehicleAvailable")).value(QStringLiteral("value")).toBool(false); };
+    for (int attempt = 0; attempt < 30 && !vehicleUp(); ++attempt) {
+        peer.writeDatagram(reinterpret_cast<const char *>(frame), len, QHostAddress::LocalHost, static_cast<quint16>(port));
+        QTest::qWait(100);
+    }
+    QVERIFY2(vehicleUp(), "no vehicle appeared over the core-backed link");
+    QTRY_VERIFY_WITH_TIMEOUT(peer.hasPendingDatagrams(), 3000);
+
+    config->link()->disconnect();
+    QTRY_VERIFY_WITH_TIMEOUT(!vehicleUp(), 10000);
+    LinkManager::instance()->removeConfiguration(config.get());
+    qunsetenv("QGC_CORE_LINKS");
+#else
+    QSKIP("the Rust core is not linked into this build");
+#endif
 }
 
 void QGCCoreCTest::_videoAndCameraAreServed()

@@ -46,6 +46,7 @@ private slots:
     void _missionFileAgreesWithTheCppLoader();
     void _setupPageServesApmParameters();
     void _coreUdpLinkFramesAPeer();
+    void _coreBackedLinkBringsUpAVehicle();
     void _planWrittenFromWaypointsLoadsInCpp();
     void _kmlFilesFollowTheMapPolygonTest();
     void _shapeFilesFollowShapeTest();

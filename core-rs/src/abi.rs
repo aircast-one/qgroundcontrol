@@ -196,6 +196,28 @@ fn announce_transports() {
     }
 }
 
+type LinkBytesSinkFn = Option<unsafe extern "C" fn(u32, *const u8, usize, *mut std::ffi::c_void)>;
+type LinkStateSinkFn = Option<unsafe extern "C" fn(u32, bool, *const c_char, *mut std::ffi::c_void)>;
+
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn qgc_core_set_link_bytes_sink(sink: LinkBytesSinkFn, user: *mut std::ffi::c_void) {
+    let holder = WriterUser(user);
+    let boxed: Option<crate::linkhost::BytesSink> = sink.map(|f| std::sync::Arc::new(move |id: u32, bytes: &[u8]| unsafe { f(id, bytes.as_ptr(), bytes.len(), holder.ptr()) }) as crate::linkhost::BytesSink);
+    crate::linkhost::TRANSPORTS.lock().unwrap().set_bytes_sink(boxed);
+}
+
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn qgc_core_set_link_state_sink(sink: LinkStateSinkFn, user: *mut std::ffi::c_void) {
+    let holder = WriterUser(user);
+    let boxed: Option<crate::linkhost::StateSink> = sink.map(|f| {
+        std::sync::Arc::new(move |id: u32, open: bool, reason: &str| {
+            let reason = c(reason);
+            unsafe { f(id, open, reason.as_ptr(), holder.ptr()) }
+        }) as crate::linkhost::StateSink
+    });
+    crate::linkhost::TRANSPORTS.lock().unwrap().set_state_sink(boxed);
+}
+
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn qgc_core_link_announce_on_state() {
     crate::linkhost::TRANSPORTS.lock().unwrap().set_state_hook(Some(std::sync::Arc::new(announce_transports)));
