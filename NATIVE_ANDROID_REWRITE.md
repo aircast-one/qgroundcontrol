@@ -1146,6 +1146,20 @@ Caution was a hard amber; High was `colorScheme.error`, which in this dark theme
 pink meant for text on a surface rather than for filling a shape. The most serious band was
 the least alarming thing on the screen. High is a saturated red now.
 
+**The preflight checklist, which Android never had.** `view.preflight` serves the airframe's
+checks in groups with a verdict each, so the screen can distinguish what the vehicle can answer
+from what only a person can. A passing check shows ticked and cannot be unticked; a failing one
+carries the vehicle's own reason; a manual one is the operator's to confirm and is the only kind
+that counts toward the tally. The summary leads with what would **stop** the flight rather than
+with progress. Ticked state stays in the head, because it records what a person looked at, not
+vehicle state.
+
+Verified on the handset: eleven checks for this airframe, three passing from the vehicle, the
+manual ones tickable, tally moving 0 to 1 of 11.
+
+It sits under Analyze, which is the wrong home for something done before flying and the right
+one until the Fly tab is native. Recorded as provisional rather than left to look deliberate.
+
 **The simulator was hiding every command it received.** Its generic `COMMAND_LONG` branch
 acknowledged and did not print; only the camera branch printed `CMD n`. So "no command on the
 wire" meant "no *camera* command", and several checks tonight rested on that. It logs every
