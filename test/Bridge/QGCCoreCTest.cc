@@ -3,6 +3,8 @@
 #include "MockLink.h"
 #include "UDPLink.h"
 #include "LinkManager.h"
+#include "LogReplayLink.h"
+#include "MultiVehicleManager.h"
 #include "CoreLink.h"
 #include "QGCBridgeC.h"
 #include "QGCCoreC.h"
@@ -564,6 +566,90 @@ void QGCCoreCTest::_coreBackedLinkBringsUpAVehicle()
 
     config->link()->disconnect();
     QTRY_VERIFY_WITH_TIMEOUT(!vehicleUp(), 10000);
+#else
+    QSKIP("the Rust core is not linked into this build");
+#endif
+}
+
+void QGCCoreCTest::_replayedLogAgreesBetweenTheModels()
+{
+#ifdef QGC_RUST_CORE
+    const QString sample = QFileInfo(QString::fromUtf8(__FILE__)).dir().filePath(QStringLiteral("../../mav.tlog"));
+    QFile file(sample);
+    QVERIFY(file.open(QIODevice::ReadOnly));
+    const QByteArray bytes = file.readAll();
+
+    const QJsonObject opened = take(qgc_core_host_link_open("replay", "tlog replay"));
+    QVERIFY(opened.value(QStringLiteral("ok")).toBool(false));
+    const uint32_t id = static_cast<uint32_t>(opened.value(QStringLiteral("id")).toInt());
+    int logSystemId = -1;
+    qsizetype at = 0;
+    while (at + 8 < bytes.size()) {
+        const qsizetype start = at + 8;
+        const uint8_t stx = static_cast<uint8_t>(bytes[start]);
+        qsizetype length = 0;
+        if (stx == 0xFD && start + 2 < bytes.size()) {
+            length = 12 + static_cast<uint8_t>(bytes[start + 1]) + ((static_cast<uint8_t>(bytes[start + 2]) & 1) ? 13 : 0);
+        } else if (stx == 0xFE && start + 1 < bytes.size()) {
+            length = 8 + static_cast<uint8_t>(bytes[start + 1]);
+        } else {
+            at++;
+            continue;
+        }
+        if (start + length > bytes.size()) {
+            break;
+        }
+        if (logSystemId < 0) {
+            logSystemId = static_cast<uint8_t>(bytes[start + (stx == 0xFD ? 5 : 3)]);
+        }
+        qgc_core_host_link_bytes(id, reinterpret_cast<const uint8_t *>(bytes.constData() + start), static_cast<size_t>(length));
+        at = start + length;
+    }
+    (void) qgc_core_host_link_closed(id, "replay complete");
+    QVERIFY(logSystemId > 0);
+    QJsonObject core;
+    for (const QJsonValue &candidate : take(qgc_bridge_get("view.coreVehicle")).value(QStringLiteral("vehicleIds")).toArray()) {
+        const QJsonObject vehicle = take(qgc_bridge_get(QStringLiteral("view.coreVehicle(%1)").arg(candidate.toInt()).toUtf8().constData())).value(QStringLiteral("vehicle")).toObject();
+        if (vehicle.value(QStringLiteral("messagesReceived")).toInt() > core.value(QStringLiteral("messagesReceived")).toInt(0)) {
+            core = vehicle;
+        }
+    }
+    QVERIFY2(core.value(QStringLiteral("heartbeats")).toInt() > 0, qPrintable(QStringLiteral("first frame system %1, no core vehicle with heartbeats").arg(logSystemId)));
+
+    const auto vehicleUp = []() { return take(qgc_bridge_get("vehicles.activeVehicleAvailable")).value(QStringLiteral("value")).toBool(false); };
+    QTRY_VERIFY_WITH_TIMEOUT(!vehicleUp() && !MultiVehicleManager::instance()->activeVehicle(), 10000);
+    LogReplayLink *const link = LinkManager::instance()->startLogReplay(sample);
+    QVERIFY(link);
+    QStringList errors;
+    (void) connect(link, &LinkInterface::communicationError, this, [&errors](const QString &title, const QString &error) { errors.append(title + ": " + error); });
+    const auto tearDown = qScopeGuard([link]() { link->disconnect(); });
+    QTRY_VERIFY2_WITH_TIMEOUT(link->isConnected() || !errors.isEmpty(), qPrintable(errors.join("; ")), 10000);
+    QVERIFY2(errors.isEmpty(), qPrintable(errors.join("; ")));
+    link->setPlaybackSpeed(20.0);
+    QTRY_VERIFY2_WITH_TIMEOUT(vehicleUp(), qPrintable(errors.join("; ")), 10000);
+    QTRY_VERIFY_WITH_TIMEOUT(!link->isPlaying(), 60000);
+    QTest::qWait(500);
+
+    const auto factValue = [](const char *path) { return take(qgc_bridge_get(path)).value(QStringLiteral("value")).toDouble(); };
+    const int qtMessages = take(qgc_bridge_get("vehicle.messagesReceived")).value(QStringLiteral("value")).toInt();
+    const int coreMessages = core.value(QStringLiteral("messagesReceived")).toInt();
+    QVERIFY2(qAbs(qtMessages - coreMessages) <= 2, qPrintable(QStringLiteral("messages qt %1 core %2").arg(qtMessages).arg(coreMessages)));
+    const QJsonObject gps = core.value(QStringLiteral("gps")).toObject();
+    QVERIFY(qAbs(factValue("vehicle.gps.lat") - gps.value(QStringLiteral("latitude")).toDouble()) < 1e-6);
+    QVERIFY(qAbs(factValue("vehicle.gps.lon") - gps.value(QStringLiteral("longitude")).toDouble()) < 1e-6);
+    const auto close = [](double a, double b, double tolerance, const char *what) {
+        return qAbs(a - b) < tolerance ? QString() : QStringLiteral("%1 qt %2 core %3").arg(QString::fromUtf8(what)).arg(a).arg(b);
+    };
+    const QString altitude = close(factValue("vehicle.altitudeRelative"), core.value(QStringLiteral("altitudeRelative")).toDouble(), 0.01, "altitudeRelative");
+    QVERIFY2(altitude.isEmpty(), qPrintable(altitude));
+    const QString heading = close(factValue("vehicle.heading"), core.value(QStringLiteral("attitude")).toObject().value(QStringLiteral("heading")).toDouble(), 0.5, "heading");
+    QVERIFY2(heading.isEmpty(), qPrintable(heading));
+    const QString speed = close(factValue("vehicle.groundSpeed"), core.value(QStringLiteral("groundSpeed")).toDouble(), 0.01, "groundSpeed");
+    QVERIFY2(speed.isEmpty(), qPrintable(speed));
+    const QJsonObject qtCoordinate = take(qgc_bridge_get("vehicle.coordinate"));
+    const QJsonObject coreCoordinate = core.value(QStringLiteral("coordinate")).toObject();
+    const QString latitude = close(qtCoordinate.value(QStringLiteral("latitude")).toDouble(), coreCoordinate.value(QStringLiteral("latitude")).toDouble(), 1e-6, "coordinate.latitude");
+    QVERIFY2(latitude.isEmpty(), qPrintable(latitude));
 #else
     QSKIP("the Rust core is not linked into this build");
 #endif

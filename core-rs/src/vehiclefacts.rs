@@ -22,6 +22,9 @@ pub struct VehicleFacts {
     pub x_track_error: f64,
     pub distance_to_next_wp: f64,
     pub range_finder_dist: f64,
+    pub coordinate: Option<(f64, f64, f64)>,
+    altitude_message_seen: bool,
+    global_position_seen: bool,
     altitude_tuning_offset: Option<f64>,
     receiving_quaternion: bool,
     vehicle: (u8, u8),
@@ -92,8 +95,29 @@ impl VehicleFacts {
                 true
             }
             MavMessage::ALTITUDE(d) => {
+                self.altitude_message_seen = true;
                 self.altitude_relative = d.altitude_relative as f64;
                 self.altitude_amsl = d.altitude_amsl as f64;
+                true
+            }
+            MavMessage::GLOBAL_POSITION_INT(d) => {
+                if !self.altitude_message_seen {
+                    self.altitude_relative = d.relative_alt as f64 / 1000.0;
+                    self.altitude_amsl = d.alt as f64 / 1000.0;
+                }
+                if d.lat != 0 || d.lon != 0 {
+                    self.global_position_seen = true;
+                    self.coordinate = Some((d.lat as f64 / 1e7, d.lon as f64 / 1e7, d.alt as f64 / 1000.0));
+                }
+                true
+            }
+            MavMessage::GPS_RAW_INT(d) => {
+                if (d.fix_type as u8) >= 3 && !self.global_position_seen {
+                    self.coordinate = Some((d.lat as f64 / 1e7, d.lon as f64 / 1e7, d.alt as f64 / 1000.0));
+                    if !self.altitude_message_seen {
+                        self.altitude_amsl = d.alt as f64 / 1000.0;
+                    }
+                }
                 true
             }
             MavMessage::VFR_HUD(d) => {
@@ -191,6 +215,31 @@ mod tests {
         facts.apply((1, 1), &MavMessage::NAV_CONTROLLER_OUTPUT(nav));
         assert_eq!((facts.altitude_tuning_setpoint, facts.distance_to_next_wp), (10.0, 40.0));
         assert!(!facts.apply((1, 1), &MavMessage::HEARTBEAT(Default::default())));
+    }
+
+    #[test]
+    fn altitude_and_position_fall_back_through_the_messages_in_the_vehicle_order() {
+        use mavlink::dialects::ardupilotmega::{ALTITUDE_DATA, GLOBAL_POSITION_INT_DATA, GPS_RAW_INT_DATA, GpsFixType};
+        let mut facts = VehicleFacts::for_vehicle(1, 1);
+        let mut raw = GPS_RAW_INT_DATA::default();
+        (raw.lat, raw.lon, raw.alt, raw.fix_type) = (473_000_000, 85_000_000, 500_000, GpsFixType::GPS_FIX_TYPE_3D_FIX);
+        facts.apply((1, 1), &MavMessage::GPS_RAW_INT(raw.clone()));
+        assert_eq!((facts.coordinate, facts.altitude_amsl), (Some((47.3, 8.5, 500.0)), 500.0));
+        let mut global = GLOBAL_POSITION_INT_DATA::default();
+        (global.lat, global.lon, global.alt, global.relative_alt) = (474_000_000, 86_000_000, 520_000, 20_000);
+        facts.apply((1, 1), &MavMessage::GLOBAL_POSITION_INT(global.clone()));
+        assert_eq!((facts.coordinate, facts.altitude_relative, facts.altitude_amsl), (Some((47.4, 8.6, 520.0)), 20.0, 520.0));
+        facts.apply((1, 1), &MavMessage::GPS_RAW_INT(raw));
+        assert_eq!(facts.coordinate, Some((47.4, 8.6, 520.0)), "global position wins over raw gps once seen");
+        let mut bogus = GLOBAL_POSITION_INT_DATA::default();
+        bogus.relative_alt = 30_000;
+        facts.apply((1, 1), &MavMessage::GLOBAL_POSITION_INT(bogus));
+        assert_eq!((facts.coordinate, facts.altitude_relative), (Some((47.4, 8.6, 520.0)), 30.0), "a 0,0 position still carries altitude");
+        let mut altitude = ALTITUDE_DATA::default();
+        (altitude.altitude_relative, altitude.altitude_amsl) = (12.5, 512.5);
+        facts.apply((1, 1), &MavMessage::ALTITUDE(altitude));
+        facts.apply((1, 1), &MavMessage::GLOBAL_POSITION_INT(global));
+        assert_eq!((facts.altitude_relative, facts.altitude_amsl), (12.5, 512.5), "the ALTITUDE message takes precedence");
     }
 
     #[test]
