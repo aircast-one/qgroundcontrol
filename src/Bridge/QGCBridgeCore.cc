@@ -325,8 +325,10 @@ QJsonObject factJson(Fact *fact)
 
     QJsonObject json;
     json.insert(QStringLiteral("kind"), QStringLiteral("fact"));
+    const bool defaultAvailable = fact->defaultValueAvailable();
     for (const QString &property : kFactProperties) {
-        json.insert(property, QJsonValue::fromVariant(fact->property(property.toUtf8().constData())));
+        const bool skipped = (property == QLatin1String("defaultValueString")) && !defaultAvailable;
+        json.insert(property, skipped ? QJsonValue() : QJsonValue::fromVariant(fact->property(property.toUtf8().constData())));
     }
     return json;
 }
