@@ -1962,6 +1962,46 @@ Nearly half of it is inside QGC's own event loop, which is where MAVLink parsing
 bridge's watcher polling live — Risk 5's 200 ms diff loop, now with a number against it. Any
 real throughput work on this head starts there, not with QtQuick.
 
+### What the 200 ms watcher actually costs
+
+Risk 5 says watched paths are polled and diffed rather than signal-connected. Timing every
+`readPath` inside `Watcher::_poll` on the handset, summed over 25 polls — five seconds — with
+the sim connected:
+
+| screen | paths | poll work per 5 s |
+|---|---|---|
+| Fly | 70 | 490–635 ms |
+| Settings | 18 | 277–290 ms |
+
+So the poll is ten to thirteen percent of a core on the Fly tab. That is a quarter of the
+44.8% the Qt thread was using, not all of it — worth knowing before anyone treats the watcher
+as the whole story.
+
+The distribution is the useful part. Three paths dominate everything:
+
+| path | per 5 s, Fly tab |
+|---|---|
+| `vehicle.vehicle` | 230–242 ms |
+| `vehicle.batteries` | 118–141 ms |
+| `vehicle.gps` | 80–89 ms |
+| everything else (67 paths) | ~160 ms |
+
+All three are whole objects, and all three are dependencies rather than anything a screen asked
+for directly: `view.instruments` declares `DEPS = [activeVehicleAvailable, vehicle.vehicle,
+vehicle.gps, vehicle.batteries, vehicle.wind]`. To notice that `altitudeRelative` moved, the
+watcher serialises every Fact on the Vehicle five times a second and compares the string. On
+Settings, where no instrument is drawn, `vehicle.batteries` and `vehicle.gps` still cost 240 ms
+per 5 s between them — legitimately, because the header strip shows battery and satellites, but
+it shows two numbers and pays for two whole objects.
+
+`view.instruments` cannot narrow its `DEPS` statically, because which facts it reads comes from
+its arguments. Either the core derives a view's dependencies from its arguments, or the bridge
+learns a cheaper way to tell that an object changed than rendering it to JSON. Both are core
+work; this is the measurement, handed over.
+
+Unwatching is healthy, incidentally: leaving the Fly tab takes the watch list from 70 paths to
+18 and back again, so nothing accumulates.
+
 ## Phase 6 — Shell · 2 weeks
 
 Cheaper than macOS, because Qt is already off the main thread.
