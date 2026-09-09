@@ -1,0 +1,336 @@
+import math
+import os
+import socket
+import sys
+import time
+
+from pymavlink.dialects.v20 import common as mavlink
+
+TARGET = (sys.argv[1], 14550)
+SYSID = int(sys.argv[2]) if len(sys.argv) > 2 else 1
+GPS_SENSOR = 32
+LOG_SIZES = [4096, 10240]
+LOG_BASE_UTC = 1757280000
+STATUS_TEXTS = [
+    (6, b"AircastSim ready"),
+    (4, b"GPS glitch cleared"),
+    (3, b"EKF variance"),
+    (6, b"Batt & temp < 40C"),
+]
+CENTRE_SHIFT = (SYSID - 1) * 0.01
+CENTRE_LAT = float(os.environ.get("SIM_LAT", "41.7151"))
+CENTRE_LON = float(os.environ.get("SIM_LON", "44.8271"))
+RADIUS_DEG = 0.004
+
+
+class Sender:
+    def __init__(self, sock, target):
+        self.sock = sock
+        self.target = target
+
+    def write(self, data):
+        self.sock.sendto(data, self.target)
+
+
+def main():
+    sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+    sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+    sock.bind(("0.0.0.0", 0))
+    sock.settimeout(0.05)
+
+    link = mavlink.MAVLink(Sender(sock, TARGET), srcSystem=SYSID,
+                           srcComponent=mavlink.MAV_COMP_ID_AUTOPILOT1)
+    parser = mavlink.MAVLink(None, srcSystem=255, srcComponent=0)
+    # A second component so QGC's camera manager has something to discover.
+    sent_status = [False]
+    cameras = {
+        mavlink.MAV_COMP_ID_CAMERA: b"SimCam",
+        mavlink.MAV_COMP_ID_CAMERA2: b"SimCam Thermal",
+    }
+    links = {
+        comp: mavlink.MAVLink(Sender(sock, TARGET), srcSystem=SYSID, srcComponent=comp)
+        for comp in cameras
+    }
+    camera = links[mavlink.MAV_COMP_ID_CAMERA]
+
+    def send_camera_information(comp=mavlink.MAV_COMP_ID_CAMERA):
+        links[comp].camera_information_send(
+            int((time.time() - boot) * 1000),
+            list(b"Aircast".ljust(32, b"\0")),
+            list(cameras[comp].ljust(32, b"\0")),
+            (1 << 24),          # firmware_version
+            4.5, 6.2, 4.6,      # focal length, sensor size
+            1920, 1080, 0,
+            mavlink.CAMERA_CAP_FLAGS_CAPTURE_IMAGE
+            | mavlink.CAMERA_CAP_FLAGS_CAPTURE_VIDEO
+            | mavlink.CAMERA_CAP_FLAGS_HAS_MODES,
+            0, b"")
+        print("CAMERA_INFORMATION sent for %d" % comp, flush=True)
+
+    cam_mode = [0]          # 0 photo, 1 video
+    cam_recording = [False]
+
+    def send_camera_settings():
+        for cam_link in links.values():
+            cam_link.camera_settings_send(
+                int((time.time() - boot) * 1000), cam_mode[0], 0.0, 0.0)
+
+    boot = time.time()
+    armed = False
+    mode = 0
+    tick = 0
+
+    params = {}
+    for i in range(200):
+        params["SIM_VALUE_%03d" % i] = float(i)
+    for name, value in (("RTL_ALT", 1500.0), ("WPNAV_SPEED", 500.0), ("FS_THR_ENABLE", 1.0),
+                        ("INS_ACCOFFS_X", 0.01), ("FRAME_CLASS", 1.0), ("FRAME_TYPE", 1.0),
+                        ("FLTMODE_CH", 5.0), ("SIMPLE", 0.0), ("SUPER_SIMPLE", 0.0),
+                        ("INITIAL_MODE", 0.0), ("GRIP_ENABLE", 1.0)):
+        params[name] = value
+    for slot in range(1, 7):
+        params["FLTMODE%d" % slot] = float(slot)
+    if os.environ.get("TRAILING_PARAM") == "1":
+        params["ZZ_TRAILER"] = 1.0
+    names = sorted(params)
+
+    def send_param(name):
+        link.param_value_send(name.encode()[:16], params[name],
+                              mavlink.MAV_PARAM_TYPE_REAL32,
+                              len(names), names.index(name))
+
+    stored = []          # mission the vehicle holds
+    incoming = {}        # seq -> item while an upload is in progress
+    expected = 0         # how many items the GCS said it would send
+
+    while True:
+        elapsed = time.time() - boot
+        if tick % 10 == 0:
+            print("CAM HEARTBEAT", flush=True)
+            send_camera_settings()
+            for comp, cam_link in links.items():
+                cam_link.camera_capture_status_send(
+                    int((time.time() - boot) * 1000),
+                    0, 1 if cam_recording[0] else 0, 0.0, 0, 0, 0)
+                cam_link.heartbeat_send(mavlink.MAV_TYPE_CAMERA,
+                                        mavlink.MAV_AUTOPILOT_INVALID, 0, 0,
+                                        mavlink.MAV_STATE_ACTIVE)
+        if tick % 5 == 0 and elapsed < 45:
+            # Stops after 45 s so a reader can see the display go stale.
+            # 72 sectors of 5 degrees. One obstacle to the right (index 18 = 90 deg)
+            # at 3.20 m; everything else out of range.
+            ring = [65535] * 72
+            ring[18] = 320
+            try:
+                link.obstacle_distance_send(
+                    int(elapsed * 1e6), 0, ring, 5, 20, 4000, 5.0, 0.0, 12)
+                print("OBSTACLE sent", flush=True)
+            except Exception as exc:
+                print("OBSTACLE FAILED %r" % (exc,), flush=True)
+        angle = (elapsed / 45.0) * 2 * math.pi
+        lat = CENTRE_LAT + CENTRE_SHIFT + RADIUS_DEG * math.cos(angle)
+        lon = CENTRE_LON + RADIUS_DEG * math.sin(angle)
+        heading = (math.degrees(angle) + 90.0) % 360.0
+        now_ms = int(elapsed * 1000)
+
+        base_mode = mavlink.MAV_MODE_FLAG_CUSTOM_MODE_ENABLED
+        if armed:
+            base_mode |= mavlink.MAV_MODE_FLAG_SAFETY_ARMED
+
+        link.heartbeat_send(mavlink.MAV_TYPE_QUADROTOR,
+                            mavlink.MAV_AUTOPILOT_ARDUPILOTMEGA,
+                            base_mode, mode, mavlink.MAV_STATE_ACTIVE)
+        nofix = os.environ.get("NOFIX") == "1" and elapsed < float(os.environ.get("NOFIX_SECONDS", "1e9"))
+        link.sys_status_send(GPS_SENSOR, GPS_SENSOR, GPS_SENSOR, 250, 12100, 3200, 78, 0, 0, 0, 0, 0, 0)
+        if int(elapsed) >= 8 and not sent_status[0]:
+            sent_status[0] = True
+            for severity, text in STATUS_TEXTS:
+                link.statustext_send(severity, text.ljust(50, b"\0"))
+                print("STATUSTEXT sev=%d %s" % (severity, text.decode()), flush=True)
+        link.battery_status_send(
+            0, mavlink.MAV_BATTERY_FUNCTION_ALL, mavlink.MAV_BATTERY_TYPE_LIPO,
+            2500, [3700, 3690, 3710] + [65535] * 7, 3200, 1800, -1,
+            int(os.environ.get("BATT_PCT", "25")), 0,
+            int(os.environ.get("BATT_STATE", "0")))
+        link.rc_channels_send(
+            now_ms, 8, 1500, 1500, 1100, 1500, 1000, 1000, 1000, 1000,
+            0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+            int(os.environ.get("RC_RSSI", "80")))
+        link.vibration_send(int(elapsed * 1e6), 15.0, 45.0, 75.0, 0, 3, 12)
+        link.extended_sys_state_send(
+            mavlink.MAV_VTOL_STATE_UNDEFINED,
+            mavlink.MAV_LANDED_STATE_IN_AIR if armed else mavlink.MAV_LANDED_STATE_ON_GROUND)
+        if not nofix:
+            link.global_position_int_send(now_ms, int(lat * 1e7), int(lon * 1e7),
+                                          120000, 25000, 300, 0, 0,
+                                          int(heading * 100))
+        link.gps_raw_int_send(now_ms * 1000, 0 if nofix else 3, int(lat * 1e7), int(lon * 1e7),
+                              120000, 120, 120, 350, 0, 11)
+        link.vfr_hud_send(7.5, 8.1, int(heading), 55, 25.0, 1.2)
+        link.attitude_send(now_ms, 0.02, -0.01, math.radians(heading), 0.0, 0.0, 0.0)
+
+        if tick % 25 == 0:
+            print("pos %.5f %.5f hdg %.0f" % (lat, lon, heading), flush=True)
+
+        deadline = time.time() + 0.2
+        while time.time() < deadline:
+            try:
+                data, _ = sock.recvfrom(2048)
+            except socket.timeout:
+                continue
+            for message in parser.parse_buffer(data) or []:
+                kind = message.get_type()
+                if kind == "COMMAND_LONG":
+                    cmd = message.command
+                    if cmd in (mavlink.MAV_CMD_REQUEST_CAMERA_INFORMATION,
+                               mavlink.MAV_CMD_REQUEST_MESSAGE):
+                        wanted = int(message.param1)
+                        if (cmd == mavlink.MAV_CMD_REQUEST_CAMERA_INFORMATION
+                                or wanted == mavlink.MAVLINK_MSG_ID_CAMERA_INFORMATION):
+                            asked = message.target_component
+                            if asked in links:
+                                links[asked].command_ack_send(cmd, mavlink.MAV_RESULT_ACCEPTED)
+                                send_camera_information(asked)
+                            continue
+                    if cmd in (mavlink.MAV_CMD_IMAGE_START_CAPTURE,
+                               mavlink.MAV_CMD_VIDEO_START_CAPTURE,
+                               mavlink.MAV_CMD_VIDEO_STOP_CAPTURE,
+                               mavlink.MAV_CMD_SET_CAMERA_MODE,
+                               mavlink.MAV_CMD_REQUEST_CAMERA_SETTINGS):
+                        camera.command_ack_send(cmd, mavlink.MAV_RESULT_ACCEPTED)
+                        if cmd == mavlink.MAV_CMD_SET_CAMERA_MODE:
+                            cam_mode[0] = int(message.param2)
+                            print("CAMERA MODE -> %d" % cam_mode[0], flush=True)
+                        if cmd == mavlink.MAV_CMD_VIDEO_START_CAPTURE:
+                            cam_recording[0] = True
+                        if cmd == mavlink.MAV_CMD_VIDEO_STOP_CAPTURE:
+                            cam_recording[0] = False
+                        if cmd == mavlink.MAV_CMD_IMAGE_START_CAPTURE:
+                            print("CAMERA PHOTO TAKEN", flush=True)
+                        send_camera_settings()
+                        print("CAMERA CMD %d accepted" % cmd, flush=True)
+                        continue
+                if kind == "RC_CHANNELS_OVERRIDE":
+                    active = [(i, getattr(message, "chan%d_raw" % i))
+                              for i in range(1, 19)
+                              if getattr(message, "chan%d_raw" % i, 0) not in (0, 65535)]
+                    print("RC_OVERRIDE %s" % active, flush=True)
+                    continue
+                if kind == "FILE_TRANSFER_PROTOCOL":
+                    # ArduPilot makes QGC try the parameter download over MAVFTP first.
+                    # A NAK of FileNotFound is what makes it fall back to
+                    # PARAM_REQUEST_LIST; ignoring the request just makes it retry.
+                    request = bytes(message.payload)
+                    reply = bytearray(251)
+                    seq = int.from_bytes(request[0:2], "little") + 1
+                    reply[0:2] = seq.to_bytes(2, "little")
+                    reply[2] = request[2]
+                    reply[3] = 129            # NAK
+                    reply[4] = 1              # one byte of data
+                    reply[5] = request[3]     # the opcode being refused
+                    reply[12] = 10            # FileNotFound
+                    link.file_transfer_protocol_send(0, 255, 0, list(reply))
+                    print("FTP NAK for opcode %d" % request[3], flush=True)
+                elif kind == "PARAM_REQUEST_LIST":
+                    print("PARAM_REQUEST_LIST -> %d params" % len(names), flush=True)
+                    for name in names:
+                        send_param(name)
+                elif kind == "PARAM_REQUEST_READ":
+                    wanted = message.param_id.strip("\x00") if isinstance(message.param_id, str) \
+                        else message.param_id.decode().strip("\x00")
+                    if wanted in params:
+                        send_param(wanted)
+                    elif 0 <= message.param_index < len(names):
+                        send_param(names[message.param_index])
+                elif kind == "PARAM_SET":
+                    setting = message.param_id.strip("\x00") if isinstance(message.param_id, str) \
+                        else message.param_id.decode().strip("\x00")
+                    if setting in params:
+                        params[setting] = message.param_value
+                        send_param(setting)
+                elif kind == "COMMAND_LONG" and message.command == mavlink.MAV_CMD_COMPONENT_ARM_DISARM:
+                    armed = message.param1 > 0.5
+                    print("ARM %s (param1=%.1f force=%.1f) from %d/%d" % (
+                        "armed" if armed else "DISARMED", message.param1,
+                        getattr(message, "param2", 0.0),
+                        message.get_srcSystem(), message.get_srcComponent()), flush=True)
+                    link.command_ack_send(message.command, mavlink.MAV_RESULT_ACCEPTED)
+                elif kind == "MISSION_COUNT":
+                    if getattr(message, "mission_type", 0) != 0:
+                        link.mission_ack_send(255, 0, mavlink.MAV_MISSION_ACCEPTED,
+                                              mission_type=getattr(message, "mission_type", 0))
+                        continue
+                    expected = message.count
+                    incoming = {}
+                    print("UPLOAD start count=%d" % expected, flush=True)
+                    if expected == 0:
+                        stored = []
+                        link.mission_ack_send(255, 0, mavlink.MAV_MISSION_ACCEPTED)
+                    else:
+                        link.mission_request_int_send(255, 0, 0)
+                elif kind == "MISSION_ITEM_INT":
+                    incoming[message.seq] = message
+                    if len(incoming) < expected:
+                        link.mission_request_int_send(255, 0, len(incoming))
+                    else:
+                        stored = [incoming[i] for i in sorted(incoming)]
+                        link.mission_ack_send(255, 0, mavlink.MAV_MISSION_ACCEPTED)
+                        print("UPLOAD done items=%d" % len(stored), flush=True)
+                        for item in stored:
+                            print("  seq=%d cmd=%d lat=%.7f lon=%.7f alt=%.1f" % (
+                                item.seq, item.command, item.x / 1e7, item.y / 1e7, item.z), flush=True)
+                elif kind == "MISSION_REQUEST_LIST":
+                    kind_of = getattr(message, "mission_type", 0)
+                    count = len(stored) if kind_of == 0 else 0
+                    print("DOWNLOAD start type=%d count=%d" % (kind_of, count), flush=True)
+                    link.mission_count_send(255, 0, count, mission_type=kind_of)
+                elif kind in ("MISSION_REQUEST_INT", "MISSION_REQUEST"):
+                    if getattr(message, "mission_type", 0) == 0 and 0 <= message.seq < len(stored):
+                        item = stored[message.seq]
+                        link.mission_item_int_send(
+                            255, 0, item.seq, item.frame, item.command,
+                            item.current, item.autocontinue,
+                            item.param1, item.param2, item.param3, item.param4,
+                            item.x, item.y, item.z, item.mission_type)
+                elif kind == "MISSION_ACK":
+                    print("DOWNLOAD done", flush=True)
+                elif kind == "LOG_REQUEST_LIST":
+                    print("LOG_REQUEST_LIST %d..%d" % (message.start, message.end), flush=True)
+                    for i, size in enumerate(LOG_SIZES):
+                        log_id = i + 1
+                        if not (message.start <= log_id <= message.end):
+                            continue
+                        link.log_entry_send(log_id, len(LOG_SIZES), len(LOG_SIZES),
+                                            LOG_BASE_UTC + i * 3600, size)
+                elif kind == "LOG_REQUEST_DATA":
+                    remaining = LOG_SIZES[message.id - 1] - message.ofs
+                    count = max(0, min(90, message.count, remaining))
+                    payload = bytes((message.ofs + n) % 251 for n in range(count))
+                    link.log_data_send(message.id, message.ofs, count,
+                                       list(payload) + [0] * (90 - count))
+                elif kind == "LOG_REQUEST_END":
+                    print("LOG_REQUEST_END", flush=True)
+                elif kind == "LOG_ERASE":
+                    print("LOG_ERASE", flush=True)
+                elif kind == "SET_POSITION_TARGET_LOCAL_NED":
+                    print("ALT CHANGE frame=%d z=%.2f type_mask=0x%X" % (
+                        message.coordinate_frame, message.z, message.type_mask), flush=True)
+                elif kind == "COMMAND_LONG" and message.command == mavlink.MAV_CMD_NAV_TAKEOFF:
+                    print("TAKEOFF alt=%.1f" % message.param7, flush=True)
+                    armed = True
+                    link.command_ack_send(message.command, mavlink.MAV_RESULT_ACCEPTED)
+                elif kind == "COMMAND_LONG" and message.command == mavlink.MAV_CMD_DO_SET_MODE:
+                    mode = int(message.param2)
+                    print("MODE -> %d" % mode, flush=True)
+                    link.command_ack_send(message.command, mavlink.MAV_RESULT_ACCEPTED)
+                elif kind == "COMMAND_LONG":
+                    print("CMD %d p1=%.2f p2=%.2f p7=%.2f" % (
+                        message.command, message.param1, message.param2,
+                        getattr(message, "param7", 0.0)), flush=True)
+                    link.command_ack_send(message.command, mavlink.MAV_RESULT_ACCEPTED)
+
+        tick += 1
+
+
+if __name__ == "__main__":
+    main()
