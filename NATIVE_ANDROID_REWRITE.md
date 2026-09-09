@@ -2288,6 +2288,28 @@ save rather than after the stream fails.
 With those two, no setting the head hides is hidden because a phone cannot edit it. The
 `DESKTOP_ONLY_FACTS` map and the footnote that named them are gone rather than left empty.
 
+### The regression still passes, and the rig now survives the session
+
+After eighteen commits on this head — a native map behind the Fly tab, a pip swap, a row that
+hides what the core hides, the checklist moved, the status strip rewired, two settings editors —
+the regression was overdue. It passes: Fly, the Actions sheet, Vibration, Log Download,
+Settings and back to Fly, every capture over the size floor and every one checked by eye rather
+than by byte count. Vibration draws 15, 45 and 75 in their three colours; Log Download lists the
+sim's two logs at 4.0 and 10.0 KB; the Actions sheet leads with the checklist.
+
+The script needed fixing first, and the reason is worth recording: it tapped the Analyze list at
+coordinates from when Preflight was its first row. Moving the checklist to the Fly tab silently
+invalidated a regression script, which is the kind of breakage that reports itself as a passing
+run against the wrong screen. It now drives the Actions sheet as well, and its Analyze taps are
+written against the current list.
+
+**The rig is in `aircast-android/tools/` now.** Everything that verified tonight's work — the
+vehicle sim, the device lock, the regression driver, the detection rig and its SSE feed, and the
+watcher probe — was written in a session scratchpad, which does not outlive the session. Six
+scripts and a README naming what each one is for, so the next session measures instead of
+rebuilding the instruments. Their internal paths still point at the scratchpad they were born
+in; the README says so rather than pretending otherwise.
+
 ## Phase 6 — Shell · 2 weeks
 
 Cheaper than macOS, because Qt is already off the main thread.
