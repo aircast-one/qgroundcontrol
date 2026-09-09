@@ -470,20 +470,27 @@ func checkMissionItemRemoval() {
 checkMissionItemRemoval()
 
 func checkLogEntry() {
-    let entry = LogEntry(json: [
-        "id": 3, "size": 898330, "status": "Available", "received": true,
-        "time": "2026-09-07T16:29:00.000",
-    ])
-    expect(entry != nil, "a log entry parses from what the controller reports")
-    expect(entry?.sizeText == "877.3 KB", "size reads in KB with a decimal point, not a comma")
-    expect(entry?.id == 3, "the id is kept for downloading")
-    expect(entry?.time.contains("2026") == true, "the timestamp is rendered, not passed through raw")
+    func entry(_ overrides: [String: Any]) -> LogEntry? {
+        LogEntry(["index": 0 as NSNumber, "id": 3 as NSNumber, "sizeText": "1.5 MB",
+                  "status": "Available", "received": true as NSNumber,
+                  "selected": false as NSNumber, "time": "2026-09-09T05:25:33.000"]
+            .merging(overrides) { _, new in new })
+    }
 
-    expect(LogEntry.humanSize(0), "0 bytes", "an empty log reads as bytes")
-    expect(LogEntry.humanSize(512), "512 bytes", "under a kilobyte stays in bytes")
-    expect(LogEntry.humanSize(1024 * 1024 * 3), "3.0 MB", "megabytes read as megabytes")
-    expect(LogEntry.humanTime("not a date"), "not a date", "an unparseable time is shown as sent")
-    expect(LogEntry(json: ["size": 10]) == nil, "an entry without an id is dropped")
+    expect(entry([:])?.sizeText ?? "", "1.5 MB", "the size is the core's sentence")
+    expect(entry([:])?.id == 3, "and the log keeps the number the vehicle gave it")
+    expect(LogEntry(["sizeText": "1 KB"]) == nil, "an entry with no number is not a log")
+
+    expect(entry(["received": false as NSNumber])?.timeText ?? "?", "",
+           "a log the vehicle has not sent yet shows no time at all, as QGC shows none")
+    expect(entry(["time": "2001-01-01T00:00:00.000"])?.timeText ?? "", "Date Unknown",
+           "a clock that was never set says so rather than claiming a date in 2001")
+    expect(entry(["time": "not a date"])?.timeText ?? "", "not a date",
+           "and something unparseable is shown as sent rather than swallowed")
+    expect(!(entry([:])?.timeText ?? "").isEmpty,
+           "a received log with a real clock is formatted for the reader")
+    expect(!(entry([:])?.timeText ?? "").contains("T"),
+           "in the reader's own locale rather than the wire's ISO spelling")
 }
 
 checkLogEntry()
@@ -847,45 +854,12 @@ func checkVehicleSetupText() {
 checkVehicleSetupText()
 
 func checkLogDownloadRules() {
-    expect(LogDownloadRules.canRefresh(connected: true, requestingList: false, downloading: false),
-           "a connected and idle vehicle can be asked for its logs")
-    expect(!LogDownloadRules.canRefresh(connected: false, requestingList: false, downloading: false),
-           "with no vehicle there is nothing to ask, which QGC checks and the native head did not")
-    expect(!LogDownloadRules.canRefresh(connected: true, requestingList: true, downloading: false),
-           "a second list request while one is in flight would confuse the transfer")
-    expect(!LogDownloadRules.canRefresh(connected: true, requestingList: false, downloading: true),
-           "and neither is asked for while a log is coming down")
-
-    expect(LogDownloadRules.canDownload(requestingList: false, downloading: false),
+    expect(LogEntry.canDownload(requestingList: false, downloading: false),
            "an idle vehicle can be asked for a log")
-    expect(!LogDownloadRules.canDownload(requestingList: true, downloading: false),
-           "but not while the list is still arriving, which the native head allowed")
-    expect(!LogDownloadRules.canDownload(requestingList: false, downloading: true),
+    expect(!LogEntry.canDownload(requestingList: true, downloading: false),
+           "but not while the list is still arriving")
+    expect(!LogEntry.canDownload(requestingList: false, downloading: true),
            "nor while another log is already coming down")
-
-    expect(LogDownloadRules.canCancel(requestingList: true, downloading: false),
-           "cancel is live while a list is on its way")
-    expect(LogDownloadRules.canCancel(requestingList: false, downloading: true),
-           "and while a log is")
-    expect(!LogDownloadRules.canCancel(requestingList: false, downloading: false),
-           "and dead when there is nothing to cancel")
-
-    expect(!LogDownloadRules.canErase(count: 0, requestingList: false, downloading: false),
-           "erasing nothing is not offered")
-    expect(LogDownloadRules.canErase(count: 3, requestingList: false, downloading: false),
-           "erasing three logs is")
-    expect(!LogDownloadRules.canErase(count: 3, requestingList: false, downloading: true),
-           "but not out from under a download in progress")
-
-    expect(LogDownloadRules.emptyText(connected: false, requestingList: false),
-           "Connect a vehicle to list its logs.",
-           "the empty list does not tell the operator to press a button that is disabled")
-    expect(LogDownloadRules.emptyText(connected: true, requestingList: false),
-           "No logs listed yet. Refresh to ask the vehicle.",
-           "and does point at Refresh once Refresh can be pressed")
-    expect(LogDownloadRules.emptyText(connected: true, requestingList: true),
-           "Asking the vehicle for its logs\u{2026}",
-           "a request in flight says so rather than either of those")
 }
 
 checkLogDownloadRules()
@@ -1658,15 +1632,7 @@ func checkMissionVehicle() {
 
 checkMissionVehicle()
 
-func checkEraseWarning() {
-    expect(LogEntry.eraseWarning(1).contains("The one log"),
-           "one log does not read as \"All 1 log\"")
-    expect(LogEntry.eraseWarning(3).contains("All 3 logs"), "several logs are counted")
-    expect(LogEntry.eraseWarning(1).contains("gone for good"), "the warning says the loss is permanent")
-    expect(LogEntry.eraseWarning(3).contains("gone for good"), "however many there are")
-}
 
-checkEraseWarning()
 
 func checkGeoTagJob() {
     var job = GeoTagJob()
@@ -2558,6 +2524,9 @@ func checkViewContract() {
          ["index", "path", "id", "name", "title", "count", "rateText", "targetRateHz",
           "targetRateTitle", "selected"]),
         ("view.inspector", ["rateChoices"], ["rate", "title"]),
+        ("view.logs", [],
+         ["connected", "requestingList", "downloading", "canRefresh", "canCancel", "canErase",
+          "emptyText", "eraseWarning", "entries"]),
         ("view.missionSeed(survey,47,8)", ["points"], ["latitude", "longitude"]),
         ("view.links", ["configured"],
          ["index", "path", "name", "type", "typeLabel", "editing", "displaySummary", "connected",
@@ -2692,6 +2661,7 @@ func checkViewContract() {
         ("view.flightModes", ["modes"], ["name", "summary"]),
         ("view.inspector", ["messages"], ["title", "rateText", "targetRateTitle"]),
         ("view.inspector", ["rateChoices"], ["title"]),
+        ("view.logs", [], ["emptyText", "eraseWarning"]),
     ]
     neverNull.forEach { view, inner, keys in
         let place = inner.isEmpty ? view : "\(view).\(inner.joined(separator: "."))"

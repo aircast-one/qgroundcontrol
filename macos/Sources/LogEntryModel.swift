@@ -1,51 +1,55 @@
 import Foundation
 
 struct LogEntry: Identifiable, Equatable {
+    let index: Int
     let id: Int
-    let sizeBytes: Int
     let sizeText: String
     let status: String
     let received: Bool
+    let selected: Bool
     let time: String
 
-    init?(json: Any?) {
-        guard let object = json as? [String: Any],
-              let id = (object["id"] as? NSNumber)?.intValue else { return nil }
+    // QGC's own three branches (LogDownloadPage.qml:83-91): an entry the vehicle has not
+    // sent shows nothing at all, a clock that never got set shows that it did not, and
+    // only a real time is formatted — in the reader's locale, which is why this stays here
+    // rather than coming from the core as a fixed string.
+    var timeText: String {
+        guard received else { return "" }
+        guard let parsed = LogEntry.parser.date(from: time) else { return time }
+        guard Calendar(identifier: .gregorian).component(.year, from: parsed) >= 2010 else {
+            return "Date Unknown"
+        }
+        return LogEntry.display.string(from: parsed)
+    }
+
+    init?(_ json: Any?) {
+        guard let json = json as? [String: Any],
+              let id = (json["id"] as? NSNumber)?.intValue else { return nil }
         self.id = id
-        sizeBytes = (object["size"] as? NSNumber)?.intValue ?? 0
-        sizeText = LogEntry.humanSize(sizeBytes)
-        status = (object["status"] as? String) ?? ""
-        received = (object["received"] as? NSNumber)?.boolValue ?? false
-        time = LogEntry.humanTime((object["time"] as? String) ?? "")
+        index = (json["index"] as? NSNumber)?.intValue ?? 0
+        sizeText = (json["sizeText"] as? String) ?? ""
+        status = (json["status"] as? String) ?? ""
+        received = (json["received"] as? NSNumber)?.boolValue ?? false
+        selected = (json["selected"] as? NSNumber)?.boolValue ?? false
+        time = (json["time"] as? String) ?? ""
     }
 
-    static func eraseWarning(_ count: Int) -> String {
-        count == 1
-            ? "The one log on the vehicle will be deleted. If you have not downloaded it, it is gone for good."
-            : "All \(count) logs will be deleted from the vehicle. Anything you have not downloaded is gone for good."
+    static func list(_ json: Any?) -> [LogEntry] {
+        ((json as? [Any]) ?? []).compactMap(LogEntry.init)
     }
 
-    static func from(_ elements: [Any]) -> [LogEntry] {
-        elements.compactMap(LogEntry.init(json:))
-    }
-
-    static func humanSize(_ bytes: Int) -> String {
-        let units = ["bytes", "KB", "MB", "GB"]
-        let step = bytes <= 0 ? 0 : min(Int(log(Double(bytes)) / log(1024)), units.count - 1)
-        guard step > 0 else { return "\(bytes) bytes" }
-        let value = Double(bytes) / pow(1024, Double(step))
-        return String(format: "%.1f %@", value, units[step])
-    }
-
-    static func humanTime(_ raw: String) -> String {
-        guard let date = LogEntry.parser.date(from: raw) else { return raw }
-        return LogEntry.display.string(from: date)
+    // QGC enables Download on busy-ness alone (LogDownloadPage.qml:128). The core's
+    // canDownload also wants a selected entry, which fits a single button over a selection
+    // rather than this head's per-row buttons that already name the log they fetch.
+    static func canDownload(requestingList: Bool, downloading: Bool) -> Bool {
+        !requestingList && !downloading
     }
 
     private static let parser: DateFormatter = {
         let formatter = DateFormatter()
         formatter.dateFormat = "yyyy-MM-dd'T'HH:mm:ss.SSS"
         formatter.locale = Locale(identifier: "en_US_POSIX")
+        formatter.timeZone = TimeZone(identifier: "UTC")
         return formatter
     }()
 
@@ -56,29 +60,3 @@ struct LogEntry: Identifiable, Equatable {
         return formatter
     }()
 }
-
-enum LogDownloadRules {
-    static func canRefresh(connected: Bool, requestingList: Bool, downloading: Bool) -> Bool {
-        connected && !requestingList && !downloading
-    }
-
-    static func canDownload(requestingList: Bool, downloading: Bool) -> Bool {
-        !requestingList && !downloading
-    }
-
-    static func canCancel(requestingList: Bool, downloading: Bool) -> Bool {
-        requestingList || downloading
-    }
-
-    static func emptyText(connected: Bool, requestingList: Bool) -> String {
-        if requestingList { return "Asking the vehicle for its logs\u{2026}" }
-        return connected
-            ? "No logs listed yet. Refresh to ask the vehicle."
-            : "Connect a vehicle to list its logs."
-    }
-
-    static func canErase(count: Int, requestingList: Bool, downloading: Bool) -> Bool {
-        count > 0 && !requestingList && !downloading
-    }
-}
-

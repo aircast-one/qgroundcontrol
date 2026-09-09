@@ -168,12 +168,11 @@ struct LogDownloadView: View {
                 if !store.status.isEmpty {
                     EmptyStateRow(text: store.status)
                 } else if store.logs.isEmpty {
-                    EmptyStateRow(text: LogDownloadRules.emptyText(
-                        connected: store.connected, requestingList: store.requestingList))
+                    EmptyStateRow(text: store.emptyText)
                 } else {
                     ForEach(Array(store.logs.enumerated()), id: \.element.id) { index, entry in
                         GroupRow(title: "Log \(entry.id)",
-                                 description: entry.time,
+                                 description: entry.timeText,
                                  value: entry.status == "Available" ? entry.sizeText
                                      : "\(entry.sizeText) \u{00B7} \(entry.status)",
                                  showSeparator: index > 0,
@@ -209,7 +208,7 @@ struct LogDownloadView: View {
             Button("Cancel", role: .cancel) { }
             Button("Erase All", role: .destructive, action: store.eraseAll)
         } message: {
-            Text(LogEntry.eraseWarning(store.logs.count))
+            Text(store.eraseWarning)
         }
     }
 }

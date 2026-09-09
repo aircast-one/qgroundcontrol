@@ -9,23 +9,39 @@ final class LogDownloadStore: ObservableObject, Probeable {
     @Published private(set) var downloading = false
     @Published private(set) var status = ""
     @Published private(set) var savePath = ""
+    @Published private(set) var canRefresh = false
+    @Published private(set) var canCancel = false
+    @Published private(set) var canErase = false
+    @Published private(set) var emptyText = ""
+    @Published private(set) var eraseWarning = ""
     @Published var confirmingErase = false
 
     func reload() {
-        let controller = Bridge.group("logDownload")
-        guard controller["kind"] as? String == "object" else {
-            status = "Log download is not available."
-            logs = []
-            connected = false
+        let view = Bridge.group("view.logs")
+        guard view["kind"] as? String == "object" else {
+            if status.isEmpty { status = "Log download is not available." }
+            if !logs.isEmpty { logs = [] }
+            if connected { connected = false }
             return
         }
 
-        connected = Bridge.group("vehicle")["kind"] as? String == "object"
-        savePath = (Bridge.group("settings.appSettings")["logSavePath"] as? String) ?? ""
-        requestingList = (controller["requestingList"] as? NSNumber)?.boolValue ?? false
-        downloading = (controller["downloadingLogs"] as? NSNumber)?.boolValue ?? false
-        logs = LogEntry.from((Bridge.group("logDownload.model")["elements"] as? [Any]) ?? [])
-        status = ""
+        func flag(_ name: String) -> Bool { (view[name] as? NSNumber)?.boolValue ?? false }
+        func text(_ name: String) -> String { (view[name] as? String) ?? "" }
+
+        let read = LogEntry.list(view["entries"])
+        if read != logs { logs = read }
+        if flag("connected") != connected { connected = flag("connected") }
+        if flag("requestingList") != requestingList { requestingList = flag("requestingList") }
+        if flag("downloading") != downloading { downloading = flag("downloading") }
+        if flag("canRefresh") != canRefresh { canRefresh = flag("canRefresh") }
+        if flag("canCancel") != canCancel { canCancel = flag("canCancel") }
+        if flag("canErase") != canErase { canErase = flag("canErase") }
+        if text("emptyText") != emptyText { emptyText = text("emptyText") }
+        if text("eraseWarning") != eraseWarning { eraseWarning = text("eraseWarning") }
+
+        let path = (Bridge.group("settings.appSettings")["logSavePath"] as? String) ?? ""
+        if path != savePath { savePath = path }
+        if !status.isEmpty { status = "" }
     }
 
     func refresh() {
@@ -60,23 +76,10 @@ final class LogDownloadStore: ObservableObject, Probeable {
         reload()
     }
 
-    var canRefresh: Bool {
-        LogDownloadRules.canRefresh(connected: connected,
-                                    requestingList: requestingList, downloading: downloading)
-    }
-
     var canDownload: Bool {
-        LogDownloadRules.canDownload(requestingList: requestingList, downloading: downloading)
+        LogEntry.canDownload(requestingList: requestingList, downloading: downloading)
     }
 
-    var canCancel: Bool {
-        LogDownloadRules.canCancel(requestingList: requestingList, downloading: downloading)
-    }
-
-    var canErase: Bool {
-        LogDownloadRules.canErase(count: logs.count,
-                                  requestingList: requestingList, downloading: downloading)
-    }
 
     func probeState() -> [String: Any] {
         ["count": logs.count, "requestingList": requestingList, "savePath": savePath,
