@@ -48,12 +48,14 @@ data class SettingsGroup(val path: String, val title: String)
 
 const val LINKS_GROUP_PATH = "links"
 const val UNITS_GROUP_PATH = "settings.unitsSettings"
+const val RC_CONTROLS_GROUP_PATH = "settings.flyViewSettings.rcControls"
 
 val SETTINGS_GROUPS = listOf(
     SettingsGroup(LINKS_GROUP_PATH, "Comm Links"),
     SettingsGroup(UNITS_GROUP_PATH, "Units"),
     SettingsGroup("settings.videoSettings", "Video"),
     SettingsGroup("settings.flyViewSettings", "Fly View"),
+    SettingsGroup(RC_CONTROLS_GROUP_PATH, "On-screen RC controls"),
     SettingsGroup("settings.planViewSettings", "Plan View"),
     SettingsGroup("settings.mapsSettings", "Maps"),
     SettingsGroup("settings.batteryIndicatorSettings", "Battery"),
@@ -85,6 +87,8 @@ fun SettingsScreen(modifier: Modifier = Modifier) {
             LinksScreen(Modifier.fillMaxSize())
         } else if (current.path == UNITS_GROUP_PATH) {
             UnitsPage(Modifier.fillMaxSize())
+        } else if (current.path == RC_CONTROLS_GROUP_PATH) {
+            RcControlsEditor(Modifier.fillMaxSize())
         } else {
             FactList(current.path, Modifier.fillMaxSize())
         }

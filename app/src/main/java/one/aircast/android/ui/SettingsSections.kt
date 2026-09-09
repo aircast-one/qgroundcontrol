@@ -9,10 +9,10 @@ internal const val OTHER_SECTION = "Other"
 internal val INTERNAL_FACTS = setOf(
     "firstRunPromptIdsShown",
     "instrumentQmlFile2",
+    "rcControls",
 )
 
 internal val DESKTOP_ONLY_FACTS = mapOf(
-    "rcControls" to "on-screen RC controls",
     "extraVideoSources" to "additional cameras",
 )
 
