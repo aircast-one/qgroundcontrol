@@ -2153,6 +2153,24 @@ A path staged as deleted while it is still on disk is the tell, and nothing look
 before the check — the working tree was correct, the commits were correct, and only the index
 disagreed.
 
+**The cause is the private index itself, not another session.** A commit built in a private
+`GIT_INDEX_FILE` never tells the shared index about the files it added, so every new file
+lands in the shared index as a deletion the moment the commit exists. Watched it happen twice
+more: committing the RC controls editor left its two new files staged as deleted, and
+committing the extra-cameras editor left its three. Nobody did anything wrong; it is what
+`read-tree HEAD` into a private index means.
+
+So the reset is not an emergency measure, it is the second half of committing:
+
+```
+unset GIT_INDEX_FILE
+git reset -q HEAD -- <the paths the commit added>
+```
+
+Leave it out and the deletions accumulate until someone commits through the shared index and
+takes them all with them, which is exactly the state the first check found: nine files, from
+five earlier commits, all staged for deletion at once.
+
 ### The watcher after signal binding: half the cost, and why only a fifth of the paths
 
 `c5fd6e918` binds a watched path that resolves to a `Fact` to its `rawValueChanged` and stops
