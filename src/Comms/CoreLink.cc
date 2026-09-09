@@ -84,6 +84,7 @@ QByteArray CoreLink::configJson(const LinkConfiguration *config)
         { QStringLiteral("name"), config->name() },
         { QStringLiteral("auto"), config->isAutoConnect() },
         { QStringLiteral("highLatency"), config->isHighLatency() },
+        { QStringLiteral("viaLinkManager"), true },
     };
     if (const UDPConfiguration *const udp = qobject_cast<const UDPConfiguration *>(config)) {
         QJsonArray hosts;

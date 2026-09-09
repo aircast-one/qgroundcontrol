@@ -227,7 +227,8 @@ pub fn open(transports: &Mutex<Transports>, config: LinkConfig, reserved_udp_por
 
 pub fn open_json(transports: &Mutex<Transports>, json: &str, reserved_udp_ports: &[u16]) -> Result<LinkId, String> {
     let value: Value = serde_json::from_str(json).map_err(|e| format!("not JSON: {e}"))?;
-    open(transports, linkconfig::from_json(&value)?, reserved_udp_ports)
+    let via_link_manager = value.get("viaLinkManager").and_then(Value::as_bool).unwrap_or(false);
+    open(transports, linkconfig::from_json(&value)?, if via_link_manager { &[] } else { reserved_udp_ports })
 }
 
 pub fn host_bytes(transports: &Mutex<Transports>, id: LinkId, bytes: &[u8]) {
@@ -413,6 +414,8 @@ mod tests {
         assert!(open_json(&transports, r#"{"kind":"udp","name":"Clash","port":14550,"hosts":[]}"#, &[14550]).unwrap_err().contains("starve"));
         assert!(open_json(&transports, r#"{"kind":"tcp","name":"T","host":"127.0.0.1","port":1}"#, &[]).is_err());
         assert_eq!(transports.lock().unwrap().snapshot()["links"].as_array().unwrap().len(), 1, "failed opens leave no entry");
+        let managed = open_json(&transports, r#"{"kind":"udp","name":"Managed","port":0,"hosts":[],"viaLinkManager":true}"#, &[14550]).unwrap();
+        assert!(close(&transports, managed, "done"));
     }
 
     #[test]
