@@ -1080,7 +1080,7 @@ exists natively today:
 | arm / takeoff / land / RTL | **`FlightActions`** | slide-to-confirm; arm and mode report refusals |
 | vehicle messages / warnings | **`VehicleMessageBanner`** | prearm text, unhealthy sensor, not-ready-to-fly, and no-GPS-lock |
 | status (sats, HDOP) | **`StatusStrip`** | |
-| `PipView` map/video swap | **partial** | inset expands and collapses with the overlays kept over it; still not a *swap* — the map cannot become the inset |
+| `PipView` map/video swap | **built** | either view can be the small one; the inset is the control and the main view is not |
 | `CameraControlLayer` | **built** | selection, mode and shutter, all verified on the wire |
 | `VideoTilesLayer` | **built, as a source picker** | the streams the core lists, and switching between them; the tile grid, dock and tuck belong to the overlay rig |
 | `RcControlsLayer` | **built** | renders the configured controls and sends `setRcChannelOverride`; editing the list is still desktop-only |
@@ -1818,6 +1818,26 @@ afterwards. It is still a latent trap for whoever composes two maps first.
 `video.cameraName(slot)`, a source configured as "Thermal" reads as Thermal and an unnamed
 one still reads "Camera 1". Confirmed on the handset against the same two-source ini, which
 was restored afterwards.
+
+### The inset swaps
+
+With the map native, the thing that blocked a real `PipView` is gone. Tapping the video inset
+puts video full screen and the *map* in the corner; tapping the map inset puts it back. Both
+composables keep their position in the composition and only their modifier changes, so
+neither the `MapView` nor the video `SurfaceView` is torn down and rebuilt by a swap — the
+draw order is settled with `zIndex` instead, which is also what makes the corner view take the
+touch.
+
+**The inset is the control; the main view is not.** Before, a tap anywhere on full-screen
+video collapsed it, which in flight means any stray touch throws away the picture you were
+looking at, and a close button in the corner existed to give the gesture a visible partner.
+Now only the corner responds — on either view — which is the convention every picture-in-
+picture uses, so the close button is gone rather than sitting under the map inset fighting it
+for the same corner.
+
+The map's camera inset is dropped to zero while it is the small view: the flight-controls
+panel does not cover a corner inset, and padding a 190 dp box by the height of that panel
+would push the aircraft out of it entirely.
 
 ## Phase 6 — Shell · 2 weeks
 
