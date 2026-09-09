@@ -1,72 +1,65 @@
 import Foundation
 
 struct TerrainPoint: Equatable {
-    let distance: Double
+    let x: Double
     let missionAltitude: Double
     let terrainAltitude: Double?
     let collision: Bool
+
+    init?(_ json: Any?) {
+        guard let json = json as? [String: Any],
+              let x = (json["x"] as? NSNumber)?.doubleValue,
+              let mission = (json["missionAltitude"] as? NSNumber)?.doubleValue else { return nil }
+        self.x = x
+        missionAltitude = mission
+        terrainAltitude = (json["terrainAltitude"] as? NSNumber)?.doubleValue
+        collision = (json["collision"] as? NSNumber)?.boolValue ?? false
+    }
 }
 
 struct TerrainProfile: Equatable {
     let points: [TerrainPoint]
     let minAltitude: Double
     let maxAltitude: Double
-    let totalDistance: Double
     let unknownTerrain: Int
-    var distanceMeasure = Measure.metres
-    var altitudeMeasure = Measure.metres
+    let usable: Bool
+    let groundKnown: Bool
+    let hasCollision: Bool
+    let distanceText: String
+    let lowestText: String
+    let highestText: String
 
-    static let empty = TerrainProfile(points: [], minAltitude: 0, maxAltitude: 0,
-                                      totalDistance: 0, unknownTerrain: 0)
+    static let empty = TerrainProfile()
 
-    var distanceText: String {
-        String(format: "%.0f %@", distanceMeasure.convert(totalDistance), distanceMeasure.suffix)
+    private init() {
+        points = []
+        minAltitude = 0
+        maxAltitude = 0
+        unknownTerrain = 0
+        usable = false
+        groundKnown = false
+        hasCollision = false
+        distanceText = ""
+        lowestText = ""
+        highestText = ""
     }
 
-    var lowestText: String {
-        String(format: "%.0f %@", altitudeMeasure.convert(minAltitude), altitudeMeasure.suffix)
+    init(_ json: [String: Any]) {
+        func flag(_ name: String) -> Bool { (json[name] as? NSNumber)?.boolValue ?? false }
+        func text(_ name: String) -> String { (json[name] as? String) ?? "" }
+        points = ((json["points"] as? [Any]) ?? []).compactMap(TerrainPoint.init)
+        minAltitude = (json["minAltitudeMeters"] as? NSNumber)?.doubleValue ?? 0
+        maxAltitude = (json["maxAltitudeMeters"] as? NSNumber)?.doubleValue ?? 0
+        unknownTerrain = (json["unknownTerrain"] as? NSNumber)?.intValue ?? 0
+        usable = flag("usable")
+        groundKnown = flag("groundKnown")
+        hasCollision = flag("hasCollision")
+        distanceText = text("distanceText")
+        lowestText = text("lowestText")
+        highestText = text("highestText")
     }
 
-    var highestText: String {
-        String(format: "%.0f %@", altitudeMeasure.convert(maxAltitude), altitudeMeasure.suffix)
-    }
-
-    init(points: [TerrainPoint]) {
-        self.points = points
-        unknownTerrain = points.filter { $0.terrainAltitude == nil }.count
-        totalDistance = points.map(\.distance).max() ?? 0
-
-        let altitudes = points.map(\.missionAltitude) + points.compactMap(\.terrainAltitude)
-        let low = altitudes.min() ?? 0
-        let high = altitudes.max() ?? 0
-        // A flat mission over flat ground has no range at all, which would divide by zero
-        // when placing a point; give it a band so the lines stay inside the plot.
-        let padding = max((high - low) * 0.2, 5)
-        minAltitude = low - padding
-        maxAltitude = high + padding
-    }
-
-    private init(points: [TerrainPoint], minAltitude: Double, maxAltitude: Double,
-                 totalDistance: Double, unknownTerrain: Int) {
-        self.points = points
-        self.minAltitude = minAltitude
-        self.maxAltitude = maxAltitude
-        self.totalDistance = totalDistance
-        self.unknownTerrain = unknownTerrain
-    }
-
-    var hasCollision: Bool { points.contains(where: \.collision) }
-
-    var usable: Bool { points.count > 1 && maxAltitude > minAltitude }
-
-    // Drawing the ground across only the points that have terrain puts a line under part
-    // of the mission and nothing under the rest, which reads as ground that stops.
-    var groundKnown: Bool { unknownTerrain == 0 && points.count > 1 }
-
-    func x(_ point: TerrainPoint, width: Double) -> Double {
-        guard totalDistance > 0 else { return 0 }
-        return point.distance / totalDistance * width
-    }
+    func x(_ point: TerrainPoint, width: Double) -> Double { point.x * width }
 
     func y(_ altitude: Double, height: Double) -> Double {
         let span = maxAltitude - minAltitude

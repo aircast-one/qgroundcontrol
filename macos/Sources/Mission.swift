@@ -42,6 +42,7 @@ final class MissionStore: ObservableObject, Probeable, WriteReporting {
     @Published var focus: MapFrame?
     @Published var centreMenuOpen = false
     @Published private(set) var scaleBar = MapScaleBar.none
+    @Published private(set) var terrain = TerrainProfile.empty
 
     private var undoPoll: Timer?
 
@@ -77,6 +78,8 @@ final class MissionStore: ObservableObject, Probeable, WriteReporting {
         if file != planFile { planFile = file }
         let bar = MissionMap.lastScale["plan"] ?? .none
         if bar != scaleBar { scaleBar = bar }
+        let profile = TerrainProfile(Bridge.group("view.terrainProfile"))
+        if profile != terrain { terrain = profile }
         let mode = AltitudeMode.read(controller["globalAltitudeMode"])
         if mode != globalAltitudeMode { globalAltitudeMode = mode }
 
@@ -318,18 +321,6 @@ final class MissionStore: ObservableObject, Probeable, WriteReporting {
         guard PolygonEdit.splits(index, in: polygon) else { return }
         Bridge.invoke("\(polygon.path).\(polygon.splitInvokable)", [index])
         reload()
-    }
-
-    var terrain: TerrainProfile {
-        var profile = TerrainProfile(points: items.filter(\.hasPosition).map {
-            TerrainPoint(distance: $0.distanceFromStart,
-                         missionAltitude: $0.amslAltitude ?? 0,
-                         terrainAltitude: $0.terrainAltitude,
-                         collision: $0.terrainCollision)
-        })
-        profile.distanceMeasure = AppUnits.measure(AppUnits.horizontal)
-        profile.altitudeMeasure = AppUnits.measure(AppUnits.vertical)
-        return profile
     }
 
     func move(sequence: Int, latitude: Double, longitude: Double) {
@@ -778,7 +769,7 @@ final class MissionStore: ObservableObject, Probeable, WriteReporting {
          "terrain": ["points": terrain.points.count, "usable": terrain.usable,
                      "collision": terrain.hasCollision,
                      "unknown": terrain.unknownTerrain,
-                     "distance": terrain.totalDistance,
+                     "distance": terrain.distanceText,
                      "min": terrain.minAltitude, "max": terrain.maxAltitude],
          "items": items.prefix(8).map {
              ["seq": $0.sequence, "command": $0.command, "selected": $0.isCurrent,

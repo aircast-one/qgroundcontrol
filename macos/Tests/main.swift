@@ -489,42 +489,56 @@ func checkLogEntry() {
 checkLogEntry()
 
 func checkTerrainProfile() {
-    let profile = TerrainProfile(points: [
-        TerrainPoint(distance: 0, missionAltitude: 585, terrainAltitude: 585, collision: false),
-        TerrainPoint(distance: 300, missionAltitude: 627, terrainAltitude: 590, collision: false),
-        TerrainPoint(distance: 570, missionAltitude: 627, terrainAltitude: 640, collision: true),
-    ])
-    expect(profile.usable, "three placed points make a profile")
-    expect(profile.hasCollision, "a point below terrain is a collision")
-    expect(profile.unknownTerrain == 0, "every point here has terrain")
-    expect(profile.totalDistance == 570, "the profile spans the furthest point")
-    expect(profile.minAltitude < 585, "the band leaves room below the lowest altitude")
-    expect(profile.maxAltitude > 640, "and above the highest")
+    func point(_ x: Double, _ mission: Double, _ terrain: Any = 585.0 as NSNumber,
+               _ collision: Bool = false) -> [String: Any] {
+        ["x": x as NSNumber, "missionAltitude": mission as NSNumber, "terrainAltitude": terrain,
+         "collision": collision as NSNumber]
+    }
+    func profile(_ overrides: [String: Any]) -> TerrainProfile {
+        TerrainProfile(["usable": true as NSNumber, "groundKnown": true as NSNumber,
+                        "hasCollision": false as NSNumber, "unknownTerrain": 0 as NSNumber,
+                        "minAltitudeMeters": 570.0 as NSNumber,
+                        "maxAltitudeMeters": 660.0 as NSNumber,
+                        "distanceText": "570 m", "lowestText": "570 m", "highestText": "660 m",
+                        "points": [point(0, 585), point(0.5, 627, 590.0 as NSNumber),
+                                   point(1, 627, 640.0 as NSNumber, true)]]
+            .merging(overrides) { _, new in new })
+    }
 
-    expect(profile.x(profile.points[2], width: 100) == 100, "the last point sits at the right edge")
-    expect(profile.x(profile.points[0], width: 100) == 0, "the first sits at the left")
-    let top = profile.y(profile.maxAltitude, height: 50)
-    let bottom = profile.y(profile.minAltitude, height: 50)
+    let drawn = profile([:])
+    expect(drawn.usable, "the core says three placed points make a profile")
+    expect(drawn.points.count == 3, "and all three decode")
+    expect(drawn.distanceText, "570 m", "the span is the core's sentence in the operator's units")
+    expect(drawn.lowestText, "570 m", "and so is the floor of the band")
+    expect(drawn.highestText, "660 m", "and its ceiling")
+
+    expect(drawn.x(drawn.points[2], width: 100) == 100,
+           "the core sends x as a share of the span, so the last point sits at the right edge")
+    expect(drawn.x(drawn.points[0], width: 100) == 0, "the first sits at the left")
+    let top = drawn.y(drawn.maxAltitude, height: 50)
+    let bottom = drawn.y(drawn.minAltitude, height: 50)
     expect(abs(top) < 0.001, "the highest altitude maps to the top of the plot")
     expect(abs(bottom - 50) < 0.001, "the lowest maps to the bottom")
+    expect(profile(["minAltitudeMeters": 100.0 as NSNumber,
+                    "maxAltitudeMeters": 100.0 as NSNumber]).y(100, height: 50) == 25,
+           "a band of no range puts the line down the middle rather than dividing by zero")
 
-    let flat = TerrainProfile(points: [
-        TerrainPoint(distance: 0, missionAltitude: 100, terrainAltitude: 100, collision: false),
-        TerrainPoint(distance: 10, missionAltitude: 100, terrainAltitude: 100, collision: false),
-    ])
-    expect(flat.usable, "a flat mission over flat ground still plots")
-    expect(flat.maxAltitude > flat.minAltitude, "and is given a band rather than zero range")
+    expect(TerrainPoint(point(0.5, 100, NSNull()))?.terrainAltitude == nil,
+           "a point over unmapped ground keeps its altitude missing rather than sinking to zero, "
+           + "which would draw the ground at sea level")
+    expect(TerrainPoint(["x": 0.5 as NSNumber, "terrainAltitude": 90.0 as NSNumber]) == nil,
+           "a point the core sent without a mission altitude is dropped, as QGC drops a segment "
+           + "whose AMSL altitude is not a number")
+    expect(TerrainPoint(point(0.5, 100)) != nil, "while a complete point decodes")
 
-    let unknown = TerrainProfile(points: [
-        TerrainPoint(distance: 0, missionAltitude: 100, terrainAltitude: nil, collision: false),
-        TerrainPoint(distance: 5, missionAltitude: 100, terrainAltitude: 90, collision: false),
-    ])
-    expect(unknown.unknownTerrain == 1, "a point with no terrain data is counted")
-    expect(!unknown.groundKnown, "a partly known ground is not drawn as if it were the ground")
-    expect(profile.groundKnown, "a fully known ground is drawn")
+    expect(profile(["unknownTerrain": 1 as NSNumber]).unknownTerrain == 1,
+           "the count of points over unmapped ground is the core's")
+    expect(!profile(["groundKnown": false as NSNumber]).groundKnown,
+           "a partly known ground is not drawn as if it were the ground")
+    expect(profile(["hasCollision": true as NSNumber]).hasCollision, "a collision is reported")
 
     expect(!TerrainProfile.empty.usable, "an empty profile is not drawn")
-    expect(TerrainProfile(points: []).totalDistance == 0, "no points span no distance")
+    expect(TerrainProfile([:]).points.isEmpty, "and a read that returned nothing plots nothing")
 }
 
 checkTerrainProfile()
@@ -1974,7 +1988,6 @@ checkInstrumentStorage()
 
 checkGuidedOffers()
 checkViewContract()
-checkTerrainUnits()
 checkMotorTest()
 checkMapClick()
 checkMapCentre()
@@ -2056,23 +2069,6 @@ func checkLaunchAltitudeIsNotListedTwice() {
     expect(facts.first?.title ?? "", "Hold", "the item's own facts are still listed")
 }
 
-func checkTerrainUnits() {
-    let points = [
-        TerrainPoint(distance: 0, missionAltitude: 600, terrainAltitude: 536, collision: false),
-        TerrainPoint(distance: 7047, missionAltitude: 660, terrainAltitude: 640, collision: false),
-    ]
-    let metric = TerrainProfile(points: points)
-    expect(metric.distanceText, "7047 m", "the profile says how far the mission runs")
-    expect(metric.lowestText, "511 m", "and the band it draws between")
-    expect(metric.highestText, "685 m", "at both ends")
-
-    var feet = TerrainProfile(points: points)
-    feet.distanceMeasure = Measure(units: "ft", factor: 3.28084)
-    feet.altitudeMeasure = Measure(units: "ft", factor: 3.28084)
-    expect(feet.distanceText, "23120 ft", "on feet it converts rather than labelling metres as feet")
-    expect(feet.lowestText, "1677 ft", "and so do the axis labels")
-    expect(feet.highestText, "2247 ft", "at both ends")
-}
 
 
 func checkMotorTest() {
@@ -2503,6 +2499,9 @@ func checkViewContract() {
          ["index", "path", "latitude", "longitude", "altitude", "altitudeUnits", "altitudePath"]),
         ("view.links", [], ["available", "links", "configured", "linkTypes", "baudRates"]),
         ("view.mapScale(120)", [], ["available", "text", "fraction"]),
+        ("view.terrainProfile", [],
+         ["usable", "groundKnown", "hasCollision", "unknownTerrain", "minAltitudeMeters",
+          "maxAltitudeMeters", "distanceText", "lowestText", "highestText", "points"]),
         ("view.links", ["configured"],
          ["index", "path", "name", "type", "typeLabel", "editing", "displaySummary", "connected",
           "autoConnect", "host", "port", "portName", "baud", "filename", "logFileName",
@@ -2610,6 +2609,8 @@ func checkViewContract() {
         ("view.camera", [], ["title", "modeText", "stateText", "storageText", "shotsText"]),
         ("view.links", ["configured"], ["name", "typeLabel", "displaySummary"]),
         ("view.mapScale(120)", [], ["text"]),
+        ("view.terrainProfile", [],
+         ["distanceText", "lowestText", "highestText", "minAltitudeMeters", "maxAltitudeMeters"]),
     ]
     neverNull.forEach { view, inner, keys in
         let place = inner.isEmpty ? view : "\(view).\(inner.joined(separator: "."))"

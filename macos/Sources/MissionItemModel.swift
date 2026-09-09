@@ -11,10 +11,6 @@ struct MissionItem: Identifiable, Equatable {
     let isCurrent: Bool
     let specifiesAltitude: Bool
     let isLaunch: Bool
-    let distanceFromStart: Double
-    let amslAltitude: Double?
-    let terrainAltitude: Double?
-    let terrainCollision: Bool
     let commandId: Int
     let isSimpleItem: Bool
     let specifiesCoordinate: Bool
@@ -44,10 +40,6 @@ struct MissionItem: Identifiable, Equatable {
         specifiesAltitude = (json["specifiesAltitude"] as? NSNumber)?.boolValue ?? false
         isLaunch = (json["isTakeoffItem"] as? NSNumber)?.boolValue ?? false
             || (json["homePosition"] as? NSNumber)?.boolValue ?? false
-        distanceFromStart = (json["distanceFromStart"] as? NSNumber)?.doubleValue ?? 0
-        amslAltitude = (json["amslEntryAlt"] as? NSNumber)?.doubleValue
-        terrainAltitude = (json["terrainAltitude"] as? NSNumber)?.doubleValue
-        terrainCollision = (json["terrainCollision"] as? NSNumber)?.boolValue ?? false
         commandId = (json["command"] as? NSNumber)?.intValue ?? 0
         isSimpleItem = (json["isSimpleItem"] as? NSNumber)?.boolValue ?? false
         specifiesCoordinate = (json["specifiesCoordinate"] as? NSNumber)?.boolValue ?? true
