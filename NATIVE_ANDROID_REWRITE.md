@@ -1087,7 +1087,7 @@ exists natively today:
 | `ObstacleDistanceOverlay` (map and video) | **built, in another form** | a sentence — "3.2 m right" — rather than a proximity ring |
 | `FlyViewToolStrip` + action list | **built, as an Actions sheet** | the checklist plus pause, gripper, emergency stop, mission start/continue, land abort; Viewer3D dropped |
 | `GuidedValueSlider` | **built** | altitude, speed, takeoff height, and pause all read their range from the core |
-| `DetectionOverlayVideo` | **missing** | |
+| `DetectionOverlayVideo` | **built, live half unexercised** | draws `view.detections` over the painted video; no rig here can produce a feed |
 | `FlyViewCustomLayer` | **dropped** | a placeholder for downstream forks to override; nothing to port |
 | `OverlayGlass` / `OverlayRig` / `FlyViewInsetViewer` | **partly replaced** | Compose does the layout; what remains of the rig's job is the camera inset, and the bottom one is fed from the measured controls panel |
 | `Viewer3D` | **dropped** | decided in Phase 2; goes with `FlyView.qml` |
@@ -2056,6 +2056,30 @@ status from before the call and compares fresh reads against it. All three have 
 shape — fixed expectation, live observation — and the arm button was the only one with it
 backwards. The tell to look for is a Compose state delegate read *inside* a predicate that
 polls, rather than a value captured before the polling starts.
+
+### Detection boxes, and the last Fly surface
+
+`DetectionOverlayVideo.qml` parsed the RTSP URL itself, polled the agent at 10 Hz and dropped
+boxes older than a second — product logic, in a head, duplicated per head. It is now
+`view.detections` in the core, following the agent's SSE stream rather than polling, so the
+head gets an event per frame, per error, and once when the feed goes stale, and needs no timer.
+The overlay draws the boxes normalised to the painted video rect, marks the tracked one in a
+second colour, captions each with its label and confidence, and shows the core's `error`
+in a corner chip — but only when the feed is configured, so a vehicle with no detection agent
+sees nothing rather than a complaint.
+
+**The live half is unexercised and this is not a screen an empty result can vouch for.** The
+overlay only mounts while video is decoding, and nothing on this rig produces a stream, so a
+blank video area is exactly what a broken overlay would also look like. What is checked is the
+decode of the core's shape, the stale and unconfigured gates, the trouble message and the
+caption — five unit tests — plus a device pass confirming the Fly tab is unaffected by
+mounting it.
+
+**The endpoint's port is what makes it unverifiable here.** The core builds
+`http://<host>/api/streams/<camera>/detections/stream` with no port, so standing up a fake feed
+means binding port 80, which on this machine needs root. With a port in the URL — or a
+configurable one — any rig could serve boxes on 8080 and watch them move. Raised with the core
+session as a testability note rather than a defect.
 
 ## Phase 6 — Shell · 2 weeks
 
