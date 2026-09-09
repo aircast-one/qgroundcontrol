@@ -962,7 +962,11 @@ QString invoke(const QString &path, const QString &argsJson)
 
 void watch(const QStringList &paths)
 {
-    postToQtThread([paths]() { watcher()->setPaths(paths); });
+    QCoreApplication *const app = QCoreApplication::instance();
+    if (!app) {
+        return;
+    }
+    QMetaObject::invokeMethod(app, [paths]() { watcher()->setPaths(paths); }, Qt::QueuedConnection);
 }
 
 void setEventHandler(EventHandler handler)
