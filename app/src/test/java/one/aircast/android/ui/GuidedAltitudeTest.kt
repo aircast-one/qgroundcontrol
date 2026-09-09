@@ -48,4 +48,9 @@ class GuidedAltitudeTest {
         assertEquals("view.guidedAltitude(68.50)", guidedAltitudePath(68.5))
         assertFalse(guidedAltitudePath(68.5).contains(","))
     }
+
+    @Test
+    fun `a pause asks the core for the pause intent`() {
+        assertEquals("view.guidedAltitude(25.00,pause)", guidedAltitudePath(25.0, pause = true))
+    }
 }

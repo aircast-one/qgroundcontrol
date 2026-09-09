@@ -391,7 +391,9 @@ fun FlightActions(modifier: Modifier = Modifier) {
         var probe by remember(altitudeTarget != null) { mutableStateOf<GuidedAltitude?>(null) }
         LaunchedEffect(altitudeSettled) {
             val at = altitudeSettled ?: return@LaunchedEffect
-            probe = withContext(Dispatchers.Default) { guidedAltitude(Qgc.get(guidedAltitudePath(at))) }
+            probe = withContext(Dispatchers.Default) {
+                guidedAltitude(Qgc.get(guidedAltitudePath(at, altitudePauses)))
+            }
         }
         AlertDialog(
             onDismissRequest = { altitudeTarget = null },
@@ -410,14 +412,14 @@ fun FlightActions(modifier: Modifier = Modifier) {
             },
             confirmButton = {
                 TextButton(
-                    enabled = altitudePauses || probe?.sends == true,
+                    enabled = probe?.sends == true,
                     onClick = {
                         altitudeTarget = null
                         val pauses = altitudePauses
                         offMainDetached {
-                            val fresh = guidedAltitude(Qgc.get(guidedAltitudePath(target)))
-                            if (pauses || fresh?.sends == true) {
-                                Qgc.invoke("vehicle.guidedModeChangeAltitude", fresh?.deltaMeters ?: 0.0, pauses)
+                            val fresh = guidedAltitude(Qgc.get(guidedAltitudePath(target, pauses)))
+                            if (fresh?.sends == true) {
+                                Qgc.invoke("vehicle.guidedModeChangeAltitude", fresh.deltaMeters, pauses)
                             }
                         }
                     },
