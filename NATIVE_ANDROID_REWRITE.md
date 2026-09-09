@@ -2338,6 +2338,28 @@ is the commit. That is mildly surprising and deliberately kept: on a screen wher
 can change how an aircraft behaves, an explicit tap is worth the friction, and QGroundControl's
 own desktop parameter editor asks for one too.
 
+### The setup screen, reviewed
+
+The job is to get an airframe configured and to know what is still missing. This screen does
+the second half unusually well: it opens with "Not ready to fly", names the airframe and
+firmware, counts what is outstanding, and lists the blocking items above the full list. That is
+the error-summary-then-detail shape, and the duplication of Radio in both sections is the
+pattern working rather than a mistake.
+
+The Radio page underneath is a monitor: the four attitude controls with their mapping, a live
+eight-channel PWM display, and a footnote saying calibration stays on the desktop because it
+needs you holding each stick at its extremes while watching the aircraft. On the sim the
+mapping reads "Not mapped" four times and the channels move, which is exactly what an operator
+needs to see to know their transmitter is reaching the vehicle.
+
+**One finding, reported rather than fixed.** The list badges Radio "Needs setup" — it is the
+one item blocking flight — and tapping it opens a page that cannot resolve it. The page says so
+plainly once you are there, and the list already has an "On desktop" badge for components with
+no native page at all. What is missing is the third state: a native page that monitors but
+cannot complete. Adding it means a new flag in the setup page table, and that table and the
+screen around it belong to another session's work in progress, so this is a note rather than a
+patch. The cost today is one tap and a corrected expectation, on a page worth opening anyway.
+
 ## Phase 6 — Shell · 2 weeks
 
 Cheaper than macOS, because Qt is already off the main thread.
