@@ -2482,6 +2482,17 @@ near-identical in shape, which is two occurrences and therefore not yet a shared
 app before sending input, not after. `am start` returns before the window is up, and a tap sent
 into that gap lands in whatever the user had open.
 
+A rule nobody can forget beats a rule written down, so it is `tools/ui.sh` now. `front` brings
+the app up and waits for it, with a timeout and a non-zero exit rather than a guess; `tap`,
+`swipe`, `text` and `key` each check `topResumedActivity` and refuse if it is not the app;
+`shot` fails a capture too small to be a live screen. Verified both ways — with the app stopped
+a tap is refused and exits 1, and with it in front the same tap lands.
+
+`regress.sh` goes through it now, so every tap in the regression is guarded, and the whole run
+is green through the new path: Fly, the Actions sheet, Vibration, Log Download, Settings and
+back, with the sim confirming its statustexts, the log list request and both camera
+components.
+
 ## Phase 6 — Shell · 2 weeks
 
 Cheaper than macOS, because Qt is already off the main thread.
