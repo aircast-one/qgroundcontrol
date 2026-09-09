@@ -51,7 +51,9 @@ final class GuidedStore: ObservableObject, Probeable, WriteReporting {
         let argument = target.map { "(\($0))" } ?? ""
         switch action {
         case .takeoff: return Bridge.group("view.guidedTakeoff\(argument)")
-        case .changeAltitude, .pause: return Bridge.group("view.guidedAltitude\(argument)")
+        case .changeAltitude: return Bridge.group("view.guidedAltitude\(argument)")
+        case .pause:
+            return Bridge.group("view.guidedAltitude\(target.map { "(\($0),pause)" } ?? "")")
         case .changeSpeed: return Bridge.group("view.guidedSpeed\(argument)")
         default: return [:]
         }
