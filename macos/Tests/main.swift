@@ -1292,8 +1292,7 @@ func checkSurveyStats() {
         SurveyStats(["available": true as NSNumber, "shotsText": "1043",
                      "intervalText": "0.8 s", "footprintText": "15.2 \u{00D7} 6.8 m",
                      "tooFast": false as NSNumber, "warning": "",
-                     "areaSquareMetres": 89999.17662726832 as NSNumber,
-                     "distanceMetres": 7261.4 as NSNumber]
+                     "areaText": "89999 m\u{00B2}", "distanceText": "7261 m"]
             .merging(overrides) { _, new in new })
     }
 
@@ -1304,28 +1303,14 @@ func checkSurveyStats() {
     expect(live.shotsText, "1043", "the photo count is the core's")
     expect(live.intervalText, "0.8 s", "so is the interval")
     expect(live.footprintText, "15.2 \u{00D7} 6.8 m", "and each photo's ground footprint")
-
     expect(live.areaText, "89999 m\u{00B2}",
-           "the area is still formatted here, because QGC's formatMeasure writes m\u{00B2} where "
-           + "the settings string says m^2 and the core does not make that replacement yet")
+           "the area is the core's sentence too, superscript and all, since b607aa049 gave it "
+           + "QGC's formatMeasure rules")
     expect(live.distanceText, "7261 m", "and the distance alongside it")
 
-    var feet = stats(["areaSquareMetres": 100.0 as NSNumber, "distanceMetres": 100.0 as NSNumber])
-    feet.areaMeasure = Measure(units: "ft^2", factor: 10.7639)
-    feet.distanceMeasure = Measure(units: "ft", factor: 3.28084)
-    expect(feet.areaText, "1076 ft\u{00B2}", "on feet the area converts and carries its own unit")
-    expect(feet.distanceText, "328 ft", "so does the distance")
-
-    var small = stats(["areaSquareMetres": 9.0 as NSNumber, "distanceMetres": 40.0 as NSNumber])
-    small.areaMeasure = .squareMetres
-    small.distanceMeasure = .metres
-    expect(small.areaText, "9.0 m\u{00B2}",
-           "below a hundred QGC's formatMeasure keeps a tenth, which the core's plain %.0f drops")
-    expect(small.distanceText, "40.0 m", "on both measures")
-
-    let empty = stats(["areaSquareMetres": 0.0 as NSNumber, "distanceMetres": 0.0 as NSNumber])
-    expect(empty.areaText, "\u{2014}", "no area is not zero area")
-    expect(empty.distanceText, "\u{2014}", "nor is no distance")
+    let absent = stats(["areaText": "\u{2014}", "distanceText": "\u{2014}"])
+    expect(absent.areaText, "\u{2014}", "no area is not zero area")
+    expect(absent.distanceText, "\u{2014}", "nor is no distance")
 
     let strained = stats(["tooFast": true as NSNumber,
                           "warning": "The camera needs 2.00 s between shots but the survey asks "
@@ -2488,7 +2473,7 @@ func checkViewContract() {
         ("view.missionSeed(survey,47,8)", [], ["property", "points"]),
         ("view.surveyStats(0)", [],
          ["available", "shotsText", "intervalText", "footprintText", "tooFast", "warning",
-          "areaSquareMetres", "distanceMetres"]),
+          "areaText", "distanceText"]),
         ("view.missionSeed(survey,47,8)", ["points"], ["latitude", "longitude"]),
         ("view.links", ["configured"],
          ["index", "path", "name", "type", "typeLabel", "editing", "displaySummary", "connected",
@@ -2609,7 +2594,8 @@ func checkViewContract() {
         ("view.terrainProfile", [],
          ["distanceText", "lowestText", "highestText", "minAltitudeMeters", "maxAltitudeMeters"]),
         ("view.missionKinds", ["kinds"], ["title", "shapeNoun", "placementHint"]),
-        ("view.surveyStats(0)", [], ["shotsText", "intervalText", "footprintText", "warning"]),
+        ("view.surveyStats(0)", [],
+         ["shotsText", "intervalText", "footprintText", "warning", "areaText", "distanceText"]),
     ]
     neverNull.forEach { view, inner, keys in
         let place = inner.isEmpty ? view : "\(view).\(inner.joined(separator: "."))"

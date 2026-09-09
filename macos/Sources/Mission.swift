@@ -232,9 +232,7 @@ final class MissionStore: ObservableObject, Probeable, WriteReporting {
             if surveyStats != .none { surveyStats = .none }
             return
         }
-        var read = SurveyStats(Bridge.group("view.surveyStats(\(item.index))"))
-        read.areaMeasure = AppUnits.measure(AppUnits.area)
-        read.distanceMeasure = AppUnits.measure(AppUnits.horizontal)
+        let read = SurveyStats(Bridge.group("view.surveyStats(\(item.index))"))
         if read != surveyStats { surveyStats = read }
     }
 

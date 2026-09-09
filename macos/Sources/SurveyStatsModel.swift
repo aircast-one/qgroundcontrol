@@ -7,10 +7,8 @@ struct SurveyStats: Equatable {
     let footprintText: String
     let tooFast: Bool
     let warning: String
-    let areaSquareMetres: Double
-    let distanceMetres: Double
-    var areaMeasure = Measure.squareMetres
-    var distanceMeasure = Measure.metres
+    let areaText: String
+    let distanceText: String
 
     static let none = SurveyStats()
 
@@ -21,8 +19,8 @@ struct SurveyStats: Equatable {
         footprintText = ""
         tooFast = false
         warning = ""
-        areaSquareMetres = 0
-        distanceMetres = 0
+        areaText = ""
+        distanceText = ""
     }
 
     init(_ json: [String: Any]) {
@@ -33,20 +31,9 @@ struct SurveyStats: Equatable {
         footprintText = text("footprintText")
         tooFast = (json["tooFast"] as? NSNumber)?.boolValue ?? false
         warning = text("warning")
-        areaSquareMetres = (json["areaSquareMetres"] as? NSNumber)?.doubleValue ?? 0
-        distanceMetres = (json["distanceMetres"] as? NSNumber)?.doubleValue ?? 0
+        areaText = text("areaText")
+        distanceText = text("distanceText")
     }
 
     var describes: Bool { available }
-
-    // QGC's formatMeasure takes one decimal below a hundred and none above, and writes the
-    // area unit as m² rather than the m^2 the settings string carries. The core does
-    // neither yet, so these two texts stay here rather than regress the display.
-    var areaText: String {
-        areaSquareMetres > 0 ? areaMeasure.text(areaSquareMetres) : "\u{2014}"
-    }
-
-    var distanceText: String {
-        distanceMetres > 0 ? distanceMeasure.text(distanceMetres) : "\u{2014}"
-    }
 }
