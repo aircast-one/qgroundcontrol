@@ -350,7 +350,7 @@ struct FlyPanel: View {
                 } else {
                     ForEach(Array(fly.latestMessages.enumerated()), id: \.element.id) { row, message in
                         GroupRow(title: message.text,
-                                 description: message.time,
+                                 description: message.stamp,
                                  showSeparator: row > 0,
                                  titleLines: 2,
                                  leading: { Circle()

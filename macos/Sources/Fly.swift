@@ -135,7 +135,7 @@ final class FlyStore: ObservableObject, Probeable, WriteReporting {
         if reading != telemetry { telemetry = reading }
         if placed != position { position = placed }
 
-        let heard = VehicleMessage.parse((vehicle["formattedMessages"] as? String) ?? "")
+        let heard = VehicleMessage.list(Bridge.group("view.messages")["items"])
         if heard != messages { messages = heard }
 
         let flightModes = Bridge.group("view.flightModes")
@@ -246,7 +246,10 @@ final class FlyStore: ObservableObject, Probeable, WriteReporting {
          "checklistProgress": Preflight.progress(checklist, ticked: ticked),
          "checklistReady": Preflight.ready(checklist, ticked: ticked),
          "checklistBlocked": checklist.flatMap(\.checks).filter(\.blocked).map(\.name),
-         "messages": latestMessages.map { ["time": $0.time, "text": $0.text, "level": $0.level.rawValue] }]
+         "messages": latestMessages.map {
+             ["time": $0.time, "stamp": $0.stamp, "text": $0.text, "level": $0.level.rawValue,
+              "id": $0.id]
+         }]
     }
 
     func probeInvoke(action: String, args: [String: String]) -> [String: Any] {

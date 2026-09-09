@@ -1746,39 +1746,59 @@ checkFrameSetup()
 
 
 func checkVehicleMessages() {
-    let live = "<font style=\"<#E>\">[23:24:17.897 ] Critical: PreArm: GPS 1: not healthy</font><br/>"
-        + "<font style=\"<#N>\">[23:23:26.733 ] Info: Frame: QUAD/PLUS</font><br/>"
-        + "<font style=\"<#I>\">[23:23:26.733 ] Warning: something odd</font><br/>"
+    func item(_ time: String, _ level: String, _ severity: String, _ text: String,
+              component: Int? = nil) -> [String: Any] {
+        var made: [String: Any] = ["time": time, "level": level, "severity": severity, "text": text]
+        if let component { made["component"] = component as NSNumber }
+        return made
+    }
 
-    let parsed = VehicleMessage.parse(live)
-    expect(parsed.count == 3, "every message in the run is read, newest first")
-    expect(parsed[0].text, "PreArm: GPS 1: not healthy",
-           "the tags and the severity word go; the dot already says the level")
-    expect(VehicleMessage.withoutSeverity("PreArm: GPS 1: not healthy"), "PreArm: GPS 1: not healthy",
-           "a message whose first word merely ends in a colon keeps all of it")
-    expect(VehicleMessage.withoutSeverity("EMERGENCY: falling"), "falling",
-           "every severity QGC emits is stripped, not just the common ones")
-    expect(VehicleMessage.withoutSeverity("no colon at all"), "no colon at all",
-           "and a message without a colon is untouched")
-    expect(parsed[0].time, "23:24:17", "the stamp keeps the clock and drops the milliseconds")
-    expect(parsed[0].level == .error, "a critical message is an error")
-    expect(parsed[1].level == .normal, "an info message is not")
-    expect(parsed[2].level == .warning, "and a warning is its own level")
+    let read = VehicleMessage.list([
+        item("23:24:17.897", "error", "Critical", "PreArm: GPS 1: not healthy"),
+        item("23:23:26.733", "normal", "Info", "Frame: QUAD/PLUS", component: 1),
+        item("23:23:26.733", "warning", "Warning", "something odd"),
+    ])
+    expect(read.count == 3, "every message the core lists is carried across, newest first")
+    expect(read[0].text, "PreArm: GPS 1: not healthy",
+           "the core has already taken the tags and the severity word off the text")
+    expect(read[0].stamp, "23:24:17",
+           "the row shows the clock and drops the milliseconds, which is a rendering choice and "
+           + "the only reason this head still trims anything")
+    expect(read[0].level == .error, "a critical message is an error")
+    expect(read[1].level == .normal, "an info message is not")
+    expect(read[2].level == .warning, "and a warning is its own level")
+    expect(read[1].component == 1, "a message from a named component says which")
+    expect(read[0].component == nil, "and one from the only component says nothing")
 
-    expect(VehicleMessage.parse("").isEmpty, "a vehicle that has said nothing has no messages")
-    expect(VehicleMessage.parse("<font style=\"<#N>\"></font><br/>").isEmpty,
-           "an empty message is dropped rather than shown blank")
+    expect(VehicleMessage.list(nil).isEmpty, "a vehicle that has said nothing has no messages")
+    expect(VehicleMessage.list([["time": "1", "level": "normal"]]).isEmpty,
+           "a message with no text is dropped rather than shown blank")
+    expect(VehicleMessage.list([item("1", "normal", "Info", "")]).isEmpty,
+           "and so is one whose text came back empty, which is a blank row either way")
 
-    let bare = VehicleMessage.parse("<font style=\"<#N>\">no stamp here</font><br/>")
-    expect(bare.count == 1, "a message without a stamp is still a message")
-    expect(bare[0].text, "no stamp here", "and keeps all of its text")
-    expect(VehicleMessage.parse("<font style=\"<#N>\">Info: unstamped</font><br/>")[0].text, "unstamped",
-           "a message with no stamp still loses its severity word")
-    expect(bare[0].time, "", "with no time to show")
+    let unnamed = VehicleMessage.list([item("1", "sideways", "Nonsense", "still shown")])
+    expect(unnamed.count == 1,
+           "a level this head does not know still shows the message, because an operator not "
+           + "seeing what the vehicle said is worse than seeing it in the wrong colour")
+    expect(unnamed[0].level == .normal, "taking the quietest level it draws")
 
-    expect(VehicleMessage.worst(parsed) == .error, "the worst of a run is what the panel reports")
+    let sameSecond = VehicleMessage.list([
+        item("23:23:26.733", "warning", "Warning", "PreArm: waiting for home"),
+        item("23:23:26.914", "warning", "Warning", "PreArm: waiting for home"),
+    ])
+    expect(Set(sameSecond.map(\.id)).count == 2,
+           "two identical texts in the same second are two rows, because the id keeps the "
+           + "milliseconds the row does not show; truncating it collapsed them into one")
+    let sameStamp = VehicleMessage.list([
+        item("23:23:26.733", "normal", "Info", "ready", component: 1),
+        item("23:23:26.733", "normal", "Info", "ready", component: 2),
+    ])
+    expect(Set(sameStamp.map(\.id)).count == 2,
+           "and two components saying the same thing at the same instant are two rows as well")
+
+    expect(VehicleMessage.worst(read) == .error, "the worst of a run is what the panel reports")
     expect(VehicleMessage.worst([]) == .normal, "silence is not a fault")
-    expect(VehicleMessage.worst(Array(parsed.dropFirst())) == .warning,
+    expect(VehicleMessage.worst(Array(read.dropFirst())) == .warning,
            "without the error, a warning is the worst")
 }
 
@@ -2521,6 +2541,7 @@ func checkViewContract() {
          ["connected", "requestingList", "downloading", "canRefresh", "canDownload", "canCancel",
           "canErase", "emptyText", "eraseWarning", "entries"]),
         ("view.label(altitudeRelative)", [], ["value"]),
+        ("view.messages", [], ["count", "items"]),
         ("view.missionSeed(survey,47,8)", ["points"], ["latitude", "longitude"]),
         ("view.links", ["configured"],
          ["index", "path", "name", "type", "typeLabel", "editing", "displaySummary", "connected",
