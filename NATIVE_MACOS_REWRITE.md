@@ -652,6 +652,7 @@ About 58 developer-weeks. Flight-test time, not code, is the schedule.
 - 2026-09-09: fence and rally plans transfer on core links with the same machine as missions (`qgc_core_mission` with `plan`, `view.coreMission(id).plans`); the connect sequence loads them when the vehicle reports the capability over MAVLink 2.
 - 2026-09-09: remote ID broadcasts run in the core for core-served vehicles (arm status starts the one-second SYSTEM/BASIC_ID/SELF_ID/OPERATOR_ID cycle, 2.5 s of silence stops it); `view.coreRemoteId` feeds the settings and GCS fix from the Qt side and reports the state; `qgc_core_remote_id` declares an emergency.
 - 2026-09-09: `view.messages` items carry `level` (error, warning, normal) read from the Qt handler's style token, so heads bucket without depending on the translated severity word, and an `index` to key on.
+- 2026-09-09: PX4 MAVLink log streaming runs in the core for core-served vehicles (`qgc_core_log` start/stop/autoStart, file named as the Qt processor names it, acks, denial handling); `view.coreVehicle.log` reports it.
 
 ### Stream F · Core
 

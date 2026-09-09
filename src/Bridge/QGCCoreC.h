@@ -33,6 +33,7 @@ char *qgc_core_guided(const char *action_json);
 char *qgc_core_parameter(const char *request_json);
 char *qgc_core_mission(const char *request_json);
 char *qgc_core_remote_id(const char *request_json);
+char *qgc_core_log(const char *request_json);
 
 typedef void (*QGCCoreLinkBytesSinkFn)(uint32_t id, const uint8_t *bytes, size_t len, void *user);
 typedef void (*QGCCoreLinkStateSinkFn)(uint32_t id, bool open, const char *reason, void *user);

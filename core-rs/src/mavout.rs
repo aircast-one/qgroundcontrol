@@ -1,5 +1,5 @@
 #[allow(deprecated)]
-use mavlink::dialects::ardupilotmega::{COMMAND_INT_DATA, COMMAND_LONG_DATA, FILE_TRANSFER_PROTOCOL_DATA, MavOdidCategoryEu, MavOdidClassEu, MavOdidClassificationType, MavOdidDescType, MavOdidIdType, MavOdidOperatorIdType, MavOdidOperatorLocationType, MavOdidUaType, OPEN_DRONE_ID_BASIC_ID_DATA, OPEN_DRONE_ID_OPERATOR_ID_DATA, OPEN_DRONE_ID_SELF_ID_DATA, OPEN_DRONE_ID_SYSTEM_DATA, MISSION_ACK_DATA, MISSION_COUNT_DATA, MISSION_ITEM_DATA, MISSION_ITEM_INT_DATA, MISSION_REQUEST_INT_DATA, MISSION_REQUEST_LIST_DATA, MavCmd, MavMissionResult, MavMissionType, MavFrame, MavMessage, MavParamType, PARAM_REQUEST_LIST_DATA, PARAM_REQUEST_READ_DATA, PARAM_SET_DATA, PositionTargetTypemask, SET_POSITION_TARGET_LOCAL_NED_DATA};
+use mavlink::dialects::ardupilotmega::{COMMAND_INT_DATA, COMMAND_LONG_DATA, FILE_TRANSFER_PROTOCOL_DATA, LOGGING_ACK_DATA, MavOdidCategoryEu, MavOdidClassEu, MavOdidClassificationType, MavOdidDescType, MavOdidIdType, MavOdidOperatorIdType, MavOdidOperatorLocationType, MavOdidUaType, OPEN_DRONE_ID_BASIC_ID_DATA, OPEN_DRONE_ID_OPERATOR_ID_DATA, OPEN_DRONE_ID_SELF_ID_DATA, OPEN_DRONE_ID_SYSTEM_DATA, MISSION_ACK_DATA, MISSION_COUNT_DATA, MISSION_ITEM_DATA, MISSION_ITEM_INT_DATA, MISSION_REQUEST_INT_DATA, MISSION_REQUEST_LIST_DATA, MavCmd, MavMissionResult, MavMissionType, MavFrame, MavMessage, MavParamType, PARAM_REQUEST_LIST_DATA, PARAM_REQUEST_READ_DATA, PARAM_SET_DATA, PositionTargetTypemask, SET_POSITION_TARGET_LOCAL_NED_DATA};
 use mavlink::types::CharArray;
 use mavlink::{MAVLinkV2MessageRaw, MavHeader, MavlinkVersion, MessageData};
 use num_traits::FromPrimitive;
@@ -31,6 +31,7 @@ pub enum Outbound {
     MissionItemInt { target: (u8, u8), plan: u8, item: crate::plantransfer::Item },
     MissionAck { target: (u8, u8), plan: u8, result: u8 },
     Odid { target: (u8, u8), message: crate::remoteid::Message },
+    LoggingAck { target: (u8, u8), sequence: u16 },
 }
 
 pub fn chars<const N: usize>(text: &str) -> CharArray<N> {
@@ -176,6 +177,7 @@ pub fn message(send: &Outbound) -> Option<MavMessage> {
                 operator_id: chars(operator_id),
             }),
         }),
+        Outbound::LoggingAck { target, sequence } => Some(MavMessage::LOGGING_ACK(LOGGING_ACK_DATA { sequence: *sequence, target_system: target.0, target_component: target.1 })),
         Outbound::Ftp { target, payload } => Some(MavMessage::FILE_TRANSFER_PROTOCOL(FILE_TRANSFER_PROTOCOL_DATA { target_network: 0, target_system: target.0, target_component: target.1, payload: *payload })),
         Outbound::ParamSet { target, name, bits, param_type } => Some(MavMessage::PARAM_SET(PARAM_SET_DATA { param_value: *bits, target_system: target.0, target_component: target.1, param_id: param_id(name), param_type: MavParamType::from_u8(*param_type)? })),
         Outbound::PositionTargetLocalNed { target, frame: f, type_mask, x, y, z } => Some(MavMessage::SET_POSITION_TARGET_LOCAL_NED(SET_POSITION_TARGET_LOCAL_NED_DATA {

@@ -207,6 +207,20 @@ pub unsafe extern "C" fn qgc_core_parameter(request_json: *const c_char) -> *mut
 }
 
 #[unsafe(no_mangle)]
+pub unsafe extern "C" fn qgc_core_log(request_json: *const c_char) -> *mut c_char {
+    let request: serde_json::Value = serde_json::from_str(&text(request_json)).unwrap_or(serde_json::Value::Null);
+    let vehicle = request.get("vehicle").and_then(serde_json::Value::as_u64).map(|id| id as u8);
+    let sent = crate::hub::lock().log_request(vehicle, &request, crate::hub::now_ms());
+    give(match sent {
+        Ok(outbound) => {
+            deliver(outbound);
+            serde_json::json!({ "ok": true }).to_string()
+        }
+        Err(reason) => serde_json::json!({ "ok": false, "reason": reason }).to_string(),
+    })
+}
+
+#[unsafe(no_mangle)]
 pub unsafe extern "C" fn qgc_core_remote_id(request_json: *const c_char) -> *mut c_char {
     let request: serde_json::Value = serde_json::from_str(&text(request_json)).unwrap_or(serde_json::Value::Null);
     let vehicle = request.get("vehicle").and_then(serde_json::Value::as_u64).map(|id| id as u8);

@@ -2,6 +2,7 @@ use mavlink::{MavHeader, Message};
 use mavlink::dialects::ardupilotmega::MavMessage;
 use serde_json::{Value, json};
 use std::collections::BTreeMap;
+use std::io::Write;
 use std::sync::{LazyLock, Mutex, MutexGuard, PoisonError};
 
 use crate::batteryfacts::Batteries;
@@ -17,6 +18,7 @@ use crate::mavout::{self, Outbound};
 use crate::params::{self, INITIAL_REQUEST_TIMEOUT_MS, ParamValue, Params, WAITING_TIMEOUT_MS};
 use crate::plantransfer::{self, PLAN_FENCE, PLAN_MISSION, PLAN_RALLY, Transfer};
 use crate::remoteid::{self, GcsFix, RemoteId};
+use crate::ulogstream::Processor;
 use crate::standardmodes::{self, AvailableMode, FlightMode, MSG_AVAILABLE_MODES, StandardModes};
 use crate::transport::LinkId;
 use crate::sensorfacts::{DistanceSensorFacts, EstimatorStatusFacts, LocalPositionFacts, TemperatureFacts, WindFacts};
@@ -39,6 +41,23 @@ pub const MINIMUM_TAKEOFF_ALTITUDE: f64 = 2.5;
 pub const MAX_ERRORS: usize = 10;
 pub const PROTO_MAVLINK2: u32 = 200;
 pub const ODID_SEND_MS: u64 = 1000;
+pub const CMD_LOGGING_START: u16 = 2510;
+pub const CMD_LOGGING_STOP: u16 = 2511;
+pub const RESULT_DENIED: u8 = 2;
+
+#[derive(Debug, Clone, Default)]
+pub struct LogInputs {
+    pub path: String,
+    pub extension: String,
+    pub auto_start: bool,
+}
+
+#[derive(Debug)]
+struct LogSession {
+    processor: Processor,
+    file: std::fs::File,
+    path: String,
+}
 pub const ODID_TIMEOUT_MS: u64 = 2500;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -117,6 +136,11 @@ pub struct Vehicle {
     remote: RemoteId,
     odid_due: Option<u64>,
     odid_send_due: Option<u64>,
+    log: Option<LogSession>,
+    last_log: Option<String>,
+    log_denied: bool,
+    log_error: Option<String>,
+    was_armed: bool,
 }
 
 #[derive(Debug)]
@@ -183,7 +207,73 @@ impl Vehicle {
             remote: RemoteId::default(),
             odid_due: None,
             odid_send_due: None,
+            log: None,
+            last_log: None,
+            log_denied: false,
+            log_error: None,
+            was_armed: false,
         }
+    }
+
+    pub fn start_log(&mut self, inputs: &LogInputs, now_ms: u64) -> Result<Vec<Vec<u8>>, String> {
+        if self.autopilot != crate::modes::AUTOPILOT_PX4 {
+            return Err("MAVLink log streaming is a PX4 feature.".to_string());
+        }
+        if self.log_denied {
+            return Err("The vehicle denied log streaming earlier.".to_string());
+        }
+        if self.log.is_some() {
+            return Err("A log is already being written.".to_string());
+        }
+        if inputs.path.is_empty() {
+            return Err("A log path is required before starting a log.".to_string());
+        }
+        std::fs::create_dir_all(&inputs.path).map_err(|e| format!("Could not create the log directory {}: {e}", inputs.path))?;
+        let path = format!("{}/{:03}-{}{}", inputs.path.trim_end_matches('/'), self.id, chrono::Local::now().format("%Y-%m-%d-%H-%M-%S-%3f"), inputs.extension);
+        let file = std::fs::File::create(&path).map_err(|e| format!("Could not create the log file {path}: {e}"))?;
+        self.log = Some(LogSession { processor: Processor::default(), file, path });
+        self.log_error = None;
+        let outs = self.commands.send(Command { component: self.component, command: CMD_LOGGING_START, command_int: false, frame: 0, params: [0.0; 7], show_error: false, tag: 0 }, now_ms);
+        Ok(self.handle(outs, now_ms))
+    }
+
+    pub fn stop_log(&mut self, now_ms: u64) -> Result<Vec<Vec<u8>>, String> {
+        if self.autopilot != crate::modes::AUTOPILOT_PX4 {
+            return Err("MAVLink log streaming is a PX4 feature.".to_string());
+        }
+        self.last_log = self.log.take().map(|session| session.path);
+        let outs = self.commands.send(Command { component: self.component, command: CMD_LOGGING_STOP, command_int: false, frame: 0, params: [0.0; 7], show_error: false, tag: 0 }, now_ms);
+        Ok(self.handle(outs, now_ms))
+    }
+
+    fn discard_log(&mut self, reason: String) {
+        if let Some(session) = self.log.take() {
+            std::fs::remove_file(&session.path).ok();
+            self.log_error = Some(reason);
+        }
+    }
+
+    fn log_data(&mut self, sequence: u16, first_message: u8, data: &[u8], now_ms: u64) -> Vec<Vec<u8>> {
+        let Some(session) = self.log.as_mut() else { return Vec::new() };
+        let ok = session.processor.process(sequence, first_message, data);
+        let output = session.processor.take_output();
+        if ok && session.file.write_all(&output).is_ok() {
+            return Vec::new();
+        }
+        let path = session.path.clone();
+        self.log_error = Some(format!("Error writing MAVLink log file: {path}"));
+        self.stop_log(now_ms).unwrap_or_default()
+    }
+
+    fn log_snapshot(&self) -> Value {
+        json!({
+            "running": self.log.is_some(),
+            "file": self.log.as_ref().map(|l| l.path.clone()).or_else(|| self.last_log.clone()),
+            "bytes": self.log.as_ref().map(|l| l.processor.written()).unwrap_or(0),
+            "drops": self.log.as_ref().map(|l| l.processor.drops()).unwrap_or(0),
+            "denied": self.log_denied,
+            "error": self.log_error,
+        })
     }
 
     fn follow_remote(&mut self, outs: Vec<remoteid::Out>, now_ms: u64) {
@@ -755,6 +845,14 @@ impl Vehicle {
                     let actions = self.connect.on_protocol_version(&self.connect_link(), &self.connect_vehicle(), self.max_proto_version);
                     self.follow_connect(actions, now_ms)
                 }
+                Out::Result { command: CMD_LOGGING_START, result, .. } if result != RESULT_ACCEPTED => {
+                    self.log_denied |= result == RESULT_DENIED;
+                    self.discard_log(match result {
+                        RESULT_DENIED => "Start MAVLink log command denied.".to_string(),
+                        other => format!("Start MAVLink log command failed: {other}"),
+                    });
+                    Vec::new()
+                }
                 Out::RequestResult { message_id: MSG_COMPONENT_METADATA, failure, .. } if failure != crate::mavcmd::RequestFailure::None => self.step_done(connect::Step::ComponentInformation, now_ms),
                 Out::RequestResult { message_id: MSG_AVAILABLE_MODES, failure, .. } if failure != crate::mavcmd::RequestFailure::None => {
                     let outs = self.modes.on_message(false, None);
@@ -893,6 +991,16 @@ impl Vehicle {
                 let actions = self.params.on_param_value(header.component_id, &name, p.param_count, p.param_index, value);
                 return self.follow_params(actions, now_ms);
             }
+            MavMessage::LOGGING_DATA(d) => {
+                let length = (d.length as usize).min(d.data.len());
+                return self.log_data(d.sequence, d.first_message_offset, &d.data[..length], now_ms);
+            }
+            MavMessage::LOGGING_DATA_ACKED(d) => {
+                let length = (d.length as usize).min(d.data.len());
+                let mut bytes = self.log_data(d.sequence, d.first_message_offset, &d.data[..length], now_ms);
+                bytes.extend(self.encode(&Outbound::LoggingAck { target: (self.id, self.component), sequence: d.sequence }));
+                return bytes;
+            }
             MavMessage::OPEN_DRONE_ID_ARM_STATUS(a) => {
                 let outs = self.remote.on_arm_status(self.id, header.system_id, header.component_id, a.status as u8, a.error.to_str().unwrap_or(""));
                 self.follow_remote(outs, now_ms);
@@ -1001,6 +1109,7 @@ impl Vehicle {
             "rally": self.plan_state(PLAN_RALLY),
             "home": self.home.map(|(lat, lon, alt)| json!({ "latitude": lat, "longitude": lon, "altitude": alt })),
             "remoteId": self.remote_snapshot(),
+            "log": self.log_snapshot(),
             "componentInformation": { "types": self.metadata_types.keys().collect::<Vec<_>>(), "parameterMetadata": self.parameter_metadata.as_ref().map(|p| p.named.len() + p.indexed.len()).unwrap_or(0) },
             "messages": self.recent.iter().rev().take(50).map(|m| json!({ "component": m.component, "severity": m.severity, "text": m.text })).collect::<Vec<_>>(),
             "byName": self.by_name,
@@ -1013,6 +1122,7 @@ pub struct Hub {
     vehicles: BTreeMap<u8, Vehicle>,
     active: Option<u8>,
     remote_inputs: Option<RemoteInputs>,
+    log_inputs: LogInputs,
 }
 
 pub static HUB: LazyLock<Mutex<Hub>> = LazyLock::new(|| Mutex::new(Hub::default()));
@@ -1039,6 +1149,17 @@ impl Hub {
             vehicle.max_proto_version = Some(PROTO_MAVLINK2);
         }
         bytes.extend(vehicle.apply(header, message, timestamp_us, now_ms));
+        let armed = vehicle.armed();
+        let auto = self.log_inputs.auto_start && vehicle.autopilot == crate::modes::AUTOPILOT_PX4;
+        match (auto, vehicle.was_armed, armed) {
+            (true, false, true) if vehicle.log.is_none() => match vehicle.start_log(&self.log_inputs, now_ms) {
+                Ok(frames) => bytes.extend(frames),
+                Err(reason) => vehicle.log_error = Some(reason),
+            },
+            (true, true, false) if vehicle.log.is_some() => bytes.extend(vehicle.stop_log(now_ms).unwrap_or_default()),
+            _ => {}
+        }
+        vehicle.was_armed = armed;
         let link = vehicle.link;
         bytes.extend(vehicle.pump_with(now_ms, inputs, timestamp_us / 1_000_000));
         match vehicle.replay {
@@ -1071,6 +1192,29 @@ impl Hub {
 
     pub fn set_remote_inputs(&mut self, settings: remoteid::Settings, fix: GcsFix, now_ms: u64) {
         self.remote_inputs = Some(RemoteInputs { settings, fix, pushed_ms: now_ms });
+    }
+
+    pub fn log_request(&mut self, id: Option<u8>, request: &Value, now_ms: u64) -> Result<Vec<(LinkId, Vec<u8>)>, String> {
+        if let Some(path) = request.get("path").and_then(Value::as_str) {
+            self.log_inputs.path = path.to_string();
+        }
+        if let Some(extension) = request.get("extension").and_then(Value::as_str) {
+            self.log_inputs.extension = format!(".{}", extension.trim_start_matches('.'));
+        }
+        if let Some(auto) = request.get("autoStart").and_then(Value::as_bool) {
+            self.log_inputs.auto_start = auto;
+        }
+        let Some(action) = request.get("action").and_then(Value::as_str) else { return Ok(Vec::new()) };
+        let chosen = id.or(self.active).ok_or_else(|| "No vehicle is connected through the core.".to_string())?;
+        let inputs = self.log_inputs.clone();
+        let vehicle = self.vehicles.get_mut(&chosen).ok_or_else(|| format!("Vehicle {chosen} is not connected through the core."))?;
+        let link = vehicle.link;
+        let frames = match action {
+            "start" => vehicle.start_log(&inputs, now_ms)?,
+            "stop" => vehicle.stop_log(now_ms)?,
+            other => return Err(format!("Unknown log action {other:?}")),
+        };
+        Ok(frames.into_iter().map(|bytes| (link, bytes)).collect())
     }
 
     pub fn remote_request(&mut self, id: Option<u8>, request: &Value) -> Result<(), String> {
@@ -1751,5 +1895,81 @@ mod tests {
         let sent: Vec<MavMessage> = hub.tick_with(41_000, remoteid::EPOCH_2019_S).into_iter().map(|(_, b)| decode(&b)).collect();
         assert_eq!(sent.len(), 1);
         assert!(matches!(sent[0], MavMessage::OPEN_DRONE_ID_SYSTEM(ref m) if m.operator_latitude == 0 && m.operator_altitude_geo == -1000.0));
+    }
+
+    #[test]
+    fn a_px4_log_streams_into_a_file_and_a_denied_start_removes_it() {
+        use mavlink::dialects::ardupilotmega::{COMMAND_ACK_DATA, HEARTBEAT_DATA, LOGGING_DATA_ACKED_DATA, LOGGING_DATA_DATA, MavAutopilot, MavCmd, MavModeFlag, MavResult, MavType};
+        let autopilot = MavHeader { system_id: 3, component_id: 1, sequence: 0 };
+        let mut px4 = HEARTBEAT_DATA::default();
+        px4.mavtype = MavType::MAV_TYPE_QUADROTOR;
+        px4.autopilot = MavAutopilot::MAV_AUTOPILOT_PX4;
+        px4.base_mode = MavModeFlag::from_bits_retain(0x01);
+        let mut hub = Hub::default();
+        hub.on_frame(origin(4), &autopilot, &MavMessage::HEARTBEAT(px4.clone()), 0, 0);
+        let dir = std::env::temp_dir().join(format!("qgc-core-log-test-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        let request = json!({ "action": "start", "path": dir.to_string_lossy(), "extension": "ulg" });
+        let started = hub.log_request(Some(3), &request, 1_000).unwrap();
+        assert!(matches!(decode(&started[0].1), MavMessage::COMMAND_LONG(c) if c.command == MavCmd::MAV_CMD_LOGGING_START));
+        let file = hub.snapshot()["vehicle"]["log"]["file"].as_str().unwrap().to_string();
+        assert!(file.starts_with(&dir.to_string_lossy().to_string()) && file.ends_with(".ulg") && file.contains("/003-"));
+        assert!(hub.log_request(Some(3), &request, 1_100).is_err(), "one log at a time");
+        let accepted = MavMessage::COMMAND_ACK(COMMAND_ACK_DATA { command: MavCmd::MAV_CMD_LOGGING_START, result: MavResult::MAV_RESULT_ACCEPTED, ..Default::default() });
+        hub.on_frame(origin(4), &autopilot, &accepted, 1_200_000, 1_200);
+        let mut chunk = [0u8; 249];
+        let header = [b'U', b'L', b'o', b'g', 0x01, 0x12, 0x35, 1, 0, 0, 0, 0, 0, 0, 0, 0];
+        chunk[..16].copy_from_slice(&header);
+        chunk[16..21].copy_from_slice(&[2, 0, b'I', 7, 7]);
+        let data = MavMessage::LOGGING_DATA(LOGGING_DATA_DATA { sequence: 0, target_system: 255, target_component: 190, length: 21, first_message_offset: 0, data: chunk });
+        assert!(hub.on_frame(origin(4), &autopilot, &data, 1_300_000, 1_300).is_empty());
+        let acked = MavMessage::LOGGING_DATA_ACKED(LOGGING_DATA_ACKED_DATA { sequence: 1, target_system: 255, target_component: 190, length: 5, first_message_offset: 0, data: { let mut c = [0u8; 249]; c[..5].copy_from_slice(&[2, 0, b'I', 8, 8]); c } });
+        let replied = hub.on_frame(origin(4), &autopilot, &acked, 1_400_000, 1_400);
+        assert!(matches!(decode(&replied[0].1), MavMessage::LOGGING_ACK(a) if a.sequence == 1 && a.target_system == 3));
+        assert_eq!(hub.snapshot()["vehicle"]["log"]["bytes"], 26);
+        let stopped = hub.log_request(Some(3), &json!({ "action": "stop" }), 1_500).unwrap();
+        assert!(matches!(decode(&stopped[0].1), MavMessage::COMMAND_LONG(c) if c.command == MavCmd::MAV_CMD_LOGGING_STOP));
+        assert_eq!(std::fs::metadata(&file).unwrap().len(), 26);
+        assert_eq!(hub.snapshot()["vehicle"]["log"]["running"], false);
+        assert_eq!(hub.snapshot()["vehicle"]["log"]["file"].as_str(), Some(file.as_str()), "the finished file stays known so a head can upload it");
+        hub.log_request(Some(3), &json!({ "action": "start" }), 2_000).unwrap();
+        let denied_file = hub.snapshot()["vehicle"]["log"]["file"].as_str().unwrap().to_string();
+        let denied = MavMessage::COMMAND_ACK(COMMAND_ACK_DATA { command: MavCmd::MAV_CMD_LOGGING_START, result: MavResult::MAV_RESULT_DENIED, ..Default::default() });
+        hub.on_frame(origin(4), &autopilot, &denied, 2_100_000, 2_100);
+        assert!(!std::path::Path::new(&denied_file).exists(), "a denied log is deleted as the Qt manager deletes it");
+        assert_eq!(hub.snapshot()["vehicle"]["log"]["denied"], true);
+        assert!(hub.log_request(Some(3), &json!({ "action": "start" }), 2_200).is_err(), "a denial sticks for the session");
+        let mut copter = Hub::default();
+        connect_copter(&mut copter, &MavHeader { system_id: 1, component_id: 1, sequence: 0 });
+        assert!(copter.log_request(None, &json!({ "action": "start", "path": dir.to_string_lossy() }), 3_000).is_err(), "log streaming is a PX4 feature");
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn auto_start_follows_the_arming_edge_on_px4() {
+        use mavlink::dialects::ardupilotmega::{HEARTBEAT_DATA, MavAutopilot, MavCmd, MavModeFlag, MavType};
+        let autopilot = MavHeader { system_id: 3, component_id: 1, sequence: 0 };
+        let heartbeat = |armed: bool| {
+            let mut h = HEARTBEAT_DATA::default();
+            h.mavtype = MavType::MAV_TYPE_QUADROTOR;
+            h.autopilot = MavAutopilot::MAV_AUTOPILOT_PX4;
+            h.base_mode = MavModeFlag::from_bits_retain(if armed { 0x81 } else { 0x01 });
+            MavMessage::HEARTBEAT(h)
+        };
+        let dir = std::env::temp_dir().join(format!("qgc-core-log-auto-{}", std::process::id()));
+        let mut hub = Hub::default();
+        hub.log_request(None, &json!({ "autoStart": true }), 0).unwrap();
+        hub.on_frame(origin(4), &MavHeader { system_id: 9, component_id: 1, sequence: 0 }, &heartbeat(false), 0, 0);
+        hub.on_frame(origin(4), &MavHeader { system_id: 9, component_id: 1, sequence: 0 }, &heartbeat(true), 500_000, 500);
+        assert!(hub.snapshot_of(Some(9))["vehicle"]["log"]["error"].as_str().unwrap().contains("path is required"), "auto start without a path says so instead of failing silently");
+        hub.log_request(None, &json!({ "path": dir.to_string_lossy(), "extension": ".ulg" }), 600).unwrap();
+        hub.on_frame(origin(4), &autopilot, &heartbeat(false), 0, 0);
+        let armed: Vec<MavMessage> = hub.on_frame(origin(4), &autopilot, &heartbeat(true), 1_000_000, 1_000).into_iter().map(|(_, b)| decode(&b)).collect();
+        assert!(armed.iter().any(|m| matches!(m, MavMessage::COMMAND_LONG(c) if c.command == MavCmd::MAV_CMD_LOGGING_START)), "arming starts the log when auto start is on");
+        assert_eq!(hub.snapshot_of(Some(3))["vehicle"]["log"]["running"], true);
+        let disarmed: Vec<MavMessage> = hub.on_frame(origin(4), &autopilot, &heartbeat(false), 2_000_000, 2_000).into_iter().map(|(_, b)| decode(&b)).collect();
+        assert!(disarmed.iter().any(|m| matches!(m, MavMessage::COMMAND_LONG(c) if c.command == MavCmd::MAV_CMD_LOGGING_STOP)));
+        assert_eq!(hub.snapshot_of(Some(3))["vehicle"]["log"]["running"], false);
+        let _ = std::fs::remove_dir_all(&dir);
     }
 }
