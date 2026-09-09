@@ -629,6 +629,7 @@ About 58 developer-weeks. Flight-test time, not code, is the schedule.
 - 2026-09-09: MAVLink FTP directory listing in the core.
 - 2026-09-09: standard flight mode collection (AVAILABLE_MODES) in the core.
 - 2026-09-09: remote-ID rules in the core (EU operator check, arm status, message set).
+- 2026-09-09: ULog stream processor (LOGGING_DATA sequence, drops, reassembly) in the core.
 
 ### Stream F · Core
 
