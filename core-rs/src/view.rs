@@ -10,6 +10,7 @@ use crate::control;
 use crate::fences;
 use crate::flightmodes;
 use crate::geo;
+use crate::detections;
 use crate::guided;
 use crate::inspector;
 use crate::instruments;
@@ -92,6 +93,7 @@ pub const VIEWS: &[View] = &[
     View { path: "view.transports", deps: &[], compute: linkhost::transports_view },
     View { path: "view.coreVehicle", deps: &[], compute: hub::core_vehicle_view },
     View { path: "view.coreGuided", deps: &[], compute: hub::core_guided_view },
+    View { path: "view.detections", deps: detections::DEPS, compute: detections::detections_view },
     View { path: "view.kmlFile", deps: kml::DEPS, compute: kml::kml_view },
     View { path: "view.shapeFile", deps: shp::DEPS, compute: shp::shp_view },
     View { path: "view.geoToNed", deps: geo::DEPS, compute: geo::geo_to_ned_view },

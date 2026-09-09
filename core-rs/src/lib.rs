@@ -11,6 +11,7 @@ pub mod compression;
 pub mod connect;
 pub mod compinfo;
 pub mod cmdinfo;
+pub mod detections;
 pub mod contract;
 pub mod factmeta;
 pub mod control;

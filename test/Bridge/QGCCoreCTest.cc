@@ -663,6 +663,30 @@ void QGCCoreCTest::_coreGuidedTakeoffReachesThePeer()
 #endif
 }
 
+void QGCCoreCTest::_detectionsFollowTheRtspUrl()
+{
+#ifdef QGC_RUST_CORE
+    const QString before = take(qgc_bridge_get("settings.videoSettings.rtspUrl.rawValue")).value(QStringLiteral("value")).toString();
+    const auto restore = qScopeGuard([before]() {
+        take(qgc_bridge_set("settings.videoSettings.rtspUrl", "{\"value\":\"\"}"));
+        take(qgc_bridge_get("view.detections"));
+        take(qgc_bridge_set("settings.videoSettings.rtspUrl", QJsonDocument(QJsonObject{{QStringLiteral("value"), before}}).toJson(QJsonDocument::Compact).constData()));
+    });
+    QVERIFY(take(qgc_bridge_set("settings.videoSettings.rtspUrl", "{\"value\":\"rtsp://127.0.0.1:8554/front/whep\"}")).value(QStringLiteral("ok")).toBool(false));
+    const QJsonObject detections = take(qgc_bridge_get("view.detections"));
+    QCOMPARE(detections.value(QStringLiteral("class")).toString(), QStringLiteral("Detections"));
+    QCOMPARE(detections.value(QStringLiteral("available")).toBool(false), true);
+    QCOMPARE(detections.value(QStringLiteral("host")).toString(), QStringLiteral("127.0.0.1"));
+    QCOMPARE(detections.value(QStringLiteral("camera")).toString(), QStringLiteral("front"));
+    QCOMPARE(detections.value(QStringLiteral("stale")).toBool(false), true);
+    QVERIFY(detections.value(QStringLiteral("boxes")).toArray().isEmpty());
+    QVERIFY(take(qgc_bridge_set("settings.videoSettings.rtspUrl", "{\"value\":\"\"}")).value(QStringLiteral("ok")).toBool(false));
+    QCOMPARE(take(qgc_bridge_get("view.detections")).value(QStringLiteral("available")).toBool(true), false);
+#else
+    QSKIP("the Rust core is not linked into this build");
+#endif
+}
+
 void QGCCoreCTest::_replayedLogAgreesBetweenTheModels()
 {
 #ifdef QGC_RUST_CORE

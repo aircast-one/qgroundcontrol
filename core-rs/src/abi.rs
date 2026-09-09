@@ -99,6 +99,10 @@ fn split(paths_csv: *const c_char) -> Vec<String> {
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn qgc_core_set_event_handler(handler: EventFn) {
     *HEAD.lock().unwrap() = handler;
+    *crate::detections::ON_CHANGE.lock().unwrap_or_else(std::sync::PoisonError::into_inner) = handler.map(|_| std::sync::Arc::new(announce_detections) as std::sync::Arc<dyn Fn() + Send + Sync>);
+    if handler.is_some() {
+        start_pump();
+    }
     unsafe { qgc_qt_set_event_handler(handler.map(|_| relay as unsafe extern "C" fn(*const c_char, *const c_char))) }
 }
 
@@ -152,8 +156,9 @@ fn deliver(outbound: Vec<(u32, Vec<u8>)>) {
 static GUIDED_ANNOUNCED: Mutex<String> = Mutex::new(String::new());
 
 fn announce_guided() {
-    let handler = *HEAD.lock().unwrap();
-    let Some(handler) = handler else { return };
+    if HEAD.lock().unwrap().is_none() {
+        return;
+    }
     let snapshot = crate::hub::lock().guided_snapshot(None).to_string();
     let changed = {
         let mut last = GUIDED_ANNOUNCED.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
@@ -162,9 +167,7 @@ fn announce_guided() {
         changed
     };
     if changed {
-        let path = c("view.coreGuided");
-        let json = c(&snapshot);
-        unsafe { handler(path.as_ptr(), json.as_ptr()) };
+        announce("view.coreGuided", &snapshot);
     }
 }
 
@@ -183,6 +186,9 @@ fn start_pump() {
                 };
                 deliver(outbound);
                 announce_guided();
+                if crate::detections::lock().went_stale(crate::hub::now_ms()) {
+                    announce_detections();
+                }
             })
             .expect("pump thread");
     });
@@ -269,14 +275,22 @@ pub unsafe extern "C" fn qgc_core_set_link_writer(writer: LinkWriterFn, user: *m
     crate::linkhost::TRANSPORTS.lock().unwrap().set_writer(boxed);
 }
 
-fn announce_transports() {
+fn announce(path: &str, json: &str) {
     let handler = *HEAD.lock().unwrap();
     if let Some(handler) = handler {
-        let snapshot = crate::linkhost::TRANSPORTS.lock().unwrap().snapshot().to_string();
-        let path = c("view.transports");
-        let json = c(&snapshot);
+        let (path, json) = (c(path), c(json));
         unsafe { handler(path.as_ptr(), json.as_ptr()) };
     }
+}
+
+fn announce_transports() {
+    let snapshot = crate::linkhost::TRANSPORTS.lock().unwrap().snapshot().to_string();
+    announce("view.transports", &snapshot);
+}
+
+fn announce_detections() {
+    let snapshot = crate::detections::lock().snapshot(crate::hub::now_ms()).to_string();
+    announce("view.detections", &snapshot);
 }
 
 type LinkBytesSinkFn = Option<unsafe extern "C" fn(u32, *const u8, usize, *mut std::ffi::c_void)>;
