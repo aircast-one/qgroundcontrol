@@ -1082,13 +1082,13 @@ exists natively today:
 | status (sats, HDOP) | **`StatusStrip`** | |
 | `PipView` map/video swap | **partial** | inset expands and collapses with the overlays kept over it; still not a *swap* — the map cannot become the inset |
 | `CameraControlLayer` | **built** | selection, mode and shutter, all verified on the wire |
-| `VideoTilesLayer` | **missing** | multiple streams |
+| `VideoTilesLayer` | **built, as a source picker** | the streams the core lists, and switching between them; the tile grid, dock and tuck belong to the overlay rig |
 | `RcControlsLayer` | **built** | renders the configured controls and sends `setRcChannelOverride`; editing the list is still desktop-only |
 | `ObstacleDistanceOverlay` (map and video) | **built, in another form** | a sentence — "3.2 m right" — rather than a proximity ring |
 | `FlyViewToolStrip` + action list | **built, as an Actions sheet** | pause, gripper, emergency stop, mission start/continue, land abort; Viewer3D dropped, preflight sits under Analyze |
 | `GuidedValueSlider` | **built** | altitude, speed, takeoff height, and pause all read their range from the core |
 | `DetectionOverlayVideo` | **missing** | |
-| `FlyViewCustomLayer` | **missing** | plugin extension point |
+| `FlyViewCustomLayer` | **dropped** | a placeholder for downstream forks to override; nothing to port |
 | `OverlayGlass` / `OverlayRig` / `FlyViewInsetViewer` | **missing** | the overlay layout system the above sit in |
 | `Viewer3D` | **dropped** | decided in Phase 2; goes with `FlyView.qml` |
 
@@ -1753,6 +1753,32 @@ confirm is live at a zero delta, and the sim logged `MODE -> 17` (Brake).
 "lide to emergency stop" — the instruction on the most dangerous control in the app was the
 one you could not read. The label now centres in the track to the right of the thumb rather
 than in the whole track. Short labels are unaffected.
+
+### Video sources, and a reason instead of "No video"
+
+`VideoTilesLayer.qml` is 354 lines, and most of it is the dock, the tuck, the grid and the
+pip-width negotiation with the overlay rig — layout that belongs to the rig, not to video.
+What an operator actually needs from it is smaller: see which streams exist and switch to
+one. `view.video` already serves that — `cameras[]` with a slot, status, connecting,
+recording and configured flag, plus `activeSource` and `multipleSources` — so the picker is
+head-only work. Chips appear only when the core reports more than one configured stream, and
+tapping one calls `video.setActiveVideoSource(slot)`.
+
+Verified on the handset with a second RTSP source added to the device ini: the chips read
+"Camera 1 · connecting" and "Camera 2", tapping the second moved both the selection and the
+connecting mark onto it, and the ini was restored afterwards so the shared rig is unchanged.
+
+**The inset said "No video" whatever the reason.** It also keyed on `video.streaming`, which
+is true once the pipeline starts and says nothing about whether a frame ever arrived — a
+started-but-dead stream would hide the placeholder over a black surface. It now reads
+`view.video`, hides on `decoding`, and shows the core's sentence: "No stream URL is set.",
+"Waiting for a stream.", "Not streaming.", "This build cannot show video." That is one more
+answer the head had been re-deriving and getting slightly wrong.
+
+**The core names the streams "Camera 1" and "Camera 2" and throws the configured name away.**
+`VideoManager::cameraName(index)` returns the operator's own name and already falls back to
+exactly that string, so the core can serve real names with no change in behaviour for an
+unnamed source. Raised with the core session; the head must not look the name up itself.
 
 ## Phase 6 — Shell · 2 weeks
 
