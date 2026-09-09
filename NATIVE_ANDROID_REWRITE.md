@@ -2024,6 +2024,14 @@ A false refusal on the arm path is worse than it looks. It teaches an operator t
 message means nothing, which is exactly the wrong lesson for the one control that has to be
 believed.
 
+Audited every other place the head waits for a command to take: the flight mode picker
+compares against a captured `mode.name`; `LinksScreen`'s four predicates read `currentRows()`
+fresh from the bridge and compare against a captured `row`; `SensorsScreen` captures the
+status from before the call and compares fresh reads against it. All three have the right
+shape — fixed expectation, live observation — and the arm button was the only one with it
+backwards. The tell to look for is a Compose state delegate read *inside* a predicate that
+polls, rather than a value captured before the polling starts.
+
 ## Phase 6 — Shell · 2 weeks
 
 Cheaper than macOS, because Qt is already off the main thread.
