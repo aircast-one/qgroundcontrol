@@ -95,6 +95,9 @@ final class FlyStore: ObservableObject, Probeable, WriteReporting {
         reading.climbRate = facts["climbRate"]
         reading.heading = facts["heading"]
 
+        let links = Bridge.group("vehicle.vehicleLinkManager")
+        reading.contactLost = (links["communicationLost"] as? NSNumber)?.boolValue ?? false
+
         let gpsGroup = Bridge.group("vehicle.gps")
         let readGps = FlyDetail.gps(FactReading.from((gpsGroup["facts"] as? [Any]) ?? []))
         if readGps != gpsDetail { gpsDetail = readGps }
@@ -221,6 +224,7 @@ final class FlyStore: ObservableObject, Probeable, WriteReporting {
     func probeState() -> [String: Any] {
         ["writeFailure": writeFailure ?? "",
          "connected": connected, "mode": telemetry.mode, "state": telemetry.stateText,
+         "contactLost": telemetry.contactLost, "staleNotice": telemetry.staleNotice,
          "altitude": telemetry.altitudeText,
          "groundSpeed": telemetry.groundSpeedText,
          "keepCentered": keepCentered,

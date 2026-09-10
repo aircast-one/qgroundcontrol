@@ -186,7 +186,8 @@ struct FlyPanel: View {
                     .buttonStyle(.plain)
                 }
                 Text(fly.connected ? fly.telemetry.stateText : "Connect a vehicle to fly")
-                    .font(.callout).foregroundColor(.secondary)
+                    .font(.callout)
+                    .foregroundColor(fly.telemetry.contactLost ? Overlay.vehicle : .secondary)
             }
             Spacer(minLength: 0)
             Button("Checklist") { fly.showingChecklist = true }
@@ -410,8 +411,21 @@ struct FlyPanel: View {
 
 struct InstrumentBar: View {
     @ObservedObject var instruments: InstrumentsStore
+    var notice = ""
 
     var body: some View {
+        VStack(alignment: .leading, spacing: Overlay.step * 0.5) {
+            if !notice.isEmpty {
+                Label(notice, systemImage: "antenna.radiowaves.left.and.right.slash")
+                    .font(.caption)
+                    .foregroundColor(Overlay.vehicle)
+            }
+            readings
+                .opacity(notice.isEmpty ? 1 : 0.55)
+        }
+    }
+
+    private var readings: some View {
         GlassPanel {
             HStack(alignment: .top, spacing: Overlay.unit) {
                 ForEach(Array(instruments.values.enumerated()), id: \.element.id) { slot, value in
@@ -842,7 +856,7 @@ struct FlyView: View {
                 .frame(maxWidth: .infinity, alignment: .trailing)
 
             if !instruments.values.isEmpty {
-                InstrumentBar(instruments: instruments)
+                InstrumentBar(instruments: instruments, notice: fly.telemetry.staleNotice)
                     .padding(Overlay.unit)
                     .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottomLeading)
             }

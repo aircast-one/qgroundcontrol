@@ -1117,6 +1117,28 @@ func checkFlyTelemetry() {
     expect(reading.stateText, "Armed", "an armed vehicle on the ground reads as armed")
     reading.flying = true
     expect(reading.stateText, "Flying", "and as flying once it is airborne")
+    expect(reading.staleNotice, "", "and while contact holds there is nothing to warn about")
+
+    reading.altitude = 25.0
+    reading.contactLost = true
+    expect(reading.stateText, "Communication lost",
+           "once the link drops the state line stops saying the vehicle is flying; it had no "
+           + "link-loss state at all, so a dead link read as steady flight indefinitely")
+    expect(reading.staleNotice,
+           "No contact \u{2014} these are the last values the vehicle sent.",
+           "and the readings are labelled as the last ones that arrived rather than current, "
+           + "because an instrument that freezes looks exactly like one reporting a steady value")
+    expect(reading.altitudeText, "25.0 m",
+           "the readings themselves are kept and still read normally; the last known altitude is "
+           + "worth having, so what changes is the claim that it is current, not the number")
+
+    reading.armed = false
+    reading.flying = false
+    expect(reading.stateText, "Communication lost",
+           "and lost contact outranks disarmed, because a vehicle that stopped answering is not "
+           + "known to have disarmed - that is the last frame talking")
+    reading.contactLost = false
+    expect(reading.stateText, "Disarmed", "with contact back the state line answers again")
 
     expect(FlyTelemetry.measure(nil, "m"), "\u{2014}", "a missing altitude shows nothing")
     expect(FlyTelemetry.measure(Double.nan, "m"), "\u{2014}", "and so does a NaN")
