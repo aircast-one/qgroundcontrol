@@ -125,21 +125,22 @@ internal fun MapSpikeScreen(
         }
     }
 
-    fun addMissionItem(kindId: String, label: String, work: () -> Boolean) {
+    fun addMissionItem(kindId: String, label: String, at: TrackPoint?, index: Int = AT_END) {
         scope.launch {
-            val refusal = withContext(Dispatchers.Default) { kindRefusal(freshMissionKind(kindId)) }
-            if (refusal != null) {
-                busy = refusal
+            if (at == null) {
+                busy = "$label needs somewhere to put it"
                 delay(FAILURE_MESSAGE_MS)
                 busy = null
                 return@launch
             }
             busy = label
-            val ok = withContext(Dispatchers.Default) { work() }
-            if (ok) {
+            val outcome = withContext(Dispatchers.Default) {
+                insertMissionItem(kindId, at.latitude, at.longitude, index)
+            }
+            if (outcome.ok) {
                 busy = null
             } else {
-                busy = "$label did not work"
+                busy = outcome.reason
                 delay(FAILURE_MESSAGE_MS)
                 busy = null
             }
@@ -444,9 +445,7 @@ internal fun MapSpikeScreen(
 
                     TextButton(onClick = {
                         val at = placeAt()
-                        addMissionItem("survey", "Adding survey") {
-                            at != null && SurveyBridge.insertSurvey(at.latitude, at.longitude)
-                        }
+                        addMissionItem("survey", "Adding survey", at)
                     }) { Text("Survey") }
 
                     TextButton(onClick = {
@@ -468,22 +467,18 @@ internal fun MapSpikeScreen(
                     TextButton(
                         onClick = {
                             val at = placeAt()
-                            addMissionItem("takeoff", "Adding a takeoff") {
-                                at != null &&
-                                    PlanBridge.appendTakeoff(
-                                        at.latitude,
-                                        at.longitude,
-                                        takeoffMissing(items),
-                                    )
-                            }
+                            addMissionItem(
+                                "takeoff",
+                                "Adding a takeoff",
+                                at,
+                                if (takeoffMissing(items)) BEFORE_THE_REST else AT_END,
+                            )
                         },
                     ) { Text("Takeoff") }
                     TextButton(
                         onClick = {
                             val at = placeAt()
-                            addMissionItem("land", "Adding a landing") {
-                                at != null && PlanBridge.appendLanding(at.latitude, at.longitude)
-                            }
+                            addMissionItem("land", "Adding a landing", at)
                         },
                     ) { Text("Land") }
                     GroupBreak()

@@ -2,47 +2,39 @@ package one.aircast.mapspike
 
 import org.json.JSONObject
 import org.junit.Assert.assertEquals
-import org.junit.Assert.assertNull
+import org.junit.Assert.assertFalse
+import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class MissionKindsTest {
     @Test
-    fun `an unknown enabled does not refuse`() {
-        val kind = missionKind(JSONObject("""{"id":"takeoff","enabled":null,"disabledReason":""}"""))
-        assertNull(kind!!.enabled)
-        assertNull(kindRefusal(kind))
+    fun `an accepted insert carries no complaint`() {
+        val done = insertOutcome(JSONObject("""{"ok":true,"inserted":"survey","atSequence":4}"""))
+        assertTrue(done.ok)
+        assertEquals("", done.reason)
     }
 
     @Test
-    fun `a missing enabled key does not refuse`() {
-        val kind = missionKind(JSONObject("""{"id":"land"}"""))
-        assertNull(kind!!.enabled)
-        assertNull(kindRefusal(kind))
-    }
-
-    @Test
-    fun `an explicit false refuses in the core's words`() {
-        val kind = missionKind(
-            JSONObject("""{"id":"takeoff","enabled":false,"disabledReason":"The mission already takes off before this point."}""")
+    fun `a refusal is shown in the core's words`() {
+        val refused = insertOutcome(
+            JSONObject("""{"ok":false,"reason":"The mission already takes off before this point.","refused":"takeoff"}"""),
         )
-        assertEquals("The mission already takes off before this point.", kindRefusal(kind))
+        assertFalse(refused.ok)
+        assertEquals("The mission already takes off before this point.", refused.reason)
     }
 
     @Test
-    fun `a false with no reason still refuses`() {
-        val kind = missionKind(JSONObject("""{"id":"survey","enabled":false,"disabledReason":""}"""))
-        assertEquals("That item does not belong here in the mission.", kindRefusal(kind))
+    fun `a kind the catalogue does not hold says so rather than going quiet`() {
+        val unknown = insertOutcome(
+            JSONObject("""{"ok":false,"unknown":"corkscrew","reason":"the core has no corkscrew in its catalogue"}"""),
+        )
+        assertFalse(unknown.ok)
+        assertEquals("the core has no corkscrew in its catalogue", unknown.reason)
     }
 
     @Test
-    fun `an enabled kind does not refuse`() {
-        assertNull(kindRefusal(missionKind(JSONObject("""{"id":"land","enabled":true}"""))))
-    }
-
-    @Test
-    fun `a view with no id is not a kind`() {
-        assertNull(missionKind(JSONObject("""{"enabled":false,"disabledReason":"no"}""")))
-        assertNull(missionKind(null))
-        assertNull(kindRefusal(null))
+    fun `a refusal with no reason still says something`() {
+        assertEquals("The plan did not answer.", insertOutcome(JSONObject("""{"ok":false}""")).reason)
+        assertEquals("The plan did not answer.", insertOutcome(null).reason)
     }
 }

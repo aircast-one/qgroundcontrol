@@ -179,28 +179,6 @@ object PlanBridge {
         return if (insertedAnItem(raw)) target else null
     }
 
-    private fun writeCoordinate(path: String, latitude: Double, longitude: Double): Boolean =
-        runCatching {
-            JSONObject(
-                QGCBridge.set(
-                    path,
-                    "{\"value\":{\"latitude\":$latitude,\"longitude\":$longitude}}",
-                ),
-            ).optBoolean("ok")
-        }.getOrDefault(false)
-
-    fun appendTakeoff(latitude: Double, longitude: Double, beforeTheRest: Boolean = false): Boolean {
-        val index = insertAt("insertTakeoffItem", latitude, longitude, beforeTheRest) ?: return false
-        if (writeCoordinate("$PLAN_ITEMS.$index.launchCoordinate", latitude, longitude)) {
-            return true
-        }
-        removeItem(index)
-        return false
-    }
-
-    fun appendLanding(latitude: Double, longitude: Double): Boolean =
-        insertAt("insertLandItem", latitude, longitude) != null
-
     fun setAltitude(index: Int, metres: Double): Boolean =
         runCatching {
             JSONObject(QGCBridge.set("$PLAN_ITEMS.$index.altitude", "{\"value\":$metres}"))

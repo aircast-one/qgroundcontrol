@@ -93,43 +93,6 @@ object SurveyBridge {
                 .optBoolean("ok")
         }.getOrDefault(false)
 
-    fun surveyItemName(): String =
-        runCatching {
-            JSONObject(QGCBridge.get("$MISSION_CONTROLLER.surveyComplexItemName")).optString("value")
-        }.getOrDefault("")
-
-    fun insertSurvey(latitude: Double, longitude: Double, halfSize: Double = 0.002): Boolean {
-        if (!isPlottable(latitude, longitude)) {
-            return false
-        }
-        val name = surveyItemName()
-        if (name.isBlank()) {
-            return false
-        }
-        val count = PlanBridge.rawItemCount()?.takeIf { it > 0 } ?: return false
-
-        val args = "[\"$name\", ${coordinate(latitude, longitude)}, $count]"
-        val inserted = insertedAnItem(
-            runCatching {
-                QGCBridge.invoke("$MISSION_CONTROLLER.insertComplexMissionItem", args)
-            }.getOrDefault(""),
-        )
-        if (!inserted) {
-            return false
-        }
-
-        val index = (PlanBridge.rawItemCount()?.takeIf { it > 0 } ?: return false) - 1
-        return listOf(
-            latitude + halfSize to longitude - halfSize,
-            latitude + halfSize to longitude + halfSize,
-            latitude - halfSize to longitude + halfSize,
-            latitude - halfSize to longitude - halfSize,
-        ).all { (cornerLat, cornerLon) -> appendAreaVertex(index, cornerLat, cornerLon) }
-    }
-
-    fun appendAreaVertex(itemIndex: Int, latitude: Double, longitude: Double): Boolean =
-        invoke("$PLAN_ITEMS.$itemIndex.surveyAreaPolygon.appendVertex", "[${coordinate(latitude, longitude)}]")
-
     fun setGridAngle(itemIndex: Int, degrees: Double): Boolean =
         runCatching {
             JSONObject(
