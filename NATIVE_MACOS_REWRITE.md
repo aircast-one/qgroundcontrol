@@ -417,6 +417,49 @@ The three-week budget survives this. What does not survive is discovering it lat
 does not exist until the flip, so the first Phase 6 build is where it appears, and the way to
 measure it is to read the same path twice under different conditions rather than once.
 
+### Link creation needs a bridge change; link editing does not (2026-09-10)
+
+The Android session found a boundary in the bridge that bounds both heads. QML can hold a C++
+pointer in a JavaScript variable between calls — `LinkSettings.qml:187` keeps the result of
+`startConfigurationEditing(object)` across several user interactions and commits at line 287.
+A path-based head has nowhere to put that handle: `invokePath` returns a `QObject *` as
+`objectJson`, a snapshot of values with no path, and `@path` arguments only address objects that
+are already reachable. So a "create detached → configure → commit" flow cannot be driven from
+SwiftUI, however many of its methods are `Q_INVOKABLE`.
+
+Their sweep found 22 pointer-returning `Q_INVOKABLE` declarations and only two that matter, both on
+`LinkManager`: `createConfiguration` (registered only when `endCreateConfiguration` calls
+`addConfiguration`) and `startConfigurationEditing` (a copy that `endConfigurationEditing` copies
+back and destroys). Everything else — `getFact`, `getParameter`, `getVehicleById`, every
+`MissionController::insert*` — returns something already addressable by path, so a head re-reads
+it and never needs the handle.
+
+**The two are not equally blocked, and this document should not record them as one thing.**
+Creating a configuration genuinely needs the handle, because the object does not exist at any path
+until it is registered. Editing an existing one does not: a registered configuration is addressable
+at `links.linkConfigurations.N`, and the fields an operator changes are `Q_PROPERTY` with `WRITE`
+setters — `name` on `LinkConfiguration`, `localPort` on `UDPConfiguration`, `baud`, `portName`,
+`dataBits`, `stopBits`, `parity`, `flowControl` on `SerialConfiguration`. A head can write those by
+path today. What it cannot get that way is QML's cancel semantics, because
+`startConfigurationEditing` hands back a duplicate so that Cancel can discard it; a head editing in
+place either commits on change or snapshots the values itself and writes them back.
+
+**Unverified, and deliberately so.** Writing any of those properties changes the link configuration
+in the settings file this rig shares with the QML app, and creating or removing a configuration is
+forbidden here. The reasoning above is from the property declarations and the bridge's `@path`
+handling, not from a write that was performed.
+
+What this head has today is connect, disconnect and remove, all through `@path` to a configuration
+that is already registered — which is exactly the split the constraint predicts. It also carries
+`adding` and `editingIndex` state, and decodes the core's per-link `editing` discriminator, for a
+form that was never built. That is pending work blocked on an API decision, not a missing feature
+somebody forgot.
+
+**Consequence for Phase 5 and 6: link creation exists only in QML today, and so does cancel-safe
+link editing.** Deleting the QML on the assumption that the native head covers what it covered
+would remove both. This is the second such item; the first was noted by the Android session on
+their own screen.
+
 **Gate:** two weeks of internal flying with the previous release as fallback, then delete the
 fallback.
 
