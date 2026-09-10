@@ -332,6 +332,7 @@
         "view.guidedActions.actions.9.title",
         "view.guidedActions.class",
         "view.guidedActions.forwardFlight",
+        "view.guidedActions.gotoLoiterRadius",
         "view.guidedActions.kind",
         "view.guidedActions.missionActive",
         "view.guidedAltitude(30).class",
@@ -2558,6 +2559,7 @@
         "class": "string",
         "connected": "bool",
         "forwardFlight": "bool",
+        "gotoLoiterRadius": "number",
         "kind": "string",
         "missionActive": "bool"
     },

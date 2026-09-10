@@ -1,10 +1,11 @@
 use serde::Serialize;
 use serde_json::{Value, json};
 
-use crate::read::{fact_flag, flag, integer, object, text};
+use crate::read::{fact_flag, flag, integer, object, text, value_number};
 use crate::router::Backend;
 
 pub const DEPS: &[&str] = &[
+    "settings.flyViewSettings.forwardFlightGoToLocationLoiterRad",
     "vehicles.activeVehicleAvailable",
     "vehicle.parameterManager.parametersReady",
     "vehicle.armed",
@@ -40,6 +41,10 @@ pub struct GuidedState {
     pub vtol: bool,
     pub vtol_in_fwd_flight: bool,
     pub forward_flight: bool,
+    // What a goto has to carry in DO_REPOSITION param 3. Zero for anything that does not fly
+    // forward, and the operator's setting for anything that does. QML derives this at the call
+    // site; a head deriving it would be deriving vehicle knowledge, so it is answered here.
+    pub goto_loiter_radius: f64,
     pub speed_limits: bool,
     pub landing: bool,
     pub has_gripper: bool,
@@ -239,6 +244,7 @@ pub fn guided_view(backend: &dyn Backend, _args: &[String]) -> Value {
         "connected": state.connected,
         "missionActive": state.mission_active(),
         "forwardFlight": state.forward_flight,
+        "gotoLoiterRadius": state.goto_loiter_radius,
         "actions": offers,
     })
 }
@@ -288,6 +294,10 @@ fn read_state(backend: &dyn Backend) -> GuidedState {
         vtol: flag(&vehicle, "vtol"),
         vtol_in_fwd_flight,
         forward_flight,
+        goto_loiter_radius: match forward_flight {
+            true => value_number(&backend.get("settings.flyViewSettings.forwardFlightGoToLocationLoiterRad.rawValue")).unwrap_or(0.0),
+            false => 0.0,
+        },
         speed_limits: if forward_flight { flag(&vehicle, "haveFWSpeedLimits") } else { flag(&vehicle, "haveMRSpeedLimits") }
             || speed_limits_live(backend, flag(&vehicle, "px4Firmware"), flag(&vehicle, "apmFirmware"), forward_flight),
         landing: flag(&vehicle, "landing"),
@@ -482,5 +492,64 @@ mod tests {
         }
         assert!(read_state(&Fake(true)).speed_limits);
         assert!(!read_state(&Fake(false)).speed_limits);
+    }
+}
+
+#[cfg(test)]
+mod loiter {
+    use super::*;
+
+    struct Flying { forward: bool, setting: f64 }
+
+    impl Backend for Flying {
+        fn get(&self, path: &str) -> String {
+            match path {
+                "settings.flyViewSettings.forwardFlightGoToLocationLoiterRad.rawValue" => json!({ "kind": "value", "value": self.setting }).to_string(),
+                _ => json!({ "kind": "null" }).to_string(),
+            }
+        }
+        fn get_fields(&self, path: &str, _f: &str) -> String {
+            match path {
+                "vehicles" => json!({ "kind": "object", "activeVehicleAvailable": true }).to_string(),
+                "vehicle" => json!({
+                    "kind": "object", "armed": true, "flying": true, "guidedModeSupported": true,
+                    "fixedWing": self.forward, "vtolInFwdFlight": false, "flightMode": "Guided",
+                }).to_string(),
+                _ => json!({ "kind": "null" }).to_string(),
+            }
+        }
+        fn set(&self, _p: &str, _v: &str) -> String { String::new() }
+        fn invoke(&self, _p: &str, _a: &str) -> String { String::new() }
+        fn watch(&self, _p: &[String]) {}
+    }
+
+    #[test]
+    fn a_goto_carries_the_operators_loiter_radius_only_when_the_vehicle_flies_forward() {
+        let winged = guided_view(&Flying { forward: true, setting: 120.0 }, &[]);
+        assert_eq!(winged["forwardFlight"], true);
+        assert_eq!(winged["gotoLoiterRadius"], 120.0, "a fixed wing cannot hover, so a goto it is sent has to say how wide to circle");
+
+        let hovering = guided_view(&Flying { forward: false, setting: 120.0 }, &[]);
+        assert_eq!(hovering["forwardFlight"], false);
+        assert_eq!(hovering["gotoLoiterRadius"], 0.0, "a multirotor holds position, and sending it a radius would be sending a number nobody chose");
+    }
+
+    #[test]
+    fn a_setting_the_app_does_not_answer_is_no_radius_rather_than_a_guess() {
+        struct Silent;
+        impl Backend for Silent {
+            fn get(&self, _p: &str) -> String { String::new() }
+            fn get_fields(&self, path: &str, _f: &str) -> String {
+                match path {
+                    "vehicles" => json!({ "kind": "object", "activeVehicleAvailable": true }).to_string(),
+                    "vehicle" => json!({ "kind": "object", "fixedWing": true, "armed": true, "flying": true }).to_string(),
+                    _ => json!({ "kind": "null" }).to_string(),
+                }
+            }
+            fn set(&self, _p: &str, _v: &str) -> String { String::new() }
+            fn invoke(&self, _p: &str, _a: &str) -> String { String::new() }
+            fn watch(&self, _p: &[String]) {}
+        }
+        assert_eq!(guided_view(&Silent, &[])["gotoLoiterRadius"], 0.0);
     }
 }
