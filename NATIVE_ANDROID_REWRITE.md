@@ -3979,6 +3979,37 @@ already being displayed for errors — so the change is confined to a pure predi
 tests including one that restores the previous implementation exactly and fails on the single case it
 could not report, which is a stronger claim than "the new test passes".
 
+### Link editing is reachable and not persistable, so it is not built
+
+Everything needed to *edit* a link is already addressable, exactly as the macOS session argued: a
+registered configuration sits at `links.linkConfigurations.N`, and the fields are writable
+`Q_PROPERTY` — `name` on `LinkConfiguration`, `localPort` on `UDPConfiguration`, `host` and `port` on
+`TCPConfiguration`, `portName` and `baud` on `SerialConfiguration`. The core even tells a head which
+form to draw: `editing` is `hostAndPort`, `portOnly`, `serial`, `logFile` or `none` per link, and the
+view already carries the current values and a `path`. Cancel is free if the editor holds its own state
+and writes only on Save, so the duplicate QML needs is not needed here.
+
+**But nothing a head can call writes it to disk.** `LinkManager::saveLinkConfigurationList()` is plain
+`public:` at `LinkManager.h:95`, so `invokePath` cannot see it. Its five callers are
+`endConfigurationEditing`, `endCreateConfiguration`, `removeConfiguration`, `createAndConnectLink` and
+`createSerialConfiguration` — every one either needs a handle or does something other than edit. It is
+not wired to any signal either: no `connect(...)` reaches it, and it writes `QSettings` directly. And
+`shutdown()`, which is invokable, does not call it.
+
+So a head can change a link and the change holds until the app restarts, then silently reverts. That
+is worse than not having the feature, and it is the exact failure this review keeps finding —
+something that looks like it worked. **Not built for that reason.**
+
+A workaround exists and was rejected. Remove-then-recreate persists, because both halves save. But
+creating first and removing second — the ordering that cannot lose the link if a step fails — collides
+on the name whenever the user did not rename, which is the common edit. The ordering that avoids the
+collision destroys the original before the replacement exists. Convoluted and destructive, against a
+one-word fix in shared code, on the user's link configuration.
+
+The question for the core is which shape: making `saveLinkConfigurationList` invokable, or an
+`editLinkConfiguration` that writes and saves as one call. The first is smaller; the second cannot
+leave a head having written half its fields.
+
 ## Phase 6 — Shell · 2 weeks
 
 Cheaper than macOS, because Qt is already off the main thread.
