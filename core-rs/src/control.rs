@@ -47,7 +47,7 @@ pub fn decode(fact: &Value, path: &str) -> Value {
     let bits: Vec<Value> = bit_labels
         .iter()
         .zip(bit_values.iter())
-        .filter_map(|(label, raw)| raw.as_i64().map(|bit| json!({ "label": label, "raw": raw_text(raw), "set": bit != 0 && value_bits & bit != 0 })))
+        .filter_map(|(label, raw)| raw.as_i64().filter(|bit| *bit != 0).map(|bit| json!({ "label": label, "raw": raw_text(raw), "set": value_bits & bit != 0 })))
         .collect();
     let control = match (flag("typeIsBool"), labels.is_empty(), bits.is_empty(), flag("typeIsString")) {
         (true, ..) => "toggle",
@@ -127,6 +127,11 @@ mod tests {
         assert_eq!(arming["bits"][0]["raw"], "1");
         let both = decode(&json!({ "kind": "fact", "name": "FS_OPTIONS", "value": 1, "valueString": "1", "enumStrings": ["None", "Continue"], "enumValues": [0, 1], "enumIndex": 1, "bitmaskStrings": ["RC", "Battery"], "bitmaskValues": [1, 2] }), "p");
         assert_eq!(both["control"], "choice", "a fact whose metadata carries both reads as an enum, as the Qt editor resolves it");
+        let malformed = decode(&json!({ "kind": "fact", "name": "ODD", "value": 3, "valueString": "3", "bitmaskStrings": ["Nothing", "Real"], "bitmaskValues": [0, 2] }), "p");
+        let labels: Vec<&str> = malformed["bits"].as_array().unwrap().iter().map(|b| b["label"].as_str().unwrap()).collect();
+        assert_eq!(labels, ["Real"], "a bit worth nothing is dropped here rather than drawn as a checkbox that can never change anything");
+        let high = decode(&json!({ "kind": "fact", "name": "SIGNED", "value": -128, "valueString": "-128", "bitmaskStrings": ["Top"], "bitmaskValues": [-128] }), "p");
+        assert_eq!(high["bits"][0]["set"], true, "an int8 parameter carries its top bit as -128, which is still that bit");
         let plain = decode(&json!({ "kind": "fact", "name": "WPNAV_SPEED", "value": 500, "valueString": "500" }), "p");
         assert_eq!(plain["control"], "number");
         assert!(plain["bits"].as_array().unwrap().is_empty());
