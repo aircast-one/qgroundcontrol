@@ -63,6 +63,12 @@ final class MapClickStore: ObservableObject, Probeable {
         read.homeUsable = MapClickState.homeUsable(GeoPoint(json: home), altitude: homeAltitude)
         read.gpsSensorPresent = bits & MapClickState.gpsSensorBit != 0
         read.inGotoMode = !mode.isEmpty && (vehicle["gotoFlightMode"] as? String) == mode
+        // The whole view for one number, because a computed view has no sub-paths -
+        // view.guidedActions.gotoLoiterRadius answers kind:null. Measured at 2851 bytes, smaller
+        // than the vehicle object this same refresh already reads. GuidedStore reads this view
+        // too; check the cost again before a third reader is added.
+        read.gotoLoiterRadius = (Bridge.group("view.guidedActions")["gotoLoiterRadius"]
+            as? NSNumber)?.doubleValue ?? 0
         read.confirmGotoInGuided = (Bridge.group(
             "settings.flyViewSettings.goToLocationRequiresConfirmInGuided")["value"] as? NSNumber)?
             .boolValue ?? true
@@ -145,8 +151,7 @@ final class MapClickStore: ObservableObject, Probeable {
                                          "altitude": 0]
         switch target.action {
         case .cancelRoi: Bridge.invoke(path)
-        case .orbit: Bridge.invoke(path, [coordinate, 0, 0])
-        case .goTo: Bridge.invoke(path, [coordinate, 0])
+        case .goTo: Bridge.invoke(path, [coordinate, state.gotoLoiterRadius])
         default: Bridge.invoke(path, [coordinate])
         }
         if target.action == .goTo {
@@ -157,6 +162,7 @@ final class MapClickStore: ObservableObject, Probeable {
 
     func probeState() -> [String: Any] {
         ["connected": state.connected, "flying": state.flying,
+         "gotoLoiterRadius": state.gotoLoiterRadius,
          "roiSupported": state.roiSupported, "orbitSupported": state.orbitSupported,
          "homeUsable": state.homeUsable, "gpsSensorPresent": state.gpsSensorPresent,
          "missionActive": state.missionActive, "roiActive": state.roiActive,

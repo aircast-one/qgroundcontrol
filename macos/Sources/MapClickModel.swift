@@ -5,7 +5,16 @@ struct MapClickState: Equatable {
     var flying = false
     var missionActive = false
     var roiSupported = false
+    // Read and reported but no longer a gate: shown(.orbit) refuses before reaching it. Kept
+    // because it is a fact about the vehicle and the orbit needs it back the day this head can
+    // ask an operator for a radius and a height.
     var orbitSupported = false
+
+    // What the core says a goto should carry: the operator's setting when the vehicle flies
+    // forward, and zero otherwise. A fixed wing cannot hover, so a goto has to say how wide to
+    // circle; sending a multirotor a radius would be sending a number nobody chose. Read, never
+    // derived - a radius invented here is the same defect one layer down.
+    var gotoLoiterRadius: Double = 0
     var homeUsable = false
     var gpsSensorPresent = true
     var inGotoMode = false
@@ -72,7 +81,17 @@ enum MapClickAction: String, CaseIterable, Identifiable {
         switch self {
         case .goTo: return state.flying
         case .orbit:
-            return state.flying && state.orbitSupported && !state.missionActive && state.homeUsable
+            // Not offered, and not because the vehicle cannot do it. guidedModeOrbit takes a
+            // radius and an AMSL altitude, and this head asks the operator for neither - it sent
+            // (centre, 0, 0), where the radius carries the turn direction in its sign and the
+            // altitude is metres above SEA LEVEL. QML sends orbitMapCircle.radius() signed by
+            // clockwiseRotation, and homePosition.altitude plus the height the operator picked.
+            //
+            // A guided command to a flying aircraft with two invented parameters is the shape
+            // Clear Mission is withheld for: it fails by doing something, not by refusing. It
+            // comes back when the core serves the radius and the altitude, the way it now serves
+            // gotoLoiterRadius, and when there is somewhere for the operator to choose them.
+            return false
         case .roi: return state.flying && state.roiSupported
         case .cancelRoi: return state.roiSupported && state.roiActive
         case .setHome: return true

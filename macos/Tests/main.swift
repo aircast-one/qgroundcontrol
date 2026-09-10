@@ -2924,6 +2924,16 @@ func checkSetupPages() {
 func checkMapClick() {
     expect(MapClickAction.offered(in: MapClickState()).isEmpty,
            "with no vehicle the map commands nothing")
+    var winged = MapClickState()
+    winged.gotoLoiterRadius = 120
+    expect(winged.gotoLoiterRadius == 120,
+           "a goto carries the radius the core read from the operator's setting, not a zero this "
+           + "head chose. A fixed wing cannot hover, so a goto has to say how wide to circle, and "
+           + "every goto sent from here used to carry 0 -- a number on the wire nobody picked")
+    expect(MapClickState().gotoLoiterRadius == 0,
+           "and a vehicle that does not fly forward gets no radius, because the core answers 0 "
+           + "for it rather than the head deciding when a radius applies")
+
     expect(MapClickAction.refusal(in: MapClickState()).contains("No vehicle"),
            "and says why rather than showing an empty menu")
 
@@ -2932,13 +2942,26 @@ func checkMapClick() {
     grounded.roiSupported = true
     grounded.orbitSupported = true
     grounded.homeUsable = true
+    var orbiting = MapClickState()
+    orbiting.connected = true
+    orbiting.flying = true
+    orbiting.orbitSupported = true
+    orbiting.homeUsable = true
+    expect(!MapClickAction.offered(in: orbiting).contains(.orbit),
+           "an orbit is NOT offered even where QGC offers one. guidedModeOrbit takes a radius "
+           + "whose sign is the turn direction and an AMSL altitude, and this head asks the "
+           + "operator for neither -- it sent (centre, 0, 0), where 0 AMSL is sea level. A "
+           + "guided command to a flying aircraft carrying two invented numbers fails by doing "
+           + "something, which is why Clear Mission is withheld too")
+
     expect(MapClickAction.offered(in: grounded) == [.setHome],
            "on the ground only Set home is offered, which is QGC's showSetHome with no flying gate")
 
     var flying = grounded
     flying.flying = true
-    expect(MapClickAction.offered(in: flying) == [.goTo, .orbit, .roi, .setHome, .setHeading],
-           "in the air the four guided commands join it, in QGC's own order")
+    expect(MapClickAction.offered(in: flying) == [.goTo, .roi, .setHome, .setHeading],
+           "in the air the guided commands join it, in QGC's own order -- minus the orbit, which "
+           + "this head withholds until it can say how wide to circle and how high")
 
     var noOrbit = flying
     noOrbit.orbitSupported = false
