@@ -10,7 +10,7 @@ def attribute(node, name):
 
 
 def centre(node):
-    bounds = re.search(r'bounds="\[(\d+),(\d+)\]\[(\d+),(\d+)\]"', node)
+    bounds = re.search(r'bounds="\[(-?\d+),(-?\d+)\]\[(-?\d+),(-?\d+)\]"', node)
     if not bounds:
         return None
     left, top, right, bottom = (int(bounds.group(i)) for i in range(1, 5))
@@ -48,11 +48,7 @@ def main():
     print(spot[0], spot[1])
 
 
-if __name__ == "__main__":
-    main()
-
 def clickable_state(xml, label):
-    """enabled= on a Compose control lives on the clickable ancestor, not the label node."""
     nodes = NODE.findall(xml)
     for index, node in enumerate(nodes):
         if 'clickable="true"' not in node:
@@ -62,3 +58,20 @@ def clickable_state(xml, label):
         if named == label:
             return attribute(node, "enabled") == "true"
     return None
+
+
+def selftest():
+    off = '<node text="Next" bounds="[36,-50][444,58]"/>'
+    on = '<node text="Cancel" bounds="[480,1620][888,1748]"/>'
+    assert find(off + on, [("text", "Next")], 0) == (240, 4), "a node laid out off the top of the screen still has a centre"
+    assert find(off + on, [("text", "Cancel")], 0) == (684, 1684)
+    assert find(on, [("text", "Missing")], 0) is None
+    assert clickable_state('<node clickable="true" enabled="false" text=""/><node text="Erase" enabled="true"/>', "Erase") is False
+    print("node.py ok")
+
+
+if __name__ == "__main__":
+    if "--selftest" in sys.argv:
+        selftest()
+    else:
+        main()
