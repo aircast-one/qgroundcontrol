@@ -2794,6 +2794,47 @@ Building the default target refreshes the bundle and the total goes to 9. This i
 `--target AircastQGC` no longer compiling the Swift: **naming a target gets a green result for
 something other than what you are about to run.**
 
+### The links screen stops writing a sentence the core already writes
+
+The core session put `heardVehicle` and a three-way `statusLine` into `view.links`, so the head's
+`linkStatusLine` became a second implementation of a rule that has one home. Both were deleted —
+`configuredRows` too, because the projection serves `configured` already filtered, and the head no
+longer needs to know what `dynamic` means.
+
+Removing it fixed a latent bug that was never reported. The old `LinkRow.index` was the position in
+the *unfiltered* element array, carried through a filtered list on the assumption the two stay
+aligned. Every invoke path is built from that index. It happened to be correct; it was correct by
+coincidence. The row now takes the `index` the core assigns.
+
+**The wording is the core's, including the part I would have argued against.** My three were
+"Not connected" / "Open · nothing received yet" / "Receiving from the vehicle". The core's are
+"Not connected" / "Waiting for the vehicle" / "Connected". I was ready to defend "Receiving from
+the vehicle" on the grounds that "Connected" is the exact word that was wrong, and an operator
+reads one row rather than seeing three states at once. That argument does not survive Jakob's Law:
+"Connected" is what every operator expects of the good state, and spending the novelty budget on
+the *success* state to fix a defect that lived in the *failure* state is the wrong trade. With
+"Waiting for the vehicle" occupying that state, "Connected" is only ever shown when it is true.
+
+Verified on the handset with the port held constant: a link on 14999 with nothing sending reads
+"Waiting for the vehicle · UDP port 14999" in muted grey; the sim retargeted to 14999 turns the
+same row bold and reads "Connected · UDP port 14999". Neither sentence exists in the head any more.
+
+### An iteration lost to `git status`, in a tree where it cannot be believed
+
+I deferred this work for an iteration because `git status` showed `MM core-rs/src/links.rs` and I
+read that as another session editing the file. It was not. Measured:
+`git show HEAD:core-rs/src/links.rs | diff -q -` reports identical, and in the same minute
+**`git status --short` claimed 42 modified files while `git diff HEAD --name-only` listed one.**
+
+The rule that this tree's shared index makes `git diff` unreliable was already written down. It
+did not help, because I never ran a diff — I read a status letter and inferred a *person*. Those
+are different mistakes and only the first was recorded. An `M` here is not evidence that anybody
+touched the file, so it can never justify waiting on a peer. To ask whether a file differs from
+HEAD, diff against HEAD. To ask whether someone is working on it, ask them.
+
+The one genuinely modified file turned out to be 126 uncommitted deletions in the *other* head's
+document, which no commit was holding. Raised with them rather than touched.
+
 ## Phase 6 — Shell · 2 weeks
 
 Cheaper than macOS, because Qt is already off the main thread.
