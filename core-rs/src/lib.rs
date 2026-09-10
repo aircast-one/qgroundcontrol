@@ -14,6 +14,7 @@ pub mod connect;
 pub mod compinfo;
 pub mod corridorscan;
 pub mod compmeta;
+pub mod cameracalc;
 pub mod cmdinfo;
 pub mod detections;
 pub mod contract;

@@ -1187,6 +1187,19 @@ QJsonArray polygonConcave()
     };
 }
 
+struct CameraCase {
+    const char *name;
+    double      focalLength;
+    double      sensorWidth;
+    double      sensorHeight;
+    double      imageWidth;
+    double      imageHeight;
+    bool        landscape;
+    double      frontalOverlap;
+    double      sideOverlap;
+    double      distanceToSurface;
+};
+
 struct CorridorCase {
     const char *name;
     QJsonArray  polyline;
@@ -1361,6 +1374,58 @@ void QGCCoreCTest::_surveyTransectsMatchTheRecordedOracle()
     }
     restore();
 
+    const QList<CameraCase> cameras = {
+        { "camera-landscape",       8.6,  13.2,  8.8, 5472.0, 3648.0, true,  70.0, 70.0, 50.0 },
+        { "camera-portrait",        8.6,  13.2,  8.8, 5472.0, 3648.0, false, 70.0, 70.0, 50.0 },
+        { "camera-low-overlap",     8.6,  13.2,  8.8, 5472.0, 3648.0, true,  20.0, 10.0, 50.0 },
+        { "camera-high-altitude",   8.6,  13.2,  8.8, 5472.0, 3648.0, true,  70.0, 70.0, 120.0 },
+        { "camera-long-lens",      24.0,  36.0, 24.0, 6000.0, 4000.0, true,  60.0, 60.0, 80.0 },
+    };
+
+    for (const CameraCase &camera : cameras) {
+        restore();
+        (void) take(qgc_bridge_invoke("plan.missionController.insertComplexMissionItem",
+                                      compact(QJsonArray { QStringLiteral("Survey"), coordinateJson(47.3975, 8.5460), -1 }).constData()));
+        QTRY_VERIFY_WITH_TIMEOUT(take(qgc_bridge_get(item.toUtf8().constData())).value(QStringLiteral("kind")).toString() == QStringLiteral("object"), 5000);
+
+        const QString calc = item + QStringLiteral(".cameraCalc");
+        const QString custom = take(qgc_bridge_get((calc + QStringLiteral(".xlatCustomCameraName")).toUtf8().constData())).value(QStringLiteral("value")).toString();
+        QVERIFY(!custom.isEmpty());
+        const QByteArray named = QJsonDocument(QJsonObject { { QStringLiteral("value"), custom } }).toJson(QJsonDocument::Compact);
+        QVERIFY2(take(qgc_bridge_set((calc + QStringLiteral(".cameraBrand")).toUtf8().constData(), named.constData())).value(QStringLiteral("ok")).toBool(false), "the custom camera is what unlocks the calculation");
+        QCOMPARE(take(qgc_bridge_get((calc + QStringLiteral(".isManualCamera")).toUtf8().constData())).value(QStringLiteral("value")).toBool(true), false);
+
+        setFact(calc + QStringLiteral(".valueSetIsDistance"), QJsonValue(true));
+        setFact(calc + QStringLiteral(".focalLength"), QJsonValue(camera.focalLength));
+        setFact(calc + QStringLiteral(".sensorWidth"), QJsonValue(camera.sensorWidth));
+        setFact(calc + QStringLiteral(".sensorHeight"), QJsonValue(camera.sensorHeight));
+        setFact(calc + QStringLiteral(".imageWidth"), QJsonValue(camera.imageWidth));
+        setFact(calc + QStringLiteral(".imageHeight"), QJsonValue(camera.imageHeight));
+        setFact(calc + QStringLiteral(".landscape"), QJsonValue(camera.landscape));
+        setFact(calc + QStringLiteral(".frontalOverlap"), QJsonValue(camera.frontalOverlap));
+        setFact(calc + QStringLiteral(".sideOverlap"), QJsonValue(camera.sideOverlap));
+        setFact(calc + QStringLiteral(".distanceToSurface"), QJsonValue(camera.distanceToSurface));
+
+        const auto readFact = [&](const QString &name) {
+            return take(qgc_bridge_get((calc + QStringLiteral(".") + name + QStringLiteral(".rawValue")).toUtf8().constData())).value(QStringLiteral("value")).toDouble();
+        };
+        recorded[QString::fromUtf8(camera.name)] = QJsonObject {
+            { QStringLiteral("focalLength"), camera.focalLength },
+            { QStringLiteral("sensorWidth"), camera.sensorWidth },
+            { QStringLiteral("sensorHeight"), camera.sensorHeight },
+            { QStringLiteral("imageWidth"), camera.imageWidth },
+            { QStringLiteral("imageHeight"), camera.imageHeight },
+            { QStringLiteral("landscape"), camera.landscape },
+            { QStringLiteral("frontalOverlap"), camera.frontalOverlap },
+            { QStringLiteral("sideOverlap"), camera.sideOverlap },
+            { QStringLiteral("distanceToSurface"), camera.distanceToSurface },
+            { QStringLiteral("imageDensity"), QString::number(readFact(QStringLiteral("imageDensity")), 'f', 7) },
+            { QStringLiteral("adjustedFootprintSide"), QString::number(readFact(QStringLiteral("adjustedFootprintSide")), 'f', 7) },
+            { QStringLiteral("adjustedFootprintFrontal"), QString::number(readFact(QStringLiteral("adjustedFootprintFrontal")), 'f', 7) },
+        };
+    }
+    restore();
+
     const QString fixture = QFileInfo(QString::fromUtf8(__FILE__)).dir().filePath(QStringLiteral("fixtures/survey-transects.json"));
     const QByteArray current = QJsonDocument(recorded).toJson(QJsonDocument::Indented);
     if (qEnvironmentVariableIsSet("QGC_RECORD_VIEW_CONTRACT")) {
@@ -1380,11 +1445,14 @@ void QGCCoreCTest::_surveyTransectsMatchTheRecordedOracle()
     for (const CorridorCase &corridor : corridors) {
         names.append(QString::fromUtf8(corridor.name));
     }
+    for (const CameraCase &camera : cameras) {
+        names.append(QString::fromUtf8(camera.name));
+    }
     for (const QString &key : names) {
         QVERIFY2(expected.contains(key), qPrintable(key));
-        const QString was = expected.value(key).toObject().value(QStringLiteral("transects")).toString();
-        const QString now = recorded.value(key).toObject().value(QStringLiteral("transects")).toString();
-        QVERIFY2(was == now, qPrintable(QStringLiteral("%1 transects changed\n was: %2\n now: %3").arg(key, was, now)));
+        const QByteArray was = QJsonDocument(expected.value(key).toObject()).toJson(QJsonDocument::Compact);
+        const QByteArray now = QJsonDocument(recorded.value(key).toObject()).toJson(QJsonDocument::Compact);
+        QVERIFY2(was == now, qPrintable(QStringLiteral("%1 changed\n was: %2\n now: %3").arg(key, QString::fromUtf8(was), QString::fromUtf8(now))));
     }
 #else
     QSKIP("the Rust core is not linked into this build");
