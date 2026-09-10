@@ -520,17 +520,22 @@ QML deletion in the gate below would lose it.
 
 Nothing is missing from the core. `view.inspector` already emits `targetRateHz` and
 `targetRateTitle` per message and a top-level `rateChoices` list of `{rate, title}` built from
-`RATE_CHOICES` — exactly the shape a picker needs, and read by no head. This is the
-orphaned-mechanism pattern from the other direction: the core built the mechanism and the head
-never grew the control.
+`RATE_CHOICES` — exactly the shape a picker needs. **The macOS head reads all three and renders a
+rate Picker** (`AnalyzeWindow.swift:347`, `MavlinkInspector.swift:31`), so this is built on one head
+and missing on this one, not orphaned. An earlier version of this section said "read by no head";
+that was wrong, and wrong in a way my own sweep could not have caught, because the sweep only ever
+looked at the Android head.
 
-**The blocker is one word, in an expensive place.** `invokePath` finds methods by scanning
-`QMetaObject`, which records only signals, slots and `Q_INVOKABLE` methods — every call the head
-makes today (`guidedModeLand`, `setRcChannelOverride`) is `Q_INVOKABLE`. `Vehicle::setMessageRate`
-is plain `public:` at `Vehicle.h:1340`, so it is invisible to the bridge and unreachable from any
-native head, macOS included. Marking it `Q_INVOKABLE` is additive and changes nothing for existing
-callers, but `Vehicle.h` is included by about 120 translation units, so it is an AAR rebuild on a
-build tree other sessions share — worth scheduling deliberately rather than starting mid-review.
+**There is no blocker. I reported one and it was a wrong door.** `Vehicle::setMessageRate` is
+indeed plain `public:` at `Vehicle.h:1340` and so invisible to `invokePath`, which scans
+`QMetaObject` and sees only signals, slots and `Q_INVOKABLE` methods. I concluded from that the
+feature needed a `Q_INVOKABLE` on `Vehicle.h` and therefore an AAR rebuild across ~120 translation
+units. It does not. `MAVLinkInspectorController::setMessageInterval(int32_t rate)` is `Q_INVOKABLE`
+(`MAVLinkInspectorController.h:70`), resolves the message from `_activeSystem->selectedMsg()` and
+calls `vehicle->setMessageRate` internally; `setActiveSystem(int)` is invokable beside it. The head
+sets the selection as state and invokes the controller with a rate alone. So the work is head-only,
+needs no rebuild, and the reachability check I ran — "is *this* method invokable" — asked about the
+wrong object. The right question was whether *any* invokable path reaches the behaviour.
 
 **That blocker is not systemic, which is worth stating because I assumed it would be.** The same
 sweep flagged `hasZoom`, `zoomLevel` and `canChangeMode` on `view.camera` as emitted and unread, and
@@ -3776,6 +3781,33 @@ rather than changed here.
 
 `showing` is read by neither head. It is `!listed.is_empty()`, so nothing is lost by that, but it is
 core output with no consumer.
+
+### "Ready to fly" was answered by the weaker of two available verdicts
+
+`SetupScreen`'s header answers the one question that page exists for, and it answered it from
+`vehicle.autopilotPlugin.setupComplete` — which loops the vehicle components and consults nothing
+else. `view.setup` already computes `ready` as *no outstanding components* **and** *no unhealthy
+sensors* **and** *a non-empty component list*, with `headline` and `detail` sentences explaining it,
+and the screen was already fetching that view for its page lookups.
+
+The two disagree in two states and the head took the optimistic answer in both.
+`AutoPilotPlugin::setupComplete` initialises `newSetupComplete = true` and breaks out of a loop that
+never executes when `vehicleComponents()` is empty, so **a vehicle that reports no components at all
+read as "Ready to fly"**. An unhealthy sensor never entered the verdict either.
+
+Fixed in `a8f450d` by reading `ready`, `headline` and `detail` from the core. That also deleted a
+hand-built `"N items need setup"` sentence duplicating the core's `headline`, which had already
+drifted from it — the core counts "components", the head said "items".
+
+The rig produced the failing case rather than the agreeing one, which is the part that makes this
+verified rather than asserted: the ArduPilot sim reports no setup components, so the header now reads
+"Not ready to fly · This vehicle reports no setup components · Nothing to check." where the old code
+would have said ready.
+
+A note on how this was nearly missed. The sweep flagged `firmware` as emitted-and-unread and it is —
+but the core's `firmware` is `"px4"`/`"apm"`/`"none"`, a discriminator, while the head's
+`firmwareSummary` builds a human version string. Same key name, unrelated meanings, no finding.
+`ready`/`headline`/`detail` in the same list were real. A sweep hit is a question, not a defect.
 
 ## Phase 6 — Shell · 2 weeks
 
