@@ -782,8 +782,20 @@ func checkFlyDetail() {
     expect(FlyDetail.link(rcRSSI: 84, localRSSI: -70, remoteRSSI: -68).map(\.label)
         .joined(separator: ","), "RC signal,Telemetry here,Telemetry on the vehicle",
            "a real radio reports all three")
-    expect(FlyDetail.link(rcRSSI: 0, localRSSI: nil, remoteRSSI: nil).isEmpty,
-           "and a zero RC reading is absence, not a dead stick")
+    expect(FlyDetail.link(rcRSSI: 0, localRSSI: nil, remoteRSSI: nil).map(\.value)
+        .joined(separator: ","), "No signal",
+           "a zero RC reading is a dead stick, not absence: Vehicle stores 255 when it has "
+           + "nothing to say and an explicit 0 once the filtered signal decays, so the row that "
+           + "used to vanish now says so - a row that disappears reads as not applicable")
+    expect(FlyDetail.rcSignal(255) == nil,
+           "255 is the vehicle having nothing to report, and still shows no row")
+    expect(FlyDetail.rcSignal(0) ?? "", "No signal", "0 is the vehicle reporting silence")
+    expect(FlyDetail.rcSignal(84) ?? "", "84%", "and a live reading is a plain percentage")
+    expect(FlyDetail.rcSignal(100) ?? "", "100%", "including the top of the range")
+    expect(FlyDetail.rcSignal(101) == nil,
+           "a percentage QGC would not accept is dropped rather than rendered; the old guard "
+           + "only excluded 255 and would have printed 150%")
+    expect(FlyDetail.rcSignal(254) == nil, "and so is anything else short of the sentinel")
 
     expect(Units.display("v"), "V",
            "the vehicle spells volts in lower case; the whole window spells it the same way")

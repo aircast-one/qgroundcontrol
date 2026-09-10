@@ -70,13 +70,28 @@ enum FlyDetail {
                                      ("mgrs", "MGRS")])
     }
 
-    static let rcUnreported = 255
+    // Vehicle::_remoteControlRSSIChanged uses 255 for invalid or unknown and stores an explicit
+    // 0 once the filtered signal decays away, so the two are not the same answer: 255 means the
+    // vehicle never told us, 0 means it told us the RC link is gone. Anything else outside
+    // 0...100 is not a percentage QGC will accept either.
+    static let rcRange = 0...100
+    static let rcSilent = "No signal"
+
+    // 255 is the sentinel and needs no clause of its own: it falls outside the percentage range
+    // along with every other value QGC's own rcRSSI > 0 && <= 100 test rejects. Writing it out
+    // separately read as protection and was dead - removing it failed nothing.
+    static func rcSignal(_ value: Int) -> String? {
+        guard rcRange.contains(value) else { return nil }
+        return value == rcRange.lowerBound ? rcSilent : "\(value)%"
+    }
 
     static func link(rcRSSI: Int?, localRSSI: Int?, remoteRSSI: Int?) -> [DetailRow] {
         let rc = rcRSSI.flatMap { value -> DetailRow? in
-            guard value != rcUnreported, value > 0 else { return nil }
-            return DetailRow(label: "RC signal", value: "\(value)%")
+            rcSignal(value).map { DetailRow(label: "RC signal", value: $0) }
         }
+        // Unlike the RC percentage, a telemetry dBm of 0 is the unset value: Vehicle initialises
+        // both to 0 and QGC's own TelemetryRSSIIndicator reads telemetryLRSSI !== 0 as "there is
+        // a telemetry radio at all". Dropping it is right here and the two cases do not match.
         let local = localRSSI.flatMap { value -> DetailRow? in
             guard value != 0 else { return nil }
             return DetailRow(label: "Telemetry here", value: "\(value) dBm")
