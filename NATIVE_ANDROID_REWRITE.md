@@ -847,11 +847,17 @@ artefact, not only in the live model.
 
 Two things the walk turned up:
 
-- **Both confirmations fire on an empty plan.** "Starting a new plan clears the
-  one you have" and "Opening a plan replaces the one you have" are shown even
-  when the plan holds nothing and nothing can be lost. The guard is on the
-  action, not on there being anything to discard — an unnecessary decision on
-  the path a user takes most often, right after a save.
+- **Both confirmations fired on an empty plan** — "Starting a new plan clears
+  the one you have" with nothing in it, right after a save. Fixed in `e9c5bb5`.
+  The gate was `plan.dirty`, which looked correct; the cause is in shared QGC.
+  `PlanMasterController` clears the flag in exactly two places, `saveToFile` and
+  `removeAll`, and **both clears are behind `offline()`**. With a vehicle
+  connected neither saving nor starting a new plan clears it, so `dirty` there
+  means "not synced to the vehicle" rather than "has unsaved edits". The head now
+  also requires `containsItems`, which drops the certainly-wrong case without
+  redefining a flag the desktop and macOS heads share. Clear mission still always
+  confirms: it acts on the aircraft, which can hold a mission when this plan is
+  empty.
 - **The picker does not land on the file you just wrote.** DocumentsUI opens on
   its own last location and sorts by name, so a freshly saved plan is wherever
   the alphabet puts it. Nothing to fix in our code, but it means "save then
