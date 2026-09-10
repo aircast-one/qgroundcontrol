@@ -41,10 +41,19 @@ pub fn decode(fact: &Value, path: &str) -> Value {
         .filter(|(label, _)| !label.starts_with(UNKNOWN_ENUM_PREFIX))
         .map(|(label, raw)| json!({ "label": label, "raw": raw_text(raw) }))
         .collect();
-    let control = match (flag("typeIsBool"), labels.is_empty(), flag("typeIsString")) {
-        (true, _, _) => "toggle",
-        (false, false, _) => "choice",
-        (false, true, true) => "text",
+    let bit_labels: Vec<String> = fact.get("bitmaskStrings").and_then(Value::as_array).map(|a| a.iter().filter_map(Value::as_str).map(str::to_string).collect()).unwrap_or_default();
+    let bit_values: Vec<Value> = fact.get("bitmaskValues").and_then(Value::as_array).filter(|v| v.len() == bit_labels.len()).cloned().unwrap_or_default();
+    let value_bits = fact.get("value").and_then(Value::as_i64).unwrap_or(0);
+    let bits: Vec<Value> = bit_labels
+        .iter()
+        .zip(bit_values.iter())
+        .filter_map(|(label, raw)| raw.as_i64().map(|bit| json!({ "label": label, "raw": raw_text(raw), "set": bit != 0 && value_bits & bit != 0 })))
+        .collect();
+    let control = match (flag("typeIsBool"), labels.is_empty(), bits.is_empty(), flag("typeIsString")) {
+        (true, ..) => "toggle",
+        (false, false, ..) => "choice",
+        (false, true, false, _) => "bitmask",
+        (false, true, true, true) => "text",
         _ => "number",
     };
     let enum_index = fact.get("enumIndex").and_then(Value::as_i64).unwrap_or(-1);
@@ -68,6 +77,7 @@ pub fn decode(fact: &Value, path: &str) -> Value {
         "units": text("units"),
         "readOnly": flag("readOnly"),
         "options": options,
+        "bits": bits,
         "decimalPlaces": fact.get("decimalPlaces").and_then(Value::as_i64).unwrap_or(0),
         "minimum": bound("min", "minIsDefaultForType"),
         "maximum": bound("max", "maxIsDefaultForType"),
@@ -105,6 +115,21 @@ mod tests {
         let param = decode(&json!({ "kind": "fact", "name": "COMPASS_USE", "value": 1, "valueString": "1", "vehicleRebootRequired": true }), "p");
         assert_eq!((param["vehicleRebootRequired"].as_bool(), param["applicationRestartRequired"].as_bool()), (Some(true), Some(false)));
         assert_eq!(param["restartNotices"], json!([VEHICLE_REBOOT_NOTICE]));
+    }
+
+    #[test]
+    fn a_bitmask_fact_names_its_bits_and_says_which_are_set() {
+        let arming = decode(&json!({ "kind": "fact", "name": "ARMING_CHECK", "value": 82, "valueString": "82", "bitmaskStrings": ["All", "Barometer", "Compass", "GPS lock", "INS", "Parameters", "RC Channels"], "bitmaskValues": [1, 2, 4, 16, 32, 64, 128] }), "p");
+        assert_eq!(arming["control"], "bitmask", "a parameter an operator sets bit by bit is not a number");
+        let set: Vec<&str> = arming["bits"].as_array().unwrap().iter().filter(|b| b["set"] == true).map(|b| b["label"].as_str().unwrap()).collect();
+        assert_eq!(set, ["Barometer", "GPS lock", "Parameters"], "82 is bits 2, 16 and 64");
+        assert_eq!(arming["bits"].as_array().unwrap().len(), 7);
+        assert_eq!(arming["bits"][0]["raw"], "1");
+        let both = decode(&json!({ "kind": "fact", "name": "FS_OPTIONS", "value": 1, "valueString": "1", "enumStrings": ["None", "Continue"], "enumValues": [0, 1], "enumIndex": 1, "bitmaskStrings": ["RC", "Battery"], "bitmaskValues": [1, 2] }), "p");
+        assert_eq!(both["control"], "choice", "a fact whose metadata carries both reads as an enum, as the Qt editor resolves it");
+        let plain = decode(&json!({ "kind": "fact", "name": "WPNAV_SPEED", "value": 500, "valueString": "500" }), "p");
+        assert_eq!(plain["control"], "number");
+        assert!(plain["bits"].as_array().unwrap().is_empty());
     }
 
     #[test]

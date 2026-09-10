@@ -127,6 +127,7 @@
             "view.control.control": [
                 "toggle",
                 "choice",
+                "bitmask",
                 "text",
                 "number"
             ],
@@ -366,6 +367,9 @@
     },
     "view.control(settings.appSettings.audioMuted)": {
         "applicationRestartRequired": "bool",
+        "bits": [
+            "empty"
+        ],
         "class": "string",
         "control": "string",
         "decimalPlaces": "number",
@@ -939,6 +943,9 @@
                         "controls": [
                             {
                                 "applicationRestartRequired": "bool",
+                                "bits": [
+                                    "empty"
+                                ],
                                 "class": "string",
                                 "control": "string",
                                 "decimalPlaces": "number",
@@ -1012,6 +1019,9 @@
                 "controls": [
                     {
                         "applicationRestartRequired": "bool",
+                        "bits": [
+                            "empty"
+                        ],
                         "class": "string",
                         "control": "string",
                         "decimalPlaces": "number",

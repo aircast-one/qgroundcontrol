@@ -23,7 +23,7 @@ pub fn enumerations() -> Value {
         "view.vibration.axes[].severity": ["normal", "warning", "danger"],
         "view.vibration.worst": ["normal", "warning", "danger"],
         "view.sensors.sensors[].state": ["healthy", "unhealthy", "disabled"],
-        "view.control.control": ["toggle", "choice", "text", "number"],
+        "view.control.control": ["toggle", "choice", "bitmask", "text", "number"],
         "view.plan.sync.state": ["offline", "busy", "ready"],
         "view.plan.readiness.state": [0, 1, 2],
         "view.plan.upload.state": [0, 1, 2, 3],
