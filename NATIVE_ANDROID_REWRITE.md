@@ -3703,6 +3703,17 @@ Phases 0 and 1 are done, the library target was free, and the thread separation 
 4. **Blocking calls from the Android main thread.** `runOnQtThread` uses a `BlockingQueuedConnection`
    when called off the Qt thread. A Qt thread that is itself waiting on the Android main thread would
    deadlock. Not observed, not prevented.
+
+   Measured 2026-09-10: opening the Plan tab makes the Qt thread busy for about a second, and every
+   bridge read issued in that window waits on the blocking connection. The same path read twice in
+   one tab entry gives **864 ms at entry and 5 ms four seconds later** — so the reads are cheap and
+   the wait is queueing, not work. Reads issued back to back during the window drain progressively
+   (883, 619, 18, 4 ms). Ruled out by experiment: item count (an empty plan costs the same), full
+   versus compact fact serialisation (`getFields(path, "*")` changed nothing), the video receiver's
+   1 s restart loop (disabling video left the number unchanged), generic marshalling cost (another
+   off-thread call in the same window measured 8 ms) and the `Watcher`, which binds to signals rather
+   than re-reading. What occupies the thread for that second is still unidentified. No ANR — the
+   calls are off the main thread — but whatever reads first comes back a second late.
 5. **Watcher latency.** Watched paths are polled and diffed at 200 ms, not signal-connected. Fine for
    status, too slow for an attitude indicator. Phase 5 needs the notify-signal path.
 6. **macOS divergence.** Every path Compose needs must also serve SwiftUI. Add to `QGCBridgeCore`,
