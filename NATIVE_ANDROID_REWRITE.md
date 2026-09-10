@@ -2835,6 +2835,41 @@ HEAD, diff against HEAD. To ask whether someone is working on it, ask them.
 The one genuinely modified file turned out to be 126 uncommitted deletions in the *other* head's
 document, which no commit was holding. Raised with them rather than touched.
 
+### Remote Support could be started and never stopped
+
+The screen sends the vehicle's live MAVLink — position included — to an address the operator
+types, for as long as the link stays up. It had a Start button, a status line, and no way to stop.
+The footnote sent the operator to a different screen: "Remove the forwarding link from Comm Links
+to stop it", where they would have to recognise which of the listed links is the forwarding one.
+An action with an ongoing privacy consequence needs its off switch where its on switch is.
+
+Underneath it was worse than missing. `LinkManager::_mavlinkSupportForwardingEnabled` is assigned
+`true` in exactly one place and **never assigned `false` anywhere**. It is a latch. So once
+forwarding started, the status line read "Forwarding" for the rest of the session no matter what
+happened to the link, and because the Start button was `enabled = !forwarding`, it was permanently
+disabled — following the footnote's own instructions left the screen insisting it was still
+forwarding and refusing to start again.
+
+The flag was also redundant. `LinkManager::mavlinkForwardingSupportLink()` already answers the
+question against the live list, so the cached bool duplicated it and was the copy that could go
+stale — the same shape as every "a head re-derives what the core already knows" finding in this
+document, one level down. `mavlinkSupportForwardingEnabled()` is now
+`mavlinkForwardingSupportLink() != nullptr`, the member is deleted, and the change signal is
+emitted from `_linkDisconnected`, which is the single point where a link leaves `_rgLinks`.
+
+`endMavlinkForwardingSupportLink()` is the missing symmetric call, added beside
+`createMavlinkForwardingSupportLink()`. The head offers Stop while forwarding and Start otherwise.
+
+**Verified by watching the packets, not the label**, since the label is what was broken. With the
+support host pointed at a UDP listener on this machine: Start put 66 packets on the wire in 25
+seconds and the screen read "Forwarding"; Stop froze the count at 6 for the following 25 seconds
+and the screen read "Not forwarding" with Start enabled again — a state that was unreachable
+before this change.
+
+Also deleted: a `reloads` counter incremented by the fact row's callback and read by nothing.
+Nothing recomposes on a state that has no reader, so it was not a refresh mechanism, only the
+shape of one.
+
 ## Phase 6 — Shell · 2 weeks
 
 Cheaper than macOS, because Qt is already off the main thread.

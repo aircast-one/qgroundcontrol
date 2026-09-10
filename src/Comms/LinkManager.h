@@ -71,6 +71,7 @@ public:
     Q_INVOKABLE void createConnectedLink(const LinkConfiguration *config);
     Q_INVOKABLE bool createAndConnectLink(const QString &type, const QString &name, const QString &host, int port);
     Q_INVOKABLE void createMavlinkForwardingSupportLink();
+    Q_INVOKABLE void endMavlinkForwardingSupportLink();
     /// Called to signal app shutdown. Disconnects all links while turning off auto-connect.
     Q_INVOKABLE void shutdown();
     Q_INVOKABLE LogReplayLink *startLogReplay(const QString &logFile);
@@ -78,7 +79,7 @@ public:
     QList<SharedLinkInterfacePtr> links() { return _rgLinks; }
     QmlObjectListModel *linkConfigurations() { return _qmlLinkConfigurations(); }
     QStringList linkTypeStrings() const;
-    bool mavlinkSupportForwardingEnabled() const { return _mavlinkSupportForwardingEnabled; }
+    bool mavlinkSupportForwardingEnabled() { return mavlinkForwardingSupportLink() != nullptr; }
     QString connectingLinkName() const;
     LinkConfiguration *failedLink() const { return _failedLink.data(); }
     QString failedLinkName() const { return _failedLink ? _failedLink->name() : QString(); }
@@ -164,7 +165,6 @@ private:
     bool _configUpdateSuspended = false;            ///< true: stop updating configuration list
     bool _configurationsLoaded = false;             ///< true: Link configurations have been loaded
     bool _connectionsSuspended = false;             ///< true: all new connections should not be allowed
-    bool _mavlinkSupportForwardingEnabled = false;
     uint32_t _mavlinkChannelsUsedBitMask = 1;
     QString _connectionsSuspendedReason;            ///< User visible reason for suspension
     QPointer<LinkConfiguration> _failedLink;

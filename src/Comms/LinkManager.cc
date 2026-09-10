@@ -317,7 +317,11 @@ void LinkManager::_linkDisconnected()
         if (it->get() == link) {
             const SharedLinkConfigurationPtr config = it->get()->linkConfiguration();
             qCDebug(LinkManagerLog) << Q_FUNC_INFO << config->name() << it->use_count();
+            const bool wasSupportForwarding = config && (config->type() == LinkConfiguration::TypeUdp) && (config->name() == _mavlinkForwardingSupportLinkName);
             (void) _rgLinks.erase(it);
+            if (wasSupportForwarding) {
+                emit mavlinkSupportForwardingEnabledChanged();
+            }
             emit connectingLinkNameChanged();
             if (connectingLinkName().isEmpty()) {
                 _connectingStallTimer->stop();
@@ -769,8 +773,15 @@ void LinkManager::createMavlinkForwardingSupportLink()
 {
     const QString hostName = SettingsManager::instance()->mavlinkSettings()->forwardMavlinkAPMSupportHostName()->rawValue().toString();
     _createDynamicForwardLink(_mavlinkForwardingSupportLinkName, hostName);
-    _mavlinkSupportForwardingEnabled = true;
     emit mavlinkSupportForwardingEnabledChanged();
+}
+
+void LinkManager::endMavlinkForwardingSupportLink()
+{
+    const SharedLinkInterfacePtr link = mavlinkForwardingSupportLink();
+    if (link) {
+        link->disconnect();
+    }
 }
 
 void LinkManager::_removeConfiguration(const LinkConfiguration *config)
