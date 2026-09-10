@@ -1,5 +1,10 @@
 package one.aircast.android.ui
 
+import java.time.LocalDateTime
+import java.time.OffsetDateTime
+import java.time.ZoneId
+import java.time.format.DateTimeFormatter
+import java.time.format.FormatStyle
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
@@ -42,6 +47,23 @@ private const val LOG_ROOT = "logDownload"
 private const val LOG_MODEL = "logDownload.model"
 private const val LOGS_VIEW = "view.logs"
 
+internal const val TIME_UNRECEIVED = "unreceived"
+internal const val TIME_UNKNOWN = "unknown"
+
+private val LOCAL_TIME: DateTimeFormatter =
+    DateTimeFormatter.ofLocalizedDateTime(FormatStyle.MEDIUM)
+
+internal fun logLocalTime(raw: String): LocalDateTime? =
+    runCatching { OffsetDateTime.parse(raw).atZoneSameInstant(ZoneId.systemDefault()).toLocalDateTime() }
+        .recoverCatching { LocalDateTime.parse(raw) }
+        .getOrNull()
+
+internal fun logTimeText(raw: String, state: String, format: (LocalDateTime) -> String): String = when (state) {
+    TIME_UNRECEIVED -> ""
+    TIME_UNKNOWN -> "Date unknown"
+    else -> logLocalTime(raw)?.let(format) ?: "Date unknown"
+}
+
 internal data class LogEntry(
     val index: Int,
     val id: Int,
@@ -75,7 +97,10 @@ internal fun logsView(view: JSONObject?): LogsView? {
                 LogEntry(
                     index = entry.optInt("index", index),
                     id = entry.optInt("id"),
-                    time = entry.optString("timeText"),
+                    time = logTimeText(
+                        entry.optString("time"),
+                        entry.optString("timeState"),
+                    ) { LOCAL_TIME.format(it) },
                     sizeStr = entry.optString("sizeText"),
                     received = entry.optBoolean("received"),
                     selected = entry.optBoolean("selected"),
