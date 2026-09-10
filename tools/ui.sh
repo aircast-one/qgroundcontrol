@@ -9,8 +9,9 @@
 #   ui.sh tap X Y          tap, only if the app is in front and the target is not a
 #                          flight control; ALLOW_FLIGHT_COMMAND=1 to command on purpose
 #   ui.sh swipe X1 Y1 X2 Y2 [MS]
-#   ui.sh text "..."       type, only if the app is in front
+#   ui.sh type "..."       type, only if the app is in front
 #   ui.sh key KEYCODE
+#   ui.sh text             print the text on screen, same guard as a capture
 #   ui.sh find k=v [k=v...] [N]   print the centre of the Nth matching node, or fail
 #                          keys: text, id, class, below, above, and any node attribute
 #   ui.sh pick k=v [k=v...]       tap that node, allowed in the file picker the app opened
@@ -123,7 +124,7 @@ pick)
     adb shell input tap ${spot}
     ;;
 swipe)   require_front; adb shell input swipe "$2" "$3" "$4" "$5" "${6:-400}" ;;
-text)    require_front; adb shell input text "$2" ;;
+type)    require_front; adb shell input text "$2" ;;
 key)     require_front; adb shell input keyevent "$2" ;;
 shot)
     if [ "${ALLOW_ANY_SCREEN:-0}" != "1" ] && ! in_front; then
