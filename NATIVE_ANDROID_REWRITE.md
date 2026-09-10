@@ -4411,6 +4411,32 @@ marshalling. The stall remains unexplained and is now bounded away from the QML 
   **"Expect the 82 MB AAR to roughly halve" should be read as unfunded until that decision is taken.**
   The 44% in `libAircastQGC` is still reachable by ordinary means and is where the next work goes.
 
+  **And the 44% is mostly not code, which closes the last easy route.** Measured from the artifact:
+  `libAircastQGC` is 42.7 MB of the 80.8 MB AAR — 53% on its own — and its sections are `.rodata`
+  38.4 MB against `.text` 28.3 MB. The five largest symbols in the library are `qt_resource_data`
+  blobs totalling ~31 MB. **Half the library is embedded resources, already compressed**, which is why
+  the AAR zip cannot squeeze them further.
+
+  Raw payloads behind those blobs: APM parameter metadata 38.5 MB across 45 files, `qgcresources`
+  9.9 MB, `qgroundcontrol.qrc` 9.4 MB, `qgcimages` 5.2 MB over 223 images, PX4 1.3 MB.
+
+  **The obvious cut was measured and is a bad trade.** Shipping only ArduPilot 4.4+ metadata on
+  Android — dropping 25 of 35 firmware versions, 20.5 MB of source XML — moves the AAR
+  **80.84 -> 79.93 MB. 0.91 MB.** In exchange, every vehicle on 4.3 or older loses parameter
+  descriptions, enum decoding and bitmask names, which is what makes `ARMING_CHECK` read
+  "Barometer, INS, RC Channels" instead of `82`, and what the Params search matches on. Reverted.
+
+  One mechanism note for whoever tries this next: a generator expression in the `QGC_RESOURCES` list
+  does not swap a `.qrc`. AUTORCC compiles both and the link takes both, so the first attempt measured
+  0.03 MB and looked like the resources were incompressible rather than like a broken swap. An
+  `if(ANDROID)` around a `set()` is what actually replaces it.
+
+  **So the size target has no cheap remainder.** Four mechanisms measured: link list, feature switches,
+  scan root, and resource contents. The largest single lever left is the ~31 MB of compressed resources,
+  and every one of them is either firmware metadata an operator's aircraft may need or images the
+  desktop shares. Halving this AAR means choosing what the product does without, not finding a build
+  flag.
+
   **The `Viewer3D` decision is answered, and the answer is that it barely matters.** The project has a
   supported switch for it, so I tried the designed path before considering surgery: configuring
   `build-android` with `-DQGC_VIEWER3D=OFF` and rebuilding took the AAR from 81.16 MB to **81.08 MB**,
