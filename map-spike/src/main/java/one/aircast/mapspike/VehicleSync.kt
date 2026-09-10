@@ -47,3 +47,11 @@ fun uploadStep(gate: UploadGate?): UploadStep = when {
     gate.canProceed -> UploadStep.Confirm(gate)
     else -> UploadStep.Refuse(gate.refusal.ifBlank { "This plan cannot be uploaded." })
 }
+
+// Read at the moment of the attempt, not from a watched copy. The precheck answers "should
+// this plan go to this vehicle right now", and a vehicle can begin flying the mission between
+// one poll and the operator's tap - which is exactly the case that must pause first.
+fun freshUploadGate(): UploadGate? =
+    runCatching {
+        uploadGate(org.json.JSONObject(org.mavlink.qgroundcontrol.QGCBridge.get("view.plan")))
+    }.getOrNull()

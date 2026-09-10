@@ -142,7 +142,6 @@ internal fun MapSpikeScreen(
     val planHasItems by mapBool("plan.containsItems")
     val planOffline by mapBool("plan.offline")
     val planSyncing by mapBool("plan.syncInProgress")
-    val planStatus by mapPath("view.plan")
     var uploadAsk by remember { mutableStateOf<UploadGate?>(null) }
     val missionDistance by mapDouble("plan.missionController.missionTotalDistance")
     val missionTime by mapDouble("plan.missionController.missionTime")
@@ -346,10 +345,13 @@ internal fun MapSpikeScreen(
                         if (refusal != null) {
                             say(refusal)
                         } else {
-                            when (val step = uploadStep(uploadGate(planStatus))) {
-                                is UploadStep.Refuse -> say(step.reason)
-                                is UploadStep.Confirm -> uploadAsk = step.gate
-                                UploadStep.Send -> sendPlan(scope, say = { busy = it }, done = { busy = null })
+                            scope.launch {
+                                val gate = withContext(Dispatchers.Default) { freshUploadGate() }
+                                when (val step = uploadStep(gate)) {
+                                    is UploadStep.Refuse -> say(step.reason)
+                                    is UploadStep.Confirm -> uploadAsk = step.gate
+                                    UploadStep.Send -> sendPlan(scope, say = { busy = it }, done = { busy = null })
+                                }
                             }
                         }
                     }, contentPadding = PRIMARY_PADDING) { Text("Upload") }
