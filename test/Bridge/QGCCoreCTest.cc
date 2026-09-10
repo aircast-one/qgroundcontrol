@@ -1042,7 +1042,7 @@ const char *const kViewPaths[] = {
     "view.mapScale(120)", "view.terrainProfile", "view.missionKinds", "view.missionSeed(survey,47,8)",
     "view.calibration", "view.radio", "view.logs", "view.inspector", "view.flightModes", "view.settings",
     "view.settings(General)", "view.surveyStats(0)", "view.fences", "view.polygon", "view.setup",
-    "view.setup(Safety)", "view.video", "view.camera",
+    "view.setup(Safety)", "view.video", "view.camera", "view.detections",
 };
 
 } // namespace
@@ -1056,6 +1056,8 @@ void QGCCoreCTest::_viewShapesMatchTheRecordedContract()
 
     _connectMockLink(MAV_AUTOPILOT_PX4);
     QTRY_VERIFY_WITH_TIMEOUT(take(qgc_bridge_get("view.guidedActions")).value(QStringLiteral("connected")).toBool(false), 5000);
+    _mockLink->sendStatusTextMessages();
+    QTRY_VERIFY_WITH_TIMEOUT(take(qgc_bridge_get("view.messages")).value(QStringLiteral("count")).toInt() > 0, 5000);
 
     QJsonObject recorded;
     for (const char *path : kViewPaths) {

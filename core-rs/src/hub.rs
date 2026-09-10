@@ -18,6 +18,7 @@ use crate::mavout::{self, Outbound};
 use crate::params::{self, INITIAL_REQUEST_TIMEOUT_MS, ParamValue, Params, WAITING_TIMEOUT_MS};
 use crate::plantransfer::{self, PLAN_FENCE, PLAN_MISSION, PLAN_RALLY, Transfer};
 use crate::remoteid::{self, GcsFix, RemoteId};
+use crate::sensorcal::{self, Calibration};
 use crate::ulogstream::Processor;
 use crate::standardmodes::{self, AvailableMode, FlightMode, MSG_AVAILABLE_MODES, StandardModes};
 use crate::transport::LinkId;
@@ -141,6 +142,7 @@ pub struct Vehicle {
     log_denied: bool,
     log_error: Option<String>,
     was_armed: bool,
+    calibrate: Calibration,
 }
 
 #[derive(Debug)]
@@ -212,7 +214,65 @@ impl Vehicle {
             log_denied: false,
             log_error: None,
             was_armed: false,
+            calibrate: Calibration::new(autopilot == crate::modes::AUTOPILOT_PX4),
         }
+    }
+
+    fn calibration_inputs(&self) -> sensorcal::Inputs {
+        let number = |name: &str| self.params.value(self.component, name).map(ParamValue::as_f64);
+        let compass_bit = |index: usize| {
+            let suffix = if index == 0 { String::new() } else { (index + 1).to_string() };
+            let present = number(&format!("COMPASS_DEV_ID{suffix}")).is_some_and(|id| id > 0.0);
+            let used = number(&format!("COMPASS_USE{suffix}")).is_some_and(|use_it| use_it != 0.0);
+            if present && used { 1u8 << index } else { 0 }
+        };
+        sensorcal::Inputs {
+            mag_sides: number("CAL_MAG_SIDES").map(|sides| sides as u32),
+            compass_mask: (0..3).map(compass_bit).sum(),
+            compass_fitness: number(sensorcal::COMPASS_FITNESS_PARAM),
+            compass_learn: number(sensorcal::COMPASS_LEARN_PARAM).is_some(),
+        }
+    }
+
+    fn follow_calibration(&mut self, actions: Vec<sensorcal::Action>, now_ms: u64) -> Vec<Vec<u8>> {
+        let target = (self.id, self.component);
+        actions
+            .into_iter()
+            .flat_map(|action| match action {
+                sensorcal::Action::Command { command: sensorcal::CMD_PREFLIGHT_CALIBRATION, params, .. } => self.encode(&Outbound::CommandLong { target, command: sensorcal::CMD_PREFLIGHT_CALIBRATION, params }).into_iter().collect(),
+                sensorcal::Action::Command { command, params, show_error } => {
+                    let outs = self.commands.send(Command { component: self.component, command, command_int: false, frame: 0, params, show_error, tag: 0 }, now_ms);
+                    self.handle(outs, now_ms)
+                }
+                sensorcal::Action::SetParam { name, value } => {
+                    let Some(current) = self.params.value(self.component, name) else { return Vec::new() };
+                    let Some(written) = ParamValue::from_f64(current.param_type(), value) else { return Vec::new() };
+                    let actions = self.params.write(self.component, name, written);
+                    self.follow_params(actions, now_ms)
+                }
+                sensorcal::Action::Ack => self.encode(&Outbound::AccelCalAck).into_iter().collect(),
+            })
+            .collect()
+    }
+
+    pub fn calibrate_request(&mut self, request: &Value, now_ms: u64) -> Result<Vec<Vec<u8>>, String> {
+        let action = request.get("action").and_then(Value::as_str).ok_or_else(|| "A calibration request needs an action.".to_string())?;
+        let actions = match action {
+            "start" => {
+                let id = request.get("type").and_then(Value::as_str).ok_or_else(|| "A calibration start needs a type.".to_string())?;
+                let kind = sensorcal::Kind::parse(id).ok_or_else(|| format!("Unknown calibration type {id:?}"))?;
+                let inputs = self.calibration_inputs();
+                self.calibrate.start(kind, inputs)?
+            }
+            "cancel" => self.calibrate.cancel()?,
+            "next" => self.calibrate.next()?,
+            other => return Err(format!("Unknown calibration action {other:?}")),
+        };
+        Ok(self.follow_calibration(actions, now_ms))
+    }
+
+    pub fn calibration_snapshot(&self) -> Value {
+        self.calibrate.snapshot()
     }
 
     pub fn start_log(&mut self, inputs: &LogInputs, now_ms: u64) -> Result<Vec<Vec<u8>>, String> {
@@ -941,8 +1001,22 @@ impl Vehicle {
                 self.vehicle_type = h.mavtype as u8;
             }
             MavMessage::COMMAND_ACK(a) => {
+                let calibration = self.calibrate.on_ack(a.command as u32 as u16, a.result as u8);
+                let mut bytes = self.follow_calibration(calibration, now_ms);
                 let outs = self.commands.on_ack(header.component_id, a.command as u32 as u16, a.result as u8, now_ms);
-                return self.handle(outs, now_ms);
+                bytes.extend(self.handle(outs, now_ms));
+                return bytes;
+            }
+            MavMessage::COMMAND_LONG(c) if c.command as u32 as u16 == sensorcal::CMD_ACCELCAL_VEHICLE_POS => {
+                let actions = self.calibrate.on_accel_position(c.param1 as u32);
+                return self.follow_calibration(actions, now_ms);
+            }
+            MavMessage::MAG_CAL_PROGRESS(p) => {
+                self.calibrate.on_mag_progress(p.compass_id, p.cal_mask, p.completion_pct);
+            }
+            MavMessage::MAG_CAL_REPORT(r) => {
+                let actions = self.calibrate.on_mag_report(r.compass_id, r.cal_status as u8, r.fitness as f64);
+                return self.follow_calibration(actions, now_ms);
             }
             MavMessage::AUTOPILOT_VERSION(v) => {
                 let outs = self.commands.on_message(header.component_id, MSG_AUTOPILOT_VERSION);
@@ -1042,7 +1116,12 @@ impl Vehicle {
             MavMessage::STATUSTEXT(t) => {
                 let end = t.text.iter().position(|b| *b == 0).unwrap_or(t.text.len());
                 if let Some(status) = self.status_text.receive(header.component_id, t.severity as u8, 0, 0, &t.text[..end]) {
+                    let actions = self.calibrate.on_text(&status.text);
+                    let bytes = self.follow_calibration(actions, now_ms);
                     self.recent.push(status);
+                    if !bytes.is_empty() {
+                        return bytes;
+                    }
                     if self.recent.len() > MAX_MESSAGES {
                         self.recent.remove(0);
                     }
@@ -1217,6 +1296,24 @@ impl Hub {
         Ok(frames.into_iter().map(|bytes| (link, bytes)).collect())
     }
 
+    pub fn calibrate_request(&mut self, id: Option<u8>, request: &Value, now_ms: u64) -> Result<Vec<(LinkId, Vec<u8>)>, String> {
+        let chosen = id.or(self.active).ok_or_else(|| "No vehicle is connected through the core.".to_string())?;
+        let vehicle = self.vehicles.get_mut(&chosen).ok_or_else(|| format!("Vehicle {chosen} is not connected through the core."))?;
+        let link = vehicle.link;
+        Ok(vehicle.calibrate_request(request, now_ms)?.into_iter().map(|bytes| (link, bytes)).collect())
+    }
+
+    pub fn calibration_snapshot(&self, id: Option<u8>) -> Value {
+        let vehicle = id.and_then(|id| self.vehicles.get(&id)).or_else(|| self.active());
+        json!({
+            "kind": "object",
+            "class": "CoreCalibration",
+            "available": vehicle.is_some(),
+            "vehicleId": vehicle.map(|v| v.id),
+            "calibration": vehicle.map(Vehicle::calibration_snapshot).unwrap_or(Value::Null),
+        })
+    }
+
     pub fn remote_request(&mut self, id: Option<u8>, request: &Value) -> Result<(), String> {
         let chosen = id.or(self.active).ok_or_else(|| "No vehicle is connected through the core.".to_string())?;
         let vehicle = self.vehicles.get_mut(&chosen).ok_or_else(|| format!("Vehicle {chosen} is not connected through the core."))?;
@@ -1338,6 +1435,10 @@ pub fn core_mission_view(_backend: &dyn crate::router::Backend, args: &[String])
         "vehicleId": vehicle.map(|v| v.id),
         "plans": vehicle.map(Vehicle::mission_snapshot).unwrap_or(Value::Null),
     })
+}
+
+pub fn core_calibration_view(_backend: &dyn crate::router::Backend, args: &[String]) -> Value {
+    lock().calibration_snapshot(args.first().and_then(|a| a.trim().parse().ok()))
 }
 
 pub fn core_remote_id_view(backend: &dyn crate::router::Backend, args: &[String]) -> Value {
@@ -1971,5 +2072,50 @@ mod tests {
         assert!(disarmed.iter().any(|m| matches!(m, MavMessage::COMMAND_LONG(c) if c.command == MavCmd::MAV_CMD_LOGGING_STOP)));
         assert_eq!(hub.snapshot_of(Some(3))["vehicle"]["log"]["running"], false);
         let _ = std::fs::remove_dir_all(&dir);
+    }
+    #[test]
+    fn a_px4_accel_calibration_runs_from_the_status_texts_through_the_view() {
+        use mavlink::dialects::ardupilotmega::{COMMAND_LONG_DATA, HEARTBEAT_DATA, MavAutopilot, MavCmd, MavType, STATUSTEXT_DATA};
+        let autopilot = MavHeader { system_id: 3, component_id: 1, sequence: 0 };
+        let mut px4 = HEARTBEAT_DATA::default();
+        px4.mavtype = MavType::MAV_TYPE_QUADROTOR;
+        px4.autopilot = MavAutopilot::MAV_AUTOPILOT_PX4;
+        let mut hub = Hub::default();
+        hub.on_frame(origin(4), &autopilot, &MavMessage::HEARTBEAT(px4), 0, 0);
+        let started = hub.calibrate_request(None, &json!({ "action": "start", "type": "accelerometer" }), 1_000).unwrap();
+        let MavMessage::COMMAND_LONG(command) = decode(&started[0].1) else { panic!() };
+        assert_eq!((command.command, command.param5, command.target_system), (MavCmd::MAV_CMD_PREFLIGHT_CALIBRATION, 1.0, 3));
+        assert!(hub.calibrate_request(None, &json!({ "action": "start", "type": "compass" }), 1_100).is_err());
+        let say = |hub: &mut Hub, text: &str| {
+            let mut data = STATUSTEXT_DATA::default();
+            data.text = crate::mavout::chars(text);
+            hub.on_frame(origin(4), &autopilot, &MavMessage::STATUSTEXT(data), 0, 1_200)
+        };
+        say(&mut hub, "[cal] calibration started: 2 accel");
+        say(&mut hub, "[cal] down orientation detected");
+        let view = hub.calibration_snapshot(None);
+        assert_eq!(view["calibration"]["running"], "accelerometer");
+        assert_eq!(view["calibration"]["sides"][0]["stage"], "inProgress");
+        assert!(view["calibration"]["showOrientations"].as_bool().unwrap());
+        let cancelled = hub.calibrate_request(None, &json!({ "action": "cancel" }), 1_300).unwrap();
+        let MavMessage::COMMAND_LONG(stop) = decode(&cancelled[0].1) else { panic!() };
+        assert_eq!([stop.param1, stop.param2, stop.param3, stop.param4, stop.param5, stop.param6, stop.param7], [0.0; 7], "a stop is the calibration command with every parameter zero");
+        say(&mut hub, "[cal] calibration cancelled");
+        let after = hub.calibration_snapshot(None);
+        assert_eq!((after["calibration"]["running"].as_str(), after["calibration"]["outcome"].as_str()), (None, Some("cancelled")));
+        assert!(hub.calibrate_request(None, &json!({ "action": "next" }), 1_400).is_err(), "PX4 has no next step");
+        assert!(hub.calibrate_request(None, &json!({ "action": "start", "type": "pressure" }), 1_500).is_err(), "pressure is an ArduPilot routine");
+        let apm = MavHeader { system_id: 1, component_id: 1, sequence: 0 };
+        let mut hub = Hub::default();
+        connect_copter(&mut hub, &apm);
+        hub.calibrate_request(Some(1), &json!({ "action": "start", "type": "accelerometer" }), 2_000).unwrap();
+        let prompt = MavMessage::COMMAND_LONG(COMMAND_LONG_DATA { command: MavCmd::MAV_CMD_ACCELCAL_VEHICLE_POS, param1: 1.0, ..Default::default() });
+        assert!(hub.on_frame(origin(4), &apm, &prompt, 0, 2_100).is_empty());
+        assert_eq!(hub.calibration_snapshot(Some(1))["calibration"]["sides"][0]["stage"], "inProgress");
+        let acked = hub.calibrate_request(Some(1), &json!({ "action": "next" }), 2_200).unwrap();
+        assert!(matches!(decode(&acked[0].1), MavMessage::COMMAND_ACK(a) if a.command == MavCmd::MAV_CMD_ACCELCAL_VEHICLE_POS), "next answers the prompt with the ack ArduPilot advances on, which ignores the command field");
+        let done = MavMessage::COMMAND_LONG(COMMAND_LONG_DATA { command: MavCmd::MAV_CMD_ACCELCAL_VEHICLE_POS, param1: 16_777_215.0, ..Default::default() });
+        hub.on_frame(origin(4), &apm, &done, 0, 2_300);
+        assert_eq!(hub.calibration_snapshot(Some(1))["calibration"]["outcome"], "success");
     }
 }

@@ -5,6 +5,10 @@ use crate::view::VIEWS;
 
 pub const DEPS: &[&str] = &[];
 
+fn routine_ids() -> Vec<&'static str> {
+    vec!["accelerometer", "compass", "levelHorizon", "gyro", "pressure", "airspeed"]
+}
+
 pub fn enumerations() -> Value {
     json!({
         "view.guidedActions.actions[].offer": ["hidden", "ready", "blocked"],
@@ -27,6 +31,13 @@ pub fn enumerations() -> Value {
         "view.missionKinds.kinds[].geometry": ["area", "line", null],
         "view.missionKinds.kinds[].id": ["waypoint", "takeoff", "land", "roi", "survey", "corridor", "structure"],
         "view.setup.firmware": ["none", "apm", "px4"],
+        "view.setup.groups[].pages[].name": crate::setup::PAGES.iter().flat_map(|(_, pages)| pages.iter().copied()).collect::<Vec<_>>(),
+        "view.messages.items[].level": ["normal", "warning", "error"],
+        "view.coreCalibration.calibration.running": routine_ids(),
+        "view.coreCalibration.calibration.last": routine_ids(),
+        "view.coreCalibration.calibration.routines[].id": routine_ids(),
+        "view.coreCalibration.calibration.sides[].stage": ["waiting", "inProgress", "done"],
+        "view.coreCalibration.calibration.outcome": ["success", "cancelled", "failed"],
         "view.fences.polygons[].shape": ["polygon"],
         "view.fences.circles[].shape": ["circle"],
         "view.guidedSpeed.command": ["guidedModeChangeGroundSpeedMetersSecond", "guidedModeChangeEquivalentAirspeedMetersSecond"],
@@ -58,5 +69,11 @@ mod tests {
         assert_eq!(listed["view.missionKinds.kinds[].id"], Value::Array(kinds));
         assert_eq!(listed["view.battery.level"].as_array().unwrap().len(), 4);
         assert!(VIEWS.iter().any(|v| v.path == "view.contract"));
+        let pages: Vec<Value> = crate::setup::PAGES.iter().flat_map(|(_, pages)| pages.iter().map(|p| json!(p))).collect();
+        assert_eq!(listed["view.setup.groups[].pages[].name"], Value::Array(pages), "the setup page names are the list the core ships, so a head can pin its glyph table against it");
+        let routines: Vec<Value> = routine_ids().iter().map(|id| json!(id)).collect();
+        assert_eq!(listed["view.coreCalibration.calibration.routines[].id"], Value::Array(routines));
+        assert!(routine_ids().iter().all(|id| crate::sensorcal::Kind::parse(id).is_some()), "every listed routine is a kind the core accepts");
+        assert!(["normal", "warning", "error"].iter().all(|level| crate::messages::level_of(match *level { "error" => "#E", "warning" => "#I", _ => "" }) == *level));
     }
 }

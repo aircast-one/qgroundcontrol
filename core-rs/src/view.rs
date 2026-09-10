@@ -97,6 +97,7 @@ pub const VIEWS: &[View] = &[
     View { path: "view.coreParameters", deps: &[], compute: hub::core_parameters_view },
     View { path: "view.coreMission", deps: &[], compute: hub::core_mission_view },
     View { path: "view.coreRemoteId", deps: &[], compute: hub::core_remote_id_view },
+    View { path: "view.coreCalibration", deps: &[], compute: hub::core_calibration_view },
     View { path: "view.detections", deps: detections::DEPS, compute: detections::detections_view },
     View { path: "view.kmlFile", deps: kml::DEPS, compute: kml::kml_view },
     View { path: "view.shapeFile", deps: shp::DEPS, compute: shp::shp_view },

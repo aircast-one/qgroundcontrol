@@ -53,6 +53,7 @@ pub mod read;
 pub mod remoteid;
 pub mod remoteidview;
 pub mod replay;
+pub mod sensorcal;
 pub mod sensors;
 #[cfg(not(target_os = "android"))]
 pub mod seriallink;

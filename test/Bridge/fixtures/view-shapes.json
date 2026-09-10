@@ -129,6 +129,40 @@
                 "text",
                 "number"
             ],
+            "view.coreCalibration.calibration.last": [
+                "accelerometer",
+                "compass",
+                "levelHorizon",
+                "gyro",
+                "pressure",
+                "airspeed"
+            ],
+            "view.coreCalibration.calibration.outcome": [
+                "success",
+                "cancelled",
+                "failed"
+            ],
+            "view.coreCalibration.calibration.routines[].id": [
+                "accelerometer",
+                "compass",
+                "levelHorizon",
+                "gyro",
+                "pressure",
+                "airspeed"
+            ],
+            "view.coreCalibration.calibration.running": [
+                "accelerometer",
+                "compass",
+                "levelHorizon",
+                "gyro",
+                "pressure",
+                "airspeed"
+            ],
+            "view.coreCalibration.calibration.sides[].stage": [
+                "waiting",
+                "inProgress",
+                "done"
+            ],
             "view.fences.circles[].shape": [
                 "circle"
             ],
@@ -175,6 +209,11 @@
                 "logReplay",
                 "other"
             ],
+            "view.messages.items[].level": [
+                "normal",
+                "warning",
+                "error"
+            ],
             "view.missionKinds.kinds[].geometry": [
                 "area",
                 "line",
@@ -220,6 +259,22 @@
                 "none",
                 "apm",
                 "px4"
+            ],
+            "view.setup.groups[].pages[].name": [
+                "Summary",
+                "Sensors",
+                "Radio",
+                "Frame",
+                "Flight Modes",
+                "Safety",
+                "Power",
+                "Motors",
+                "Tuning",
+                "Camera",
+                "Lights",
+                "Flight Behavior",
+                "Remote Support",
+                "Parameters"
             ],
             "view.vibration.axes[].severity": [
                 "normal",
@@ -283,6 +338,7 @@
             "view.coreParameters",
             "view.coreMission",
             "view.coreRemoteId",
+            "view.coreCalibration",
             "view.detections",
             "view.kmlFile",
             "view.shapeFile",
@@ -312,6 +368,20 @@
         "units": "string",
         "value": "bool",
         "valueString": "string"
+    },
+    "view.detections": {
+        "ageMs": "null",
+        "available": "bool",
+        "boxes": [
+            "empty"
+        ],
+        "camera": "null",
+        "class": "string",
+        "error": "null",
+        "host": "null",
+        "kind": "string",
+        "stale": "bool",
+        "track": "null"
     },
     "view.fences": {
         "circles": [
@@ -652,7 +722,14 @@
         "class": "string",
         "count": "number",
         "items": [
-            "empty"
+            {
+                "component": "null",
+                "index": "number",
+                "level": "string",
+                "severity": "string",
+                "text": "string",
+                "time": "string"
+            }
         ],
         "kind": "string"
     },
@@ -867,7 +944,6 @@
             {
                 "pages": [
                     {
-                        "completes": "bool",
                         "name": "string",
                         "native": "bool",
                         "parameterSections": "bool"

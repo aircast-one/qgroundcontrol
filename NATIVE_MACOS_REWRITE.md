@@ -653,6 +653,7 @@ About 58 developer-weeks. Flight-test time, not code, is the schedule.
 - 2026-09-09: remote ID broadcasts run in the core for core-served vehicles (arm status starts the one-second SYSTEM/BASIC_ID/SELF_ID/OPERATOR_ID cycle, 2.5 s of silence stops it); `view.coreRemoteId` feeds the settings and GCS fix from the Qt side and reports the state; `qgc_core_remote_id` declares an emergency.
 - 2026-09-09: `view.messages` items carry `level` (error, warning, normal) read from the Qt handler's style token, so heads bucket without depending on the translated severity word, and an `index` to key on.
 - 2026-09-09: PX4 MAVLink log streaming runs in the core for core-served vehicles (`qgc_core_log` start/stop/autoStart, file named as the Qt processor names it, acks, denial handling); `view.coreVehicle.log` reports it.
+- Sensor calibration moved into the Rust core (`core-rs/src/sensorcal.rs`). The PX4 `[cal]` status-text protocol and the ArduPilot compass and accelerometer flows both run there; `view.coreCalibration(id)` serves the orientations, progress, outcome and log, and `qgc_core_calibrate` takes start/cancel/next. `view.setup.groups[].pages[].completes` is gone: it encoded a head's capability, not the core's knowledge, and the two heads had already diverged on Radio.
 
 ### Stream F · Core
 
