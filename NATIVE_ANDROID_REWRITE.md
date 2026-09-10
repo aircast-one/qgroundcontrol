@@ -4198,7 +4198,26 @@ marshalling. The stall remains unexplained and is now bounded away from the QML 
 - `QGCApplication` drops from `QApplication` to `QCoreApplication`; the embedded-host boot path
   becomes the only path.
 - QtQuick, QtQml, QtGui, QtLocation, QtMultimedia, QtCharts, QtWidgets and QtPositioning drop from
-  the Android dependency set. Expect the 82 MB AAR to roughly halve.
+  the Android dependency set.
+
+  **Measured, because "roughly halve" reads as banked and is only half the story.** The AAR is 81.2 MB
+  compressed and 178.9 MB of native code across 143 `.so`:
+
+      QGC's own libAircastQGC      79.8 MB   44.6%
+      Qt modules + QML plugins     71.4 MB   39.9%
+      media and crypto (gst, av)   20.4 MB   11.4%
+      other                         7.2 MB    4.0%
+
+  So dropping **every** Qt UI module removes 40%, not 50%. Halving needs the other half to come from
+  `libAircastQGC` itself, by excluding QGC's own QML and UI C++ from the Android build — which is
+  also what the module drop requires, since `Qt6::Charts` reaches `QGCApplication.h` and the Analyze
+  chart controllers, and the list in `src/CMakeLists.txt` is unconditional and shared with the
+  desktop build. It is two pieces of work, not a CMake edit.
+
+  Individual subsystems, for sequencing: QuickControls styles 10.4 MB across 27 plugins, Widgets
+  6.7 MB, **Quick3D 3.9 MB** — that last one is a number for the open `Viewer3D` keep-or-drop
+  decision, which until now had none — Location and Positioning 2.9 MB, Charts 2.8 MB, Multimedia
+  1.4 MB.
 - Release build, signing and CI for `aircast-android`, which today only builds debug locally.
 
 **Gate:** two weeks of internal flying with the previous release as fallback, then delete the
