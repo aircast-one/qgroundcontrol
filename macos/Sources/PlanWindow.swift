@@ -525,12 +525,12 @@ struct PlanInspector: View {
     }
 
     private func showsAltitudeMode(in group: String) -> Bool {
-        group == ItemFact.itemGroup && AltitudeMode.isChoice(mission.itemAltitudeMode)
+        group == ItemFact.itemGroup && !mission.itemModes.isEmpty
     }
 
     private var showsMissionSettings: Bool {
         mission.items.first(where: \.isCurrent)?.sequence == 0
-            && AltitudeMode.isMissionChoice(mission.globalAltitudeMode)
+            && !mission.missionModes.isEmpty
     }
 
     private var missionCard: some View {
@@ -542,7 +542,9 @@ struct PlanInspector: View {
                         get: { mission.globalAltitudeMode },
                         set: { mission.setGlobalAltitudeMode($0) })
                     ) {
-                        ForEach(AltitudeMode.missionChoices) { Text($0.title).tag($0.raw) }
+                        ForEach(AltitudeMode.choosable(mission.missionModes)) {
+                            Text($0.title).tag($0.raw)
+                        }
                     }
                     .labelsHidden()
                     .frame(maxWidth: 170)
@@ -694,13 +696,15 @@ struct PlanInspector: View {
                             })
                         }
 
-                        if AltitudeMode.isChoice(mission.distanceMode) {
+                        if !mission.distanceModes.isEmpty {
                             GroupRow(title: "Altitude mode", trailing: {
                                 Picker("", selection: Binding(
                                     get: { mission.distanceMode },
                                     set: { mission.setDistanceMode($0) })
                                 ) {
-                                    ForEach(AltitudeMode.choices) { Text($0.title).tag($0.raw) }
+                                    ForEach(AltitudeMode.choosable(mission.distanceModes)) {
+                                        Text($0.title).tag($0.raw)
+                                    }
                                 }
                                 .labelsHidden()
                                 .frame(maxWidth: 170)
@@ -714,7 +718,9 @@ struct PlanInspector: View {
                                 get: { mission.itemAltitudeMode },
                                 set: { mission.setItemAltitudeMode($0) })
                             ) {
-                                ForEach(AltitudeMode.choices) { Text($0.title).tag($0.raw) }
+                                ForEach(AltitudeMode.choosable(mission.itemModes)) {
+                                    Text($0.title).tag($0.raw)
+                                }
                             }
                             .labelsHidden()
                             .frame(maxWidth: 170)

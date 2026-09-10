@@ -29,6 +29,9 @@ final class MissionStore: ObservableObject, Probeable, WriteReporting {
     @Published private(set) var distanceMode = AltitudeMode.none
     @Published private(set) var itemAltitudeMode = AltitudeMode.none
     @Published private(set) var globalAltitudeMode = AltitudeMode.none
+    @Published private(set) var missionModes: [AltitudeModeOffer] = []
+    @Published private(set) var itemModes: [AltitudeModeOffer] = []
+    @Published private(set) var distanceModes: [AltitudeModeOffer] = []
     @Published private(set) var defaultAltitude = ""
     @Published private(set) var summary = PlanSummary.empty
     @Published private(set) var vehicle = MissionVehicle.unknown
@@ -102,6 +105,9 @@ final class MissionStore: ObservableObject, Probeable, WriteReporting {
         if !catalogue.all.isEmpty, catalogue != kinds { kinds = catalogue }
         let mode = AltitudeMode.read(controller["globalAltitudeMode"])
         if mode != globalAltitudeMode { globalAltitudeMode = mode }
+        let missionOffers = AltitudeMode.offers(
+            Bridge.group("view.altitudeModes(\(AltitudeMode.missionContext),\(mode))"))
+        if missionOffers != missionModes { missionModes = missionOffers }
 
         let hover = (controller["missionHoverDistance"] as? NSNumber)?.doubleValue ?? 0
         let cruise = (controller["missionCruiseDistance"] as? NSNumber)?.doubleValue ?? 0
@@ -365,6 +371,13 @@ final class MissionStore: ObservableObject, Probeable, WriteReporting {
         itemAltitudeMode = item.specifiesAltitude
             ? AltitudeMode.read(Bridge.group("plan.missionController.visualItems.\(item.index)")["altitudeMode"])
             : AltitudeMode.none
+        let context = AltitudeMode.itemContext
+        let itemOffers = AltitudeMode.offers(
+            Bridge.group("view.altitudeModes(\(context),\(itemAltitudeMode))"))
+        if itemOffers != itemModes { itemModes = itemOffers }
+        let distanceOffers = AltitudeMode.offers(
+            Bridge.group("view.altitudeModes(\(context),\(distanceMode))"))
+        if distanceOffers != distanceModes { distanceModes = distanceOffers }
 
         let cameraFacts = item.isSimpleItem ? [] : ItemFact.camera(
             (calc["facts"] as? [Any]) ?? [], label: Labels.humanise)
@@ -384,7 +397,10 @@ final class MissionStore: ObservableObject, Probeable, WriteReporting {
     }
 
     func setGlobalAltitudeMode(_ raw: Int) {
-        guard AltitudeMode.isMissionChoice(raw) else { return }
+        if let refused = AltitudeMode.refusal(missionModes, raw: raw) {
+            writeFailure = refused
+            return
+        }
         write("plan.missionController.globalAltitudeMode", raw, "the altitude mode")
         reload()
     }
@@ -434,14 +450,22 @@ final class MissionStore: ObservableObject, Probeable, WriteReporting {
     }
 
     func setItemAltitudeMode(_ raw: Int) {
-        guard let item = items.first(where: \.isCurrent), AltitudeMode.isChoice(raw) else { return }
+        if let refused = AltitudeMode.refusal(itemModes, raw: raw) {
+            writeFailure = refused
+            return
+        }
+        guard let item = items.first(where: \.isCurrent) else { return }
         write("plan.missionController.visualItems.\(item.index).altitudeMode", raw,
               "this item's altitude mode")
         reload()
     }
 
     func setDistanceMode(_ raw: Int) {
-        guard let item = items.first(where: \.isCurrent), AltitudeMode.isChoice(raw) else { return }
+        if let refused = AltitudeMode.refusal(distanceModes, raw: raw) {
+            writeFailure = refused
+            return
+        }
+        guard let item = items.first(where: \.isCurrent) else { return }
         write("plan.missionController.visualItems.\(item.index).cameraCalc.distanceMode", raw,
               "the camera distance mode")
         reload()
@@ -764,9 +788,14 @@ final class MissionStore: ObservableObject, Probeable, WriteReporting {
          "surveyStats": ["shots": surveyStats.shotsText, "distance": surveyStats.distanceText, "interval": surveyStats.intervalText,
                          "area": surveyStats.areaText, "footprint": surveyStats.footprintText,
                          "warning": surveyStats.warning],
-         "distanceMode": AltitudeMode.title(for: distanceMode),
-         "itemAltitudeMode": AltitudeMode.title(for: itemAltitudeMode),
-         "globalAltitudeMode": AltitudeMode.title(for: globalAltitudeMode), "defaultAltitude": defaultAltitude,
+         "distanceMode": AltitudeMode.title(for: distanceMode, in: distanceModes),
+         "itemAltitudeMode": AltitudeMode.title(for: itemAltitudeMode, in: itemModes),
+         "globalAltitudeMode": AltitudeMode.title(for: globalAltitudeMode, in: missionModes),
+         "altitudeModes": ["mission": missionModes.map(\.raw), "item": itemModes.map(\.raw),
+                           "distance": distanceModes.map(\.raw),
+                           "missionChoosable": AltitudeMode.choosable(missionModes).map(\.raw),
+                           "missionRefusals": missionModes.filter { !$0.enabled }.map(\.reason)],
+         "defaultAltitude": defaultAltitude,
          "scale": scaleBar.text,
          "polygons": editablePolygons.map { ["path": $0.path, "vertices": $0.points.count,
                                              "canRemove": $0.canRemoveVertex,

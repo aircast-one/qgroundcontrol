@@ -1375,13 +1375,34 @@ func checkAltitudeMode() {
             AltitudeMode.unrelatedRaw].map(String.init).joined(separator: ","),
            "0,1,2,3,4,5", "each mode is the number of its C++ enum case, in that order")
 
-    expect(AltitudeMode.choices.count == 4, "a survey offers four altitude modes")
-    expect(!AltitudeMode.isChoice(AltitudeMode.mixedRaw), "mixed belongs to a whole mission, not a survey")
-    expect(!AltitudeMode.isChoice(AltitudeMode.unrelatedRaw),
-           "none means the distance is not about the ground")
-    expect(!AltitudeMode.isMissionChoice(AltitudeMode.unrelatedRaw),
-           "and a whole mission cannot be set to it either")
-    expect(AltitudeMode.isChoice(AltitudeMode.terrainFrameRaw), "terrain frame is a survey mode")
+    func offer(_ raw: Int, _ title: String, enabled: Bool = true, reason: String = "") -> [String: Any] {
+        ["raw": raw as NSNumber, "title": title, "help": "h",
+         "current": false as NSNumber, "enabled": enabled as NSNumber, "reason": reason]
+    }
+    let listed = AltitudeMode.offers(["modes": [
+        offer(AltitudeMode.relativeRaw, "Relative To Launch"),
+        offer(AltitudeMode.absoluteRaw, "AMSL"),
+        offer(AltitudeMode.calcAboveTerrainRaw, "Calculated Above Terrain",
+              enabled: false, reason: "Add a mission item first."),
+    ]])
+    expect(listed.count == 3, "the head shows the modes the core offered and no others")
+    expect(AltitudeMode.offers(["modes": [["title": "no raw"]]]).isEmpty,
+           "a mode with no raw is dropped: the raw is the number written back through "
+           + "plan.missionController, so an entry without one could only write the wrong mode")
+
+    expect(AltitudeMode.choosable(listed).map(\.raw).map(String.init).joined(separator: ","),
+           "1,2", "only the modes the core enabled can be picked; Terrain Frame on a firmware "
+           + "that cannot hold it is not in the list at all, and this head used to offer all five "
+           + "to every vehicle")
+    expect(AltitudeMode.refusal(listed, raw: AltitudeMode.relativeRaw) == nil,
+           "an enabled mode is written without complaint")
+    expect(AltitudeMode.refusal(listed, raw: AltitudeMode.calcAboveTerrainRaw) ?? "",
+           "Add a mission item first.",
+           "and a disabled one is refused in the core's own words rather than silently ignored")
+    expect(AltitudeMode.refusal(listed, raw: AltitudeMode.terrainFrameRaw) ?? "",
+           "This vehicle does not offer that altitude mode.",
+           "a mode the core never offered is refused too, which is the direction that matters: "
+           + "the write is the gate, not the picker")
 
     expect(AltitudeMode.read(4 as NSNumber) == AltitudeMode.terrainFrameRaw,
            "the mode crosses the bridge as the number of its C++ enum case")
@@ -1389,24 +1410,15 @@ func checkAltitudeMode() {
            "and a name where a number belongs is no mode at all, which is what broke the pickers")
     expect(AltitudeMode.read(nil) == AltitudeMode.none, "so is a missing one")
 
-    expect(AltitudeMode.title(for: AltitudeMode.terrainFrameRaw), "Follow terrain",
-           "the mode reads as what it does, not as its enum name")
-    expect(AltitudeMode.title(for: AltitudeMode.relativeRaw), "Relative to launch", "same for relative")
-    expect(AltitudeMode.title(for: 9), "Mode 9",
+    expect(AltitudeMode.title(for: AltitudeMode.absoluteRaw, in: listed), "AMSL",
+           "a mode reads as the core's words")
+    expect(AltitudeMode.title(for: 9, in: listed), "Mode 9",
            "an unknown mode is shown as sent rather than hidden")
-    expect(AltitudeMode.title(for: AltitudeMode.none), "",
+    expect(AltitudeMode.title(for: AltitudeMode.none, in: listed), "",
            "but an item that carries no altitude at all names no mode")
-    expect(AltitudeMode.title(for: AltitudeMode.unrelatedRaw), "",
-           "and neither does AltitudeModeNone, which QGC draws as an empty string; this head "
-           + "knew the number well enough to refuse writing it and still showed the operator "
-           + "\u{201C}Mode 5\u{201D} when one arrived")
-
-
-    expect(AltitudeMode.missionChoices.count == 5, "a mission offers one more mode than a survey")
-    expect(AltitudeMode.isMissionChoice(AltitudeMode.mixedRaw), "a mission can be mixed")
-    expect(!AltitudeMode.isChoice(AltitudeMode.mixedRaw), "one survey cannot")
-    expect(AltitudeMode.title(for: AltitudeMode.mixedRaw), "Mixed (per item)",
-           "mixed says that each item carries its own frame")
+    expect(AltitudeMode.title(for: AltitudeMode.unrelatedRaw, in: listed), "",
+           "and neither does AltitudeModeNone, which QGC draws as an empty string rather than "
+           + "\u{201C}Mode 5\u{201D}")
 }
 
 checkAltitudeMode()
@@ -3214,6 +3226,24 @@ func checkViewContract() {
            + "comparing the head's copy against itself could not see")
     expect(!flyStates.contains(FlyState.Kind.unknown.rawValue),
            "unknown is this head's word for a token the core added, never one the core sends")
+
+    let altitudeRaws = ((enumerations?["view.altitudeModes.modes[].raw"] as? [Any]) ?? [])
+        .compactMap { ($0 as? NSNumber)?.intValue }
+    expect(altitudeRaws.sorted().map(String.init).joined(separator: ","), "0,1,2,3,4",
+           "the altitude modes are the numbers of their C++ enum cases; they are written back "
+           + "through plan.missionController, so a reordering upstream would silently change "
+           + "what every mode means")
+    expect(altitudeRaws.filter { !AltitudeMode.raws.contains($0) }.map(String.init)
+        .joined(separator: ","), "",
+           "every mode the core can offer is one this head names")
+    expect(AltitudeMode.raws.filter { !altitudeRaws.contains($0) }.map(String.init)
+        .joined(separator: ","), "",
+           "and this head names no mode the core never offers, which is the direction that would "
+           + "have let a stale constant write a mode that no longer exists")
+    expect(recorded("view.altitudeModes.context").sorted().joined(separator: ","), "item,mission",
+           "the two menus are the two the core distinguishes")
+    expect(recorded("view.altitudeModes.context").filter { !AltitudeMode.contexts.contains($0) }
+        .joined(separator: ","), "", "and this head asks for no other")
 
     let messageLevels = recorded("view.messages.items[].level")
     expect(messageLevels.sorted().joined(separator: ","), "error,normal,warning",
