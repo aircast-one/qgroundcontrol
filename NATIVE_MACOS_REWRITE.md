@@ -678,3 +678,40 @@ them and delete their model files in the same commit. E records every hardware g
 When R1 starts (after Phase 6, or from a cut-off for new screens); the QML shim versus a fifth
 native head for Windows and Linux; Bluetooth on macOS; confirming `UTMSP` and `Viewer3D` are
 dropped. Recommendations are in the vault plan.
+
+### Stream E · What has never been exercised (2026-09-10)
+
+The plan says hardware gates have not been run past Phase 0 and that E records each one here. None
+has been run, so this is the inverse register: behaviour that is implemented, tested by fixtures,
+and has never once executed. It is kept because a phase can read as finished while the case its
+code exists for has never occurred, and only a list makes that visible.
+
+The macOS rig has **no vehicle** and must not connect a link, arm, upload, calibrate, forward
+MAVLink, or write the shared settings file. Fixtures are the instrument for every decode below; for
+anything that renders or actuates there is no instrument here at all.
+
+| Behaviour | State | Why it is unreachable here |
+|---|---|---|
+| Plan upload, and its refusal when the upload check cannot be read | never run | no vehicle; the refusal needs `view.plan` to carry no `upload` object, which needs the bridge or plan root to fail |
+| Force Arm, both VTOL transitions | never fired | gated on a vehicle that is refusing an arm, or a flying VTOL |
+| Sensor calibration of any kind | never started | forbidden on the shared SITL |
+| Bitmask parameter editor | never drawn | `bitmaskStrings` comes from vehicle parameter metadata; all fifteen settings pages answer only choice/number/toggle/text |
+| Terrain Frame offered in the altitude menu | never seen offered | needs firmware answering `supportsTerrainFrame` true |
+| Flight trail, and its decimation | never drawn | needs `activeVehicleAvailable` and a valid `vehicle.coordinate` |
+| `view.flyState` beyond `notConnected` | one branch only | `contactLost` was verified on the Android rig, not this one |
+| A camera source needing no address | never displayed | all three configured slots are url-requiring types; changing one writes the shared settings file |
+
+Two of these are worse than they look because they are unreachable on **every** rig, not just this
+one. The bitmask editor is covered by fixtures on both heads and drawn on neither, because the core
+has not yet emitted `bits` on `controls` — the Android session has a vehicle and still cannot reach
+it. The flight trail's decimation is designed twice, implemented twice and observed zero times.
+
+The recorded view contract stores `view.control.bits` and `view.track.points` as `["empty"]`, so it
+pins those keys but not their element shapes; unit fixtures in `macos/Tests/main.swift` are the only
+thing holding `{ label, raw, set }` and `{ latitude, longitude }`.
+
+What the Android rig settled that this one could not: link loss end to end, and that
+**Armed-as-distinct-from-Flying had never been produced by any rig** until `apmvehicle.py` stopped
+reporting `IN_AIR` the instant it armed — so the flight-state precedence both heads argued over had
+been running against a sim that could not generate the case it was written for. A screen that looks
+right is not evidence if the rig can only produce the case that looks right.
