@@ -1,19 +1,22 @@
 use serde_json::{Value, json};
 
 use crate::missionkinds::{default_area, default_line, insertable, lookup, refusal};
+use crate::read::object;
 use crate::router::Backend;
 
 const INSERT: &str = "mission.insert";
 const REMOVE: &str = "mission.remove";
+const ORBIT: &str = "guided.orbit";
 
 pub fn owns(path: &str) -> bool {
-    matches!(path, INSERT | REMOVE)
+    matches!(path, INSERT | REMOVE | ORBIT)
 }
 
 pub fn run(backend: &dyn Backend, path: &str, args: &str) -> Value {
     match path {
         INSERT => insert(backend, args),
         REMOVE => remove(backend, args),
+        ORBIT => orbit(backend, args),
         _ => json!({ "ok": false, "reason": format!("{path} is not an action the core performs") }),
     }
 }
@@ -103,6 +106,45 @@ fn remove(backend: &dyn Backend, args: &str) -> Value {
     match item_count(backend) {
         Some(now) if now < count => json!({ "ok": true, "removed": index, "remaining": now }),
         _ => json!({ "ok": false, "reason": "the plan still holds the item, so it was not removed" }),
+    }
+}
+
+// guidedModeOrbit takes a radius whose sign is the turn direction and an altitude above sea level.
+// A head asked to compose that is holding two pieces of vehicle knowledge it has no way to check,
+// and the macOS head sent zero for both to a flying aircraft. It says where, how wide, which way
+// round and how far above the launch point; the sign and the sea level conversion happen here.
+fn orbit(backend: &dyn Backend, args: &str) -> Value {
+    let args: Value = serde_json::from_str(args).unwrap_or(Value::Null);
+    let Some(args) = args.as_array() else {
+        return json!({ "ok": false, "reason": "guided.orbit takes a latitude, a longitude, a radius, a direction and a height above the launch point" });
+    };
+    let number = |index: usize| args.get(index).and_then(Value::as_f64).filter(|value| value.is_finite());
+    let (Some(latitude), Some(longitude), Some(radius), Some(above_home)) = (number(0), number(1), number(2), number(4)) else {
+        return json!({ "ok": false, "reason": "guided.orbit takes a latitude, a longitude, a radius, a direction and a height above the launch point" });
+    };
+    if radius <= 0.0 {
+        return json!({ "ok": false, "reason": "An orbit needs a radius to fly around." });
+    }
+    let Some(clockwise) = args.get(3).and_then(Value::as_bool) else {
+        return json!({ "ok": false, "reason": "An orbit has to turn one way or the other." });
+    };
+    let home = object(&backend.get("vehicle.homePosition"));
+    if home.get("valid").and_then(Value::as_bool) != Some(true) {
+        return json!({ "ok": false, "reason": "The vehicle has not reported where it launched from, so there is nothing to measure the orbit height against." });
+    }
+    let Some(home_altitude) = home.get("altitude").and_then(Value::as_f64).filter(|value| value.is_finite()) else {
+        return json!({ "ok": false, "reason": "The launch position carries no altitude, so an orbit height above sea level cannot be worked out." });
+    };
+    let signed = if clockwise { radius } else { -radius };
+    let amsl = home_altitude + above_home;
+    let called: Value = serde_json::from_str(&backend.invoke(
+        "vehicle.guidedModeOrbit",
+        &json!([{ "latitude": latitude, "longitude": longitude, "altitude": 0.0 }, signed, amsl]).to_string(),
+    ))
+    .unwrap_or(Value::Null);
+    match called.get("ok").and_then(Value::as_bool) {
+        Some(true) => json!({ "ok": true, "radius": signed, "altitudeAmsl": amsl }),
+        _ => json!({ "ok": false, "reason": called.get("reason").and_then(Value::as_str).unwrap_or("the vehicle refused the orbit").to_string() }),
     }
 }
 
@@ -444,5 +486,100 @@ mod removal {
         let refused = run(&Stubborn, "mission.remove", "[1]");
         assert_eq!(refused["ok"], false, "the call answered ok and the item is still there, and a head told ok would redraw a list that has not changed");
         assert!(refused["reason"].as_str().unwrap().contains("still holds"));
+    }
+}
+
+#[cfg(test)]
+mod orbiting {
+    use super::*;
+    use std::sync::Mutex;
+
+    struct Flying {
+        home: Value,
+        calls: Mutex<Vec<String>>,
+        answer: Value,
+    }
+
+    impl Flying {
+        fn launched(altitude: f64) -> Flying {
+            Flying {
+                home: json!({ "kind": "coordinate", "valid": true, "latitude": 47.0, "longitude": 8.0, "altitude": altitude }),
+                calls: Mutex::new(Vec::new()),
+                answer: json!({ "ok": true }),
+            }
+        }
+    }
+
+    impl Backend for Flying {
+        fn get(&self, path: &str) -> String {
+            match path {
+                "vehicle.homePosition" => self.home.to_string(),
+                _ => String::new(),
+            }
+        }
+        fn get_fields(&self, _p: &str, _f: &str) -> String { String::new() }
+        fn set(&self, _p: &str, _v: &str) -> String { String::new() }
+        fn invoke(&self, path: &str, args: &str) -> String {
+            self.calls.lock().unwrap().push(format!("{path} {args}"));
+            self.answer.to_string()
+        }
+        fn watch(&self, _p: &[String]) {}
+    }
+
+    fn sent(plan: &Flying) -> Value {
+        let calls = plan.calls.lock().unwrap();
+        let (_, args) = calls[0].split_once(' ').unwrap();
+        serde_json::from_str(args).unwrap()
+    }
+
+    #[test]
+    fn the_direction_of_the_turn_is_the_sign_of_the_radius() {
+        let clockwise = Flying::launched(480.0);
+        assert_eq!(run(&clockwise, "guided.orbit", "[47.5, 8.5, 150.0, true, 60.0]")["ok"], true);
+        assert_eq!(sent(&clockwise)[1], 150.0);
+
+        let widdershins = Flying::launched(480.0);
+        assert_eq!(run(&widdershins, "guided.orbit", "[47.5, 8.5, 150.0, false, 60.0]")["ok"], true);
+        assert_eq!(sent(&widdershins)[1], -150.0, "a negative radius is how this command says anticlockwise, which is not something a head should have to know");
+    }
+
+    #[test]
+    fn the_height_is_measured_from_the_launch_point_and_sent_above_sea_level() {
+        let flying = Flying::launched(480.0);
+        let started = run(&flying, "guided.orbit", "[47.5, 8.5, 150.0, true, 60.0]");
+        assert_eq!(started["altitudeAmsl"], 540.0);
+        assert_eq!(sent(&flying)[2], 540.0, "the operator chooses a height above where it took off, and the command wants sea level");
+        assert_eq!(sent(&flying)[0]["latitude"], 47.5);
+    }
+
+    #[test]
+    fn an_orbit_is_refused_when_there_is_nothing_to_measure_it_against() {
+        let unlaunched = Flying {
+            home: json!({ "kind": "coordinate", "valid": false, "latitude": 0.0, "longitude": 0.0, "altitude": 0.0 }),
+            calls: Mutex::new(Vec::new()),
+            answer: json!({ "ok": true }),
+        };
+        let refused = run(&unlaunched, "guided.orbit", "[47.5, 8.5, 150.0, true, 60.0]");
+        assert_eq!(refused["ok"], false);
+        assert!(refused["reason"].as_str().unwrap().contains("launched from"));
+        assert!(unlaunched.calls.lock().unwrap().is_empty(), "sending an orbit measured against an unknown launch height is sending an altitude nobody chose");
+    }
+
+    #[test]
+    fn an_orbit_with_no_radius_or_no_direction_is_refused_rather_than_guessed() {
+        let flying = Flying::launched(480.0);
+        ["[47.5, 8.5, 0.0, true, 60.0]", "[47.5, 8.5, -20.0, true, 60.0]", "[47.5, 8.5, 150.0, null, 60.0]", "[47.5, 8.5, 150.0, true]", "[]"]
+            .iter()
+            .for_each(|args| assert_eq!(run(&flying, "guided.orbit", args)["ok"], false, "{args}"));
+        assert!(flying.calls.lock().unwrap().is_empty());
+    }
+
+    #[test]
+    fn a_vehicle_that_refuses_the_orbit_is_reported_rather_than_reported_as_started() {
+        let mut flying = Flying::launched(480.0);
+        flying.answer = json!({ "ok": false, "reason": "not in guided mode" });
+        let refused = run(&flying, "guided.orbit", "[47.5, 8.5, 150.0, true, 60.0]");
+        assert_eq!(refused["ok"], false);
+        assert_eq!(refused["reason"], "not in guided mode");
     }
 }
