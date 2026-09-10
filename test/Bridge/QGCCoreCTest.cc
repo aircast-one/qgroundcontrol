@@ -655,8 +655,13 @@ void QGCCoreCTest::_coreGuidedTakeoffReachesThePeer()
     mavlink_message_t received{};
     mavlink_status_t status{};
     bool takeoffSeen = false;
-    QTRY_VERIFY_WITH_TIMEOUT(peer.hasPendingDatagrams(), 3000);
-    while (peer.hasPendingDatagrams() && !takeoffSeen) {
+    QElapsedTimer waitingForTakeoff;
+    waitingForTakeoff.start();
+    while (!takeoffSeen && waitingForTakeoff.elapsed() < 4000) {
+        if (!peer.hasPendingDatagrams()) {
+            QTest::qWait(20);
+            continue;
+        }
         const QByteArray datagram = peer.receiveDatagram().data();
         for (const char byte : datagram) {
             if (mavlink_frame_char_buffer(&parsing, &parsingStatus, static_cast<uint8_t>(byte), &received, &status) == MAVLINK_FRAMING_OK && received.msgid == MAVLINK_MSG_ID_COMMAND_LONG) {
@@ -688,8 +693,13 @@ void QGCCoreCTest::_coreGuidedTakeoffReachesThePeer()
     const QJsonObject calStarted = take(qgc_core_calibrate("{\"vehicle\":9,\"action\":\"start\",\"type\":\"gyro\"}"));
     QVERIFY2(calStarted.value(QStringLiteral("ok")).toBool(false), qPrintable(calStarted.value(QStringLiteral("reason")).toString()));
     bool gyroSeen = false;
-    QTRY_VERIFY_WITH_TIMEOUT(peer.hasPendingDatagrams(), 3000);
-    while (peer.hasPendingDatagrams() && !gyroSeen) {
+    QElapsedTimer waitingForGyro;
+    waitingForGyro.start();
+    while (!gyroSeen && waitingForGyro.elapsed() < 4000) {
+        if (!peer.hasPendingDatagrams()) {
+            QTest::qWait(20);
+            continue;
+        }
         const QByteArray datagram = peer.receiveDatagram().data();
         for (const char byte : datagram) {
             if (mavlink_frame_char_buffer(&parsing, &parsingStatus, static_cast<uint8_t>(byte), &received, &status) == MAVLINK_FRAMING_OK && received.msgid == MAVLINK_MSG_ID_COMMAND_LONG) {
@@ -1275,6 +1285,9 @@ void QGCCoreCTest::_serialConfigurationsCanBeCreatedByPath()
 
     const QJsonObject refusedBaud = take(qgc_bridge_invoke("links.createSerialConfiguration", "[\"Serial Test\",\"/dev/nonexistent\",0]"));
     QCOMPARE(refusedBaud.value(QStringLiteral("result")).toBool(true), false);
+
+    QVERIFY2(take(qgc_bridge_invoke("links.commitLinkConfigurations", "[]")).value(QStringLiteral("ok")).toBool(false),
+             "editing a registered configuration is property writes that stay in memory; without a reachable commit a head can change a link, watch it take effect, and lose it at restart");
 
     const QJsonObject missing = take(qgc_bridge_invoke("links.createSerialConfigurationTypo", "[\"Serial Test\",\"/dev/nonexistent\",57600]"));
     QCOMPARE(missing.value(QStringLiteral("ok")).toBool(true), false);
