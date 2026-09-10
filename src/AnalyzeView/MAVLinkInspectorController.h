@@ -67,7 +67,7 @@ public:
     Q_INVOKABLE MAVLinkChartController *createChart();
     Q_INVOKABLE void deleteChart(MAVLinkChartController *chart);
     Q_INVOKABLE void setActiveSystem(int systemId);
-    Q_INVOKABLE void setMessageInterval(int32_t rate) const;
+    Q_INVOKABLE void setMessageInterval(int rate) const;
 
     QmlObjectListModel *systems() const { return _systems; }
     QmlObjectListModel *charts() const { return _charts; }

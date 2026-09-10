@@ -278,7 +278,7 @@ void MAVLinkInspectorController::setActiveSystem(int systemId)
     }
 }
 
-void MAVLinkInspectorController::setMessageInterval(int32_t rate) const
+void MAVLinkInspectorController::setMessageInterval(int rate) const
 {
     if (!_activeSystem) {
         return;
