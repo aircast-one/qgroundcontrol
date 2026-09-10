@@ -75,6 +75,7 @@ pub mod tcplink;
 pub mod terrain;
 pub mod terraintile;
 pub mod tlog;
+pub mod track;
 pub mod transport;
 pub mod udplink;
 pub mod ulogstream;

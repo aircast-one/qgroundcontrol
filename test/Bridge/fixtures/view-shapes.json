@@ -347,6 +347,7 @@
             "view.planFromWaypoints",
             "view.missionFile",
             "view.transports",
+            "view.track",
             "view.flyState",
             "view.coreVehicle",
             "view.coreGuided",
@@ -1099,6 +1100,19 @@
         "totalDistanceMeters": "number",
         "unknownTerrain": "number",
         "usable": "bool"
+    },
+    "view.track": {
+        "available": "bool",
+        "class": "string",
+        "count": "number",
+        "dropped": "number",
+        "generation": "number",
+        "kind": "string",
+        "points": [
+            "empty"
+        ],
+        "recording": "bool",
+        "vehicleId": "null|number"
     },
     "view.vibration": {
         "available": "bool",
