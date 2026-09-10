@@ -34,6 +34,7 @@
 #include <QtTest/QTest>
 
 #include <algorithm>
+#include <iterator>
 
 namespace
 {
@@ -1065,6 +1066,55 @@ void QGCCoreCTest::_videoAndCameraAreServed()
 namespace
 {
 
+
+void flatten(const QJsonValue &value, const QString &path, QJsonObject &into)
+{
+    if (value.isObject()) {
+        const QJsonObject object = value.toObject();
+        for (auto it = object.begin(); it != object.end(); ++it) {
+            flatten(it.value(), path + QStringLiteral(".") + it.key(), into);
+        }
+        return;
+    }
+    if (value.isArray()) {
+        const QJsonArray array = value.toArray();
+        into.insert(path + QStringLiteral(".#"), array.count());
+        for (int index = 0; index < array.count(); index++) {
+            flatten(array.at(index), QStringLiteral("%1.%2").arg(path).arg(index), into);
+        }
+        return;
+    }
+    into.insert(path, value);
+}
+
+QJsonObject snapshotOfEveryView(const char *const *paths, int count)
+{
+    QJsonObject flat;
+    for (int index = 0; index < count; index++) {
+        flatten(take(qgc_bridge_get(paths[index])), QString::fromUtf8(paths[index]), flat);
+    }
+    return flat;
+}
+
+QStringList fieldsThatNeverVaried(const QList<QJsonObject> &states)
+{
+    QStringList unchanged;
+    if (states.isEmpty()) {
+        return unchanged;
+    }
+    const QJsonObject &first = states.first();
+    for (auto it = first.begin(); it != first.end(); ++it) {
+        const bool moved = std::any_of(states.cbegin() + 1, states.cend(), [&it](const QJsonObject &state) {
+            return !state.contains(it.key()) || state.value(it.key()) != it.value();
+        });
+        if (!moved) {
+            unchanged.append(it.key());
+        }
+    }
+    unchanged.sort();
+    return unchanged;
+}
+
 QJsonValue mergeShapes(const QJsonValue &a, const QJsonValue &b);
 
 QJsonValue shapeOf(const QJsonValue &value)
@@ -1146,11 +1196,16 @@ void QGCCoreCTest::_viewShapesMatchTheRecordedContract()
     for (const char *path : kViewPaths) {
         offline.insert(QString::fromUtf8(path), shapeOf(take(qgc_bridge_get(path))));
     }
+    // A field that reads the same with no vehicle, with one connected, and with a plan on it is a
+    // field that may not be answering the question its name asks. Six defects this week were that.
+    QList<QJsonObject> states { snapshotOfEveryView(kViewPaths, int(std::size(kViewPaths))) };
 
     _connectMockLink(MAV_AUTOPILOT_PX4);
     QTRY_VERIFY_WITH_TIMEOUT(take(qgc_bridge_get("view.guidedActions")).value(QStringLiteral("connected")).toBool(false), 5000);
     _mockLink->sendStatusTextMessages();
     QTRY_VERIFY_WITH_TIMEOUT(take(qgc_bridge_get("view.messages")).value(QStringLiteral("count")).toInt() >= kMockStatusTextCount, 5000);
+
+    states.append(snapshotOfEveryView(kViewPaths, int(std::size(kViewPaths))));
 
     QJsonObject recorded;
     for (const char *path : kViewPaths) {
@@ -1179,6 +1234,7 @@ void QGCCoreCTest::_viewShapesMatchTheRecordedContract()
         return -1;
     };
     QTRY_VERIFY_WITH_TIMEOUT(recorderIndex() >= 0, 5000);
+    states.append(snapshotOfEveryView(kViewPaths, int(std::size(kViewPaths))));
     for (const char *path : kViewPaths) {
         const QString key = QString::fromUtf8(path);
         recorded.insert(key, mergeShapes(recorded.value(key), shapeOf(take(qgc_bridge_get(path)))));
@@ -1189,6 +1245,7 @@ void QGCCoreCTest::_viewShapesMatchTheRecordedContract()
         (void) take(qgc_bridge_invoke("links.removeConfiguration", QJsonDocument(QJsonArray { QStringLiteral("@links.linkConfigurations.%1").arg(recorder) }).toJson(QJsonDocument::Compact).constData()));
     }
     recorded.insert(QStringLiteral("view.contract"), take(qgc_bridge_get("view.contract")));
+    recorded.insert(QStringLiteral("_neverVaried"), QJsonArray::fromStringList(fieldsThatNeverVaried(states)));
     const QByteArray current = QJsonDocument(recorded).toJson(QJsonDocument::Indented);
 
     const QString fixture = QFileInfo(QString::fromUtf8(__FILE__)).dir().filePath(QStringLiteral("fixtures/view-shapes.json"));
@@ -1202,6 +1259,23 @@ void QGCCoreCTest::_viewShapesMatchTheRecordedContract()
     QFile in(fixture);
     QVERIFY2(in.open(QIODevice::ReadOnly), "no recorded view contract; run with QGC_RECORD_VIEW_CONTRACT=1 once");
     const QJsonObject expected = QJsonDocument::fromJson(in.readAll()).object();
+
+    // Coarse on purpose: this run drives few states, so most of the recorded list is fields nothing
+    // here moves rather than fields nothing can. What it catches is the list growing - a field that
+    // used to vary and now does not, which is what all six of this week's defects looked like.
+    QSet<QString> wereVarying;
+    for (const QJsonValue &field : expected.value(QStringLiteral("_neverVaried")).toArray()) {
+        wereVarying.insert(field.toString());
+    }
+    QStringList stopped;
+    for (const QJsonValue &field : recorded.value(QStringLiteral("_neverVaried")).toArray()) {
+        if (!wereVarying.contains(field.toString())) {
+            stopped.append(field.toString());
+        }
+    }
+    QVERIFY2(stopped.isEmpty(),
+             qPrintable(QStringLiteral("these read the same with no vehicle, with one connected and with a plan on it, and they did not before. "
+                                       "A value that never varies is not answering the question its name asks: %1").arg(stopped.mid(0, 12).join(QStringLiteral(", ")))));
     QStringList keys;
     for (const char *path : kViewPaths) {
         keys.append(QString::fromUtf8(path));
@@ -2239,6 +2313,18 @@ void QGCCoreCTest::_operatorNoticesReachAHeadWithNoQmlRoot()
              "a rig has to be able to post a notice, or a head can only ever test its decoder");
     QCOMPARE(notices().count(), 1);
     QCOMPARE(notices().first().toObject().value(QStringLiteral("kind")).toString(), QStringLiteral("navigation"));
+
+    // A head reads this several ways and every one has to carry the notices rather than their
+    // count alone. A list whose length is right and whose elements are null looks like a queue
+    // with something in it and reads as empty, which is the silence this channel exists to end.
+    const auto carriesTheNotice = [](const QJsonArray &listed) {
+        return listed.count() == 1 && listed.first().toObject().value(QStringLiteral("title")).toString() == QStringLiteral("setup");
+    };
+    QVERIFY2(carriesTheNotice(take(qgc_bridge_get("host.notices")).value(QStringLiteral("value")).toArray()), "reading the property directly lost the notice");
+    QVERIFY2(carriesTheNotice(take(qgc_bridge_get("host")).value(QStringLiteral("notices")).toArray()), "reading the whole object lost the notice");
+    QVERIFY2(carriesTheNotice(take(qgc_bridge_get_fields("host", "notices,count,dropped")).value(QStringLiteral("notices")).toArray()), "asking for named fields lost the notice");
+    QVERIFY2(take(qgc_bridge_get("host.notices.0")).value(QStringLiteral("found")).toBool(true) == false,
+             "a list property is a leaf and cannot be walked into, and saying so is what tells a head to read the list rather than index it");
     QCOMPARE(take(qgc_bridge_invoke("host.postNotice", "[\"shouting\",\"x\",\"y\"]")).value(QStringLiteral("result")).toBool(true), false);
     QCOMPARE(notices().count(), 1);
     drain();
