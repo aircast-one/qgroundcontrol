@@ -3673,6 +3673,35 @@ worth building before this gate can be closed, not worth improvising blind taps 
 The regression's own screens still pass and the vehicle round trip from the previous section is
 unaffected; this is a hole in coverage, not a regression.
 
+### A flight action that goes grey and says nothing
+
+`view.guidedActions` gives every action an `offer` of `ready`, `blocked` or `hidden` and, when
+blocked, a `reason` — "The vehicle's arming checks are failing." or "The pre-flight checklist has
+not been completed.". The head decodes that reason into `GuidedOffer.reason`. Only the **More
+Actions sheet** ever rendered it, as a subtitle under each row.
+
+On the Fly screen itself, Arm, Takeoff, Land, RTL, speed and altitude were rendered because they
+were `shown` and disabled because they were not `ready`, with the reason dropped. An operator
+standing at the aircraft with a grey Takeoff was told nothing, and the explanation sat behind a
+button labelled "Actions" — which does not read as "why can't I take off". The preflight summary is
+behind the same sheet. The reason now renders under the action row (`3208095`).
+
+The tell was dead code. `Arm`'s `onClick` opened with
+`blockedReasonFor(armAction)?.let { refusal = it; return@Button }`, which can never run, because
+`enabled = armAction?.blocked != true` had already disabled the button in exactly the case that
+branch existed to handle. Someone intended to surface the reason and the gate made it unreachable.
+
+Arm was also the only action gated on "not blocked" rather than "ready". Those are equivalent today
+— the core builds `offer` from an exhaustive match over three values and `Offered()` drops `hidden`,
+so `shown && !blocked` is `ready` — but arm was the one path that would fail **open** if a fourth
+state were ever added, on the command that spins propellers. It now matches the others.
+
+Verified on the handset by forcing the line to render, since the sim's vehicle reports every gate
+passing and no amount of waiting would have produced a blocked action: the text appears directly
+under the action buttons and above the telemetry row. That the reason is non-empty whenever an
+action is blocked is guaranteed by the core, where the reasons are string literals on the blocked
+branch.
+
 ## Phase 6 — Shell · 2 weeks
 
 Cheaper than macOS, because Qt is already off the main thread.
