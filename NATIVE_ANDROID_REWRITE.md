@@ -532,6 +532,19 @@ native head, macOS included. Marking it `Q_INVOKABLE` is additive and changes no
 callers, but `Vehicle.h` is included by about 120 translation units, so it is an AAR rebuild on a
 build tree other sessions share — worth scheduling deliberately rather than starting mid-review.
 
+**That blocker is not systemic, which is worth stating because I assumed it would be.** The same
+sweep flagged `hasZoom`, `zoomLevel` and `canChangeMode` on `view.camera` as emitted and unread, and
+the head has no zoom control at all — the only `zoom` in it is `cameraZoomChannel`, an RC channel
+mapping, which is a different thing. But `MavlinkCameraControl::stepZoom` **is** `Q_INVOKABLE`
+(`MavlinkCameraControl.h:164`) and `zoomLevel` is a `Q_PROPERTY` with a `WRITE` setter, so both are
+reachable through the bridge today. QML uses it at `FlightDisplayViewVideo.qml:387`. Camera zoom is
+therefore an unbuilt control, not a blocked one, and needs no rebuild.
+
+It is also not verifiable on this rig: `SimulatedCameraControl::stepZoom` is an empty override, so
+the sim camera would accept the call and do nothing. Building it here would ship a control that
+cannot be shown to work — the same trap as judging a screen the rig can only render one way. It
+needs a real camera, which puts it with the other gates that need hardware.
+
 **Gate (HW):** log download from real hardware; chart values match the Qt build. `src/AnalyzeView/`
 QML deleted.
 
