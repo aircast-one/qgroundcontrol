@@ -1266,6 +1266,7 @@ func checkMissionItemKinds() {
     checkHostNotices()
     checkMavlinkConsole()
     checkModeSlots()
+    checkVideoFrame()
 
     expect(WriteReport.failure("the fence radius"),
            "Could not change the fence radius. It is unchanged.",
@@ -4043,4 +4044,42 @@ func checkModeSlots() {
            + "have to agree before this head paints a position green")
     expect(ModeSlots([:]).describes == false, "an empty read describes nothing")
     expect(ModeSlots.none.reason, "", "and says nothing rather than inventing a reason")
+}
+
+func checkVideoFrame() {
+    // A PADDED stride, because a decoder pads rows to an alignment and an unpadded fixture makes
+    // stride * height and width * 4 * height the same number - which is how the first version of
+    // this could not tell the two apart, and the break that swapped them fired nothing.
+    let frame = VideoFrame(width: 1920, height: 1080, stride: 7808)
+    expect(frame?.byteCount == 7808 * 1080,
+           "a frame is as big as its stride times its height, not its width times its height -- "
+           + "the decoder pads rows and reading width * height falls short of the last row")
+    expect(frame?.fits(7808 * 1080) == true, "and it fits a buffer of exactly that size")
+    expect(frame?.fits(7808 * 1080 - 1) == false, "but not one a single byte short")
+    expect(frame?.byteCount != 1920 * 4 * 1080,
+           "and the padded frame is measurably bigger than an unpadded one, so this fixture can "
+           + "tell the two formulas apart")
+
+    expect(VideoFrame(width: 1920, height: 1080, stride: 7679) == nil,
+           "a stride narrower than the pixels it claims to carry is not a row of them. This runs "
+           + "thirty times a second against a buffer the C side filled, so a geometry taken on "
+           + "trust is a read past the end of it")
+    expect(VideoFrame(width: 0, height: 1080, stride: 7680) == nil, "nor is a frame with no width")
+    expect(VideoFrame(width: 1920, height: 0, stride: 7680) == nil, "nor one with no height")
+    expect(VideoFrame(width: 1920, height: 1080, stride: 0) == nil, "nor one with no stride")
+    expect(VideoFrame(width: -1920, height: 1080, stride: 7680) == nil,
+           "and a negative dimension is refused before it becomes an Int, because the C ABI "
+           + "reports these as Int32 and a negative one multiplied out is a very large positive")
+
+    expect(VideoFrame.capacity(width: 1920, height: 1080) == 1920 * 4 * 1080,
+           "a width whose row is already aligned asks for exactly its own pixels")
+    expect(VideoFrame(width: 1918, height: 1080, stride: 7680)?
+        .fits(VideoFrame.capacity(width: 1918, height: 1080)) == true,
+           "and a width whose rows the decoder pads still fits, because the buffer is sized for "
+           + "a padded row. Asking for width * height * 4 left it short for every padded width, "
+           + "and a short buffer is a dropped frame and a black panel with nothing said -- 1920 "
+           + "hides it because 7680 is already aligned")
+    expect(VideoFrame.capacity(width: 0, height: 1080) == 0,
+           "and no buffer at all before the first frame reports a size, so nothing is allocated "
+           + "on the thirty times a second that run before a stream arrives")
 }
