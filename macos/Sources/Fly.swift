@@ -89,11 +89,6 @@ final class FlyStore: ObservableObject, Probeable, WriteReporting {
 
         var reading = FlyTelemetry()
         let facts = FlyStore.facts(vehicle)
-        let units = FlyStore.units(vehicle)
-        reading.distanceUnits = units["altitudeRelative"] ?? "m"
-        reading.speedUnits = units["groundSpeed"] ?? "m/s"
-        reading.altitude = facts["altitudeRelative"]
-        reading.groundSpeed = facts["groundSpeed"]
         reading.heading = facts["heading"]
 
         let gpsGroup = Bridge.group("vehicle.gps")
@@ -147,14 +142,6 @@ final class FlyStore: ObservableObject, Probeable, WriteReporting {
         if assessed != warnings { warnings = assessed }
         let blocker = raised["armingBlocker"] as? String
         if blocker != armingBlocker { armingBlocker = blocker }
-    }
-
-    private static func units(_ object: [String: Any]) -> [String: String] {
-        ((object["facts"] as? [[String: Any]]) ?? []).reduce(into: [String: String]()) { found, fact in
-            guard let name = fact["name"] as? String,
-                  let units = fact["units"] as? String, !units.isEmpty else { return }
-            found[name] = Units.display(units)
-        }
     }
 
     private static func facts(_ object: [String: Any]) -> [String: Double] {
@@ -225,13 +212,12 @@ final class FlyStore: ObservableObject, Probeable, WriteReporting {
                    "generation": track.generation, "dropped": track.dropped,
                    "count": track.count, "points": track.points.count,
                    "draws": track.draws, "notice": track.notice],
-         "altitude": telemetry.altitudeText,
-         "groundSpeed": telemetry.groundSpeedText,
          "keepCentered": keepCentered,
          "terrain": ["loaded": terrain.loaded, "pending": terrain.pending,
                      "text": terrain.text, "percent": terrain.percentText,
                      "showing": terrainShowing],
-         "heading": FlyTelemetry.degrees(telemetry.heading),
+         "markerHeading": position?.hasHeading ?? false,
+         "markerRotation": position?.rotationRadians ?? 0,
          "battery": telemetry.batteryText, "gps": telemetry.gpsText,
          "placed": position != nil,
          "worstMessage": VehicleMessage.worst(latestMessages).rawValue,

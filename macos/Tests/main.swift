@@ -934,20 +934,12 @@ checkLaunchPosition()
 checkLaunchAltitudeIsNotListedTwice()
 
 func checkTelemetryUnits() {
-    var feet = FlyTelemetry()
-    feet.altitude = 1916.2
-    feet.groundSpeed = 12.5
-    feet.distanceUnits = "ft"
-    feet.speedUnits = "ft/s"
-    expect(feet.altitudeText, "1916.2 ft",
-           "a height the vehicle reported in feet is labelled feet, not metres")
-    expect(feet.groundSpeedText, "12.5 ft/s", "and a speed carries the units it came with")
-
-    var metric = FlyTelemetry()
-    metric.altitude = 584.0
-    expect(metric.altitudeText, "584.0 m", "the default stays metric when nothing says otherwise")
-
-    expect(FlyTelemetry().altitudeText, "—", "a height the vehicle has not reported shows nothing")
+    expect(FlyTelemetry.measure(1916.2, "ft"), "1916.2 ft",
+           "a height the vehicle reported in feet is labelled feet, not metres. The units ride on "
+           + "the core's fact; this head no longer keeps a second copy of them")
+    expect(FlyTelemetry.measure(12.5, "ft/s"), "12.5 ft/s", "and a speed carries the units it came with")
+    expect(FlyTelemetry.measure(584.0, "m"), "584.0 m", "metric reads the same way")
+    expect(FlyTelemetry.measure(nil, "m"), "—", "a height the vehicle has not reported shows nothing")
     expect(FlyTelemetry.measure(1.0, ""), "1.0",
            "a fact with no units at all is printed bare rather than with a guessed suffix")
     expect(FlyTelemetry.measure(-0.04, "m"), "0.0 m",
@@ -1241,12 +1233,6 @@ func checkFlyTelemetry() {
     expect(reading.gpsLevel == .critical, "no fix is critical")
     expect(reading.gpsText, "No fix \u{00B7} 10 sats", "and says so plainly")
 
-    reading.altitude = 25.0
-    expect(reading.altitudeText, "25.0 m",
-           "the readings are kept and still read normally when contact drops; the last known "
-           + "altitude is worth having, so what changes is the claim that it is current, not the "
-           + "number. The claim itself is view.flyState's now, not this struct's")
-
     expect(FlyTelemetry.measure(nil, "m"), "\u{2014}", "a missing altitude shows nothing")
     expect(FlyTelemetry.measure(Double.nan, "m"), "\u{2014}", "and so does a NaN")
     expect(FlyTelemetry.measure(3.26, "m/s"), "3.3 m/s", "speed reads to one decimal")
@@ -1254,7 +1240,6 @@ func checkFlyTelemetry() {
     expect(FlyTelemetry.measure(-0.04, "m"), "0.0 m", "nor does one a few centimetres below its launch point")
     expect(FlyTelemetry.measure(-0.02, "m/s"), "0.0 m/s", "nor does a stationary one")
     expect(FlyTelemetry.measure(-12.5, "m"), "-12.5 m", "a real negative altitude keeps its sign")
-    expect(FlyTelemetry.degrees(91.6), "92\u{00B0}", "heading reads whole degrees")
 }
 
 checkFlyTelemetry()
@@ -3114,7 +3099,7 @@ func checkViewContract() {
         ("view.preflight", ["groups"], ["name", "checks"]),
         ("view.preflight", ["groups", "checks"],
          ["name", "prompt", "verdict", "reason", "blocked"]),
-        ("view.warnings", [], ["showing", "warnings"]),
+        ("view.warnings", [], ["warnings"]),
         ("view.warnings", ["warnings"], ["id", "text", "detail"]),
         ("view.instruments", [], ["available", "items"]),
         ("view.instruments", ["items"],
