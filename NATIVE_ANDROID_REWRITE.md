@@ -3040,6 +3040,53 @@ and returned 1. It fails on demand, not only in principle.
 
 A clean run now ends with `commanded the vehicle: 0`.
 
+### Three things that were noted and are now built
+
+**The head owns which of its own pages can finish a job.** `completes` was the wrong shape and I
+put it there: the core owns what the vehicle and firmware are, but "can this head finish that
+page" is a claim about which screens somebody wrote, and the two heads genuinely differ — macOS
+drives `radioCal` through Start/Next/Skip/Cancel and completes the calibration, this one only
+watches. The core session removed the field; the badge now comes from a set in the head, next to
+the screens it describes.
+
+This does re-introduce head-side page knowledge one iteration after 206 lines of it were deleted,
+and the distinction is worth stating because it is not obvious. What was deleted was *dead* —
+called by nothing in `main`, reachable only from its own tests, and silently drifted from the core
+with a test pinning the contradiction. A live set the setup screen reads cannot drift in silence:
+drifting means the screen visibly stops opening a page. The failure mode removed was invisibility,
+not head-side knowledge. A test asserts every page name the head claims appears in the page list
+the core offers.
+
+Verified with the core serving zero occurrences of `completes`: Radio still reads "Finish on
+desktop", and every other page in the list carries no badge — which was the breakage risk, since
+an absent field decodes to `false` and would have promised a desktop finish for all of them.
+
+**A bool the core declares as an int still reads as true.** `qgcBool` accepted only `true` and
+`"true"`; `qgcDouble` accepted only numbers and strings. The radio readouts happen to sit either
+side of that line — `...ChannelMapped` is declared `bool`, `...ChannelReversed` is declared `int`
+with a getter returning `bool` — so each was read with the accessor matching its *declared* type
+and both worked by accident of an upstream typo. Correcting that typo would have silently turned
+every reversed channel normal, on the one readout radio setup exists to catch; widening the other
+way would have read every stick as "Not mapped" for ever. Both accessors now take booleans,
+numbers and strings, so neither depends on which declaration upstream carries. The core session
+found the same coupling from the other side and landed the same fix there.
+
+**Input refuses to reach a flight control by accident.** Noted last iteration and left as a note;
+the other head's argument — that a capability outlives the care of whoever wrote it, and "only my
+own care" is the one thing that cannot be audited — is correct. `uiautomator dump` exposes labelled
+nodes with bounds, so `ui.sh tap` can now ask what is under the coordinates before sending
+anything, and refuses when the answer is Arm, Takeoff, Land, Return, Emergency stop, a mission
+command or a gripper action. `ALLOW_FLIGHT_COMMAND=1` makes it deliberate rather than accidental,
+which is the whole distinction.
+
+Checked in both directions on the handset rather than in principle: a tap at the centre of Actions
+is allowed; a tap at the centre of Arm is refused, naming the control it would have hit. The
+regression's eight taps now carry a hierarchy dump each and the whole run takes 93 seconds.
+
+The rig also gained `NO_RCMAP=1`, because with the mapping present the vehicle reports the radio
+set up and the badge under test cannot appear at all — both states have to be reachable or only
+one of them is ever tested.
+
 ## Phase 6 — Shell · 2 weeks
 
 Cheaper than macOS, because Qt is already off the main thread.
