@@ -540,8 +540,10 @@ mapping, which is a different thing. But `MavlinkCameraControl::stepZoom` **is**
 reachable through the bridge today. QML uses it at `FlightDisplayViewVideo.qml:387`. Camera zoom is
 therefore an unbuilt control, not a blocked one, and needs no rebuild.
 
-It is also not verifiable on this rig: `SimulatedCameraControl::stepZoom` is an empty override, so
-the sim camera would accept the call and do nothing. Building it here would ship a control that
+It is also not verifiable on this rig, and more completely than "the call would do nothing":
+`SimulatedCameraControl::hasZoom()` returns `false` and its `stepZoom` is an empty override, so a
+control gated on `hasZoom` would never render here at all, and one that ignored the gate would call
+into a no-op. Building it here would ship a control that
 cannot be shown to work — the same trap as judging a screen the rig can only render one way. It
 needs a real camera, which puts it with the other gates that need hardware.
 
