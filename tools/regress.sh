@@ -31,8 +31,8 @@ shot fly
 "$S/ui.sh" tap 995 2109; python3 -c "import time; time.sleep(3)"; shot settings
 "$S/ui.sh" tap 82 2109;  python3 -c "import time; time.sleep(4)"; shot flyback
 
-RTL=20; LAND=21; TERMINATE=185; PARACHUTE=208; MISSION_START=300
-FLIGHT_COMMAND="^(ARM |TAKEOFF |CMD ($RTL|$LAND|$TERMINATE|$PARACHUTE|$MISSION_START) )"
+RTL=20; TERMINATE=185; PARACHUTE=208; MISSION_START=300
+FLIGHT_COMMAND="^(ARM |TAKEOFF |LAND |CMD ($RTL|$TERMINATE|$PARACHUTE|$MISSION_START) )"
 COMMANDED=$(grep -cE "$FLIGHT_COMMAND" "$S/regress_$TAG.simlog")
 if [ "$COMMANDED" != "0" ]; then
     echo "FAIL: the run commanded the vehicle $COMMANDED time(s) - a tap landed on a flight control"

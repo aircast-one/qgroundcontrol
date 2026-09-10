@@ -19,6 +19,13 @@ INT_PARAMS = frozenset(
     + ["RC%d_REVERSED" % ch for ch in range(1, 9)]
 )
 
+GROUND_ALTITUDE = 0.5
+CLIMB_RATE = 2.0
+DEFAULT_TAKEOFF_ALTITUDE = 10.0
+COPTER_MODE_RTL = 6
+COPTER_MODE_LAND = 9
+DESCENDING_MODES = frozenset([COPTER_MODE_RTL, COPTER_MODE_LAND])
+
 FIRMWARE = os.environ.get("FIRMWARE", "4.5.7")
 FIRMWARE_VERSION = (
     lambda parts: (parts[0] << 24) | (parts[1] << 16) | (parts[2] << 8) | 255
@@ -95,6 +102,10 @@ def main():
     armed = False
     mode = 0
     tick = 0
+
+    altitude = 0.0
+    target_altitude = 0.0
+    landing = False
 
     params = {}
     for i in range(200):
@@ -196,16 +207,23 @@ def main():
             0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
             int(os.environ.get("RC_RSSI", "80")))
         link.vibration_send(int(elapsed * 1e6), 15.0, 45.0, 75.0, 0, 3, 12)
+        altitude += max(-CLIMB_RATE, min(CLIMB_RATE, target_altitude - altitude))
+        if landing and altitude <= GROUND_ALTITUDE:
+            landing = False
+            armed = False
+        airborne = altitude > GROUND_ALTITUDE
         link.extended_sys_state_send(
             mavlink.MAV_VTOL_STATE_UNDEFINED,
-            mavlink.MAV_LANDED_STATE_IN_AIR if armed else mavlink.MAV_LANDED_STATE_ON_GROUND)
+            mavlink.MAV_LANDED_STATE_LANDING if landing and airborne
+            else mavlink.MAV_LANDED_STATE_IN_AIR if airborne
+            else mavlink.MAV_LANDED_STATE_ON_GROUND)
         if not nofix:
             link.global_position_int_send(now_ms, int(lat * 1e7), int(lon * 1e7),
-                                          120000, 25000, 300, 0, 0,
+                                          120000, int(altitude * 1000), 300, 0, 0,
                                           int(heading * 100))
         link.gps_raw_int_send(now_ms * 1000, 0 if nofix else 3, int(lat * 1e7), int(lon * 1e7),
                               120000, 120, 120, 350, 0, 11)
-        link.vfr_hud_send(7.5, 8.1, int(heading), 55, 25.0, 1.2)
+        link.vfr_hud_send(7.5, 8.1, int(heading), 55, altitude, 1.2)
         link.attitude_send(now_ms, 0.02, -0.01, math.radians(heading), 0.0, 0.0, 0.0)
 
         if tick % 25 == 0:
@@ -362,6 +380,8 @@ def main():
                 elif kind == "COMMAND_LONG" and message.command == mavlink.MAV_CMD_NAV_TAKEOFF:
                     print("TAKEOFF alt=%.1f" % message.param7, flush=True)
                     armed = True
+                    target_altitude = message.param7 or DEFAULT_TAKEOFF_ALTITUDE
+                    landing = False
                     link.command_ack_send(message.command, mavlink.MAV_RESULT_ACCEPTED)
                 elif (kind == "COMMAND_LONG" and message.command == mavlink.MAV_CMD_REQUEST_MESSAGE
                         and int(message.param1) == mavlink.MAVLINK_MSG_ID_AUTOPILOT_VERSION):
@@ -373,9 +393,18 @@ def main():
                         [0] * 8, [0] * 8, [0] * 8, 0, 0, 0, [0] * 18)
                     link.command_ack_send(message.command, mavlink.MAV_RESULT_ACCEPTED)
                     print("AUTOPILOT_VERSION sent %s" % FIRMWARE, flush=True)
+                elif kind == "COMMAND_LONG" and message.command == mavlink.MAV_CMD_NAV_LAND:
+                    print("LAND requested from %.1f m" % altitude, flush=True)
+                    landing = True
+                    target_altitude = 0.0
+                    link.command_ack_send(message.command, mavlink.MAV_RESULT_ACCEPTED)
                 elif kind == "COMMAND_LONG" and message.command == mavlink.MAV_CMD_DO_SET_MODE:
                     mode = int(message.param2)
                     print("MODE -> %d" % mode, flush=True)
+                    if mode in DESCENDING_MODES:
+                        print("LAND requested from %.1f m" % altitude, flush=True)
+                        landing = True
+                        target_altitude = 0.0
                     link.command_ack_send(message.command, mavlink.MAV_RESULT_ACCEPTED)
                 elif kind == "COMMAND_LONG":
                     print("CMD %d p1=%.2f p2=%.2f p7=%.2f" % (
