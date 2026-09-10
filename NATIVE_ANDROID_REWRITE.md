@@ -4361,9 +4361,16 @@ marshalling. The stall remains unexplained and is now bounded away from the QML 
 
   **Two cuts landed and the lever is not where this section says it is** (`8b398139a`, `edf56face`).
   Excluding the QML that Android cannot load — MainWindow, FlightDisplay, FlightMap, PlanView,
-  FirstRunPromptDialogs, and the ~200 files in `QGroundControl.Controls` — moved the AAR
-  **81.16 MB -> 80.83 MB**. Around 215 QML files for 0.33 MB, because .qml sources are small next to
-  compiled C++ and the modules stay for their `QML_ELEMENT` registrations.
+  FirstRunPromptDialogs, and the ~200 files in `QGroundControl.Controls` — saves **0.33 MB**. Around
+  215 QML files, because .qml sources are small next to compiled C++ and the modules stay for their
+  `QML_ELEMENT` registrations.
+
+  **The absolute figures in this section were measured on incremental builds and are not comparable.**
+  Deleting `AircastQGC_autogen` and rebuilding puts the same tree at 81.76 MB where an incremental
+  build reported 80.84 MB, so every number here that was not taken from a clean regeneration is
+  roughly a megabyte low, this section's own 81.16 MB baseline included. Re-measured A/B with a full
+  regeneration on both sides: **82.09 MB without the exclusions, 81.76 MB with them.** The delta held;
+  the absolutes did not. Quote deltas from this section, not levels.
 
   **And dropping a Qt module from the link list does not undeploy it.** Tested directly, since the
   plan reads as though the two are the same thing: `Qt6::QuickControls2` was removed from the Android
