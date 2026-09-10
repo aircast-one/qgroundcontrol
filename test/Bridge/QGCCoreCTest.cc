@@ -33,6 +33,8 @@
 #include <QtNetwork/QUdpSocket>
 #include <QtTest/QTest>
 
+#include <QtPositioning/QGeoCoordinate>
+
 #include <algorithm>
 #include <iterator>
 
@@ -1179,7 +1181,7 @@ constexpr int kMockStatusTextCount = 9;
 const char *const kViewPaths[] = {
     "view.messages", "view.plan", "view.guidedActions", "view.guidedAltitude", "view.guidedAltitude(30)",
     "view.guidedTakeoff", "view.guidedTakeoff(10)", "view.guidedSpeed", "view.guidedSpeed(3)", "view.battery",
-    "view.preflight", "view.warnings", "view.label(altitudeRelative)", "view.instruments", "view.vibration",
+    "view.preflight", "view.warnings", "view.modeSlots", "view.label(altitudeRelative)", "view.instruments", "view.vibration",
     "view.sensors", "view.control(settings.appSettings.audioMuted)", "view.links", "view.linkForm(udp,,14550)",
     "view.mapScale(120)", "view.terrainProfile", "view.missionKinds", "view.missionSeed(survey,47,8)",
     "view.calibration", "view.radio", "view.logs", "view.inspector", "view.flightModes", "view.settings",
@@ -2323,6 +2325,19 @@ void QGCCoreCTest::_operatorNoticesReachAHeadWithNoQmlRoot()
     QVERIFY2(carriesTheNotice(take(qgc_bridge_get("host.notices")).value(QStringLiteral("value")).toArray()), "reading the property directly lost the notice");
     QVERIFY2(carriesTheNotice(take(qgc_bridge_get("host")).value(QStringLiteral("notices")).toArray()), "reading the whole object lost the notice");
     QVERIFY2(carriesTheNotice(take(qgc_bridge_get_fields("host", "notices,count,dropped")).value(QStringLiteral("notices")).toArray()), "asking for named fields lost the notice");
+    // The app loads QtPositioning's QML plugin, which registers a QVariantMap to QGeoCoordinate
+    // converter, and every map in the process then claims it can convert. A unit test with no QML
+    // never sees that, so the test has to put the app's condition back before it can check this.
+    (void) QMetaType::registerConverter<QVariantMap, QGeoCoordinate>([](const QVariantMap &) { return QGeoCoordinate(); });
+    QVariantMap probe;
+    probe.insert(QStringLiteral("title"), QStringLiteral("setup"));
+    QVERIFY2(QVariant(probe).canConvert<QGeoCoordinate>(),
+             "this test is meaningless unless a plain map claims to be a coordinate, which is what the running app does");
+
+    QVERIFY2(carriesTheNotice(take(qgc_bridge_get("host.notices")).value(QStringLiteral("value")).toArray()),
+             "a map that claims it can convert to a coordinate must still serialise as a map; converting it gives an invalid coordinate and a null, and a list of them is a queue that looks full and reads empty");
+    QVERIFY2(carriesTheNotice(take(qgc_bridge_get("host")).value(QStringLiteral("notices")).toArray()), "the whole object lost the notice once a map could convert");
+
     QVERIFY2(take(qgc_bridge_get("host.notices.0")).value(QStringLiteral("found")).toBool(true) == false,
              "a list property is a leaf and cannot be walked into, and saying so is what tells a head to read the list rather than index it");
     QCOMPARE(take(qgc_bridge_invoke("host.postNotice", "[\"shouting\",\"x\",\"y\"]")).value(QStringLiteral("result")).toBool(true), false);

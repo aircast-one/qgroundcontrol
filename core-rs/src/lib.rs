@@ -49,6 +49,7 @@ pub mod metacache;
 pub mod mission;
 pub mod missionkinds;
 pub mod modes;
+pub mod modeslots;
 pub mod plan;
 pub mod params;
 pub mod planfile;

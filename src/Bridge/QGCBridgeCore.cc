@@ -2,6 +2,8 @@
 #include "QGCCorePlugin.h"
 #include "QGCHostNotices.h"
 
+#include <QtCore/QVariantMap>
+
 #include "Fact.h"
 #include "LinkManager.h"
 #include "LogDownloadController.h"
@@ -263,6 +265,20 @@ QJsonObject objectJson(QObject *object, const QSet<QString> &fields = {}, bool c
 
 QJsonValue variantJson(const QVariant &value)
 {
+    // A map before a coordinate, and deliberately. QtPositioning registers a QVariantMap to
+    // QGeoCoordinate converter when its QML plugin loads, so in the running app every map claims
+    // it can convert, becomes an invalid coordinate, and serialises as null - while in a unit test
+    // with no QML the same map serialises correctly. A list of maps therefore came back as the
+    // right number of nulls, which reads as a queue with nothing in it.
+    if (value.metaType().id() == QMetaType::QVariantMap) {
+        const QVariantMap map = value.toMap();
+        QJsonObject described;
+        for (auto it = map.cbegin(); it != map.cend(); ++it) {
+            described.insert(it.key(), variantJson(it.value()));
+        }
+        return described;
+    }
+
     if (value.canConvert<QGeoCoordinate>()) {
         const QGeoCoordinate coordinate = value.value<QGeoCoordinate>();
         return coordinate.isValid()

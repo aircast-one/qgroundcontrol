@@ -10,6 +10,7 @@ use crate::contract;
 use crate::control;
 use crate::fences;
 use crate::flightmodes;
+use crate::modeslots;
 use crate::flystate;
 use crate::geo;
 use crate::detections;
@@ -73,6 +74,7 @@ pub const VIEWS: &[View] = &[
     View { path: "view.linkForm", deps: &[], compute: links::link_form_view },
     View { path: "view.mapScale", deps: mapscale::DEPS, compute: mapscale::map_scale_view },
     View { path: "view.terrainProfile", deps: terrain::DEPS, compute: terrain::terrain_view },
+    View { path: "view.modeSlots", deps: modeslots::DEPS, compute: modeslots::slots_view },
     View { path: "view.missionKinds", deps: missionkinds::DEPS, compute: missionkinds::kinds_view },
     View { path: "view.missionSeed", deps: missionkinds::DEPS, compute: missionkinds::seed_view },
     View { path: "view.calibration", deps: calibration::DEPS, compute: calibration::calibration_view },

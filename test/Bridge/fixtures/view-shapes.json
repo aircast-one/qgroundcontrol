@@ -560,6 +560,9 @@
         "view.missionSeed(survey,47,8).points.3.latitude",
         "view.missionSeed(survey,47,8).points.3.longitude",
         "view.missionSeed(survey,47,8).property",
+        "view.modeSlots.class",
+        "view.modeSlots.kind",
+        "view.modeSlots.liveSlot",
         "view.plan.actions.newPlan",
         "view.plan.actions.open",
         "view.plan.class",
@@ -2325,6 +2328,7 @@
             "view.linkForm",
             "view.mapScale",
             "view.terrainProfile",
+            "view.modeSlots",
             "view.missionKinds",
             "view.missionSeed",
             "view.calibration",
@@ -2810,6 +2814,28 @@
             }
         ],
         "property": "string"
+    },
+    "view.modeSlots": {
+        "available": "bool",
+        "channel": "number",
+        "channelOptions": [
+            {
+                "channel": "number",
+                "enabled": "bool"
+            }
+        ],
+        "channelPwm": "null",
+        "class": "string",
+        "kind": "string",
+        "liveSlot": "number",
+        "reason": "string",
+        "slots": [
+            {
+                "live": "bool",
+                "mode": "string",
+                "slot": "number"
+            }
+        ]
     },
     "view.plan": {
         "actions": {
