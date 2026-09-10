@@ -50,12 +50,21 @@ internal fun preflight(view: JSONObject?): Preflight? {
     )
 }
 
-internal fun preflightSummary(preflight: Preflight?, ticked: Set<String>): String = when {
-    preflight == null -> "Connect a vehicle to run its preflight checks."
-    preflight.blocked.isNotEmpty() ->
-        "${preflight.blocked.size} of ${preflight.total} will stop the flight."
-    ticked.size >= preflight.total -> "All ${preflight.total} checks done."
-    else -> "${ticked.size} of ${preflight.total} done."
+internal fun preflightSummary(preflight: Preflight?, ticked: Set<String>): String {
+    if (preflight == null) return "Connect a vehicle to run its preflight checks."
+    if (preflight.blocked.isNotEmpty()) {
+        return "${preflight.blocked.size} of ${preflight.total} will stop the flight."
+    }
+    val checks = preflight.groups.flatMap { it.checks }
+    val manual = checks.filter(::checkNeedsTicking).map { it.name }.toSet()
+    val outstanding = (manual - ticked).size
+    val warnings = checks.count { it.verdict == "overridable" }
+    return when {
+        outstanding > 0 -> "$outstanding of ${manual.size} left to check."
+        warnings > 0 ->
+            "All ${preflight.total} checks done · $warnings warning${if (warnings == 1) "" else "s"}."
+        else -> "All ${preflight.total} checks done."
+    }
 }
 
 internal fun checkNeedsTicking(check: PreflightCheck): Boolean = check.verdict == "manual"

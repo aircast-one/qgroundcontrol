@@ -59,13 +59,32 @@ class PreflightTest {
         val checks = preflight(JSONObject(served))!!
 
         assertEquals("1 of 4 will stop the flight.", preflightSummary(checks, emptySet()))
+    }
+
+    @Test
+    fun `the count left to check is out of the checks the operator can tick`() {
+        val checks = preflight(JSONObject(served))!!.copy(blocked = emptyList())
+
+        assertEquals("1 of 1 left to check.", preflightSummary(checks, emptySet()))
+    }
+
+    @Test
+    fun `ticking every manual check finishes the list the core cannot finish itself`() {
+        val checks = preflight(JSONObject(served))!!.copy(blocked = emptyList())
+
         assertEquals(
-            "2 of 4 done.",
-            preflightSummary(checks.copy(blocked = emptyList()), setOf("Area clear", "Props on")),
+            "All 4 checks done · 1 warning.",
+            preflightSummary(checks, setOf("Area clear")),
         )
+    }
+
+    @Test
+    fun `a tick for something that is not a manual check counts for nothing`() {
+        val checks = preflight(JSONObject(served))!!.copy(blocked = emptyList())
+
         assertEquals(
-            "All 4 checks done.",
-            preflightSummary(checks.copy(blocked = emptyList()), setOf("a", "b", "c", "d")),
+            "1 of 1 left to check.",
+            preflightSummary(checks, setOf("Battery", "Props on", "made up")),
         )
     }
 
