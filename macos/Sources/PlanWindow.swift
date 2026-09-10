@@ -970,7 +970,7 @@ struct PlanInspector: View {
                 Image(systemName: "arrow.uturn.backward")
             }
             .help("Undo the last change to this plan")
-            .disabled(!mission.canUndo || mission.syncing)
+            .disabled(!mission.offersUndo)
 
             Button {
                 mission.redo()
@@ -978,7 +978,7 @@ struct PlanInspector: View {
                 Image(systemName: "arrow.uturn.forward")
             }
             .help("Redo the change that was undone")
-            .disabled(!mission.canRedo || mission.syncing)
+            .disabled(!mission.offersRedo)
 
             Button {
                 showTerrain.toggle()
@@ -991,7 +991,7 @@ struct PlanInspector: View {
                 Image(systemName: "arrow.down.to.line")
             }
             .help("Read the plan from the vehicle")
-            .disabled(mission.syncing || !mission.connected)
+            .disabled(!mission.offersDownload)
             Spacer()
             if mission.syncing {
                 ProgressView().controlSize(.small)

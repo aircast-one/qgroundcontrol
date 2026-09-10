@@ -144,6 +144,7 @@ final class MissionStore: ObservableObject, Probeable, WriteReporting {
     }
 
     func downloadFromVehicle() {
+        guard offersDownload else { return }
         Bridge.invoke("plan.loadFromVehicle")
         syncing = true
         reload()
@@ -205,12 +206,23 @@ final class MissionStore: ObservableObject, Probeable, WriteReporting {
         if unsent != dirty { dirty = unsent }
     }
 
+    // PlanMasterController::_shiftSnapshot returns silently on an empty stack, and the bridge's
+    // ok only says the method was found, so the gate has to live where every caller reads it:
+    // the view's .disabled, this guard and the probe's refusal were three chances to disagree.
+    var offersUndo: Bool { canUndo && !syncing }
+
+    var offersRedo: Bool { canRedo && !syncing }
+
+    var offersDownload: Bool { connected && !syncing }
+
     func undo() {
+        guard offersUndo else { return }
         Bridge.invoke("plan.undo")
         reload()
     }
 
     func redo() {
+        guard offersRedo else { return }
         Bridge.invoke("plan.redo")
         reload()
     }
@@ -736,6 +748,7 @@ final class MissionStore: ObservableObject, Probeable, WriteReporting {
          "uploadWarning": uploadWarning.map(\.refusal) ?? "",
          "writeFailure": writeFailure ?? "",
          "canUndo": canUndo, "canRedo": canRedo,
+         "offersUndo": offersUndo, "offersRedo": offersRedo, "offersDownload": offersDownload,
          "commands": commands.map(\.name),
          "surveys": surveyAreas.map(\.count),
          "corridors": corridorPaths.map(\.count),
@@ -819,8 +832,14 @@ final class MissionStore: ObservableObject, Probeable, WriteReporting {
             }
             exportKml(to: URL(fileURLWithPath: path))
         case "undo":
+            guard offersUndo else {
+                return ["ok": false, "error": syncing ? "the plan is syncing" : "nothing to undo"]
+            }
             undo()
         case "redo":
+            guard offersRedo else {
+                return ["ok": false, "error": syncing ? "the plan is syncing" : "nothing to redo"]
+            }
             redo()
         case "editing":
             args["on"] == "0" ? stopEditing() : startEditing()
@@ -965,6 +984,10 @@ final class MissionStore: ObservableObject, Probeable, WriteReporting {
             }
             setAltitude(of: target, value: Double(args["value"] ?? "") ?? 0)
         case "download":
+            guard offersDownload else {
+                return ["ok": false,
+                        "error": syncing ? "the plan is syncing" : "no vehicle is connected"]
+            }
             downloadFromVehicle()
             for _ in 0..<100 where syncing {
                 RunLoop.current.run(until: Date().addingTimeInterval(0.1))
