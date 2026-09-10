@@ -206,9 +206,7 @@ class ReadOnlyNoteTest {
               {"name":"Remote Support","native":true,"parameterSections":false}]}]}""")
 
         assertEquals(listOf("Vehicle", "Support"), setupGroups(view).map { it.title })
-        assertEquals(true, setupPage(view, "Frame")?.native)
         assertEquals(true, setupPage(view, "Frame")?.parameterSections)
-        assertEquals(false, setupPage(view, "Motors")?.native)
         assertEquals(false, setupPage(view, "Remote Support")?.parameterSections)
         assertNull(setupPage(view, "A page this firmware does not have"))
     }

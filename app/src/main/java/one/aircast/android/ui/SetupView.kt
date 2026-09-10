@@ -6,7 +6,6 @@ internal const val SETUP = "view.setup"
 
 internal data class SetupPage(
     val name: String,
-    val native: Boolean,
     val parameterSections: Boolean,
 )
 
@@ -23,7 +22,6 @@ internal fun setupGroups(view: JSONObject?): List<SetupGroup> {
                     pages!!.optJSONObject(page)?.let {
                         SetupPage(
                             name = it.optString("name"),
-                            native = it.optBoolean("native"),
                             parameterSections = it.optBoolean("parameterSections"),
                         )
                     }
@@ -52,5 +50,5 @@ private val WATCHES_BUT_CANNOT_FINISH = setOf(RADIO)
 
 internal fun headFinishes(page: String): Boolean = page !in WATCHES_BUT_CANNOT_FINISH
 
-internal fun setupBadge(page: String, native: Boolean): String =
-    if (native && !headFinishes(page)) "Finish on desktop" else "Needs setup"
+internal fun setupBadge(page: String, openable: Boolean): String =
+    if (openable && !headFinishes(page)) "Finish on desktop" else "Needs setup"

@@ -39,34 +39,34 @@ class SetupViewTest {
 
     @Test
     fun `a page that watches but cannot finish says so before the tap`() {
-        assertEquals("Finish on desktop", setupBadge(RADIO, native = true))
+        assertEquals("Finish on desktop", setupBadge(RADIO, openable = true))
     }
 
     @Test
     fun `a page the head can finish keeps the plain badge`() {
-        assertEquals("Needs setup", setupBadge(SENSORS, native = true))
+        assertEquals("Needs setup", setupBadge(SENSORS, openable = true))
     }
 
     @Test
-    fun `a page with no native screen is not promised a desktop finish`() {
-        assertEquals("Needs setup", setupBadge(RADIO, native = false))
+    fun `a page this head cannot open is not promised a desktop finish`() {
+        assertEquals("Needs setup", setupBadge(RADIO, openable = false))
     }
 
     @Test
-    fun `the badge no longer depends on a field the core stopped serving`() {
-        val withoutCompletes = JSONObject(
-            """{"groups":[{"title":"S","pages":[{"name":"Radio","native":true}]}]}""",
+    fun `a page opens on what this head has, not on a field the core may stop serving`() {
+        val served = JSONObject(
+            """{"groups":[{"title":"S","pages":[{"name":"Radio","parameterSections":false}]}]}""",
         )
-        val page = setupPage(withoutCompletes, RADIO)
+        val page = setupPage(served, RADIO)
 
-        assertEquals(true, page?.native)
-        assertEquals("Finish on desktop", setupBadge(RADIO, page?.native == true))
+        assertTrue("Radio has a screen here, so no flag from the core decides it", headCanOpen(page, RADIO))
+        assertEquals("Finish on desktop", setupBadge(RADIO, headCanOpen(page, RADIO)))
     }
 
     @Test
     fun `a page the head has no screen for does not open`() {
-        val motors = SetupPage("Motors", native = true, parameterSections = false)
-        val summary = SetupPage("Summary", native = true, parameterSections = false)
+        val motors = SetupPage("Motors", parameterSections = false)
+        val summary = SetupPage("Summary", parameterSections = false)
 
         assertFalse(
             "Motors opened the Remote Support screen, which forwards live position to a third party",
@@ -77,17 +77,17 @@ class SetupViewTest {
 
     @Test
     fun `the screens the head does have still open`() {
-        assertTrue(headCanOpen(SetupPage(SENSORS, native = true, parameterSections = false), SENSORS))
-        assertTrue(headCanOpen(SetupPage(RADIO, native = true, parameterSections = false), RADIO))
+        assertTrue(headCanOpen(SetupPage(SENSORS, parameterSections = false), SENSORS))
+        assertTrue(headCanOpen(SetupPage(RADIO, parameterSections = false), RADIO))
         assertTrue(
-            headCanOpen(SetupPage(REMOTE_SUPPORT, native = true, parameterSections = false), REMOTE_SUPPORT),
+            headCanOpen(SetupPage(REMOTE_SUPPORT, parameterSections = false), REMOTE_SUPPORT),
         )
-        assertTrue(headCanOpen(SetupPage("Safety", native = true, parameterSections = true), "Safety"))
+        assertTrue(headCanOpen(SetupPage("Safety", parameterSections = true), "Safety"))
     }
 
     @Test
-    fun `a page the core does not call native stays shut`() {
-        assertFalse(headCanOpen(SetupPage("Tuning", native = false, parameterSections = true), "Tuning"))
+    fun `a page the core describes as parameters opens, and no page opens without one`() {
+        assertTrue(headCanOpen(SetupPage("Tuning", parameterSections = true), "Tuning"))
         assertFalse(headCanOpen(null, SENSORS))
     }
 }
