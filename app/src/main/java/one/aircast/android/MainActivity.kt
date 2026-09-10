@@ -30,6 +30,8 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.NavigationBar
 import androidx.compose.material3.NavigationBarItem
 import androidx.compose.material3.Scaffold
+import androidx.compose.material3.SnackbarHost
+import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
@@ -174,6 +176,22 @@ fun AircastShell(quickView: QtQuickView) {
     var analyzePage by remember { mutableStateOf<AnalyzePage?>(null) }
     var videoExpanded by remember { mutableStateOf(false) }
 
+    val notices by one.aircast.android.bridge.qgcPath("host")
+    val snackbars = remember { SnackbarHostState() }
+
+    LaunchedEffect(notices) {
+        val queued = one.aircast.android.ui.hostNotices(notices)
+        if (queued.isEmpty()) return@LaunchedEffect
+        one.aircast.android.ui.noticeDestination(queued)?.let { tab = Tab.from(it) }
+        one.aircast.android.ui.noticeToShow(queued)?.let {
+            snackbars.showSnackbar(one.aircast.android.ui.noticeBanner(it))
+        }
+        // Acknowledge only what was drawn. A notice arriving mid-draw keeps its place.
+        withContext(Dispatchers.Default) {
+            Qgc.invoke("host.acknowledgeThrough", queued.last().id)
+        }
+    }
+
     LaunchedEffect(Unit) {
         withContext(Dispatchers.Default) {
             // Native rendering first: initNative() creates the receivers and binds them, and a
@@ -216,6 +234,7 @@ fun AircastShell(quickView: QtQuickView) {
 
     MaterialTheme(colorScheme = darkColorScheme()) {
         Scaffold(
+            snackbarHost = { SnackbarHost(snackbars) },
             topBar = {
               Column {
                 TopAppBar(
