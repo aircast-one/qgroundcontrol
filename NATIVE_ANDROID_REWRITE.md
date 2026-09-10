@@ -4510,11 +4510,37 @@ marshalling. The stall remains unexplained and is now bounded away from the QML 
   0.03 MB and looked like the resources were incompressible rather than like a broken swap. An
   `if(ANDROID)` around a `set()` is what actually replaces it.
 
-  **So the size target has no cheap remainder.** Four mechanisms measured: link list, feature switches,
-  scan root, and resource contents. The largest single lever left is the ~31 MB of compressed resources,
-  and every one of them is either firmware metadata an operator's aircraft may need or images the
-  desktop shares. Halving this AAR means choosing what the product does without, not finding a build
-  flag.
+  **So the size target has no cheap remainder.** Seven mechanisms have now been measured and none of
+  them is a build flag:
+
+      link list (Qt6::QuickControls2 removed)      no change, 13 style plugins still shipped
+      feature switch (-DQGC_VIEWER3D=OFF)          0.08 MB
+      QML scan root (QT_QML_ROOT_PATH)             no change, Qt prepends rather than replaces
+      QML module exclusion                         0.33 MB
+      resource contents (drop pre-4.4 metadata)    0.91 MB, at the cost of older airframes
+      qt_import_plugins EXCLUDE_BY_TYPE qmltooling settings changed, artifact unchanged
+      QT_ANDROID_DEPLOYMENT_DEPENDENCIES           settings changed, artifact unchanged
+      Gradle jniLibs excludes                      **breaks the app**
+
+  **And the last one is worth knowing about before someone else tries it.** Excluding
+  `libplugins_qmltooling_qmldbg_*.so` and `libQt6Test_*.so` from the APK is obviously safe reasoning —
+  the debugger plugins load only with `-qmljsdebugger` and nothing links Qt Test — and it is not.
+  Qt's loader reads a manifest of the libraries it bundles and loads them **by name**; one missing
+  entry aborts initialisation before the JNI natives are registered, and the app dies on launch with
+
+      java.lang.UnsatisfiedLinkError: No implementation found for
+      void org.mavlink.qgroundcontrol.QGCBridge.notifyFontScale(float)
+
+  which is the same signature the host-deletion attempt produced and reads as a linking fault rather
+  than a packaging one. Reverted; the handset is back to a working build.
+
+  **One reframing that matters more than any of the above: the AAR is not the shipping artifact.**
+  Every figure in this section is an AAR, which is an intermediate library. The APK is what ships, and
+  a clean `assembleDebug` is **116.6 MB** — measured A/B against itself, because an incremental APK
+  read 157.3 MB and would have supported a 41 MB saving that does not exist. Of that, 90 MB is native
+  libraries and 45 MB is `libAircastQGC` alone.
+
+  Halving what ships means choosing what the product does without, not finding a build flag.
 
   **The `Viewer3D` decision is answered, and the answer is that it barely matters.** The project has a
   supported switch for it, so I tried the designed path before considering surgery: configuring
