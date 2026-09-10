@@ -42,7 +42,15 @@ picker_in_front() {
     return 1
 }
 
+readable_screen() {
+    if ! in_front && ! picker_in_front; then
+        echo "REFUSED: neither $APP nor a file picker it opened is in front" >&2
+        exit 1
+    fi
+}
+
 hierarchy() {
+    readable_screen
     adb shell uiautomator dump /sdcard/ui-node.xml >/dev/null 2>&1
     adb shell cat /sdcard/ui-node.xml 2>/dev/null
 }
@@ -86,12 +94,6 @@ find)
     }
     ;;
 text)
-    # Reading the screen is as much a capture as a screenshot: a raw uiautomator dump
-    # off a back-press that left the app photographs whatever the operator had open.
-    if ! in_front && ! picker_in_front; then
-        echo "REFUSED: neither $APP nor a file picker it opened is in front" >&2
-        exit 1
-    fi
     hierarchy | python3 -c '
 import re, sys, html
 seen = dict.fromkeys(
@@ -104,10 +106,6 @@ print(" | ".join(seen))
     ;;
 pick)
     shift
-    if ! in_front && ! picker_in_front; then
-        echo "REFUSED: neither $APP nor a file picker it opened is in front" >&2
-        exit 1
-    fi
     spot=$(hierarchy | python3 "$(dirname "$0")/node.py" "$@") || {
         echo "no node matching: $*" >&2
         exit 1
