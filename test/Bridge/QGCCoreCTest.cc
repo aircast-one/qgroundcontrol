@@ -386,7 +386,7 @@ void QGCCoreCTest::_inspectorListsMessages()
     QCOMPARE(view.value(QStringLiteral("rateChoices")).toArray().count(), 15);
     const QJsonObject first = view.value(QStringLiteral("messages")).toArray().first().toObject();
     QVERIFY(!first.value(QStringLiteral("name")).toString().isEmpty());
-    QVERIFY(first.value(QStringLiteral("path")).toString().startsWith(QStringLiteral("mavlinkInspector.systems.0.messages.")));
+    QVERIFY(first.value(QStringLiteral("path")).toString().startsWith(QStringLiteral("mavlinkInspector.activeSystem.messages.")));
 }
 
 void QGCCoreCTest::_flightModesFollowTheVehicle()

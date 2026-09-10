@@ -3,7 +3,7 @@ use serde_json::{Value, json};
 use crate::read::object;
 use crate::router::Backend;
 
-pub const DEPS: &[&str] = &["vehicles.activeVehicleAvailable", "mavlinkInspector.systems.0.messages"];
+pub const DEPS: &[&str] = &["vehicles.activeVehicleAvailable", "mavlinkInspector.activeSystem.messages"];
 const FIELDS: &str = "id,compId,name,count,actualRateHz,targetRateHz,selected";
 const RATE_DISABLED: i64 = -1;
 const RATE_DEFAULT: i64 = 0;
@@ -33,7 +33,7 @@ pub fn shown_rate(rate: i64) -> i64 {
 }
 
 pub fn inspector_view(backend: &dyn Backend, _args: &[String]) -> Value {
-    let model = object(&backend.get_fields("mavlinkInspector.systems.0.messages", FIELDS));
+    let model = object(&backend.get_fields("mavlinkInspector.activeSystem.messages", FIELDS));
     let messages: Vec<Value> = model
         .get("elements")
         .and_then(Value::as_array)
@@ -51,7 +51,7 @@ pub fn inspector_view(backend: &dyn Backend, _args: &[String]) -> Value {
                     let target = m.get("targetRateHz").and_then(Value::as_i64).unwrap_or(RATE_DEFAULT);
                     Some(json!({
                         "index": index,
-                        "path": format!("mavlinkInspector.systems.0.messages.{index}"),
+                        "path": format!("mavlinkInspector.activeSystem.messages.{index}"),
                         "id": m.get("id").and_then(Value::as_i64).unwrap_or(0),
                         "compId": comp_id,
                         "name": name,
@@ -114,9 +114,16 @@ mod tests {
         assert_eq!(view["messages"].as_array().unwrap().len(), 3);
         assert_eq!(view["messages"][0]["title"], "HEARTBEAT");
         assert_eq!(view["messages"][1]["title"], "CAMERA_CAPTURE_STATUS (comp 100)");
-        assert_eq!(view["messages"][2]["path"], "mavlinkInspector.systems.0.messages.3");
+        assert_eq!(view["messages"][2]["path"], "mavlinkInspector.activeSystem.messages.3");
         assert_eq!(view["messages"][0]["rateText"], "1.0 Hz");
-        assert_eq!(view["messages"][0]["path"], "mavlinkInspector.systems.0.messages.0");
+        assert_eq!(view["messages"][0]["path"], "mavlinkInspector.activeSystem.messages.0");
         assert_eq!(view["rateChoices"].as_array().unwrap().len(), 15);
+    }
+
+    #[test]
+    fn the_view_describes_the_system_the_write_will_act_on() {
+        assert!(DEPS.iter().all(|dep| !dep.contains("systems.0")), "systems.0 is whichever vehicle connected first; setMessageInterval acts on activeSystem, and with two vehicles those are different aircraft");
+        assert!(DEPS.iter().any(|dep| dep.contains("activeSystem")));
+        assert!(DEPS.iter().any(|dep| dep.contains("messages")), "the messages the view lists come from that same system");
     }
 }
