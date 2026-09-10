@@ -92,8 +92,8 @@ tap)
         echo "usage: ui.sh tap <x> <y>   (or ui.sh tap \"\$(ui.sh find ...)\")" >&2
         exit 2
     fi
-    require_front
-    refuse_flight_control "$2" "$3"
+    readable_screen
+    in_front && refuse_flight_control "$2" "$3"
     adb shell input tap "$2" "$3"
     ;;
 find)
@@ -123,9 +123,9 @@ pick)
     in_front && refuse_flight_control ${spot}
     adb shell input tap ${spot}
     ;;
-swipe)   require_front; adb shell input swipe "$2" "$3" "$4" "$5" "${6:-400}" ;;
-type)    require_front; adb shell input text "$2" ;;
-key)     require_front; adb shell input keyevent "$2" ;;
+swipe)   readable_screen; adb shell input swipe "$2" "$3" "$4" "$5" "${6:-400}" ;;
+type)    readable_screen; adb shell input text "$2" ;;
+key)     readable_screen; adb shell input keyevent "$2" ;;
 shot)
     if [ "${ALLOW_ANY_SCREEN:-0}" != "1" ] && ! in_front; then
         echo "REFUSED: $APP is not in front - a capture would record whatever is." >&2
