@@ -56,3 +56,49 @@ class MoreActionsTest {
         assertNull(guidedCommand(PAUSE))
     }
 }
+
+class PrimaryBlockedReasonTest {
+    private fun offer(id: String, offer: String, reason: String = "") = GuidedOffer(
+        id = id, title = id, offer = offer, reason = reason, prompt = "",
+        destructive = false, carriesValue = false,
+    )
+
+    @Test
+    fun `a ready row explains nothing`() {
+        assertNull(primaryBlockedReason(mapOf("arm" to offer("arm", "ready"))))
+    }
+
+    @Test
+    fun `a blocked action explains itself`() {
+        assertEquals(
+            "Preflight checks are failing",
+            primaryBlockedReason(mapOf("arm" to offer("arm", "blocked", "Preflight checks are failing"))),
+        )
+    }
+
+    @Test
+    fun `a blocked action with no reason still says something`() {
+        assertEquals(
+            "The vehicle will not accept this yet.",
+            primaryBlockedReason(mapOf("takeoff" to offer("takeoff", "blocked"))),
+        )
+    }
+
+    @Test
+    fun `a hidden action is not explained`() {
+        assertNull(primaryBlockedReason(mapOf("rtl" to offer("rtl", "hidden", "no vehicle"))))
+    }
+
+    @Test
+    fun `arm outranks a later blocked action`() {
+        assertEquals(
+            "arm reason",
+            primaryBlockedReason(
+                mapOf(
+                    "takeoff" to offer("takeoff", "blocked", "takeoff reason"),
+                    "arm" to offer("arm", "blocked", "arm reason"),
+                ),
+            ),
+        )
+    }
+}

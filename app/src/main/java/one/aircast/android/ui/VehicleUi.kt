@@ -218,9 +218,8 @@ fun FlightActions(modifier: Modifier = Modifier) {
             val armAction = offers[if (armed) "disarm" else "arm"]
             Offered(armAction) {
                 Button(
-                    enabled = armAction?.blocked != true,
+                    enabled = armAction?.ready == true,
                     onClick = {
-                        blockedReasonFor(armAction)?.let { refusal = it; return@Button }
                         pending = GuidedAction(
                             name = armAction?.title ?: if (armed) "Disarm" else "Arm",
                             confirm = armAction?.prompt?.ifBlank { null } ?: if (armed) {
@@ -316,6 +315,15 @@ fun FlightActions(modifier: Modifier = Modifier) {
             }
 
             OutlinedButton(onClick = { showMore = true }) { Text("Actions") }
+        }
+
+        primaryBlockedReason(offers)?.let { reason ->
+            Text(
+                text = reason,
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.fillMaxWidth(),
+            )
         }
 
         TelemetryRow()

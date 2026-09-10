@@ -40,5 +40,10 @@ internal fun guidedOffers(view: JSONObject?): Map<String, GuidedOffer> {
     }.toMap()
 }
 
+internal val PRIMARY_ACTIONS = listOf("arm", "disarm", "takeoff", "land", "rtl")
+
+internal fun primaryBlockedReason(offers: Map<String, GuidedOffer>): String? =
+    PRIMARY_ACTIONS.firstNotNullOfOrNull { offers[it]?.let(::blockedReasonFor) }
+
 internal fun blockedReasonFor(offer: GuidedOffer?): String? =
     offer?.takeIf { it.blocked }?.reason?.ifBlank { "The vehicle will not accept this yet." }
