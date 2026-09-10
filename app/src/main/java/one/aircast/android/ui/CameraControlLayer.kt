@@ -63,6 +63,7 @@ fun CameraControlLayer(modifier: Modifier = Modifier) {
                 camera.modeText.ifBlank { null }?.let { label ->
                     FilterChip(
                         selected = false,
+                        enabled = camera.canChangeMode,
                         onClick = {
                             offMainDetached { Qgc.invoke("$CAMERA.toggleCameraMode") }
                         },

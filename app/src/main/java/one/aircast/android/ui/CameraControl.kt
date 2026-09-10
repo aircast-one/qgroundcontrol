@@ -24,6 +24,7 @@ internal const val CAMERA_VIEW = "view.camera"
 internal data class CameraReading(
     val present: Boolean,
     val hasModes: Boolean,
+    val canChangeMode: Boolean,
     val modeText: String,
     val isRecording: Boolean,
     val canPhoto: Boolean,
@@ -37,6 +38,7 @@ internal fun cameraReading(view: JSONObject?): CameraReading? {
     return CameraReading(
         present = true,
         hasModes = view.optBoolean("hasModes"),
+        canChangeMode = view.optBoolean("canChangeMode"),
         modeText = view.optString("modeText"),
         isRecording = view.optBoolean("isRecording"),
         canPhoto = view.optBoolean("canPhoto"),

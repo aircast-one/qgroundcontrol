@@ -79,3 +79,26 @@ class CameraControlTest {
         assertNull(cameraReading(JSONObject("""{"present":false}""")))
     }
 }
+
+class CameraModeChangeTest {
+    private fun view(extra: String) = JSONObject(
+        """{"present":true,"hasModes":true,"modeText":"Photo",$extra}""",
+    )
+
+    @Test
+    fun `a camera between operations may change mode`() {
+        assertTrue(cameraReading(view(""""canChangeMode":true"""))!!.canChangeMode)
+    }
+
+    @Test
+    fun `a camera mid-operation may not change mode even though it has modes`() {
+        val reading = cameraReading(view(""""canChangeMode":false"""))!!
+        assertTrue(reading.hasModes)
+        assertFalse(reading.canChangeMode)
+    }
+
+    @Test
+    fun `a view that never mentions canChangeMode does not invent permission`() {
+        assertFalse(cameraReading(view(""""mode":1"""))!!.canChangeMode)
+    }
+}
