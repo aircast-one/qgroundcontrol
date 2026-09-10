@@ -2296,7 +2296,12 @@ void QGCCoreCTest::_structureScanItemsMatchTheRecordedUpload()
 {
 #ifdef QGC_RUST_CORE
     _connectMockLink(MAV_AUTOPILOT_PX4);
-    const auto disconnectWhenDone = qScopeGuard([this]() { _disconnectMockLink(); });
+    bool stillConnected = true;
+    const auto disconnectWhenDone = qScopeGuard([this, &stillConnected]() {
+        if (stillConnected) {
+            _disconnectMockLink();
+        }
+    });
     Vehicle *const vehicle = MultiVehicleManager::instance()->activeVehicle();
     QVERIFY(vehicle);
 
@@ -2379,6 +2384,11 @@ void QGCCoreCTest::_structureScanItemsMatchTheRecordedUpload()
         };
     }
     restore();
+
+    // The vehicle has nothing left to say, and a skip below would otherwise leave the disconnect to
+    // run inside an already skipped test, where its wait for the vehicle to go never completes.
+    _disconnectMockLink();
+    stillConnected = false;
 
     const QString fixture = QFileInfo(QString::fromUtf8(__FILE__)).dir().filePath(QStringLiteral("fixtures/structure-scan-items.json"));
     if (qEnvironmentVariableIsSet("QGC_RECORD_VIEW_CONTRACT")) {
