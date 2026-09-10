@@ -163,8 +163,12 @@ def main():
             2500, [3700, 3690, 3710] + [65535] * 7, 3200, 1800, -1,
             int(os.environ.get("BATT_PCT", "25")), 0,
             int(os.environ.get("BATT_STATE", "0")))
+        sticks = [
+            int(1500 + 380 * math.sin(elapsed * 0.6 + channel * 1.3))
+            for channel in range(8)
+        ] if os.environ.get("STILL_STICKS") != "1" else [1500, 1500, 1100, 1500, 1000, 1000, 1000, 1000]
         link.rc_channels_send(
-            now_ms, 8, 1500, 1500, 1100, 1500, 1000, 1000, 1000, 1000,
+            now_ms, 8, *sticks,
             0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
             int(os.environ.get("RC_RSSI", "80")))
         link.vibration_send(int(elapsed * 1e6), 15.0, 45.0, 75.0, 0, 3, 12)
