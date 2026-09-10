@@ -100,3 +100,53 @@ class LinksScreenTest {
         assertNull(linkFormError("udp", "", "14550"))
     }
 }
+
+class SerialLinkFormTest {
+    @Test
+    fun `a port with no friendly name falls back to the device path`() {
+        val choices = serialPortChoices(listOf("/dev/ttyUSB0", "/dev/ttyACM0"), listOf("FTDI UART"))
+        assertEquals("FTDI UART", choices[0].label)
+        assertEquals("/dev/ttyACM0", choices[1].label)
+        assertEquals("/dev/ttyUSB0", choices[0].port)
+    }
+
+    @Test
+    fun `a blank friendly name does not blank the row`() {
+        val choices = serialPortChoices(listOf("/dev/ttyUSB0"), listOf(""))
+        assertEquals("/dev/ttyUSB0", choices[0].label)
+    }
+
+    @Test
+    fun `no port picked is refused`() {
+        assertEquals(
+            "Pick the port the radio is plugged into.",
+            serialFormError("", DEFAULT_BAUD, emptyList(), "", anyPorts = true),
+        )
+    }
+
+    @Test
+    fun `a duplicate name is refused before the invoke rejects it`() {
+        assertEquals(
+            "A link with that name already exists.",
+            serialFormError("/dev/ttyUSB0", DEFAULT_BAUD, listOf("Serial ttyUSB0"), "", anyPorts = true),
+        )
+    }
+
+    @Test
+    fun `a good serial form has nothing to say`() {
+        assertNull(serialFormError("/dev/ttyUSB0", DEFAULT_BAUD, listOf("UDP 14550"), "", anyPorts = true))
+    }
+
+    @Test
+    fun `the automatic name is the port's leaf`() {
+        assertEquals("Serial ttyUSB0", autoSerialName("/dev/ttyUSB0"))
+    }
+
+    @Test
+    fun `an empty port list explains itself rather than blaming the operator`() {
+        assertEquals(
+            "Nothing is plugged in. Connect a radio over USB and it will appear here.",
+            serialFormError("", DEFAULT_BAUD, emptyList(), "", anyPorts = false),
+        )
+    }
+}

@@ -25,6 +25,7 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
@@ -48,6 +49,7 @@ import org.json.JSONObject
 import one.aircast.android.bridge.Qgc
 import one.aircast.android.bridge.qgcBool
 import one.aircast.android.bridge.qgcPath
+import one.aircast.android.bridge.qgcStrings
 
 private const val LINKS_VIEW = "view.links"
 private const val LINKS_PATH = "links.linkConfigurations"
@@ -80,6 +82,37 @@ internal fun linkRows(view: JSONObject?): List<LinkRow> {
 
 internal fun autoLinkName(type: String, host: String, port: String): String =
     if (host.isBlank()) "${type.uppercase()} $port" else "${type.uppercase()} $host:$port"
+
+internal const val DEFAULT_BAUD = 57600
+
+internal data class SerialPortChoice(val port: String, val label: String)
+
+internal fun serialPortChoices(ports: List<String>, labels: List<String>): List<SerialPortChoice> =
+    ports.filter { it.isNotBlank() }
+        .mapIndexed { index, port ->
+            SerialPortChoice(port, labels.getOrNull(index)?.ifBlank { null } ?: port)
+        }
+
+internal fun serialBauds(view: JSONObject?): List<Int> {
+    val rates = view?.optJSONArray("baudRates") ?: return emptyList()
+    return (0 until rates.length()).mapNotNull { rates.opt(it)?.toString()?.toIntOrNull() }.filter { it > 0 }
+}
+
+internal fun autoSerialName(portName: String): String = "Serial ${portName.substringAfterLast('/')}"
+
+internal fun serialFormError(
+    portName: String,
+    baud: Int,
+    taken: List<String>,
+    name: String,
+    anyPorts: Boolean,
+): String? = when {
+    !anyPorts -> "Nothing is plugged in. Connect a radio over USB and it will appear here."
+    portName.isBlank() -> "Pick the port the radio is plugged into."
+    baud <= 0 -> "Pick a baud rate."
+    name.ifBlank { autoSerialName(portName) } in taken -> "A link with that name already exists."
+    else -> null
+}
 
 internal fun linkFormError(type: String, host: String, port: String): String? {
     val parsed = port.toIntOrNull()
@@ -161,6 +194,16 @@ private fun AddLinkDialog(onDismiss: () -> Unit, onAdded: () -> Unit) {
     var name by remember { mutableStateOf("") }
     var host by remember { mutableStateOf("") }
     var port by remember { mutableStateOf(DEFAULT_PORT) }
+    var portName by remember { mutableStateOf("") }
+    var baud by remember { mutableIntStateOf(DEFAULT_BAUD) }
+    var portsOpen by remember { mutableStateOf(false) }
+    var baudsOpen by remember { mutableStateOf(false) }
+    val linksJson by qgcPath(LINKS_VIEW)
+    val portPaths by qgcStrings("links.serialPorts")
+    val portLabels by qgcStrings("links.serialPortStrings")
+    val ports = remember(portPaths, portLabels) { serialPortChoices(portPaths, portLabels) }
+    val bauds = remember(linksJson) { serialBauds(linksJson).ifEmpty { listOf(DEFAULT_BAUD) } }
+    val taken = remember(linksJson) { linkRows(linksJson).map { it.name } }
     var error by remember { mutableStateOf<String?>(null) }
     var busy by remember { mutableStateOf(false) }
     val scope = rememberCoroutineScope()
@@ -181,35 +224,79 @@ private fun AddLinkDialog(onDismiss: () -> Unit, onAdded: () -> Unit) {
                         onClick = { type = "tcp" },
                         label = { Text("TCP") },
                     )
+                    FilterChip(
+                        selected = type == "serial",
+                        onClick = { type = "serial" },
+                        label = { Text("Serial") },
+                    )
                 }
                 Text(
-                    text = if (type == "udp") {
-                        "Listens on a port. Leave the address blank unless you need to reach a " +
-                            "specific device."
-                    } else {
-                        "Calls out to a device that is listening, such as a ground station."
+                    text = when (type) {
+                        "udp" -> "Listens on a port. Leave the address blank unless you need to " +
+                            "reach a specific device."
+                        "serial" -> "A radio plugged into this device over USB."
+                        else -> "Calls out to a device that is listening, such as a ground station."
                     },
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
-                OutlinedTextField(
-                    value = host,
-                    onValueChange = { host = it },
-                    label = { Text(if (type == "tcp") "Address" else "Address (optional)") },
-                    singleLine = true,
-                )
-                OutlinedTextField(
-                    value = port,
-                    onValueChange = { port = it },
-                    label = { Text("Port") },
-                    singleLine = true,
-                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
-                )
+                if (type == "serial" && ports.isEmpty()) {
+                    Text(
+                        text = "Nothing is plugged in. Connect a radio over USB and it will " +
+                            "appear here.",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                } else if (type == "serial") {
+                    Box {
+                        OutlinedButton(onClick = { portsOpen = true }) {
+                            Text(ports.firstOrNull { it.port == portName }?.label ?: "Choose a port")
+                        }
+                        DropdownMenu(expanded = portsOpen, onDismissRequest = { portsOpen = false }) {
+                            ports.forEach { choice ->
+                                DropdownMenuItem(
+                                    text = { Text(choice.label) },
+                                    onClick = { portName = choice.port; portsOpen = false },
+                                )
+                            }
+                        }
+                    }
+                    Box {
+                        OutlinedButton(onClick = { baudsOpen = true }) { Text("$baud baud") }
+                        DropdownMenu(expanded = baudsOpen, onDismissRequest = { baudsOpen = false }) {
+                            bauds.forEach { rate ->
+                                DropdownMenuItem(
+                                    text = { Text("$rate") },
+                                    onClick = { baud = rate; baudsOpen = false },
+                                )
+                            }
+                        }
+                    }
+                } else {
+                    OutlinedTextField(
+                        value = host,
+                        onValueChange = { host = it },
+                        label = { Text(if (type == "tcp") "Address" else "Address (optional)") },
+                        singleLine = true,
+                    )
+                    OutlinedTextField(
+                        value = port,
+                        onValueChange = { port = it },
+                        label = { Text("Port") },
+                        singleLine = true,
+                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                    )
+                }
                 OutlinedTextField(
                     value = name,
                     onValueChange = { name = it },
                     label = { Text("Name (optional)") },
-                    placeholder = { Text(autoLinkName(type, host, port)) },
+                    placeholder = {
+                        Text(
+                            if (type == "serial") autoSerialName(portName)
+                            else autoLinkName(type, host, port),
+                        )
+                    },
                     singleLine = true,
                 )
                 error?.let {
@@ -221,16 +308,27 @@ private fun AddLinkDialog(onDismiss: () -> Unit, onAdded: () -> Unit) {
             Button(
                 enabled = !busy,
                 onClick = {
-                    val invalid = linkFormError(type, host, port)
+                    val invalid = if (type == "serial") {
+                        serialFormError(portName, baud, taken, name, ports.isNotEmpty())
+                    } else {
+                        linkFormError(type, host, port)
+                    }
                     error = invalid
                     if (invalid == null) {
                         busy = true
-                        val chosen = name.ifBlank { autoLinkName(type, host, port) }
+                        val chosen = name.ifBlank {
+                            if (type == "serial") autoSerialName(portName) else autoLinkName(type, host, port)
+                        }
                         scope.launch {
                             val added = withContext(Dispatchers.Default) {
-                                Qgc.invokeResult(
-                                    "links.createAndConnectLink", type, chosen, host, port.toInt(),
-                                ) == true
+                                if (type == "serial") {
+                                    Qgc.invokeResult("links.createSerialConfiguration", chosen, portName, baud) == true &&
+                                        connectNamed(chosen)
+                                } else {
+                                    Qgc.invokeResult(
+                                        "links.createAndConnectLink", type, chosen, host, port.toInt(),
+                                    ) == true
+                                }
                             }
                             busy = false
                             if (added) {
@@ -253,6 +351,12 @@ internal fun linkFailure(action: String, done: Boolean): String? =
     if (done) null else "Could not $action that link."
 
 private fun currentRows(): List<LinkRow> = linkRows(Qgc.get(LINKS_VIEW))
+
+private fun connectNamed(name: String): Boolean {
+    val row = currentRows().firstOrNull { it.name == name } ?: return false
+    Qgc.invoke("links.createConnectedLink", "@$LINKS_PATH.${row.index}")
+    return true
+}
 
 @Composable
 fun LinksScreen(modifier: Modifier = Modifier) {
