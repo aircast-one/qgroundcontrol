@@ -3979,7 +3979,34 @@ already being displayed for errors — so the change is confined to a pure predi
 tests including one that restores the previous implementation exactly and fails on the single case it
 could not report, which is a stronger claim than "the new test passes".
 
-### Link editing is reachable and not persistable, so it is not built
+### Link editing, and the standing list of QML-only capabilities
+
+**Built** (`6b5447e`), once the core added `links.commitLinkConfigurations` (`8cd3a642d`). Property
+writes stay in memory and the commit is the transaction boundary, so a head that writes three fields
+and fails on the fourth simply does not commit and the half-applied change is gone at restart. I had
+argued for a wider `editLinkConfiguration(fields...)` instead; the core session was right that a
+signature covering serial's parity, flow control, data bits and stop bits reopens the wide-signature
+problem that create had just closed.
+
+Cancel needs no duplicate here. QML edits a copy because its form binds to the object; a Compose
+dialog holds its own state and writes nothing until Save, so backing out costs nothing.
+
+Verified on the handset against a throwaway link, the device having none saved: Edit is disabled
+while the link is connected and enabled after disconnecting, and **a saved change survived a
+force-stop and relaunch** — the thing that was impossible before the commit call. The link was
+removed afterwards.
+
+That closes the standing list of capabilities that existed only in QML and would have gone silently
+with it:
+
+1. **Message rate setting** — built and verified on the wire. The QML path was itself broken by the
+   `int32_t` invoke bug, so this one belonged in "check whether it ever worked" rather than "would be
+   lost".
+2. **Link creation, including serial** — built; creating a *real* serial link still needs a USB radio
+   the rig does not have.
+3. **Cancel-safe link editing** — built.
+
+### How that gap was originally described
 
 Everything needed to *edit* a link is already addressable, exactly as the macOS session argued: a
 registered configuration sits at `links.linkConfigurations.N`, and the fields are writable
