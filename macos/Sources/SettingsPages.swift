@@ -56,6 +56,21 @@ struct SettingsControl: Identifiable, Equatable {
     var boolValue: Bool { (value as? NSNumber)?.boolValue ?? false }
     var intValue: Int { (value as? NSNumber)?.intValue ?? 0 }
 
+    // The core folds QGC's two cases into one flag: ParameterEditorDialog.qml distinguishes
+    // "Vehicle reboot required after change" from "Application restart required after change",
+    // and view.control sends vehicleRebootRequired || qgcRebootRequired. This head can only say
+    // which is true of both, so it says the plainer thing rather than guessing which one.
+    static let restartNotice = "Restart required after a change"
+
+    var restartNotice: String { rebootRequired ? SettingsControl.restartNotice : "" }
+
+    // The row shows the setting's own name under its label; a setting that needs a restart says
+    // so on the same line rather than in a place an operator has to go looking for.
+    func rowDescription(label: String) -> String {
+        let parts = [label.isEmpty ? "" : name, restartNotice].filter { !$0.isEmpty }
+        return parts.joined(separator: " \u{00B7} ")
+    }
+
     var parameterOptions: [ParameterOption] {
         options.map { ParameterOption(label: $0.label, raw: $0.raw) }
     }

@@ -86,6 +86,7 @@ extension SettingsStore {
                  "facts": section.controls.map { ["name": $0.name, "title": $0.label,
                                                   "value": $0.valueString, "units": $0.units,
                                                   "readOnly": $0.readOnly,
+                                                  "detail": $0.rowDescription(label: $0.label),
                                                   "control": String(describing: $0.kind)] }]
             },
         ]

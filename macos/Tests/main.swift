@@ -2024,6 +2024,36 @@ func checkCameraControlMatchesTheCore() {
 
 checkCameraControlMatchesTheCore()
 
+func checkRestartNoticeReachesTheRow() {
+    func control(_ reboot: Bool, label: String = "Application font size") -> SettingsControl {
+        SettingsControl(["path": "settings.appSettings.appFontPointSize",
+                         "name": "appFontPointSize", "label": label, "control": "number",
+                         "valueString": "13", "units": "pt",
+                         "rebootRequired": reboot as NSNumber])!
+    }
+
+    expect(control(true).rebootRequired,
+           "the core folds vehicleRebootRequired and qgcRebootRequired into one flag")
+    expect(control(true).restartNotice, "Restart required after a change",
+           "which this head can only report plainly, because it is not told which of the two it "
+           + "was; QGC has a separate sentence for each")
+    expect(control(false).restartNotice, "",
+           "and a setting that takes effect at once says nothing extra")
+
+    expect(control(true).rowDescription(label: "Application font size"),
+           "appFontPointSize \u{00B7} Restart required after a change",
+           "the row carries the notice beside the setting's own name, on the line an operator is "
+           + "already reading; it used to be decoded and then dropped on the floor")
+    expect(control(false).rowDescription(label: "Application font size"), "appFontPointSize",
+           "and is otherwise the name alone")
+    expect(control(true, label: "").rowDescription(label: ""),
+           "Restart required after a change",
+           "a control with no label puts its name in the title, so the description is the notice "
+           + "by itself rather than the name written twice")
+}
+
+checkRestartNoticeReachesTheRow()
+
 func checkPreflight() {
     func check(_ name: String, _ verdict: String, _ blocked: Bool) -> [String: Any] {
         ["name": name, "prompt": "P", "verdict": verdict, "reason": "R",

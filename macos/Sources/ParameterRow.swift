@@ -73,6 +73,7 @@ struct ParameterEditor: View {
 struct ParameterRow: View {
     let name: String
     let label: String
+    var detail = ""
     let value: String
     let units: String
     let options: [ParameterOption]
@@ -85,6 +86,7 @@ struct ParameterRow: View {
         name = parameter.name
         label = parameter.description
         value = parameter.value
+        detail = label.isEmpty ? "" : parameter.name
         units = parameter.units
         options = parameter.options
         selectedRaw = parameter.selectedOption?.raw ?? ""
@@ -94,6 +96,7 @@ struct ParameterRow: View {
 
     init(control: SettingsControl, showSeparator: Bool = true,
          commit: @escaping (String) -> Void) {
+        detail = control.rowDescription(label: control.label)
         name = control.name
         label = control.label
         value = control.display.isEmpty ? control.valueString : control.display
@@ -107,7 +110,7 @@ struct ParameterRow: View {
     var body: some View {
         GroupRow(
             title: label.isEmpty ? name : label,
-            description: label.isEmpty ? "" : name,
+            description: detail,
             showSeparator: showSeparator,
             trailing: {
                 ParameterEditor(value: value, units: units, options: options,
