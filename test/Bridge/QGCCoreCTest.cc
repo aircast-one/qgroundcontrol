@@ -1195,6 +1195,8 @@ struct SurveyCase {
     double      footprintFrontal;
     double      turnAround;
     bool        refly;
+    bool        alternate;
+    int         entryRotations;
 };
 
 QString roundedCoordinates(const QJsonArray &points)
@@ -1215,18 +1217,23 @@ void QGCCoreCTest::_surveyTransectsMatchTheRecordedOracle()
 {
 #ifdef QGC_RUST_CORE
     const QList<SurveyCase> cases = {
-        { "square-0deg",            polygonSquare(),   0.0,   60.0, 40.0,  0.0, false },
-        { "square-30deg",           polygonSquare(),  30.0,   60.0, 40.0,  0.0, false },
-        { "square-90deg",           polygonSquare(),  90.0,   60.0, 40.0,  0.0, false },
-        { "square-neg45deg",        polygonSquare(), -45.0,   60.0, 40.0,  0.0, false },
-        { "square-turnaround",      polygonSquare(),   0.0,   60.0, 40.0, 30.0, false },
-        { "square-tight-spacing",   polygonSquare(),   0.0,   25.0, 20.0,  0.0, false },
-        { "triangle-0deg",          polygonTriangle(), 0.0,   60.0, 40.0,  0.0, false },
-        { "triangle-45deg",         polygonTriangle(),45.0,   60.0, 40.0,  0.0, false },
-        { "concave-0deg",           polygonConcave(),  0.0,   60.0, 40.0,  0.0, false },
-        { "concave-0deg-refly",     polygonConcave(),  0.0,   60.0, 40.0,  0.0, true  },
-        { "concave-60deg",          polygonConcave(), 60.0,   60.0, 40.0,  0.0, false },
-        { "concave-60deg-refly",    polygonConcave(), 60.0,   60.0, 40.0,  0.0, true  },
+        { "square-0deg",            polygonSquare(),   0.0,   60.0, 40.0,  0.0, false , false, 0 },
+        { "square-30deg",           polygonSquare(),  30.0,   60.0, 40.0,  0.0, false , false, 0 },
+        { "square-90deg",           polygonSquare(),  90.0,   60.0, 40.0,  0.0, false , false, 0 },
+        { "square-neg45deg",        polygonSquare(), -45.0,   60.0, 40.0,  0.0, false , false, 0 },
+        { "square-turnaround",      polygonSquare(),   0.0,   60.0, 40.0, 30.0, false , false, 0 },
+        { "square-tight-spacing",   polygonSquare(),   0.0,   25.0, 20.0,  0.0, false , false, 0 },
+        { "triangle-0deg",          polygonTriangle(), 0.0,   60.0, 40.0,  0.0, false , false, 0 },
+        { "triangle-45deg",         polygonTriangle(),45.0,   60.0, 40.0,  0.0, false , false, 0 },
+        { "concave-0deg",           polygonConcave(),  0.0,   60.0, 40.0,  0.0, false , false, 0 },
+        { "concave-0deg-refly",     polygonConcave(),  0.0,   60.0, 40.0,  0.0, true  , false, 0 },
+        { "concave-60deg",          polygonConcave(), 60.0,   60.0, 40.0,  0.0, false , false, 0 },
+        { "concave-60deg-refly",    polygonConcave(), 60.0,   60.0, 40.0,  0.0, true  , false, 0 },
+        { "square-entry-1",         polygonSquare(),   0.0,   60.0, 40.0,  0.0, false, false, 1 },
+        { "square-entry-2",         polygonSquare(),   0.0,   60.0, 40.0,  0.0, false, false, 2 },
+        { "square-entry-3",         polygonSquare(),   0.0,   60.0, 40.0,  0.0, false, false, 3 },
+        { "square-alternate",       polygonSquare(),   0.0,   60.0, 40.0,  0.0, false, true,  0 },
+        { "concave-alternate",      polygonConcave(),  0.0,   60.0, 40.0,  0.0, false, true,  0 },
     };
 
     (void) take(qgc_bridge_invoke("plan.start", "[]"));
@@ -1262,6 +1269,12 @@ void QGCCoreCTest::_surveyTransectsMatchTheRecordedOracle()
         setFact(item + QStringLiteral(".cameraCalc.adjustedFootprintFrontal"), QJsonValue(survey.footprintFrontal));
         setFact(item + QStringLiteral(".turnAroundDistance"), QJsonValue(survey.turnAround));
         setFact(item + QStringLiteral(".refly90Degrees"), QJsonValue(survey.refly));
+        setFact(item + QStringLiteral(".flyAlternateTransects"), QJsonValue(survey.alternate));
+        for (int rotation = 0; rotation < survey.entryRotations; rotation++) {
+            (void) take(qgc_bridge_invoke((item + QStringLiteral(".rotateEntryPoint")).toUtf8().constData(), "[]"));
+        }
+        const int entryPoint = take(qgc_bridge_get((item + QStringLiteral(".entryPoint")).toUtf8().constData())).value(QStringLiteral("value")).toInt(-1);
+        QCOMPARE(entryPoint, survey.entryRotations);
         setFact(item + QStringLiteral(".gridAngle"), QJsonValue(survey.gridAngle));
 
         const auto points = [&]() { return take(qgc_bridge_get((item + QStringLiteral(".visualTransectPoints")).toUtf8().constData())).value(QStringLiteral("value")).toArray(); };
@@ -1273,6 +1286,8 @@ void QGCCoreCTest::_surveyTransectsMatchTheRecordedOracle()
             { QStringLiteral("frontalSpacing"), survey.footprintFrontal },
             { QStringLiteral("turnAround"), survey.turnAround },
             { QStringLiteral("refly"), survey.refly },
+            { QStringLiteral("alternate"), survey.alternate },
+            { QStringLiteral("entryPoint"), survey.entryRotations },
             { QStringLiteral("transects"), roundedCoordinates(points()) },
         });
     }

@@ -6,6 +6,11 @@ const MIN_SPACING_M: f64 = 0.5;
 const GRID_MARGIN_M: f64 = 2000.0;
 const DIRECTION_TOLERANCE_DEG: f64 = 1.0;
 
+pub const ENTRY_TOP_LEFT: i64 = 0;
+pub const ENTRY_TOP_RIGHT: i64 = 1;
+pub const ENTRY_BOTTOM_LEFT: i64 = 2;
+pub const ENTRY_BOTTOM_RIGHT: i64 = 3;
+
 #[derive(Debug, Clone, Copy, PartialEq, Default)]
 pub struct Params {
     pub grid_angle: f64,
@@ -13,6 +18,7 @@ pub struct Params {
     pub turnaround: f64,
     pub refly: bool,
     pub alternate: bool,
+    pub entry: i64,
 }
 
 type Point = (f64, f64);
@@ -142,6 +148,44 @@ fn boustrophedon(transects: Vec<Vec<Point>>) -> Vec<Vec<Point>> {
         .collect()
 }
 
+pub fn distance_between(from: Point, to: Point) -> f64 {
+    let d_lat = (to.0 - from.0).to_radians();
+    let d_lon = (to.1 - from.1).to_radians();
+    let haversine_lat = (d_lat / 2.0).sin().powi(2);
+    let haversine_lon = (d_lon / 2.0).sin().powi(2);
+    let y = haversine_lat + from.0.to_radians().cos() * to.0.to_radians().cos() * haversine_lon;
+    2.0 * y.sqrt().asin() * EARTH_MEAN_RADIUS_M
+}
+
+fn reverse_transect_order(transects: Vec<Vec<Point>>) -> Vec<Vec<Point>> {
+    transects.into_iter().rev().collect()
+}
+
+fn reverse_internal_points(transects: Vec<Vec<Point>>) -> Vec<Vec<Point>> {
+    transects.into_iter().map(|transect| transect.into_iter().rev().collect()).collect()
+}
+
+fn shortest_from(anchor: Point, transects: Vec<Vec<Point>>) -> Vec<Vec<Point>> {
+    let (Some(first), Some(last)) = (transects.first(), transects.last()) else { return transects };
+    let (Some(first_start), Some(first_end), Some(last_start), Some(last_end)) = (first.first(), first.last(), last.first(), last.last()) else { return transects };
+    let candidates = [distance_between(*first_start, anchor), distance_between(*first_end, anchor), distance_between(*last_start, anchor)];
+    let shortest = candidates
+        .iter()
+        .enumerate()
+        .fold((0usize, candidates[0]), |(best, nearest), (index, distance)| if index > 0 && *distance < nearest { (index, *distance) } else { (best, nearest) })
+        .0;
+    let ordered = if shortest > 1 { reverse_transect_order(transects) } else { transects };
+    if shortest & 1 == 1 { reverse_internal_points(ordered) } else { ordered }
+}
+
+fn at_entry_point(entry: i64, transects: Vec<Vec<Point>>) -> Vec<Vec<Point>> {
+    if transects.is_empty() {
+        return transects;
+    }
+    let flipped = if matches!(entry, ENTRY_BOTTOM_LEFT | ENTRY_BOTTOM_RIGHT) { reverse_internal_points(transects) } else { transects };
+    if matches!(entry, ENTRY_TOP_RIGHT | ENTRY_BOTTOM_RIGHT) { reverse_transect_order(flipped) } else { flipped }
+}
+
 fn with_turnaround(transect: Vec<Point>, distance: f64) -> Vec<Point> {
     if distance <= 0.0 || transect.len() < 2 {
         return transect;
@@ -153,6 +197,16 @@ fn with_turnaround(transect: Vec<Point>, distance: f64) -> Vec<Point> {
 }
 
 pub fn transects(polygon: &[Point], params: &Params) -> Vec<Vec<Point>> {
+    let first = pass(polygon, params, false, None);
+    if !params.refly {
+        return first;
+    }
+    let anchor = first.last().and_then(|transect| transect.last()).copied();
+    let second = pass(polygon, params, true, anchor);
+    first.into_iter().chain(second).collect()
+}
+
+fn pass(polygon: &[Point], params: &Params, refly: bool, anchor: Option<Point>) -> Vec<Vec<Point>> {
     if polygon.len() < 3 {
         return Vec::new();
     }
@@ -171,7 +225,7 @@ pub fn transects(polygon: &[Point], params: &Params) -> Vec<Vec<Point>> {
     let closed: Vec<Point> = flat.iter().copied().chain(std::iter::once(flat[0])).collect();
 
     let spacing = if params.grid_spacing < MIN_SPACING_M { NO_SPACING_M } else { params.grid_spacing };
-    let angle = clamp_grid_angle_90(params.grid_angle) + if params.refly { 90.0 } else { 0.0 };
+    let angle = clamp_grid_angle_90(params.grid_angle) + if refly { 90.0 } else { 0.0 };
 
     let xs = closed.iter().map(|p| p.0);
     let ys = closed.iter().map(|p| p.1);
@@ -203,7 +257,12 @@ pub fn transects(polygon: &[Point], params: &Params) -> Vec<Vec<Point>> {
         })
         .collect();
 
-    let arranged = if params.alternate { alternate_order(geo) } else { geo };
+    let placed = at_entry_point(params.entry, geo);
+    let anchored = match anchor {
+        Some(anchor) if !placed.is_empty() => shortest_from(anchor, placed),
+        _ => placed,
+    };
+    let arranged = if params.alternate { alternate_order(anchored) } else { anchored };
     boustrophedon(arranged).into_iter().map(|transect| with_turnaround(transect, params.turnaround)).collect()
 }
 
@@ -228,22 +287,22 @@ mod tests {
         assert!(cases.len() >= 12, "the oracle should carry every recorded case");
         let checked: Vec<(String, bool, String)> = cases
             .iter()
-            .filter(|(name, _)| !name.contains("refly"))
             .map(|(name, case)| {
                 let polygon: Vec<Point> = case["polygon"].as_array().unwrap().iter().map(|v| (v["latitude"].as_f64().unwrap(), v["longitude"].as_f64().unwrap())).collect();
                 let params = Params {
                     grid_angle: case["gridAngle"].as_f64().unwrap(),
                     grid_spacing: case["gridSpacing"].as_f64().unwrap(),
                     turnaround: case["turnAround"].as_f64().unwrap(),
-                    refly: false,
-                    alternate: false,
+                    refly: case["refly"].as_bool().unwrap(),
+                    alternate: case["alternate"].as_bool().unwrap(),
+                    entry: case["entryPoint"].as_i64().unwrap(),
                 };
                 let expected = case["transects"].as_str().unwrap();
                 let ours = spelled(&transects(&polygon, &params));
                 (name.clone(), ours == expected, format!("{name}\n  qt:   {expected}\n  rust: {ours}"))
             })
             .collect();
-        assert_eq!(checked.len(), 10, "every case that is not a refly is checked");
+        assert_eq!(checked.len(), 17, "every recorded case is checked, the reflown and re-entered ones included");
         let wrong: Vec<&str> = checked.iter().filter(|(_, matched, _)| !matched).map(|(_, _, report)| report.as_str()).collect();
         assert!(wrong.is_empty(), "{} of {} cases differ from the Qt generator:\n{}", wrong.len(), checked.len(), wrong.join("\n"));
     }
