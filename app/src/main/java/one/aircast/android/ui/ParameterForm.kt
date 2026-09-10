@@ -59,6 +59,12 @@ internal fun factFromControl(control: JSONObject): Fact? {
     if (label.isBlank() && name.isBlank()) return null
     val options = control.optJSONArray("options")
     val labels = (0 until (options?.length() ?: 0)).map { options!!.optJSONObject(it).optString("label") }
+    val bits = control.optJSONArray("bits").takeIf { control.optString("control") == "bitmask" }
+    val bitEntries = (0 until (bits?.length() ?: 0)).mapNotNull { index ->
+        bits!!.optJSONObject(index)?.let { bit ->
+            bit.optString("raw").toLongOrNull()?.let { raw -> bit.optString("label") to raw }
+        }
+    }
     return Fact(
         path = control.optString("path"),
         name = name,
@@ -68,6 +74,8 @@ internal fun factFromControl(control: JSONObject): Fact? {
         value = control.opt("value"),
         enumStrings = labels,
         enumIndex = labels.indexOf(control.optString("display")),
+        bitmaskStrings = bitEntries.map { it.first },
+        bitmaskValues = bitEntries.map { it.second },
         controlKind = control.optString("control"),
         isBool = control.optString("control") == "toggle",
         isString = control.optString("control") == "text",

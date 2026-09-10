@@ -3,6 +3,8 @@ package one.aircast.android.ui
 import one.aircast.android.bridge.Fact
 import org.json.JSONObject
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
+import org.junit.Assert.assertTrue
 import org.junit.Assert.assertNull
 import org.junit.Test
 
@@ -130,6 +132,36 @@ class ParameterFormTest {
     @Test
     fun `a parameter needing no restart says nothing`() {
         assertNull(factRebootNote(ranged()))
+    }
+
+    @Test
+    fun `a bitmask on a setup page names its bits instead of showing a number`() {
+        val control = JSONObject(
+            """{"control":"bitmask","name":"SIMPLE","label":"Simple mode bitmask","path":"p",
+                "value":5,"valueString":"5","display":"5",
+                "bits":[{"label":"SwitchPos1","raw":"1","set":true},
+                        {"label":"SwitchPos2","raw":"2","set":false},
+                        {"label":"SwitchPos3","raw":"4","set":true}]}"""
+        )
+
+        val fact = factFromControl(control)!!
+        assertTrue(fact.isBitmask)
+        assertEquals(listOf(1L, 2L, 4L), fact.bitmaskValues)
+        assertEquals("SwitchPos1, SwitchPos3", bitmaskSummary(fact))
+    }
+
+    @Test
+    fun `a fact the core called a choice stays a choice even when it carries bits`() {
+        val control = JSONObject(
+            """{"control":"choice","name":"FS_OPTIONS","label":"Failsafe options","path":"p",
+                "value":1,"valueString":"1","display":"Continue",
+                "options":[{"label":"None","raw":"0"},{"label":"Continue","raw":"1"}],
+                "bits":[{"label":"RC","raw":"1","set":true}]}"""
+        )
+
+        val fact = factFromControl(control)!!
+        assertFalse("the core decides the control kind, the head does not re-derive it", fact.isBitmask)
+        assertTrue(fact.isEnum)
     }
 }
 
