@@ -2671,6 +2671,44 @@ The count is now out of the checks the operator can actually tick, ticks are int
 current manual set so a stale one counts for nothing, and an accepted warning is named rather than
 hidden: "All 4 checks done · 1 warning."
 
+### The status strip could not tell a lost GPS fix from a good one
+
+The strip sits above every tab, so whatever it says is what the operator believes without
+looking further. It had a rule that appeared to guard against a lost fix:
+
+```kotlin
+lock.contains("No", ignoreCase = true) -> Color(0xFFE57373)
+```
+
+It never fired once. `qgcString` returns a fact's raw `value`, not its `valueString`, so `lock`
+arrives as `"3"` — the GPS_FIX_TYPE number — and no numeric string contains the word "No". The
+line reads as a safety feature and is dead code.
+
+Measured rather than reasoned about, using the rig's existing `NOFIX=1`: with the vehicle
+reporting fix type 0, **no GPS fix at all**, the strip showed "11" satellites and "1.2" HDOP in
+plain white. Indistinguishable from a healthy lock. Both numbers were true and both were
+reassuring, which is the worst combination — the satellite count keeps climbing while the fix is
+gone, because satellites *visible* is not satellites *used*.
+
+The colour now comes from the number the fix type actually is: below 2 is no fix, 2 is 2D, 3 and
+above is a fix worth having. With no fix the cell reads **"No fix"** in red instead of a satellite
+count that implies health, and the HDOP cell is hidden — a dilution-of-precision figure for a fix
+that does not exist is not a smaller number, it is a meaningless one. A 2D fix says "2D only" in
+amber rather than passing silently, because 2D has no usable altitude. A good fix is left
+undecorated. Verified in both directions on the handset.
+
+A test now asserts that the *rendered* text ("3D Lock", "None") yields no fix level, so wiring the
+string back in hides the cell rather than silently reporting Good.
+
+**The RC cell had the same shape of bug, from the opposite direction.** `rssi <= 0` was discarded
+as unreadable. But `Vehicle::_remoteControlRSSIChanged` documents the range in a comment and
+enforces it in code: 0 to 100 is a reading, 255 means unknown, and there is an explicit branch
+that produces exactly 0 once the filtered signal decays. Zero is the vehicle deliberately saying
+the RC link is dead — and the head threw it away, so the RC cell *vanished* at the moment it
+mattered, which reads as "not applicable" rather than "lost". It now shows "No signal" in red.
+The existing test had named this correctly and still asserted the wrong thing: `zero means no
+signal and is not shown as a percentage`. It knew the fact and hid it.
+
 ## Phase 6 — Shell · 2 weeks
 
 Cheaper than macOS, because Qt is already off the main thread.
