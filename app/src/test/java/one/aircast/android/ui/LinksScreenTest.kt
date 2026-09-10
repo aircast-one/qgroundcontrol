@@ -3,47 +3,79 @@ package one.aircast.android.ui
 import org.json.JSONObject
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull
+import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class LinksScreenTest {
-    private fun payload(vararg elements: String) =
-        JSONObject("""{"elements":[${elements.joinToString(",")}]}""")
+    private fun view(vararg configured: String) =
+        JSONObject("""{"configured":[${configured.joinToString(",")}]}""")
 
-    private val autoConnectUdp =
-        """{"name":"UDP Link (AutoConnect)","summary":"UDP port 14550","dynamic":true,"children":["link"]}"""
-    private val savedTcp =
-        """{"name":"Pi","summary":"TCP 10.0.0.4:5760","dynamic":false,"children":["link"],"heardVehicle":true}"""
-    private val savedIdle =
-        """{"name":"Bench","summary":"UDP port 14551","dynamic":false,"children":[]}"""
+    private val heardTcp =
+        """{"index":1,"name":"Pi","statusLine":"Connected · TCP 10.0.0.4:5760",
+            "connected":true,"heardVehicle":true,"lastError":""}"""
+    private val waitingUdp =
+        """{"index":2,"name":"Bench","statusLine":"Waiting for the vehicle · UDP port 14551",
+            "connected":true,"heardVehicle":false,"lastError":""}"""
+    private val idle =
+        """{"index":3,"name":"Old","statusLine":"Not connected","connected":false,
+            "heardVehicle":false,"lastError":"Connection refused"}"""
 
     @Test
-    fun `automatic links are not offered for the user to manage`() {
-        val rows = configuredRows(linkRows(payload(autoConnectUdp, savedTcp)))
-        assertEquals(listOf("Pi"), rows.map { it.name })
+    fun `the sentence comes from the core, not from the head`() {
+        val rows = linkRows(view(heardTcp, waitingUdp, idle))
+        assertEquals(
+            listOf(
+                "Connected · TCP 10.0.0.4:5760",
+                "Waiting for the vehicle · UDP port 14551",
+                "Not connected",
+            ),
+            rows.map { it.statusLine },
+        )
     }
 
     @Test
-    fun `a row keeps the index of its position in the full list`() {
-        val rows = configuredRows(linkRows(payload(autoConnectUdp, savedTcp)))
-        assertEquals(1, rows.single().index)
+    fun `a row keeps the index the core gave it, not its position in the list`() {
+        assertEquals(listOf(1, 2, 3), linkRows(view(heardTcp, waitingUdp, idle)).map { it.index })
     }
 
     @Test
-    fun `connection state is read from the link child`() {
-        val rows = linkRows(payload(savedTcp, savedIdle))
-        assertEquals(listOf(true, false), rows.map { it.connected })
+    fun `heard is what decides emphasis, and it is not the same as connected`() {
+        val rows = linkRows(view(heardTcp, waitingUdp))
+        assertEquals(listOf(true, true), rows.map { it.connected })
+        assertEquals(listOf(true, false), rows.map { it.heard })
+    }
+
+    @Test
+    fun `the core has already dropped the automatic links`() {
+        val withDynamic = JSONObject(
+            """{"links":[{"index":0,"name":"UDP Link (AutoConnect)","dynamic":true}],
+                "configured":[$heardTcp]}""",
+        )
+        assertEquals(listOf("Pi"), linkRows(withDynamic).map { it.name })
     }
 
     @Test
     fun `a last error is carried through`() {
-        val rows = linkRows(payload("""{"name":"X","dynamic":false,"lastError":"Connection refused"}"""))
-        assertEquals("Connection refused", rows.single().lastError)
+        assertEquals("Connection refused", linkRows(view(idle)).single().lastError)
     }
 
     @Test
-    fun `an absent payload yields no rows`() {
+    fun `an absent view yields no rows`() {
         assertEquals(emptyList<LinkRow>(), linkRows(null))
         assertEquals(emptyList<LinkRow>(), linkRows(JSONObject("{}")))
+    }
+
+    @Test
+    fun `reading the unfiltered list instead of the filtered one yields nothing`() {
+        val onlyLinks = JSONObject("""{"links":[$heardTcp]}""")
+        assertTrue(linkRows(onlyLinks).isEmpty())
+    }
+
+    @Test
+    fun `a payload using invented names for the sentence leaves it blank`() {
+        val invented =
+            """{"index":0,"name":"X","status":"Connected","state":"Connected","connected":true}"""
+        assertEquals("", linkRows(view(invented)).single().statusLine)
     }
 
     @Test
@@ -66,40 +98,5 @@ class LinksScreenTest {
             linkFormError("tcp", "", "5760"),
         )
         assertNull(linkFormError("udp", "", "14550"))
-    }
-
-    @Test
-    fun `a status line does not repeat what the name already says`() {
-        val row = LinkRow(0, "TCP 10.0.0.4:5760", "10.0.0.4:5760", false, false, "", false)
-        assertEquals("Not connected", linkStatusLine(row))
-    }
-
-    @Test
-    fun `a status line adds detail a custom name leaves out`() {
-        val row = LinkRow(0, "Pi", "TCP 10.0.0.4:5760", true, false, "", true)
-        assertEquals("Connected · TCP 10.0.0.4:5760", linkStatusLine(row))
-    }
-
-    @Test
-    fun `a status line stands alone when there is no summary`() {
-        assertEquals("Connected", linkStatusLine(LinkRow(0, "Pi", "", true, false, "", true)))
-    }
-
-    @Test
-    fun `an open link that has heard nothing does not claim to be connected`() {
-        val row = LinkRow(0, "Bench", "UDP port 14999", true, false, "", false)
-        assertEquals("Waiting for the vehicle · UDP port 14999", linkStatusLine(row))
-    }
-
-    @Test
-    fun `heard is read from the field the core publishes`() {
-        assertEquals(listOf(true, false), linkRows(payload(savedTcp, savedIdle)).map { it.heard })
-    }
-
-    @Test
-    fun `a payload using an invented name for heard yields nothing heard`() {
-        val invented =
-            """{"name":"X","dynamic":false,"children":["link"],"heard":true,"receiving":true}"""
-        assertEquals(false, linkRows(payload(invented)).single().heard)
     }
 }

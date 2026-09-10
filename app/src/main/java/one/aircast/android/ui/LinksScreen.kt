@@ -49,47 +49,33 @@ import one.aircast.android.bridge.Qgc
 import one.aircast.android.bridge.qgcBool
 import one.aircast.android.bridge.qgcPath
 
+private const val LINKS_VIEW = "view.links"
 private const val LINKS_PATH = "links.linkConfigurations"
 private const val DEFAULT_PORT = "14550"
 
 data class LinkRow(
     val index: Int,
     val name: String,
-    val summary: String,
+    val statusLine: String,
     val connected: Boolean,
-    val dynamic: Boolean,
-    val lastError: String,
     val heard: Boolean,
+    val lastError: String,
 )
 
-internal fun linkRows(json: JSONObject?): List<LinkRow> {
-    val elements = json?.optJSONArray("elements") ?: return emptyList()
-    return (0 until elements.length()).mapNotNull { index ->
-        val element = elements.optJSONObject(index) ?: return@mapNotNull null
-        LinkRow(
-            index = index,
-            name = element.optString("name", "Link $index"),
-            summary = element.optString("summary"),
-            connected = element.optJSONArray("children")?.let { children ->
-                (0 until children.length()).any { children.optString(it) == "link" }
-            } ?: false,
-            dynamic = element.optBoolean("dynamic"),
-            lastError = element.optString("lastError"),
-            heard = element.optBoolean("heardVehicle"),
-        )
+internal fun linkRows(view: JSONObject?): List<LinkRow> {
+    val links = view?.optJSONArray("configured") ?: return emptyList()
+    return (0 until links.length()).mapNotNull { position ->
+        links.optJSONObject(position)?.let { link ->
+            LinkRow(
+                index = link.optInt("index"),
+                name = link.optString("name"),
+                statusLine = link.optString("statusLine"),
+                connected = link.optBoolean("connected"),
+                heard = link.optBoolean("heardVehicle"),
+                lastError = link.optString("lastError"),
+            )
+        }
     }
-}
-
-internal fun configuredRows(rows: List<LinkRow>): List<LinkRow> = rows.filterNot { it.dynamic }
-
-internal fun linkStatusLine(row: LinkRow): String {
-    val state = when {
-        !row.connected -> "Not connected"
-        row.heard -> "Connected"
-        else -> "Waiting for the vehicle"
-    }
-    val detail = row.summary.trim()
-    return if (detail.isBlank() || row.name.contains(detail)) state else "$state · $detail"
 }
 
 internal fun autoLinkName(type: String, host: String, port: String): String =
@@ -130,7 +116,7 @@ private fun LinkRowItem(
                 overflow = TextOverflow.Ellipsis,
             )
             Text(
-                text = linkStatusLine(row),
+                text = row.statusLine,
                 style = MaterialTheme.typography.bodyMedium,
                 color = if (row.heard) {
                     MaterialTheme.colorScheme.primary
@@ -266,13 +252,13 @@ private const val LINK_SETTLE_MS = 4000L
 internal fun linkFailure(action: String, done: Boolean): String? =
     if (done) null else "Could not $action that link."
 
-private fun currentRows(): List<LinkRow> = linkRows(Qgc.get(LINKS_PATH))
+private fun currentRows(): List<LinkRow> = linkRows(Qgc.get(LINKS_VIEW))
 
 @Composable
 fun LinksScreen(modifier: Modifier = Modifier) {
-    val json by qgcPath(LINKS_PATH)
+    val view by qgcPath(LINKS_VIEW)
     val hasVehicle by qgcBool("vehicles.activeVehicleAvailable")
-    val rows = configuredRows(linkRows(json))
+    val rows = linkRows(view)
     val scope = rememberCoroutineScope()
 
     var notice by remember { mutableStateOf<String?>(null) }
