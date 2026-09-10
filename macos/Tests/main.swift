@@ -2483,10 +2483,19 @@ func checkRemoteSupport() {
     expect(ready.canConnect, "a host and no forwarding yet means connect is offered")
     expect(ready.status.contains("Nothing"), "and the page says nothing is being forwarded")
 
+    expect(!ready.canStop, "with nothing being forwarded there is nothing to stop")
+    expect(ready.actionTitle, "Connect", "so the button offers to start")
+
     let running = RemoteSupport(host: "support.ardupilot.org:1234", forwarding: true)
-    expect(!running.canConnect, "once forwarding starts there is nothing left to press")
-    expect(running.status.contains("restarts"),
-           "and the page says it cannot be stopped, because QGC cannot stop it either")
+    expect(!running.canConnect, "forwarding cannot be started twice")
+    expect(running.canStop,
+           "but it can be stopped: LinkManager latched this flag on with no way to clear it, and "
+           + "these tests pinned that as a fact about QGC rather than as the defect it was")
+    expect(running.actionTitle, "Stop", "so the same button offers the way out")
+    expect(!running.status.contains("restart"),
+           "and the page no longer tells the operator to restart the app, which was the head "
+           + "writing the latch down as though it were a design")
+    expect(running.status, "MAVLink is being forwarded.", "it says what is happening, and stops there")
 
     expect(!RemoteSupport(host: "", forwarding: false).canConnect,
            "a button that would forward to nowhere is refused rather than offered")

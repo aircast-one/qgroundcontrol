@@ -305,19 +305,17 @@ struct RemoteSupportView: View {
                         }
                     })
                     GroupRow(title: support.state.status, trailing: {
-                        Button("Connect") { support.connect() }
-                            .controlSize(.small)
-                            .disabled(!support.state.canConnect)
+                        Button(support.state.actionTitle) {
+                            support.state.forwarding ? support.stop() : support.connect()
+                        }
+                        .controlSize(.small)
+                        .disabled(!support.state.canConnect && !support.state.canStop)
                     })
                 }
-                Text("Forwarding cannot be switched off again until the app restarts.")
-                    .font(.caption)
-                    .foregroundColor(.secondary)
-                    .fixedSize(horizontal: false, vertical: true)
-                    .padding(.horizontal, Overlay.horizontalPadding)
             }
         }
-        .onAppear(perform: support.refresh)
+        .onAppear(perform: support.startWatching)
+        .onDisappear(perform: support.stopWatching)
         .writeFailureAlert($support.writeFailure)
     }
 }
@@ -959,6 +957,7 @@ final class VehicleSetupWindow: NSObject, NSWindowDelegate {
         sensors.stop()
         motors.stop()
         components.stopWatching()
+        support.stopWatching()
         power.stop()
         frame.stop()
         radio.stop()

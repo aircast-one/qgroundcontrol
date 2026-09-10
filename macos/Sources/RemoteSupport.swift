@@ -6,7 +6,26 @@ final class RemoteSupportStore: ObservableObject, Probeable, WriteReporting {
     @Published private(set) var state = RemoteSupport.empty
     @Published var writeFailure: String?
 
+    private var watchPoll: Timer?
+
     private static let hostPath = "settings.mavlinkSettings.forwardMavlinkAPMSupportHostName"
+
+    // A one-shot read was only ever defensible because the flag could not change without a
+    // restart. It can now - Stop ends it, and the link disconnects asynchronously so the value
+    // is not settled when stop() returns - so the page watches while it is open. Removing the
+    // latch is what invalidated the one-shot design.
+    func startWatching() {
+        guard watchPoll == nil else { return }
+        refresh()
+        watchPoll = Timer.scheduledTimer(withTimeInterval: 0.5, repeats: true) { [weak self] _ in
+            self?.refresh()
+        }
+    }
+
+    func stopWatching() {
+        watchPoll?.invalidate()
+        watchPoll = nil
+    }
 
     func refresh() {
         let read = RemoteSupport(
@@ -28,9 +47,19 @@ final class RemoteSupportStore: ObservableObject, Probeable, WriteReporting {
         refresh()
     }
 
+    // The head must be able to end what it started, so this is built; it is NOT wired to the
+    // probe, because stopping would tear down forwarding another session may be running.
+    func stop() {
+        guard state.canStop else { return }
+        Bridge.invoke("links.endMavlinkForwardingSupportLink")
+        refresh()
+    }
+
     func probeState() -> [String: Any] {
         ["host": state.host, "forwarding": state.forwarding,
-         "canConnect": state.canConnect, "status": state.status,
+         "canConnect": state.canConnect, "canStop": state.canStop,
+         "action": state.actionTitle, "status": state.status,
+         "watching": watchPoll != nil,
          "writeFailure": writeFailure ?? ""]
     }
 
