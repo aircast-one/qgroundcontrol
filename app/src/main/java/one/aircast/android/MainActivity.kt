@@ -79,18 +79,17 @@ private val VIDEO_INSET_HEIGHT = 112.dp
 private const val QML_URI = "qrc:/qml/QGroundControl/MainWindow/AndroidHost.qml"
 private const val QML_LIBRARY = "AircastQGC"
 private const val QML_DEFAULT_PAGE = "fly"
-private const val QML_DEFAULT_TOOL_SOURCE = ""
 
 private const val MULTICAST_LOCK_TAG = "Aircast"
 
 
-enum class Tab(val label: String, val icon: ImageVector, val page: String, val tool: String) {
-    Fly("Fly", Icons.Default.Home, "fly", ""),
-    Plan("Plan", Icons.Default.Place, "plan", ""),
-    Setup("Setup", Icons.Default.Build, "fly", ""),
-    Params("Params", Icons.AutoMirrored.Filled.List, "fly", ""),
-    Analyze("Analyze", Icons.Default.Info, "fly", ""),
-    Settings("Settings", Icons.Default.Settings, "fly", "");
+enum class Tab(val label: String, val icon: ImageVector, val page: String) {
+    Fly("Fly", Icons.Default.Home, "fly"),
+    Plan("Plan", Icons.Default.Place, "plan"),
+    Setup("Setup", Icons.Default.Build, "fly"),
+    Params("Params", Icons.AutoMirrored.Filled.List, "fly"),
+    Analyze("Analyze", Icons.Default.Info, "fly"),
+    Settings("Settings", Icons.Default.Settings, "fly");
 
     companion object {
         fun from(destination: String) = when (destination.lowercase()) {
@@ -194,15 +193,10 @@ fun AircastShell(quickView: QtQuickView) {
         onDispose { listeners.forEach { quickView.disconnectSignalListener(it) } }
     }
 
-    var appliedTool by remember { mutableStateOf(QML_DEFAULT_TOOL_SOURCE) }
     var appliedPage by remember { mutableStateOf(QML_DEFAULT_PAGE) }
 
     LaunchedEffect(tab, qmlReady) {
         if (!qmlReady) return@LaunchedEffect
-        if (appliedTool != tab.tool) {
-            quickView.setProperty("toolSource", tab.tool)
-            appliedTool = tab.tool
-        }
         if (appliedPage != tab.page) {
             quickView.setProperty("page", tab.page)
             appliedPage = tab.page
@@ -211,7 +205,6 @@ fun AircastShell(quickView: QtQuickView) {
 
     DisposableEffect(Unit) {
         onDispose {
-            appliedTool = QML_DEFAULT_TOOL_SOURCE
             appliedPage = QML_DEFAULT_PAGE
         }
     }
