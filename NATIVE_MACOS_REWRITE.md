@@ -717,6 +717,7 @@ About 58 developer-weeks. Flight-test time, not code, is the schedule.
 - Corridor scans build mission items identically to Qt on three recorded plans, sharing the survey's builder now that corridor coordinates carry their type. And `view.warnings` no longer contradicts itself: `arming_blocker` was returning the raw pre-arm string in the case where `warnings()` suppresses it, so a head reading the blocker and a head reading the list said different things about the same vehicle.
 - `view.inspector` was describing `systems.0` while the rate change it leads to acts on `activeSystem`. With one vehicle those are the same object; with two, an operator could be shown one aircraft's message rates and have a change land on the other. The view reads `activeSystem` now. Found by the macOS session, who correctly stopped rather than fixing their head, since following the view would have made selection and display disagree.
 - Collapsed the two transect generators into one each. The typed generators are the real ones and the flat lists are a projection, so the recorded transect cases are now checked against the same code the mission item builder uses rather than a parallel copy that happened to agree.
+- A `Q_INVOKABLE` declared with a `<cstdint>` type is invokable and uncallable at once, because `moc` records the name verbatim and Qt has not registered it. Qt's own aliases are fine — swept the tree, and the two `quint16` invokables convert, established by calling one through the meta system rather than by reasoning about the registry.
 
 ### Stream F · Core
 

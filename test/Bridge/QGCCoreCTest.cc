@@ -524,6 +524,10 @@ void QGCCoreCTest::_coreBackedLinkBringsUpAVehicle()
     udp->setLocalPort(0);
     udp->addHost(QStringLiteral("127.0.0.1"), peer.localPort());
     udp->setDynamic(true);
+    QVERIFY2(QMetaObject::invokeMethod(udp, "addHost", Qt::DirectConnection, Q_ARG(QString, QStringLiteral("127.0.0.2")), Q_ARG(quint16, 14557)),
+             "addHost is Q_INVOKABLE and must be reachable through the meta system; a fixed-width type Qt does not register makes a method invokable and uncallable at once");
+    QVERIFY(udp->hostList().contains(QStringLiteral("127.0.0.2:14557")));
+    udp->removeHost(QStringLiteral("127.0.0.2"), 14557);
     SharedLinkConfigurationPtr config = LinkManager::instance()->addConfiguration(udp);
     const auto tearDown = qScopeGuard([&config]() {
         if (config->link()) {
