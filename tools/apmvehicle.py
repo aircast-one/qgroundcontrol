@@ -8,6 +8,17 @@ from pymavlink.dialects.v20 import common as mavlink
 
 TARGET = (sys.argv[1], 14550)
 
+INT_PARAMS = frozenset(
+    ["ARMING_CHECK", "FS_OPTIONS", "SIMPLE", "SUPER_SIMPLE", "FS_THR_ENABLE",
+     "FLTMODE_CH", "INITIAL_MODE", "FRAME_CLASS", "FRAME_TYPE", "GRIP_ENABLE",
+     "BATT_MONITOR", "RTL_ALT"]
+    + ["FLTMODE%d" % slot for slot in range(1, 7)]
+    + ["RCMAP_ROLL", "RCMAP_PITCH", "RCMAP_THROTTLE", "RCMAP_YAW"]
+    + ["RC%d_MIN" % ch for ch in range(1, 9)]
+    + ["RC%d_MAX" % ch for ch in range(1, 9)]
+    + ["RC%d_REVERSED" % ch for ch in range(1, 9)]
+)
+
 FIRMWARE = os.environ.get("FIRMWARE", "4.5.7")
 FIRMWARE_VERSION = (
     lambda parts: (parts[0] << 24) | (parts[1] << 16) | (parts[2] << 8) | 255
@@ -89,8 +100,10 @@ def main():
     for i in range(200):
         params["SIM_VALUE_%03d" % i] = float(i)
     for name, value in (("RTL_ALT", 1500.0), ("WPNAV_SPEED", 500.0), ("FS_THR_ENABLE", 1.0),
+                        ("ARMING_CHECK", float(os.environ.get("ARMING_CHECK", "82"))),
+                        ("FS_OPTIONS", 4.0),
                         ("FRAME_CLASS", 1.0), ("FRAME_TYPE", 1.0),
-                        ("FLTMODE_CH", 5.0), ("SIMPLE", 0.0), ("SUPER_SIMPLE", 0.0),
+                        ("FLTMODE_CH", 5.0), ("SIMPLE", 5.0), ("SUPER_SIMPLE", 0.0),
                         ("INITIAL_MODE", 0.0), ("GRIP_ENABLE", 1.0)):
         params[name] = value
     accel_offset = 0.0 if os.environ.get("ACCEL_UNCAL") == "1" else 0.01
@@ -112,7 +125,8 @@ def main():
 
     def send_param(name):
         link.param_value_send(name.encode()[:16], params[name],
-                              mavlink.MAV_PARAM_TYPE_REAL32,
+                              mavlink.MAV_PARAM_TYPE_INT32 if name in INT_PARAMS
+                              else mavlink.MAV_PARAM_TYPE_REAL32,
                               len(names), names.index(name))
 
     stored = []          # mission the vehicle holds
