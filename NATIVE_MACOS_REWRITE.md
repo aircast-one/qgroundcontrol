@@ -511,6 +511,42 @@ read-only fixes shipped unverified because they were *gates* that fail closed, a
 *capability* that erases state on an aircraft. It goes on the list until someone with a vehicle can
 run it.
 
+### The capability-versus-readiness sweep, and how to run it properly (2026-09-10)
+
+Both heads hit the same shape four times: **the head reached for the predicate whose name sounded
+like the question and got the weaker one, while the core computed the stronger answer in the same
+view node.** `hasModes` where `canChangeMode` belonged (fixed in `1a457051b`), `offer != "hidden"`
+where `offer == "ready"` belonged (`276cf417f`), and two on the Android head — `blocked` where
+`ready` belonged, and `setupComplete` where the core's `ready` belonged.
+
+Swept for more. **Nothing further found**, and the method is worth recording because the first
+attempt ran the wrong way round.
+
+Listing every readiness-shaped key the core *emits* and asking whether this head decodes it produced
+six misses and all six were false positives. `canArm`, `canTakeoff` and `canStartMission` are C++
+properties on `healthAndArmingCheckReport` that `guided.rs` *reads* to compute the per-action
+`offer` this head already uses. `supportsTerrainFrame` is used inside `altitudemodes.rs` to set each
+mode's `enabled` and `reason`, which is the combined answer this head reads. `canBeSet` and
+`gcsFixValid` live in `hub.snapshot()` and `remote_snapshot()`, which are not view paths at all.
+**A key the core mentions is not a key the core offers a head.**
+
+The direction that matters is the inverse: list the capability-shaped keys *this head's models
+decode* and ask whether a `can*`/`ready` sibling exists **in the same view node**. Sibling matching
+must be scoped to the node — matching across files makes `available` collide with everything and
+buries the signal.
+
+Scoped that way, `video.rs` is the only node carrying both, and it is now correct:
+`canChangeMode` gates the mode write, `hasZoom` is right because the core exposes no readiness
+counterpart for zoom, and `offersShutter`/`offersRecord` derive from `canPhoto`/`canRecord` — which
+the core deliberately leaves true while recording, since that control is what stops it.
+
+Two decodes take the permissive default and are safe only because something else pins them:
+`pausesFirst` (absent would skip pausing a flying vehicle before an upload) and `hasCollision`
+(absent would hide a terrain-collision warning). Both are in the required-keys contract assertion,
+so a rename or removal reddens the suite rather than failing silently. **That assertion is what
+makes a `?? false` on a safety field survivable, and it is worth knowing that is what is holding
+them.**
+
 ### The stored-flag latch family is exhausted for this head (2026-09-10)
 
 `_flying` and `_landing` are handled in the core (`flystate.rs` lets armed decide the line).
