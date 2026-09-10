@@ -3898,8 +3898,23 @@ The genuine cases are both on `LinkManager`, and they are create and edit:
 - `startConfigurationEditing` returns `LinkConfiguration::duplicateSettings(config)`, a detached copy
   that `endConfigurationEditing` copies back and destroys.
 
-So **editing any link's settings is missing from this head too**, not only adding a serial one — and
-the core has been emitting an `editing` flag per link for a UI that cannot currently be built.
+So **adding a serial link is genuinely blocked** — the object exists at no path until
+`endCreateConfiguration` calls `addConfiguration`.
+
+**Editing is not, and collapsing the two was my error.** The macOS session made the distinction: a
+registered configuration *is* addressable at `links.linkConfigurations.N`, and the fields an operator
+changes are `Q_PROPERTY` with `WRITE` setters — `name` on `LinkConfiguration`, `localPort` on
+`UDPConfiguration`, and `baud`, `portName`, `dataBits`, `stopBits`, `parity`, `flowControl` on
+`SerialConfiguration`. A head can write those by path with no bridge change at all. What
+`startConfigurationEditing` buys, and the reason it hands back a duplicate, is **cancel**: QML edits
+the copy and discards it if the user backs out. A head either commits on change or snapshots the
+values first and writes them back. That is a UX decision, not a capability wall.
+
+Neither of us has tested the in-place write, deliberately: it would mutate the link configuration in
+a settings file this checkout shares with the QML app. So it is read off the property declarations
+and the bridge's `@path` handling, not off a write either of us performed.
+
+Either way the core has been emitting an `editing` flag per link for a UI neither head has built.
 
 The boundary is visible in what already works. `LinksScreen` connects with
 `Qgc.invoke("links.createConnectedLink", "@$LINKS_PATH.${row.index}")` — an `@path` reference to a
