@@ -3349,6 +3349,57 @@ initialisation, not whether initialisation can happen. Deleting the `QtQuickView
 video initialisation path that does not depend on a Quick window, which is a larger piece of work
 than the boot-path change the plan describes and should be scheduled as its own item.
 
+### The sim never left the ground, so three flight states were unreachable
+
+The whole flight was walked once before. Re-walking it after everything that has changed since
+turned up a rig defect that had been quietly making one state untestable and another wrong.
+
+`apmvehicle.py` reported `MAV_LANDED_STATE_IN_AIR` the instant it was armed, and a fixed 25 m
+altitude whether armed or not. So arming on the ground read **"Stabilize · Flying"** — the core's
+precedence is correct, the vehicle was lying. `armed` was unreachable as a distinct state, `landing`
+could never occur, and the altitude readout was a constant.
+
+The sim now has an altitude, climbs at 2 m/s toward a target, reports `ON_GROUND` below half a
+metre, `LANDING` while descending, and disarms on touchdown. **Land is a mode change, not a
+command** — QGC's land action sets ArduCopter mode 9 rather than sending `MAV_CMD_NAV_LAND`, which
+is why the first attempt changed the mode and never descended. The descent is now driven from the
+mode.
+
+The walk, each line read off the handset with the sim's log beside it:
+
+| step | header | altitude | the vehicle received |
+|---|---|---|---|
+| on the ground | Stabilize · Disarmed | 0.0 m | |
+| armed | **Stabilize · Armed** | 0.0 m | `ARM armed (param1=1.0)` |
+| after takeoff | Guided · Flying | 3.0 m | `TAKEOFF alt=3.0` |
+| after landing | Land · Disarmed | 0.0 m | `LAND requested from 3.0 m` |
+
+Arm and Land both go through a slide-to-confirm; Takeoff opens the height dialog with its range
+hint. `Armed` as a state distinct from `Flying` had never been seen on any of the three rigs.
+
+**Adding a land handler nearly killed a guard.** The regression's flight-command check matched
+`CMD 21` because land used to fall through to the generic handler. Giving the sim its own `LAND`
+line would have left that alternative permanently unmatched — the dead-branch defect this document
+has now found six times, this time about to be self-inflicted. The pattern was updated to `LAND `
+and re-proved: seven dangerous forms match, five routine ones ignored.
+
+### A plan either side of the antimeridian framed the planet
+
+From the macOS session, who found it in their own map framing and said to check mine. Mine had it.
+`planBounds` took `minOf`/`maxOf` on longitude and `centre` was the arithmetic mean, so two
+waypoints a fifth of a degree apart across the antimeridian — 179.9 and -179.9 — produced a centre
+of 0 and a span of 359.8 degrees. The map would have jumped to the Gulf of Guinea and zoomed out to
+half the world.
+
+Longitudes are now treated as points on a circle: sort them, find the widest empty gap between
+neighbours, and the occupied arc is everything else. 179.9 and -179.9 give a span of 0.2 degrees
+centred on 180.
+
+**Two of the six tests I wrote for it were wrong, and the code was right.** I asserted that
+-10, 10 and 170 span 20 degrees; the widest gap is the 180 from 170 round to -10, so the arc is 180
+and the centre is 80. Recomputing by hand rather than adjusting the code is what settled it — a
+failing test is not evidence the code is wrong, only that the two disagree.
+
 ## Phase 6 — Shell · 2 weeks
 
 Cheaper than macOS, because Qt is already off the main thread.
