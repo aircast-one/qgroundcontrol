@@ -43,88 +43,49 @@ import kotlinx.coroutines.withTimeoutOrNull
 import one.aircast.android.bridge.Qgc
 import one.aircast.android.bridge.offMainDetached
 import one.aircast.android.bridge.qgcBool
-import one.aircast.android.bridge.qgcDouble
-import one.aircast.android.bridge.qgcString
+import one.aircast.android.bridge.qgcPath
 
 private const val CAL = "sensorsCal"
 
-internal data class Calibration(
-    val name: String,
-    val method: String,
-    val instruction: String,
-    val warning: String = "",
-    // APMSensorsComponent.qml blocks these two while the accelerometer needs calibrating.
-    // A compass calibration against an uncalibrated accelerometer produces a result the
-    // operator has no reason to distrust, which is worse than refusing to start it. The
-    // accelerometer itself is never blocked, because it is the way out.
-    val needsAccelFirst: Boolean = false,
-)
-
-internal fun blockedByAccel(calibration: Calibration, accelNeeded: Boolean): Boolean =
-    calibration.needsAccelFirst && accelNeeded
-
 private const val CAL_START_MS = 5000L
 
-// Every calibration entry point on APMSensorsComponentController is void, so the bridge
-// can only say the method was called. The dialog closes either way, and a start that did
-// nothing leaves the operator back at the list with no calibration and nothing said.
 internal fun calibrationFailure(name: String, started: Boolean): String? =
     if (started) null else "$name calibration did not start."
 
-private fun calibrationRunning(): Boolean =
-    Qgc.get("$CAL.calibrationInProgress").opt("value") == true
-
 private fun calibrationStatus(): String =
-    Qgc.get("$CAL.statusText").opt("value")?.toString().orEmpty()
+    calibrationState(Qgc.get(CALIBRATION))?.statusText.orEmpty()
 
-// calibrationInProgress alone is not enough: pressure finishes before a 150 ms poll can
-// see it, so watching only that flag reported a calibration that had already succeeded as
-// one that never started. The controller writes "Requesting ..." to statusText as it
-// begins, so a changed status is the evidence a fast routine leaves behind.
+private fun calibrationRunning(): Boolean =
+    calibrationState(Qgc.get(CALIBRATION))?.inProgress == true
+
 internal fun calibrationBegan(running: Boolean, statusBefore: String, statusNow: String): Boolean =
     running || statusNow != statusBefore
 
-internal val CALIBRATIONS = listOf(
-    Calibration(
-        name = "Accelerometer",
-        method = "calibrateAccel",
-        instruction = "You will be asked to hold the vehicle still in six orientations. " +
+internal data class RoutineCopy(val instruction: String, val warning: String = "")
+
+internal val ROUTINE_COPY = mapOf(
+    "accelerometer" to RoutineCopy(
+        "You will be asked to hold the vehicle still in six orientations. " +
             "Press Next once it is steady in each one.",
     ),
-    Calibration(
-        name = "Compass",
-        method = "calibrateCompass",
-        needsAccelFirst = true,
-        instruction = "Rotate the vehicle slowly around all axes until the bar fills. " +
+    "compass" to RoutineCopy(
+        "Rotate the vehicle slowly around all axes until the bar fills. " +
             "Stand away from metal, cars and reinforced concrete.",
     ),
-    Calibration(
-        name = "Level Horizon",
-        method = "levelHorizon",
-        needsAccelFirst = true,
-        instruction = "Place the vehicle in its level flight position and leave it still.",
-        warning = "Sets what the vehicle considers level. Get this wrong and it will drift in flight.",
+    "levelHorizon" to RoutineCopy(
+        "Place the vehicle in its level flight position and leave it still.",
+        "Sets what the vehicle considers level. Get this wrong and it will drift in flight.",
     ),
-    Calibration(
-        name = "Gyro",
-        method = "calibrateGyro",
-        instruction = "Place the vehicle on a surface and leave it completely still.",
+    "gyro" to RoutineCopy(
+        "Place the vehicle on a surface and leave it completely still.",
     ),
-    Calibration(
-        name = "Pressure",
-        method = "calibratePressure",
-        instruction = "Zeroes the altitude at the current pressure. Do this where you will take off.",
+    "pressure" to RoutineCopy(
+        "Zeroes the altitude at the current pressure. Do this where you will take off.",
     ),
 )
 
-private val ORIENTATIONS = listOf(
-    "Down" to "Level",
-    "UpsideDown" to "Upside down",
-    "Left" to "Left side",
-    "Right" to "Right side",
-    "NoseDown" to "Nose down",
-    "TailDown" to "Tail down",
-)
+internal fun routineCopy(routine: CalibrationRoutine): RoutineCopy =
+    ROUTINE_COPY[routine.id] ?: RoutineCopy(routine.description, routine.warning)
 
 @Composable
 private fun SensorsNotice(text: String, modifier: Modifier = Modifier) {
@@ -140,19 +101,20 @@ private fun SensorsNotice(text: String, modifier: Modifier = Modifier) {
 
 @Composable
 private fun StartDialog(
-    calibration: Calibration,
+    calibration: CalibrationRoutine,
     onConfirm: () -> Unit,
     onDismiss: () -> Unit,
 ) {
+    val copy = routineCopy(calibration)
     AlertDialog(
         onDismissRequest = onDismiss,
-        title = { Text("Calibrate ${calibration.name}?") },
+        title = { Text("Calibrate ${calibration.title}?") },
         text = {
             Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                Text(calibration.instruction)
-                if (calibration.warning.isNotBlank()) {
+                Text(copy.instruction)
+                if (copy.warning.isNotBlank()) {
                     Text(
-                        text = calibration.warning,
+                        text = copy.warning,
                         style = MaterialTheme.typography.bodyMedium,
                         color = MaterialTheme.colorScheme.error,
                     )
@@ -205,22 +167,17 @@ private fun OrientationTile(label: String, done: Boolean, inProgress: Boolean, r
 }
 
 @Composable
-private fun OrientationGrid() {
-    val visible = ORIENTATIONS.map { (key, _) -> qgcBool("$CAL.orientationCal${key}SideVisible").value }
-    val done = ORIENTATIONS.map { (key, _) -> qgcBool("$CAL.orientationCal${key}SideDone").value }
-    val inProgress = ORIENTATIONS.map { (key, _) -> qgcBool("$CAL.orientationCal${key}SideInProgress").value }
-    val rotate = ORIENTATIONS.map { (key, _) -> qgcBool("$CAL.orientationCal${key}SideRotate").value }
-
+private fun OrientationGrid(sides: List<CalibrationSide>) {
     Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-        ORIENTATIONS.indices.filter { visible[it] }.chunked(2).forEach { row ->
+        sides.filter { it.visible }.chunked(2).forEach { row ->
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                row.forEach { index ->
+                row.forEach { side ->
                     Box(Modifier.weight(1f)) {
                         OrientationTile(
-                            label = ORIENTATIONS[index].second,
-                            done = done[index],
-                            inProgress = inProgress[index],
-                            rotate = rotate[index],
+                            label = side.title,
+                            done = side.stage == "done",
+                            inProgress = side.stage == "inProgress",
+                            rotate = side.rotate,
                         )
                     }
                 }
@@ -231,13 +188,14 @@ private fun OrientationGrid() {
 }
 
 @Composable
-private fun RunningCalibration(name: String, modifier: Modifier = Modifier) {
-    val progress by qgcDouble("$CAL.calProgress", 0.0)
-    val helpText by qgcString("$CAL.orientationHelpText")
-    val statusText by qgcString("$CAL.statusText")
-    val nextEnabled by qgcBool("$CAL.nextEnabled")
-    val cancelEnabled by qgcBool("$CAL.cancelEnabled")
-    val showOrientations by qgcBool("$CAL.showOrientationCalArea")
+private fun RunningCalibration(
+    name: String,
+    state: CalibrationState,
+    modifier: Modifier = Modifier,
+) {
+    val progress = state.progress
+    val helpText = state.helpText
+    val statusText = state.statusText
 
     Column(
         modifier = modifier
@@ -257,8 +215,8 @@ private fun RunningCalibration(name: String, modifier: Modifier = Modifier) {
             Text(helpText, style = MaterialTheme.typography.bodyMedium)
         }
 
-        if (showOrientations) {
-            OrientationGrid()
+        if (state.showsSides) {
+            OrientationGrid(state.sides)
         }
 
         if (statusText.isNotBlank()) {
@@ -272,12 +230,12 @@ private fun RunningCalibration(name: String, modifier: Modifier = Modifier) {
         Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
             Button(
                 onClick = { offMainDetached { Qgc.invoke("$CAL.nextClicked") } },
-                enabled = nextEnabled,
+                enabled = state.nextEnabled,
                 modifier = Modifier.weight(1f),
             ) { Text("Next") }
             OutlinedButton(
                 onClick = { offMainDetached { Qgc.invoke("$CAL.cancelCalibration") } },
-                enabled = cancelEnabled,
+                enabled = state.cancelEnabled,
                 modifier = Modifier.weight(1f),
             ) { Text("Cancel") }
         }
@@ -288,11 +246,9 @@ private fun RunningCalibration(name: String, modifier: Modifier = Modifier) {
 fun SensorsScreen(modifier: Modifier = Modifier) {
     val hasVehicle by qgcBool("vehicles.activeVehicleAvailable")
     val isPx4 by qgcBool("vehicle.px4Firmware")
-    val running by qgcBool("$CAL.calibrationInProgress")
-    val compassNeeded by qgcBool("$CAL.compassSetupNeeded")
-    val accelNeeded by qgcBool("$CAL.accelSetupNeeded")
-    val lastResult by qgcString("$CAL.statusText")
-    var pending by remember { mutableStateOf<Calibration?>(null) }
+    val json by qgcPath(CALIBRATION)
+    val state = remember(json) { calibrationState(json) }
+    var pending by remember { mutableStateOf<CalibrationRoutine?>(null) }
     var runningName by remember { mutableStateOf("") }
     var notice by remember { mutableStateOf<String?>(null) }
     val scope = rememberCoroutineScope()
@@ -311,20 +267,21 @@ fun SensorsScreen(modifier: Modifier = Modifier) {
         return
     }
 
+    if (state == null) {
+        SensorsNotice("Reading the vehicle's calibration state.", modifier)
+        return
+    }
+
     pending?.let { calibration ->
         StartDialog(
             calibration = calibration,
             onConfirm = {
-                runningName = calibration.name
+                runningName = calibration.title
                 notice = null
                 scope.launch {
                     val before = withContext(Dispatchers.Default) { calibrationStatus() }
                     val dispatched = withContext(Dispatchers.Default) {
-                        if (calibration.method == "calibrateAccel") {
-                            Qgc.invoke("$CAL.calibrateAccel", false)
-                        } else {
-                            Qgc.invoke("$CAL.${calibration.method}")
-                        }
+                        Qgc.invoke(calibration.invocation, *calibration.arguments.toTypedArray())
                     }
                     val started = dispatched && withTimeoutOrNull(CAL_START_MS) {
                         while (
@@ -336,15 +293,15 @@ fun SensorsScreen(modifier: Modifier = Modifier) {
                         }
                         true
                     } == true
-                    notice = calibrationFailure(calibration.name, started)
+                    notice = calibrationFailure(calibration.title, started)
                 }
             },
             onDismiss = { pending = null },
         )
     }
 
-    if (running) {
-        RunningCalibration(runningName, modifier)
+    if (state.inProgress) {
+        RunningCalibration(runningName, state, modifier)
         return
     }
 
@@ -364,36 +321,25 @@ fun SensorsScreen(modifier: Modifier = Modifier) {
             }
         }
 
-        items(CALIBRATIONS, key = { it.name }) { calibration ->
-            val needed = when (calibration.name) {
-                "Accelerometer" -> accelNeeded
-                "Compass" -> compassNeeded
-                else -> null
-            }
-            val blocked = blockedByAccel(calibration, accelNeeded)
+        items(state.routines, key = { it.id }) { routine ->
+            val status = routineStatus(routine, state)
             SetupRow(
-                title = calibration.name,
-                status = when {
-                    blocked -> "Calibrate the accelerometer first"
-                    needed == true -> "Not calibrated"
-                    needed == false -> "Calibrated"
-                    else -> ""
-                },
-                state = when {
-                    blocked -> SetupState.Neutral
-                    needed == true -> SetupState.NeedsAttention
-                    needed == false -> SetupState.Done
+                title = routine.title,
+                status = status,
+                state = when (status) {
+                    "Not calibrated" -> SetupState.NeedsAttention
+                    "Calibrated" -> SetupState.Done
                     else -> SetupState.Neutral
                 },
-                onClick = if (blocked) null else ({ pending = calibration }),
+                onClick = if (routine.enabled) ({ pending = routine }) else null,
             )
         }
 
-        if (lastResult.isNotBlank()) {
+        if (state.statusText.isNotBlank()) {
             item(key = "last") {
                 SectionHeader("Last calibration")
                 Text(
-                    text = lastResult,
+                    text = state.statusText,
                     style = MaterialTheme.typography.bodyMedium,
                     fontFamily = FontFamily.Monospace,
                     modifier = Modifier.padding(horizontal = 20.dp),

@@ -28,14 +28,6 @@ class RemoteSupportScreenTest {
     }
 
     @Test
-    fun `no calibration offered here spins a motor`() {
-        assertEquals(
-            emptyList<String>(),
-            CALIBRATIONS.map { it.method }.filter { it == "calibrateMotorInterference" },
-        )
-    }
-
-    @Test
     fun `a value outside the listed options is not treated as an enum`() {
         val listed = Fact(
             path = "p", name = "ACRO_TRAINER", description = "", units = "",

@@ -248,32 +248,6 @@ class LinkFailureTest {
     }
 }
 
-class AccelBlockTest {
-    private fun named(name: String) = CALIBRATIONS.first { it.name == name }
-
-    @Test
-    fun `compass and level horizon wait for the accelerometer`() {
-        assertEquals(true, blockedByAccel(named("Compass"), accelNeeded = true))
-        assertEquals(true, blockedByAccel(named("Level Horizon"), accelNeeded = true))
-    }
-
-    @Test
-    fun `the accelerometer is never blocked, because it is the way out`() {
-        assertEquals(false, blockedByAccel(named("Accelerometer"), accelNeeded = true))
-    }
-
-    @Test
-    fun `gyro and pressure do not depend on the accelerometer`() {
-        assertEquals(false, blockedByAccel(named("Gyro"), accelNeeded = true))
-        assertEquals(false, blockedByAccel(named("Pressure"), accelNeeded = true))
-    }
-
-    @Test
-    fun `nothing is blocked once the accelerometer is calibrated`() {
-        CALIBRATIONS.forEach { assertEquals(false, blockedByAccel(it, accelNeeded = false)) }
-    }
-}
-
 class CalibrationStartTest {
     @Test
     fun `a calibration that started says nothing`() {
