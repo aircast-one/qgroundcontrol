@@ -13,9 +13,16 @@
 #include "PlanMasterController.h"
 #include "Vehicle.h"
 #include "GeoFenceController.h"
+#include "RallyPointController.h"
+#include "MissionController.h"
 #include "QmlObjectListModel.h"
 
 #include <QtPositioning/QGeoCoordinate>
+
+#include <QtCore/QDir>
+#include <QtCore/QFile>
+#include <QtCore/QFileInfo>
+#include <QtCore/QTemporaryDir>
 
 #include <QtTest/QTest>
 
@@ -160,4 +167,37 @@ void PlanMasterControllerTest::_testActiveVehicleChanged(void) {
     // This signal was affected by the defect - it wouldn't reach the subscriber. Here
     // we make sure it does.
     QVERIFY(spyMissionManager.checkOnlySignalByMask(missionManagerErrorSignalMask));
+}
+
+void PlanMasterControllerTest::_aPlanThatCouldNotBeWrittenIsStillUnsaved(void)
+{
+    QTemporaryDir scratch;
+    QVERIFY(scratch.isValid());
+    _masterController->setDirty(true);
+    QVERIFY(_masterController->offline());
+    QVERIFY(_masterController->dirty());
+
+    const QString unreachable = QDir(scratch.path()).filePath(QStringLiteral("no-such-directory/plan.plan"));
+    QVERIFY(!_masterController->saveToFile(unreachable));
+    QVERIFY(!QFileInfo::exists(unreachable));
+    QVERIFY2(_masterController->dirty(), "a plan the disk refused is still unsaved, and the flag every head reads to say so must stay up");
+
+    const QString reachable = QDir(scratch.path()).filePath(QStringLiteral("written.plan"));
+    QVERIFY(_masterController->saveToFile(reachable));
+    QVERIFY(QFileInfo(reachable).size() > 0);
+    QVERIFY2(!_masterController->dirty(), "a plan that reached the disk is saved, which is the case the flag still has to answer");
+}
+
+void PlanMasterControllerTest::_aFenceInThePlanDoesNotKeepItDirty(void)
+{
+    _masterController->geoFenceController()->addInclusionPolygon(QGeoCoordinate(47.0, 8.0), QGeoCoordinate(46.9, 8.1));
+    QVERIFY(_masterController->dirty());
+
+    _masterController->setDirty(false);
+    QVERIFY2(!_masterController->dirty(), "clearing the flag clears it the first time; clearing the polygons underneath must not raise it again");
+
+    _masterController->geoFenceController()->addInclusionCircle(QGeoCoordinate(47.0, 8.0), QGeoCoordinate(46.9, 8.1));
+    QVERIFY(_masterController->dirty());
+    _masterController->setDirty(false);
+    QVERIFY(!_masterController->dirty());
 }

@@ -103,7 +103,7 @@ signals:
 #endif
 
 private slots:
-    void _polygonDirtyChanged       (bool dirty);
+    void _childDirtyChanged         (bool dirty);
     void _setDirty                  (void);
     void _setFenceFromManager       (const QList<QGCFencePolygon>& polygons, const QList<QGCFenceCircle>&  circles);
     void _setReturnPointFromManager (QGeoCoordinate breachReturnPoint);

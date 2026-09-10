@@ -31,6 +31,8 @@ private slots:
     void _testUndoFence(void);
     void _testUndoCorruptSnapshot(void);
     void _testUndoTracksDirty(void);
+    void _aPlanThatCouldNotBeWrittenIsStillUnsaved(void);
+    void _aFenceInThePlanDoesNotKeepItDirty(void);
 
 private:
     PlanMasterController*   _masterController;

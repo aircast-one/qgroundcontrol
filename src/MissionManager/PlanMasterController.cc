@@ -589,8 +589,7 @@ bool PlanMasterController::saveToFile(const QString& filename)
         }
     }
 
-    // Only clear dirty bit if we are offline
-    if (offline()) {
+    if (saved && offline()) {
         setDirty(false);
     }
 
