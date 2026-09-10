@@ -3457,6 +3457,58 @@ Re-running the sweep leaves only the two named seams. The Parameters screen stil
 parameters afterwards, checked on the handset, because a stricter guard that silently drops
 everything looks exactly like a stricter guard that works.
 
+### A mission that took off after it had already flown
+
+Phase 4's gate is a vehicle round trip, so the round trip was walked: two waypoints by long press,
+then Takeoff, then Land, then Upload. The vehicle received it, and the wire showed the defect:
+
+```
+seq=1 cmd=16   waypoint
+seq=2 cmd=16   waypoint
+seq=3 cmd=22   NAV_TAKEOFF
+seq=4 cmd=20   RTL
+```
+
+**Takeoff third.** A mission that flies to two waypoints and then takes off. The vehicle accepted
+it without complaint, because nothing in the protocol says a takeoff has to come first.
+
+QGC does not allow this and says so explicitly. `MissionController::_recalcAll` sets
+`_isInsertTakeoffValid = false` when there are "coordinate based flight commands prior to where the
+takeoff would be inserted", and `PlanView.qml` has `enabled: _missionController.isInsertTakeoffValid`
+on its Takeoff button. There is a matching `isInsertLandValid`, and an `onlyInsertTakeoffValid` for
+when a takeoff is required before any waypoint at all. **This head read none of them.**
+
+It reads all three now, and the plan summary says "add a takeoff before anything else" while that
+is the only legal move.
+
+**The gate alone was not the fix, which is the part worth recording.** With a waypoint present,
+`isInsertTakeoffValid` is *true* — because those flags describe inserting at the **current item**,
+and this head always appends at the end. Reading the flag without matching the insertion point
+answers a different question than the one being asked. So when the core says a takeoff must come
+before the rest, the head now inserts at the first flight slot rather than appending. Same mission
+rebuilt in the same order:
+
+```
+seq=1 cmd=22   NAV_TAKEOFF
+seq=2 cmd=16   waypoint
+seq=3 cmd=16   waypoint
+```
+
+### The input guard refused a safe action
+
+Found by being stopped by my own tool: on the Plan tab, "Takeoff" and "Land" add mission items and
+command nothing, and the guard refused both because it matches on the label alone. A guard that
+blocks safe work gets switched off by whoever hits it, which costs more than it protects.
+
+It now looks for the Plan tab's own "Upload" and "Download" labels and treats flight-control names
+as mission items when both are present. The direction of failure matters: if those labels ever
+change, the guard becomes *stricter*, not weaker. Proved in three cases — the Fly tab still
+refuses, the Plan tab allows, and a single marker is not enough.
+
+Also: the handset was attached twice, by USB and over TCP, and every `adb` call started failing
+with "more than one device/emulator". `ui.sh` now pins the first non-network serial, so one physical
+device answering on two transports stops being a rig outage.
+
 ## Phase 6 — Shell · 2 weeks
 
 Cheaper than macOS, because Qt is already off the main thread.
