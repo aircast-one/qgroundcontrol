@@ -9,6 +9,19 @@ set -euo pipefail
 root="$(cd "$(dirname "$0")/../.." && pwd)"
 out="${TMPDIR:-/tmp}/qgc-swift-checks"
 
+# The compile list below is written by hand, so a new model file is not checked until someone
+# remembers to add it - and nothing says so, which is the same silence as a test that never runs.
+# Every *Model*.swift must appear in it; anything else is a deliberate inclusion.
+missing=()
+for model in "$root"/macos/Sources/*Model*.swift; do
+    grep -q "/${model:t}\"" "$0" || missing+=("${model:t}")
+done
+if (( ${#missing[@]} )); then
+    print -u2 "swift-checks does not compile: ${missing[*]}"
+    print -u2 "add them to the list in $0, or they go unchecked in silence"
+    exit 1
+fi
+
 swiftc -Onone -o "$out" \
     "$root/macos/Sources/DetectionModel.swift" \
     "$root/macos/Sources/SetupCatalogueModel.swift" \
