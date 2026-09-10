@@ -7,6 +7,11 @@ import time
 from pymavlink.dialects.v20 import common as mavlink
 
 TARGET = (sys.argv[1], 14550)
+
+FIRMWARE = os.environ.get("FIRMWARE", "4.5.7")
+FIRMWARE_VERSION = (
+    lambda parts: (parts[0] << 24) | (parts[1] << 16) | (parts[2] << 8) | 255
+)([int(part) for part in FIRMWARE.split(".")])
 SYSID = int(sys.argv[2]) if len(sys.argv) > 2 else 1
 GPS_SENSOR = 32
 LOG_SIZES = [4096, 10240]
@@ -344,6 +349,16 @@ def main():
                     print("TAKEOFF alt=%.1f" % message.param7, flush=True)
                     armed = True
                     link.command_ack_send(message.command, mavlink.MAV_RESULT_ACCEPTED)
+                elif (kind == "COMMAND_LONG" and message.command == mavlink.MAV_CMD_REQUEST_MESSAGE
+                        and int(message.param1) == mavlink.MAVLINK_MSG_ID_AUTOPILOT_VERSION):
+                    link.autopilot_version_send(
+                        mavlink.MAV_PROTOCOL_CAPABILITY_MISSION_FLOAT
+                        | mavlink.MAV_PROTOCOL_CAPABILITY_PARAM_FLOAT
+                        | mavlink.MAV_PROTOCOL_CAPABILITY_COMMAND_INT,
+                        FIRMWARE_VERSION, 0, 0, 0,
+                        [0] * 8, [0] * 8, [0] * 8, 0, 0, 0, [0] * 18)
+                    link.command_ack_send(message.command, mavlink.MAV_RESULT_ACCEPTED)
+                    print("AUTOPILOT_VERSION sent %s" % FIRMWARE, flush=True)
                 elif kind == "COMMAND_LONG" and message.command == mavlink.MAV_CMD_DO_SET_MODE:
                     mode = int(message.param2)
                     print("MODE -> %d" % mode, flush=True)
