@@ -4359,6 +4359,37 @@ marshalling. The stall remains unexplained and is now bounded away from the QML 
   Individual subsystems, for sequencing: QuickControls styles 10.4 MB across 27 plugins, Widgets
   6.7 MB, Quick3D 3.9 MB, Location and Positioning 2.9 MB, Charts 2.8 MB, Multimedia 1.4 MB.
 
+  **Two cuts landed and the lever is not where this section says it is** (`8b398139a`, `edf56face`).
+  Excluding the QML that Android cannot load — MainWindow, FlightDisplay, FlightMap, PlanView,
+  FirstRunPromptDialogs, and the ~200 files in `QGroundControl.Controls` — moved the AAR
+  **81.16 MB -> 80.83 MB**. Around 215 QML files for 0.33 MB, because .qml sources are small next to
+  compiled C++ and the modules stay for their `QML_ELEMENT` registrations.
+
+  **And dropping a Qt module from the link list does not undeploy it.** Tested directly, since the
+  plan reads as though the two are the same thing: `Qt6::QuickControls2` was removed from the Android
+  link and `QQuickStyle::setStyle` compiled out, which links clean — and the AAR went 80.83 -> 80.84 MB
+  with **13 QuickControls style plugins still shipped**. androiddeployqt resolves what to package from
+  Qt's own dependency graph, not from this target's link list, exactly as `-DQGC_VIEWER3D=OFF` left all
+  four Quick3D libraries in place. The experiment was reverted rather than kept, because two `#ifdef`s
+  in shared C++ for a measured 0.00 MB is complexity with nothing behind it.
+
+  **Measured from the built artifact rather than carried forward:**
+
+      libAircastQGC              79.3 MB   44%     <- one file
+      Qt modules and plugins     67.6 MB   38%
+      media and crypto           20.7 MB   11%
+      other                      10.8 MB    6%
+
+  The largest single item in the AAR is QGC's own library, and the largest Qt items are ones this head
+  never uses: Gui 7.5, Quick 6.8, **Widgets 6.7**, Qml 5.3, **ShaderTools 3.8**, FluentWinUI3 style 2.6,
+  QuickTemplates2 2.3, Imagine style 2.2, **Quick3D 2.1**, **Charts 2.0**. `libQt6Test` is in the release
+  AAR too.
+
+  So the sequencing in this section is the wrong way round. Excluding QGC's **UI C++** from the Android
+  build is the lever for the 44%, and the Qt 38% needs the deployment scan changed — an explicit
+  `QT_ANDROID_DEPLOYMENT_DEPENDENCIES` or equivalent — not a link-list edit. The QML exclusions above are
+  a prerequisite for the first and worth keeping for build time, but they are not the saving.
+
   **The `Viewer3D` decision is answered, and the answer is that it barely matters.** The project has a
   supported switch for it, so I tried the designed path before considering surgery: configuring
   `build-android` with `-DQGC_VIEWER3D=OFF` and rebuilding took the AAR from 81.16 MB to **81.08 MB**,
