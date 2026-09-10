@@ -4136,6 +4136,38 @@ So the question to ask of a watched gate is not "could this be stale" — it alw
 **"if the stale answer says yes, what happens?"** If the answer is a refusal from the vehicle, the
 core, or the C++, leave it alone.
 
+### Continue Mission can never be offered, because the bridge's controller is a Plan one
+
+Chased from an incidental observation while probing the flags: `plan.missionController.missionItemCount`
+read back **0** on a plan that visibly had items. It is not a bug in the read. The header says so —
+`///< True mission item command count (only valid in Fly View)` — and the bridge creates its own
+`PlanMasterController` with `setFlyView(false)`.
+
+`currentMissionIndex` is the same, and says it in code rather than a comment:
+
+    int MissionController::currentMissionIndex(void) const
+    {
+        if (!_flyView) {
+            return -1;
+        }
+
+`guided.rs` reads both. `has_more_mission()` is `current_mission_index < mission_item_count - 1`,
+which on this controller is `-1 < -1` — **false, always**. So `Action::ContinueMission` is never
+offered, and an operator who pauses a mission in flight cannot resume it from this head.
+
+Not reproducible on this rig, which cannot fly, and the code is unambiguous enough that reproducing it
+would only confirm what both halves already state.
+
+Swept for the general case rather than assuming one: **`missionItemCount` is the only property in the
+tree carrying that comment**, so this is two specific properties, not a category. QML does not hit it
+because it reads the *fly view* controller — `globals.planMasterControllerFlyView` — while the bridge
+has only the Plan one.
+
+The obvious alternative is not reachable either: `MissionManager::currentIndex()` and
+`Vehicle::missionManager()` are both plain getters, not `Q_PROPERTY`, so reflection cannot traverse to
+them. A fix needs the bridge to own a fly-view controller as well, or those two exposed. Raised rather
+than chosen.
+
 ### The Add Item gate is constant, because it rests on the three flags
 
 `view.missionKinds` gained `enabled` and `disabledReason` per kind, with refusals written for an
