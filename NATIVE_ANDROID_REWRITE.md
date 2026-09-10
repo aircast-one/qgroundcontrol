@@ -3608,6 +3608,33 @@ scoped to an operation, and reading it outside that operation's shape gives a co
 wrong question — and I walked into it while quoting it. The reason it survived review is that the
 unit tests passed a boolean *in*; nothing ever checked that the boolean could be read.
 
+### The plan-file round trip is still unverified, and the rig is why
+
+This document flags saving and opening `.plan` files as a **regression to prevent** — the QML Plan
+view has it, the native tab must have it before Phase 6 deletes that view. The flow is built:
+`File` offers Open, Save, Save as, Export KML and Import boundary. Walking it end to end failed,
+and the failure is in the rig rather than the app.
+
+`Save as…` opens Android's system file picker — the Storage Access Framework, correctly, because
+scoped storage gives an app no other way to write where a user can find it. That picker is a
+different process with its own view hierarchy, and the rig cannot drive it reliably: the filename
+field and the save button are `EditText` and `ViewGroup` nodes whose resource ids repeat across the
+file list, so selecting "the node whose id ends in `title`" picks a row in the listing rather than
+the field. Three attempts, three misses, **no `.plan` written**.
+
+Stopping there rather than continuing to guess at coordinates. What is established: the flow opens
+the right picker, the app survives the attempts with no crash, and the plan is intact afterwards.
+What is **not** established, and is recorded as unverified rather than assumed: that a plan saved to
+a file can be opened back.
+
+Two things follow. The picker is also what `Open…`, `Export KML…` and `Import boundary…` use, so all
+four share this gap. And driving a second app's hierarchy needs the rig to select by *text* within a
+bounded container rather than by resource id, which is a rig capability that does not exist yet —
+worth building before this gate can be closed, not worth improvising blind taps to fake.
+
+The regression's own screens still pass and the vehicle round trip from the previous section is
+unaffected; this is a hole in coverage, not a regression.
+
 ## Phase 6 — Shell · 2 weeks
 
 Cheaper than macOS, because Qt is already off the main thread.
