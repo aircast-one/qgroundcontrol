@@ -4136,6 +4136,35 @@ So the question to ask of a watched gate is not "could this be stale" — it alw
 **"if the stale answer says yes, what happens?"** If the answer is a refusal from the vehicle, the
 core, or the C++, leave it alone.
 
+### The Add Item gate is constant, because it rests on the three flags
+
+`view.missionKinds` gained `enabled` and `disabledReason` per kind, with refusals written for an
+operator to read — "The mission already takes off before this point." I wired the Add Item row to it,
+tested it on the handset, and **reverted it**.
+
+`insertable()` in `missionkinds.rs` reads `onlyInsertTakeoffValid`, `isInsertTakeoffValid`,
+`isInsertLandValid` and `flyThroughCommandsAllowed`. The first three are the flags recorded earlier in
+this document: assigned only inside `MissionController::setCurrentPlanViewSeqNum`, and only when the
+seq changes. A head that never drives PlanView never calls it, so they hold member defaults forever —
+`_onlyInsertTakeoffValid = true`, `_isInsertLandValid = false`.
+
+Measured on the device with three items in the plan, one already a takeoff:
+
+    Takeoff   added a second one       isInsertTakeoffValid defaults true  -> always allowed
+    Land      refused, plan unchanged  isInsertLandValid defaults false    -> always refused
+    Survey    refused, plan unchanged  onlyInsertTakeoffValid defaults true -> always refused
+
+So the gate is **exactly inverted**: it would have made Land and Survey permanently unavailable while
+leaving the one case it exists to prevent — a second takeoff — wide open. The ungated buttons are
+worse in theory and better in practice, so they stay until the input varies. Raised with the core;
+`flyThroughCommandsAllowed` is fine, being genuinely computed.
+
+**Two things the tests could not have told me.** The unit tests passed, because they feed the decoder
+a constructed view and so prove the decode while proving nothing about whether the view says anything
+true. And the first tap *looked* correct — a takeoff went in, which is what success looks like. Only
+the item count going 2 to 3 showed it was the second one. A green suite and a plausible screen, and
+the count was the only witness.
+
 ## Phase 6 — Shell · 2 weeks
 
 Cheaper than macOS, because Qt is already off the main thread.
