@@ -1,5 +1,6 @@
 package one.aircast.mapspike
 
+import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.layout.ExperimentalLayoutApi
@@ -108,6 +109,8 @@ internal fun MapSpikeScreen(
     var surveyList by remember { mutableStateOf<List<Survey>>(emptyList()) }
     var profile by remember { mutableStateOf(TerrainProfile(emptyList())) }
     var selected by remember { mutableStateOf<MapHit?>(null) }
+
+    BackHandler(enabled = selected != null) { selected = null }
     var busy by remember { mutableStateOf<String?>(null) }
     val scope = rememberCoroutineScope()
     var centre by remember { mutableStateOf<TrackPoint?>(null) }
