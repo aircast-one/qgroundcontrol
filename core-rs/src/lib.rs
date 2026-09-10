@@ -47,6 +47,7 @@ pub mod mavout;
 pub mod messages;
 pub mod metacache;
 pub mod mission;
+pub mod missionitems;
 pub mod missionkinds;
 pub mod missionsummary;
 pub mod modes;

@@ -1216,7 +1216,7 @@ constexpr int kMockStatusTextCount = 9;
 const char *const kViewPaths[] = {
     "view.messages", "view.plan", "view.guidedActions", "view.guidedAltitude", "view.guidedAltitude(30)",
     "view.guidedTakeoff", "view.guidedTakeoff(10)", "view.guidedSpeed", "view.guidedSpeed(3)", "view.battery",
-    "view.preflight", "view.warnings", "view.modeSlots", "view.missionSummary", "view.label(altitudeRelative)", "view.instruments", "view.vibration",
+    "view.preflight", "view.warnings", "view.modeSlots", "view.missionSummary", "view.missionItems", "view.label(altitudeRelative)", "view.instruments", "view.vibration",
     "view.sensors", "view.control(settings.appSettings.audioMuted)", "view.links", "view.linkForm(udp,,14550)",
     "view.mapScale(120)", "view.terrainProfile", "view.missionKinds", "view.missionSeed(survey,47,8)",
     "view.calibration", "view.radio", "view.logs", "view.inspector", "view.flightModes", "view.settings",
@@ -3058,6 +3058,60 @@ void QGCCoreCTest::_theMissionSummaryArrivesOnItsOwnAfterAnEdit()
     QVERIFY2(take(qgc_core_invoke("mission.insert", "[\"waypoint\", 47.3990, 8.5440, -1]")).value(QStringLiteral("ok")).toBool(false), "the second waypoint was refused");
     QTRY_VERIFY_WITH_TIMEOUT(paths.contains(QStringLiteral("view.missionSummary")), 10000);
     QTRY_VERIFY_WITH_TIMEOUT(distance() > afterTwo, 10000);
+#else
+    QSKIP("the Rust core is not linked into this build");
+#endif
+}
+
+void QGCCoreCTest::_theItemListNamesWhatTheControllerHolds()
+{
+#ifdef QGC_RUST_CORE
+    (void) take(qgc_bridge_invoke("plan.start", "[]"));
+    const auto restore = []() { (void) take(qgc_bridge_invoke("plan.removeAll", "[]")); };
+    const auto leaveNoPlanBehind = qScopeGuard(restore);
+    restore();
+
+    const QJsonObject empty = take(qgc_core_get("view.missionItems"));
+    QCOMPARE(empty.value(QStringLiteral("available")).toBool(true), false);
+
+    QVERIFY2(take(qgc_core_invoke("mission.insert", "[\"takeoff\", 47.3960, 8.5440, -1]")).value(QStringLiteral("ok")).toBool(false), "the takeoff was refused");
+    QVERIFY2(take(qgc_core_invoke("mission.insert", "[\"waypoint\", 47.3990, 8.5480, -1]")).value(QStringLiteral("ok")).toBool(false), "the waypoint was refused");
+    QVERIFY2(take(qgc_core_invoke("mission.insert", "[\"survey\", 47.3975, 8.5460, -1]")).value(QStringLiteral("ok")).toBool(false), "the survey was refused");
+
+    const int held = take(qgc_bridge_get("plan.missionController.visualItems.count")).value(QStringLiteral("value")).toInt(-1);
+    QTRY_COMPARE_WITH_TIMEOUT(take(qgc_core_get("view.missionItems")).value(QStringLiteral("items")).toArray().count(), held, 10000);
+
+    const QJsonArray listed = take(qgc_core_get("view.missionItems")).value(QStringLiteral("items")).toArray();
+    QStringList wrong;
+    for (int index = 0; index < held; index++) {
+        const QString path = QStringLiteral("plan.missionController.visualItems.%1").arg(index);
+        const QJsonObject controller = take(qgc_bridge_get(path.toUtf8().constData()));
+        const QJsonObject shown = listed.at(index).toObject();
+        if (shown.value(QStringLiteral("sequence")).toInt(-1) != controller.value(QStringLiteral("sequenceNumber")).toInt(-2)) {
+            wrong.append(QStringLiteral("item %1 sequence").arg(index));
+        }
+        if (shown.value(QStringLiteral("name")).toString() != controller.value(QStringLiteral("commandName")).toString()) {
+            wrong.append(QStringLiteral("item %1 name: %2 against %3").arg(index).arg(shown.value(QStringLiteral("name")).toString(), controller.value(QStringLiteral("commandName")).toString()));
+        }
+        if (shown.value(QStringLiteral("abbreviation")).toString() != controller.value(QStringLiteral("abbreviation")).toString()) {
+            wrong.append(QStringLiteral("item %1 abbreviation").arg(index));
+        }
+    }
+    QVERIFY2(wrong.isEmpty(), qPrintable(QStringLiteral("the list disagrees with the controller it is describing: %1").arg(wrong.join(QStringLiteral(", ")))));
+
+    QStringList kinds;
+    for (const QJsonValue &entry : listed) {
+        kinds.append(entry.toObject().value(QStringLiteral("kind")).toString());
+    }
+    QVERIFY2(kinds.first() == QStringLiteral("settings"), qPrintable(QStringLiteral("the first entry is the plan's own, and it read as %1").arg(kinds.first())));
+    QVERIFY2(kinds.contains(QStringLiteral("takeoff")), qPrintable(kinds.join(QStringLiteral(", "))));
+    QVERIFY2(kinds.contains(QStringLiteral("survey")), qPrintable(kinds.join(QStringLiteral(", "))));
+    QVERIFY2(kinds.contains(QStringLiteral("waypoint")), qPrintable(kinds.join(QStringLiteral(", "))));
+    QVERIFY2(!kinds.contains(QString()), "an item the core could not classify would draw as nothing at all");
+
+    const QJsonObject takeoff = listed.at(kinds.indexOf(QStringLiteral("takeoff"))).toObject();
+    QVERIFY2(takeoff.value(QStringLiteral("coordinate")).toObject().value(QStringLiteral("latitude")).toDouble() != 0.0,
+             "an item that has a place on the map has to carry it, or the list is a list of names");
 #else
     QSKIP("the Rust core is not linked into this build");
 #endif

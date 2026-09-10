@@ -477,6 +477,21 @@
         "view.mapScale(120).text",
         "view.messages.class",
         "view.messages.kind",
+        "view.missionItems.class",
+        "view.missionItems.items.0.abbreviation",
+        "view.missionItems.items.0.altitudeChange",
+        "view.missionItems.items.0.azimuth",
+        "view.missionItems.items.0.blocked",
+        "view.missionItems.items.0.blockedReason",
+        "view.missionItems.items.0.description",
+        "view.missionItems.items.0.distance",
+        "view.missionItems.items.0.distanceFromStart",
+        "view.missionItems.items.0.edited",
+        "view.missionItems.items.0.index",
+        "view.missionItems.items.0.kind",
+        "view.missionItems.items.0.name",
+        "view.missionItems.items.0.sequence",
+        "view.missionItems.kind",
         "view.missionKinds.class",
         "view.missionKinds.kind",
         "view.missionKinds.kinds.#",
@@ -2341,6 +2356,7 @@
             "view.linkForm",
             "view.mapScale",
             "view.terrainProfile",
+            "view.missionItems",
             "view.missionSummary",
             "view.modeSlots",
             "view.missionKinds",
@@ -2796,6 +2812,33 @@
             }
         ],
         "kind": "string"
+    },
+    "view.missionItems": {
+        "available": "bool",
+        "class": "string",
+        "current": "number",
+        "items": [
+            {
+                "abbreviation": "string",
+                "altitudeAmsl": "null|number",
+                "altitudeChange": "number",
+                "azimuth": "number",
+                "blocked": "bool",
+                "blockedReason": "null",
+                "coordinate": "|null",
+                "current": "bool",
+                "description": "string",
+                "distance": "number",
+                "distanceFromStart": "number",
+                "edited": "bool",
+                "index": "number",
+                "kind": "string",
+                "name": "string",
+                "sequence": "number"
+            }
+        ],
+        "kind": "string",
+        "reason": "string"
     },
     "view.missionKinds": {
         "class": "string",
