@@ -20,8 +20,8 @@ pub const DEPS: &[&str] = &[
     "vehicle.healthAndArmingCheckReport.canTakeoff",
     "vehicle.healthAndArmingCheckReport.canStartMission",
     "plan.missionController.containsItems",
-    "plan.missionController.missionItemCount",
-    "plan.missionController.currentMissionIndex",
+    "planFly.missionController.missionItemCount",
+    "planFly.missionController.currentMissionIndex",
     "settings.appSettings.useChecklist",
     "settings.appSettings.enforceChecklist",
 ];
@@ -264,7 +264,8 @@ fn read_state(backend: &dyn Backend) -> GuidedState {
         "armed,flying,guidedModeSupported,takeoffVehicleSupported,pauseVehicleSupported,fixedWing,vtol,vtolInFwdFlight,haveFWSpeedLimits,haveMRSpeedLimits,px4Firmware,apmFirmware,landing,hasGripper,initialConnectComplete,checkListState,flightMode,rtlFlightMode,smartRTLFlightMode,landFlightMode,missionFlightMode,pauseFlightMode",
     ));
     let report = object(&backend.get_fields("vehicle.healthAndArmingCheckReport", "supported,canArm,canTakeoff,canStartMission"));
-    let mission = object(&backend.get_fields("plan.missionController", "containsItems,missionItemCount,currentMissionIndex"));
+    let mission = object(&backend.get_fields("plan.missionController", "containsItems"));
+    let flying = object(&backend.get_fields("planFly.missionController", "missionItemCount,currentMissionIndex"));
     let app = object(&backend.get_fields("settings.appSettings", "useChecklist,enforceChecklist"));
     let mode = text(&vehicle, "flightMode");
     let same_mode = |key: &str| !mode.is_empty() && text(&vehicle, key) == mode;
@@ -301,8 +302,8 @@ fn read_state(backend: &dyn Backend) -> GuidedState {
         can_takeoff: gate("canTakeoff"),
         can_start_mission: gate("canStartMission"),
         mission_available: flag(&mission, "containsItems"),
-        mission_item_count: integer(&mission, "missionItemCount").unwrap_or(0),
-        current_mission_index: integer(&mission, "currentMissionIndex").unwrap_or(-1),
+        mission_item_count: integer(&flying, "missionItemCount").unwrap_or(0),
+        current_mission_index: integer(&flying, "currentMissionIndex").unwrap_or(-1),
     }
 }
 

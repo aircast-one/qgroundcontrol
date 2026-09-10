@@ -1,4 +1,5 @@
 #include "QGCBridgeCore.h"
+#include "QGCHostNotices.h"
 
 #include "Fact.h"
 #include "LinkManager.h"
@@ -74,6 +75,21 @@ QObject *rootObject(const QString &name)
             plan->start();
         }
         return plan;
+    }
+    if (name == QLatin1String("host")) {
+        return QGCHostNotices::instance();
+    }
+    if (name == QLatin1String("planFly")) {
+        // missionItemCount and currentMissionIndex answer only in the fly view, and the plan root's
+        // controller is the plan editor's. QML has both for the same reason; a native head has
+        // neither unless the bridge keeps one.
+        static PlanMasterController *flying = nullptr;
+        if (!flying) {
+            flying = new PlanMasterController(QCoreApplication::instance());
+            flying->setFlyView(true);
+            flying->start();
+        }
+        return flying;
     }
     if (name == QLatin1String("logDownload")) {
         return LogDownloadController::instance();

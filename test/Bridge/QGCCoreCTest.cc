@@ -2558,3 +2558,45 @@ void QGCCoreCTest::_theCoreRefusesAMissionItemThePlanHasDecidedAgainst()
     QSKIP("the Rust core is not linked into this build");
 #endif
 }
+
+void QGCCoreCTest::_theFlyViewControllerCountsTheMissionThePlanEditorCannot()
+{
+#ifdef QGC_RUST_CORE
+    _connectMockLink(MAV_AUTOPILOT_PX4);
+    bool stillConnected = true;
+    const auto disconnectWhenDone = qScopeGuard([this, &stillConnected]() {
+        if (stillConnected) {
+            _disconnectMockLink();
+        }
+    });
+    Vehicle *const vehicle = MultiVehicleManager::instance()->activeVehicle();
+    QVERIFY(vehicle);
+
+    (void) take(qgc_bridge_invoke("plan.start", "[]"));
+    const auto restore = []() { (void) take(qgc_bridge_invoke("plan.removeAll", "[]")); };
+    const auto leaveNoPlanBehind = qScopeGuard(restore);
+    restore();
+
+    const auto number = [](const char *path) {
+        return take(qgc_bridge_get(path)).value(QStringLiteral("value")).toInt(-99);
+    };
+
+    QVERIFY2(take(qgc_core_invoke("mission.insert", "[\"takeoff\", 47.3975, 8.5460, -1]")).value(QStringLiteral("ok")).toBool(false), "the takeoff was refused");
+    QVERIFY2(take(qgc_core_invoke("mission.insert", "[\"waypoint\", 47.3985, 8.5470, -1]")).value(QStringLiteral("ok")).toBool(false), "the waypoint was refused");
+    QVERIFY2(take(qgc_bridge_invoke("plan.sendToVehicle", "[]")).value(QStringLiteral("ok")).toBool(false), "the plan could not be sent");
+    QTRY_VERIFY_WITH_TIMEOUT(!vehicle->missionManager()->inProgress(), 30000);
+
+    QTRY_VERIFY_WITH_TIMEOUT(number("planFly.missionController.missionItemCount") > 0, 30000);
+    QVERIFY2(number("plan.missionController.missionItemCount") == 0,
+             "the plan editor's controller answers zero however many items it holds, which is why reading it was giving the guided view a mission of no length");
+    QVERIFY2(number("plan.missionController.currentMissionIndex") == -1,
+             "and it answers minus one for where the vehicle is, so a paused mission never looked resumable");
+    QVERIFY2(number("planFly.missionController.currentMissionIndex") >= 0,
+             "the fly view's controller is the one that knows, and it is the one the guided view now reads");
+
+    _disconnectMockLink();
+    stillConnected = false;
+#else
+    QSKIP("the Rust core is not linked into this build");
+#endif
+}
