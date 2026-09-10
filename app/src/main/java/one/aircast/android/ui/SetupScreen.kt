@@ -196,11 +196,13 @@ fun SetupScreen(modifier: Modifier = Modifier) {
             item(key = "attention") { SectionHeader("Needs setup before flight") }
             items(needSetup, key = { "a${it.index}" }) { component ->
                 val blocked = blockedFor(component)
+                val page = setupPage(setupJson, component.name)
                 SetupRow(
                     title = component.name,
-                    status = blocked?.let { "Not while $it" } ?: "Needs setup",
+                    status = blocked?.let { "Not while $it" }
+                        ?: setupBadge(page?.native == true, page?.completes == true),
                     state = if (blocked != null) SetupState.Unavailable else SetupState.NeedsAttention,
-                    onClick = if (blocked == null && setupPage(setupJson, component.name)?.native == true) {
+                    onClick = if (blocked == null && page?.native == true) {
                         { openComponent = component }
                     } else {
                         null
@@ -216,13 +218,14 @@ fun SetupScreen(modifier: Modifier = Modifier) {
         } else {
             item(key = "allheader") { SectionHeader("Setup") }
             items(components, key = { it.index }) { component ->
-                val openable = setupPage(setupJson, component.name)?.native == true
+                val page = setupPage(setupJson, component.name)
+                val openable = page?.native == true
                 val blocked = blockedFor(component)
                 SetupRow(
                     title = component.name,
                     status = when {
                         blocked != null -> "Not while $blocked"
-                        component.needsAttention -> "Needs setup"
+                        component.needsAttention -> setupBadge(openable, page?.completes == true)
                         !openable -> "On desktop"
                         else -> ""
                     },
