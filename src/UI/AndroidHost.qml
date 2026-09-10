@@ -56,7 +56,6 @@ Item {
     }
 
     function showIndicatorDrawer(drawerComponent, indicatorItem) {
-        flyView.guidedController.closeAll()
         indicatorDrawer.indicatorItem   = indicatorItem
         indicatorDrawer.sourceComponent = drawerComponent
         indicatorDrawer.open()
@@ -79,9 +78,9 @@ Item {
         readonly property var   activeVehicle:                  QGroundControl.multiVehicleManager.activeVehicle
         readonly property real  defaultTextHeight:              ScreenTools.defaultFontPixelHeight
         readonly property real  defaultTextWidth:               ScreenTools.defaultFontPixelWidth
-        readonly property var   planMasterControllerFlyView:    flyView.planController
-        readonly property var   guidedControllerFlyView:        flyView.guidedController
-        readonly property var   overlayRigFlyView:              flyView.overlayRig
+        readonly property var   planMasterControllerFlyView:    null
+        readonly property var   guidedControllerFlyView:        null
+        readonly property var   overlayRigFlyView:              null
         property int            validationErrorCount:           0
         property bool           commingFromRIDIndicator:        false
     }
@@ -93,25 +92,6 @@ Item {
     Rectangle {
         anchors.fill:   parent
         color:          QGroundControl.globalPalette.window
-    }
-
-    FlyView {
-        id:             flyView
-        anchors.fill:   parent
-        toolbarVisible: false
-        visible:        mainWindow.renderViews && !toolLoader.active
-    }
-
-    PlanView {
-        id:             planView
-        anchors.fill:   parent
-        map:            flyView.mapControl
-        planActive:     !mainWindow.flyViewActive
-        opacity:        mainWindow.flyViewActive ? 0 : 1
-        visible:        mainWindow.renderViews && opacity > 0 && !toolLoader.active
-        enabled:        !mainWindow.flyViewActive
-
-        Behavior on opacity { NumberAnimation { duration: 180; easing.type: Easing.InOutQuad } }
     }
 
     Loader {
