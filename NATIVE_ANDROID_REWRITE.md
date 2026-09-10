@@ -3922,6 +3922,28 @@ configuration that *is* registered. Connect, Disconnect and Remove all work for 
 works for UDP and TCP because `createAndConnectLink` is a one-shot that needs no handle. The three
 that fail are precisely the three that would need one.
 
+### A dead detector looked exactly like an empty field of view
+
+`visibleBoxes` drops every box once the detections feed goes stale, and
+`detectionTrouble` only spoke when the core reported an `error`. So a detector that was configured
+and simply stopped delivering frames drew nothing and said nothing — which is precisely what a
+healthy detector sees when there is nothing in view. For an operator watching for something, those
+are opposite readings and the silent one is the dangerous half.
+
+Everything needed was already in `view.detections`. `available` means a source is configured,
+`stale` means no frame within `STALE_MS`, and the core withholds `boxes` and `track` itself rather
+than trusting the head to check — which is why unread `ageMs` could never have caused stale boxes to
+be drawn. Only the message was missing. Fixed in `17fce1e`; a reported error still wins over the
+absence of frames, and an unconfigured detector stays silent.
+
+**Not verified on the handset, and the reason is worth recording rather than hiding.** Producing this
+state needs a detector host that accepts the HTTP connection and then sends nothing; a host that
+refuses sets `error` and takes the other branch. The rig has no such host. What makes that acceptable
+here, where it was not for the Setup verdict, is that the render path did not change — `trouble` was
+already being displayed for errors — so the change is confined to a pure predicate. It is covered by
+tests including one that restores the previous implementation exactly and fails on the single case it
+could not report, which is a stronger claim than "the new test passes".
+
 ## Phase 6 — Shell · 2 weeks
 
 Cheaper than macOS, because Qt is already off the main thread.
