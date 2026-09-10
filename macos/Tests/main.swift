@@ -3871,4 +3871,30 @@ func checkHostNotices() {
     expect(read.newest?.id == 2,
            "the newest drawn notice is the last one queued, because post appends and the head "
            + "does not re-sort what the core has already ordered")
+
+    expect(read.offersSetup,
+           "the navigation notice offers Vehicle Setup rather than being discarded. QGC posts it "
+           + "from AutoPilotPlugin.cc:72 when a component needs setup, alongside the sentence "
+           + "that explains why -- and that sentence is already drawn, so this is a destination "
+           + "and not another row saying the same thing")
+    expect(read.unreachable == nil, "and a destination this head can reach needs no apology")
+
+    let elsewhere = HostNotices(["notices": [notice(1, "navigation", "joystickConfig", "")]])
+    expect(elsewhere.offersSetup == false, "a destination this head has never heard of is not setup")
+    expect(elsewhere.unreachable ?? "",
+           "The app asked to open joystickConfig, which this window cannot reach.",
+           "and it SAYS SO, naming the word, because a request that was made and cannot be "
+           + "honoured is not a request that can be dropped in silence")
+    expect(elsewhere.shown.isEmpty,
+           "while still drawing no row for it: the title is a destination token, not a sentence, "
+           + "and \"joystickConfig\" in front of an operator is worse than the line above")
+
+    expect(HostNotices.none.offersSetup == false && HostNotices.none.unreachable == nil,
+           "an empty queue asks for nothing and apologises for nothing")
+
+    let served = HostNotices(["notices": [notice(1, "navigation", "setup", ""),
+                                          notice(2, "message", "AircastQGC", "needs setup")]])
+    expect(served.navigation?.id == 1,
+           "the navigation request is found among notices that are not navigation, because it "
+           + "arrives paired with the message that explains it and never alone")
 }

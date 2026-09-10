@@ -38,9 +38,18 @@ final class HostNoticeStore: ObservableObject, Probeable {
         refresh()
     }
 
+    // Acknowledging on the press is what stops a queued request being re-offered every poll.
+    func openSetup() {
+        guard queue.offersSetup, let request = queue.navigation else { return }
+        VehicleSetupWindow.shared.show()
+        _ = Bridge.invoke("host.acknowledge", [NSNumber(value: request.id)])
+        refresh()
+    }
+
     func probeState() -> [String: Any] {
         ["count": queue.all.count, "shown": queue.shown.count, "dropped": queue.dropped,
-         "watching": watchPoll != nil,
+         "watching": watchPoll != nil, "offersSetup": queue.offersSetup,
+         "unreachable": queue.unreachable ?? "",
          "notices": queue.all.map { ["id": Int($0.id), "kind": "\($0.kind)",
                                      "shows": $0.shows, "line": $0.line] }]
     }

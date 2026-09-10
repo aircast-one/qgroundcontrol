@@ -50,7 +50,8 @@ struct FlyPanel: View {
                 // Not behind the connected gate: a link that failed to switch, a settings
                 // warning and a parameter error all happen with no vehicle, which is exactly
                 // when the operator has nothing else telling them why.
-                if !notices.queue.shown.isEmpty || notices.queue.dropNotice != nil {
+                if !notices.queue.shown.isEmpty || notices.queue.dropNotice != nil
+                    || notices.queue.offersSetup || notices.queue.unreachable != nil {
                     appNotices
                 }
 
@@ -395,7 +396,8 @@ struct FlyPanel: View {
             SectionLabel(text: "From the app")
             GroupCard {
                 if notices.queue.shown.isEmpty {
-                    EmptyStateRow(text: notices.queue.dropNotice ?? "Nothing to report.")
+                    EmptyStateRow(text: notices.queue.dropNotice
+                        ?? notices.queue.unreachable ?? "Nothing to report.")
                 } else {
                     ForEach(Array(notices.queue.shown.enumerated()), id: \.element.id) { row, notice in
                         GroupRow(title: notice.line,
@@ -408,6 +410,16 @@ struct FlyPanel: View {
                                          .buttonStyle(.link)
                                  })
                     }
+                }
+                if notices.queue.offersSetup {
+                    GroupRow(title: "Vehicle setup is needed before flight",
+                             showSeparator: !notices.queue.shown.isEmpty,
+                             titleLines: 2,
+                             leading: { Circle().fill(Color.orange).frame(width: 7, height: 7) },
+                             trailing: {
+                                 Button("Open Vehicle Setup") { notices.openSetup() }
+                                     .buttonStyle(.link)
+                             })
                 }
             }
         }
