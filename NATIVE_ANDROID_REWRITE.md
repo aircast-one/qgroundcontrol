@@ -4131,6 +4131,36 @@ same shape as the phase: with nothing in QML initialising video, the handset sti
 receivers, binds nine native sinks and reaches `startVideo()` at 3.5 s, with no init refusal. Every
 edit to `init()` is a null guard, so the desktop path is unchanged.
 
+**What the host still carries, surveyed before deleting it.** `AndroidHost.qml` is 172 lines and is
+not app UI — it is a shim supplying the `mainWindow` interface QGC's own QML and C++ expect
+(`contentItem`, `header`, `panelRadius`, the `show*` navigation functions, the arm/disarm signals).
+The head keeps it in the view hierarchy with `renderViews: false`, feeds it the current `page`, and
+listens for `navigateRequest`. So deleting it means answering, for each thing that reaches into
+`mainWindow`, where that goes instead.
+
+**One of those answers is already wrong, and not because of Phase 6.** `QGCApplication` sends operator
+messages by name into the root QML object:
+
+    QMetaObject::invokeMethod(rootQmlObject, "_showMessageDialog", ...)   // showAppMessage
+    QMetaObject::invokeMethod(rootQmlObject, "showCriticalVehicleMessage", ...)
+
+`MainWindow.qml` defines both (lines 179 and 505). **`AndroidHost.qml` defines neither** — it has 17
+functions and neither name is among them. `invokeMethod` on a missing method fails and returns false,
+and neither call site checks the return, so the message is dropped without a trace. The fallback
+branches do not help: they test `runningUnitTests()`, and the root object is non-null, so the failing
+invoke is the branch taken.
+
+`showAppMessage` has **140 call sites** outside `QGCApplication.cc`, including `ParameterManager`
+reporting a failed parameter write. On this head none of them reach the operator.
+
+Traced from source, **not yet confirmed on the handset**: no app message was attempted during the
+session I checked, so the logs show nothing either way. Confirming it needs a triggered message —
+a parameter write failure is the reachable one — and then looking for Qt's failed-invoke warning.
+
+The fix should not be another QML function, since the shim is what Phase 6 deletes. These belong on
+the bridge event stream as a view the head renders, which is a new channel and a shared decision
+rather than something to invent here.
+
 - Delete the `QtQuickView` host and `AndroidHost.qml`.
 - `QGCApplication` drops from `QApplication` to `QCoreApplication`; the embedded-host boot path
   becomes the only path.
