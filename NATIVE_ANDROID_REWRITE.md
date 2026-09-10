@@ -4109,6 +4109,33 @@ macOS grows a Setup page — not a defect to fix now.
 after: 962-968 ms, against the 927-971 ms recorded before. No change, and the new path never appears
 as a blocked call at all, because a watched path does not block its reader the way a `get` does.
 
+### When a stale read is a defect, and when it is not
+
+Three defects in one afternoon, all in code written that same afternoon, all the same shape: an
+action decided from a **watched** value, which is polled and therefore up to a poll old. Worth
+writing the rule down, because the obvious response — re-read everything at the moment of the tap —
+is wrong and would add latency to the buttons that can least afford it.
+
+**A stale read is a defect only when the stale answer permits something, and nothing downstream
+catches it.** Both halves matter:
+
+- **Upload** was a defect. `canSend` from a poll could still read true after the vehicle had begun
+  flying the mission, and nothing verifies an upload against the vehicle's mission state afterwards —
+  the plan simply goes up, over a mission in flight. Fixed by reading `view.plan` at the tap.
+- **Link editing** was a defect. The row said disconnected, the link connected, and the write landed
+  on a live configuration with nothing to notice. Fixed by re-reading the row at the save.
+- **Guided flight commands are not**, and this is the useful case. `attemptCommand` waits for the
+  vehicle to actually reach the commanded state and reports `"Arm was not confirmed by the
+  aircraft."` when it does not. The autopilot runs its own arming checks, so a stale permit produces
+  a refused command that the head detects and reports, not a silent wrong action.
+- **Adding a serial link is not.** The port list and the taken names are both watched, but
+  `createSerialConfiguration` refuses a duplicate name or an absent port itself. A stale read there
+  produces a refusal.
+
+So the question to ask of a watched gate is not "could this be stale" — it always could — but
+**"if the stale answer says yes, what happens?"** If the answer is a refusal from the vehicle, the
+core, or the C++, leave it alone.
+
 ## Phase 6 — Shell · 2 weeks
 
 Cheaper than macOS, because Qt is already off the main thread.
