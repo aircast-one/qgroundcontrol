@@ -100,9 +100,10 @@ fn split(paths_csv: *const c_char) -> Vec<String> {
 pub unsafe extern "C" fn qgc_core_set_event_handler(handler: EventFn) {
     *HEAD.lock().unwrap() = handler;
     *crate::detections::ON_CHANGE.lock().unwrap_or_else(std::sync::PoisonError::into_inner) = handler.map(|_| std::sync::Arc::new(announce_detections) as std::sync::Arc<dyn Fn() + Send + Sync>);
-    if handler.is_some() {
-        start_pump();
-    }
+    // Deliberately no pump. It exists to service links the core owns and commands it has in
+    // flight, and it can never be stopped once started, so a head that only wants one view pushed
+    // was getting a thread that wakes every hundred milliseconds and holds the hub and the
+    // transports. It starts when there is something for it to service.
     unsafe { qgc_qt_set_event_handler(handler.map(|_| relay as unsafe extern "C" fn(*const c_char, *const c_char))) }
 }
 
@@ -288,6 +289,7 @@ fn install_hub_sink() {
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn qgc_core_link_open(config_json: *const c_char) -> *mut c_char {
     install_hub_sink();
+    start_pump();
     let reserved = crate::linkhost::qt_udp_ports(&QtBackend);
     outcome(crate::linkhost::open_json(&crate::linkhost::TRANSPORTS, &text(config_json), &reserved))
 }
