@@ -21,7 +21,6 @@ struct FlyTelemetry: Equatable {
 
     var altitude: Double?
     var groundSpeed: Double?
-    var climbRate: Double?
     var heading: Double?
     var batteryPercent: Double?
     var batteryVolts: Double?
@@ -81,7 +80,6 @@ struct FlyTelemetry: Equatable {
 
     var altitudeText: String { FlyTelemetry.measure(altitude, distanceUnits) }
     var groundSpeedText: String { FlyTelemetry.measure(groundSpeed, speedUnits) }
-    var climbRateText: String { FlyTelemetry.measure(climbRate, speedUnits) }
 
     static func degrees(_ value: Double?) -> String {
         guard let value, value.isFinite else { return "—" }

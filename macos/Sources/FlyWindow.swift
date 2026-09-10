@@ -46,7 +46,7 @@ struct FlyPanel: View {
                     videoCard
                 }
 
-                if fly.connected {
+                if fly.state.connected {
                     messages
                 }
               }
@@ -169,7 +169,7 @@ struct FlyPanel: View {
         HStack(spacing: Overlay.step) {
             VStack(alignment: .leading, spacing: 2) {
                 if fly.modes.isEmpty {
-                    Text(fly.connected ? fly.state.mode : "No vehicle")
+                    Text(fly.state.connected ? fly.state.mode : "No vehicle")
                         .font(.title3.weight(.semibold))
                 } else {
                     Button { fly.showingModes = true } label: {
@@ -192,7 +192,7 @@ struct FlyPanel: View {
             Spacer(minLength: 0)
             Button("Checklist") { fly.showingChecklist = true }
                 .controlSize(.small)
-                .disabled(!fly.connected)
+                .disabled(!fly.state.connected)
             if fly.state.armed {
                 Text("ARMED")
                     .font(.caption.weight(.bold))

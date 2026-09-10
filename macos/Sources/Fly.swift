@@ -7,7 +7,6 @@ final class FlyStore: ObservableObject, Probeable, WriteReporting {
     @Published private(set) var telemetry = FlyTelemetry()
     @Published private(set) var state = FlyState.none
     @Published private(set) var track = VehicleTrack.none
-    @Published private(set) var connected = false
     @Published private(set) var position: VehicleMarker?
     @Published private(set) var messages: [VehicleMessage] = []
     @Published private(set) var warnings: [VehicleWarning] = []
@@ -76,7 +75,6 @@ final class FlyStore: ObservableObject, Probeable, WriteReporting {
 
         let vehicle = Bridge.group("vehicle")
         guard vehicle["kind"] as? String == "object" else {
-            if connected { connected = false }
             if telemetry != FlyTelemetry() { telemetry = FlyTelemetry() }
             if position != nil { position = nil }
             if !messages.isEmpty { messages = [] }
@@ -96,7 +94,6 @@ final class FlyStore: ObservableObject, Probeable, WriteReporting {
         reading.speedUnits = units["groundSpeed"] ?? "m/s"
         reading.altitude = facts["altitudeRelative"]
         reading.groundSpeed = facts["groundSpeed"]
-        reading.climbRate = facts["climbRate"]
         reading.heading = facts["heading"]
 
         let gpsGroup = Bridge.group("vehicle.gps")
@@ -134,7 +131,6 @@ final class FlyStore: ObservableObject, Probeable, WriteReporting {
             longitude: (coordinate?["longitude"] as? NSNumber)?.doubleValue,
             heading: reading.heading)
 
-        if !connected { connected = true }
         if reading != telemetry { telemetry = reading }
         if placed != position { position = placed }
 
@@ -224,7 +220,7 @@ final class FlyStore: ObservableObject, Probeable, WriteReporting {
 
     func probeState() -> [String: Any] {
         ["writeFailure": writeFailure ?? "",
-         "connected": connected, "mode": state.mode, "state": state.display,
+         "connected": state.connected, "mode": state.mode, "state": state.display,
          "stateToken": state.kind.rawValue, "alarming": state.alarming,
          "contactLost": state.contactLost, "staleNotice": state.staleNotice,
          "track": ["available": track.available, "recording": track.recording,
