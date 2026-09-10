@@ -24,14 +24,17 @@ pub fn run(backend: &dyn Backend, path: &str, args: &str) -> Value {
 // What may be inserted next is recomputed only when the plan view selects an item, so a head that
 // never selects one reads whatever the controller was constructed with. The insert point is chosen
 // here before the question is asked, which is the same thing the plan view does when a user clicks.
+// QML asks about the selected item and inserts after it, so the question belongs to the slot
+// before the insertion point. Asking at the insertion point asks about the item that will be
+// displaced, which is a different item with a different answer.
 fn point_at(backend: &dyn Backend, index: i64) -> Option<i64> {
     let count = item_count(backend)?;
     if count <= 0 {
         return None;
     }
     let wanted = match index {
-        index if index < 0 || index >= count => count - 1,
-        index => index,
+        index if index < 0 => count - 1,
+        index => (index - 1).clamp(0, count - 1),
     };
     let sequence = serde_json::from_str::<Value>(&backend.get(&format!("plan.missionController.visualItems.{wanted}.sequenceNumber")))
         .ok()
@@ -56,7 +59,19 @@ fn insert(backend: &dyn Backend, args: &str) -> Value {
         return json!({ "ok": false, "unknown": named, "reason": format!("the core has no {named} in its catalogue, so this one has to be inserted directly") });
     };
     let index = args.get(3).and_then(Value::as_i64).unwrap_or(-1);
-    let at_sequence = point_at(backend, index);
+    let Some(held) = item_count(backend).filter(|count| *count > 0) else {
+        return json!({ "ok": false, "reason": "the plan did not say how many items it holds" });
+    };
+    // Index 0 would put an item before the plan's own settings entry, which every later read of
+    // visualItems[0] assumes is there. QmlObjectListModel::insert warns on an index past the end
+    // and inserts anyway.
+    if index >= 0 && (index < 1 || index > held) {
+        return json!({ "ok": false, "reason": format!("this plan has no place {index} to put an item") });
+    }
+    let Some(at_sequence) = point_at(backend, index) else {
+        return json!({ "ok": false, "reason": "the plan view has no item selected, so there is no point to insert against" });
+    };
+    let at_sequence = Some(at_sequence);
     if let Some(reason) = refusal(kind, &insertable(backend)) {
         return json!({ "ok": false, "reason": reason, "refused": kind.id, "atSequence": at_sequence });
     }
@@ -70,6 +85,12 @@ fn insert(backend: &dyn Backend, args: &str) -> Value {
     let answered: Value = serde_json::from_str(&backend.invoke(&format!("plan.missionController.{}", kind.invokable), &Value::Array(call).to_string())).unwrap_or(Value::Null);
     if answered.get("ok").and_then(Value::as_bool) != Some(true) {
         return json!({ "ok": false, "reason": answered.get("reason").and_then(Value::as_str).unwrap_or("the plan refused the item").to_string() });
+    }
+    // These invokables return void, so the bridge answers ok whether or not anything was added.
+    // Without counting, a failed insert leaves the selection on an item the operator already had,
+    // and the rollback below would delete it.
+    if item_count(backend) != Some(held + 1) {
+        return json!({ "ok": false, "reason": "the plan did not grow, so nothing was added" });
     }
     let Some(placed) = inserted_index(backend) else {
         return json!({ "ok": false, "reason": "the item was added and then could not be found, so the plan is not in a state to build on" });
@@ -104,7 +125,8 @@ fn remove(backend: &dyn Backend, args: &str) -> Value {
     }
     backend.invoke("plan.missionController.removeVisualItem", &json!([index]).to_string());
     match item_count(backend) {
-        Some(now) if now < count => json!({ "ok": true, "removed": index, "remaining": now }),
+        Some(now) if now == count - 1 => json!({ "ok": true, "removed": index, "remaining": now }),
+        Some(now) if now < count - 1 => json!({ "ok": false, "reason": format!("the plan lost {} items rather than the one asked for", count - now) }),
         _ => json!({ "ok": false, "reason": "the plan still holds the item, so it was not removed" }),
     }
 }
@@ -128,6 +150,16 @@ fn orbit(backend: &dyn Backend, args: &str) -> Value {
     let Some(clockwise) = args.get(3).and_then(Value::as_bool) else {
         return json!({ "ok": false, "reason": "An orbit has to turn one way or the other." });
     };
+    if !crate::read::flag(&object(&backend.get_fields("vehicle", "orbitModeSupported")), "orbitModeSupported") {
+        return json!({ "ok": false, "reason": "This vehicle does not support orbiting." });
+    }
+    let limit = |name: &str| crate::read::value_number(&backend.get(&format!("settings.flyViewSettings.{name}.rawValue")));
+    match (limit("guidedMinimumAltitude"), limit("guidedMaximumAltitude")) {
+        (Some(lowest), Some(highest)) if above_home < lowest || above_home > highest => {
+            return json!({ "ok": false, "reason": format!("An orbit has to be between {lowest} and {highest} metres above the launch point.") });
+        }
+        _ => {}
+    }
     let home = object(&backend.get("vehicle.homePosition"));
     if home.get("valid").and_then(Value::as_bool) != Some(true) {
         return json!({ "ok": false, "reason": "The vehicle has not reported where it launched from, so there is nothing to measure the orbit height against." });
@@ -198,19 +230,20 @@ mod tests {
         mission: Value,
         calls: Mutex<Vec<(String, String)>>,
         answer: Value,
+        count: Mutex<i64>,
     }
 
     impl Plan {
         fn new(mission: Value) -> Plan {
-            Plan { mission, calls: Mutex::new(Vec::new()), answer: json!({ "ok": true }) }
+            Plan { mission, calls: Mutex::new(Vec::new()), answer: json!({ "ok": true }), count: Mutex::new(3) }
         }
     }
 
     impl Backend for Plan {
         fn get(&self, path: &str) -> String {
             match path {
-                "plan.missionController.visualItems.count" => json!({ "kind": "value", "value": 3 }).to_string(),
-                "plan.missionController.currentPlanViewVIIndex" => json!({ "kind": "value", "value": 2 }).to_string(),
+                "plan.missionController.visualItems.count" => json!({ "kind": "value", "value": *self.count.lock().unwrap() }).to_string(),
+                "plan.missionController.currentPlanViewVIIndex" => json!({ "kind": "value", "value": *self.count.lock().unwrap() - 1 }).to_string(),
                 path if path.ends_with(".sequenceNumber") => json!({ "kind": "value", "value": 2 }).to_string(),
                 _ => String::new(),
             }
@@ -227,6 +260,11 @@ mod tests {
         }
         fn invoke(&self, path: &str, args: &str) -> String {
             self.calls.lock().unwrap().push((path.to_string(), args.to_string()));
+            // These invokables return void and the bridge answers ok either way, so a stub that
+            // never grows the plan is a stub of a plan that never accepts anything.
+            if path.contains("insert") && self.answer.get("ok").and_then(Value::as_bool) == Some(true) {
+                *self.count.lock().unwrap() += 1;
+            }
             self.answer.to_string()
         }
         fn watch(&self, _p: &[String]) {}
@@ -325,6 +363,78 @@ mod tests {
         assert_eq!(refused["reason"], "the plan is syncing with the vehicle");
     }
 
+
+    #[test]
+    fn an_insert_that_did_not_grow_the_plan_never_reaches_the_rollback() {
+        struct Deaf(Plan);
+        impl Backend for Deaf {
+            fn get(&self, path: &str) -> String { self.0.get(path) }
+            fn get_fields(&self, path: &str, fields: &str) -> String { self.0.get_fields(path, fields) }
+            fn set(&self, path: &str, value: &str) -> String { self.0.set(path, value) }
+            fn invoke(&self, path: &str, args: &str) -> String {
+                self.0.calls.lock().unwrap().push((path.to_string(), args.to_string()));
+                json!({ "ok": true }).to_string()
+            }
+            fn watch(&self, paths: &[String]) { self.0.watch(paths) }
+        }
+        let deaf = Deaf(Plan::new(flying_mission()));
+        let refused = run(&deaf, "mission.insert", "[\"survey\", 47.0, 8.0, -1]");
+        assert_eq!(refused["ok"], false);
+        assert!(refused["reason"].as_str().unwrap().contains("did not grow"));
+        let calls = deaf.0.calls.lock().unwrap();
+        assert!(calls.iter().all(|(called, _)| !called.ends_with("removeVisualItem")), "rolling back here would delete an item the operator already had");
+        assert!(calls.iter().all(|(called, _)| !called.ends_with("appendVertex")), "and shaping here would draw over one");
+    }
+
+    #[test]
+    fn a_place_the_plan_does_not_have_is_refused_before_anything_is_touched() {
+        let plan = Plan::new(flying_mission());
+        ["[\"waypoint\", 47.0, 8.0, 0]", "[\"waypoint\", 47.0, 8.0, 99]", "[\"waypoint\", 47.0, 8.0, 4]"]
+            .iter()
+            .for_each(|args| assert_eq!(run(&plan, "mission.insert", args)["ok"], false, "{args}"));
+        let calls = plan.calls.lock().unwrap();
+        assert!(calls.iter().all(|(called, _)| !called.contains("insert")), "index zero would put an item before the plan's own settings entry, and an index past the end the model inserts anyway with only a warning");
+    }
+
+    #[test]
+    fn the_question_is_asked_about_the_slot_the_item_will_follow() {
+        let plan = Plan::new(flying_mission());
+        assert_eq!(run(&plan, "mission.insert", "[\"waypoint\", 47.0, 8.0, 2]")["ok"], true);
+        let selected: Vec<i64> = plan
+            .calls
+            .lock()
+            .unwrap()
+            .iter()
+            .filter(|(path, _)| path.ends_with("setCurrentPlanViewSeqNum"))
+            .map(|(_, args)| serde_json::from_str::<Value>(args).unwrap()[0].as_i64().unwrap())
+            .collect();
+        assert_eq!(selected.len(), 1, "the plan view selects an item and inserts after it, so an insert at place two is a question about place one");
+    }
+
+    #[test]
+    fn an_orbit_height_outside_what_the_operator_can_choose_is_refused() {
+        let flying = orbiting::Flying::launched(480.0);
+        ["[47.5, 8.5, 150.0, true, -500.0]", "[47.5, 8.5, 150.0, true, 0.0]", "[47.5, 8.5, 150.0, true, 5000.0]"]
+            .iter()
+            .for_each(|args| {
+                let refused = run(&flying, "guided.orbit", args);
+                assert_eq!(refused["ok"], false, "{args} is outside the range the slider offers");
+                assert!(refused["reason"].as_str().unwrap().contains("above the launch point"));
+            });
+        assert!(flying.calls.lock().unwrap().is_empty(), "a height of minus five hundred metres is five hundred metres into the ground");
+        assert_eq!(run(&flying, "guided.orbit", "[47.5, 8.5, 150.0, true, 60.0]")["ok"], true);
+    }
+
+    #[test]
+    fn a_vehicle_that_cannot_orbit_is_not_asked_to() {
+        let mut unable = orbiting::Flying::launched(480.0);
+        unable.supported = false;
+        let refused = run(&unable, "guided.orbit", "[47.5, 8.5, 150.0, true, 60.0]");
+        assert_eq!(refused["ok"], false);
+        assert!(refused["reason"].as_str().unwrap().contains("does not support"));
+        assert!(unable.calls.lock().unwrap().is_empty(), "guidedModeOrbit returns void and shows a dialog, so asking anyway would report success while nothing was sent");
+    }
+
     #[test]
     fn the_core_only_claims_the_action_it_performs() {
         assert!(owns("mission.insert"));
@@ -338,7 +448,7 @@ mod tests {
         let plan = Plan::new(flying_mission());
         assert_eq!(run(&plan, "mission.insert", "[\"survey\", 47.0, 8.0, -1]")["ok"], true);
         let calls = plan.calls.lock().unwrap();
-        let path = "plan.missionController.visualItems.2.surveyAreaPolygon";
+        let path = "plan.missionController.visualItems.3.surveyAreaPolygon";
         assert_eq!(calls.iter().filter(|(called, _)| called == &format!("{path}.clear")).count(), 1);
         let vertices: Vec<&(String, String)> = calls.iter().filter(|(called, _)| called == &format!("{path}.appendVertex")).collect();
         assert_eq!(vertices.len(), 4, "a survey with no area draws nothing and uploads nothing, so the action gives it one");
@@ -367,7 +477,7 @@ mod tests {
     }
 
     #[test]
-    fn an_item_that_will_not_take_its_shape_is_taken_out_again() {
+    fn an_insert_the_plan_turned_down_leaves_nothing_to_roll_back() {
         let mut plan = Plan::new(flying_mission());
         plan.answer = json!({ "ok": false, "reason": "no" });
         let refused = run(&plan, "mission.insert", "[\"survey\", 47.0, 8.0, -1]");
@@ -490,22 +600,24 @@ mod removal {
 }
 
 #[cfg(test)]
-mod orbiting {
+pub(super) mod orbiting {
     use super::*;
     use std::sync::Mutex;
 
-    struct Flying {
+    pub(in crate::actions) struct Flying {
         home: Value,
-        calls: Mutex<Vec<String>>,
+        pub(in crate::actions) calls: Mutex<Vec<String>>,
         answer: Value,
+        pub(in crate::actions) supported: bool,
     }
 
     impl Flying {
-        fn launched(altitude: f64) -> Flying {
+        pub(in crate::actions) fn launched(altitude: f64) -> Flying {
             Flying {
                 home: json!({ "kind": "coordinate", "valid": true, "latitude": 47.0, "longitude": 8.0, "altitude": altitude }),
                 calls: Mutex::new(Vec::new()),
                 answer: json!({ "ok": true }),
+                supported: true,
             }
         }
     }
@@ -514,10 +626,17 @@ mod orbiting {
         fn get(&self, path: &str) -> String {
             match path {
                 "vehicle.homePosition" => self.home.to_string(),
+                "settings.flyViewSettings.guidedMinimumAltitude.rawValue" => json!({ "kind": "value", "value": 2.0 }).to_string(),
+                "settings.flyViewSettings.guidedMaximumAltitude.rawValue" => json!({ "kind": "value", "value": 121.92 }).to_string(),
                 _ => String::new(),
             }
         }
-        fn get_fields(&self, _p: &str, _f: &str) -> String { String::new() }
+        fn get_fields(&self, path: &str, _f: &str) -> String {
+            match path {
+                "vehicle" => json!({ "kind": "object", "orbitModeSupported": self.supported }).to_string(),
+                _ => String::new(),
+            }
+        }
         fn set(&self, _p: &str, _v: &str) -> String { String::new() }
         fn invoke(&self, path: &str, args: &str) -> String {
             self.calls.lock().unwrap().push(format!("{path} {args}"));
@@ -558,6 +677,7 @@ mod orbiting {
             home: json!({ "kind": "coordinate", "valid": false, "latitude": 0.0, "longitude": 0.0, "altitude": 0.0 }),
             calls: Mutex::new(Vec::new()),
             answer: json!({ "ok": true }),
+            supported: true,
         };
         let refused = run(&unlaunched, "guided.orbit", "[47.5, 8.5, 150.0, true, 60.0]");
         assert_eq!(refused["ok"], false);

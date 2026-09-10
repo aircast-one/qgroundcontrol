@@ -1288,6 +1288,15 @@ void QGCCoreCTest::_viewShapesMatchTheRecordedContract()
     }
     recorded.insert(QStringLiteral("view.contract"), take(qgc_bridge_get("view.contract")));
     recorded.insert(QStringLiteral("_neverVaried"), QJsonArray::fromStringList(fieldsThatNeverVaried(states)));
+    QStringList observed;
+    for (const QJsonObject &state : states) {
+        for (auto it = state.begin(); it != state.end(); ++it) {
+            observed.append(it.key());
+        }
+    }
+    observed.removeDuplicates();
+    observed.sort();
+    recorded.insert(QStringLiteral("_observed"), QJsonArray::fromStringList(observed));
     const QByteArray current = QJsonDocument(recorded).toJson(QJsonDocument::Indented);
 
     const QString fixture = QFileInfo(QString::fromUtf8(__FILE__)).dir().filePath(QStringLiteral("fixtures/view-shapes.json"));
@@ -1305,13 +1314,19 @@ void QGCCoreCTest::_viewShapesMatchTheRecordedContract()
     // Coarse on purpose: this run drives few states, so most of the recorded list is fields nothing
     // here moves rather than fields nothing can. What it catches is the list growing - a field that
     // used to vary and now does not, which is what all six of this week's defects looked like.
-    QSet<QString> wereVarying;
+    QSet<QString> wereConstant;
     for (const QJsonValue &field : expected.value(QStringLiteral("_neverVaried")).toArray()) {
-        wereVarying.insert(field.toString());
+        wereConstant.insert(field.toString());
+    }
+    // A field the recording never saw has no history, so it cannot have stopped varying. Without
+    // this, adding a field that is constant in these states reads as a regression in it.
+    QSet<QString> seenBefore;
+    for (const QJsonValue &field : expected.value(QStringLiteral("_observed")).toArray()) {
+        seenBefore.insert(field.toString());
     }
     QStringList stopped;
     for (const QJsonValue &field : recorded.value(QStringLiteral("_neverVaried")).toArray()) {
-        if (!wereVarying.contains(field.toString())) {
+        if (!wereConstant.contains(field.toString()) && seenBefore.contains(field.toString())) {
             stopped.append(field.toString());
         }
     }
