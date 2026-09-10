@@ -85,7 +85,16 @@ front)
     echo "FAILED: $APP never came to the front" >&2
     exit 1
     ;;
-tap)     require_front; refuse_flight_control "$2" "$3"; adb shell input tap "$2" "$3" ;;
+tap)
+    set -- "$1" ${2:-} ${3:-}
+    if [ -z "${3:-}" ]; then
+        echo "usage: ui.sh tap <x> <y>   (or ui.sh tap \"\$(ui.sh find ...)\")" >&2
+        exit 2
+    fi
+    require_front
+    refuse_flight_control "$2" "$3"
+    adb shell input tap "$2" "$3"
+    ;;
 find)
     shift
     hierarchy | python3 "$(dirname "$0")/node.py" "$@" || {
