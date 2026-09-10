@@ -79,3 +79,32 @@ class SelectedSurveyTest {
         assertNull(selectedSurvey(MapHit.SurveyVertex(9, 0), surveys))
     }
 }
+
+class CornerRemovalTest {
+    private fun polygon(corners: Int) = FencePolygon(
+        index = 0,
+        inclusion = true,
+        vertices = (0 until corners).map { TrackPoint(it.toDouble(), it.toDouble()) },
+    )
+
+    @Test
+    fun `a triangle cannot lose a corner, because the core refuses to trash the polygon`() {
+        assertFalse(cornerRemovable(polygon(3)))
+    }
+
+    @Test
+    fun `a quadrilateral can lose one`() {
+        assertTrue(cornerRemovable(polygon(4)))
+    }
+
+    @Test
+    fun `a polygon that is not there offers nothing`() {
+        assertFalse(cornerRemovable(null))
+    }
+
+    @Test
+    fun `a degenerate polygon is never offered a removal`() {
+        assertFalse(cornerRemovable(polygon(0)))
+        assertFalse(cornerRemovable(polygon(2)))
+    }
+}

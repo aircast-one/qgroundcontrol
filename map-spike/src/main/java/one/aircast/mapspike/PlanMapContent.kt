@@ -499,6 +499,14 @@ internal fun MapSpikeScreen(
                         }
 
                         fenceHit?.let { hit ->
+                            if (cornerRemovable(fences.firstOrNull { it.index == hit.polygon })) {
+                                TextButton(onClick = {
+                                    onBridge("Removing corner") {
+                                        FenceBridge.removeVertex(hit.polygon, hit.vertex)
+                                    }
+                                    selected = null
+                                }) { Text("Remove corner") }
+                            }
                             TextButton(onClick = {
                                 onBridge { FenceBridge.deletePolygon(hit.polygon) }
                                 selected = null

@@ -24,6 +24,11 @@ private fun coordinate(json: JSONObject?): TrackPoint? {
 
 private fun elements(json: JSONObject?): JSONArray? = json?.optJSONArray("elements")
 
+const val FENCE_POLYGON_MINIMUM = 3
+
+internal fun cornerRemovable(polygon: FencePolygon?): Boolean =
+    (polygon?.vertices?.size ?: 0) > FENCE_POLYGON_MINIMUM
+
 fun fencePolygons(json: JSONObject?): List<FencePolygon> {
     val list = elements(json) ?: return emptyList()
     return (0 until list.length()).mapNotNull { index ->
@@ -98,6 +103,9 @@ object FenceBridge {
 
     fun removeRallyPoint(index: Int): Boolean =
         invoke("$RALLY_ROOT.removePoint", "[\"@$RALLY_POINTS.$index\"]")
+
+    fun removeVertex(polygon: Int, vertex: Int): Boolean =
+        invoke("$FENCE_POLYGONS.$polygon.removeVertex", "[$vertex]")
 
     fun adjustVertex(polygon: Int, vertex: Int, latitude: Double, longitude: Double): Boolean =
         invoke(

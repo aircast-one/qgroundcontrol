@@ -28,7 +28,7 @@ fun planSummary(
 
     return (counts + listOfNotNull(
         missionSummary(distanceMetres, seconds).takeIf { it.isNotEmpty() },
-        selectionText(selected, items, circles),
+        selectionText(selected, items, circles, polygons),
     )).joinToString(" · ")
 }
 
@@ -36,6 +36,7 @@ private fun selectionText(
     selected: MapHit?,
     items: List<MissionItem>,
     circles: List<FenceCircle>,
+    polygons: List<FencePolygon>,
 ): String? = when (selected) {
     is MapHit.Waypoint ->
         items.firstOrNull { it.index == selected.index }
@@ -45,7 +46,8 @@ private fun selectionText(
         ?.let { "circle ${it.radius.toInt()} m" }
     is MapHit.CircleCentre -> circles.firstOrNull { it.index == selected.index }
         ?.let { "circle ${it.radius.toInt()} m" }
-    is MapHit.FenceVertex -> null
+    is MapHit.FenceVertex -> polygons.firstOrNull { it.index == selected.polygon }
+        ?.let { "corner ${selected.vertex + 1} of ${it.vertices.size}" }
     is MapHit.SurveyVertex -> null
     is MapHit.Rally -> null
     null -> null
