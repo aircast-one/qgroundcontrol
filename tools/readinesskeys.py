@@ -1,0 +1,63 @@
+#!/usr/bin/env python3
+"""Flag readiness predicates the core computes that the head never reads.
+
+The head keeps reaching for the flag whose name sounds like the question and
+getting a weaker one. Four instances so far, one of them dangerous:
+
+  blocked          vs ready           guided actions - arm stayed live on an unknown state
+  setupComplete    vs ready           Setup said "Ready to fly" ignoring sensor health
+  hasModes         vs canChangeMode   camera offered a mode change mid-recording
+  connected+syncing vs canSend        Upload overwrote a mission a vehicle was flying
+
+A capability flag says the thing exists. A readiness flag says it is allowed
+right now. Gating on the first is how a head offers what the core refused.
+
+Every hit is a question. Two known-good reasons a key lands here:
+a rule the head reimplements correctly for the narrower case it uses (fences'
+cornerRemovable), and the hub family, which is empty unless the core owns the
+link and which no head consumes.
+"""
+import re
+import sys
+from pathlib import Path
+
+QGC = Path(__file__).resolve().parents[2] / "qgroundcontrol"
+HEAD = Path(__file__).resolve().parents[1]
+
+READINESS = re.compile(r"^(can[A-Z]|ready$|ready[A-Z]|is[A-Z].*(Valid|Allowed|Permitted)$|allowed|permitted)")
+KNOWN = {"canRemoveVertex": "fences reimplement it for polygons, where the constant is right",
+         "canBeSet": "hub family - empty unless the core owns the link, no head consumes it"}
+
+
+def head_reads():
+    sources = [p for p in HEAD.rglob("src/main/java/**/*.kt") if "/build/" not in str(p)]
+    return set(re.findall(r'"([A-Za-z_][A-Za-z0-9_]*)"', "\n".join(p.read_text() for p in sources)))
+
+
+def flagged():
+    read = head_reads()
+    out = []
+    for path in sorted((QGC / "core-rs/src").rglob("*.rs")):
+        body = path.read_text(errors="ignore").split("#[cfg(test)]")[0]
+        for key in sorted(set(re.findall(r'"([a-zA-Z_]\w*)"\s*:', body))):
+            if READINESS.match(key) and key not in read:
+                out.append((path.name, key))
+    return out
+
+
+def selftest():
+    keys = {k for _, k in flagged()}
+    assert "canSend" not in keys, "the upload gate is read now; the sweep must not still flag it"
+    assert READINESS.match("canChangeMode"), "the camera key is the shape this looks for"
+    assert not READINESS.match("hasModes"), "capability flags are not readiness flags"
+    assert not READINESS.match("cancelled"), "a word starting with can is not a can-flag"
+    print("readinesskeys selftest OK")
+
+
+if __name__ == "__main__":
+    if "--selftest" in sys.argv:
+        selftest()
+    else:
+        for view, key in flagged():
+            note = KNOWN.get(key, "UNEXPLAINED - check what the head gates on instead")
+            print(f"{view:18s} {key:20s} {note}")
