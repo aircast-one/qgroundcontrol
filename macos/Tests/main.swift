@@ -2503,20 +2503,8 @@ func checkRemoteSupport() {
 }
 
 func checkSetupPages() {
-    // The names core-rs setup.rs PAGES ships. The head no longer keeps this list -- it decodes
-    // view.setup.groups -- so this is an assertion about the glyph table, not a second catalogue.
-    // The contract cannot pin it until the recorder captures view.setup.groups, which needs no
-    // vehicle and has been asked for.
-    let known = ["Summary", "Sensors", "Radio", "Frame", "Flight Modes", "Safety", "Power",
-                 "Motors", "Tuning", "Camera", "Lights", "Flight Behavior",
-                 "Remote Support", "Parameters"]
-    let symbols = known.map(SetupPage.symbol(for:))
-    expect(Set(symbols).count == symbols.count,
-           "no two pages share an icon, which is how Motors and Remote Support ended up looking alike")
-    expect(known.filter { SetupPage.symbol(for: $0) == SetupPage.unknownSymbol }
-        .joined(separator: ","), "",
-           "every page the core can list has a glyph of its own; Flight Behavior had none until "
-           + "the head stopped keeping its own page list and noticed the core had one more")
+    // The page names now come from the recorded contract, asserted both ways in the contract
+    // check. This file kept its own copy of the core's list and compared it against itself.
     expect(SetupPage.symbol(for: "Anything Unknown"), SetupPage.unknownSymbol,
            "and a page added to the core tomorrow draws as unknown rather than as something else")
 
@@ -3046,6 +3034,29 @@ func checkViewContract() {
 
     expect(recorded("view.setup.firmware").sorted().joined(separator: ","), "apm,none,px4",
            "the three firmware kinds are the three the setup pages are built for")
+
+    let setupPages = recorded("view.setup.groups[].pages[].name")
+    expect(!setupPages.isEmpty,
+           "the core records the page names it ships, generated from its own PAGES; this head "
+           + "used to keep a hand-copied copy that could not see a page the core added")
+    expect(setupPages.filter { SetupPage.symbol(for: $0) == SetupPage.unknownSymbol }
+        .sorted().joined(separator: ","), "",
+           "every page the core lists has a glyph of its own, so a page added there cannot arrive "
+           + "here drawn as a gearshape; Flight Behavior reached the sidebar that way once")
+    expect(SetupPage.glyphs.keys.filter { !setupPages.contains($0) }.sorted().joined(separator: ","), "",
+           "and this head carries no page the core never lists, which is the direction the old "
+           + "test could not check at all because it compared the copy against itself")
+    let glyphs = setupPages.map(SetupPage.symbol(for:))
+    expect(Set(glyphs).count == glyphs.count,
+           "no two pages share an icon, which is how Motors and Remote Support once looked alike")
+
+    let messageLevels = recorded("view.messages.items[].level")
+    expect(messageLevels.sorted().joined(separator: ","), "error,normal,warning",
+           "the three message levels are the three the vehicle-message row buckets by")
+    expect(messageLevels.filter { VehicleMessage.Level(rawValue: $0) == nil }
+        .joined(separator: ","), "",
+           "and every one decodes; an unrecognised level falls to normal, so a new severity would "
+           + "have shown an error in the ordinary colour rather than failing loudly")
 
     expect(recorded("view.camera.modeText").sorted().joined(separator: ","),
            "Not set,Photo,Survey,Video",
