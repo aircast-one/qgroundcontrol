@@ -28,7 +28,9 @@ struct LinkConfig: Identifiable, Equatable {
     let typeLabel: String
     let editing: Editing
     let displaySummary: String
+    let statusLine: String
     let connected: Bool
+    let heardVehicle: Bool
     let autoConnect: Bool
     let host: String
     let port: Int
@@ -51,7 +53,9 @@ struct LinkConfig: Identifiable, Equatable {
         name = (json["name"] as? String) ?? ""
         typeLabel = (json["typeLabel"] as? String) ?? ""
         displaySummary = (json["displaySummary"] as? String) ?? ""
+        statusLine = (json["statusLine"] as? String) ?? ""
         connected = (json["connected"] as? NSNumber)?.boolValue ?? false
+        heardVehicle = (json["heardVehicle"] as? NSNumber)?.boolValue ?? false
         autoConnect = (json["autoConnect"] as? NSNumber)?.boolValue ?? false
         host = (json["host"] as? String) ?? ""
         port = (json["port"] as? NSNumber)?.intValue ?? 0
@@ -60,6 +64,19 @@ struct LinkConfig: Identifiable, Equatable {
         filename = (json["filename"] as? String) ?? ""
         logFileName = (json["logFileName"] as? String) ?? ""
         lastError = (json["lastError"] as? String) ?? ""
+    }
+
+    // An open socket is not a working link: binding a UDP port cannot fail, so the head must not
+    // paint a link healthy until the core says a MAVLink packet has actually been decoded on it.
+    enum Health {
+        case closed
+        case waiting
+        case heard
+    }
+
+    var health: Health {
+        guard connected else { return .closed }
+        return heardVehicle ? .heard : .waiting
     }
 
     static func list(_ json: Any?) -> [LinkConfig] {

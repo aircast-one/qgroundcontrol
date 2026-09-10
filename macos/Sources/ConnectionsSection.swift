@@ -85,15 +85,23 @@ struct ConnectionsSection: View {
         store.adding = false
     }
 
+    static func tone(_ health: LinkConfig.Health) -> Color {
+        switch health {
+        case .closed: return .secondary.opacity(0.35)
+        case .waiting: return .orange
+        case .heard: return .green
+        }
+    }
+
     private func row(_ link: LinkConfig) -> some View {
         HStack(spacing: 12) {
             Circle()
-                .fill(link.connected ? Color.green : Color.secondary.opacity(0.35))
+                .fill(ConnectionsSection.tone(link.health))
                 .frame(width: 8, height: 8)
 
             VStack(alignment: .leading, spacing: 2) {
                 Text(link.name)
-                Text("\(link.typeLabel) · \(link.displaySummary)")
+                Text("\(link.typeLabel) · \(link.statusLine)")
                     .font(.caption)
                     .foregroundColor(.secondary)
                 if !link.lastError.isEmpty {

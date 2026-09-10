@@ -53,7 +53,14 @@ pub fn link_json(index: usize, element: &Value) -> Value {
         ("logReplay", _, true) => "No log chosen".to_string(),
         _ => summary.clone(),
     };
-    let state = if connected { "Connected" } else { "Not connected" };
+    // Binding a UDP socket cannot fail, so an open link says nothing about whether anything is
+    // on the other end. Only a decoded MAVLink packet does, which is what heardVehicle carries.
+    let heard = flag("heardVehicle");
+    let state = match (connected, heard) {
+        (false, _) => "Not connected",
+        (true, false) => "Waiting for the vehicle",
+        (true, true) => "Connected",
+    };
     let detail = summary.trim();
     let status_line = if detail.is_empty() || name.contains(detail) { state.to_string() } else { format!("{state} \u{b7} {detail}") };
     json!({
@@ -67,6 +74,7 @@ pub fn link_json(index: usize, element: &Value) -> Value {
         "displaySummary": display_summary,
         "statusLine": status_line,
         "connected": connected,
+        "heardVehicle": heard,
         "autoConnect": flag("autoConnect"),
         "dynamic": flag("dynamic"),
         "host": host,
@@ -123,7 +131,12 @@ mod tests {
         assert_eq!(tcp["editing"], "hostAndPort");
         assert_eq!(tcp["displaySummary"], "No host set");
         assert_eq!(tcp["connected"], true);
-        assert_eq!(tcp["statusLine"], "Connected");
+        assert_eq!(tcp["heardVehicle"], false);
+        assert_eq!(tcp["statusLine"], "Waiting for the vehicle");
+        let heard = link_json(0, &json!({ "name": "Ground", "settingsURL": "TcpSettings.qml", "summary": "", "children": ["link"], "heardVehicle": true }));
+        assert_eq!(heard["statusLine"], "Connected");
+        let silent = link_json(0, &json!({ "name": "Ground", "settingsURL": "TcpSettings.qml", "summary": "", "children": [], "heardVehicle": true }));
+        assert_eq!(silent["statusLine"], "Not connected");
         let udp = link_json(1, &json!({ "name": "UDP 14550", "settingsURL": "UdpSettings.qml", "summary": "14550", "localPort": 14550, "children": [] }));
         assert_eq!(udp["port"], 14550);
         assert_eq!(udp["statusLine"], "Not connected");

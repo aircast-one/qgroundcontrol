@@ -103,6 +103,21 @@ expect(link(["editing": "somethingNew"])?.editing == .unknown,
        "an editing mode this head does not know edits nothing, rather than falling into the "
        + "host-and-port form and offering fields the link has no use for")
 
+// The core's own cases from links.rs, run against this head so the two cannot drift.
+expect(link(["connected": true as NSNumber, "heardVehicle": false as NSNumber])?.health == .waiting,
+       "an open link that has heard nothing is waiting, not connected; binding a UDP socket "
+       + "cannot fail, so the head painted a green dot for a port with nothing on it")
+expect(link(["connected": true as NSNumber, "heardVehicle": true as NSNumber])?.health == .heard,
+       "a link is only healthy once a MAVLink packet has actually been decoded on it")
+expect(link(["connected": false as NSNumber, "heardVehicle": true as NSNumber])?.health == .closed,
+       "and a closed link is closed however much it heard before, so a stale heardVehicle "
+       + "cannot keep the dot lit")
+expect(link([:])?.health == .closed,
+       "a link the core said nothing about is closed rather than assumed live")
+expect(link(["statusLine": "Waiting for the vehicle"])?.statusLine ?? "",
+       "Waiting for the vehicle",
+       "and the sentence is the core's, so both heads say the same thing")
+
 expect(LinkConfig(["type": "tcp"]) == nil, "a link with no index is dropped")
 expect(LinkConfig(["index": 0 as NSNumber]) == nil, "and one with no type is dropped")
 expect(LinkConfig.list(nil).isEmpty, "no answer is no links")
@@ -2941,8 +2956,8 @@ func checkViewContract() {
         ("view.missionSeed(survey,47,8)", ["points"], ["latitude", "longitude"]),
         ("view.links", ["configured"],
          ["index", "path", "name", "type", "typeLabel", "editing", "displaySummary", "connected",
-          "autoConnect", "host", "port", "portName", "baud", "filename", "logFileName",
-          "lastError"]),
+          "heardVehicle", "statusLine", "autoConnect", "host", "port", "portName", "baud",
+          "filename", "logFileName", "lastError"]),
     ]
 
     let enumerations = (shapes["view.contract"] as? [String: Any])?["enumerations"] as? [String: Any]
@@ -3060,7 +3075,7 @@ func checkViewContract() {
         ("view.video", [], ["summary"]),
         ("view.video", ["cameras"], ["title", "status"]),
         ("view.camera", [], ["title", "modeText", "stateText", "storageText", "shotsText"]),
-        ("view.links", ["configured"], ["name", "typeLabel", "displaySummary"]),
+        ("view.links", ["configured"], ["name", "typeLabel", "displaySummary", "statusLine"]),
         ("view.mapScale(120)", [], ["text"]),
         ("view.terrainProfile", [],
          ["distanceText", "lowestText", "highestText", "minAltitudeMeters", "maxAltitudeMeters"]),

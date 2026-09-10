@@ -896,6 +896,9 @@ final class MissionStore: ObservableObject, Probeable, WriteReporting {
                 return ["ok": false, "error": "removeVertex needs which and vertex"]
             }
             let polygon = editablePolygons[which]
+            guard polygon.points.indices.contains(vertex) else {
+                return ["ok": false, "error": "no corner \(vertex) on \(polygon.path)"]
+            }
             guard PolygonEdit.removes(vertex, in: polygon) else {
                 return ["ok": false, "error": PolygonEdit.removalHint(polygon)]
             }

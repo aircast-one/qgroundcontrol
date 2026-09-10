@@ -131,6 +131,8 @@ extension LinksStore {
          "linkTypes": linkTypes, "serialPorts": serialPorts.map(\.label),
          "links": links.map { ["index": $0.index, "name": $0.name, "type": $0.typeLabel,
                                "summary": $0.displaySummary, "connected": $0.connected,
+                               "heardVehicle": $0.heardVehicle, "statusLine": $0.statusLine,
+                               "health": "\($0.health)",
                                "autoConnect": $0.autoConnect, "lastError": $0.lastError] }]
     }
 
