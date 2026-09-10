@@ -1,6 +1,6 @@
 use serde_json::{Value, json};
 
-use crate::read::{flag, integer, object, text};
+use crate::read::{integer, object, text, truthy};
 use crate::router::Backend;
 
 pub const DEPS: &[&str] = &["radioCal", "vehicles.activeVehicleAvailable"];
@@ -55,17 +55,17 @@ pub fn radio_view(backend: &dyn Backend, _args: &[String]) -> Value {
     let sticks: Vec<Value> = STICKS
         .iter()
         .map(|(key, title)| {
-            let mapped = flag(&cal, &format!("{key}ChannelMapped"));
+            let mapped = truthy(&cal, &format!("{key}ChannelMapped"));
             let pwm = integer(&cal, &format!("{key}ChannelRCValue")).unwrap_or(0);
             let value_text = match (mapped, pwm > 0) {
                 (false, _) => "Not mapped".to_string(),
                 (true, true) => pwm.to_string(),
                 (true, false) => ABSENT.to_string(),
             };
-            json!({ "key": key, "title": title, "mapped": mapped, "value": pwm, "valueText": value_text, "fraction": fraction(pwm), "reversed": integer(&cal, &format!("{key}ChannelReversed")).unwrap_or(0) != 0 })
+            json!({ "key": key, "title": title, "mapped": mapped, "value": pwm, "valueText": value_text, "fraction": fraction(pwm), "reversed": truthy(&cal, &format!("{key}ChannelReversed")) })
         })
         .collect();
-    let cancel_enabled = flag(&cal, "cancelEnabled");
+    let cancel_enabled = truthy(&cal, "cancelEnabled");
     json!({
         "kind": "object",
         "class": "Radio",
@@ -79,9 +79,9 @@ pub fn radio_view(backend: &dyn Backend, _args: &[String]) -> Value {
         "calibrating": cancel_enabled,
         "statusText": text(&cal, "statusText"),
         "nextText": text(&cal, "nextText"),
-        "nextEnabled": flag(&cal, "nextEnabled"),
+        "nextEnabled": truthy(&cal, "nextEnabled"),
         "cancelEnabled": cancel_enabled,
-        "skipEnabled": flag(&cal, "skipEnabled"),
+        "skipEnabled": truthy(&cal, "skipEnabled"),
         "transmitterMode": integer(&cal, "transmitterMode").unwrap_or(2),
         "channels": channels,
         "sticks": sticks,
@@ -134,6 +134,27 @@ mod tests {
         assert_eq!(view["calibrating"], true);
         assert_eq!(view["enoughChannels"], false);
         assert!(view["shortfall"].as_str().unwrap().starts_with("At least 5"));
+        // The same view against the declaration upstream would have written if the typo in
+        // RadioComponentController were corrected: bools where it currently sends numbers.
+        let declared_bool = radio_view(&Fake(json!({
+            "kind": "object", "channelCount": 3, "minChannelCount": 5, "rcValues": [1500, 0, 2000],
+            "rollChannelMapped": true, "rollChannelRCValue": 1500, "rollChannelReversed": true,
+            "throttleChannelMapped": false, "cancelEnabled": true, "nextText": "Next",
+        })), &[]);
+        assert_eq!(declared_bool["sticks"][0]["reversed"], true);
+        assert_eq!(declared_bool["sticks"][3]["valueText"], "Not mapped");
+        assert_eq!(declared_bool["calibrating"], true);
+
+        // And the mapped flags read the same whichever way they are declared.
+        let mapped_as_number = radio_view(&Fake(json!({
+            "kind": "object", "channelCount": 3, "minChannelCount": 5, "rcValues": [1500, 0, 2000],
+            "rollChannelMapped": 1, "rollChannelRCValue": 1500, "rollChannelReversed": 0,
+            "cancelEnabled": 1, "nextText": "Next",
+        })), &[]);
+        assert_eq!(mapped_as_number["sticks"][0]["mapped"], true);
+        assert_eq!(mapped_as_number["sticks"][0]["reversed"], false);
+        assert_eq!(mapped_as_number["calibrating"], true);
+
         let none = radio_view(&Fake(json!({ "kind": "null" })), &[]);
         assert_eq!(none["connected"], false);
         assert_eq!(none["summary"], "No vehicle is connected.");
