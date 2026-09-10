@@ -1298,6 +1298,48 @@ func checkFlyState() {
 
 checkFlyState()
 
+func checkVehicleTrack() {
+    func point(_ latitude: Double, _ longitude: Double) -> [String: Any] {
+        ["latitude": latitude as NSNumber, "longitude": longitude as NSNumber]
+    }
+    // The recorded contract has points as ["empty"], so the element shape is unpinned there and
+    // this fixture is the only thing holding it.
+    let flying = VehicleTrack(["available": true as NSNumber, "recording": true as NSNumber,
+                               "vehicleId": 1 as NSNumber, "generation": 3 as NSNumber,
+                               "dropped": 0 as NSNumber, "count": 2 as NSNumber,
+                               "points": [point(-35.36, 149.16), point(-35.361, 149.161)]])
+    expect(flying.draws, "two positions make a trail")
+    expect(flying.points.count == 2, "and both cross the bridge")
+    expect(abs(flying.points[0].latitude - -35.36) < 1e-9, "in the order they were flown")
+    expect(flying.notice, "", "a trail that has lost nothing says nothing")
+
+    expect(!VehicleTrack(["available": true as NSNumber, "count": 1 as NSNumber,
+                          "points": [point(-35.36, 149.16)]]).draws,
+           "one position is not a line, and drawing it would put a dot where the vehicle marker "
+           + "already is")
+    expect(!VehicleTrack(["available": false as NSNumber, "count": 2 as NSNumber,
+                          "points": [point(0, 0), point(1, 1)]]).draws,
+           "and a trail from no vehicle is not drawn whatever it carries")
+
+    let trimmed = VehicleTrack(["available": true as NSNumber, "dropped": 12 as NSNumber,
+                                "count": 500 as NSNumber,
+                                "points": [point(1, 1), point(2, 2)]])
+    expect(trimmed.notice, "Trail trimmed \u{2014} showing the last 500 positions of this flight.",
+           "a trail that starts mid-flight says why; without it a trimmed trail reads as a lost "
+           + "link, and the count is the core's number rather than a cap copied into this head")
+
+    expect(VehicleTrack.none.points.isEmpty && !VehicleTrack.none.draws
+           && VehicleTrack.none.notice.isEmpty,
+           "before the first read there is no trail, no drawing and nothing to explain")
+    expect(VehicleTrack(["points": [["latitude": 1 as NSNumber]]]).points.isEmpty,
+           "a point missing half its coordinate is dropped rather than read as a zero, which "
+           + "would draw the trail through Null Island")
+    expect(VehicleTrack(["vehicleId": NSNull()]).vehicleId == nil,
+           "no vehicle carries no id; the core sends null and this head must not read it as 0")
+}
+
+checkVehicleTrack()
+
 
 func checkVehicleMarker() {
     expect(VehicleMarker(latitude: nil, longitude: 149.16, heading: 0) == nil,
@@ -3026,6 +3068,8 @@ func checkViewContract() {
          ["path", "name", "label", "control", "value", "valueString", "display", "units",
           "readOnly", "options", "bits", "decimalPlaces", "minimum", "maximum", "rebootRequired",
           "vehicleRebootRequired", "applicationRestartRequired", "restartNotices"]),
+        ("view.track", [],
+         ["available", "vehicleId", "recording", "generation", "dropped", "count", "points"]),
         ("view.flyState", [],
          ["connected", "armed", "flying", "landing", "contactLost", "state", "stateText",
           "staleNotice", "mode"]),

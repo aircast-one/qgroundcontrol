@@ -42,6 +42,7 @@ final class FencePolygon: MKPolygon {
 final class SurveyPolygon: MKPolygon {}
 
 final class CorridorPolyline: MKPolyline {}
+final class TrackPolyline: MKPolyline {}
 
 final class FenceCircle: MKCircle {
     var inclusion = true
@@ -130,6 +131,7 @@ struct MissionMap: NSViewRepresentable {
     var removeVertexAt: (Int, Int) -> Void = { _, _ in }
     var splitSegment: (Int, Int) -> Void = { _, _ in }
     var overlays = FlyOverlays.none
+    var track: [GeoPoint] = []
     var follow = false
     var tracking = false
 
@@ -228,6 +230,14 @@ struct MissionMap: NSViewRepresentable {
         if placed.count > 1 {
             var coordinates = placed.map(\.coordinate)
             map.addOverlay(MKPolyline(coordinates: &coordinates, count: coordinates.count),
+                           level: .aboveLabels)
+        }
+
+        if track.count > 1 {
+            var flown = track.map {
+                CLLocationCoordinate2D(latitude: $0.latitude, longitude: $0.longitude)
+            }
+            map.addOverlay(TrackPolyline(coordinates: &flown, count: flown.count),
                            level: .aboveLabels)
         }
 
@@ -579,6 +589,12 @@ struct MissionMap: NSViewRepresentable {
             if let circle = overlay as? FenceCircle {
                 return Coordinator.fenceRenderer(MKCircleRenderer(circle: circle),
                                                  inclusion: circle.inclusion)
+            }
+            if let flown = overlay as? TrackPolyline {
+                let renderer = MKPolylineRenderer(polyline: flown)
+                renderer.strokeColor = NSColor(Overlay.vehicle).withAlphaComponent(0.85)
+                renderer.lineWidth = 2
+                return renderer
             }
             guard let line = overlay as? MKPolyline else { return MKOverlayRenderer(overlay: overlay) }
             let renderer = MKPolylineRenderer(polyline: line)

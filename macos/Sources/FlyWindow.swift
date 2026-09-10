@@ -829,6 +829,7 @@ struct FlyView: View {
                        select: { _ in }, adding: false, add: { _, _ in }, move: { _, _, _ in },
                        secondary: { mapClick.open(latitude: $0, longitude: $1, at: $2) },
                        overlays: mapClick.shownOverlays,
+                       track: fly.track.draws ? fly.track.points : [],
                        follow: fly.keepCentered,
                        tracking: fly.position != nil)
                 .ignoresSafeArea()
@@ -856,7 +857,9 @@ struct FlyView: View {
                 .frame(maxWidth: .infinity, alignment: .trailing)
 
             if !instruments.values.isEmpty {
-                InstrumentBar(instruments: instruments, notice: fly.state.staleNotice)
+                InstrumentBar(instruments: instruments,
+                              notice: fly.state.staleNotice.isEmpty
+                                  ? fly.track.notice : fly.state.staleNotice)
                     .padding(Overlay.unit)
                     .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottomLeading)
             }

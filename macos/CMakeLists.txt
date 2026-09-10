@@ -45,6 +45,7 @@ add_library(QGCNativeUI STATIC
     Sources/CachedTileOverlay.swift
     Sources/TilePyramid.swift
     Sources/MissionMap.swift
+    Sources/VehicleTrackModel.swift
     Sources/VehicleMarkerModel.swift
     Sources/MapFraming.swift
     Sources/Mission.swift

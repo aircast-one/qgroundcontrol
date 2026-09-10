@@ -6,6 +6,7 @@ final class FlyStore: ObservableObject, Probeable, WriteReporting {
 
     @Published private(set) var telemetry = FlyTelemetry()
     @Published private(set) var state = FlyState.none
+    @Published private(set) var track = VehicleTrack.none
     @Published private(set) var connected = false
     @Published private(set) var position: VehicleMarker?
     @Published private(set) var messages: [VehicleMessage] = []
@@ -69,6 +70,9 @@ final class FlyStore: ObservableObject, Probeable, WriteReporting {
 
         let read = FlyState(Bridge.group("view.flyState"))
         if read != state { state = read }
+
+        let trail = VehicleTrack(Bridge.group("view.track"))
+        if trail != track { track = trail }
 
         let vehicle = Bridge.group("vehicle")
         guard vehicle["kind"] as? String == "object" else {
@@ -223,6 +227,10 @@ final class FlyStore: ObservableObject, Probeable, WriteReporting {
          "connected": connected, "mode": state.mode, "state": state.display,
          "stateToken": state.kind.rawValue, "alarming": state.alarming,
          "contactLost": state.contactLost, "staleNotice": state.staleNotice,
+         "track": ["available": track.available, "recording": track.recording,
+                   "generation": track.generation, "dropped": track.dropped,
+                   "count": track.count, "points": track.points.count,
+                   "draws": track.draws, "notice": track.notice],
          "altitude": telemetry.altitudeText,
          "groundSpeed": telemetry.groundSpeedText,
          "keepCentered": keepCentered,
