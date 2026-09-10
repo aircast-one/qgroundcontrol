@@ -1338,6 +1338,22 @@ func checkPlanDirtyBadge() {
 
 checkPlanDirtyBadge()
 
+func checkPlanFileReports() {
+    expect(PlanFile.notSaved("route.plan").contains("route.plan"),
+           "a refused save names the file the operator chose, not a path they never typed")
+    expect(PlanFile.notSaved("route.plan").contains("Nothing was written"),
+           "and says nothing was written, because PlanMasterController::saveToFile returns false "
+           + "without creating the file and the head used to discard that bool entirely")
+    expect(PlanFile.notLoaded("route.plan").contains("unchanged"),
+           "a refused load says the existing plan survived, which is what the bridge's own "
+           + "_aRefusedLoadLeavesTheExistingPlanAlone proves actually happens")
+    expect(PlanFile.notSaved("a.plan") != PlanFile.notLoaded("a.plan"),
+           "the two failures read differently, because losing a save and failing to open a file "
+           + "call for different next moves")
+}
+
+checkPlanFileReports()
+
 
 func checkVehicleTrack() {
     func point(_ latitude: Double, _ longitude: Double) -> [String: Any] {

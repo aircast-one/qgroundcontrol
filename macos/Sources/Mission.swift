@@ -521,12 +521,14 @@ final class MissionStore: ObservableObject, Probeable, WriteReporting {
     }
 
     func save(to file: URL) {
-        Bridge.invoke("plan.saveToFile", [file.path])
+        let wrote = Bridge.invoke("plan.saveToFile", [file.path])["result"] as? NSNumber
+        if wrote?.boolValue != true { writeFailure = PlanFile.notSaved(file.lastPathComponent) }
         reload()
     }
 
     func load(from file: URL) {
-        Bridge.invoke("plan.loadFromFile", [file.path])
+        let read = Bridge.invoke("plan.loadFromFile", [file.path])["result"] as? NSNumber
+        if read?.boolValue != true { writeFailure = PlanFile.notLoaded(file.lastPathComponent) }
         reload()
     }
 
