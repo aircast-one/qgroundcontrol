@@ -240,6 +240,12 @@ private fun BitmaskPicker(fact: Fact, write: (() -> Boolean) -> Unit) {
             style = MaterialTheme.typography.bodyMedium,
             maxLines = 3,
             overflow = TextOverflow.Ellipsis,
+            modifier = Modifier.weight(1f, fill = false),
+        )
+        Icon(
+            imageVector = Icons.Default.KeyboardArrowDown,
+            contentDescription = null,
+            modifier = Modifier.padding(start = 2.dp),
         )
     }
 

@@ -37,13 +37,21 @@ fun ParametersScreen(modifier: Modifier = Modifier) {
     val ready by qgcBool("$PARAMETER_MANAGER.parametersReady")
     var search by remember { mutableStateOf("") }
     var names by remember { mutableStateOf<List<String>>(emptyList()) }
+    var descriptions by remember { mutableStateOf<Map<String, String>>(emptyMap()) }
 
     LaunchedEffect(ready) {
         names = if (!ready) emptyList() else withContext(Dispatchers.Default) { parameterNames() }
+        descriptions = emptyMap()
     }
 
-    val matches = remember(names, search) {
-        names.filter { search.isBlank() || it.contains(search, ignoreCase = true) }
+    LaunchedEffect(names) {
+        if (names.isNotEmpty()) {
+            descriptions = withContext(Dispatchers.Default) { parameterDescriptions(names) }
+        }
+    }
+
+    val matches = remember(names, descriptions, search) {
+        names.filter { parameterMatches(it, descriptions[it].orEmpty(), search) }
     }
     Column(modifier.fillMaxSize()) {
         OutlinedTextField(
@@ -96,6 +104,11 @@ private fun ParameterRow(name: String) {
     }
 }
 
+internal fun parameterMatches(name: String, description: String, search: String): Boolean =
+    search.isBlank() ||
+        name.contains(search, ignoreCase = true) ||
+        description.contains(search, ignoreCase = true)
+
 internal fun parameterSubtitle(description: String, units: String): String =
     listOf(description, units).filter { it.isNotBlank() }.joinToString(" · ")
 
@@ -104,6 +117,11 @@ private fun parameterNames(): List<String> {
         ?: return emptyList()
     return (0 until result.length()).map { result.optString(it) }.sorted()
 }
+
+private fun parameterDescriptions(names: List<String>): Map<String, String> =
+    names.mapNotNull { name ->
+        parameterFact(name)?.description?.takeIf { it.isNotBlank() }?.let { name to it }
+    }.toMap()
 
 private fun parameterFact(name: String): Fact? =
     factFromParameter(name, Qgc.get(parameterPath(name)))

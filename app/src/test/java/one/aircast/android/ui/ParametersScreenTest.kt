@@ -1,6 +1,7 @@
 package one.aircast.android.ui
 
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
@@ -20,6 +21,30 @@ class ParametersScreenTest {
         assertTrue(path.startsWith("vehicle.parameterManager."))
         assertTrue(path.endsWith("(-1,RTL_ALT)"))
     }
+
+    @Test
+    fun `a parameter is found by what it does, not only by its name`() {
+        assertTrue(parameterMatches("BATT_FS_LOW_ACT", "Low battery failsafe action", "failsafe"))
+        assertTrue(parameterMatches("BATT_FS_LOW_ACT", "Low battery failsafe action", "BATT"))
+        assertFalse(parameterMatches("BATT_FS_LOW_ACT", "Low battery failsafe action", "compass"))
+    }
+
+    @Test
+    fun `searching is case insensitive on both halves`() {
+        assertTrue(parameterMatches("RTL_ALT", "Return to launch altitude", "rtl_alt"))
+        assertTrue(parameterMatches("RTL_ALT", "Return to launch altitude", "LAUNCH"))
+    }
+
+    @Test
+    fun `a parameter whose description has not loaded yet still matches by name`() {
+        assertTrue(parameterMatches("RTL_ALT", "", "RTL"))
+        assertFalse(parameterMatches("RTL_ALT", "", "launch"))
+    }
+
+    @Test
+    fun `an empty search keeps every parameter`() {
+        assertTrue(parameterMatches("ANY", "", ""))
+    }
 }
 
 class ParameterSubtitleTest {
@@ -38,4 +63,5 @@ class ParameterSubtitleTest {
         org.junit.Assert.assertEquals("cm", parameterSubtitle("", "cm"))
         org.junit.Assert.assertEquals("", parameterSubtitle("", ""))
     }
+
 }
