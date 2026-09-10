@@ -3400,6 +3400,28 @@ centred on 180.
 and the centre is 80. Recomputing by hand rather than adjusting the code is what settled it — a
 failing test is not evidence the code is wrong, only that the two disagree.
 
+### Distance to Home had never shown a number
+
+Following the flight walk by looking at what the telemetry row does *not* say. One of its four
+readings — Distance to Home — shows `--.-- m` in every screenshot in this document, from the first
+Fly tab capture to the last. Not a formatting choice: **the sim has never sent `HOME_POSITION`**,
+`Vehicle::_updateDistanceHeadingToHome` sets the fact to NaN without one, and the field has
+therefore never once been exercised.
+
+The sim now publishes home at the centre of the orbit it already flies, which makes the reading
+predictable rather than merely present: the vehicle circles at 0.004 degrees, so the distance must
+sit between the north-south component of that radius and the east-west one at this latitude — 445 m
+and 332 m. Measured on the handset across three samples as it orbited: **441.8 m, 355.4 m,
+367.9 m.** Inside the band, moving with the vehicle.
+
+That is the seventh rig gap this session and the pattern is now the finding rather than any one
+instance. Six of the seven presented as product defects — a mapping that would not populate, sticks
+that would not move, parameters with no metadata, an accelerometer that could not be uncalibrated,
+a bitmask rendered as a float, a vehicle that was flying while parked. Every one was the rig
+feeding a screen something no real vehicle would send. **A screen that looks wrong is not evidence
+until the input is known**, and the corollary matters more: a screen that looks right is not
+evidence either, if the rig can only produce the case that looks right.
+
 ## Phase 6 — Shell · 2 weeks
 
 Cheaper than macOS, because Qt is already off the main thread.
