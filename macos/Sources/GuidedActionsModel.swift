@@ -17,6 +17,7 @@ enum GuidedAction: String, CaseIterable, Identifiable {
     case emergencyStop
     case vtolTransitionToFixedWing
     case vtolTransitionToMultiRotor
+    case forceArm
 
     var id: String { rawValue }
 
@@ -38,6 +39,7 @@ enum GuidedAction: String, CaseIterable, Identifiable {
         case .emergencyStop: return "exclamationmark.octagon"
         case .vtolTransitionToFixedWing: return "airplane"
         case .vtolTransitionToMultiRotor: return "fan.desk"
+        case .forceArm: return "exclamationmark.shield"
         }
     }
 }

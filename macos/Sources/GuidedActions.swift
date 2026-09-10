@@ -120,6 +120,7 @@ final class GuidedStore: ObservableObject, Probeable, WriteReporting {
             write("vehicle.vtolInFwdFlight", true, "the VTOL to fixed-wing flight")
         case .vtolTransitionToMultiRotor:
             write("vehicle.vtolInFwdFlight", false, "the VTOL to multi-rotor flight")
+        case .forceArm: Bridge.invoke("vehicle.forceArm")
         }
     }
 
