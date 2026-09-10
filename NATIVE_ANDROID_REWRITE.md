@@ -3012,6 +3012,34 @@ until proven and the entire point of the file is that it is recorded rather than
 procedure is one command, `QGC_RECORD_VIEW_CONTRACT=1` against the test, and the fixture belongs in
 the same commit as the change that moved the shape.
 
+### The rig now proves it commanded nothing
+
+Prompted by the macOS session finding a probe action that could upload a plan to a connected
+vehicle. Their rule — a hook for a forbidden action must be *incapable* of it, not merely unused —
+sent me to audit this rig for the same shape.
+
+**It is not here, and that is worth stating rather than inventing.** No tool in `tools/` is named
+for a flight action: there is no arm, takeoff, upload or motor helper. `ui.sh` is generic input.
+
+The real exposure is different and duller. `regress.sh` taps eight fixed coordinates, and **the
+layout has shifted under fixed coordinates twice in this session's own work** — once when the
+status strip appeared and pushed everything down about 180 px, once when the keyboard moved a
+dialog. A tap meant for a tab can land on a flight control. On the sim that is harmless; the
+CLAUDE.md standing instruction is that real devices get connected to this rig.
+
+The guard is a proof rather than a restriction, because restricting generic input would break the
+tool for its actual job. The run now greps its own sim log for evidence that it commanded the
+vehicle, and fails if it finds any — arm or disarm, takeoff, and the ids that fall through to the
+sim's generic `CMD` line: return to launch, land, flight termination, parachute, mission start.
+
+**Every branch of that pattern was checked against forms the sim really emits**, because a guard
+listing states that cannot occur is the defect this document has found four times already. Eight
+dangerous forms match; five routine ones — `CMD 512`, `MODE -> 5`, statustext, camera info,
+param set — are ignored. Then the guard was run against a real log with one `ARM` line appended
+and returned 1. It fails on demand, not only in principle.
+
+A clean run now ends with `commanded the vehicle: 0`.
+
 ## Phase 6 — Shell · 2 weeks
 
 Cheaper than macOS, because Qt is already off the main thread.
