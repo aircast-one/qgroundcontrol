@@ -3870,6 +3870,43 @@ inferred. I checked what a `QObject *` return actually serialises to, what an `@
 and whether the created object is registered anywhere — instead of stopping at "the obvious method
 is not invokable".
 
+### The class of QGC API that no bridge-based head can reach
+
+Serial link creation is one instance of something general, and it is worth stating on its own because
+it bounds what the migration can do without changing QGC.
+
+**QML can hold a C++ pointer in a JavaScript variable between calls. A path-based head cannot.**
+`LinkSettings.qml` does exactly that: `var editingConfig = _linkManager.startConfigurationEditing(object)`
+at line 187, the user edits fields on that object across several interactions, and line 287 commits it
+with `endConfigurationEditing(originalConfig, editingConfig)`. The pointer lives in the QML engine for
+the duration. A head that addresses everything by path has nowhere to put it — the bridge returns a
+`QObject *` as `objectJson`, a snapshot of values, and accepts `@path` arguments only for objects that
+are reachable by path.
+
+So the rule is: **any QGC API that hands out a transient object and expects it back is QML-only.**
+
+Swept the tree for the shape. Twenty-two `Q_INVOKABLE` declarations return a pointer, and almost all
+are harmless because they return something already addressable — `getFact`, `getParameter`,
+`getVehicleById`, `QmlObjectListModel::get`, `findKnownVehicleComponent`, and every
+`MissionController::insert*`, which lands in `visualItems` and is then `visualItems.N`. The head reads
+the result back by path and never needs the pointer.
+
+The genuine cases are both on `LinkManager`, and they are create and edit:
+
+- `createConfiguration` returns a bare `LinkConfiguration::createSettings(...)`, registered nowhere
+  until `endCreateConfiguration` calls `addConfiguration`.
+- `startConfigurationEditing` returns `LinkConfiguration::duplicateSettings(config)`, a detached copy
+  that `endConfigurationEditing` copies back and destroys.
+
+So **editing any link's settings is missing from this head too**, not only adding a serial one — and
+the core has been emitting an `editing` flag per link for a UI that cannot currently be built.
+
+The boundary is visible in what already works. `LinksScreen` connects with
+`Qgc.invoke("links.createConnectedLink", "@$LINKS_PATH.${row.index}")` — an `@path` reference to a
+configuration that *is* registered. Connect, Disconnect and Remove all work for that reason. Add
+works for UDP and TCP because `createAndConnectLink` is a one-shot that needs no handle. The three
+that fail are precisely the three that would need one.
+
 ## Phase 6 — Shell · 2 weeks
 
 Cheaper than macOS, because Qt is already off the main thread.
