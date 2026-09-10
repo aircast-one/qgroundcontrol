@@ -45,8 +45,16 @@ def flagged():
     return out
 
 
+def unexplained():
+    return [(view, key) for view, key in flagged() if key not in KNOWN]
+
+
 def selftest():
     keys = {k for _, k in flagged()}
+    assert all(k in KNOWN for _, k in flagged()), (
+        "every current hit must carry a reason; add one to KNOWN or fix the head: "
+        + ", ".join(k for _, k in unexplained())
+    )
     assert "canSend" not in keys, "the upload gate is read now; the sweep must not still flag it"
     assert READINESS.match("canChangeMode"), "the camera key is the shape this looks for"
     assert not READINESS.match("hasModes"), "capability flags are not readiness flags"
@@ -54,10 +62,26 @@ def selftest():
     print("readinesskeys selftest OK")
 
 
+def core_is_present():
+    if (QGC / "core-rs/src").is_dir():
+        return True
+    print(f"skipped: no core-rs under {QGC} - this sweep checked nothing")
+    return False
+
+
 if __name__ == "__main__":
     if "--selftest" in sys.argv:
         selftest()
+    elif not core_is_present():
+        sys.exit(0)
     else:
         for view, key in flagged():
             note = KNOWN.get(key, "UNEXPLAINED - check what the head gates on instead")
             print(f"{view:18s} {key:20s} {note}")
+        loose = unexplained()
+        if loose:
+            print(
+                f"\nreadinesskeys: {len(loose)} readiness flag(s) the core computes and the head "
+                f"never reads: {', '.join(k for _, k in loose)}"
+            )
+        sys.exit(1 if loose else 0)

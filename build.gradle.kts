@@ -10,10 +10,16 @@ val fixtureKeys by tasks.registering(Exec::class) {
     commandLine("python3", "$rootDir/tools/fixturekeys.py")
 }
 
+val readinessKeys by tasks.registering(Exec::class) {
+    description = "Fails when the core computes a readiness flag this head never reads."
+    group = "verification"
+    commandLine("python3", "$rootDir/tools/readinesskeys.py")
+}
+
 subprojects {
     plugins.withId("com.android.base") {
         tasks.matching { it.name == "check" || it.name == "test" }.configureEach {
-            dependsOn(fixtureKeys)
+            dependsOn(fixtureKeys, readinessKeys)
         }
     }
 }
