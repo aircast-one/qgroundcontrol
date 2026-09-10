@@ -1,6 +1,4 @@
 #!/bin/bash
-# Drives every surface exercised on 2026-09-08 and captures each one.
-# Usage: regress.sh <tag>
 export PATH="$PATH:$HOME/Library/Android/sdk/platform-tools"
 S="$(cd "$(dirname "$0")" && pwd)"
 TAG="${1:-run}"
@@ -22,8 +20,6 @@ shot() {
     "$S/ui.sh" shot "$S/${TAG}_$1.png" || echo "FAIL: $1"
 }
 
-# Analyze rows, with a vehicle connected: Log Download 429, Vibration 614,
-# Console 799, Inspector 984. Preflight moved to the Fly tab's Actions sheet.
 shot fly
 "$S/ui.sh" tap 573 1744; python3 -c "import time; time.sleep(3)"; shot actions
 "$S/ui.sh" key 4;   python3 -c "import time; time.sleep(2)"
@@ -34,6 +30,16 @@ shot fly
 "$S/ui.sh" key 4;   python3 -c "import time; time.sleep(2)"
 "$S/ui.sh" tap 995 2109; python3 -c "import time; time.sleep(3)"; shot settings
 "$S/ui.sh" tap 82 2109;  python3 -c "import time; time.sleep(4)"; shot flyback
+
+RTL=20; LAND=21; TERMINATE=185; PARACHUTE=208; MISSION_START=300
+FLIGHT_COMMAND="^(ARM |TAKEOFF |CMD ($RTL|$LAND|$TERMINATE|$PARACHUTE|$MISSION_START) )"
+COMMANDED=$(grep -cE "$FLIGHT_COMMAND" "$S/regress_$TAG.simlog")
+if [ "$COMMANDED" != "0" ]; then
+    echo "FAIL: the run commanded the vehicle $COMMANDED time(s) - a tap landed on a flight control"
+    grep -E "$FLIGHT_COMMAND" "$S/regress_$TAG.simlog" | sed 's/^/  /'
+    exit 1
+fi
+echo "commanded the vehicle: 0"
 
 echo "--- sim saw ---"
 grep -c "STATUSTEXT" "$S/regress_$TAG.simlog" | sed 's/^/statustext sent: /'
