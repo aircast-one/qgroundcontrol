@@ -2623,6 +2623,54 @@ telemetry is back at full brightness and the heading is moving. Worth checking r
 assuming, because a marker that latches on is worse than one that never appears — a ground
 station stuck reading "No contact" over a healthy link would teach an operator to ignore the
 warning entirely.
+### "Connected" was a word the links screen could not back up
+
+The Comm Links row is the screen an operator reaches when nothing else has worked, and its job is
+to answer one question: is my vehicle talking to this tablet? It answered a different one. A UDP
+link binds a port; binding cannot fail unless the port is taken, so `Connected` was true the
+instant the socket opened and said nothing about whether anything was on the other end. Measured
+rather than argued: a link added on port 14999 with nothing whatsoever sending to it read
+**"Connected · UDP port 14999"** in bold primary — the most confident styling on the screen.
+
+The fact that distinguishes a live link from a dead port already existed in the core.
+`LinkInterface::decodedFirstMavlinkPacket()` flips on the first frame that parses on that channel.
+It was a plain getter, invisible to the reflection bridge, and the bridge's list projection lists
+child objects by name without recursing — so no amount of head-side work could reach it through
+`links.linkConfigurations`.
+
+So it went in the core, on the object the head already reads. `LinkConfiguration` holds a weak
+pointer to its link and is the element in the list, so it gained
+`Q_PROPERTY(bool heardVehicle)` reading through that pointer, with the notify wired from a new
+`LinkInterface::decodedFirstMavlinkPacketChanged`. One field, in the JSON the head already parses,
+zero extra reads per row. Both heads get it.
+
+The row now says what is known. Not connected; **Open · nothing received yet**, in muted grey with
+no emphasis; or **Receiving from the vehicle**, bold and coloured. The confident styling is spent
+only on the state that earned it.
+
+Verified as an A/B on the handset with the port held constant and only the traffic changed: port
+14999 with nothing sending read "Open · nothing received yet"; the same row, same port, with the
+sim retargeted to 14999 read "Receiving from the vehicle" within seconds, live, without a restart.
+
+### The preflight list could not finish
+
+Raised by the macOS session, which found the mirror of it in its own head: a tick placed while a
+check was merely soft survived into a state where the check was failing. Mine has the opposite
+error and I found it by checking rather than assuming I was clean.
+
+`preflightSummary` compared the operator's tick count against `total`, which the core computes as
+every check in every group. Only a `manual` check can ever be ticked. So on any real vehicle —
+where the core measures GPS, battery and sensors itself — the denominator contains checks the
+operator cannot reach, and **"All checks done" is unreachable**. The list tells a finished operator
+they are not finished.
+
+The tell was in the test, which asserted that ticking `{"a","b","c","d"}` — four names matching no
+check on the list — produced "All 4 checks done." It was proving the bug.
+
+The count is now out of the checks the operator can actually tick, ticks are intersected with the
+current manual set so a stale one counts for nothing, and an accepted warning is named rather than
+hidden: "All 4 checks done · 1 warning."
+
 ## Phase 6 — Shell · 2 weeks
 
 Cheaper than macOS, because Qt is already off the main thread.

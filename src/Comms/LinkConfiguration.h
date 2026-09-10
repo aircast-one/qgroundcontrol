@@ -29,6 +29,7 @@ class LinkConfiguration : public QObject
     Q_PROPERTY(bool             highLatency     READ isHighLatency  WRITE setHighLatency    NOTIFY highLatencyChanged)
     Q_PROPERTY(QString          summary         READ summary                                NOTIFY summaryChanged)
     Q_PROPERTY(QString          lastError       READ lastError                              NOTIFY lastErrorChanged)
+    Q_PROPERTY(bool             heardVehicle    READ heardVehicle                           NOTIFY heardVehicleChanged)
     Q_PROPERTY(ErrorRemedy      lastErrorRemedy READ lastErrorRemedy                        NOTIFY lastErrorChanged)
 
 public:
@@ -40,6 +41,7 @@ public:
     void setName(const QString &name);
 
     LinkInterface *link() const { return _link.lock().get(); }
+    bool heardVehicle() const;
     void setLink(const std::shared_ptr<LinkInterface> link);
 
     virtual QString summary() const { return QString(); }
@@ -111,6 +113,7 @@ public:
 signals:
     void nameChanged(const QString &name);
     void linkChanged();
+    void heardVehicleChanged();
     void dynamicChanged();
     void autoConnectChanged();
     void highLatencyChanged();

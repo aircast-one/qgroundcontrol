@@ -157,7 +157,15 @@ void LinkConfiguration::setLink(const SharedLinkInterfacePtr link)
         setLastError(QString());
 
         (void) connect(link.get(), &LinkInterface::disconnected, this, &LinkConfiguration::linkChanged, Qt::QueuedConnection);
+        (void) connect(link.get(), &LinkInterface::decodedFirstMavlinkPacketChanged, this, &LinkConfiguration::heardVehicleChanged, Qt::QueuedConnection);
+        emit heardVehicleChanged();
     }
+}
+
+bool LinkConfiguration::heardVehicle() const
+{
+    const SharedLinkInterfacePtr link = _link.lock();
+    return link && link->decodedFirstMavlinkPacket();
 }
 
 void LinkConfiguration::setLastError(const QString &error, ErrorRemedy remedy)

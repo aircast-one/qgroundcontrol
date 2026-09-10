@@ -37,7 +37,13 @@ public:
     uint8_t mavlinkChannel() const;
     bool mavlinkChannelIsSet() const;
     bool decodedFirstMavlinkPacket() const { return _decodedFirstMavlinkPacket; }
-    void setDecodedFirstMavlinkPacket(bool decodedFirstMavlinkPacket) { _decodedFirstMavlinkPacket = decodedFirstMavlinkPacket; }
+    void setDecodedFirstMavlinkPacket(bool decodedFirstMavlinkPacket) {
+        if (_decodedFirstMavlinkPacket == decodedFirstMavlinkPacket) {
+            return;
+        }
+        _decodedFirstMavlinkPacket = decodedFirstMavlinkPacket;
+        emit decodedFirstMavlinkPacketChanged();
+    }
     void writeBytesThreadSafe(const char *bytes, int length);
     void addVehicleReference() { ++_vehicleReferenceCount; }
     void removeVehicleReference();
@@ -50,6 +56,7 @@ signals:
     void connected();
     void disconnected();
     void communicationError(const QString &title, const QString &error, LinkConfiguration::ErrorRemedy remedy = LinkConfiguration::RemedyRetry);
+    void decodedFirstMavlinkPacketChanged();
 
 protected:
 
