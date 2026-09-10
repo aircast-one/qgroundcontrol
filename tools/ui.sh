@@ -85,6 +85,23 @@ find)
         exit 1
     }
     ;;
+text)
+    # Reading the screen is as much a capture as a screenshot: a raw uiautomator dump
+    # off a back-press that left the app photographs whatever the operator had open.
+    if ! in_front && ! picker_in_front; then
+        echo "REFUSED: neither $APP nor a file picker it opened is in front" >&2
+        exit 1
+    fi
+    hierarchy | python3 -c '
+import re, sys, html
+seen = dict.fromkeys(
+    html.unescape(m)
+    for m in re.findall(r"(?:text|content-desc)=\"([^\"]*)\"", sys.stdin.read())
+    if m.strip()
+)
+print(" | ".join(seen))
+'
+    ;;
 pick)
     shift
     if ! in_front && ! picker_in_front; then
