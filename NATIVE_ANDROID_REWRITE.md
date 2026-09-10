@@ -3738,6 +3738,31 @@ worth building before this gate can be closed, not worth improvising blind taps 
 The regression's own screens still pass and the vehicle round trip from the previous section is
 unaffected; this is a hole in coverage, not a regression.
 
+**Closed. The round trip works, and the rig gap was smaller than it looked** (`971d82c`).
+
+Two things were wrong, neither of them resource ids. First, `ui.sh` allowed *reading* the picker —
+it is the app's own flow continuing in another process — but `tap`, `type`, `swipe` and `key` still
+required the app itself to be in front, so the save dialog could be read and never filled in. The
+flight-control guard now applies only while the app is in front, which is the only place flight
+controls exist.
+
+Second, selecting by text failed because the picker is a **grid**, not a list. Each cell has a
+clickable preview overlay at its top-right and a non-clickable label at its bottom, ~370 px apart, so
+"the node whose text is the filename" is not clickable and the clickable node carries a
+`content-desc` instead. Tapping the label's own bounds works — the clickable ancestor receives it —
+and `content-desc=Preview the file <name>` finds the cell. No new selector was needed.
+
+Walked end to end on the handset: a plan of takeoff, survey and land saved to `mission.plan` (the
+picker offers that name with the extension already on it), the plan cleared to empty and confirmed
+empty, then the file opened back — **"mission.plan · not uploaded", 1 item**, where the summary had
+read "Empty plan" the moment before. The written file is valid QGC JSON, `"fileType": "Plan"`.
+
+One dead end worth recording so it is not repeated: saving under a name with the extension deleted
+writes a valid plan file that the app will not open again. That is a self-inflicted test condition,
+not a defect — the picker offers `mission.plan` and only a deliberate deletion removes it.
+
+Both test files were removed from the handset afterwards.
+
 ### A flight action that goes grey and says nothing
 
 `view.guidedActions` gives every action an `offer` of `ready`, `blocked` or `hidden` and, when
