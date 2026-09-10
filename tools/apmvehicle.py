@@ -86,8 +86,14 @@ def main():
     for name, value in (("RTL_ALT", 1500.0), ("WPNAV_SPEED", 500.0), ("FS_THR_ENABLE", 1.0),
                         ("INS_ACCOFFS_X", 0.01), ("FRAME_CLASS", 1.0), ("FRAME_TYPE", 1.0),
                         ("FLTMODE_CH", 5.0), ("SIMPLE", 0.0), ("SUPER_SIMPLE", 0.0),
-                        ("INITIAL_MODE", 0.0), ("GRIP_ENABLE", 1.0)):
+                        ("INITIAL_MODE", 0.0), ("GRIP_ENABLE", 1.0),
+                        ("RCMAP_ROLL", 1.0), ("RCMAP_PITCH", 2.0),
+                        ("RCMAP_THROTTLE", 3.0), ("RCMAP_YAW", 4.0)):
         params[name] = value
+    for channel in range(1, 9):
+        params["RC%d_MIN" % channel] = 1100.0
+        params["RC%d_MAX" % channel] = 1900.0
+        params["RC%d_REVERSED" % channel] = 1.0 if channel == 4 else 0.0
     for slot in range(1, 7):
         params["FLTMODE%d" % slot] = float(slot)
     if os.environ.get("TRAILING_PARAM") == "1":
