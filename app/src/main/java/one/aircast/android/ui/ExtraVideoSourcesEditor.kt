@@ -40,7 +40,7 @@ private data class SourceDraft(val index: Int, val name: String, val source: Str
 fun ExtraVideoSourcesEditor(modifier: Modifier = Modifier) {
     val json by qgcString(EXTRA_SOURCES_FACT)
     val sources = remember(json) { extraSources(json) }
-    var kinds by remember { mutableStateOf(emptyList<String>()) }
+    var kinds by remember { mutableStateOf(emptyList<VideoKind>()) }
     var draft by remember { mutableStateOf<SourceDraft?>(null) }
     var notice by remember { mutableStateOf<String?>(null) }
     var undo by remember { mutableStateOf<Pair<String, String>?>(null) }
@@ -54,8 +54,9 @@ fun ExtraVideoSourcesEditor(modifier: Modifier = Modifier) {
 
     LaunchedEffect(Unit) {
         kinds = withContext(Dispatchers.Default) {
-            Qgc.factAt(VIDEO_SOURCE_FACT, Qgc.get(VIDEO_SOURCE_FACT)).enumStrings
-        }.filter { it.isNotBlank() && it != VIDEO_DISABLED }
+            val fact = Qgc.factAt(VIDEO_SOURCE_FACT, Qgc.get(VIDEO_SOURCE_FACT))
+            videoKinds(fact.enumValues, fact.enumStrings)
+        }
     }
 
     fun save(next: String) {
@@ -124,7 +125,7 @@ fun ExtraVideoSourcesEditor(modifier: Modifier = Modifier) {
         }
 
         Button(
-            onClick = { draft = SourceDraft(-1, "", kinds.firstOrNull().orEmpty(), "") },
+            onClick = { draft = SourceDraft(-1, "", kinds.firstOrNull()?.raw.orEmpty(), "") },
             modifier = Modifier.padding(16.dp),
         ) { Text("Add camera") }
     }
@@ -148,9 +149,11 @@ fun ExtraVideoSourcesEditor(modifier: Modifier = Modifier) {
                     ) {
                         kinds.forEach { kind ->
                             FilterChip(
-                                selected = kind == current.source,
-                                onClick = { draft = current.copy(source = kind) },
-                                label = { Text(kind.removeSuffix(" Video Stream").ifBlank { kind }) },
+                                selected = kind.raw == current.source,
+                                onClick = { draft = current.copy(source = kind.raw) },
+                                label = {
+                                    Text(kind.label.removeSuffix(" Video Stream").ifBlank { kind.label })
+                                },
                             )
                         }
                     }

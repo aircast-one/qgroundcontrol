@@ -75,3 +75,11 @@ internal fun extraSourceSummary(entry: ExtraVideoSource): String = when {
     entry.url.isBlank() -> "${entry.source} · no address"
     else -> "${entry.source} · ${entry.url}"
 }
+
+internal data class VideoKind(val raw: String, val label: String)
+
+internal fun videoKinds(enumValues: List<String>, enumStrings: List<String>): List<VideoKind> =
+    enumValues.indices
+        .map { VideoKind(enumValues[it], enumStrings.getOrElse(it) { enumValues[it] }) }
+        .filter { it.raw.isNotBlank() && it.raw != VIDEO_DISABLED }
+

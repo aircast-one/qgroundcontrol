@@ -74,3 +74,35 @@ class ExtraVideoSourcesTest {
             extraSourceSummary(ExtraVideoSource("x", "RTSP Video Stream", "")))
     }
 }
+
+class VideoKindTest {
+    private val raw = listOf("", "Video Stream Disabled", "RTSP Video Stream", "UDP h.264 Video Stream")
+    private val cooked = listOf("", "Video Stream Disabled", "Flux RTSP", "Flux UDP h.264")
+
+    @Test
+    fun `the chip writes the raw constant, not the label the operator reads`() {
+        val kinds = videoKinds(raw, cooked)
+
+        assertEquals(listOf("RTSP Video Stream", "UDP h.264 Video Stream"), kinds.map { it.raw })
+        assertEquals(listOf("Flux RTSP", "Flux UDP h.264"), kinds.map { it.label })
+    }
+
+    @Test
+    fun `the disabled entry and the blank are never offered as a source`() {
+        assertEquals(2, videoKinds(raw, cooked).size)
+    }
+
+    @Test
+    fun `a missing label falls back to the raw name rather than showing nothing`() {
+        val kinds = videoKinds(raw, listOf("", "Video Stream Disabled"))
+
+        assertEquals(listOf("RTSP Video Stream", "UDP h.264 Video Stream"), kinds.map { it.label })
+    }
+
+    @Test
+    fun `a translated list cannot change what gets written`() {
+        val translated = listOf("", "Video deshabilitado", "Flujo RTSP", "Flujo UDP")
+
+        assertEquals(videoKinds(raw, cooked).map { it.raw }, videoKinds(raw, translated).map { it.raw })
+    }
+}

@@ -18,6 +18,7 @@ data class Fact(
     val valueString: String,
     val value: Any?,
     val enumStrings: List<String>,
+    val enumValues: List<String> = emptyList(),
     val enumIndex: Int,
     val bitmaskStrings: List<String> = emptyList(),
     val bitmaskValues: List<Long> = emptyList(),
@@ -183,6 +184,9 @@ object Qgc {
             valueString = json.text("valueString"),
             value = json.opt("value"),
             enumStrings = (0 until (enums?.length() ?: 0)).map { enums!!.optString(it) },
+            enumValues = json.optJSONArray("enumValues")?.let { raw ->
+                (0 until raw.length()).map { raw.optString(it) }
+            } ?: emptyList(),
             enumIndex = json.optInt("enumIndex", -1),
             bitmaskStrings = json.optJSONArray("bitmaskStrings")?.let { bits ->
                 (0 until bits.length()).map { bits.optString(it) }
