@@ -654,6 +654,7 @@ About 58 developer-weeks. Flight-test time, not code, is the schedule.
 - 2026-09-09: `view.messages` items carry `level` (error, warning, normal) read from the Qt handler's style token, so heads bucket without depending on the translated severity word, and an `index` to key on.
 - 2026-09-09: PX4 MAVLink log streaming runs in the core for core-served vehicles (`qgc_core_log` start/stop/autoStart, file named as the Qt processor names it, acks, denial handling); `view.coreVehicle.log` reports it.
 - Sensor calibration moved into the Rust core (`core-rs/src/sensorcal.rs`). The PX4 `[cal]` status-text protocol and the ArduPilot compass and accelerometer flows both run there; `view.coreCalibration(id)` serves the orientations, progress, outcome and log, and `qgc_core_calibrate` takes start/cancel/next. `view.setup.groups[].pages[].completes` is gone: it encoded a head's capability, not the core's knowledge, and the two heads had already diverged on Radio.
+- Review of the calibration slice caught two defects with physical consequences: a PX4 gyro calibration asked the operator to rotate the airframe through all six orientations during a bias measurement (it shows Down only, as `SensorsComponentController.cc` does), and a PX4 stop went out unretried so one dropped datagram wedged the vehicle for the life of the link. A stalled run now ends itself after ten minutes of silence instead of refusing every later calibration.
 
 ### Stream F · Core
 

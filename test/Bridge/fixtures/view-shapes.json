@@ -135,12 +135,14 @@
                 "levelHorizon",
                 "gyro",
                 "pressure",
-                "airspeed"
+                "airspeed",
+                null
             ],
             "view.coreCalibration.calibration.outcome": [
                 "success",
                 "cancelled",
-                "failed"
+                "failed",
+                null
             ],
             "view.coreCalibration.calibration.routines[].id": [
                 "accelerometer",
@@ -156,7 +158,8 @@
                 "levelHorizon",
                 "gyro",
                 "pressure",
-                "airspeed"
+                "airspeed",
+                null
             ],
             "view.coreCalibration.calibration.sides[].stage": [
                 "waiting",
@@ -368,6 +371,13 @@
         "units": "string",
         "value": "bool",
         "valueString": "string"
+    },
+    "view.coreCalibration": {
+        "available": "bool",
+        "calibration": "null",
+        "class": "string",
+        "kind": "string",
+        "vehicleId": "null"
     },
     "view.detections": {
         "ageMs": "null",

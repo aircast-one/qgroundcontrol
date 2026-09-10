@@ -657,6 +657,34 @@ void QGCCoreCTest::_coreGuidedTakeoffReachesThePeer()
     QCOMPARE(refused.value(QStringLiteral("ok")).toBool(true), false);
     QVERIFY(!refused.value(QStringLiteral("reason")).toString().isEmpty());
 
+    const QJsonObject calNoVehicle = take(qgc_core_calibrate("{\"vehicle\":42,\"action\":\"start\",\"type\":\"gyro\"}"));
+    QCOMPARE(calNoVehicle.value(QStringLiteral("ok")).toBool(true), false);
+    QVERIFY(!calNoVehicle.value(QStringLiteral("reason")).toString().isEmpty());
+    const QJsonObject calNoType = take(qgc_core_calibrate("{\"vehicle\":9,\"action\":\"start\"}"));
+    QCOMPARE(calNoType.value(QStringLiteral("ok")).toBool(true), false);
+    const QJsonObject calStarted = take(qgc_core_calibrate("{\"vehicle\":9,\"action\":\"start\",\"type\":\"gyro\"}"));
+    QVERIFY2(calStarted.value(QStringLiteral("ok")).toBool(false), qPrintable(calStarted.value(QStringLiteral("reason")).toString()));
+    bool gyroSeen = false;
+    QTRY_VERIFY_WITH_TIMEOUT(peer.hasPendingDatagrams(), 3000);
+    while (peer.hasPendingDatagrams() && !gyroSeen) {
+        const QByteArray datagram = peer.receiveDatagram().data();
+        for (const char byte : datagram) {
+            if (mavlink_frame_char_buffer(&parsing, &parsingStatus, static_cast<uint8_t>(byte), &received, &status) == MAVLINK_FRAMING_OK && received.msgid == MAVLINK_MSG_ID_COMMAND_LONG) {
+                mavlink_command_long_t command{};
+                mavlink_msg_command_long_decode(&received, &command);
+                if (command.command == MAV_CMD_PREFLIGHT_CALIBRATION) {
+                    QCOMPARE(command.target_system, 9);
+                    QCOMPARE(command.param1, 1.0f);
+                    gyroSeen = true;
+                }
+            }
+        }
+    }
+    QVERIFY2(gyroSeen, "no PREFLIGHT_CALIBRATION reached the peer");
+    const QJsonObject calRunning = take(qgc_bridge_get("view.coreCalibration(9)")).value(QStringLiteral("calibration")).toObject();
+    QCOMPARE(calRunning.value(QStringLiteral("running")).toString(), QStringLiteral("gyro"));
+    QVERIFY(take(qgc_core_calibrate("{\"vehicle\":9,\"action\":\"cancel\"}")).value(QStringLiteral("ok")).toBool(false));
+
     config->link()->disconnect();
     QTRY_VERIFY_WITH_TIMEOUT(!coreSeesVehicle(), 10000);
     QTRY_VERIFY_WITH_TIMEOUT(!MultiVehicleManager::instance()->activeVehicle(), 10000);
@@ -1034,6 +1062,8 @@ QJsonValue mergeShapes(const QJsonValue &a, const QJsonValue &b)
     return types.join(QStringLiteral("|"));
 }
 
+constexpr int kMockStatusTextCount = 9;
+
 const char *const kViewPaths[] = {
     "view.messages", "view.plan", "view.guidedActions", "view.guidedAltitude", "view.guidedAltitude(30)",
     "view.guidedTakeoff", "view.guidedTakeoff(10)", "view.guidedSpeed", "view.guidedSpeed(3)", "view.battery",
@@ -1042,7 +1072,7 @@ const char *const kViewPaths[] = {
     "view.mapScale(120)", "view.terrainProfile", "view.missionKinds", "view.missionSeed(survey,47,8)",
     "view.calibration", "view.radio", "view.logs", "view.inspector", "view.flightModes", "view.settings",
     "view.settings(General)", "view.surveyStats(0)", "view.fences", "view.polygon", "view.setup",
-    "view.setup(Safety)", "view.video", "view.camera", "view.detections",
+    "view.setup(Safety)", "view.video", "view.camera", "view.detections", "view.coreCalibration",
 };
 
 } // namespace
@@ -1057,7 +1087,7 @@ void QGCCoreCTest::_viewShapesMatchTheRecordedContract()
     _connectMockLink(MAV_AUTOPILOT_PX4);
     QTRY_VERIFY_WITH_TIMEOUT(take(qgc_bridge_get("view.guidedActions")).value(QStringLiteral("connected")).toBool(false), 5000);
     _mockLink->sendStatusTextMessages();
-    QTRY_VERIFY_WITH_TIMEOUT(take(qgc_bridge_get("view.messages")).value(QStringLiteral("count")).toInt() > 0, 5000);
+    QTRY_VERIFY_WITH_TIMEOUT(take(qgc_bridge_get("view.messages")).value(QStringLiteral("count")).toInt() >= kMockStatusTextCount, 5000);
 
     QJsonObject recorded;
     for (const char *path : kViewPaths) {

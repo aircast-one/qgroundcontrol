@@ -6,7 +6,11 @@ use crate::view::VIEWS;
 pub const DEPS: &[&str] = &[];
 
 fn routine_ids() -> Vec<&'static str> {
-    vec!["accelerometer", "compass", "levelHorizon", "gyro", "pressure", "airspeed"]
+    crate::sensorcal::KINDS.iter().map(|(_, id, _)| *id).collect()
+}
+
+fn routine_ids_or_null() -> Vec<Value> {
+    routine_ids().iter().map(|id| json!(id)).chain(std::iter::once(Value::Null)).collect()
 }
 
 pub fn enumerations() -> Value {
@@ -33,11 +37,11 @@ pub fn enumerations() -> Value {
         "view.setup.firmware": ["none", "apm", "px4"],
         "view.setup.groups[].pages[].name": crate::setup::PAGES.iter().flat_map(|(_, pages)| pages.iter().copied()).collect::<Vec<_>>(),
         "view.messages.items[].level": ["normal", "warning", "error"],
-        "view.coreCalibration.calibration.running": routine_ids(),
-        "view.coreCalibration.calibration.last": routine_ids(),
+        "view.coreCalibration.calibration.running": routine_ids_or_null(),
+        "view.coreCalibration.calibration.last": routine_ids_or_null(),
         "view.coreCalibration.calibration.routines[].id": routine_ids(),
         "view.coreCalibration.calibration.sides[].stage": ["waiting", "inProgress", "done"],
-        "view.coreCalibration.calibration.outcome": ["success", "cancelled", "failed"],
+        "view.coreCalibration.calibration.outcome": ["success", "cancelled", "failed", null],
         "view.fences.polygons[].shape": ["polygon"],
         "view.fences.circles[].shape": ["circle"],
         "view.guidedSpeed.command": ["guidedModeChangeGroundSpeedMetersSecond", "guidedModeChangeEquivalentAirspeedMetersSecond"],
@@ -71,9 +75,9 @@ mod tests {
         assert!(VIEWS.iter().any(|v| v.path == "view.contract"));
         let pages: Vec<Value> = crate::setup::PAGES.iter().flat_map(|(_, pages)| pages.iter().map(|p| json!(p))).collect();
         assert_eq!(listed["view.setup.groups[].pages[].name"], Value::Array(pages), "the setup page names are the list the core ships, so a head can pin its glyph table against it");
-        let routines: Vec<Value> = routine_ids().iter().map(|id| json!(id)).collect();
-        assert_eq!(listed["view.coreCalibration.calibration.routines[].id"], Value::Array(routines));
-        assert!(routine_ids().iter().all(|id| crate::sensorcal::Kind::parse(id).is_some()), "every listed routine is a kind the core accepts");
-        assert!(["normal", "warning", "error"].iter().all(|level| crate::messages::level_of(match *level { "error" => "#E", "warning" => "#I", _ => "" }) == *level));
+        let routines: Vec<Value> = crate::sensorcal::KINDS.iter().map(|(_, id, _)| json!(id)).collect();
+        assert_eq!(listed["view.coreCalibration.calibration.routines[].id"], Value::Array(routines), "every calibration the core accepts is listed, and nothing else is");
+        assert!(listed["view.coreCalibration.calibration.running"].as_array().unwrap().contains(&Value::Null), "a vehicle that has never calibrated answers null, so null is part of the contract");
+        assert!(listed["view.messages.items[].level"].as_array().unwrap().iter().all(|level| crate::messages::LEVELS.contains(&level.as_str().unwrap())));
     }
 }

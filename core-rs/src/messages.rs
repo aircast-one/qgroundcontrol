@@ -20,6 +20,8 @@ pub fn parse(formatted: &str) -> Vec<Message> {
         .collect()
 }
 
+pub const LEVELS: &[&str] = &["normal", "warning", "error"];
+
 pub fn level_of(style: &str) -> &'static str {
     match (style.contains("#E"), style.contains("#I")) {
         (true, _) => "error",

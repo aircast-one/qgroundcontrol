@@ -126,6 +126,15 @@ mod tests {
     }
 
     #[test]
+    fn nothing_offered_here_spins_a_propeller() {
+        let spins = ["calibrateMotorInterference", "compassMot", "motorTest"];
+        for routine in ROUTINES {
+            assert!(!spins.contains(&routine.method), "{} spins a propeller", routine.method);
+        }
+        assert!(spins.contains(&"calibrateMotorInterference"));
+    }
+
+    #[test]
     fn compass_and_level_wait_for_the_accelerometer() {
         let view = calibration_view(&Fake(json!({ "kind": "object", "accelSetupNeeded": true, "compassSetupNeeded": true })), &[]);
         let routines = view["routines"].as_array().unwrap();
