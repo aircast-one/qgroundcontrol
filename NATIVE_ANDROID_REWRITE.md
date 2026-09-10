@@ -4172,6 +4172,21 @@ the parent, with `planView.map: flyView.mapControl` — invisible, because the h
 QtCharts, QtMultimedia and QtPositioning into the AAR, and it is the substance behind "expect the
 82 MB AAR to roughly halve".
 
+**Both are now gone** (`86359dffe`). Nothing native needed them: the bridge owns its own
+`PlanMasterController`, created — as the comment at `QGCBridgeCore.cc:67` says — because native
+frontends have no QML view to own one, so `plan.*` never went through `flyView.planController`. The
+three `globals` properties that reached into `flyView` are read only by QGC QML loaded through
+`toolLoader`, and `toolLoader` is never active here, because `showTool` is only ever called from
+`MainWindow.qml` while this host's navigation functions emit `navigateRequest` instead.
+
+Verified on the handset: the app starts, all five tabs render, video still binds its nine native
+sinks, and there is no QML error or crash after touring every tab.
+
+**The AAR did not shrink** — 81.2 MB before and after. Removing the usage does not unlink QtQuick,
+QtLocation, QtCharts, QtMultimedia and QtPositioning; that needs the Android dependency set edited,
+and this change is what makes that possible rather than what does it. Worth stating plainly, because
+"expect the AAR to roughly halve" is the sort of claim that gets read as already banked.
+
 **It is not, however, the Plan-entry stall.** The head sets `page` on every tab change, which drives
 `flyViewActive`, which drives `planView.planActive` — so switching to Plan activates a second,
 invisible plan view, which is a good story for the ~930 ms. Tested by not setting `page` at all, so
