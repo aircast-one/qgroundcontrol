@@ -3279,6 +3279,43 @@ Their other warning does not reach this head: `sourceNeedsUrl` lists the same si
 address. That list is still a hand-copy of the core's constants and would drift in silence if a
 source were renamed — recorded, not fixed.
 
+### What the QML host still does, read rather than assumed
+
+Phase 6 says delete the `QtQuickView` host. Before planning that, it is worth writing down what
+the host is actually still doing, because three of its four connections to the head turn out to be
+different from each other in ways the plan treated as one thing.
+
+**`toolSource` is dead and now deleted from the head.** Every tab in the `Tab` enum declared its
+tool as `""`, so `appliedTool != tab.tool` was never true, `setProperty("toolSource", …)` never
+executed, and `toolLoader.active` was permanently false. The head was carrying a field, a default
+constant, a state variable and a branch for a property it could not write. `showTool` in
+`AndroidHost.qml` is only ever called from the desktop `MainWindow.qml`, so the QML side is
+untouched. Regression green afterwards, all six surfaces and all six tabs.
+
+**`page` is not dead, and the reason is worth recording.** `renderViews: false` stops `FlyView` and
+`PlanView` *drawing*; it does not stop them existing. Both are still instantiated and their
+bindings still evaluate, and `page` drives `flyViewActive`, which drives `PlanView.planActive`.
+That is the same fact behind the earlier measurement that shrinking the view doubled CPU — the
+views are alive either way. So `page` stays until the views are gone, not merely hidden.
+
+**`navigateRequest` is live and must survive.** `AutoPilotPlugin` calls
+`qgcApp()->showVehicleConfig()`, which does `QMetaObject::invokeMethod(_rootQmlObject(),
+"showVehicleConfig")`, which emits `navigateRequest("setup")` and moves the head to the Setup tab.
+That is C++ asking the head to navigate, and deleting the host without replacing it would silently
+lose it.
+
+**Two things attach to the host that are not navigation at all.** `Component.onCompleted` calls
+`QGroundControl.corePlugin.setupEmbeddedEngine(mainWindow)`, and a 300 ms repeating timer calls
+`QGroundControl.videoManager.initForItem(mainWindow)` until it succeeds. The second is the one to
+check before deletion: the head switched video to `video.setNativeRendering(true)`, so whether the
+video manager still needs a `QQuickItem` on Android is now an open question rather than an
+assumption, and it decides whether Phase 6 is a boot-path change or a boot-path change plus a video
+change.
+
+AAR today: **81 MB**. The plan's estimate that it roughly halves once QtQuick, QtQml, QtGui,
+QtLocation, QtMultimedia, QtCharts, QtWidgets and QtPositioning drop out is untested and stays an
+estimate.
+
 ## Phase 6 — Shell · 2 weeks
 
 Cheaper than macOS, because Qt is already off the main thread.
