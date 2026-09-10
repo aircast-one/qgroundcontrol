@@ -9,7 +9,11 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.layout.Box
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.HorizontalDivider
+import androidx.compose.material3.TextButton
 import androidx.compose.material3.ListItem
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.MaterialTheme
@@ -45,7 +49,17 @@ internal data class InspectorMessage(
     val path: String,
     val compId: Int,
     val title: String,
+    val targetRateTitle: String = "",
 )
+
+internal data class InspectorRate(val rate: Int, val title: String)
+
+internal fun inspectorRateChoices(view: JSONObject?): List<InspectorRate> {
+    val items = view?.optJSONArray("rateChoices") ?: return emptyList()
+    return (0 until items.length()).mapNotNull { index ->
+        items.optJSONObject(index)?.let { InspectorRate(it.optInt("rate"), it.optString("title")) }
+    }.filter { it.title.isNotBlank() }
+}
 
 internal data class InspectorField(
     val name: String,
@@ -66,6 +80,7 @@ internal fun inspectorMessages(view: JSONObject?): List<InspectorMessage> {
                 path = message.optString("path"),
                 compId = message.optInt("compId"),
                 title = message.optString("title").ifBlank { message.optString("name") },
+                targetRateTitle = message.optString("targetRateTitle"),
             )
         }
     }.sortedBy { it.name }
@@ -94,6 +109,35 @@ internal fun messageIndexIn(messagePath: String): Int =
 
 private fun selectMessage(messagePath: String) {
     offMainDetached { Qgc.set(selectedPathFor(messagePath), messageIndexIn(messagePath)) }
+}
+
+private fun requestRate(messagePath: String, rate: Int) {
+    offMainDetached {
+        Qgc.set(selectedPathFor(messagePath), messageIndexIn(messagePath))
+        Qgc.invoke("mavlinkInspector.setMessageInterval", rate)
+    }
+}
+
+@Composable
+private fun RatePicker(messagePath: String, current: String, choices: List<InspectorRate>) {
+    var open by remember { mutableStateOf(false) }
+    if (choices.isEmpty()) return
+    Box {
+        TextButton(onClick = { open = true }) {
+            Text(if (current.isBlank()) "Set rate" else "Rate: $current")
+        }
+        DropdownMenu(expanded = open, onDismissRequest = { open = false }) {
+            choices.forEach { choice ->
+                DropdownMenuItem(
+                    text = { Text(choice.title) },
+                    onClick = {
+                        open = false
+                        requestRate(messagePath, choice.rate)
+                    },
+                )
+            }
+        }
+    }
 }
 
 internal fun openMessageIn(messages: List<InspectorMessage>, path: String?): InspectorMessage? =
@@ -168,7 +212,14 @@ fun InspectorScreen(modifier: Modifier = Modifier) {
                     text = open.name,
                     style = MaterialTheme.typography.titleSmall,
                     fontFamily = FontFamily.Monospace,
+                    modifier = Modifier.weight(1f),
                 )
+            }
+            Row(
+                modifier = Modifier.fillMaxWidth().padding(horizontal = 8.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                RatePicker(open.path, open.targetRateTitle, inspectorRateChoices(inspectorJson))
             }
             HorizontalDivider()
             FieldList(open.path, Modifier.weight(1f))

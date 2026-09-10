@@ -3,6 +3,7 @@ package one.aircast.android.ui
 import org.json.JSONObject
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull
+import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class InspectorScreenTest {
@@ -126,5 +127,40 @@ class InspectorOpenMessageTest {
             selectedPathFor("mavlinkInspector.systems.2.messages.11"),
         )
         assertEquals(11, messageIndexIn("mavlinkInspector.systems.2.messages.11"))
+    }
+}
+
+class InspectorRateTest {
+    @Test
+    fun `no view offers no rates`() {
+        assertTrue(inspectorRateChoices(null).isEmpty())
+    }
+
+    @Test
+    fun `rate choices come from the core with their titles`() {
+        val view = JSONObject(
+            """{"rateChoices":[{"rate":-1,"title":"Disabled"},{"rate":0,"title":"Default"},{"rate":10,"title":"10 Hz"}]}""",
+        )
+        val choices = inspectorRateChoices(view)
+        assertEquals(3, choices.size)
+        assertEquals(-1, choices[0].rate)
+        assertEquals("Disabled", choices[0].title)
+        assertEquals("10 Hz", choices[2].title)
+    }
+
+    @Test
+    fun `a choice with no title is not offered`() {
+        val view = JSONObject("""{"rateChoices":[{"rate":5,"title":""},{"rate":6,"title":"6 Hz"}]}""")
+        val choices = inspectorRateChoices(view)
+        assertEquals(1, choices.size)
+        assertEquals(6, choices[0].rate)
+    }
+
+    @Test
+    fun `the target rate title is decoded onto the message`() {
+        val view = JSONObject(
+            """{"messages":[{"index":0,"id":30,"name":"ATTITUDE","targetRateTitle":"10 Hz"}]}""",
+        )
+        assertEquals("10 Hz", inspectorMessages(view)[0].targetRateTitle)
     }
 }
