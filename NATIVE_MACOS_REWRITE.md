@@ -511,6 +511,35 @@ read-only fixes shipped unverified because they were *gates* that fail closed, a
 *capability* that erases state on an aircraft. It goes on the list until someone with a vehicle can
 run it.
 
+### The 3D Viewer settings page outlives the thing it configures (2026-09-10)
+
+Resolved the question this document left open. **This head does offer a 3D Viewer settings page** —
+one of fifteen, confirmed by opening the Settings window and reading the probe rather than guessing
+from a closed one. It carries four editable controls: "Enable the 3D viewer" (a toggle, currently
+false), an OSM file path, a building level height and an altitude bias. All four are writable and
+this head reads none of them.
+
+That is not a dead control **today**. The settings file is shared with the QML app, so enabling the
+viewer here enables it there. It becomes dead at Phase 6, and that is the point worth recording.
+
+Checked whether the problem is general by asking, for all 22 settings groups, which have facts no
+head reads. Eleven came back — and **all eleven are false alarms**: `AutoConnect`, `RTK`,
+`GimbalController`, `APMMavlinkStreamRate` and the rest are consumed by C++ that survives Phase 6,
+so an operator flipping them changes real behaviour whether or not a head reads the value. Consumed
+another way, again.
+
+`Viewer3D` is the only genuine case. Every consumer of its four facts is either the settings
+plumbing that merely stores them (`Viewer3DSettings`, `SettingsManager`) or `src/Viewer3D/` and its
+QML — and `src/Viewer3D/CMakeLists.txt` links `Qt6::Quick3D`, which goes when QtQuick does.
+
+**So Phase 6 has to decide between two things it currently has neither of.** Either the 3D viewer is
+rebuilt natively — SceneKit or RealityKit, which is a rewrite of a feature and not a port of one —
+or the viewer and its settings group are deleted together. What must not happen is the viewer going
+and the page staying, which would leave an operator four controls for a feature that no longer
+exists, with the enable toggle sitting at the top of them.
+
+Not urgent: `enabled` defaults to false, so nobody meets this unless they go looking.
+
 ### The capability-versus-readiness sweep, and how to run it properly (2026-09-10)
 
 Both heads hit the same shape four times: **the head reached for the predicate whose name sounded
