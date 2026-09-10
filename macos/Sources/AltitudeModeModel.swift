@@ -45,10 +45,6 @@ struct AltitudeMode: Identifiable, Equatable {
         choices.contains { $0.raw == raw }
     }
 
-    static func usesTerrain(_ raw: Int) -> Bool {
-        raw == calcAboveTerrainRaw || raw == terrainFrameRaw
-    }
-
     static func read(_ json: Any?) -> Int {
         (json as? NSNumber)?.intValue ?? none
     }
