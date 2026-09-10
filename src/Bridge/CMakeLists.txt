@@ -2,6 +2,8 @@ target_sources(${CMAKE_PROJECT_NAME}
     PRIVATE
         QGCBridgeC.cc
         QGCBridgeC.h
+        QGCHostNotices.cc
+        QGCHostNotices.h
         QGCBridgeCore.cc
         QGCBridgeCore.h
         QGCCoreC.h
