@@ -128,7 +128,7 @@ internal fun MapSpikeScreen(
     fun addMissionItem(kindId: String, label: String, at: TrackPoint?, index: Int = AT_END) {
         scope.launch {
             if (at == null) {
-                busy = "$label needs somewhere to put it"
+                busy = "Move the map to where this should go"
                 delay(FAILURE_MESSAGE_MS)
                 busy = null
                 return@launch
