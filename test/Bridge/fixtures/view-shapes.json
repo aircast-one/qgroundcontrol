@@ -198,7 +198,8 @@
                 "release",
                 "emergencyStop",
                 "vtolTransitionToFixedWing",
-                "vtolTransitionToMultiRotor"
+                "vtolTransitionToMultiRotor",
+                "forceArm"
             ],
             "view.guidedActions.actions[].offer": [
                 "hidden",

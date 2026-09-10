@@ -88,6 +88,7 @@ pub enum Action {
     EmergencyStop,
     VtolTransitionToFixedWing,
     VtolTransitionToMultiRotor,
+    ForceArm,
 }
 
 pub const ACTIONS: &[Action] = &[
@@ -107,6 +108,7 @@ pub const ACTIONS: &[Action] = &[
     Action::EmergencyStop,
     Action::VtolTransitionToFixedWing,
     Action::VtolTransitionToMultiRotor,
+    Action::ForceArm,
 ];
 
 #[derive(Serialize, PartialEq, Debug)]
@@ -140,6 +142,7 @@ impl Action {
             Action::EmergencyStop => "Emergency Stop",
             Action::VtolTransitionToFixedWing => "Transition to Fixed Wing",
             Action::VtolTransitionToMultiRotor => "Transition to Multi-Rotor",
+            Action::ForceArm => "Force Arm",
         }
     }
 
@@ -161,6 +164,7 @@ impl Action {
             Action::EmergencyStop => "Stop the motors immediately. The vehicle will fall.",
             Action::VtolTransitionToFixedWing => "Transition VTOL to fixed wing flight.",
             Action::VtolTransitionToMultiRotor => "Transition VTOL to multi-rotor flight.",
+            Action::ForceArm => "Arm the vehicle without its safety checks. Propellers will be live.",
         }
     }
 
@@ -190,6 +194,7 @@ impl Action {
                 Action::EmergencyStop => s.armed && s.flying,
                 Action::VtolTransitionToFixedWing => s.vtol && s.flying && !s.vtol_in_fwd_flight,
                 Action::VtolTransitionToMultiRotor => s.vtol && s.flying && s.vtol_in_fwd_flight,
+                Action::ForceArm => !s.armed && !s.can_arm,
             }
     }
 
@@ -219,7 +224,7 @@ impl Action {
             prompt: self.prompt(),
             offer,
             reason,
-            destructive: self == Action::EmergencyStop,
+            destructive: matches!(self, Action::EmergencyStop | Action::ForceArm),
             carries_value: self.carries_value(),
         }
     }
@@ -375,6 +380,22 @@ mod tests {
         assert_eq!(offer_of(&done, Action::ContinueMission), "hidden");
         let ground = GuidedState { armed: false, flying: false, ..mid };
         assert_eq!(offer_of(&ground, Action::StartMission), "ready");
+    }
+
+    #[test]
+    fn force_arm_appears_only_where_the_ordinary_arm_was_refused() {
+        let ready = ready_on_ground();
+        assert_eq!(offer_of(&ready, Action::Arm), "ready");
+        assert_eq!(offer_of(&ready, Action::ForceArm), "hidden", "a vehicle that will arm normally is never offered the way past its checks");
+        let refused = GuidedState { can_arm: false, ..ready_on_ground() };
+        assert_eq!(offer_of(&refused, Action::Arm), "blocked", "the ordinary arm is blocked by the failing checks");
+        assert_eq!(offer_of(&refused, Action::ForceArm), "ready", "force arm is the escape hatch, so the checks that refused the arm do not gate it");
+        let force = Action::ForceArm.offer(&refused);
+        assert!(force.destructive, "bypassing the safety checks is destructive and a head must say so");
+        assert!(!force.carries_value);
+        assert!(!Action::Arm.offer(&ready).destructive, "the ordinary arm is not the destructive one");
+        let armed = GuidedState { armed: true, can_arm: false, ..ready_on_ground() };
+        assert_eq!(offer_of(&armed, Action::ForceArm), "hidden");
     }
 
     #[test]
