@@ -47,6 +47,11 @@ struct ModeSlots: Equatable {
     // position happens to hold the mode the vehicle is flying. Two positions set to the same mode
     // both matched that older test, and a mode chosen from the ground station matched whichever
     // position held it while the switch sat somewhere else entirely.
+    //
+    // Requiring available as well guards a partial decode HERE, not a core that contradicts
+    // itself: the core pins as an invariant that liveSlot is 0 and no slot carries live in every
+    // absent state, so those two cannot disagree. Naming which one it defends against is the
+    // point - an unexplained defensive check reads as superstition and gets deleted.
     func isLive(_ position: Int) -> Bool {
         available && liveSlot == position && slots.contains { $0.slot == position && $0.live }
     }
