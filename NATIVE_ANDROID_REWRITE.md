@@ -2870,6 +2870,33 @@ Also deleted: a `reloads` counter incremented by the fact row's callback and rea
 Nothing recomposes on a state that has no reader, so it was not a refresh mechanism, only the
 shape of one.
 
+### A green suite described a tree that was not committed
+
+The start-of-turn index check — run unscoped this time, after the other head pointed out that a
+path-scoped one is blind by construction — found 34 files in `aircast-android` differing from
+HEAD. They were not a peer's work. They were mine, reverted by my own commit.
+
+`a3330b9`, whose message describes a two-file change to the links screen, actually wrote **37
+files, 360 insertions, 856 deletions**. It undid the `view.messages` "items" key fix, the arming
+predicate, `ui.sh`'s input guard and five test files. The cause is the one already written down
+and not applied here: in this repo I used plain `git add <paths> && git commit`, and `git commit`
+writes the *whole* index, so it took every stale blob the shared index was holding. Every android
+commit after it was correctly scoped, because that one had already absorbed the stale index.
+
+**The reason six commits passed before it was noticed is the part worth keeping. `./gradlew test`
+builds the working tree, not HEAD.** Every "289 tests green" in this document was measuring disk,
+and so was every APK verified on the handset. Both were true and neither said anything about what
+had been committed. A test suite cannot detect a bad commit, because it never reads one.
+
+So the check is not whether the tests pass. It is whether `git diff HEAD --stat` is **empty** —
+only then does a passing suite describe the commit rather than the desk it was written on. That
+now runs after committing, not before.
+
+Repaired in `311ca37` by re-landing the working tree, which had held the correct content
+throughout; `git diff HEAD` is empty and HEAD now contains the symbols the device was verified
+against. No work was lost, because nothing had been rebuilt from HEAD in between — which is luck,
+not a mitigation.
+
 ## Phase 6 — Shell · 2 weeks
 
 Cheaper than macOS, because Qt is already off the main thread.
