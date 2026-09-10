@@ -1,9 +1,9 @@
 use serde_json::{Value, json};
 
-use crate::read::{integer, object, text};
+use crate::read::{object, result_flag, value_number};
 use crate::router::Backend;
 
-pub const DEPS: &[&str] = &["vehicles.activeVehicleAvailable", "vehicle.apmFirmware", "radioCal"];
+pub const DEPS: &[&str] = &["vehicles.activeVehicleAvailable", "vehicle.apmFirmware", "radioCal.rcValues"];
 
 pub const SLOTS: usize = 6;
 pub const CHANNEL_OPTIONS: usize = 11;
@@ -24,27 +24,46 @@ pub fn option_enabled(pwm: Option<i64>) -> bool {
     pwm.is_some_and(|value| value > OPTION_ON_ABOVE)
 }
 
-fn names(rover: bool) -> (String, String) {
-    match rover {
-        true => ("MODE_CH".to_string(), "MODE".to_string()),
-        false => ("FLTMODE_CH".to_string(), "FLTMODE".to_string()),
+// Which parameters name the slots is decided by which ones the vehicle has, exactly as the Qt
+// controller decides it. A rover names them MODE1 to MODE6 and its channel MODE_CH. Asking the
+// vehicle type instead would be asking a different question and getting it wrong for a VTOL.
+fn names(backend: &dyn Backend) -> (&'static str, &'static str) {
+    match exists(backend, "MODE_CH") {
+        true => ("MODE_CH", "MODE"),
+        false => ("FLTMODE_CH", "FLTMODE"),
     }
 }
 
-fn parameter(backend: &dyn Backend, name: &str) -> Option<Value> {
+fn exists(backend: &dyn Backend, name: &str) -> bool {
+    result_flag(&backend.invoke("vehicle.parameterManager.parameterExists", &json!([-1, name]).to_string()))
+}
+
+// A serialised fact carries value and not rawValue, so reading rawValue out of the fact object
+// finds nothing and every vehicle looks like it has no such parameter. rawValue resolves as a path
+// segment because Fact declares it, which is the form the rest of the core uses.
+fn parameter(backend: &dyn Backend, name: &str) -> Option<f64> {
+    exists(backend, name).then(|| value_number(&backend.get(&format!("vehicle.parameterManager.getParameter(-1,{name}).rawValue")))).flatten()
+}
+
+fn parameter_text(backend: &dyn Backend, name: &str) -> Option<String> {
     let fact = object(&backend.get(&format!("vehicle.parameterManager.getParameter(-1,{name})")));
-    (fact.get("kind").and_then(Value::as_str) == Some("fact")).then_some(fact)
+    match fact.get("kind").and_then(Value::as_str) == Some("fact") {
+        true => fact.get("enumOrValueString").and_then(Value::as_str).filter(|mode| !mode.is_empty()).map(str::to_string),
+        false => None,
+    }
 }
 
 pub fn slots_view(backend: &dyn Backend, _args: &[String]) -> Value {
-    let vehicle = object(&backend.get_fields("vehicle", "apmFirmware,vehicleType"));
+    let vehicle = object(&backend.get_fields("vehicle", "apmFirmware"));
     if vehicle.get("kind").and_then(Value::as_str) != Some("object") {
         return json!({ "kind": "object", "class": "ModeSlots", "available": false, "slots": [], "liveSlot": 0, "channel": 0, "reason": "No vehicle is connected." });
     }
-    let rover = text(&vehicle, "vehicleType") == "Rover";
-    let (channel_name, slot_prefix) = names(rover);
+    let (channel_name, slot_prefix) = names(backend);
+    if !exists(backend, &format!("{slot_prefix}1")) {
+        return json!({ "kind": "object", "class": "ModeSlots", "available": false, "slots": [], "liveSlot": 0, "channel": 0, "reason": "This vehicle does not choose its flight modes from a transmitter channel." });
+    }
 
-    let channel_index = parameter(backend, &channel_name).and_then(|fact| integer(&fact, "rawValue")).map(|value| value - 1).unwrap_or(DEFAULT_CHANNEL_INDEX);
+    let channel_index = parameter(backend, channel_name).map(|value| value as i64 - 1).unwrap_or(DEFAULT_CHANNEL_INDEX);
     let radio = object(&backend.get_fields("radioCal", "rcValues,channelCount"));
     let pwm: Vec<i64> = radio.get("rcValues").and_then(Value::as_array).map(|values| values.iter().filter_map(Value::as_i64).collect()).unwrap_or_default();
     let reachable = channel_index >= 0 && (channel_index as usize) < pwm.len();
@@ -55,10 +74,9 @@ pub fn slots_view(backend: &dyn Backend, _args: &[String]) -> Value {
 
     let slots: Vec<Value> = (0..SLOTS)
         .map(|index| {
-            let named = parameter(backend, &format!("{slot_prefix}{}", index + 1));
             json!({
                 "slot": index + 1,
-                "mode": named.as_ref().map(|fact| text(fact, "enumOrValueString")).filter(|mode| !mode.is_empty()),
+                "mode": parameter_text(backend, &format!("{slot_prefix}{}", index + 1)),
                 "live": live == index + 1,
             })
         })
@@ -73,7 +91,7 @@ pub fn slots_view(backend: &dyn Backend, _args: &[String]) -> Value {
         "class": "ModeSlots",
         "available": true,
         "channel": channel_index + 1,
-        "channelPwm": pwm.get(channel_index.max(0) as usize).copied(),
+        "channelPwm": reachable.then(|| pwm.get(channel_index as usize).copied()).flatten(),
         "liveSlot": live,
         "slots": slots,
         "channelOptions": options,
@@ -117,96 +135,127 @@ mod tests {
         assert!(!option_enabled(None));
     }
 
+    // The bridge serialises a fact with a value key and no rawValue, and Vehicle has no vehicleType
+    // property. This fixture answers exactly what the bridge answers, because the first version of
+    // it invented both of those names and the tests then agreed with a view that read neither.
     struct Fake {
-        rover: bool,
+        parameters: Vec<(String, f64, String)>,
         pwm: Vec<i64>,
-        channel: Option<i64>,
+    }
+
+    impl Fake {
+        fn named(&self, wanted: &str) -> Option<&(String, f64, String)> {
+            self.parameters.iter().find(|(name, _, _)| name == wanted)
+        }
     }
 
     impl Backend for Fake {
         fn get(&self, path: &str) -> String {
-            match path.strip_prefix("vehicle.parameterManager.getParameter(-1,").and_then(|rest| rest.strip_suffix(')')) {
-                Some(name) if name == "FLTMODE_CH" || name == "MODE_CH" => match self.channel {
-                    Some(channel) => json!({ "kind": "fact", "rawValue": channel }).to_string(),
-                    None => json!({ "kind": "null" }).to_string(),
-                },
-                Some(name) if name.starts_with("FLTMODE") || name.starts_with("MODE") => {
-                    json!({ "kind": "fact", "rawValue": 0, "enumOrValueString": format!("Mode {}", name.chars().last().unwrap()) }).to_string()
-                }
-                _ => json!({ "kind": "null" }).to_string(),
+            let Some(rest) = path.strip_prefix("vehicle.parameterManager.getParameter(-1,") else {
+                return json!({ "kind": "null" }).to_string();
+            };
+            let (name, tail) = rest.split_once(')').unwrap_or((rest, ""));
+            match self.named(name) {
+                Some((_, value, spelled)) if tail == ".rawValue" => json!({ "kind": "value", "value": value }).to_string(),
+                Some((name, value, spelled)) => json!({ "kind": "fact", "name": name, "value": value, "enumOrValueString": spelled }).to_string(),
+                None => json!({ "kind": "value", "value": Value::Null, "found": false }).to_string(),
             }
         }
         fn get_fields(&self, path: &str, _fields: &str) -> String {
             match path {
-                "vehicle" => json!({ "kind": "object", "apmFirmware": true, "vehicleType": if self.rover { "Rover" } else { "Multi-Rotor" } }).to_string(),
+                "vehicle" => json!({ "kind": "object", "apmFirmware": true }).to_string(),
                 "radioCal" => json!({ "kind": "object", "rcValues": self.pwm, "channelCount": self.pwm.len() }).to_string(),
                 _ => json!({ "kind": "null" }).to_string(),
             }
         }
         fn set(&self, _p: &str, _v: &str) -> String { String::new() }
-        fn invoke(&self, _p: &str, _a: &str) -> String { String::new() }
+        fn invoke(&self, path: &str, args: &str) -> String {
+            if path != "vehicle.parameterManager.parameterExists" {
+                return String::new();
+            }
+            let asked: Value = serde_json::from_str(args).unwrap_or(Value::Null);
+            let name = asked.get(1).and_then(Value::as_str).unwrap_or_default();
+            json!({ "ok": true, "result": self.named(name).is_some() }).to_string()
+        }
         fn watch(&self, _p: &[String]) {}
     }
 
-    fn channels(mode_pwm: i64) -> Vec<i64> {
-        (0..8).map(|index| if index == 4 { mode_pwm } else { 1500 }).collect()
+    fn channels(mode_pwm: i64, channel: usize) -> Vec<i64> {
+        (0..8).map(|index| if index == channel { mode_pwm } else { 1500 }).collect()
+    }
+
+    fn copter(channel: f64, pwm: Vec<i64>) -> Fake {
+        let slots = (1..=SLOTS).map(|slot| (format!("FLTMODE{slot}"), slot as f64, format!("Mode {slot}")));
+        Fake { parameters: std::iter::once(("FLTMODE_CH".to_string(), channel, String::new())).chain(slots).collect(), pwm }
     }
 
     #[test]
     fn the_live_slot_is_marked_on_the_slot_the_transmitter_selects() {
-        let view = slots_view(&Fake { rover: false, pwm: channels(1500), channel: Some(5) }, &[]);
+        let view = slots_view(&copter(5.0, channels(1500, 4)), &[]);
+        assert_eq!(view["channel"], 5);
         assert_eq!(view["liveSlot"], 4, "fifteen hundred sits in the fourth band");
         let slots = view["slots"].as_array().unwrap();
         assert_eq!(slots.len(), SLOTS);
         assert_eq!(slots.iter().filter(|slot| slot["live"] == true).count(), 1, "exactly one slot is live, which is the whole question the screen exists to answer");
         assert_eq!(slots[3]["live"], true);
         assert_eq!(slots[3]["mode"], "Mode 4");
-        assert_eq!(view["channel"], 5);
+    }
+
+    #[test]
+    fn the_channel_the_vehicle_names_is_the_channel_that_is_read() {
+        // Channel 7 carries the switch and channel 5 carries something else. Reading the parameter
+        // wrongly used to leave every vehicle on channel 5, which lights whatever is on the wrong one.
+        let view = slots_view(&copter(7.0, channels(1200, 6)), &[]);
+        assert_eq!(view["channel"], 7);
+        assert_eq!(view["liveSlot"], 1, "twelve hundred on channel seven is the first slot");
+        assert_eq!(view["channelPwm"], 1200);
     }
 
     #[test]
     fn a_vehicle_with_no_mode_channel_parameter_falls_back_to_channel_five() {
-        let view = slots_view(&Fake { rover: false, pwm: channels(1200), channel: None }, &[]);
+        let mut without = copter(5.0, channels(1200, 4));
+        without.parameters.retain(|(name, _, _)| name != "FLTMODE_CH");
+        let view = slots_view(&without, &[]);
         assert_eq!(view["channel"], 5, "the Qt controller defaults to the fifth channel when the parameter is absent, and a head must not guess differently");
         assert_eq!(view["liveSlot"], 1);
     }
 
     #[test]
+    fn a_rover_reads_its_own_parameter_names() {
+        let slots = (1..=SLOTS).map(|slot| (format!("MODE{slot}"), slot as f64, format!("Rover mode {slot}")));
+        let rover = Fake {
+            parameters: std::iter::once(("MODE_CH".to_string(), 5.0, String::new())).chain(slots).collect(),
+            pwm: channels(1500, 4),
+        };
+        let view = slots_view(&rover, &[]);
+        assert_eq!(view["slots"][0]["mode"], "Rover mode 1", "a rover names its slots MODE1 to MODE6, and which names to read is decided by which the vehicle has rather than by its type");
+        assert_eq!(view["liveSlot"], 4);
+    }
+
+    #[test]
+    fn a_vehicle_that_chooses_no_modes_from_a_channel_says_so() {
+        let bare = Fake { parameters: Vec::new(), pwm: channels(1500, 4) };
+        let view = slots_view(&bare, &[]);
+        assert_eq!(view["available"], false, "a vehicle with no slot parameters at all has no slots to show, and six empty rows would be a lie");
+        assert!(view["reason"].as_str().unwrap().contains("transmitter channel"));
+    }
+
+    #[test]
     fn a_mode_channel_past_the_last_one_the_transmitter_sends_selects_nothing() {
-        let view = slots_view(&Fake { rover: false, pwm: channels(1500), channel: Some(12) }, &[]);
+        let view = slots_view(&copter(12.0, channels(1500, 4)), &[]);
         assert_eq!(view["liveSlot"], 0);
+        assert_eq!(view["channelPwm"], Value::Null, "there is no reading for a channel that is not being received");
         assert!(view["slots"].as_array().unwrap().iter().all(|slot| slot["live"] == false), "no slot may be marked live when the channel carrying the selection is not being received");
         assert!(view["reason"].as_str().unwrap().contains("not sending"));
     }
 
     #[test]
-    fn a_rover_reads_its_own_parameter_names() {
-        let rover = slots_view(&Fake { rover: true, pwm: channels(1500), channel: Some(5) }, &[]);
-        assert_eq!(rover["slots"][0]["mode"], "Mode 1", "a rover names its slots MODE1 to MODE6 and its channel MODE_CH, and reading FLTMODE on one would find nothing");
-        assert_eq!(rover["liveSlot"], 4);
-    }
-
-    #[test]
-    fn a_channel_option_is_reported_for_every_channel_the_screen_offers() {
-        let mut pwm = channels(1500);
-        pwm.resize(16, 1000);
-        pwm[6] = 1900;
-        let view = slots_view(&Fake { rover: false, pwm, channel: Some(5) }, &[]);
-        let options = view["channelOptions"].as_array().unwrap();
-        assert_eq!(options.len(), CHANNEL_OPTIONS);
-        assert_eq!(options[0]["channel"], 6);
-        assert_eq!(options[1]["channel"], 7);
-        assert_eq!(options[1]["enabled"], true, "channel seven is the second option and it is the one held high");
-        assert_eq!(options[0]["enabled"], false);
-    }
-
-    #[test]
     fn no_slot_is_ever_marked_live_unless_the_view_is_answering() {
         let states = [
-            slots_view(&Fake { rover: false, pwm: Vec::new(), channel: Some(5) }, &[]),
-            slots_view(&Fake { rover: false, pwm: channels(-1), channel: Some(5) }, &[]),
-            slots_view(&Fake { rover: false, pwm: channels(1500), channel: Some(12) }, &[]),
-            slots_view(&Fake { rover: false, pwm: channels(1500), channel: Some(-4) }, &[]),
+            slots_view(&copter(5.0, Vec::new()), &[]),
+            slots_view(&copter(5.0, channels(-1, 4)), &[]),
+            slots_view(&copter(12.0, channels(1500, 4)), &[]),
+            slots_view(&copter(0.0, channels(1500, 4)), &[]),
         ];
         states.iter().for_each(|view| {
             assert_eq!(view["liveSlot"], 0);
@@ -215,6 +264,20 @@ mod tests {
                 "a head reading a slot's own flag must never need to check availability as well; if the two can disagree, a head that trusts one paints from a partial read"
             );
         });
+    }
+
+    #[test]
+    fn a_channel_option_is_reported_for_every_channel_the_screen_offers() {
+        let mut pwm = channels(1500, 4);
+        pwm.resize(16, 1000);
+        pwm[6] = 1900;
+        let view = slots_view(&copter(5.0, pwm), &[]);
+        let options = view["channelOptions"].as_array().unwrap();
+        assert_eq!(options.len(), CHANNEL_OPTIONS);
+        assert_eq!(options[0]["channel"], 6);
+        assert_eq!(options[1]["channel"], 7);
+        assert_eq!(options[1]["enabled"], true, "channel seven is the second option and it is the one held high");
+        assert_eq!(options[0]["enabled"], false);
     }
 
     #[test]

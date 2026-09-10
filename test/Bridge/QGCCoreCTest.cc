@@ -3121,3 +3121,41 @@ void QGCCoreCTest::_theItemListNamesWhatTheControllerHolds()
     QSKIP("the Rust core is not linked into this build");
 #endif
 }
+
+void QGCCoreCTest::_theModeSlotsReadTheChannelTheVehicleNames()
+{
+#ifdef QGC_RUST_CORE
+    _connectMockLink(MAV_AUTOPILOT_ARDUPILOTMEGA);
+    const auto disconnectWhenDone = qScopeGuard([this]() { _disconnectMockLink(); });
+    QTRY_VERIFY_WITH_TIMEOUT(take(qgc_bridge_get("vehicle.parameterManager.parametersReady")).value(QStringLiteral("value")).toBool(false), 90000);
+
+    const QJsonObject exists = take(qgc_bridge_invoke("vehicle.parameterManager.parameterExists", "[-1,\"FLTMODE_CH\"]"));
+    QVERIFY2(exists.value(QStringLiteral("result")).toBool(false), "this vehicle has no FLTMODE_CH, so the test below would pass by checking nothing");
+
+    const double named = take(qgc_bridge_get("vehicle.parameterManager.getParameter(-1,FLTMODE_CH).rawValue")).value(QStringLiteral("value")).toDouble(-1.0);
+    QVERIFY2(named > 0.0, "the vehicle did not answer which channel carries the mode switch");
+
+    const QJsonObject offered = take(qgc_core_get("view.modeSlots"));
+    QVERIFY2(offered.value(QStringLiteral("available")).toBool(false), qPrintable(offered.value(QStringLiteral("reason")).toString()));
+    QVERIFY2(offered.value(QStringLiteral("channel")).toInt(-1) == int(named),
+             qPrintable(QStringLiteral("the vehicle says the switch is on channel %1 and the view read channel %2. Reading the parameter wrongly leaves every vehicle on channel five.")
+                            .arg(named).arg(offered.value(QStringLiteral("channel")).toInt(-1))));
+
+    const QJsonArray listed = offered.value(QStringLiteral("slots")).toArray();
+    QCOMPARE(listed.count(), 6);
+    QStringList wrong;
+    for (int slot = 1; slot <= listed.count(); slot++) {
+        const QString spelled = take(qgc_bridge_get(QStringLiteral("vehicle.parameterManager.getParameter(-1,FLTMODE%1)").arg(slot).toUtf8().constData()))
+                                    .value(QStringLiteral("enumOrValueString")).toString();
+        const QString shown = listed.at(slot - 1).toObject().value(QStringLiteral("mode")).toString();
+        if (shown != spelled) {
+            wrong.append(QStringLiteral("slot %1: vehicle says %2, view says %3").arg(slot).arg(spelled, shown));
+        }
+    }
+    QVERIFY2(wrong.isEmpty(), qPrintable(wrong.join(QStringLiteral("; "))));
+    QVERIFY2(!listed.first().toObject().value(QStringLiteral("mode")).toString().isEmpty(),
+             "every slot read as empty, which is what reading the wrong parameter names looks like");
+#else
+    QSKIP("the Rust core is not linked into this build");
+#endif
+}
