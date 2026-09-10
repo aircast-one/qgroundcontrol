@@ -22,6 +22,15 @@ if (( ${#missing[@]} )); then
     exit 1
 fi
 
+# systems.0 is whichever vehicle connected first. MAVLinkInspectorController::setMessageInterval
+# acts on _activeSystem, which setActiveSystem(int) can point anywhere, so with two vehicles a
+# head reading systems.0 shows one aircraft's messages while a rate change lands on another's.
+# The core guards its own DEPS the same way; this guards the head's paths.
+if grep -rn "mavlinkInspector\.systems\.0" "$root"/macos/Sources/*.swift; then
+    print -u2 "the inspector must follow activeSystem, not systems.0 - see the lines above"
+    exit 1
+fi
+
 swiftc -Onone -o "$out" \
     "$root/macos/Sources/DetectionModel.swift" \
     "$root/macos/Sources/SetupCatalogueModel.swift" \

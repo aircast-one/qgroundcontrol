@@ -31,8 +31,8 @@ final class MavlinkInspectorStore: ObservableObject, Probeable {
         let rates = MessageRateChoice.list(view["rateChoices"])
         if !rates.isEmpty, rates != rateChoices { rateChoices = rates }
 
-        let systems = (Bridge.group("mavlinkInspector.systems")["elements"] as? [[String: Any]]) ?? []
-        guard let system = systems.first else {
+        let system = Bridge.group("mavlinkInspector.activeSystem")
+        guard system["kind"] as? String == "object" else {
             if listening { listening = false }
             if !messages.isEmpty { messages = [] }
             if !fields.isEmpty { fields = [] }
@@ -51,12 +51,12 @@ final class MavlinkInspectorStore: ObservableObject, Probeable {
             return
         }
         let read = MavlinkField.from(
-            (Bridge.group("mavlinkInspector.systems.0.messages.\(current.index).fields")["elements"] as? [Any]) ?? [])
+            (Bridge.group("mavlinkInspector.activeSystem.messages.\(current.index).fields")["elements"] as? [Any]) ?? [])
         if read != fields { fields = read }
     }
 
     func select(_ message: MavlinkMessage) {
-        _ = Bridge.set("mavlinkInspector.systems.0.selected", message.index)
+        _ = Bridge.set("mavlinkInspector.activeSystem.selected", message.index)
         refresh()
     }
 
