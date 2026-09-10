@@ -1,7 +1,7 @@
 package one.aircast.android.bridge
 
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.State
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.derivedStateOf
@@ -11,7 +11,10 @@ import org.json.JSONObject
 
 @Composable
 fun qgcPath(path: String): State<JSONObject?> {
-    LaunchedEffect(path) { Qgc.watch(listOf(path)) }
+    DisposableEffect(path) {
+        Qgc.watch(listOf(path))
+        onDispose { Qgc.unwatch(listOf(path)) }
+    }
     val values by Qgc.values.collectAsState()
     return remember(path) { derivedStateOf { values[path] } }
 }

@@ -8,6 +8,7 @@ import android.view.WindowManager
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -37,11 +38,14 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.layout.onSizeChanged
+import androidx.compose.ui.zIndex
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.viewinterop.AndroidView
@@ -61,6 +65,8 @@ import one.aircast.android.ui.SettingsScreen
 import one.aircast.android.ui.SetupScreen
 import one.aircast.android.ui.StatusStrip
 import one.aircast.android.ui.VehicleTitle
+import one.aircast.mapspike.FlyMap
+import one.aircast.android.ui.VideoSourceLayer
 import one.aircast.android.ui.VideoSurface
 import org.mavlink.qgroundcontrol.QGCBridge
 import org.mavlink.qgroundcontrol.QGCUsbSerialManager
@@ -165,6 +171,7 @@ fun AircastShell(quickView: QtQuickView) {
     var tab by remember { mutableStateOf(Tab.Fly) }
     var qmlReady by remember { mutableStateOf(false) }
     var controlsExpanded by remember { mutableStateOf(true) }
+    var actionsHeightPx by remember { mutableIntStateOf(0) }
     var analyzePage by remember { mutableStateOf<AnalyzePage?>(null) }
     var videoExpanded by remember { mutableStateOf(false) }
 
@@ -177,6 +184,7 @@ fun AircastShell(quickView: QtQuickView) {
         quickView.setStatusChangeListener { status ->
             qmlReady = status == QtQmlStatus.READY
             if (qmlReady && listeners.isEmpty()) {
+                quickView.setProperty("renderViews", false)
                 listeners += quickView.connectSignalListener(
                     "navigateRequest",
                     String::class.java,
@@ -241,6 +249,32 @@ fun AircastShell(quickView: QtQuickView) {
             Box(Modifier.padding(padding).fillMaxSize()) {
                 AndroidView(factory = { quickView }, modifier = Modifier.fillMaxSize())
 
+                if (tab == Tab.Fly) {
+                    Box(
+                        if (videoExpanded) {
+                            Modifier
+                                .align(Alignment.TopEnd)
+                                .padding(12.dp)
+                                .size(width = VIDEO_INSET_WIDTH, height = VIDEO_INSET_HEIGHT)
+                                .zIndex(1f)
+                        } else {
+                            Modifier.fillMaxSize()
+                        },
+                    ) {
+                        FlyMap(
+                            modifier = Modifier.fillMaxSize(),
+                            cameraBottomPx = if (videoExpanded || !controlsExpanded) 0 else actionsHeightPx,
+                        )
+                        if (videoExpanded) {
+                            Box(
+                                Modifier
+                                    .matchParentSize()
+                                    .clickable { videoExpanded = false },
+                            )
+                        }
+                    }
+                }
+
                 VideoSurface(
                     modifier = if (videoExpanded) {
                         Modifier.fillMaxSize()
@@ -272,10 +306,11 @@ fun AircastShell(quickView: QtQuickView) {
                         Modifier
                             .align(Alignment.TopStart)
                             .padding(12.dp)
-                            .padding(top = if (videoExpanded) 0.dp else VIDEO_INSET_HEIGHT + 12.dp),
+                            .padding(top = VIDEO_INSET_HEIGHT + 12.dp),
                         verticalArrangement = Arrangement.spacedBy(8.dp),
                     ) {
                         ObstacleReadout()
+                        VideoSourceLayer()
                         CameraControlLayer()
                         RcControlsLayer()
                     }
@@ -286,7 +321,7 @@ fun AircastShell(quickView: QtQuickView) {
                     modifier = Modifier.align(Alignment.BottomCenter),
                 ) {
                     Surface(
-                        Modifier.fillMaxWidth(),
+                        Modifier.fillMaxWidth().onSizeChanged { actionsHeightPx = it.height },
                         color = MaterialTheme.colorScheme.surface.copy(alpha = 0.92f),
                     ) { FlightActions() }
                 }

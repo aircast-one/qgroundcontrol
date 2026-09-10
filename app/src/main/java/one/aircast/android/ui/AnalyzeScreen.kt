@@ -27,10 +27,6 @@ enum class AnalyzePage(
     val label: String,
     val description: String,
 ) {
-    Preflight(
-        "Preflight",
-        "The checks this airframe wants before flight",
-    ),
     LogDownload(
         "Log Download",
         "Download flight logs from the vehicle",
@@ -98,7 +94,6 @@ fun AnalyzeScreen(
         AnalyzeHeader(page.label) { onSelect(null) }
         Surface(Modifier.weight(1f)) {
             when (page) {
-                AnalyzePage.Preflight -> PreflightScreen()
                 AnalyzePage.LogDownload -> LogDownloadScreen()
                 AnalyzePage.Console -> ConsoleScreen()
                 AnalyzePage.Inspector -> InspectorScreen()

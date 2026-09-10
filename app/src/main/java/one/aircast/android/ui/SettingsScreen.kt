@@ -42,19 +42,22 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import one.aircast.android.bridge.Fact
 import one.aircast.android.bridge.Qgc
-import one.aircast.android.bridge.offMainDetached
 import one.aircast.android.bridge.qgcFacts
 
 data class SettingsGroup(val path: String, val title: String)
 
 const val LINKS_GROUP_PATH = "links"
 const val UNITS_GROUP_PATH = "settings.unitsSettings"
+const val RC_CONTROLS_GROUP_PATH = "settings.flyViewSettings.rcControls"
+const val EXTRA_SOURCES_GROUP_PATH = "settings.videoSettings.extraVideoSources"
 
 val SETTINGS_GROUPS = listOf(
     SettingsGroup(LINKS_GROUP_PATH, "Comm Links"),
     SettingsGroup(UNITS_GROUP_PATH, "Units"),
     SettingsGroup("settings.videoSettings", "Video"),
+    SettingsGroup(EXTRA_SOURCES_GROUP_PATH, "Extra cameras"),
     SettingsGroup("settings.flyViewSettings", "Fly View"),
+    SettingsGroup(RC_CONTROLS_GROUP_PATH, "On-screen RC controls"),
     SettingsGroup("settings.planViewSettings", "Plan View"),
     SettingsGroup("settings.mapsSettings", "Maps"),
     SettingsGroup("settings.batteryIndicatorSettings", "Battery"),
@@ -86,6 +89,10 @@ fun SettingsScreen(modifier: Modifier = Modifier) {
             LinksScreen(Modifier.fillMaxSize())
         } else if (current.path == UNITS_GROUP_PATH) {
             UnitsPage(Modifier.fillMaxSize())
+        } else if (current.path == RC_CONTROLS_GROUP_PATH) {
+            RcControlsEditor(Modifier.fillMaxSize())
+        } else if (current.path == EXTRA_SOURCES_GROUP_PATH) {
+            ExtraVideoSourcesEditor(Modifier.fillMaxSize())
         } else {
             FactList(current.path, Modifier.fillMaxSize())
         }
@@ -111,9 +118,6 @@ fun FactList(groupPath: String, modifier: Modifier = Modifier) {
                 HorizontalDivider()
             }
         }
-        desktopOnlyNote(facts)?.let { note ->
-            item(key = "desktoponly") { FootNote(note) }
-        }
     }
 }
 
@@ -127,6 +131,18 @@ internal fun FactRow(
     subtitle: String = fact.units,
     onWrite: () -> Unit = {},
 ) {
+    val scope = rememberCoroutineScope()
+    var refusal by remember(fact.path) { mutableStateOf<String?>(null) }
+
+    fun write(block: () -> Boolean) {
+        scope.launch {
+            val accepted = withContext(Dispatchers.Default) { block() }
+            refusal = writeRefusal(accepted)
+            if (accepted) onWrite()
+        }
+    }
+
+    Column {
     Row(
         Modifier
             .fillMaxWidth()
@@ -155,27 +171,41 @@ internal fun FactRow(
 
         Box(Modifier.widthIn(max = 190.dp), contentAlignment = Alignment.CenterEnd) {
             when {
-                fact.readOnly -> Text(
-                    text = enumLabel(fact),
-                    style = MaterialTheme.typography.bodyMedium,
-                    maxLines = 2,
-                    overflow = TextOverflow.Ellipsis,
-                )
+                fact.readOnly -> Column(horizontalAlignment = Alignment.End) {
+                    Text(
+                        text = enumLabel(fact),
+                        style = MaterialTheme.typography.bodyMedium,
+                        maxLines = 2,
+                        overflow = TextOverflow.Ellipsis,
+                    )
+                    Text(
+                        text = "Read-only",
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
                 fact.isBool -> Switch(
                     checked = fact.boolValue,
-                    onCheckedChange = { checked ->
-                        offMainDetached { Qgc.set(fact.path, checked); onWrite() }
-                    },
+                    onCheckedChange = { checked -> write { Qgc.set(fact.path, checked) } },
                 )
-                fact.isEnum && !fact.valueIsOffTheEnumList -> EnumPicker(fact, onWrite)
+                fact.isEnum && !fact.valueIsOffTheEnumList -> EnumPicker(fact, ::write)
                 else -> FactTextField(fact, onWrite)
             }
         }
     }
+    refusal?.let {
+        Text(
+            text = it,
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.error,
+            modifier = Modifier.padding(start = 20.dp, bottom = 8.dp),
+        )
+    }
+    }
 }
 
 @Composable
-private fun EnumPicker(fact: Fact, onWrite: () -> Unit) {
+private fun EnumPicker(fact: Fact, write: (() -> Boolean) -> Unit) {
     var expanded by remember { mutableStateOf(false) }
     val label = enumLabel(fact)
 
@@ -202,10 +232,7 @@ private fun EnumPicker(fact: Fact, onWrite: () -> Unit) {
                     text = { Text(option) },
                     onClick = {
                         expanded = false
-                        offMainDetached {
-                            Qgc.set("${fact.path}.enumIndex", index)
-                            onWrite()
-                        }
+                        write { Qgc.set("${fact.path}.enumIndex", index) }
                     },
                 )
             }
@@ -227,6 +254,13 @@ internal fun factRebootNote(fact: Fact): String? = when {
     fact.qgcRebootRequired -> "Restart Aircast for this to take effect."
     else -> null
 }
+
+// Qgc.set returns false when the bridge refuses the write, and the reason it carries
+// names a property and a class — true, and no use to a pilot. So the row says only what
+// is known: the change did not take. Without this a refused switch flips back on the
+// next poll and reads as the app glitching.
+internal fun writeRefusal(accepted: Boolean): String? =
+    if (accepted) null else "That change was not accepted."
 
 internal fun validationMessage(result: Any?): String? =
     (result as? String)?.takeIf { it.isNotBlank() }
@@ -258,10 +292,19 @@ private fun FactTextField(fact: Fact, onWrite: () -> Unit) {
                     TextButton(onClick = {
                         scope.launch {
                             val refused = rejectionFor(fact, committed)
-                            rejection = refused
-                            if (refused == null) {
+                            if (refused != null) {
+                                rejection = refused
+                                return@launch
+                            }
+                            // Validation only says the value is well formed. The bridge can
+                            // still refuse the write, and the fact then reads back unchanged,
+                            // which is indistinguishable from a value accepted as-is.
+                            val accepted = withContext(Dispatchers.Default) {
+                                Qgc.set(fact.path, committed)
+                            }
+                            rejection = writeRefusal(accepted)
+                            if (accepted) {
                                 editing = null
-                                withContext(Dispatchers.Default) { Qgc.set(fact.path, committed) }
                                 onWrite()
                             }
                         }

@@ -20,6 +20,7 @@ import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -44,6 +45,8 @@ private val CAMERA_CHANNEL_SETTINGS = listOf(
     "cameraRecordChannel" to "Camera record",
 )
 
+private const val UNDO_WINDOW_MS = 6000L
+
 private data class Draft(val index: Int, val label: String, val channel: String, val type: RcControlType)
 
 @Composable
@@ -60,6 +63,14 @@ fun RcControlsEditor(modifier: Modifier = Modifier) {
     val reserved = reservedChannels()
     var draft by remember { mutableStateOf<Draft?>(null) }
     var notice by remember { mutableStateOf<String?>(null) }
+    var undo by remember { mutableStateOf<Pair<String, String>?>(null) }
+
+    LaunchedEffect(undo) {
+        if (undo != null) {
+            kotlinx.coroutines.delay(UNDO_WINDOW_MS)
+            undo = null
+        }
+    }
 
     fun save(next: String) {
         notice = null
@@ -112,9 +123,25 @@ fun RcControlsEditor(modifier: Modifier = Modifier) {
                     TextButton(onClick = {
                         draft = Draft(index, control.label, control.channel.toString(), control.type)
                     }) { Text("Edit") }
-                    TextButton(onClick = { save(rcControlsRemoved(json, index)) }) { Text("Remove") }
+                    TextButton(onClick = {
+                        undo = control.label to json
+                        save(rcControlsRemoved(json, index))
+                    }) { Text("Remove") }
                 }
                 HorizontalDivider()
+            }
+        }
+
+        undo?.let { (name, previous) ->
+            Row(
+                Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 4.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Text("Removed $name.", Modifier.weight(1f), style = MaterialTheme.typography.bodyMedium)
+                TextButton(onClick = {
+                    save(previous)
+                    undo = null
+                }) { Text("Undo") }
             }
         }
 

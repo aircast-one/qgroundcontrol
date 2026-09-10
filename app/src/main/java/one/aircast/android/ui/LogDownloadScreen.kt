@@ -103,7 +103,12 @@ private fun EraseConfirmDialog(onConfirm: () -> Unit, onDismiss: () -> Unit) {
             Text("This permanently deletes every log on the vehicle. It cannot be undone.")
         },
         confirmButton = {
-            TextButton(onClick = { onConfirm(); onDismiss() }) { Text("Erase all") }
+            TextButton(
+                onClick = { onConfirm(); onDismiss() },
+                colors = ButtonDefaults.textButtonColors(
+                    contentColor = MaterialTheme.colorScheme.error,
+                ),
+            ) { Text("Erase all") }
         },
         dismissButton = {
             TextButton(onClick = onDismiss) { Text("Cancel") }

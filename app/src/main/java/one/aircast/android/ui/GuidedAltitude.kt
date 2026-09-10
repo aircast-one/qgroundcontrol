@@ -16,8 +16,8 @@ internal data class GuidedAltitude(
     val sends: Boolean,
 )
 
-internal fun guidedAltitudePath(target: Double): String =
-    "$GUIDED_ALTITUDE(${String.format(java.util.Locale.US, "%.2f", target)})"
+internal fun guidedAltitudePath(target: Double, pause: Boolean = false): String =
+    "$GUIDED_ALTITUDE(${String.format(java.util.Locale.US, "%.2f", target)}${if (pause) ",pause" else ""})"
 
 private fun JSONObject.numberOrNull(key: String): Double? =
     if (isNull(key)) null else optDouble(key).takeIf { !it.isNaN() }
@@ -39,3 +39,11 @@ internal fun guidedAltitude(view: JSONObject?): GuidedAltitude? {
 
 internal fun altitudeRangeUsable(reading: GuidedAltitude?): Boolean =
     reading?.minimum != null && reading.maximum != null && reading.maximum > reading.minimum
+
+internal fun rangeLabel(minimum: Double?, maximum: Double?, unit: String): String? {
+    if (minimum == null || maximum == null || maximum <= minimum) return null
+    val show = { value: Double -> String.format(java.util.Locale.US, "%.1f", value) }
+    return listOf("${show(minimum)} to ${show(maximum)}", unit)
+        .filter { it.isNotBlank() }
+        .joinToString(" ")
+}

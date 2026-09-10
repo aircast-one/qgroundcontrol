@@ -84,7 +84,7 @@ private fun patternNames(): List<String> {
     return (0 until array.length()).map { array.optString(it) }.filter { it.isNotBlank() }
 }
 
-private fun visualItems(): JSONArray =
+internal fun visualItems(): JSONArray =
     Qgc.get("$MISSION_ROOT.visualItems").opt("elements") as? JSONArray ?: JSONArray()
 
 private fun lastDistance(items: JSONArray): Double? {
@@ -188,7 +188,7 @@ fun rememberPlanFileActions(onResult: (String) -> Unit = {}): PlanFileActions {
     val opener = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
         val chosen = uri ?: return@rememberLauncherForActivityResult
         scope.launch {
-            val message = withContext(Dispatchers.Default) {
+            val failure = withContext(Dispatchers.Default) {
                 val staged = File(context.cacheDir, OPEN_CACHE)
                 staged.delete()
                 if (!copyIn(context, chosen, staged)) {
@@ -196,12 +196,12 @@ fun rememberPlanFileActions(onResult: (String) -> Unit = {}): PlanFileActions {
                 }
                 loadFailureMessage(planLoad(staged.absolutePath))
             }
-            if (message == null) {
-                adopt(chosen)
-                onResult("Plan opened.")
-            } else {
-                onResult(message)
+            if (failure != null) {
+                onResult(failure)
+                return@launch
             }
+            adopt(chosen)
+            onResult("Plan opened.")
         }
     }
 

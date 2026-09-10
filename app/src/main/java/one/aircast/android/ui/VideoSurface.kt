@@ -5,19 +5,16 @@ import android.view.SurfaceView
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Close
-import androidx.compose.material3.Icon
-import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.viewinterop.AndroidView
-import one.aircast.android.bridge.qgcBool
+import one.aircast.android.bridge.qgcPath
 import org.mavlink.qgroundcontrol.QGCBridge
 
 @Composable
@@ -26,9 +23,10 @@ fun VideoSurface(
     expanded: Boolean = false,
     onClick: () -> Unit = {},
 ) {
-    val streaming by qgcBool("video.streaming")
+    val videoJson by qgcPath(VIDEO_VIEW)
+    val video = remember(videoJson) { videoReading(videoJson) }
 
-    Box(modifier.clickable { onClick() }) {
+    Box(if (expanded) modifier else modifier.clickable { onClick() }) {
         AndroidView(
             modifier = Modifier.fillMaxSize(),
             factory = { context ->
@@ -55,14 +53,18 @@ fun VideoSurface(
             },
         )
 
-        if (!streaming) {
+        if (video?.decoding == true) {
+            DetectionOverlay(Modifier.fillMaxSize())
+        }
+
+        if (video?.decoding != true) {
             Surface(
                 Modifier.fillMaxSize(),
                 color = MaterialTheme.colorScheme.surfaceVariant,
             ) {
                 Box(contentAlignment = Alignment.Center) {
                     Text(
-                        text = "No video",
+                        text = video?.summary ?: "No video",
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
@@ -70,19 +72,5 @@ fun VideoSurface(
             }
         }
 
-        // Enlarging is recoverable by guessing; a full-bleed video hiding the map is not,
-        // so the way back is a button rather than a convention.
-        if (expanded) {
-            IconButton(
-                onClick = onClick,
-                modifier = Modifier.align(Alignment.TopEnd),
-            ) {
-                Icon(
-                    imageVector = Icons.Default.Close,
-                    contentDescription = "Shrink the video",
-                    tint = MaterialTheme.colorScheme.onSurface,
-                )
-            }
-        }
     }
 }

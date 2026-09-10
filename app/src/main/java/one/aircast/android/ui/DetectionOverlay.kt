@@ -25,17 +25,28 @@ private val TARGET_COLOUR = Color(0xFFFFD54F)
 @Composable
 fun DetectionOverlay(modifier: Modifier = Modifier) {
     val json by qgcPath(DETECTIONS)
+    val videoJson by qgcPath(VIDEO_VIEW)
     val reading = remember(json) { detections(json) }
     val boxes = remember(reading) { visibleBoxes(reading) }
     val trouble = remember(reading) { detectionTrouble(reading) }
+    val source = remember(videoJson) { videoReading(videoJson)?.sourceSize }
 
     BoxWithConstraints(modifier) {
+        val picture = paintedRect(maxWidth.value.toDouble(), maxHeight.value.toDouble(), source)
+
         Canvas(Modifier.matchParentSize()) {
+            val scale = size.width / maxWidth.value
             boxes.forEach { box ->
                 drawRect(
                     color = if (box.target) TARGET_COLOUR else BOX_COLOUR,
-                    topLeft = Offset((box.x * size.width).toFloat(), (box.y * size.height).toFloat()),
-                    size = Size((box.w * size.width).toFloat(), (box.h * size.height).toFloat()),
+                    topLeft = Offset(
+                        ((picture.left + box.x * picture.width) * scale).toFloat(),
+                        ((picture.top + box.y * picture.height) * scale).toFloat(),
+                    ),
+                    size = Size(
+                        (box.w * picture.width * scale).toFloat(),
+                        (box.h * picture.height * scale).toFloat(),
+                    ),
                     style = Stroke(width = if (box.target) 4f else 2f),
                 )
             }
@@ -49,7 +60,10 @@ fun DetectionOverlay(modifier: Modifier = Modifier) {
                     style = MaterialTheme.typography.labelSmall,
                     color = Color.Black,
                     modifier = Modifier
-                        .offset(x = maxWidth * box.x.toFloat(), y = maxHeight * box.y.toFloat())
+                        .offset(
+                            x = (picture.left + box.x * picture.width).dp,
+                            y = (picture.top + box.y * picture.height).dp,
+                        )
                         .background(if (box.target) TARGET_COLOUR else BOX_COLOUR)
                         .padding(horizontal = 3.dp),
                 )

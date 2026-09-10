@@ -313,6 +313,8 @@ def main():
                 elif kind == "LOG_REQUEST_DATA":
                     remaining = LOG_SIZES[message.id - 1] - message.ofs
                     count = max(0, min(90, message.count, remaining))
+                    print("LOG_REQUEST_DATA id=%d ofs=%d count=%d -> %d" % (
+                        message.id, message.ofs, message.count, count), flush=True)
                     payload = bytes((message.ofs + n) % 251 for n in range(count))
                     link.log_data_send(message.id, message.ofs, count,
                                        list(payload) + [0] * (90 - count))

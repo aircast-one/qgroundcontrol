@@ -7,6 +7,7 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.background
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.DropdownMenu
@@ -26,7 +27,9 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.withContext
 import one.aircast.android.bridge.qgcBool
 import one.aircast.mapspike.PlanMapScreen
 
@@ -45,6 +48,11 @@ fun PlanTab(modifier: Modifier = Modifier) {
     val hasMissionItems by qgcBool("plan.missionController.containsItems")
     val offline by qgcBool("plan.offline")
     val can = planActions(syncing, containsItems, hasMissionItems, offline)
+    var undrawn by remember { mutableStateOf<List<String>>(emptyList()) }
+
+    LaunchedEffect(syncing, containsItems, files.documentName()) {
+        undrawn = withContext(Dispatchers.Default) { undrawnItemNames(visualItems()) }
+    }
 
     LaunchedEffect(notice) {
         if (notice != null) {
@@ -159,6 +167,17 @@ fun PlanTab(modifier: Modifier = Modifier) {
                 maxLines = if (notice == null) 1 else 3,
                 overflow = TextOverflow.Ellipsis,
                 modifier = Modifier.padding(start = 8.dp),
+            )
+        }
+        undrawnItemsWarning(undrawn)?.let { warning ->
+            Text(
+                text = warning,
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onErrorContainer,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .background(MaterialTheme.colorScheme.errorContainer)
+                    .padding(horizontal = 12.dp, vertical = 8.dp),
             )
         }
         PlanMapScreen(Modifier.weight(1f))

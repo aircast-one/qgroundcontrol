@@ -13,20 +13,20 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.saveable.rememberSaveable
-import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import one.aircast.android.bridge.qgcPath
 
 @Composable
-fun PreflightScreen(modifier: Modifier = Modifier) {
+fun PreflightScreen(
+    modifier: Modifier = Modifier,
+    ticked: Set<String> = emptySet(),
+    onTicked: (Set<String>) -> Unit = {},
+) {
     val json by qgcPath(PREFLIGHT)
     val checks = remember(json) { preflight(json) }
-    var ticked by rememberSaveable { mutableStateOf(setOf<String>()) }
 
     if (checks == null || checks.groups.isEmpty()) {
         Text(
@@ -81,7 +81,7 @@ fun PreflightScreen(modifier: Modifier = Modifier) {
                             checked = isTicked || check.verdict == "passing",
                             enabled = checkNeedsTicking(check),
                             onCheckedChange = { on ->
-                                ticked = if (on) ticked + check.name else ticked - check.name
+                                onTicked(if (on) ticked + check.name else ticked - check.name)
                             },
                         )
                         Column(Modifier.weight(1f)) {

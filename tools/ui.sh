@@ -10,7 +10,7 @@
 #   ui.sh swipe X1 Y1 X2 Y2 [MS]
 #   ui.sh text "..."       type, only if the app is in front
 #   ui.sh key KEYCODE
-#   ui.sh shot FILE        screencap, and fail a capture too small to be a live screen
+#   ui.sh shot FILE        screencap, and fail a capture that is one flat colour
 export PATH="$PATH:$HOME/Library/Android/sdk/platform-tools"
 APP="${APP:-one.aircast.android}"
 ACTIVITY="${ACTIVITY:-.MainActivity}"
@@ -44,12 +44,7 @@ text)    require_front; adb shell input text "$2" ;;
 key)     require_front; adb shell input keyevent "$2" ;;
 shot)
     adb exec-out screencap -p > "$2"
-    bytes=$(stat -f%z "$2")
-    if [ "$bytes" -lt 100000 ]; then
-        echo "FAIL: $2 is ${bytes}B - screen asleep?" >&2
-        exit 1
-    fi
-    echo "ok $2 (${bytes}B)"
+    python3 "$(dirname "$0")/awake.py" "$2" || exit 1
     ;;
 *)
     sed -n '2,14p' "$0"
