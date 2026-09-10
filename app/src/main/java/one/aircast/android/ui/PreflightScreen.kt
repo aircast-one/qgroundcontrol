@@ -1,13 +1,19 @@
 package one.aircast.android.ui
 
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Check
+import androidx.compose.material.icons.filled.Warning
 import androidx.compose.material3.Checkbox
+import androidx.compose.material3.Icon
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
@@ -77,13 +83,32 @@ fun PreflightScreen(
                         verticalAlignment = Alignment.CenterVertically,
                         horizontalArrangement = Arrangement.spacedBy(4.dp),
                     ) {
-                        Checkbox(
-                            checked = isTicked || check.verdict == "passing",
-                            enabled = checkNeedsTicking(check),
-                            onCheckedChange = { on ->
-                                onTicked(if (on) ticked + check.name else ticked - check.name)
-                            },
-                        )
+                        when (checkMark(check)) {
+                            CheckMark.TICKABLE -> Checkbox(
+                                checked = isTicked,
+                                onCheckedChange = { on ->
+                                    onTicked(if (on) ticked + check.name else ticked - check.name)
+                                },
+                            )
+                            CheckMark.PASSED -> Box(Modifier.size(48.dp), Alignment.Center) {
+                                Icon(
+                                    Icons.Filled.Check,
+                                    contentDescription = "Passing",
+                                    tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                                )
+                            }
+                            CheckMark.ATTENTION -> Box(Modifier.size(48.dp), Alignment.Center) {
+                                Icon(
+                                    Icons.Filled.Warning,
+                                    contentDescription = if (check.blocked) "Will stop the flight" else "Needs attention",
+                                    tint = if (check.blocked) {
+                                        MaterialTheme.colorScheme.error
+                                    } else {
+                                        MaterialTheme.colorScheme.onSurfaceVariant
+                                    },
+                                )
+                            }
+                        }
                         Column(Modifier.weight(1f)) {
                             Text(
                                 text = check.prompt.ifBlank { check.name },

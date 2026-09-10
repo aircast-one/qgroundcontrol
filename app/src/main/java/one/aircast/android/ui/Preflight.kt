@@ -52,13 +52,14 @@ internal fun preflight(view: JSONObject?): Preflight? {
 
 internal fun preflightSummary(preflight: Preflight?, ticked: Set<String>): String {
     if (preflight == null) return "Connect a vehicle to run its preflight checks."
-    if (preflight.blocked.isNotEmpty()) {
-        return "${preflight.blocked.size} of ${preflight.total} will stop the flight."
-    }
     val checks = preflight.groups.flatMap { it.checks }
     val manual = checks.filter(::checkNeedsTicking).map { it.name }.toSet()
     val outstanding = (manual - ticked).size
     val warnings = checks.count { it.verdict == "overridable" }
+    if (preflight.blocked.isNotEmpty()) {
+        val left = if (outstanding > 0) " · $outstanding left to check" else ""
+        return "${preflight.blocked.size} of ${preflight.total} will stop the flight$left."
+    }
     return when {
         outstanding > 0 -> "$outstanding of ${manual.size} left to check."
         warnings > 0 ->
@@ -68,6 +69,14 @@ internal fun preflightSummary(preflight: Preflight?, ticked: Set<String>): Strin
 }
 
 internal fun checkNeedsTicking(check: PreflightCheck): Boolean = check.verdict == "manual"
+
+internal enum class CheckMark { TICKABLE, PASSED, ATTENTION }
+
+internal fun checkMark(check: PreflightCheck): CheckMark = when {
+    checkNeedsTicking(check) -> CheckMark.TICKABLE
+    check.verdict == "passing" -> CheckMark.PASSED
+    else -> CheckMark.ATTENTION
+}
 
 internal fun checkStatusText(check: PreflightCheck, ticked: Boolean): String = when (check.verdict) {
     "passing" -> "Passing"

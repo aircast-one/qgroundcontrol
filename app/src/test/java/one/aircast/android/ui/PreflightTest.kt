@@ -58,7 +58,10 @@ class PreflightTest {
     fun `the summary leads with what would stop the flight`() {
         val checks = preflight(JSONObject(served))!!
 
-        assertEquals("1 of 4 will stop the flight.", preflightSummary(checks, emptySet()))
+        assertEquals(
+            "1 of 4 will stop the flight · 1 left to check.",
+            preflightSummary(checks, emptySet()),
+        )
     }
 
     @Test
@@ -76,6 +79,27 @@ class PreflightTest {
             "All 4 checks done · 1 warning.",
             preflightSummary(checks, setOf("Area clear")),
         )
+    }
+
+    @Test
+    fun `a blocker does not hide the operator's own progress`() {
+        val checks = preflight(JSONObject(served))!!
+
+        assertEquals(
+            "1 of 4 will stop the flight.",
+            preflightSummary(checks, setOf("Area clear")),
+        )
+    }
+
+    @Test
+    fun `a check the operator cannot tick is not drawn as an empty box`() {
+        val checks = preflight(JSONObject(served))!!
+        val byName = checks.groups.flatMap { it.checks }.associateBy { it.name }
+
+        assertEquals(CheckMark.TICKABLE, checkMark(byName["Area clear"]!!))
+        assertEquals(CheckMark.PASSED, checkMark(byName["Battery"]!!))
+        assertEquals(CheckMark.ATTENTION, checkMark(byName["Props on"]!!))
+        assertEquals(CheckMark.ATTENTION, checkMark(byName["Compass"]!!))
     }
 
     @Test
