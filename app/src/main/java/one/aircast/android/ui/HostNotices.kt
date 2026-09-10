@@ -2,13 +2,14 @@ package one.aircast.android.ui
 
 import org.json.JSONObject
 
-internal const val NOTICE_MESSAGE = 0
-internal const val NOTICE_VEHICLE_ERROR = 1
-internal const val NOTICE_NAVIGATION = 2
+internal const val NOTICE_MESSAGE = "message"
+internal const val NOTICE_VEHICLE_ERROR = "vehicleError"
+internal const val NOTICE_NAVIGATION = "navigation"
+internal val NOTICE_KINDS = setOf(NOTICE_MESSAGE, NOTICE_VEHICLE_ERROR, NOTICE_NAVIGATION)
 
 internal data class HostNotice(
     val id: Long,
-    val kind: Int,
+    val kind: String,
     val title: String,
     val text: String,
 )
@@ -19,12 +20,16 @@ internal fun hostNotices(view: JSONObject?): List<HostNotice> {
         items.optJSONObject(index)?.let {
             HostNotice(
                 id = it.optLong("id", -1L),
-                kind = it.optInt("kind", NOTICE_MESSAGE),
+                kind = it.optString("kind"),
                 title = it.optString("title"),
                 text = it.optString("text"),
             )
         }
-    }.filter { it.id >= 0 }
+    }.filter { it.id >= 0 }.onEach {
+        if (it.kind !in NOTICE_KINDS) {
+            android.util.Log.w("HostNotices", "unrecognised notice kind '" + it.kind + "' - showing it rather than guessing")
+        }
+    }
 }
 
 internal fun noticeDestination(notices: List<HostNotice>): String? =

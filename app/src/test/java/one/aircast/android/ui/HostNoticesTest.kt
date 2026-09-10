@@ -10,8 +10,8 @@ class HostNoticesTest {
     private fun view(vararg rows: String) =
         JSONObject("""{"notices":[${rows.joinToString(",")}]}""")
 
-    private fun row(id: Long, kind: Int, title: String, text: String = "") =
-        """{"id":$id,"kind":$kind,"title":"$title","text":"$text"}"""
+    private fun row(id: Long, kind: String, title: String, text: String = "") =
+        """{"id":$id,"kind":"$kind","title":"$title","text":"$text"}"""
 
     @Test
     fun `no view means nothing queued`() {
@@ -21,13 +21,13 @@ class HostNoticesTest {
 
     @Test
     fun `a notice without an id is not drawn rather than acknowledged as minus one`() {
-        val view = JSONObject("""{"notices":[{"kind":0,"title":"t"}]}""")
+        val view = JSONObject("""{"notices":[{"kind":"message","title":"t"}]}""")
         assertTrue(hostNotices(view).isEmpty())
     }
 
     @Test
     fun `the queue keeps every notice, not the latest`() {
-        val notices = hostNotices(view(row(1, 0, "a"), row(2, 0, "b")))
+        val notices = hostNotices(view(row(1, NOTICE_MESSAGE, "a"), row(2, NOTICE_MESSAGE, "b")))
         assertEquals(listOf(1L, 2L), notices.map { it.id })
     }
 
@@ -59,8 +59,20 @@ class HostNoticesTest {
 
     @Test
     fun `a banner joins the title and text it actually has`() {
-        assertEquals("Aircast · went wrong", noticeBanner(HostNotice(1, 1, "Aircast", "went wrong")))
-        assertEquals("Aircast", noticeBanner(HostNotice(1, 1, "Aircast", "")))
-        assertEquals("went wrong", noticeBanner(HostNotice(1, 1, "", "went wrong")))
+        assertEquals("Aircast · went wrong", noticeBanner(HostNotice(1, NOTICE_VEHICLE_ERROR, "Aircast", "went wrong")))
+        assertEquals("Aircast", noticeBanner(HostNotice(1, NOTICE_VEHICLE_ERROR, "Aircast", "")))
+        assertEquals("went wrong", noticeBanner(HostNotice(1, NOTICE_VEHICLE_ERROR, "", "went wrong")))
+    }
+
+    @Test
+    fun `an unrecognised kind is shown rather than silently treated as a message`() {
+        val notices = hostNotices(view(row(1, "somethingNew", "surprise")))
+        assertEquals(listOf("surprise"), noticesToShow(notices).map { it.title })
+    }
+
+    @Test
+    fun `an ordinal kind no longer decodes as a message`() {
+        val notices = hostNotices(JSONObject("""{"notices":[{"id":1,"kind":2,"title":"setup"}]}"""))
+        assertNull(noticeDestination(notices))
     }
 }
