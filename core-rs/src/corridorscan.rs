@@ -4,7 +4,6 @@ const NO_SPACING_M: f64 = 100_000.0;
 const MIN_SPACING_M: f64 = 0.5;
 
 type Point = (f64, f64);
-type Line = (Point, Point);
 
 #[derive(Debug, Clone, Copy, PartialEq, Default)]
 pub struct Params {

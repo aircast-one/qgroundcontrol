@@ -2095,7 +2095,7 @@ mod tests {
     }
     #[test]
     fn a_px4_accel_calibration_runs_from_the_status_texts_through_the_view() {
-        use mavlink::dialects::ardupilotmega::{COMMAND_LONG_DATA, HEARTBEAT_DATA, MavAutopilot, MavCmd, MavType, STATUSTEXT_DATA};
+        use mavlink::dialects::ardupilotmega::{HEARTBEAT_DATA, MavAutopilot, MavCmd, MavType, STATUSTEXT_DATA};
         let autopilot = MavHeader { system_id: 3, component_id: 1, sequence: 0 };
         let mut px4 = HEARTBEAT_DATA::default();
         px4.mavtype = MavType::MAV_TYPE_QUADROTOR;

@@ -283,3 +283,83 @@ mod tests {
         assert!(items(&[], &plan()).is_empty(), "the Qt item would emit an entrance and a ring around a corner that does not exist");
     }
 }
+
+#[cfg(test)]
+mod upload {
+    use super::*;
+    use serde_json::Value;
+
+    fn oracle() -> Value {
+        let text = std::fs::read_to_string(concat!(env!("CARGO_MANIFEST_DIR"), "/../test/Bridge/fixtures/structure-scan-items.json")).expect("the oracle is recorded by QGCCoreCTest");
+        serde_json::from_str(&text).expect("the oracle is JSON")
+    }
+
+    fn parsed(spelled: &str) -> Vec<Point> {
+        spelled.split(' ').map(|pair| pair.split_once(',').unwrap()).map(|(lat, lon)| (lat.parse().unwrap(), lon.parse().unwrap())).collect()
+    }
+
+    fn spelled(item: &Item) -> String {
+        let params: Vec<String> = item.params.iter().map(|value| value.map(|v| format!("{v:.7}")).map(|v| format!("\"{v}\"")).unwrap_or_else(|| "null".to_string())).collect();
+        format!("{} {} [{}]", item.command, item.frame, params.join(","))
+    }
+
+    #[test]
+    fn every_recorded_scan_uploads_the_same_items() {
+        let cases = oracle();
+        let cases = cases.as_object().unwrap();
+        let wrong: Vec<String> = cases
+            .iter()
+            .map(|(name, case)| {
+                let flight = parsed(case["flight"].as_str().unwrap());
+                let plan = Plan {
+                    adjusted_side: case["adjustedFootprintSide"].as_str().unwrap().parse().unwrap(),
+                    adjusted_frontal: case["adjustedFootprintFrontal"].as_str().unwrap().parse().unwrap(),
+                    entrance_alt: case["entranceAlt"].as_f64().unwrap(),
+                    scan_bottom_alt: case["scanBottomAlt"].as_f64().unwrap(),
+                    structure_height: case["structureHeight"].as_f64().unwrap(),
+                    layers: case["layers"].as_f64().unwrap() as i64,
+                    start_from_top: case["startFromTop"].as_bool().unwrap(),
+                    gimbal_pitch: case["gimbalPitch"].as_f64().unwrap(),
+                    entry_vertex: 0,
+                };
+                let uploaded: Vec<String> = case["items"].as_array().unwrap().iter().map(|v| v.as_str().unwrap().to_string()).collect();
+                let scan: Vec<String> = uploaded.iter().skip_while(|line| !line.starts_with("16 ")).cloned().collect();
+                let ours: Vec<String> = items(&flight, &plan).iter().map(spelled).collect();
+                let matched = ours.len() == scan.len() && ours.iter().zip(scan.iter()).all(|(a, b)| same_item(a, b));
+                (name.clone(), matched, format!("{name}\n  qt:   {}\n  rust: {}", scan.join("\n        "), ours.join("\n        ")))
+            })
+            .filter(|(_, matched, _)| !matched)
+            .map(|(_, _, report)| report)
+            .collect();
+        assert!(wrong.is_empty(), "{} of {} scans differ from what the vehicle received:\n{}", wrong.len(), cases.len(), wrong.join("\n"));
+        assert_eq!(cases.len(), 3);
+    }
+
+    #[test]
+    fn the_recorded_upload_begins_with_the_plans_own_item_and_not_the_scans() {
+        let cases = oracle();
+        let cases = cases.as_object().unwrap();
+        cases.iter().for_each(|(name, case)| {
+            let uploaded: Vec<&str> = case["items"].as_array().unwrap().iter().map(|v| v.as_str().unwrap()).collect();
+            assert!(uploaded[0].starts_with("530 "), "{name} no longer begins with the mission settings item, so skipping to the first waypoint would skip part of the scan");
+            assert!(uploaded[1].starts_with("16 "), "{name} has something between the settings item and the scan");
+        });
+    }
+
+    fn same_item(ours: &str, theirs: &str) -> bool {
+        let split = |text: &str| {
+            let (head, rest) = text.split_once(" [").unwrap();
+            let numbers: Vec<Option<f64>> = rest.trim_end_matches(']').split(',').map(|v| v.trim().trim_matches('"').parse::<f64>().ok()).collect();
+            (head.to_string(), numbers)
+        };
+        let (ours_head, ours_params) = split(ours);
+        let (theirs_head, theirs_params) = split(theirs);
+        ours_head == theirs_head
+            && ours_params.len() == theirs_params.len()
+            && ours_params.iter().zip(theirs_params.iter()).all(|(a, b)| match (a, b) {
+                (Some(a), Some(b)) => (a - b).abs() < 1e-6,
+                (None, None) => true,
+                _ => false,
+            })
+    }
+}

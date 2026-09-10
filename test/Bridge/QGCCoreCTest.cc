@@ -1,6 +1,9 @@
 #include "QGCCoreCTest.h"
 #include "QGCApplication.h"
 #include "QGCMapUrlEngine.h"
+#include "Vehicle.h"
+#include "MissionItem.h"
+#include "MissionManager.h"
 #include <QtSql/QSqlError>
 #include <QtSql/QSqlQuery>
 #include <QtSql/QSqlDatabase>
@@ -2279,6 +2282,113 @@ void QGCCoreCTest::_everyNameTheCoreHandsAHeadToInterpolateResolves()
     restore();
 
     QVERIFY2(unreachable.isEmpty(), qPrintable(QStringLiteral("the core names things the bridge cannot resolve:\n%1").arg(unreachable.join(QStringLiteral("\n")))));
+#else
+    QSKIP("the Rust core is not linked into this build");
+#endif
+}
+
+void QGCCoreCTest::_structureScanItemsMatchTheRecordedUpload()
+{
+#ifdef QGC_RUST_CORE
+    _connectMockLink(MAV_AUTOPILOT_PX4);
+    const auto disconnectWhenDone = qScopeGuard([this]() { _disconnectMockLink(); });
+    Vehicle *const vehicle = MultiVehicleManager::instance()->activeVehicle();
+    QVERIFY(vehicle);
+
+    (void) take(qgc_bridge_invoke("plan.start", "[]"));
+    const auto restore = []() { (void) take(qgc_bridge_invoke("plan.removeAll", "[]")); };
+    const auto leaveNoPlanBehind = qScopeGuard(restore);
+
+    const auto compact = [](const QJsonArray &array) { return QJsonDocument(array).toJson(QJsonDocument::Compact); };
+    const QString item = QStringLiteral("plan.missionController.visualItems.1");
+
+    struct ScanCase {
+        const char *name;
+        QJsonArray  structure;
+        double      distanceToSurface;
+        double      scanBottomAlt;
+        double      structureHeight;
+        double      entranceAlt;
+        bool        startFromTop;
+    };
+    const QList<ScanCase> cases = {
+        { "square-from-bottom", polygonSquare(),   30.0, 10.0, 50.0,  5.0, false },
+        { "square-from-top",    polygonSquare(),   30.0, 10.0, 50.0,  5.0, true  },
+        { "triangle-tall",      polygonTriangle(), 25.0,  0.0, 90.0, 12.0, false },
+    };
+
+    QJsonObject recorded;
+    for (const ScanCase &scan : cases) {
+        restore();
+        (void) take(qgc_bridge_invoke("plan.missionController.insertComplexMissionItem",
+                                      compact(QJsonArray { QStringLiteral("Structure Scan"), coordinateJson(47.3975, 8.5460), -1 }).constData()));
+        QTRY_VERIFY_WITH_TIMEOUT(take(qgc_bridge_get(item.toUtf8().constData())).value(QStringLiteral("kind")).toString() == QStringLiteral("object"), 5000);
+
+        const QString structure = item + QStringLiteral(".structurePolygon");
+        (void) take(qgc_bridge_invoke((structure + QStringLiteral(".clear")).toUtf8().constData(), "[]"));
+        for (const QJsonValue &vertex : scan.structure) {
+            (void) take(qgc_bridge_invoke((structure + QStringLiteral(".appendVertex")).toUtf8().constData(), compact(QJsonArray { vertex }).constData()));
+        }
+
+        const auto setFact = [&](const QString &path, double value) {
+            const QByteArray body = QJsonDocument(QJsonObject { { QStringLiteral("value"), value } }).toJson(QJsonDocument::Compact);
+            QVERIFY2(take(qgc_bridge_set(path.toUtf8().constData(), body.constData())).value(QStringLiteral("ok")).toBool(false), qPrintable(path));
+        };
+        setFact(item + QStringLiteral(".cameraCalc.distanceToSurface"), scan.distanceToSurface);
+        setFact(item + QStringLiteral(".scanBottomAlt"), scan.scanBottomAlt);
+        setFact(item + QStringLiteral(".structureHeight"), scan.structureHeight);
+        setFact(item + QStringLiteral(".entranceAlt"), scan.entranceAlt);
+        setFact(item + QStringLiteral(".startFromTop"), scan.startFromTop ? 1.0 : 0.0);
+
+        const auto readFact = [&](const QString &name) {
+            return take(qgc_bridge_get((item + QStringLiteral(".") + name + QStringLiteral(".rawValue")).toUtf8().constData())).value(QStringLiteral("value")).toDouble();
+        };
+        const QJsonArray flightPath = take(qgc_bridge_get((item + QStringLiteral(".flightPolygon.path")).toUtf8().constData())).value(QStringLiteral("value")).toArray();
+        QVERIFY(flightPath.count() >= 3);
+
+        QVERIFY2(take(qgc_bridge_invoke("plan.sendToVehicle", "[]")).value(QStringLiteral("ok")).toBool(false), "the plan could not be sent");
+        QTRY_VERIFY_WITH_TIMEOUT(!vehicle->missionManager()->inProgress(), 20000);
+
+        QJsonArray uploaded;
+        for (const MissionItem *const sent : vehicle->missionManager()->missionItems()) {
+            const QList<double> values = { sent->param1(), sent->param2(), sent->param3(), sent->param4(), sent->param5(), sent->param6(), sent->param7() };
+            QJsonArray params;
+            for (const double value : values) {
+                params.append(qIsNaN(value) ? QJsonValue() : QJsonValue(QString::number(value, 'f', 7)));
+            }
+            uploaded.append(QStringLiteral("%1 %2 %3").arg(sent->command()).arg(sent->frame()).arg(QJsonDocument(params).toJson(QJsonDocument::Compact).constData()));
+        }
+        QVERIFY2(uploaded.count() > 4, "the vehicle received no structure scan");
+
+        recorded[QString::fromUtf8(scan.name)] = QJsonObject {
+            { QStringLiteral("flight"), roundedCoordinates(flightPath) },
+            { QStringLiteral("adjustedFootprintSide"), QString::number(readFact(QStringLiteral("cameraCalc.adjustedFootprintSide")), 'f', 7) },
+            { QStringLiteral("adjustedFootprintFrontal"), QString::number(readFact(QStringLiteral("cameraCalc.adjustedFootprintFrontal")), 'f', 7) },
+            { QStringLiteral("layers"), readFact(QStringLiteral("layers")) },
+            { QStringLiteral("scanBottomAlt"), scan.scanBottomAlt },
+            { QStringLiteral("structureHeight"), scan.structureHeight },
+            { QStringLiteral("entranceAlt"), scan.entranceAlt },
+            { QStringLiteral("startFromTop"), scan.startFromTop },
+            { QStringLiteral("gimbalPitch"), readFact(QStringLiteral("gimbalPitch")) },
+            { QStringLiteral("items"), uploaded },
+        };
+    }
+    restore();
+
+    const QString fixture = QFileInfo(QString::fromUtf8(__FILE__)).dir().filePath(QStringLiteral("fixtures/structure-scan-items.json"));
+    if (qEnvironmentVariableIsSet("QGC_RECORD_VIEW_CONTRACT")) {
+        QFile out(fixture);
+        QVERIFY2(out.open(QIODevice::WriteOnly | QIODevice::Text), qPrintable(fixture));
+        out.write(QJsonDocument(recorded).toJson(QJsonDocument::Indented));
+        out.close();
+        QSKIP("recorded the structure scan upload");
+    }
+
+    QFile in(fixture);
+    QVERIFY2(in.open(QIODevice::ReadOnly), "no recorded structure scan upload; run with QGC_RECORD_VIEW_CONTRACT=1 once");
+    const QJsonObject expected = QJsonDocument::fromJson(in.readAll()).object();
+    in.close();
+    QCOMPARE(QJsonDocument(recorded).toJson(QJsonDocument::Compact), QJsonDocument(expected).toJson(QJsonDocument::Compact));
 #else
     QSKIP("the Rust core is not linked into this build");
 #endif
