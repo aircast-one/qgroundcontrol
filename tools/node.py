@@ -50,3 +50,15 @@ def main():
 
 if __name__ == "__main__":
     main()
+
+def clickable_state(xml, label):
+    """enabled= on a Compose control lives on the clickable ancestor, not the label node."""
+    nodes = NODE.findall(xml)
+    for index, node in enumerate(nodes):
+        if 'clickable="true"' not in node:
+            continue
+        following = [attribute(n, "text") for n in nodes[index:index + 4]]
+        named = next((t for t in following if t.strip()), "")
+        if named == label:
+            return attribute(node, "enabled") == "true"
+    return None
