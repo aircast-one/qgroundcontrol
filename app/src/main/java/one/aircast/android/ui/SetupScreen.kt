@@ -145,7 +145,7 @@ fun SetupScreen(modifier: Modifier = Modifier) {
     }
 
     val open = openComponent
-    if (open != null && setupPage(setupJson, open.name)?.native == true) {
+    if (open != null && headCanOpen(setupPage(setupJson, open.name), open.name)) {
         Column(modifier.fillMaxSize()) {
             Row(
                 modifier = Modifier.fillMaxWidth(),
@@ -166,8 +166,12 @@ fun SetupScreen(modifier: Modifier = Modifier) {
                 )
                 open.name == SENSORS -> SensorsScreen(Modifier.weight(1f))
                 open.name == RADIO -> RadioScreen(Modifier.weight(1f))
-                nativePage?.parameterSections != true -> RemoteSupportScreen(Modifier.weight(1f))
-                else -> ParameterForm(open.name, Modifier.weight(1f))
+                open.name == REMOTE_SUPPORT -> RemoteSupportScreen(Modifier.weight(1f))
+                nativePage?.parameterSections == true -> ParameterForm(open.name, Modifier.weight(1f))
+                else -> SetupNotice(
+                    "${open.name} is set up on the desktop.",
+                    Modifier.weight(1f),
+                )
             }
         }
         return
@@ -205,9 +209,9 @@ fun SetupScreen(modifier: Modifier = Modifier) {
                 SetupRow(
                     title = component.name,
                     status = blocked?.let { "Not while $it" }
-                        ?: setupBadge(component.name, page?.native == true),
+                        ?: setupBadge(component.name, headCanOpen(page, component.name)),
                     state = if (blocked != null) SetupState.Unavailable else SetupState.NeedsAttention,
-                    onClick = if (blocked == null && page?.native == true) {
+                    onClick = if (blocked == null && headCanOpen(page, component.name)) {
                         { openComponent = component }
                     } else {
                         null
@@ -225,7 +229,7 @@ fun SetupScreen(modifier: Modifier = Modifier) {
             item(key = "allheader") { SectionHeader("Setup") }
             items(remaining, key = { it.index }) { component ->
                 val page = setupPage(setupJson, component.name)
-                val openable = page?.native == true
+                val openable = headCanOpen(page, component.name)
                 val blocked = blockedFor(component)
                 SetupRow(
                     title = component.name,

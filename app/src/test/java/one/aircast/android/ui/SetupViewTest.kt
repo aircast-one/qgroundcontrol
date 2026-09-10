@@ -62,6 +62,34 @@ class SetupViewTest {
         assertEquals(true, page?.native)
         assertEquals("Finish on desktop", setupBadge(RADIO, page?.native == true))
     }
+
+    @Test
+    fun `a page the head has no screen for does not open`() {
+        val motors = SetupPage("Motors", native = true, parameterSections = false)
+        val summary = SetupPage("Summary", native = true, parameterSections = false)
+
+        assertFalse(
+            "Motors opened the Remote Support screen, which forwards live position to a third party",
+            headCanOpen(motors, "Motors"),
+        )
+        assertFalse(headCanOpen(summary, "Summary"))
+    }
+
+    @Test
+    fun `the screens the head does have still open`() {
+        assertTrue(headCanOpen(SetupPage(SENSORS, native = true, parameterSections = false), SENSORS))
+        assertTrue(headCanOpen(SetupPage(RADIO, native = true, parameterSections = false), RADIO))
+        assertTrue(
+            headCanOpen(SetupPage(REMOTE_SUPPORT, native = true, parameterSections = false), REMOTE_SUPPORT),
+        )
+        assertTrue(headCanOpen(SetupPage("Safety", native = true, parameterSections = true), "Safety"))
+    }
+
+    @Test
+    fun `a page the core does not call native stays shut`() {
+        assertFalse(headCanOpen(SetupPage("Tuning", native = false, parameterSections = true), "Tuning"))
+        assertFalse(headCanOpen(null, SENSORS))
+    }
 }
 
 class SetupReadinessTest {
