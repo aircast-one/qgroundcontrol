@@ -27,6 +27,20 @@ if [[ -n "$armed" ]]; then
     exit 1
 fi
 
+# macos/Tests/main.swift is not a CMake target and swift-checks.sh was invoked by nothing, so
+# its assertions ran only when someone remembered. Scoped to macos/ so a C++ session's commit
+# pays none of the seventeen seconds.
+if print -rl -- "$@" | grep -q '^macos/'; then
+    if ! "$root/tools/macos/swift-checks.sh"; then
+        print -u2 ""
+        print -u2 "refusing to commit: the Swift checks are red and this commit touches macos/."
+        print -u2 "they compile the working tree, so if you are not the session editing"
+        print -u2 "macos/Sources the failure above may not be yours - say so rather than"
+        print -u2 "working around it."
+        exit 1
+    fi
+fi
+
 message="$(cat)"
 if [[ -z "${message// }" ]]; then
     print -u2 "refusing to commit with an empty message"
