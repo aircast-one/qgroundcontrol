@@ -122,6 +122,27 @@ internal fun MapSpikeScreen(
         }
     }
 
+    fun addMissionItem(kindId: String, label: String, work: () -> Boolean) {
+        scope.launch {
+            val refusal = withContext(Dispatchers.Default) { kindRefusal(freshMissionKind(kindId)) }
+            if (refusal != null) {
+                busy = refusal
+                delay(FAILURE_MESSAGE_MS)
+                busy = null
+                return@launch
+            }
+            busy = label
+            val ok = withContext(Dispatchers.Default) { work() }
+            if (ok) {
+                busy = null
+            } else {
+                busy = "$label did not work"
+                delay(FAILURE_MESSAGE_MS)
+                busy = null
+            }
+        }
+    }
+
     fun onBridge(label: String? = null, work: () -> Boolean) {
         busy = label
         scope.launch {
@@ -420,7 +441,7 @@ internal fun MapSpikeScreen(
 
                     TextButton(onClick = {
                         val at = placeAt()
-                        onBridge("Adding survey") {
+                        addMissionItem("survey", "Adding survey") {
                             at != null && SurveyBridge.insertSurvey(at.latitude, at.longitude)
                         }
                     }) { Text("Survey") }
@@ -444,7 +465,7 @@ internal fun MapSpikeScreen(
                     TextButton(
                         onClick = {
                             val at = placeAt()
-                            onBridge("Adding a takeoff") {
+                            addMissionItem("takeoff", "Adding a takeoff") {
                                 at != null &&
                                     PlanBridge.appendTakeoff(
                                         at.latitude,
@@ -457,7 +478,7 @@ internal fun MapSpikeScreen(
                     TextButton(
                         onClick = {
                             val at = placeAt()
-                            onBridge("Adding a landing") {
+                            addMissionItem("land", "Adding a landing") {
                                 at != null && PlanBridge.appendLanding(at.latitude, at.longitude)
                             }
                         },
