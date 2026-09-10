@@ -1247,6 +1247,28 @@ QString roundedCoordinates(const QJsonArray &points)
 
 } // namespace
 
+void QGCCoreCTest::_serialConfigurationsCanBeCreatedByPath()
+{
+#ifdef QGC_RUST_CORE
+    const QJsonObject refusedName = take(qgc_bridge_invoke("links.createSerialConfiguration", "[\"\",\"/dev/nonexistent\",57600]"));
+    QVERIFY2(refusedName.value(QStringLiteral("ok")).toBool(false), qPrintable(refusedName.value(QStringLiteral("reason")).toString()));
+    QCOMPARE(refusedName.value(QStringLiteral("result")).toBool(true), false);
+
+    const QJsonObject refusedBaud = take(qgc_bridge_invoke("links.createSerialConfiguration", "[\"Serial Test\",\"/dev/nonexistent\",0]"));
+    QCOMPARE(refusedBaud.value(QStringLiteral("result")).toBool(true), false);
+
+    const QJsonObject missing = take(qgc_bridge_invoke("links.createSerialConfigurationTypo", "[\"Serial Test\",\"/dev/nonexistent\",57600]"));
+    QCOMPARE(missing.value(QStringLiteral("ok")).toBool(true), false);
+    QVERIFY2(!missing.contains(QStringLiteral("result")),
+             "a method the bridge cannot find answers without a result, which is how the refusals above prove this one is reachable rather than absent");
+
+    QVERIFY2(!refusedBaud.value(QStringLiteral("reason")).toString().contains(QStringLiteral("does not resolve")),
+             "createSerialConfiguration must be reachable through the bridge; the four step flow it replaces passes a configuration pointer no head can hold");
+#else
+    QSKIP("the Rust core is not linked into this build");
+#endif
+}
+
 void QGCCoreCTest::_surveyTransectsMatchTheRecordedOracle()
 {
 #ifdef QGC_RUST_CORE

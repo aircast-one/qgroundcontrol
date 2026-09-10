@@ -70,6 +70,11 @@ public:
     /// This should only be used by Qml code
     Q_INVOKABLE void createConnectedLink(const LinkConfiguration *config);
     Q_INVOKABLE bool createAndConnectLink(const QString &type, const QString &name, const QString &host, int port);
+    /// Creates and registers a serial configuration without connecting it. The four step editing flow
+    /// passes a configuration pointer between calls and a path-based head has nowhere to hold one; a
+    /// registered configuration has a path, so parity, flow control and the rest are writable by property
+    /// and createConnectedLink takes it by reference.
+    Q_INVOKABLE bool createSerialConfiguration(const QString &name, const QString &portName, int baud);
     Q_INVOKABLE void createMavlinkForwardingSupportLink();
     Q_INVOKABLE void endMavlinkForwardingSupportLink();
     /// Called to signal app shutdown. Disconnects all links while turning off auto-connect.

@@ -769,6 +769,35 @@ bool LinkManager::createAndConnectLink(const QString &type, const QString &name,
     return createConnectedLink(shared);
 }
 
+bool LinkManager::createSerialConfiguration(const QString &name, const QString &portName, int baud)
+{
+#ifdef QGC_NO_SERIAL_LINK
+    Q_UNUSED(name); Q_UNUSED(portName); Q_UNUSED(baud);
+    qCWarning(LinkManagerLog) << "createSerialConfiguration: this build has no serial support";
+    return false;
+#else
+    if (name.isEmpty() || portName.isEmpty() || baud <= 0) {
+        qCWarning(LinkManagerLog) << "createSerialConfiguration: bad name, port or baud" << name << portName << baud;
+        return false;
+    }
+
+    for (const SharedLinkConfigurationPtr &existing : std::as_const(_rgLinkConfigs)) {
+        if (existing->name() == name) {
+            qCWarning(LinkManagerLog) << "createSerialConfiguration: name already in use" << name;
+            return false;
+        }
+    }
+
+    SerialConfiguration *const serialConfig = new SerialConfiguration(name);
+    serialConfig->setPortName(portName);
+    serialConfig->setBaud(baud);
+
+    addConfiguration(serialConfig);
+    saveLinkConfigurationList();
+    return true;
+#endif
+}
+
 void LinkManager::createMavlinkForwardingSupportLink()
 {
     const QString hostName = SettingsManager::instance()->mavlinkSettings()->forwardMavlinkAPMSupportHostName()->rawValue().toString();
