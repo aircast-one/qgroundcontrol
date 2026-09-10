@@ -1,4 +1,5 @@
 #include "QGCCoreCTest.h"
+#include "QGCApplication.h"
 #include "QGCMapUrlEngine.h"
 #include <QtSql/QSqlError>
 #include <QtSql/QSqlQuery>
@@ -2149,6 +2150,67 @@ void QGCCoreCTest::_structureScanFlightPathMatchesTheRecordedOracle()
     const QJsonObject expected = QJsonDocument::fromJson(in.readAll()).object();
     in.close();
     QCOMPARE(QJsonDocument(recorded).toJson(QJsonDocument::Compact), QJsonDocument(expected).toJson(QJsonDocument::Compact));
+#else
+    QSKIP("the Rust core is not linked into this build");
+#endif
+}
+
+void QGCCoreCTest::_operatorNoticesReachAHeadWithNoQmlRoot()
+{
+#ifdef QGC_RUST_CORE
+    const auto notices = []() {
+        return take(qgc_bridge_get("host.notices")).value(QStringLiteral("value")).toArray();
+    };
+    const auto drain = [&]() {
+        const QJsonArray waiting = notices();
+        if (waiting.isEmpty()) {
+            return;
+        }
+        const qint64 last = waiting.last().toObject().value(QStringLiteral("id")).toInteger();
+        (void) take(qgc_bridge_invoke("host.acknowledgeThrough", QStringLiteral("[%1]").arg(last).toUtf8().constData()));
+    };
+    drain();
+    QCOMPARE(notices().count(), 0);
+
+    qgcApp()->showAppMessage(QStringLiteral("The vehicle refused the parameter write."), QStringLiteral("Parameters"));
+    qgcApp()->showVehicleConfig();
+    qgcApp()->showCriticalVehicleMessage(QStringLiteral("Compass calibration required"));
+
+    const QJsonArray waiting = notices();
+    QCOMPARE(waiting.count(), 3);
+    QCOMPARE(waiting.at(0).toObject().value(QStringLiteral("kind")).toInt(), 0);
+    QCOMPARE(waiting.at(0).toObject().value(QStringLiteral("title")).toString(), QStringLiteral("Parameters"));
+    QCOMPARE(waiting.at(0).toObject().value(QStringLiteral("text")).toString(), QStringLiteral("The vehicle refused the parameter write."));
+    QCOMPARE(waiting.at(1).toObject().value(QStringLiteral("kind")).toInt(), 2);
+    QVERIFY2(waiting.at(1).toObject().value(QStringLiteral("title")).toString() == QStringLiteral("setup"),
+             "the jump to the setup tab has to arrive beside the message that explains it, or the app looks like it lost its place");
+    QCOMPARE(waiting.at(2).toObject().value(QStringLiteral("kind")).toInt(), 1);
+
+    QVERIFY2(waiting.at(0).toObject().value(QStringLiteral("id")).toInteger() < waiting.at(1).toObject().value(QStringLiteral("id")).toInteger(),
+             "ids rise with time, which is what lets a head acknowledge everything it has drawn in one call");
+
+    (void) take(qgc_bridge_invoke("host.acknowledge", QStringLiteral("[%1]").arg(waiting.at(1).toObject().value(QStringLiteral("id")).toInteger()).toUtf8().constData()));
+    QCOMPARE(notices().count(), 2);
+    QVERIFY2(notices().at(0).toObject().value(QStringLiteral("id")).toInteger() == waiting.at(0).toObject().value(QStringLiteral("id")).toInteger(),
+             "acknowledging one notice leaves the others, so a head that draws them one at a time loses none");
+
+    const QJsonObject refused = take(qgc_bridge_invoke("host.acknowledge", "[999999]"));
+    QCOMPARE(refused.value(QStringLiteral("result")).toBool(true), false);
+    QCOMPARE(notices().count(), 2);
+
+    drain();
+    QCOMPARE(notices().count(), 0);
+    QCOMPARE(take(qgc_bridge_get("host.count")).value(QStringLiteral("value")).toInt(), 0);
+
+    const int droppedBefore = take(qgc_bridge_get("host.dropped")).value(QStringLiteral("value")).toInt();
+    for (int index = 0; index < 70; index++) {
+        qgcApp()->showAppMessage(QStringLiteral("message %1").arg(index));
+    }
+    QCOMPARE(notices().count(), 64);
+    QVERIFY2(take(qgc_bridge_get("host.dropped")).value(QStringLiteral("value")).toInt() > droppedBefore,
+             "a head that never drains must not grow the queue without bound, and it has to be able to see that it missed something");
+    QCOMPARE(notices().first().toObject().value(QStringLiteral("text")).toString(), QStringLiteral("message 6"));
+    drain();
 #else
     QSKIP("the Rust core is not linked into this build");
 #endif

@@ -17,6 +17,7 @@
  */
 
 #include "QGCApplication.h"
+#include "QGCHostNotices.h"
 
 #include <QtCore/QEvent>
 #include <QtCore/QFile>
@@ -509,6 +510,8 @@ void QGCApplication::showCriticalVehicleMessage(const QString &message)
         return;
     }
 
+    QGCHostNotices::instance()->post(QGCHostNotices::VehicleError, applicationName(), message);
+
     QObject *const rootQmlObject = _rootQmlObject();
     if (rootQmlObject && _showErrorsInToolbar) {
         QVariant varReturn;
@@ -525,6 +528,7 @@ void QGCApplication::showCriticalVehicleMessage(const QString &message)
 void QGCApplication::showAppMessage(const QString &message, const QString &title)
 {
     const QString dialogTitle = title.isEmpty() ? applicationName() : title;
+    QGCHostNotices::instance()->post(QGCHostNotices::Message, dialogTitle, message);
 
     QObject *const rootQmlObject = _rootQmlObject();
     if (rootQmlObject) {
@@ -580,6 +584,7 @@ QQuickWindow *QGCApplication::mainRootWindow()
 
 void QGCApplication::showVehicleConfig()
 {
+    QGCHostNotices::instance()->post(QGCHostNotices::Navigation, QStringLiteral("setup"), QString());
     if (_rootQmlObject()) {
       QMetaObject::invokeMethod(_rootQmlObject(), "showVehicleConfig");
     }

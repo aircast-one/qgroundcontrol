@@ -45,6 +45,7 @@ private slots:
     void _theTileCacheSchemaMatchesTheRecordedOne();
     void _polygonGeometryMatchesTheRecordedOracle();
     void _structureScanFlightPathMatchesTheRecordedOracle();
+    void _operatorNoticesReachAHeadWithNoQmlRoot();
     void _surveyTransectsMatchTheRecordedOracle();
     void _tlogSummaryDecodesTheSampleLog();
     void _planFileAgreesWithTheCppLoader();
