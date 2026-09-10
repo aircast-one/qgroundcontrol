@@ -46,8 +46,8 @@ data class VehicleMessage(
 internal fun bannerText(blocker: String?, messages: List<VehicleMessage>): String? {
     if (blocker != null) return blocker
     if (messages.isEmpty()) return null
-    val worst = messages.lastOrNull { it.level == MessageSeverity.Error }
-        ?: messages.lastOrNull { it.level == MessageSeverity.Warning }
+    val worst = messages.firstOrNull { it.level == MessageSeverity.Error }
+        ?: messages.firstOrNull { it.level == MessageSeverity.Warning }
     val count = "${messages.size} message${if (messages.size == 1) "" else "s"} from the vehicle"
     return worst?.text?.takeIf { it.isNotBlank() }?.let { "$it · $count" } ?: count
 }

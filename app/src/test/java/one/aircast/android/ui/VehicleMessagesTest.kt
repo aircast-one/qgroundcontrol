@@ -69,23 +69,33 @@ class VehicleMessagesTest {
 
     @Test
     fun `an error is named in the banner, not buried in a count`() {
-        val messages = listOf(
-            message(0, MessageSeverity.Normal, "Armed"),
+        val messages = newestFirst(
+            message(0, MessageSeverity.Normal, "Mode changed"),
             message(1, MessageSeverity.Error, "EKF variance"),
-            message(2, MessageSeverity.Normal, "Mode changed"),
+            message(2, MessageSeverity.Normal, "Armed"),
         )
 
         assertEquals("EKF variance · 3 messages from the vehicle", bannerText(null, messages))
     }
 
     @Test
-    fun `the newest error wins, because it is the one still happening`() {
-        val messages = listOf(
-            message(0, MessageSeverity.Error, "Compass variance"),
-            message(1, MessageSeverity.Error, "EKF variance"),
+    fun `the newest error wins, and newest is the head of the list the core serves`() {
+        val messages = newestFirst(
+            message(0, MessageSeverity.Error, "EKF variance"),
+            message(1, MessageSeverity.Error, "Compass variance"),
         )
 
         assertEquals("EKF variance · 2 messages from the vehicle", bannerText(null, messages))
+    }
+
+    @Test
+    fun `the log renders the same list oldest first, which is what fixes the order`() {
+        val messages = newestFirst(
+            message(0, MessageSeverity.Normal, "newest"),
+            message(1, MessageSeverity.Normal, "oldest"),
+        )
+
+        assertEquals(listOf("oldest", "newest"), messages.asReversed().map { it.text })
     }
 
     @Test
@@ -116,6 +126,8 @@ class VehicleMessagesTest {
     fun `nothing to say is nothing shown`() {
         assertNull(bannerText(null, emptyList()))
     }
+
+    private fun newestFirst(vararg messages: VehicleMessage) = messages.toList()
 
     private fun message(index: Int, level: MessageSeverity, text: String) =
         VehicleMessage(index, "12:00", level.name.lowercase(), level, text)
