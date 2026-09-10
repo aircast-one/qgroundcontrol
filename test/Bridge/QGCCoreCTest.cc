@@ -1161,6 +1161,138 @@ void QGCCoreCTest::_viewShapesMatchTheRecordedContract()
     }
 }
 
+namespace
+{
+
+QJsonObject coordinateJson(double latitude, double longitude)
+{
+    return QJsonObject { { QStringLiteral("latitude"), latitude }, { QStringLiteral("longitude"), longitude }, { QStringLiteral("altitude"), 0.0 } };
+}
+
+QJsonArray polygonSquare()
+{
+    return QJsonArray { coordinateJson(47.3960, 8.5440), coordinateJson(47.3960, 8.5480), coordinateJson(47.3990, 8.5480), coordinateJson(47.3990, 8.5440) };
+}
+
+QJsonArray polygonTriangle()
+{
+    return QJsonArray { coordinateJson(47.3960, 8.5440), coordinateJson(47.3960, 8.5500), coordinateJson(47.3995, 8.5470) };
+}
+
+QJsonArray polygonConcave()
+{
+    return QJsonArray {
+        coordinateJson(47.3960, 8.5440), coordinateJson(47.3960, 8.5500), coordinateJson(47.3980, 8.5500),
+        coordinateJson(47.3975, 8.5470), coordinateJson(47.3995, 8.5470), coordinateJson(47.3995, 8.5440),
+    };
+}
+
+struct SurveyCase {
+    const char *name;
+    QJsonArray  polygon;
+    double      gridAngle;
+    double      footprintSide;
+    double      footprintFrontal;
+    double      turnAround;
+    bool        refly;
+};
+
+QString roundedCoordinates(const QJsonArray &points)
+{
+    QStringList text;
+    for (const QJsonValue &point : points) {
+        const QJsonObject at = point.toObject();
+        text.append(QStringLiteral("%1,%2")
+                        .arg(at.value(QStringLiteral("latitude")).toDouble(), 0, 'f', 7)
+                        .arg(at.value(QStringLiteral("longitude")).toDouble(), 0, 'f', 7));
+    }
+    return text.join(QStringLiteral(" "));
+}
+
+} // namespace
+
+void QGCCoreCTest::_surveyTransectsMatchTheRecordedOracle()
+{
+#ifdef QGC_RUST_CORE
+    const QList<SurveyCase> cases = {
+        { "square-0deg",            polygonSquare(),   0.0,   60.0, 40.0,  0.0, false },
+        { "square-30deg",           polygonSquare(),  30.0,   60.0, 40.0,  0.0, false },
+        { "square-90deg",           polygonSquare(),  90.0,   60.0, 40.0,  0.0, false },
+        { "square-neg45deg",        polygonSquare(), -45.0,   60.0, 40.0,  0.0, false },
+        { "square-turnaround",      polygonSquare(),   0.0,   60.0, 40.0, 30.0, false },
+        { "square-tight-spacing",   polygonSquare(),   0.0,   25.0, 20.0,  0.0, false },
+        { "triangle-0deg",          polygonTriangle(), 0.0,   60.0, 40.0,  0.0, false },
+        { "triangle-45deg",         polygonTriangle(),45.0,   60.0, 40.0,  0.0, false },
+        { "concave-0deg",           polygonConcave(),  0.0,   60.0, 40.0,  0.0, false },
+        { "concave-0deg-refly",     polygonConcave(),  0.0,   60.0, 40.0,  0.0, true  },
+        { "concave-60deg",          polygonConcave(), 60.0,   60.0, 40.0,  0.0, false },
+        { "concave-60deg-refly",    polygonConcave(), 60.0,   60.0, 40.0,  0.0, true  },
+    };
+
+    (void) take(qgc_bridge_invoke("plan.start", "[]"));
+    const auto restore = []() { (void) take(qgc_bridge_invoke("plan.removeAll", "[]")); };
+    const auto leaveNoPlanBehind = qScopeGuard(restore);
+    restore();
+
+    const QString item = QStringLiteral("plan.missionController.visualItems.1");
+    const auto compact = [](const QJsonArray &array) { return QJsonDocument(array).toJson(QJsonDocument::Compact); };
+    const auto setFact = [&](const QString &path, const QJsonValue &value) {
+        const QByteArray body = QJsonDocument(QJsonObject { { QStringLiteral("value"), value } }).toJson(QJsonDocument::Compact);
+        QVERIFY2(take(qgc_bridge_set(path.toUtf8().constData(), body.constData())).value(QStringLiteral("ok")).toBool(false), qPrintable(path));
+        const double wanted = value.isBool() ? (value.toBool() ? 1.0 : 0.0) : value.toDouble();
+        const QJsonValue back = take(qgc_bridge_get((path + QStringLiteral(".rawValue")).toUtf8().constData())).value(QStringLiteral("value"));
+        const double readBack = back.isBool() ? (back.toBool() ? 1.0 : 0.0) : back.toDouble();
+        QVERIFY2(qFuzzyCompare(readBack + 1.0, wanted + 1.0), qPrintable(QStringLiteral("%1 was set to %2 and reads back %3, so this case is not the case it is named after").arg(path).arg(wanted).arg(readBack)));
+    };
+
+    QJsonObject recorded;
+    for (const SurveyCase &survey : cases) {
+        restore();
+        (void) take(qgc_bridge_invoke("plan.missionController.insertComplexMissionItem",
+                                      compact(QJsonArray { QStringLiteral("Survey"), coordinateJson(47.3975, 8.5460), -1 }).constData()));
+        QTRY_VERIFY_WITH_TIMEOUT(take(qgc_bridge_get(item.toUtf8().constData())).value(QStringLiteral("kind")).toString() == QStringLiteral("object"), 5000);
+
+        (void) take(qgc_bridge_invoke((item + QStringLiteral(".surveyAreaPolygon.clear")).toUtf8().constData(), "[]"));
+        for (const QJsonValue &vertex : survey.polygon) {
+            (void) take(qgc_bridge_invoke((item + QStringLiteral(".surveyAreaPolygon.appendVertex")).toUtf8().constData(),
+                                          compact(QJsonArray { vertex }).constData()));
+        }
+
+        setFact(item + QStringLiteral(".cameraCalc.adjustedFootprintSide"), QJsonValue(survey.footprintSide));
+        setFact(item + QStringLiteral(".cameraCalc.adjustedFootprintFrontal"), QJsonValue(survey.footprintFrontal));
+        setFact(item + QStringLiteral(".turnAroundDistance"), QJsonValue(survey.turnAround));
+        setFact(item + QStringLiteral(".refly90Degrees"), QJsonValue(survey.refly));
+        setFact(item + QStringLiteral(".gridAngle"), QJsonValue(survey.gridAngle));
+
+        const auto points = [&]() { return take(qgc_bridge_get((item + QStringLiteral(".visualTransectPoints")).toUtf8().constData())).value(QStringLiteral("value")).toArray(); };
+        QTRY_VERIFY_WITH_TIMEOUT(points().count() > 0, 5000);
+        recorded.insert(QString::fromUtf8(survey.name), roundedCoordinates(points()));
+    }
+    restore();
+
+    const QString fixture = QFileInfo(QString::fromUtf8(__FILE__)).dir().filePath(QStringLiteral("fixtures/survey-transects.json"));
+    const QByteArray current = QJsonDocument(recorded).toJson(QJsonDocument::Indented);
+    if (qEnvironmentVariableIsSet("QGC_RECORD_VIEW_CONTRACT")) {
+        QFile out(fixture);
+        QVERIFY(out.open(QIODevice::WriteOnly | QIODevice::Truncate));
+        out.write(current);
+        return;
+    }
+
+    QFile in(fixture);
+    QVERIFY2(in.open(QIODevice::ReadOnly), "no recorded survey oracle; run with QGC_RECORD_VIEW_CONTRACT=1 once");
+    const QJsonObject expected = QJsonDocument::fromJson(in.readAll()).object();
+    for (const SurveyCase &survey : cases) {
+        const QString key = QString::fromUtf8(survey.name);
+        QVERIFY2(expected.contains(key), qPrintable(key));
+        QVERIFY2(expected.value(key).toString() == recorded.value(key).toString(),
+                 qPrintable(QStringLiteral("%1 transects changed\n was: %2\n now: %3").arg(key, expected.value(key).toString(), recorded.value(key).toString())));
+    }
+#else
+    QSKIP("the Rust core is not linked into this build");
+#endif
+}
+
 void QGCCoreCTest::_tlogSummaryDecodesTheSampleLog()
 {
     const QString sample = QFileInfo(QString::fromUtf8(__FILE__)).dir().filePath(QStringLiteral("../../mav.tlog"));

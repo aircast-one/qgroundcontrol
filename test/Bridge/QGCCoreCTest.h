@@ -40,6 +40,7 @@ private slots:
     void _setupOverviewFollowsTheVehicle();
     void _videoAndCameraAreServed();
     void _viewShapesMatchTheRecordedContract();
+    void _surveyTransectsMatchTheRecordedOracle();
     void _tlogSummaryDecodesTheSampleLog();
     void _planFileAgreesWithTheCppLoader();
     void _waypointsFileAgreesWithTheCppLoader();
