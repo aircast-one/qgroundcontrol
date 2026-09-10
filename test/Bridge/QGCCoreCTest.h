@@ -48,6 +48,7 @@ private slots:
     void _operatorNoticesReachAHeadWithNoQmlRoot();
     void _everyNameTheCoreHandsAHeadToInterpolateResolves();
     void _structureScanItemsMatchTheRecordedUpload();
+    void _aLargeSurveyMakesTheRoundTripUnchanged();
     void _surveyTransectsMatchTheRecordedOracle();
     void _tlogSummaryDecodesTheSampleLog();
     void _planFileAgreesWithTheCppLoader();

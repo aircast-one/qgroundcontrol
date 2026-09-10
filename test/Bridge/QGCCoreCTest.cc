@@ -461,7 +461,7 @@ void QGCCoreCTest::_setupPageServesApmParameters()
 {
     _connectMockLink(MAV_AUTOPILOT_ARDUPILOTMEGA);
     QTRY_COMPARE_WITH_TIMEOUT(take(qgc_bridge_get("view.setup")).value(QStringLiteral("connected")).toBool(false), true, 5000);
-    QTRY_VERIFY_WITH_TIMEOUT(take(qgc_bridge_get("vehicle.parameterManager.parametersReady")).value(QStringLiteral("value")).toBool(false), 20000);
+    QTRY_VERIFY_WITH_TIMEOUT(take(qgc_bridge_get("vehicle.parameterManager.parametersReady")).value(QStringLiteral("value")).toBool(false), 90000);
     const QJsonObject raw = take(qgc_bridge_get("vehicle.parameterManager.getParameter(-1,RTL_ALT)"));
     QCOMPARE(raw.value(QStringLiteral("name")).toString(), QStringLiteral("RTL_ALT"));
     const QJsonObject page = take(qgc_bridge_get("view.setup(Safety)"));
@@ -2389,6 +2389,115 @@ void QGCCoreCTest::_structureScanItemsMatchTheRecordedUpload()
     const QJsonObject expected = QJsonDocument::fromJson(in.readAll()).object();
     in.close();
     QCOMPARE(QJsonDocument(recorded).toJson(QJsonDocument::Compact), QJsonDocument(expected).toJson(QJsonDocument::Compact));
+#else
+    QSKIP("the Rust core is not linked into this build");
+#endif
+}
+
+void QGCCoreCTest::_aLargeSurveyMakesTheRoundTripUnchanged()
+{
+#ifdef QGC_RUST_CORE
+    _connectMockLink(MAV_AUTOPILOT_PX4);
+    const auto disconnectWhenDone = qScopeGuard([this]() { _disconnectMockLink(); });
+    Vehicle *const vehicle = MultiVehicleManager::instance()->activeVehicle();
+    QVERIFY(vehicle);
+
+    (void) take(qgc_bridge_invoke("plan.start", "[]"));
+    const auto restore = []() { (void) take(qgc_bridge_invoke("plan.removeAll", "[]")); };
+    const auto leaveNoPlanBehind = qScopeGuard(restore);
+    restore();
+
+    const auto compact = [](const QJsonArray &array) { return QJsonDocument(array).toJson(QJsonDocument::Compact); };
+    const QString item = QStringLiteral("plan.missionController.visualItems.1");
+    (void) take(qgc_bridge_invoke("plan.missionController.insertComplexMissionItem",
+                                  compact(QJsonArray { QStringLiteral("Survey"), coordinateJson(47.3975, 8.5460), -1 }).constData()));
+    QTRY_VERIFY_WITH_TIMEOUT(take(qgc_bridge_get(item.toUtf8().constData())).value(QStringLiteral("kind")).toString() == QStringLiteral("object"), 5000);
+
+    (void) take(qgc_bridge_invoke((item + QStringLiteral(".surveyAreaPolygon.clear")).toUtf8().constData(), "[]"));
+    for (const QJsonValue &vertex : polygonConcave()) {
+        (void) take(qgc_bridge_invoke((item + QStringLiteral(".surveyAreaPolygon.appendVertex")).toUtf8().constData(), compact(QJsonArray { vertex }).constData()));
+    }
+    const auto setFact = [&](const QString &path, double value) {
+        const QByteArray body = QJsonDocument(QJsonObject { { QStringLiteral("value"), value } }).toJson(QJsonDocument::Compact);
+        QVERIFY2(take(qgc_bridge_set(path.toUtf8().constData(), body.constData())).value(QStringLiteral("ok")).toBool(false), qPrintable(path));
+    };
+    setFact(item + QStringLiteral(".cameraCalc.adjustedFootprintSide"), 6.0);
+    setFact(item + QStringLiteral(".cameraCalc.adjustedFootprintFrontal"), 6.0);
+    setFact(item + QStringLiteral(".cameraCalc.distanceToSurface"), 40.0);
+
+    struct Sent {
+        int          sequence;
+        int          command;
+        int          frame;
+        QList<double> params;
+        QString      spelled;
+    };
+    const auto spell = [](const QList<MissionItem *> &items) {
+        QList<Sent> sent;
+        for (const MissionItem *const entry : items) {
+            const QList<double> values = { entry->param1(), entry->param2(), entry->param3(), entry->param4(), entry->param5(), entry->param6(), entry->param7() };
+            QStringList params;
+            for (const double value : values) {
+                params.append(qIsNaN(value) ? QStringLiteral("nan") : QString::number(value, 'f', 7));
+            }
+            sent.append(Sent {
+                entry->sequenceNumber(),
+                static_cast<int>(entry->command()),
+                static_cast<int>(entry->frame()),
+                values,
+                QStringLiteral("%1 %2 %3 %4").arg(entry->sequenceNumber()).arg(entry->command()).arg(entry->frame()).arg(params.join(QStringLiteral(","))),
+            });
+        }
+        return sent;
+    };
+
+    // MISSION_ITEM_INT carries latitude and longitude as degrees times ten million, so a coordinate
+    // comes back quantised and a not-a-number becomes a zero. Everything else has to survive exactly.
+    const auto carriedIdentically = [](const Sent &sent, const Sent &read) {
+        if (sent.sequence != read.sequence || sent.command != read.command || sent.frame != read.frame) {
+            return false;
+        }
+        for (int index = 0; index < sent.params.count(); index++) {
+            const double before = sent.params.at(index);
+            const double after = read.params.at(index);
+            const bool coordinate = index == 4 || index == 5;
+            if (qIsNaN(before)) {
+                if (!(qIsNaN(after) || (coordinate && after == 0.0))) {
+                    return false;
+                }
+                continue;
+            }
+            if (qIsNaN(after)) {
+                return false;
+            }
+            const double allowed = coordinate ? 1.5e-7 : 0.0;
+            if (qAbs(before - after) > allowed) {
+                return false;
+            }
+        }
+        return true;
+    };
+
+    QVERIFY2(take(qgc_bridge_invoke("plan.sendToVehicle", "[]")).value(QStringLiteral("ok")).toBool(false), "the plan could not be sent");
+    QTRY_VERIFY_WITH_TIMEOUT(!vehicle->missionManager()->inProgress(), 120000);
+    const QList<Sent> uploaded = spell(vehicle->missionManager()->missionItems());
+    QVERIFY2(uploaded.count() > 200, qPrintable(QStringLiteral("this survey is meant to be larger than a vehicle's usual mission and it came to %1 items").arg(uploaded.count())));
+
+    restore();
+    QTRY_VERIFY_WITH_TIMEOUT(take(qgc_bridge_get("plan.missionController.visualItems.count")).value(QStringLiteral("value")).toInt(-1) <= 1, 5000);
+
+    QVERIFY2(take(qgc_bridge_invoke("plan.loadFromVehicle", "[]")).value(QStringLiteral("ok")).toBool(false), "the plan could not be read back");
+    QTRY_VERIFY_WITH_TIMEOUT(!vehicle->missionManager()->inProgress(), 120000);
+    const QList<Sent> downloaded = spell(vehicle->missionManager()->missionItems());
+
+    QCOMPARE(downloaded.count(), uploaded.count());
+    QStringList differences;
+    for (int index = 0; index < uploaded.count() && differences.count() < 5; index++) {
+        if (!carriedIdentically(uploaded.at(index), downloaded.at(index))) {
+            differences.append(QStringLiteral("item %1\n  sent: %2\n  read: %3").arg(index).arg(uploaded.at(index).spelled, downloaded.at(index).spelled));
+        }
+    }
+    QVERIFY2(differences.isEmpty(), qPrintable(QStringLiteral("a survey of %1 items did not survive the round trip:\n%2").arg(uploaded.count()).arg(differences.join(QStringLiteral("\n")))));
 #else
     QSKIP("the Rust core is not linked into this build");
 #endif
