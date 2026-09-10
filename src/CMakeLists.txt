@@ -49,8 +49,8 @@ target_link_libraries(${CMAKE_PROJECT_NAME}
         AutoPilotPluginsCommonModule
         FactControlsModule
         FactSystemModule
-        FlightDisplayModule
-        FlightMapModule
+        $<$<NOT:$<BOOL:${ANDROID}>>:FlightDisplayModule>
+        $<$<NOT:$<BOOL:${ANDROID}>>:FlightMapModule>
         MainWindowModule
         QGroundControlControlsModule
         ScreenToolsModule
@@ -85,9 +85,11 @@ add_subdirectory(Comms)
 add_subdirectory(DebugApi)
 add_subdirectory(FactSystem)
 add_subdirectory(FirmwarePlugin)
-add_subdirectory(FirstRunPromptDialogs)
-add_subdirectory(FlightDisplay)
-add_subdirectory(FlightMap)
+if(NOT ANDROID)
+    add_subdirectory(FirstRunPromptDialogs)
+    add_subdirectory(FlightDisplay)
+    add_subdirectory(FlightMap)
+endif()
 add_subdirectory(FollowMe)
 add_subdirectory(Gimbal)
 add_subdirectory(iOS)
@@ -98,7 +100,9 @@ add_subdirectory(MissionManager)
 if(CMAKE_SYSTEM_NAME STREQUAL "Darwin")
     add_subdirectory(PacketRadio)
 endif()
-add_subdirectory(PlanView)
+if(NOT ANDROID)
+    add_subdirectory(PlanView)
+endif()
 add_subdirectory(PositionManager)
 add_subdirectory(QmlControls)
 add_subdirectory(Settings)
