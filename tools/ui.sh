@@ -15,6 +15,11 @@
 #                          that is one flat colour; ALLOW_ANY_SCREEN=1 to capture
 #                          whatever is showing
 export PATH="$PATH:$HOME/Library/Android/sdk/platform-tools"
+if [ -z "${ANDROID_SERIAL:-}" ]; then
+    ANDROID_SERIAL="$(adb devices | awk '$2 == "device" && $1 !~ /_adb\._tcp\./ { print $1; exit }')"
+    [ -n "$ANDROID_SERIAL" ] && export ANDROID_SERIAL
+fi
+
 APP="${APP:-one.aircast.android}"
 ACTIVITY="${ACTIVITY:-.MainActivity}"
 set -u

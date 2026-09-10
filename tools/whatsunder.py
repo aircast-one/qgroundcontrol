@@ -9,8 +9,17 @@ FLIGHT_CONTROLS = {
 
 NODE = re.compile(r'(?:text|content-desc)="([^"]*)"[^>]*bounds="\[(\d+),(\d+)\]\[(\d+),(\d+)\]"')
 
+PLANNING_MARKERS = {"Upload", "Download"}
+
+
+def is_planning(xml):
+    labels = {label.strip() for label, *_ in NODE.findall(xml)}
+    return PLANNING_MARKERS <= labels
+
 
 def labels_under(xml, x, y):
+    if is_planning(xml):
+        return []
     return [
         label
         for label, left, top, right, bottom in NODE.findall(xml)
