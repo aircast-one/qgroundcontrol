@@ -3577,6 +3577,37 @@ button was enabled, and the screen said `Discard & download` — which I only sa
 screen immediately after the tap instead of after a nine-second wait. **A delay long enough to let
 the action finish is also long enough to hide what the action asked for.**
 
+### Three flags that are only true just after a selection
+
+Correcting work from two sections above. Gating the Plan tab's Takeoff and Land buttons on
+`isInsertTakeoffValid`, `isInsertLandValid` and `onlyInsertTakeoffValid` was wrong, and walking the
+plan-file flow showed it: the summary read **"2 items (takeoff) · add a takeoff before anything
+else"** — a contradiction, produced by my own hint.
+
+All three are assigned in exactly one place: inside `MissionController::setCurrentPlanViewSeqNum`,
+and only when the sequence number actually changes. They describe *inserting at the item the
+operator has selected*, and they are recomputed only when that selection moves. QGC's `PlanView`
+drives that continuously; this head never calls it. So the values a head reads are whatever the last
+selection left behind, or the member defaults — and the defaults are
+`_onlyInsertTakeoffValid = true` and `_isInsertLandValid = false`. **A head reading them cold gets a
+permanent "add a takeoff first" and a permanently disabled Land button.**
+
+`_takeoffRequiredBeforeWaypoint()` is also narrower than its name suggests: it is
+`_visualItems->count() == 1`, meaning the plan is empty, not that a takeoff is missing. And
+`addWaypoint` inserts a takeoff itself when it is true, so the rule the hint was announcing is one
+the core already applies.
+
+The three reads and the hint are gone. What stays is the part that was actually right — a takeoff
+added to a plan that has waypoints and no takeoff goes in front of them rather than after — and it
+is now derived from the item list the head already holds rather than from a flag scoped to an
+operation the head never performs. Verified on the wire again afterwards: `cmd=22` at seq 1, ahead
+of the waypoint.
+
+**This is the exact shape I had described to the macOS session two iterations earlier** — a flag is
+scoped to an operation, and reading it outside that operation's shape gives a correct answer to the
+wrong question — and I walked into it while quoting it. The reason it survived review is that the
+unit tests passed a boolean *in*; nothing ever checked that the boolean could be read.
+
 ## Phase 6 — Shell · 2 weeks
 
 Cheaper than macOS, because Qt is already off the main thread.
