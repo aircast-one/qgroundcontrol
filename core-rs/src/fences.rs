@@ -62,7 +62,10 @@ fn circle_json(index: usize, json: &Value) -> Value {
         .map(|(lat, lon)| {
             let lat_span = radius / METRES_PER_DEGREE;
             let lon_span = radius / (METRES_PER_DEGREE * lat.to_radians().cos().max(0.01));
-            vec![json!({ "latitude": lat - lat_span, "longitude": lon - lon_span }), json!({ "latitude": lat + lat_span, "longitude": lon + lon_span })]
+            [(lat - lat_span, lon - lon_span), (lat + lat_span, lon + lon_span)]
+                .map(|(lat, lon)| crate::geo::wrap(lat, lon))
+                .map(|(latitude, longitude)| json!({ "latitude": latitude, "longitude": longitude }))
+                .to_vec()
         })
         .unwrap_or_default();
     json!({
@@ -212,5 +215,15 @@ mod tests {
         assert_eq!(circle["kindText"], "Keep-out circle");
         let stated = polygon_json(0, &json!({ "inclusion": true, "path": [] }));
         assert_eq!(stated["kindText"], "Keep-in polygon", "a fence that says what it is is taken at its word");
+    }
+
+    #[test]
+    fn a_circle_beside_the_dateline_frames_onto_the_map() {
+        let circle = circle_json(0, &json!({ "center": { "latitude": -16.5, "longitude": 179.999 }, "facts": [ { "name": "Radius", "value": 500.0, "units": "m" } ] }));
+        let corners = circle["framing"].as_array().unwrap();
+        assert!(corners.iter().all(|c| (-180.0..=180.0).contains(&c["longitude"].as_f64().unwrap())), "a keep-out circle in Fiji framed past the dateline: {corners:?}");
+        assert!(corners[1]["longitude"].as_f64().unwrap() < 0.0, "the eastern corner is on the far side of the dateline, not off the end of the world");
+        let polar = circle_json(0, &json!({ "center": { "latitude": 89.999, "longitude": 8.5 }, "facts": [ { "name": "Radius", "value": 500.0, "units": "m" } ] }));
+        assert!(polar["framing"].as_array().unwrap().iter().all(|c| (-90.0..=90.0).contains(&c["latitude"].as_f64().unwrap())));
     }
 }

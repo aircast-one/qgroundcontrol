@@ -36,6 +36,7 @@ pub const AUTOPILOT_INVALID: u8 = 8;
 pub const ARMED_FLAG: u8 = 128;
 pub const CUSTOM_MODE_FLAG: u8 = 1;
 const MAX_MESSAGES: usize = 200;
+const CHUNKED_TEXT_TIMEOUT_MS: u64 = 1000;
 pub const CONNECTION_LOST_US: u64 = 3_500_000;
 pub const RESULT_UNSUPPORTED: u8 = 3;
 pub const MINIMUM_TAKEOFF_ALTITUDE: f64 = 2.5;
@@ -139,6 +140,7 @@ pub struct Vehicle {
     odid_send_due: Option<u64>,
     log: Option<LogSession>,
     last_log: Option<String>,
+    chunk_due: Option<u64>,
     log_denied: bool,
     log_error: Option<String>,
     was_armed: bool,
@@ -211,6 +213,7 @@ impl Vehicle {
             odid_send_due: None,
             log: None,
             last_log: None,
+            chunk_due: None,
             log_denied: false,
             log_error: None,
             was_armed: false,
@@ -939,6 +942,13 @@ impl Vehicle {
     fn pump_with(&mut self, now_ms: u64, remote_inputs: Option<&RemoteInputs>, now_s: u64) -> Vec<Vec<u8>> {
         let ticked = self.commands.tick(now_ms);
         let mut bytes = self.handle(ticked, now_ms);
+        if self.chunk_due.is_some_and(|due| now_ms >= due) {
+            self.chunk_due = None;
+            let expired = self.status_text.expire_pending();
+            self.recent.extend(expired);
+            let excess = self.recent.len().saturating_sub(MAX_MESSAGES);
+            self.recent.drain(..excess);
+        }
         let stalled = self.calibrate.tick(now_ms);
         bytes.extend(self.follow_calibration(stalled, now_ms));
         if self.odid_due.is_some_and(|due| now_ms >= due) {
@@ -1125,7 +1135,9 @@ impl Vehicle {
             }
             MavMessage::STATUSTEXT(t) => {
                 let end = t.text.iter().position(|b| *b == 0).unwrap_or(t.text.len());
-                if let Some(status) = self.status_text.receive(header.component_id, t.severity as u8, 0, 0, &t.text[..end]) {
+                let received = self.status_text.receive(header.component_id, t.severity as u8, t.id, t.chunk_seq, &t.text[..end]);
+                self.chunk_due = self.status_text.has_pending().then_some(now_ms + CHUNKED_TEXT_TIMEOUT_MS);
+                if let Some(status) = received {
                     let actions = self.calibrate.on_text(&status.text, now_ms);
                     let bytes = self.follow_calibration(actions, now_ms);
                     self.recent.push(status);
@@ -2131,5 +2143,41 @@ mod tests {
         let done = MavMessage::COMMAND_LONG(COMMAND_LONG_DATA { command: MavCmd::MAV_CMD_ACCELCAL_VEHICLE_POS, param1: 16_777_215.0, ..Default::default() });
         hub.on_frame(origin(4), &apm, &done, 0, 2_300);
         assert_eq!(hub.calibration_snapshot(Some(1))["calibration"]["outcome"], "success");
+    }
+    #[test]
+    fn a_chunked_message_whose_tail_never_arrives_is_flushed_rather_than_held() {
+        use mavlink::dialects::ardupilotmega::{HEARTBEAT_DATA, MavAutopilot, MavType, STATUSTEXT_DATA};
+        let autopilot = MavHeader { system_id: 5, component_id: 1, sequence: 0 };
+        let mut px4 = HEARTBEAT_DATA::default();
+        px4.mavtype = MavType::MAV_TYPE_QUADROTOR;
+        px4.autopilot = MavAutopilot::MAV_AUTOPILOT_PX4;
+        let mut hub = Hub::default();
+        hub.on_frame(origin(4), &autopilot, &MavMessage::HEARTBEAT(px4), 0, 0);
+        let mut chunk = STATUSTEXT_DATA::default();
+        chunk.id = 7;
+        chunk.chunk_seq = 0;
+        chunk.text = crate::mavout::chars(&"a message whose tail the vehicle never sent u".chars().chain("pxxxx".chars()).collect::<String>());
+        hub.on_frame(origin(4), &autopilot, &MavMessage::STATUSTEXT(chunk), 0, 1_000);
+        assert_eq!(hub.snapshot()["vehicle"]["messages"].as_array().map(|m| m.len()), Some(0), "an unterminated chunk is held while its tail might still arrive");
+        hub.tick(1_000 + CHUNKED_TEXT_TIMEOUT_MS - 1);
+        assert_eq!(hub.snapshot()["vehicle"]["messages"].as_array().map(|m| m.len()), Some(0));
+        hub.tick(1_000 + CHUNKED_TEXT_TIMEOUT_MS);
+        let messages = hub.snapshot()["vehicle"]["messages"].as_array().cloned().unwrap_or_default();
+        assert_eq!(messages.len(), 1, "after the timeout the operator sees what did arrive, as the Qt handler shows it");
+        assert!(messages[0]["text"].as_str().unwrap().starts_with("a message whose tail"));
+        hub.tick(9_000);
+        assert_eq!(hub.snapshot()["vehicle"]["messages"].as_array().map(|m| m.len()), Some(1), "the flush happens once, not on every tick");
+        let piece = |id: u16, seq: u8, text: &str| {
+            let mut chunk = STATUSTEXT_DATA::default();
+            chunk.id = id;
+            chunk.chunk_seq = seq;
+            chunk.text = crate::mavout::chars(text);
+            MavMessage::STATUSTEXT(chunk)
+        };
+        hub.on_frame(origin(4), &autopilot, &piece(9, 0, &"the first half of a long message that fills the fie".chars().take(50).collect::<String>()), 0, 10_000);
+        hub.on_frame(origin(4), &autopilot, &piece(9, 1, " and the second half"), 0, 10_100);
+        let joined = hub.snapshot()["vehicle"]["messages"].as_array().cloned().unwrap_or_default();
+        assert_eq!(joined.len(), 2, "the two chunks are one message, not two");
+        assert!(joined[0]["text"].as_str().unwrap().ends_with(" and the second half"), "the chunk id and sequence reach the handler, so the halves are joined rather than shown apart");
     }
 }

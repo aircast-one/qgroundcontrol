@@ -77,7 +77,7 @@ pub struct Settings {
 
 pub fn operator_id_good(settings: &Settings) -> (bool, Option<String>) {
     if settings.region == REGION_EU {
-        let good = settings.operator_id_valid;
+        let good = settings.operator_id_valid && eu_operator_id_valid(&settings.operator_id);
         (good, good.then(|| settings.operator_id.chars().take(16).collect()))
     } else {
         (!settings.operator_id.is_empty() && settings.operator_id_type >= 0, None)
@@ -259,6 +259,8 @@ mod tests {
         assert!(!eu_operator_id_valid(&format!("fin{number}{check}-{secret}")));
         assert!(!eu_operator_id_valid(&format!("FIN{number}0-{secret}")) || check == '0');
         assert!(!eu_operator_id_valid("FIN123"));
+        let stale = Settings { region: REGION_EU, operator_id: format!("FIN{number}0-{secret}"), operator_id_valid: true, ..settings() };
+        assert!(!operator_id_good(&stale).0 || check == '0', "the stored valid flag is a checkbox the operator can leave behind after editing the id, so the checksum decides too");
         let eu = Settings { region: REGION_EU, operator_id: dashed.clone(), operator_id_valid: true, ..settings() };
         assert_eq!(operator_id_good(&eu), (true, Some(dashed.chars().take(16).collect())));
         assert_eq!(operator_id_good(&Settings { operator_id: String::new(), ..settings() }), (false, None));

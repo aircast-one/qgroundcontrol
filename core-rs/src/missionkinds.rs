@@ -53,17 +53,20 @@ pub fn kinds_view(_backend: &dyn Backend, args: &[String]) -> Value {
 pub fn default_area(latitude: f64, longitude: f64) -> Vec<(f64, f64)> {
     let latitude_span = DEFAULT_AREA_METRES / METRES_PER_DEGREE;
     let longitude_span = DEFAULT_AREA_METRES / (METRES_PER_DEGREE * latitude.to_radians().cos().max(0.01));
-    vec![
+    [
         (latitude - latitude_span, longitude - longitude_span),
         (latitude - latitude_span, longitude + longitude_span),
         (latitude + latitude_span, longitude + longitude_span),
         (latitude + latitude_span, longitude - longitude_span),
     ]
+    .into_iter()
+    .map(|(lat, lon)| crate::geo::wrap(lat, lon))
+    .collect()
 }
 
 pub fn default_line(latitude: f64, longitude: f64) -> Vec<(f64, f64)> {
     let span = DEFAULT_AREA_METRES / METRES_PER_DEGREE;
-    vec![(latitude - span, longitude), (latitude + span, longitude)]
+    [(latitude - span, longitude), (latitude + span, longitude)].into_iter().map(|(lat, lon)| crate::geo::wrap(lat, lon)).collect()
 }
 
 pub fn seed_view(_backend: &dyn Backend, args: &[String]) -> Value {
@@ -125,5 +128,18 @@ mod tests {
         assert_eq!(corridor["points"][0]["longitude"], 0.0);
         assert_eq!(seed_view(&Nothing, &["waypoint".to_string(), "0".to_string(), "0".to_string()])["kind"], "null");
         assert_eq!(seed_view(&Nothing, &["survey".to_string()])["kind"], "null");
+    }
+
+    #[test]
+    fn a_seed_beside_the_dateline_stays_on_the_map() {
+        let area = default_area(-16.5, 179.999);
+        assert!(area.iter().all(|(lat, lon)| (-90.0..=90.0).contains(lat) && (-180.0..=180.0).contains(lon)), "a survey seeded in Fiji must not carry a longitude no autopilot will accept: {area:?}");
+        assert!(area.iter().any(|(_, lon)| *lon < 0.0) && area.iter().any(|(_, lon)| *lon > 0.0), "the area still straddles the dateline rather than collapsing to one side");
+        let pole = default_area(89.999, 8.5);
+        assert!(pole.iter().all(|(lat, _)| (-90.0..=90.0).contains(lat)));
+        let line = default_line(89.999, 179.999);
+        assert!(line.iter().all(|(lat, lon)| (-90.0..=90.0).contains(lat) && (-180.0..=180.0).contains(lon)));
+        let ordinary = default_area(47.4, 8.5);
+        assert!(ordinary.iter().all(|(lat, lon)| *lat > 47.0 && *lat < 48.0 && *lon > 8.0 && *lon < 9.0), "an ordinary seed is unchanged");
     }
 }

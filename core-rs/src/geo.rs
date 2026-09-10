@@ -5,6 +5,19 @@ use crate::router::Backend;
 pub const DEPS: &[&str] = &[];
 const WGS84_A: f64 = 6_378_137.0;
 
+pub fn wrap_longitude(longitude: f64) -> f64 {
+    let wrapped = (longitude + 180.0).rem_euclid(360.0) - 180.0;
+    if wrapped == -180.0 { 180.0 } else { wrapped }
+}
+
+pub fn clamp_latitude(latitude: f64) -> f64 {
+    latitude.clamp(-90.0, 90.0)
+}
+
+pub fn wrap(latitude: f64, longitude: f64) -> (f64, f64) {
+    (clamp_latitude(latitude), wrap_longitude(longitude))
+}
+
 pub fn geo_to_ned(lat: f64, lon: f64, alt: f64, origin: (f64, f64, f64)) -> (f64, f64, f64) {
     let (olat, olon, oalt) = origin;
     if lat == olat && lon == olon && alt == oalt {
@@ -108,5 +121,22 @@ mod tests {
         assert!((northing - 5247092.44892).abs() < 0.01, "{northing}");
         let (lat, lon) = utm_to_geo(465886.092246, 5247092.44892, 32, false).unwrap();
         assert!(close(lat, ORIGIN.0) && close(lon, ORIGIN.1), "{lat} {lon}");
+    }
+}
+
+#[cfg(test)]
+mod wraptests {
+    use super::*;
+
+    #[test]
+    fn a_coordinate_past_the_edge_of_the_world_comes_back_onto_it() {
+        assert_eq!(wrap_longitude(180.0018), -179.9982);
+        assert_eq!(wrap_longitude(-180.5), 179.5);
+        assert_eq!(wrap_longitude(8.5), 8.5, "an ordinary longitude is untouched");
+        assert_eq!(wrap_longitude(180.0), 180.0, "the dateline itself is a real longitude and stays one");
+        assert_eq!(wrap_longitude(-180.0), 180.0);
+        assert_eq!(clamp_latitude(90.4), 90.0, "there is no latitude past the pole to seed a mission item at");
+        assert_eq!(clamp_latitude(-90.4), -90.0);
+        assert_eq!(wrap(47.4, 8.5), (47.4, 8.5));
     }
 }

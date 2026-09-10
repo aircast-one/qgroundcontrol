@@ -85,6 +85,10 @@ impl Handler {
         completed.or(flushed)
     }
 
+    pub fn has_pending(&self) -> bool {
+        !self.pending.is_empty()
+    }
+
     pub fn expire_pending(&mut self) -> Vec<StatusText> {
         let components: Vec<u8> = self.pending.keys().copied().collect();
         components.into_iter().filter_map(|c| self.complete(c, true)).collect()
