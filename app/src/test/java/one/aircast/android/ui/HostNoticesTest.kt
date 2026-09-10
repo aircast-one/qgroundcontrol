@@ -75,4 +75,26 @@ class HostNoticesTest {
         val notices = hostNotices(JSONObject("""{"notices":[{"id":1,"kind":2,"title":"setup"}]}"""))
         assertNull(noticeDestination(notices))
     }
+
+    @Test
+    fun `a notice already acknowledged is not delivered again`() {
+        val notices = listOf(
+            HostNotice(1L, NOTICE_NAVIGATION, "setup", ""),
+            HostNotice(2L, NOTICE_MESSAGE, "Aircast", "Components need setup."),
+        )
+
+        assertEquals(listOf(1L, 2L), noticesAfter(notices, -1L).map { it.id })
+        assertEquals(listOf(2L), noticesAfter(notices, 1L).map { it.id })
+        assertEquals(emptyList<Long>(), noticesAfter(notices, 2L).map { it.id })
+    }
+
+    @Test
+    fun `a navigation that keeps arriving does not keep moving the operator`() {
+        val first = listOf(HostNotice(7L, NOTICE_NAVIGATION, "setup", ""))
+        val redelivered = first + HostNotice(8L, NOTICE_MESSAGE, "Aircast", "Still not set up.")
+
+        val through = noticesAfter(first, -1L).last().id
+        assertEquals("setup", noticeDestination(noticesAfter(first, -1L)))
+        assertNull(noticeDestination(noticesAfter(redelivered, through)))
+    }
 }

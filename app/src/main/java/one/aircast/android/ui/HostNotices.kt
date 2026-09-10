@@ -35,9 +35,9 @@ internal fun hostNotices(view: JSONObject?): List<HostNotice> {
 internal fun noticeDestination(notices: List<HostNotice>): String? =
     notices.lastOrNull { it.kind == NOTICE_NAVIGATION }?.title?.ifBlank { null }
 
-// Every notice, in the order it happened. Showing one and acknowledging the batch is the
-// silent drop the queue exists to prevent, and arrival order keeps a pair together - the
-// navigation that moved the operator and the message saying why.
+internal fun noticesAfter(notices: List<HostNotice>, acknowledgedThrough: Long): List<HostNotice> =
+    notices.filter { it.id > acknowledgedThrough }
+
 internal fun noticesToShow(notices: List<HostNotice>): List<HostNotice> =
     notices.filter { it.kind != NOTICE_NAVIGATION }
 

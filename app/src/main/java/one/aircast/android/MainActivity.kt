@@ -41,6 +41,7 @@ import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.runtime.mutableLongStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
@@ -178,18 +179,22 @@ fun AircastShell(quickView: QtQuickView) {
 
     val notices by one.aircast.android.bridge.qgcPath("host")
     val snackbars = remember { SnackbarHostState() }
+    var acknowledgedThrough by remember { mutableLongStateOf(-1L) }
 
     LaunchedEffect(notices) {
-        val queued = one.aircast.android.ui.hostNotices(notices)
+        val queued = one.aircast.android.ui.noticesAfter(
+            one.aircast.android.ui.hostNotices(notices),
+            acknowledgedThrough,
+        )
         if (queued.isEmpty()) return@LaunchedEffect
+        val through = queued.last().id
+        acknowledgedThrough = through
         one.aircast.android.ui.noticeDestination(queued)?.let { tab = Tab.from(it) }
-        // showSnackbar suspends until each is dismissed, so they queue rather than replace.
+        withContext(Dispatchers.Default) {
+            Qgc.invoke("host.acknowledgeThrough", through)
+        }
         one.aircast.android.ui.noticesToShow(queued).forEach {
             snackbars.showSnackbar(one.aircast.android.ui.noticeBanner(it))
-        }
-        // Acknowledge only what was drawn. A notice arriving mid-draw keeps its place.
-        withContext(Dispatchers.Default) {
-            Qgc.invoke("host.acknowledgeThrough", queued.last().id)
         }
     }
 
