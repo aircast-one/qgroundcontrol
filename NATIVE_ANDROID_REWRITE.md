@@ -4037,6 +4037,35 @@ The question for the core is which shape: making `saveLinkConfigurationList` inv
 `editLinkConfiguration` that writes and saves as one call. The first is smaller; the second cannot
 leave a head having written half its fields.
 
+### Upload asked whether a vehicle was there, not whether the plan should go to it
+
+Found by sweeping for the pattern that had already caught this head three times: the core computes a
+*readiness* predicate and the head gates on a *capability* one. `blocked` against `ready` on the
+guided actions, Qt's `setupComplete` against the core's `ready` on the Setup verdict, and `hasModes`
+against `canChangeMode` on the camera. The sweep looked for readiness-shaped keys the head never
+reads — `can*`, `ready`, `is*Valid` — and `view.plan` had two: `canSend` and `canProceed`.
+
+Upload asked `syncRefusal(vehicleSyncState(offline, syncing))` — is a vehicle connected, is a sync
+already running — and then sent. QGC's own `MissionController::sendToVehiclePreCheck` distinguishes
+four states and `PlanView.qml` acts on all of them, so two checks in the page being replaced were
+missing here:
+
+- **A plan built for a different firmware or vehicle type uploaded with no warning.** QML says it
+  "can lead to errors or incorrect behavior" and makes the operator confirm.
+- **A vehicle flying this mission was overwritten without being paused.** QML calls `pauseVehicle()`
+  before sending, behind a dialog that says why.
+
+The second is the serious one, and neither is a gap in the core — `view.plan`'s `upload` block already
+carries `canSend`, `canProceed`, `pausesFirst` and the words to show (`refusal`, `heading`,
+`proceedTitle`). The head decides nothing about vehicle safety now; it renders what the core decided
+(`491a796`).
+
+Verified only on the path the rig can produce: a clean plan uploads in one tap with no dialog, and the
+status chip moves from "Unsaved plan" to "New plan" — `dirty` clearing on a successful send. **The two
+warning branches are not producible here** — one needs a plan built for another vehicle type, the
+other a vehicle actually flying a mission — so they rest on tests written against the core's own
+shapes, and belong with the gates that need hardware.
+
 ## Phase 6 — Shell · 2 weeks
 
 Cheaper than macOS, because Qt is already off the main thread.
