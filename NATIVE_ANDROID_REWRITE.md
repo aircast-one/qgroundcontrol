@@ -3702,6 +3702,46 @@ under the action buttons and above the telemetry row. That the reason is non-emp
 action is blocked is guaranteed by the core, where the reasons are string literals on the blocked
 branch.
 
+### Sweeping for what the core computes and this head throws away
+
+The guided-actions finding above is a shape, not a one-off: the core produces a field, the head
+decodes nothing, and the information dies at the boundary. So I swept every `view.*` the Android
+head names — twenty of them — for top-level keys the head never mentions.
+
+**The sweep was wrong twice before it was useful**, which is worth recording because the output
+looked plausible each time. The first version counted every quoted key in a Rust file, so nested
+per-item keys and `json!` blocks that are not the view root came through as "emitted"; it also only
+counted head reads of the form `.optString("x")`, so `options(view, "everyday")` — a literal passed
+as an argument — read as unread. That produced a 90-key list of mostly nothing. The second version
+took top-level keys by brace depth and over-approximated reads as *any* string literal anywhere in
+the head, which is the conservative direction: it can miss a real orphan, but it will not invent
+one. That still over-reports, because a nested `json!` opens its own depth-1.
+
+The finding that survived: **`view.warnings` emits `showing`, `warnings` and `armingBlocker`, and
+this head reads only `armingBlocker`** (`VehicleMessages.kt`). The macOS head reads the list —
+`VehicleWarning.list(raised["warnings"])` at `Fly.swift:146`. So the two heads show an operator
+different things from the same view.
+
+It is **not** simply information loss, and checking that before building anything is what stopped a
+wasted change. `arming_blocker` covers *more* conditions than `warnings()` does: unhealthy sensors
+and not-ready-to-fly produce a blocker and no list item at all. Its GPS string also merges the
+detail sentence the list carries separately. The real delta is that `warnings()` can return two
+items where the blocker returns the first match, so with both a pre-arm failure and no GPS fix this
+head reports the pre-arm failure and, once that is fixed, the GPS one — two trips where macOS shows
+both.
+
+One inconsistency inside the core is worth someone's decision rather than my patch, since the file
+is shared. `warnings()` suppresses the pre-arm item when `report_supported`, on the reasoning that a
+structured health report supersedes the raw string. `arming_blocker` returns `prearm_error` whenever
+it is non-empty, with no such guard. The test is even named
+`a_prearm_error_shows_only_without_a_health_report_and_before_arming` and asserts
+`warnings(&reported).is_empty()` — but never asserts what the blocker does in that state, so the
+intent in the name is not enforced on the branch this head actually renders. Raised with the core
+rather than changed here.
+
+`showing` is read by neither head. It is `!listed.is_empty()`, so nothing is lost by that, but it is
+core output with no consumer.
+
 ## Phase 6 — Shell · 2 weeks
 
 Cheaper than macOS, because Qt is already off the main thread.
