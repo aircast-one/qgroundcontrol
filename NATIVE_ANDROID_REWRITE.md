@@ -4390,6 +4390,27 @@ marshalling. The stall remains unexplained and is now bounded away from the QML 
   `QT_ANDROID_DEPLOYMENT_DEPENDENCIES` or equivalent — not a link-list edit. The QML exclusions above are
   a prerequisite for the first and worth keeping for build time, but they are not the saving.
 
+  **And the scan cannot be narrowed either, which was the obvious next lever and is now ruled out.**
+  `androiddeployqt` runs `qmlimportscanner` over `qml-root-path`, and the generated settings show that
+  list as the **project root** plus every directory that still declares a QML module — so it reads
+  `.qml` off disk and deploys their imports whether or not those files are compiled. That is the real
+  reason both cuts above moved nothing.
+
+  `QT_QML_ROOT_PATH` was pointed at a generated directory holding only `AndroidHost.qml`. It took
+  effect — the minimal root is first in the list — and the AAR did not move, because Qt **prepends**
+  to that list rather than replacing it: the source root and all eleven module directories were still
+  there. Reverted.
+
+  So three mechanisms are now measured and none of them is the lever: the link list does not drive
+  deployment, feature switches do not (`-DQGC_VIEWER3D=OFF`, 0.08 MB), and the scan root cannot be
+  narrowed. What remains for the Qt 38% is an explicit `QT_ANDROID_DEPLOYMENT_DEPENDENCIES` listing
+  every library and plugin to ship, which bypasses the scan entirely — and that is a decision with a
+  cost rather than a task: the list is maintained by hand, and getting it wrong fails at runtime on a
+  handset rather than at build time.
+
+  **"Expect the 82 MB AAR to roughly halve" should be read as unfunded until that decision is taken.**
+  The 44% in `libAircastQGC` is still reachable by ordinary means and is where the next work goes.
+
   **The `Viewer3D` decision is answered, and the answer is that it barely matters.** The project has a
   supported switch for it, so I tried the designed path before considering surgery: configuring
   `build-android` with `-DQGC_VIEWER3D=OFF` and rebuilding took the AAR from 81.16 MB to **81.08 MB**,
