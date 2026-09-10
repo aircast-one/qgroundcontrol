@@ -1084,6 +1084,10 @@ struct PlanView: View {
                            mission.moveVertex(mission.editablePolygons[polygon], index,
                                               latitude: latitude, longitude: longitude)
                        },
+                       removeVertexAt: { polygon, index in
+                           guard mission.editablePolygons.indices.contains(polygon) else { return }
+                           mission.removeVertex(mission.editablePolygons[polygon], index)
+                       },
                        splitSegment: { polygon, index in
                            guard mission.editablePolygons.indices.contains(polygon) else { return }
                            mission.splitSegment(mission.editablePolygons[polygon], after: index)

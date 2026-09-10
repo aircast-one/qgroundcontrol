@@ -3238,6 +3238,21 @@ func checkPolygonEdit() {
     expect(PolygonEdit.removes(0, in: polygon!), "a corner can be removed from a square")
     expect(!PolygonEdit.removes(0, in: line!), "but not from a two-point line")
 
+    expect(PolygonEdit.removalHint(polygon!), "Remove this corner",
+           "a corner that can go says so; the head had no way to remove one at all, so the core "
+           + "answered canRemoveVertex and nothing asked")
+    expect(PolygonEdit.removalHint(line!), "A line needs at least 2 corners",
+           "and one that cannot says why, in the core's own minimum rather than QGC's literal 3")
+
+    let triangle = EditablePolygon([
+        "path": "t", "ring": true as NSNumber, "closed": true as NSNumber,
+        "minimumVertices": 3 as NSNumber, "canRemoveVertex": false as NSNumber,
+        "segments": 3 as NSNumber,
+        "vertices": [corner(0, 0), corner(0, 2), corner(2, 0)],
+    ])
+    expect(PolygonEdit.removalHint(triangle!), "A shape needs at least 3 corners",
+           "a shape at its minimum names a shape, not a line")
+
     expect(EditablePolygon(["ring": true as NSNumber]) == nil,
            "a polygon with no path is dropped, because the path is what an edit is invoked on")
     expect(EditablePolygon(nil) == nil, "and no answer is no polygon")

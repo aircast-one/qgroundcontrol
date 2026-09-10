@@ -63,13 +63,19 @@ final class VertexAnnotation: NSObject, MKAnnotation {
     let polygon: Int
     let index: Int
     let midpoint: Bool
+    let removable: Bool
+    let hint: String
     var title: String? { midpoint ? "Add a corner" : "Corner \(index + 1)" }
+    var subtitle: String? { midpoint || removable ? nil : hint }
 
-    init(polygon: Int, index: Int, point: GeoPoint, midpoint: Bool) {
+    init(polygon: Int, index: Int, point: GeoPoint, midpoint: Bool,
+         removable: Bool = false, hint: String = "") {
         coordinate = CLLocationCoordinate2D(latitude: point.latitude, longitude: point.longitude)
         self.polygon = polygon
         self.index = index
         self.midpoint = midpoint
+        self.removable = removable
+        self.hint = hint
     }
 }
 
@@ -121,6 +127,7 @@ struct MissionMap: NSViewRepresentable {
     var focus: MapFrame?
     var polygons: [EditablePolygon] = []
     var moveVertex: (Int, Int, Double, Double) -> Void = { _, _, _, _ in }
+    var removeVertexAt: (Int, Int) -> Void = { _, _ in }
     var splitSegment: (Int, Int) -> Void = { _, _ in }
     var overlays = FlyOverlays.none
     var follow = false
@@ -139,6 +146,7 @@ struct MissionMap: NSViewRepresentable {
         context.coordinator.move = move
         context.coordinator.secondary = secondary
         context.coordinator.moveVertex = moveVertex
+        context.coordinator.removeVertexAt = removeVertexAt
         context.coordinator.splitSegment = splitSegment
         map.showsCompass = true
         map.showsScale = false
@@ -151,6 +159,7 @@ struct MissionMap: NSViewRepresentable {
         context.coordinator.move = move
         context.coordinator.secondary = secondary
         context.coordinator.moveVertex = moveVertex
+        context.coordinator.removeVertexAt = removeVertexAt
         context.coordinator.splitSegment = splitSegment
         context.coordinator.arm(adding, on: map)
         context.coordinator.armSecondary(on: map)
@@ -172,7 +181,9 @@ struct MissionMap: NSViewRepresentable {
         polygons.enumerated().forEach { polygonIndex, polygon in
             polygon.points.enumerated().forEach { index, point in
                 map.addAnnotation(VertexAnnotation(polygon: polygonIndex, index: index,
-                                                   point: point, midpoint: false))
+                                                   point: point, midpoint: false,
+                                                   removable: PolygonEdit.removes(index, in: polygon),
+                                                   hint: PolygonEdit.removalHint(polygon)))
             }
             polygon.midpoints.enumerated().forEach { index, point in
                 map.addAnnotation(VertexAnnotation(polygon: polygonIndex, index: index,
@@ -463,15 +474,37 @@ struct MissionMap: NSViewRepresentable {
 
         func mapView(_ mapView: MKMapView, didSelect view: MKAnnotationView) {
             if let vertex = view.annotation as? VertexAnnotation {
-                if vertex.midpoint { splitSegment(vertex.polygon, vertex.index) }
-                mapView.deselectAnnotation(vertex, animated: false)
+                // A midpoint is the split gesture itself, so it never rests as a selection; a
+                // corner keeps its callout open, which is where the head offers Remove.
+                if vertex.midpoint {
+                    splitSegment(vertex.polygon, vertex.index)
+                    mapView.deselectAnnotation(vertex, animated: false)
+                }
                 return
             }
             guard let item = view.annotation as? MissionAnnotation else { return }
             select(item.sequence)
         }
 
+        static func removeButton(hint: String) -> NSButton {
+            let button = NSButton(image: NSImage(systemSymbolName: "trash",
+                                                 accessibilityDescription: hint) ?? NSImage(),
+                                  target: nil, action: nil)
+            button.bezelStyle = .accessoryBarAction
+            button.toolTip = hint
+            button.frame = NSRect(x: 0, y: 0, width: 26, height: 20)
+            return button
+        }
+
+        func mapView(_ mapView: MKMapView, annotationView view: MKAnnotationView,
+                     calloutAccessoryControlTapped control: NSControl) {
+            guard let vertex = view.annotation as? VertexAnnotation, vertex.removable else { return }
+            mapView.deselectAnnotation(vertex, animated: false)
+            removeVertexAt(vertex.polygon, vertex.index)
+        }
+
         var moveVertex: (Int, Int, Double, Double) -> Void = { _, _, _, _ in }
+        var removeVertexAt: (Int, Int) -> Void = { _, _ in }
         var splitSegment: (Int, Int) -> Void = { _, _ in }
 
         static let clickRing = Coordinator.ring(18)
@@ -581,6 +614,8 @@ struct MissionMap: NSViewRepresentable {
                 view.image = vertex.midpoint ? Coordinator.midpointDot : Coordinator.vertexDot
                 view.isDraggable = !vertex.midpoint
                 view.canShowCallout = true
+                view.rightCalloutAccessoryView = vertex.removable
+                    ? Coordinator.removeButton(hint: vertex.hint) : nil
                 return view
             }
 

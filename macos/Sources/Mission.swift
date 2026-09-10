@@ -748,6 +748,8 @@ final class MissionStore: ObservableObject, Probeable, WriteReporting {
          "scale": scaleBar.text,
          "polygons": editablePolygons.map { ["path": $0.path, "vertices": $0.points.count,
                                              "canRemove": $0.canRemoveVertex,
+                                             "minimumVertices": $0.minimumVertices,
+                                             "hint": PolygonEdit.removalHint($0),
                                              "ring": $0.ring, "segments": $0.segments,
                                              "split": $0.splitInvokable] },
          "centre": centreProbe(),
@@ -893,7 +895,11 @@ final class MissionStore: ObservableObject, Probeable, WriteReporting {
                   editablePolygons.indices.contains(which) else {
                 return ["ok": false, "error": "removeVertex needs which and vertex"]
             }
-            removeVertex(editablePolygons[which], vertex)
+            let polygon = editablePolygons[which]
+            guard PolygonEdit.removes(vertex, in: polygon) else {
+                return ["ok": false, "error": PolygonEdit.removalHint(polygon)]
+            }
+            removeVertex(polygon, vertex)
         case "splitSegment":
             guard let which = Int(args["which"] ?? ""), let vertex = Int(args["vertex"] ?? ""),
                   editablePolygons.indices.contains(which) else {

@@ -38,4 +38,13 @@ enum PolygonEdit {
     static func splits(_ index: Int, in polygon: EditablePolygon) -> Bool {
         index >= 0 && index < polygon.segments
     }
+
+    // QGC offers Remove vertex behind a hard-coded count > 3 for a shape and > 2 for a line.
+    // The core answers the same question as canRemoveVertex, against the controller's own
+    // minVertexCount, so this reads the core's answer and only borrows the number to explain it.
+    static func removalHint(_ polygon: EditablePolygon) -> String {
+        guard !polygon.canRemoveVertex else { return "Remove this corner" }
+        let noun = polygon.ring ? "shape" : "line"
+        return "A \(noun) needs at least \(polygon.minimumVertices) corners"
+    }
 }
