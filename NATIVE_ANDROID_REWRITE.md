@@ -3509,6 +3509,43 @@ Also: the handset was attached twice, by USB and over TCP, and every `adb` call 
 with "more than one device/emulator". `ui.sh` now pins the first non-network serial, so one physical
 device answering on two transports stops being a rig outage.
 
+### The log handler was installed as its own fallback
+
+Chasing why the app would not come to the front turned up three `SIGSEGV`s on the handset today —
+02:46, 09:50 and 12:23 — every one of them **"stack pointer is not in a rw map; likely due to stack
+overflow"**, on the Qt thread, with 512 frames at a single address in `libAircastQGC`.
+
+Symbolised against the unstripped library, that address is
+`msgHandler` at `src/Utilities/QGCLogging.cc:41` — the line that calls `defaultHandler`. So
+`defaultHandler` was `msgHandler`: **the Qt message handler had been installed as its own
+fallback, and every log line after that recursed until the stack ran out.**
+
+`installHandler()` does `defaultHandler = qInstallMessageHandler(msgHandler)`, and
+`qInstallMessageHandler` returns the *previous* handler. Call it once and the fallback is Qt's
+default. Call it twice — which an Android process can do when the Qt entry runs again in a surviving
+process — and the fallback becomes `msgHandler` itself. One line of guard makes the state
+unreachable: keep the previous handler only when it is not the one just installed.
+
+Eight restart cycles afterwards with the app genuinely reaching the foreground each time: no
+crashes. That is consistent rather than conclusive — the fault appeared three times in ten hours of
+restarting — but a handler that calls itself is never correct regardless of how often it bites.
+
+### The handset rotated and the regression did not notice
+
+The same run reported `log list requests: 0` where it has always been 1. Not a code regression:
+**the handset was lying in landscape**, `mCurrentOrientation=3`, auto-rotate on. Every coordinate
+in `regress.sh` assumes portrait, so the Analyze taps landed on nothing.
+
+Every screenshot still reported `ok`, because the capture guard only asks whether the frame is flat.
+**The one thing that noticed was a count that changed** — the same signal that caught an empty test
+file earlier in this session, and the reason this document keeps insisting on numbers rather than
+green.
+
+The lock now guarantees the state its callers assume rather than reporting it: it pins portrait and
+**refuses to hand out the device** if the orientation will not take, exactly as it now refuses a
+handset that will not wake. A rig that hands you a device in the wrong state is worse than one that
+refuses, because the run still produces screenshots and they all look fine.
+
 ## Phase 6 — Shell · 2 weeks
 
 Cheaper than macOS, because Qt is already off the main thread.
