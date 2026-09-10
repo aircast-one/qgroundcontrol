@@ -289,6 +289,10 @@ struct FlyPanel: View {
                         .pickerStyle(.segmented)
                         .labelsHidden()
                         .frame(width: 140)
+                        .disabled(!video.camera.canChangeMode)
+                        .help(video.camera.canChangeMode
+                            ? "Switch between photo and video"
+                            : CameraControl.modeBusy)
                     })
                 }
                 if video.camera.offersShutter {

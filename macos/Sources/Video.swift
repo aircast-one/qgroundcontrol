@@ -80,7 +80,7 @@ final class VideoStore: ObservableObject, Probeable, WriteReporting {
     }
 
     func setCameraMode(photo: Bool) {
-        guard camera.present, camera.hasModes else { return }
+        guard camera.canChangeMode else { return }
         Bridge.invoke(photo ? "vehicle.cameraManager.currentCameraInstance.setCameraModePhoto"
                             : "vehicle.cameraManager.currentCameraInstance.setCameraModeVideo")
         loadCamera()

@@ -26,6 +26,9 @@ struct CameraControl: Equatable {
     let canRecord: Bool
     let canPhoto: Bool
     let hasModes: Bool
+    let canChangeMode: Bool
+
+    static let modeBusy = "The camera is capturing. It will not change mode until that finishes."
 
     static let absent = CameraControl()
 
@@ -52,6 +55,7 @@ struct CameraControl: Equatable {
         canRecord = false
         canPhoto = false
         hasModes = false
+        canChangeMode = false
     }
 
     init(_ json: [String: Any]) {
@@ -82,6 +86,7 @@ struct CameraControl: Equatable {
         canRecord = flag("canRecord")
         canPhoto = flag("canPhoto")
         hasModes = flag("hasModes")
+        canChangeMode = flag("canChangeMode")
     }
 
     // One place decides whether each control exists, so the store's guard and the view's

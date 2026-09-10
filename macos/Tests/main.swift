@@ -1936,6 +1936,21 @@ func checkCameraControl() {
     expect(CameraControl([:]).present == false,
            "an empty answer is no camera rather than a present one with blank fields")
 }
+
+    let busy = CameraControl(["present": true as NSNumber, "hasModes": true as NSNumber,
+                              "canChangeMode": false as NSNumber])
+    expect(busy.hasModes && !busy.canChangeMode,
+           "a camera mid-capture still HAS modes and will not accept one now - core-rs video.rs "
+           + "computes canChangeMode as present && hasModes && can_change_mode(mode, photo, video), "
+           + "and this head used to gate the mode change on hasModes, so the picker stayed live "
+           + "while recording and the command fired into a camera that would refuse it")
+    expect(!CameraControl(["present": true as NSNumber, "hasModes": true as NSNumber]).canChangeMode,
+           "and an absent canChangeMode reads as not-now rather than go-ahead, because the "
+           + "permissive direction here sends a command the camera rejects")
+    expect(CameraControl(["present": true as NSNumber, "hasModes": true as NSNumber,
+                          "canChangeMode": true as NSNumber]).canChangeMode,
+           "an idle camera that has modes accepts one")
+
 checkCameraControl()
 
 func checkLogReplayLink() {
