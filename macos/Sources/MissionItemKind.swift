@@ -10,6 +10,8 @@ struct MissionItemKind: Identifiable, Equatable {
     let shapeNoun: String
     let placementHint: String
     let simple: Bool
+    let enabled: Bool
+    let disabledReason: String?
 
     var symbol: String { MissionItemKind.symbol(forId: id) }
 
@@ -39,6 +41,8 @@ struct MissionItemKind: Identifiable, Equatable {
         shapeNoun = (json["shapeNoun"] as? String) ?? "shape"
         placementHint = (json["placementHint"] as? String) ?? ""
         simple = (json["simple"] as? NSNumber)?.boolValue ?? false
+        enabled = (json["enabled"] as? NSNumber)?.boolValue ?? false
+        disabledReason = json["disabledReason"] as? String
     }
 }
 
@@ -86,6 +90,24 @@ struct MissionKinds: Equatable {
     func lineProperty(forCommand command: String) -> String? {
         byComplexName(command).flatMap { $0.geometry == "line" ? $0.geometryProperty : nil }
     }
+
+    // A pattern the catalogue does not name is not one the core refused, so it stays offered.
+    func offers(pattern name: String) -> Bool {
+        byComplexName(name)?.enabled ?? true
+    }
+
+    func refusal(pattern name: String) -> String? {
+        byComplexName(name)?.disabledReason
+    }
+
+    // The gate on the write. An id the catalogue never listed is not one the core refused,
+    // so it passes here and fails, if it fails, in the controller where it can say why.
+    func refusal(forArming asked: String) -> String? {
+        guard let kind = byId(asked) ?? byComplexName(asked) else { return nil }
+        return kind.enabled ? nil : (kind.disabledReason ?? MissionKinds.refusedWithoutReason)
+    }
+
+    static let refusedWithoutReason = "That item cannot go here."
 }
 
 struct MissionSeed: Equatable {

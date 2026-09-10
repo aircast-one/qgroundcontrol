@@ -1151,10 +1151,11 @@ checkRallyAndBreach()
 func checkMissionItemKinds() {
     func kind(_ id: String, _ title: String, _ invokable: String, _ complex: Any = NSNull(),
               _ geometry: Any = NSNull(), _ property: Any = NSNull(), _ noun: String = "shape",
-              _ hint: String = "") -> [String: Any] {
+              _ hint: String = "", _ refusal: Any = NSNull()) -> [String: Any] {
         ["id": id, "title": title, "invokable": invokable, "complexName": complex,
          "geometry": geometry, "geometryProperty": property, "shapeNoun": noun,
-         "placementHint": hint, "simple": (complex is NSNull) as NSNumber]
+         "placementHint": hint, "simple": (complex is NSNull) as NSNumber,
+         "enabled": (refusal is NSNull) as NSNumber, "disabledReason": refusal]
     }
     let catalogue = MissionKinds(["kinds": [
         kind("waypoint", "Waypoint", "insertSimpleMissionItem", NSNull(), NSNull(), NSNull(),
@@ -1209,6 +1210,39 @@ func checkMissionItemKinds() {
 
     expect(MissionKinds.empty.title(forPattern: "Survey"), "Survey",
            "before the catalogue has loaded a pattern still names itself rather than vanishing")
+
+    let refusing = MissionKinds(["kinds": [
+        kind("waypoint", "Waypoint", "insertSimpleMissionItem"),
+        kind("takeoff", "Takeoff", "insertTakeoffItem", NSNull(), NSNull(), NSNull(), "shape", "",
+             "This mission already takes off."),
+        kind("survey", "Survey", "insertComplexMissionItem", "Survey", "area",
+             "surveyAreaPolygon", "area", "", "Nothing can follow the landing."),
+    ]])
+    expect(refusing.byId("takeoff")?.enabled == false,
+           "the core says which kinds can go in this mission now, and the head no longer offers "
+           + "a takeoff to a mission that already has one")
+    expect(refusing.refusal(forArming: "takeoff") ?? "", "This mission already takes off.",
+           "the WRITE is what the refusal gates -- a menu that only greys the row still lets a "
+           + "map click through, because arming and clicking are two separate actions here")
+    expect(refusing.refusal(forArming: "survey") ?? "", "Nothing can follow the landing.",
+           "a complex kind is refused by the name the menu armed, which is its complexName")
+    expect(refusing.refusal(forArming: "waypoint") == nil, "an allowed kind is not refused")
+    expect(refusing.refusal(forArming: "Fixed Wing Landing Pattern") == nil,
+           "and a name the catalogue never listed is not one the core refused, so it passes here "
+           + "rather than being blocked by a head that was never told about it")
+
+    expect(catalogue.byId("takeoff")?.enabled == true,
+           "a catalogue that refused nothing enables everything")
+    expect(MissionKinds(["kinds": [["id": "takeoff", "title": "Takeoff"]]])
+        .byId("takeoff")?.enabled == false,
+           "but a kind arriving with no enabled key is NOT enabled: availability is derived from "
+           + "the core saying yes, never from it failing to say no. The required-keys row for "
+           + "view.missionKinds is what keeps that unreachable, the same way it holds clipping")
+
+    expect(refusing.offers(pattern: "Survey") == false, "a refused pattern is not offered")
+    expect(refusing.offers(pattern: "Fixed Wing Landing Pattern"),
+           "while one the catalogue does not name stays offered, because hiding it would drop a "
+           + "real QGC item the core has no opinion about")
 
     let seed = MissionSeed(["property": "surveyAreaPolygon", "points": [
         ["latitude": -35.3644 as NSNumber, "longitude": 149.1636 as NSNumber],
@@ -3236,7 +3270,7 @@ func checkViewContract() {
         ("view.missionKinds", [], ["kinds"]),
         ("view.missionKinds", ["kinds"],
          ["id", "title", "invokable", "complexName", "geometry", "geometryProperty", "shapeNoun",
-          "placementHint", "simple"]),
+          "placementHint", "simple", "enabled", "disabledReason"]),
         ("view.missionSeed(survey,47,8)", [], ["property", "points"]),
         ("view.surveyStats(0)", [],
          ["available", "shotsText", "intervalText", "footprintText", "tooFast", "warning",

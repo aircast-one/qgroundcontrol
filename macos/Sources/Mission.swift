@@ -238,6 +238,11 @@ final class MissionStore: ObservableObject, Probeable, WriteReporting {
 
     func addWaypoint(latitude: Double, longitude: Double) {
         let asked = arming ?? "waypoint"
+        if let refused = kinds.refusal(forArming: asked) {
+            writeFailure = refused
+            arming = nil
+            return
+        }
         let index = items.count
         let at = ["latitude": latitude, "longitude": longitude]
 
@@ -794,6 +799,8 @@ final class MissionStore: ObservableObject, Probeable, WriteReporting {
                        "units": selectedSpeed.units],
          "arming": arming ?? "",
          "patterns": patterns,
+         "kinds": kinds.all.map { ["id": $0.id, "enabled": $0.enabled,
+                                   "reason": $0.disabledReason ?? ""] },
          "planFile": planFile, "watching": watchPoll != nil, "planName": planName,
          "readyToSave": readyToSave, "notReadyReason": notReadyReason,
          "uploadCheckable": preCheck() != nil,

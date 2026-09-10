@@ -877,12 +877,16 @@ struct PlanInspector: View {
                 Button { mission.arming = kind.id } label: {
                     Label(kind.title, systemImage: kind.symbol)
                 }
+                .disabled(!kind.enabled)
+                .help(kind.disabledReason ?? "")
             }
             ForEach(mission.patterns, id: \.self) { pattern in
                 Button { mission.arming = pattern } label: {
                     Label(mission.kinds.title(forPattern: pattern),
                           systemImage: mission.kinds.symbol(forPattern: pattern))
                 }
+                .disabled(!mission.kinds.offers(pattern: pattern))
+                .help(mission.kinds.refusal(pattern: pattern) ?? "")
             }
             if !importable.isEmpty {
                 Divider()
