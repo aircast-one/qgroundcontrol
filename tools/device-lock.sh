@@ -33,13 +33,22 @@ take)
         echo "REFUSED: the handset will not wake - every capture would be a black frame" >&2
         exit 1
     fi
-    echo "ACQUIRED ($w)"
+    adb shell settings put system accelerometer_rotation 0 >/dev/null 2>&1
+    adb shell settings put system user_rotation 0 >/dev/null 2>&1
+    r=$(adb shell dumpsys display 2>/dev/null | grep -oE 'mCurrentOrientation=[0-9]+' | head -1)
+    if [ "$r" != "mCurrentOrientation=0" ]; then
+        rm -f "$LOCK"
+        echo "REFUSED: the handset is not portrait ($r) - every fixed coordinate would miss" >&2
+        exit 1
+    fi
+    echo "ACQUIRED ($w portrait)"
     ;;
 drop)
     if [ ! -f "$LOCK" ]; then echo "no lock held"; exit 0; fi
     o=$(owner_of)
     if [ "$o" != "$ME" ]; then echo "NOT MINE (held by $o) - left alone"; exit 1; fi
     adb shell svc power stayon false >/dev/null 2>&1
+    adb shell settings put system accelerometer_rotation 1 >/dev/null 2>&1
     adb shell dumpsys deviceidle enable >/dev/null 2>&1
     rm -f "$LOCK" && echo "RELEASED"
     ;;
