@@ -96,6 +96,7 @@ swiftc -Onone -o "$out" \
     "$root/macos/Sources/TilePyramid.swift" \
     "$root/macos/Sources/VehicleComponentModel.swift" \
     "$root/macos/Sources/LogEntryModel.swift" \
+    "$root/macos/Sources/HostNoticeModel.swift" \
     "$root/macos/Sources/FlightModePositions.swift" \
     "$root/macos/Sources/PageSelection.swift" \
     "$root/macos/Tests/main.swift"

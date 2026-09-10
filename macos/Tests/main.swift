@@ -1256,6 +1256,8 @@ func checkMissionItemKinds() {
            "a seed with no points is no seed, rather than an empty shape on the map")
     expect(MissionSeed([:]) == nil, "and a kind with no geometry seeds nothing at all")
 
+    checkHostNotices()
+
     expect(WriteReport.failure("the fence radius"),
            "Could not change the fence radius. It is unchanged.",
            "a refused write names what did not change and says the old value still stands")
@@ -3809,4 +3811,64 @@ func checkMessageRate() {
            + "cannot quietly stop being what the core actually sends")
 
     expect(MessageRateChoice(["title": "5 Hz"]) == nil, "a choice with no rate is dropped")
+}
+
+func checkHostNotices() {
+    func notice(_ id: Int, _ kind: Any, _ title: String, _ text: String,
+                _ at: Any = NSNull()) -> [String: Any] {
+        ["id": id as NSNumber, "kind": kind, "title": title, "text": text, "at": at]
+    }
+
+    let read = HostNotices(["dropped": 0 as NSNumber, "notices": [
+        notice(1, "vehicleError", "AircastQGC", "Critical: GPS glitch"),
+        notice(2, "message", "AircastQGC", "Mission transfer failed. Error: timeout"),
+        notice(3, "navigation", "setup", ""),
+    ]])
+    expect(read.all.count == 3, "every notice the core queued is carried across")
+    expect(read.shown.map(\.id).map(String.init).joined(separator: ","), "2",
+           "but only the app's own message is drawn. A vehicleError comes from "
+           + "StatusTextHandler::newErrorMessage, which fires on the same STATUSTEXT that "
+           + "reaches vehicle.formattedMessages, so the Fly view's message panel already has it; "
+           + "drawing it again would show one fault twice")
+    expect(read.shown.first?.line ?? "",
+           "AircastQGC: Mission transfer failed. Error: timeout",
+           "and the line carries the core's title beside its text")
+
+    expect(HostNotice(notice(9, "invented", "T", "body"))?.kind == .unknown,
+           "a kind token this head has never heard of is unknown, not the first case")
+    expect(HostNotice(notice(9, "invented", "T", "body"))?.shows == true,
+           "and it is DRAWN: the core meant to say something, and this head not recognising the "
+           + "word is no reason to lose the sentence. Silence is the failure this channel exists "
+           + "to fix")
+    expect(HostNotice(notice(9, NSNull(), "T", "body"))?.kind == .unknown,
+           "so is a notice with no kind at all")
+
+    expect(HostNotice(["kind": "message", "title": "T", "text": "b"]) == nil,
+           "a notice with no id is dropped, because the id is what acknowledge sends back and "
+           + "one that cannot be acknowledged would sit there forever")
+
+    expect(HostNotice(notice(4, "message", "", "just text"))?.line ?? "", "just text",
+           "a message with no title reads as its text alone rather than a leading colon")
+    expect(HostNotice(notice(5, "navigation", "setup", ""))?.line ?? "", "setup",
+           "and one with no text reads as its title")
+
+    let stamped = HostNotice(notice(6, "message", "T", "b", 1_757_000_000_000 as NSNumber))
+    expect(stamped?.at != nil, "the core sends milliseconds since the epoch and the head reads them")
+    expect(HostNotice(notice(7, "message", "T", "b"))?.at == nil,
+           "and a notice with no stamp has no time rather than one at the epoch")
+
+    expect(HostNotices(["dropped": 3 as NSNumber, "notices": []]).dropNotice ?? "",
+           "3 earlier notices were dropped.",
+           "the queue caps at 64 and drops from behind its oldest eight, so what goes missing is "
+           + "the middle of a burst; a count the operator never sees would let the list disagree "
+           + "with what happened")
+    expect(HostNotices(["dropped": 1 as NSNumber, "notices": []]).dropNotice ?? "",
+           "1 earlier notice was dropped.", "with the singular spelled properly")
+    expect(HostNotices.none.dropNotice == nil, "and nothing dropped says nothing")
+    expect(HostNotices([:]).all.isEmpty && HostNotices([:]).dropped == 0,
+           "an empty read is an empty queue rather than a decode that invents one")
+
+    expect(read.newest?.id == 2,
+           "the newest drawn notice is the last one queued, because post appends and the head "
+           + "does not re-sort what the core has already ordered")
 }

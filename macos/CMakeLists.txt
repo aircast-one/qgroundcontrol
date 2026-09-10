@@ -22,6 +22,7 @@ add_library(QGCNativeUI STATIC
     Sources/AnalyzeWindow.swift
     Sources/LogDownload.swift
     Sources/LogEntryModel.swift
+    Sources/HostNoticeModel.swift
     Sources/Vibration.swift
     Sources/VibrationReading.swift
     Sources/ParameterModel.swift
@@ -96,6 +97,7 @@ add_library(QGCNativeUI STATIC
     Sources/GuidedActionsModel.swift
     Sources/GuidedValueModel.swift
     Sources/GuidedActions.swift
+    Sources/HostNotices.swift
     Sources/Frame.swift
     Sources/OverlayKit.swift
     Sources/AppShell.swift

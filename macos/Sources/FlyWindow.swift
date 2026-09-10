@@ -4,6 +4,7 @@ import SwiftUI
 struct FlyPanel: View {
     @ObservedObject var fly: FlyStore
     @ObservedObject var video: VideoStore
+    @ObservedObject var notices: HostNoticeStore
 
     var body: some View {
         GlassPanel {
@@ -44,6 +45,13 @@ struct FlyPanel: View {
 
                 if video.status.available {
                     videoCard
+                }
+
+                // Not behind the connected gate: a link that failed to switch, a settings
+                // warning and a parameter error all happen with no vehicle, which is exactly
+                // when the operator has nothing else telling them why.
+                if !notices.queue.shown.isEmpty || notices.queue.dropNotice != nil {
+                    appNotices
                 }
 
                 if fly.state.connected {
@@ -376,6 +384,29 @@ struct FlyPanel: View {
                                      .fill(FlyPanel.colour(message.level))
                                      .frame(width: 7, height: 7) },
                                  trailing: { EmptyView() })
+                    }
+                }
+            }
+        }
+    }
+
+    private var appNotices: some View {
+        VStack(alignment: .leading, spacing: Overlay.unit * 0.3) {
+            SectionLabel(text: "From the app")
+            GroupCard {
+                if notices.queue.shown.isEmpty {
+                    EmptyStateRow(text: notices.queue.dropNotice ?? "Nothing to report.")
+                } else {
+                    ForEach(Array(notices.queue.shown.enumerated()), id: \.element.id) { row, notice in
+                        GroupRow(title: notice.line,
+                                 description: row == 0 ? (notices.queue.dropNotice ?? "") : "",
+                                 showSeparator: row > 0,
+                                 titleLines: 3,
+                                 leading: { Circle().fill(Color.orange).frame(width: 7, height: 7) },
+                                 trailing: {
+                                     Button("Dismiss") { notices.dismiss(notice) }
+                                         .buttonStyle(.link)
+                                 })
                     }
                 }
             }
@@ -752,6 +783,7 @@ struct FlyView: View {
     @ObservedObject var guided: GuidedStore
     @ObservedObject var video: VideoStore
     @ObservedObject var mapClick: MapClickStore
+    @ObservedObject var notices: HostNoticeStore
 
     @State private var clickMenuSize = CGSize.zero
 
@@ -856,7 +888,7 @@ struct FlyView: View {
             .padding(.top, Overlay.unit)
             .transition(.opacity)
 
-            FlyPanel(fly: fly, video: video)
+            FlyPanel(fly: fly, video: video, notices: notices)
                 .padding(Overlay.unit)
                 .frame(maxWidth: .infinity, alignment: .trailing)
 
@@ -917,6 +949,7 @@ struct FlyView: View {
             fly.start()
             instruments.refresh()
             guided.startWatching()
+            notices.startWatching()
             video.useNativeRendering()
             video.startWatching()
             mapClick.start()
@@ -927,6 +960,7 @@ struct FlyView: View {
             mission.stopWatching()
             fenceRally.stopWatching()
             guided.stopWatching()
+            notices.stopWatching()
             video.stopWatching()
             instruments.clear()
             video.clear()
@@ -948,6 +982,7 @@ final class FlyWindow: NSObject, NSWindowDelegate {
     private let guided = GuidedStore()
     private let video = VideoStore.shared
     private let mapClick = MapClickStore()
+    private let notices = HostNoticeStore()
     private var window: NSWindow?
 
     override init() {
@@ -959,6 +994,7 @@ final class FlyWindow: NSObject, NSWindowDelegate {
         NativeProbe.register(guided)
         NativeProbe.register(mapClick)
         NativeProbe.register(video)
+        NativeProbe.register(notices)
     }
 
     @objc func showFromMenu() {
@@ -980,7 +1016,7 @@ final class FlyWindow: NSObject, NSWindowDelegate {
         window.titlebarAppearsTransparent = true
         window.isReleasedWhenClosed = false
         window.delegate = self
-        window.contentView = NSHostingView(rootView: FlyView(fly: fly, mission: mission, fenceRally: fenceRally, instruments: instruments, guided: guided, video: video, mapClick: mapClick))
+        window.contentView = NSHostingView(rootView: FlyView(fly: fly, mission: mission, fenceRally: fenceRally, instruments: instruments, guided: guided, video: video, mapClick: mapClick, notices: notices))
         window.center()
         window.makeKeyAndOrderFront(nil)
         self.window = window
