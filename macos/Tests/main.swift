@@ -1264,6 +1264,8 @@ func checkMissionItemKinds() {
     expect(MissionSeed([:]) == nil, "and a kind with no geometry seeds nothing at all")
 
     checkHostNotices()
+    checkBlockedItems()
+    checkBlockedBanner()
     checkMavlinkConsole()
     checkModeSlots()
     checkVideoFrame()
@@ -3234,14 +3236,25 @@ func checkViewContract() {
         return expect(false, "the recorded view contract is readable at \(path)")
     }
 
-    func shape(_ view: String, _ inner: [String]) -> [String: Any]? {
-        var here = shapes[view]
-        for step in inner {
+    func walk(_ view: String, _ inner: [String]) -> Any? {
+        inner.reduce(shapes[view]) { here, step in
             guard let dictionary = here as? [String: Any] else { return nil }
-            here = dictionary[step]
-            if let list = here as? [Any] { here = list.first }
+            let next = dictionary[step]
+            return (next as? [Any])?.first ?? next
         }
-        return here as? [String: Any]
+    }
+
+    func shape(_ view: String, _ inner: [String]) -> [String: Any]? {
+        walk(view, inner) as? [String: Any]
+    }
+
+    let recorderSawNoElement =
+        "or the recorder saw that list empty and said so. An element shape cannot be pinned from "
+        + "a recording that never held an element; QGCCoreCTest's "
+        + "_listsRecordedAsEmptyAreCheckedAgainstAVehicle is what checks those against a vehicle"
+
+    func recordedEmpty(_ view: String, _ inner: [String]) -> Bool {
+        walk(view, inner) as? String == "empty"
     }
 
     let required: [(String, [String], [String])] = [
@@ -3565,7 +3578,8 @@ func checkViewContract() {
     neverNull.forEach { view, inner, keys in
         let place = inner.isEmpty ? view : "\(view).\(inner.joined(separator: "."))"
         guard let shown = shape(view, inner) else {
-            return expect(false, "\(place) is in the recorded contract")
+            return expect(recordedEmpty(view, inner),
+                          "\(place) is in the recorded contract, " + recorderSawNoElement)
         }
         let nullable = keys.filter { key in
             let recorded = (shown[key] as? String) ?? ""
@@ -3579,7 +3593,8 @@ func checkViewContract() {
     required.forEach { view, inner, keys in
         let where_ = inner.isEmpty ? view : "\(view).\(inner.joined(separator: "."))"
         guard let recorded = shape(view, inner) else {
-            return expect(false, "\(where_) is in the recorded contract")
+            return expect(recordedEmpty(view, inner),
+                          "\(where_) is in the recorded contract, " + recorderSawNoElement)
         }
         let missing = keys.filter { recorded[$0] == nil }.sorted()
         expect(missing.joined(separator: ","), "",
@@ -3989,6 +4004,97 @@ func checkHostNotices() {
     expect(served.navigation?.id == 1,
            "the navigation request is found among notices that are not navigation, because it "
            + "arrives paired with the message that explains it and never alone")
+}
+
+func checkBlockedItems() {
+    let ok = MissionItem(json: ["sequenceNumber": 2 as NSNumber, "commandName": "Waypoint",
+                                "readyForSaveState": 0 as NSNumber], index: 2)
+    expect(!ok.blocked, "an item the controller calls ready does not block the plan")
+    expect(ok.blockedReason == nil, "and carries no reason to show")
+
+    let unset = MissionItem(json: ["sequenceNumber": 1 as NSNumber, "commandName": "Takeoff",
+                                   "readyForSaveState": 2 as NSNumber,
+                                   "readyForSaveMessage": "Set its location"], index: 1)
+    expect(unset.blocked,
+           "a takeoff whose location was never set blocks the plan. Measured on the running app: "
+           + "it reads state 2 and \"Set its location\", its coordinate is 0,0, and nothing in "
+           + "this window said so -- the position column showed a dash and the operator was left "
+           + "to work out why Save stayed refused")
+    expect(unset.blockedReason ?? "", "Set its location",
+           "and the controller's own sentence is what gets shown, not one invented here")
+
+    let silent = MissionItem(json: ["sequenceNumber": 1 as NSNumber, "commandName": "Takeoff",
+                                    "readyForSaveState": 2 as NSNumber,
+                                    "readyForSaveMessage": ""], index: 1)
+    expect(silent.blocked && silent.blockedReason == nil,
+           "an item that blocks without saying why still blocks -- the row cannot explain it, "
+           + "but the plan is no more saveable for the silence")
+
+    let terrain = MissionItem(json: ["sequenceNumber": 3 as NSNumber, "commandName": "Waypoint",
+                                     "readyForSaveState": 1 as NSNumber,
+                                     "readyForSaveMessage": "Waiting for terrain"], index: 3)
+    expect(terrain.blocked && terrain.awaitingTerrain,
+           "an item waiting on terrain heights stops the save too, but it is a wait on a server "
+           + "and not a task for the operator. QGC keeps the two apart -- NotReadyForSaveData "
+           + "lists the incomplete items and selects the next one, NotReadyForSaveTerrain shows "
+           + "a different message with no item list because there is nothing to select")
+    expect(!unset.awaitingTerrain, "and an item the operator has to finish is not a terrain wait")
+
+    let absent = MissionItem(json: ["sequenceNumber": 1 as NSNumber], index: 1)
+    expect(!absent.blocked,
+           "and an item whose state the controller did not report does NOT block. Every other "
+           + "item would decode to blocked on one missing key, and a plan that refuses to save "
+           + "with a row of unexplained warnings is worse than one that lets the controller "
+           + "refuse the save itself, which it still does")
+}
+
+func checkBlockedBanner() {
+    func item(_ seq: Int, _ name: String, _ state: Int, _ message: String = "") -> MissionItem {
+        MissionItem(json: ["sequenceNumber": seq as NSNumber, "commandName": name,
+                           "readyForSaveState": state as NSNumber,
+                           "readyForSaveMessage": message], index: seq)
+    }
+    let general = "An item is still being drawn, so the plan cannot be saved or sent."
+    let one = [item(0, "Mission Start", 0), item(1, "Takeoff", 2, "Set its location"),
+               item(2, "Waypoint", 0)]
+    expect(MissionItem.blockedBanner(one, reason: general), "Takeoff (1): set its location",
+           "with exactly one item at fault the banner names it. The banner and the row used to "
+           + "give different accounts of the same fault -- \"an item is still being drawn\" "
+           + "against \"Set its location\" -- and an operator reading top to bottom went looking "
+           + "for a half drawn polygon")
+    expect(MissionItem.blockedItem(one)?.sequence == 1,
+           "and the banner becomes a button that selects that row, so a blocked item in a thirty "
+           + "item survey is not found by eye")
+
+    let several = [item(1, "Takeoff", 2, "Set its location"),
+                   item(2, "Survey", 2, "Draw its area")]
+    expect(MissionItem.blockedBanner(several, reason: general), general,
+           "with several at fault the plan's own sentence stands, because naming one of them "
+           + "would tell the operator to fix that row and find the save still refused")
+    expect(MissionItem.blockedItem(several) == nil, "and there is nowhere for a button to go")
+
+    let waiting = [item(1, "Takeoff", 0), item(3, "Waypoint", 1, "Waiting for terrain")]
+    expect(MissionItem.blockedBanner(waiting, reason: general), general,
+           "a single item waiting on terrain does NOT get named. The plan's own sentence already "
+           + "says the plan waits on terrain heights, and naming a row invites the operator to "
+           + "go and fix something that no click of theirs can fix")
+    expect(MissionItem.blockedItem(waiting) == nil,
+           "and the banner is not a button, because there is nothing on that row to do")
+
+    let clean = [item(1, "Takeoff", 0), item(2, "Waypoint", 0)]
+    expect(MissionItem.blockedBanner(clean, reason: general), general,
+           "a plan whose items are all ready keeps whatever reason the plan itself gave -- the "
+           + "refusal can be about the plan rather than about any one item")
+
+    let mute = [item(1, "Takeoff", 2, "")]
+    expect(MissionItem.blockedBanner(mute, reason: general), general,
+           "and an item that blocks without saying why cannot name itself usefully, so the "
+           + "general sentence is still the honest one")
+
+    expect("Set its location".lowercasedFirst, "set its location",
+           "the controller writes each message as its own sentence, so it needs lowering to sit "
+           + "after a colon")
+    expect("".lowercasedFirst, "", "and an empty one stays empty rather than trapping")
 }
 
 func checkMavlinkConsole() {

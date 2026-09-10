@@ -18,6 +18,10 @@ struct MissionItem: Identifiable, Equatable {
     let category: String
     let altitudeUnits: String
 
+    let blocked: Bool
+    let blockedReason: String?
+    let awaitingTerrain: Bool
+
     var id: Int { sequence }
 
     // A command with no position of its own still reports a coordinate, and it is
@@ -31,8 +35,29 @@ struct MissionItem: Identifiable, Equatable {
 
     var canChangeCommand: Bool { isSimpleItem && sequence > 0 && !isLaunch }
 
+    static let readyToSave = 0
+    static let waitingOnTerrain = 1
+
+    static func blockedItem(_ items: [MissionItem]) -> MissionItem? {
+        let blocked = items.filter(\.blocked)
+        guard blocked.count == 1, let only = blocked.first,
+              !only.awaitingTerrain else { return nil }
+        return only
+    }
+
+    static func blockedBanner(_ items: [MissionItem], reason: String) -> String {
+        guard let only = blockedItem(items), let why = only.blockedReason else { return reason }
+        return "\(only.command) (\(only.sequence)): \(why.lowercasedFirst)"
+    }
+
     init(json: [String: Any], index: Int, verticalMeasure: Measure = .metres) {
         self.index = index
+        let ready = (json["readyForSaveState"] as? NSNumber)?.intValue ?? MissionItem.readyToSave
+        blocked = ready != MissionItem.readyToSave
+        awaitingTerrain = ready == MissionItem.waitingOnTerrain
+        blockedReason = blocked
+            ? (json["readyForSaveMessage"] as? String).flatMap { $0.isEmpty ? nil : $0 }
+            : nil
         sequence = (json["sequenceNumber"] as? NSNumber)?.intValue ?? 0
         command = (json["commandName"] as? String) ?? ""
         description = (json["commandDescription"] as? String) ?? ""
@@ -75,5 +100,12 @@ struct MissionItem: Identifiable, Equatable {
 
     var altitudeText: String {
         Measure.reading(altitude, altitudeUnits)
+    }
+}
+
+extension String {
+    var lowercasedFirst: String {
+        guard let first else { return self }
+        return first.lowercased() + dropFirst()
     }
 }

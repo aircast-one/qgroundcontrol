@@ -246,10 +246,20 @@ struct PlanInspector: View {
                         .foregroundColor(Overlay.mission)
                 }
                 if !mission.notReadyReason.isEmpty {
-                    Label(mission.notReadyReason, systemImage: "exclamationmark.triangle.fill")
+                    let culprit = MissionItem.blockedItem(mission.items)
+                    let banner = Label(
+                        MissionItem.blockedBanner(mission.items, reason: mission.notReadyReason),
+                        systemImage: "exclamationmark.triangle.fill")
                         .font(.callout)
                         .foregroundColor(.orange)
                         .fixedSize(horizontal: false, vertical: true)
+                    if let culprit {
+                        Button { mission.select(culprit) } label: { banner }
+                            .buttonStyle(.plain)
+                            .help("Show the item that is stopping this plan being saved")
+                    } else {
+                        banner
+                    }
                 }
                 if fenceRally.armingRally, selection.page == "Rally" {
                     Text("Click the map to place a rally point.")
@@ -459,11 +469,13 @@ struct PlanInspector: View {
                 ForEach(mission.items) { item in
                     GroupRow(
                         title: item.command,
+                        description: item.blockedReason ?? "",
                         showSeparator: item.index > 0,
                         current: item.isCurrent,
                         leading: {
                             Seal(label: "\(item.sequence)",
-                                 colour: item.isLaunch ? Overlay.launch : Overlay.mission)
+                                 colour: item.blocked ? Overlay.blocked
+                                     : (item.isLaunch ? Overlay.launch : Overlay.mission))
                         },
                         trailing: {
                             HStack(spacing: Overlay.step) {

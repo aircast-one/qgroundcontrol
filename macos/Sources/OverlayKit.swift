@@ -23,6 +23,7 @@ enum Overlay {
     static let launch = Color.green
     static let rally = Color.green
     static let fence = Color.orange
+    static let blocked = Color.orange
     static let vehicle = Color.red
 }
 
