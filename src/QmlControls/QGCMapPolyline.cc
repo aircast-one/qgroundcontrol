@@ -81,6 +81,11 @@ void QGCMapPolyline::clear(void)
 
 void QGCMapPolyline::adjustVertex(int vertexIndex, const QGeoCoordinate coordinate)
 {
+    if (vertexIndex < 0 || vertexIndex > _polylinePath.length() - 1) {
+        qWarning() << "Call to adjustVertex with bad vertexIndex:count" << vertexIndex << _polylinePath.length();
+        return;
+    }
+
     _polylinePath[vertexIndex] = QVariant::fromValue(coordinate);
     _polylineModel.value<QGCQGeoCoordinate*>(vertexIndex)->setCoordinate(coordinate);
     if (!_deferredPathChanged) {

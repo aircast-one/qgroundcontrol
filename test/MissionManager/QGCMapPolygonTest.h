@@ -33,6 +33,7 @@ private slots:
     void _testSelectVertex(void);
     void _testSegmentSplit(void);
     void _testTrace(void);
+    void _testOutOfRangeVertexIndex(void);
 
 private:
     enum {

@@ -99,6 +99,11 @@ void QGCMapPolygon::clear(void)
 
 void QGCMapPolygon::adjustVertex(int vertexIndex, const QGeoCoordinate coordinate)
 {
+    if (vertexIndex < 0 || vertexIndex > _polygonPath.length() - 1) {
+        qWarning() << "Call to adjustVertex with bad vertexIndex:count" << vertexIndex << _polygonPath.length();
+        return;
+    }
+
     _polygonPath[vertexIndex] = QVariant::fromValue(coordinate);
     _polygonModel.value<QGCQGeoCoordinate*>(vertexIndex)->setCoordinate(coordinate);
     if (!_centerDrag) {

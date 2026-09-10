@@ -372,3 +372,24 @@ void QGCMapPolygonTest::_testTrace(void)
     QVERIFY(!_mapPolygon->traceMode());
     QCOMPARE(_mapPolygon->count(), 3);
 }
+
+void QGCMapPolygonTest::_testOutOfRangeVertexIndex(void)
+{
+    for (int i = 0; i < 4; i++) {
+        _mapPolygon->appendVertex(_polyPoints[i]);
+    }
+    QCOMPARE(_mapPolygon->count(), 4);
+
+    const QGeoCoordinate original = _mapPolygon->vertexCoordinate(0);
+    const QGeoCoordinate moved(original.latitude() + 1.0, original.longitude() + 1.0);
+
+    _mapPolygon->adjustVertex(-1, moved);
+    _mapPolygon->adjustVertex(4, moved);
+    _mapPolygon->adjustVertex(99, moved);
+    _mapPolygon->removeVertex(-1);
+    _mapPolygon->removeVertex(4);
+    _mapPolygon->removeVertex(99);
+
+    QCOMPARE(_mapPolygon->count(), 4);
+    QCOMPARE(_mapPolygon->vertexCoordinate(0), original);
+}

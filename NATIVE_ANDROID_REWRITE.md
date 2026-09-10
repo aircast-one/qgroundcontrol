@@ -2751,6 +2751,49 @@ function for the other shape, has `||`. It is the only instance of the broken fo
 warning next to it also named `removePolygonCoordinate`, a function that no longer exists, so it
 now names itself.
 
+### The sweep that followed, and a crash at the end of it
+
+The rule from the fence work — *a head-side call to a `void` core method needs a guard duplicating
+the core's refusal, because the bridge's `ok` structurally cannot report it* — was worth applying
+to every such call rather than only the one that prompted it. Every fence, circle and rally
+operation the map invokes is `void`: `addInclusionPolygon`, `addInclusionCircle`, `deletePolygon`,
+`deleteCircle`, `adjustVertex`, `removeVertex`, `addPoint`, `removePoint`. So `onBridge`'s failure
+branch — the one that shows "Adding fence did not work" — can never fire for a core refusal. It
+still catches a wrong path or a thrown call, which is a real failure mode and how the
+`view.messages` key mistake would have surfaced, so it stays.
+
+Checking which of those refusals are actually reachable turned up something better than the
+reporting question. `QGCMapPolygon::adjustVertex` and `QGCMapPolyline::adjustVertex` have **no
+bounds check at all**:
+
+```cpp
+_polygonPath[vertexIndex] = QVariant::fromValue(coordinate);
+_polygonModel.value<QGCQGeoCoordinate*>(vertexIndex)->setCoordinate(coordinate);
+```
+
+An out-of-range index is an out-of-bounds write followed by a null dereference. Every sibling
+guards — `deletePolygon`, `deleteCircle` and both `removeVertex` implementations all bounds-check
+— so this is an omission, not a convention. It is reachable: the head captures a vertex index at
+drag start and the polygon list is re-polled underneath, and upstream's own
+`QGCMapPolylineVisuals.qml` passes `menu._removeVertexIndex` into `adjustVertex`, an index that a
+removal has already invalidated.
+
+Both are guarded now, and `QGCMapPolygonTest::_testOutOfRangeVertexIndex` drives -1, count and 99
+into `adjustVertex` and `removeVertex` and asserts the polygon is untouched.
+
+**The test was checked against its own absence.** Reverting the guards and rebuilding, it does not
+merely fail — it dies with `ASSERT failure in QList::operator[]: "index out of range"`, which is
+the crash the guard prevents, confirmed in a real binary rather than argued from the source.
+
+**And the run that said the test passed had not run it.** The first "ALL TESTS PASSED" came from a
+binary that did not contain the new slot: `cmake --build build-test --target AircastQGC` relinks
+`build-test/Debug/libAircastQGC.dylib`, but the executable resolves `@rpath` to
+`AircastQGC.app/Contents/Frameworks/libAircastQGC.dylib`, a copy the named target does not refresh.
+Totals read 8, the same as before the test existed, which is the only reason it was caught.
+Building the default target refreshes the bundle and the total goes to 9. This is the same trap as
+`--target AircastQGC` no longer compiling the Swift: **naming a target gets a green result for
+something other than what you are about to run.**
+
 ## Phase 6 — Shell · 2 weeks
 
 Cheaper than macOS, because Qt is already off the main thread.
