@@ -295,6 +295,16 @@ private fun EditLinkDialog(row: LinkRow, onDismiss: () -> Unit, onSaved: () -> U
                     error = invalid
                     if (invalid == null) {
                         scope.launch {
+                            // The menu gated on a watched row. A link can connect between that
+                            // poll and this tap, and writing a port or baud underneath a live
+                            // link changes the configuration without changing the connection.
+                            val live = withContext(Dispatchers.Default) {
+                                currentRows().firstOrNull { it.index == row.index }
+                            }
+                            if (live == null || live.connected) {
+                                error = "Disconnect the link before changing its settings."
+                                return@launch
+                            }
                             withContext(Dispatchers.Default) {
                                 editWrites(row.editing, name, host, parsed, portName, baud)
                                     .forEach { (field, value) ->
