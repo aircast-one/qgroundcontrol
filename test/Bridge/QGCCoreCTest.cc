@@ -1266,7 +1266,15 @@ void QGCCoreCTest::_surveyTransectsMatchTheRecordedOracle()
 
         const auto points = [&]() { return take(qgc_bridge_get((item + QStringLiteral(".visualTransectPoints")).toUtf8().constData())).value(QStringLiteral("value")).toArray(); };
         QTRY_VERIFY_WITH_TIMEOUT(points().count() > 0, 5000);
-        recorded.insert(QString::fromUtf8(survey.name), roundedCoordinates(points()));
+        recorded.insert(QString::fromUtf8(survey.name), QJsonObject {
+            { QStringLiteral("polygon"), survey.polygon },
+            { QStringLiteral("gridAngle"), survey.gridAngle },
+            { QStringLiteral("gridSpacing"), survey.footprintSide },
+            { QStringLiteral("frontalSpacing"), survey.footprintFrontal },
+            { QStringLiteral("turnAround"), survey.turnAround },
+            { QStringLiteral("refly"), survey.refly },
+            { QStringLiteral("transects"), roundedCoordinates(points()) },
+        });
     }
     restore();
 
@@ -1285,8 +1293,9 @@ void QGCCoreCTest::_surveyTransectsMatchTheRecordedOracle()
     for (const SurveyCase &survey : cases) {
         const QString key = QString::fromUtf8(survey.name);
         QVERIFY2(expected.contains(key), qPrintable(key));
-        QVERIFY2(expected.value(key).toString() == recorded.value(key).toString(),
-                 qPrintable(QStringLiteral("%1 transects changed\n was: %2\n now: %3").arg(key, expected.value(key).toString(), recorded.value(key).toString())));
+        const QString was = expected.value(key).toObject().value(QStringLiteral("transects")).toString();
+        const QString now = recorded.value(key).toObject().value(QStringLiteral("transects")).toString();
+        QVERIFY2(was == now, qPrintable(QStringLiteral("%1 transects changed\n was: %2\n now: %3").arg(key, was, now)));
     }
 #else
     QSKIP("the Rust core is not linked into this build");

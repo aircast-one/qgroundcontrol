@@ -75,7 +75,7 @@ pub fn decode(fact: &Value, path: &str) -> Value {
         "valueString": text("valueString"),
         "display": display,
         "units": text("units"),
-        "readOnly": flag("readOnly"),
+        "readOnly": fact.get("readOnly").and_then(Value::as_bool).unwrap_or(true),
         "options": options,
         "bits": bits,
         "decimalPlaces": fact.get("decimalPlaces").and_then(Value::as_i64).unwrap_or(0),
@@ -115,6 +115,14 @@ mod tests {
         let param = decode(&json!({ "kind": "fact", "name": "COMPASS_USE", "value": 1, "valueString": "1", "vehicleRebootRequired": true }), "p");
         assert_eq!((param["vehicleRebootRequired"].as_bool(), param["applicationRestartRequired"].as_bool()), (Some(true), Some(false)));
         assert_eq!(param["restartNotices"], json!([VEHICLE_REBOOT_NOTICE]));
+    }
+
+    #[test]
+    fn a_fact_that_will_not_say_whether_it_is_writable_is_not_offered_as_writable() {
+        let silent = decode(&json!({ "kind": "fact", "name": "MYSTERY", "value": 1, "valueString": "1" }), "p");
+        assert_eq!(silent["readOnly"], true, "an inverted flag that fails open hands an operator an editable control the core could not vouch for");
+        let stated = decode(&json!({ "kind": "fact", "name": "WPNAV_SPEED", "value": 500, "valueString": "500", "readOnly": false }), "p");
+        assert_eq!(stated["readOnly"], false, "a fact that says it is writable is taken at its word");
     }
 
     #[test]

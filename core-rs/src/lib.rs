@@ -70,6 +70,7 @@ pub mod speed;
 pub mod standardmodes;
 pub mod statustext;
 pub mod survey;
+pub mod surveygrid;
 pub mod sysstatus;
 pub mod takeoff;
 pub mod tcplink;
