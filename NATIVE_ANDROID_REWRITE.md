@@ -512,6 +512,26 @@ Log Download, Vibration, MAVLink Console and MAVLink Inspector all exist nativel
 a picker. `Viewer3D` is still an open keep-or-drop decision, and the QML deletion in the
 gate below has not happened.
 
+**"Built" is not "at parity" for the Inspector.** `MAVLinkInspectorPage.qml` shows *Actual
+Rate* and a *Set Rate* combo (`msgRateCombo`) that calls `Vehicle::setMessageRate`.
+`InspectorScreen` shows the actual rate — it reads `rateText` — and offers no way to set one.
+That is a capability of the page being replaced, missing from the page marked built, so the
+QML deletion in the gate below would lose it.
+
+Nothing is missing from the core. `view.inspector` already emits `targetRateHz` and
+`targetRateTitle` per message and a top-level `rateChoices` list of `{rate, title}` built from
+`RATE_CHOICES` — exactly the shape a picker needs, and read by no head. This is the
+orphaned-mechanism pattern from the other direction: the core built the mechanism and the head
+never grew the control.
+
+**The blocker is one word, in an expensive place.** `invokePath` finds methods by scanning
+`QMetaObject`, which records only signals, slots and `Q_INVOKABLE` methods — every call the head
+makes today (`guidedModeLand`, `setRcChannelOverride`) is `Q_INVOKABLE`. `Vehicle::setMessageRate`
+is plain `public:` at `Vehicle.h:1340`, so it is invisible to the bridge and unreachable from any
+native head, macOS included. Marking it `Q_INVOKABLE` is additive and changes nothing for existing
+callers, but `Vehicle.h` is included by about 120 translation units, so it is an AAR rebuild on a
+build tree other sessions share — worth scheduling deliberately rather than starting mid-review.
+
 **Gate (HW):** log download from real hardware; chart values match the Qt build. `src/AnalyzeView/`
 QML deleted.
 
