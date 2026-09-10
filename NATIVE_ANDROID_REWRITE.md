@@ -4161,6 +4161,24 @@ The fix should not be another QML function, since the shim is what Phase 6 delet
 the bridge event stream as a view the head renders, which is a new channel and a shared decision
 rather than something to invent here.
 
+Completing the C++ side of the survey: `QGCApplication` reaches the root object by name in four
+places. `showVehicleConfig` and `showVehicleConfigParametersPage` are defined by the shim and work.
+`attemptWindowClose` is missing but has no caller outside `QGCApplication` — it is desktop
+window-close. The two that are both missing and live are the message calls above.
+
+**And the shim is not only a shim.** It instantiates the whole QML `FlyView` and `PlanView`, filling
+the parent, with `planView.map: flyView.mapControl` — invisible, because the head sets
+`renderViews: false`, but constructed and bound. That is what still pulls QtQuick, QtLocation,
+QtCharts, QtMultimedia and QtPositioning into the AAR, and it is the substance behind "expect the
+82 MB AAR to roughly halve".
+
+**It is not, however, the Plan-entry stall.** The head sets `page` on every tab change, which drives
+`flyViewActive`, which drives `planView.planActive` — so switching to Plan activates a second,
+invisible plan view, which is a good story for the ~930 ms. Tested by not setting `page` at all, so
+`planActive` never became true: **942-961 ms, against a 927-971 ms baseline.** Unchanged. That is a
+fourth mechanism ruled out, after item count, fact serialisation, the video restart loop and generic
+marshalling. The stall remains unexplained and is now bounded away from the QML views as well.
+
 - Delete the `QtQuickView` host and `AndroidHost.qml`.
 - `QGCApplication` drops from `QApplication` to `QCoreApplication`; the embedded-host boot path
   becomes the only path.
