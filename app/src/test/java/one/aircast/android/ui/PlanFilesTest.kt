@@ -1,6 +1,7 @@
 package one.aircast.android.ui
 
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.json.JSONArray
@@ -394,5 +395,22 @@ class CommandRefusalTest {
     @Test
     fun `the settle window is long enough for a MAVLink round trip`() {
         assertTrue(COMMAND_SETTLE_MS >= 2000L)
+    }
+}
+
+class DiscardConfirmationTest {
+    @Test
+    fun `an empty plan is never worth confirming`() {
+        assertFalse(discardNeedsConfirming(dirty = true, containsItems = false))
+    }
+
+    @Test
+    fun `a dirty plan with items is worth confirming`() {
+        assertTrue(discardNeedsConfirming(dirty = true, containsItems = true))
+    }
+
+    @Test
+    fun `a clean plan with items is not worth confirming`() {
+        assertFalse(discardNeedsConfirming(dirty = false, containsItems = true))
     }
 }

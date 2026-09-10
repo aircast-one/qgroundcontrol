@@ -35,6 +35,9 @@ internal fun planActions(
     clearMission = !offline && !syncing,
 )
 
+internal fun discardNeedsConfirming(dirty: Boolean, containsItems: Boolean): Boolean =
+    dirty && containsItems
+
 internal const val READY_FOR_SAVE = 0
 internal const val NOT_READY_TERRAIN = 1
 internal const val NOT_READY_DATA = 2
