@@ -387,22 +387,35 @@ inline path. The marshalling cost is currently zero — by construction, not by 
 Phase 6 is precisely the change that ends that. The moment `QApplication::exec()` moves to a
 worker thread, every `Bridge.group` call in `macos/Sources` becomes a cross-thread blocking post.
 
-The Android session is already on the far side of this and measured it: a bridge `get` blocking
-**927–971 ms** across a dozen samples, on an *empty* plan as well as a full one. They ruled out
-serialisation cost (an empty plan blocks the same, so item count is not the variable) and ruled
-out the video receiver's 1 s restart loop (disabling video removed every restart line and the
-block stayed at 932–938 ms). Their untested reading is that the event dispatcher is not woken on
-post, so the event waits for a poll to time out. That is a hypothesis, not a diagnosis, and it is
-theirs — recorded here because this head inherits it on the first day of Phase 6, not because it
-is settled.
+The Android session is on the far side of this and measured it. Their first three readings each
+had a mechanism that fully explained a ~930 ms bridge `get`, and all three were wrong. The control
+that settled it was reading **the same path twice** in one view entry:
 
-Two consequences for the phase as budgeted. The three weeks assume no Swift changes; if reads
-must move off the synchronous path they are not three weeks. And the cost is invisible until the
-flip, so it cannot be discovered incrementally — the first Phase 6 build is where it appears.
+| | |
+|---|---|
+| `get plan.missionController.visualItems` at tab entry | **864 ms** |
+| the same path, same plan, same process, 4 s later | **5 ms** |
 
-Related and worth not mis-learning: `objectJson` calls `property.read(object)` for every property
-*before* checking whether it was requested, so `getFields` saves serialisation and never the
-reads. It is a bandwidth win, not a CPU one, and will not be the fix here.
+Back-to-back reads drain progressively — 883, 619, 18, 4 ms — which is the shape of a queue
+emptying, not of work being done. Opening their Plan tab makes the Qt thread busy for about a
+second, and anything posted with `BlockingQueuedConnection` in that window waits for the loop.
+What occupies the thread for that second is still open on their side; it is triggered by opening
+Plan and is independent of plan contents.
+
+Marshalling itself is cheap: with a 1 ms profiling threshold, `invoke vehicle.clearRcChannelOverrides`
+cost **8 ms** off the Qt thread in the same session. And `getFields(path, "*")` changed nothing
+(896–1002 ms), which also settles what `getFields` is for — `objectJson` reads every property
+before checking whether it was requested, so it saves neither CPU nor latency, only bytes.
+
+**So Phase 6 does not impose a per-read tax.** The earlier framing in this document — every read
+becoming a blocking post costing most of a second — was alarming and wrong. What the flip actually
+does is expose this head to whatever else occupies the Qt thread: if macOS has an equivalent of
+"opening a view kicks off a second of Qt work", the first reads after it queue behind that, and
+only then. That is bounded and plannable rather than a blanket latency.
+
+The three-week budget survives this. What does not survive is discovering it late — the exposure
+does not exist until the flip, so the first Phase 6 build is where it appears, and the way to
+measure it is to read the same path twice under different conditions rather than once.
 
 **Gate:** two weeks of internal flying with the previous release as fallback, then delete the
 fallback.
