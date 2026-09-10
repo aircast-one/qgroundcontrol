@@ -475,6 +475,10 @@ final class MissionStore: ObservableObject, Probeable, WriteReporting {
     }
 
     func setFact(_ fact: ItemFact, to value: String) {
+        guard !fact.readOnly else {
+            writeFailure = FactWrite.readOnly
+            return
+        }
         guard let item = items.first(where: \.isCurrent) else { return }
         write("plan.missionController.visualItems.\(item.index).\(fact.pathSuffix)",
               Double(value) ?? value, fact.name)

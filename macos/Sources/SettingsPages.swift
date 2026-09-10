@@ -17,6 +17,10 @@ struct ControlOption: Identifiable, Equatable {
     }
 }
 
+enum FactWrite {
+    static let readOnly = "That value is read-only, so it was not written."
+}
+
 struct ControlBit: Identifiable, Equatable {
     let label: String
     let value: Int

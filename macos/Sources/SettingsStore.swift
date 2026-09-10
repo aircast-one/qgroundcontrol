@@ -68,6 +68,10 @@ final class SettingsStore: ObservableObject, Probeable, WriteReporting {
     // A Fact can clamp or refuse a value, so the written value is not necessarily the
     // stored one. Drop the cache and read back rather than trusting local state.
     func write(_ control: SettingsControl, _ value: Any) {
+        guard !control.readOnly else {
+            writeFailure = FactWrite.readOnly
+            return
+        }
         write(control.path, value, control.label)
         cache.removeAll()
         refresh()

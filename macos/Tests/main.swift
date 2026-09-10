@@ -450,6 +450,16 @@ func checkFenceGeometry() {
     expect(FenceShape(["index": 0 as NSNumber]) == nil,
            "and one with no shape word is dropped rather than guessed at")
     expect(FenceShape.list(nil).isEmpty, "no answer is no fences")
+
+    expect(FenceShape(["index": 0 as NSNumber, "path": "p", "shape": "circle"])?.inclusion
+           == false,
+           "a fence that does not say which kind it is reads as KEEP-OUT. Mistaking an exclusion "
+           + "zone for a boundary to stay inside plans a mission into forbidden airspace, and the "
+           + "core made the same choice in fences.rs; this head defaulted the other way")
+
+    expect(FactWrite.readOnly.contains("not written"),
+           "a read-only fact refuses the write and says so. The only thing stopping one was "
+           + "disabled() on four fields, and a display cannot keep a value off the wire")
 }
 checkFenceGeometry()
 

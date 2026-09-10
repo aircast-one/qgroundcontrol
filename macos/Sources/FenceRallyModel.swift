@@ -65,7 +65,7 @@ struct FenceShape: Identifiable, Equatable {
         self.index = index
         self.shape = shape
         path = (json["path"] as? String) ?? ""
-        inclusion = (json["inclusion"] as? NSNumber)?.boolValue ?? true
+        inclusion = (json["inclusion"] as? NSNumber)?.boolValue ?? false
         kindText = (json["kindText"] as? String) ?? ""
         detailText = (json["detailText"] as? String) ?? ""
         vertices = ((json["vertices"] as? [Any]) ?? []).compactMap(GeoPoint.init(json:))

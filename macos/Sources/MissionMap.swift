@@ -36,7 +36,7 @@ final class RallyAnnotation: NSObject, MKAnnotation {
 }
 
 final class FencePolygon: MKPolygon {
-    var inclusion = true
+    var inclusion = false
 }
 
 final class SurveyPolygon: MKPolygon {}
@@ -45,7 +45,7 @@ final class CorridorPolyline: MKPolyline {}
 final class TrackPolyline: MKPolyline {}
 
 final class FenceCircle: MKCircle {
-    var inclusion = true
+    var inclusion = false
 }
 
 final class OrbitCircle: MKCircle {}
