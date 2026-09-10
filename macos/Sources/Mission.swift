@@ -238,25 +238,27 @@ final class MissionStore: ObservableObject, Probeable, WriteReporting {
 
     func addWaypoint(latitude: Double, longitude: Double) {
         let asked = arming ?? "waypoint"
-        if let refused = kinds.refusal(forArming: asked) {
-            writeFailure = refused
-            arming = nil
+        arming = nil
+
+        // A pattern the catalogue never named has no kind for the core to look up, no shape it
+        // knows how to seed and no rule to refuse it by, so it still goes in directly. QGC creates
+        // these, so "the plan cannot hold it" would be the wrong answer.
+        guard kinds.coreInserts(asked) else {
+            Bridge.invoke("plan.missionController.insertComplexMissionItem",
+                          [asked, ["latitude": latitude, "longitude": longitude],
+                           items.count, true])
+            reload()
             return
         }
-        let index = items.count
-        let at = ["latitude": latitude, "longitude": longitude]
 
-        if let simple = kinds.byId(asked), simple.simple {
-            Bridge.invoke("plan.missionController.\(simple.invokable)", [at, index, true])
-        } else {
-            Bridge.invoke("plan.missionController.insertComplexMissionItem",
-                          [asked, at, index, true])
-            if let known = kinds.byComplexName(asked) {
-                seed(known, at: index, latitude: latitude, longitude: longitude)
-            }
+        // The core selects the insertion point before it asks whether the kind may go there, and
+        // the controller only recomputes that answer on selection. A gate here would be reading
+        // whatever the last poll saw. It also seeds the shape and takes the item back out if the
+        // shape will not write, which this head never did.
+        let answer = Bridge.invoke("mission.insert", [asked, latitude, longitude, -1])
+        if (answer["ok"] as? NSNumber)?.boolValue != true {
+            writeFailure = (answer["reason"] as? String) ?? MissionKinds.refusedWithoutReason
         }
-
-        arming = nil
         reload()
     }
 

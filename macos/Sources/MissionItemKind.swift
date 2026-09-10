@@ -100,11 +100,12 @@ struct MissionKinds: Equatable {
         byComplexName(name)?.disabledReason
     }
 
-    // The gate on the write. An id the catalogue never listed is not one the core refused,
-    // so it passes here and fails, if it fails, in the controller where it can say why.
-    func refusal(forArming asked: String) -> String? {
-        guard let kind = byId(asked) ?? byComplexName(asked) else { return nil }
-        return kind.enabled ? nil : (kind.disabledReason ?? MissionKinds.refusedWithoutReason)
+    // mission.insert looks a name up in this catalogue, gates it against a freshly selected
+    // insertion point, seeds its shape and rolls the item back if the shape will not write. A
+    // name the catalogue never listed it refuses as an item the plan cannot hold, which is false
+    // of a Fixed Wing Landing Pattern -- QGC creates those -- so those go in directly instead.
+    func coreInserts(_ asked: String) -> Bool {
+        byId(asked) != nil || byComplexName(asked) != nil
     }
 
     static let refusedWithoutReason = "That item cannot go here."

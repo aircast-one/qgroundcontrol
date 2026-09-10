@@ -1221,15 +1221,17 @@ func checkMissionItemKinds() {
     expect(refusing.byId("takeoff")?.enabled == false,
            "the core says which kinds can go in this mission now, and the head no longer offers "
            + "a takeoff to a mission that already has one")
-    expect(refusing.refusal(forArming: "takeoff") ?? "", "This mission already takes off.",
-           "the WRITE is what the refusal gates -- a menu that only greys the row still lets a "
-           + "map click through, because arming and clicking are two separate actions here")
-    expect(refusing.refusal(forArming: "survey") ?? "", "Nothing can follow the landing.",
-           "a complex kind is refused by the name the menu armed, which is its complexName")
-    expect(refusing.refusal(forArming: "waypoint") == nil, "an allowed kind is not refused")
-    expect(refusing.refusal(forArming: "Fixed Wing Landing Pattern") == nil,
-           "and a name the catalogue never listed is not one the core refused, so it passes here "
-           + "rather than being blocked by a head that was never told about it")
+    expect(catalogue.coreInserts("takeoff") && catalogue.coreInserts("Survey"),
+           "an id and a complexName both reach mission.insert, which gates against a freshly "
+           + "selected insertion point rather than against whatever this head last polled -- the "
+           + "controller only recomputes what may go next when the plan view selects an item")
+    expect(!catalogue.coreInserts("Fixed Wing Landing Pattern"),
+           "but a pattern the catalogue never listed does not. mission.insert would call it an "
+           + "item the plan cannot hold, and QGC creates these; refusing a kind and never having "
+           + "heard of it are different answers, so this one goes in directly")
+    expect(!MissionKinds.empty.coreInserts("waypoint"),
+           "and before the catalogue has loaded nothing is routed to the core, because the name "
+           + "it would send is one this head cannot yet confirm the core knows")
 
     expect(catalogue.byId("takeoff")?.enabled == true,
            "a catalogue that refused nothing enables everything")
