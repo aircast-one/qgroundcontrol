@@ -41,6 +41,8 @@ private slots:
     void _videoAndCameraAreServed();
     void _viewShapesMatchTheRecordedContract();
     void _serialConfigurationsCanBeCreatedByPath();
+    void _mapProvidersMatchTheRecordedHashes();
+    void _theTileCacheSchemaMatchesTheRecordedOne();
     void _surveyTransectsMatchTheRecordedOracle();
     void _tlogSummaryDecodesTheSampleLog();
     void _planFileAgreesWithTheCppLoader();

@@ -1,4 +1,9 @@
 #include "QGCCoreCTest.h"
+#include "QGCMapUrlEngine.h"
+#include <QtSql/QSqlError>
+#include <QtSql/QSqlQuery>
+#include <QtSql/QSqlDatabase>
+#include "QGCMapEngine.h"
 
 #include "MockLink.h"
 #include "UDPLink.h"
@@ -1856,4 +1861,96 @@ void QGCCoreCTest::_terrainTileNeedsAFile()
 {
     QCOMPARE(take(qgc_bridge_get("view.terrainTile")).value(QStringLiteral("kind")).toString(), QStringLiteral("null"));
     QCOMPARE(take(qgc_bridge_get("view.terrainTile(/nonexistent.tile)")).value(QStringLiteral("readable")).toBool(true), false);
+}
+
+void QGCCoreCTest::_mapProvidersMatchTheRecordedHashes()
+{
+    QJsonObject providers;
+    for (const QString &name : UrlFactory::getProviderTypes()) {
+        providers[name] = UrlFactory::hashFromProviderType(name);
+    }
+    QVERIFY2(!providers.isEmpty(), "the url factory knows no map providers");
+
+    QJsonObject samples;
+    const QList<QList<int>> tiles = { { 0, 0, 0 }, { 1, 2, 3 }, { 8523, 5606, 14 }, { 2147483647, 99999999, 22 } };
+    for (const QList<int> &tile : tiles) {
+        for (const QString &name : UrlFactory::getProviderTypes()) {
+            samples[QStringLiteral("%1 %2/%3/%4").arg(name).arg(tile[0]).arg(tile[1]).arg(tile[2])] =
+                UrlFactory::getTileHash(name, tile[0], tile[1], tile[2]);
+        }
+    }
+
+    const QJsonObject recorded { { QStringLiteral("providers"), providers }, { QStringLiteral("tileHashes"), samples } };
+    const QString fixture = QFileInfo(QString::fromUtf8(__FILE__)).dir().filePath(QStringLiteral("fixtures/tile-providers.json"));
+    if (qEnvironmentVariableIsSet("QGC_RECORD_VIEW_CONTRACT")) {
+        QFile out(fixture);
+        QVERIFY2(out.open(QIODevice::WriteOnly | QIODevice::Text), qPrintable(fixture));
+        out.write(QJsonDocument(recorded).toJson(QJsonDocument::Indented));
+        out.close();
+        QSKIP("recorded the map provider hashes");
+    }
+
+    QFile in(fixture);
+    QVERIFY2(in.open(QIODevice::ReadOnly), "no recorded provider hashes; run with QGC_RECORD_VIEW_CONTRACT=1 once");
+    const QJsonObject expected = QJsonDocument::fromJson(in.readAll()).object();
+    in.close();
+
+    const QJsonObject expectedProviders = expected.value(QStringLiteral("providers")).toObject();
+    QStringList missing;
+    for (const QString &name : providers.keys()) {
+        if (!expectedProviders.contains(name)) {
+            missing.append(name);
+        }
+    }
+    QVERIFY2(missing.isEmpty(), qPrintable(QStringLiteral("map providers with no recorded hash, so the Rust cache cannot key their tiles: %1").arg(missing.join(QStringLiteral(", ")))));
+    QCOMPARE(QJsonDocument(providers).toJson(QJsonDocument::Compact), QJsonDocument(expectedProviders).toJson(QJsonDocument::Compact));
+    QCOMPARE(QJsonDocument(samples).toJson(QJsonDocument::Compact), QJsonDocument(expected.value(QStringLiteral("tileHashes")).toObject()).toJson(QJsonDocument::Compact));
+}
+
+void QGCCoreCTest::_theTileCacheSchemaMatchesTheRecordedOne()
+{
+    const QString databasePath = QDir::temp().filePath(QStringLiteral("qgc-core-tilecache-%1.db").arg(QCoreApplication::applicationPid()));
+    QFile::remove(databasePath);
+    QGCMapEngine::instance()->init(databasePath);
+
+    QTRY_VERIFY_WITH_TIMEOUT(QFileInfo::exists(databasePath) && QFileInfo(databasePath).size() > 0, 10000);
+
+    QJsonObject schema;
+    {
+        QSqlDatabase database = QSqlDatabase::addDatabase(QStringLiteral("QSQLITE"), QStringLiteral("tileCacheSchemaProbe"));
+        database.setDatabaseName(databasePath);
+        QVERIFY2(database.open(), qPrintable(database.lastError().text()));
+        QSqlQuery query(database);
+        QVERIFY(query.exec(QStringLiteral("SELECT type, name, sql FROM sqlite_master WHERE sql IS NOT NULL ORDER BY name")));
+        while (query.next()) {
+            schema[query.value(1).toString()] = QStringLiteral("%1 %2").arg(query.value(0).toString(), query.value(2).toString());
+        }
+        QSqlQuery sets(database);
+        QVERIFY(sets.exec(QStringLiteral("SELECT name, defaultSet FROM TileSets ORDER BY name")));
+        QJsonObject recordedSets;
+        while (sets.next()) {
+            recordedSets[sets.value(0).toString()] = sets.value(1).toInt();
+        }
+        schema[QStringLiteral("_tileSets")] = QJsonDocument(recordedSets).toJson(QJsonDocument::Compact).constData();
+        database.close();
+    }
+    QSqlDatabase::removeDatabase(QStringLiteral("tileCacheSchemaProbe"));
+    QFile::remove(databasePath);
+
+    QVERIFY2(schema.contains(QStringLiteral("Tiles")), "the map engine did not create the tile cache");
+
+    const QString fixture = QFileInfo(QString::fromUtf8(__FILE__)).dir().filePath(QStringLiteral("fixtures/tile-cache-schema.json"));
+    if (qEnvironmentVariableIsSet("QGC_RECORD_VIEW_CONTRACT")) {
+        QFile out(fixture);
+        QVERIFY2(out.open(QIODevice::WriteOnly | QIODevice::Text), qPrintable(fixture));
+        out.write(QJsonDocument(schema).toJson(QJsonDocument::Indented));
+        out.close();
+        QSKIP("recorded the tile cache schema");
+    }
+
+    QFile in(fixture);
+    QVERIFY2(in.open(QIODevice::ReadOnly), "no recorded tile cache schema; run with QGC_RECORD_VIEW_CONTRACT=1 once");
+    const QJsonObject expected = QJsonDocument::fromJson(in.readAll()).object();
+    in.close();
+    QCOMPARE(QJsonDocument(schema).toJson(QJsonDocument::Compact), QJsonDocument(expected).toJson(QJsonDocument::Compact));
 }

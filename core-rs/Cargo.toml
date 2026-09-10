@@ -27,6 +27,7 @@ num-traits = "0.2"
 chrono = { version = "0.4", default-features = false, features = ["clock"] }
 ureq = { version = "3", default-features = false }
 url = "2"
+rusqlite = { version = "0.37.0", features = ["bundled"] }
 
 [target.'cfg(not(target_os = "android"))'.dependencies]
 serialport = "4.10.1"

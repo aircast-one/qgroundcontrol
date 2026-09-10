@@ -74,6 +74,7 @@ pub mod standardmodes;
 pub mod statustext;
 pub mod survey;
 pub mod structurescan;
+pub mod tilecache;
 pub mod surveygrid;
 pub mod surveyitems;
 pub mod sysstatus;
