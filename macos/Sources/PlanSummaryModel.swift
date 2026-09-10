@@ -47,12 +47,15 @@ struct PlanReadiness: Equatable {
 
     init?(_ json: Any?) {
         guard let json = json as? [String: Any] else { return nil }
-        ready = (json["ready"] as? NSNumber)?.boolValue ?? true
+        ready = (json["ready"] as? NSNumber)?.boolValue ?? false
         reason = (json["reason"] as? String) ?? ""
     }
 }
 
 struct PlanUpload: Equatable {
+    static let uncheckable =
+        "The plan was not sent: this head could not read whether the vehicle will accept it."
+
     let canSend: Bool
     let refusal: String
     let heading: String

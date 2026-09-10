@@ -3565,6 +3565,20 @@ func checkPlanViewState() {
 
     expect(PlanReadiness(nil) == nil, "a missing object is not silently a ready plan")
     expect(PlanUpload("not an object") == nil, "nor is a shape the core never sends")
+
+    expect(PlanReadiness(["reason": "unset"])?.ready == false,
+           "a readiness object that carries no answer is NOT ready. It gates Save As and Upload, "
+           + "and defaulting it to ready enabled both before anything had been read")
+
+    expect(PlanUpload(["refusal": "unset"])?.canSend == false,
+           "and an upload object that carries no answer cannot send")
+    expect(PlanUpload(["refusal": "unset"])?.canProceed == false,
+           "nor can the operator wave it through")
+
+    expect(PlanUpload.uncheckable.contains("not sent"),
+           "when the upload check cannot be read at all the plan is not sent and the refusal "
+           + "says so; uploadToVehicle used to treat an unreadable check as permission, so a "
+           + "bridge that could not answer sent the plan rather than refusing it")
 }
 
 func checkCentreNotes() {

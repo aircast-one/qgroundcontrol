@@ -38,7 +38,7 @@ final class MissionStore: ObservableObject, Probeable, WriteReporting {
     @Published private(set) var cruiseSpeed = ""
     @Published private(set) var hoverSpeed = ""
     @Published private(set) var planFile = ""
-    @Published private(set) var readyToSave = true
+    @Published private(set) var readyToSave = false
     @Published private(set) var notReadyReason = ""
     @Published var uploadWarning: PlanUpload?
     @Published var writeFailure: String?
@@ -157,8 +157,11 @@ final class MissionStore: ObservableObject, Probeable, WriteReporting {
     }
 
     func uploadToVehicle() {
-        let check = preCheck()
-        if let check, !check.canSend { uploadWarning = check } else { send() }
+        guard let check = preCheck() else {
+            writeFailure = PlanUpload.uncheckable
+            return
+        }
+        if !check.canSend { uploadWarning = check } else { send() }
     }
 
     // Read fresh on the attempt: terrain arriving does not raise an event, so the answer
@@ -778,6 +781,7 @@ final class MissionStore: ObservableObject, Probeable, WriteReporting {
          "patterns": patterns,
          "planFile": planFile, "watching": watchPoll != nil, "planName": planName,
          "readyToSave": readyToSave, "notReadyReason": notReadyReason,
+         "uploadCheckable": preCheck() != nil,
          "uploadWarning": uploadWarning.map(\.refusal) ?? "",
          "writeFailure": writeFailure ?? "",
          "canUndo": canUndo, "canRedo": canRedo,
