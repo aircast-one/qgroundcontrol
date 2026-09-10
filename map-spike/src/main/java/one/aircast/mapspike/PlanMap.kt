@@ -10,10 +10,10 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import org.maplibre.android.MapLibre
 
-internal var installedStyle: String? = null
+private var installedStyle: String? = null
 
 @Synchronized
-internal fun planMapStyle(context: Context): String =
+private fun planMapStyle(context: Context): String =
     installedStyle ?: run {
         MapBridge.start()
         MapLibre.getInstance(context)

@@ -13,12 +13,9 @@ internal data class VideoCamera(
     val configured: Boolean,
 )
 
-internal data class SourceSize(val width: Int, val height: Int)
-
 internal data class VideoReading(
     val available: Boolean,
     val decoding: Boolean,
-    val sourceSize: SourceSize?,
     val summary: String,
     val activeSource: Int,
     val multipleSources: Boolean,
@@ -31,11 +28,6 @@ internal fun videoReading(view: JSONObject?): VideoReading? {
     return VideoReading(
         available = view.optBoolean("available"),
         decoding = view.optBoolean("decoding"),
-        sourceSize = view.optJSONObject("sourceSize")?.let { size ->
-            val width = size.optInt("width")
-            val height = size.optInt("height")
-            if (width > 0 && height > 0) SourceSize(width, height) else null
-        },
         summary = view.optString("summary"),
         activeSource = view.optInt("activeSource"),
         multipleSources = view.optBoolean("multipleSources"),
@@ -60,16 +52,3 @@ internal fun switchableSources(reading: VideoReading?): List<VideoCamera> =
         ?.filter { it.configured }
         ?.takeIf { it.size > 1 }
         .orEmpty()
-
-internal data class PaintedRect(val left: Double, val top: Double, val width: Double, val height: Double)
-
-internal fun paintedRect(surfaceWidth: Double, surfaceHeight: Double, source: SourceSize?): PaintedRect {
-    val whole = PaintedRect(0.0, 0.0, surfaceWidth, surfaceHeight)
-    if (source == null || surfaceWidth <= 0.0 || surfaceHeight <= 0.0) {
-        return whole
-    }
-    val scale = minOf(surfaceWidth / source.width, surfaceHeight / source.height)
-    val width = source.width * scale
-    val height = source.height * scale
-    return PaintedRect((surfaceWidth - width) / 2, (surfaceHeight - height) / 2, width, height)
-}

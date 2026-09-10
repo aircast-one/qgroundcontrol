@@ -161,7 +161,6 @@ fun VehicleMap(
     onWaypointSelected: (MapHit?) -> Unit = {},
     onCentreChanged: (TrackPoint, Double) -> Unit = { _, _ -> },
     bottomInsetPx: Int = 0,
-    cameraBottomPx: Int = 0,
     fitRequest: Int = 0,
     onFitFailed: () -> Unit = {},
 ) {
@@ -267,10 +266,6 @@ fun VehicleMap(
                 .zoom(map?.cameraPosition?.zoom?.takeIf { it > 1.0 } ?: DEFAULT_ZOOM)
                 .build()
         }
-    }
-
-    LaunchedEffect(map, cameraBottomPx) {
-        map?.setPadding(0, 0, 0, cameraBottomPx)
     }
 
     LaunchedEffect(map, bottomInsetPx) {

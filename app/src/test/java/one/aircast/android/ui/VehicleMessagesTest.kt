@@ -1,87 +1,99 @@
 package one.aircast.android.ui
 
-import org.json.JSONObject
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull
-import org.junit.Assert.assertTrue
+import org.json.JSONObject
 import org.junit.Test
 
 class VehicleMessagesTest {
-
-    private val served = """
-        {"kind":"object","class":"VehicleMessages","items":[
-          {"index":0,"time":"1:2:3.4","component":null,"severity":"Error","level":"error","text":"Battery < 20% & \"low\""},
-          {"index":1,"time":"1:2:4.0","component":190,"severity":"Notice","level":"warning","text":"heads up"},
-          {"index":2,"time":"1:2:5.0","component":null,"severity":"","level":"normal","text":"plain"}]}
-    """
+    private val real =
+        """<font style="<#E>">[18:11:29.402 ] Error: PreArm: Need 3D Fix</font><br/>""" +
+            """<font style="<#I>">[18:11:30.100 ] Warning: Low battery</font><br/>""" +
+            """<font style="<#N>">[18:17:58.433 ] Info: Frame: QUAD/PLUS</font><br/>"""
 
     @Test
-    fun `messages come from the core with their level and time`() {
-        val messages = vehicleMessages(JSONObject(served))
+    fun `the html the vehicle sends becomes readable lines`() {
+        assertEquals(
+            listOf(
+                "[18:11:29.402 ] Error: PreArm: Need 3D Fix",
+                "[18:11:30.100 ] Warning: Low battery",
+                "[18:17:58.433 ] Info: Frame: QUAD/PLUS",
+            ),
+            vehicleMessageLines(real),
+        )
+    }
 
-        assertEquals(listOf("Battery < 20% & \"low\"", "heads up", "plain"), messages.map { it.text })
+    @Test
+    fun `the colour token inside the style attribute does not leak into the text`() {
+        vehicleMessageLines(real).forEach { line ->
+            assertEquals("stray markup in: $line", false, line.contains("\"") || line.contains("<"))
+        }
+    }
+
+    @Test
+    fun `severity comes from the untranslated colour token, not the severity word`() {
         assertEquals(
             listOf(MessageSeverity.Error, MessageSeverity.Warning, MessageSeverity.Normal),
-            messages.map { it.level },
+            vehicleMessages(real).map { it.severity },
         )
-        assertEquals(listOf("1:2:3.4", "1:2:4.0", "1:2:5.0"), messages.map { it.time })
-        assertEquals(listOf(0, 1, 2), messages.map { it.index })
     }
 
     @Test
-    fun `the level comes from the core's token, not from a word that gets translated`() {
-        val german = JSONObject(
-            """{"class":"VehicleMessages","items":[
-                 {"index":0,"time":"1:2:3.4","severity":"Fehler","level":"error","text":"kaputt"}]}""",
+    fun `a notice is a warning because QGC groups it that way`() {
+        assertEquals(MessageSeverity.Warning, severityOf("""<font style="<#I>">Notice: x</font>"""))
+    }
+
+    @Test
+    fun `an unmarked message is normal`() {
+        assertEquals(MessageSeverity.Normal, severityOf("plain text"))
+    }
+
+    @Test
+    fun `an empty log yields no lines`() {
+        assertEquals(emptyList<String>(), vehicleMessageLines(""))
+        assertEquals(emptyList<String>(), vehicleMessageLines("<br/>"))
+    }
+
+    @Test
+    fun `escaped characters come back as themselves`() {
+        assertEquals(
+            listOf("""Battery < 20% & "low""""),
+            vehicleMessageLines("""<font>Battery &lt; 20% &amp; &quot;low&quot;</font><br/>"""),
         )
-
-        assertEquals(MessageSeverity.Error, vehicleMessages(german).single().level)
-        assertEquals("Fehler", vehicleMessages(german).single().severity)
     }
 
     @Test
-    fun `an unknown level is treated as ordinary rather than dropped`() {
-        assertEquals(MessageSeverity.Normal, levelOf("something-new"))
-        assertEquals(MessageSeverity.Normal, levelOf(""))
+    fun `an ampersand entity is decoded last so it cannot double-decode`() {
+        assertEquals(listOf("&lt;not a tag&gt;"), vehicleMessageLines("&amp;lt;not a tag&amp;gt;<br/>"))
     }
 
     @Test
-    fun `nothing to say reads as an empty list`() {
-        assertTrue(vehicleMessages(null).isEmpty())
-        assertTrue(vehicleMessages(JSONObject("""{"kind":"null"}""")).isEmpty())
-        assertTrue(vehicleMessages(JSONObject("""{"class":"VehicleMessages","items":[]}""")).isEmpty())
+    fun `a message without a trailing break is still read`() {
+        assertEquals(listOf("Land complete"), vehicleMessageLines("<font>Land complete</font>"))
     }
 
-    @Test
-    fun `a message with no text is not shown as a blank row`() {
-        val blank = JSONObject("""{"class":"VehicleMessages","items":[{"index":0,"text":"","level":"error"}]}""")
 
-        assertTrue(vehicleMessages(blank).isEmpty())
-    }
+
+
+
+
+
+
+
 
     @Test
-    fun `an arming blocker is read only when the core sets one`() {
-        assertEquals("Throttle too high", armingBlocker(JSONObject("""{"armingBlocker":"Throttle too high"}""")))
+    fun `a null blocker is no blocker, not the word null`() {
         assertNull(armingBlocker(JSONObject("""{"armingBlocker":null}""")))
         assertNull(armingBlocker(JSONObject("""{"armingBlocker":""}""")))
+        assertNull(armingBlocker(JSONObject("{}")))
         assertNull(armingBlocker(null))
     }
-}
 
-class VehicleMessagesContractTest {
-
-    @org.junit.Test
-    fun `the decoder reads the key the core actually serves`() {
-        val recorded = JSONObject(
-            """{"kind":"object","class":"VehicleMessages","count":1,
-                "items":[{"index":0,"time":"1:2:3.4","component":null,"severity":"Error",
-                          "level":"error","text":"real"}]}""",
-        )
-
-        assertEquals(listOf("real"), vehicleMessages(recorded).map { it.text })
-        assertTrue(
-            "a fixture invented by the head must not pass where the recorded one fails",
-            vehicleMessages(JSONObject("""{"class":"VehicleMessages","messages":[{"text":"x"}]}""")).isEmpty(),
+    @Test
+    fun `a real blocker is passed through as the core worded it`() {
+        assertEquals(
+            "No GPS lock. This vehicle needs a position fix before it will arm.",
+            armingBlocker(JSONObject("""{"armingBlocker":"No GPS lock. This vehicle needs a position fix before it will arm."}""")),
         )
     }
 }

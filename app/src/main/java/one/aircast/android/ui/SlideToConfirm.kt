@@ -6,7 +6,6 @@ import androidx.compose.foundation.gestures.Orientation
 import androidx.compose.foundation.gestures.draggable
 import androidx.compose.foundation.gestures.rememberDraggableState
 import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.offset
@@ -74,17 +73,12 @@ fun SlideToConfirm(
             .onSizeChanged { trackPx = it.width },
         contentAlignment = Alignment.Center,
     ) {
-        Box(
-            Modifier.fillMaxSize().padding(start = THUMB_SIZE + 8.dp, end = 8.dp),
-            contentAlignment = Alignment.Center,
-        ) {
-            Text(
-                text = label,
-                style = MaterialTheme.typography.titleMedium,
-                fontWeight = FontWeight.Bold,
-                color = MaterialTheme.colorScheme.onSurface.copy(alpha = 1f - fraction),
-            )
-        }
+        Text(
+            text = label,
+            style = MaterialTheme.typography.titleMedium,
+            fontWeight = FontWeight.Bold,
+            color = MaterialTheme.colorScheme.onSurface.copy(alpha = 1f - fraction),
+        )
         Box(
             Modifier
                 .align(Alignment.CenterStart)

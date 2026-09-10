@@ -31,39 +31,6 @@ class VideoViewTest {
     }
 
     @Test
-    fun `the source size is read only when the core reports a usable one`() {
-        val decoding = view(0, false, "Streaming").put("sourceSize", JSONObject("""{"width":640,"height":480}"""))
-        val zero = view(0, false, "Streaming").put("sourceSize", JSONObject("""{"width":0,"height":0}"""))
-
-        assertEquals(SourceSize(640, 480), videoReading(decoding)!!.sourceSize)
-        assertNull(videoReading(zero)!!.sourceSize)
-        assertNull(videoReading(view(0, false, "Streaming"))!!.sourceSize)
-    }
-
-    @Test
-    fun `the picture is letterboxed inside the surface it is painted on`() {
-        val wide = paintedRect(1080.0, 1770.0, SourceSize(640, 480))
-        assertEquals(1080.0, wide.width, 0.001)
-        assertEquals(810.0, wide.height, 0.001)
-        assertEquals(0.0, wide.left, 0.001)
-        assertEquals(480.0, wide.top, 0.001)
-
-        val tall = paintedRect(400.0, 200.0, SourceSize(480, 640))
-        assertEquals(150.0, tall.width, 0.001)
-        assertEquals(200.0, tall.height, 0.001)
-        assertEquals(125.0, tall.left, 0.001)
-    }
-
-    @Test
-    fun `an unknown source size paints the whole surface`() {
-        val whole = paintedRect(300.0, 200.0, null)
-
-        assertEquals(0.0, whole.left, 0.001)
-        assertEquals(300.0, whole.width, 0.001)
-        assertEquals(200.0, whole.height, 0.001)
-    }
-
-    @Test
     fun `a reply that is not the video view reads as nothing`() {
         assertNull(videoReading(null))
         assertNull(videoReading(JSONObject("""{"kind":"null"}""")))

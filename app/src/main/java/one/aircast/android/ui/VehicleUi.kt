@@ -32,7 +32,6 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import kotlinx.coroutines.CoroutineScope
@@ -121,24 +120,11 @@ fun VehicleTitle() {
 fun TelemetryRow(modifier: Modifier = Modifier) {
     val view by qgcPath(INSTRUMENTS)
     val shown = remember(view) { instruments(view) }
-    val silent by qgcBool("vehicle.vehicleLinkManager.communicationLost")
 
     if (shown.isEmpty()) return
 
-    if (silent) {
-        Text(
-            text = "No contact - these are the last values the vehicle sent.",
-            style = MaterialTheme.typography.bodySmall,
-            color = MaterialTheme.colorScheme.error,
-            modifier = Modifier.fillMaxWidth().padding(horizontal = 8.dp),
-        )
-    }
-
     FlowRow(
-        modifier
-            .fillMaxWidth()
-            .padding(8.dp)
-            .alpha(if (silent) 0.45f else 1f),
+        modifier.fillMaxWidth().padding(8.dp),
         horizontalArrangement = Arrangement.SpaceEvenly,
         verticalArrangement = Arrangement.spacedBy(6.dp),
     ) {
@@ -229,104 +215,92 @@ fun FlightActions(modifier: Modifier = Modifier) {
             verticalArrangement = Arrangement.spacedBy(8.dp),
         ) {
             val armAction = offers[if (armed) "disarm" else "arm"]
-            Offered(armAction) {
-                Button(
-                    enabled = armAction?.blocked != true,
-                    onClick = {
-                        blockedReasonFor(armAction)?.let { refusal = it; return@Button }
-                        pending = GuidedAction(
-                            name = armAction?.title ?: if (armed) "Disarm" else "Arm",
-                            confirm = armAction?.prompt?.ifBlank { null } ?: if (armed) {
-                                "Disarming cuts the motors. In flight the aircraft will fall."
-                            } else {
-                                "Arming spins the propellers. Stand clear of the aircraft."
-                            },
-                            destructive = armAction?.destructive ?: true,
-                        ) {
-                            val target = !armed
-                            scope.attemptCommand(
-                                action = if (target) "Arm" else "Disarm",
-                                report = { refusal = it },
-                                reached = { armedNow() == target },
-                            ) { Qgc.set("vehicle.armed", target) }
-                        }
-                    },
-                    colors = if (armed) ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.error)
-                    else ButtonDefaults.buttonColors(),
-                ) { Text(if (armed) "Disarm" else "Arm") }
-            }
-
-            Offered(offers["takeoff"]) {
-                OutlinedButton(
-                    enabled = offers["takeoff"]?.ready == true,
-                    onClick = {
-                        scope.launch {
-                            val fresh = withContext(Dispatchers.Default) {
-                                guidedTakeoff(Qgc.get(GUIDED_TAKEOFF))
-                            }
-                            if (!takeoffRangeUsable(fresh)) {
-                                refusal = "This vehicle did not report a takeoff height range."
-                                return@launch
-                            }
-                            takeoffRange = fresh
-                            takeoffTarget = fresh?.initial
-                            takeoffSettled = fresh?.initial
-                        }
-                    },
-                ) { Text(offers["takeoff"]?.title ?: "Takeoff") }
-            }
-
-            Offered(offers["land"]) {
-                OutlinedButton(enabled = offers["land"]?.ready == true, onClick = {
+            Button(
+                enabled = armAction?.blocked != true,
+                onClick = {
+                    blockedReasonFor(armAction)?.let { refusal = it; return@Button }
                     pending = GuidedAction(
-                        name = offers["land"]?.title ?: "Land",
-                        confirm = offers["land"]?.prompt?.ifBlank { null }
-                            ?: "The aircraft will descend and land where it is now.",
-                        destructive = false,
+                        name = armAction?.title ?: if (armed) "Disarm" else "Arm",
+                        confirm = armAction?.prompt?.ifBlank { null } ?: if (armed) {
+                            "Disarming cuts the motors. In flight the aircraft will fall."
+                        } else {
+                            "Arming spins the propellers. Stand clear of the aircraft."
+                        },
+                        destructive = armAction?.destructive ?: true,
                     ) {
-                        offMainDetached { Qgc.invoke("vehicle.guidedModeLand") }
+                        val target = !armed
+                        scope.attemptCommand(
+                            action = if (target) "Arm" else "Disarm",
+                            report = { refusal = it },
+                            reached = { armedNow() == target },
+                        ) { Qgc.set("vehicle.armed", target) }
                     }
-                }) { Text("Land") }
-            }
+                },
+                colors = if (armed) ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.error)
+                else ButtonDefaults.buttonColors(),
+            ) { Text(if (armed) "Disarm" else "Arm") }
 
-            Offered(offers["rtl"]) {
-                OutlinedButton(enabled = offers["rtl"]?.ready == true, onClick = {
-                    pending = GuidedAction(
-                        name = "Return",
-                        confirm = "The aircraft will fly back to its launch point and land.",
-                        destructive = false,
-                    ) {
-                        offMainDetached { Qgc.invoke("vehicle.guidedModeRTL", false) }
-                    }
-                }) { Text("RTL") }
-            }
-
-            Offered(offers["changeSpeed"]) {
-                OutlinedButton(
-                    enabled = offers["changeSpeed"]?.ready == true,
-                    onClick = {
-                        scope.launch {
-                            val fresh = withContext(Dispatchers.Default) {
-                                guidedSpeed(Qgc.get(GUIDED_SPEED))
-                            }
-                            if (!speedRangeUsable(fresh)) {
-                                refusal = "This vehicle did not report a speed range."
-                                return@launch
-                            }
-                            speedRange = fresh
-                            speedTarget = fresh?.initial
-                            speedSettled = fresh?.initial
+            OutlinedButton(
+                enabled = offers["takeoff"]?.ready == true,
+                onClick = {
+                    scope.launch {
+                        val fresh = withContext(Dispatchers.Default) {
+                            guidedTakeoff(Qgc.get(GUIDED_TAKEOFF))
                         }
-                    },
-                ) { Text("Speed") }
-            }
+                        if (!takeoffRangeUsable(fresh)) {
+                            refusal = "This vehicle did not report a takeoff height range."
+                            return@launch
+                        }
+                        takeoffRange = fresh
+                        takeoffTarget = fresh?.initial
+                        takeoffSettled = fresh?.initial
+                    }
+                },
+            ) { Text(offers["takeoff"]?.title ?: "Takeoff") }
 
-            Offered(offers["changeAltitude"]) {
-                OutlinedButton(
-                    enabled = offers["changeAltitude"]?.ready == true,
-                    onClick = { openAltitude(false) },
-                ) { Text("Alt") }
-            }
+            OutlinedButton(enabled = offers["land"]?.ready == true, onClick = {
+                pending = GuidedAction(
+                    name = offers["land"]?.title ?: "Land",
+                    confirm = offers["land"]?.prompt?.ifBlank { null }
+                        ?: "The aircraft will descend and land where it is now.",
+                    destructive = false,
+                ) {
+                    offMainDetached { Qgc.invoke("vehicle.guidedModeLand") }
+                }
+            }) { Text("Land") }
+
+            OutlinedButton(enabled = offers["rtl"]?.ready == true, onClick = {
+                pending = GuidedAction(
+                    name = "Return",
+                    confirm = "The aircraft will fly back to its launch point and land.",
+                    destructive = false,
+                ) {
+                    offMainDetached { Qgc.invoke("vehicle.guidedModeRTL", false) }
+                }
+            }) { Text("RTL") }
+
+            OutlinedButton(
+                enabled = offers["changeSpeed"]?.ready == true,
+                onClick = {
+                    scope.launch {
+                        val fresh = withContext(Dispatchers.Default) {
+                            guidedSpeed(Qgc.get(GUIDED_SPEED))
+                        }
+                        if (!speedRangeUsable(fresh)) {
+                            refusal = "This vehicle did not report a speed range."
+                            return@launch
+                        }
+                        speedRange = fresh
+                        speedTarget = fresh?.initial
+                        speedSettled = fresh?.initial
+                    }
+                },
+            ) { Text("Speed") }
+
+            OutlinedButton(
+                enabled = offers["changeAltitude"]?.ready == true,
+                onClick = { openAltitude(false) },
+            ) { Text("Alt") }
 
             OutlinedButton(onClick = { showMore = true }) { Text("Actions") }
         }
@@ -353,8 +327,6 @@ fun FlightActions(modifier: Modifier = Modifier) {
                         valueRange = (speedRange?.minimum ?: 0.0).toFloat()..
                             (speedRange?.maximum ?: 0.0).toFloat(),
                     )
-                    rangeLabel(speedRange?.minimum, speedRange?.maximum, speedRange?.unit.orEmpty())
-                        ?.let { RangeHint(it) }
                 }
             },
             confirmButton = {
@@ -397,8 +369,6 @@ fun FlightActions(modifier: Modifier = Modifier) {
                         valueRange = (takeoffRange?.minimum ?: 0.0).toFloat()..
                             (takeoffRange?.maximum ?: 0.0).toFloat(),
                     )
-                    rangeLabel(takeoffRange?.minimum, takeoffRange?.maximum, takeoffRange?.unit.orEmpty())
-                        ?.let { RangeHint(it) }
                 }
             },
             confirmButton = {
@@ -442,8 +412,6 @@ fun FlightActions(modifier: Modifier = Modifier) {
                         valueRange = (altitudeRange?.minimum ?: 0.0).toFloat()..
                             (altitudeRange?.maximum ?: 0.0).toFloat(),
                     )
-                    rangeLabel(altitudeRange?.minimum, altitudeRange?.maximum, altitudeRange?.unit.orEmpty())
-                        ?.let { RangeHint(it) }
                 }
             },
             confirmButton = {
@@ -569,22 +537,6 @@ fun FlightActions(modifier: Modifier = Modifier) {
             confirmButton = {},
             dismissButton = { TextButton(onClick = { pending = null }) { Text("Cancel") } },
         )
-    }
-}
-
-@Composable
-private fun RangeHint(text: String) {
-    Text(
-        text = text,
-        style = MaterialTheme.typography.bodySmall,
-        color = MaterialTheme.colorScheme.onSurfaceVariant,
-    )
-}
-
-@Composable
-private fun Offered(offer: GuidedOffer?, content: @Composable () -> Unit) {
-    if (offer?.shown == true) {
-        content()
     }
 }
 

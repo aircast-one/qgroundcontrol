@@ -167,28 +167,26 @@ object Qgc {
 
     fun factAt(path: String, json: JSONObject): Fact = fact("", json).copy(path = path)
 
-    private fun JSONObject.text(key: String): String = if (isNull(key)) "" else optString(key)
-
     fun fact(groupPath: String, json: JSONObject): Fact {
-        val name = json.text("name")
+        val name = json.optString("name")
         val enums = json.optJSONArray("enumStrings")
         return Fact(
             path = if (groupPath.isEmpty()) name else "$groupPath.$name",
             name = name,
-            description = json.text("shortDescription"),
-            units = json.text("units"),
-            valueString = json.text("valueString"),
+            description = json.optString("shortDescription"),
+            units = json.optString("units"),
+            valueString = json.optString("valueString"),
             value = json.opt("value"),
             enumStrings = (0 until (enums?.length() ?: 0)).map { enums!!.optString(it) },
             enumIndex = json.optInt("enumIndex", -1),
             isBool = json.optBoolean("typeIsBool"),
             isString = json.optBoolean("typeIsString"),
             readOnly = json.optBoolean("readOnly"),
-            minString = json.text("minString"),
-            maxString = json.text("maxString"),
+            minString = json.optString("minString"),
+            maxString = json.optString("maxString"),
             minIsDefaultForType = json.optBoolean("minIsDefaultForType", true),
             maxIsDefaultForType = json.optBoolean("maxIsDefaultForType", true),
-            defaultValueString = json.text("defaultValueString"),
+            defaultValueString = json.optString("defaultValueString"),
             vehicleRebootRequired = json.optBoolean("vehicleRebootRequired"),
             qgcRebootRequired = json.optBoolean("qgcRebootRequired"),
         )

@@ -59,6 +59,7 @@ data class LinkRow(
     val connected: Boolean,
     val dynamic: Boolean,
     val lastError: String,
+    val heard: Boolean,
 )
 
 internal fun linkRows(json: JSONObject?): List<LinkRow> {
@@ -74,6 +75,7 @@ internal fun linkRows(json: JSONObject?): List<LinkRow> {
             } ?: false,
             dynamic = element.optBoolean("dynamic"),
             lastError = element.optString("lastError"),
+            heard = element.optBoolean("heardVehicle"),
         )
     }
 }
@@ -81,7 +83,11 @@ internal fun linkRows(json: JSONObject?): List<LinkRow> {
 internal fun configuredRows(rows: List<LinkRow>): List<LinkRow> = rows.filterNot { it.dynamic }
 
 internal fun linkStatusLine(row: LinkRow): String {
-    val state = if (row.connected) "Connected" else "Not connected"
+    val state = when {
+        !row.connected -> "Not connected"
+        row.heard -> "Receiving from the vehicle"
+        else -> "Open · nothing received yet"
+    }
     val detail = row.summary.trim()
     return if (detail.isBlank() || row.name.contains(detail)) state else "$state · $detail"
 }
@@ -126,12 +132,12 @@ private fun LinkRowItem(
             Text(
                 text = linkStatusLine(row),
                 style = MaterialTheme.typography.bodyMedium,
-                color = if (row.connected) {
+                color = if (row.heard) {
                     MaterialTheme.colorScheme.primary
                 } else {
                     MaterialTheme.colorScheme.onSurfaceVariant
                 },
-                fontWeight = if (row.connected) FontWeight.Bold else FontWeight.Normal,
+                fontWeight = if (row.heard) FontWeight.Bold else FontWeight.Normal,
             )
             if (row.lastError.isNotBlank()) {
                 Text(
@@ -257,10 +263,6 @@ private fun AddLinkDialog(onDismiss: () -> Unit, onAdded: () -> Unit) {
 
 private const val LINK_SETTLE_MS = 4000L
 
-// createConnectedLink, disconnect and removeConfiguration are all void, so the bridge's
-// ok says the method was found and called and cannot say it worked — only
-// createAndConnectLink returns a bool. The check is therefore reading the link list back
-// until it shows what the call was supposed to do.
 internal fun linkFailure(action: String, done: Boolean): String? =
     if (done) null else "Could not $action that link."
 

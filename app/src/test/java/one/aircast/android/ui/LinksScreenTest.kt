@@ -12,7 +12,7 @@ class LinksScreenTest {
     private val autoConnectUdp =
         """{"name":"UDP Link (AutoConnect)","summary":"UDP port 14550","dynamic":true,"children":["link"]}"""
     private val savedTcp =
-        """{"name":"Pi","summary":"TCP 10.0.0.4:5760","dynamic":false,"children":["link"]}"""
+        """{"name":"Pi","summary":"TCP 10.0.0.4:5760","dynamic":false,"children":["link"],"heardVehicle":true}"""
     private val savedIdle =
         """{"name":"Bench","summary":"UDP port 14551","dynamic":false,"children":[]}"""
 
@@ -70,18 +70,36 @@ class LinksScreenTest {
 
     @Test
     fun `a status line does not repeat what the name already says`() {
-        val row = LinkRow(0, "TCP 10.0.0.4:5760", "10.0.0.4:5760", false, false, "")
+        val row = LinkRow(0, "TCP 10.0.0.4:5760", "10.0.0.4:5760", false, false, "", false)
         assertEquals("Not connected", linkStatusLine(row))
     }
 
     @Test
     fun `a status line adds detail a custom name leaves out`() {
-        val row = LinkRow(0, "Pi", "TCP 10.0.0.4:5760", true, false, "")
-        assertEquals("Connected · TCP 10.0.0.4:5760", linkStatusLine(row))
+        val row = LinkRow(0, "Pi", "TCP 10.0.0.4:5760", true, false, "", true)
+        assertEquals("Receiving from the vehicle · TCP 10.0.0.4:5760", linkStatusLine(row))
     }
 
     @Test
     fun `a status line stands alone when there is no summary`() {
-        assertEquals("Connected", linkStatusLine(LinkRow(0, "Pi", "", true, false, "")))
+        assertEquals("Receiving from the vehicle", linkStatusLine(LinkRow(0, "Pi", "", true, false, "", true)))
+    }
+
+    @Test
+    fun `an open link that has heard nothing does not claim to be connected`() {
+        val row = LinkRow(0, "Bench", "UDP port 14999", true, false, "", false)
+        assertEquals("Open · nothing received yet · UDP port 14999", linkStatusLine(row))
+    }
+
+    @Test
+    fun `heard is read from the field the core publishes`() {
+        assertEquals(listOf(true, false), linkRows(payload(savedTcp, savedIdle)).map { it.heard })
+    }
+
+    @Test
+    fun `a payload using an invented name for heard yields nothing heard`() {
+        val invented =
+            """{"name":"X","dynamic":false,"children":["link"],"heard":true,"receiving":true}"""
+        assertEquals(false, linkRows(payload(invented)).single().heard)
     }
 }

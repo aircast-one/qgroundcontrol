@@ -21,21 +21,3 @@ class ParametersScreenTest {
         assertTrue(path.endsWith("(-1,RTL_ALT)"))
     }
 }
-
-class ParameterSubtitleTest {
-
-    @org.junit.Test
-    fun `a parameter says what it is and what it is measured in`() {
-        org.junit.Assert.assertEquals(
-            "RTL Altitude · cm",
-            parameterSubtitle("RTL Altitude", "cm"),
-        )
-    }
-
-    @org.junit.Test
-    fun `either half stands alone and neither leaves a stray separator`() {
-        org.junit.Assert.assertEquals("RTL Altitude", parameterSubtitle("RTL Altitude", ""))
-        org.junit.Assert.assertEquals("cm", parameterSubtitle("", "cm"))
-        org.junit.Assert.assertEquals("", parameterSubtitle("", ""))
-    }
-}

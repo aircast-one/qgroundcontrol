@@ -90,14 +90,11 @@ private fun ParameterRow(name: String) {
         else -> FactRow(
             fact = loaded,
             title = loaded.name,
-            subtitle = parameterSubtitle(loaded.description, loaded.units),
+            subtitle = loaded.description.ifBlank { loaded.units },
             onWrite = { revision++ },
         )
     }
 }
-
-internal fun parameterSubtitle(description: String, units: String): String =
-    listOf(description, units).filter { it.isNotBlank() }.joinToString(" · ")
 
 private fun parameterNames(): List<String> {
     val result = Qgc.invokeResult("$PARAMETER_MANAGER.parameterNames", DEFAULT_COMPONENT) as? JSONArray

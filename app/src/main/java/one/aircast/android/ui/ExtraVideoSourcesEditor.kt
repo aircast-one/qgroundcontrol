@@ -31,8 +31,6 @@ import one.aircast.android.bridge.Qgc
 import one.aircast.android.bridge.offMainDetached
 import one.aircast.android.bridge.qgcString
 
-private const val SOURCE_UNDO_WINDOW_MS = 6000L
-
 private data class SourceDraft(val index: Int, val name: String, val source: String, val url: String)
 
 @OptIn(ExperimentalLayoutApi::class)
@@ -43,14 +41,6 @@ fun ExtraVideoSourcesEditor(modifier: Modifier = Modifier) {
     var kinds by remember { mutableStateOf(emptyList<String>()) }
     var draft by remember { mutableStateOf<SourceDraft?>(null) }
     var notice by remember { mutableStateOf<String?>(null) }
-    var undo by remember { mutableStateOf<Pair<String, String>?>(null) }
-
-    LaunchedEffect(undo) {
-        if (undo != null) {
-            kotlinx.coroutines.delay(SOURCE_UNDO_WINDOW_MS)
-            undo = null
-        }
-    }
 
     LaunchedEffect(Unit) {
         kinds = withContext(Dispatchers.Default) {
@@ -101,25 +91,9 @@ fun ExtraVideoSourcesEditor(modifier: Modifier = Modifier) {
                     TextButton(onClick = {
                         draft = SourceDraft(index, entry.name, entry.source, entry.url)
                     }) { Text("Edit") }
-                    TextButton(onClick = {
-                        undo = entry.name.ifBlank { "Camera ${index + 2}" } to json
-                        save(extraSourceRemoved(json, index))
-                    }) { Text("Remove") }
+                    TextButton(onClick = { save(extraSourceRemoved(json, index)) }) { Text("Remove") }
                 }
                 HorizontalDivider()
-            }
-        }
-
-        undo?.let { (name, previous) ->
-            Row(
-                Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 4.dp),
-                verticalAlignment = Alignment.CenterVertically,
-            ) {
-                Text("Removed $name.", Modifier.weight(1f), style = MaterialTheme.typography.bodyMedium)
-                TextButton(onClick = {
-                    save(previous)
-                    undo = null
-                }) { Text("Undo") }
             }
         }
 
