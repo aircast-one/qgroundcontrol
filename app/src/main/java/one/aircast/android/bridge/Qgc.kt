@@ -20,6 +20,7 @@ data class Fact(
     val enumStrings: List<String>,
     val enumValues: List<String> = emptyList(),
     val enumIndex: Int,
+    val controlKind: String = "",
     val bitmaskStrings: List<String> = emptyList(),
     val bitmaskValues: List<Long> = emptyList(),
     val isBool: Boolean,

@@ -68,6 +68,7 @@ internal fun factFromControl(control: JSONObject): Fact? {
         value = control.opt("value"),
         enumStrings = labels,
         enumIndex = labels.indexOf(control.optString("display")),
+        controlKind = control.optString("control"),
         isBool = control.optString("control") == "toggle",
         isString = control.optString("control") == "text",
         readOnly = control.optBoolean("readOnly"),
@@ -158,3 +159,8 @@ internal fun bitmaskSummary(fact: Fact): String {
         else -> set.joinToString(", ") { fact.bitmaskStrings[it] }
     }
 }
+
+internal val KNOWN_CONTROL_KINDS = setOf("toggle", "choice", "bitmask", "text", "number")
+
+internal fun controlIsUnderstood(kind: String): Boolean =
+    kind.isBlank() || kind in KNOWN_CONTROL_KINDS

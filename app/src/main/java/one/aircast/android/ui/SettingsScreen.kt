@@ -175,6 +175,21 @@ internal fun FactRow(
 
         Box(Modifier.widthIn(max = 190.dp), contentAlignment = Alignment.CenterEnd) {
             when {
+                !controlIsUnderstood(fact.controlKind) -> Column(
+                    horizontalAlignment = Alignment.End,
+                ) {
+                    Text(
+                        text = fact.valueString,
+                        style = MaterialTheme.typography.bodyMedium,
+                        maxLines = 2,
+                        overflow = TextOverflow.Ellipsis,
+                    )
+                    Text(
+                        text = "Edit on desktop",
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
                 fact.readOnly -> Column(horizontalAlignment = Alignment.End) {
                     Text(
                         text = enumLabel(fact),
