@@ -1,3 +1,5 @@
+use crate::surveygrid::{Coord, Kind};
+
 type Point = (f64, f64);
 
 pub const CMD_NAV_WAYPOINT: u16 = 16;
@@ -19,6 +21,7 @@ pub struct Plan {
     pub altitude: f64,
     pub trigger_distance: f64,
     pub altitude_mode: i64,
+    pub images_in_turnaround: bool,
 }
 
 pub fn frame_for(altitude_mode: i64) -> u8 {
@@ -37,28 +40,21 @@ fn trigger(distance: f64) -> Item {
     Item { command: CMD_DO_SET_CAM_TRIGG_DIST, frame: FRAME_MISSION, params: [Some(distance), Some(0.0), Some(1.0), Some(0.0), Some(0.0), Some(0.0), Some(0.0)] }
 }
 
-pub fn items(transects: &[Vec<Point>], plan: &Plan) -> Vec<Item> {
+pub fn items(transects: &[Vec<Coord>], plan: &Plan) -> Vec<Item> {
     let frame = frame_for(plan.altitude_mode);
     let triggering = plan.trigger_distance > 0.0;
-    let last_transect = transects.len().saturating_sub(1);
-    transects
+    let flight: Vec<Coord> = transects.iter().flatten().copied().collect();
+    let last = flight.len().saturating_sub(1);
+    flight
         .iter()
         .enumerate()
-        .flat_map(|(index, transect)| {
-            let last_point = transect.len().saturating_sub(1);
-            transect.iter().enumerate().flat_map(move |(at, point)| {
-                let entry = at == 0;
-                let exit = at == last_point;
-                let final_exit = exit && index == last_transect;
-                let mut built = vec![waypoint(*point, plan.altitude, frame, 0.0)];
-                if triggering && entry {
-                    built.push(trigger(plan.trigger_distance));
-                }
-                if triggering && final_exit {
-                    built.push(trigger(0.0));
-                }
-                built
-            })
+        .flat_map(|(index, coord)| {
+            let first_turnaround = plan.images_in_turnaround && coord.kind == Kind::Turnaround && index == 0;
+            let opens = triggering && (coord.kind == Kind::SurveyEntry || first_turnaround);
+            let closes = triggering && index == last;
+            std::iter::once(waypoint(coord.at, plan.altitude, frame, 0.0))
+                .chain(opens.then(|| trigger(plan.trigger_distance)))
+                .chain(closes.then(|| trigger(0.0)))
         })
         .collect()
 }
@@ -84,7 +80,7 @@ mod tests {
         let cases = cases.as_object().expect("the oracle is an object of cases");
         let checked: Vec<(String, bool, String)> = cases
             .iter()
-            .filter(|(_, case)| case["kind"] == "items" && case["turnAround"].as_f64() == Some(0.0))
+            .filter(|(_, case)| case["kind"] == "items")
             .map(|(name, case)| {
                 let polygon: Vec<Point> = case["polygon"].as_array().unwrap().iter().map(|v| (v["latitude"].as_f64().unwrap(), v["longitude"].as_f64().unwrap())).collect();
                 let grid = crate::surveygrid::Params {
@@ -95,15 +91,15 @@ mod tests {
                     alternate: false,
                     entry: crate::altitudemodes::MIXED,
                 };
-                let transects = crate::surveygrid::transects(&polygon, &grid);
-                let plan = Plan { altitude: case["distanceToSurface"].as_f64().unwrap(), trigger_distance: 40.0, altitude_mode: crate::altitudemodes::RELATIVE };
+                let transects = crate::surveygrid::typed_transects(&polygon, &grid);
+                let plan = Plan { altitude: case["distanceToSurface"].as_f64().unwrap(), trigger_distance: 40.0, altitude_mode: crate::altitudemodes::RELATIVE, images_in_turnaround: true };
                 let ours: Vec<String> = items(&transects, &plan).iter().map(spelled).collect();
                 let expected: Vec<String> = case["items"].as_array().unwrap().iter().map(|v| v.as_str().unwrap().to_string()).collect();
                 let matched = ours.len() == expected.len() && ours.iter().zip(expected.iter()).all(|(ours, theirs)| same_item(ours, theirs));
                 (name.clone(), matched, format!("{name}\n  qt:   {}\n  rust: {}", expected.join(" | "), ours.join(" | ")))
             })
             .collect();
-        assert_eq!(checked.len(), 2, "the plans without a turnaround are checked; the turnaround plan is recorded and deliberately not built yet, because a turnaround point and a survey entry are different coordinate types and this builder is still given bare points");
+        assert_eq!(checked.len(), 3, "every recorded plan is checked, the turnaround one included");
         let wrong: Vec<&str> = checked.iter().filter(|(_, matched, _)| !matched).map(|(_, _, report)| report.as_str()).collect();
         assert!(wrong.is_empty(), "{} of {} plans differ from the Qt builder:\n{}", wrong.len(), checked.len(), wrong.join("\n"));
     }
@@ -127,8 +123,8 @@ mod tests {
 
     #[test]
     fn the_camera_is_switched_on_at_each_entry_and_off_once_at_the_end() {
-        let two = vec![vec![(47.0, 8.0), (47.1, 8.0)], vec![(47.1, 8.1), (47.0, 8.1)]];
-        let built = items(&two, &Plan { altitude: 60.0, trigger_distance: 40.0, altitude_mode: crate::altitudemodes::RELATIVE });
+        let two = vec![crate::surveygrid::typed(vec![(47.0, 8.0), (47.1, 8.0)], 0.0), crate::surveygrid::typed(vec![(47.1, 8.1), (47.0, 8.1)], 0.0)];
+        let built = items(&two, &Plan { altitude: 60.0, trigger_distance: 40.0, altitude_mode: crate::altitudemodes::RELATIVE, images_in_turnaround: true });
         let commands: Vec<u16> = built.iter().map(|item| item.command).collect();
         assert_eq!(commands, [16, 206, 16, 16, 206, 16, 206], "a trigger follows each entry, and one last trigger turns the camera off");
         assert_eq!(built.last().unwrap().params[0], Some(0.0), "the closing trigger is a distance of zero, which is what stops the camera");
@@ -137,8 +133,8 @@ mod tests {
 
     #[test]
     fn a_survey_with_no_camera_is_waypoints_alone() {
-        let one = vec![vec![(47.0, 8.0), (47.1, 8.0)]];
-        let built = items(&one, &Plan { altitude: 60.0, trigger_distance: 0.0, altitude_mode: crate::altitudemodes::RELATIVE });
+        let one = vec![crate::surveygrid::typed(vec![(47.0, 8.0), (47.1, 8.0)], 0.0)];
+        let built = items(&one, &Plan { altitude: 60.0, trigger_distance: 0.0, altitude_mode: crate::altitudemodes::RELATIVE, images_in_turnaround: true });
         assert!(built.iter().all(|item| item.command == CMD_NAV_WAYPOINT), "no trigger distance means no camera commands at all");
         assert_eq!(built.len(), 2);
     }

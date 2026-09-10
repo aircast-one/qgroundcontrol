@@ -24,6 +24,47 @@ pub struct Params {
 type Point = (f64, f64);
 type Line = (Point, Point);
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Kind {
+    Turnaround,
+    SurveyEntry,
+    Interior,
+    SurveyExit,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct Coord {
+    pub at: Point,
+    pub kind: Kind,
+}
+
+pub fn typed(points: Vec<Point>, turnaround: f64) -> Vec<Coord> {
+    let last = points.len().saturating_sub(1);
+    let inner: Vec<Coord> = points
+        .iter()
+        .enumerate()
+        .map(|(index, at)| {
+            let kind = if index == 0 {
+                Kind::SurveyEntry
+            } else if index == last {
+                Kind::SurveyExit
+            } else {
+                Kind::Interior
+            };
+            Coord { at: *at, kind }
+        })
+        .collect();
+    if turnaround <= 0.0 || inner.len() < 2 {
+        return inner;
+    }
+    let entry = at_distance_and_azimuth(inner[0].at, -turnaround, azimuth_to(inner[0].at, inner[1].at));
+    let exit = at_distance_and_azimuth(inner[last].at, -turnaround, azimuth_to(inner[last].at, inner[last - 1].at));
+    std::iter::once(Coord { at: entry, kind: Kind::Turnaround })
+        .chain(inner)
+        .chain(std::iter::once(Coord { at: exit, kind: Kind::Turnaround }))
+        .collect()
+}
+
 fn fuzzy_is_null(value: f64) -> bool {
     value.abs() <= 1e-12
 }
@@ -243,6 +284,17 @@ pub fn with_turnaround(transect: Vec<Point>, distance: f64) -> Vec<Point> {
     std::iter::once(entry).chain(transect).chain(std::iter::once(exit)).collect()
 }
 
+pub fn typed_transects(polygon: &[Point], params: &Params) -> Vec<Vec<Coord>> {
+    let bare = pass_bare(polygon, params, false, None);
+    let first: Vec<Vec<Coord>> = bare.iter().map(|transect| typed(transect.clone(), params.turnaround)).collect();
+    if !params.refly {
+        return first;
+    }
+    let anchor = first.last().and_then(|transect| transect.last()).map(|coord| coord.at);
+    let second = pass_bare(polygon, params, true, anchor);
+    first.into_iter().chain(second.into_iter().map(|transect| typed(transect, params.turnaround))).collect()
+}
+
 pub fn transects(polygon: &[Point], params: &Params) -> Vec<Vec<Point>> {
     let first = pass(polygon, params, false, None);
     if !params.refly {
@@ -251,6 +303,10 @@ pub fn transects(polygon: &[Point], params: &Params) -> Vec<Vec<Point>> {
     let anchor = first.last().and_then(|transect| transect.last()).copied();
     let second = pass(polygon, params, true, anchor);
     first.into_iter().chain(second).collect()
+}
+
+fn pass_bare(polygon: &[Point], params: &Params, refly: bool, anchor: Option<Point>) -> Vec<Vec<Point>> {
+    pass(polygon, &Params { turnaround: 0.0, ..*params }, refly, anchor)
 }
 
 fn pass(polygon: &[Point], params: &Params, refly: bool, anchor: Option<Point>) -> Vec<Vec<Point>> {
