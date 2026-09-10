@@ -784,6 +784,7 @@ About 58 developer-weeks. Flight-test time, not code, is the schedule.
 - Collapsed the two transect generators into one each. The typed generators are the real ones and the flat lists are a projection, so the recorded transect cases are now checked against the same code the mission item builder uses rather than a parallel copy that happened to agree.
 - A `Q_INVOKABLE` declared with a `<cstdint>` type is invokable and uncallable at once, because `moc` records the name verbatim and Qt has not registered it. Qt's own aliases are fine — swept the tree, and the two `quint16` invokables convert, established by calling one through the meta system rather than by reasoning about the registry.
 - `LinkManager::createSerialConfiguration` lets a head make a serial link, which neither could before: the Qt flow passes a configuration pointer between four calls and a path-based head has nowhere to hold one. It registers without connecting, so parity and flow control stay ordinary property writes and the existing `createConnectedLink` finishes the job from a path. Serial is compiled in on Android where a USB radio is a mainstream way to reach an aircraft.
+- A `Q_INVOKABLE` with a Qt typedef parameter is fine: `moc` normalises `quint16` to `ushort`, which is what the metatype says too, and both spellings invoke. `int32_t` fails one line earlier instead, at the metatype conversion, because `<cstdint>` names are neither normalised nor registered. Pinned by a test that goes red if Qt stops normalising.
 
 ### Stream F · Core
 

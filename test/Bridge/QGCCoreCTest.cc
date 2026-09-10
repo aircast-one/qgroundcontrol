@@ -524,10 +524,29 @@ void QGCCoreCTest::_coreBackedLinkBringsUpAVehicle()
     udp->setLocalPort(0);
     udp->addHost(QStringLiteral("127.0.0.1"), peer.localPort());
     udp->setDynamic(true);
-    QVERIFY2(QMetaObject::invokeMethod(udp, "addHost", Qt::DirectConnection, Q_ARG(QString, QStringLiteral("127.0.0.2")), Q_ARG(quint16, 14557)),
-             "addHost is Q_INVOKABLE and must be reachable through the meta system; a fixed-width type Qt does not register makes a method invokable and uncallable at once");
-    QVERIFY(udp->hostList().contains(QStringLiteral("127.0.0.2:14557")));
-    udp->removeHost(QStringLiteral("127.0.0.2"), 14557);
+    {
+        const QMetaObject *const meta = udp->metaObject();
+        QMetaMethod addHost;
+        for (int index = meta->methodOffset(); index < meta->methodCount(); index++) {
+            const QMetaMethod candidate = meta->method(index);
+            if (candidate.name() == QByteArrayLiteral("addHost") && candidate.parameterCount() == 2) {
+                addHost = candidate;
+            }
+        }
+        QVERIFY(addHost.isValid());
+        QCOMPARE(addHost.parameterTypeName(1), QByteArray(addHost.parameterMetaType(1).name()));
+
+        QVariant host = QStringLiteral("127.0.0.2");
+        QVariant port = 14557;
+        QVERIFY(port.convert(addHost.parameterMetaType(1)));
+        QVERIFY2(addHost.invoke(udp, Qt::DirectConnection,
+                                QGenericArgument(addHost.parameterMetaType(0).name(), host.constData()),
+                                QGenericArgument(addHost.parameterMetaType(1).name(), port.constData())),
+                 "a Qt typedef parameter is normalised by moc to the same spelling the metatype uses, so the bridge's canonical name is accepted; a cstdint name is not normalised and fails earlier, at the metatype conversion");
+        QVERIFY(udp->hostList().contains(QStringLiteral("127.0.0.2:14557")));
+        udp->removeHost(QStringLiteral("127.0.0.2"), 14557);
+    }
+
     SharedLinkConfigurationPtr config = LinkManager::instance()->addConfiguration(udp);
     const auto tearDown = qScopeGuard([&config]() {
         if (config->link()) {
