@@ -2104,12 +2104,56 @@ func checkPreflight() {
            "an overridable check does not block, which is the whole difference between it and "
            + "failing, and reading only two verdicts would have made a soft GPS warning unclearable")
 
-    expect(Preflight.progress(groups, ticked: []), "0 of 4 checked", "an untouched list starts at none")
-    expect(!Preflight.ready(groups, ticked: []), "and is not ready")
+    let motors = groups[1].checks[0]
+    expect(motors.alreadyMet,
+           "the core has already verified a passing check, so the operator is not asked to "
+           + "confirm by hand what a machine has measured")
+    expect(!motors.tickable, "there is nothing left to tick on it")
+    expect(motors.symbol(ticked: []), "checkmark.circle.fill",
+           "and it reads as met without a tick, the way QGC passes a check with no manual text")
+
+    let gps = groups[0].checks[2]
+    expect(gps.warns, "an overridable check is a real problem the operator may fly past")
+    expect(gps.tickable, "so it is the operator's to clear")
+    expect(gps.symbol(ticked: []), "exclamationmark.triangle.fill",
+           "and it must not look like a routine item; it did, because the head read only blocked")
+    expect(gps.hint, "R Check it off to fly anyway.",
+           "the hint says what is wrong and that flying anyway is allowed")
+    expect(gps.symbol(ticked: ["GPS"]), "checkmark.circle.fill", "once cleared it reads as met")
+
+    let hardware = groups[0].checks[0]
+    expect(hardware.symbol(ticked: []), "circle", "a manual check is a plain empty circle")
+    expect(hardware.tickable, "and is the operator's to confirm")
+    expect(hardware.hint, "P", "whose hint is the core's prompt")
+
+    expect(battery.symbol(ticked: []), "exclamationmark.octagon.fill", "a failing check stops the list")
+    expect(!battery.tickable, "and cannot be ticked past")
+    expect(battery.symbol(ticked: ["Battery"]), "exclamationmark.octagon.fill",
+           "not even by a stale tick left in the set from before it started failing")
+
+    groups.flatMap(\.checks).forEach { check in
+        expect(check.blocked == check.blocks,
+               "the core sets blocked on exactly the failing verdict, so \(check.name) agrees; "
+               + "the head drives display from the verdict and this is what pins the two together")
+    }
+
+    expect(Preflight.progress(groups, ticked: []), "1 of 4 checked",
+           "an untouched list already counts what the core has passed; it used to say 0 of 4 and "
+           + "made the operator tick off a check that had already been measured")
+    expect(!Preflight.ready(groups, ticked: []), "and is not ready while three are outstanding")
     let every: Set<String> = ["Hardware", "Battery", "GPS", "Motors"]
-    expect(Preflight.ready(groups, ticked: every), "ticking every check is ready")
-    expect(Preflight.progress(groups, ticked: every.union(["Payload"])), "4 of 4 checked",
-           "a tick left over from another airframe is not counted against a list it is not on")
+    expect(!Preflight.ready(groups, ticked: every),
+           "ticking every name is still not ready, because a failing check cannot be ticked past")
+    let flyable: Set<String> = ["Hardware", "GPS"]
+    expect(Preflight.progress(groups, ticked: flyable), "3 of 4 checked",
+           "the two the operator answered plus the one the core passed")
+    let strange = PreflightCheck(check("Payload", "invented", false))
+    expect(strange?.verdict == .manual,
+           "a verdict this head does not know is decoded as one the operator must look at")
+    expect(strange?.alreadyMet == false,
+           "so a verdict the core adds later cannot clear a safety check on its own; asserting on "
+           + "the constant instead of the decode let a default of .passing through the break")
+    expect(strange?.tickable == true, "and the operator can still answer it")
 
     expect(PreflightCheck(["name": "", "verdict": "manual"]) == nil,
            "a check with no name is dropped, because the name is the identity a tick is stored under")

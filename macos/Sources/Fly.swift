@@ -64,6 +64,7 @@ final class FlyStore: ObservableObject, Probeable, WriteReporting {
         if centred != keepCentered { keepCentered = centred }
 
         readTerrain()
+        readChecklist()
 
         let vehicle = Bridge.group("vehicle")
         guard vehicle["kind"] as? String == "object" else {
@@ -73,8 +74,6 @@ final class FlyStore: ObservableObject, Probeable, WriteReporting {
             if !messages.isEmpty { messages = [] }
             if !warnings.isEmpty { warnings = [] }
             if armingBlocker != nil { armingBlocker = nil }
-            if airframe != "Generic" { airframe = "Generic" }
-            if !checklist.isEmpty { checklist = [] }
             if !batteries.isEmpty { batteries = [] }
             if !gpsDetail.isEmpty { gpsDetail = [] }
             if !linkDetail.isEmpty { linkDetail = [] }
@@ -145,12 +144,6 @@ final class FlyStore: ObservableObject, Probeable, WriteReporting {
         if settable != canSetMode { canSetMode = settable }
         if !requestedMode.isEmpty, requestedMode == reading.mode { requestedMode = "" }
 
-        let preflight = Bridge.group("view.preflight")
-        let flown = (preflight["airframe"] as? String) ?? "Generic"
-        if flown != airframe { airframe = flown }
-        let readChecklist = Preflight.groups(preflight["groups"])
-        if readChecklist != checklist { checklist = readChecklist }
-
         let raised = Bridge.group("view.warnings")
         let assessed = VehicleWarning.list(raised["warnings"])
         if assessed != warnings { warnings = assessed }
@@ -176,8 +169,19 @@ final class FlyStore: ObservableObject, Probeable, WriteReporting {
 
     var latestMessages: [VehicleMessage] { Array(messages.prefix(FlyStore.messageLimit)) }
 
+    // The core answers the checklist with no vehicle connected, and says so in each reason.
+    // "Before you power up" is the group an operator works through while nothing is connected
+    // yet, so it does not sit behind the guard that clears vehicle telemetry.
+    private func readChecklist() {
+        let preflight = Bridge.group("view.preflight")
+        let flown = (preflight["airframe"] as? String) ?? "Generic"
+        if flown != airframe { airframe = flown }
+        let read = Preflight.groups(preflight["groups"])
+        if read != checklist { checklist = read }
+    }
+
     func toggle(_ check: PreflightCheck) {
-        guard !check.blocked else { return }
+        guard check.tickable else { return }
         ticked = ticked.contains(check.name)
             ? ticked.subtracting([check.name])
             : ticked.union([check.name])
@@ -246,6 +250,10 @@ final class FlyStore: ObservableObject, Probeable, WriteReporting {
          "checklistProgress": Preflight.progress(checklist, ticked: ticked),
          "checklistReady": Preflight.ready(checklist, ticked: ticked),
          "checklistBlocked": checklist.flatMap(\.checks).filter(\.blocked).map(\.name),
+         "checklistChecks": checklist.flatMap(\.checks).map {
+             ["name": $0.name, "verdict": $0.verdict.rawValue, "symbol": $0.symbol(ticked: ticked),
+              "met": $0.met(ticked: ticked), "tickable": $0.tickable, "hint": $0.hint]
+         },
          "messages": latestMessages.map {
              ["time": $0.time, "stamp": $0.stamp, "text": $0.text, "level": $0.level.rawValue,
               "id": $0.id]
@@ -271,8 +279,10 @@ final class FlyStore: ObservableObject, Probeable, WriteReporting {
             guard let check = checklist.flatMap(\.checks).first(where: { $0.name == args["check"] ?? "" }) else {
                 return ["ok": false, "error": "no check named \(args["check"] ?? "")"]
             }
-            guard !check.blocked else {
-                return ["ok": false, "error": "\(check.name) is blocked: \(check.reason)"]
+            guard check.tickable else {
+                return ["ok": false,
+                        "error": check.blocks ? "\(check.name) is blocked: \(check.reason)"
+                                              : "\(check.name) needs no tick: \(check.reason)"]
             }
             toggle(check)
         default: return ["ok": false, "error": "unknown action \(action)"]

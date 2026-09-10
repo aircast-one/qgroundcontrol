@@ -254,17 +254,13 @@ struct FlyPanel: View {
                  showSeparator: showSeparator,
                  titleLines: 1,
                  leading: {
-                     Image(systemName: check.blocked
-                         ? "exclamationmark.octagon.fill"
-                         : (fly.ticked.contains(check.name) ? "checkmark.circle.fill" : "circle"))
-                         .foregroundColor(check.blocked
-                             ? Overlay.vehicle
-                             : (fly.ticked.contains(check.name) ? .green : .secondary))
+                     Image(systemName: check.symbol(ticked: fly.ticked))
+                         .foregroundColor(FlyPanel.tone(check, ticked: fly.ticked))
                  },
                  trailing: { EmptyView() })
             .contentShape(Rectangle())
             .onTapGesture { fly.toggle(check) }
-            .help(check.blocked ? "Fix this before it can be checked off" : check.prompt)
+            .help(check.hint)
     }
 
     private var cameraCard: some View {
@@ -379,6 +375,12 @@ struct FlyPanel: View {
                 }
             }
         }
+    }
+
+    static func tone(_ check: PreflightCheck, ticked: Set<String>) -> Color {
+        if check.blocks { return Overlay.vehicle }
+        if check.met(ticked: ticked) { return .green }
+        return check.warns ? .orange : .secondary
     }
 
     static func colour(_ level: VehicleMessage.Level) -> Color {
