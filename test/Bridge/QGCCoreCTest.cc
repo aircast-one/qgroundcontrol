@@ -1271,6 +1271,11 @@ void QGCCoreCTest::_viewShapesMatchTheRecordedContract()
         return -1;
     };
     QTRY_VERIFY_WITH_TIMEOUT(recorderIndex() >= 0, 5000);
+
+    // The controller recomputes its totals after an insert returns, so a snapshot taken straight
+    // afterwards records the values from before the edit. Recording those as if they were this
+    // state's answer makes them look like fields that never vary, which is what this list is for.
+    QTRY_VERIFY_WITH_TIMEOUT(take(qgc_core_get("view.missionSummary")).value(QStringLiteral("distanceMetres")).toDouble(0.0) > 0.0, 10000);
     states.append(snapshotOfEveryView(kViewPaths, int(std::size(kViewPaths))));
     for (const char *path : kViewPaths) {
         const QString key = QString::fromUtf8(path);
