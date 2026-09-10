@@ -603,6 +603,28 @@ func checkLogEntry() {
            "a state the core adds later is unrecognised rather than silently read as known")
     expect(entry(["timeState": "somethingNew"])?.timeText ?? "?", "",
            "and shows nothing rather than a date it cannot vouch for")
+
+    var parts = DateComponents()
+    parts.year = 2026
+    parts.month = 9
+    parts.day = 8
+    parts.hour = 14
+    parts.minute = 42
+    parts.second = 51
+    let reader = DateFormatter()
+    reader.dateStyle = .medium
+    reader.timeStyle = .short
+    if let instant = Calendar.current.date(from: parts) {
+        expect(entry(["timeState": "known", "time": "2026-09-08T14:42:51.000"])?.timeText ?? "",
+               reader.string(from: instant),
+               "QDateTime::fromSecsSinceEpoch gives a LOCAL-time value and Qt's ISO form omits the "
+               + "zone designator for one, so the wire carries wall-clock with no Z. Reading it as "
+               + "UTC and rendering it back in the reader's zone shifted every log by the offset - "
+               + "14:42 displayed as 18:42 here. This assertion is inert on a machine running UTC, "
+               + "where the defect has no effect either")
+    } else {
+        expect(false, "the reader's calendar can express 2026-09-08 14:42:51")
+    }
 }
 
 checkLogEntry()
