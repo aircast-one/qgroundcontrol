@@ -20,10 +20,20 @@ take)
     fi
     printf '%s|%s|%s\n' "$ME" "$(date +%s)" "${2:-adb work}" > "$LOCK"
     adb shell dumpsys deviceidle disable >/dev/null 2>&1
-    adb shell svc power stayon true >/dev/null 2>&1
-    w=$(adb shell dumpsys power 2>/dev/null | grep -o 'mWakefulness=[A-Za-z]*' | head -1)
+    adb shell svc power stayon usb >/dev/null 2>&1
+    w=""
+    for _ in 1 2 3; do
+        w=$(adb shell dumpsys power 2>/dev/null | grep -o 'mWakefulness=[A-Za-z]*' | head -1)
+        [ "$w" != "mWakefulness=Dozing" ] && break
+        adb shell input keyevent 82 >/dev/null 2>&1
+        python3 -c 'import time; time.sleep(2)'
+    done
+    if [ "$w" = "mWakefulness=Dozing" ]; then
+        rm -f "$LOCK"
+        echo "REFUSED: the handset will not wake - every capture would be a black frame" >&2
+        exit 1
+    fi
     echo "ACQUIRED ($w)"
-    [ "$w" = "mWakefulness=Dozing" ] && echo "WARNING: still dozing - screencap will be a black 14KB frame"
     ;;
 drop)
     if [ ! -f "$LOCK" ]; then echo "no lock held"; exit 0; fi
