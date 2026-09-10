@@ -2569,6 +2569,32 @@ head the destructive path is coloured: emergency stop is red in the Actions shee
 on its slider. It is the error colour here now too. The words carried the warning and the
 button contradicted them.
 
+### Removing something offers it back
+
+Auditing the head for the shape the erase button had — a destructive action that does not
+present as one — turned up the two settings editors. Remove had no confirmation and no undo: a
+mis-tap deleted a configured control or camera outright. The desktop editor these replace keeps
+the removed entry for six seconds and offers it back, and dropping that was recorded earlier as
+a nice-to-have. It was not; it was the only thing standing between a stray tap and lost setup.
+
+Both editors now show "Removed CH1." with an Undo beside it for six seconds, restoring the
+exact JSON that was there before rather than rebuilding the entry — so an undone removal
+returns the fields this head does not understand along with the ones it does. Verified on the
+handset: added a control, removed it, undid it, and CH1 came back with its channel and type.
+
+**The undo looked broken twice before it was tested properly.** Six seconds is shorter than the
+gap between two of this session's tool calls, so a screenshot in one call and a tap in the next
+always missed the window. Doing the remove, the capture, the undo tap and the check inside a
+single call showed it working. A timing window smaller than the harness's own latency has to be
+exercised in one breath or it will read as a defect every time.
+
+**And the capture guard was crying wolf.** `ui.sh shot` failed anything under 100 000 bytes on
+the theory that a sleeping screen photographs small. A sparse dark list photographs small too,
+and this screen — a header and one row — came in at 89 kB and was declared asleep. The test is
+now what it should always have been: a sleeping screen is one flat colour, so the check asks
+whether the luminance range spans more than 32. The screen that failed passes at 0–235, and a
+genuinely blank frame fails at 0–0.
+
 ## Phase 6 — Shell · 2 weeks
 
 Cheaper than macOS, because Qt is already off the main thread.
