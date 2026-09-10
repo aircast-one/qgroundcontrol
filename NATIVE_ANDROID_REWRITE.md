@@ -4214,6 +4214,28 @@ fourth mechanism ruled out, after item count, fact serialisation, the video rest
 marshalling. The stall remains unexplained and is now bounded away from the QML views as well.
 
 - Delete the `QtQuickView` host and `AndroidHost.qml`.
+
+  **Attempted and reverted, which found the thing the survey missed.** With navigation and messages
+  both on `host.notices`, video initialising without a scene graph, and the QML views gone, nothing
+  *live* reached `mainWindow` any more — so the host looked ready to delete. Removing it crashed the
+  app on launch:
+
+      java.lang.UnsatisfiedLinkError: No implementation found for
+      void org.mavlink.qgroundcontrol.QGCBridge.notifyFontScale(float)
+      - is the library loaded, e.g. System.loadLibrary?
+
+  `QtQuickView(this, QML_URI, QML_LIBRARY, ...)` is what **loads `libAircastQGC` and starts Qt**. The
+  host is the boot path, not just a view, and every survey of what *reaches into* it was looking the
+  wrong way down the dependency: nothing needed the QML, but everything needed the loader that
+  happened to come with it.
+
+  So this bullet is really the one below it — the embedded-host boot path has to exist before the
+  host can go, not after. Reverted; the app is back to normal and verified.
+
+  One fix from the attempt was kept, because it is correct independently: an embedded host no longer
+  queues app messages for a QML root that will never appear (`QGCApplication.cc`). That branch is
+  unreachable while `AndroidHost.qml` is loaded and becomes live the moment it is not, which is a
+  200ms timer re-arming forever on a handset.
 - `QGCApplication` drops from `QApplication` to `QCoreApplication`; the embedded-host boot path
   becomes the only path.
 - QtQuick, QtQml, QtGui, QtLocation, QtMultimedia, QtCharts, QtWidgets and QtPositioning drop from
