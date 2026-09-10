@@ -24,3 +24,8 @@ fun insertMissionItem(kind: String, latitude: Double, longitude: Double, index: 
             ),
         )
     }.getOrElse { InsertOutcome(false, NO_ANSWER) }
+
+fun removeMissionItem(index: Int): InsertOutcome =
+    runCatching {
+        insertOutcome(JSONObject(QGCBridge.invoke("mission.remove", "[$index]")))
+    }.getOrElse { InsertOutcome(false, NO_ANSWER) }

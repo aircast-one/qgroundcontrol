@@ -185,8 +185,7 @@ object PlanBridge {
                 .optBoolean("ok")
         }.getOrDefault(false)
 
-    fun removeItem(index: Int): Boolean =
-        invoke("$PLAN_ROOT.missionController.removeVisualItem", "[$index]")
+    fun removeItem(index: Int): Boolean = removeMissionItem(index).ok
 
     fun moveItem(index: Int, latitude: Double, longitude: Double): Boolean =
         runCatching {
