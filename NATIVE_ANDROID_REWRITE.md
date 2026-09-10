@@ -4269,9 +4269,21 @@ marshalling. The stall remains unexplained and is now bounded away from the QML 
   desktop build. It is two pieces of work, not a CMake edit.
 
   Individual subsystems, for sequencing: QuickControls styles 10.4 MB across 27 plugins, Widgets
-  6.7 MB, **Quick3D 3.9 MB** — that last one is a number for the open `Viewer3D` keep-or-drop
-  decision, which until now had none — Location and Positioning 2.9 MB, Charts 2.8 MB, Multimedia
-  1.4 MB.
+  6.7 MB, Quick3D 3.9 MB, Location and Positioning 2.9 MB, Charts 2.8 MB, Multimedia 1.4 MB.
+
+  **The `Viewer3D` decision is answered, and the answer is that it barely matters.** The project has a
+  supported switch for it, so I tried the designed path before considering surgery: configuring
+  `build-android` with `-DQGC_VIEWER3D=OFF` and rebuilding took the AAR from 81.16 MB to **81.08 MB**,
+  and left all four Quick3D libraries in place. Deployment follows *linkage and the QML import scan*,
+  not whether a feature is compiled — `Quick3D` is an `OPTIONAL_COMPONENTS` entry on the top-level
+  `find_package(Qt6 ...)`, and androiddeployqt ships what it finds. So dropping Viewer3D saves 0.08 MB
+  rather than the 3.9 MB its libraries occupy. The tree was configured back to `ON` afterwards, since
+  an undocumented cache divergence would cost the next person more than 80 KB is worth.
+
+  That sharpens where the remaining work is: **the size lives in what the Android build compiles and
+  scans, not in which features are switched on.** Excluding QGC's QML modules for Android is the lever
+  — it shrinks `libAircastQGC` and removes the imports the deployment scanner follows — and it is a
+  change to the unconditional list in `src/CMakeLists.txt` that the desktop build shares.
 - Release build, signing and CI for `aircast-android`, which today only builds debug locally.
 
 **Gate:** two weeks of internal flying with the previous release as fallback, then delete the
