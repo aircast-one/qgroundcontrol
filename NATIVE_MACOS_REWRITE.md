@@ -455,27 +455,39 @@ that is already registered — which is exactly the split the constraint predict
 form that was never built. That is pending work blocked on an API decision, not a missing feature
 somebody forgot.
 
-**Reachability needs two things, not one.** The rule that falls out of the handle boundary is that a
-Qt API is reachable when every object it needs has a path. That is necessary and not sufficient: the
-parameter *types* must also survive the bridge. `QGCBridgeCore.cc:669` hands `QMetaObject::invoke`
-the argument type as `method.parameterMetaType(arg).name()` — the canonical metatype spelling —
-while moc records the parameter as it was written in the header, and `invoke` compares the two
-strings. The same function already knows this about *return* types eight lines below, where it
-passes `method.typeName()` with a comment explaining exactly this hazard; parameters never got the
-same treatment.
+**Reachability needs two things, not one — but not for the reason first recorded here.** A Qt API
+is reachable when every object it needs has a path; that is necessary and not sufficient, because
+the parameter *types* must also survive the bridge. The mechanism recorded in this document on
+2026-09-10 was wrong and the core session measured it down:
 
-So any `Q_INVOKABLE` whose parameter is a typedef is refused with `ok: false` and no reason.
-`MAVLinkInspectorController::setMessageInterval(int32_t)` was one, which is why the QML rate control
-and this head's rate picker were both silently dead until `53b9a84cc` changed the signature to
-`int`. That cleared one instance and not the class. Two remain, both `Q_INVOKABLE` and both with a
-`quint16` parameter whose canonical name is `unsigned short`: `UDPLink::addHost` and
-`UDPLink::removeHost`.
+The original reading was that `QGCBridgeCore.cc:669` hands `QMetaObject::invoke` the canonical
+metatype spelling while moc records the declared one, so the two strings differ and the call is
+refused. **They do not differ.** For `quint16`, `parameterTypeName()` and
+`parameterMetaType().name()` both return `"ushort"` — moc normalises Qt's own typedefs at
+generation time, so the spelling seen in `moc_UDPLink.cpp` does not survive into the metaobject.
+Both forms were invoked and both succeed. `UDPLink::addHost` and `removeHost` are **not** affected,
+and the "class of defect" recorded here did not exist in the shape described.
 
-Confirmed from the generated code rather than from reasoning about Qt: `moc_UDPLink.cpp` records
-`quint16`. Not confirmed by calling either method, and deliberately not — a refused call is
-harmless, but if the reading were wrong the call would succeed and mutate a link configuration in
-the settings file this rig shares with the QML app. The safe outcome must not be the one the
-experiment depends on.
+What actually broke `MAVLinkInspectorController::setMessageInterval(int32_t)` is one line earlier.
+`int32_t` is a `<cstdint>` name moc does not normalise and Qt has never registered, so
+`parameterMetaType(arg)` is invalid and `values[arg].convert(...)` fails *before* `invoke` is
+reached. Handing `invoke` the written name would not have helped. Changing the signature to `int`
+in `53b9a84cc` was the correct fix, not a workaround for a deeper bug.
+
+**The surviving rule is narrower and still worth having:** a `Q_INVOKABLE` whose parameter type Qt
+has not registered is refused with `ok: false` and no reason, before the call is attempted. Qt's own
+typedefs are registered and safe; `<cstdint>` names and other unregistered spellings are not. A test
+in the bridge suite now pins the two spellings as equal for this case, so if Qt ever stops
+normalising, that goes red and the class becomes real.
+
+Two lessons kept, because the correction cost more than the finding. The proposed one-line fix was
+applied by the core and was worse than a no-op: `parameterTypeName` returns a `QByteArray` by value,
+so `.constData()` on the temporary dangles, and every argument became "too few arguments" across
+three unrelated tests. It was only the debug print of the two spellings that revealed the change had
+no purpose at all — without it, a lifetime fix for a self-inflicted bug would have landed on top of
+an unnecessary change and been reported as closing a class. **A reading of real code that explains
+the symptom is still a hypothesis, and the cheapest way to settle one is usually to print the two
+values it claims differ.**
 
 **Consequence for Phase 5 and 6: link creation exists only in QML today, and so does cancel-safe
 link editing.** Deleting the QML on the assumption that the native head covers what it covered
