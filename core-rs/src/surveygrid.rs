@@ -313,18 +313,12 @@ pub fn typed_transects(polygon: &[Point], params: &Params) -> Vec<Vec<Coord>> {
     first.into_iter().chain(second.into_iter().map(|transect| typed(transect, params.turnaround))).collect()
 }
 
-pub fn transects(polygon: &[Point], params: &Params) -> Vec<Vec<Point>> {
-    let first = pass(polygon, params, false, None);
-    if !params.refly {
-        return first;
-    }
-    let anchor = first.last().and_then(|transect| transect.last()).copied();
-    let second = pass(polygon, params, true, anchor);
-    first.into_iter().chain(second).collect()
-}
-
 fn pass_bare(polygon: &[Point], params: &Params, refly: bool, anchor: Option<Point>) -> Vec<Vec<Point>> {
     pass(polygon, &Params { turnaround: 0.0, ..*params }, refly, anchor)
+}
+
+pub fn flat_transects(polygon: &[Point], params: &Params) -> Vec<Vec<Point>> {
+    typed_transects(polygon, params).into_iter().map(|transect| transect.into_iter().map(|coord| coord.at).collect()).collect()
 }
 
 fn pass(polygon: &[Point], params: &Params, refly: bool, anchor: Option<Point>) -> Vec<Vec<Point>> {
@@ -434,7 +428,7 @@ mod tests {
                     entry: case["entryPoint"].as_i64().unwrap(),
                 };
                 let expected = case["transects"].as_str().unwrap();
-                let ours = spelled(&transects(&polygon, &params));
+                let ours = spelled(&flat_transects(&polygon, &params));
                 (name.clone(), ours == expected, format!("{name}\n  qt:   {expected}\n  rust: {ours}"))
             })
             .collect();

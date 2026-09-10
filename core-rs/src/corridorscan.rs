@@ -1,4 +1,4 @@
-use crate::surveygrid::{Coord, boustrophedon, crossing_point, flatten, line_angle, retype, typed, reverse_internal_points, reverse_transect_order, set_angle, set_length, to_geo, with_turnaround};
+use crate::surveygrid::{Coord, crossing_point, flatten, line_angle, retype, set_angle, set_length, to_geo, typed};
 
 const NO_SPACING_M: f64 = 100_000.0;
 const MIN_SPACING_M: f64 = 0.5;
@@ -71,25 +71,8 @@ pub fn typed_transects(polyline: &[Point], params: &Params) -> Vec<Vec<Coord>> {
         .collect()
 }
 
-pub fn transects(polyline: &[Point], params: &Params) -> Vec<Vec<Point>> {
-    if polyline.len() < 2 {
-        return Vec::new();
-    }
-    let spacing = transect_spacing(params.spacing);
-    let count = transect_count(params.width, params.spacing);
-    let half_width = params.width / 2.0;
-    let flat = flatten(polyline);
-    let origin = polyline[0];
-    let laid: Vec<Vec<Point>> = (0..count)
-        .map(|index| {
-            let position = spacing / 2.0 + spacing * index as f64;
-            let offset = if count == 1 { 0.0 } else { half_width - position };
-            with_turnaround(offset_polyline(&flat, origin, offset), params.turnaround)
-        })
-        .collect();
-    let ordered = if matches!(params.entry, 1 | 3) { reverse_transect_order(laid) } else { laid };
-    let placed = if matches!(params.entry, 2 | 3) { reverse_internal_points(ordered) } else { ordered };
-    boustrophedon(placed)
+pub fn flat_transects(polyline: &[Point], params: &Params) -> Vec<Vec<Point>> {
+    typed_transects(polyline, params).into_iter().map(|transect| transect.into_iter().map(|coord| coord.at).collect()).collect()
 }
 
 #[cfg(test)]
@@ -122,7 +105,7 @@ mod tests {
                     entry: case["entryPoint"].as_i64().unwrap(),
                 };
                 let expected = case["transects"].as_str().unwrap();
-                let ours = spelled(&transects(&polyline, &params));
+                let ours = spelled(&flat_transects(&polyline, &params));
                 (name.clone(), ours == expected, format!("{name}\n  qt:   {expected}\n  rust: {ours}"))
             })
             .collect();
