@@ -1,6 +1,7 @@
 package one.aircast.mapspike
 
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
@@ -77,5 +78,34 @@ class PlanSummaryTest {
     @Test
     fun `a selection with nothing to say adds nothing`() {
         assertEquals("1 item", summary(items = listOf(item()), selected = MapHit.Waypoint(0)))
+    }
+}
+
+class TakeoffFirstTest {
+    private fun summary(takeoffFirst: Boolean) = planSummary(
+        itemCount = 2,
+        shape = emptyList(),
+        items = listOf(
+            MissionItem(0, 1, 41.0, 44.0, "NAV_WAYPOINT", false, 50.0),
+            MissionItem(1, 2, 41.1, 44.1, "NAV_WAYPOINT", false, 50.0),
+        ),
+        polygons = emptyList(),
+        circles = emptyList(),
+        rally = emptyList(),
+        surveys = emptyList(),
+        distanceMetres = 100.0,
+        seconds = 30.0,
+        selected = null,
+        takeoffFirst = takeoffFirst,
+    )
+
+    @Test
+    fun `a plan that needs a takeoff first says so`() {
+        assertTrue(summary(true).endsWith("add a takeoff before anything else"))
+    }
+
+    @Test
+    fun `an ordinary plan is unchanged`() {
+        assertFalse(summary(false).contains("takeoff before"))
     }
 }

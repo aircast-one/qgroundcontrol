@@ -118,6 +118,9 @@ internal fun MapSpikeScreen(
     val planDirty by mapBool("plan.dirty")
     val planOffline by mapBool("plan.offline")
     val planSyncing by mapBool("plan.syncInProgress")
+    val canInsertTakeoff by mapBool("plan.missionController.isInsertTakeoffValid")
+    val canInsertLand by mapBool("plan.missionController.isInsertLandValid")
+    val takeoffFirst by mapBool("plan.missionController.onlyInsertTakeoffValid")
     val missionDistance by mapDouble("plan.missionController.missionTotalDistance")
     val missionTime by mapDouble("plan.missionController.missionTime")
     val mode by mapString("vehicle.flightMode")
@@ -262,7 +265,7 @@ internal fun MapSpikeScreen(
                     } else {
                         planSummary(
                             itemCount, shape, items, fences, circles, rally, surveyList,
-                            missionDistance, missionTime, selected,
+                            missionDistance, missionTime, selected, takeoffFirst,
                         )
                     },
                     Modifier.padding(horizontal = 10.dp, vertical = 6.dp),
@@ -392,18 +395,25 @@ internal fun MapSpikeScreen(
                             at != null && FenceBridge.addRallyPoint(at.latitude, at.longitude)
                         }
                     }) { Text("Rally") }
-                    TextButton(onClick = {
-                        val at = placeAt()
-                        onBridge("Adding a takeoff") {
-                            at != null && PlanBridge.appendTakeoff(at.latitude, at.longitude)
-                        }
-                    }) { Text("Takeoff") }
-                    TextButton(onClick = {
-                        val at = placeAt()
-                        onBridge("Adding a landing") {
-                            at != null && PlanBridge.appendLanding(at.latitude, at.longitude)
-                        }
-                    }) { Text("Land") }
+                    TextButton(
+                        enabled = canInsertTakeoff,
+                        onClick = {
+                            val at = placeAt()
+                            onBridge("Adding a takeoff") {
+                                at != null &&
+                                    PlanBridge.appendTakeoff(at.latitude, at.longitude, takeoffFirst)
+                            }
+                        },
+                    ) { Text("Takeoff") }
+                    TextButton(
+                        enabled = canInsertLand,
+                        onClick = {
+                            val at = placeAt()
+                            onBridge("Adding a landing") {
+                                at != null && PlanBridge.appendLanding(at.latitude, at.longitude)
+                            }
+                        },
+                    ) { Text("Land") }
                     GroupBreak()
 
                     TextButton(onClick = {

@@ -76,6 +76,8 @@ fun factValue(element: JSONObject, name: String): Double {
     return Double.NaN
 }
 
+private const val FIRST_FLIGHT_ITEM = 1
+
 data class MissionItem(
     val index: Int,
     val sequence: Int,
@@ -160,15 +162,21 @@ object PlanBridge {
     fun appendWaypoint(latitude: Double, longitude: Double): Boolean =
         insertAt("insertSimpleMissionItem", latitude, longitude) != null
 
-    private fun insertAt(method: String, latitude: Double, longitude: Double): Int? {
+    private fun insertAt(
+        method: String,
+        latitude: Double,
+        longitude: Double,
+        atStart: Boolean = false,
+    ): Int? {
         val count = rawItemCount()?.takeIf { it > 0 } ?: return null
+        val target = if (atStart) FIRST_FLIGHT_ITEM else count
         val raw = runCatching {
             QGCBridge.invoke(
                 "$PLAN_ROOT.missionController.$method",
-                "[{\"latitude\":$latitude,\"longitude\":$longitude,\"altitude\":0}, $count]",
+                "[{\"latitude\":$latitude,\"longitude\":$longitude,\"altitude\":0}, $target]",
             )
         }.getOrDefault("")
-        return if (insertedAnItem(raw)) count else null
+        return if (insertedAnItem(raw)) target else null
     }
 
     private fun writeCoordinate(path: String, latitude: Double, longitude: Double): Boolean =
@@ -181,8 +189,8 @@ object PlanBridge {
             ).optBoolean("ok")
         }.getOrDefault(false)
 
-    fun appendTakeoff(latitude: Double, longitude: Double): Boolean {
-        val index = insertAt("insertTakeoffItem", latitude, longitude) ?: return false
+    fun appendTakeoff(latitude: Double, longitude: Double, beforeTheRest: Boolean = false): Boolean {
+        val index = insertAt("insertTakeoffItem", latitude, longitude, beforeTheRest) ?: return false
         if (writeCoordinate("$PLAN_ITEMS.$index.launchCoordinate", latitude, longitude)) {
             return true
         }
