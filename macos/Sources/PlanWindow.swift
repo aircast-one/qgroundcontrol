@@ -410,15 +410,24 @@ struct PlanInspector: View {
             .font(.callout)
             .foregroundColor(.secondary)
 
-            if mission.summary.hasFlight {
+            if mission.summary.describes {
                 HStack(spacing: Overlay.step) {
-                    Label(mission.summary.distanceText, systemImage: "arrow.triangle.turn.up.right.diamond")
-                        .help("Distance flown")
-                    Label(mission.summary.durationText, systemImage: "clock")
-                        .help("How long the mission takes")
+                    if let distance = mission.summary.value(MissionSummary.distance) {
+                        Label(distance, systemImage: "arrow.triangle.turn.up.right.diamond")
+                            .help("Distance flown")
+                    }
+                    if let time = mission.summary.value(MissionSummary.time) {
+                        Label(time, systemImage: "clock")
+                            .help("How long the mission takes")
+                    }
+                    ForEach(mission.summary.extraRows) { row in
+                        Text("\(row.label) \(row.value)").help(row.label)
+                    }
                     Spacer(minLength: 0)
-                    Text("\(mission.summary.telemetryText) from launch")
-                        .help("The furthest the vehicle gets from where it took off")
+                    if let furthest = mission.summary.value(MissionSummary.furthest) {
+                        Text("\(furthest) from launch")
+                            .help("The furthest the vehicle gets from where it took off")
+                    }
                 }
                 .font(.caption.monospacedDigit())
                 .foregroundColor(.secondary)

@@ -111,6 +111,7 @@ swiftc -Onone -o "$out" \
     "$root/macos/Sources/HostNoticeModel.swift" \
     "$root/macos/Sources/MavlinkConsoleModel.swift" \
     "$root/macos/Sources/ModeSlotsModel.swift" \
+    "$root/macos/Sources/MissionSummaryModel.swift" \
     "$root/macos/Sources/FlightModePositions.swift" \
     "$root/macos/Sources/PageSelection.swift" \
     "$root/macos/Tests/main.swift"

@@ -1592,35 +1592,38 @@ func checkAltitudeMode() {
 checkAltitudeMode()
 
 func checkPlanSummary() {
-    let metres = Measure.metres
-    expect(PlanSummary.distance(0, metres), "\u{2014}", "a plan that goes nowhere shows no distance")
-    expect(PlanSummary.distance(-1, metres), "\u{2014}", "nor does a nonsense one")
-    expect(PlanSummary.distance(.nan, metres), "\u{2014}", "nor does an unset one")
-    expect(PlanSummary.distance(500.397, metres), "500 m", "a distance is whole, as QGC gives it")
-    expect(PlanSummary.distance(7047, metres), "7047 m",
-           "and stays in the operator's unit rather than rolling into a kilometre I invented")
+    let read = MissionSummary(["available": true as NSNumber, "reason": "",
+                               "altitudeRange": ["text": "120 m to 340 m"],
+                               "rows": [["label": "Distance", "value": "7.05 km"],
+                                        ["label": "Time", "value": "12:30"],
+                                        ["label": "Hover", "value": "1.20 km"],
+                                        ["label": "Batteries", "value": "2"],
+                                        ["label": "Furthest from launch", "value": "2.10 km"]]])
+    expect(read.value(MissionSummary.distance) ?? "", "7.05 km",
+           "the core spells the distance, crossing into kilometres past a thousand metres. This "
+           + "head formatted it and never crossed over, so a seven kilometre mission read as "
+           + "7047 m -- and 23120 ft on imperial, where QGC says 4.38 mi")
+    expect(read.value(MissionSummary.time) ?? "", "12:30", "and the duration")
+    expect(read.value("Planned") == nil,
+           "a row the controller could not compute is absent rather than zero: needing no "
+           + "batteries and having no battery model are different facts, and both would read 0")
+    expect(read.extraRows.map(\.label).joined(separator: ","), "Hover,Batteries",
+           "the strip pulls out the three it draws itself and the rest follow, so the same fact "
+           + "is never printed twice")
+    expect(read.altitudeRange, "120 m to 340 m", "the altitude range is the core's sentence")
+    expect(read.describes, "a plan with rows has something to summarise")
 
-    let feet = Measure(units: "ft", factor: 3.28084)
-    expect(PlanSummary.distance(7047, feet), "23120 ft",
-           "on feet the same plan converts instead of printing metres under a foot label")
+    expect(MissionSummaryRow(["label": "Distance", "value": ""]) == nil,
+           "a row with an empty value is dropped rather than drawn as a label with nothing "
+           + "beside it")
+    expect(MissionSummaryRow(["value": "7 km"]) == nil, "and one with no label at all")
 
-    expect(PlanSummary.duration(0), "\u{2014}", "no flight time means no duration")
-    expect(PlanSummary.duration(.infinity), "\u{2014}", "an infinite estimate is not shown")
-    expect(PlanSummary.duration(100.079), "1:40", "minutes and seconds, zero padded")
-    expect(PlanSummary.duration(9), "0:09", "under a minute still shows the minute")
-    expect(PlanSummary.duration(3661), "1:01:01", "past an hour the hour appears")
-
-    let flight = PlanSummary(distanceMetres: 500.4, seconds: 100.1,
-                             maxTelemetryMetres: 457.3, measure: metres)
-    expect(flight.hasFlight, "a plan with distance and time has a flight to describe")
-    expect(flight.distanceText, "500 m", "the summary formats its own distance")
-    expect(flight.durationText, "1:40", "and its own duration")
-    expect(flight.telemetryText, "457 m", "and the furthest it gets from launch")
-
-    expect(!PlanSummary.empty.hasFlight, "an empty plan has nothing to summarise")
-    expect(!PlanSummary(distanceMetres: 0, seconds: 0, maxTelemetryMetres: 0,
-                        measure: metres).hasFlight,
-           "a launch point alone is not a flight")
+    let empty = MissionSummary(["available": false as NSNumber, "rows": [],
+                                "reason": "This plan has no items yet."])
+    expect(!empty.describes, "an empty plan has nothing to summarise")
+    expect(empty.reason, "This plan has no items yet.", "and the core says why")
+    expect(empty.altitudeRange, "", "with no altitude range rather than an invented one")
+    expect(MissionSummary([:]).describes == false, "an empty read describes nothing")
 }
 
 checkPlanSummary()
@@ -2345,12 +2348,9 @@ func checkPlanMeasuresMatchTheCore() {
     expect(Measure.format(40, "m"), "40.0 m", "the shared formatter keeps a tenth under a hundred")
     expect(Measure.format(120, "m"), "120 m", "and drops it at a hundred and above")
 
-    expect(PlanSummary.distance(40, .metres), "40.0 m",
-           "a short plan reads the same as a short survey leg, which the core spells 40.0 m")
-    expect(PlanSummary.distance(7047, .metres), "7047 m", "and a long one is unchanged")
-    expect(PlanSummary.distance(0, .metres), "\u{2014}",
-           "a plan with no flight in it still shows a dash rather than 0.0 m")
-    expect(PlanSummary.distance(Double.nan, .metres), "\u{2014}", "and so does a number that is not one")
+    // The plan summary no longer formats anything: view.missionSummary spells every row, so
+    // there is nothing left here to check goes through the shared formatter. What remains are
+    // the item altitudes and the map scale, which do.
 
     expect(Measure.reading(120, "m"), "120 m",
            "an item's altitude reads the same as the terrain sheet under it, which the core "
@@ -3306,6 +3306,8 @@ func checkViewContract() {
           "maxAltitudeMeters", "distanceText", "lowestText", "highestText", "points"]),
         ("view.terrainProfile", ["points"],
          ["x", "missionAltitude", "terrainAltitude", "collision"]),
+        ("view.missionSummary", [], ["available", "rows", "reason", "altitudeRange"]),
+        ("view.missionSummary", ["rows"], ["label", "value"]),
         ("view.modeSlots", [], ["available", "channel", "liveSlot", "slots", "reason"]),
         ("view.modeSlots", ["slots"], ["slot", "mode", "live"]),
         ("view.missionKinds", [], ["kinds"]),

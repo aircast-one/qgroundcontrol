@@ -25,6 +25,7 @@ add_library(QGCNativeUI STATIC
     Sources/HostNoticeModel.swift
     Sources/MavlinkConsoleModel.swift
     Sources/ModeSlotsModel.swift
+    Sources/MissionSummaryModel.swift
     Sources/Vibration.swift
     Sources/VibrationReading.swift
     Sources/ParameterModel.swift

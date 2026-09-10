@@ -33,7 +33,7 @@ final class MissionStore: ObservableObject, Probeable, WriteReporting {
     @Published private(set) var itemModes: [AltitudeModeOffer] = []
     @Published private(set) var distanceModes: [AltitudeModeOffer] = []
     @Published private(set) var defaultAltitude = ""
-    @Published private(set) var summary = PlanSummary.empty
+    @Published private(set) var summary = MissionSummary.empty
     @Published private(set) var vehicle = MissionVehicle.unknown
     @Published private(set) var cruiseSpeed = ""
     @Published private(set) var hoverSpeed = ""
@@ -109,13 +109,18 @@ final class MissionStore: ObservableObject, Probeable, WriteReporting {
             Bridge.group("view.altitudeModes(\(AltitudeMode.missionContext),\(mode))"))
         if missionOffers != missionModes { missionModes = missionOffers }
 
-        let hover = (controller["missionHoverDistance"] as? NSNumber)?.doubleValue ?? 0
-        let cruise = (controller["missionCruiseDistance"] as? NSNumber)?.doubleValue ?? 0
-        summary = PlanSummary(
-            distanceMetres: hover + cruise,
-            seconds: (controller["missionTime"] as? NSNumber)?.doubleValue ?? 0,
-            maxTelemetryMetres: (controller["missionMaxTelemetry"] as? NSNumber)?.doubleValue ?? 0,
-            measure: AppUnits.measure(AppUnits.horizontal))
+        // Was hover + cruise, formatted here. The controller has its own total and the two are
+        // not the same sum, and Measure never crossed over to km or miles, so a seven kilometre
+        // mission read as 23120 ft where QGC says 4.38 mi.
+        //
+        // Known stale by one edit, and it was before this too: the controller recomputes its
+        // totals after the insert returns, so a reload run straight afterwards reads the previous
+        // values. Measured - the core answered 14.11 km while this read 0 m, and a later reload
+        // agreed. The Plan window does not poll (startWatching is the Fly view's read-only copy),
+        // so nothing corrects it. Reported rather than patched with a timer that would fight the
+        // editor.
+        let read = MissionSummary(Bridge.group("view.missionSummary"))
+        if read != summary { summary = read }
         defaultAltitude = (Bridge.group("settings.appSettings.defaultMissionItemAltitude")["valueString"] as? String) ?? ""
 
         let controllerVehicle = Bridge.group("plan.controllerVehicle")
@@ -832,8 +837,9 @@ final class MissionStore: ObservableObject, Probeable, WriteReporting {
          "vehicle": ["firmware": vehicle.firmware, "type": vehicle.type,
                      "cruiseSpeed": vehicle.showsCruiseSpeed ? cruiseSpeed : "",
                      "hoverSpeed": vehicle.showsHoverSpeed ? hoverSpeed : ""],
-         "summary": ["distance": summary.distanceText, "duration": summary.durationText,
-                     "telemetry": summary.telemetryText, "hasFlight": summary.hasFlight],
+         "summary": ["rows": summary.rows.map { ["label": $0.label, "value": $0.value] },
+                     "altitudeRange": summary.altitudeRange, "reason": summary.reason,
+                     "describes": summary.describes],
          "camera": ["brand": camera.brand, "model": camera.model,
                     "brands": camera.brands.count, "models": camera.models.count,
                     "describes": camera.describes],
