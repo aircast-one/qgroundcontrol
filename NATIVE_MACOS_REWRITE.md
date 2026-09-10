@@ -455,6 +455,28 @@ that is already registered — which is exactly the split the constraint predict
 form that was never built. That is pending work blocked on an API decision, not a missing feature
 somebody forgot.
 
+**Reachability needs two things, not one.** The rule that falls out of the handle boundary is that a
+Qt API is reachable when every object it needs has a path. That is necessary and not sufficient: the
+parameter *types* must also survive the bridge. `QGCBridgeCore.cc:669` hands `QMetaObject::invoke`
+the argument type as `method.parameterMetaType(arg).name()` — the canonical metatype spelling —
+while moc records the parameter as it was written in the header, and `invoke` compares the two
+strings. The same function already knows this about *return* types eight lines below, where it
+passes `method.typeName()` with a comment explaining exactly this hazard; parameters never got the
+same treatment.
+
+So any `Q_INVOKABLE` whose parameter is a typedef is refused with `ok: false` and no reason.
+`MAVLinkInspectorController::setMessageInterval(int32_t)` was one, which is why the QML rate control
+and this head's rate picker were both silently dead until `53b9a84cc` changed the signature to
+`int`. That cleared one instance and not the class. Two remain, both `Q_INVOKABLE` and both with a
+`quint16` parameter whose canonical name is `unsigned short`: `UDPLink::addHost` and
+`UDPLink::removeHost`.
+
+Confirmed from the generated code rather than from reasoning about Qt: `moc_UDPLink.cpp` records
+`quint16`. Not confirmed by calling either method, and deliberately not — a refused call is
+harmless, but if the reading were wrong the call would succeed and mutate a link configuration in
+the settings file this rig shares with the QML app. The safe outcome must not be the one the
+experiment depends on.
+
 **Consequence for Phase 5 and 6: link creation exists only in QML today, and so does cancel-safe
 link editing.** Deleting the QML on the assumption that the native head covers what it covered
 would remove both. This is the second such item; the first was noted by the Android session on
