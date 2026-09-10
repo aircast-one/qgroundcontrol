@@ -1266,6 +1266,7 @@ func checkMissionItemKinds() {
     checkHostNotices()
     checkBlockedItems()
     checkBridgeWatchers()
+    checkRemoveOutcome()
     checkBlockedBanner()
     checkMavlinkConsole()
     checkModeSlots()
@@ -4023,6 +4024,31 @@ func checkHostNotices() {
     expect(served.navigation?.id == 1,
            "the navigation request is found among notices that are not navigation, because it "
            + "arrives paired with the message that explains it and never alone")
+}
+
+func checkRemoveOutcome() {
+    expect(RemoveOutcome(["ok": true as NSNumber, "removed": 2 as NSNumber,
+                          "remaining": 3 as NSNumber]) == .removed,
+           "the core counts the plan before and after, so a removal that took is one the head was "
+           + "told about. This head used to invoke removeVisualItem and never look at the answer")
+
+    expect(RemoveOutcome(["ok": false as NSNumber,
+                          "reason": "The first entry holds the plan's own settings and cannot be "
+                          + "removed."]) == .refused("The first entry holds the plan's own "
+                          + "settings and cannot be removed."),
+           "and a refusal arrives with the controller's own sentence rather than silence. The "
+           + "head's gate asked whether the SEQUENCE was past the first where the core refuses on "
+           + "the INDEX -- two schemes that agree only because the settings entry is both")
+
+    expect(RemoveOutcome(["ok": false as NSNumber, "reason": ""]) == .refused(RemoveOutcome.refusedWithoutReason),
+           "a refusal with nothing said still reads as a refusal, because an item still on screen "
+           + "with no explanation is what this replaced")
+    expect(RemoveOutcome([:]) == .refused(RemoveOutcome.refusedWithoutReason),
+           "and an answer that did not decode is a refusal too: a removal is a write, so the "
+           + "direction that fails closed is the one that leaves the plan as it was")
+    expect(RemoveOutcome(["ok": true as NSNumber]) == .removed,
+           "the count the core reports alongside is not decoded here, because reload re-reads the "
+           + "plan anyway and a field only a test ever reads is not a mechanism")
 }
 
 func checkBridgeWatchers() {

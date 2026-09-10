@@ -717,10 +717,12 @@ final class MissionStore: ObservableObject, Probeable, WriteReporting {
         select(item)
     }
 
-    func remove(_ item: MissionItem) {
-        guard item.canRemove else { return }
-        Bridge.invoke("plan.missionController.removeVisualItem", [item.index])
+    @discardableResult
+    func remove(_ item: MissionItem) -> RemoveOutcome {
+        let outcome = RemoveOutcome(Bridge.invoke("mission.remove", [item.index]))
+        if case .refused(let reason) = outcome { writeFailure = reason }
         reload()
+        return outcome
     }
 
     func setItemSpeedSpecified(_ specified: Bool) {
@@ -1059,10 +1061,9 @@ final class MissionStore: ObservableObject, Probeable, WriteReporting {
             guard let target = items.first(where: { $0.sequence == Int(args["sequence"] ?? "") ?? -1 }) else {
                 return ["ok": false, "error": "no item with that sequence"]
             }
-            guard target.canRemove else {
-                return ["ok": false, "error": "\(target.command) cannot be removed"]
+            if case .refused(let reason) = remove(target) {
+                return ["ok": false, "error": reason]
             }
-            remove(target)
         case "setAltitude":
             guard let target = items.first(where: { $0.index == Int(args["index"] ?? "") ?? -1 }) else {
                 return ["ok": false, "error": "no item at that index"]

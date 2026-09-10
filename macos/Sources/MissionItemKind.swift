@@ -124,6 +124,22 @@ enum InsertOutcome: Equatable {
     }
 }
 
+enum RemoveOutcome: Equatable {
+    case removed
+    case refused(String)
+
+    static let refusedWithoutReason = "That item could not be removed."
+
+    init(_ answer: [String: Any]) {
+        guard (answer["ok"] as? NSNumber)?.boolValue == true else {
+            self = .refused((answer["reason"] as? String).flatMap { $0.isEmpty ? nil : $0 }
+                ?? RemoveOutcome.refusedWithoutReason)
+            return
+        }
+        self = .removed
+    }
+}
+
 struct MissionSeed: Equatable {
     let property: String
     let points: [GeoPoint]
