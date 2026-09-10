@@ -866,8 +866,13 @@ press.
 ## Tests
 
 ```
-./gradlew :map-spike:testDebugUnitTest
+JAVA_HOME=/opt/homebrew/opt/openjdk@21 ./gradlew :map-spike:testDebugUnitTest
 ```
+
+Set `JAVA_HOME` explicitly. This Gradle and AGP 8.8 refuse a JDK newer than 21, and a Homebrew
+`openjdk` on the PATH is well past that. The refusal prints the Java version as the entire error
+message, with no sentence around it, so `26.0.1` under **What went wrong** means the JDK and
+nothing else. Same for `:app:testDebugUnitTest`.
 
 Everything testable off-device is pure Kotlin: JSON parsing, tile hashing, ring geometry, track
 handling, profile building. Anything touching MapLibre or the bridge is verified on hardware
