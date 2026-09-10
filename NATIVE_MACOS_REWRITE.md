@@ -489,6 +489,43 @@ an unnecessary change and been reported as closing a class. **A reading of real 
 the symptom is still a hypothesis, and the cheapest way to settle one is usually to print the two
 values it claims differ.**
 
+### The Plan view, control by control against QML (2026-09-10)
+
+Walked `PlanView.qml`'s menus against this head's. Most of what looked missing was drawn somewhere
+else, which is the trap this comparison exists to avoid: **Download from Vehicle** is a toolbar
+button here (`PlanWindow.swift:998`, gated on `offersDownload`) rather than a file-menu entry, and
+the map-centre items — Launch, Vehicle, My Location, Coordinates — are all present through
+`CentreMenu`. Two real results:
+
+**Save was missing and is now built** (`c54ac28f8`). QML has had it since `PlanView.qml:697`.
+
+**Clear Mission is missing and is deliberately not built.** QML's entry calls
+`removeAllFromVehicle()` behind a confirmation reading "remove all mission items and clear the
+mission from the vehicle". This head's Clear calls `plan.removeAll`, which `PlanMasterController.h`
+documents as *removes all from controller only*. So an operator on the native head can clear the
+plan in front of them and cannot clear the mission stored on the aircraft.
+
+It is not built because it writes to the vehicle and this rig cannot exercise it. Adding an
+untested destructive control to a ground station is a worse outcome than the gap: the fence and
+read-only fixes shipped unverified because they were *gates* that fail closed, and this is a
+*capability* that erases state on an aircraft. It goes on the list until someone with a vehicle can
+run it.
+
+### The stored-flag latch family is exhausted for this head (2026-09-10)
+
+`_flying` and `_landing` are handled in the core (`flystate.rs` lets armed decide the line).
+`dirty` produced two defects and is covered above. Of the rest, `completes` and `operatorIDValid`
+are read only by the core, `_lastCurrentIndex` by neither, and the three PlanView insert flags are
+not read here at all — which was luck rather than care, since the Android session found them
+returning member defaults forever.
+
+That leaves one member reaching this head, and it is not a latch:
+`LinkManager::mavlinkSupportForwardingEnabled()` is `mavlinkForwardingSupportLink() != nullptr`,
+recomputed on every read by scanning the live link list, so it cannot go stale. The name overstates
+what the value knows — it reports that a forwarding link object exists, not that anything is being
+forwarded — but presence in `_rgLinks` tracks creation and removal, so the gap is transient rather
+than latched. **No defect. Recorded so the sweep is not run a third time.**
+
 **Consequence for Phase 5 and 6: link creation exists only in QML today, and so does cancel-safe
 link editing.** Deleting the QML on the assumption that the native head covers what it covered
 would remove both. This is the second such item; the first was noted by the Android session on
