@@ -3834,6 +3834,42 @@ but the core's `firmware` is `"px4"`/`"apm"`/`"none"`, a discriminator, while th
 `firmwareSummary` builds a human version string. Same key name, unrelated meanings, no finding.
 `ready`/`headline`/`detail` in the same list were real. A sweep hit is a question, not a defect.
 
+### The links screen can add two of the three link types QGC offers
+
+`LinkManager::linkTypeStrings()` returns Serial, UDP and TCP, and Serial is not compiled out here —
+`build-android/CMakeCache.txt` has `QGC_NO_SERIAL_LINK:BOOL=OFF`. `AddLinkDialog` offers UDP and TCP
+as two hardcoded chips. On Android a USB serial radio is a mainstream way to reach an aircraft, so
+this is a real gap rather than a tidy-up, and the core has been emitting `linkTypes` and `baudRates`
+for a head that never read them.
+
+**It is not laziness in the dialog, it is the shape of the only API that fits.**
+`createAndConnectLink(type, name, host, port)` is a single `Q_INVOKABLE` that does everything, and
+its parameters are exactly what a UDP or TCP link needs. Serial has no equivalent. Creating one is a
+four-step flow — `createConfiguration(type, name)`, write `portName` and `baud` on the result,
+`endCreateConfiguration(config)`, `createConnectedLink(config)` — and every step after the first
+needs the pointer the first returned.
+
+The bridge cannot carry that pointer, and this is the interesting part. It *does* accept object
+references as arguments: an argument beginning with `@` is resolved as a path and passed as a
+`QObject *`. But a method **returning** a `QObject *` comes back as `objectJson(object)` — a snapshot
+of its property values, with no path attached. And a freshly created configuration has no path to
+attach: `createConfiguration` returns a bare `LinkConfiguration::createSettings(...)` that is
+registered nowhere until `endCreateConfiguration` calls `addConfiguration`. So the handle exists only
+as a C++ pointer, between two calls, in a place no head can name.
+
+What the head *can* already do is read the parts: `serialPorts`, `serialPortStrings` and
+`serialBaudRates` are all readable properties. It is only creation that is unreachable.
+
+The fix that matches the existing design is one more one-shot invokable beside `createAndConnectLink`
+— taking a name, a port name and a baud — rather than teaching the bridge to hand out handles to
+transient objects. That is a shared-API decision affecting both heads and macOS has the same gap, so
+it is raised rather than taken here.
+
+Method note, since I got a blocker wrong earlier in this same file: this one was traced rather than
+inferred. I checked what a `QObject *` return actually serialises to, what an `@` argument requires,
+and whether the created object is registered anywhere — instead of stopping at "the obvious method
+is not invokable".
+
 ## Phase 6 — Shell · 2 weeks
 
 Cheaper than macOS, because Qt is already off the main thread.
