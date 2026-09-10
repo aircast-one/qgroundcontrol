@@ -26,6 +26,4 @@ enum AppUnits {
                 : "metersToAppSettings\(kind)Units"
         return (Bridge.invoke("units.\(method)", [1.0])["result"] as? NSNumber)?.doubleValue ?? 1
     }
-
-    static func forget() { cache = [:] }
 }

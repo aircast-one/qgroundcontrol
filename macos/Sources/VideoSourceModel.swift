@@ -10,9 +10,12 @@ struct VideoSource: Identifiable, Equatable {
 
     static let disabled = "Video Stream Disabled"
 
+    // REPORTED, NOT FIXED: VideoSettings declares videoDisabled with QT_TRANSLATE_NOOP, so this
+    // compares a stored source against English text. Under another language a disabled source
+    // reads as enabled, is then called misconfigured for having no address, and is offered for
+    // repair. The stable answer is VideoSettings::sourceConfigured, which the core can reach and
+    // this head cannot; asked for it rather than papering over it here.
     var enabled: Bool { !source.isEmpty && source != VideoSource.disabled }
-
-    var needsUrl: Bool { enabled }
 
     var misconfigured: Bool { enabled && url.isEmpty }
 
