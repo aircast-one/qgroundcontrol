@@ -31,6 +31,10 @@ if grep -rn "mavlinkInspector\.systems\.0" "$root"/macos/Sources/*.swift; then
     exit 1
 fi
 
+# textFieldFacts, comboboxFacts and the geoTag property names are interpolated into bridge
+# paths and the core never names any of them, so nothing else checks their spelling.
+"$root/tools/macos/interpolated-names.py" || exit 1
+
 swiftc -Onone -o "$out" \
     "$root/macos/Sources/DetectionModel.swift" \
     "$root/macos/Sources/SetupCatalogueModel.swift" \
