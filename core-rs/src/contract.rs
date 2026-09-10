@@ -46,6 +46,7 @@ pub fn enumerations() -> Value {
         "view.fences.circles[].shape": ["circle"],
         "view.guidedSpeed.command": ["guidedModeChangeGroundSpeedMetersSecond", "guidedModeChangeEquivalentAirspeedMetersSecond"],
         "view.camera.modeText": ["Photo", "Video", "Survey", "Not set"],
+        "view.flyState.state": crate::flystate::STATES.iter().map(|s| s.token()).collect::<Vec<_>>(),
     })
 }
 
@@ -78,6 +79,10 @@ mod tests {
         let routines: Vec<Value> = crate::sensorcal::KINDS.iter().map(|(_, id, _)| json!(id)).collect();
         assert_eq!(listed["view.coreCalibration.calibration.routines[].id"], Value::Array(routines), "every calibration the core accepts is listed, and nothing else is");
         assert!(listed["view.coreCalibration.calibration.running"].as_array().unwrap().contains(&Value::Null), "a vehicle that has never calibrated answers null, so null is part of the contract");
+        let bit = |mask: u8, index: u8| mask & (1 << index) != 0;
+        let reachable: std::collections::BTreeSet<&str> = (0u8..32).map(|mask| crate::flystate::state_of(bit(mask, 0), bit(mask, 1), bit(mask, 2), bit(mask, 3), bit(mask, 4)).token()).collect();
+        let listed_states: std::collections::BTreeSet<&str> = listed["view.flyState.state"].as_array().unwrap().iter().map(|s| s.as_str().unwrap()).collect();
+        assert_eq!(listed_states, reachable, "the contract lists the states the view can answer, not a hand-kept parallel list");
         assert!(listed["view.messages.items[].level"].as_array().unwrap().iter().all(|level| crate::messages::LEVELS.contains(&level.as_str().unwrap())));
     }
 }

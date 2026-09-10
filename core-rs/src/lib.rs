@@ -19,6 +19,7 @@ pub mod factmeta;
 pub mod control;
 pub mod fences;
 pub mod flightmodes;
+pub mod flystate;
 pub mod ftp;
 pub mod geo;
 pub mod gpsfacts;

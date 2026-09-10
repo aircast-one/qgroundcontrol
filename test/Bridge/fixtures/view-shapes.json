@@ -172,6 +172,14 @@
             "view.fences.polygons[].shape": [
                 "polygon"
             ],
+            "view.flyState.state": [
+                "notConnected",
+                "contactLost",
+                "flying",
+                "landing",
+                "armed",
+                "disarmed"
+            ],
             "view.guidedActions.actions[].id": [
                 "arm",
                 "takeoff",
@@ -335,6 +343,7 @@
             "view.planFromWaypoints",
             "view.missionFile",
             "view.transports",
+            "view.flyState",
             "view.coreVehicle",
             "view.coreGuided",
             "view.coreParameter",
@@ -490,6 +499,19 @@
                 "summary": "string"
             }
         ]
+    },
+    "view.flyState": {
+        "armed": "bool",
+        "class": "string",
+        "connected": "bool",
+        "contactLost": "bool",
+        "flying": "bool",
+        "kind": "string",
+        "landing": "bool",
+        "mode": "string",
+        "staleNotice": "string",
+        "state": "string",
+        "stateText": "string"
     },
     "view.guidedActions": {
         "actions": [

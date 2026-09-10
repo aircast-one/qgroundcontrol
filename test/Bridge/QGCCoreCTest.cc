@@ -1072,7 +1072,7 @@ const char *const kViewPaths[] = {
     "view.mapScale(120)", "view.terrainProfile", "view.missionKinds", "view.missionSeed(survey,47,8)",
     "view.calibration", "view.radio", "view.logs", "view.inspector", "view.flightModes", "view.settings",
     "view.settings(General)", "view.surveyStats(0)", "view.fences", "view.polygon", "view.setup",
-    "view.setup(Safety)", "view.video", "view.camera", "view.detections", "view.coreCalibration",
+    "view.setup(Safety)", "view.video", "view.camera", "view.detections", "view.coreCalibration", "view.flyState",
 };
 
 } // namespace

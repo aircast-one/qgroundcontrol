@@ -9,6 +9,7 @@ use crate::contract;
 use crate::control;
 use crate::fences;
 use crate::flightmodes;
+use crate::flystate;
 use crate::geo;
 use crate::detections;
 use crate::guided;
@@ -91,6 +92,7 @@ pub const VIEWS: &[View] = &[
     View { path: "view.planFromWaypoints", deps: planfile::DEPS, compute: planfile::plan_from_waypoints_view },
     View { path: "view.missionFile", deps: mission::DEPS, compute: mission::mission_file_view },
     View { path: "view.transports", deps: &[], compute: linkhost::transports_view },
+    View { path: "view.flyState", deps: flystate::DEPS, compute: flystate::fly_state_view },
     View { path: "view.coreVehicle", deps: &[], compute: hub::core_vehicle_view },
     View { path: "view.coreGuided", deps: &[], compute: hub::core_guided_view },
     View { path: "view.coreParameter", deps: &[], compute: hub::core_parameter_view },
