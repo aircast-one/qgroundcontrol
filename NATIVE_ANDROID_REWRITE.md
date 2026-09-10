@@ -838,6 +838,25 @@ Two corrections to the paragraph above:
   `application/json` makes DocumentsUI append `.json`, and `mission.plan.json`
   does not match the `*.plan` filter desktop QGC opens with.
 
+**The takeoff-ordering fix survives the round trip** (verified 2026-09-10 on the
+OnePlus 6, driving the SAF dialog by attribute rather than coordinate). Saved a
+three-item plan, cleared it with New plan, reopened it from Download: the file on
+disk carries `commands: [22, 16, 16]` — takeoff first — and the reopened plan
+reports the same three items and distance. So the ordering fix is in the written
+artefact, not only in the live model.
+
+Two things the walk turned up:
+
+- **Both confirmations fire on an empty plan.** "Starting a new plan clears the
+  one you have" and "Opening a plan replaces the one you have" are shown even
+  when the plan holds nothing and nothing can be lost. The guard is on the
+  action, not on there being anything to discard — an unnecessary decision on
+  the path a user takes most often, right after a save.
+- **The picker does not land on the file you just wrote.** DocumentsUI opens on
+  its own last location and sorts by name, so a freshly saved plan is wherever
+  the alphabet puts it. Nothing to fix in our code, but it means "save then
+  reopen" is not the two taps it looks like.
+
 **Save readiness** (`e18f84f`): `PlanView.qml` blocks save and upload unless
 `readyForSaveState()` is `ReadyForSave` — a survey still fetching terrain stores
 wrong altitudes, an item missing a position stores an incomplete mission. The
