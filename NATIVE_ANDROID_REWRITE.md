@@ -3316,6 +3316,39 @@ AAR today: **81 MB**. The plan's estimate that it roughly halves once QtQuick, Q
 QtLocation, QtMultimedia, QtCharts, QtWidgets and QtPositioning drop out is untested and stays an
 estimate.
 
+### An unknown control kind is not made editable
+
+From the macOS session, who adopted the core's `bitmask` control before their decode knew the kind.
+Theirs fell through to `.unknown`, and `.unknown` fell through to a text field whose commit handles
+text and numbers and drops everything else — so `ARMING_CHECK` drew as an editable box showing 82
+that accepted typing and discarded it on blur. Their framing is the part worth keeping: **the bug
+was not the missing kind, it was that the fallback for an unknown kind is an editable control.**
+
+Checked here. The silent half does not reach this head — `FactTextField` validates through
+`rejectionFor` and reports a refused write, so typing something the fact will not take produces a
+visible rejection rather than a quiet discard. But the shape does: anything the head did not
+recognise became a number field, and the core has now enumerated a kind this head cannot yet draw.
+
+`view.contract` lists five: toggle, choice, bitmask, text, number. The head carries that set and
+renders anything outside it read-only with "Edit on desktop". A kind added to the core later now
+degrades to something true and useless rather than to a control that looks like it works. A control
+carrying no kind at all stays editable, because that is every other path through `FactRow`.
+
+### Video is the real Phase 6 blocker, not the boot path
+
+Following up the open question from the previous section rather than leaving it open.
+`VideoManager::initForItem` is not incidental. `init(QQuickWindow *window)` returns immediately
+with a critical log when the window is null, and it uses the window for four things: finding the
+main video item by name, initialising every receiver, rebinding widgets, and
+`window->scheduleRenderJob(new FinishVideoInitialization(), BeforeSynchronizingStage)` — work that
+has to happen on the Quick render thread.
+
+So the video pipeline does not merely *prefer* a `QQuickWindow`; it cannot initialise without one,
+and `setNativeRendering(true)` does not change that — it changes where frames go after
+initialisation, not whether initialisation can happen. Deleting the `QtQuickView` therefore needs a
+video initialisation path that does not depend on a Quick window, which is a larger piece of work
+than the boot-path change the plan describes and should be scheduled as its own item.
+
 ## Phase 6 — Shell · 2 weeks
 
 Cheaper than macOS, because Qt is already off the main thread.
