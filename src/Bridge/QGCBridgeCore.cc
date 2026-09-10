@@ -1,4 +1,5 @@
 #include "QGCBridgeCore.h"
+#include "QGCCorePlugin.h"
 #include "QGCHostNotices.h"
 
 #include "Fact.h"
@@ -90,6 +91,9 @@ QObject *rootObject(const QString &name)
             flying->start();
         }
         return flying;
+    }
+    if (name == QLatin1String("corePlugin")) {
+        return QGCCorePlugin::instance();
     }
     if (name == QLatin1String("logDownload")) {
         return LogDownloadController::instance();
@@ -461,7 +465,19 @@ QJsonObject readPath(const QString &path, const QSet<QString> &fields = {}, bool
         return objectJson(resolved.object, fields, compactFacts, seen);
     }
 
-    const QVariant value = resolved.object->property(resolved.property.toUtf8().constData());
+    // A misspelled property and a property that happens to be null read identically, so a head or
+    // the core reading a name that does not exist gets a plausible answer and takes its default.
+    // Saying so costs nothing: the key appears only when the name is wrong.
+    const QByteArray property = resolved.property.toUtf8();
+    if (resolved.object->metaObject()->indexOfProperty(property.constData()) < 0 && !resolved.object->dynamicPropertyNames().contains(property)) {
+        return QJsonObject {
+            { QStringLiteral("kind"), QStringLiteral("value") },
+            { QStringLiteral("value"), QJsonValue() },
+            { QStringLiteral("found"), false },
+        };
+    }
+
+    const QVariant value = resolved.object->property(property.constData());
     if (Fact *const fact = qobject_cast<Fact *>(value.value<QObject *>())) {
         return factJson(fact);
     }

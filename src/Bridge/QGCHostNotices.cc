@@ -72,6 +72,17 @@ void QGCHostNotices::post(Kind kind, const QString &title, const QString &text)
     emit noticesChanged();
 }
 
+bool QGCHostNotices::postNotice(const QString &kind, const QString &title, const QString &text)
+{
+    static const QList<Kind> kinds = { Message, VehicleError, Navigation };
+    const auto wanted = std::find_if(kinds.cbegin(), kinds.cend(), [&kind](Kind candidate) { return token(candidate) == kind; });
+    if (wanted == kinds.cend()) {
+        return false;
+    }
+    post(*wanted, title, text);
+    return true;
+}
+
 bool QGCHostNotices::acknowledge(qint64 id)
 {
     {

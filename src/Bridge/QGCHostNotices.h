@@ -28,6 +28,7 @@ public:
 
     static QString token(Kind kind);
 
+    Q_INVOKABLE bool postNotice(const QString &kind, const QString &title, const QString &text);
     Q_INVOKABLE bool acknowledge(qint64 id);
     Q_INVOKABLE int acknowledgeThrough(qint64 id);
 

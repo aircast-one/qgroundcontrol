@@ -2233,6 +2233,16 @@ void QGCCoreCTest::_operatorNoticesReachAHeadWithNoQmlRoot()
     QCOMPARE(notices().count(), 0);
     QCOMPARE(take(qgc_bridge_get("host.count")).value(QStringLiteral("value")).toInt(), 0);
 
+    // A head cannot see this channel work without something posting on it, and every real poster
+    // needs a vehicle, an upload or a settings write. This is how a rig makes one arrive.
+    QVERIFY2(take(qgc_bridge_invoke("host.postNotice", "[\"navigation\",\"setup\",\"\"]")).value(QStringLiteral("result")).toBool(false),
+             "a rig has to be able to post a notice, or a head can only ever test its decoder");
+    QCOMPARE(notices().count(), 1);
+    QCOMPARE(notices().first().toObject().value(QStringLiteral("kind")).toString(), QStringLiteral("navigation"));
+    QCOMPARE(take(qgc_bridge_invoke("host.postNotice", "[\"shouting\",\"x\",\"y\"]")).value(QStringLiteral("result")).toBool(true), false);
+    QCOMPARE(notices().count(), 1);
+    drain();
+
     const int droppedBefore = take(qgc_bridge_get("host.dropped")).value(QStringLiteral("value")).toInt();
     for (int index = 0; index < 70; index++) {
         qgcApp()->showAppMessage(QStringLiteral("message %1").arg(index));
@@ -2595,8 +2605,10 @@ void QGCCoreCTest::_theCoreRefusesAMissionItemThePlanHasDecidedAgainst()
     QCOMPARE(withCorridor, withSurvey + 1);
     QCOMPARE(take(qgc_bridge_get(QStringLiteral("plan.missionController.visualItems.%1.corridorPolyline.path").arg(withCorridor - 1).toUtf8().constData())).value(QStringLiteral("value")).toArray().count(), 2);
 
-    const QJsonObject unknown = insert("[\"orbit\", 47.3975, 8.5460, -1]");
+    const QJsonObject unknown = insert("[\"Fixed Wing Landing Pattern\", 47.3975, 8.5460, -1]");
     QCOMPARE(unknown.value(QStringLiteral("ok")).toBool(true), false);
+    QVERIFY2(unknown.value(QStringLiteral("unknown")).toString() == QStringLiteral("Fixed Wing Landing Pattern"),
+             "QGC has item types this catalogue does not list, and a head holding one has to tell being unlisted apart from being turned down");
     QCOMPARE(settled(), withCorridor);
 #else
     QSKIP("the Rust core is not linked into this build");
@@ -2707,6 +2719,62 @@ void QGCCoreCTest::_setupSeesTheComponentsTheVehicleReports()
         }
     }
     QVERIFY2(missing.isEmpty(), qPrintable(QStringLiteral("the setup view is missing components the vehicle reports: %1").arg(missing.join(QStringLiteral(", ")))));
+#else
+    QSKIP("the Rust core is not linked into this build");
+#endif
+}
+
+void QGCCoreCTest::_listsRecordedAsEmptyAreCheckedAgainstAVehicle()
+{
+#ifdef QGC_RUST_CORE
+    _connectMockLink(MAV_AUTOPILOT_PX4);
+    const auto disconnectWhenDone = qScopeGuard([this]() { _disconnectMockLink(); });
+    QTRY_VERIFY_WITH_TIMEOUT(take(qgc_bridge_get("view.sensors")).value(QStringLiteral("available")).toBool(false), 10000);
+
+    // A list recorded as empty is a question rather than a shape: it may be a list nothing filled,
+    // or a read that never finds anything. These two are the ones a connected vehicle should fill.
+    const QJsonArray channels = take(qgc_core_get("view.radio")).value(QStringLiteral("channels")).toArray();
+    const QJsonArray raw = take(qgc_bridge_get("radioCal.rcValues")).value(QStringLiteral("value")).toArray();
+    QVERIFY2(channels.count() == raw.count(),
+             qPrintable(QStringLiteral("the vehicle reports %1 radio channels and the view carries %2").arg(raw.count()).arg(channels.count())));
+
+    const QJsonObject sensors = take(qgc_core_get("view.sensors"));
+    const QJsonArray all = sensors.value(QStringLiteral("sensors")).toArray();
+    QVERIFY2(!all.isEmpty(), "the sensors view names no sensors at all for a connected vehicle, which is what a read that finds nothing looks like");
+    const QJsonArray failing = sensors.value(QStringLiteral("failing")).toArray();
+    int unhealthy = 0;
+    for (const QJsonValue &sensor : all) {
+        if (sensor.toObject().value(QStringLiteral("status")).toString() == QStringLiteral("unhealthy")) {
+            unhealthy++;
+        }
+    }
+    QCOMPARE(failing.count(), unhealthy);
+#else
+    QSKIP("the Rust core is not linked into this build");
+#endif
+}
+
+void QGCCoreCTest::_aMisspelledPropertyIsToldApartFromANullOne()
+{
+#ifdef QGC_RUST_CORE
+    const QJsonObject typo = take(qgc_bridge_get("settings.appSettings.audioMutedd"));
+    QCOMPARE(typo.value(QStringLiteral("kind")).toString(), QStringLiteral("value"));
+    QVERIFY2(typo.value(QStringLiteral("found")).toBool(true) == false,
+             "a name that does not exist has to say so; without it a head reading a typo gets a plausible null and draws its default, with no error anywhere in the chain");
+    QVERIFY(typo.value(QStringLiteral("value")).isNull());
+
+    const QJsonObject real = take(qgc_bridge_get("settings.appSettings.audioMuted"));
+    QVERIFY2(!real.contains(QStringLiteral("found")),
+             "a name that does exist says nothing extra, so no head and no recorded contract sees a new key on a path that works");
+    QVERIFY(!real.value(QStringLiteral("value")).isNull());
+
+    const QJsonObject nullValued = take(qgc_bridge_get("plan.currentPlanFile"));
+    QVERIFY2(!nullValued.contains(QStringLiteral("found")),
+             "a property that exists and is genuinely null is a different answer from one that does not exist, which is the whole point");
+    QVERIFY(nullValued.value(QStringLiteral("value")).isNull() || nullValued.value(QStringLiteral("value")).toString().isEmpty());
+
+    const QJsonObject noSuchRoot = take(qgc_bridge_get("settingsss.appSettings.audioMuted"));
+    QCOMPARE(noSuchRoot.value(QStringLiteral("kind")).toString(), QStringLiteral("null"));
 #else
     QSKIP("the Rust core is not linked into this build");
 #endif

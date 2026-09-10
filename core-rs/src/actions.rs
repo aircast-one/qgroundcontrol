@@ -45,7 +45,10 @@ fn insert(backend: &dyn Backend, args: &str) -> Value {
         return json!({ "ok": false, "reason": "mission.insert takes a kind, a latitude, a longitude and an index" });
     };
     let Some(kind) = lookup(named) else {
-        return json!({ "ok": false, "reason": format!("{named} is not a mission item this plan can hold") });
+        // Refusing a kind and never having heard of it are different answers. QGC has item types
+        // this catalogue does not list, and a head holding one needs to know it can insert it
+        // directly rather than that the plan turned it down.
+        return json!({ "ok": false, "unknown": named, "reason": format!("the core has no {named} in its catalogue, so this one has to be inserted directly") });
     };
     let index = args.get(3).and_then(Value::as_i64).unwrap_or(-1);
     let at_sequence = point_at(backend, index);
@@ -216,12 +219,18 @@ mod tests {
     }
 
     #[test]
-    fn a_kind_that_does_not_exist_is_named_in_the_refusal() {
+    fn a_kind_the_core_never_heard_of_says_so_rather_than_saying_no() {
         let plan = Plan::new(flying_mission());
-        let refused = run(&plan, "mission.insert", "[\"orbit\", 47.0, 8.0, -1]");
-        assert_eq!(refused["ok"], false);
-        assert!(refused["reason"].as_str().unwrap().contains("orbit"));
+        let unknown = run(&plan, "mission.insert", "[\"Fixed Wing Landing Pattern\", 47.0, 8.0, -1]");
+        assert_eq!(unknown["ok"], false);
+        assert_eq!(unknown["unknown"], "Fixed Wing Landing Pattern", "a head holding an item type this catalogue never listed has to be able to tell that apart from the plan turning it down, because the first means insert it yourself and the second means do not");
+        assert!(unknown["reason"].as_str().unwrap().contains("catalogue"));
         assert!(plan.calls.lock().unwrap().is_empty(), "a kind the core does not know is refused before the plan view is even moved");
+
+        let refused = run(&Plan::new(empty_ground_mission()), "mission.insert", "[\"survey\", 47.0, 8.0, -1]");
+        assert_eq!(refused["ok"], false);
+        assert_eq!(refused["unknown"], Value::Null, "a kind the core does know and is refusing carries no unknown marker");
+        assert_eq!(refused["refused"], "survey");
     }
 
     #[test]
