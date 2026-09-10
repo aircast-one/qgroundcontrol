@@ -3087,6 +3087,46 @@ The rig also gained `NO_RCMAP=1`, because with the mapping present the vehicle r
 set up and the badge under test cannot appear at all — both states have to be reachable or only
 one of them is ever tested.
 
+### Sensor calibration comes from the core, rules included
+
+The core session landed calibration and pointed the Android head at `view.coreCalibration`. That
+would have been an empty screen. There are two registrations, and the difference matters:
+`view.coreCalibration` is computed by `hub::core_calibration_view`, which reads the Rust core's own
+MAVLink state machine — populated only when the core owns the link. This head's vehicle belongs to
+Qt. **`view.calibration` is the one that projects `sensorsCal`**, and it is what the screen now
+reads. Checked in the source before building anything, because the failure would have looked
+exactly like a screen that works and shows nothing to do.
+
+The migration replaces roughly thirty-five individual watched paths with one: six for the running
+state, five for the list, and twenty-four for the orientation grid, which read
+`orientationCal<Side>Side{Visible,Done,InProgress,Rotate}` four at a time across six sides. The
+core serves those as a `sides` array with a single `stage` per side.
+
+**The rule went with it, which is the part that matters.** `blockedByAccel` and the
+`needsAccelFirst` flags were a head-side copy of a safety rule — a compass calibrated against an
+uncalibrated accelerometer gives an operator a result they have no reason to distrust. The core
+now answers `blocked` and `enabled` per routine, and the head honours the answer instead of
+re-deriving it. The head-side tests for the rule were deleted only after confirming the core tests
+it, including the invocation string and its arguments.
+
+**What did not move is the copy.** The core's `explanation` is terser than what this screen said,
+and its Level Horizon routine has no counterpart to "Get this wrong and it will drift in flight."
+Instruction text keyed by routine id stays in the head, falling back to the core's description for
+any routine the head has not written copy for. Presentation is head knowledge on the same argument
+that took `completes` out of the core.
+
+**One safety property was nearly lost in the move.** A head-side test asserted that no offered
+calibration spins a propeller. With the list now coming from the core, that assertion had nothing
+left to check — so it moved to `core-rs/src/calibration.rs`, where the list lives, rather than
+being deleted with the code it guarded.
+
+Verified on the handset in both directions, which needed a new lever: with the accelerometer
+calibrated all five routines are listed and openable; with `ACCEL_UNCAL=1` the Accelerometer reads
+"Not calibrated" in red and stays openable — it is the way out — while Compass and Level Horizon
+read "Calibrate the accelerometer first" and cannot be tapped, and Gyro and Pressure are
+unaffected. The sim served only `INS_ACCOFFS_X`, and the rule needs all three axes at zero, so
+the blocked branch had no way to appear before this.
+
 ## Phase 6 — Shell · 2 weeks
 
 Cheaper than macOS, because Qt is already off the main thread.
