@@ -530,12 +530,37 @@ looked at the Android head.
 indeed plain `public:` at `Vehicle.h:1340` and so invisible to `invokePath`, which scans
 `QMetaObject` and sees only signals, slots and `Q_INVOKABLE` methods. I concluded from that the
 feature needed a `Q_INVOKABLE` on `Vehicle.h` and therefore an AAR rebuild across ~120 translation
-units. It does not. `MAVLinkInspectorController::setMessageInterval(int32_t rate)` is `Q_INVOKABLE`
+units. It does not. `MAVLinkInspectorController::setMessageInterval` is `Q_INVOKABLE`
 (`MAVLinkInspectorController.h:70`), resolves the message from `_activeSystem->selectedMsg()` and
 calls `vehicle->setMessageRate` internally; `setActiveSystem(int)` is invokable beside it. The head
 sets the selection as state and invokes the controller with a rate alone. So the work is head-only,
 needs no rebuild, and the reachability check I ran — "is *this* method invokable" — asked about the
 wrong object. The right question was whether *any* invokable path reaches the behaviour.
+
+**Built and verified** (`cc0ed8c`, with `53b9a84cc` in this repo). Picking a rate writes the message
+selection and then invokes `mavlinkInspector.setMessageInterval`, in that order on one background
+thread, because the controller resolves the message from the active system's selection rather than
+taking it as an argument. Against the sim: ATTITUDE at 10 Hz puts `SET_MESSAGE_INTERVAL` on the wire
+as `p1=30 p2=100000`, at 2 Hz `p2=500000`.
+
+It did not work first time, and the reason was a real bug one layer down. The invoke failed with
+
+    QMetaMethod::invoke: cannot convert formal parameter 0 from int in call to
+    MAVLinkInspectorController::setMessageInterval(int32_t)
+
+`moc` records a parameter by the type name as written, and `int32_t` is not a registered metatype
+alias, so the method was `Q_INVOKABLE` and simultaneously uncallable through the meta system. It was
+the only `Q_INVOKABLE` in the tree declared with a fixed-width integer type — an outlier, not a
+convention — and it now takes `int`, the same type everywhere QGC builds. QML calls this method the
+same way, so the QML *Set Rate* combo was plausibly broken too; not tested, and worth checking before
+the QML is deleted on the assumption it worked.
+
+**The rate label does not update on this rig, and that is the sim rather than the app.** QGC updates
+`targetRateHz` only from a `MESSAGE_INTERVAL` the vehicle sends after acking the command —
+`_setMessageRateCommandResultHandler` re-requests it on `MAV_RESULT_ACCEPTED`. `apmvehicle.py` answers
+`REQUEST_MESSAGE` for `AUTOPILOT_VERSION` only and never sends `MESSAGE_INTERVAL`. Confirming from the
+vehicle rather than from the tap is the rule `attemptCommand` already follows for flight commands, so
+the label must not be made optimistic to make the rig look right.
 
 **That blocker is not systemic, which is worth stating because I assumed it would be.** The same
 sweep flagged `hasZoom`, `zoomLevel` and `canChangeMode` on `view.camera` as emitted and unread, and
