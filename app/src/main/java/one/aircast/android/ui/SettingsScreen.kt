@@ -17,6 +17,10 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.KeyboardArrowDown
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
+import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.Checkbox
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.HorizontalDivider
@@ -188,6 +192,7 @@ internal fun FactRow(
                     checked = fact.boolValue,
                     onCheckedChange = { checked -> write { Qgc.set(fact.path, checked) } },
                 )
+                fact.isBitmask -> BitmaskPicker(fact, ::write)
                 fact.isEnum && !fact.valueIsOffTheEnumList -> EnumPicker(fact, ::write)
                 else -> FactTextField(fact, onWrite)
             }
@@ -201,6 +206,57 @@ internal fun FactRow(
             modifier = Modifier.padding(start = 20.dp, bottom = 8.dp),
         )
     }
+    }
+}
+
+@Composable
+private fun BitmaskPicker(fact: Fact, write: (() -> Boolean) -> Unit) {
+    var editing by remember(fact.path) { mutableStateOf(false) }
+    val raw = bitmaskRaw(fact)
+
+    TextButton(
+        onClick = { editing = true },
+        contentPadding = PaddingValues(horizontal = 4.dp, vertical = 8.dp),
+    ) {
+        Text(
+            text = bitmaskSummary(fact),
+            style = MaterialTheme.typography.bodyMedium,
+            maxLines = 3,
+            overflow = TextOverflow.Ellipsis,
+        )
+    }
+
+    if (editing) {
+        AlertDialog(
+            onDismissRequest = { editing = false },
+            title = { Text(fact.title) },
+            text = {
+                Column(Modifier.verticalScroll(rememberScrollState())) {
+                    fact.bitmaskStrings.indices.forEach { index ->
+                        val bit = fact.bitmaskValues[index]
+                        Row(
+                            Modifier
+                                .fillMaxWidth()
+                                .clickable {
+                                    write { Qgc.set(fact.path, (raw xor bit).toString()) }
+                                }
+                                .padding(vertical = 6.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(12.dp),
+                        ) {
+                            Checkbox(
+                                checked = raw and bit != 0L,
+                                onCheckedChange = {
+                                    write { Qgc.set(fact.path, (raw xor bit).toString()) }
+                                },
+                            )
+                            Text(fact.bitmaskStrings[index], Modifier.weight(1f))
+                        }
+                    }
+                }
+            },
+            confirmButton = { TextButton(onClick = { editing = false }) { Text("Done") } },
+        )
     }
 }
 

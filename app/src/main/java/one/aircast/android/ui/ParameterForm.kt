@@ -145,3 +145,16 @@ internal fun ParameterForm(
         }
     }
 }
+
+internal fun bitmaskRaw(fact: Fact): Long =
+    (fact.value as? Number)?.toLong() ?: fact.valueString.toDoubleOrNull()?.toLong() ?: 0L
+
+internal fun bitmaskSummary(fact: Fact): String {
+    val raw = bitmaskRaw(fact)
+    val set = fact.bitmaskValues.indices.filter { raw and fact.bitmaskValues[it] != 0L }
+    return when {
+        set.isEmpty() -> "None"
+        set.size == fact.bitmaskStrings.size -> "All"
+        else -> set.joinToString(", ") { fact.bitmaskStrings[it] }
+    }
+}
