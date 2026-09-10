@@ -831,6 +831,8 @@
         "kinds": [
             {
                 "complexName": "null",
+                "disabledReason": "null|string",
+                "enabled": "bool",
                 "geometry": "null",
                 "geometryProperty": "null",
                 "id": "string",

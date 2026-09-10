@@ -2196,13 +2196,14 @@ void QGCCoreCTest::_operatorNoticesReachAHeadWithNoQmlRoot()
 
     const QJsonArray waiting = notices();
     QCOMPARE(waiting.count(), 3);
-    QCOMPARE(waiting.at(0).toObject().value(QStringLiteral("kind")).toInt(), 0);
+    QCOMPARE(waiting.at(0).toObject().value(QStringLiteral("kind")).toString(), QStringLiteral("message"));
     QCOMPARE(waiting.at(0).toObject().value(QStringLiteral("title")).toString(), QStringLiteral("Parameters"));
     QCOMPARE(waiting.at(0).toObject().value(QStringLiteral("text")).toString(), QStringLiteral("The vehicle refused the parameter write."));
-    QCOMPARE(waiting.at(1).toObject().value(QStringLiteral("kind")).toInt(), 2);
+    QVERIFY2(waiting.at(1).toObject().value(QStringLiteral("kind")).toString() == QStringLiteral("navigation"),
+             "a token rather than an enum ordinal, so that inserting a kind in the middle of the list cannot silently change what a head already decodes");
     QVERIFY2(waiting.at(1).toObject().value(QStringLiteral("title")).toString() == QStringLiteral("setup"),
              "the jump to the setup tab has to arrive beside the message that explains it, or the app looks like it lost its place");
-    QCOMPARE(waiting.at(2).toObject().value(QStringLiteral("kind")).toInt(), 1);
+    QCOMPARE(waiting.at(2).toObject().value(QStringLiteral("kind")).toString(), QStringLiteral("vehicleError"));
 
     QVERIFY2(waiting.at(0).toObject().value(QStringLiteral("id")).toInteger() < waiting.at(1).toObject().value(QStringLiteral("id")).toInteger(),
              "ids rise with time, which is what lets a head acknowledge everything it has drawn in one call");
@@ -2227,7 +2228,11 @@ void QGCCoreCTest::_operatorNoticesReachAHeadWithNoQmlRoot()
     QCOMPARE(notices().count(), 64);
     QVERIFY2(take(qgc_bridge_get("host.dropped")).value(QStringLiteral("value")).toInt() > droppedBefore,
              "a head that never drains must not grow the queue without bound, and it has to be able to see that it missed something");
-    QCOMPARE(notices().first().toObject().value(QStringLiteral("text")).toString(), QStringLiteral("message 6"));
+    QVERIFY2(notices().first().toObject().value(QStringLiteral("text")).toString() == QStringLiteral("message 0"),
+             "under a flood the first notice is the one that explains the rest, so it is not the one to lose");
+    QCOMPARE(notices().at(7).toObject().value(QStringLiteral("text")).toString(), QStringLiteral("message 7"));
+    QCOMPARE(notices().at(8).toObject().value(QStringLiteral("text")).toString(), QStringLiteral("message 14"));
+    QCOMPARE(notices().last().toObject().value(QStringLiteral("text")).toString(), QStringLiteral("message 69"));
     drain();
 #else
     QSKIP("the Rust core is not linked into this build");
