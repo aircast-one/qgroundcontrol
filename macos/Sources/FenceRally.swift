@@ -178,7 +178,14 @@ final class FenceRallyStore: ObservableObject, Probeable, WriteReporting {
         reload()
     }
 
+    // PlanMasterController::loadFromVehicle returns silently five ways - no primary link, a
+    // high-latency link, offline, the fly view, or a sync already running - and the bridge's ok
+    // reports none of them. connected and syncing are the two this head can see, and they are
+    // the same gate MissionStore uses for the same C++ call; only one caller had it.
+    var offersDownload: Bool { connected && !syncing }
+
     func downloadFromVehicle() {
+        guard offersDownload else { return }
         Bridge.invoke("plan.loadFromVehicle")
         syncing = true
         reload()
@@ -216,7 +223,7 @@ final class FenceRallyStore: ObservableObject, Probeable, WriteReporting {
         ["shapes": shapes.count, "rallyPoints": rallyPoints.count,
          "reloads": reloads, "publishes": publishes, "watching": watchPoll != nil,
          "fenceSupported": fenceSupported, "rallySupported": rallySupported,
-         "connected": connected,
+         "connected": connected, "offersDownload": offersDownload,
          "breachReturn": breachReturn?.positionText ?? "none",
          "breachAltitude": breachAltitude ?? -1,
          "status": status, "syncing": syncing, "armingRally": armingRally,
@@ -234,7 +241,12 @@ final class FenceRallyStore: ObservableObject, Probeable, WriteReporting {
     func probeInvoke(action: String, args: [String: String]) -> [String: Any] {
         switch action {
         case "reload": reload()
-        case "download": downloadFromVehicle()
+        case "download":
+            guard offersDownload else {
+                return ["ok": false,
+                        "error": syncing ? "the plan is syncing" : "no vehicle is connected"]
+            }
+            downloadFromVehicle()
         case "addFence":
             if let failure = addFence(circle: args["circle"] == "1") {
                 return ["ok": false, "error": failure]

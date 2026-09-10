@@ -867,6 +867,7 @@
             {
                 "pages": [
                     {
+                        "completes": "bool",
                         "name": "string",
                         "native": "bool",
                         "parameterSections": "bool"

@@ -805,13 +805,9 @@ final class MissionStore: ObservableObject, Probeable, WriteReporting {
                                z: Int(args["z"] ?? "") ?? 0,
                                type: args["type"] ?? CachedTileOverlay.currentMapType(),
                                includeData: args["data"] != nil)
-        case "upload":
-            uploadToVehicle()
-            for _ in 0..<150 where syncing {
-                RunLoop.current.run(until: Date().addingTimeInterval(0.1))
-                syncing = (Bridge.group("plan")["syncInProgress"] as? NSNumber)?.boolValue ?? false
-            }
-            reload()
+        // No upload action. uploadToVehicle() sends the plan outright whenever the core says
+        // canSend, so an action wrapping it was a probe that could fly a plan onto a vehicle.
+        // uploadPreCheck answers the readable half - canSend and the refusal - and sends nothing.
         case "addWaypoint":
             guard let latitude = Double(args["latitude"] ?? ""),
                   let longitude = Double(args["longitude"] ?? "") else {
