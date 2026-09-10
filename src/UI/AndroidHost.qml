@@ -72,12 +72,6 @@ Item {
 
     Component.onCompleted: QGroundControl.corePlugin.setupEmbeddedEngine(mainWindow)
 
-    Timer {
-        interval:   300
-        repeat:     true
-        running:    true
-        onTriggered: running = !QGroundControl.videoManager.initForItem(mainWindow)
-    }
 
     QtObject {
         id: globals

@@ -89,7 +89,11 @@ void VideoManager::init(QQuickWindow *window)
         return;
     }
 
-    if (!window) {
+    // A native head has no QQuickWindow at all. Everything the window is used for below is
+    // QtQuick-only - finding the video item, the thermal widget, and deferring startVideo() to
+    // the scene graph's render thread - and none of it applies to a native sink. Refusing a
+    // null window here is what tied video initialisation to the QML host.
+    if (!window && !_nativeRendering) {
         qCCritical(VideoManagerLog) << "Failed To Init Video Manager - window is NULL";
         return;
     }
@@ -116,8 +120,8 @@ void VideoManager::init(QQuickWindow *window)
 
     (void) connect(this, &VideoManager::autoStreamConfiguredChanged, this, &VideoManager::_videoSourceChanged);
 
-    _mainWidget = window->findChild<QQuickItem*>(QLatin1String(kMainReceiverName));
-    if (!_mainWidget) {
+    _mainWidget = window ? window->findChild<QQuickItem*>(QLatin1String(kMainReceiverName)) : nullptr;
+    if (!_mainWidget && window) {
         qCCritical(VideoManagerLog) << "main video widget not found";
     }
 
@@ -140,7 +144,13 @@ void VideoManager::init(QQuickWindow *window)
 
     _rebindWidgets();
 
-    window->scheduleRenderJob(new FinishVideoInitialization(), QQuickWindow::BeforeSynchronizingStage);
+    if (window) {
+        window->scheduleRenderJob(new FinishVideoInitialization(), QQuickWindow::BeforeSynchronizingStage);
+    } else {
+        // No scene graph to wait for. Queued rather than direct so startVideo() does not run
+        // inside init(), where _initialized is not yet set and a restart would re-enter.
+        (void) QMetaObject::invokeMethod(this, [this]() { startVideo(); }, Qt::QueuedConnection);
+    }
 
     _initialized = true;
 }
@@ -1062,7 +1072,7 @@ void VideoManager::_initVideoReceiver(VideoReceiver *receiver, QQuickWindow *win
 
     // The thermal stream keeps its fixed widget; all camera receivers get their widget
     // assigned by role (main view vs tile) in _rebindWidgets().
-    if (receiver->isThermal()) {
+    if (receiver->isThermal() && window) {
         QQuickItem *widget = window->findChild<QQuickItem*>(receiver->name());
         if (!widget) {
             qCCritical(VideoManagerLog) << "stream widget not found" << receiver->name();

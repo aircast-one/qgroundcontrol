@@ -104,6 +104,9 @@ public:
 
     void init(QQuickWindow *rootWindow);
     Q_INVOKABLE bool initForItem(QQuickItem *item) { init(item ? item->window() : nullptr); return _initialized; }
+    /// Initialise with no scene graph, for a head that renders video itself.
+    /// setNativeRendering(true) must come first, or receivers are bound to QtQuick widgets that do not exist.
+    Q_INVOKABLE bool initNative() { init(nullptr); return _initialized; }
     void cleanup();
     bool autoStreamConfigured() const;
     bool decoding() const { return _decoding; }
