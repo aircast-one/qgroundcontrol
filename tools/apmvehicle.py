@@ -221,6 +221,10 @@ def main():
             link.global_position_int_send(now_ms, int(lat * 1e7), int(lon * 1e7),
                                           120000, int(altitude * 1000), 300, 0, 0,
                                           int(heading * 100))
+        if not nofix and tick % 10 == 0:
+            link.home_position_send(int((CENTRE_LAT + CENTRE_SHIFT) * 1e7), int(CENTRE_LON * 1e7), 120000,
+                                    0.0, 0.0, 0.0, [1.0, 0.0, 0.0, 0.0], 0.0, 0.0, 0.0,
+                                    now_ms * 1000)
         link.gps_raw_int_send(now_ms * 1000, 0 if nofix else 3, int(lat * 1e7), int(lon * 1e7),
                               120000, 120, 120, 350, 0, 11)
         link.vfr_hud_send(7.5, 8.1, int(heading), 55, altitude, 1.2)
