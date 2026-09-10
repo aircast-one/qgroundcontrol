@@ -65,7 +65,8 @@ public:
     /// Indices that hold a real, playable source (always includes Camera 1). Disabled
     /// additional cameras are excluded so they don't appear as switch targets.
     QList<int> switchableIndices     ();
-    bool     sourceConfigured       (int index);
+    Q_INVOKABLE bool sourceConfigured (int index);
+    Q_INVOKABLE bool sourceEnabled    (int index);
 
     /// Switchable indices except the active one, in order — the cameras shown as
     /// picture-in-picture tiles when multi-view is enabled.

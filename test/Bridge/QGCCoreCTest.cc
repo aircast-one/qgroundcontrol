@@ -159,7 +159,9 @@ void QGCCoreCTest::_guidedActionsFollowTheVehicle()
     QCOMPARE(none.value(QStringLiteral("class")).toString(), QStringLiteral("GuidedActions"));
     QCOMPARE(none.value(QStringLiteral("connected")).toBool(true), false);
     const QJsonArray hidden = none.value(QStringLiteral("actions")).toArray();
-    QCOMPARE(hidden.count(), 14);
+    const QJsonArray declared = take(qgc_bridge_get("view.contract")).value(QStringLiteral("enumerations")).toObject().value(QStringLiteral("view.guidedActions.actions[].id")).toArray();
+    QVERIFY(!declared.isEmpty());
+    QCOMPARE(hidden.count(), declared.count());
     QVERIFY(std::all_of(hidden.begin(), hidden.end(), [](const QJsonValue &a) { return a.toObject().value(QStringLiteral("offer")).toString() == QStringLiteral("hidden"); }));
 
     _connectMockLink(MAV_AUTOPILOT_PX4);
@@ -1010,6 +1012,13 @@ void QGCCoreCTest::_videoAndCameraAreServed()
     const QJsonObject camera = take(qgc_bridge_get("view.camera"));
     QCOMPARE(camera.value(QStringLiteral("present")).toBool(true), false);
     QCOMPARE(camera.value(QStringLiteral("shotsText")).toString(), QStringLiteral("00000"));
+
+    const QJsonObject enabled = take(qgc_bridge_invoke("settings.videoSettings.sourceEnabled", "[0]"));
+    QVERIFY2(enabled.value(QStringLiteral("ok")).toBool(false), "the core asks the settings object whether a slot is enabled instead of comparing a translated status string");
+    QVERIFY2(enabled.value(QStringLiteral("result")).isBool(), "sourceEnabled answers a bool; its value follows this machine's settings and is not asserted here");
+    const QJsonObject configured = take(qgc_bridge_invoke("settings.videoSettings.sourceConfigured", "[0]"));
+    QVERIFY2(configured.value(QStringLiteral("ok")).toBool(false), "sourceConfigured is reachable from the bridge");
+    QVERIFY(configured.value(QStringLiteral("result")).isBool());
 }
 
 namespace

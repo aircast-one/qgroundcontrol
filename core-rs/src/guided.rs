@@ -11,6 +11,7 @@ pub const DEPS: &[&str] = &[
     "vehicle.flying",
     "vehicle.flightMode",
     "vehicle.landing",
+    "vehicle.vtol",
     "vehicle.vtolInFwdFlight",
     "vehicle.initialConnectComplete",
     "vehicle.checkListState",
@@ -36,6 +37,8 @@ pub struct GuidedState {
     pub takeoff_supported: bool,
     pub pause_supported: bool,
     pub fixed_wing: bool,
+    pub vtol: bool,
+    pub vtol_in_fwd_flight: bool,
     pub forward_flight: bool,
     pub speed_limits: bool,
     pub landing: bool,
@@ -83,6 +86,8 @@ pub enum Action {
     Grab,
     Release,
     EmergencyStop,
+    VtolTransitionToFixedWing,
+    VtolTransitionToMultiRotor,
 }
 
 pub const ACTIONS: &[Action] = &[
@@ -100,6 +105,8 @@ pub const ACTIONS: &[Action] = &[
     Action::Grab,
     Action::Release,
     Action::EmergencyStop,
+    Action::VtolTransitionToFixedWing,
+    Action::VtolTransitionToMultiRotor,
 ];
 
 #[derive(Serialize, PartialEq, Debug)]
@@ -131,6 +138,8 @@ impl Action {
             Action::Grab => "Grab",
             Action::Release => "Release",
             Action::EmergencyStop => "Emergency Stop",
+            Action::VtolTransitionToFixedWing => "Transition to Fixed Wing",
+            Action::VtolTransitionToMultiRotor => "Transition to Multi-Rotor",
         }
     }
 
@@ -150,6 +159,8 @@ impl Action {
             Action::Grab => "Close the gripper and hold the cargo.",
             Action::Release => "Open the gripper and drop the cargo.",
             Action::EmergencyStop => "Stop the motors immediately. The vehicle will fall.",
+            Action::VtolTransitionToFixedWing => "Transition VTOL to fixed wing flight.",
+            Action::VtolTransitionToMultiRotor => "Transition VTOL to multi-rotor flight.",
         }
     }
 
@@ -177,6 +188,8 @@ impl Action {
                     s.armed && s.guided_supported && s.flying && !s.mission_active() && s.speed_limits
                 }
                 Action::EmergencyStop => s.armed && s.flying,
+                Action::VtolTransitionToFixedWing => s.vtol && s.flying && !s.vtol_in_fwd_flight,
+                Action::VtolTransitionToMultiRotor => s.vtol && s.flying && s.vtol_in_fwd_flight,
             }
     }
 
@@ -243,7 +256,7 @@ fn read_state(backend: &dyn Backend) -> GuidedState {
     }
     let vehicle = object(&backend.get_fields(
         "vehicle",
-        "armed,flying,guidedModeSupported,takeoffVehicleSupported,pauseVehicleSupported,fixedWing,vtolInFwdFlight,haveFWSpeedLimits,haveMRSpeedLimits,px4Firmware,apmFirmware,landing,hasGripper,initialConnectComplete,checkListState,flightMode,rtlFlightMode,smartRTLFlightMode,landFlightMode,missionFlightMode,pauseFlightMode",
+        "armed,flying,guidedModeSupported,takeoffVehicleSupported,pauseVehicleSupported,fixedWing,vtol,vtolInFwdFlight,haveFWSpeedLimits,haveMRSpeedLimits,px4Firmware,apmFirmware,landing,hasGripper,initialConnectComplete,checkListState,flightMode,rtlFlightMode,smartRTLFlightMode,landFlightMode,missionFlightMode,pauseFlightMode",
     ));
     let report = object(&backend.get_fields("vehicle.healthAndArmingCheckReport", "supported,canArm,canTakeoff,canStartMission"));
     let mission = object(&backend.get_fields("plan.missionController", "containsItems,missionItemCount,currentMissionIndex"));
@@ -256,7 +269,8 @@ fn read_state(backend: &dyn Backend) -> GuidedState {
     let report_supported = flag(&report, "supported");
     let gate = |key: &str| checklist_passed && (!report_supported || flag(&report, key));
     let fixed_wing = flag(&vehicle, "fixedWing");
-    let forward_flight = flag(&vehicle, "vtolInFwdFlight") || fixed_wing;
+    let vtol_in_fwd_flight = flag(&vehicle, "vtolInFwdFlight");
+    let forward_flight = vtol_in_fwd_flight || fixed_wing;
     GuidedState {
         connected: true,
         armed: flag(&vehicle, "armed"),
@@ -265,6 +279,8 @@ fn read_state(backend: &dyn Backend) -> GuidedState {
         takeoff_supported: flag(&vehicle, "takeoffVehicleSupported"),
         pause_supported: flag(&vehicle, "pauseVehicleSupported"),
         fixed_wing,
+        vtol: flag(&vehicle, "vtol"),
+        vtol_in_fwd_flight,
         forward_flight,
         speed_limits: if forward_flight { flag(&vehicle, "haveFWSpeedLimits") } else { flag(&vehicle, "haveMRSpeedLimits") }
             || speed_limits_live(backend, flag(&vehicle, "px4Firmware"), flag(&vehicle, "apmFirmware"), forward_flight),
@@ -359,6 +375,25 @@ mod tests {
         assert_eq!(offer_of(&done, Action::ContinueMission), "hidden");
         let ground = GuidedState { armed: false, flying: false, ..mid };
         assert_eq!(offer_of(&ground, Action::StartMission), "ready");
+    }
+
+    #[test]
+    fn only_a_vtol_is_offered_a_transition_and_only_the_one_it_is_not_in() {
+        let aloft = GuidedState { armed: true, flying: true, ..ready_on_ground() };
+        assert_eq!(offer_of(&aloft, Action::VtolTransitionToFixedWing), "hidden", "a vehicle that cannot transition is never asked to");
+        assert_eq!(offer_of(&aloft, Action::VtolTransitionToMultiRotor), "hidden");
+        let grounded = GuidedState { vtol: true, ..ready_on_ground() };
+        assert_eq!(offer_of(&grounded, Action::VtolTransitionToFixedWing), "hidden", "a VTOL on the ground is never offered a transition, as QGC only opens that drawer in the air");
+        let rotor = GuidedState { vtol: true, ..aloft.clone() };
+        assert_eq!(offer_of(&rotor, Action::VtolTransitionToFixedWing), "ready");
+        assert_eq!(offer_of(&rotor, Action::VtolTransitionToMultiRotor), "hidden", "a vehicle already in multi-rotor flight is not offered the way it came");
+        let wing = GuidedState { vtol: true, vtol_in_fwd_flight: true, ..aloft.clone() };
+        assert_eq!(offer_of(&wing, Action::VtolTransitionToMultiRotor), "ready");
+        assert_eq!(offer_of(&wing, Action::VtolTransitionToFixedWing), "hidden");
+        let gone = GuidedState { connected: false, vtol: true, flying: true, ..GuidedState::default() };
+        assert_eq!(offer_of(&gone, Action::VtolTransitionToFixedWing), "hidden");
+        assert!(!Action::VtolTransitionToFixedWing.offer(&rotor).destructive, "a transition is not a destructive action");
+        assert!(!Action::VtolTransitionToFixedWing.offer(&rotor).carries_value, "a transition takes no value from the operator");
     }
 
     #[test]

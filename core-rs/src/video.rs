@@ -25,7 +25,6 @@ pub const CAMERA_DEPS: &[&str] = &[
     "vehicle.cameraTriggerPoints.count",
 ];
 
-const NO_URL_STATUS: &str = "No stream URL";
 const UNDEFINED_MODE: i64 = -1;
 const PHOTO_MODE: i64 = 0;
 const VIDEO_MODE: i64 = 1;
@@ -34,6 +33,10 @@ const VIDEO_RUNNING: i64 = 1;
 const PHOTO_IN_PROGRESS: i64 = 1;
 const PHOTO_INTERVAL_IN_PROGRESS: i64 = 3;
 const IDLE_CLOCK: &str = "00:00:00";
+
+fn slot_flag(backend: &dyn Backend, path: &str, slot: usize) -> bool {
+    crate::read::result_flag(&backend.invoke(path, &json!([slot]).to_string()))
+}
 
 pub fn video_summary(available: bool, decoding: bool, recording: bool, connecting: bool, configured: usize) -> &'static str {
     match (available, decoding, recording, connecting, configured) {
@@ -61,7 +64,8 @@ pub fn video_view(backend: &dyn Backend, _args: &[String]) -> Value {
                 "status": status,
                 "connecting": connecting.get(slot).copied().unwrap_or(false),
                 "recording": recording_flags.get(slot).copied().unwrap_or(false),
-                "configured": !status.is_empty() && status != NO_URL_STATUS,
+                "enabled": slot_flag(backend, "settings.videoSettings.sourceEnabled", slot),
+                "configured": slot_flag(backend, "settings.videoSettings.sourceEnabled", slot) && slot_flag(backend, "settings.videoSettings.sourceConfigured", slot),
             })
         })
         .collect();
@@ -148,7 +152,14 @@ pub fn camera_view(backend: &dyn Backend, _args: &[String]) -> Value {
 mod tests {
     use super::*;
 
-    struct Fake { video: Value, camera: Value }
+    struct Fake { video: Value, camera: Value, enabled: Vec<bool>, configured: Vec<bool> }
+
+    impl Fake {
+        fn new(video: Value, camera: Value) -> Fake {
+            Fake { video, camera, enabled: Vec::new(), configured: Vec::new() }
+        }
+    }
+
     impl Backend for Fake {
         fn get(&self, _p: &str) -> String { json!({ "kind": "null" }).to_string() }
         fn get_fields(&self, path: &str, _f: &str) -> String {
@@ -159,7 +170,15 @@ mod tests {
             }
         }
         fn set(&self, _p: &str, _v: &str) -> String { String::new() }
-        fn invoke(&self, _p: &str, _a: &str) -> String { String::new() }
+        fn invoke(&self, path: &str, args: &str) -> String {
+            let slot = serde_json::from_str::<Vec<usize>>(args).ok().and_then(|a| a.first().copied()).unwrap_or(0);
+            let answer = |slots: &[bool]| json!({ "ok": true, "result": slots.get(slot).copied().unwrap_or(false) }).to_string();
+            match path {
+                "settings.videoSettings.sourceEnabled" => answer(&self.enabled),
+                "settings.videoSettings.sourceConfigured" => answer(&self.configured),
+                _ => String::new(),
+            }
+        }
         fn watch(&self, _p: &[String]) {}
     }
 
@@ -170,19 +189,22 @@ mod tests {
         assert_eq!(video_summary(true, false, false, true, 1), "Waiting for a stream.");
         assert_eq!(video_summary(true, false, false, false, 0), "No stream URL is set.");
         assert_eq!(video_summary(true, false, false, false, 2), "Not streaming.");
-        let view = video_view(&Fake { video: json!({ "kind": "object", "hasVideo": true, "decoding": false, "videoSize": { "width": 640, "height": 480 }, "cameraStatuses": ["Connecting", "No stream URL"], "cameraConnecting": [true, false], "cameraRecording": [] }), camera: json!({ "kind": "null" }) }, &[]);
+        let two_slots = Fake { enabled: vec![true, true, false], configured: vec![true, false, true], ..Fake::new(json!({ "kind": "object", "hasVideo": true, "decoding": false, "videoSize": { "width": 640, "height": 480 }, "cameraStatuses": ["Connecting", "Waiting", "Waiting"], "cameraConnecting": [true, false, false], "cameraRecording": [] }), json!({ "kind": "null" })) };
+        let view = video_view(&two_slots, &[]);
         assert_eq!(view["sourceSize"], Value::Null, "a size only counts while a frame is decoding");
-        let decoding = video_view(&Fake { video: json!({ "kind": "object", "hasVideo": true, "decoding": true, "videoSize": { "width": 640, "height": 480 }, "cameraStatuses": [], "cameraConnecting": [], "cameraRecording": [] }), camera: json!({ "kind": "null" }) }, &[]);
+        let decoding = video_view(&Fake::new(json!({ "kind": "object", "hasVideo": true, "decoding": true, "videoSize": { "width": 640, "height": 480 }, "cameraStatuses": [], "cameraConnecting": [], "cameraRecording": [] }), json!({ "kind": "null" })), &[]);
         assert_eq!(decoding["sourceSize"], json!({ "width": 640, "height": 480 }));
         assert_eq!(view["cameras"][0]["configured"], true);
-        assert_eq!(view["cameras"][1]["configured"], false);
+        assert_eq!(view["cameras"][1]["configured"], false, "an enabled slot with no address is not configured");
+        assert_eq!(view["cameras"][2]["configured"], false, "a disabled slot needs no address, so asking only whether it is configured would call it ready");
+        assert_eq!(view["cameras"][2]["enabled"], false);
         assert_eq!(view["configuredCount"], 1);
         assert_eq!(view["summary"], "Waiting for a stream.");
     }
 
     #[test]
     fn the_camera_control_reads_like_the_swift_model() {
-        let view = camera_view(&Fake { video: json!({ "kind": "null" }), camera: json!({ "kind": "object", "modelName": "ZR30", "vendor": "SIYI", "cameraMode": 1, "videoCaptureStatus": 1, "recordTimeStr": "00:01:15", "storageStatus": 2, "storageFreeStr": "12 GB", "capturesPhotos": true, "capturesVideo": true, "hasModes": true, "batteryRemaining": 80 }) }, &[]);
+        let view = camera_view(&Fake::new(json!({ "kind": "null" }), json!({ "kind": "object", "modelName": "ZR30", "vendor": "SIYI", "cameraMode": 1, "videoCaptureStatus": 1, "recordTimeStr": "00:01:15", "storageStatus": 2, "storageFreeStr": "12 GB", "capturesPhotos": true, "capturesVideo": true, "hasModes": true, "batteryRemaining": 80 })), &[]);
         assert_eq!(view["present"], true);
         assert_eq!(view["title"], "ZR30");
         assert_eq!(view["modeText"], "Video");
@@ -193,7 +215,7 @@ mod tests {
         assert_eq!(view["batteryText"], "80%");
         assert_eq!(view["canPhoto"], false);
         assert_eq!(view["canRecord"], true);
-        let none = camera_view(&Fake { video: json!({ "kind": "null" }), camera: json!({ "kind": "null" }) }, &[]);
+        let none = camera_view(&Fake::new(json!({ "kind": "null" }), json!({ "kind": "null" })), &[]);
         assert_eq!(none["present"], false);
         assert_eq!(none["title"], "Camera");
         assert_eq!(none["canRecord"], false);

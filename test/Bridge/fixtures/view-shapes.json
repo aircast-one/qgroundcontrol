@@ -194,7 +194,9 @@
                 "disarm",
                 "grab",
                 "release",
-                "emergencyStop"
+                "emergencyStop",
+                "vtolTransitionToFixedWing",
+                "vtolTransitionToMultiRotor"
             ],
             "view.guidedActions.actions[].offer": [
                 "hidden",
@@ -1103,6 +1105,7 @@
             {
                 "configured": "bool",
                 "connecting": "bool",
+                "enabled": "bool",
                 "recording": "bool",
                 "slot": "number",
                 "status": "string",

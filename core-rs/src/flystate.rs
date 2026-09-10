@@ -48,8 +48,8 @@ pub fn state_of(connected: bool, contact_lost: bool, armed: bool, flying: bool, 
         (false, ..) => State::NotConnected,
         (_, true, ..) => State::ContactLost,
         (_, _, false, ..) => State::Disarmed,
-        (_, _, _, true, _) => State::Flying,
-        (_, _, _, _, true) => State::Landing,
+        (_, _, _, true, true) => State::Landing,
+        (_, _, _, true, false) => State::Flying,
         _ => State::Armed,
     }
 }
@@ -127,8 +127,8 @@ mod tests {
     fn an_armed_vehicle_reads_as_what_it_is_doing() {
         let line = |armed: bool, flying: bool, landing: bool| read(aloft(armed, flying, landing), false)["state"].as_str().unwrap().to_string();
         assert_eq!(line(true, true, false), "flying");
-        assert_eq!(line(true, true, true), "flying", "a vehicle still under way reads as flying, as the Qt indicator does");
-        assert_eq!(line(true, false, true), "landing");
+        assert_eq!(line(true, true, true), "landing", "landing is only ever set alongside flying, so it has to outrank it or it can never name the line");
+        assert_eq!(line(true, false, true), "armed", "Vehicle::_setLanding is guarded by armed(), so landing latches through an auto-disarm on touchdown; requiring flying makes that latch unreachable");
         assert_eq!(line(true, false, false), "armed");
         assert_eq!(read(aloft(true, true, false), false)["staleNotice"], "", "a vehicle in contact carries no stale notice");
     }

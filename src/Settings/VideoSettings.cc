@@ -181,6 +181,11 @@ bool VideoSettings::sourceConfigured(int index)
     return !_sourceNeedsUrl(source) || !videoUrlAt(index).isEmpty();
 }
 
+bool VideoSettings::sourceEnabled(int index)
+{
+    return videoSourceNameAt(index) != QString::fromUtf8(videoDisabled);
+}
+
 QList<int> VideoSettings::switchableIndices()
 {
     QList<int> indices{0};
