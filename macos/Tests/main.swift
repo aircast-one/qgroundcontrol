@@ -1221,17 +1221,22 @@ func checkMissionItemKinds() {
     expect(refusing.byId("takeoff")?.enabled == false,
            "the core says which kinds can go in this mission now, and the head no longer offers "
            + "a takeoff to a mission that already has one")
-    expect(catalogue.coreInserts("takeoff") && catalogue.coreInserts("Survey"),
-           "an id and a complexName both reach mission.insert, which gates against a freshly "
-           + "selected insertion point rather than against whatever this head last polled -- the "
-           + "controller only recomputes what may go next when the plan view selects an item")
-    expect(!catalogue.coreInserts("Fixed Wing Landing Pattern"),
-           "but a pattern the catalogue never listed does not. mission.insert would call it an "
-           + "item the plan cannot hold, and QGC creates these; refusing a kind and never having "
-           + "heard of it are different answers, so this one goes in directly")
-    expect(!MissionKinds.empty.coreInserts("waypoint"),
-           "and before the catalogue has loaded nothing is routed to the core, because the name "
-           + "it would send is one this head cannot yet confirm the core knows")
+    expect(InsertOutcome(["ok": true as NSNumber, "inserted": "survey"]) == .inserted,
+           "the core inserting the item is the whole answer, and the head reads it rather than "
+           + "deciding from its own polled catalogue, which can be a poll behind")
+    expect(InsertOutcome(["ok": false as NSNumber, "unknown": "Fixed Wing Landing Pattern",
+                          "reason": "the core has no Fixed Wing Landing Pattern in its catalogue"])
+        == .insertDirectly("Fixed Wing Landing Pattern"),
+           "a name the core never listed is not one it refused -- QGC creates these -- and its "
+           + "lookup fails before it touches the controller, so nothing was inserted and nothing "
+           + "needs undoing before the head puts the item in the way it always did")
+    expect(InsertOutcome(["ok": false as NSNumber, "refused": "takeoff",
+                          "reason": "The mission already takes off before this point."])
+        == .refused("The mission already takes off before this point."),
+           "while a kind the core knows and turns down carries the core's own sentence")
+    expect(InsertOutcome(["ok": false as NSNumber]) == .refused(MissionKinds.refusedWithoutReason),
+           "and a refusal with no words still refuses, rather than falling through to the direct "
+           + "insert that unknown gets -- silence is not permission to bypass the gate")
 
     expect(catalogue.byId("takeoff")?.enabled == true,
            "a catalogue that refused nothing enables everything")

@@ -100,15 +100,28 @@ struct MissionKinds: Equatable {
         byComplexName(name)?.disabledReason
     }
 
-    // mission.insert looks a name up in this catalogue, gates it against a freshly selected
-    // insertion point, seeds its shape and rolls the item back if the shape will not write. A
-    // name the catalogue never listed it refuses as an item the plan cannot hold, which is false
-    // of a Fixed Wing Landing Pattern -- QGC creates those -- so those go in directly instead.
-    func coreInserts(_ asked: String) -> Bool {
-        byId(asked) != nil || byComplexName(asked) != nil
-    }
-
     static let refusedWithoutReason = "That item cannot go here."
+}
+
+// What mission.insert answered. The core knows whether it holds a kind and whether the plan will
+// take it now; a head that decides from its own polled catalogue is guessing with a stale copy,
+// and QGC has item types the catalogue does not list at all.
+enum InsertOutcome: Equatable {
+    case inserted
+    case insertDirectly(String)
+    case refused(String)
+
+    init(_ answer: [String: Any]) {
+        if (answer["ok"] as? NSNumber)?.boolValue == true {
+            self = .inserted
+        } else if let name = answer["unknown"] as? String {
+            // lookup() fails before the core touches the controller, so nothing was inserted and
+            // nothing needs undoing -- the item simply goes in the way it always did.
+            self = .insertDirectly(name)
+        } else {
+            self = .refused((answer["reason"] as? String) ?? MissionKinds.refusedWithoutReason)
+        }
+    }
 }
 
 struct MissionSeed: Equatable {
