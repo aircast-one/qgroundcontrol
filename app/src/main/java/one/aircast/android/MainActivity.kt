@@ -6,6 +6,7 @@ import android.net.wifi.WifiManager
 import android.os.Bundle
 import android.view.WindowManager
 import androidx.activity.ComponentActivity
+import androidx.activity.compose.BackHandler
 import androidx.activity.compose.setContent
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.foundation.clickable
@@ -180,6 +181,8 @@ fun AircastShell(quickView: QtQuickView) {
     val notices by one.aircast.android.bridge.qgcPath("host")
     val snackbars = remember { SnackbarHostState() }
     var acknowledgedThrough by remember { mutableLongStateOf(-1L) }
+
+    BackHandler(enabled = tab != Tab.Fly) { tab = Tab.Fly }
 
     LaunchedEffect(notices) {
         val queued = one.aircast.android.ui.noticesAfter(
