@@ -4232,6 +4232,19 @@ marshalling. The stall remains unexplained and is now bounded away from the QML 
   So this bullet is really the one below it — the embedded-host boot path has to exist before the
   host can go, not after. Reverted; the app is back to normal and verified.
 
+  **And that boot path cannot be written, which changes this phase.** Qt 6.8.3 exposes exactly two
+  shapes on Android: Qt owns the Activity (`QtActivityBase`), or you embed a **`QtQuickView`**, which
+  is the only *public* embedded entry point. `QtView`, `QtEmbeddedLoader`, `QtEmbeddedDelegate` and
+  `QtEmbeddedViewInterface` are all package private, so a head outside `org.qtproject.qt.android`
+  cannot reach them. There is no supported way to start Qt embedded without QtQuick.
+
+  **So "delete the QtQuickView host" and "QtQuick drops from the dependency set" cannot both happen**,
+  and the plan asks for both. The achievable shape is the one now in the tree: `AndroidHost.qml` is
+  **9 lines** — `import QtQuick; Item {}` — kept as the smallest thing the view can load, with the
+  reason written in the file. QtQuick, QtQml and QtGui stay; everything they do not need can still go.
+  Verified on the handset: all five tabs render, video binds its nine native sinks, no QML errors, no
+  crashes.
+
   One fix from the attempt was kept, because it is correct independently: an embedded host no longer
   queues app messages for a QML root that will never appear (`QGCApplication.cc`). That branch is
   unreachable while `AndroidHost.qml` is loaded and becomes live the moment it is not, which is a
