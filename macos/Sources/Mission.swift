@@ -520,6 +520,15 @@ final class MissionStore: ObservableObject, Probeable, WriteReporting {
         reload()
     }
 
+    func saveToCurrent() {
+        guard !planFile.isEmpty else { return }
+        let wrote = Bridge.invoke("plan.saveToCurrent")["result"] as? NSNumber
+        if wrote?.boolValue != true {
+            writeFailure = PlanFile.notSaved(URL(fileURLWithPath: planFile).lastPathComponent)
+        }
+        reload()
+    }
+
     func save(to file: URL) {
         let wrote = Bridge.invoke("plan.saveToFile", [file.path])["result"] as? NSNumber
         if wrote?.boolValue != true { writeFailure = PlanFile.notSaved(file.lastPathComponent) }
@@ -1007,6 +1016,8 @@ final class MissionStore: ObservableObject, Probeable, WriteReporting {
         case "save":
             guard let path = args["path"] else { return ["ok": false, "error": "save needs a path"] }
             save(to: URL(fileURLWithPath: path))
+        case "saveToCurrent":
+            saveToCurrent()
         case "load":
             guard let path = args["path"] else { return ["ok": false, "error": "load needs a path"] }
             load(from: URL(fileURLWithPath: path))

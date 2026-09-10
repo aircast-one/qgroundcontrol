@@ -928,6 +928,8 @@ struct PlanInspector: View {
         HStack(spacing: Overlay.step) {
             Menu {
                 Button("Open\u{2026}", action: openPlan)
+                Button("Save", action: savePlan)
+                    .disabled(!mission.readyToSave)
                 Button("Save As\u{2026}", action: savePlanAs)
                     .disabled(!mission.readyToSave)
                 Button("Export KML\u{2026}", action: exportKml)
@@ -1024,6 +1026,10 @@ struct PlanInspector: View {
         guard panel.runModal() == .OK, let file = panel.url else { return }
         mission.load(from: file)
         fenceRally.reload()
+    }
+
+    private func savePlan() {
+        if mission.planFile.isEmpty { savePlanAs() } else { mission.saveToCurrent() }
     }
 
     private func savePlanAs() {
