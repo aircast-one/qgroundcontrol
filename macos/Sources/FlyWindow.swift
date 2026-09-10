@@ -33,7 +33,7 @@ struct FlyPanel: View {
                     if !fly.linkDetail.isEmpty {
                         expandable(key: "link", title: "Link",
                                    value: fly.linkDetail.first?.value ?? "",
-                                   level: fly.telemetry.gpsLevel, detail: fly.linkDetail,
+                                   level: fly.state.linkLevel, detail: fly.linkDetail,
                                    showSeparator: true)
                     }
                 }

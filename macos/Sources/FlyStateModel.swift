@@ -53,4 +53,6 @@ struct FlyState: Equatable {
     }
 
     var alarming: Bool { kind == .contactLost || kind == .unknown }
+
+    var linkLevel: FlyTelemetry.Level { contactLost ? .critical : .good }
 }

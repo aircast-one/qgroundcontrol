@@ -1304,6 +1304,16 @@ func checkFlyState() {
            + "status line blank")
     expect(!read("emergency", "Emergency").armed,
            "an unknown state claims nothing about arming that the reply did not say")
+
+    expect(lost.linkLevel == .critical,
+           "the Link chip is coloured by the link, and lost contact is the link failing")
+    expect(flying.linkLevel == .good,
+           "a vehicle in contact has a healthy link even when it is doing something else")
+    let noFix = read("flying", "Flying", ["connected": true as NSNumber])
+    expect(noFix.linkLevel == .good,
+           "the Link chip took its colour from gpsLevel, so a vehicle with a solid radio and no "
+           + "GPS fix reported the radio as critical -- and worse, a good fix painted a failing "
+           + "link green, which is the direction that hides a real problem")
 }
 
 checkFlyState()

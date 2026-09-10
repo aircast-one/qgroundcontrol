@@ -22,8 +22,6 @@ struct FlyTelemetry: Equatable {
     var altitude: Double?
     var groundSpeed: Double?
     var heading: Double?
-    var batteryPercent: Double?
-    var batteryVolts: Double?
     var satellites: Int?
     var distanceUnits = "m"
     var speedUnits = "m/s"
