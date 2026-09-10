@@ -84,10 +84,13 @@ def main():
     for i in range(200):
         params["SIM_VALUE_%03d" % i] = float(i)
     for name, value in (("RTL_ALT", 1500.0), ("WPNAV_SPEED", 500.0), ("FS_THR_ENABLE", 1.0),
-                        ("INS_ACCOFFS_X", 0.01), ("FRAME_CLASS", 1.0), ("FRAME_TYPE", 1.0),
+                        ("FRAME_CLASS", 1.0), ("FRAME_TYPE", 1.0),
                         ("FLTMODE_CH", 5.0), ("SIMPLE", 0.0), ("SUPER_SIMPLE", 0.0),
                         ("INITIAL_MODE", 0.0), ("GRIP_ENABLE", 1.0)):
         params[name] = value
+    accel_offset = 0.0 if os.environ.get("ACCEL_UNCAL") == "1" else 0.01
+    for axis in ("X", "Y", "Z"):
+        params["INS_ACCOFFS_%s" % axis] = accel_offset
     if os.environ.get("NO_RCMAP") != "1":
         for name, value in (("RCMAP_ROLL", 1.0), ("RCMAP_PITCH", 2.0),
                             ("RCMAP_THROTTLE", 3.0), ("RCMAP_YAW", 4.0)):
