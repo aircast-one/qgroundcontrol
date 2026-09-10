@@ -66,6 +66,8 @@ val SETTINGS_GROUPS = listOf(
     SettingsGroup("settings.mapsSettings", "Maps"),
     SettingsGroup("settings.batteryIndicatorSettings", "Battery"),
     SettingsGroup("settings.autoConnectSettings", "AutoConnect"),
+    SettingsGroup("settings.mavlinkSettings", "MAVLink and telemetry logs"),
+    SettingsGroup("settings.rtkSettings", "RTK GPS"),
     SettingsGroup("settings.appSettings", "General"),
 )
 
