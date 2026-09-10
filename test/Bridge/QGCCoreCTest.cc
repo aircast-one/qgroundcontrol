@@ -3010,3 +3010,42 @@ void QGCCoreCTest::_theRustCacheServesATileQtWroteIntoTheSameDatabase()
     QSKIP("the Rust core is not linked into this build");
 #endif
 }
+
+void QGCCoreCTest::_theMissionSummaryArrivesOnItsOwnAfterAnEdit()
+{
+#ifdef QGC_RUST_CORE
+    (void) take(qgc_bridge_invoke("plan.start", "[]"));
+    const auto restore = []() { (void) take(qgc_bridge_invoke("plan.removeAll", "[]")); };
+    const auto leaveNoPlanBehind = qScopeGuard([&restore]() {
+        restore();
+        qgc_bridge_watch("");
+        qgc_bridge_set_event_handler(nullptr);
+    });
+    restore();
+
+    const auto distance = []() {
+        return take(qgc_core_get("view.missionSummary")).value(QStringLiteral("distanceMetres")).toDouble(-1.0);
+    };
+    QVERIFY2(take(qgc_core_invoke("mission.insert", "[\"takeoff\", 47.3960, 8.5440, -1]")).value(QStringLiteral("ok")).toBool(false), "the takeoff was refused");
+
+    paths.clear();
+    qgc_bridge_set_event_handler(onEvent);
+    qgc_bridge_watch("view.missionSummary");
+
+    // The controller recomputes its totals after the insert returns, so a head that reads once and
+    // stops is a mission behind for as long as it stays stopped. The answer is not for the insert
+    // to block - it runs on the same thread the recompute is queued on - it is that the view says
+    // so when it changes.
+    QVERIFY2(take(qgc_core_invoke("mission.insert", "[\"waypoint\", 47.3990, 8.5480, -1]")).value(QStringLiteral("ok")).toBool(false), "the waypoint was refused");
+    QTRY_VERIFY_WITH_TIMEOUT(paths.contains(QStringLiteral("view.missionSummary")), 10000);
+    QTRY_VERIFY_WITH_TIMEOUT(distance() > 100.0, 10000);
+
+    const double afterTwo = distance();
+    paths.clear();
+    QVERIFY2(take(qgc_core_invoke("mission.insert", "[\"waypoint\", 47.3990, 8.5440, -1]")).value(QStringLiteral("ok")).toBool(false), "the second waypoint was refused");
+    QTRY_VERIFY_WITH_TIMEOUT(paths.contains(QStringLiteral("view.missionSummary")), 10000);
+    QTRY_VERIFY_WITH_TIMEOUT(distance() > afterTwo, 10000);
+#else
+    QSKIP("the Rust core is not linked into this build");
+#endif
+}
