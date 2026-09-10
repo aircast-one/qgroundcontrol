@@ -80,3 +80,8 @@ enum PlanDirtyBadge {
 
     static func text(connected: Bool) -> String { connected ? unsent : unsaved }
 }
+
+enum PlanClear {
+    static let local = "Clear Plan"
+    static let vehicleWord = "Mission"
+}

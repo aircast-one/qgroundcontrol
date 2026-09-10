@@ -942,7 +942,7 @@ struct PlanInspector: View {
                     }
                 }
                 Divider()
-                Button("Clear", action: mission.removeAll)
+                Button(PlanClear.local, action: mission.removeAll)
             } label: {
                 Image(systemName: "folder")
             }

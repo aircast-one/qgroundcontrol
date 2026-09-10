@@ -1354,6 +1354,18 @@ func checkPlanFileReports() {
 
 checkPlanFileReports()
 
+func checkClearNamesItsScope() {
+    expect(!PlanClear.local.contains(PlanClear.vehicleWord),
+           "plan.removeAll clears the mission, fences and rally points IN THE CONTROLLER ONLY, and "
+           + "QGC reserves the word Mission for what is on the aircraft - QML's Clear Mission calls "
+           + "removeAllFromVehicle. A label reading Clear or Clear Mission here would offer an "
+           + "operator a control they would reasonably read as reaching the vehicle")
+    expect(PlanClear.local.contains("Plan"),
+           "so it names the plan, which is the local document this actually empties")
+}
+
+checkClearNamesItsScope()
+
 
 func checkVehicleTrack() {
     func point(_ latitude: Double, _ longitude: Double) -> [String: Any] {
