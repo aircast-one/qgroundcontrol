@@ -4168,6 +4168,36 @@ The obvious alternative is not reachable either: `MissionManager::currentIndex()
 them. A fix needs the bridge to own a fly-view controller as well, or those two exposed. Raised rather
 than chosen.
 
+**Chosen, and it was the first of the two** (`a4cc60614`). The bridge now keeps a second controller,
+`planFly`, which is the arrangement QML already has rather than a new idea, and `guided.rs` reads
+`missionItemCount` and `currentMissionIndex` from it. Measured on a real upload to a MockLink, with
+both halves asserted in one test: after a two-item mission `planFly.missionController` counts it and
+knows where the vehicle is, while `plan.missionController` answers 0 and -1 beside it. The second half
+is what makes the first mean anything.
+
+So `ContinueMission` can be offered. This head already routes it — and it routes it to
+`vehicle.startMission`, which reads wrong until you check: QGC does the same thing,
+`case actionStartMission: case actionContinueMission: _activeVehicle.startMission()`
+(`GuidedActionsController.qml:623`). The distinction is which action the operator is offered and what
+it is called, not which command goes to the vehicle. Still unverified in flight, because this rig
+cannot fly.
+
+### Adding an item is now one call, and the head no longer spells QGC's names
+
+`mission.insert` selects the insertion point the way a click on the plan view does, asks, then refuses
+or inserts, seeds the shape — an area for a survey, a launch position for a takeoff — and removes the
+item again if the shape will not take. The read and the write are in the same call, so a head cannot
+race a stale view past it.
+
+Adopting it deleted 80 net lines from this head (`f88ee55`): its own gate, `appendTakeoff` with its
+rollback, `appendLanding`, `insertSurvey` with its polygon corners, and three helpers left orphaned
+behind them. The head sends `"survey"` and the core supplies `"Survey"` and `insertComplexMissionItem`,
+so a rename in QGC is no longer a string in a head.
+
+It was declined once, correctly: at that point the action inserted a survey with no polygon and a
+takeoff with no launch coordinate, so adopting it would have been a regression rather than a
+simplification. The seeding is what made it an improvement.
+
 ### The Add Item gate is constant, because it rests on the three flags
 
 `view.missionKinds` gained `enabled` and `disabledReason` per kind, with refusals written for an
