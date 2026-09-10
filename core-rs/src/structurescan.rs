@@ -20,7 +20,7 @@ pub struct Plan {
 }
 
 pub fn flight_polygon(structure: &[Point], distance_to_surface: f64) -> Option<Vec<Point>> {
-    crate::mappolygon::offset(structure, distance_to_surface)
+    crate::mappolygon::offset(&crate::mappolygon::wound_clockwise(structure), distance_to_surface)
 }
 
 pub fn layer_count(structure_height: f64, scan_bottom_alt: f64, adjusted_frontal: f64) -> i64 {
@@ -62,7 +62,7 @@ pub fn items(flight: &[Point], plan: &Plan) -> Vec<Item> {
     if flight.is_empty() {
         return Vec::new();
     }
-    let entrance = flight[plan.entry_vertex.min(flight.len() - 1)];
+    let entrance = flight[plan.entry_vertex % flight.len()];
     let half = plan.adjusted_frontal / 2.0;
     let start = if plan.start_from_top { plan.structure_height } else { plan.scan_bottom_alt };
     let first = if plan.start_from_top { start - half } else { start + half };
@@ -91,6 +91,57 @@ pub fn items(flight: &[Point], plan: &Plan) -> Vec<Item> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use serde_json::Value;
+
+    fn oracle() -> Value {
+        let text = std::fs::read_to_string(concat!(env!("CARGO_MANIFEST_DIR"), "/../test/Bridge/fixtures/structure-scan.json")).expect("the oracle is recorded by QGCCoreCTest");
+        serde_json::from_str(&text).expect("the oracle is JSON")
+    }
+
+    fn parsed(spelled: &str) -> Vec<Point> {
+        spelled.split(' ').map(|pair| pair.split_once(',').unwrap()).map(|(lat, lon)| (lat.parse().unwrap(), lon.parse().unwrap())).collect()
+    }
+
+    fn spelled(points: &[Point]) -> String {
+        points.iter().map(|(lat, lon)| format!("{lat:.7},{lon:.7}")).collect::<Vec<_>>().join(" ")
+    }
+
+    #[test]
+    fn every_recorded_structure_is_flown_around_identically() {
+        let cases = oracle();
+        let cases = cases.as_object().unwrap();
+        let wrong: Vec<String> = cases
+            .iter()
+            .map(|(name, case)| {
+                let structure = parsed(case["structure"].as_str().unwrap());
+                let ours = flight_polygon(&structure, case["distanceToSurface"].as_f64().unwrap()).map(|flown| spelled(&flown)).unwrap_or_default();
+                (name.clone(), ours, case["flight"].as_str().unwrap().to_string())
+            })
+            .filter(|(_, ours, theirs)| ours != theirs)
+            .map(|(name, ours, theirs)| format!("{name}\n  qt:   {theirs}\n  rust: {ours}"))
+            .collect();
+        assert!(wrong.is_empty(), "{} of {} flight paths differ from the Qt item:\n{}", wrong.len(), cases.len(), wrong.join("\n"));
+        assert_eq!(cases.len(), 18, "three shapes at three distances, each recorded in both windings");
+    }
+
+    #[test]
+    fn the_vehicle_flies_clear_of_the_structure_whichever_way_it_was_drawn() {
+        let cases = oracle();
+        let cases = cases.as_object().unwrap();
+        let inside: Vec<String> = cases
+            .iter()
+            .filter(|(_, case)| case["distanceToSurface"].as_f64().unwrap() > 0.0)
+            .map(|(name, case)| {
+                let structure = parsed(case["structure"].as_str().unwrap());
+                let flown = flight_polygon(&structure, case["distanceToSurface"].as_f64().unwrap()).unwrap();
+                (name.clone(), crate::mappolygon::area(&flown), crate::mappolygon::area(&structure))
+            })
+            .filter(|(_, flight, structure)| flight <= structure)
+            .map(|(name, flight, structure)| format!("{name} flies a path of {flight} around a structure of {structure}"))
+            .collect();
+        assert!(inside.is_empty(), "a scan that flies inside the structure is a scan into the tower:\n{}", inside.join("\n"));
+        assert_eq!(cases.iter().filter(|(_, case)| case["distanceToSurface"].as_f64().unwrap() > 0.0).count(), 12);
+    }
 
     fn square() -> Vec<Point> {
         vec![(47.3960, 8.5440), (47.3960, 8.5480), (47.3990, 8.5480), (47.3990, 8.5440)]
@@ -111,12 +162,10 @@ mod tests {
     }
 
     #[test]
-    fn the_flight_path_is_the_structure_pushed_out_by_the_camera_distance() {
-        let flown = flight_polygon(&square(), 25.0).unwrap();
-        assert_eq!(flown.len(), square().len(), "the flight path keeps a corner for every corner of the structure");
-        let structure_perimeter = perimeter(&square());
-        assert!(perimeter(&flown) < structure_perimeter, "this winding pulls the path inside the structure, which is the direction the Qt offset takes");
+    fn a_shape_with_no_area_cannot_be_flown_around() {
         assert!(flight_polygon(&[(47.0, 8.0), (47.1, 8.0)], 25.0).is_none());
+        assert!(flight_polygon(&[], 25.0).is_none());
+        assert_eq!(flight_polygon(&square(), 25.0).unwrap().len(), square().len(), "the flight path keeps a corner for every corner of the structure");
     }
 
     #[test]
@@ -130,11 +179,14 @@ mod tests {
 
     #[test]
     fn the_shot_count_is_the_perimeter_walked_once_per_layer() {
-        let flown = flight_polygon(&square(), 25.0).unwrap();
-        let one = camera_shots(&flown, 30.0, 1);
-        assert_eq!(camera_shots(&flown, 30.0, 3), one * 3, "each layer flies the same ring, so the shots multiply by the layers");
-        assert_eq!(one, (perimeter(&flown) / 30.0) as i64, "the last part shot is dropped rather than rounded up");
-        assert_eq!(camera_shots(&flown, 0.0, 2), 0, "a camera that never triggers takes no pictures");
+        let ring = vec![(47.0000, 8.0000), (47.0000, 8.0010), (47.0010, 8.0010), (47.0010, 8.0000)];
+        let walked = perimeter(&ring);
+        assert!((walked - 374.0).abs() < 2.0, "this ring is about three hundred and seventy four metres around");
+        assert_eq!(camera_shots(&ring, 100.0, 1), 3, "three whole hundred metre intervals fit, and the remaining seventy four metres are dropped rather than rounded up");
+        assert_eq!(camera_shots(&ring, 100.0, 3), 9, "each layer flies the same ring");
+        assert_eq!(camera_shots(&ring, 374.0, 1), 1);
+        assert_eq!(camera_shots(&ring, 375.0, 1), 0, "a trigger distance longer than the ring takes no pictures at all");
+        assert_eq!(camera_shots(&ring, 0.0, 2), 0, "a camera that never triggers takes no pictures");
         assert_eq!(camera_shots(&[(47.0, 8.0), (47.1, 8.0)], 30.0, 2), 0, "a path with no area is not a scan");
     }
 
@@ -154,7 +206,22 @@ mod tests {
     }
 
     #[test]
-    fn each_layer_closes_its_ring_and_switches_the_camera_off_at_the_end() {
+    fn the_camera_is_switched_on_after_the_first_waypoint_of_a_layer_and_not_before_it() {
+        let flown = flight_polygon(&square(), 25.0).unwrap();
+        let built = items(&flown, &plan());
+        assert_eq!(built[2].command, CMD_NAV_WAYPOINT, "the vehicle reaches the first corner before the camera is armed");
+        assert_eq!(built[3].command, CMD_DO_SET_CAM_TRIGG_DIST, "arming it any earlier fires the camera along the leg in from the entrance");
+        assert_eq!(built[3].params[0], Some(30.0));
+        assert_eq!(built[3].params[2], Some(1.0), "the camera fires at that corner rather than after the first interval");
+        let ring = flown.len() + 1;
+        assert_eq!(built[3 + ring].command, CMD_DO_SET_CAM_TRIGG_DIST, "the layer closes with the camera switched off right after its last corner");
+        assert_eq!(built[3 + ring].params[0], Some(0.0));
+        assert_eq!(built[3 + ring].params[2], Some(0.0), "the closing command carries no immediate flag, which is what the Qt builder writes");
+        assert_eq!(built[2 + ring].command, CMD_NAV_WAYPOINT);
+    }
+
+    #[test]
+    fn each_layer_closes_its_ring() {
         let flown = flight_polygon(&square(), 25.0).unwrap();
         let built = items(&flown, &plan());
         let waypoints: Vec<&Item> = built.iter().filter(|item| item.command == CMD_NAV_WAYPOINT).collect();
@@ -162,38 +229,57 @@ mod tests {
         let corner = |item: &Item| (item.params[4], item.params[5]);
         assert_eq!(corner(waypoints[1]), corner(waypoints[1 + flown.len()]), "a layer ends back at the corner it started from");
         assert_ne!(corner(waypoints[1]), corner(waypoints[2]), "the corners in between are different corners, which is what makes the closing one worth asserting");
-        let triggers: Vec<&Item> = built.iter().filter(|item| item.command == CMD_DO_SET_CAM_TRIGG_DIST).collect();
-        assert_eq!(triggers.len(), 4, "each layer switches the camera on once and off once");
-        assert_eq!(triggers[0].params[0], Some(30.0));
-        assert_eq!(triggers[0].params[2], Some(1.0), "the camera fires on the first waypoint rather than after the first interval");
-        assert_eq!(triggers[1].params[0], Some(0.0));
-        assert_eq!(triggers[1].params[2], Some(0.0), "the closing command carries no immediate flag, which is what the Qt builder writes");
+        assert_eq!(built.iter().filter(|item| item.command == CMD_DO_SET_CAM_TRIGG_DIST).count(), 4, "each layer switches the camera on once and off once");
     }
 
     #[test]
     fn layers_climb_from_the_bottom_and_fall_from_the_top() {
         let flown = flight_polygon(&square(), 25.0).unwrap();
-        let up = items(&flown, &plan());
         let heights = |built: &[Item]| -> Vec<f64> {
             built.iter().skip(2).filter(|item| item.command == CMD_NAV_WAYPOINT).map(|item| item.params[6].unwrap()).collect()
         };
-        let climbing = heights(&up);
+        let climbing = heights(&items(&flown, &plan()));
         assert_eq!(climbing[0], 20.0, "the first layer flies half a camera height above the bottom of the scan");
         assert_eq!(climbing[flown.len() + 1], 40.0, "the next layer is a full camera height higher");
 
-        let down = items(&flown, &Plan { start_from_top: true, ..plan() });
-        let falling = heights(&down);
+        let falling = heights(&items(&flown, &Plan { start_from_top: true, ..plan() }));
         assert_eq!(falling[0], 40.0, "starting from the top begins half a camera height below the structure");
         assert_eq!(falling[flown.len() + 1], 20.0);
     }
 
     #[test]
-    fn the_entry_corner_rotates_the_ring_without_shortening_it() {
+    fn the_entry_corner_rotates_the_ring_rather_than_reversing_or_shortening_it() {
         let flown = flight_polygon(&square(), 25.0).unwrap();
-        let first = items(&flown, &plan());
-        let third = items(&flown, &Plan { entry_vertex: 2, ..plan() });
-        assert_eq!(first.len(), third.len(), "entering by another corner flies the same ring, not a shorter one");
-        assert_eq!(third[0].params[4], Some(flown[2].0), "the scan starts at the corner it was told to start at");
-        assert_ne!(first[0].params[4], third[0].params[4]);
+        let corners = |built: &[Item]| -> Vec<(f64, f64)> {
+            built.iter().skip(2).filter(|item| item.command == CMD_NAV_WAYPOINT).take(flown.len() + 1).map(|item| (item.params[4].unwrap(), item.params[5].unwrap())).collect()
+        };
+        (0..flown.len()).for_each(|entry| {
+            let built = items(&flown, &Plan { entry_vertex: entry, ..plan() });
+            let expected: Vec<(f64, f64)> = (0..=flown.len()).map(|offset| flown[(entry + offset) % flown.len()]).collect();
+            assert_eq!(corners(&built), expected, "entering at corner {entry} must fly the same ring from that corner, in the same direction");
+            assert_eq!((built[0].params[4], built[0].params[5]), (Some(flown[entry].0), Some(flown[entry].1)));
+        });
+    }
+
+    #[test]
+    fn an_entry_corner_past_the_last_one_wraps_rather_than_splitting_the_scan() {
+        let flown = flight_polygon(&square(), 25.0).unwrap();
+        let wrapped = items(&flown, &Plan { entry_vertex: flown.len() + 1, ..plan() });
+        let first = items(&flown, &Plan { entry_vertex: 1, ..plan() });
+        assert_eq!(wrapped, first, "the entrance and the ring have to agree on which corner they mean, or the vehicle flies to one corner and scans around another");
+    }
+
+    #[test]
+    fn a_scan_with_no_layers_flies_nowhere_but_still_releases_the_camera() {
+        let flown = flight_polygon(&square(), 25.0).unwrap();
+        let built = items(&flown, &Plan { layers: 0, ..plan() });
+        assert_eq!(built.len(), 4, "an entrance, the gimbal command, the release and the exit");
+        assert!(built.iter().all(|item| item.command != CMD_DO_SET_CAM_TRIGG_DIST), "a scan with no layers never arms the camera, so it must not leave it armed either");
+        assert_eq!(built[2].command, CMD_DO_SET_ROI_NONE);
+    }
+
+    #[test]
+    fn a_flight_path_with_no_corners_builds_nothing() {
+        assert!(items(&[], &plan()).is_empty(), "the Qt item would emit an entrance and a ring around a corner that does not exist");
     }
 }

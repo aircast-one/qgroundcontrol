@@ -77,8 +77,10 @@ pub fn tile_hash(provider: i32, x: i32, y: i32, z: i32) -> String {
     format!("{provider:010}{x:08}{y:08}{z:03}")
 }
 
+const TILE_DIGITS: usize = 19;
+
 pub fn provider_of(hash: &str) -> Option<i32> {
-    hash.get(..10).and_then(|head| head.trim_start_matches('0').parse::<i32>().ok().or_else(|| head.parse::<i32>().ok()))
+    hash.len().checked_sub(TILE_DIGITS).and_then(|head| hash.get(..head)).and_then(|head| head.parse::<i32>().ok())
 }
 
 pub struct Cache {
@@ -99,7 +101,9 @@ fn now_secs() -> i64 {
 
 impl Cache {
     pub fn open(path: &Path) -> rusqlite::Result<Cache> {
-        let cache = Cache { connection: Connection::open(path)? };
+        let connection = Connection::open(path)?;
+        connection.busy_timeout(std::time::Duration::from_secs(5))?;
+        let cache = Cache { connection };
         cache.prepare()?;
         Ok(cache)
     }
@@ -125,8 +129,8 @@ impl Cache {
         }
     }
 
-    pub fn default_set(&self) -> i64 {
-        self.connection.query_row("SELECT setID FROM TileSets WHERE defaultSet = 1", [], |row| row.get(0)).unwrap_or(1)
+    pub fn default_set(&self) -> rusqlite::Result<i64> {
+        self.connection.query_row("SELECT setID FROM TileSets WHERE defaultSet = 1", [], |row| row.get(0))
     }
 
     pub fn tile(&self, hash: &str) -> Option<Tile> {
@@ -148,7 +152,11 @@ impl Cache {
             return Ok(false);
         }
         let id = self.connection.last_insert_rowid();
-        self.connection.execute("INSERT INTO SetTiles(tileID, setID) VALUES(?1, ?2)", params![id, set.unwrap_or_else(|| self.default_set())])?;
+        let set = match set {
+            Some(set) => set,
+            None => self.default_set()?,
+        };
+        self.connection.execute("INSERT INTO SetTiles(tileID, setID) VALUES(?1, ?2)", params![id, set])?;
         Ok(true)
     }
 
@@ -173,29 +181,27 @@ impl Cache {
         rows.collect()
     }
 
-    pub fn total_size(&self) -> i64 {
-        self.connection.query_row("SELECT SUM(size) FROM Tiles", [], |row| row.get::<_, Option<i64>>(0)).ok().flatten().unwrap_or(0)
+    pub fn total_size(&self) -> rusqlite::Result<i64> {
+        self.connection.query_row("SELECT SUM(size) FROM Tiles", [], |row| row.get::<_, Option<i64>>(0)).map(|total| total.unwrap_or(0))
     }
 
-    pub fn count(&self) -> i64 {
-        self.connection.query_row("SELECT COUNT(*) FROM Tiles", [], |row| row.get(0)).unwrap_or(0)
+    pub fn count(&self) -> rusqlite::Result<i64> {
+        self.connection.query_row("SELECT COUNT(*) FROM Tiles", [], |row| row.get(0))
     }
 
-    pub fn prune(&self, keep_bytes: i64) -> rusqlite::Result<i64> {
-        let over = self.total_size() - keep_bytes;
-        if over <= 0 {
-            return Ok(0);
-        }
-        let mut statement = self.connection.prepare("SELECT tileID, size FROM Tiles ORDER BY date ASC")?;
-        let aged: Vec<(i64, i64)> = statement.query_map([], |row| Ok((row.get(0)?, row.get(1)?)))?.collect::<rusqlite::Result<_>>()?;
+    pub fn prune(&self, free_bytes: i64) -> rusqlite::Result<i64> {
+        let mut statement = self.connection.prepare(
+            "SELECT tileID, size FROM Tiles WHERE tileID IN (SELECT A.tileID FROM SetTiles A join SetTiles B on A.tileID = B.tileID WHERE B.setID = ?1 GROUP by A.tileID HAVING COUNT(A.tileID) = 1) ORDER BY date ASC LIMIT 128",
+        )?;
+        let aged: Vec<(i64, i64)> = statement.query_map(params![self.default_set()?], |row| Ok((row.get(0)?, row.get(1)?)))?.collect::<rusqlite::Result<_>>()?;
         let doomed: Vec<i64> = aged
             .iter()
-            .scan(0i64, |freed, (id, size)| {
-                let before = *freed;
-                *freed += size;
-                Some((*id, before))
+            .scan(free_bytes, |remaining, (id, size)| {
+                let owed = *remaining;
+                *remaining -= size;
+                Some((*id, owed))
             })
-            .take_while(|(_, before)| *before < over)
+            .take_while(|(_, owed)| *owed >= 0)
             .map(|(id, _)| id)
             .collect();
         doomed.iter().try_for_each(|id| {
@@ -203,6 +209,14 @@ impl Cache {
             self.connection.execute("DELETE FROM Tiles WHERE tileID = ?1", params![id]).map(|_| ())
         })?;
         Ok(doomed.len() as i64)
+    }
+
+    pub fn saved(&self, set: i64) -> rusqlite::Result<(i64, i64)> {
+        self.connection.query_row(
+            "SELECT COUNT(size), SUM(size) FROM Tiles A INNER JOIN SetTiles B on A.tileID = B.tileID WHERE B.setID = ?1",
+            params![set],
+            |row| Ok((row.get(0)?, row.get::<_, Option<i64>>(1)?.unwrap_or(0))),
+        )
     }
 }
 
@@ -212,7 +226,7 @@ mod tests {
     use serde_json::Value;
 
     fn fixture(name: &str) -> Value {
-        let text = std::fs::read_to_string(format!("../test/Bridge/fixtures/{name}")).expect("the fixture is recorded by QGCCoreCTest");
+        let text = std::fs::read_to_string(format!("{}/../test/Bridge/fixtures/{name}", env!("CARGO_MANIFEST_DIR"))).expect("the fixture is recorded by QGCCoreCTest");
         serde_json::from_str(&text).expect("the fixture is JSON")
     }
 
@@ -247,25 +261,31 @@ mod tests {
             .map(|(key, ours, theirs)| format!("{key}\n  qt:   {theirs}\n  rust: {ours}"))
             .collect();
         assert!(wrong.is_empty(), "{} of {} tile hashes differ from Qt, and a differing hash is a tile downloaded again:\n{}", wrong.len(), samples.len(), wrong.join("\n"));
-        assert_eq!(samples.len(), 148);
+        assert_eq!(samples.len(), recorded["providers"].as_object().unwrap().len() * 4, "every provider is sampled at every recorded tile");
     }
 
     #[test]
-    fn a_negative_provider_hash_still_names_its_provider() {
-        let bing = provider_hash("Bing Road").unwrap();
-        assert!(bing < 0, "provider hashes are signed and this one is negative, which is what makes the padding worth a test");
-        let hash = tile_hash(bing, 1, 2, 3);
-        assert_eq!(hash.len(), 29, "the sign takes the place of a padding zero rather than adding a character");
-        assert_eq!(provider_of(&hash), Some(bing));
-        assert_eq!(provider_named(bing), Some("Bing Road"));
+    fn every_provider_can_be_read_back_out_of_a_tile_hash_it_keyed() {
+        let unreadable: Vec<String> = PROVIDERS
+            .iter()
+            .filter(|(_, hash)| provider_of(&tile_hash(*hash, 8523, 5606, 14)) != Some(*hash))
+            .map(|(name, hash)| format!("{name} {hash} reads back as {:?}", provider_of(&tile_hash(*hash, 8523, 5606, 14))))
+            .collect();
+        assert!(unreadable.is_empty(), "{unreadable:?}");
+        let widths: Vec<usize> = PROVIDERS.iter().map(|(_, hash)| tile_hash(*hash, 8523, 5606, 14).len()).collect();
+        assert!(widths.contains(&29) && widths.contains(&30), "provider hashes are not all the same width, which is why the provider is read from the end rather than the start");
+        assert_eq!(provider_of("short"), None);
+        assert_eq!(provider_of(""), None);
+    }
 
-        let padded = provider_hash("Statkart Topo").unwrap();
-        assert!(padded > 0 && padded < 100_000_000, "this provider hashes short enough that the format has to pad it, which is the other half of the padding rule");
-        assert!(tile_hash(padded, 1, 2, 3).starts_with('0'));
-        assert_eq!(tile_hash(padded, 1, 2, 3).len(), 29);
-        assert_eq!(provider_of(&tile_hash(padded, 1, 2, 3)), Some(padded));
-
-        assert_eq!(provider_hash("Esri World Street Map"), None, "a name close to a real provider is not a provider; the recorded list is the only authority on which names exist");
+    #[test]
+    fn qts_own_decoder_misreads_the_widest_provider_hashes() {
+        let widest: Vec<&str> = PROVIDERS.iter().filter(|(_, hash)| tile_hash(*hash, 8523, 5606, 14).len() > 29).map(|(name, _)| *name).collect();
+        assert_eq!(widest.len(), 4, "four provider hashes need eleven characters, so Qt's tileHashToType reads ten of them and answers a provider that is not there");
+        let hash = tile_hash(provider_hash(widest[0]).unwrap(), 8523, 5606, 14);
+        let qt_reads: i32 = hash[..10].parse().unwrap();
+        assert_ne!(qt_reads, provider_hash(widest[0]).unwrap());
+        assert_eq!(provider_named(qt_reads), None, "the number Qt reads names no provider at all, so this shows up as a lookup failure rather than a wrong map");
     }
 
     #[test]
@@ -284,58 +304,118 @@ mod tests {
             .map(|(name, sql)| format!("{name}\n  qt:   {}\n  rust: {sql}", recorded[name].as_str().unwrap_or("(absent)")))
             .collect();
         assert!(wrong.is_empty(), "the Rust cache writes a schema Qt would not recognise:\n{}", wrong.join("\n"));
-        assert_eq!(ours.len(), recorded.as_object().unwrap().len() - 1, "every table and index Qt creates is created here too");
+        let objects = recorded.as_object().unwrap().keys().filter(|key| !key.starts_with('_')).count();
+        assert_eq!(ours.len(), objects, "every table and index Qt creates is created here too");
     }
 
     #[test]
-    fn a_cache_opens_with_the_default_set_qt_expects() {
+    fn a_cache_opens_with_the_default_set_qt_named() {
+        let recorded: Value = serde_json::from_str(fixture("tile-cache-schema.json")["_tileSets"].as_str().unwrap()).unwrap();
         let cache = Cache::open_in_memory().unwrap();
         let sets = cache.sets().unwrap();
-        assert_eq!(sets.len(), 1);
-        assert_eq!(sets[0].name, DEFAULT_SET_NAME);
+        let theirs = recorded.as_object().unwrap();
+        assert_eq!(sets.len(), theirs.len());
+        assert_eq!(sets[0].name, *theirs.keys().next().unwrap(), "the default set carries the name Qt gave it, or a database written here opens in Qt with two default sets");
         assert!(sets[0].default_set);
-        assert_eq!(cache.default_set(), sets[0].id);
+        assert_eq!(cache.default_set().unwrap(), sets[0].id);
+    }
+
+    #[test]
+    fn the_default_set_is_listed_first_however_it_is_named() {
+        let cache = Cache::open_in_memory().unwrap();
+        ["Alps", "Aaa Downloaded"].iter().for_each(|name| {
+            cache.connection.execute("INSERT INTO TileSets(name, defaultSet, date) VALUES(?1, 0, 0)", params![name]).unwrap();
+        });
+        let listed: Vec<String> = cache.sets().unwrap().into_iter().map(|set| set.name).collect();
+        assert_eq!(listed[0], DEFAULT_SET_NAME, "the default set leads the list even though its name sorts last");
+        assert_eq!(listed[1..], ["Aaa Downloaded", "Alps"], "the rest are alphabetical");
     }
 
     fn tile(hash: &str, bytes: usize) -> Tile {
         Tile { hash: hash.to_string(), format: "png".to_string(), image: vec![7u8; bytes], kind: 3 }
     }
 
+    fn hash_for(x: i32) -> String {
+        tile_hash(provider_hash("Bing Road").unwrap(), x, 5606, 14)
+    }
+
     #[test]
     fn a_saved_tile_comes_back_whole() {
         let cache = Cache::open_in_memory().unwrap();
-        let hash = tile_hash(provider_hash("Bing Road").unwrap(), 8523, 5606, 14);
+        let hash = hash_for(8523);
         assert!(cache.tile(&hash).is_none(), "an empty cache serves nothing rather than an empty tile");
         assert!(cache.save(&tile(&hash, 2048), None).unwrap());
         let served = cache.tile(&hash).unwrap();
         assert_eq!(served.image.len(), 2048);
         assert_eq!(served.format, "png");
         assert_eq!(served.kind, 3);
-        assert_eq!(cache.total_size(), 2048);
+        assert_eq!(cache.total_size().unwrap(), 2048);
+        assert_eq!(cache.saved(cache.default_set().unwrap()).unwrap(), (1, 2048), "the set a tile was filed under counts it");
+    }
+
+    #[test]
+    fn a_tile_with_no_bytes_round_trips_rather_than_reading_as_a_miss() {
+        let cache = Cache::open_in_memory().unwrap();
+        let hash = hash_for(1);
+        assert!(cache.save(&tile(&hash, 0), None).unwrap());
+        assert_eq!(cache.tile(&hash).unwrap().image.len(), 0, "an empty tile is a tile the server sent, and re-fetching it would be endless");
+        assert_eq!(cache.total_size().unwrap(), 0);
     }
 
     #[test]
     fn the_same_tile_arriving_twice_is_stored_once() {
         let cache = Cache::open_in_memory().unwrap();
-        let hash = tile_hash(provider_hash("Bing Road").unwrap(), 1, 1, 1);
+        let hash = hash_for(1);
         assert!(cache.save(&tile(&hash, 100), None).unwrap());
         assert!(!cache.save(&tile(&hash, 100), None).unwrap(), "QtLocation asks for the same tile twice in a row, and the second arrival is not an error");
-        assert_eq!(cache.count(), 1);
+        assert_eq!(cache.count().unwrap(), 1);
     }
 
-    #[test]
-    fn pruning_drops_the_oldest_tiles_until_the_cache_fits() {
+    fn aged_cache(tiles: i32) -> (Cache, Vec<String>) {
         let cache = Cache::open_in_memory().unwrap();
-        let hashes: Vec<String> = (0..5).map(|index| tile_hash(provider_hash("Bing Road").unwrap(), index, 0, 10)).collect();
+        let hashes: Vec<String> = (0..tiles).map(hash_for).collect();
         hashes.iter().enumerate().for_each(|(index, hash)| {
             cache.save(&tile(hash, 1000), None).unwrap();
             cache.connection.execute("UPDATE Tiles SET date = ?1 WHERE hash = ?2", params![index as i64, hash]).unwrap();
         });
-        assert_eq!(cache.total_size(), 5000);
-        assert_eq!(cache.prune(5000).unwrap(), 0, "a cache already within its limit loses nothing");
-        assert_eq!(cache.prune(2500).unwrap(), 3, "three of five thousand-byte tiles go to bring five thousand under two and a half");
+        (cache, hashes)
+    }
+
+    #[test]
+    fn pruning_frees_what_it_was_asked_for_starting_with_the_oldest() {
+        let (cache, hashes) = aged_cache(5);
+        assert_eq!(cache.total_size().unwrap(), 5000);
+        assert_eq!(cache.prune(2500).unwrap(), 3, "tiles go until the debt is paid, so three thousand bytes cover a debt of two and a half");
         assert!(cache.tile(&hashes[0]).is_none(), "the oldest tile is the first to go");
-        assert!(cache.tile(&hashes[4]).is_some(), "the newest tile stays");
+        assert!(cache.tile(&hashes[3]).is_some(), "the newest tiles stay");
+        assert_eq!(cache.total_size().unwrap(), 2000);
         assert_eq!(cache.connection.query_row("SELECT COUNT(*) FROM SetTiles", [], |row| row.get::<_, i64>(0)).unwrap(), 2, "a pruned tile leaves no row behind in its set");
+    }
+
+    #[test]
+    fn pruning_never_touches_a_tile_a_downloaded_set_also_holds() {
+        let (cache, hashes) = aged_cache(3);
+        cache.connection.execute("INSERT INTO TileSets(name, defaultSet, date) VALUES('Flight Area', 0, 0)", []).unwrap();
+        let offline: i64 = cache.connection.query_row("SELECT setID FROM TileSets WHERE name = 'Flight Area'", [], |row| row.get(0)).unwrap();
+        let oldest: i64 = cache.connection.query_row("SELECT tileID FROM Tiles WHERE hash = ?1", params![hashes[0]], |row| row.get(0)).unwrap();
+        cache.connection.execute("INSERT INTO SetTiles(tileID, setID) VALUES(?1, ?2)", params![oldest, offline]).unwrap();
+
+        assert_eq!(cache.prune(3000).unwrap(), 2, "only the two tiles nothing else holds can go");
+        assert!(cache.tile(&hashes[0]).is_some(), "the oldest tile is in an offline set the operator downloaded for a flight, and pruning must not take it");
+        assert_eq!(cache.saved(offline).unwrap(), (1, 1000));
+    }
+
+    #[test]
+    fn pruning_an_empty_cache_asks_for_nothing() {
+        let cache = Cache::open_in_memory().unwrap();
+        assert_eq!(cache.prune(5000).unwrap(), 0);
+        let (full, _) = aged_cache(2);
+        assert_eq!(full.prune(0).unwrap(), 1, "a debt of nothing still takes one tile, which is what the Qt worker does rather than looping forever on a full cache");
+    }
+
+    #[test]
+    fn pruning_takes_no_more_than_a_batch_at_a_time() {
+        let (cache, _) = aged_cache(200);
+        assert_eq!(cache.prune(1_000_000).unwrap(), 128, "the Qt worker prunes a hundred and twenty eight at a time and is called again, rather than holding a write lock over the whole cache");
     }
 }

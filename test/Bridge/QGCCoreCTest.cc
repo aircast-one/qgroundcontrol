@@ -4,6 +4,7 @@
 #include <QtSql/QSqlQuery>
 #include <QtSql/QSqlDatabase>
 #include "QGCMapEngine.h"
+#include "QGeoFileTileCacheQGC.h"
 
 #include "MockLink.h"
 #include "UDPLink.h"
@@ -1896,13 +1897,6 @@ void QGCCoreCTest::_mapProvidersMatchTheRecordedHashes()
     in.close();
 
     const QJsonObject expectedProviders = expected.value(QStringLiteral("providers")).toObject();
-    QStringList missing;
-    for (const QString &name : providers.keys()) {
-        if (!expectedProviders.contains(name)) {
-            missing.append(name);
-        }
-    }
-    QVERIFY2(missing.isEmpty(), qPrintable(QStringLiteral("map providers with no recorded hash, so the Rust cache cannot key their tiles: %1").arg(missing.join(QStringLiteral(", ")))));
     QCOMPARE(QJsonDocument(providers).toJson(QJsonDocument::Compact), QJsonDocument(expectedProviders).toJson(QJsonDocument::Compact));
     QCOMPARE(QJsonDocument(samples).toJson(QJsonDocument::Compact), QJsonDocument(expected.value(QStringLiteral("tileHashes")).toObject()).toJson(QJsonDocument::Compact));
 }
@@ -1911,6 +1905,8 @@ void QGCCoreCTest::_theTileCacheSchemaMatchesTheRecordedOne()
 {
     const QString databasePath = QDir::temp().filePath(QStringLiteral("qgc-core-tilecache-%1.db").arg(QCoreApplication::applicationPid()));
     QFile::remove(databasePath);
+    const QString appCache = QGeoFileTileCacheQGC::getDatabaseFilePath();
+    const auto leaveTheEngineOnTheAppsCache = qScopeGuard([&appCache]() { QGCMapEngine::instance()->init(appCache); });
     QGCMapEngine::instance()->init(databasePath);
 
     QTRY_VERIFY_WITH_TIMEOUT(QFileInfo::exists(databasePath) && QFileInfo(databasePath).size() > 0, 10000);
@@ -1953,4 +1949,207 @@ void QGCCoreCTest::_theTileCacheSchemaMatchesTheRecordedOne()
     const QJsonObject expected = QJsonDocument::fromJson(in.readAll()).object();
     in.close();
     QCOMPARE(QJsonDocument(schema).toJson(QJsonDocument::Compact), QJsonDocument(expected).toJson(QJsonDocument::Compact));
+}
+
+void QGCCoreCTest::_polygonGeometryMatchesTheRecordedOracle()
+{
+#ifdef QGC_RUST_CORE
+    const QList<QPair<QString, QJsonArray>> shapes = {
+        { QStringLiteral("square"),   polygonSquare()   },
+        { QStringLiteral("triangle"), polygonTriangle() },
+        { QStringLiteral("concave"),  polygonConcave()  },
+    };
+    const QList<QPair<double, double>> probes = {
+        { 47.3975, 8.5460 }, { 47.3960, 8.5440 }, { 47.3990, 8.5480 }, { 47.3985, 8.5490 },
+        { 47.3970, 8.5485 }, { 47.3999, 8.5460 }, { 47.3950, 8.5460 }, { 47.3980, 8.5475 },
+        { 47.3960, 8.5460 },
+        { 47.3990, 8.5460 },
+        { 47.3975, 8.5440 },
+        { 47.3975, 8.5480 },
+        { 47.3960, 8.5500 },
+        { 47.3980, 8.5470 },
+        { 47.3995, 8.5470 },
+        { 47.3975, 8.5470 },
+    };
+
+    (void) take(qgc_bridge_invoke("plan.start", "[]"));
+    const auto restore = []() { (void) take(qgc_bridge_invoke("plan.removeAll", "[]")); };
+    const auto leaveNoPlanBehind = qScopeGuard(restore);
+    restore();
+
+    const auto compact = [](const QJsonArray &array) { return QJsonDocument(array).toJson(QJsonDocument::Compact); };
+    const QString item = QStringLiteral("plan.missionController.visualItems.1");
+    const QString area = item + QStringLiteral(".surveyAreaPolygon");
+
+    const auto lay = [&](const QJsonArray &vertices) {
+        restore();
+        (void) take(qgc_bridge_invoke("plan.missionController.insertComplexMissionItem",
+                                      compact(QJsonArray { QStringLiteral("Survey"), coordinateJson(47.3975, 8.5460), -1 }).constData()));
+        QTRY_VERIFY_WITH_TIMEOUT(take(qgc_bridge_get(item.toUtf8().constData())).value(QStringLiteral("kind")).toString() == QStringLiteral("object"), 5000);
+        (void) take(qgc_bridge_invoke((area + QStringLiteral(".clear")).toUtf8().constData(), "[]"));
+        for (const QJsonValue &vertex : vertices) {
+            (void) take(qgc_bridge_invoke((area + QStringLiteral(".appendVertex")).toUtf8().constData(), compact(QJsonArray { vertex }).constData()));
+        }
+    };
+    const auto path = [&]() {
+        return take(qgc_bridge_get((area + QStringLiteral(".path")).toUtf8().constData())).value(QStringLiteral("value")).toArray();
+    };
+
+    QJsonObject recorded;
+    for (const auto &shape : shapes) {
+        lay(shape.second);
+        QCOMPARE(path().count(), shape.second.count());
+
+        QJsonArray contains;
+        for (const auto &probe : probes) {
+            const QJsonObject answer = take(qgc_bridge_invoke((area + QStringLiteral(".containsCoordinate")).toUtf8().constData(),
+                                                              compact(QJsonArray { coordinateJson(probe.first, probe.second) }).constData()));
+            QVERIFY2(answer.value(QStringLiteral("ok")).toBool(false), qPrintable(answer.value(QStringLiteral("reason")).toString()));
+            contains.append(answer.value(QStringLiteral("result")).toBool());
+        }
+
+        QJsonObject splits;
+        for (int vertex = 0; vertex < shape.second.count(); vertex++) {
+            lay(shape.second);
+            (void) take(qgc_bridge_invoke((area + QStringLiteral(".splitPolygonSegment")).toUtf8().constData(), compact(QJsonArray { vertex }).constData()));
+            splits[QString::number(vertex)] = roundedCoordinates(path());
+        }
+
+        QJsonArray reversed;
+        for (int vertex = shape.second.count() - 1; vertex >= 0; vertex--) {
+            reversed.append(shape.second.at(vertex));
+        }
+        lay(reversed);
+        (void) take(qgc_bridge_invoke((area + QStringLiteral(".verifyClockwiseWinding")).toUtf8().constData(), "[]"));
+        const QString wound = roundedCoordinates(path());
+
+        lay(shape.second);
+        (void) take(qgc_bridge_invoke((area + QStringLiteral(".verifyClockwiseWinding")).toUtf8().constData(), "[]"));
+
+        recorded[shape.first] = QJsonObject {
+            { QStringLiteral("polygon"), shape.second },
+            { QStringLiteral("area"), QString::number(take(qgc_bridge_get((area + QStringLiteral(".area")).toUtf8().constData())).value(QStringLiteral("value")).toDouble(), 'f', 4) },
+            { QStringLiteral("contains"), contains },
+            { QStringLiteral("splits"), splits },
+            { QStringLiteral("reversedThenWound"), wound },
+            { QStringLiteral("wound"), roundedCoordinates(path()) },
+        };
+    }
+    restore();
+
+    const QString fixture = QFileInfo(QString::fromUtf8(__FILE__)).dir().filePath(QStringLiteral("fixtures/polygon-geometry.json"));
+    if (qEnvironmentVariableIsSet("QGC_RECORD_VIEW_CONTRACT")) {
+        QFile out(fixture);
+        QVERIFY2(out.open(QIODevice::WriteOnly | QIODevice::Text), qPrintable(fixture));
+        out.write(QJsonDocument(recorded).toJson(QJsonDocument::Indented));
+        out.close();
+        QSKIP("recorded the polygon geometry oracle");
+    }
+
+    QFile in(fixture);
+    QVERIFY2(in.open(QIODevice::ReadOnly), "no recorded polygon geometry; run with QGC_RECORD_VIEW_CONTRACT=1 once");
+    const QJsonObject expected = QJsonDocument::fromJson(in.readAll()).object();
+    in.close();
+    QCOMPARE(QJsonDocument(recorded).toJson(QJsonDocument::Compact), QJsonDocument(expected).toJson(QJsonDocument::Compact));
+#else
+    QSKIP("the Rust core is not linked into this build");
+#endif
+}
+
+void QGCCoreCTest::_structureScanFlightPathMatchesTheRecordedOracle()
+{
+#ifdef QGC_RUST_CORE
+    const auto reversedOf = [](const QJsonArray &shape) {
+        QJsonArray reversed;
+        for (int vertex = shape.count() - 1; vertex >= 0; vertex--) {
+            reversed.append(shape.at(vertex));
+        }
+        return reversed;
+    };
+    const QList<QPair<QString, QJsonArray>> shapes = {
+        { QStringLiteral("square"),            polygonSquare()                },
+        { QStringLiteral("square-reversed"),   reversedOf(polygonSquare())    },
+        { QStringLiteral("triangle"),          polygonTriangle()              },
+        { QStringLiteral("triangle-reversed"), reversedOf(polygonTriangle())  },
+        { QStringLiteral("concave"),           polygonConcave()               },
+        { QStringLiteral("concave-reversed"),  reversedOf(polygonConcave())   },
+    };
+    const QList<double> distances = { 25.0, 60.0, -25.0 };
+
+    (void) take(qgc_bridge_invoke("plan.start", "[]"));
+    const auto restore = []() { (void) take(qgc_bridge_invoke("plan.removeAll", "[]")); };
+    const auto leaveNoPlanBehind = qScopeGuard(restore);
+    restore();
+
+    const auto compact = [](const QJsonArray &array) { return QJsonDocument(array).toJson(QJsonDocument::Compact); };
+    const QString item = QStringLiteral("plan.missionController.visualItems.1");
+
+    const auto setFact = [&](const QString &path, const QJsonValue &value) {
+        const QByteArray body = QJsonDocument(QJsonObject { { QStringLiteral("value"), value } }).toJson(QJsonDocument::Compact);
+        QVERIFY2(take(qgc_bridge_set(path.toUtf8().constData(), body.constData())).value(QStringLiteral("ok")).toBool(false), qPrintable(path));
+        const QJsonValue back = take(qgc_bridge_get((path + QStringLiteral(".rawValue")).toUtf8().constData())).value(QStringLiteral("value"));
+        QVERIFY2(qFuzzyCompare(back.toDouble() + 1.0, value.toDouble() + 1.0), qPrintable(QStringLiteral("%1 was set to %2 and reads back %3, so this case is not the case it is named after").arg(path).arg(value.toDouble()).arg(back.toDouble())));
+    };
+
+    QJsonObject recorded;
+    for (const auto &shape : shapes) {
+        for (const double distance : distances) {
+            restore();
+            (void) take(qgc_bridge_invoke("plan.missionController.insertComplexMissionItem",
+                                          compact(QJsonArray { QStringLiteral("Structure Scan"), coordinateJson(47.3975, 8.5460), -1 }).constData()));
+            QTRY_VERIFY_WITH_TIMEOUT(take(qgc_bridge_get(item.toUtf8().constData())).value(QStringLiteral("kind")).toString() == QStringLiteral("object"), 5000);
+
+            const QString structure = item + QStringLiteral(".structurePolygon");
+            (void) take(qgc_bridge_invoke((structure + QStringLiteral(".clear")).toUtf8().constData(), "[]"));
+            for (const QJsonValue &vertex : shape.second) {
+                (void) take(qgc_bridge_invoke((structure + QStringLiteral(".appendVertex")).toUtf8().constData(), compact(QJsonArray { vertex }).constData()));
+            }
+            setFact(item + QStringLiteral(".cameraCalc.distanceToSurface"), QJsonValue(distance));
+
+            const QJsonArray structurePath = take(qgc_bridge_get((structure + QStringLiteral(".path")).toUtf8().constData())).value(QStringLiteral("value")).toArray();
+            const QString flight = item + QStringLiteral(".flightPolygon");
+            const QJsonArray flightPath = take(qgc_bridge_get((flight + QStringLiteral(".path")).toUtf8().constData())).value(QStringLiteral("value")).toArray();
+
+            recorded[QStringLiteral("%1 at %2").arg(shape.first).arg(distance)] = QJsonObject {
+                { QStringLiteral("structure"), roundedCoordinates(structurePath) },
+                { QStringLiteral("distanceToSurface"), distance },
+                { QStringLiteral("flight"), roundedCoordinates(flightPath) },
+                { QStringLiteral("structureArea"), QString::number(take(qgc_bridge_get((structure + QStringLiteral(".area")).toUtf8().constData())).value(QStringLiteral("value")).toDouble(), 'f', 4) },
+                { QStringLiteral("flightArea"), QString::number(take(qgc_bridge_get((flight + QStringLiteral(".area")).toUtf8().constData())).value(QStringLiteral("value")).toDouble(), 'f', 4) },
+            };
+        }
+    }
+    restore();
+
+    for (const QString &name : recorded.keys()) {
+        const QJsonObject flown = recorded.value(name).toObject();
+        const double structureArea = flown.value(QStringLiteral("structureArea")).toString().toDouble();
+        const double flightArea = flown.value(QStringLiteral("flightArea")).toString().toDouble();
+        const bool outward = flown.value(QStringLiteral("distanceToSurface")).toDouble() > 0.0;
+        QVERIFY2(outward == (flightArea > structureArea),
+                 qPrintable(QStringLiteral("%1: a scan distance of %2 put the flight path %3 the structure (%4 against %5). Which side the vehicle flies must not depend on the order the vertices were drawn in.")
+                                .arg(name)
+                                .arg(flown.value(QStringLiteral("distanceToSurface")).toDouble())
+                                .arg(flightArea > structureArea ? QStringLiteral("outside") : QStringLiteral("inside"))
+                                .arg(flightArea)
+                                .arg(structureArea)));
+    }
+
+    const QString fixture = QFileInfo(QString::fromUtf8(__FILE__)).dir().filePath(QStringLiteral("fixtures/structure-scan.json"));
+    if (qEnvironmentVariableIsSet("QGC_RECORD_VIEW_CONTRACT")) {
+        QFile out(fixture);
+        QVERIFY2(out.open(QIODevice::WriteOnly | QIODevice::Text), qPrintable(fixture));
+        out.write(QJsonDocument(recorded).toJson(QJsonDocument::Indented));
+        out.close();
+        QSKIP("recorded the structure scan flight path");
+    }
+
+    QFile in(fixture);
+    QVERIFY2(in.open(QIODevice::ReadOnly), "no recorded structure scan; run with QGC_RECORD_VIEW_CONTRACT=1 once");
+    const QJsonObject expected = QJsonDocument::fromJson(in.readAll()).object();
+    in.close();
+    QCOMPARE(QJsonDocument(recorded).toJson(QJsonDocument::Compact), QJsonDocument(expected).toJson(QJsonDocument::Compact));
+#else
+    QSKIP("the Rust core is not linked into this build");
+#endif
 }

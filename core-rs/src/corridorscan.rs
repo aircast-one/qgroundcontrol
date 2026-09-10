@@ -1,4 +1,4 @@
-use crate::surveygrid::{Coord, crossing_point, flatten, line_angle, retype, set_angle, set_length, to_geo, typed};
+use crate::surveygrid::{Coord, retype, typed};
 
 const NO_SPACING_M: f64 = 100_000.0;
 const MIN_SPACING_M: f64 = 0.5;
@@ -22,29 +22,6 @@ pub fn transect_count(width: f64, spacing: f64) -> i64 {
     if width > 0.0 { (width / transect_spacing(spacing)).ceil() as i64 } else { 1 }
 }
 
-fn offset_polyline(flat: &[Point], origin: Point, distance: f64) -> Vec<Point> {
-    if flat.len() < 2 {
-        return Vec::new();
-    }
-    let edges: Vec<Line> = flat
-        .windows(2)
-        .map(|edge| {
-            let original: Line = (edge[0], edge[1]);
-            let forward = set_length(original, distance);
-            let start = set_angle(forward, line_angle(forward) - 90.0);
-            let backward = set_length((original.1, original.0), distance);
-            let end = set_angle(backward, line_angle(backward) + 90.0);
-            (start.1, end.1)
-        })
-        .collect();
-    let joints = edges.windows(2).map(|pair| crossing_point(pair[0], pair[1]).unwrap_or(pair[1].1));
-    std::iter::once(edges[0].0)
-        .chain(joints)
-        .chain(std::iter::once(edges[edges.len() - 1].1))
-        .map(|point| to_geo(point, origin))
-        .collect()
-}
-
 pub fn typed_transects(polyline: &[Point], params: &Params) -> Vec<Vec<Coord>> {
     if polyline.len() < 2 {
         return Vec::new();
@@ -52,13 +29,11 @@ pub fn typed_transects(polyline: &[Point], params: &Params) -> Vec<Vec<Coord>> {
     let spacing = transect_spacing(params.spacing);
     let count = transect_count(params.width, params.spacing);
     let half_width = params.width / 2.0;
-    let flat = flatten(polyline);
-    let origin = polyline[0];
     let laid: Vec<Vec<Coord>> = (0..count)
         .map(|index| {
             let position = spacing / 2.0 + spacing * index as f64;
             let offset = if count == 1 { 0.0 } else { half_width - position };
-            typed(offset_polyline(&flat, origin, offset), params.turnaround)
+            typed(crate::mappolyline::offset(polyline, offset), params.turnaround)
         })
         .collect();
     let ordered = if matches!(params.entry, 1 | 3) { laid.into_iter().rev().collect() } else { laid };

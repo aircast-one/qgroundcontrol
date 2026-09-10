@@ -522,6 +522,7 @@ void StructureScanComplexItem::_rebuildFlightPolygon(void)
     _entryVertex = 0;
 
     _flightPolygon = _structurePolygon;
+    _flightPolygon.verifyClockwiseWinding();
     _flightPolygon.offset(_cameraCalc.distanceToSurface()->rawValue().toDouble());
 
     if (savedEntryVertex >= _flightPolygon.count()) {

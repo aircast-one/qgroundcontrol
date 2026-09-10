@@ -43,6 +43,8 @@ private slots:
     void _serialConfigurationsCanBeCreatedByPath();
     void _mapProvidersMatchTheRecordedHashes();
     void _theTileCacheSchemaMatchesTheRecordedOne();
+    void _polygonGeometryMatchesTheRecordedOracle();
+    void _structureScanFlightPathMatchesTheRecordedOracle();
     void _surveyTransectsMatchTheRecordedOracle();
     void _tlogSummaryDecodesTheSampleLog();
     void _planFileAgreesWithTheCppLoader();
