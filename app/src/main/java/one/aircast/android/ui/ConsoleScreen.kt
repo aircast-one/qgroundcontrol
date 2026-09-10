@@ -19,6 +19,7 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
@@ -60,6 +61,9 @@ private fun ConsoleNotice(text: String, modifier: Modifier = Modifier) {
     )
 }
 
+internal fun shouldFollowTail(lastVisibleIndex: Int?, count: Int): Boolean =
+    lastVisibleIndex == null || lastVisibleIndex >= count - 2
+
 @Composable
 fun ConsoleScreen(modifier: Modifier = Modifier) {
     val hasVehicle by qgcBool("vehicles.activeVehicleAvailable")
@@ -78,8 +82,14 @@ fun ConsoleScreen(modifier: Modifier = Modifier) {
         }
     }
 
+    val following by remember {
+        derivedStateOf {
+            shouldFollowTail(listState.layoutInfo.visibleItemsInfo.lastOrNull()?.index, lines.size)
+        }
+    }
+
     LaunchedEffect(lines.size) {
-        if (lines.isNotEmpty()) {
+        if (lines.isNotEmpty() && following) {
             listState.scrollToItem(lines.size - 1)
         }
     }

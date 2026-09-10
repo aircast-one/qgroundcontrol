@@ -1,6 +1,7 @@
 package one.aircast.android.ui
 
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertNull
@@ -42,5 +43,32 @@ class ConsoleShellHintTest {
 
         assertNotNull(hint)
         assertTrue(hint!!.contains("may not reply"))
+    }
+}
+
+class ConsoleFollowTailTest {
+    @Test
+    fun `an empty list follows the tail`() {
+        assertTrue(shouldFollowTail(null, 0))
+    }
+
+    @Test
+    fun `a reader at the bottom keeps following`() {
+        assertTrue(shouldFollowTail(lastVisibleIndex = 9, count = 10))
+    }
+
+    @Test
+    fun `a reader one line behind still follows so a new line does not strand them`() {
+        assertTrue(shouldFollowTail(lastVisibleIndex = 9, count = 11))
+    }
+
+    @Test
+    fun `a reader scrolled up is left where they are`() {
+        assertFalse(shouldFollowTail(lastVisibleIndex = 3, count = 40))
+    }
+
+    @Test
+    fun `scrolling up by two lines is enough to stop the yank`() {
+        assertFalse(shouldFollowTail(lastVisibleIndex = 7, count = 10))
     }
 }
