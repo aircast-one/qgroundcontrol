@@ -103,3 +103,21 @@ class LogTimeTextTest {
         assertEquals("FORMATTED", logTimeText("2026-09-08T01:20:00+03:00", "known", fixed))
     }
 }
+
+class LogTimeZoneTest {
+    @Test
+    fun `a zone-less time is wall clock and must not be read as UTC`() {
+        assertEquals(
+            java.time.LocalDateTime.of(2026, 9, 8, 14, 42, 51),
+            logLocalTime("2026-09-08T14:42:51"),
+        )
+    }
+
+    @Test
+    fun `an offset time is converted into the reader's zone`() {
+        val expected = java.time.OffsetDateTime.parse("2026-09-08T14:42:51+04:00")
+            .atZoneSameInstant(java.time.ZoneId.systemDefault())
+            .toLocalDateTime()
+        assertEquals(expected, logLocalTime("2026-09-08T14:42:51+04:00"))
+    }
+}
