@@ -1060,3 +1060,32 @@ not, but that has to be a decision rather than an omission.
 at their own QML. That is a QtQuick extensibility point and Phase 6 deletes QtQuick, exactly
 like `Viewer3D`. Same decision, same shape: rebuild the mechanism natively, or drop it and its
 setting together. There are now two of these, which makes it a category rather than a one-off.
+
+### The head has never used the bridge's push channel (2026-09-11)
+
+`src/Bridge/QGCBridgeC.h` has offered `qgc_bridge_watch`, `qgc_bridge_watch_client` and
+`qgc_bridge_set_event_handler` since the split. **No Swift calls any of them.** Every store in
+`macos/Sources` polls on a `Timer` instead — around twenty of them, at 0.5s to 1s each,
+whenever their window is open.
+
+Found while chasing a measured defect: the Plan window's summary is one edit behind, because
+the controller recomputes its derived totals after the insert returns and the `reload()` that
+follows the edit reads the previous values. The core answered the question directly
+(`a1f274d9b`): the view already depends on the controller, so a **watch** delivers the new
+totals when they exist, and they proved it with a test that inserts and requires the update to
+arrive twice rather than once. Polling would fight the editor's selection state for a value
+that already announces itself.
+
+So the fix for that defect is not a timer, and neither is the general shape. **This is the
+single largest piece of unused mechanism in the head.** Adopting it is not a small change:
+
+- The event handler is a C function pointer, so Swift needs `@convention(c)`, which cannot
+  capture context — the callback has to route through a registry keyed by path.
+- Events arrive on the Qt thread. Every `@Published` mutation has to hop to main, and this
+  head already has one recorded scar from calling the bridge off Qt's thread: the segfault
+  lands much later than the call that caused it.
+- The stores that poll are not all equivalent. Some poll things that genuinely have no
+  producer signal; those should stay.
+
+Worth doing per-store, starting with `view.missionSummary` where there is a measured defect
+and a proven signal, rather than as a sweep.
