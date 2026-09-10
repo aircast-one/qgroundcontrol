@@ -12,14 +12,13 @@ class PlanSummaryTest {
     private fun summary(
         items: List<MissionItem> = emptyList(),
         circles: List<FenceCircle> = emptyList(),
-        distance: Double = Double.NaN,
-        seconds: Double = Double.NaN,
+        summaryText: String = "",
         selected: MapHit? = null,
         itemCount: Int = items.size,
         shape: List<String> = emptyList(),
     ) = planSummary(
         itemCount, shape, items, emptyList(), circles, emptyList(), emptyList(),
-        distance, seconds, selected,
+        summaryText, selected,
     )
 
     @Test
@@ -52,7 +51,7 @@ class PlanSummaryTest {
 
     @Test
     fun `cost is appended when the controller has worked it out`() {
-        val text = summary(items = listOf(item()), distance = 2000.0, seconds = 240.0)
+        val text = summary(items = listOf(item()), summaryText = "2.00 km · 4:00")
 
         assertEquals("1 item · 2.00 km · 4:00", text)
     }

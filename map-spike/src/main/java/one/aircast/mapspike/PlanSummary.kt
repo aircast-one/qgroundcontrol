@@ -8,8 +8,7 @@ fun planSummary(
     circles: List<FenceCircle>,
     rally: List<RallyPoint>,
     surveys: List<Survey>,
-    distanceMetres: Double,
-    seconds: Double,
+    summaryText: String,
     selected: MapHit?,
 ): String {
     val counts = listOfNotNull(
@@ -27,7 +26,7 @@ fun planSummary(
     }
 
     return (counts + listOfNotNull(
-        missionSummary(distanceMetres, seconds).takeIf { it.isNotEmpty() },
+        summaryText.takeIf { it.isNotEmpty() },
         selectionText(selected, items, circles, polygons),
     )).joinToString(" · ")
 }

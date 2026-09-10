@@ -168,8 +168,7 @@ internal fun MapSpikeScreen(
     val planOffline by mapBool("plan.offline")
     val planSyncing by mapBool("plan.syncInProgress")
     var uploadAsk by remember { mutableStateOf<UploadGate?>(null) }
-    val missionDistance by mapDouble("plan.missionController.missionTotalDistance")
-    val missionTime by mapDouble("plan.missionController.missionTime")
+    val missionSummaryView by mapPath("view.missionSummary")
     val mode by mapString("vehicle.flightMode")
     val vehicleId by mapInt("vehicle.id")
     val vehicleCount by mapCount("vehicles.vehicles")
@@ -312,7 +311,7 @@ internal fun MapSpikeScreen(
                     } else {
                         planSummary(
                             itemCount, shape, items, fences, circles, rally, surveyList,
-                            missionDistance, missionTime, selected,
+                            missionSummaryText(missionSummaryView), selected,
                         )
                     },
                     Modifier.padding(horizontal = 10.dp, vertical = 6.dp),
