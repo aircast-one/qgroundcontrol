@@ -5,8 +5,6 @@ struct Measure: Equatable {
     let factor: Double
 
     static let metres = Measure(units: "m", factor: 1)
-    static let squareMetres = Measure(units: "m^2", factor: 1)
-    static let metresPerSecond = Measure(units: "m/s", factor: 1)
 
     init(units: String, factor: Double) {
         self.units = units

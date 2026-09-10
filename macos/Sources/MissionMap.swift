@@ -552,8 +552,6 @@ struct MissionMap: NSViewRepresentable {
             return image
         }
         var overlay: CachedTileOverlay?
-        var tilesServed = 0
-        var tilesMissing = 0
 
         func mapView(_ mapView: MKMapView, rendererFor overlay: MKOverlay) -> MKOverlayRenderer {
             MissionMap.rendererCalls += 1
