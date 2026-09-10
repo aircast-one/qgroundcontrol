@@ -50,6 +50,7 @@ private slots:
     void _theCoreRefusesAMissionItemThePlanHasDecidedAgainst();
     void _theFlyViewControllerCountsTheMissionThePlanEditorCannot();
     void _everyRootTheCoreReadsFromIsRegistered();
+    void _setupSeesTheComponentsTheVehicleReports();
     void _structureScanItemsMatchTheRecordedUpload();
     void _aLargeSurveyMakesTheRoundTripUnchanged();
     void _surveyTransectsMatchTheRecordedOracle();

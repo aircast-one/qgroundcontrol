@@ -132,20 +132,26 @@ pub fn setup_view(backend: &dyn Backend, args: &[String]) -> Value {
     }
 }
 
-fn overview(backend: &dyn Backend, connected: bool, px4: bool) -> Value {
-    let components: Vec<(String, bool)> = object(&backend.get("vehicle.autopilotPlugin.vehicleComponents"))
-        .get("elements")
-        .and_then(Value::as_array)
-        .map(|e| {
-            e.iter()
-                .filter_map(|c| {
-                    let name = c.get("name").and_then(Value::as_str).filter(|n| !n.is_empty())?;
-                    let needs = c.get("requiresSetup").and_then(Value::as_bool).unwrap_or(false) && !c.get("setupComplete").and_then(Value::as_bool).unwrap_or(false);
-                    Some((name.to_string(), needs))
-                })
-                .collect()
+const COMPONENTS: &str = "vehicle.autopilotPlugin.vehicleComponents";
+
+// vehicleComponents is a plain QVariantList rather than a list model, so the bridge answers a value
+// holding pointers rather than an object holding elements. The count comes from the value and each
+// component is read by its own path.
+fn vehicle_components(backend: &dyn Backend) -> Vec<(String, bool)> {
+    let listed = object(&backend.get(COMPONENTS));
+    let count = listed.get("value").and_then(Value::as_array).map(|elements| elements.len()).unwrap_or(0);
+    (0..count)
+        .filter_map(|index| {
+            let component = object(&backend.get_fields(&format!("{COMPONENTS}.{index}"), "name,requiresSetup,setupComplete"));
+            let name = component.get("name").and_then(Value::as_str).filter(|name| !name.is_empty())?;
+            let needs = flag(&component, "requiresSetup") && !flag(&component, "setupComplete");
+            Some((name.to_string(), needs))
         })
-        .unwrap_or_default();
+        .collect()
+}
+
+fn overview(backend: &dyn Backend, connected: bool, px4: bool) -> Value {
+    let components = vehicle_components(backend);
     let faults: Vec<String> = sensors::sensors(&object(&backend.get("vehicle.sysStatusSensorInfo"))).into_iter().filter(|(_, s)| *s == "unhealthy").map(|(n, _)| n).collect();
     let (ready, headline, detail) = readiness(connected, &components, &faults);
     json!({
@@ -255,5 +261,79 @@ mod tests {
         let irrelevant = component(json!({ "elements": [ { "name": "Summary" } ] }));
         assert_eq!(irrelevant, vec![("Summary".to_string(), false)], "a component that never asked for setup is not chased for it");
         assert_eq!(readiness(true, &silent, &[]).1, "1 component needs setup");
+    }
+}
+
+#[cfg(test)]
+mod components {
+    use super::*;
+    use crate::router::Backend;
+
+    struct Vehicle {
+        components: Vec<Value>,
+    }
+
+    impl Backend for Vehicle {
+        fn get(&self, path: &str) -> String {
+            match path {
+                COMPONENTS => json!({ "kind": "value", "value": self.components.iter().map(|_| json!("QVariant(VehicleComponent*)")).collect::<Vec<_>>() }).to_string(),
+                _ => json!({ "kind": "null" }).to_string(),
+            }
+        }
+        fn get_fields(&self, path: &str, _fields: &str) -> String {
+            match path.strip_prefix(&format!("{COMPONENTS}.")).and_then(|index| index.parse::<usize>().ok()).and_then(|index| self.components.get(index)) {
+                Some(component) => component.to_string(),
+                None => match path {
+                    "vehicle" => json!({ "kind": "object", "px4Firmware": true, "apmFirmware": false }).to_string(),
+                    _ => json!({ "kind": "null" }).to_string(),
+                },
+            }
+        }
+        fn set(&self, _p: &str, _v: &str) -> String { String::new() }
+        fn invoke(&self, _p: &str, _a: &str) -> String { String::new() }
+        fn watch(&self, _p: &[String]) {}
+    }
+
+    fn component(name: &str, requires: bool, complete: bool) -> Value {
+        json!({ "kind": "object", "name": name, "requiresSetup": requires, "setupComplete": complete })
+    }
+
+    #[test]
+    fn a_list_of_components_is_read_from_the_value_the_bridge_answers_with() {
+        let vehicle = Vehicle {
+            components: vec![
+                component("Airframe", true, true),
+                component("Sensors", true, false),
+                component("Radio", true, true),
+                component("Camera", false, false),
+            ],
+        };
+        let read = vehicle_components(&vehicle);
+        assert_eq!(read.len(), 4, "vehicleComponents is a plain list property, so the bridge answers a value rather than an object with elements; reading elements found nothing on every vehicle there has ever been");
+        assert_eq!(read[1], ("Sensors".to_string(), true), "a component that requires setup and has not had it is the one that holds the vehicle back");
+        assert_eq!(read[0], ("Airframe".to_string(), false));
+        assert_eq!(read[3], ("Camera".to_string(), false), "a component that does not require setup is never outstanding");
+    }
+
+    #[test]
+    fn a_vehicle_with_components_can_reach_ready_to_fly() {
+        let vehicle = Vehicle { components: vec![component("Airframe", true, true), component("Radio", true, true)] };
+        let view = setup_view(&vehicle, &[]);
+        assert_eq!(view["ready"], true, "every branch but the empty one was unreachable while the read found nothing, so a configured vehicle could never say it was ready");
+        assert!(!view["headline"].as_str().unwrap().contains("no setup components"));
+        assert_eq!(view["components"].as_array().unwrap().len(), 2);
+    }
+
+    #[test]
+    fn a_vehicle_that_really_reports_nothing_still_says_so() {
+        let view = setup_view(&Vehicle { components: Vec::new() }, &[]);
+        assert_eq!(view["ready"], false);
+        assert!(view["headline"].as_str().unwrap().contains("no setup components"), "the empty case is a real answer for a vehicle that gives one, which is why the defect was invisible");
+    }
+
+    #[test]
+    fn a_component_with_no_name_is_not_counted() {
+        let vehicle = Vehicle { components: vec![component("", true, false), component("Sensors", true, false)] };
+        assert_eq!(vehicle_components(&vehicle), vec![("Sensors".to_string(), true)]);
     }
 }

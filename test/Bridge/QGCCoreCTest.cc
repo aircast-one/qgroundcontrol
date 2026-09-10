@@ -2665,3 +2665,37 @@ void QGCCoreCTest::_everyRootTheCoreReadsFromIsRegistered()
     QSKIP("the Rust core is not linked into this build");
 #endif
 }
+
+void QGCCoreCTest::_setupSeesTheComponentsTheVehicleReports()
+{
+#ifdef QGC_RUST_CORE
+    _connectMockLink(MAV_AUTOPILOT_PX4);
+    const auto disconnectWhenDone = qScopeGuard([this]() { _disconnectMockLink(); });
+    QTRY_VERIFY_WITH_TIMEOUT(take(qgc_bridge_get("vehicle.parameterManager.parametersReady")).value(QStringLiteral("value")).toBool(false), 90000);
+
+    const QJsonArray reported = take(qgc_bridge_get("vehicle.autopilotPlugin.vehicleComponents")).value(QStringLiteral("value")).toArray();
+    QVERIFY2(!reported.isEmpty(), "this vehicle reports no setup components at all, so the test below would pass by checking nothing");
+
+    QTRY_VERIFY_WITH_TIMEOUT(take(qgc_core_get("view.setup")).value(QStringLiteral("components")).toArray().count() == reported.count(), 30000);
+
+    const QJsonObject setup = take(qgc_core_get("view.setup"));
+    QVERIFY2(!setup.value(QStringLiteral("headline")).toString().contains(QStringLiteral("no setup components")),
+             "the vehicle reports components and the core has to see them; reading them under the wrong key made every vehicle look like it reported none");
+
+    const QJsonArray named = setup.value(QStringLiteral("components")).toArray();
+    QStringList missing;
+    for (int index = 0; index < reported.count(); index++) {
+        const QString expected = take(qgc_bridge_get(QStringLiteral("vehicle.autopilotPlugin.vehicleComponents.%1").arg(index).toUtf8().constData()))
+                                     .value(QStringLiteral("name")).toString();
+        const bool found = std::any_of(named.cbegin(), named.cend(), [&expected](const QJsonValue &component) {
+            return component.toObject().value(QStringLiteral("name")).toString() == expected;
+        });
+        if (!found) {
+            missing.append(expected);
+        }
+    }
+    QVERIFY2(missing.isEmpty(), qPrintable(QStringLiteral("the setup view is missing components the vehicle reports: %1").arg(missing.join(QStringLiteral(", ")))));
+#else
+    QSKIP("the Rust core is not linked into this build");
+#endif
+}

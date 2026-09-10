@@ -1038,7 +1038,10 @@
     "view.setup": {
         "class": "string",
         "components": [
-            "empty"
+            {
+                "name": "string",
+                "needsAttention": "bool"
+            }
         ],
         "connected": "bool",
         "detail": "string",
