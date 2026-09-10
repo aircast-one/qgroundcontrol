@@ -2932,6 +2932,46 @@ file that compiles silently and passes**. It was only noticed because the execut
 not move the way removing four and adding five said it should. The arithmetic caught what the
 green suite could not.
 
+### The radio page had never rendered the half that matters
+
+Reviewing the page behind the badge fixed above. This document already described it: "the mapping
+reads 'Not mapped' four times and the channels move, which is exactly what an operator needs to
+see". That was written about a state the rig manufactured.
+
+`RadioComponentController` builds its mapping from `RCMAP_ROLL`, `RCMAP_PITCH`, `RCMAP_YAW` and
+`RCMAP_THROTTLE`, and reads reversal from `RC<n>_REVERSED`. **The sim served none of them.**
+`getParameterFact` returned null for every one, the mapping stayed at `_chanMax`, and every
+attitude row took the "Not mapped" branch. So the other branch — the PWM bars, the live values,
+the reversed marker — had never rendered once, on any run, and the page had been recorded as
+verified. An empty screen is not evidence that a screen works, and neither is a screen full of
+"Not mapped".
+
+The rig now serves the mapping (`RCMAP_*`, and `RC<n>_MIN`/`MAX`/`REVERSED` for eight channels,
+with channel 4 reversed). The result is worth stating precisely, because the detail is what proves
+the indirection rather than a coincidence:
+
+| Row | Maps to | Shows |
+|---|---|---|
+| Roll | ch1 | 1500 |
+| Pitch | ch2 | 1500 |
+| Yaw | ch4, reversed | **1500 R** |
+| Throttle | ch3 | **1100** |
+
+Throttle is the decisive one — a distinctive value on a channel that is neither first nor in row
+order, arriving in the right row. And "R" had never appeared before: it comes from
+`qgcDouble` against `rollChannelReversed`, which upstream declares
+`Q_PROPERTY(int ...)` while its getter returns `bool`. The head reads each of these with the
+accessor matching the *declared* type, so it is correct — but correct because of an upstream
+typo. If that declaration is ever corrected to `bool`, `qgcDouble` falls to its fallback and every
+channel silently reads not-reversed.
+
+**And the badge state this began with was itself the rig.** With `RCMAP_*` present the vehicle
+reports the radio set up, the "needs setup before flight" section disappears and the header reads
+"Ready to fly". The earlier note that Radio "is the one item blocking flight" was describing a
+missing sim parameter, not a product state. The "Finish on desktop" badge remains correct and
+still serves a genuinely uncalibrated radio — but it was reached through a rig artefact, and this
+document said otherwise.
+
 ## Phase 6 — Shell · 2 weeks
 
 Cheaper than macOS, because Qt is already off the main thread.
