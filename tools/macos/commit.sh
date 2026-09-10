@@ -33,12 +33,16 @@ if [[ -z "${message// }" ]]; then
     exit 1
 fi
 
-export GIT_INDEX_FILE="${TMPDIR:-/tmp}/qgc-commit-index.$$"
-trap 'rm -f "$GIT_INDEX_FILE"' EXIT
-git read-tree HEAD
-git add -- "$@"
-print -r -- "$message" | git commit -F -
-unset GIT_INDEX_FILE
+private="${TMPDIR:-/tmp}/qgc-commit-index.$$"
+trap 'rm -f "$private"' EXIT
+GIT_INDEX_FILE="$private" git read-tree HEAD
+GIT_INDEX_FILE="$private" git add -- "$@"
+print -r -- "$message" | GIT_INDEX_FILE="$private" git commit -F -
+
+# The private index is what committed, so the shared one still describes the tree from before:
+# for a file that was untracked it now reads as a deletion of what just landed. Sync exactly
+# the paths committed, which is the arming this script exists to stop anyone else inheriting.
+git reset -q HEAD -- "$@"
 
 for check in "git diff --cached HEAD --stat" "git diff HEAD --stat -- $*"; do
     left="$(eval "$check")"
