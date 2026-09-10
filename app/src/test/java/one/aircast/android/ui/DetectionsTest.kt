@@ -63,3 +63,35 @@ class DetectionsTest {
         assertEquals("car", boxCaption(reading.boxes[0].copy(confidence = 0.0)))
     }
 }
+
+class DetectionTroubleTest {
+    private fun reading(available: Boolean, stale: Boolean, error: String?) = Detections(
+        available = available,
+        stale = stale,
+        boxes = emptyList(),
+        error = error,
+    )
+
+    @Test
+    fun `an unconfigured detector says nothing`() {
+        assertNull(detectionTrouble(reading(available = false, stale = true, error = "boom")))
+    }
+
+    @Test
+    fun `a detector that stopped sending frames says so`() {
+        assertEquals(NO_FRAMES, detectionTrouble(reading(available = true, stale = true, error = null)))
+    }
+
+    @Test
+    fun `a working detector with nothing in view says nothing`() {
+        assertNull(detectionTrouble(reading(available = true, stale = false, error = null)))
+    }
+
+    @Test
+    fun `a reported error outranks staleness`() {
+        assertEquals(
+            "stream refused",
+            detectionTrouble(reading(available = true, stale = true, error = "stream refused")),
+        )
+    }
+}

@@ -47,8 +47,10 @@ internal fun detections(view: JSONObject?): Detections? {
 internal fun visibleBoxes(reading: Detections?): List<DetectionBox> =
     reading?.takeIf { it.available && !it.stale }?.boxes.orEmpty()
 
+internal const val NO_FRAMES = "no frames from the detector"
+
 internal fun detectionTrouble(reading: Detections?): String? =
-    reading?.takeIf { it.available && it.error != null }?.error
+    reading?.takeIf { it.available }?.let { it.error ?: if (it.stale) NO_FRAMES else null }
 
 internal fun boxCaption(box: DetectionBox): String {
     val percent = (box.confidence * 100).toInt()
