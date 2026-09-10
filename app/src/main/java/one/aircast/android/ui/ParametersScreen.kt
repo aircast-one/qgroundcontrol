@@ -105,8 +105,5 @@ private fun parameterNames(): List<String> {
     return (0 until result.length()).map { result.optString(it) }.sorted()
 }
 
-private fun parameterFact(name: String): Fact? {
-    val json = Qgc.get(parameterPath(name))
-    if (json.optString("name").isBlank()) return null
-    return Qgc.factAt(parameterPath(name), json)
-}
+private fun parameterFact(name: String): Fact? =
+    factFromParameter(name, Qgc.get(parameterPath(name)))

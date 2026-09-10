@@ -284,23 +284,6 @@ class CalibrationBeganTest {
     }
 }
 
-class AltitudeLabelTest {
-    @Test
-    fun `the operator's own unit is used when both halves arrive`() {
-        assertEquals("33 ft", altitudeLabel(meters = 10.0, converted = 32.8, unit = "ft"))
-    }
-
-    @Test
-    fun `a missing conversion falls back to metres, not to a converted number`() {
-        assertEquals("10 m", altitudeLabel(10.0, converted = null, unit = "ft"))
-    }
-
-    @Test
-    fun `a missing unit falls back to metres, not to a bare number`() {
-        assertEquals("10 m", altitudeLabel(10.0, converted = 32.8, unit = null))
-        assertEquals("10 m", altitudeLabel(10.0, converted = 32.8, unit = ""))
-    }
-}
 
 class UndrawnItemsTest {
     private fun item(

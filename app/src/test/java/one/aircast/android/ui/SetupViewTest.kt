@@ -24,7 +24,7 @@ class SetupViewTest {
     @Test
     fun `every page the head names is a page the core offers`() {
         val offered = setupGroups(corePages).flatMap { it.pages }.map { it.name }.toSet()
-        val claimed = setOf(RADIO, SENSORS, REMOTE_SUPPORT)
+        val claimed = setOf(RADIO, SENSORS, "Remote Support")
 
         assertEquals(emptySet<String>(), claimed - offered)
     }

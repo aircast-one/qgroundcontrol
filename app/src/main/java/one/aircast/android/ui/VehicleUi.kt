@@ -604,13 +604,6 @@ internal const val COMMAND_SETTLE_MS = 4000L
 internal fun commandRefusal(action: String, confirmed: Boolean): String? =
     if (confirmed) null else "$action was not confirmed by the aircraft."
 
-internal fun altitudeLabel(meters: Double, converted: Double?, unit: String?): String =
-    if (converted != null && !unit.isNullOrBlank()) {
-        "${converted.roundToInt()} $unit"
-    } else {
-        "${meters.roundToInt()} m"
-    }
-
 @Composable
 private fun FlightModePicker(onRefusal: (String?) -> Unit) {
     val json by qgcPath(FLIGHT_MODES)
