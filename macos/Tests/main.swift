@@ -202,7 +202,14 @@ expect(vibration.axes[1].severity == .danger, "each bar takes its own colour fro
 expect(vibration.dangerLevel == 60 && vibration.warningLevel == 30 && vibration.scaleMaximum == 90,
        "the thresholds the bars and the scale are drawn against come from the core, which is "
        + "where ArduPilot and PX4's flight guidance now lives rather than in two heads")
-expect(vibration.clipping, "any clip count above zero is clipping")
+expect(vibration.clipping,
+       "the core decides whether the accelerometer clipped and this head carries the answer; it "
+       + "derives nothing from clipCounts, which is why the two are set independently above")
+expect(VibrationReading(["available": true as NSNumber,
+                         "clipCounts": [0 as NSNumber, 2 as NSNumber, 0 as NSNumber]]).clipping
+       == false,
+       "so counts without the flag read as no clipping. That default is permissive and only the "
+       + "required-keys row for view.vibration keeps it unreachable; the decode does not")
 
 let quiet = VibrationReading(["available": false as NSNumber,
                               "axes": [["axis": "x", "label": "X"]]])
@@ -941,8 +948,13 @@ func checkItemSpeed() {
     expect(on.units, "ft/s", "in the units the fact came with, not a hard-coded m/s")
     expect(on.note, "This item flies at its own speed.", "and says so")
 
-    expect(ItemSpeed.factName != ItemSpeed.property,
-           "the fact is named FlightSpeed and the property is flightSpeed; reading and writing use different keys")
+    expect(ItemSpeed.factName, "FlightSpeed",
+           "the fact carries the name SpeedSection.cc:16 gives it, and that is the string the "
+           + "facts list is searched for")
+    expect(ItemSpeed.property, "flightSpeed",
+           "while the property is the one SpeedSection.h:26 declares, and it is interpolated into "
+           + "a WRITE path in Mission.swift. Swapping the two satisfies an inequality check and "
+           + "then finds no fact and writes to a property that does not exist, both in silence")
 
     expect(!ItemSpeed(json: [:]).available,
            "an item with no speed section offers nothing rather than a dead control")
@@ -2944,7 +2956,9 @@ func checkMapCentre() {
     let missionFrame = MapCentre.mission.frame(in: fenced)
     let allFrame = MapCentre.allItems.frame(in: fenced)
     expect(missionFrame != allFrame,
-           "a fence outside the mission widens Everything without moving Mission")
+           "a fence outside the mission gives Everything a different frame from Mission. That is "
+           + "all an inequality shows: it cannot say which of the two moved, and nothing here "
+           + "pins Mission unchanged")
     expect((allFrame?.latitudeDelta ?? 0) > (missionFrame?.latitudeDelta ?? 0),
            "and Everything is the wider of the two")
 
