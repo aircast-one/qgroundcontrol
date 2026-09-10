@@ -699,6 +699,31 @@ struct GuidedStrip: View {
     }
 }
 
+struct CameraSwitch: View {
+    @ObservedObject var video: VideoStore
+
+    var body: some View {
+        if video.status.offersSwitch {
+            Button {
+                video.switchSource()
+            } label: {
+                GlassPanel {
+                    HStack(spacing: Overlay.step * 0.5) {
+                        Image(systemName: "camera")
+                        Text(video.status.activeCameraTitle)
+                            .lineLimit(1)
+                    }
+                    .font(.caption)
+                    .padding(.horizontal, Overlay.step)
+                    .padding(.vertical, Overlay.step * 0.4)
+                }
+            }
+            .buttonStyle(.plain)
+            .help("Show the next camera")
+        }
+    }
+}
+
 struct FlyView: View {
     @ObservedObject var fly: FlyStore
     @ObservedObject var mission: MissionStore
@@ -826,20 +851,23 @@ struct FlyView: View {
                     .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .leading)
             }
 
-            if video.nativeFrames > 0 {
-                NativeVideoView()
-                    .overlay(DetectionOverlay(detections: video.detections,
-                                              source: video.status.sourceSize))
-                    .frame(width: 320, height: 180)
-                    .clipShape(RoundedRectangle(cornerRadius: Overlay.panelRadius))
-                    .overlay(RoundedRectangle(cornerRadius: Overlay.panelRadius)
-                        .strokeBorder(Overlay.border, lineWidth: 1))
-                    .shadow(color: .black.opacity(0.3), radius: 10, y: 3)
-                    .padding(.bottom, Overlay.unit * 5)
-                    .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottom)
-                    .onAppear { video.startDetections() }
-                    .onDisappear { video.stopDetections() }
+            VStack(spacing: Overlay.step) {
+                CameraSwitch(video: video)
+                if video.nativeFrames > 0 {
+                    NativeVideoView()
+                        .overlay(DetectionOverlay(detections: video.detections,
+                                                  source: video.status.sourceSize))
+                        .frame(width: 320, height: 180)
+                        .clipShape(RoundedRectangle(cornerRadius: Overlay.panelRadius))
+                        .overlay(RoundedRectangle(cornerRadius: Overlay.panelRadius)
+                            .strokeBorder(Overlay.border, lineWidth: 1))
+                        .shadow(color: .black.opacity(0.3), radius: 10, y: 3)
+                        .onAppear { video.startDetections() }
+                        .onDisappear { video.stopDetections() }
+                }
             }
+            .padding(.bottom, Overlay.unit * 5)
+            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottom)
 
             GeometryReader { proxy in
                 MapClickMenu(mapClick: mapClick)

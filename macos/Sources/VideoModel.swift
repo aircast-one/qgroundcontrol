@@ -111,5 +111,14 @@ struct VideoStatus: Equatable {
 
     var configuredCameras: [VideoCamera] { cameras.filter(\.configured) }
 
+    var activeCamera: VideoCamera? { cameras.first { $0.slot == activeSource } }
+
+    // QGC labels the switch with cameraName(activeVideoSource), which falls back to "Camera N".
+    // The core already applies that fallback when it builds each title, so a slot with no camera
+    // at all means the head has no name to show and does not offer the switch.
+    var offersSwitch: Bool { multipleSources && activeCamera != nil }
+
+    var activeCameraTitle: String { activeCamera?.title ?? "" }
+
     var settled: Bool { decoding }
 }

@@ -1522,6 +1522,29 @@ func checkVideoStatus() {
     expect(VideoCamera(["title": "Camera 1"]) == nil,
            "a camera with no slot is dropped, because the slot is what the row is keyed by")
     expect(VideoStatus([:]).cameras.isEmpty, "an empty answer is no cameras")
+
+    expect(live.offersSwitch, "with more than one source the next camera can be asked for")
+    expect(live.activeCameraTitle, "Camera 2",
+           "and the switch is labelled with the camera at activeSource, not the first in the list")
+
+    let cameras = live.cameras.map { camera -> [String: Any] in
+        ["slot": camera.slot as NSNumber, "title": camera.title, "status": camera.status,
+         "connecting": camera.connecting as NSNumber, "recording": camera.recording as NSNumber,
+         "configured": camera.configured as NSNumber]
+    }
+    let single = VideoStatus(["multipleSources": false as NSNumber,
+                              "activeSource": 1 as NSNumber, "cameras": cameras])
+    expect(!single.offersSwitch,
+           "one switchable source offers no switch, even though a camera sits at activeSource")
+    expect(single.activeCameraTitle, "Camera 2",
+           "the active camera is still known; it is the switch that is withheld")
+
+    let unnamed = VideoStatus(["multipleSources": true as NSNumber,
+                               "activeSource": 7 as NSNumber, "cameras": cameras])
+    expect(!unnamed.offersSwitch,
+           "a source the core sent no camera for is not offered under an invented name")
+    expect(unnamed.activeCameraTitle, "",
+           "and the head writes no \"Camera 8\" of its own; that fallback is the core's")
 }
 checkVideoStatus()
 

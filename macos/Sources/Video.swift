@@ -104,6 +104,13 @@ final class VideoStore: ObservableObject, Probeable, WriteReporting {
         loadCamera()
     }
 
+    // The C++ owns the rotation order and persists the choice; the head only asks for the next one.
+    func switchSource() {
+        guard status.offersSwitch else { return }
+        Bridge.invoke("video.switchActiveVideoSource")
+        refresh()
+    }
+
     func setZoom(_ level: Double) {
         guard camera.present, camera.hasZoom, level.isFinite else { return }
         write("vehicle.cameraManager.currentCameraInstance.zoomLevel", level,
@@ -174,6 +181,8 @@ final class VideoStore: ObservableObject, Probeable, WriteReporting {
          "available": status.available, "gstreamer": status.gstreamer,
          "decoding": status.decoding, "streaming": status.streaming,
          "summary": status.summary, "activeSource": status.activeSource,
+         "multipleSources": status.multipleSources, "offersSwitch": status.offersSwitch,
+         "activeCameraTitle": status.activeCameraTitle,
          "configured": status.configuredCameras.count,
          "cameras": status.cameras.map { ["title": $0.title, "status": $0.status,
                                           "connecting": $0.connecting] },
