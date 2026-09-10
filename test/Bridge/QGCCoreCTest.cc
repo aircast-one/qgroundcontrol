@@ -1082,6 +1082,7 @@ const char *const kViewPaths[] = {
     "view.calibration", "view.radio", "view.logs", "view.inspector", "view.flightModes", "view.settings",
     "view.settings(General)", "view.surveyStats(0)", "view.fences", "view.polygon", "view.setup",
     "view.setup(Safety)", "view.video", "view.camera", "view.detections", "view.coreCalibration", "view.flyState", "view.track",
+    "view.altitudeModes", "view.altitudeModes(item,4)",
 };
 
 } // namespace

@@ -3,6 +3,7 @@ use std::collections::BTreeSet;
 use serde_json::{Value, json};
 
 use crate::altitude;
+use crate::altitudemodes;
 use crate::battery;
 use crate::calibration;
 use crate::contract;
@@ -94,6 +95,7 @@ pub const VIEWS: &[View] = &[
     View { path: "view.missionFile", deps: mission::DEPS, compute: mission::mission_file_view },
     View { path: "view.transports", deps: &[], compute: linkhost::transports_view },
     View { path: "view.track", deps: track::DEPS, compute: track::track_view },
+    View { path: "view.altitudeModes", deps: altitudemodes::DEPS, compute: altitudemodes::altitude_modes_view },
     View { path: "view.flyState", deps: flystate::DEPS, compute: flystate::fly_state_view },
     View { path: "view.coreVehicle", deps: &[], compute: hub::core_vehicle_view },
     View { path: "view.coreGuided", deps: &[], compute: hub::core_guided_view },

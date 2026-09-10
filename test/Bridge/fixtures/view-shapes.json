@@ -1,4 +1,38 @@
 {
+    "view.altitudeModes": {
+        "class": "string",
+        "context": "string",
+        "current": "number",
+        "kind": "string",
+        "modes": [
+            {
+                "current": "bool",
+                "enabled": "bool",
+                "help": "string",
+                "raw": "number",
+                "reason": "string",
+                "title": "string"
+            }
+        ],
+        "supportsTerrainFrame": "bool"
+    },
+    "view.altitudeModes(item,4)": {
+        "class": "string",
+        "context": "string",
+        "current": "number",
+        "kind": "string",
+        "modes": [
+            {
+                "current": "bool",
+                "enabled": "bool",
+                "help": "string",
+                "raw": "number",
+                "reason": "string",
+                "title": "string"
+            }
+        ],
+        "supportsTerrainFrame": "bool"
+    },
     "view.battery": {
         "available": "bool",
         "class": "string",
@@ -94,6 +128,17 @@
     "view.contract": {
         "class": "Contract",
         "enumerations": {
+            "view.altitudeModes.context": [
+                "mission",
+                "item"
+            ],
+            "view.altitudeModes.modes[].raw": [
+                0,
+                1,
+                2,
+                3,
+                4
+            ],
             "view.battery.level": [
                 "normal",
                 "caution",
@@ -349,6 +394,7 @@
             "view.missionFile",
             "view.transports",
             "view.track",
+            "view.altitudeModes",
             "view.flyState",
             "view.coreVehicle",
             "view.coreGuided",

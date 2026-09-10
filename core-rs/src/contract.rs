@@ -35,6 +35,8 @@ pub fn enumerations() -> Value {
         "view.missionKinds.kinds[].geometry": ["area", "line", null],
         "view.missionKinds.kinds[].id": ["waypoint", "takeoff", "land", "roi", "survey", "corridor", "structure"],
         "view.setup.firmware": ["none", "apm", "px4"],
+        "view.altitudeModes.context": ["mission", "item"],
+        "view.altitudeModes.modes[].raw": [0, 1, 2, 3, 4],
         "view.setup.groups[].pages[].name": crate::setup::PAGES.iter().flat_map(|(_, pages)| pages.iter().copied()).collect::<Vec<_>>(),
         "view.messages.items[].level": ["normal", "warning", "error"],
         "view.coreCalibration.calibration.running": routine_ids_or_null(),
@@ -81,6 +83,8 @@ mod tests {
         assert!(listed["view.coreCalibration.calibration.running"].as_array().unwrap().contains(&Value::Null), "a vehicle that has never calibrated answers null, so null is part of the contract");
         let bit = |mask: u8, index: u8| mask & (1 << index) != 0;
         let reachable: std::collections::BTreeSet<&str> = (0u8..32).map(|mask| crate::flystate::state_of(bit(mask, 0), bit(mask, 1), bit(mask, 2), bit(mask, 3), bit(mask, 4)).token()).collect();
+        let listed_raws: Vec<i64> = listed["view.altitudeModes.modes[].raw"].as_array().unwrap().iter().map(|v| v.as_i64().unwrap()).collect();
+        assert_eq!(listed_raws, vec![crate::altitudemodes::MIXED, crate::altitudemodes::RELATIVE, crate::altitudemodes::ABSOLUTE, crate::altitudemodes::CALC_ABOVE_TERRAIN, crate::altitudemodes::TERRAIN_FRAME], "the raw values are written back through plan.missionController, so a reordering upstream changes what every mode means");
         let listed_states: std::collections::BTreeSet<&str> = listed["view.flyState.state"].as_array().unwrap().iter().map(|s| s.as_str().unwrap()).collect();
         assert_eq!(listed_states, reachable, "the contract lists the states the view can answer, not a hand-kept parallel list");
         assert!(listed["view.messages.items[].level"].as_array().unwrap().iter().all(|level| crate::messages::LEVELS.contains(&level.as_str().unwrap())));
