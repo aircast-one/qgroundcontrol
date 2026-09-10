@@ -3204,9 +3204,19 @@ per-control fact read, which would restore exactly the N-reads-per-page pattern 
 migrations have removed.
 
 Stated plainly because a feature that cannot fire is the defect this document has found five times:
-the picker is not reachable today. What is reachable and verified is the integer typing, and the
-decode is covered by tests that would have caught the ragged case where bit names and values
-disagree.
+the picker does not appear on the **setup pages**. What is reachable and verified is the integer
+typing, and the decode is covered by tests that would have caught the ragged case where bit names
+and values disagree.
+
+**Correction, added later the same session: the picker is reachable, on the Parameters screen.**
+That path goes through `Qgc.factAt` and the full `factJson`, which carries `bitmaskStrings` and
+`bitmaskValues`, so it never needed the core's `controls` at all. `ARMING_CHECK` at 82 renders as
+"Barometer, INS, RC Channels" — bits 1, 4 and 6 — and the checklist opens against real ArduPilot
+metadata with exactly those three ticked. Only the setup pages wait on the core.
+
+The error is worth keeping rather than quietly fixing: this document, and two other sessions, were
+told the feature was inert, because one path was checked and the conclusion was generalised. It is
+the same mistake as every rig finding above, pointed at my own work instead of the sim's.
 
 ### A capture photographed the wrong app
 
@@ -3421,6 +3431,31 @@ a bitmask rendered as a float, a vehicle that was flying while parked. Every one
 feeding a screen something no real vehicle would send. **A screen that looks wrong is not evidence
 until the input is known**, and the corollary matters more: a screen that looks right is not
 evidence either, if the rig can only produce the case that looks right.
+
+### The sweep for code only tests can reach
+
+The macOS session swept their tree for declarations referenced only by tests, on the grounds that
+such a thing reads as machinery while being exercised by nobody. Run here: **1266 declared names,
+five reachable only from tests.**
+
+Two are honest test seams, `forgetWatchesForTest` and `watchedPathsForTest`, named for what they
+are. Three were not:
+
+- `REMOTE_SUPPORT`, left behind when the dead setup table went, referenced by nothing but its own
+  declaration.
+- `altitudeLabel`, superseded by `rangeLabel` and kept alive by four tests.
+- `factFromParameter`, a second decoder for the same job `ParametersScreen` does inline.
+
+**The third one was worth stopping over rather than deleting.** The two decoders guard differently:
+the dead one checks `kind == "fact"`, the live one checks the name is not blank. A non-fact object
+can perfectly well have a `name` — `LinkConfiguration` does — so the live path had the weaker test
+and the dead copy had the better idea. Deleting the unused one would have thrown away the guard and
+left the weaker check in place. `parameterFact` now calls `factFromParameter`, so there is one
+decoder with the stricter guard and its tests are live again.
+
+Re-running the sweep leaves only the two named seams. The Parameters screen still lists 249
+parameters afterwards, checked on the handset, because a stricter guard that silently drops
+everything looks exactly like a stricter guard that works.
 
 ## Phase 6 — Shell · 2 weeks
 
