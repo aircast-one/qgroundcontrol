@@ -2616,6 +2616,13 @@ on link state — so this head matches upstream exactly. Blocking them would be 
 decision, not a bug fix, and there is a real argument on the other side: during a dropout an
 operator may want to keep pressing Return in the hope one command gets through. Raised with the
 core session as a question rather than settled here.
+
+**And it recovers.** Killing the sim, waiting for "Communication lost", then starting it again:
+twenty seconds later the header reads "Stabilize · Disarmed", the stale banner is gone, the
+telemetry is back at full brightness and the heading is moving. Worth checking rather than
+assuming, because a marker that latches on is worse than one that never appears — a ground
+station stuck reading "No contact" over a healthy link would teach an operator to ignore the
+warning entirely.
 ## Phase 6 — Shell · 2 weeks
 
 Cheaper than macOS, because Qt is already off the main thread.
