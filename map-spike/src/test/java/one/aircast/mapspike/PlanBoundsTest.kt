@@ -89,3 +89,60 @@ class FitPointsTest {
         assertTrue(fitPoints(emptyList(), 0.0, 0.0).isEmpty())
     }
 }
+
+class LongitudeWraparoundTest {
+    private fun at(vararg longitudes: Double) =
+        planBounds(longitudes.map { TrackPoint(10.0, it) })!!
+
+    @Test
+    fun `two points either side of the antimeridian do not frame the planet`() {
+        val bounds = at(179.9, -179.9)
+
+        assertEquals(0.2, bounds.longitudeSpan, 1e-9)
+        assertEquals(180.0, bounds.centre.longitude, 1e-9)
+    }
+
+    @Test
+    fun `an ordinary region is unchanged by the arc treatment`() {
+        val bounds = at(44.7, 44.9, 44.8)
+
+        assertEquals(44.7, bounds.west, 1e-9)
+        assertEquals(44.9, bounds.east, 1e-9)
+        assertEquals(0.2, bounds.longitudeSpan, 1e-9)
+        assertEquals(44.8, bounds.centre.longitude, 1e-9)
+    }
+
+    @Test
+    fun `the widest empty gap is the one left out of the arc`() {
+        val bounds = at(-10.0, 10.0, 170.0)
+
+        assertEquals(-10.0, bounds.west, 1e-9)
+        assertEquals(170.0, bounds.east, 1e-9)
+        assertEquals(180.0, bounds.longitudeSpan, 1e-9)
+        assertEquals(80.0, bounds.centre.longitude, 1e-9)
+    }
+
+    @Test
+    fun `a single point spans nothing and centres on itself`() {
+        val bounds = at(-179.95)
+
+        assertEquals(0.0, bounds.longitudeSpan, 1e-9)
+        assertEquals(-179.95, bounds.centre.longitude, 1e-9)
+    }
+
+    @Test
+    fun `the span never exceeds the planet`() {
+        val bounds = at(-179.0, -90.0, 0.0, 90.0, 179.0)
+
+        assertTrue(bounds.longitudeSpan <= 360.0)
+        assertEquals(270.0, bounds.longitudeSpan, 1e-9)
+    }
+
+    @Test
+    fun `normalising keeps a longitude in range`() {
+        assertEquals(-179.0, normaliseLongitude(181.0), 1e-9)
+        assertEquals(179.0, normaliseLongitude(-181.0), 1e-9)
+        assertEquals(180.0, normaliseLongitude(180.0), 1e-9)
+        assertEquals(0.0, normaliseLongitude(720.0), 1e-9)
+    }
+}
