@@ -376,6 +376,34 @@ This is the phase where a bug hurts someone. Budget review time, not just build 
 - The QWindowKit integrated-titlebar work is replaced by the real thing and deleted.
 - Notarized universal build through the existing release CI; `make release.*` updated.
 
+### Phase 6 carries a cost the bullet above hides (2026-09-10)
+
+"`runOnQtThread` already marshals correctly" is true and is not the whole question. `onQtThread`
+in `src/Bridge/QGCBridgeC.cc:22` runs the body **inline** when the caller is already on Qt's
+thread, and falls back to `Qt::BlockingQueuedConnection` when it is not. Today Qt owns the macOS
+main thread, SwiftUI calls from that same thread, and every bridge read this head makes takes the
+inline path. The marshalling cost is currently zero — by construction, not by care.
+
+Phase 6 is precisely the change that ends that. The moment `QApplication::exec()` moves to a
+worker thread, every `Bridge.group` call in `macos/Sources` becomes a cross-thread blocking post.
+
+The Android session is already on the far side of this and measured it: a bridge `get` blocking
+**927–971 ms** across a dozen samples, on an *empty* plan as well as a full one. They ruled out
+serialisation cost (an empty plan blocks the same, so item count is not the variable) and ruled
+out the video receiver's 1 s restart loop (disabling video removed every restart line and the
+block stayed at 932–938 ms). Their untested reading is that the event dispatcher is not woken on
+post, so the event waits for a poll to time out. That is a hypothesis, not a diagnosis, and it is
+theirs — recorded here because this head inherits it on the first day of Phase 6, not because it
+is settled.
+
+Two consequences for the phase as budgeted. The three weeks assume no Swift changes; if reads
+must move off the synchronous path they are not three weeks. And the cost is invisible until the
+flip, so it cannot be discovered incrementally — the first Phase 6 build is where it appears.
+
+Related and worth not mis-learning: `objectJson` calls `property.read(object)` for every property
+*before* checking whether it was requested, so `getFields` saves serialisation and never the
+reads. It is a bandwidth win, not a CPU one, and will not be the fix here.
+
 **Gate:** two weeks of internal flying with the previous release as fallback, then delete the
 fallback.
 
