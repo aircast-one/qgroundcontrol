@@ -85,8 +85,8 @@ internal fun configuredRows(rows: List<LinkRow>): List<LinkRow> = rows.filterNot
 internal fun linkStatusLine(row: LinkRow): String {
     val state = when {
         !row.connected -> "Not connected"
-        row.heard -> "Receiving from the vehicle"
-        else -> "Open · nothing received yet"
+        row.heard -> "Connected"
+        else -> "Waiting for the vehicle"
     }
     val detail = row.summary.trim()
     return if (detail.isBlank() || row.name.contains(detail)) state else "$state · $detail"

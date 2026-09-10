@@ -77,18 +77,18 @@ class LinksScreenTest {
     @Test
     fun `a status line adds detail a custom name leaves out`() {
         val row = LinkRow(0, "Pi", "TCP 10.0.0.4:5760", true, false, "", true)
-        assertEquals("Receiving from the vehicle · TCP 10.0.0.4:5760", linkStatusLine(row))
+        assertEquals("Connected · TCP 10.0.0.4:5760", linkStatusLine(row))
     }
 
     @Test
     fun `a status line stands alone when there is no summary`() {
-        assertEquals("Receiving from the vehicle", linkStatusLine(LinkRow(0, "Pi", "", true, false, "", true)))
+        assertEquals("Connected", linkStatusLine(LinkRow(0, "Pi", "", true, false, "", true)))
     }
 
     @Test
     fun `an open link that has heard nothing does not claim to be connected`() {
         val row = LinkRow(0, "Bench", "UDP port 14999", true, false, "", false)
-        assertEquals("Open · nothing received yet · UDP port 14999", linkStatusLine(row))
+        assertEquals("Waiting for the vehicle · UDP port 14999", linkStatusLine(row))
     }
 
     @Test
