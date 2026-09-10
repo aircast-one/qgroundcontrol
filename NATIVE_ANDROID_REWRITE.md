@@ -4113,6 +4113,24 @@ as a blocked call at all, because a watched path does not block its reader the w
 
 Cheaper than macOS, because Qt is already off the main thread.
 
+**The video-initialisation blocker is cleared** (`e68d606d9`, `df36a17`). It was recorded here as
+"video initialisation must be rebuilt before the host can be deleted", which was true and vague; the
+specific coupling was a QML `Timer` in `AndroidHost.qml` calling `initForItem(mainWindow)`, and
+`init()` refusing a null `QQuickWindow`.
+
+Tracing what the window was for showed all three uses are dead under native rendering. `_mainWidget`
+finds the QtQuick video item, which `_rebindWidgets` never wants once `nativeRendering` is set;
+`_initVideoReceiver` uses the window only for the thermal widget; and `scheduleRenderJob` defers
+`startVideo()` until the scene graph's render thread is ready, which a native sink does not wait on.
+So `init()` now tolerates a null window for a head that renders video itself, `initNative()` is the
+entry point, and the head calls it after `setNativeRendering(true)` — an order that is load-bearing,
+since a receiver bound before that flag looks for a QtQuick item that does not exist.
+
+**Verified by deleting the QML trigger rather than leaving it redundant**, which makes the test the
+same shape as the phase: with nothing in QML initialising video, the handset still creates the
+receivers, binds nine native sinks and reaches `startVideo()` at 3.5 s, with no init refusal. Every
+edit to `init()` is a null guard, so the desktop path is unchanged.
+
 - Delete the `QtQuickView` host and `AndroidHost.qml`.
 - `QGCApplication` drops from `QApplication` to `QCoreApplication`; the embedded-host boot path
   becomes the only path.
