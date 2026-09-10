@@ -1461,6 +1461,62 @@ void QGCCoreCTest::_surveyTransectsMatchTheRecordedOracle()
     }
     restore();
 
+    const QList<QPair<QString, SurveyCase>> plans = {
+        { QStringLiteral("items-square-0deg"),       cases[0] },
+        { QStringLiteral("items-square-turnaround"), cases[4] },
+        { QStringLiteral("items-concave-0deg"),      cases[8] },
+    };
+
+    for (const auto &planned : plans) {
+        const SurveyCase &survey = planned.second;
+        restore();
+        (void) take(qgc_bridge_invoke("plan.missionController.insertComplexMissionItem",
+                                      compact(QJsonArray { QStringLiteral("Survey"), coordinateJson(47.3975, 8.5460), -1 }).constData()));
+        QTRY_VERIFY_WITH_TIMEOUT(take(qgc_bridge_get(item.toUtf8().constData())).value(QStringLiteral("kind")).toString() == QStringLiteral("object"), 5000);
+        (void) take(qgc_bridge_invoke((item + QStringLiteral(".surveyAreaPolygon.clear")).toUtf8().constData(), "[]"));
+        for (const QJsonValue &vertex : survey.polygon) {
+            (void) take(qgc_bridge_invoke((item + QStringLiteral(".surveyAreaPolygon.appendVertex")).toUtf8().constData(), compact(QJsonArray { vertex }).constData()));
+        }
+        setFact(item + QStringLiteral(".cameraCalc.adjustedFootprintSide"), QJsonValue(survey.footprintSide));
+        setFact(item + QStringLiteral(".cameraCalc.adjustedFootprintFrontal"), QJsonValue(survey.footprintFrontal));
+        setFact(item + QStringLiteral(".cameraCalc.distanceToSurface"), QJsonValue(60.0));
+        setFact(item + QStringLiteral(".turnAroundDistance"), QJsonValue(survey.turnAround));
+        setFact(item + QStringLiteral(".gridAngle"), QJsonValue(survey.gridAngle));
+
+        const QString planFile = QDir::temp().filePath(QStringLiteral("qgc-core-survey-%1.plan").arg(QCoreApplication::applicationPid()));
+        QFile::remove(planFile);
+        QVERIFY2(take(qgc_bridge_invoke("plan.saveToFile", compact(QJsonArray { planFile }).constData())).value(QStringLiteral("result")).toBool(false), qPrintable(planFile));
+        QFile saved(planFile);
+        QVERIFY(saved.open(QIODevice::ReadOnly));
+        const QJsonObject plan = QJsonDocument::fromJson(saved.readAll()).object();
+        saved.close();
+        QFile::remove(planFile);
+
+        const QJsonArray visual = plan.value(QStringLiteral("mission")).toObject().value(QStringLiteral("items")).toArray();
+        QJsonArray built;
+        for (const QJsonValue &entry : visual) {
+            const QJsonObject complex = entry.toObject().value(QStringLiteral("TransectStyleComplexItem")).toObject();
+            for (const QJsonValue &generated : complex.value(QStringLiteral("Items")).toArray()) {
+                const QJsonObject mission = generated.toObject();
+                built.append(QStringLiteral("%1 %2 %3")
+                                 .arg(mission.value(QStringLiteral("command")).toInt())
+                                 .arg(mission.value(QStringLiteral("frame")).toInt())
+                                 .arg(QJsonDocument(mission.value(QStringLiteral("params")).toArray()).toJson(QJsonDocument::Compact).constData()));
+            }
+        }
+        QVERIFY2(!built.isEmpty(), qPrintable(QStringLiteral("%1 generated no mission items").arg(planned.first)));
+        recorded[planned.first] = QJsonObject {
+            { QStringLiteral("kind"), QStringLiteral("items") },
+            { QStringLiteral("polygon"), survey.polygon },
+            { QStringLiteral("gridAngle"), survey.gridAngle },
+            { QStringLiteral("gridSpacing"), survey.footprintSide },
+            { QStringLiteral("turnAround"), survey.turnAround },
+            { QStringLiteral("distanceToSurface"), 60.0 },
+            { QStringLiteral("items"), built },
+        };
+    }
+    restore();
+
     const QString fixture = QFileInfo(QString::fromUtf8(__FILE__)).dir().filePath(QStringLiteral("fixtures/survey-transects.json"));
     const QByteArray current = QJsonDocument(recorded).toJson(QJsonDocument::Indented);
     if (qEnvironmentVariableIsSet("QGC_RECORD_VIEW_CONTRACT")) {
@@ -1485,6 +1541,9 @@ void QGCCoreCTest::_surveyTransectsMatchTheRecordedOracle()
     }
     for (const auto &offset : offsets) {
         names.append(offset.first);
+    }
+    for (const auto &planned : plans) {
+        names.append(planned.first);
     }
     for (const QString &key : names) {
         QVERIFY2(expected.contains(key), qPrintable(key));
