@@ -54,6 +54,7 @@ private slots:
     void _listsRecordedAsEmptyAreCheckedAgainstAVehicle();
     void _aMisspelledPropertyIsToldApartFromANullOne();
     void _missionStatisticsAnswerOnThePlanTheEditorHolds();
+    void _theRustCacheServesATileQtWroteIntoTheSameDatabase();
     void _structureScanItemsMatchTheRecordedUpload();
     void _aLargeSurveyMakesTheRoundTripUnchanged();
     void _surveyTransectsMatchTheRecordedOracle();

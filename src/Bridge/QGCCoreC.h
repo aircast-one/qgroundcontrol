@@ -19,6 +19,14 @@ void qgc_core_watch_client(const char *client, const char *paths_csv);
 void qgc_core_set_event_handler(QGCCoreEventFn handler);
 void qgc_core_free(char *text);
 
+char *qgc_core_tile_open(const char *path);
+void qgc_core_tile_close(void);
+long long qgc_core_tile_size(const char *hash);
+long long qgc_core_tile_copy(const char *hash, unsigned char *into, long long capacity);
+char *qgc_core_tile_hash(int provider, int x, int y, int z);
+int qgc_core_tile_provider(const char *name);
+
+
 typedef void (*QGCCoreLinkWriterFn)(uint32_t id, const uint8_t *bytes, size_t len, void *user);
 
 char *qgc_core_link_open(const char *config_json);

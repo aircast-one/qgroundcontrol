@@ -48,7 +48,10 @@ pub struct Tile {
     pub hash: String,
     pub format: String,
     pub image: Vec<u8>,
-    pub kind: i32,
+    // Declared INTEGER by the schema and written by Qt from QGCCacheTile::type(), which is a
+    // QString holding the provider name. SQLite keeps the text, so reading this as a number
+    // fails on every tile the Qt worker ever saved.
+    pub kind: String,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -108,6 +111,14 @@ impl Cache {
         Ok(cache)
     }
 
+    /// Opens a database another writer owns. No schema is created and nothing is written, so this
+    /// takes no write lock and cannot collide with the Qt worker holding the same file.
+    pub fn serve(path: &Path) -> rusqlite::Result<Cache> {
+        let connection = Connection::open_with_flags(path, rusqlite::OpenFlags::SQLITE_OPEN_READ_ONLY | rusqlite::OpenFlags::SQLITE_OPEN_URI)?;
+        connection.busy_timeout(std::time::Duration::from_secs(5))?;
+        Ok(Cache { connection })
+    }
+
     pub fn open_in_memory() -> rusqlite::Result<Cache> {
         let cache = Cache { connection: Connection::open_in_memory()? };
         cache.prepare()?;
@@ -136,7 +147,7 @@ impl Cache {
     pub fn tile(&self, hash: &str) -> Option<Tile> {
         self.connection
             .query_row("SELECT tile, format, type FROM Tiles WHERE hash = ?1", params![hash], |row| {
-                Ok(Tile { hash: hash.to_string(), image: row.get(0)?, format: row.get(1)?, kind: row.get(2)? })
+                Ok(Tile { hash: hash.to_string(), image: row.get(0)?, format: row.get(1)?, kind: row.get::<_, Option<String>>(2)?.unwrap_or_default() })
             })
             .optional()
             .ok()
@@ -332,11 +343,27 @@ mod tests {
     }
 
     fn tile(hash: &str, bytes: usize) -> Tile {
-        Tile { hash: hash.to_string(), format: "png".to_string(), image: vec![7u8; bytes], kind: 3 }
+        Tile { hash: hash.to_string(), format: "png".to_string(), image: vec![7u8; bytes], kind: "Bing Road".to_string() }
     }
 
     fn hash_for(x: i32) -> String {
         tile_hash(provider_hash("Bing Road").unwrap(), x, 5606, 14)
+    }
+
+    #[test]
+    fn a_database_another_writer_owns_is_opened_without_writing_to_it() {
+        let scratch = std::env::temp_dir().join(format!("qgc-core-serve-{}.db", std::process::id()));
+        let _ = std::fs::remove_file(&scratch);
+        let hash = hash_for(8523);
+        {
+            let owner = Cache::open(&scratch).unwrap();
+            owner.save(&tile(&hash, 512), None).unwrap();
+        }
+        let reader = Cache::serve(&scratch).unwrap();
+        assert_eq!(reader.tile(&hash).unwrap().image.len(), 512);
+        assert!(reader.save(&tile(&hash_for(1), 10), None).is_err(), "a reader must not be able to write into a database it does not own");
+        assert!(Cache::serve(&std::env::temp_dir().join("qgc-core-not-here.db")).is_err(), "and it must not create one that is not there");
+        let _ = std::fs::remove_file(&scratch);
     }
 
     #[test]
@@ -348,7 +375,7 @@ mod tests {
         let served = cache.tile(&hash).unwrap();
         assert_eq!(served.image.len(), 2048);
         assert_eq!(served.format, "png");
-        assert_eq!(served.kind, 3);
+        assert_eq!(served.kind, "Bing Road", "the provider name is what the Qt worker writes into this column, whatever the schema calls it");
         assert_eq!(cache.total_size().unwrap(), 2048);
         assert_eq!(cache.saved(cache.default_set().unwrap()).unwrap(), (1, 2048), "the set a tile was filed under counts it");
     }

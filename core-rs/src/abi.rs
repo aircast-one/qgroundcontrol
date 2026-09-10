@@ -384,3 +384,51 @@ pub unsafe extern "C" fn qgc_core_set_link_state_sink(sink: LinkStateSinkFn, use
 pub unsafe extern "C" fn qgc_core_link_announce_on_state() {
     crate::linkhost::TRANSPORTS.lock().unwrap().set_state_hook(Some(std::sync::Arc::new(announce_transports)));
 }
+
+static TILE_CACHE: std::sync::Mutex<Option<crate::tilecache::Cache>> = std::sync::Mutex::new(None);
+
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn qgc_core_tile_open(path: *const c_char) -> *mut c_char {
+    let opened = crate::tilecache::Cache::serve(std::path::Path::new(&text(path)));
+    let answer = match &opened {
+        Ok(_) => serde_json::json!({ "ok": true }),
+        Err(reason) => serde_json::json!({ "ok": false, "reason": reason.to_string() }),
+    };
+    *TILE_CACHE.lock().unwrap() = opened.ok();
+    give(answer.to_string())
+}
+
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn qgc_core_tile_close() {
+    *TILE_CACHE.lock().unwrap() = None;
+}
+
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn qgc_core_tile_size(hash: *const c_char) -> i64 {
+    TILE_CACHE.lock().unwrap().as_ref().and_then(|cache| cache.tile(&text(hash))).map(|tile| tile.image.len() as i64).unwrap_or(-1)
+}
+
+/// Copies the tile into a buffer the caller owns, so nothing crosses the boundary that either side
+/// has to remember to free. Answers the number of bytes written, or -1 when the cache has no such
+/// tile and -2 when it has one and the buffer is too small to hold it.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn qgc_core_tile_copy(hash: *const c_char, into: *mut u8, capacity: i64) -> i64 {
+    let Some(tile) = TILE_CACHE.lock().unwrap().as_ref().and_then(|cache| cache.tile(&text(hash))) else {
+        return -1;
+    };
+    if into.is_null() || capacity < tile.image.len() as i64 {
+        return -2;
+    }
+    unsafe { std::ptr::copy_nonoverlapping(tile.image.as_ptr(), into, tile.image.len()) };
+    tile.image.len() as i64
+}
+
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn qgc_core_tile_hash(provider: i32, x: i32, y: i32, z: i32) -> *mut c_char {
+    give(crate::tilecache::tile_hash(provider, x, y, z))
+}
+
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn qgc_core_tile_provider(name: *const c_char) -> i32 {
+    crate::tilecache::provider_hash(&text(name)).unwrap_or(0)
+}

@@ -8,6 +8,8 @@
 #include <QtSql/QSqlQuery>
 #include <QtSql/QSqlDatabase>
 #include "QGCMapEngine.h"
+#include "QGCMapTasks.h"
+#include "QGCCacheTile.h"
 #include "QGeoFileTileCacheQGC.h"
 
 #include "MockLink.h"
@@ -1117,6 +1119,39 @@ QStringList fieldsThatNeverVaried(const QList<QJsonObject> &states)
     return unchanged;
 }
 
+
+// QGCCacheWorker::run opens the database only when it has none, so QGCMapEngine::init chooses the
+// file once per process and every later call changes a path nothing reads again. Both tests that
+// need a cache therefore share one, and neither pretends it can put the engine back afterwards.
+QString sharedTileCache()
+{
+    static const QString path = QDir::temp().filePath(QStringLiteral("qgc-core-tilecache-%1.db").arg(QCoreApplication::applicationPid()));
+    static bool started = false;
+    if (!started) {
+        started = true;
+        QFile::remove(path);
+        QGCMapEngine::instance()->init(path);
+    }
+    return path;
+}
+
+bool tileCacheIsReady(const QString &path)
+{
+    if (!QFileInfo::exists(path)) {
+        return false;
+    }
+    QSqlDatabase probe = QSqlDatabase::addDatabase(QStringLiteral("QSQLITE"), QStringLiteral("tileCacheReady"));
+    probe.setDatabaseName(path);
+    bool ready = false;
+    if (probe.open()) {
+        QSqlQuery sets(probe);
+        ready = sets.exec(QStringLiteral("SELECT setID FROM TileSets WHERE defaultSet = 1")) && sets.next();
+        probe.close();
+    }
+    QSqlDatabase::removeDatabase(QStringLiteral("tileCacheReady"));
+    return ready;
+}
+
 QJsonValue mergeShapes(const QJsonValue &a, const QJsonValue &b);
 
 QJsonValue shapeOf(const QJsonValue &value)
@@ -1995,11 +2030,8 @@ void QGCCoreCTest::_mapProvidersMatchTheRecordedHashes()
 
 void QGCCoreCTest::_theTileCacheSchemaMatchesTheRecordedOne()
 {
-    const QString databasePath = QDir::temp().filePath(QStringLiteral("qgc-core-tilecache-%1.db").arg(QCoreApplication::applicationPid()));
-    QFile::remove(databasePath);
-    const QString appCache = QGeoFileTileCacheQGC::getDatabaseFilePath();
-    const auto leaveTheEngineOnTheAppsCache = qScopeGuard([&appCache]() { QGCMapEngine::instance()->init(appCache); });
-    QGCMapEngine::instance()->init(databasePath);
+    const QString databasePath = sharedTileCache();
+    QTRY_VERIFY_WITH_TIMEOUT(tileCacheIsReady(databasePath), 20000);
 
     QJsonObject schema;
     {
@@ -2038,7 +2070,6 @@ void QGCCoreCTest::_theTileCacheSchemaMatchesTheRecordedOne()
         database.close();
     }
     QSqlDatabase::removeDatabase(QStringLiteral("tileCacheSchemaProbe"));
-    QFile::remove(databasePath);
 
     QVERIFY2(schema.contains(QStringLiteral("Tiles")), "the map engine did not create the tile cache");
 
@@ -2910,6 +2941,71 @@ void QGCCoreCTest::_missionStatisticsAnswerOnThePlanTheEditorHolds()
     QVERIFY2(number("missionTime") > 0.0, "a mission with distance takes time to fly");
     QVERIFY2(number("maxAMSLAltitude") >= number("minAMSLAltitude"), "the altitude range is the wrong way round");
     QVERIFY2(number("batteriesRequired") != 0.0, "batteries required reads zero, which is either a vehicle with no battery model or a number that never varies");
+#else
+    QSKIP("the Rust core is not linked into this build");
+#endif
+}
+
+void QGCCoreCTest::_theRustCacheServesATileQtWroteIntoTheSameDatabase()
+{
+#ifdef QGC_RUST_CORE
+    const QString databasePath = sharedTileCache();
+    QTRY_VERIFY_WITH_TIMEOUT(tileCacheIsReady(databasePath), 20000);
+    const auto closeWhenDone = qScopeGuard([]() { qgc_core_tile_close(); });
+
+    const QString type = QStringLiteral("Bing Road");
+    const int x = 8523;
+    const int y = 5606;
+    const int zoom = 14;
+    const QString hash = UrlFactory::getTileHash(type, x, y, zoom);
+
+    QByteArray drawn(2048, char(0));
+    for (int index = 0; index < drawn.size(); index++) {
+        drawn[index] = char(index % 251);
+    }
+    QGCCacheTile *const tile = new QGCCacheTile(hash, drawn, QStringLiteral("png"), type);
+    QVERIFY2(QGCMapEngine::instance()->addTask(new QGCSaveTileTask(tile)), "the map engine would not take the tile");
+
+    const QJsonObject opened = take(qgc_core_tile_open(databasePath.toUtf8().constData()));
+    QVERIFY2(opened.value(QStringLiteral("ok")).toBool(false), qPrintable(QStringLiteral("the Rust cache could not open the database the map engine is using: %1").arg(opened.value(QStringLiteral("reason")).toString())));
+
+    // The worker writes on its own thread, so wait for the row rather than for the file.
+    QElapsedTimer waitingForTheTile;
+    waitingForTheTile.start();
+    while (qgc_core_tile_size(hash.toUtf8().constData()) != drawn.size() && waitingForTheTile.elapsed() < 20000) {
+        QTest::qWait(100);
+        (void) take(qgc_core_tile_open(databasePath.toUtf8().constData()));
+    }
+    QString stored;
+    if (qgc_core_tile_size(hash.toUtf8().constData()) != drawn.size()) {
+        QSqlDatabase probe = QSqlDatabase::addDatabase(QStringLiteral("QSQLITE"), QStringLiteral("tileRowProbe"));
+        probe.setDatabaseName(databasePath);
+        QVERIFY(probe.open());
+        QSqlQuery rows(probe);
+        if (rows.exec(QStringLiteral("SELECT hash, size, typeof(type) FROM Tiles"))) {
+            while (rows.next()) {
+                stored += QStringLiteral("%1 %2 bytes, type stored as %3\n").arg(rows.value(0).toString()).arg(rows.value(1).toInt()).arg(rows.value(2).toString());
+            }
+        }
+        probe.close();
+        QSqlDatabase::removeDatabase(QStringLiteral("tileRowProbe"));
+    }
+    QVERIFY2(qgc_core_tile_size(hash.toUtf8().constData()) == drawn.size(),
+             qPrintable(QStringLiteral("the Rust cache did not serve the tile the Qt worker wrote. What the database holds:\n%1").arg(stored)));
+
+
+    QByteArray read(drawn.size(), char(0));
+    QCOMPARE(qgc_core_tile_copy(hash.toUtf8().constData(), reinterpret_cast<unsigned char *>(read.data()), read.size()), qint64(drawn.size()));
+    QVERIFY2(read == drawn, "the bytes came back changed, so the two sides disagree about what is stored rather than about where");
+
+    QByteArray tooSmall(drawn.size() - 1, char(0));
+    QCOMPARE(qgc_core_tile_copy(hash.toUtf8().constData(), reinterpret_cast<unsigned char *>(tooSmall.data()), tooSmall.size()), qint64(-2));
+    QCOMPARE(qgc_core_tile_size("0000000000000000000000000000"), qint64(-1));
+
+    // The hash is the whole gate: a key computed differently is a tile downloaded again.
+    char *const spelled = qgc_core_tile_hash(qgc_core_tile_provider(type.toUtf8().constData()), x, y, zoom);
+    QCOMPARE(QString::fromUtf8(spelled), hash);
+    qgc_core_free(spelled);
 #else
     QSKIP("the Rust core is not linked into this build");
 #endif
