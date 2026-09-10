@@ -26,6 +26,16 @@ pub const KINDS: &[Kind] = &[
     Kind { id: "structure", title: "Structure Scan", invokable: "insertComplexMissionItem", complex_name: Some("Structure Scan"), geometry: Some(("area", "structurePolygon")), placement_hint: "Click the map to place a structure to scan around." },
 ];
 
+impl Kind {
+    pub fn shape_noun(&self) -> &str {
+        match self.geometry {
+            Some(("line", _)) => "path",
+            Some(("area", _)) => "area",
+            _ => "shape",
+        }
+    }
+}
+
 pub fn lookup(id_or_name: &str) -> Option<&'static Kind> {
     KINDS.iter().find(|k| k.id == id_or_name || k.complex_name == Some(id_or_name))
 }

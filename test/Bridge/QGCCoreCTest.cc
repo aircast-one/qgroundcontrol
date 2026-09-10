@@ -2529,31 +2529,63 @@ void QGCCoreCTest::_theCoreRefusesAMissionItemThePlanHasDecidedAgainst()
     const auto count = []() {
         return take(qgc_bridge_get("plan.missionController.visualItems.count")).value(QStringLiteral("value")).toInt(-1);
     };
-    const int empty = count();
+    const auto settled = [&count]() {
+        int seen = count();
+        QElapsedTimer still;
+        still.start();
+        while (still.elapsed() < 1500) {
+            QTest::qWait(150);
+            const int now = count();
+            if (now != seen) {
+                seen = now;
+                still.restart();
+            }
+        }
+        return seen;
+    };
+    const auto insert = [](const char *args) {
+        return take(qgc_core_invoke("mission.insert", args));
+    };
+
+    const int empty = settled();
     QVERIFY2(empty >= 0, "the plan did not answer how many items it holds");
 
-    const QJsonObject refused = take(qgc_core_invoke("mission.insert", "[\"survey\", 47.3975, 8.5460, -1]"));
+    const QJsonObject refused = insert("[\"survey\", 47.3975, 8.5460, -1]");
     QCOMPARE(refused.value(QStringLiteral("ok")).toBool(true), false);
     QVERIFY2(!refused.value(QStringLiteral("reason")).toString().isEmpty(), "a refusal an operator will read has to say why");
-    QCOMPARE(count(), empty);
+    QCOMPARE(settled(), empty);
 
-    const QJsonObject allowed = take(qgc_core_invoke("mission.insert", "[\"takeoff\", 47.3975, 8.5460, -1]"));
-    QVERIFY2(allowed.value(QStringLiteral("ok")).toBool(false), qPrintable(allowed.value(QStringLiteral("reason")).toString()));
-    QTRY_COMPARE_WITH_TIMEOUT(count(), empty + 1, 5000);
+    QVERIFY2(insert("[\"takeoff\", 47.3975, 8.5460, -1]").value(QStringLiteral("ok")).toBool(false), "the takeoff was refused");
+    const int withTakeoff = settled();
+    QCOMPARE(withTakeoff, empty + 1);
 
-    const QJsonObject second = take(qgc_core_invoke("mission.insert", "[\"takeoff\", 47.3975, 8.5460, -1]"));
-    QVERIFY2(second.value(QStringLiteral("ok")).toBool(true) == false,
+    const QJsonObject launch = take(qgc_bridge_get("plan.missionController.visualItems.1.launchCoordinate"));
+    QVERIFY2(launch.value(QStringLiteral("valid")).toBool(false),
+             "a takeoff that does not know where the vehicle launches from cannot be flown, and the head should not have to write it");
+    QVERIFY(qAbs(launch.value(QStringLiteral("latitude")).toDouble() - 47.3975) < 1e-6);
+
+    QVERIFY2(insert("[\"takeoff\", 47.3975, 8.5460, -1]").value(QStringLiteral("ok")).toBool(true) == false,
              "the plan already takes off, and the core refusing this is the whole point of putting the gate behind the insert rather than beside it");
-    QCOMPARE(count(), empty + 1);
+    QCOMPARE(settled(), withTakeoff);
 
-    const QJsonObject survey = take(qgc_core_invoke("mission.insert", "[\"survey\", 47.3975, 8.5460, -1]"));
-    QVERIFY2(survey.value(QStringLiteral("ok")).toBool(false), qPrintable(survey.value(QStringLiteral("reason")).toString()));
-    QTRY_COMPARE_WITH_TIMEOUT(count(), empty + 2, 5000);
-    QCOMPARE(take(qgc_bridge_get("plan.missionController.visualItems.2.isSurveyItem")).value(QStringLiteral("value")).toBool(), true);
+    QVERIFY2(insert("[\"survey\", 47.3975, 8.5460, -1]").value(QStringLiteral("ok")).toBool(false), "the survey was refused after a takeoff, which the plan allows");
+    const int withSurvey = settled();
+    QCOMPARE(withSurvey, withTakeoff + 1);
+    QCOMPARE(take(qgc_bridge_get(QStringLiteral("plan.missionController.visualItems.%1.isSurveyItem").arg(withSurvey - 1).toUtf8().constData())).value(QStringLiteral("value")).toBool(), true);
 
-    const QJsonObject unknown = take(qgc_core_invoke("mission.insert", "[\"orbit\", 47.3975, 8.5460, -1]"));
+    const QJsonArray area = take(qgc_bridge_get(QStringLiteral("plan.missionController.visualItems.%1.surveyAreaPolygon.path").arg(withSurvey - 1).toUtf8().constData())).value(QStringLiteral("value")).toArray();
+    QCOMPARE(area.count(), 4);
+    QVERIFY2(qAbs(area.first().toObject().value(QStringLiteral("latitude")).toDouble() - 47.3975) < 0.01,
+             "a survey with no area draws nothing and uploads nothing, so the action places one around where it was asked for");
+
+    QVERIFY2(insert("[\"corridor\", 47.3975, 8.5460, -1]").value(QStringLiteral("ok")).toBool(false), "the corridor was refused");
+    const int withCorridor = settled();
+    QCOMPARE(withCorridor, withSurvey + 1);
+    QCOMPARE(take(qgc_bridge_get(QStringLiteral("plan.missionController.visualItems.%1.corridorPolyline.path").arg(withCorridor - 1).toUtf8().constData())).value(QStringLiteral("value")).toArray().count(), 2);
+
+    const QJsonObject unknown = insert("[\"orbit\", 47.3975, 8.5460, -1]");
     QCOMPARE(unknown.value(QStringLiteral("ok")).toBool(true), false);
-    QCOMPARE(count(), empty + 2);
+    QCOMPARE(settled(), withCorridor);
 #else
     QSKIP("the Rust core is not linked into this build");
 #endif
@@ -2596,6 +2628,39 @@ void QGCCoreCTest::_theFlyViewControllerCountsTheMissionThePlanEditorCannot()
 
     _disconnectMockLink();
     stillConnected = false;
+#else
+    QSKIP("the Rust core is not linked into this build");
+#endif
+}
+
+void QGCCoreCTest::_everyRootTheCoreReadsFromIsRegistered()
+{
+#ifdef QGC_RUST_CORE
+    _connectMockLink(MAV_AUTOPILOT_PX4);
+    const auto disconnectWhenDone = qScopeGuard([this]() { _disconnectMockLink(); });
+
+    const QStringList roots = {
+        QStringLiteral("settings"),      QStringLiteral("vehicle"),          QStringLiteral("vehicles"),
+        QStringLiteral("links"),         QStringLiteral("plan"),             QStringLiteral("planFly"),
+        QStringLiteral("logDownload"),   QStringLiteral("video"),            QStringLiteral("geoTag"),
+        QStringLiteral("positionManager"), QStringLiteral("units"),          QStringLiteral("missionCommandTree"),
+        QStringLiteral("mavlinkConsole"), QStringLiteral("mavlinkInspector"), QStringLiteral("host"),
+        QStringLiteral("corePlugin"),
+    };
+
+    QStringList unresolved;
+    for (const QString &root : roots) {
+        if (take(qgc_bridge_get(root.toUtf8().constData())).value(QStringLiteral("kind")).toString() == QStringLiteral("null")) {
+            unresolved.append(root);
+        }
+    }
+    QVERIFY2(unresolved.isEmpty(),
+             qPrintable(QStringLiteral("the core reads from roots the bridge does not register, and an unregistered root answers null, "
+                                       "so every value below it silently takes the core's default: %1").arg(unresolved.join(QStringLiteral(", ")))));
+
+    QCOMPARE(take(qgc_bridge_get("corePlugin.options.showMissionAbsoluteAltitude")).value(QStringLiteral("value")).toBool(), true);
+    QVERIFY2(take(qgc_bridge_get("notARoot")).value(QStringLiteral("kind")).toString() == QStringLiteral("null"),
+             "a root that does not exist has to answer null, or the check above proves nothing");
 #else
     QSKIP("the Rust core is not linked into this build");
 #endif

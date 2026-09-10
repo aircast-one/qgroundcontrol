@@ -49,6 +49,7 @@ private slots:
     void _everyNameTheCoreHandsAHeadToInterpolateResolves();
     void _theCoreRefusesAMissionItemThePlanHasDecidedAgainst();
     void _theFlyViewControllerCountsTheMissionThePlanEditorCannot();
+    void _everyRootTheCoreReadsFromIsRegistered();
     void _structureScanItemsMatchTheRecordedUpload();
     void _aLargeSurveyMakesTheRoundTripUnchanged();
     void _surveyTransectsMatchTheRecordedOracle();

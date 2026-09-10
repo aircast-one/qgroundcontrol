@@ -1,6 +1,6 @@
 use serde_json::{Value, json};
 
-use crate::missionkinds::{insertable, lookup, refusal};
+use crate::missionkinds::{default_area, default_line, insertable, lookup, refusal};
 use crate::router::Backend;
 
 const INSERT: &str = "mission.insert";
@@ -60,9 +60,55 @@ fn insert(backend: &dyn Backend, args: &str) -> Value {
         None => vec![at, json!(index), json!(true)],
     };
     let answered: Value = serde_json::from_str(&backend.invoke(&format!("plan.missionController.{}", kind.invokable), &Value::Array(call).to_string())).unwrap_or(Value::Null);
-    match answered.get("ok").and_then(Value::as_bool) {
-        Some(true) => json!({ "ok": true, "inserted": kind.id, "atSequence": at_sequence }),
-        _ => json!({ "ok": false, "reason": answered.get("reason").and_then(Value::as_str).unwrap_or("the plan refused the item").to_string() }),
+    if answered.get("ok").and_then(Value::as_bool) != Some(true) {
+        return json!({ "ok": false, "reason": answered.get("reason").and_then(Value::as_str).unwrap_or("the plan refused the item").to_string() });
+    }
+    let Some(placed) = inserted_index(backend) else {
+        return json!({ "ok": false, "reason": "the item was added and then could not be found, so the plan is not in a state to build on" });
+    };
+    match shape(backend, kind, placed, latitude, longitude) {
+        Ok(()) => json!({ "ok": true, "inserted": kind.id, "index": placed, "atSequence": at_sequence }),
+        Err(reason) => {
+            backend.invoke("plan.missionController.removeVisualItem", &json!([placed]).to_string());
+            json!({ "ok": false, "reason": reason, "removed": kind.id })
+        }
+    }
+}
+
+fn inserted_index(backend: &dyn Backend) -> Option<i64> {
+    serde_json::from_str::<Value>(&backend.get("plan.missionController.currentPlanViewVIIndex")).ok().and_then(|v| v.get("value").and_then(Value::as_i64)).filter(|index| *index > 0)
+}
+
+// An item the plan draws with a shape is useless without one, and a takeoff that does not know where
+// the vehicle launches from is worse than useless, so a shape that cannot be written takes the item
+// with it rather than leaving a survey with no area for an operator to find later.
+fn shape(backend: &dyn Backend, kind: &crate::missionkinds::Kind, index: i64, latitude: f64, longitude: f64) -> Result<(), String> {
+    if kind.id == "takeoff" {
+        let at = json!({ "latitude": latitude, "longitude": longitude, "altitude": 0.0 });
+        let written: Value = serde_json::from_str(&backend.set(&format!("plan.missionController.visualItems.{index}.launchCoordinate"), &json!({ "value": at }).to_string())).unwrap_or(Value::Null);
+        return match written.get("ok").and_then(Value::as_bool) {
+            Some(true) => Ok(()),
+            _ => Err("the takeoff would not take a launch position, and a takeoff without one cannot be flown".to_string()),
+        };
+    }
+    let Some((geometry, property)) = kind.geometry else { return Ok(()) };
+    let points = match geometry {
+        "line" => default_line(latitude, longitude),
+        _ => default_area(latitude, longitude),
+    };
+    let path = format!("plan.missionController.visualItems.{index}.{property}");
+    backend.invoke(&format!("{path}.clear"), "[]");
+    let refused = points.iter().find_map(|(lat, lon)| {
+        let at = json!([{ "latitude": lat, "longitude": lon, "altitude": 0.0 }]);
+        let answered: Value = serde_json::from_str(&backend.invoke(&format!("{path}.appendVertex"), &at.to_string())).unwrap_or(Value::Null);
+        match answered.get("ok").and_then(Value::as_bool) {
+            Some(true) => None,
+            _ => Some(format!("the {} would not take a {}", kind.title.to_lowercase(), kind.shape_noun())),
+        }
+    });
+    match refused {
+        Some(reason) => Err(reason),
+        None => Ok(()),
     }
 }
 
@@ -87,6 +133,7 @@ mod tests {
         fn get(&self, path: &str) -> String {
             match path {
                 "plan.missionController.visualItems.count" => json!({ "kind": "value", "value": 3 }).to_string(),
+                "plan.missionController.currentPlanViewVIIndex" => json!({ "kind": "value", "value": 2 }).to_string(),
                 path if path.ends_with(".sequenceNumber") => json!({ "kind": "value", "value": 2 }).to_string(),
                 _ => String::new(),
             }
@@ -97,8 +144,9 @@ mod tests {
                 _ => String::new(),
             }
         }
-        fn set(&self, _p: &str, _v: &str) -> String {
-            String::new()
+        fn set(&self, path: &str, value: &str) -> String {
+            self.calls.lock().unwrap().push((path.to_string(), value.to_string()));
+            self.answer.to_string()
         }
         fn invoke(&self, path: &str, args: &str) -> String {
             self.calls.lock().unwrap().push((path.to_string(), args.to_string()));
@@ -155,12 +203,16 @@ mod tests {
     }
 
     #[test]
-    fn a_takeoff_is_the_one_thing_an_empty_ground_mission_accepts() {
+    fn in_a_state_that_wants_a_takeoff_first_a_takeoff_is_the_one_thing_accepted() {
+        // Each call is asked in the same state, because this stub's flags do not move. What a real
+        // controller answers after a takeoff has gone in is a different question and belongs to a
+        // test with a real controller behind it; asserting it here would pin the fixture.
         let plan = Plan::new(empty_ground_mission());
         assert_eq!(run(&plan, "mission.insert", "[\"takeoff\", 47.0, 8.0, -1]")["ok"], true);
-        assert_eq!(run(&plan, "mission.insert", "[\"land\", 47.0, 8.0, -1]")["ok"], false);
-        assert_eq!(run(&plan, "mission.insert", "[\"survey\", 47.0, 8.0, -1]")["ok"], false);
-        assert_eq!(plan.calls.lock().unwrap().iter().filter(|(path, _)| path.contains("insert")).count(), 1);
+        let refused = Plan::new(empty_ground_mission());
+        assert_eq!(run(&refused, "mission.insert", "[\"land\", 47.0, 8.0, -1]")["ok"], false);
+        assert_eq!(run(&refused, "mission.insert", "[\"survey\", 47.0, 8.0, -1]")["ok"], false);
+        assert!(refused.calls.lock().unwrap().iter().all(|(path, _)| !path.contains("insert")));
     }
 
     #[test]
@@ -196,5 +248,74 @@ mod tests {
         assert!(!owns("plan.missionController.insertSimpleMissionItem"));
         assert!(!owns("mission.insertion"));
         assert_eq!(run(&Plan::new(flying_mission()), "mission.remove", "[]")["ok"], false);
+    }
+
+    #[test]
+    fn a_survey_arrives_with_an_area_around_where_it_was_placed() {
+        let plan = Plan::new(flying_mission());
+        assert_eq!(run(&plan, "mission.insert", "[\"survey\", 47.0, 8.0, -1]")["ok"], true);
+        let calls = plan.calls.lock().unwrap();
+        let path = "plan.missionController.visualItems.2.surveyAreaPolygon";
+        assert_eq!(calls.iter().filter(|(called, _)| called == &format!("{path}.clear")).count(), 1);
+        let vertices: Vec<&(String, String)> = calls.iter().filter(|(called, _)| called == &format!("{path}.appendVertex")).collect();
+        assert_eq!(vertices.len(), 4, "a survey with no area draws nothing and uploads nothing, so the action gives it one");
+        let first: Value = serde_json::from_str(&vertices[0].1).unwrap();
+        assert!((first[0]["latitude"].as_f64().unwrap() - 47.0).abs() < 0.01, "the area is placed around where the operator tapped");
+    }
+
+    #[test]
+    fn a_corridor_arrives_with_a_path_rather_than_an_area() {
+        let plan = Plan::new(flying_mission());
+        assert_eq!(run(&plan, "mission.insert", "[\"corridor\", 47.0, 8.0, -1]")["ok"], true);
+        let calls = plan.calls.lock().unwrap();
+        let vertices = calls.iter().filter(|(called, _)| called.ends_with("corridorPolyline.appendVertex")).count();
+        assert_eq!(vertices, 2, "a corridor is a line to scan along, so two points rather than four");
+    }
+
+    #[test]
+    fn a_takeoff_arrives_knowing_where_the_vehicle_launches_from() {
+        let plan = Plan::new(empty_ground_mission());
+        assert_eq!(run(&plan, "mission.insert", "[\"takeoff\", 47.25, 8.75, -1]")["ok"], true);
+        let calls = plan.calls.lock().unwrap();
+        let written = calls.iter().find(|(called, _)| called.ends_with(".launchCoordinate")).expect("the launch position was never written");
+        let value: Value = serde_json::from_str(&written.1).unwrap();
+        assert_eq!(value["value"]["latitude"], 47.25);
+        assert_eq!(value["value"]["longitude"], 8.75);
+    }
+
+    #[test]
+    fn an_item_that_will_not_take_its_shape_is_taken_out_again() {
+        let mut plan = Plan::new(flying_mission());
+        plan.answer = json!({ "ok": false, "reason": "no" });
+        let refused = run(&plan, "mission.insert", "[\"survey\", 47.0, 8.0, -1]");
+        assert_eq!(refused["ok"], false);
+        let calls = plan.calls.lock().unwrap();
+        assert!(calls.iter().all(|(called, _)| !called.ends_with("removeVisualItem")), "the insert itself failed, so there is nothing to remove");
+    }
+
+    #[test]
+    fn a_survey_that_will_not_take_an_area_is_removed_rather_than_left_empty() {
+        struct Fussy(Plan);
+        impl Backend for Fussy {
+            fn get(&self, path: &str) -> String { self.0.get(path) }
+            fn get_fields(&self, path: &str, fields: &str) -> String { self.0.get_fields(path, fields) }
+            fn set(&self, path: &str, value: &str) -> String { self.0.set(path, value) }
+            fn invoke(&self, path: &str, args: &str) -> String {
+                match path.ends_with("appendVertex") {
+                    true => {
+                        self.0.calls.lock().unwrap().push((path.to_string(), args.to_string()));
+                        json!({ "ok": false, "reason": "no" }).to_string()
+                    }
+                    false => self.0.invoke(path, args),
+                }
+            }
+            fn watch(&self, paths: &[String]) { self.0.watch(paths) }
+        }
+        let fussy = Fussy(Plan::new(flying_mission()));
+        let refused = run(&fussy, "mission.insert", "[\"survey\", 47.0, 8.0, -1]");
+        assert_eq!(refused["ok"], false);
+        assert_eq!(refused["removed"], "survey");
+        let calls = fussy.0.calls.lock().unwrap();
+        assert!(calls.iter().any(|(called, _)| called.ends_with("removeVisualItem")), "a survey with no area is worse than no survey, because an operator has to find it to delete it");
     }
 }
