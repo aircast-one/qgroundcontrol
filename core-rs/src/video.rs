@@ -26,16 +26,26 @@ pub const CAMERA_DEPS: &[&str] = &[
 ];
 
 const UNDEFINED_MODE: i64 = -1;
+const PHOTO_CAPTURE_IDLE: i64 = 0;
+const PHOTO_CAPTURE_IN_PROGRESS: i64 = 1;
+const PHOTO_CAPTURE_INTERVAL_IDLE: i64 = 2;
+const PHOTO_CAPTURE_INTERVAL_IN_PROGRESS: i64 = 3;
+const VIDEO_CAPTURE_STOPPED: i64 = 0;
+const VIDEO_CAPTURE_RUNNING: i64 = 1;
 const PHOTO_MODE: i64 = 0;
 const VIDEO_MODE: i64 = 1;
 const SURVEY_MODE: i64 = 2;
-const VIDEO_RUNNING: i64 = 1;
-const PHOTO_IN_PROGRESS: i64 = 1;
-const PHOTO_INTERVAL_IN_PROGRESS: i64 = 3;
 const IDLE_CLOCK: &str = "00:00:00";
 
 fn slot_flag(backend: &dyn Backend, path: &str, slot: usize) -> bool {
     crate::read::result_flag(&backend.invoke(path, &json!([slot]).to_string()))
+}
+
+pub fn can_change_mode(mode: i64, photo_status: i64, video_status: i64) -> bool {
+    match mode {
+        PHOTO_MODE => matches!(photo_status, PHOTO_CAPTURE_IDLE | PHOTO_CAPTURE_INTERVAL_IDLE),
+        _ => video_status == VIDEO_CAPTURE_STOPPED,
+    }
 }
 
 pub fn video_summary(available: bool, decoding: bool, recording: bool, connecting: bool, configured: usize) -> &'static str {
@@ -106,15 +116,15 @@ pub fn camera_view(backend: &dyn Backend, _args: &[String]) -> Value {
     let shots = integer(&object(&backend.get_fields("vehicle.cameraTriggerPoints", "count")), "count").unwrap_or(0);
     let vendor = text(&camera, "vendor");
     let mode = integer(&camera, "cameraMode").unwrap_or(UNDEFINED_MODE);
-    let photo_status = integer(&camera, "photoCaptureStatus").unwrap_or(0);
-    let video_status = integer(&camera, "videoCaptureStatus").unwrap_or(0);
+    let photo_status = integer(&camera, "photoCaptureStatus").unwrap_or(PHOTO_CAPTURE_IDLE);
+    let video_status = integer(&camera, "videoCaptureStatus").unwrap_or(VIDEO_CAPTURE_STOPPED);
     let record_time = text(&camera, "recordTimeStr");
     let storage_status = integer(&camera, "storageStatus").unwrap_or(3);
     let storage_free = text(&camera, "storageFreeStr");
     let (captures_photos, captures_video, has_modes) = (flag(&camera, "capturesPhotos"), flag(&camera, "capturesVideo"), flag(&camera, "hasModes"));
     let battery = integer(&camera, "batteryRemaining").unwrap_or(-1);
-    let is_recording = video_status == VIDEO_RUNNING;
-    let taking_photo = photo_status == PHOTO_IN_PROGRESS || photo_status == PHOTO_INTERVAL_IN_PROGRESS;
+    let is_recording = video_status == VIDEO_CAPTURE_RUNNING;
+    let taking_photo = matches!(photo_status, PHOTO_CAPTURE_IN_PROGRESS | PHOTO_CAPTURE_INTERVAL_IN_PROGRESS);
     json!({
         "kind": "object",
         "class": "CameraControl",
@@ -145,6 +155,7 @@ pub fn camera_view(backend: &dyn Backend, _args: &[String]) -> Value {
         "canRecord": present && captures_video && (!has_modes || mode != PHOTO_MODE),
         "canPhoto": present && captures_photos && (!has_modes || mode != VIDEO_MODE),
         "hasModes": has_modes,
+        "canChangeMode": present && has_modes && can_change_mode(mode, photo_status, video_status),
     })
 }
 
@@ -200,6 +211,24 @@ mod tests {
         assert_eq!(view["cameras"][2]["enabled"], false);
         assert_eq!(view["configuredCount"], 1);
         assert_eq!(view["summary"], "Waiting for a stream.");
+    }
+
+    #[test]
+    fn a_camera_mid_capture_cannot_be_switched_out_of_its_mode() {
+        assert!(can_change_mode(PHOTO_MODE, 0, 0));
+        assert!(can_change_mode(PHOTO_MODE, 2, 0), "status 2 is the wait between interval shots, which is idle enough to leave photo mode");
+        assert!(!can_change_mode(PHOTO_MODE, 1, 0), "a shot in progress holds the camera in photo mode");
+        assert!(!can_change_mode(PHOTO_MODE, 3, 0), "status 3 is an interval shot in progress, not the wait before one");
+        assert!(can_change_mode(VIDEO_MODE, 1, 0));
+        assert!(!can_change_mode(VIDEO_MODE, 0, 1), "a running recording holds the camera in video mode");
+        assert!(!can_change_mode(SURVEY_MODE, 0, 1), "the Qt control treats every mode that is not photo as video mode, so a recording holds survey too");
+        let recording = camera_view(&Fake::new(json!({ "kind": "null" }), json!({ "kind": "object", "modelName": "ZR30", "cameraMode": 1, "videoCaptureStatus": 1, "capturesPhotos": true, "capturesVideo": true, "hasModes": true })), &[]);
+        assert_eq!(recording["canChangeMode"], false);
+        assert_eq!(recording["canRecord"], true, "the record control stays live while recording, because it is what stops it");
+        let idle = camera_view(&Fake::new(json!({ "kind": "null" }), json!({ "kind": "object", "modelName": "ZR30", "cameraMode": 1, "videoCaptureStatus": 0, "capturesPhotos": true, "capturesVideo": true, "hasModes": true })), &[]);
+        assert_eq!(idle["canChangeMode"], true);
+        let fixed = camera_view(&Fake::new(json!({ "kind": "null" }), json!({ "kind": "object", "modelName": "Fixed", "cameraMode": 1, "videoCaptureStatus": 0, "capturesVideo": true, "hasModes": false })), &[]);
+        assert_eq!(fixed["canChangeMode"], false, "a camera with no modes is never offered a mode change");
     }
 
     #[test]

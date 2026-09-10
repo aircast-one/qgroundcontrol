@@ -67,6 +67,7 @@
     "view.camera": {
         "batteryRemaining": "number",
         "batteryText": "string",
+        "canChangeMode": "bool",
         "canPhoto": "bool",
         "canRecord": "bool",
         "class": "string",
@@ -364,6 +365,7 @@
         ]
     },
     "view.control(settings.appSettings.audioMuted)": {
+        "applicationRestartRequired": "bool",
         "class": "string",
         "control": "string",
         "decimalPlaces": "number",
@@ -379,9 +381,13 @@
         "path": "string",
         "readOnly": "bool",
         "rebootRequired": "bool",
+        "restartNotices": [
+            "empty"
+        ],
         "units": "string",
         "value": "bool",
-        "valueString": "string"
+        "valueString": "string",
+        "vehicleRebootRequired": "bool"
     },
     "view.coreCalibration": {
         "available": "bool",
@@ -932,6 +938,7 @@
                     {
                         "controls": [
                             {
+                                "applicationRestartRequired": "bool",
                                 "class": "string",
                                 "control": "string",
                                 "decimalPlaces": "number",
@@ -950,9 +957,13 @@
                                 "path": "string",
                                 "readOnly": "bool",
                                 "rebootRequired": "bool",
+                                "restartNotices": [
+                                    "empty"
+                                ],
                                 "units": "string",
                                 "value": "number",
-                                "valueString": "string"
+                                "valueString": "string",
+                                "vehicleRebootRequired": "bool"
                             }
                         ],
                         "title": "string"
@@ -1000,6 +1011,7 @@
             {
                 "controls": [
                     {
+                        "applicationRestartRequired": "bool",
                         "class": "string",
                         "control": "string",
                         "decimalPlaces": "number",
@@ -1018,9 +1030,13 @@
                         "path": "string",
                         "readOnly": "bool",
                         "rebootRequired": "bool",
+                        "restartNotices": [
+                            "empty"
+                        ],
                         "units": "string",
                         "value": "number",
-                        "valueString": "string"
+                        "valueString": "string",
+                        "vehicleRebootRequired": "bool"
                     }
                 ],
                 "note": "string",

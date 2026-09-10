@@ -72,12 +72,40 @@ pub fn decode(fact: &Value, path: &str) -> Value {
         "minimum": bound("min", "minIsDefaultForType"),
         "maximum": bound("max", "maxIsDefaultForType"),
         "rebootRequired": flag("vehicleRebootRequired") || flag("qgcRebootRequired"),
+        "vehicleRebootRequired": flag("vehicleRebootRequired"),
+        "applicationRestartRequired": flag("qgcRebootRequired"),
+        "restartNotices": restart_notices(flag("vehicleRebootRequired"), flag("qgcRebootRequired")),
     })
+}
+
+pub const VEHICLE_REBOOT_NOTICE: &str = "Vehicle reboot required after change";
+pub const APPLICATION_RESTART_NOTICE: &str = "Application restart required after change";
+
+pub fn restart_notices(vehicle: bool, application: bool) -> Vec<&'static str> {
+    vehicle
+        .then_some(VEHICLE_REBOOT_NOTICE)
+        .into_iter()
+        .chain(application.then_some(APPLICATION_RESTART_NOTICE))
+        .collect()
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_restart_says_which_thing_has_to_restart() {
+        assert_eq!(restart_notices(true, false), vec![VEHICLE_REBOOT_NOTICE], "rebooting an airframe mid-setup is not the same ask as restarting the ground station");
+        assert_eq!(restart_notices(false, true), vec![APPLICATION_RESTART_NOTICE]);
+        assert_eq!(restart_notices(true, true), vec![VEHICLE_REBOOT_NOTICE, APPLICATION_RESTART_NOTICE], "the Qt dialog stacks two labels rather than merging them, so nothing here is invented copy");
+        assert!(restart_notices(false, false).is_empty());
+        let unit = decode(&json!({ "kind": "fact", "name": "distanceUnits", "value": 0, "valueString": "0", "qgcRebootRequired": true }), "p");
+        assert_eq!((unit["rebootRequired"].as_bool(), unit["vehicleRebootRequired"].as_bool(), unit["applicationRestartRequired"].as_bool()), (Some(true), Some(false), Some(true)));
+        assert_eq!(unit["restartNotices"], json!([APPLICATION_RESTART_NOTICE]));
+        let param = decode(&json!({ "kind": "fact", "name": "COMPASS_USE", "value": 1, "valueString": "1", "vehicleRebootRequired": true }), "p");
+        assert_eq!((param["vehicleRebootRequired"].as_bool(), param["applicationRestartRequired"].as_bool()), (Some(true), Some(false)));
+        assert_eq!(param["restartNotices"], json!([VEHICLE_REBOOT_NOTICE]));
+    }
 
     #[test]
     fn a_bool_fact_is_a_toggle_and_an_enum_a_choice_without_unknowns() {
