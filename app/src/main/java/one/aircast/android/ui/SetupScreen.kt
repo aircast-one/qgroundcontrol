@@ -184,11 +184,13 @@ fun SetupScreen(modifier: Modifier = Modifier) {
 
     LazyColumn(modifier.fillMaxSize()) {
         item(key = "verdict") {
+            val readiness = setupReadiness(setupJson)
             ReadinessHeader(
-                ready = setupComplete,
+                ready = readiness?.ready ?: setupComplete,
                 vehicle = vehicleType.ifBlank { "Vehicle" },
                 firmware = firmware,
-                outstanding = needSetup.size,
+                headline = readiness?.headline.orEmpty(),
+                detail = readiness?.detail.orEmpty(),
             )
         }
 
@@ -259,7 +261,8 @@ private fun ReadinessHeader(
     ready: Boolean,
     vehicle: String,
     firmware: String,
-    outstanding: Int,
+    headline: String,
+    detail: String,
 ) {
     Column(
         modifier = Modifier
@@ -285,15 +288,18 @@ private fun ReadinessHeader(
             style = MaterialTheme.typography.bodyMedium,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
         )
-        if (!ready && outstanding > 0) {
+        if (!ready && headline.isNotBlank()) {
             Text(
-                text = if (outstanding == 1) {
-                    "1 item needs setup"
-                } else {
-                    "$outstanding items need setup"
-                },
+                text = headline,
                 style = MaterialTheme.typography.bodyMedium,
                 color = MaterialTheme.colorScheme.error,
+            )
+        }
+        if (detail.isNotBlank()) {
+            Text(
+                text = detail,
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
         }
     }

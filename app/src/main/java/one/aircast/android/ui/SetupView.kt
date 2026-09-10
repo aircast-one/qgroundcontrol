@@ -33,6 +33,16 @@ internal fun setupGroups(view: JSONObject?): List<SetupGroup> {
     }
 }
 
+internal data class SetupReadiness(val ready: Boolean, val headline: String, val detail: String)
+
+internal fun setupReadiness(view: JSONObject?): SetupReadiness? = view?.let {
+    SetupReadiness(
+        ready = it.optBoolean("ready"),
+        headline = it.optString("headline"),
+        detail = it.optString("detail"),
+    )
+}
+
 internal fun setupPage(view: JSONObject?, name: String): SetupPage? =
     setupGroups(view).flatMap { it.pages }.firstOrNull { it.name == name }
 

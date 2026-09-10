@@ -3,6 +3,7 @@ package one.aircast.android.ui
 import org.json.JSONObject
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
+import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
@@ -60,5 +61,30 @@ class SetupViewTest {
 
         assertEquals(true, page?.native)
         assertEquals("Finish on desktop", setupBadge(RADIO, page?.native == true))
+    }
+}
+
+class SetupReadinessTest {
+    @Test
+    fun `no view means no readiness`() {
+        assertNull(setupReadiness(null))
+    }
+
+    @Test
+    fun `readiness comes from the core verbatim`() {
+        val view = JSONObject(
+            """{"ready":false,"headline":"2 components need setup","detail":"A sensor is unhealthy."}""",
+        )
+        val readiness = setupReadiness(view)
+        assertEquals(false, readiness?.ready)
+        assertEquals("2 components need setup", readiness?.headline)
+        assertEquals("A sensor is unhealthy.", readiness?.detail)
+    }
+
+    @Test
+    fun `a ready vehicle carries no headline`() {
+        val readiness = setupReadiness(JSONObject("""{"ready":true,"headline":"","detail":""}"""))
+        assertEquals(true, readiness?.ready)
+        assertEquals("", readiness?.headline)
     }
 }
