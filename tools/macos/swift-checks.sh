@@ -31,9 +31,21 @@ if grep -rn "mavlinkInspector\.systems\.0" "$root"/macos/Sources/*.swift; then
     exit 1
 fi
 
+# A probe action argument called "id" is unreachable: the request is /native/probe?id=<probe>,
+# so the server reads that one and the action gets the probe's name where it wanted a number.
+# It fails with a plausible error rather than obviously, which is how the notices dismiss action
+# shipped never once having run.
+if grep -rn 'args\["id"\]' "$root"/macos/Sources/*.swift; then
+    print -u2 "a probe action argument named id collides with the probe selector - rename it"
+    exit 1
+fi
+
 # textFieldFacts, comboboxFacts and the geoTag property names are interpolated into bridge
 # paths and the core never names any of them, so nothing else checks their spelling.
 "$root/tools/macos/interpolated-names.py" || exit 1
+
+# SetupPage.bespoke has to name exactly what the content switch draws.
+"$root/tools/macos/head-lists.py" || exit 1
 
 swiftc -Onone -o "$out" \
     "$root/macos/Sources/DetectionModel.swift" \

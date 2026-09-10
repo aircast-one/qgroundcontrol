@@ -2,14 +2,17 @@ import Foundation
 
 struct SetupPageInfo: Equatable {
     let name: String
-    let native: Bool
     let parameterSections: Bool
+
+    init(name: String, parameterSections: Bool) {
+        self.name = name
+        self.parameterSections = parameterSections
+    }
 
     init?(_ json: Any?) {
         guard let json = json as? [String: Any],
               let name = json["name"] as? String, !name.isEmpty else { return nil }
         self.name = name
-        native = (json["native"] as? NSNumber)?.boolValue ?? false
         parameterSections = (json["parameterSections"] as? NSNumber)?.boolValue ?? false
     }
 }
@@ -38,10 +41,12 @@ enum SetupCatalogue {
         ((json as? [Any]) ?? []).compactMap(SetupGroup.init)
     }
 
-    // The core decides which pages this head can draw, and that answer changes with the firmware:
-    // a page it does not claim would open on the summary, which reads as the window losing its way.
+    // Which pages this head can draw is this head's own knowledge. view.setup used to answer it
+    // with a native flag, which made the core say what a head is capable of, and the sidebar went
+    // blank the moment that flag moved. The window draws a bespoke view for the names it knows and
+    // parameter sections for anything else that has them, so that is the question asked here.
     static func offered(_ groups: [SetupGroup]) -> [SetupGroup] {
-        groups.map { SetupGroup(title: $0.title, pages: $0.pages.filter(\.native)) }
+        groups.map { SetupGroup(title: $0.title, pages: $0.pages.filter(SetupPage.draws)) }
             .filter { !$0.pages.isEmpty }
     }
 

@@ -27,4 +27,16 @@ enum SetupPage {
     static func symbol(for page: String) -> String {
         glyphs[page] ?? unknownSymbol
     }
+
+    // Every name VehicleSetupWindow's content switch has a case for. swift-checks.sh compares
+    // this against that switch, because a name added to one and not the other is either a page
+    // offered that opens on nothing or a page built that is never listed.
+    static let bespoke: Set<String> = [
+        "Summary", "Parameters", "Safety", "Power", "Frame", "Radio", "Tuning", "Camera",
+        "Lights", "Motors", "Remote Support", "Flight Modes", "Sensors",
+    ]
+
+    static func draws(_ page: SetupPageInfo) -> Bool {
+        bespoke.contains(page.name) || page.parameterSections
+    }
 }

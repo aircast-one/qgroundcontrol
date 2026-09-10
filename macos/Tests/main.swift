@@ -2848,29 +2848,57 @@ func checkSetupPages() {
            "and a page added to the core tomorrow draws as unknown rather than as something else")
 
     let decoded = SetupCatalogue.groups([
-        ["title": "Vehicle", "pages": [["name": "Summary", "native": true as NSNumber,
+        ["title": "Vehicle", "pages": [["name": "Summary",
                                         "parameterSections": false as NSNumber]]],
-        ["title": "Setup", "pages": [["name": "Safety", "native": true as NSNumber,
-                                      "parameterSections": true as NSNumber],
-                                     ["name": "Flight Behavior", "native": false as NSNumber,
-                                      "parameterSections": false as NSNumber]]],
-        ["title": "Empty", "pages": [["name": "Sensors", "native": false as NSNumber,
+        ["title": "Bespoke", "pages": [["name": "Safety",
+                                        "parameterSections": true as NSNumber],
+                                       ["name": "Sensors",
+                                        "parameterSections": false as NSNumber]]],
+        ["title": "Sections", "pages": [["name": "Flight Behavior",
+                                         "parameterSections": true as NSNumber]]],
+        ["title": "Empty", "pages": [["name": "Invented Page",
                                       "parameterSections": false as NSNumber]]],
     ])
     expect(SetupCatalogue.names(decoded).joined(separator: ","),
-           "Summary,Safety,Flight Behavior,Sensors",
-           "every page the core lists is decoded, native or not")
+           "Summary,Safety,Sensors,Flight Behavior,Invented Page",
+           "every page the core lists is decoded, drawable or not")
 
     let offered = SetupCatalogue.offered(decoded)
-    expect(SetupCatalogue.names(offered).joined(separator: ","), "Summary,Safety",
-           "a page the core does not claim as native is not offered, because this head has "
-           + "nothing to draw for it and the sidebar would open the summary instead")
-    expect(offered.map(\.title).joined(separator: ","), "Vehicle,Setup",
-           "and a group left with no pages at all goes with them, rather than sitting empty")
+    expect(SetupCatalogue.names(offered).joined(separator: ","),
+           "Summary,Safety,Sensors,Flight Behavior",
+           "this head decides what it can draw: a name its content switch has a case for, or "
+           + "anything with parameter sections. view.setup used to answer that with a native "
+           + "flag, which had the core saying what a head is capable of -- and the sidebar went "
+           + "blank the moment the core moved the flag")
+    expect(SetupCatalogue.page("Invented Page", in: offered) == nil,
+           "a page this head has no view for and no sections to fall back on is not offered, "
+           + "because choosing it would open on nothing")
+    expect(SetupCatalogue.page("Summary", in: offered) != nil,
+           "Summary is offered like any other page. It used to reach the screen only as the "
+           + "switch's fallback, so the moment the sidebar stopped listing it the operator had "
+           + "no way back to the one page that says what still needs setting")
+    expect(offered.map(\.title).joined(separator: ","), "Vehicle,Bespoke,Sections",
+           "a group left with no pages at all goes with them, rather than sitting empty")
     expect(SetupCatalogue.page("Safety", in: offered)?.parameterSections == true,
-           "a page carries whether the core has parameter sections for it, which is what lets an "
-           + "unknown page still draw instead of falling through to the summary")
-    expect(SetupCatalogue.page("Sensors", in: offered) == nil, "and a filtered page is gone")
+           "a page still carries whether the core has parameter sections for it, which is what "
+           + "the fallback draws from -- that is a fact about the DATA, not about this head")
+
+    expect(SetupPage.bespoke.filter { SetupPage.glyphs[$0] == nil }.sorted()
+        .joined(separator: ","), "",
+           "every page the content switch draws has a glyph. These are two hand-written lists in "
+           + "one file answering to different things -- glyphs to the core's page names, bespoke "
+           + "to the switch -- and a page in the switch with no glyph draws the unknown icon, "
+           + "which is exactly what that icon is for, so nobody would notice")
+    expect(SetupPage.glyphs["Flight Behavior"] != nil && !SetupPage.bespoke.contains("Flight Behavior"),
+           "the two lists are legitimately different, so this is a subset and not an equality: "
+           + "Flight Behavior has a glyph and no bespoke view, and draws from parameter sections")
+
+    expect(SetupPage.draws(SetupPageInfo(name: "Radio", parameterSections: false)),
+           "a bespoke page draws with no sections at all")
+    expect(SetupPage.draws(SetupPageInfo(name: "Anything", parameterSections: true)),
+           "and a page this head never heard of draws when the core has sections for it")
+    expect(!SetupPage.draws(SetupPageInfo(name: "Anything", parameterSections: false)),
+           "with neither, it does not")
 
     expect(SetupCatalogue.groups(nil).isEmpty, "no answer is no pages")
     expect(SetupCatalogue.groups([["pages": []], ["title": ""]]).isEmpty,
@@ -3245,7 +3273,7 @@ func checkViewContract() {
     ("view.setup", [], ["connected", "firmware", "ready", "headline", "detail", "components",
                         "groups"]),
         ("view.setup", ["groups"], ["title", "pages"]),
-        ("view.setup", ["groups", "pages"], ["name", "native", "parameterSections"]),
+        ("view.setup", ["groups", "pages"], ["name", "parameterSections"]),
         ("view.setup(Safety)", [], ["page", "firmware", "available", "sections"]),
         ("view.setup(Safety)", ["sections"], ["title", "note", "controls"]),
         ("view.setup(Safety)", ["sections", "controls"],

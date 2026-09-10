@@ -62,9 +62,11 @@ final class HostNoticeStore: ObservableObject, Probeable {
                 return ["ok": false, "error": "the core refused the kind \(args["kind"] ?? "")"]
             }
         case "dismiss":
-            guard let id = Int64(args["id"] ?? ""),
-                  let notice = queue.all.first(where: { $0.id == id }) else {
-                return ["ok": false, "error": "dismiss needs the id of a queued notice"]
+            // Not "id": the probe's own selector is id=notices, so an action argument of that
+            // name is read as the probe's and never reaches here.
+            guard let wanted = Int64(args["notice"] ?? ""),
+                  let notice = queue.all.first(where: { $0.id == wanted }) else {
+                return ["ok": false, "error": "dismiss needs notice=<id of a queued notice>"]
             }
             dismiss(notice)
         case "openSetup":

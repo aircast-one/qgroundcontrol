@@ -886,10 +886,12 @@ struct VehicleSetupView: View {
         case "Remote Support": RemoteSupportView(support: support)
         case "Flight Modes": FlightModesView(store: parameters)
         case "Sensors": SensorsView(store: sensors)
+        case "Summary": SetupSummaryView(store: components, sensors: sensors, selection: selection)
         default:
             // A page the core lists with parameter sections and this head has no bespoke view for
-            // still has everything it needs to draw; falling through to the summary would look
-            // like the window forgetting which page was asked for.
+            // still has everything it needs to draw. The else below is unreachable from the
+            // sidebar - SetupCatalogue.offered will not list a page with neither - and is left as
+            // the answer to a selection restored from settings for a page that has since gone.
             if SetupCatalogue.page(selection.page, in: components.groups)?.parameterSections == true {
                 ParameterSectionsView(store: parameters, page: selection.page)
             } else {
