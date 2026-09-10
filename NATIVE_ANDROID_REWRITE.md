@@ -635,8 +635,8 @@ a supervised airframe. `Vehicle::motorTest` is already `Q_INVOKABLE` through the
 `vehicle` root, so this is a UI and safety decision, not a bridge one. The Setup
 pages say so and send the operator to desktop QGroundControl.
 
-**Radio calibration cannot be tested in this rig at all.** Stick movement cannot
-be simulated: `setRcChannelOverride` is accepted but SITL does not reflect it in
+**Radio calibration cannot be driven in this rig.** Stick movement cannot
+be simulated *by SITL*: `setRcChannelOverride` is accepted but SITL does not reflect it in
 `RC_CHANNELS`, so the controller never sees a stick move. The long-disabled
 `RadioConfigTest` hits the same wall — its mock input no longer drives channel
 identification, so no channel ever maps. Covering radio calibration needs either
@@ -2971,6 +2971,46 @@ reports the radio set up, the "needs setup before flight" section disappears and
 missing sim parameter, not a product state. The "Finish on desktop" badge remains correct and
 still serves a genuinely uncalibrated radio — but it was reached through a rig artefact, and this
 document said otherwise.
+
+### And then the sticks moved
+
+The claim above — that stick movement cannot be simulated — was true of SITL and quietly applied
+to the whole rig. `apmvehicle.py` is a sim written for this work, and its `rc_channels_send` was
+passing eight hardcoded constants. So "the channels move", recorded here as observed, described
+something that had never happened: the bars were rendering a fixed number.
+
+That matters more than it sounds, because the operator's question on this page is not "what is the
+value" but "does it follow my stick". A static bar demonstrates the value is *read*. Only a moving
+one demonstrates it is *tracked*, and only diverging values demonstrate each row follows its own
+mapped channel rather than all of them reading the same one.
+
+The sim now sweeps each channel on its own phase. Two captures three seconds apart:
+
+| Row | First | Second |
+|---|---|---|
+| Roll | 1862 | 1180 |
+| Pitch | 1487 | 1215 |
+| Yaw | 1314 R | 1873 R |
+
+Each row moves independently, the bar length follows the number, and the reversed marker stays put
+on the one channel configured for it. `STILL_STICKS=1` restores the constants for any test that
+wants a fixed frame.
+
+What remains true is the narrower claim: calibration itself still cannot be driven, because that
+needs the stick-extremes state machine, not merely moving values.
+
+### A view shape changed without re-recording the contract
+
+`completes` went into `view.setup` without re-recording
+`test/Bridge/fixtures/view-shapes.json`, which is the authority on view shapes and is compared
+field-for-field by `QGCCoreCTest`. The contract test therefore went red for **every session
+sharing this checkout**, not just this one, until another session hand-patched the key.
+
+Re-recording properly afterwards produced a file byte-identical to that hand edit, so nothing was
+lost — but that was worth checking rather than assuming, because a hand-written fixture is a guess
+until proven and the entire point of the file is that it is recorded rather than written. The
+procedure is one command, `QGC_RECORD_VIEW_CONTRACT=1` against the test, and the fixture belongs in
+the same commit as the change that moved the shape.
 
 ## Phase 6 — Shell · 2 weeks
 
