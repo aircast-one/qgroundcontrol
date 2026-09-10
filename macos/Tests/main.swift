@@ -1265,6 +1265,7 @@ func checkMissionItemKinds() {
 
     checkHostNotices()
     checkMavlinkConsole()
+    checkModeSlots()
 
     expect(WriteReport.failure("the fence radius"),
            "Could not change the fence radius. It is unchanged.",
@@ -3305,6 +3306,8 @@ func checkViewContract() {
           "maxAltitudeMeters", "distanceText", "lowestText", "highestText", "points"]),
         ("view.terrainProfile", ["points"],
          ["x", "missionAltitude", "terrainAltitude", "collision"]),
+        ("view.modeSlots", [], ["available", "channel", "liveSlot", "slots", "reason"]),
+        ("view.modeSlots", ["slots"], ["slot", "mode", "live"]),
         ("view.missionKinds", [], ["kinds"]),
         ("view.missionKinds", ["kinds"],
          ["id", "title", "invokable", "complexName", "geometry", "geometryProperty", "shapeNoun",
@@ -4004,4 +4007,38 @@ func checkMavlinkConsole() {
            + "can reboot it, rewrite its parameters or arm it, and nothing here can send one to "
            + "check the wiring -- so the input is unbuilt and the page says so rather than "
            + "offering a field that silently does nothing")
+}
+
+func checkModeSlots() {
+    func slot(_ n: Int, _ mode: Any, _ live: Bool) -> [String: Any] {
+        ["slot": n as NSNumber, "mode": mode, "live": live as NSNumber]
+    }
+    let read = ModeSlots(["available": true as NSNumber, "channel": 5 as NSNumber,
+                          "liveSlot": 3 as NSNumber, "reason": "",
+                          "slots": [slot(1, "Stabilize", false), slot(2, "Loiter", false),
+                                    slot(3, "Loiter", true), slot(4, NSNull(), false)]])
+    expect(read.slots.count == 4, "every position the core reports is carried across")
+    expect(read.isLive(3), "the live position is the one the transmitter is selecting")
+    expect(!read.isLive(2),
+           "and a position holding the SAME mode as the live one is not live. This head used to "
+           + "mark a position active when its configured mode equalled the vehicle's current "
+           + "mode, so two positions set to Loiter both lit up -- and a mode chosen from the "
+           + "ground station lit whichever position held it while the switch sat elsewhere")
+    expect(read.slots[3].mode == nil, "a position with no mode set reads as none, not as empty text")
+
+    let unreachable = ModeSlots(["available": true as NSNumber, "liveSlot": 0 as NSNumber,
+                                 "reason": "The transmitter is not sending on the mode channel.",
+                                 "slots": [slot(1, "Stabilize", false)]])
+    expect(!unreachable.isLive(1),
+           "with no live position nothing is marked, because showing the wrong switch position "
+           + "is worse than showing none")
+    expect(unreachable.reason, "The transmitter is not sending on the mode channel.",
+           "and the core says why rather than the screen going quiet")
+
+    expect(!ModeSlots(["available": false as NSNumber, "liveSlot": 2 as NSNumber,
+                       "slots": [slot(2, "Loiter", true)]]).isLive(2),
+           "an unavailable read marks nothing even when it carries a live slot, because the two "
+           + "have to agree before this head paints a position green")
+    expect(ModeSlots([:]).describes == false, "an empty read describes nothing")
+    expect(ModeSlots.none.reason, "", "and says nothing rather than inventing a reason")
 }

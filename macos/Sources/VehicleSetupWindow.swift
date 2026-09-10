@@ -624,6 +624,7 @@ struct FrameView: View {
 
 struct FlightModesView: View {
     @ObservedObject var store: ParametersStore
+    @ObservedObject var modes: ModeSlotsStore
 
     var body: some View {
         SetupPageBody(title: "Flight Modes",
@@ -648,10 +649,16 @@ struct FlightModesView: View {
 
                 VStack(alignment: .leading, spacing: 0) {
                     SectionLabel(text: "Switch positions")
+                    // The core says why no position is lit - the transmitter is silent on the
+                    // mode channel, or the switch sits between thresholds. Without it the screen
+                    // looks identical to one where nothing has moved yet.
+                    if !modes.slots.reason.isEmpty {
+                        GroupCard { EmptyStateRow(text: modes.slots.reason) }
+                    }
                     GroupCard {
                         ForEach(positions, id: \.index) { position in
                             if let parameter = store.parameter(named: position.parameter) {
-                                let active = parameter.value == store.currentFlightMode
+                                let active = modes.slots.isLive(position.index)
                                 GroupRow(title: "Position \(position.index)",
                                          showSeparator: position.index > 1,
                                          leading: {
@@ -680,7 +687,11 @@ struct FlightModesView: View {
                 }
             }
         }
-        .onAppear(perform: store.load)
+        .onAppear {
+            store.load()
+            modes.startWatching()
+        }
+        .onDisappear(perform: modes.stopWatching)
     }
 
     private var positions: [FlightModePosition] {
@@ -829,6 +840,7 @@ struct VehicleSetupView: View {
     @ObservedObject var radio: RadioStore
     @ObservedObject var motors: MotorsStore
     @ObservedObject var support: RemoteSupportStore
+    @ObservedObject var modeSlots: ModeSlotsStore
     @ObservedObject var selection: PageSelection
 
     var body: some View {
@@ -884,7 +896,7 @@ struct VehicleSetupView: View {
         case "Motors": MotorsView(motors: motors).onAppear(perform: motors.start)
             .onDisappear(perform: motors.stop)
         case "Remote Support": RemoteSupportView(support: support)
-        case "Flight Modes": FlightModesView(store: parameters)
+        case "Flight Modes": FlightModesView(store: parameters, modes: modeSlots)
         case "Sensors": SensorsView(store: sensors)
         case "Summary": SetupSummaryView(store: components, sensors: sensors, selection: selection)
         default:
@@ -905,6 +917,7 @@ final class VehicleSetupWindow: NSObject, NSWindowDelegate {
     static let shared = VehicleSetupWindow()
 
     private let parameters = ParametersStore()
+    private let modeSlots = ModeSlotsStore()
     private let sensors = SensorsStore()
     private let components = VehicleComponentsStore()
     private let power = PowerStore()
@@ -918,6 +931,7 @@ final class VehicleSetupWindow: NSObject, NSWindowDelegate {
     override init() {
         super.init()
         NativeProbe.register(parameters)
+        NativeProbe.register(modeSlots)
         NativeProbe.register(sensors)
         NativeProbe.register(components)
         NativeProbe.register(power)
@@ -949,7 +963,7 @@ final class VehicleSetupWindow: NSObject, NSWindowDelegate {
         window.contentView = NSHostingView(rootView: VehicleSetupView(
             parameters: parameters, sensors: sensors, components: components,
             power: power, frame: frame, radio: radio, motors: motors, support: support,
-            selection: selection))
+            modeSlots: modeSlots, selection: selection))
         window.center()
         window.makeKeyAndOrderFront(nil)
         self.window = window
@@ -960,6 +974,7 @@ final class VehicleSetupWindow: NSObject, NSWindowDelegate {
         motors.stop()
         components.stopWatching()
         support.stopWatching()
+        modeSlots.stopWatching()
         power.stop()
         frame.stop()
         radio.stop()

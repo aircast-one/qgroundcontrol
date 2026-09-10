@@ -24,6 +24,7 @@ add_library(QGCNativeUI STATIC
     Sources/LogEntryModel.swift
     Sources/HostNoticeModel.swift
     Sources/MavlinkConsoleModel.swift
+    Sources/ModeSlotsModel.swift
     Sources/Vibration.swift
     Sources/VibrationReading.swift
     Sources/ParameterModel.swift
@@ -100,6 +101,7 @@ add_library(QGCNativeUI STATIC
     Sources/GuidedActions.swift
     Sources/HostNotices.swift
     Sources/MavlinkConsoleStore.swift
+    Sources/ModeSlotsStore.swift
     Sources/Frame.swift
     Sources/OverlayKit.swift
     Sources/AppShell.swift
