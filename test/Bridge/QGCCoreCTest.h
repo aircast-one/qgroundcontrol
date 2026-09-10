@@ -46,6 +46,7 @@ private slots:
     void _polygonGeometryMatchesTheRecordedOracle();
     void _structureScanFlightPathMatchesTheRecordedOracle();
     void _operatorNoticesReachAHeadWithNoQmlRoot();
+    void _everyNameTheCoreHandsAHeadToInterpolateResolves();
     void _surveyTransectsMatchTheRecordedOracle();
     void _tlogSummaryDecodesTheSampleLog();
     void _planFileAgreesWithTheCppLoader();

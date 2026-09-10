@@ -1910,23 +1910,38 @@ void QGCCoreCTest::_theTileCacheSchemaMatchesTheRecordedOne()
     const auto leaveTheEngineOnTheAppsCache = qScopeGuard([&appCache]() { QGCMapEngine::instance()->init(appCache); });
     QGCMapEngine::instance()->init(databasePath);
 
-    QTRY_VERIFY_WITH_TIMEOUT(QFileInfo::exists(databasePath) && QFileInfo(databasePath).size() > 0, 10000);
-
     QJsonObject schema;
     {
         QSqlDatabase database = QSqlDatabase::addDatabase(QStringLiteral("QSQLITE"), QStringLiteral("tileCacheSchemaProbe"));
         database.setDatabaseName(databasePath);
-        QVERIFY2(database.open(), qPrintable(database.lastError().text()));
+
+        // The worker creates the tables one at a time on its own thread, so a database file that
+        // exists is not yet a database with a schema in it. Wait for the last thing it writes.
+        QJsonObject recordedSets;
+        QElapsedTimer waitingForTheWorker;
+        waitingForTheWorker.start();
+        while (recordedSets.isEmpty() && waitingForTheWorker.elapsed() < 10000) {
+            if (!QFileInfo::exists(databasePath) || !database.open()) {
+                QTest::qWait(50);
+                continue;
+            }
+            QSqlQuery sets(database);
+            if (sets.exec(QStringLiteral("SELECT name, defaultSet FROM TileSets ORDER BY name"))) {
+                while (sets.next()) {
+                    recordedSets[sets.value(0).toString()] = sets.value(1).toInt();
+                }
+            }
+            if (recordedSets.isEmpty()) {
+                database.close();
+                QTest::qWait(50);
+            }
+        }
+        QVERIFY2(!recordedSets.isEmpty(), "the map engine never finished creating the tile cache");
+
         QSqlQuery query(database);
         QVERIFY(query.exec(QStringLiteral("SELECT type, name, sql FROM sqlite_master WHERE sql IS NOT NULL ORDER BY name")));
         while (query.next()) {
             schema[query.value(1).toString()] = QStringLiteral("%1 %2").arg(query.value(0).toString(), query.value(2).toString());
-        }
-        QSqlQuery sets(database);
-        QVERIFY(sets.exec(QStringLiteral("SELECT name, defaultSet FROM TileSets ORDER BY name")));
-        QJsonObject recordedSets;
-        while (sets.next()) {
-            recordedSets[sets.value(0).toString()] = sets.value(1).toInt();
         }
         schema[QStringLiteral("_tileSets")] = QJsonDocument(recordedSets).toJson(QJsonDocument::Compact).constData();
         database.close();
@@ -2211,6 +2226,59 @@ void QGCCoreCTest::_operatorNoticesReachAHeadWithNoQmlRoot()
              "a head that never drains must not grow the queue without bound, and it has to be able to see that it missed something");
     QCOMPARE(notices().first().toObject().value(QStringLiteral("text")).toString(), QStringLiteral("message 6"));
     drain();
+#else
+    QSKIP("the Rust core is not linked into this build");
+#endif
+}
+
+void QGCCoreCTest::_everyNameTheCoreHandsAHeadToInterpolateResolves()
+{
+#ifdef QGC_RUST_CORE
+    const QJsonArray kinds = take(qgc_core_get("view.missionKinds")).value(QStringLiteral("kinds")).toArray();
+    QVERIFY2(!kinds.isEmpty(), "the core offers no mission kinds, so this test would pass by checking nothing");
+
+    (void) take(qgc_bridge_invoke("plan.start", "[]"));
+    const auto restore = []() { (void) take(qgc_bridge_invoke("plan.removeAll", "[]")); };
+    const auto leaveNoPlanBehind = qScopeGuard(restore);
+
+    const auto compact = [](const QJsonArray &array) { return QJsonDocument(array).toJson(QJsonDocument::Compact); };
+    const QString item = QStringLiteral("plan.missionController.visualItems.1");
+
+    QStringList unreachable;
+    for (const QJsonValue &entry : kinds) {
+        const QJsonObject kind = entry.toObject();
+        const QString id = kind.value(QStringLiteral("id")).toString();
+        const QString invokable = kind.value(QStringLiteral("invokable")).toString();
+        restore();
+
+        const QJsonArray arguments = kind.value(QStringLiteral("simple")).toBool()
+            ? QJsonArray { coordinateJson(47.3975, 8.5460), -1 }
+            : QJsonArray { kind.value(QStringLiteral("complexName")).toString(), coordinateJson(47.3975, 8.5460), -1 };
+        const QJsonObject inserted = take(qgc_bridge_invoke((QStringLiteral("plan.missionController.") + invokable).toUtf8().constData(), compact(arguments).constData()));
+        if (!inserted.contains(QStringLiteral("result"))) {
+            unreachable.append(QStringLiteral("%1: missionController has no %2, so a head calling the name the core gave it calls nothing").arg(id, invokable));
+            continue;
+        }
+        QTRY_VERIFY_WITH_TIMEOUT(take(qgc_bridge_get(item.toUtf8().constData())).value(QStringLiteral("kind")).toString() == QStringLiteral("object"), 5000);
+
+        const QJsonValue geometry = kind.value(QStringLiteral("geometryProperty"));
+        if (geometry.isNull()) {
+            continue;
+        }
+        const QString path = item + QStringLiteral(".") + geometry.toString();
+        const QString resolved = take(qgc_bridge_get(path.toUtf8().constData())).value(QStringLiteral("kind")).toString();
+        if (resolved != QStringLiteral("object")) {
+            unreachable.append(QStringLiteral("%1: %2 answers %3, and a head interpolating that name reads null and draws its default").arg(id, path, resolved));
+            continue;
+        }
+        const QString shape = take(qgc_bridge_get((path + QStringLiteral(".path")).toUtf8().constData())).value(QStringLiteral("kind")).toString();
+        if (shape != QStringLiteral("value")) {
+            unreachable.append(QStringLiteral("%1: %2.path answers %3, so the head has the object but not the vertices").arg(id, path, shape));
+        }
+    }
+    restore();
+
+    QVERIFY2(unreachable.isEmpty(), qPrintable(QStringLiteral("the core names things the bridge cannot resolve:\n%1").arg(unreachable.join(QStringLiteral("\n")))));
 #else
     QSKIP("the Rust core is not linked into this build");
 #endif
