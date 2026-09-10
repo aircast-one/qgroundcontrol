@@ -32,6 +32,7 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import kotlinx.coroutines.CoroutineScope
@@ -120,11 +121,24 @@ fun VehicleTitle() {
 fun TelemetryRow(modifier: Modifier = Modifier) {
     val view by qgcPath(INSTRUMENTS)
     val shown = remember(view) { instruments(view) }
+    val silent by qgcBool("vehicle.vehicleLinkManager.communicationLost")
 
     if (shown.isEmpty()) return
 
+    if (silent) {
+        Text(
+            text = "No contact - these are the last values the vehicle sent.",
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.error,
+            modifier = Modifier.fillMaxWidth().padding(horizontal = 8.dp),
+        )
+    }
+
     FlowRow(
-        modifier.fillMaxWidth().padding(8.dp),
+        modifier
+            .fillMaxWidth()
+            .padding(8.dp)
+            .alpha(if (silent) 0.45f else 1f),
         horizontalArrangement = Arrangement.SpaceEvenly,
         verticalArrangement = Arrangement.spacedBy(6.dp),
     ) {
