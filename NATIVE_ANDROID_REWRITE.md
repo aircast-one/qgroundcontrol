@@ -2527,6 +2527,32 @@ The two altitude numbers differing is the point rather than a bug: takeoff's flo
 vehicle's minimum takeoff height and the altitude slider's is the guided-altitude setting, and
 seeing both told me the label reads its own source rather than a shared constant.
 
+### A log downloads once, and never again
+
+The plan called log download's software half proven, so this was meant to be a confirmation.
+Selecting Log 0 and tapping Download turned the row's status to "Error" and put nothing on the
+wire.
+
+The bug is upstream, in `LogDownloadController::_prepareLogDownload`. The destination is set as
+`_downloadPath + filename`, and then, if that file already exists, the de-duplicating loop
+rebuilds the name and calls `setFileName(filename)` — **without the path**. The name goes
+relative, `open(QIODevice::WriteOnly)` fails against a working directory nothing may write to,
+the entry is marked "Error", and no `LOG_REQUEST_DATA` is ever sent. So a given log downloads
+the first time and fails every time after. On the desktop it does not error; it writes the file
+somewhere the operator did not choose, which is worse for being quiet.
+
+One line: the de-duplicated name keeps `_downloadPath`. Verified on the handset by downloading
+a log that had already been downloaded on 8 September — 46 `LOG_REQUEST_DATA` requests in
+90-byte chunks, the row moved to "Downloaded", and
+`Logs/log_0_2025-9-8-01-20-00_1.bin` appeared at exactly 4096 bytes, matching the size the
+vehicle advertised.
+
+**Twice on the way there the instrument was the problem, not the code.** The sim's
+`LOG_REQUEST_DATA` handler answered without printing, so "no data request on the wire" was an
+assumption, not an observation — the same silent-handler trap as `MODE` and `PARAM_SET`, and the
+third time this session. And QGC's own logging is filtered to `qgc.*.debug=false` on this build,
+so the controller's warning about the failed file never reached logcat. The sim prints now; the
+filter is worth knowing about before trusting a quiet log.
 ## Phase 6 — Shell · 2 weeks
 
 Cheaper than macOS, because Qt is already off the main thread.
