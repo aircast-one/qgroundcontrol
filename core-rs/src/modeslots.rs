@@ -201,6 +201,23 @@ mod tests {
     }
 
     #[test]
+    fn no_slot_is_ever_marked_live_unless_the_view_is_answering() {
+        let states = [
+            slots_view(&Fake { rover: false, pwm: Vec::new(), channel: Some(5) }, &[]),
+            slots_view(&Fake { rover: false, pwm: channels(-1), channel: Some(5) }, &[]),
+            slots_view(&Fake { rover: false, pwm: channels(1500), channel: Some(12) }, &[]),
+            slots_view(&Fake { rover: false, pwm: channels(1500), channel: Some(-4) }, &[]),
+        ];
+        states.iter().for_each(|view| {
+            assert_eq!(view["liveSlot"], 0);
+            assert!(
+                view["slots"].as_array().unwrap().iter().all(|slot| slot["live"] == false),
+                "a head reading a slot's own flag must never need to check availability as well; if the two can disagree, a head that trusts one paints from a partial read"
+            );
+        });
+    }
+
+    #[test]
     fn no_vehicle_is_an_answer_rather_than_six_empty_slots() {
         struct Nothing;
         impl Backend for Nothing {
