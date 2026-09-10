@@ -4055,6 +4055,18 @@ missing here:
 - **A vehicle flying this mission was overwritten without being paused.** QML calls `pauseVehicle()`
   before sending, behind a dialog that says why.
 
+The other two hits were run down and are **not** defects, which is worth recording so nobody spends
+the hour again. `fences.rs`'s `canRemoveVertex` is reimplemented in the head as `cornerRemovable`
+with a constant 3; the core's minimum is `minVertexCount`, defaulting to 3 for a ring and 2 for a
+polyline, so the constant would be wrong for a polyline — but the head decodes fence polygons from
+the Qt model and uses the rule only for fences, where 3 is right. `hub.rs`'s `canBeSet` belongs to
+the Rust hub's own state machine, which is empty unless the core owns the link; the head correctly
+uses the Qt-derived `view.flightModes.canSet`, which it does read.
+
+The sweep is now `aircast-android/tools/readinesskeys.py`, with both known-good hits explained in its
+output and a selftest that fails if `canSend` ever stops being read — so removing the upload gate
+breaks a test rather than going quiet.
+
 The second is the serious one, and neither is a gap in the core — `view.plan`'s `upload` block already
 carries `canSend`, `canProceed`, `pausesFirst` and the words to show (`refusal`, `heading`,
 `proceedTitle`). The head decides nothing about vehicle safety now; it renders what the core decided
