@@ -46,22 +46,35 @@ def produced():
     return keys
 
 
+DECODES = r'\b(?:opt|get|has|isNull)[A-Za-z]*\(\s*"([A-Za-z_][A-Za-z0-9_]*)"'
+
+
+def decoded():
+    return set(re.findall(DECODES, "\n".join(p.read_text() for p in sources("main"))))
+
+
 def report():
     emitted = produced()
-    read = set(re.findall(r'"([A-Za-z_][A-Za-z0-9_]*)"', "\n".join(p.read_text() for p in sources("main"))))
+    read = decoded()
     rows = {}
     for path in sources("test"):
         for match in re.finditer(r'"([A-Za-z_][A-Za-z0-9_]*)"\s*:', path.read_text()):
             rows.setdefault(match.group(1), set()).add(path.name)
     flagged = {k: v for k, v in rows.items() if k not in emitted}
     for key, files in sorted(flagged.items()):
-        note = "  the head reads this name somewhere - check it" if key in read else "  no reader found"
+        note = "  DECODED BY THE HEAD - nothing produces it" if key in read else "  no reader found"
         print(f"{key:24s} {', '.join(sorted(files))}{note}")
-    return flagged
+    live = sorted(k for k in flagged if k in read)
+    if live:
+        print(f"\nfixturekeys: {len(live)} key(s) the head decodes that no producer emits: {', '.join(live)}")
+    return live
 
 
 def selftest():
     emitted = produced()
+    reads = decoded()
+    assert "notice" not in reads, "item(key = \"notice\") is a Compose key, not a decode"
+    assert "surveyAreaPolygon" in reads or "rows" in reads, "a real optJSONArray(\"...\") call is a decode"
     assert "timeText" not in emitted, "timeText was emitted by nothing; the sweep must flag it"
     assert "sizeText" in emitted, "sizeText is a real key beside it; the sweep must not flag it"
     assert "amslTerrainHeights" in emitted, "MEMBER properties count as emitted"
@@ -70,4 +83,7 @@ def selftest():
 
 
 if __name__ == "__main__":
-    selftest() if "--selftest" in sys.argv else report()
+    if "--selftest" in sys.argv:
+        selftest()
+    else:
+        sys.exit(1 if report() else 0)
