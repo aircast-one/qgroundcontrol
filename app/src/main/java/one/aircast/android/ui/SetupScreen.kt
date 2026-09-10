@@ -65,6 +65,9 @@ internal data class SetupComponent(
     val needsAttention: Boolean get() = requiresSetup && !setupComplete
 }
 
+internal fun remainingSetup(components: List<SetupComponent>): List<SetupComponent> =
+    components.filterNot { it.needsAttention }
+
 private fun readComponents(): List<SetupComponent> {
     val count = Qgc.get(COMPONENTS).optJSONArray("value")?.length() ?: 0
     return (0 until count).mapNotNull { index ->
@@ -213,13 +216,14 @@ fun SetupScreen(modifier: Modifier = Modifier) {
             }
         }
 
+        val remaining = remainingSetup(components)
         if (components.isEmpty()) {
             item(key = "empty") {
                 SetupNotice("This vehicle reports no setup components.")
             }
-        } else {
+        } else if (remaining.isNotEmpty()) {
             item(key = "allheader") { SectionHeader("Setup") }
-            items(components, key = { it.index }) { component ->
+            items(remaining, key = { it.index }) { component ->
                 val page = setupPage(setupJson, component.name)
                 val openable = page?.native == true
                 val blocked = blockedFor(component)

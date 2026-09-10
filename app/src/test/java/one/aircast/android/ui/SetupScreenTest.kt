@@ -34,6 +34,26 @@ class SetupScreenTest {
         assertEquals(false, optional.needsAttention)
     }
 
+    @Test
+    fun `a component promoted for attention is not listed a second time`() {
+        val components = listOf(
+            SetupComponent(0, "Frame", "", requiresSetup = false, setupComplete = false),
+            SetupComponent(1, "Sensors", "", requiresSetup = true, setupComplete = false),
+            SetupComponent(2, "Power", "", requiresSetup = true, setupComplete = true),
+        )
+
+        assertEquals(listOf("Frame", "Power"), remainingSetup(components).map { it.name })
+    }
+
+    @Test
+    fun `every component needing attention leaves nothing for the full list`() {
+        val components = listOf(
+            SetupComponent(0, "Sensors", "", requiresSetup = true, setupComplete = false),
+        )
+
+        assertEquals(emptyList<String>(), remainingSetup(components).map { it.name })
+    }
+
     private fun component(
         allowArmed: Boolean = false,
         allowFlying: Boolean = false,
