@@ -511,6 +511,39 @@ read-only fixes shipped unverified because they were *gates* that fail closed, a
 *capability* that erases state on an aircraft. It goes on the list until someone with a vehicle can
 run it.
 
+### The reflection surface the view registry cannot guard (2026-09-10)
+
+Every `view.*` path this head reads is in the core's registered `VIEWS`, so that half is checkable
+by construction. This is the other half: **50 reflection read sites across 8 roots** — `plan` (18),
+`vehicle` (19), `settings` (5), `links` (3), `mavlinkInspector` (2), and one each of `geoTag`,
+`units`, `positionManager`. No registry covers them; they resolve against live Qt objects by name.
+
+They are not equally exposed, and the tiers matter more than the count.
+
+**Tier 1, the root — detectable.** An invented root answers `{"kind":"null"}`.
+`tools/macos/bridge-paths.py` checks these and exits non-zero.
+
+**Tier 2, a static property below the root — undetectable from here.**
+`plan.geoFenceController.breachReturnAltitude`, `settings.appSettings.offlineEditingCruiseSpeed`,
+`vehicle.orbitMapCircle.radius` and the rest answer `{"kind":"value","value":null}` when
+misspelled, which is byte-identical to a property that is genuinely null. Renaming any of these
+properties in QGC breaks this head silently. The consumer cannot close this; it needs the bridge to
+distinguish "no such property" from "the value is null" — a `found: false` alongside the value
+rather than a new `kind`, since it is orthogonal to what the value is.
+
+**Tier 3, an interpolated segment — not even enumerable.** Seven sites build the path from data at
+runtime: `plan.missionController.visualItems.\(item.index).\(property)`,
+`...\(item.index).\(list)`, `vehicle.\(group)`,
+`mavlinkInspector.activeSystem.messages.\(current.index).fields`. A static sweep cannot list what
+those become. **And the interpolated segment is usually the core's own string** — `\(property)` and
+`\(list)` come from the item and polygon models the core serves. So for tier 3 the guard is the
+core's fixture: if the core names a property the C++ does not have, this head interpolates it into a
+path that answers null and every decoder takes its default. The head cannot check that; the
+producer's own tests are the only thing standing there.
+
+Worth stating plainly because it inverts the usual direction: for tier 3 a defect in the *core's*
+data becomes a silent wrong value in the *head*, with no error anywhere in between.
+
 ### The 3D Viewer settings page outlives the thing it configures (2026-09-10)
 
 Resolved the question this document left open. **This head does offer a 3D Viewer settings page** —
