@@ -89,6 +89,21 @@ final class VideoStore: ObservableObject, Probeable, WriteReporting {
         loadCamera()
     }
 
+    // The gates are the core's canPhoto and canRecord, not this head's reading of the mode.
+    // QGC additionally refuses while a capture is already running; that term is not in the
+    // core's answer, so it is not invented here either.
+    func takePhoto() {
+        guard camera.offersShutter else { return }
+        Bridge.invoke("vehicle.cameraManager.currentCameraInstance.takePhoto")
+        loadCamera()
+    }
+
+    func toggleRecording() {
+        guard camera.offersRecord else { return }
+        Bridge.invoke("vehicle.cameraManager.currentCameraInstance.toggleVideoRecording")
+        loadCamera()
+    }
+
     func setZoom(_ level: Double) {
         guard camera.present, camera.hasZoom, level.isFinite else { return }
         write("vehicle.cameraManager.currentCameraInstance.zoomLevel", level,

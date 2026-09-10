@@ -83,4 +83,9 @@ struct CameraControl: Equatable {
         canPhoto = flag("canPhoto")
         hasModes = flag("hasModes")
     }
+
+    // One place decides whether each control exists, so the store's guard and the view's
+    // condition cannot drift apart. Both are the core's answer, not a re-reading of the mode.
+    var offersShutter: Bool { present && canPhoto }
+    var offersRecord: Bool { present && canRecord }
 }

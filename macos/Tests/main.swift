@@ -1975,6 +1975,55 @@ func checkMeasureMatchesTheCoresOwnCases() {
 
 checkMeasureMatchesTheCoresOwnCases()
 
+func checkCameraControlMatchesTheCore() {
+    // The case in core-rs video.rs the_camera_control_reads_like_the_swift_model: a ZR30 in
+    // video mode, recording. Its assertions run against this head so the two cannot drift, and
+    // the two that matter are the gates the Fly view's shutter and record buttons obey.
+    let recording = CameraControl([
+        "present": true as NSNumber, "title": "ZR30", "modeText": "Video",
+        "stateText": "Recording 00:01:15", "clockText": "00:01:15",
+        "storageText": "12 GB", "shotsText": "00042", "batteryText": "80%",
+        "isRecording": true as NSNumber,
+        "canPhoto": false as NSNumber, "canRecord": true as NSNumber,
+    ])
+    expect(recording.present, "the camera the core describes is present")
+    expect(recording.title, "ZR30", "and reads by its model name")
+    expect(recording.modeText, "Video", "in the mode the core named")
+    expect(recording.stateText, "Recording 00:01:15", "with the core's sentence, not one built here")
+    expect(recording.shotsText, "00042", "and the core's shot counter, zeros and all")
+    expect(recording.batteryText, "80%", "and its battery reading")
+
+    expect(!recording.canPhoto,
+           "a camera in video mode cannot take a photo, so the Fly view offers no shutter; this "
+           + "is the core's canPhoto and not this head re-reading the mode")
+    expect(recording.canRecord, "but it can record, so the record button is offered")
+    expect(!recording.offersShutter && recording.offersRecord,
+           "and one property decides that for both the store's guard and the view's condition, "
+           + "so a press cannot reach a camera the core says cannot take it")
+    expect(recording.isRecording, "and it says Stop rather than Record while running")
+
+    let absent = CameraControl(["present": false as NSNumber, "title": "Camera",
+                                "canRecord": false as NSNumber, "canPhoto": false as NSNumber])
+    expect(!absent.present, "with no camera the core reports none")
+    expect(absent.title, "Camera", "under a plain name rather than a blank row")
+    expect(!absent.offersShutter && !absent.offersRecord,
+           "so neither control is reachable at all")
+
+    // The core computes canPhoto and canRecord from present, so it cannot send this today. The
+    // buttons command a camera, and an actuator does not lean on another component staying
+    // self-consistent to stay unreachable.
+    let inconsistent = CameraControl(["present": false as NSNumber,
+                                      "canPhoto": true as NSNumber,
+                                      "canRecord": true as NSNumber])
+    expect(!inconsistent.offersShutter && !inconsistent.offersRecord,
+           "a camera that is not there offers nothing to press even if the flags say otherwise")
+    expect(!absent.canRecord && !absent.canPhoto,
+           "and neither button is offered, which is what keeps a shutter off a vehicle that has "
+           + "no camera to shoot with")
+}
+
+checkCameraControlMatchesTheCore()
+
 func checkPreflight() {
     func check(_ name: String, _ verdict: String, _ blocked: Bool) -> [String: Any] {
         ["name": name, "prompt": "P", "verdict": verdict, "reason": "R",

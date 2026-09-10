@@ -294,6 +294,24 @@ struct FlyPanel: View {
                         .frame(width: 140)
                     })
                 }
+                if video.camera.offersShutter {
+                    GroupRow(title: "Shutter", trailing: {
+                        Button(action: video.takePhoto) {
+                            Label(video.camera.isTakingPhoto ? "Taking\u{2026}" : "Take photo",
+                                  systemImage: "camera.shutter.button")
+                        }
+                    })
+                }
+                if video.camera.offersRecord {
+                    GroupRow(title: "Recording", trailing: {
+                        Button(action: video.toggleRecording) {
+                            Label(video.camera.isRecording ? "Stop" : "Record",
+                                  systemImage: video.camera.isRecording
+                                      ? "stop.circle.fill" : "record.circle")
+                        }
+                        .tint(video.camera.isRecording ? Overlay.vehicle : nil)
+                    })
+                }
                 GroupRow(title: "Photos taken", value: video.camera.shotsText)
                 if video.camera.canRecord {
                     GroupRow(title: "Recording time", value: video.camera.clockText)
