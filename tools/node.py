@@ -39,12 +39,20 @@ def find(xml, selectors, index):
     return centre(hits[index]) if -len(hits) <= index < len(hits) else None
 
 
+def count(xml, selectors):
+    return len([n for n in NODE.findall(xml) if matches(n, selectors) and centre(n)])
+
+
 def main():
     selectors = [tuple(arg.split("=", 1)) for arg in sys.argv[1:] if "=" in arg]
     index = next((int(a) for a in sys.argv[1:] if a.lstrip("-").isdigit()), 0)
-    spot = find(sys.stdin.read(), selectors, index)
+    xml = sys.stdin.read()
+    spot = find(xml, selectors, index)
     if spot is None:
         sys.exit(1)
+    seen = count(xml, selectors)
+    if seen > 1 and not any(a.lstrip("-").isdigit() for a in sys.argv[1:]):
+        print(f"{seen} nodes match {' '.join(f'{k}={v}' for k, v in selectors)}; using 0", file=sys.stderr)
     print(spot[0], spot[1])
 
 
@@ -66,6 +74,9 @@ def selftest():
     assert find(off + on, [("text", "Next")], 0) == (240, 4), "a node laid out off the top of the screen still has a centre"
     assert find(off + on, [("text", "Cancel")], 0) == (684, 1684)
     assert find(on, [("text", "Missing")], 0) is None
+    two = '<node text="Sensors" bounds="[0,600][100,660]"/><node text="Sensors" bounds="[0,860][100,920]"/>'
+    assert count(two, [("text", "Sensors")]) == 2, "a label that appears twice is ambiguous, not a single answer"
+    assert find(two, [("text", "Sensors")], 1) == (50, 890)
     assert clickable_state('<node clickable="true" enabled="false" text=""/><node text="Erase" enabled="true"/>', "Erase") is False
     print("node.py ok")
 
