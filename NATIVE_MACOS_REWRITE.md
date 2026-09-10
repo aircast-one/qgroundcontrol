@@ -1030,3 +1030,32 @@ One cost that is already real: `native` on `view.setup.groups[].pages[]` was the
 whether a head had its own version of a page. That is the head's business, the core is removing
 it, and this head filters its Vehicle Setup sidebar on exactly that flag. A field that encodes
 what a head can do creates this coupling every time.
+
+### Seam (a) closed: the last three Fly view controls QML has and no head does (2026-09-11)
+
+The QML-versus-head control diff is finished. `FlyViewAdditionalActionsList`,
+`FlyViewTopRightPanel` and `FlyViewInstrumentPanel` were the remainder. Three findings, none
+of them buildable here, all three recorded rather than half-built.
+
+**Change Loiter Radius.** `FlyViewAdditionalActionsList` offers it; the core has no such
+guided action, so neither head can. QGC gates it on `_vehicleInFwdFlight` and a visible
+`fwdFlightGotoMapCircle`: a Goto placed while a fixed wing or a VTOL is in forward flight
+draws a circle, and this changes its radius. The capability is already half here — the core's
+`guidedcmd::goto` takes a `loiter_radius` and puts it in `DO_REPOSITION` param 3 for
+ArduPilot — but nothing offers it, so every goto this head sends carries 0. The producer has
+to move first: the gate is vehicle knowledge. **And it commands a flying aircraft, so it is in
+the same class as Clear Mission — not to be shipped unverified.**
+
+**Multi-vehicle.** `FlyViewTopRightPanel` is entirely a multi-vehicle panel: Select All,
+Deselect All, and Arm / Disarm / Start / Pause applied to every selected vehicle. It appears
+nowhere in this document, in no phase and not in `## Not covered`, and there is nothing for it
+in the core either. Four of its five controls command several aircraft at once, which is the
+most destructive surface in the application. **Decide whether the macOS head carries
+multi-vehicle at all before Phase 5 is called done** — the honest answer may be that it does
+not, but that has to be a decision rather than an omission.
+
+**The instrument panel is a user-selectable QML file.** `FlyViewInstrumentPanel` is a
+`SelectableControl` bound to `flyViewSettings.instrumentQmlFile2`, so an operator can point it
+at their own QML. That is a QtQuick extensibility point and Phase 6 deletes QtQuick, exactly
+like `Viewer3D`. Same decision, same shape: rebuild the mechanism natively, or drop it and its
+setting together. There are now two of these, which makes it a category rather than a one-off.
