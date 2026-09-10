@@ -3453,6 +3453,17 @@ func checkGuidedOffers() {
     expect(GuidedOffer(["id": "arm"]) == nil,
            "and an entry with no offer state is dropped rather than read as shown")
 
+    let invented = GuidedOffer(offer("arm", "awaitingConfirmation"))
+    expect(invented?.ready == false,
+           "an offer state this head has never heard of is NOT ready -- readiness is derived from "
+           + "the core saying ready, not from it failing to say blocked, so a fourth state added "
+           + "upstream cannot hand an operator a live Arm button")
+    expect(invented?.blocked == true,
+           "it reads as blocked, so the button is disabled rather than enabled")
+    expect(invented?.shown == true,
+           "but it is still drawn, because an action that exists and cannot be used is worth "
+           + "showing greyed with a tooltip rather than hiding entirely")
+
     expect(GuidedOffer(["id": "takeoff", "offer": "ready", "carriesValue": true as NSNumber])?
         .carriesValue == true,
            "the field is carriesValue, which checkViewContract now pins against the core's own "

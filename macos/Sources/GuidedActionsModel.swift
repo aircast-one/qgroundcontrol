@@ -52,10 +52,10 @@ struct GuidedOffer: Identifiable, Equatable {
     let destructive: Bool
     let carriesValue: Bool
     let shown: Bool
-    let blocked: Bool
+    let ready: Bool
 
     var id: String { action.rawValue }
-    var ready: Bool { shown && !blocked }
+    var blocked: Bool { shown && !ready }
     var explanation: String { reason.isEmpty ? prompt : reason }
 
     init?(_ json: Any?) {
@@ -69,7 +69,7 @@ struct GuidedOffer: Identifiable, Equatable {
         destructive = (json["destructive"] as? NSNumber)?.boolValue ?? false
         carriesValue = (json["carriesValue"] as? NSNumber)?.boolValue ?? false
         shown = offer != "hidden"
-        blocked = offer == "blocked"
+        ready = offer == "ready"
     }
 
     static func list(_ json: Any?) -> [GuidedOffer] {
