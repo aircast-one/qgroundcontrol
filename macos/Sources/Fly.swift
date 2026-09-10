@@ -5,6 +5,7 @@ final class FlyStore: ObservableObject, Probeable, WriteReporting {
     static let probeID = "fly"
 
     @Published private(set) var telemetry = FlyTelemetry()
+    @Published private(set) var state = FlyState.none
     @Published private(set) var connected = false
     @Published private(set) var position: VehicleMarker?
     @Published private(set) var messages: [VehicleMessage] = []
@@ -66,6 +67,9 @@ final class FlyStore: ObservableObject, Probeable, WriteReporting {
         readTerrain()
         readChecklist()
 
+        let read = FlyState(Bridge.group("view.flyState"))
+        if read != state { state = read }
+
         let vehicle = Bridge.group("vehicle")
         guard vehicle["kind"] as? String == "object" else {
             if connected { connected = false }
@@ -82,10 +86,6 @@ final class FlyStore: ObservableObject, Probeable, WriteReporting {
         }
 
         var reading = FlyTelemetry()
-        reading.mode = (vehicle["flightMode"] as? String) ?? ""
-        reading.armed = (vehicle["armed"] as? NSNumber)?.boolValue ?? false
-        reading.flying = (vehicle["flying"] as? NSNumber)?.boolValue ?? false
-
         let facts = FlyStore.facts(vehicle)
         let units = FlyStore.units(vehicle)
         reading.distanceUnits = units["altitudeRelative"] ?? "m"
@@ -94,9 +94,6 @@ final class FlyStore: ObservableObject, Probeable, WriteReporting {
         reading.groundSpeed = facts["groundSpeed"]
         reading.climbRate = facts["climbRate"]
         reading.heading = facts["heading"]
-
-        let links = Bridge.group("vehicle.vehicleLinkManager")
-        reading.contactLost = (links["communicationLost"] as? NSNumber)?.boolValue ?? false
 
         let gpsGroup = Bridge.group("vehicle.gps")
         let readGps = FlyDetail.gps(FactReading.from((gpsGroup["facts"] as? [Any]) ?? []))
@@ -145,7 +142,7 @@ final class FlyStore: ObservableObject, Probeable, WriteReporting {
         if readModes != modes { modes = readModes }
         let settable = (flightModes["canSet"] as? NSNumber)?.boolValue ?? false
         if settable != canSetMode { canSetMode = settable }
-        if !requestedMode.isEmpty, requestedMode == reading.mode { requestedMode = "" }
+        if !requestedMode.isEmpty, requestedMode == state.mode { requestedMode = "" }
 
         let raised = Bridge.group("view.warnings")
         let assessed = VehicleWarning.list(raised["warnings"])
@@ -223,8 +220,9 @@ final class FlyStore: ObservableObject, Probeable, WriteReporting {
 
     func probeState() -> [String: Any] {
         ["writeFailure": writeFailure ?? "",
-         "connected": connected, "mode": telemetry.mode, "state": telemetry.stateText,
-         "contactLost": telemetry.contactLost, "staleNotice": telemetry.staleNotice,
+         "connected": connected, "mode": state.mode, "state": state.display,
+         "stateToken": state.kind.rawValue, "alarming": state.alarming,
+         "contactLost": state.contactLost, "staleNotice": state.staleNotice,
          "altitude": telemetry.altitudeText,
          "groundSpeed": telemetry.groundSpeedText,
          "keepCentered": keepCentered,

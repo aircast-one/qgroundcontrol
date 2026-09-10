@@ -40,6 +40,7 @@ swiftc -Onone -o "$out" \
     "$root/macos/Sources/MissionItemModel.swift" \
     "$root/macos/Sources/MissionCommandModel.swift" \
     "$root/macos/Sources/MissionItemKind.swift" \
+    "$root/macos/Sources/FlyStateModel.swift" \
     "$root/macos/Sources/FlyTelemetryModel.swift" \
     "$root/macos/Sources/FlyDetailModel.swift" \
     "$root/macos/Sources/FlightModeModel.swift" \

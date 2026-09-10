@@ -1108,7 +1108,6 @@ func checkFlyTelemetry() {
     expect(reading.batteryLevel == .unknown, "no battery reading is unknown, not good")
     expect(reading.gpsLevel == .unknown, "no gps reading is unknown, not good")
     expect(reading.batteryText, "\u{2014}", "and shows nothing rather than a number")
-    expect(reading.stateText, "Disarmed", "a vehicle that is not armed reads as disarmed")
 
     expect(FlyTelemetry.batteryLine("100%", "12.60V"), "100% \u{00B7} 12.60V",
            "the chip joins the core's two indicator lines")
@@ -1140,32 +1139,11 @@ func checkFlyTelemetry() {
     expect(reading.gpsLevel == .critical, "no fix is critical")
     expect(reading.gpsText, "No fix \u{00B7} 10 sats", "and says so plainly")
 
-    reading.armed = true
-    expect(reading.stateText, "Armed", "an armed vehicle on the ground reads as armed")
-    reading.flying = true
-    expect(reading.stateText, "Flying", "and as flying once it is airborne")
-    expect(reading.staleNotice, "", "and while contact holds there is nothing to warn about")
-
     reading.altitude = 25.0
-    reading.contactLost = true
-    expect(reading.stateText, "Communication lost",
-           "once the link drops the state line stops saying the vehicle is flying; it had no "
-           + "link-loss state at all, so a dead link read as steady flight indefinitely")
-    expect(reading.staleNotice,
-           "No contact \u{2014} these are the last values the vehicle sent.",
-           "and the readings are labelled as the last ones that arrived rather than current, "
-           + "because an instrument that freezes looks exactly like one reporting a steady value")
     expect(reading.altitudeText, "25.0 m",
-           "the readings themselves are kept and still read normally; the last known altitude is "
-           + "worth having, so what changes is the claim that it is current, not the number")
-
-    reading.armed = false
-    reading.flying = false
-    expect(reading.stateText, "Communication lost",
-           "and lost contact outranks disarmed, because a vehicle that stopped answering is not "
-           + "known to have disarmed - that is the last frame talking")
-    reading.contactLost = false
-    expect(reading.stateText, "Disarmed", "with contact back the state line answers again")
+           "the readings are kept and still read normally when contact drops; the last known "
+           + "altitude is worth having, so what changes is the claim that it is current, not the "
+           + "number. The claim itself is view.flyState's now, not this struct's")
 
     expect(FlyTelemetry.measure(nil, "m"), "\u{2014}", "a missing altitude shows nothing")
     expect(FlyTelemetry.measure(Double.nan, "m"), "\u{2014}", "and so does a NaN")
@@ -1178,6 +1156,56 @@ func checkFlyTelemetry() {
 }
 
 checkFlyTelemetry()
+
+func checkFlyState() {
+    func read(_ token: String, _ line: String, _ extra: [String: Any] = [:]) -> FlyState {
+        var json: [String: Any] = ["state": token, "stateText": line]
+        extra.forEach { json[$0.key] = $0.value }
+        return FlyState(json)
+    }
+
+    expect(FlyState.none.display, FlyState.noVehicle,
+           "before the first read the line invites a connection rather than naming a state")
+
+    let disarmed = read("disarmed", "Disarmed")
+    expect(disarmed.display, "Disarmed", "the core names the state and this head prints its words")
+    expect(!disarmed.alarming, "a vehicle sitting disarmed is not an alarm")
+
+    let flying = read("flying", "Flying", ["armed": true as NSNumber, "connected": true as NSNumber])
+    expect(flying.display, "Flying", "and an airborne one reads as flying")
+    expect(flying.armed, "the badge is drawn from the same reply as the line")
+
+    let lost = read("contactLost", "Communication lost",
+                    ["contactLost": true as NSNumber, "armed": true as NSNumber,
+                     "staleNotice": "No contact." as Any])
+    expect(lost.alarming, "lost contact is the state that colours the line, and it used to be "
+           + "read from a raw property this head reached for itself")
+    expect(lost.staleNotice, "No contact.",
+           "the notice is the core's sentence verbatim; both heads used to hand-write it, so a "
+           + "copy edit in one place left the other saying something else")
+
+    expect(read("notConnected", "Not connected").display, FlyState.noVehicle,
+           "the core says Not connected; this window says what to do about it, because what an "
+           + "empty Fly view should offer is the head's business and not the core's")
+
+    let invented = read("emergency", "Emergency")
+    expect(invented.kind == .unknown,
+           "a state token this head has never heard of decodes to unknown, not to the first case")
+    expect(invented.display, "Emergency",
+           "and still prints the core's words, so a state added there is legible here at once")
+    expect(invented.alarming,
+           "an unrecognised vehicle state draws the eye rather than passing as ordinary; a "
+           + "fallback onto a known case would have shown a new emergency in the quiet colour")
+
+    expect(read("emergency", "").display, FlyState.unnamedState,
+           "and a token with no words at all still says something, rather than leaving the "
+           + "status line blank")
+    expect(!read("emergency", "Emergency").armed,
+           "an unknown state claims nothing about arming that the reply did not say")
+}
+
+checkFlyState()
+
 
 func checkVehicleMarker() {
     expect(VehicleMarker(latitude: nil, longitude: 149.16, heading: 0) == nil,
@@ -2865,6 +2893,9 @@ func checkViewContract() {
         ("view.guidedSpeed(3)", [],
          ["available", "minimum", "maximum", "initial", "label", "unit", "command",
           "targetMetersSecond"]),
+        ("view.flyState", [],
+         ["connected", "armed", "flying", "landing", "contactLost", "state", "stateText",
+          "staleNotice", "mode"]),
         ("view.battery", [], ["level", "packs"]),
         ("view.battery", ["packs"],
          ["level", "text", "secondaryText", "percent", "voltage", "current"]),
@@ -3049,6 +3080,19 @@ func checkViewContract() {
     let glyphs = setupPages.map(SetupPage.symbol(for:))
     expect(Set(glyphs).count == glyphs.count,
            "no two pages share an icon, which is how Motors and Remote Support once looked alike")
+
+    let flyStates = recorded("view.flyState.state")
+    expect(!flyStates.isEmpty, "the core records the vehicle states it can name")
+    expect(flyStates.filter { FlyState.Kind(rawValue: $0) == nil }.sorted().joined(separator: ","),
+           "",
+           "every state the core can answer decodes to a case here; one it could not name would "
+           + "have coloured the status line as an unrecognised state instead")
+    expect(FlyState.kinds.map(\.rawValue).filter { !flyStates.contains($0) }
+        .sorted().joined(separator: ","), "",
+           "and this head carries no state the core never answers, which is the direction a test "
+           + "comparing the head's copy against itself could not see")
+    expect(!flyStates.contains(FlyState.Kind.unknown.rawValue),
+           "unknown is this head's word for a token the core added, never one the core sends")
 
     let messageLevels = recorded("view.messages.items[].level")
     expect(messageLevels.sorted().joined(separator: ","), "error,normal,warning",

@@ -19,9 +19,6 @@ struct FlyTelemetry: Equatable {
         }
     }
 
-    var mode = ""
-    var armed = false
-    var flying = false
     var altitude: Double?
     var groundSpeed: Double?
     var climbRate: Double?
@@ -32,7 +29,6 @@ struct FlyTelemetry: Equatable {
     var distanceUnits = "m"
     var speedUnits = "m/s"
     var gpsLock: Int?
-    var contactLost = false
 
     var batteryLevel = Level.unknown
 
@@ -67,20 +63,6 @@ struct FlyTelemetry: Equatable {
         guard !secondary.isEmpty, secondary != main else { return main }
         return "\(main) · \(secondary)"
     }
-
-    // An instrument that freezes looks exactly like an instrument reporting a steady value, so
-    // the state line stops claiming the vehicle is flying the moment contact is lost. The
-    // readings themselves are kept - the last known altitude is worth having - but the notice
-    // says they are the last ones that arrived rather than the current ones.
-    static let noContactNotice = "No contact — these are the last values the vehicle sent."
-
-    var stateText: String {
-        if contactLost { return "Communication lost" }
-        if !armed { return "Disarmed" }
-        return flying ? "Flying" : "Armed"
-    }
-
-    var staleNotice: String { contactLost ? FlyTelemetry.noContactNotice : "" }
 
     // A vehicle sitting on the ground reports a relative altitude a hair below zero,
     // like -0.04, which rounds to -0.0 m at one decimal place.

@@ -169,12 +169,12 @@ struct FlyPanel: View {
         HStack(spacing: Overlay.step) {
             VStack(alignment: .leading, spacing: 2) {
                 if fly.modes.isEmpty {
-                    Text(fly.connected ? fly.telemetry.mode : "No vehicle")
+                    Text(fly.connected ? fly.state.mode : "No vehicle")
                         .font(.title3.weight(.semibold))
                 } else {
                     Button { fly.showingModes = true } label: {
                         HStack(spacing: 4) {
-                            Text(fly.requestedMode.isEmpty ? fly.telemetry.mode : fly.requestedMode)
+                            Text(fly.requestedMode.isEmpty ? fly.state.mode : fly.requestedMode)
                                 .font(.title3.weight(.semibold))
                             if fly.requestedMode.isEmpty {
                                 Image(systemName: "chevron.down").font(.caption2)
@@ -185,15 +185,15 @@ struct FlyPanel: View {
                     }
                     .buttonStyle(.plain)
                 }
-                Text(fly.connected ? fly.telemetry.stateText : "Connect a vehicle to fly")
+                Text(fly.state.display)
                     .font(.callout)
-                    .foregroundColor(fly.telemetry.contactLost ? Overlay.vehicle : .secondary)
+                    .foregroundColor(fly.state.alarming ? Overlay.vehicle : .secondary)
             }
             Spacer(minLength: 0)
             Button("Checklist") { fly.showingChecklist = true }
                 .controlSize(.small)
                 .disabled(!fly.connected)
-            if fly.telemetry.armed {
+            if fly.state.armed {
                 Text("ARMED")
                     .font(.caption.weight(.bold))
                     .foregroundColor(Overlay.vehicle)
@@ -856,7 +856,7 @@ struct FlyView: View {
                 .frame(maxWidth: .infinity, alignment: .trailing)
 
             if !instruments.values.isEmpty {
-                InstrumentBar(instruments: instruments, notice: fly.telemetry.staleNotice)
+                InstrumentBar(instruments: instruments, notice: fly.state.staleNotice)
                     .padding(Overlay.unit)
                     .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottomLeading)
             }

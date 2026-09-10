@@ -116,6 +116,10 @@ final class GuidedStore: ObservableObject, Probeable, WriteReporting {
         case .emergencyStop: Bridge.invoke("vehicle.emergencyStop")
         case .grab: Bridge.invoke("vehicle.sendGripperAction", [GuidedStore.gripperGrab])
         case .release: Bridge.invoke("vehicle.sendGripperAction", [GuidedStore.gripperRelease])
+        case .vtolTransitionToFixedWing:
+            write("vehicle.vtolInFwdFlight", true, "the VTOL to fixed-wing flight")
+        case .vtolTransitionToMultiRotor:
+            write("vehicle.vtolInFwdFlight", false, "the VTOL to multi-rotor flight")
         }
     }
 

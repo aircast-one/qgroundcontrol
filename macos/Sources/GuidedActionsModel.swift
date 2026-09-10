@@ -15,6 +15,8 @@ enum GuidedAction: String, CaseIterable, Identifiable {
     case grab
     case release
     case emergencyStop
+    case vtolTransitionToFixedWing
+    case vtolTransitionToMultiRotor
 
     var id: String { rawValue }
 
@@ -34,6 +36,8 @@ enum GuidedAction: String, CaseIterable, Identifiable {
         case .grab: return "hand.raised.fill"
         case .release: return "hand.point.down.fill"
         case .emergencyStop: return "exclamationmark.octagon"
+        case .vtolTransitionToFixedWing: return "airplane"
+        case .vtolTransitionToMultiRotor: return "fan.desk"
         }
     }
 }
