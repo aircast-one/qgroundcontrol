@@ -116,6 +116,7 @@ internal fun MapSpikeScreen(
     val latitude by mapDouble("vehicle.latitude")
     val longitude by mapDouble("vehicle.longitude")
     val planDirty by mapBool("plan.dirty")
+    val planHasItems by mapBool("plan.containsItems")
     val planOffline by mapBool("plan.offline")
     val planSyncing by mapBool("plan.syncInProgress")
     val missionDistance by mapDouble("plan.missionController.missionTotalDistance")
@@ -297,7 +298,7 @@ internal fun MapSpikeScreen(
                         )
                         when {
                             refusal != null -> say(refusal)
-                            loadStep(planDirty, loadArmed) == LoadStep.Confirm -> loadArmed = true
+                            loadStep(planDirty, planHasItems, loadArmed) == LoadStep.Confirm -> loadArmed = true
                             else -> {
                                 loadArmed = false
                                 busy = "Downloading from vehicle"
