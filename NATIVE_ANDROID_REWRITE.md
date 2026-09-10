@@ -2553,6 +2553,22 @@ assumption, not an observation — the same silent-handler trap as `MODE` and `P
 third time this session. And QGC's own logging is filtered to `qgc.*.debug=false` on this build,
 so the controller's warning about the failed file never reached logcat. The sim prints now; the
 filter is worth knowing about before trusting a quiet log.
+### Erasing every log, checked
+
+The other half of that screen is a control that permanently deletes a vehicle's flight data, so
+it was worth pressing on the sim where pressing it is free.
+
+It is properly guarded. Tapping "Erase all logs from the vehicle" puts nothing on the wire; it
+opens a dialog headed "Erase all logs?" reading "This permanently deletes every log on the
+vehicle. It cannot be undone." Cancel sits left of the confirm, and Cancel sends nothing —
+checked, not assumed. Confirming puts `LOG_ERASE` on the wire, once.
+
+**The confirm did not look like what it does.** "Erase all" was styled exactly like "Cancel" —
+same colour, same weight — on an action the dialog itself calls irreversible. Elsewhere in this
+head the destructive path is coloured: emergency stop is red in the Actions sheet and red again
+on its slider. It is the error colour here now too. The words carried the warning and the
+button contradicted them.
+
 ## Phase 6 — Shell · 2 weeks
 
 Cheaper than macOS, because Qt is already off the main thread.
