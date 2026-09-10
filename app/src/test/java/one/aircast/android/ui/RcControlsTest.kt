@@ -1,6 +1,8 @@
 package one.aircast.android.ui
 
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
+import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class RcControlsTest {
@@ -55,5 +57,30 @@ class RcControlsTest {
     @Test
     fun `malformed json yields nothing rather than throwing`() {
         assertEquals(emptyList<RcControl>(), parseRcControls("not json"))
+    }
+}
+
+class RcSendRateTest {
+    @Test
+    fun `a drag does not send on every pixel`() {
+        assertFalse(rcSendDue(nowMs = 1_040, lastSentMs = 1_000, finished = false))
+        assertFalse(rcSendDue(nowMs = 1_099, lastSentMs = 1_000, finished = false))
+    }
+
+    @Test
+    fun `a drag still sends often enough to feel live`() {
+        assertTrue(rcSendDue(nowMs = 1_100, lastSentMs = 1_000, finished = false))
+        assertTrue(rcSendDue(nowMs = 2_000, lastSentMs = 1_000, finished = false))
+    }
+
+    @Test
+    fun `letting go always sends, so the vehicle ends where the finger did`() {
+        assertTrue(rcSendDue(nowMs = 1_001, lastSentMs = 1_000, finished = true))
+        assertTrue(rcSendDue(nowMs = 1_000, lastSentMs = 1_000, finished = true))
+    }
+
+    @Test
+    fun `the first send of a drag is never throttled`() {
+        assertTrue(rcSendDue(nowMs = 5_000, lastSentMs = 0, finished = false))
     }
 }

@@ -15,9 +15,12 @@ import androidx.compose.material3.Slider
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import android.os.SystemClock
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.runtime.mutableLongStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
@@ -35,6 +38,10 @@ private fun sendOverride(channel: Int, pwm: Int) {
     offMainDetached { Qgc.invoke("vehicle.setRcChannelOverride", channel, pwm) }
 }
 
+private fun releaseOverrides() {
+    offMainDetached { Qgc.invoke("vehicle.clearRcChannelOverrides") }
+}
+
 @Composable
 private fun ControlLabel(text: String) {
     Text(
@@ -47,6 +54,15 @@ private fun ControlLabel(text: String) {
 @Composable
 private fun RcSlider(control: RcControl) {
     var pwm by remember(control.channel) { mutableIntStateOf(PWM_CENTER) }
+    var lastSent by remember(control.channel) { mutableLongStateOf(0L) }
+
+    fun send(value: Int, finished: Boolean) {
+        val now = SystemClock.uptimeMillis()
+        if (rcSendDue(now, lastSent, finished)) {
+            lastSent = now
+            sendOverride(control.channel, value)
+        }
+    }
 
     Row(verticalAlignment = Alignment.CenterVertically) {
         ControlLabel(control.label)
@@ -56,9 +72,10 @@ private fun RcSlider(control: RcControl) {
                 val next = raw.toInt()
                 if (next != pwm) {
                     pwm = next
-                    sendOverride(control.channel, next)
+                    send(next, finished = false)
                 }
             },
+            onValueChangeFinished = { send(pwm, finished = true) },
             valueRange = PWM_MIN.toFloat()..PWM_MAX.toFloat(),
             modifier = Modifier.fillMaxWidth(),
         )
@@ -106,8 +123,6 @@ private fun RcMomentary(control: RcControl) {
     val pressed by interactions.collectIsPressedAsState()
     var everPressed by remember(control.channel) { mutableStateOf(false) }
 
-    // Without the latch this drives the channel to its minimum the moment the control
-    // appears, which is a command the operator never gave.
     LaunchedEffect(pressed) {
         when {
             pressed -> {
@@ -126,9 +141,10 @@ fun RcControlsLayer(modifier: Modifier = Modifier) {
     val hasVehicle by qgcBool("vehicles.activeVehicleAvailable")
     val configured by qgcString(RC_CONTROLS_FACT)
     val controls = remember(configured) { parseRcControls(configured) }
+    val overriding by qgcBool("vehicle.rcChannelOverrideActive")
 
-    // Every one of these sends to a vehicle. Drawn without one they look live and do
-    // nothing, which is worse than not being drawn.
+    DisposableEffect(Unit) { onDispose { releaseOverrides() } }
+
     if (controls.isEmpty() || !hasVehicle) {
         return
     }
@@ -147,6 +163,21 @@ fun RcControlsLayer(modifier: Modifier = Modifier) {
                     RcControlType.Button -> RcButton(control)
                     RcControlType.Switch3 -> RcSwitch3(control)
                     RcControlType.Momentary -> RcMomentary(control)
+                }
+            }
+
+            if (overriding) {
+                Row(
+                    Modifier.fillMaxWidth(),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                ) {
+                    Text(
+                        text = "These channels are held by this tablet.",
+                        style = MaterialTheme.typography.labelMedium,
+                        modifier = Modifier.weight(1f),
+                    )
+                    Button(onClick = { releaseOverrides() }) { Text("Give back") }
                 }
             }
         }

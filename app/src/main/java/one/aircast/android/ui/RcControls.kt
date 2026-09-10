@@ -108,3 +108,8 @@ internal fun firstFreeChannel(json: String?, reserved: Map<Int, String>): Int =
         ?: RC_CHANNEL_MIN
 
 internal fun channelUsable(channel: Int): Boolean = channel in RC_CHANNEL_MIN..RC_CHANNEL_MAX
+
+internal const val RC_SEND_INTERVAL_MS = 100L
+
+internal fun rcSendDue(nowMs: Long, lastSentMs: Long, finished: Boolean): Boolean =
+    finished || nowMs - lastSentMs >= RC_SEND_INTERVAL_MS
