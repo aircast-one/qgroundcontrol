@@ -425,10 +425,12 @@ struct PlanInspector: View {
                     if let distance = mission.summary.value(MissionSummary.distance) {
                         Label(distance, systemImage: "arrow.triangle.turn.up.right.diamond")
                             .help("Distance flown")
+                            .layoutPriority(2)
                     }
                     if let time = mission.summary.value(MissionSummary.time) {
                         Label(time, systemImage: "clock")
                             .help("How long the mission takes")
+                            .layoutPriority(2)
                     }
                     ForEach(mission.summary.extraRows) { row in
                         Text("\(row.label) \(row.value)").help(row.label)
@@ -437,11 +439,28 @@ struct PlanInspector: View {
                     if let furthest = mission.summary.value(MissionSummary.furthest) {
                         Text("\(furthest) from launch")
                             .help("The furthest the vehicle gets from where it took off")
+                            .layoutPriority(1)
                     }
                 }
                 .font(.caption.monospacedDigit())
                 .foregroundColor(.secondary)
                 .labelStyle(.titleAndIcon)
+                // A figure broken across lines stops being a figure: 14.11 km rendered as "14."
+                // over "11" over "km" reads as two numbers, and the strip was laid out when every
+                // value was 0 m and nothing here had ever been wide. fixedSize stops the wrap but
+                // pushes its width onto the panel, which then ran past the window edge; one line
+                // per cell with the distance and the duration outranking the rest truncates the
+                // least important cell instead of dragging the inspector out of the window.
+                .lineLimit(1)
+
+                if !mission.summary.altitudeRange.isEmpty {
+                    Label(mission.summary.altitudeRange, systemImage: "mountain.2")
+                        .help("The lowest and highest the mission flies")
+                        .font(.caption.monospacedDigit())
+                        .foregroundColor(.secondary)
+                        .labelStyle(.titleAndIcon)
+                        .lineLimit(1)
+                }
             }
         }
         .padding(.horizontal, 2)

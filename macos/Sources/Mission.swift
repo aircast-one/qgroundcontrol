@@ -50,6 +50,16 @@ final class MissionStore: ObservableObject, Probeable, WriteReporting {
 
     private var undoPoll: Timer?
     private var watchPoll: Timer?
+    private var watchingSummary = false
+    private static var clients = 0
+
+    // A store's address is reused after it deallocates, so an identity derived from one is only
+    // unique because deinit happens to unregister first.
+    private static func nextClient() -> Int {
+        clients += 1
+        return clients
+    }
+    private let summaryClient = "missionSummary.\(MissionStore.nextClient())"
 
     // The Fly view only reads this plan; the Plan window is what edits it, and a plan can also
     // arrive from the vehicle or a file. So a reader has to look again rather than wait for a
@@ -65,6 +75,25 @@ final class MissionStore: ObservableObject, Probeable, WriteReporting {
     func stopWatching() {
         watchPoll?.invalidate()
         watchPoll = nil
+    }
+
+    // The controller recomputes its totals after an insert returns, so the reload that follows an
+    // edit reads the previous ones -- measured, the core answered 14.11 km while this read 0 m.
+    // The Plan window does not poll, so nothing corrected it. The core watches this view's deps
+    // and re-renders it, sending only what changed, which is why a stale read fixes itself here
+    // without a timer that would fight the editor.
+    private func watchSummary() {
+        guard !watchingSummary else { return }
+        watchingSummary = true
+        BridgeWatch.watch(summaryClient, ["view.missionSummary"]) { [weak self] view in
+            guard let self else { return }
+            let read = MissionSummary(view)
+            if read != self.summary { self.summary = read }
+        }
+    }
+
+    deinit {
+        if watchingSummary { BridgeWatch.stop(summaryClient) }
     }
 
     func reload() {
@@ -109,16 +138,7 @@ final class MissionStore: ObservableObject, Probeable, WriteReporting {
             Bridge.group("view.altitudeModes(\(AltitudeMode.missionContext),\(mode))"))
         if missionOffers != missionModes { missionModes = missionOffers }
 
-        // Was hover + cruise, formatted here. The controller has its own total and the two are
-        // not the same sum, and Measure never crossed over to km or miles, so a seven kilometre
-        // mission read as 23120 ft where QGC says 4.38 mi.
-        //
-        // Known stale by one edit, and it was before this too: the controller recomputes its
-        // totals after the insert returns, so a reload run straight afterwards reads the previous
-        // values. Measured - the core answered 14.11 km while this read 0 m, and a later reload
-        // agreed. The Plan window does not poll (startWatching is the Fly view's read-only copy),
-        // so nothing corrects it. Reported rather than patched with a timer that would fight the
-        // editor.
+        watchSummary()
         let read = MissionSummary(Bridge.group("view.missionSummary"))
         if read != summary { summary = read }
         defaultAltitude = (Bridge.group("settings.appSettings.defaultMissionItemAltitude")["valueString"] as? String) ?? ""

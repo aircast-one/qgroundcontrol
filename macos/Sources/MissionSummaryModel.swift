@@ -56,9 +56,13 @@ struct MissionSummary: Equatable {
 
     var describes: Bool { available && !rows.isEmpty }
 
-    // Everything the strip does not already show, so the same fact is not printed twice.
+    // Everything the strip does not already show. Dedup was by label, which cannot see that a
+    // multirotor's Hover distance IS its total distance and its Planned distance is the same
+    // figure again -- the strip printed 14.11 km four times and wrapped every cell doing it.
+    // Cruise 0 m stays, because a distinct figure is a fact even when it is zero.
     var extraRows: [MissionSummaryRow] {
         let shown = [MissionSummary.distance, MissionSummary.time, MissionSummary.furthest]
-        return rows.filter { !shown.contains($0.label) }
+        let figures = Set(shown.compactMap(value))
+        return rows.filter { !shown.contains($0.label) && !figures.contains($0.value) }
     }
 }

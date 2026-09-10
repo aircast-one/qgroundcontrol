@@ -1265,6 +1265,7 @@ func checkMissionItemKinds() {
 
     checkHostNotices()
     checkBlockedItems()
+    checkBridgeWatchers()
     checkBlockedBanner()
     checkMavlinkConsole()
     checkModeSlots()
@@ -1615,6 +1616,24 @@ func checkPlanSummary() {
            + "is never printed twice")
     expect(read.altitudeRange, "120 m to 340 m", "the altitude range is the core's sentence")
     expect(read.describes, "a plan with rows has something to summarise")
+
+    let multirotor = MissionSummary(["available": true as NSNumber, "reason": "",
+                                     "rows": [["label": "Distance", "value": "14.11 km"],
+                                              ["label": "Planned", "value": "14.11 km"],
+                                              ["label": "Time", "value": "47:27"],
+                                              ["label": "Hover", "value": "14.11 km"],
+                                              ["label": "Cruise", "value": "0 m"],
+                                              ["label": "Furthest from launch",
+                                               "value": "14.11 km"]]])
+    expect(multirotor.extraRows.map(\.label).joined(separator: ","), "Cruise",
+           "a figure already on the strip is not printed again under another name. A multirotor "
+           + "hovers the whole way, so its Hover distance IS its total and its Planned distance "
+           + "is that same figure a third time -- measured, the strip printed 14.11 km four "
+           + "times across a sidebar that then wrapped every cell, rendering the distance as "
+           + "\"14.\" over \"11\" over \"km\"")
+    expect(multirotor.extraRows.map(\.value).joined(separator: ","), "0 m",
+           "and a distinct figure stays even when it is zero: a multirotor that cruises no "
+           + "distance is a fact, where a missing row would be an unanswered question")
 
     expect(MissionSummaryRow(["label": "Distance", "value": ""]) == nil,
            "a row with an empty value is dropped rather than drawn as a label with nothing "
@@ -4004,6 +4023,36 @@ func checkHostNotices() {
     expect(served.navigation?.id == 1,
            "the navigation request is found among notices that are not navigation, because it "
            + "arrives paired with the message that explains it and never alone")
+}
+
+func checkBridgeWatchers() {
+    var registry = BridgeWatchers()
+    registry.set("plan", ["view.missionSummary"])
+    registry.set("fly", ["view.missionSummary", "view.flyState"])
+
+    expect(registry.clients(watching: "view.missionSummary").joined(separator: ","), "fly,plan",
+           "two clients watching one path both hear about it. The Plan window and the Fly view "
+           + "each hold their own MissionStore, and a fixed client name would have the second "
+           + "silently unsubscribe the first -- the core keys its watch list by client")
+    expect(registry.clients(watching: "view.flyState").joined(separator: ","), "fly",
+           "and a path only one of them asked for reaches only that one")
+    expect(registry.clients(watching: "view.plan").isEmpty,
+           "an event for a path nobody asked for goes nowhere, rather than to everybody")
+
+    expect(registry.csv("fly"), "view.missionSummary,view.flyState",
+           "the paths reach the core comma separated in the order asked. The core splits on "
+           + "commas at paren depth zero, so a parameterised path keeps its own commas")
+    registry.set("seed", ["view.missionSeed(survey,47,8)", "view.plan"])
+    expect(registry.csv("seed"), "view.missionSeed(survey,47,8),view.plan",
+           "which is why this head joins and never escapes -- a path carrying two commas of its "
+           + "own survives the trip")
+
+    registry.set("fly", [])
+    expect(registry.clients(watching: "view.missionSummary").joined(separator: ","), "plan",
+           "a client that stops watching stops hearing, and the other one carries on. A window "
+           + "closing must not take the other window's updates with it")
+    expect(registry.csv("fly"), "",
+           "and it asks the core for nothing, which is how the core drops it from the list")
 }
 
 func checkBlockedItems() {
