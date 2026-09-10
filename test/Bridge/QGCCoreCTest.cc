@@ -2731,11 +2731,24 @@ void QGCCoreCTest::_theCoreRefusesAMissionItemThePlanHasDecidedAgainst()
     QCOMPARE(withCorridor, withSurvey + 1);
     QCOMPARE(take(qgc_bridge_get(QStringLiteral("plan.missionController.visualItems.%1.corridorPolyline.path").arg(withCorridor - 1).toUtf8().constData())).value(QStringLiteral("value")).toArray().count(), 2);
 
+    const QJsonObject keptSettings = take(qgc_core_invoke("mission.remove", "[0]"));
+    QCOMPARE(keptSettings.value(QStringLiteral("ok")).toBool(true), false);
+    QCOMPARE(settled(), withCorridor);
+
+    const QJsonObject removed = take(qgc_core_invoke("mission.remove", QStringLiteral("[%1]").arg(withCorridor - 1).toUtf8().constData()));
+    QVERIFY2(removed.value(QStringLiteral("ok")).toBool(false), qPrintable(removed.value(QStringLiteral("reason")).toString()));
+    QCOMPARE(settled(), withCorridor - 1);
+    QCOMPARE(removed.value(QStringLiteral("remaining")).toInt(-1), withCorridor - 1);
+
+    const QJsonObject past = take(qgc_core_invoke("mission.remove", QStringLiteral("[%1]").arg(withCorridor + 5).toUtf8().constData()));
+    QCOMPARE(past.value(QStringLiteral("ok")).toBool(true), false);
+    QCOMPARE(settled(), withCorridor - 1);
+
     const QJsonObject unknown = insert("[\"Fixed Wing Landing Pattern\", 47.3975, 8.5460, -1]");
     QCOMPARE(unknown.value(QStringLiteral("ok")).toBool(true), false);
     QVERIFY2(unknown.value(QStringLiteral("unknown")).toString() == QStringLiteral("Fixed Wing Landing Pattern"),
              "QGC has item types this catalogue does not list, and a head holding one has to tell being unlisted apart from being turned down");
-    QCOMPARE(settled(), withCorridor);
+    QCOMPARE(settled(), withCorridor - 1);
 #else
     QSKIP("the Rust core is not linked into this build");
 #endif

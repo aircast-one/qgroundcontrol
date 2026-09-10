@@ -4,14 +4,16 @@ use crate::missionkinds::{default_area, default_line, insertable, lookup, refusa
 use crate::router::Backend;
 
 const INSERT: &str = "mission.insert";
+const REMOVE: &str = "mission.remove";
 
 pub fn owns(path: &str) -> bool {
-    path == INSERT
+    matches!(path, INSERT | REMOVE)
 }
 
 pub fn run(backend: &dyn Backend, path: &str, args: &str) -> Value {
     match path {
         INSERT => insert(backend, args),
+        REMOVE => remove(backend, args),
         _ => json!({ "ok": false, "reason": format!("{path} is not an action the core performs") }),
     }
 }
@@ -20,7 +22,7 @@ pub fn run(backend: &dyn Backend, path: &str, args: &str) -> Value {
 // never selects one reads whatever the controller was constructed with. The insert point is chosen
 // here before the question is asked, which is the same thing the plan view does when a user clicks.
 fn point_at(backend: &dyn Backend, index: i64) -> Option<i64> {
-    let count = serde_json::from_str::<Value>(&backend.get("plan.missionController.visualItems.count")).ok().and_then(|v| v.get("value").and_then(Value::as_i64))?;
+    let count = item_count(backend)?;
     if count <= 0 {
         return None;
     }
@@ -76,6 +78,36 @@ fn insert(backend: &dyn Backend, args: &str) -> Value {
             json!({ "ok": false, "reason": reason, "removed": kind.id })
         }
     }
+}
+
+// Index 0 is the mission settings item, which holds the planned home position and is not something
+// an operator deletes; the plan view offers no way to. Removing it leaves a plan the controller
+// cannot describe rather than a shorter one.
+const SETTINGS_ITEM: i64 = 0;
+
+fn remove(backend: &dyn Backend, args: &str) -> Value {
+    let args: Value = serde_json::from_str(args).unwrap_or(Value::Null);
+    let Some(index) = args.as_array().and_then(|args| args.first()).and_then(Value::as_i64) else {
+        return json!({ "ok": false, "reason": "mission.remove takes the index of the item to remove" });
+    };
+    let Some(count) = item_count(backend) else {
+        return json!({ "ok": false, "reason": "the plan did not say how many items it holds" });
+    };
+    if index == SETTINGS_ITEM {
+        return json!({ "ok": false, "reason": "The first entry holds the plan's own settings and cannot be removed." });
+    }
+    if index < 0 || index >= count {
+        return json!({ "ok": false, "reason": format!("this plan has no item {index}") });
+    }
+    backend.invoke("plan.missionController.removeVisualItem", &json!([index]).to_string());
+    match item_count(backend) {
+        Some(now) if now < count => json!({ "ok": true, "removed": index, "remaining": now }),
+        _ => json!({ "ok": false, "reason": "the plan still holds the item, so it was not removed" }),
+    }
+}
+
+fn item_count(backend: &dyn Backend) -> Option<i64> {
+    serde_json::from_str::<Value>(&backend.get("plan.missionController.visualItems.count")).ok().and_then(|v| v.get("value").and_then(Value::as_i64))
 }
 
 fn inserted_index(backend: &dyn Backend) -> Option<i64> {
@@ -326,5 +358,91 @@ mod tests {
         assert_eq!(refused["removed"], "survey");
         let calls = fussy.0.calls.lock().unwrap();
         assert!(calls.iter().any(|(called, _)| called.ends_with("removeVisualItem")), "a survey with no area is worse than no survey, because an operator has to find it to delete it");
+    }
+}
+
+#[cfg(test)]
+mod removal {
+    use super::*;
+    use std::sync::Mutex;
+
+    struct Shrinking {
+        count: Mutex<i64>,
+        calls: Mutex<Vec<String>>,
+    }
+
+    impl Shrinking {
+        fn holding(count: i64) -> Shrinking {
+            Shrinking { count: Mutex::new(count), calls: Mutex::new(Vec::new()) }
+        }
+    }
+
+    impl Backend for Shrinking {
+        fn get(&self, path: &str) -> String {
+            match path {
+                "plan.missionController.visualItems.count" => json!({ "kind": "value", "value": *self.count.lock().unwrap() }).to_string(),
+                _ => String::new(),
+            }
+        }
+        fn get_fields(&self, _p: &str, _f: &str) -> String { String::new() }
+        fn set(&self, _p: &str, _v: &str) -> String { String::new() }
+        fn invoke(&self, path: &str, args: &str) -> String {
+            self.calls.lock().unwrap().push(format!("{path} {args}"));
+            if path.ends_with("removeVisualItem") {
+                *self.count.lock().unwrap() -= 1;
+            }
+            json!({ "ok": true }).to_string()
+        }
+        fn watch(&self, _p: &[String]) {}
+    }
+
+    #[test]
+    fn an_item_is_removed_and_the_plan_says_what_is_left() {
+        let plan = Shrinking::holding(4);
+        let gone = run(&plan, "mission.remove", "[2]");
+        assert_eq!(gone["ok"], true);
+        assert_eq!(gone["removed"], 2);
+        assert_eq!(gone["remaining"], 3);
+        assert_eq!(plan.calls.lock().unwrap().len(), 1);
+    }
+
+    #[test]
+    fn the_plans_own_settings_entry_is_not_an_item_an_operator_can_delete() {
+        let plan = Shrinking::holding(4);
+        let refused = run(&plan, "mission.remove", "[0]");
+        assert_eq!(refused["ok"], false);
+        assert!(refused["reason"].as_str().unwrap().contains("settings"));
+        assert!(plan.calls.lock().unwrap().is_empty(), "the plan view offers no way to remove it, and removing it leaves a plan the controller cannot describe");
+        assert_eq!(*plan.count.lock().unwrap(), 4);
+    }
+
+    #[test]
+    fn an_index_the_plan_does_not_hold_is_refused_rather_than_passed_on() {
+        let plan = Shrinking::holding(3);
+        ["[3]", "[99]", "[-1]", "[]", "not json"].iter().for_each(|args| {
+            assert_eq!(run(&plan, "mission.remove", args)["ok"], false, "{args} names no item");
+        });
+        assert!(plan.calls.lock().unwrap().is_empty());
+        assert_eq!(*plan.count.lock().unwrap(), 3);
+    }
+
+    #[test]
+    fn a_removal_that_did_not_shrink_the_plan_is_reported_as_a_failure() {
+        struct Stubborn;
+        impl Backend for Stubborn {
+            fn get(&self, path: &str) -> String {
+                match path {
+                    "plan.missionController.visualItems.count" => json!({ "kind": "value", "value": 3 }).to_string(),
+                    _ => String::new(),
+                }
+            }
+            fn get_fields(&self, _p: &str, _f: &str) -> String { String::new() }
+            fn set(&self, _p: &str, _v: &str) -> String { String::new() }
+            fn invoke(&self, _p: &str, _a: &str) -> String { json!({ "ok": true }).to_string() }
+            fn watch(&self, _p: &[String]) {}
+        }
+        let refused = run(&Stubborn, "mission.remove", "[1]");
+        assert_eq!(refused["ok"], false, "the call answered ok and the item is still there, and a head told ok would redraw a list that has not changed");
+        assert!(refused["reason"].as_str().unwrap().contains("still holds"));
     }
 }
