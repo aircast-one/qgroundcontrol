@@ -3883,7 +3883,20 @@ the duration. A head that addresses everything by path has nowhere to put it —
 `QObject *` as `objectJson`, a snapshot of values, and accepts `@path` arguments only for objects that
 are reachable by path.
 
-So the rule is: **any QGC API that hands out a transient object and expects it back is QML-only.**
+So the rule I first wrote was: *any QGC API that hands out a transient object and expects it back is
+QML-only.* **That is true but points at the wrong fix, and the core session found the right one**
+(`547d00431`). The bridge's limitation is narrower than "cannot hold handles": it is that it cannot
+name an object that has no path *yet*. Registration is what converts the second case into the first.
+
+`links.createSerialConfiguration(name, portName, baud)` registers a configuration, and from that
+moment everything else is an ordinary property write by path — parity, flow control, data bits, stop
+bits, `usbDirect` — followed by `createConnectedLink("@links.linkConfigurations.N")`, which already
+worked. Only the registering call was missing. The macOS session's objection that a name/port/baud
+one-shot cannot express parity is answered not by a wider signature but by not needing one.
+
+So the question to ask at the next instance of this shape is **"is there a call that registers this
+thing?"** rather than "can the bridge vend handles" — and if there is not, adding one is a much
+smaller change than teaching the bridge about lifetimes.
 
 Swept the tree for the shape. Twenty-two `Q_INVOKABLE` declarations return a pointer, and almost all
 are harmless because they return something already addressable — `getFact`, `getParameter`,
