@@ -1259,6 +1259,7 @@ func checkMissionItemKinds() {
     expect(MissionSeed([:]) == nil, "and a kind with no geometry seeds nothing at all")
 
     checkHostNotices()
+    checkMavlinkConsole()
 
     expect(WriteReport.failure("the fence radius"),
            "Could not change the fence radius. It is unchanged.",
@@ -3926,4 +3927,48 @@ func checkHostNotices() {
     expect(served.navigation?.id == 1,
            "the navigation request is found among notices that are not navigation, because it "
            + "arrives paired with the message that explains it and never alone")
+}
+
+func checkMavlinkConsole() {
+    let read = MavlinkConsole(["lines": ["nsh> ver all", "FW git-hash: 1a2b3c", ""]],
+                              connected: true)
+    expect(read.lines.joined(separator: "|"), "nsh> ver all|FW git-hash: 1a2b3c",
+           "MAVLinkConsoleController keeps the line still being assembled as the last entry, and "
+           + "it is empty until a newline arrives; drawing it adds a blank row that appears and "
+           + "disappears as characters land")
+    expect(read.last ?? "", "FW git-hash: 1a2b3c",
+           "the tail is what a console is for, so the head names it rather than making the "
+           + "operator scroll a long session to find what just happened")
+    expect(read.describes, "and a console with output describes something")
+
+    expect(MavlinkConsole(["lines": ["still typing"]], connected: true)
+        .lines.joined(separator: "|"), "still typing",
+           "but a partial line that is NOT empty is real output and is kept -- the tell is the "
+           + "empty string, not the position")
+
+    expect(MavlinkConsole.none.copyable, "",
+           "an empty console copies an empty string rather than trapping on a missing last line")
+    expect(MavlinkConsole([:], connected: true).describes == false,
+           "an empty read describes nothing rather than an empty console")
+    expect(MavlinkConsole([:], connected: true).emptyText,
+           "Nothing yet. The shell answers commands, and those are sent from the Qt build.",
+           "and a connected vehicle that has said nothing is told apart from no vehicle at all -- "
+           + "and told where the commands go, because shell output only answers a command and "
+           + "this page cannot send one, so \"nothing yet\" alone counsels an endless wait")
+    expect(read.copyable, "nsh> ver all\nFW git-hash: 1a2b3c",
+           "the whole buffer is copyable in one piece. SwiftUI selection does not span sibling "
+           + "Text views, so per-line selection cannot lift a boot log into a bug report, which "
+           + "is the normal next step after reading one")
+    expect(MavlinkConsole.none.emptyText, "Connect a vehicle to see its console output.",
+           "because those are different situations and only one is worth waiting through")
+
+    expect(MavlinkConsole(["lines": ["a", 7 as NSNumber, "b"]], connected: true)
+        .lines.joined(separator: "|"), "a|b",
+           "a line that is not a string is dropped rather than rendered as its description")
+
+    expect(MavlinkConsole.readOnlyNotice.contains("Commands are sent from the Qt build"),
+           "the page says it only reads. sendCommand puts a string on the vehicle's shell, which "
+           + "can reboot it, rewrite its parameters or arm it, and nothing here can send one to "
+           + "check the wiring -- so the input is unbuilt and the page says so rather than "
+           + "offering a field that silently does nothing")
 }

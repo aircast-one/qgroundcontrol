@@ -378,20 +378,83 @@ struct MavlinkInspectorView: View {
     }
 }
 
+struct MavlinkConsoleView: View {
+    @ObservedObject var store: MavlinkConsoleStore
+
+    // QML gates its own scroll on flickable.atYEnd, so scrolling up freezes the view until you
+    // come back and the operator manages nothing. SwiftUI cannot read scroll offset at this
+    // deployment target - onScrollGeometryChange is macOS 15 - so this asks the operator instead.
+    // A checkbox is the compromise, not the design; delete it when the target moves.
+    @State private var following = true
+
+    var body: some View {
+        // Not passing connected: SetupPageBody's own disconnected state says "Connect a vehicle
+        // to set this up", which is setup language for a page that sets nothing up. The two
+        // sentences this page needs are its own, and they tell a silent vehicle apart from none.
+        SetupPageBody(title: "MAVLink Console",
+                      note: MavlinkConsole.readOnlyNotice) {
+            GroupCard {
+                if store.console.describes {
+                    HStack(spacing: Overlay.unit * 0.5) {
+                        Toggle("Follow new output", isOn: $following)
+                            .toggleStyle(.checkbox)
+                        Spacer()
+                        Button("Copy All") {
+                            NSPasteboard.general.clearContents()
+                            NSPasteboard.general.setString(store.console.copyable,
+                                                           forType: .string)
+                        }
+                    }
+                    .padding(.horizontal, Overlay.unit * 0.4)
+                    Divider()
+                    ScrollViewReader { scroll in
+                        ScrollView {
+                            VStack(alignment: .leading, spacing: 1) {
+                                ForEach(Array(store.console.lines.enumerated()), id: \.offset) {
+                                    index, line in
+                                    Text(line)
+                                        .font(.system(.body, design: .monospaced))
+                                        .textSelection(.enabled)
+                                        .frame(maxWidth: .infinity, alignment: .leading)
+                                        .id(index)
+                                }
+                            }
+                            .padding(Overlay.unit * 0.4)
+                        }
+                        .frame(minHeight: 240)
+                        .onChange(of: store.console.lines.count) { count in
+                            guard following, count > 0 else { return }
+                            scroll.scrollTo(count - 1, anchor: .bottom)
+                        }
+                    }
+                } else {
+                    EmptyStateRow(text: store.console.emptyText)
+                }
+            }
+        }
+        .onAppear(perform: store.startWatching)
+        .onDisappear(perform: store.stopWatching)
+    }
+}
+
 struct AnalyzeView: View {
     @ObservedObject var vibration: VibrationStore
     @ObservedObject var logs: LogDownloadStore
     @ObservedObject var geoTag: GeoTagStore
     @ObservedObject var inspector: MavlinkInspectorStore
+    @ObservedObject var console: MavlinkConsoleStore
     @ObservedObject var selection: PageSelection
 
-    static let pages = ["Vibration", "Log Download", "Geotag Images", "MAVLink Inspector"]
+    static let pages = ["Vibration", "Log Download", "Geotag Images", "MAVLink Inspector",
+                        "MAVLink Console"]
 
     static let symbols = ["Vibration": "waveform.path.ecg", "Log Download": "doc.text.fill",
                           "Geotag Images": "mappin.and.ellipse",
-                          "MAVLink Inspector": "dot.radiowaves.left.and.right"]
+                          "MAVLink Inspector": "dot.radiowaves.left.and.right",
+                          "MAVLink Console": "terminal"]
     static let colours: [String: Color] = ["Vibration": .pink, "Log Download": .indigo,
-                                           "Geotag Images": .teal, "MAVLink Inspector": .orange]
+                                           "Geotag Images": .teal, "MAVLink Inspector": .orange,
+                                           "MAVLink Console": .gray]
 
     var body: some View {
         HStack(spacing: 0) {
@@ -411,6 +474,7 @@ struct AnalyzeView: View {
             case "Log Download": LogDownloadView(store: logs)
             case "Geotag Images": GeoTagView(store: geoTag)
             case "MAVLink Inspector": MavlinkInspectorView(store: inspector)
+            case "MAVLink Console": MavlinkConsoleView(store: console)
             default: VibrationView(store: vibration)
             }
         }
@@ -425,6 +489,7 @@ final class AnalyzeWindow: NSObject, NSWindowDelegate {
     private let logs = LogDownloadStore()
     private let geoTag = GeoTagStore()
     private let inspector = MavlinkInspectorStore()
+    private let console = MavlinkConsoleStore()
     private let selection = PageSelection(owner: "analyze", pages: AnalyzeView.pages)
     private var window: NSWindow?
 
@@ -434,6 +499,7 @@ final class AnalyzeWindow: NSObject, NSWindowDelegate {
         NativeProbe.register(logs)
         NativeProbe.register(geoTag)
         NativeProbe.register(inspector)
+        NativeProbe.register(console)
         NativeProbe.register(selection, as: selection.identifier)
     }
 
@@ -455,7 +521,7 @@ final class AnalyzeWindow: NSObject, NSWindowDelegate {
         window.title = "Analyze"
         window.isReleasedWhenClosed = false
         window.delegate = self
-        window.contentView = NSHostingView(rootView: AnalyzeView(vibration: vibration, logs: logs, geoTag: geoTag, inspector: inspector, selection: selection))
+        window.contentView = NSHostingView(rootView: AnalyzeView(vibration: vibration, logs: logs, geoTag: geoTag, inspector: inspector, console: console, selection: selection))
         window.center()
         window.makeKeyAndOrderFront(nil)
         self.window = window
