@@ -12,8 +12,8 @@ class RcSignalTest {
     }
 
     @Test
-    fun `zero means no signal and is not shown as a percentage`() {
-        assertNull(rcSignalText(supportsRadio = true, rssi = 0))
+    fun `zero is a reading the vehicle chose to send and says the link is dead`() {
+        assertEquals("No signal", rcSignalText(supportsRadio = true, rssi = 0))
     }
 
     @Test
@@ -101,5 +101,47 @@ class BatteryTextTest {
                     "packs":[{"secondaryText":"12.4 V"}]}"""),
             )!!.text,
         )
+    }
+}
+
+
+class GpsFixTest {
+    @Test
+    fun `a fix type below 2D is no fix at all`() {
+        assertEquals(FixLevel.None, fixLevel(0.0))
+        assertEquals(FixLevel.None, fixLevel(1.0))
+    }
+
+    @Test
+    fun `2D is told apart from 3D rather than both passing as a fix`() {
+        assertEquals(FixLevel.TwoD, fixLevel(2.0))
+        assertEquals(FixLevel.Good, fixLevel(3.0))
+        assertEquals(FixLevel.Good, fixLevel(6.0))
+    }
+
+    @Test
+    fun `an unreadable lock shows nothing rather than claiming a fix`() {
+        assertNull(fixLevel(Double.NaN))
+    }
+
+    @Test
+    fun `a satellite count is not shown as reassurance when there is no fix`() {
+        assertEquals("No fix", satsText(FixLevel.None, "11"))
+    }
+
+    @Test
+    fun `a 2D fix says so next to the count`() {
+        assertEquals("11 · 2D only", satsText(FixLevel.TwoD, "11"))
+    }
+
+    @Test
+    fun `a good fix is just the count`() {
+        assertEquals("11", satsText(FixLevel.Good, "11"))
+    }
+
+    @Test
+    fun `the rendered lock text is not a fix level, so wiring the string back in hides the cell`() {
+        assertNull(fixLevel("3D Lock".toDoubleOrNull() ?: Double.NaN))
+        assertNull(fixLevel("None".toDoubleOrNull() ?: Double.NaN))
     }
 }
