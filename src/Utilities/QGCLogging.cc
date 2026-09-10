@@ -68,7 +68,10 @@ void QGCLogging::installHandler()
 {
     qSetMessagePattern(QStringLiteral("%{time process} - %{type}: %{message} (%{category}:%{function}:%{line})"));
 
-    defaultHandler = qInstallMessageHandler(msgHandler);
+    const QtMessageHandler previous = qInstallMessageHandler(msgHandler);
+    if (previous != msgHandler) {
+        defaultHandler = previous;
+    }
 }
 
 void QGCLogging::log(const QString &message)
