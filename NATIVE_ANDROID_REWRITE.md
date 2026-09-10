@@ -3546,6 +3546,37 @@ The lock now guarantees the state its callers assume rather than reporting it: i
 handset that will not wake. A rig that hands you a device in the wrong state is worse than one that
 refuses, because the run still produces screenshots and they all look fine.
 
+### The round trip closes: Phase 4's gate is met
+
+Phase 4's gate is a vehicle round trip. Both halves are now walked end to end against the sim's own
+log rather than against the screen:
+
+1. Build a plan, Upload — `UPLOAD done items=3`, the wire carrying home, `cmd=22` takeoff and a
+   waypoint, in that order.
+2. File → New plan — the summary reads **"Empty plan · long press to add"**, and the vehicle keeps
+   its mission.
+3. Download — `DOWNLOAD start type=0 count=3`, and the plan comes back as
+   **"2 items (takeoff) · 446 m · 1:46"**: the two flight items plus the home item that is not
+   counted in the summary.
+
+**Two confirmations were found by walking it, both good.** "Clear mission" warns that it removes the
+mission *from the aircraft* — the destructive half is named rather than implied. And Download is a
+two-step arm: the first tap relabels the button **"Discard & download"**, because the local plan is
+about to be replaced.
+
+**I misread my own instrument twice on the way, and both are worth recording.**
+
+The first: after clearing locally I read `DOWNLOAD start type=0 count=0` and concluded that
+"New plan" had wiped the vehicle's mission — a serious accusation about a destructive side effect.
+It had not. That line was from app startup, before the upload; I had taken the tail of *all*
+download lines rather than the ones since my action. Grepping a log without bounding it to the
+window under test is the same error as reading a screen without knowing what produced it.
+
+The second: the download that "did nothing" had in fact armed a confirmation. The tap landed, the
+button was enabled, and the screen said `Discard & download` — which I only saw because I dumped the
+screen immediately after the tap instead of after a nine-second wait. **A delay long enough to let
+the action finish is also long enough to hide what the action asked for.**
+
 ## Phase 6 — Shell · 2 weeks
 
 Cheaper than macOS, because Qt is already off the main thread.
