@@ -96,6 +96,10 @@ pub fn sections_for(page: &str, px4: bool) -> Option<&'static [Section]> {
     }
 }
 
+pub fn completes_setup(page: &str) -> bool {
+    page != "Radio"
+}
+
 pub fn has_native_page(page: &str, px4: bool) -> bool {
     matches!(page, "Summary" | "Remote Support" | "Radio" | "Parameters" | "Motors") || (page == "Sensors" && !px4) || sections_for(page, px4).is_some()
 }
@@ -159,7 +163,7 @@ fn overview(backend: &dyn Backend, connected: bool, px4: bool) -> Value {
         "components": components.iter().map(|(n, needs)| json!({ "name": n, "needsAttention": needs })).collect::<Vec<_>>(),
         "groups": PAGES.iter().map(|(title, pages)| json!({
             "title": title,
-            "pages": pages.iter().map(|p| json!({ "name": p, "native": has_native_page(p, px4), "parameterSections": sections_for(p, px4).is_some() })).collect::<Vec<_>>(),
+            "pages": pages.iter().map(|p| json!({ "name": p, "native": has_native_page(p, px4), "completes": completes_setup(p), "parameterSections": sections_for(p, px4).is_some() })).collect::<Vec<_>>(),
         })).collect::<Vec<_>>(),
     })
 }
@@ -195,6 +199,14 @@ mod tests {
         let faults = readiness(true, &[("Sensors".into(), false)], &["GPS".into()]);
         assert_eq!(faults.1, "1 sensor reporting a fault");
         assert_eq!(readiness(true, &[], &[]).1, "This vehicle reports no setup components");
+    }
+
+    #[test]
+    fn radio_is_the_page_that_watches_but_cannot_finish() {
+        assert!(has_native_page("Radio", false));
+        assert!(!completes_setup("Radio"));
+        assert!(completes_setup("Sensors"));
+        assert!(completes_setup("Summary"));
     }
 
     #[test]

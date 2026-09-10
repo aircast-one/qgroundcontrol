@@ -2897,6 +2897,41 @@ throughout; `git diff HEAD` is empty and HEAD now contains the symbols the devic
 against. No work was lost, because nothing had been rebuilt from HEAD in between — which is luck,
 not a mitigation.
 
+### The badge that sent an operator to a page that could not help
+
+Recorded earlier in this document as "reported rather than fixed", deferred because the setup
+page table "belongs to another session's work in progress". That claim came from reading
+`git status`, which this tree cannot support — the android repo had nothing in flight and had not
+for a long time. The deferral rested on the same bad inference as the one that cost an iteration
+two sections ago, and it had been sitting here as a settled reason.
+
+The finding stands as written: the list badges Radio "Needs setup" in red, it is the one item
+blocking flight, and tapping it opens a page that cannot resolve it. What was missing was a third
+state — a native page that *monitors* but cannot *complete*. The core now serves `completes`
+beside `native`, false for Radio alone, and the row reads **"Finish on desktop"** before the tap.
+It stays red and stays openable, because it does still block flight and the live channel monitor
+is worth reaching. Verified on the handset in both the "needs setup before flight" list and the
+full list; no other row changed.
+
+**Chasing it found 206 lines that no longer ran.** `hasNativeSetupPage` was a second
+implementation of the core's `has_native_page`, and the parameter-section tables it depended on —
+`SAFETY_APM`, `SAFETY_PX4`, `POWER_PX4`, `LIGHTS_APM`, `CAMERA_APM`, `TUNING_APM`, `FRAME_APM` and
+the rest — existed only to feed it. Nothing in `main` called any of it: the screen reads `native`
+from the projection, and `ParameterForm` fetches its sections from the core by page name. It was
+reachable from its own tests and nowhere else.
+
+It had also drifted without anyone noticing, which is the part worth keeping. The head's copy said
+Motors has no native page; the core says it does. A test asserted the head's answer — *"a
+component with neither a form nor a custom page stays closed"* — so the contradiction was pinned,
+green, and looked maintained. Deleting the function meant deleting the four tests that were its
+only callers. `SetupPages.kt` is 206 lines down to 5.
+
+**A smaller self-inflicted one, caught by counting.** `SetupViewTest.kt` was created with a
+`cat >>` heredoc appending nothing to a file that did not exist, which produces an **empty `.kt`
+file that compiles silently and passes**. It was only noticed because the executed-test count did
+not move the way removing four and adding five said it should. The arithmetic caught what the
+green suite could not.
+
 ## Phase 6 — Shell · 2 weeks
 
 Cheaper than macOS, because Qt is already off the main thread.
