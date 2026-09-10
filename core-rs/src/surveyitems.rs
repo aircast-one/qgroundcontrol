@@ -122,6 +122,39 @@ mod tests {
     }
 
     #[test]
+    fn every_recorded_corridor_plan_builds_the_same_mission_items() {
+        let cases = oracle();
+        let cases = cases.as_object().expect("the oracle is an object of cases");
+        let checked: Vec<(String, bool, String)> = cases
+            .iter()
+            .filter(|(_, case)| case["kind"] == "corridorItems")
+            .map(|(name, case)| {
+                let polyline: Vec<Point> = case["polyline"].as_array().unwrap().iter().map(|v| (v["latitude"].as_f64().unwrap(), v["longitude"].as_f64().unwrap())).collect();
+                let corridor = crate::corridorscan::Params {
+                    width: case["corridorWidth"].as_f64().unwrap(),
+                    spacing: case["gridSpacing"].as_f64().unwrap(),
+                    turnaround: case["turnAround"].as_f64().unwrap(),
+                    entry: 0,
+                };
+                let transects = crate::corridorscan::typed_transects(&polyline, &corridor);
+                let plan = Plan {
+                    altitude: case["distanceToSurface"].as_f64().unwrap(),
+                    trigger_distance: case["triggerDistance"].as_f64().unwrap(),
+                    altitude_mode: crate::altitudemodes::RELATIVE,
+                    images_in_turnaround: true,
+                };
+                let ours: Vec<String> = items(&transects, &plan).iter().map(spelled).collect();
+                let expected: Vec<String> = case["items"].as_array().unwrap().iter().map(|v| v.as_str().unwrap().to_string()).collect();
+                let matched = ours.len() == expected.len() && ours.iter().zip(expected.iter()).all(|(ours, theirs)| same_item(ours, theirs));
+                (name.clone(), matched, format!("{name}\n  qt:   {}\n  rust: {}", expected.join(" | "), ours.join(" | ")))
+            })
+            .collect();
+        assert_eq!(checked.len(), 3, "every recorded corridor plan is checked");
+        let wrong: Vec<&str> = checked.iter().filter(|(_, matched, _)| !matched).map(|(_, _, report)| report.as_str()).collect();
+        assert!(wrong.is_empty(), "{} of {} corridor plans differ from the Qt builder:\n{}", wrong.len(), checked.len(), wrong.join("\n"));
+    }
+
+    #[test]
     fn the_camera_is_switched_on_at_each_entry_and_off_once_at_the_end() {
         let two = vec![crate::surveygrid::typed(vec![(47.0, 8.0), (47.1, 8.0)], 0.0), crate::surveygrid::typed(vec![(47.1, 8.1), (47.0, 8.1)], 0.0)];
         let built = items(&two, &Plan { altitude: 60.0, trigger_distance: 40.0, altitude_mode: crate::altitudemodes::RELATIVE, images_in_turnaround: true });

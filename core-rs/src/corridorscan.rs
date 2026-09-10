@@ -1,4 +1,4 @@
-use crate::surveygrid::{boustrophedon, crossing_point, flatten, line_angle, reverse_internal_points, reverse_transect_order, set_angle, set_length, to_geo, with_turnaround};
+use crate::surveygrid::{Coord, boustrophedon, crossing_point, flatten, line_angle, retype, typed, reverse_internal_points, reverse_transect_order, set_angle, set_length, to_geo, with_turnaround};
 
 const NO_SPACING_M: f64 = 100_000.0;
 const MIN_SPACING_M: f64 = 0.5;
@@ -42,6 +42,32 @@ fn offset_polyline(flat: &[Point], origin: Point, distance: f64) -> Vec<Point> {
         .chain(joints)
         .chain(std::iter::once(edges[edges.len() - 1].1))
         .map(|point| to_geo(point, origin))
+        .collect()
+}
+
+pub fn typed_transects(polyline: &[Point], params: &Params) -> Vec<Vec<Coord>> {
+    if polyline.len() < 2 {
+        return Vec::new();
+    }
+    let spacing = transect_spacing(params.spacing);
+    let count = transect_count(params.width, params.spacing);
+    let half_width = params.width / 2.0;
+    let flat = flatten(polyline);
+    let origin = polyline[0];
+    let laid: Vec<Vec<Coord>> = (0..count)
+        .map(|index| {
+            let position = spacing / 2.0 + spacing * index as f64;
+            let offset = if count == 1 { 0.0 } else { half_width - position };
+            typed(offset_polyline(&flat, origin, offset), params.turnaround)
+        })
+        .collect();
+    let ordered = if matches!(params.entry, 1 | 3) { laid.into_iter().rev().collect() } else { laid };
+    let placed: Vec<Vec<Coord>> = if matches!(params.entry, 2 | 3) { ordered.into_iter().map(|t| t.into_iter().rev().collect()).collect() } else { ordered };
+    placed
+        .into_iter()
+        .enumerate()
+        .map(|(index, transect)| if index % 2 == 1 { transect.into_iter().rev().collect::<Vec<Coord>>() } else { transect })
+        .map(retype)
         .collect()
 }
 

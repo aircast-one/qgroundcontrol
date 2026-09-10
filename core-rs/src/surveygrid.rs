@@ -38,6 +38,24 @@ pub struct Coord {
     pub kind: Kind,
 }
 
+pub fn retype(transect: Vec<Coord>) -> Vec<Coord> {
+    let flying: Vec<usize> = transect.iter().enumerate().filter(|(_, coord)| coord.kind != Kind::Turnaround).map(|(index, _)| index).collect();
+    let (Some(first), Some(last)) = (flying.first(), flying.last()) else { return transect };
+    transect
+        .iter()
+        .enumerate()
+        .map(|(index, coord)| {
+            let kind = match () {
+                _ if coord.kind == Kind::Turnaround => Kind::Turnaround,
+                _ if index == *first => Kind::SurveyEntry,
+                _ if index == *last => Kind::SurveyExit,
+                _ => Kind::Interior,
+            };
+            Coord { at: coord.at, kind }
+        })
+        .collect()
+}
+
 pub fn typed(points: Vec<Point>, turnaround: f64) -> Vec<Coord> {
     let last = points.len().saturating_sub(1);
     let inner: Vec<Coord> = points

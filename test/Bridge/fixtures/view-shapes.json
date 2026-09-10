@@ -1215,7 +1215,6 @@
         "armingBlocker": "null|string",
         "class": "string",
         "kind": "string",
-        "showing": "bool",
         "warnings": [
             {
                 "detail": "string",

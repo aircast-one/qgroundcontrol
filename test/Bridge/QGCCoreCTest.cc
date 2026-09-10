@@ -241,14 +241,12 @@ void QGCCoreCTest::_warningsFollowTheVehicle()
 {
     const QJsonObject offline = take(qgc_bridge_get("view.warnings"));
     QCOMPARE(offline.value(QStringLiteral("class")).toString(), QStringLiteral("VehicleWarnings"));
-    QCOMPARE(offline.value(QStringLiteral("showing")).toBool(true), false);
     QVERIFY(offline.value(QStringLiteral("armingBlocker")).isNull());
 
     _connectMockLink(MAV_AUTOPILOT_PX4);
     QTRY_VERIFY_WITH_TIMEOUT(take(qgc_bridge_get("view.guidedActions")).value(QStringLiteral("connected")).toBool(false), 5000);
     const QJsonObject online = take(qgc_bridge_get("view.warnings"));
     QVERIFY(online.value(QStringLiteral("warnings")).isArray());
-    QCOMPARE(online.value(QStringLiteral("showing")).toBool(), !online.value(QStringLiteral("warnings")).toArray().isEmpty());
 }
 
 void QGCCoreCTest::_labelsAreHumanised()
@@ -1517,6 +1515,62 @@ void QGCCoreCTest::_surveyTransectsMatchTheRecordedOracle()
     }
     restore();
 
+    const QList<QPair<QString, CorridorCase>> corridorPlans = {
+        { QStringLiteral("corridor-items-straight"), corridors[0] },
+        { QStringLiteral("corridor-items-bent"),     corridors[3] },
+        { QStringLiteral("corridor-items-turn"),     corridors[2] },
+    };
+
+    for (const auto &planned : corridorPlans) {
+        const CorridorCase &corridor = planned.second;
+        restore();
+        (void) take(qgc_bridge_invoke("plan.missionController.insertComplexMissionItem",
+                                      compact(QJsonArray { QStringLiteral("Corridor Scan"), coordinateJson(47.3975, 8.5460), -1 }).constData()));
+        QTRY_VERIFY_WITH_TIMEOUT(take(qgc_bridge_get(item.toUtf8().constData())).value(QStringLiteral("kind")).toString() == QStringLiteral("object"), 5000);
+        (void) take(qgc_bridge_invoke((item + QStringLiteral(".corridorPolyline.clear")).toUtf8().constData(), "[]"));
+        for (const QJsonValue &vertex : corridor.polyline) {
+            (void) take(qgc_bridge_invoke((item + QStringLiteral(".corridorPolyline.appendVertex")).toUtf8().constData(), compact(QJsonArray { vertex }).constData()));
+        }
+        setFact(item + QStringLiteral(".cameraCalc.adjustedFootprintSide"), QJsonValue(corridor.spacing));
+        setFact(item + QStringLiteral(".cameraCalc.adjustedFootprintFrontal"), QJsonValue(40.0));
+        setFact(item + QStringLiteral(".cameraCalc.distanceToSurface"), QJsonValue(60.0));
+        setFact(item + QStringLiteral(".corridorWidth"), QJsonValue(corridor.width));
+        setFact(item + QStringLiteral(".turnAroundDistance"), QJsonValue(corridor.turnAround));
+
+        const QString planFile = QDir::temp().filePath(QStringLiteral("qgc-core-corridor-%1.plan").arg(QCoreApplication::applicationPid()));
+        QFile::remove(planFile);
+        QVERIFY(take(qgc_bridge_invoke("plan.saveToFile", compact(QJsonArray { planFile }).constData())).value(QStringLiteral("result")).toBool(false));
+        QFile saved(planFile);
+        QVERIFY(saved.open(QIODevice::ReadOnly));
+        const QJsonObject plan = QJsonDocument::fromJson(saved.readAll()).object();
+        saved.close();
+        QFile::remove(planFile);
+
+        QJsonArray built;
+        for (const QJsonValue &entry : plan.value(QStringLiteral("mission")).toObject().value(QStringLiteral("items")).toArray()) {
+            const QJsonObject complex = entry.toObject().value(QStringLiteral("TransectStyleComplexItem")).toObject();
+            for (const QJsonValue &generated : complex.value(QStringLiteral("Items")).toArray()) {
+                const QJsonObject mission = generated.toObject();
+                built.append(QStringLiteral("%1 %2 %3")
+                                 .arg(mission.value(QStringLiteral("command")).toInt())
+                                 .arg(mission.value(QStringLiteral("frame")).toInt())
+                                 .arg(QJsonDocument(mission.value(QStringLiteral("params")).toArray()).toJson(QJsonDocument::Compact).constData()));
+            }
+        }
+        QVERIFY2(!built.isEmpty(), qPrintable(planned.first));
+        recorded[planned.first] = QJsonObject {
+            { QStringLiteral("kind"), QStringLiteral("corridorItems") },
+            { QStringLiteral("polyline"), corridor.polyline },
+            { QStringLiteral("corridorWidth"), corridor.width },
+            { QStringLiteral("gridSpacing"), corridor.spacing },
+            { QStringLiteral("turnAround"), corridor.turnAround },
+            { QStringLiteral("distanceToSurface"), 60.0 },
+            { QStringLiteral("triggerDistance"), 40.0 },
+            { QStringLiteral("items"), built },
+        };
+    }
+    restore();
+
     const QString fixture = QFileInfo(QString::fromUtf8(__FILE__)).dir().filePath(QStringLiteral("fixtures/survey-transects.json"));
     const QByteArray current = QJsonDocument(recorded).toJson(QJsonDocument::Indented);
     if (qEnvironmentVariableIsSet("QGC_RECORD_VIEW_CONTRACT")) {
@@ -1543,6 +1597,9 @@ void QGCCoreCTest::_surveyTransectsMatchTheRecordedOracle()
         names.append(offset.first);
     }
     for (const auto &planned : plans) {
+        names.append(planned.first);
+    }
+    for (const auto &planned : corridorPlans) {
         names.append(planned.first);
     }
     for (const QString &key : names) {

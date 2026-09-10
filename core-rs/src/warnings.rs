@@ -46,7 +46,7 @@ pub fn arming_blocker(s: &State) -> Option<String> {
     match s {
         State { connected: false, .. } => None,
         State { armed: true, .. } => None,
-        State { prearm_error, .. } if !prearm_error.is_empty() => Some(prearm_error.clone()),
+        State { prearm_error, report_supported: false, .. } if !prearm_error.is_empty() => Some(prearm_error.clone()),
         State { requires_gps_fix: true, has_position: false, .. } => Some("No GPS lock. This vehicle needs a position fix before it will arm.".to_string()),
         State { all_sensors_healthy: false, .. } => Some("A sensor is reporting unhealthy. The vehicle will refuse to arm.".to_string()),
         State { ready_to_fly_available: true, ready_to_fly: false, .. } => Some("The vehicle is not ready to fly yet.".to_string()),
@@ -60,7 +60,6 @@ pub fn warnings_view(backend: &dyn Backend, _args: &[String]) -> Value {
     json!({
         "kind": "object",
         "class": "VehicleWarnings",
-        "showing": !listed.is_empty(),
         "warnings": listed,
         "armingBlocker": arming_blocker(&state),
     })
@@ -111,12 +110,16 @@ mod tests {
     }
 
     #[test]
-    fn a_prearm_error_shows_only_without_a_health_report_and_before_arming() {
+    fn a_prearm_error_is_suppressed_in_both_places_when_a_health_report_supersedes_it() {
         let failing = State { prearm_error: "PreArm: Compass not calibrated".into(), ..healthy() };
         assert_eq!(warnings(&failing)[0]["id"], "prearm");
         assert_eq!(arming_blocker(&failing).as_deref(), Some("PreArm: Compass not calibrated"));
-        let reported = State { report_supported: true, ..failing };
+        let reported = State { report_supported: true, prearm_error: failing.prearm_error.clone(), ..healthy() };
         assert!(warnings(&reported).is_empty());
+        assert_ne!(arming_blocker(&reported).as_deref(), Some("PreArm: Compass not calibrated"), "a head reading only the blocker must not be shown a string the list has decided is superseded");
+        assert_eq!(arming_blocker(&reported), None, "a report that says the vehicle is ready outranks a stale prearm string, and both heads now agree there is nothing to say");
+        let reported_and_blocked = State { report_supported: true, ready_to_fly: false, prearm_error: failing.prearm_error.clone(), ..healthy() };
+        assert_eq!(arming_blocker(&reported_and_blocked).as_deref(), Some("The vehicle is not ready to fly yet."), "where the report does block, it is the report's words a head shows, not the raw string beneath it");
     }
 
     #[test]
