@@ -48,7 +48,7 @@
                 "percent": "number",
                 "secondaryText": "string",
                 "text": "string",
-                "voltage": "number",
+                "voltage": "null|number",
                 "voltageText": "string"
             }
         ],
@@ -831,11 +831,11 @@
         "kinds": [
             {
                 "atSequence": "number",
-                "complexName": "null",
+                "complexName": "null|string",
                 "disabledReason": "null|string",
                 "enabled": "bool",
-                "geometry": "null",
-                "geometryProperty": "null",
+                "geometry": "null|string",
+                "geometryProperty": "null|string",
                 "id": "string",
                 "invokable": "string",
                 "placementHint": "string",
@@ -1003,8 +1003,8 @@
                                 "display": "string",
                                 "kind": "string",
                                 "label": "string",
-                                "maximum": "null",
-                                "minimum": "null",
+                                "maximum": "null|number",
+                                "minimum": "null|number",
                                 "name": "string",
                                 "options": [
                                     {
@@ -1016,10 +1016,10 @@
                                 "readOnly": "bool",
                                 "rebootRequired": "bool",
                                 "restartNotices": [
-                                    "empty"
+                                    "string"
                                 ],
                                 "units": "string",
-                                "value": "number",
+                                "value": "bool|number|string",
                                 "valueString": "string",
                                 "vehicleRebootRequired": "bool"
                             }
@@ -1082,8 +1082,8 @@
                         "display": "string",
                         "kind": "string",
                         "label": "string",
-                        "maximum": "null",
-                        "minimum": "null",
+                        "maximum": "null|number",
+                        "minimum": "null|number",
                         "name": "string",
                         "options": [
                             {
@@ -1095,7 +1095,7 @@
                         "readOnly": "bool",
                         "rebootRequired": "bool",
                         "restartNotices": [
-                            "empty"
+                            "string"
                         ],
                         "units": "string",
                         "value": "number",

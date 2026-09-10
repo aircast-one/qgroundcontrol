@@ -1065,6 +1065,8 @@ void QGCCoreCTest::_videoAndCameraAreServed()
 namespace
 {
 
+QJsonValue mergeShapes(const QJsonValue &a, const QJsonValue &b);
+
 QJsonValue shapeOf(const QJsonValue &value)
 {
     if (value.isObject()) {
@@ -1077,7 +1079,17 @@ QJsonValue shapeOf(const QJsonValue &value)
     }
     if (value.isArray()) {
         const QJsonArray array = value.toArray();
-        return QJsonArray { array.isEmpty() ? QJsonValue(QStringLiteral("empty")) : shapeOf(array.first()) };
+        if (array.isEmpty()) {
+            return QJsonArray { QJsonValue(QStringLiteral("empty")) };
+        }
+        // Every element, not the first one. A list whose elements differ - a mission kind with a
+        // complex name beside one without - would otherwise be recorded as whichever the first
+        // happened to be, and a field that stopped ever being a string would look unchanged.
+        QJsonValue element = shapeOf(array.first());
+        for (const QJsonValue &entry : array) {
+            element = mergeShapes(element, shapeOf(entry));
+        }
+        return QJsonArray { element };
     }
     return value.isNull() ? QStringLiteral("null") : value.isBool() ? QStringLiteral("bool") : value.isDouble() ? QStringLiteral("number") : QStringLiteral("string");
 }
