@@ -4078,6 +4078,37 @@ warning branches are not producible here** — one needs a plan built for anothe
 other a vehicle actually flying a mission — so they rest on tests written against the core's own
 shapes, and belong with the gates that need hardware.
 
+### How much of this head still reads Qt directly
+
+A number worth tracking, since the migration's point is that heads read the core rather than Qt.
+Counting reads through `Qgc.get`/`qgcBool`/`qgcPath`/`mapBool` and friends against raw roots, and
+excluding `invoke` and `set` because commands legitimately go to Qt — the core does not own actions:
+
+    54 state reads of raw Qt paths, across 33 distinct paths
+    26 actions, across 24 paths
+    21 distinct view.* paths consumed
+
+Most of the 54 are single scalars — `vehicle.latitude`, `vehicle.armed`, `vehicles.activeVehicleAvailable`
+— where a projection would add nothing. The ones that matter are where the head reads several raw
+values and **combines** them, because that is a rule two heads would each have to write.
+
+`SetupScreen` is the clearest: nine raw vehicle paths feeding `firmwareSummary` and
+`setupBlockedReason`. Both were checked this pass and **both are correct** — `setupBlockedReason`
+reproduces `SetupPage.qml` exactly, including the rover clause that looks like a local addition and is
+not:
+
+    _disableDueToArmed:  !allowSetupWhileArmed && armed
+    _disableDueToFlying: !isRover && !allowSetupWhileFlying && flying
+
+So it is duplication rather than divergence, and the note is for whoever moves it into the core when
+macOS grows a Setup page — not a defect to fix now.
+
+### The Plan-entry stall did not get worse
+
+`view.plan` became a watched path on the Plan screen when Upload started consulting the core. Measured
+after: 962-968 ms, against the 927-971 ms recorded before. No change, and the new path never appears
+as a blocked call at all, because a watched path does not block its reader the way a `get` does.
+
 ## Phase 6 — Shell · 2 weeks
 
 Cheaper than macOS, because Qt is already off the main thread.
