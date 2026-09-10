@@ -857,7 +857,20 @@ Two things the walk turned up:
   also requires `containsItems`, which drops the certainly-wrong case without
   redefining a flag the desktop and macOS heads share. Clear mission still always
   confirms: it acts on the aircraft, which can hold a mission when this plan is
-  empty.
+  empty. A third consumer had the same hole and was found by reading every
+  reader of `dirty` rather than only the one that reported the symptom:
+  `loadStep` in map-spike gated the vehicle-download button, so Download
+  relabelled to "Discard & download" and wanted a second tap on an empty plan
+  (`dd1ce3f`). `planStatusText` was already correct — it branches on `offline`
+  to say "unsaved changes" against "not uploaded".
+
+  Verified on the handset with the sim connected, in both directions, because a
+  gate that never fires would pass the same check as a gate that fires
+  correctly: empty plan takes New plan and Open with no dialog and Download
+  without arming; one item restores the dialog and arms Download to
+  "Discard & download". The status chip reading "Unsaved plan" on the empty plan
+  confirms `dirty` really was set for all of it — the fix is `containsItems`
+  doing the work, not the flag having quietly gone false.
 - **The picker does not land on the file you just wrote.** DocumentsUI opens on
   its own last location and sorts by name, so a freshly saved plan is wherever
   the alphabet puts it. Nothing to fix in our code, but it means "save then
