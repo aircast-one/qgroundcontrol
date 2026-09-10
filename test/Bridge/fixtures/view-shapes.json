@@ -560,6 +560,26 @@
         "view.missionSeed(survey,47,8).points.3.latitude",
         "view.missionSeed(survey,47,8).points.3.longitude",
         "view.missionSeed(survey,47,8).property",
+        "view.missionSummary.altitudeRange",
+        "view.missionSummary.batteriesRequired",
+        "view.missionSummary.class",
+        "view.missionSummary.distanceMetres",
+        "view.missionSummary.imperial",
+        "view.missionSummary.kind",
+        "view.missionSummary.rows.#",
+        "view.missionSummary.rows.0.label",
+        "view.missionSummary.rows.0.value",
+        "view.missionSummary.rows.1.label",
+        "view.missionSummary.rows.1.value",
+        "view.missionSummary.rows.2.label",
+        "view.missionSummary.rows.2.value",
+        "view.missionSummary.rows.3.label",
+        "view.missionSummary.rows.3.value",
+        "view.missionSummary.rows.4.label",
+        "view.missionSummary.rows.4.value",
+        "view.missionSummary.rows.5.label",
+        "view.missionSummary.rows.5.value",
+        "view.missionSummary.timeSeconds",
         "view.modeSlots.class",
         "view.modeSlots.kind",
         "view.modeSlots.liveSlot",
@@ -2320,6 +2340,7 @@
             "view.linkForm",
             "view.mapScale",
             "view.terrainProfile",
+            "view.missionSummary",
             "view.modeSlots",
             "view.missionKinds",
             "view.missionSeed",
@@ -2806,6 +2827,23 @@
             }
         ],
         "property": "string"
+    },
+    "view.missionSummary": {
+        "altitudeRange": "null",
+        "available": "bool",
+        "batteriesRequired": "null",
+        "class": "string",
+        "distanceMetres": "number",
+        "imperial": "bool",
+        "kind": "string",
+        "reason": "string",
+        "rows": [
+            {
+                "label": "string",
+                "value": "string"
+            }
+        ],
+        "timeSeconds": "number"
     },
     "view.modeSlots": {
         "available": "bool",

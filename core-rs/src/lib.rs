@@ -48,6 +48,7 @@ pub mod messages;
 pub mod metacache;
 pub mod mission;
 pub mod missionkinds;
+pub mod missionsummary;
 pub mod modes;
 pub mod modeslots;
 pub mod plan;

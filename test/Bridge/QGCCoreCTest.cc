@@ -1181,7 +1181,7 @@ constexpr int kMockStatusTextCount = 9;
 const char *const kViewPaths[] = {
     "view.messages", "view.plan", "view.guidedActions", "view.guidedAltitude", "view.guidedAltitude(30)",
     "view.guidedTakeoff", "view.guidedTakeoff(10)", "view.guidedSpeed", "view.guidedSpeed(3)", "view.battery",
-    "view.preflight", "view.warnings", "view.modeSlots", "view.label(altitudeRelative)", "view.instruments", "view.vibration",
+    "view.preflight", "view.warnings", "view.modeSlots", "view.missionSummary", "view.label(altitudeRelative)", "view.instruments", "view.vibration",
     "view.sensors", "view.control(settings.appSettings.audioMuted)", "view.links", "view.linkForm(udp,,14550)",
     "view.mapScale(120)", "view.terrainProfile", "view.missionKinds", "view.missionSeed(survey,47,8)",
     "view.calibration", "view.radio", "view.logs", "view.inspector", "view.flightModes", "view.settings",
@@ -2870,6 +2870,46 @@ void QGCCoreCTest::_aMisspelledPropertyIsToldApartFromANullOne()
 
     const QJsonObject noSuchRoot = take(qgc_bridge_get("settingsss.appSettings.audioMuted"));
     QCOMPARE(noSuchRoot.value(QStringLiteral("kind")).toString(), QStringLiteral("null"));
+#else
+    QSKIP("the Rust core is not linked into this build");
+#endif
+}
+
+void QGCCoreCTest::_missionStatisticsAnswerOnThePlanTheEditorHolds()
+{
+#ifdef QGC_RUST_CORE
+    (void) take(qgc_bridge_invoke("plan.start", "[]"));
+    const auto restore = []() { (void) take(qgc_bridge_invoke("plan.removeAll", "[]")); };
+    const auto leaveNoPlanBehind = qScopeGuard(restore);
+    restore();
+
+    const auto number = [](const char *name) {
+        return take(qgc_bridge_get(QStringLiteral("plan.missionController.%1").arg(QString::fromUtf8(name)).toUtf8().constData()))
+            .value(QStringLiteral("value")).toDouble(-1.0);
+    };
+    const QStringList statistics = {
+        QStringLiteral("missionTotalDistance"), QStringLiteral("missionPlannedDistance"), QStringLiteral("missionTime"),
+        QStringLiteral("missionHoverDistance"), QStringLiteral("missionCruiseDistance"), QStringLiteral("missionMaxTelemetry"),
+        QStringLiteral("batteriesRequired"), QStringLiteral("minAMSLAltitude"), QStringLiteral("maxAMSLAltitude"),
+    };
+    QStringList unreadable;
+    for (const QString &name : statistics) {
+        if (take(qgc_bridge_get(QStringLiteral("plan.missionController.%1").arg(name).toUtf8().constData())).contains(QStringLiteral("found"))) {
+            unreadable.append(name);
+        }
+    }
+    QVERIFY2(unreadable.isEmpty(), qPrintable(QStringLiteral("these are not properties on the controller at all: %1").arg(unreadable.join(QStringLiteral(", ")))));
+
+    QVERIFY2(take(qgc_core_invoke("mission.insert", "[\"takeoff\", 47.3960, 8.5440, -1]")).value(QStringLiteral("ok")).toBool(false), "the takeoff was refused");
+    QVERIFY2(take(qgc_core_invoke("mission.insert", "[\"waypoint\", 47.3990, 8.5480, -1]")).value(QStringLiteral("ok")).toBool(false), "the waypoint was refused");
+    QVERIFY2(take(qgc_core_invoke("mission.insert", "[\"waypoint\", 47.3990, 8.5440, -1]")).value(QStringLiteral("ok")).toBool(false), "the second waypoint was refused");
+
+    QTRY_VERIFY_WITH_TIMEOUT(number("missionTotalDistance") > 100.0, 10000);
+    QVERIFY2(number("missionTotalDistance") > 100.0,
+             "a plan spanning several hundred metres reports no distance, so anything built on these numbers would show an empty summary for every mission");
+    QVERIFY2(number("missionTime") > 0.0, "a mission with distance takes time to fly");
+    QVERIFY2(number("maxAMSLAltitude") >= number("minAMSLAltitude"), "the altitude range is the wrong way round");
+    QVERIFY2(number("batteriesRequired") != 0.0, "batteries required reads zero, which is either a vehicle with no battery model or a number that never varies");
 #else
     QSKIP("the Rust core is not linked into this build");
 #endif
