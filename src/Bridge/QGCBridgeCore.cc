@@ -313,6 +313,8 @@ QJsonObject factJson(Fact *fact)
         QStringLiteral("enumStrings"),
         QStringLiteral("enumValues"),
         QStringLiteral("enumIndex"),
+        QStringLiteral("bitmaskStrings"),
+        QStringLiteral("bitmaskValues"),
         QStringLiteral("typeIsBool"),
         QStringLiteral("typeIsString"),
         QStringLiteral("min"),

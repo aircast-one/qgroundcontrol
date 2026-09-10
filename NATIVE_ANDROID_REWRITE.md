@@ -3175,6 +3175,39 @@ flight mode from the Fly tab. The head composes mode and state again, and drops 
 contact is lost because it is no longer known to be current. Presentation is head knowledge, on the
 same argument that took `completes` out of the core.
 
+### A bitmask shown as a decimal, and two layers of rig underneath it
+
+`ARMING_CHECK` decides which pre-arm checks a vehicle runs before it will let you fly. The Safety
+page showed it as **82.000**. An operator cannot read which safety checks are switched off from
+that, and switching them off is a known way to reach an accident.
+
+The metadata has the answer — `0:All,1:Barometer,2:Compass,3:GPS lock,4:INS,...` — and QGC's
+`Fact` exposes `bitmaskStrings` and `bitmaskValues` as properties. **The bridge's fact projection
+never emitted them**, so no head could see them. It does now, and the head decodes them, names the
+set bits ("Barometer, GPS lock", or "None", or "All") and offers a checklist to toggle them.
+
+**Two rig layers sat underneath, and neither was the head's fault.**
+
+The first: `APMParameterMetaData` builds a bitmask only for integer-typed parameters — for a float
+it logs "Invalid type for bitmask" and drops it. **The sim sent every parameter as
+`MAV_PARAM_TYPE_REAL32`.** A real ArduPilot vehicle sends proper types, so this had never been a
+product problem, only a rig one. The sim now declares which parameters it models as integers, and
+the same row went from "82.000" to "82" on that change alone.
+
+The second is the one worth recording, because it corrects something this document implied. **The
+parameter form does not use the bridge's fact projection at all.** It reads `view.setup(<page>)`,
+which the core renders into `controls` with `label`, `options` and `control` — a different pipeline
+from the `Fact` objects `FactRow` receives elsewhere. So the bitmask work is enabled end to end in
+the bridge and the head, and remains inert on the setup pages until the core carries bitmask
+information in that projection. Raised with the core session rather than worked around with a
+per-control fact read, which would restore exactly the N-reads-per-page pattern three of these
+migrations have removed.
+
+Stated plainly because a feature that cannot fire is the defect this document has found five times:
+the picker is not reachable today. What is reachable and verified is the integer typing, and the
+decode is covered by tests that would have caught the ragged case where bit names and values
+disagree.
+
 ## Phase 6 — Shell · 2 weeks
 
 Cheaper than macOS, because Qt is already off the main thread.
