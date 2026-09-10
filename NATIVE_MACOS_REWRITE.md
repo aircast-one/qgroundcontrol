@@ -999,3 +999,30 @@ What the Android rig settled that this one could not: link loss end to end, and 
 reporting `IN_AIR` the instant it armed — so the flight-state precedence both heads argued over had
 been running against a sim that could not generate the case it was written for. A screen that looks
 right is not evidence if the rig can only produce the case that looks right.
+
+### Phase 2's gate needs files this stream does not own (2026-09-10)
+
+Every Analyze page now exists natively. The fifth one, the MAVLink Console, was built in
+`c6a437299` — it appeared nowhere in this document until now, neither in Phase 2's list nor in
+`## Not covered`, so the gate could never have closed while the list was believed complete.
+
+The ground rule says a view is not converted until its QML is deleted. Deleting
+`src/AnalyzeView/*.qml` touches six files, and five of them belong to other streams:
+
+- `src/UI/MainWindow.qml` — the QML shell's Analyze entry
+- `src/API/QGCCorePlugin.cc` — registers all five pages
+- `src/CMakeLists.txt`, `src/AnalyzeView/CMakeLists.txt`, `test/CMakeLists.txt`
+
+The QML app is also how the other two sessions verify their own work, so deleting it is not a
+macOS-stream decision. **Phase 2's gate is blocked on a coordination decision, not on code.**
+
+The same shape will repeat at every later gate, and it is worse there: Plan and Fly QML are far
+more entangled with `src/QmlControls` (183 files) than Analyze is. Whoever schedules Phase 6
+should decide whether QML deletion happens per-view as each is converted, as the ground rule
+says, or in one sweep when QtQuick drops — and if the latter, the ground rule is wrong and
+should be amended rather than quietly broken five times.
+
+One cost that is already real: `native` on `view.setup.groups[].pages[]` was the core answering
+whether a head had its own version of a page. That is the head's business, the core is removing
+it, and this head filters its Vehicle Setup sidebar on exactly that flag. A field that encodes
+what a head can do creates this coupling every time.
