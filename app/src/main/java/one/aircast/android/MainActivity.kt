@@ -175,7 +175,12 @@ fun AircastShell(quickView: QtQuickView) {
     var videoExpanded by remember { mutableStateOf(false) }
 
     LaunchedEffect(Unit) {
-        withContext(Dispatchers.Default) { Qgc.invoke("video.setNativeRendering", true) }
+        withContext(Dispatchers.Default) {
+            // Native rendering first: initNative() creates the receivers and binds them, and a
+            // receiver bound before this flag is set looks for a QtQuick item that does not exist.
+            Qgc.invoke("video.setNativeRendering", true)
+            Qgc.invoke("video.initNative")
+        }
     }
 
     DisposableEffect(quickView) {
