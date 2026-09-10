@@ -3208,6 +3208,31 @@ the picker is not reachable today. What is reachable and verified is the integer
 decode is covered by tests that would have caught the ragged case where bit names and values
 disagree.
 
+### A capture photographed the wrong app
+
+`ui.sh` exists because taps once landed in the user's private messages. Every input verb checks
+`topResumedActivity` and refuses rather than guess. **`shot` never did.**
+
+The gap showed itself the way these do. A back-press from a settings sub-page left the app
+entirely, the next `shot` captured whatever was on screen, and what was on screen was the user's
+Telegram. Deleted immediately, as before.
+
+The input guard was built for the wrong half of the problem. It asks "will this input reach the
+app", which stops a tap going somewhere else — but a capture does not send anything, so it was
+never gated, and reading the screen is the half that carries the privacy cost. `shot` now refuses
+unless the app is in front, with `ALLOW_ANY_SCREEN=1` for the case where photographing the launcher
+is the actual intent.
+
+Checked in all three directions, because a guard that only ever refuses is indistinguishable from
+a broken tool: in front it captures and writes 1.7 MB; backgrounded it refuses and **writes no
+file**; with the override it captures anyway. The first attempt at this test reported a refusal for
+the passing case too — the app was not actually in front — and that looked like success until the
+positive case was made to work.
+
+The lesson is narrower than "guard the tool" and worth stating: **the first guard was scoped to
+what the tool sends, and the danger was in what it reads.** Two verbs, one hazard, and only one of
+them was covered for months.
+
 ## Phase 6 — Shell · 2 weeks
 
 Cheaper than macOS, because Qt is already off the main thread.
