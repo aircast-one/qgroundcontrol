@@ -830,6 +830,7 @@
         "kind": "string",
         "kinds": [
             {
+                "atSequence": "number",
                 "complexName": "null",
                 "disabledReason": "null|string",
                 "enabled": "bool",

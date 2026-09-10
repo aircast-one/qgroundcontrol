@@ -60,6 +60,9 @@ impl<B: Backend> Core<B> {
     }
 
     pub fn invoke(&self, path: &str, args: &str) -> String {
+        if crate::actions::owns(path) {
+            return crate::actions::run(&self.backend, path, args).to_string();
+        }
         match view::owns(path) {
             true => refusal(path),
             false => self.backend.invoke(path, args),

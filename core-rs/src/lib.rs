@@ -1,6 +1,7 @@
 #![recursion_limit = "256"]
 #[cfg(not(test))]
 mod abi;
+pub mod actions;
 pub mod altitude;
 pub mod altitudemodes;
 pub mod autoconnect;

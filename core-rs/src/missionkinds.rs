@@ -3,7 +3,7 @@ use serde_json::{Value, json};
 use crate::read::object;
 use crate::router::Backend;
 
-pub const DEPS: &[&str] = &["plan.missionController.onlyInsertTakeoffValid", "plan.missionController.isInsertTakeoffValid", "plan.missionController.isInsertLandValid", "plan.missionController.flyThroughCommandsAllowed"];
+pub const DEPS: &[&str] = &["plan.missionController.currentPlanViewSeqNum", "plan.missionController.onlyInsertTakeoffValid", "plan.missionController.isInsertTakeoffValid", "plan.missionController.isInsertLandValid", "plan.missionController.flyThroughCommandsAllowed"];
 const DEFAULT_AREA_METRES: f64 = 150.0;
 const METRES_PER_DEGREE: f64 = 111_320.0;
 
@@ -35,20 +35,22 @@ const ALREADY_TAKES_OFF: &str = "The mission already takes off before this point
 const LAND_COMES_LAST: &str = "A landing goes after the takeoff and after every place the vehicle flies through.";
 const NOT_AFTER_LANDING: &str = "The vehicle has already landed at this point in the mission.";
 
-struct Insertable {
-    only_takeoff: bool,
-    takeoff: bool,
-    land: bool,
-    fly_through: bool,
+pub struct Insertable {
+    pub at_sequence: Option<i64>,
+    pub only_takeoff: bool,
+    pub takeoff: bool,
+    pub land: bool,
+    pub fly_through: bool,
 }
 
-fn insertable(backend: &dyn Backend) -> Insertable {
+pub fn insertable(backend: &dyn Backend) -> Insertable {
     let mission = object(&backend.get_fields(
         "plan.missionController",
-        "onlyInsertTakeoffValid,isInsertTakeoffValid,isInsertLandValid,flyThroughCommandsAllowed",
+        "currentPlanViewSeqNum,onlyInsertTakeoffValid,isInsertTakeoffValid,isInsertLandValid,flyThroughCommandsAllowed",
     ));
     let answered = |key: &str, unset: bool| mission.get(key).and_then(Value::as_bool).unwrap_or(unset);
     Insertable {
+        at_sequence: mission.get("currentPlanViewSeqNum").and_then(Value::as_i64).filter(|sequence| *sequence >= 0),
         only_takeoff: answered("onlyInsertTakeoffValid", true),
         takeoff: answered("isInsertTakeoffValid", true),
         land: answered("isInsertLandValid", false),
@@ -56,7 +58,7 @@ fn insertable(backend: &dyn Backend) -> Insertable {
     }
 }
 
-fn refusal(kind: &Kind, insertable: &Insertable) -> Option<&'static str> {
+pub fn refusal(kind: &Kind, insertable: &Insertable) -> Option<&'static str> {
     match kind.id {
         "takeoff" if !insertable.takeoff => Some(ALREADY_TAKES_OFF),
         "takeoff" => None,
@@ -86,8 +88,13 @@ fn kind_json(kind: &Kind) -> Value {
 fn offered(kind: &Kind, insertable: &Insertable) -> Value {
     let refused = refusal(kind, insertable);
     let mut json = kind_json(kind);
-    json["enabled"] = json!(refused.is_none());
-    json["disabledReason"] = refused.map(|reason| json!(reason)).unwrap_or(Value::Null);
+    let asked = insertable.at_sequence.is_some();
+    json["enabled"] = if asked { json!(refused.is_none()) } else { Value::Null };
+    json["disabledReason"] = match asked {
+        true => refused.map(|reason| json!(reason)).unwrap_or(Value::Null),
+        false => Value::Null,
+    };
+    json["atSequence"] = insertable.at_sequence.map(|sequence| json!(sequence)).unwrap_or(Value::Null);
     json
 }
 
@@ -211,7 +218,7 @@ mod offering {
         fn watch(&self, _p: &[String]) {}
     }
 
-    fn offering(mission: Value) -> Vec<(String, bool, String)> {
+    fn offering(mission: Value) -> Vec<(String, Option<bool>, String)> {
         kinds_view(&Mission(mission), &[])["kinds"]
             .as_array()
             .unwrap()
@@ -219,7 +226,7 @@ mod offering {
             .map(|kind| {
                 (
                     kind["id"].as_str().unwrap().to_string(),
-                    kind["enabled"].as_bool().unwrap(),
+                    kind["enabled"].as_bool(),
                     kind["disabledReason"].as_str().unwrap_or("").to_string(),
                 )
             })
@@ -229,6 +236,7 @@ mod offering {
     fn state(only_takeoff: bool, takeoff: bool, land: bool, fly_through: bool) -> Value {
         json!({
             "kind": "object",
+            "currentPlanViewSeqNum": 1,
             "onlyInsertTakeoffValid": only_takeoff,
             "isInsertTakeoffValid": takeoff,
             "isInsertLandValid": land,
@@ -236,55 +244,61 @@ mod offering {
         })
     }
 
-    fn named<'a>(offered: &'a [(String, bool, String)], id: &str) -> &'a (String, bool, String) {
+    fn named<'a>(offered: &'a [(String, Option<bool>, String)], id: &str) -> &'a (String, Option<bool>, String) {
         offered.iter().find(|(kind, _, _)| kind == id).unwrap()
     }
 
     #[test]
     fn an_empty_ground_mission_offers_only_a_takeoff() {
         let offered = offering(state(true, true, false, true));
-        assert!(named(&offered, "takeoff").1, "the one thing that can be added is the one thing offered");
-        assert!(!named(&offered, "waypoint").1);
+        assert_eq!(named(&offered, "takeoff").1, Some(true), "the one thing that can be added is the one thing offered");
+        assert_eq!(named(&offered, "waypoint").1, Some(false));
         assert_eq!(named(&offered, "waypoint").2, NEEDS_TAKEOFF_FIRST);
-        assert!(!named(&offered, "survey").1, "a complex item is no more insertable than a waypoint before a takeoff");
-        assert_eq!(offered.iter().filter(|(_, enabled, _)| *enabled).count(), 1);
+        assert_eq!(named(&offered, "survey").1, Some(false), "a complex item is no more insertable than a waypoint before a takeoff");
+        assert_eq!(offered.iter().filter(|(_, enabled, _)| *enabled == Some(true)).count(), 1);
     }
 
     #[test]
     fn a_mission_that_already_takes_off_offers_everything_but_another_takeoff() {
         let offered = offering(state(false, false, true, true));
-        assert!(!named(&offered, "takeoff").1);
+        assert_eq!(named(&offered, "takeoff").1, Some(false));
         assert_eq!(named(&offered, "takeoff").2, ALREADY_TAKES_OFF);
-        assert!(named(&offered, "waypoint").1);
-        assert!(named(&offered, "land").1);
-        assert!(named(&offered, "survey").1);
-        assert!(offered.iter().filter(|(kind, _, _)| kind != "takeoff").all(|(_, enabled, _)| *enabled));
+        assert_eq!(named(&offered, "waypoint").1, Some(true));
+        assert_eq!(named(&offered, "land").1, Some(true));
+        assert_eq!(named(&offered, "survey").1, Some(true));
+        assert!(offered.iter().filter(|(kind, _, _)| kind != "takeoff").all(|(_, enabled, _)| *enabled == Some(true)));
     }
 
     #[test]
     fn a_landing_is_withheld_until_it_would_come_last() {
         let offered = offering(state(false, false, false, true));
-        assert!(!named(&offered, "land").1);
+        assert_eq!(named(&offered, "land").1, Some(false));
         assert_eq!(named(&offered, "land").2, LAND_COMES_LAST);
-        assert!(named(&offered, "waypoint").1, "the rest of the mission is still editable at a point a landing cannot go");
+        assert_eq!(named(&offered, "waypoint").1, Some(true), "the rest of the mission is still editable at a point a landing cannot go");
     }
 
     #[test]
     fn nothing_the_vehicle_would_fly_through_is_offered_after_it_has_landed() {
         let offered = offering(state(false, false, false, false));
-        assert!(!named(&offered, "waypoint").1);
+        assert_eq!(named(&offered, "waypoint").1, Some(false));
         assert_eq!(named(&offered, "waypoint").2, NOT_AFTER_LANDING);
-        assert!(!named(&offered, "survey").1);
-        assert!(named(&offered, "roi").1, "a region of interest is a camera instruction rather than a place to fly, so it is still allowed");
+        assert_eq!(named(&offered, "survey").1, Some(false));
+        assert_eq!(named(&offered, "roi").1, Some(true), "a region of interest is a camera instruction rather than a place to fly, so it is still allowed");
     }
 
     #[test]
-    fn a_controller_that_answers_nothing_falls_back_to_what_the_controller_starts_as() {
+    fn a_plan_view_that_has_never_selected_anything_answers_that_it_does_not_know() {
         let offered = offering(json!({ "kind": "object" }));
-        let fresh = offering(state(true, true, false, true));
-        assert_eq!(offered, fresh, "an unanswered read has to look like an empty mission, which is what the C++ member starts as, rather than everything greyed out or everything allowed");
-        assert!(named(&offered, "takeoff").1);
-        assert!(!named(&offered, "land").1);
+        assert!(offered.iter().all(|(_, enabled, _)| enabled.is_none()), "these flags are only assigned when the plan view selects an item, so a head that never selects one would otherwise read the controller's constructor values as a verdict, and they say a landing can never be added");
+        assert!(offered.iter().all(|(_, _, reason)| reason.is_empty()), "nothing is refused, so nothing has a reason to show");
+    }
+
+    #[test]
+    fn a_verdict_says_which_point_in_the_mission_it_is_about() {
+        let asked = kinds_view(&Mission(state(false, false, true, true)), &[]);
+        assert_eq!(asked["kinds"][0]["atSequence"], 1);
+        let unasked = kinds_view(&Mission(json!({ "kind": "object" })), &[]);
+        assert_eq!(unasked["kinds"][0]["atSequence"], Value::Null, "what can be inserted depends on where, so an answer with no where is not an answer");
     }
 
     #[test]

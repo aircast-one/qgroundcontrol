@@ -2517,3 +2517,44 @@ void QGCCoreCTest::_aLargeSurveyMakesTheRoundTripUnchanged()
     QSKIP("the Rust core is not linked into this build");
 #endif
 }
+
+void QGCCoreCTest::_theCoreRefusesAMissionItemThePlanHasDecidedAgainst()
+{
+#ifdef QGC_RUST_CORE
+    (void) take(qgc_bridge_invoke("plan.start", "[]"));
+    const auto restore = []() { (void) take(qgc_bridge_invoke("plan.removeAll", "[]")); };
+    const auto leaveNoPlanBehind = qScopeGuard(restore);
+    restore();
+
+    const auto count = []() {
+        return take(qgc_bridge_get("plan.missionController.visualItems.count")).value(QStringLiteral("value")).toInt(-1);
+    };
+    const int empty = count();
+    QVERIFY2(empty >= 0, "the plan did not answer how many items it holds");
+
+    const QJsonObject refused = take(qgc_core_invoke("mission.insert", "[\"survey\", 47.3975, 8.5460, -1]"));
+    QCOMPARE(refused.value(QStringLiteral("ok")).toBool(true), false);
+    QVERIFY2(!refused.value(QStringLiteral("reason")).toString().isEmpty(), "a refusal an operator will read has to say why");
+    QCOMPARE(count(), empty);
+
+    const QJsonObject allowed = take(qgc_core_invoke("mission.insert", "[\"takeoff\", 47.3975, 8.5460, -1]"));
+    QVERIFY2(allowed.value(QStringLiteral("ok")).toBool(false), qPrintable(allowed.value(QStringLiteral("reason")).toString()));
+    QTRY_COMPARE_WITH_TIMEOUT(count(), empty + 1, 5000);
+
+    const QJsonObject second = take(qgc_core_invoke("mission.insert", "[\"takeoff\", 47.3975, 8.5460, -1]"));
+    QVERIFY2(second.value(QStringLiteral("ok")).toBool(true) == false,
+             "the plan already takes off, and the core refusing this is the whole point of putting the gate behind the insert rather than beside it");
+    QCOMPARE(count(), empty + 1);
+
+    const QJsonObject survey = take(qgc_core_invoke("mission.insert", "[\"survey\", 47.3975, 8.5460, -1]"));
+    QVERIFY2(survey.value(QStringLiteral("ok")).toBool(false), qPrintable(survey.value(QStringLiteral("reason")).toString()));
+    QTRY_COMPARE_WITH_TIMEOUT(count(), empty + 2, 5000);
+    QCOMPARE(take(qgc_bridge_get("plan.missionController.visualItems.2.isSurveyItem")).value(QStringLiteral("value")).toBool(), true);
+
+    const QJsonObject unknown = take(qgc_core_invoke("mission.insert", "[\"orbit\", 47.3975, 8.5460, -1]"));
+    QCOMPARE(unknown.value(QStringLiteral("ok")).toBool(true), false);
+    QCOMPARE(count(), empty + 2);
+#else
+    QSKIP("the Rust core is not linked into this build");
+#endif
+}

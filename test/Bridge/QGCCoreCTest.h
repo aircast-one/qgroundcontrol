@@ -47,6 +47,7 @@ private slots:
     void _structureScanFlightPathMatchesTheRecordedOracle();
     void _operatorNoticesReachAHeadWithNoQmlRoot();
     void _everyNameTheCoreHandsAHeadToInterpolateResolves();
+    void _theCoreRefusesAMissionItemThePlanHasDecidedAgainst();
     void _structureScanItemsMatchTheRecordedUpload();
     void _aLargeSurveyMakesTheRoundTripUnchanged();
     void _surveyTransectsMatchTheRecordedOracle();
