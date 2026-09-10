@@ -13,7 +13,6 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
@@ -50,7 +49,6 @@ private fun StartForwardingDialog(host: String, onConfirm: () -> Unit, onDismiss
 @Composable
 fun RemoteSupportScreen(modifier: Modifier = Modifier) {
     val forwarding by qgcBool("links.mavlinkSupportForwardingEnabled")
-    var reloads by remember { mutableIntStateOf(0) }
     var confirming by remember { mutableStateOf(false) }
     val json by qgcPath(HOST_FACT)
     val host: Fact? = json?.let { Qgc.factAt(HOST_FACT, it) }
@@ -75,7 +73,7 @@ fun RemoteSupportScreen(modifier: Modifier = Modifier) {
             return@Column
         }
 
-        FactRow(host) { reloads++ }
+        FactRow(host) {}
 
         HorizontalDivider()
 
@@ -89,13 +87,22 @@ fun RemoteSupportScreen(modifier: Modifier = Modifier) {
             },
         )
 
-        Button(
-            onClick = { confirming = true },
-            enabled = !forwarding && supportHostIsUsable(host.valueString),
-            modifier = Modifier.fillMaxWidth(),
-        ) { Text("Start forwarding") }
+        if (forwarding) {
+            Button(
+                onClick = {
+                    offMainDetached { Qgc.invoke("links.endMavlinkForwardingSupportLink") }
+                },
+                modifier = Modifier.fillMaxWidth(),
+            ) { Text("Stop forwarding") }
+        } else {
+            Button(
+                onClick = { confirming = true },
+                enabled = supportHostIsUsable(host.valueString),
+                modifier = Modifier.fillMaxWidth(),
+            ) { Text("Start forwarding") }
+        }
 
-        if (!supportHostIsUsable(host.valueString)) {
+        if (!forwarding && !supportHostIsUsable(host.valueString)) {
             Text(
                 text = "Enter the address your support engineer gave you first.",
                 style = MaterialTheme.typography.bodySmall,
@@ -105,8 +112,7 @@ fun RemoteSupportScreen(modifier: Modifier = Modifier) {
 
         FootNote(
             "Sends live telemetry, including position, to an ArduPilot support " +
-                "engineer for as long as the link stays up. Remove the forwarding link " +
-                "from Comm Links to stop it.",
+                "engineer for as long as the link stays up.",
         )
     }
 }
