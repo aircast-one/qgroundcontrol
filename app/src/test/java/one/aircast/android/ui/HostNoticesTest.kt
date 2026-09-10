@@ -32,9 +32,11 @@ class HostNoticesTest {
     }
 
     @Test
-    fun `a vehicle error is shown before an ordinary message`() {
-        val notices = hostNotices(view(row(1, NOTICE_MESSAGE, "msg"), row(2, NOTICE_VEHICLE_ERROR, "err")))
-        assertEquals("err", noticeToShow(notices)?.title)
+    fun `every message is shown, not just the first`() {
+        val notices = hostNotices(
+            view(row(1, NOTICE_MESSAGE, "one"), row(2, NOTICE_VEHICLE_ERROR, "two"), row(3, NOTICE_MESSAGE, "three")),
+        )
+        assertEquals(listOf("one", "two", "three"), noticesToShow(notices).map { it.title })
     }
 
     @Test
@@ -52,7 +54,7 @@ class HostNoticesTest {
     @Test
     fun `a navigation notice is never shown as a message`() {
         val notices = hostNotices(view(row(1, NOTICE_NAVIGATION, "setup")))
-        assertNull(noticeToShow(notices))
+        assertTrue(noticesToShow(notices).isEmpty())
     }
 
     @Test

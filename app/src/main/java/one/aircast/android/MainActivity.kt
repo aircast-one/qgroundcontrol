@@ -183,7 +183,8 @@ fun AircastShell(quickView: QtQuickView) {
         val queued = one.aircast.android.ui.hostNotices(notices)
         if (queued.isEmpty()) return@LaunchedEffect
         one.aircast.android.ui.noticeDestination(queued)?.let { tab = Tab.from(it) }
-        one.aircast.android.ui.noticeToShow(queued)?.let {
+        // showSnackbar suspends until each is dismissed, so they queue rather than replace.
+        one.aircast.android.ui.noticesToShow(queued).forEach {
             snackbars.showSnackbar(one.aircast.android.ui.noticeBanner(it))
         }
         // Acknowledge only what was drawn. A notice arriving mid-draw keeps its place.
