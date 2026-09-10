@@ -96,9 +96,10 @@ pub fn sections_for(page: &str, px4: bool) -> Option<&'static [Section]> {
     }
 }
 
-pub fn has_native_page(page: &str, px4: bool) -> bool {
-    matches!(page, "Summary" | "Remote Support" | "Radio" | "Parameters" | "Motors") || (page == "Sensors" && !px4) || sections_for(page, px4).is_some()
-}
+// There is deliberately no answer here to "does a head have a screen for this page". The core
+// cannot know it, the two heads do not implement the same set and never will, and a head that
+// took this list as its own found itself opening a page it had never built. What the core knows
+// is whether it can describe the page as parameters, which is parameterSections.
 
 pub fn readiness(connected: bool, components: &[(String, bool)], sensor_faults: &[String]) -> (bool, String, String) {
     let outstanding: Vec<&str> = components.iter().filter(|(_, needs)| *needs).map(|(n, _)| n.as_str()).collect();
@@ -165,7 +166,7 @@ fn overview(backend: &dyn Backend, connected: bool, px4: bool) -> Value {
         "components": components.iter().map(|(n, needs)| json!({ "name": n, "needsAttention": needs })).collect::<Vec<_>>(),
         "groups": PAGES.iter().map(|(title, pages)| json!({
             "title": title,
-            "pages": pages.iter().map(|p| json!({ "name": p, "native": has_native_page(p, px4), "parameterSections": sections_for(p, px4).is_some() })).collect::<Vec<_>>(),
+            "pages": pages.iter().map(|p| json!({ "name": p, "parameterSections": sections_for(p, px4).is_some() })).collect::<Vec<_>>(),
         })).collect::<Vec<_>>(),
     })
 }
@@ -208,9 +209,14 @@ mod tests {
         assert!(sections_for("Tuning", false).is_some());
         assert!(sections_for("Tuning", true).is_none());
         assert!(sections_for("Flight Behavior", true).is_some());
-        assert!(has_native_page("Sensors", false));
-        assert!(!has_native_page("Sensors", true));
-        assert!(has_native_page("Radio", true));
+    }
+
+    #[test]
+    fn a_page_says_whether_the_core_can_describe_it_and_never_whether_a_head_has_built_it() {
+        let described = |page: &str, px4: bool| sections_for(page, px4).is_some();
+        assert!(described("Safety", false), "the core can lay out APM safety as parameter sections");
+        assert!(!described("Radio", false), "and it cannot lay out radio calibration, which is a screen rather than a list of parameters");
+        assert!(!described("Motors", false), "nor motors, which is the page a head opened because this view once claimed it had one");
     }
 
     #[test]
