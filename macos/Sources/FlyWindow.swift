@@ -51,6 +51,7 @@ struct FlyPanel: View {
                 // warning and a parameter error all happen with no vehicle, which is exactly
                 // when the operator has nothing else telling them why.
                 if !notices.queue.shown.isEmpty || notices.queue.dropNotice != nil
+                    || notices.queue.lostNotice != nil
                     || notices.queue.offersSetup || notices.queue.unreachable != nil {
                     appNotices
                 }
@@ -396,12 +397,15 @@ struct FlyPanel: View {
             SectionLabel(text: "From the app")
             GroupCard {
                 if notices.queue.shown.isEmpty {
-                    EmptyStateRow(text: notices.queue.dropNotice
+                    EmptyStateRow(text: notices.queue.lostNotice ?? notices.queue.dropNotice
                         ?? notices.queue.unreachable ?? "Nothing to report.")
                 } else {
                     ForEach(Array(notices.queue.shown.enumerated()), id: \.element.id) { row, notice in
                         GroupRow(title: notice.line,
-                                 description: row == 0 ? (notices.queue.dropNotice ?? "") : "",
+                                 description: row == 0
+                                     ? [notices.queue.lostNotice, notices.queue.dropNotice]
+                                         .compactMap { $0 }.joined(separator: " ")
+                                     : "",
                                  showSeparator: row > 0,
                                  titleLines: 3,
                                  leading: { Circle().fill(Color.orange).frame(width: 7, height: 7) },

@@ -46,9 +46,42 @@ final class HostNoticeStore: ObservableObject, Probeable {
         refresh()
     }
 
+    // The probe's three actions all stop inside this process: post() puts a row in an in-memory
+    // queue that only this window draws, dismiss() takes one out again, and openSetup() opens a
+    // window. None of them can reach a vehicle, the shared settings file or a link, which is why
+    // this probe is no longer read-only. It is also the only way to see this channel work: every
+    // one of QGCApplication's own posters needs a vehicle, an upload or a settings write.
+    func probeInvoke(action: String, args: [String: String]) -> [String: Any] {
+        switch action {
+        case "post":
+            let posted = Bridge.invoke("host.postNotice",
+                                       [args["kind"] ?? "message", args["title"] ?? "",
+                                        args["text"] ?? ""])["result"] as? NSNumber
+            refresh()
+            guard posted?.boolValue == true else {
+                return ["ok": false, "error": "the core refused the kind \(args["kind"] ?? "")"]
+            }
+        case "dismiss":
+            guard let id = Int64(args["id"] ?? ""),
+                  let notice = queue.all.first(where: { $0.id == id }) else {
+                return ["ok": false, "error": "dismiss needs the id of a queued notice"]
+            }
+            dismiss(notice)
+        case "openSetup":
+            guard queue.offersSetup else {
+                return ["ok": false, "error": "no setup request is queued"]
+            }
+            openSetup()
+        default:
+            return ["ok": false, "error": "notices has no action \(action)"]
+        }
+        return ["ok": true, "state": probeState()]
+    }
+
     func probeState() -> [String: Any] {
         ["count": queue.all.count, "shown": queue.shown.count, "dropped": queue.dropped,
          "watching": watchPoll != nil, "offersSetup": queue.offersSetup,
+         "reported": queue.reported, "lost": queue.lost,
          "unreachable": queue.unreachable ?? "",
          "notices": queue.all.map { ["id": Int($0.id), "kind": "\($0.kind)",
                                      "shows": $0.shows, "line": $0.line] }]

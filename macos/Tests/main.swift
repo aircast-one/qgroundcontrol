@@ -3896,6 +3896,33 @@ func checkHostNotices() {
 
     let served = HostNotices(["notices": [notice(1, "navigation", "setup", ""),
                                           notice(2, "message", "AircastQGC", "needs setup")]])
+    let unreadable = HostNotices(["count": 2 as NSNumber, "notices": [NSNull(), NSNull()]])
+    expect(unreadable.all.isEmpty, "a list of nulls decodes to no notices")
+    expect(unreadable.lostNotice ?? "", "2 notices could not be read.",
+           "and the head SAYS SO, because the producer counted two. Measured on the running app: "
+           + "host.count answered 2 while host.notices answered [null, null] -- a QVariantList "
+           + "property is a leaf the bridge cannot walk. compactMap swallowed both and drew an "
+           + "empty panel, which is the silence this channel exists to end")
+    expect(HostNotices(["count": 1 as NSNumber, "notices": [NSNull()]]).lostNotice ?? "",
+           "1 notice could not be read.", "with the singular spelled properly")
+    expect(read.lostNotice == nil,
+           "while a queue whose notices all decode has lost nothing, so the line stays away")
+    expect(HostNotices(["notices": [notice(1, "message", "T", "b")]]).lostNotice == nil,
+           "and a producer that sends no count accuses nobody of losing anything -- the clamp "
+           + "does that, not a fallback. I first wrote the missing count as the list's own "
+           + "length, and the break proved that unreachable: max(0, ...) already made the two "
+           + "spellings identical, so the assertion could not have failed either way")
+    expect(HostNotices(["count": 1 as NSNumber,
+                        "notices": [notice(1, "message", "T", "b"),
+                                    notice(2, "message", "T", "b")]]).lost == 0,
+           "a count SMALLER than the list clamps to nothing lost rather than to a negative. The "
+           + "probe reports this number, and a diagnostic reading minus one would send whoever "
+           + "read it looking for a bug in the wrong half")
+    expect(HostNotices(["count": 1 as NSNumber,
+                        "notices": [notice(1, "vehicleError", "T", "b")]]).lostNotice == nil,
+           "a notice this head chooses not to draw is not one it failed to read; lost counts "
+           + "against what DECODED, not against what is shown")
+
     expect(served.navigation?.id == 1,
            "the navigation request is found among notices that are not navigation, because it "
            + "arrives paired with the message that explains it and never alone")

@@ -59,17 +59,35 @@ struct HostNotice: Identifiable, Equatable {
 struct HostNotices: Equatable {
     let all: [HostNotice]
     let dropped: Int
+    let reported: Int
 
-    static let none = HostNotices(all: [], dropped: 0)
+    static let none = HostNotices(all: [], dropped: 0, reported: 0)
 
-    init(all: [HostNotice], dropped: Int) {
+    init(all: [HostNotice], dropped: Int, reported: Int) {
         self.all = all
         self.dropped = dropped
+        self.reported = reported
     }
 
     init(_ json: [String: Any]) {
-        all = ((json["notices"] as? [Any]) ?? []).compactMap(HostNotice.init)
+        let listed = (json["notices"] as? [Any]) ?? []
+        all = listed.compactMap(HostNotice.init)
         dropped = (json["dropped"] as? NSNumber)?.intValue ?? 0
+        reported = (json["count"] as? NSNumber)?.intValue ?? 0
+    }
+
+    // The producer counts its own queue, so a count this head cannot turn into notices is a
+    // message it has lost rather than one that was never sent. Measured on the running app:
+    // host.count answered 2 while host.notices answered [null, null], because a QVariantList
+    // property is a leaf the bridge cannot walk and its maps serialise as null. compactMap
+    // swallowed both and drew an empty panel, which is the silence this channel exists to end.
+    var lost: Int { max(0, reported - all.count) }
+
+    var lostNotice: String? {
+        guard lost > 0 else { return nil }
+        return lost == 1
+            ? "1 notice could not be read."
+            : "\(lost) notices could not be read."
     }
 
     var shown: [HostNotice] { all.filter(\.shows) }
