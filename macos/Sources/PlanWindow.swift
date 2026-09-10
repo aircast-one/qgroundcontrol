@@ -402,7 +402,7 @@ struct PlanInspector: View {
                 }
                 Spacer(minLength: 0)
                 if mission.dirty {
-                    Text("Unsent")
+                    Text(PlanDirtyBadge.text(connected: mission.connected))
                         .font(.caption.weight(.semibold))
                         .foregroundColor(Overlay.fence)
                 }

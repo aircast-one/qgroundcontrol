@@ -74,3 +74,9 @@ struct PlanUpload: Equatable {
     }
 }
 
+enum PlanDirtyBadge {
+    static let unsent = "Unsent"
+    static let unsaved = "Unsaved"
+
+    static func text(connected: Bool) -> String { connected ? unsent : unsaved }
+}

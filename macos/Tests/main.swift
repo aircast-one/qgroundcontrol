@@ -1318,6 +1318,20 @@ func checkFlyState() {
 
 checkFlyState()
 
+func checkPlanDirtyBadge() {
+    expect(PlanDirtyBadge.text(connected: true), PlanDirtyBadge.unsent,
+           "connected, sendToVehicle is the only thing that clears dirty -- "
+           + "PlanMasterController.cc:283 and :330 -- so the flag is upload-pending")
+    expect(PlanDirtyBadge.text(connected: false), PlanDirtyBadge.unsaved,
+           "offline, saveToFile clears it (:592-594, behind offline()), so it means the plan "
+           + "differs from the file; the badge said Unsent about a plan with no vehicle to send to")
+    expect(PlanDirtyBadge.text(connected: true) != PlanDirtyBadge.text(connected: false),
+           "one flag with two meanings needs two words, or half the readings are wrong")
+}
+
+checkPlanDirtyBadge()
+
+
 func checkVehicleTrack() {
     func point(_ latitude: Double, _ longitude: Double) -> [String: Any] {
         ["latitude": latitude as NSNumber, "longitude": longitude as NSNumber]
