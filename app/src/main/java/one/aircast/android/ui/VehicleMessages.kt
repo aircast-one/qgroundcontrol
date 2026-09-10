@@ -24,6 +24,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import one.aircast.android.bridge.Qgc
 import one.aircast.android.bridge.offMainDetached
@@ -41,6 +42,15 @@ data class VehicleMessage(
     val level: MessageSeverity,
     val text: String,
 )
+
+internal fun bannerText(blocker: String?, messages: List<VehicleMessage>): String? {
+    if (blocker != null) return blocker
+    if (messages.isEmpty()) return null
+    val worst = messages.lastOrNull { it.level == MessageSeverity.Error }
+        ?: messages.lastOrNull { it.level == MessageSeverity.Warning }
+    val count = "${messages.size} message${if (messages.size == 1) "" else "s"} from the vehicle"
+    return worst?.text?.takeIf { it.isNotBlank() }?.let { "$it · $count" } ?: count
+}
 
 internal fun levelOf(name: String): MessageSeverity = when (name) {
     "error" -> MessageSeverity.Error
@@ -111,7 +121,9 @@ fun VehicleMessageBanner(modifier: Modifier = Modifier) {
             Icon(Icons.Filled.Warning, contentDescription = null, tint = tint)
         }
         Text(
-            text = blocker ?: "$count message${if (count == 1) "" else "s"} from the vehicle",
+            text = bannerText(blocker, messages).orEmpty(),
+            maxLines = 2,
+            overflow = TextOverflow.Ellipsis,
             style = MaterialTheme.typography.bodyMedium,
             fontWeight = if (urgent) FontWeight.Bold else FontWeight.Normal,
             color = tint,

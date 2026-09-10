@@ -66,6 +66,59 @@ class VehicleMessagesTest {
         assertNull(armingBlocker(JSONObject("""{"armingBlocker":""}""")))
         assertNull(armingBlocker(null))
     }
+
+    @Test
+    fun `an error is named in the banner, not buried in a count`() {
+        val messages = listOf(
+            message(0, MessageSeverity.Normal, "Armed"),
+            message(1, MessageSeverity.Error, "EKF variance"),
+            message(2, MessageSeverity.Normal, "Mode changed"),
+        )
+
+        assertEquals("EKF variance · 3 messages from the vehicle", bannerText(null, messages))
+    }
+
+    @Test
+    fun `the newest error wins, because it is the one still happening`() {
+        val messages = listOf(
+            message(0, MessageSeverity.Error, "Compass variance"),
+            message(1, MessageSeverity.Error, "EKF variance"),
+        )
+
+        assertEquals("EKF variance · 2 messages from the vehicle", bannerText(null, messages))
+    }
+
+    @Test
+    fun `a warning is named when nothing worse has happened`() {
+        val messages = listOf(message(0, MessageSeverity.Warning, "Low battery"))
+
+        assertEquals("Low battery · 1 message from the vehicle", bannerText(null, messages))
+    }
+
+    @Test
+    fun `routine chatter stays a count`() {
+        val messages = listOf(
+            message(0, MessageSeverity.Normal, "Armed"),
+            message(1, MessageSeverity.Normal, "Disarmed"),
+        )
+
+        assertEquals("2 messages from the vehicle", bannerText(null, messages))
+    }
+
+    @Test
+    fun `an arming blocker outranks anything in the log`() {
+        val messages = listOf(message(0, MessageSeverity.Error, "EKF variance"))
+
+        assertEquals("Needs 3D fix", bannerText("Needs 3D fix", messages))
+    }
+
+    @Test
+    fun `nothing to say is nothing shown`() {
+        assertNull(bannerText(null, emptyList()))
+    }
+
+    private fun message(index: Int, level: MessageSeverity, text: String) =
+        VehicleMessage(index, "12:00", level.name.lowercase(), level, text)
 }
 
 class VehicleMessagesContractTest {
