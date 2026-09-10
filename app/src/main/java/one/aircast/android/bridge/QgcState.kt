@@ -34,7 +34,14 @@ fun qgcString(path: String, fallback: String = ""): State<String> {
 @Composable
 fun qgcBool(path: String): State<Boolean> {
     val value by qgcValue(path)
-    return remember(path) { derivedStateOf { value == true || value == "true" } }
+    return remember(path) { derivedStateOf { truthy(value) } }
+}
+
+internal fun truthy(value: Any?): Boolean = when (value) {
+    is Boolean -> value
+    is Number -> value.toDouble() != 0.0
+    is String -> value.equals("true", ignoreCase = true) || value.toDoubleOrNull()?.let { it != 0.0 } == true
+    else -> false
 }
 
 @Composable
@@ -44,6 +51,7 @@ fun qgcDouble(path: String, fallback: Double = Double.NaN): State<Double> {
         derivedStateOf {
             when (val v = value) {
                 is Number -> v.toDouble()
+                is Boolean -> if (v) 1.0 else 0.0
                 is String -> v.toDoubleOrNull() ?: fallback
                 else -> fallback
             }

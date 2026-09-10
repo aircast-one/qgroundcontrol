@@ -38,3 +38,31 @@ class FactParseTest {
         assertEquals("1500", fact.defaultValueString)
     }
 }
+
+class TruthyTest {
+    @Test
+    fun `a real boolean is read as itself`() {
+        assertEquals(true, truthy(true))
+        assertEquals(false, truthy(false))
+    }
+
+    @Test
+    fun `a property declared int but meaning bool still reads true`() {
+        assertEquals(true, truthy(1))
+        assertEquals(false, truthy(0))
+    }
+
+    @Test
+    fun `a string encoding is accepted either way round`() {
+        assertEquals(true, truthy("true"))
+        assertEquals(true, truthy("1"))
+        assertEquals(false, truthy("0"))
+        assertEquals(false, truthy("false"))
+    }
+
+    @Test
+    fun `an absent or unreadable value is not true`() {
+        assertEquals(false, truthy(null))
+        assertEquals(false, truthy("banana"))
+    }
+}
