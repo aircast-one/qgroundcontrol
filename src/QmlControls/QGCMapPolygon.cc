@@ -319,8 +319,8 @@ void QGCMapPolygon::_polygonModelDirtyChanged(bool dirty)
 
 void QGCMapPolygon::removeVertex(int vertexIndex)
 {
-    if (vertexIndex < 0 && vertexIndex > _polygonPath.length() - 1) {
-        qWarning() << "Call to removePolygonCoordinate with bad vertexIndex:count" << vertexIndex << _polygonPath.length();
+    if (vertexIndex < 0 || vertexIndex > _polygonPath.length() - 1) {
+        qWarning() << "Call to removeVertex with bad vertexIndex:count" << vertexIndex << _polygonPath.length();
         return;
     }
 

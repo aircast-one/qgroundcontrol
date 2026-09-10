@@ -2709,6 +2709,48 @@ mattered, which reads as "not applicable" rather than "lost". It now shows "No s
 The existing test had named this correctly and still asserted the wrong thing: `zero means no
 signal and is not shown as a percentage`. It knew the fact and hid it.
 
+### Tapping one corner of a fence offered only "destroy the whole fence"
+
+Followed from a lead the macOS session sent after landing the same feature there. It transfers
+exactly, which is the point of two heads over one core.
+
+Selecting a single fence corner opened an action row containing exactly one button:
+**"Delete fence"**. The granularity of the action did not match the granularity of the selection —
+tap a corner to adjust it, and the only thing on offer discards the entire polygon it belongs to.
+There was no way to remove just that corner. The summary line said nothing at all for a fence
+vertex (`is MapHit.FenceVertex -> null`), so the title was as dead as the control, the same pairing
+the macOS session reported.
+
+`QGCMapPolygon::removeVertex` has existed in the core the whole time and QGC's own QML offers it.
+The head simply never called it. It now does, and the summary reads "corner 1 of 4".
+
+**The guard is the interesting part.** The core refuses to remove a vertex from a polygon of three
+— `if (_polygonPath.length() <= 3) return;`, a silent return with no error. `FenceBridge.invoke`
+reports `ok` from the bridge, which means the method was found and called, not that it did
+anything. So an unguarded button would have reported success while nothing happened. The head's
+`cornerRemovable` is therefore `> 3`, matching the core's refusal exactly, and the button is absent
+rather than dishonest. Verified on the handset as an A/B: four corners offers "Remove corner" and
+reads "corner 1 of 4"; after one removal the same polygon reads "corner 1 of 3" and offers only
+"Delete fence".
+
+### The core's own bounds check on that call never fired
+
+Found while reading `removeVertex` to write the guard:
+
+```cpp
+if (vertexIndex < 0 && vertexIndex > _polygonPath.length() - 1) {
+```
+
+`&&` where it must be `||`. No integer is both negative and greater than the last index, so the
+check never fired and an out-of-range index fell through to `_polygonModel.removeAt(vertexIndex)`.
+The `<= 3` guard below limits the blast radius but does not cover it: a five-corner polygon would
+take `removeVertex(99)` straight to an out-of-bounds `removeAt`.
+
+The sibling settles the intent rather than my judgement — `QGCMapPolyline::removeVertex`, the same
+function for the other shape, has `||`. It is the only instance of the broken form in the tree. The
+warning next to it also named `removePolygonCoordinate`, a function that no longer exists, so it
+now names itself.
+
 ## Phase 6 — Shell · 2 weeks
 
 Cheaper than macOS, because Qt is already off the main thread.
