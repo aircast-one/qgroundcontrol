@@ -37,14 +37,61 @@ fn same_point(a: Point, b: Point) -> bool {
     same(a.0, b.0) && same(a.1, b.1)
 }
 
-fn line_angle(line: Line) -> f64 {
+pub fn line_angle(line: Line) -> f64 {
     let (dx, dy) = (line.1.0 - line.0.0, line.1.1 - line.0.1);
     let theta = (-dy).atan2(dx).to_degrees();
     let normalised = if theta < 0.0 { theta + 360.0 } else { theta };
     if fuzzy_compare(normalised, 360.0) { 0.0 } else { normalised }
 }
 
-fn bounded_intersection(first: Line, second: Line) -> Option<Point> {
+pub fn crossing_point(first: Line, second: Line) -> Option<Point> {
+    let a = (first.1.0 - first.0.0, first.1.1 - first.0.1);
+    let b = (second.0.0 - second.1.0, second.0.1 - second.1.1);
+    let c = (first.0.0 - second.0.0, first.0.1 - second.0.1);
+    let denominator = a.1 * b.0 - a.0 * b.1;
+    if denominator == 0.0 || !denominator.is_finite() {
+        return None;
+    }
+    let na = (b.1 * c.0 - b.0 * c.1) / denominator;
+    Some((first.0.0 + a.0 * na, first.0.1 + a.1 * na))
+}
+
+pub fn set_length(line: Line, length: f64) -> Line {
+    let current = (line.1.0 - line.0.0).hypot(line.1.1 - line.0.1);
+    if current <= 0.0 {
+        return line;
+    }
+    let scale = length / current;
+    (line.0, (line.0.0 + (line.1.0 - line.0.0) * scale, line.0.1 + (line.1.1 - line.0.1) * scale))
+}
+
+pub fn set_angle(line: Line, angle_deg: f64) -> Line {
+    let length = (line.1.0 - line.0.0).hypot(line.1.1 - line.0.1);
+    let radians = angle_deg.to_radians();
+    (line.0, (line.0.0 + radians.cos() * length, line.0.1 - radians.sin() * length))
+}
+
+pub type PlanePoint = Point;
+
+pub fn flatten(path: &[Point]) -> Vec<Point> {
+    path.iter()
+        .enumerate()
+        .map(|(index, vertex)| {
+            if index == 0 {
+                return (0.0, 0.0);
+            }
+            let (north, east, _) = geo_to_ned(vertex.0, vertex.1, 0.0, (path[0].0, path[0].1, 0.0));
+            (east, north)
+        })
+        .collect()
+}
+
+pub fn to_geo(point: Point, origin: Point) -> Point {
+    let (lat, lon, _) = ned_to_geo(point.1, point.0, 0.0, (origin.0, origin.1, 0.0));
+    (lat, lon)
+}
+
+pub fn bounded_intersection(first: Line, second: Line) -> Option<Point> {
     let a = (first.1.0 - first.0.0, first.1.1 - first.0.1);
     let b = (second.0.0 - second.1.0, second.0.1 - second.1.1);
     let c = (first.0.0 - second.0.0, first.0.1 - second.0.1);
@@ -140,7 +187,7 @@ fn alternate_order(transects: Vec<Vec<Point>>) -> Vec<Vec<Point>> {
     forward.chain(back).collect()
 }
 
-fn boustrophedon(transects: Vec<Vec<Point>>) -> Vec<Vec<Point>> {
+pub fn boustrophedon(transects: Vec<Vec<Point>>) -> Vec<Vec<Point>> {
     transects
         .into_iter()
         .enumerate()
@@ -157,17 +204,17 @@ pub fn distance_between(from: Point, to: Point) -> f64 {
     2.0 * y.sqrt().asin() * EARTH_MEAN_RADIUS_M
 }
 
-fn reverse_transect_order(transects: Vec<Vec<Point>>) -> Vec<Vec<Point>> {
+pub fn reverse_transect_order(transects: Vec<Vec<Point>>) -> Vec<Vec<Point>> {
     transects.into_iter().rev().collect()
 }
 
-fn reverse_internal_points(transects: Vec<Vec<Point>>) -> Vec<Vec<Point>> {
+pub fn reverse_internal_points(transects: Vec<Vec<Point>>) -> Vec<Vec<Point>> {
     transects.into_iter().map(|transect| transect.into_iter().rev().collect()).collect()
 }
 
 fn shortest_from(anchor: Point, transects: Vec<Vec<Point>>) -> Vec<Vec<Point>> {
     let (Some(first), Some(last)) = (transects.first(), transects.last()) else { return transects };
-    let (Some(first_start), Some(first_end), Some(last_start), Some(last_end)) = (first.first(), first.last(), last.first(), last.last()) else { return transects };
+    let (Some(first_start), Some(first_end), Some(last_start)) = (first.first(), first.last(), last.first()) else { return transects };
     let candidates = [distance_between(*first_start, anchor), distance_between(*first_end, anchor), distance_between(*last_start, anchor)];
     let shortest = candidates
         .iter()
@@ -186,7 +233,7 @@ fn at_entry_point(entry: i64, transects: Vec<Vec<Point>>) -> Vec<Vec<Point>> {
     if matches!(entry, ENTRY_TOP_RIGHT | ENTRY_BOTTOM_RIGHT) { reverse_transect_order(flipped) } else { flipped }
 }
 
-fn with_turnaround(transect: Vec<Point>, distance: f64) -> Vec<Point> {
+pub fn with_turnaround(transect: Vec<Point>, distance: f64) -> Vec<Point> {
     if distance <= 0.0 || transect.len() < 2 {
         return transect;
     }
@@ -281,12 +328,27 @@ mod tests {
     }
 
     #[test]
+    fn the_refly_ordering_reads_three_of_the_four_corners_qt_measures() {
+        let anchor = (47.3960, 8.5440);
+        let near: Vec<Vec<Point>> = vec![vec![(47.3961, 8.5441), (47.3980, 8.5441)], vec![(47.3961, 8.5450), (47.3980, 8.5450)]];
+        assert_eq!(shortest_from(anchor, near.clone())[0][0], (47.3961, 8.5441), "the nearest corner already leads, so nothing is reversed");
+        let far_start: Vec<Vec<Point>> = vec![vec![(47.3990, 8.5490), (47.3961, 8.5441)], vec![(47.3990, 8.5495), (47.3980, 8.5450)]];
+        assert_eq!(shortest_from(anchor, far_start)[0][0], (47.3961, 8.5441), "when the first transect ends nearest, its points are reversed");
+        let last_nearest: Vec<Vec<Point>> = vec![vec![(47.3990, 8.5490), (47.3991, 8.5491)], vec![(47.3961, 8.5441), (47.3980, 8.5450)]];
+        assert_eq!(last_nearest.len(), 2);
+        assert_eq!(shortest_from(anchor, last_nearest)[0][0], (47.3961, 8.5441), "when the last transect starts nearest, the order is reversed");
+        let only_last_end: Vec<Vec<Point>> = vec![vec![(47.3990, 8.5490), (47.3991, 8.5491)], vec![(47.3992, 8.5492), (47.3961, 8.5441)]];
+        assert_eq!(shortest_from(anchor, only_last_end)[0][0], (47.3990, 8.5490), "Qt computes the distance to the last transect's end and its loop never reads it, so the nearest corner is ignored; matching Qt means ignoring it here too");
+    }
+
+    #[test]
     fn every_recorded_case_is_generated_identically() {
         let cases = oracle();
         let cases = cases.as_object().expect("the oracle is an object of cases");
-        assert!(cases.len() >= 12, "the oracle should carry every recorded case");
+        assert!(cases.len() >= 17, "the oracle should carry every recorded case");
         let checked: Vec<(String, bool, String)> = cases
             .iter()
+            .filter(|(_, case)| case.get("polygon").is_some())
             .map(|(name, case)| {
                 let polygon: Vec<Point> = case["polygon"].as_array().unwrap().iter().map(|v| (v["latitude"].as_f64().unwrap(), v["longitude"].as_f64().unwrap())).collect();
                 let params = Params {

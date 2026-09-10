@@ -209,6 +209,183 @@
         "transects": "47.3960000,8.5442654 47.3995000,8.5442654 47.3995000,8.5458580 47.3960000,8.5458579 47.3960000,8.5474503 47.3975751,8.5474504 47.3978405,8.5490430 47.3960000,8.5490428 47.3960000,8.5498390 47.3979732,8.5498392 47.3977078,8.5482467 47.3960000,8.5482466 47.3960000,8.5466541 47.3995000,8.5466543 47.3995000,8.5450617 47.3960000,8.5450616",
         "turnAround": 0
     },
+    "corridor-bent": {
+        "corridorWidth": 120,
+        "entryPoint": 0,
+        "gridSpacing": 60,
+        "polyline": [
+            {
+                "altitude": 0,
+                "latitude": 47.396,
+                "longitude": 8.544
+            },
+            {
+                "altitude": 0,
+                "latitude": 47.3975,
+                "longitude": 8.547
+            },
+            {
+                "altitude": 0,
+                "latitude": 47.3995,
+                "longitude": 8.547
+            }
+        ],
+        "transects": "47.3962168,8.5437635 47.3976360,8.5466019 47.3995000,8.5466019 47.3995000,8.5473981 47.3973640,8.5473981 47.3957832,8.5442365",
+        "turnAround": 0
+    },
+    "corridor-bent-entry-1": {
+        "corridorWidth": 120,
+        "entryPoint": 1,
+        "gridSpacing": 60,
+        "polyline": [
+            {
+                "altitude": 0,
+                "latitude": 47.396,
+                "longitude": 8.544
+            },
+            {
+                "altitude": 0,
+                "latitude": 47.3975,
+                "longitude": 8.547
+            },
+            {
+                "altitude": 0,
+                "latitude": 47.3995,
+                "longitude": 8.547
+            }
+        ],
+        "transects": "47.3957832,8.5442365 47.3973640,8.5473981 47.3995000,8.5473981 47.3995000,8.5466019 47.3976360,8.5466019 47.3962168,8.5437635",
+        "turnAround": 0
+    },
+    "corridor-bent-entry-2": {
+        "corridorWidth": 120,
+        "entryPoint": 2,
+        "gridSpacing": 60,
+        "polyline": [
+            {
+                "altitude": 0,
+                "latitude": 47.396,
+                "longitude": 8.544
+            },
+            {
+                "altitude": 0,
+                "latitude": 47.3975,
+                "longitude": 8.547
+            },
+            {
+                "altitude": 0,
+                "latitude": 47.3995,
+                "longitude": 8.547
+            }
+        ],
+        "transects": "47.3995000,8.5466019 47.3976360,8.5466019 47.3962168,8.5437635 47.3957832,8.5442365 47.3973640,8.5473981 47.3995000,8.5473981",
+        "turnAround": 0
+    },
+    "corridor-bent-entry-3": {
+        "corridorWidth": 120,
+        "entryPoint": 3,
+        "gridSpacing": 60,
+        "polyline": [
+            {
+                "altitude": 0,
+                "latitude": 47.396,
+                "longitude": 8.544
+            },
+            {
+                "altitude": 0,
+                "latitude": 47.3975,
+                "longitude": 8.547
+            },
+            {
+                "altitude": 0,
+                "latitude": 47.3995,
+                "longitude": 8.547
+            }
+        ],
+        "transects": "47.3995000,8.5473981 47.3973640,8.5473981 47.3957832,8.5442365 47.3962168,8.5437635 47.3976360,8.5466019 47.3995000,8.5466019",
+        "turnAround": 0
+    },
+    "corridor-single": {
+        "corridorWidth": 40,
+        "entryPoint": 0,
+        "gridSpacing": 60,
+        "polyline": [
+            {
+                "altitude": 0,
+                "latitude": 47.396,
+                "longitude": 8.544
+            },
+            {
+                "altitude": 0,
+                "latitude": 47.3975,
+                "longitude": 8.547
+            },
+            {
+                "altitude": 0,
+                "latitude": 47.3995,
+                "longitude": 8.547
+            }
+        ],
+        "transects": "47.3960000,8.5440000 47.3975000,8.5470000 47.3995000,8.5470000",
+        "turnAround": 0
+    },
+    "corridor-straight": {
+        "corridorWidth": 120,
+        "entryPoint": 0,
+        "gridSpacing": 60,
+        "polyline": [
+            {
+                "altitude": 0,
+                "latitude": 47.396,
+                "longitude": 8.544
+            },
+            {
+                "altitude": 0,
+                "latitude": 47.399,
+                "longitude": 8.544
+            }
+        ],
+        "transects": "47.3960000,8.5436019 47.3990000,8.5436019 47.3990000,8.5443981 47.3960000,8.5443981",
+        "turnAround": 0
+    },
+    "corridor-straight-turn": {
+        "corridorWidth": 120,
+        "entryPoint": 0,
+        "gridSpacing": 60,
+        "polyline": [
+            {
+                "altitude": 0,
+                "latitude": 47.396,
+                "longitude": 8.544
+            },
+            {
+                "altitude": 0,
+                "latitude": 47.399,
+                "longitude": 8.544
+            }
+        ],
+        "transects": "47.3957302,8.5436019 47.3960000,8.5436019 47.3990000,8.5436019 47.3992698,8.5436019 47.3992698,8.5443981 47.3990000,8.5443981 47.3960000,8.5443981 47.3957302,8.5443981",
+        "turnAround": 30
+    },
+    "corridor-straight-wide": {
+        "corridorWidth": 300,
+        "entryPoint": 0,
+        "gridSpacing": 60,
+        "polyline": [
+            {
+                "altitude": 0,
+                "latitude": 47.396,
+                "longitude": 8.544
+            },
+            {
+                "altitude": 0,
+                "latitude": 47.399,
+                "longitude": 8.544
+            }
+        ],
+        "transects": "47.3960000,8.5424075 47.3990000,8.5424075 47.3990000,8.5432037 47.3960000,8.5432038 47.3960000,8.5440000 47.3990000,8.5440000 47.3990000,8.5447963 47.3960000,8.5447962 47.3960000,8.5455925 47.3990000,8.5455925",
+        "turnAround": 0
+    },
     "square-0deg": {
         "alternate": false,
         "entryPoint": 0,

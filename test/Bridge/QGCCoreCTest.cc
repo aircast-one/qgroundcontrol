@@ -1187,6 +1187,25 @@ QJsonArray polygonConcave()
     };
 }
 
+struct CorridorCase {
+    const char *name;
+    QJsonArray  polyline;
+    double      width;
+    double      spacing;
+    double      turnAround;
+    int         entryRotations;
+};
+
+QJsonArray polylineStraight()
+{
+    return QJsonArray { coordinateJson(47.3960, 8.5440), coordinateJson(47.3990, 8.5440) };
+}
+
+QJsonArray polylineBent()
+{
+    return QJsonArray { coordinateJson(47.3960, 8.5440), coordinateJson(47.3975, 8.5470), coordinateJson(47.3995, 8.5470) };
+}
+
 struct SurveyCase {
     const char *name;
     QJsonArray  polygon;
@@ -1293,6 +1312,55 @@ void QGCCoreCTest::_surveyTransectsMatchTheRecordedOracle()
     }
     restore();
 
+    const QList<CorridorCase> corridors = {
+        { "corridor-straight",       polylineStraight(), 120.0, 60.0,  0.0, 0 },
+        { "corridor-straight-wide",  polylineStraight(), 300.0, 60.0,  0.0, 0 },
+        { "corridor-straight-turn",  polylineStraight(), 120.0, 60.0, 30.0, 0 },
+        { "corridor-bent",           polylineBent(),     120.0, 60.0,  0.0, 0 },
+        { "corridor-bent-entry-1",   polylineBent(),     120.0, 60.0,  0.0, 1 },
+        { "corridor-bent-entry-2",   polylineBent(),     120.0, 60.0,  0.0, 2 },
+        { "corridor-bent-entry-3",   polylineBent(),     120.0, 60.0,  0.0, 3 },
+        { "corridor-single",         polylineBent(),      40.0, 60.0,  0.0, 0 },
+    };
+
+    for (const CorridorCase &corridor : corridors) {
+        restore();
+        (void) take(qgc_bridge_invoke("plan.missionController.insertComplexMissionItem",
+                                      compact(QJsonArray { QStringLiteral("Corridor Scan"), coordinateJson(47.3975, 8.5460), -1 }).constData()));
+        QTRY_VERIFY_WITH_TIMEOUT(take(qgc_bridge_get(item.toUtf8().constData())).value(QStringLiteral("kind")).toString() == QStringLiteral("object"), 5000);
+
+        (void) take(qgc_bridge_invoke((item + QStringLiteral(".corridorPolyline.clear")).toUtf8().constData(), "[]"));
+        for (const QJsonValue &vertex : corridor.polyline) {
+            (void) take(qgc_bridge_invoke((item + QStringLiteral(".corridorPolyline.appendVertex")).toUtf8().constData(), compact(QJsonArray { vertex }).constData()));
+        }
+
+        setFact(item + QStringLiteral(".cameraCalc.adjustedFootprintSide"), QJsonValue(corridor.spacing));
+        setFact(item + QStringLiteral(".corridorWidth"), QJsonValue(corridor.width));
+        setFact(item + QStringLiteral(".turnAroundDistance"), QJsonValue(corridor.turnAround));
+        for (int rotation = 0; rotation < corridor.entryRotations; rotation++) {
+            (void) take(qgc_bridge_invoke((item + QStringLiteral(".rotateEntryPoint")).toUtf8().constData(), "[]"));
+        }
+
+        const auto points = [&]() { return take(qgc_bridge_get((item + QStringLiteral(".visualTransectPoints")).toUtf8().constData())).value(QStringLiteral("value")).toArray(); };
+        QTRY_VERIFY_WITH_TIMEOUT(points().count() > 0, 5000);
+        recorded.insert(QString::fromUtf8(corridor.name), QJsonObject {
+            { QStringLiteral("polyline"), corridor.polyline },
+            { QStringLiteral("corridorWidth"), corridor.width },
+            { QStringLiteral("gridSpacing"), corridor.spacing },
+            { QStringLiteral("turnAround"), corridor.turnAround },
+            { QStringLiteral("entryPoint"), corridor.entryRotations },
+        });
+        recorded[QString::fromUtf8(corridor.name)] = QJsonObject {
+            { QStringLiteral("polyline"), corridor.polyline },
+            { QStringLiteral("corridorWidth"), corridor.width },
+            { QStringLiteral("gridSpacing"), corridor.spacing },
+            { QStringLiteral("turnAround"), corridor.turnAround },
+            { QStringLiteral("entryPoint"), corridor.entryRotations },
+            { QStringLiteral("transects"), roundedCoordinates(points()) },
+        };
+    }
+    restore();
+
     const QString fixture = QFileInfo(QString::fromUtf8(__FILE__)).dir().filePath(QStringLiteral("fixtures/survey-transects.json"));
     const QByteArray current = QJsonDocument(recorded).toJson(QJsonDocument::Indented);
     if (qEnvironmentVariableIsSet("QGC_RECORD_VIEW_CONTRACT")) {
@@ -1305,8 +1373,14 @@ void QGCCoreCTest::_surveyTransectsMatchTheRecordedOracle()
     QFile in(fixture);
     QVERIFY2(in.open(QIODevice::ReadOnly), "no recorded survey oracle; run with QGC_RECORD_VIEW_CONTRACT=1 once");
     const QJsonObject expected = QJsonDocument::fromJson(in.readAll()).object();
+    QStringList names;
     for (const SurveyCase &survey : cases) {
-        const QString key = QString::fromUtf8(survey.name);
+        names.append(QString::fromUtf8(survey.name));
+    }
+    for (const CorridorCase &corridor : corridors) {
+        names.append(QString::fromUtf8(corridor.name));
+    }
+    for (const QString &key : names) {
         QVERIFY2(expected.contains(key), qPrintable(key));
         const QString was = expected.value(key).toObject().value(QStringLiteral("transects")).toString();
         const QString now = recorded.value(key).toObject().value(QStringLiteral("transects")).toString();

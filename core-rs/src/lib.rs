@@ -12,6 +12,7 @@ pub mod calibration;
 pub mod compression;
 pub mod connect;
 pub mod compinfo;
+pub mod corridorscan;
 pub mod compmeta;
 pub mod cmdinfo;
 pub mod detections;
