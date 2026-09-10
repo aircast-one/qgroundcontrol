@@ -36,7 +36,7 @@ fn radius_fact(json: &Value) -> (f64, String) {
 }
 
 fn polygon_json(index: usize, json: &Value) -> Value {
-    let inclusion = json.get("inclusion").and_then(Value::as_bool).unwrap_or(true);
+    let inclusion = json.get("inclusion").and_then(Value::as_bool).unwrap_or(false);
     let vertices = points(json.get("path"));
     let count = json.get("count").and_then(Value::as_i64).unwrap_or(vertices.len() as i64);
     let area = json.get("area").and_then(Value::as_f64).unwrap_or(0.0);
@@ -55,7 +55,7 @@ fn polygon_json(index: usize, json: &Value) -> Value {
 }
 
 fn circle_json(index: usize, json: &Value) -> Value {
-    let inclusion = json.get("inclusion").and_then(Value::as_bool).unwrap_or(true);
+    let inclusion = json.get("inclusion").and_then(Value::as_bool).unwrap_or(false);
     let centre = json.get("center").and_then(point);
     let (radius, units) = radius_fact(json);
     let framing: Vec<Value> = centre
@@ -201,5 +201,16 @@ mod tests {
         assert_eq!(line["splitInvokable"], "splitSegment");
         assert_eq!(line["canRemoveVertex"], false);
         assert_eq!(polygon_view(&Fake, &["nope".to_string()])["kind"], "null");
+    }
+
+    #[test]
+    fn a_fence_that_will_not_say_which_kind_it_is_reads_as_the_restrictive_one() {
+        let polygon = polygon_json(0, &json!({ "path": [ { "latitude": 47.0, "longitude": 8.0 }, { "latitude": 47.1, "longitude": 8.0 }, { "latitude": 47.1, "longitude": 8.1 } ] }));
+        assert_eq!(polygon["inclusion"], false);
+        assert_eq!(polygon["kindText"], "Keep-out polygon", "mistaking a keep-out zone for a boundary to stay inside flies an operator into forbidden airspace; the other way round only keeps them out of their own");
+        let circle = circle_json(0, &json!({ "center": { "latitude": 47.0, "longitude": 8.0 } }));
+        assert_eq!(circle["kindText"], "Keep-out circle");
+        let stated = polygon_json(0, &json!({ "inclusion": true, "path": [] }));
+        assert_eq!(stated["kindText"], "Keep-in polygon", "a fence that says what it is is taken at its word");
     }
 }

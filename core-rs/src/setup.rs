@@ -140,7 +140,7 @@ fn overview(backend: &dyn Backend, connected: bool, px4: bool) -> Value {
             e.iter()
                 .filter_map(|c| {
                     let name = c.get("name").and_then(Value::as_str).filter(|n| !n.is_empty())?;
-                    let needs = c.get("requiresSetup").and_then(Value::as_bool).unwrap_or(false) && !c.get("setupComplete").and_then(Value::as_bool).unwrap_or(true);
+                    let needs = c.get("requiresSetup").and_then(Value::as_bool).unwrap_or(false) && !c.get("setupComplete").and_then(Value::as_bool).unwrap_or(false);
                     Some((name.to_string(), needs))
                 })
                 .collect()
@@ -233,5 +233,27 @@ mod tests {
         assert_eq!(sections[0]["controls"][0]["control"], "number");
         assert_eq!(sections[1]["title"], "Arming");
         assert_eq!(setup_view(&Fake, &["Nope".to_string()])["kind"], "null");
+    }
+
+    #[test]
+    fn a_component_that_will_not_say_it_is_finished_is_not_finished() {
+        let component = |json: Value| {
+            let listed = json.get("elements").unwrap().as_array().unwrap();
+            listed
+                .iter()
+                .filter_map(|c| {
+                    let name = c.get("name").and_then(Value::as_str).filter(|n| !n.is_empty())?;
+                    let needs = c.get("requiresSetup").and_then(Value::as_bool).unwrap_or(false) && !c.get("setupComplete").and_then(Value::as_bool).unwrap_or(false);
+                    Some((name.to_string(), needs))
+                })
+                .collect::<Vec<_>>()
+        };
+        let silent = component(json!({ "elements": [ { "name": "Radio", "requiresSetup": true } ] }));
+        assert_eq!(silent, vec![("Radio".to_string(), true)], "a component that declares it needs setup and will not say it is done counts as not done");
+        let done = component(json!({ "elements": [ { "name": "Radio", "requiresSetup": true, "setupComplete": true } ] }));
+        assert_eq!(done, vec![("Radio".to_string(), false)]);
+        let irrelevant = component(json!({ "elements": [ { "name": "Summary" } ] }));
+        assert_eq!(irrelevant, vec![("Summary".to_string(), false)], "a component that never asked for setup is not chased for it");
+        assert_eq!(readiness(true, &silent, &[]).1, "1 component needs setup");
     }
 }
