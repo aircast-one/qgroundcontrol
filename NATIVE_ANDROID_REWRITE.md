@@ -4161,6 +4161,25 @@ The fix should not be another QML function, since the shim is what Phase 6 delet
 the bridge event stream as a view the head renders, which is a new channel and a shared decision
 rather than something to invent here.
 
+**The headline case, which is worse than the count suggests.** `AutoPilotPlugin.cc:70` runs this pair
+when a vehicle connects with setup incomplete:
+
+    qgcApp()->showVehicleConfig();   // -> navigateRequest("setup") -> the head switches tab. Works.
+    qgcApp()->showAppMessage(tr("One or more vehicle components require setup prior to flight."));
+
+The first reaches the head. The second does not. So the app **jumps the operator to the Setup tab and
+never says why** — which reads as the app losing its place rather than as a warning. Not reproducible
+on this rig, and for a related reason: the sim reports no setup components at all, and
+`AutoPilotPlugin::setupComplete` returns true for an empty list, so `!_setupComplete` is false and
+neither call fires. That is the same quirk behind the Setup verdict fix above.
+
+It also answers what still holds the `QtQuickView` host. Not rendering — nothing is drawn since the
+views went. It is C++ reaching into QML for **navigation** as well as messages: `showVehicleConfig`
+has one live C++ caller, and QML is what turns it into `navigateRequest`. So the host can go once
+navigation and messages both have a bridge channel, and not before. `setupEmbeddedEngine` needs no
+replacement — it only adds a QML import path and context properties, which are meaningless without
+QML.
+
 Completing the C++ side of the survey: `QGCApplication` reaches the root object by name in four
 places. `showVehicleConfig` and `showVehicleConfigParametersPage` are defined by the shim and work.
 `attemptWindowClose` is missing but has no caller outside `QGCApplication` — it is desktop
