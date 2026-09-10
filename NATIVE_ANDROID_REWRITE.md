@@ -3233,6 +3233,52 @@ The lesson is narrower than "guard the tool" and worth stating: **the first guar
 what the tool sends, and the danger was in what it reads.** Two verbs, one hazard, and only one of
 them was covered for months.
 
+### The tablet took the RC channels and never gave them back
+
+The on-screen RC controls drive vehicle channels from the touchscreen. Two defects, both measured
+against the sim's own log rather than argued from the code — and both of my first two hypotheses
+were wrong, which is why reading `Vehicle::setRcChannelOverride` before writing anything mattered.
+
+I expected the head to be flooding the link and the vehicle to be expiring the override. Neither
+is quite it: `setRcChannelOverride` stores the value, starts a 200 ms timer, and the *core* handles
+rate and release. But it also sends immediately on every call. So:
+
+| | before | after |
+|---|---|---|
+| a 1.5 s drag | **97 messages** | 23, of which ~7 are the timer |
+| idle, untouched | **5/s for ever** | 5/s until released |
+| leaving the Fly tab | still 5/s | **0** |
+
+Ninety of those ninety-seven were the head calling through per pixel of drag. The head now throttles
+to 100 ms and always sends a final value on release, so the vehicle still ends where the finger did.
+
+**The second defect is the one that matters.** `Vehicle::clearRcChannelOverrides` exists, and the
+head never called it. Touch one control and that channel is held by the tablet at 5 Hz for the rest
+of the session, with no affordance to stop and nothing on screen saying it is happening. There is
+no way to hand the channel back to the transmitter.
+
+The layer now releases when it leaves composition — measured: leaving the Fly tab drops the rate to
+zero — and shows "These channels are held by this tablet" with a **Give back** button whenever
+`rcChannelOverrideActive`. Pressing it produces exactly four `RC_OVERRIDE []` frames, the core's
+three release ticks plus the immediate one, then silence.
+
+### A picker wrote the label instead of the constant
+
+From the macOS session, who found the same shape in their own tree and deleted it before it was
+wired. Mine was wired. `ExtraVideoSourcesEditor` built its source chips from the `videoSource`
+fact's `enumStrings` — the list `setEnumInfo` receives already cooked through `tr()` — and wrote
+the selected string into the extra-sources blob, which `VideoSettings`, `VideoManager` and the core
+all match against **raw** constants. In English the two lists are identical, so nothing was broken
+and nothing would have been until the first translated build.
+
+The picker now displays `enumStrings` and writes `enumValues`. A test asserts that swapping the
+labels for Spanish changes nothing about what is written.
+
+Their other warning does not reach this head: `sourceNeedsUrl` lists the same six sources as
+`VideoSettings::_sourceNeedsUrl`, so a webcam or a Herelink is not marked faulty for having no
+address. That list is still a hand-copy of the core's constants and would drift in silence if a
+source were renamed — recorded, not fixed.
+
 ## Phase 6 — Shell · 2 weeks
 
 Cheaper than macOS, because Qt is already off the main thread.
