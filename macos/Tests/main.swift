@@ -2398,8 +2398,14 @@ func checkMapClick() {
 
     var looking = flying
     looking.roiActive = true
-    expect(!MapClickAction.offered(in: looking).contains(.roi), "a camera already aimed is not re-aimed")
-    expect(MapClickAction.offered(in: looking).contains(.cancelRoi), "it is released instead")
+    expect(MapClickAction.offered(in: looking).contains(.roi),
+           "an aimed camera can be re-aimed by clicking somewhere else, which is what QGC's "
+           + "showROI does \u{2014} it has no roiActive term. This head used to hide the option "
+           + "and make the operator cancel first, losing the aim in between")
+    expect(MapClickAction.offered(in: looking).contains(.cancelRoi),
+           "and releasing it is offered alongside rather than instead. QGC keeps Cancel ROI on "
+           + "the ROI marker's own drop panel; this map menu carries both, which is the union of "
+           + "what QGC offers across its two menus")
 
     var noGps = flying
     noGps.gpsSensorPresent = false

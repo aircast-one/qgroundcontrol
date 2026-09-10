@@ -73,7 +73,7 @@ enum MapClickAction: String, CaseIterable, Identifiable {
         case .goTo: return state.flying
         case .orbit:
             return state.flying && state.orbitSupported && !state.missionActive && state.homeUsable
-        case .roi: return state.flying && state.roiSupported && !state.roiActive
+        case .roi: return state.flying && state.roiSupported
         case .cancelRoi: return state.roiSupported && state.roiActive
         case .setHome: return true
         case .setHeading: return state.flying
