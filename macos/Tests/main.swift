@@ -100,6 +100,21 @@ expect(SettingsControl(["path": "g.b", "control": "bitmask",
     .bits.isEmpty == true,
        "and a bit whose raw is not a whole number is dropped rather than toggling nothing")
 
+let signed = SettingsControl([
+    "path": "vehicle.parameter.SERVO_OPTS", "name": "SERVO_OPTS", "control": "bitmask",
+    "value": -128 as NSNumber, "valueString": "-128",
+    "bits": [["label": "Reverse", "raw": "1", "set": false as NSNumber],
+             ["label": "Top", "raw": "-128", "set": true as NSNumber]],
+])
+expect(signed?.bits.count == 2,
+       "the ArduPilot metadata casts each bit to the parameter's own type, so an int8 carries "
+       + "its top bit as -128; dropping it as unparseable would lose a real bit")
+expect(signed.map { $0.toggling($0.bits[1], on: false) } == 0,
+       "clearing a negative bit clears exactly that bit, because the value sign-extends the "
+       + "same way the bit does")
+expect(signed.map { $0.toggling($0.bits[0], on: true) } == -127,
+       "and setting an ordinary bit alongside it leaves the top bit where it was")
+
 let emptyMask = SettingsControl(["path": "g.b", "name": "b", "control": "bitmask",
                                  "value": 7 as NSNumber, "valueString": "7"])
 expect(emptyMask?.kind == .bitmask && emptyMask?.drawsBits == false,
@@ -337,22 +352,59 @@ func checkMapFraming() {
     expect(abs(canberra.centreLatitude - -35.363081) < 1e-5, "mission centre sits between the waypoints")
     expect(abs(canberra.centreLongitude - 149.1651185) < 1e-5, "mission centre longitude sits between the waypoints")
     expect(canberra.latitudeDelta < 0.01, "two close waypoints frame tightly, not to a hemisphere")
-    expect(canberra.isUsable, "a real mission frames to a usable region")
+    expect(canberra.longitudeDelta < 0.01, "and so does the longitude span")
 
     let single = MapFrame(latitudes: [-35.36], longitudes: [149.16])
     expect(single.latitudeDelta == MapFrame.minimumDelta, "one waypoint still gets a minimum span")
     expect(single.longitudeDelta == MapFrame.minimumDelta, "one waypoint still gets a minimum longitude span")
     expect(abs(single.centreLatitude - -35.36) < 1e-9, "and is centred on that waypoint")
     expect(abs(single.centreLongitude - 149.16) < 1e-9, "on both axes")
-    expect(single.isUsable, "a single point is a usable frame, not a reason to show the whole world")
 
     let empty = MapFrame(latitudes: [], longitudes: [])
-    expect(empty.isUsable, "no waypoints yields a usable region rather than NaN")
+    expect(empty.centreLatitude == 0 && empty.centreLongitude == 0,
+           "no waypoints centres on the origin rather than on NaN")
+    expect(empty.latitudeDelta == MapFrame.minimumDelta
+           && empty.longitudeDelta == MapFrame.minimumDelta,
+           "and spans the minimum rather than the whole world")
 
     let bogus = MapFrame(latitudes: [-35.36, .nan, 1000], longitudes: [149.16, .infinity])
     expect(abs(bogus.centreLatitude - -35.36) < 1e-9, "a NaN or out-of-range latitude cannot drag the frame")
     expect(abs(bogus.centreLongitude - 149.16) < 1e-9, "a non-finite longitude cannot drag the frame")
-    expect(bogus.isUsable, "a bogus coordinate still leaves a usable region")
+    expect(bogus.latitudeDelta == MapFrame.minimumDelta
+           && bogus.longitudeDelta == MapFrame.minimumDelta,
+           "and what is left is one point, framed to the minimum span")
+
+    let dateline = MapFrame(latitudes: [-16.5, -16.5], longitudes: [179.9, -179.9])
+    expect(abs(abs(dateline.centreLongitude) - 180) < 1e-9,
+           "two waypoints a fifth of a degree apart across the antimeridian are centred between "
+           + "them, not on the far side of the planet: longitude wraps, so min and max are the "
+           + "two ends of the SHORT arc and averaging them pointed at the Gulf of Guinea")
+    expect(dateline.longitudeDelta < 1,
+           "and the span is the short way round; taking max minus min called them 359.8 degrees "
+           + "apart, which MissionMap then clamped to half the world")
+
+    let pacific = MapFrame(latitudes: [0, 0], longitudes: [-170, 170])
+    expect(abs(abs(pacific.centreLongitude) - 180) < 1e-9,
+           "the same holds for a wider straddle, where the empty gap is the one over Africa")
+    expect(abs(pacific.longitudeDelta - 20 * MapFrame.padding) < 1e-9,
+           "and the span is twenty degrees, not three hundred and forty")
+
+    let spread = MapFrame(latitudes: [0, 0, 0], longitudes: [-10, 0, 10])
+    expect(abs(spread.centreLongitude) < 1e-9,
+           "a set that does not straddle is unchanged, because its widest gap is the one that "
+           + "runs the long way round behind it")
+    expect(abs(spread.longitudeDelta - 20 * MapFrame.padding) < 1e-9,
+           "and so is its span")
+
+    expect(abs(MapFrame.normalisedLongitude(181) - -179) < 1e-9, "181 east is 179 west")
+    expect(abs(MapFrame.normalisedLongitude(-181) - 179) < 1e-9, "and 181 west is 179 east")
+    expect(abs(MapFrame.normalisedLongitude(149.16) - 149.16) < 1e-9,
+           "an ordinary longitude is left alone")
+
+    let everywhere = MapFrame(latitudes: [-90, 90], longitudes: [-180, 180])
+    expect(everywhere.latitudeDelta <= 180 && everywhere.longitudeDelta <= 360,
+           "a frame can no longer describe a span larger than the planet, which is what the "
+           + "padding used to produce and what an isUsable nothing ever called used to describe")
 }
 
 checkMapFraming()

@@ -531,6 +531,14 @@ final class MissionStore: ObservableObject, Probeable, WriteReporting {
                     .filter { !$0[1].isEmpty }]
     }
 
+    static func frameProbe(_ items: [MissionItem]) -> [String: Any] {
+        let placed = items.filter(\.hasPosition)
+        let frame = MapFrame(latitudes: placed.compactMap(\.latitude),
+                             longitudes: placed.compactMap(\.longitude))
+        return ["centreLatitude": frame.centreLatitude, "centreLongitude": frame.centreLongitude,
+                "latitudeDelta": frame.latitudeDelta, "longitudeDelta": frame.longitudeDelta]
+    }
+
     func centreState(fence: [GeoPoint], rally: [GeoPoint]) -> MapCentreState {
         var read = MapCentreState()
         read.missionPoints = items.filter(\.hasPosition).compactMap { item in
@@ -731,6 +739,7 @@ final class MissionStore: ObservableObject, Probeable, WriteReporting {
          "placed": items.filter(\.hasPosition).count,
          "vehiclePlaced": vehiclePosition != nil,
          "map": MissionMap.lastRender["plan"] ?? [:],
+         "frame": MissionStore.frameProbe(items),
          "commandCategories": commandCategories,
          "pickerCategory": pickerCategory,
          "pickingCommandFor": pickingCommandFor ?? -1,
