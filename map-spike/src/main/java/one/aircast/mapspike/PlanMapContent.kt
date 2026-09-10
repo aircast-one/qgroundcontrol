@@ -17,6 +17,7 @@ import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.height
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.VerticalDivider
@@ -48,6 +49,8 @@ import androidx.compose.ui.unit.dp
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
+import org.mavlink.qgroundcontrol.QGCBridge
+import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.withContext
 
 private const val PLAN_POLL_MS = 700L
@@ -55,6 +58,26 @@ private const val FAILURE_MESSAGE_MS = 2500L
 private const val CONFIRM_TIMEOUT_MS = 5000L
 private val CONTROLS_MAX_HEIGHT = 320.dp
 private val PRIMARY_PADDING = PaddingValues(horizontal = 16.dp, vertical = 4.dp)
+
+private fun sendPlan(
+    scope: CoroutineScope,
+    say: (String?) -> Unit,
+    done: () -> Unit,
+    pauseFirst: Boolean = false,
+) {
+    say("Uploading to vehicle")
+    scope.launch {
+        val outcome = withContext(Dispatchers.Default) {
+            if (pauseFirst) {
+                QGCBridge.invoke("vehicle.pauseVehicle", "[]")
+            }
+            uploadOutcome(PlanBridge.sendToVehicle())
+        }
+        say(uploadMessage(outcome))
+        delay(FAILURE_MESSAGE_MS)
+        done()
+    }
+}
 
 @Composable
 private fun GroupBreak() {
@@ -119,6 +142,8 @@ internal fun MapSpikeScreen(
     val planHasItems by mapBool("plan.containsItems")
     val planOffline by mapBool("plan.offline")
     val planSyncing by mapBool("plan.syncInProgress")
+    val planStatus by mapPath("view.plan")
+    var uploadAsk by remember { mutableStateOf<UploadGate?>(null) }
     val missionDistance by mapDouble("plan.missionController.missionTotalDistance")
     val missionTime by mapDouble("plan.missionController.missionTime")
     val mode by mapString("vehicle.flightMode")
@@ -318,18 +343,39 @@ internal fun MapSpikeScreen(
                         val refusal = syncRefusal(
                             vehicleSyncState(planOffline, planSyncing), "upload to",
                         )
-                        if (refusal != null) say(refusal) else {
-                            busy = "Uploading to vehicle"
-                            scope.launch {
-                                val outcome = withContext(Dispatchers.Default) {
-                                    uploadOutcome(PlanBridge.sendToVehicle())
-                                }
-                                busy = uploadMessage(outcome)
-                                delay(FAILURE_MESSAGE_MS)
-                                busy = null
+                        if (refusal != null) {
+                            say(refusal)
+                        } else {
+                            when (val step = uploadStep(uploadGate(planStatus))) {
+                                is UploadStep.Refuse -> say(step.reason)
+                                is UploadStep.Confirm -> uploadAsk = step.gate
+                                UploadStep.Send -> sendPlan(scope, say = { busy = it }, done = { busy = null })
                             }
                         }
                     }, contentPadding = PRIMARY_PADDING) { Text("Upload") }
+
+                    uploadAsk?.let { gate ->
+                        AlertDialog(
+                            onDismissRequest = { uploadAsk = null },
+                            title = { Text(gate.heading.ifBlank { "Upload this plan?" }) },
+                            text = { Text(gate.refusal) },
+                            confirmButton = {
+                                TextButton(onClick = {
+                                    val pauses = gate.pausesFirst
+                                    uploadAsk = null
+                                    sendPlan(
+                                        scope,
+                                        say = { busy = it },
+                                        done = { busy = null },
+                                        pauseFirst = pauses,
+                                    )
+                                }) { Text(gate.proceedTitle.ifBlank { "Upload" }) }
+                            },
+                            dismissButton = {
+                                TextButton(onClick = { uploadAsk = null }) { Text("Cancel") }
+                            },
+                        )
+                    }
 
                     if (vehicleCount > 1) {
                         var vehicles by remember(vehicleCount, vehicleId) {
