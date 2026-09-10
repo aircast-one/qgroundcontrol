@@ -12,7 +12,6 @@ final class VideoStore: ObservableObject, Probeable, WriteReporting {
     @Published private(set) var camera = CameraControl.absent
     @Published private(set) var cameraLabels: [String] = []
     @Published private(set) var sources: [VideoSource] = []
-    @Published private(set) var sourceTypes: [String] = []
 
     private var askedForNative = false
 
@@ -20,12 +19,10 @@ final class VideoStore: ObservableObject, Probeable, WriteReporting {
 
     func loadSources() {
         let fact = Bridge.group(VideoStore.sourcesPath)
-        let listed = VideoSources.decode((fact["valueString"] as? String) ?? "")
+        let cameras = ((Bridge.group("view.video")["cameras"] as? [Any]) ?? [])
+            .compactMap(VideoCamera.init)
+        let listed = VideoSources.decode((fact["valueString"] as? String) ?? "", cameras: cameras)
         if listed != sources { sources = listed }
-
-        let types = ((Bridge.group("settings.videoSettings.videoSource")["enumStrings"] as? [String]) ?? [])
-            .filter { !$0.isEmpty }
-        if types != sourceTypes { sourceTypes = types }
     }
 
     func write(_ replacement: VideoSource) {

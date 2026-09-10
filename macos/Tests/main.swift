@@ -1630,7 +1630,15 @@ func checkVideoSources() {
         + "{\"name\":\"0.0.0.0:5691\",\"source\":\"UDP h.264 Video Stream\",\"url\":\"\"},"
         + "{\"name\":\"\",\"source\":\"Video Stream Disabled\",\"url\":\"\"}]"
 
-    let sources = VideoSources.decode(live)
+    func camera(_ slot: Int, enabled: Bool, configured: Bool) -> VideoCamera? {
+        VideoCamera(["slot": slot as NSNumber, "title": "Camera \(slot + 1)", "status": "",
+                     "enabled": enabled as NSNumber, "configured": configured as NSNumber])
+    }
+    let answered = [camera(1, enabled: true, configured: false),
+                    camera(2, enabled: true, configured: false),
+                    camera(3, enabled: false, configured: false)].compactMap { $0 }
+
+    let sources = VideoSources.decode(live, cameras: answered)
     expect(sources.count == 3, "every configured slot is read")
     expect(sources[0].title, "Camera 1", "an unnamed slot is named by its number")
     expect(sources[1].title, "0.0.0.0:5691", "a named one keeps its name")
@@ -1639,6 +1647,28 @@ func checkVideoSources() {
     expect(sources[0].misconfigured, "an enabled slot with no address cannot work")
     expect(!sources[2].misconfigured, "a disabled one is not misconfigured, just off")
     expect(sources[1].summary, "No address", "which is what the row reports")
+
+    let offset = VideoSources.decode(live, cameras: answered)
+    expect(offset[0].enabled && !offset[0].configured,
+           "extra slot 0 takes its answer from camera slot 1: VideoSettings numbers the main "
+           + "videoSource fact as slot 0, so reading camera slot 0 here would report the wrong "
+           + "camera's state for every row")
+
+    let webcam = "[{\"name\":\"\",\"source\":\"FaceTime HD Camera\",\"url\":\"\"}]"
+    let attached = VideoSources.decode(webcam,
+                                       cameras: [camera(1, enabled: true, configured: true)]
+                                           .compactMap { $0 })
+    expect(!attached[0].misconfigured,
+           "a source that needs no address is not broken for having none; this head used to call "
+           + "every empty url misconfigured, so a webcam, a Herelink and a 3DR Solo were each "
+           + "shown as faulty and offered for repair")
+    expect(attached[0].summary, "FaceTime HD Camera",
+           "and the row names it rather than reporting a blank address")
+
+    let unanswered = VideoSources.decode(live)
+    expect(!unanswered[0].misconfigured && !unanswered[2].misconfigured,
+           "a slot the core has not answered for yet accuses nothing; an absent reply must not "
+           + "read as a fault, which is the direction that puts a repair button on a good camera")
 
     expect(VideoSources.decode("not json").isEmpty, "a corrupt setting yields no slots, not a crash")
     expect(VideoSources.decode("").isEmpty, "nor does an empty one")
@@ -2936,7 +2966,7 @@ func checkViewContract() {
           "sourceSize", "activeSource", "multipleSources", "anyConnecting", "configuredCount",
           "summary", "cameras"]),
         ("view.video", ["cameras"],
-         ["slot", "title", "status", "connecting", "recording", "configured"]),
+         ["slot", "title", "status", "connecting", "recording", "enabled", "configured"]),
         ("view.camera", [],
          ["present", "title", "model", "vendor", "mode", "modeKnown", "modeText", "isRecording",
           "isTakingPhoto", "stateText", "clockText", "storageStatus", "storageText", "shots",

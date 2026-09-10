@@ -43,6 +43,7 @@ struct VideoCamera: Identifiable, Equatable {
     let status: String
     let connecting: Bool
     let recording: Bool
+    let enabled: Bool
     let configured: Bool
 
     var id: Int { slot }
@@ -55,6 +56,7 @@ struct VideoCamera: Identifiable, Equatable {
         status = (json["status"] as? String) ?? ""
         connecting = (json["connecting"] as? NSNumber)?.boolValue ?? false
         recording = (json["recording"] as? NSNumber)?.boolValue ?? false
+        enabled = (json["enabled"] as? NSNumber)?.boolValue ?? false
         configured = (json["configured"] as? NSNumber)?.boolValue ?? false
     }
 }

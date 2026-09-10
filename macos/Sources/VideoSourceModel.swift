@@ -5,39 +5,40 @@ struct VideoSource: Identifiable, Equatable {
     var name: String
     var source: String
     var url: String
+    var enabled: Bool
+    var configured: Bool
 
     var id: Int { slot }
 
-    static let disabled = "Video Stream Disabled"
-
-    // REPORTED, NOT FIXED: VideoSettings declares videoDisabled with QT_TRANSLATE_NOOP, so this
-    // compares a stored source against English text. Under another language a disabled source
-    // reads as enabled, is then called misconfigured for having no address, and is offered for
-    // repair. The stable answer is VideoSettings::sourceConfigured, which the core can reach and
-    // this head cannot; asked for it rather than papering over it here.
-    var enabled: Bool { !source.isEmpty && source != VideoSource.disabled }
-
-    var misconfigured: Bool { enabled && url.isEmpty }
+    var misconfigured: Bool { enabled && !configured }
 
     var summary: String {
         guard enabled else { return "Off" }
-        if url.isEmpty { return "No address" }
-        return url
+        if !configured { return "No address" }
+        return url.isEmpty ? source : url
     }
 
     var title: String { name.isEmpty ? "Camera \(slot + 1)" : name }
 }
 
 enum VideoSources {
-    static func decode(_ json: String) -> [VideoSource] {
+    // VideoSettings numbers slot 0 as the main videoSource fact and the extra sources from 1, so
+    // this list of extras sits one behind view.video.cameras.
+    static let firstExtraSlot = 1
+
+    static func decode(_ json: String, cameras: [VideoCamera] = []) -> [VideoSource] {
         guard let data = json.data(using: .utf8),
               let listed = (try? JSONSerialization.jsonObject(with: data)) as? [[String: Any]]
         else { return [] }
+        let bySlot = Dictionary(cameras.map { ($0.slot, $0) }, uniquingKeysWith: { first, _ in first })
         return listed.enumerated().map { slot, entry in
-            VideoSource(slot: slot,
-                        name: (entry["name"] as? String) ?? "",
-                        source: (entry["source"] as? String) ?? "",
-                        url: (entry["url"] as? String) ?? "")
+            let camera = bySlot[slot + VideoSources.firstExtraSlot]
+            return VideoSource(slot: slot,
+                               name: (entry["name"] as? String) ?? "",
+                               source: (entry["source"] as? String) ?? "",
+                               url: (entry["url"] as? String) ?? "",
+                               enabled: camera?.enabled ?? true,
+                               configured: camera?.configured ?? true)
         }
     }
 
