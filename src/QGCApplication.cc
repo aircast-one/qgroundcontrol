@@ -539,9 +539,13 @@ void QGCApplication::showAppMessage(const QString &message, const QString &title
         // Unit tests can run without UI
         qCDebug(QGCApplicationLog) << "QGCApplication::showAppMessage unittest title:message" << dialogTitle << message;
     } else {
-        // UI isn't ready yet
-        _delayedAppMessages.append(QPair<QString, QString>(dialogTitle, message));
-        QTimer::singleShot(200, this, &QGCApplication::_showDelayedAppMessages);
+        // UI isn't ready yet. An embedded host has no QML root and never will, and the
+        // notice above has already delivered this message, so queueing here would grow a
+        // list nothing drains behind a 200ms timer that never stops re-arming.
+        if (!_embeddedHost) {
+            _delayedAppMessages.append(QPair<QString, QString>(dialogTitle, message));
+            QTimer::singleShot(200, this, &QGCApplication::_showDelayedAppMessages);
+        }
     }
 }
 
@@ -568,7 +572,7 @@ void QGCApplication::_showDelayedAppMessages()
             showAppMessage(appMsg.second, appMsg.first);
         }
         _delayedAppMessages.clear();
-    } else {
+    } else if (!_embeddedHost) {
         QTimer::singleShot(200, this, &QGCApplication::_showDelayedAppMessages);
     }
 }
