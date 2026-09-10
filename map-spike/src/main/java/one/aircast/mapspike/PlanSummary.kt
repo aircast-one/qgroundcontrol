@@ -11,7 +11,6 @@ fun planSummary(
     distanceMetres: Double,
     seconds: Double,
     selected: MapHit?,
-    takeoffFirst: Boolean = false,
 ): String {
     val counts = listOfNotNull(
         itemCount.takeIf { it > 0 }?.let {
@@ -25,9 +24,6 @@ fun planSummary(
     )
     if (counts.isEmpty()) {
         return "Empty plan · long press to add"
-    }
-    if (takeoffFirst) {
-        return (counts + "add a takeoff before anything else").joinToString(" · ")
     }
 
     return (counts + listOfNotNull(

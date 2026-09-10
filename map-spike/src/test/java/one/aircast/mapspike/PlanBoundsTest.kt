@@ -1,6 +1,7 @@
 package one.aircast.mapspike
 
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
@@ -144,5 +145,35 @@ class LongitudeWraparoundTest {
         assertEquals(179.0, normaliseLongitude(-181.0), 1e-9)
         assertEquals(180.0, normaliseLongitude(180.0), 1e-9)
         assertEquals(0.0, normaliseLongitude(720.0), 1e-9)
+    }
+}
+
+class TakeoffMissingTest {
+    private fun item(command: String, lat: Double = 41.0, lon: Double = 44.0) =
+        MissionItem(0, 1, lat, lon, command, false, 50.0)
+
+    @Test
+    fun `waypoints with no takeoff need one inserted first`() {
+        assertTrue(takeoffMissing(listOf(item("NAV_WAYPOINT"), item("NAV_WAYPOINT"))))
+    }
+
+    @Test
+    fun `a plan that already has a takeoff does not get another`() {
+        assertFalse(takeoffMissing(listOf(item("NAV_TAKEOFF"), item("NAV_WAYPOINT"))))
+    }
+
+    @Test
+    fun `a VTOL takeoff counts as a takeoff`() {
+        assertFalse(takeoffMissing(listOf(item("NAV_VTOL_TAKEOFF"), item("NAV_WAYPOINT"))))
+    }
+
+    @Test
+    fun `an empty plan needs nothing inserted before anything`() {
+        assertFalse(takeoffMissing(emptyList()))
+    }
+
+    @Test
+    fun `items with no coordinate do not by themselves require a takeoff`() {
+        assertFalse(takeoffMissing(listOf(item("NAV_RETURN_TO_LAUNCH", 0.0, 0.0))))
     }
 }

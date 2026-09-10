@@ -219,3 +219,7 @@ object PlanBridge {
     private fun invoke(path: String, args: String = "[]"): Boolean =
         runCatching { JSONObject(QGCBridge.invoke(path, args)).optBoolean("ok") }.getOrDefault(false)
 }
+
+internal fun takeoffMissing(items: List<MissionItem>): Boolean =
+    items.any { it.latitude != 0.0 || it.longitude != 0.0 } &&
+        items.none { it.command.contains("TAKEOFF", ignoreCase = true) }
