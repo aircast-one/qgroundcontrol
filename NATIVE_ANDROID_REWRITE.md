@@ -3834,7 +3834,29 @@ but the core's `firmware` is `"px4"`/`"apm"`/`"none"`, a discriminator, while th
 `firmwareSummary` builds a human version string. Same key name, unrelated meanings, no finding.
 `ready`/`headline`/`detail` in the same list were real. A sweep hit is a question, not a defect.
 
-### The links screen can add two of the three link types QGC offers
+### The links screen can now add all three link types
+
+**Built** (`b9645b6`), once the core added `links.createSerialConfiguration`. The section below is
+kept as it was written, because the reasoning that led to the wrong fix is more useful than the
+conclusion: I argued the bridge needed to vend handles, and the answer was that it needed nothing at
+all — only the object needed a path. Connecting reuses `createConnectedLink` with an `@path` exactly
+as UDP and TCP already do.
+
+The Serial chip is offered even when no port is present, showing "Nothing is plugged in. Connect a
+radio over USB and it will appear here." Hiding the chip cannot distinguish "this build has no
+serial" from "nothing is plugged in", and the second is both the common case and the one an operator
+can act on. Ports and their friendly names come from `links.serialPorts` and
+`links.serialPortStrings`, which `LinkManager` fills in one loop and are therefore index-paired; a
+blank or missing label falls back to the device path rather than rendering an empty row.
+
+Verified on the handset as far as the rig allows: the chip appears, the empty state explains itself,
+and Add and connect refuses rather than creating a link with no port. **Creating a real serial link
+needs a USB radio the rig does not have, so that half is unverified** — it belongs with the other
+gates that need hardware.
+
+### How that gap was originally described
+
+
 
 `LinkManager::linkTypeStrings()` returns Serial, UDP and TCP, and Serial is not compiled out here —
 `build-android/CMakeCache.txt` has `QGC_NO_SERIAL_LINK:BOOL=OFF`. `AddLinkDialog` offers UDP and TCP
