@@ -11,7 +11,9 @@
 #   ui.sh swipe X1 Y1 X2 Y2 [MS]
 #   ui.sh text "..."       type, only if the app is in front
 #   ui.sh key KEYCODE
-#   ui.sh shot FILE        screencap, and fail a capture that is one flat colour
+#   ui.sh shot FILE        screencap, only if the app is in front, and fail a capture
+#                          that is one flat colour; ALLOW_ANY_SCREEN=1 to capture
+#                          whatever is showing
 export PATH="$PATH:$HOME/Library/Android/sdk/platform-tools"
 APP="${APP:-one.aircast.android}"
 ACTIVITY="${ACTIVITY:-.MainActivity}"
@@ -57,6 +59,11 @@ swipe)   require_front; adb shell input swipe "$2" "$3" "$4" "$5" "${6:-400}" ;;
 text)    require_front; adb shell input text "$2" ;;
 key)     require_front; adb shell input keyevent "$2" ;;
 shot)
+    if [ "${ALLOW_ANY_SCREEN:-0}" != "1" ] && ! in_front; then
+        echo "REFUSED: $APP is not in front - a capture would record whatever is." >&2
+        echo "         Set ALLOW_ANY_SCREEN=1 only if that is what you want." >&2
+        exit 1
+    fi
     adb exec-out screencap -p > "$2"
     python3 "$(dirname "$0")/awake.py" "$2" || exit 1
     ;;
