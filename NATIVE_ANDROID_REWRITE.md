@@ -3127,6 +3127,54 @@ read "Calibrate the accelerometer first" and cannot be tapped, and Gyro and Pres
 unaffected. The sim served only `INS_ACCOFFS_X`, and the rule needs all three axes at zero, so
 the blocked branch had no way to appear before this.
 
+### The flight modes page was unreadable, and it was the rig again
+
+Third time this pattern has appeared, so it is worth naming as a pattern rather than an incident.
+The Flight Modes setup page showed `FLTMODE_CH` labelled with its raw parameter name and valued
+`5.000`, and `INITIAL_MODE` the same, while the mode slots beside them read "Flight Mode 1 · Acro".
+Two of seven rows unreadable on a page whose entire job is telling an operator which switch
+position does what.
+
+Not a head defect. APM parameter metadata is not bundled the way PX4's is — it comes from
+`ArduPilot-Parameter-Repository`, one directory per firmware version. `Copter-3.5/apm.pdef.json`
+has no entry for `FLTMODE_CH` or `INITIAL_MODE`; `Copter-4.5` and `Copter-4.6` have both. The
+measurement that settled it: **QGC asks for message 148, `AUTOPILOT_VERSION`, and the sim had never
+answered.** With no version, the oldest metadata wins.
+
+The sim now answers with 4.5.7, and the same page reads "Flightmode channel · Channel5" as a
+dropdown and "Initial flight mode · Stabilize". `FIRMWARE=x.y.z` overrides it.
+
+**What the fix revealed is a real finding underneath.** With current metadata, `SUPER_SIMPLE`
+stops being an enum and becomes a bitmask — it is per-mode bits in modern firmware — and the head
+renders bitmask parameters as a three-decimal float. "Simple mode bitmask · 0.000" cannot tell an
+operator which modes have simple mode on. That is head work, recorded rather than fixed here.
+
+Two smaller ones from the same hour. The first version message crashed the sim: `uid2` is
+eighteen bytes and I passed eight. **The log line said "AUTOPILOT_VERSION sent" because it printed
+before the send** — so the rig reported success for a call that raised. Log after the action.
+
+### The stale notice now comes from the core, and the path is confirmed for all three heads
+
+`view.flyState` landed with `contactLost`, a `state` token, a `stateText` sentence and
+`staleNotice`. Both heads had hand-written that sentence and the macOS session had copied this
+one's wording to avoid diverging, which is exactly the duplication the core exists to remove.
+Deleted here: `vehicleSubtitle`'s own precedence rule and the head's copy of the notice, which used
+an ASCII hyphen where the core uses an em dash.
+
+**The measurement the other two sessions could not make.** Neither has a vehicle, so neither could
+prove the bridge traverses `vehicle.vehicleLinkManager.communicationLost` — a wrong path decodes to
+`false`, which renders nothing and looks like a working panel. With the sim killed, `contactLost`
+was already true at the first capture ten seconds later: the header read "Communication lost", the
+telemetry row dimmed, and the notice rendered with the core's em dash. Restarting the sim cleared
+all three within twenty seconds. The path is right.
+
+**One thing did not survive the migration untouched.** `stateText` is a fixed line per state —
+"Disarmed" — with `mode` served as a separate field, matching what the macOS header showed. This
+header showed "Stabilize · Disarmed", so printing `stateText` alone would have silently dropped the
+flight mode from the Fly tab. The head composes mode and state again, and drops the mode when
+contact is lost because it is no longer known to be current. Presentation is head knowledge, on the
+same argument that took `completes` out of the core.
+
 ## Phase 6 — Shell · 2 weeks
 
 Cheaper than macOS, because Qt is already off the main thread.
