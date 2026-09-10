@@ -11,6 +11,9 @@
 #   ui.sh swipe X1 Y1 X2 Y2 [MS]
 #   ui.sh text "..."       type, only if the app is in front
 #   ui.sh key KEYCODE
+#   ui.sh find k=v [k=v...] [N]   print the centre of the Nth matching node, or fail
+#                          keys: text, id, class, below, above, and any node attribute
+#   ui.sh pick k=v [k=v...]       tap that node, allowed in the file picker the app opened
 #   ui.sh shot FILE        screencap, only if the app is in front, and fail a capture
 #                          that is one flat colour; ALLOW_ANY_SCREEN=1 to capture
 #                          whatever is showing
@@ -24,9 +27,24 @@ APP="${APP:-one.aircast.android}"
 ACTIVITY="${ACTIVITY:-.MainActivity}"
 set -u
 
+PICKER_PACKAGES="com.google.android.documentsui com.android.documentsui"
+
 in_front() {
     adb shell dumpsys activity activities 2>/dev/null |
         grep -q "topResumedActivity.*$APP/"
+}
+
+picker_in_front() {
+    top=$(adb shell dumpsys activity activities 2>/dev/null | grep -m1 'topResumedActivity')
+    for pkg in $PICKER_PACKAGES; do
+        case "$top" in *"$pkg"*) return 0 ;; esac
+    done
+    return 1
+}
+
+hierarchy() {
+    adb shell uiautomator dump /sdcard/ui-node.xml >/dev/null 2>&1
+    adb shell cat /sdcard/ui-node.xml 2>/dev/null
 }
 
 require_front() {
@@ -60,6 +78,26 @@ front)
     exit 1
     ;;
 tap)     require_front; refuse_flight_control "$2" "$3"; adb shell input tap "$2" "$3" ;;
+find)
+    shift
+    hierarchy | python3 "$(dirname "$0")/node.py" "$@" || {
+        echo "no node matching: $*" >&2
+        exit 1
+    }
+    ;;
+pick)
+    shift
+    if ! in_front && ! picker_in_front; then
+        echo "REFUSED: neither $APP nor a file picker it opened is in front" >&2
+        exit 1
+    fi
+    spot=$(hierarchy | python3 "$(dirname "$0")/node.py" "$@") || {
+        echo "no node matching: $*" >&2
+        exit 1
+    }
+    in_front && refuse_flight_control ${spot}
+    adb shell input tap ${spot}
+    ;;
 swipe)   require_front; adb shell input swipe "$2" "$3" "$4" "$5" "${6:-400}" ;;
 text)    require_front; adb shell input text "$2" ;;
 key)     require_front; adb shell input keyevent "$2" ;;
