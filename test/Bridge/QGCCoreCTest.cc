@@ -1312,6 +1312,7 @@ void QGCCoreCTest::_surveyTransectsMatchTheRecordedOracle()
         const auto points = [&]() { return take(qgc_bridge_get((item + QStringLiteral(".visualTransectPoints")).toUtf8().constData())).value(QStringLiteral("value")).toArray(); };
         QTRY_VERIFY_WITH_TIMEOUT(points().count() > 0, 5000);
         recorded.insert(QString::fromUtf8(survey.name), QJsonObject {
+            { QStringLiteral("kind"), QStringLiteral("survey") },
             { QStringLiteral("polygon"), survey.polygon },
             { QStringLiteral("gridAngle"), survey.gridAngle },
             { QStringLiteral("gridSpacing"), survey.footprintSide },
@@ -1364,6 +1365,7 @@ void QGCCoreCTest::_surveyTransectsMatchTheRecordedOracle()
             { QStringLiteral("entryPoint"), corridor.entryRotations },
         });
         recorded[QString::fromUtf8(corridor.name)] = QJsonObject {
+            { QStringLiteral("kind"), QStringLiteral("corridor") },
             { QStringLiteral("polyline"), corridor.polyline },
             { QStringLiteral("corridorWidth"), corridor.width },
             { QStringLiteral("gridSpacing"), corridor.spacing },
@@ -1410,6 +1412,7 @@ void QGCCoreCTest::_surveyTransectsMatchTheRecordedOracle()
             return take(qgc_bridge_get((calc + QStringLiteral(".") + name + QStringLiteral(".rawValue")).toUtf8().constData())).value(QStringLiteral("value")).toDouble();
         };
         recorded[QString::fromUtf8(camera.name)] = QJsonObject {
+            { QStringLiteral("kind"), QStringLiteral("camera") },
             { QStringLiteral("focalLength"), camera.focalLength },
             { QStringLiteral("sensorWidth"), camera.sensorWidth },
             { QStringLiteral("sensorHeight"), camera.sensorHeight },
@@ -1422,6 +1425,38 @@ void QGCCoreCTest::_surveyTransectsMatchTheRecordedOracle()
             { QStringLiteral("imageDensity"), QString::number(readFact(QStringLiteral("imageDensity")), 'f', 7) },
             { QStringLiteral("adjustedFootprintSide"), QString::number(readFact(QStringLiteral("adjustedFootprintSide")), 'f', 7) },
             { QStringLiteral("adjustedFootprintFrontal"), QString::number(readFact(QStringLiteral("adjustedFootprintFrontal")), 'f', 7) },
+        };
+    }
+    restore();
+
+    const QList<QPair<QString, QPair<QJsonArray, double>>> offsets = {
+        { QStringLiteral("offset-square-plus"),   { polygonSquare(),   40.0 } },
+        { QStringLiteral("offset-square-minus"),  { polygonSquare(),  -40.0 } },
+        { QStringLiteral("offset-triangle-plus"), { polygonTriangle(), 60.0 } },
+        { QStringLiteral("offset-concave-plus"),  { polygonConcave(),  25.0 } },
+        { QStringLiteral("offset-concave-minus"), { polygonConcave(), -25.0 } },
+    };
+
+    for (const auto &offset : offsets) {
+        restore();
+        (void) take(qgc_bridge_invoke("plan.missionController.insertComplexMissionItem",
+                                      compact(QJsonArray { QStringLiteral("Survey"), coordinateJson(47.3975, 8.5460), -1 }).constData()));
+        QTRY_VERIFY_WITH_TIMEOUT(take(qgc_bridge_get(item.toUtf8().constData())).value(QStringLiteral("kind")).toString() == QStringLiteral("object"), 5000);
+
+        const QString area = item + QStringLiteral(".surveyAreaPolygon");
+        (void) take(qgc_bridge_invoke((area + QStringLiteral(".clear")).toUtf8().constData(), "[]"));
+        for (const QJsonValue &vertex : offset.second.first) {
+            (void) take(qgc_bridge_invoke((area + QStringLiteral(".appendVertex")).toUtf8().constData(), compact(QJsonArray { vertex }).constData()));
+        }
+        (void) take(qgc_bridge_invoke((area + QStringLiteral(".offset")).toUtf8().constData(), compact(QJsonArray { offset.second.second }).constData()));
+
+        const QJsonArray moved = take(qgc_bridge_get((area + QStringLiteral(".path")).toUtf8().constData())).value(QStringLiteral("value")).toArray();
+        QCOMPARE(moved.count(), offset.second.first.count());
+        recorded[offset.first] = QJsonObject {
+            { QStringLiteral("kind"), QStringLiteral("offset") },
+            { QStringLiteral("polygon"), offset.second.first },
+            { QStringLiteral("offset"), offset.second.second },
+            { QStringLiteral("moved"), roundedCoordinates(moved) },
         };
     }
     restore();
@@ -1447,6 +1482,9 @@ void QGCCoreCTest::_surveyTransectsMatchTheRecordedOracle()
     }
     for (const CameraCase &camera : cameras) {
         names.append(QString::fromUtf8(camera.name));
+    }
+    for (const auto &offset : offsets) {
+        names.append(offset.first);
     }
     for (const QString &key : names) {
         QVERIFY2(expected.contains(key), qPrintable(key));

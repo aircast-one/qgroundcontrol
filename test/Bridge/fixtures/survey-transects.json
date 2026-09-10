@@ -8,6 +8,7 @@
         "imageDensity": "3.3659731",
         "imageHeight": 3648,
         "imageWidth": 5472,
+        "kind": "camera",
         "landscape": true,
         "sensorHeight": 8.8,
         "sensorWidth": 13.2,
@@ -22,6 +23,7 @@
         "imageDensity": "1.4024888",
         "imageHeight": 3648,
         "imageWidth": 5472,
+        "kind": "camera",
         "landscape": true,
         "sensorHeight": 8.8,
         "sensorWidth": 13.2,
@@ -36,6 +38,7 @@
         "imageDensity": "2.0000000",
         "imageHeight": 4000,
         "imageWidth": 6000,
+        "kind": "camera",
         "landscape": true,
         "sensorHeight": 24,
         "sensorWidth": 36,
@@ -50,6 +53,7 @@
         "imageDensity": "1.4024888",
         "imageHeight": 3648,
         "imageWidth": 5472,
+        "kind": "camera",
         "landscape": true,
         "sensorHeight": 8.8,
         "sensorWidth": 13.2,
@@ -64,6 +68,7 @@
         "imageDensity": "1.4024888",
         "imageHeight": 3648,
         "imageWidth": 5472,
+        "kind": "camera",
         "landscape": false,
         "sensorHeight": 8.8,
         "sensorWidth": 13.2,
@@ -75,6 +80,7 @@
         "frontalSpacing": 40,
         "gridAngle": 0,
         "gridSpacing": 60,
+        "kind": "survey",
         "polygon": [
             {
                 "altitude": 0,
@@ -117,6 +123,7 @@
         "frontalSpacing": 40,
         "gridAngle": 0,
         "gridSpacing": 60,
+        "kind": "survey",
         "polygon": [
             {
                 "altitude": 0,
@@ -159,6 +166,7 @@
         "frontalSpacing": 40,
         "gridAngle": 60,
         "gridSpacing": 60,
+        "kind": "survey",
         "polygon": [
             {
                 "altitude": 0,
@@ -201,6 +209,7 @@
         "frontalSpacing": 40,
         "gridAngle": 60,
         "gridSpacing": 60,
+        "kind": "survey",
         "polygon": [
             {
                 "altitude": 0,
@@ -243,6 +252,7 @@
         "frontalSpacing": 40,
         "gridAngle": 0,
         "gridSpacing": 60,
+        "kind": "survey",
         "polygon": [
             {
                 "altitude": 0,
@@ -283,6 +293,7 @@
         "corridorWidth": 120,
         "entryPoint": 0,
         "gridSpacing": 60,
+        "kind": "corridor",
         "polyline": [
             {
                 "altitude": 0,
@@ -307,6 +318,7 @@
         "corridorWidth": 120,
         "entryPoint": 1,
         "gridSpacing": 60,
+        "kind": "corridor",
         "polyline": [
             {
                 "altitude": 0,
@@ -331,6 +343,7 @@
         "corridorWidth": 120,
         "entryPoint": 2,
         "gridSpacing": 60,
+        "kind": "corridor",
         "polyline": [
             {
                 "altitude": 0,
@@ -355,6 +368,7 @@
         "corridorWidth": 120,
         "entryPoint": 3,
         "gridSpacing": 60,
+        "kind": "corridor",
         "polyline": [
             {
                 "altitude": 0,
@@ -379,6 +393,7 @@
         "corridorWidth": 40,
         "entryPoint": 0,
         "gridSpacing": 60,
+        "kind": "corridor",
         "polyline": [
             {
                 "altitude": 0,
@@ -403,6 +418,7 @@
         "corridorWidth": 120,
         "entryPoint": 0,
         "gridSpacing": 60,
+        "kind": "corridor",
         "polyline": [
             {
                 "altitude": 0,
@@ -422,6 +438,7 @@
         "corridorWidth": 120,
         "entryPoint": 0,
         "gridSpacing": 60,
+        "kind": "corridor",
         "polyline": [
             {
                 "altitude": 0,
@@ -441,6 +458,7 @@
         "corridorWidth": 300,
         "entryPoint": 0,
         "gridSpacing": 60,
+        "kind": "corridor",
         "polyline": [
             {
                 "altitude": 0,
@@ -456,12 +474,163 @@
         "transects": "47.3960000,8.5424075 47.3990000,8.5424075 47.3990000,8.5432037 47.3960000,8.5432038 47.3960000,8.5440000 47.3990000,8.5440000 47.3990000,8.5447963 47.3960000,8.5447962 47.3960000,8.5455925 47.3990000,8.5455925",
         "turnAround": 0
     },
+    "offset-concave-minus": {
+        "kind": "offset",
+        "moved": "47.3957754,8.5436682 47.3957754,8.5503318 47.3982866,8.5503318 47.3977866,8.5473318 47.3997246,8.5473318 47.3997246,8.5436682",
+        "offset": -25,
+        "polygon": [
+            {
+                "altitude": 0,
+                "latitude": 47.396,
+                "longitude": 8.544
+            },
+            {
+                "altitude": 0,
+                "latitude": 47.396,
+                "longitude": 8.55
+            },
+            {
+                "altitude": 0,
+                "latitude": 47.398,
+                "longitude": 8.55
+            },
+            {
+                "altitude": 0,
+                "latitude": 47.3975,
+                "longitude": 8.547
+            },
+            {
+                "altitude": 0,
+                "latitude": 47.3995,
+                "longitude": 8.547
+            },
+            {
+                "altitude": 0,
+                "latitude": 47.3995,
+                "longitude": 8.544
+            }
+        ]
+    },
+    "offset-concave-plus": {
+        "kind": "offset",
+        "moved": "47.3962246,8.5443318 47.3962246,8.5496682 47.3977134,8.5496682 47.3972134,8.5466682 47.3992754,8.5466682 47.3992754,8.5443318",
+        "offset": 25,
+        "polygon": [
+            {
+                "altitude": 0,
+                "latitude": 47.396,
+                "longitude": 8.544
+            },
+            {
+                "altitude": 0,
+                "latitude": 47.396,
+                "longitude": 8.55
+            },
+            {
+                "altitude": 0,
+                "latitude": 47.398,
+                "longitude": 8.55
+            },
+            {
+                "altitude": 0,
+                "latitude": 47.3975,
+                "longitude": 8.547
+            },
+            {
+                "altitude": 0,
+                "latitude": 47.3995,
+                "longitude": 8.547
+            },
+            {
+                "altitude": 0,
+                "latitude": 47.3995,
+                "longitude": 8.544
+            }
+        ]
+    },
+    "offset-square-minus": {
+        "kind": "offset",
+        "moved": "47.3956407,8.5434692 47.3956407,8.5485308 47.3993593,8.5485309 47.3993593,8.5434691",
+        "offset": -40,
+        "polygon": [
+            {
+                "altitude": 0,
+                "latitude": 47.396,
+                "longitude": 8.544
+            },
+            {
+                "altitude": 0,
+                "latitude": 47.396,
+                "longitude": 8.548
+            },
+            {
+                "altitude": 0,
+                "latitude": 47.399,
+                "longitude": 8.548
+            },
+            {
+                "altitude": 0,
+                "latitude": 47.399,
+                "longitude": 8.544
+            }
+        ]
+    },
+    "offset-square-plus": {
+        "kind": "offset",
+        "moved": "47.3963593,8.5445308 47.3963593,8.5474692 47.3986407,8.5474692 47.3986407,8.5445308",
+        "offset": 40,
+        "polygon": [
+            {
+                "altitude": 0,
+                "latitude": 47.396,
+                "longitude": 8.544
+            },
+            {
+                "altitude": 0,
+                "latitude": 47.396,
+                "longitude": 8.548
+            },
+            {
+                "altitude": 0,
+                "latitude": 47.399,
+                "longitude": 8.548
+            },
+            {
+                "altitude": 0,
+                "latitude": 47.399,
+                "longitude": 8.544
+            }
+        ]
+    },
+    "offset-triangle-plus": {
+        "kind": "offset",
+        "moved": "47.3965390,8.5453825 47.3965390,8.5486175 47.3984260,8.5470000",
+        "offset": 60,
+        "polygon": [
+            {
+                "altitude": 0,
+                "latitude": 47.396,
+                "longitude": 8.544
+            },
+            {
+                "altitude": 0,
+                "latitude": 47.396,
+                "longitude": 8.55
+            },
+            {
+                "altitude": 0,
+                "latitude": 47.3995,
+                "longitude": 8.547
+            }
+        ]
+    },
     "square-0deg": {
         "alternate": false,
         "entryPoint": 0,
         "frontalSpacing": 40,
         "gridAngle": 0,
         "gridSpacing": 60,
+        "kind": "survey",
         "polygon": [
             {
                 "altitude": 0,
@@ -494,6 +663,7 @@
         "frontalSpacing": 40,
         "gridAngle": 30,
         "gridSpacing": 60,
+        "kind": "survey",
         "polygon": [
             {
                 "altitude": 0,
@@ -526,6 +696,7 @@
         "frontalSpacing": 40,
         "gridAngle": 90,
         "gridSpacing": 60,
+        "kind": "survey",
         "polygon": [
             {
                 "altitude": 0,
@@ -558,6 +729,7 @@
         "frontalSpacing": 40,
         "gridAngle": 0,
         "gridSpacing": 60,
+        "kind": "survey",
         "polygon": [
             {
                 "altitude": 0,
@@ -590,6 +762,7 @@
         "frontalSpacing": 40,
         "gridAngle": 0,
         "gridSpacing": 60,
+        "kind": "survey",
         "polygon": [
             {
                 "altitude": 0,
@@ -622,6 +795,7 @@
         "frontalSpacing": 40,
         "gridAngle": 0,
         "gridSpacing": 60,
+        "kind": "survey",
         "polygon": [
             {
                 "altitude": 0,
@@ -654,6 +828,7 @@
         "frontalSpacing": 40,
         "gridAngle": 0,
         "gridSpacing": 60,
+        "kind": "survey",
         "polygon": [
             {
                 "altitude": 0,
@@ -686,6 +861,7 @@
         "frontalSpacing": 40,
         "gridAngle": -45,
         "gridSpacing": 60,
+        "kind": "survey",
         "polygon": [
             {
                 "altitude": 0,
@@ -718,6 +894,7 @@
         "frontalSpacing": 20,
         "gridAngle": 0,
         "gridSpacing": 25,
+        "kind": "survey",
         "polygon": [
             {
                 "altitude": 0,
@@ -750,6 +927,7 @@
         "frontalSpacing": 40,
         "gridAngle": 0,
         "gridSpacing": 60,
+        "kind": "survey",
         "polygon": [
             {
                 "altitude": 0,
@@ -782,6 +960,7 @@
         "frontalSpacing": 40,
         "gridAngle": 0,
         "gridSpacing": 60,
+        "kind": "survey",
         "polygon": [
             {
                 "altitude": 0,
@@ -809,6 +988,7 @@
         "frontalSpacing": 40,
         "gridAngle": 45,
         "gridSpacing": 60,
+        "kind": "survey",
         "polygon": [
             {
                 "altitude": 0,

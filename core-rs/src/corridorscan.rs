@@ -86,7 +86,7 @@ mod tests {
         let cases = cases.as_object().expect("the oracle is an object of cases");
         let checked: Vec<(String, bool, String)> = cases
             .iter()
-            .filter(|(name, _)| name.starts_with("corridor"))
+            .filter(|(_, case)| case["kind"] == "corridor")
             .map(|(name, case)| {
                 let polyline: Vec<Point> = case["polyline"].as_array().unwrap().iter().map(|v| (v["latitude"].as_f64().unwrap(), v["longitude"].as_f64().unwrap())).collect();
                 let params = Params {

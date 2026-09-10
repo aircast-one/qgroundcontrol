@@ -38,6 +38,7 @@ pub mod links;
 pub mod linkconfig;
 pub mod linkhost;
 pub mod logs;
+pub mod mappolygon;
 pub mod mapscale;
 pub mod mavcmd;
 pub mod mavout;

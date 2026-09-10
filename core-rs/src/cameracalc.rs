@@ -70,7 +70,7 @@ mod tests {
         let cases = cases.as_object().expect("the oracle is an object of cases");
         let checked: Vec<(String, bool, String)> = cases
             .iter()
-            .filter(|(name, _)| name.starts_with("camera"))
+            .filter(|(_, case)| case["kind"] == "camera")
             .map(|(name, case)| {
                 let camera = Camera {
                     focal_length: case["focalLength"].as_f64().unwrap(),

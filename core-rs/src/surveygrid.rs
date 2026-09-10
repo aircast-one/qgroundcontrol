@@ -348,7 +348,7 @@ mod tests {
         assert!(cases.len() >= 17, "the oracle should carry every recorded case");
         let checked: Vec<(String, bool, String)> = cases
             .iter()
-            .filter(|(_, case)| case.get("polygon").is_some())
+            .filter(|(_, case)| case["kind"] == "survey")
             .map(|(name, case)| {
                 let polygon: Vec<Point> = case["polygon"].as_array().unwrap().iter().map(|v| (v["latitude"].as_f64().unwrap(), v["longitude"].as_f64().unwrap())).collect();
                 let params = Params {
