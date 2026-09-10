@@ -2595,6 +2595,27 @@ now what it should always have been: a sleeping screen is one flat colour, so th
 whether the luminance range spans more than 32. The screen that failed passes at 0–235, and a
 genuinely blank frame fails at 0–0.
 
+### What the operator sees when the link dies
+
+Flown into guided flight on the sim, then the sim killed. About fifteen seconds later the
+header changes from "Guided · Armed" to "Communication lost" in the error colour. That part
+works.
+
+**The telemetry did not change at all.** It kept reading 25.0 m, 8.1 m/s, 84 deg — the last
+frame that arrived — with nothing to say those numbers were minutes old. That is the oldest
+hazard in a ground station: an instrument that freezes looks exactly like an instrument
+reporting a steady value. The row is now dimmed and carries a line above it, "No contact -
+these are the last values the vehicle sent." The numbers stay, because the last known altitude
+is worth having; what changes is that they no longer claim to be current.
+
+**The guided buttons stay enabled, and that is left alone deliberately.** Land, Return, Speed
+and Altitude remain live with the link down, because the core's offers are computed from the
+last known state and do not consider `communicationLost`. Before changing that I checked
+QGroundControl: `_guidedActionsEnabled` is `_activeVehicle` — optionally gated on RC RSSI, never
+on link state — so this head matches upstream exactly. Blocking them would be a product
+decision, not a bug fix, and there is a real argument on the other side: during a dropout an
+operator may want to keep pressing Return in the hope one command gets through. Raised with the
+core session as a question rather than settled here.
 ## Phase 6 — Shell · 2 weeks
 
 Cheaper than macOS, because Qt is already off the main thread.
