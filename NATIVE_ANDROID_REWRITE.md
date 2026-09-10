@@ -3763,6 +3763,23 @@ not a defect — the picker offers `mission.plan` and only a deliberate deletion
 
 Both test files were removed from the handset afterwards.
 
+**And the other two flows are verified too, so the whole `File` menu is now covered.**
+
+`Export KML…` offers `mission.kml`, writes 1908 bytes of well-formed KML — XML declaration, the
+2.2 namespace, a `Document` with a name and styles — and correctly leaves the plan's own document
+name alone, so exporting does not silently rename what a later `Save` would overwrite.
+
+`Import boundary…` reads the file, then asks **"Import as which pattern?"** with Survey, Corridor
+Scan and Structure Scan. Choosing one against a *mission* KML — a path, not an area — reports
+**"mission.kml holds no area for a Survey."**, naming both the file and the pattern the operator
+asked for, and removes the empty item it had inserted to find out.
+
+**That last one was briefly written down here as a silent failure, and it was not.** The notice is
+`NOTICE_MILLIS = 4000` and the screen was read seven seconds after the tap, so a message that had
+already cleared looked exactly like no message at all. Sample within about a second of the action
+when the question is whether anything was said. The same mistake had already produced two other
+false findings tonight, on the mission-item refusal and on the preflight tap.
+
 ### A flight action that goes grey and says nothing
 
 `view.guidedActions` gives every action an `offer` of `ready`, `blocked` or `hidden` and, when
