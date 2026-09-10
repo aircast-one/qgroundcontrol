@@ -2,6 +2,7 @@ package one.aircast.android.ui
 
 import org.json.JSONObject
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
@@ -148,5 +149,51 @@ class SerialLinkFormTest {
             "Nothing is plugged in. Connect a radio over USB and it will appear here.",
             serialFormError("", DEFAULT_BAUD, emptyList(), "", anyPorts = false),
         )
+    }
+}
+
+class LinkEditRulesTest {
+    private fun row(connected: Boolean = false, editing: String = "portOnly") = LinkRow(
+        index = 0, name = "UDP 14550", statusLine = "", connected = connected,
+        heard = false, lastError = "", editing = editing,
+    )
+
+    @Test
+    fun `a connected link is not edited underneath itself`() {
+        assertFalse(linkIsEditable(row(connected = true)))
+    }
+
+    @Test
+    fun `a disconnected udp link is editable`() {
+        assertTrue(linkIsEditable(row()))
+    }
+
+    @Test
+    fun `a kind the core has no form for is not editable`() {
+        assertFalse(linkIsEditable(row(editing = "none")))
+        assertFalse(linkIsEditable(row(editing = "logFile")))
+    }
+
+    @Test
+    fun `udp writes its own port property and not tcp's`() {
+        val writes = editWrites("portOnly", "n", "", 14551, "", 0)
+        assertEquals(listOf("name" to "n", "localPort" to 14551), writes)
+    }
+
+    @Test
+    fun `tcp writes host and port`() {
+        val writes = editWrites("hostAndPort", "n", "1.2.3.4", 5760, "", 0)
+        assertEquals(listOf<Pair<String, Any>>("name" to "n", "host" to "1.2.3.4", "port" to 5760), writes)
+    }
+
+    @Test
+    fun `serial writes the port name and baud`() {
+        val writes = editWrites("serial", "n", "", 0, "/dev/ttyUSB0", 57600)
+        assertEquals(listOf<Pair<String, Any>>("name" to "n", "portName" to "/dev/ttyUSB0", "baud" to 57600), writes)
+    }
+
+    @Test
+    fun `an unknown kind still renames and writes nothing else`() {
+        assertEquals(listOf<Pair<String, Any>>("name" to "n"), editWrites("none", "n", "h", 1, "p", 2))
     }
 }

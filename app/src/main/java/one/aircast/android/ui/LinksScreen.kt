@@ -62,6 +62,11 @@ data class LinkRow(
     val connected: Boolean,
     val heard: Boolean,
     val lastError: String,
+    val editing: String = "",
+    val host: String = "",
+    val port: Int = 0,
+    val portName: String = "",
+    val baud: Int = 0,
 )
 
 internal fun linkRows(view: JSONObject?): List<LinkRow> {
@@ -75,9 +80,31 @@ internal fun linkRows(view: JSONObject?): List<LinkRow> {
                 connected = link.optBoolean("connected"),
                 heard = link.optBoolean("heardVehicle"),
                 lastError = link.optString("lastError"),
+                editing = link.optString("editing"),
+                host = link.optString("host"),
+                port = link.optInt("port"),
+                portName = link.optString("portName"),
+                baud = link.optInt("baud"),
             )
         }
     }
+}
+
+internal fun linkIsEditable(row: LinkRow): Boolean =
+    !row.connected && row.editing in setOf("hostAndPort", "portOnly", "serial")
+
+internal fun editWrites(
+    editing: String,
+    name: String,
+    host: String,
+    port: Int,
+    portName: String,
+    baud: Int,
+): List<Pair<String, Any>> = listOf<Pair<String, Any>>("name" to name) + when (editing) {
+    "hostAndPort" -> listOf("host" to host, "port" to port)
+    "portOnly" -> listOf("localPort" to port)
+    "serial" -> listOf("portName" to portName, "baud" to baud)
+    else -> emptyList()
 }
 
 internal fun autoLinkName(type: String, host: String, port: String): String =
@@ -129,6 +156,7 @@ private fun LinkRowItem(
     onConnect: () -> Unit,
     onDisconnect: () -> Unit,
     onRemove: () -> Unit,
+    onEdit: () -> Unit,
 ) {
     var menuOpen by remember { mutableStateOf(false) }
 
@@ -177,6 +205,14 @@ private fun LinkRowItem(
             }
             DropdownMenu(expanded = menuOpen, onDismissRequest = { menuOpen = false }) {
                 DropdownMenuItem(
+                    text = { Text("Edit link") },
+                    enabled = linkIsEditable(row),
+                    onClick = {
+                        menuOpen = false
+                        onEdit()
+                    },
+                )
+                DropdownMenuItem(
                     text = { Text("Remove link") },
                     onClick = {
                         menuOpen = false
@@ -186,6 +222,94 @@ private fun LinkRowItem(
             }
         }
     }
+}
+
+@Composable
+private fun EditLinkDialog(row: LinkRow, onDismiss: () -> Unit, onSaved: () -> Unit) {
+    var name by remember { mutableStateOf(row.name) }
+    var host by remember { mutableStateOf(row.host) }
+    var port by remember { mutableStateOf(row.port.toString()) }
+    var portName by remember { mutableStateOf(row.portName) }
+    var baud by remember { mutableIntStateOf(if (row.baud > 0) row.baud else DEFAULT_BAUD) }
+    var baudsOpen by remember { mutableStateOf(false) }
+    var error by remember { mutableStateOf<String?>(null) }
+    val scope = rememberCoroutineScope()
+    val linksJson by qgcPath(LINKS_VIEW)
+    val bauds = remember(linksJson) { serialBauds(linksJson).ifEmpty { listOf(DEFAULT_BAUD) } }
+
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("Edit ${row.name}") },
+        text = {
+            Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                OutlinedTextField(
+                    value = name,
+                    onValueChange = { name = it },
+                    label = { Text("Name") },
+                    singleLine = true,
+                )
+                if (row.editing == "hostAndPort") {
+                    OutlinedTextField(
+                        value = host,
+                        onValueChange = { host = it },
+                        label = { Text("Address") },
+                        singleLine = true,
+                    )
+                }
+                if (row.editing == "serial") {
+                    Box {
+                        OutlinedButton(onClick = { baudsOpen = true }) { Text("$baud baud") }
+                        DropdownMenu(expanded = baudsOpen, onDismissRequest = { baudsOpen = false }) {
+                            bauds.forEach { rate ->
+                                DropdownMenuItem(
+                                    text = { Text("$rate") },
+                                    onClick = { baud = rate; baudsOpen = false },
+                                )
+                            }
+                        }
+                    }
+                } else {
+                    OutlinedTextField(
+                        value = port,
+                        onValueChange = { port = it },
+                        label = { Text("Port") },
+                        singleLine = true,
+                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                    )
+                }
+                error?.let {
+                    Text(it, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.error)
+                }
+            }
+        },
+        confirmButton = {
+            Button(
+                onClick = {
+                    val parsed = port.toIntOrNull() ?: 0
+                    val invalid = when {
+                        name.isBlank() -> "A link needs a name."
+                        row.editing != "serial" && parsed !in 1..65535 ->
+                            "Port must be a number between 1 and 65535."
+                        else -> null
+                    }
+                    error = invalid
+                    if (invalid == null) {
+                        scope.launch {
+                            withContext(Dispatchers.Default) {
+                                editWrites(row.editing, name, host, parsed, portName, baud)
+                                    .forEach { (field, value) ->
+                                        Qgc.set("$LINKS_PATH.${row.index}.$field", value)
+                                    }
+                                Qgc.invoke("links.commitLinkConfigurations")
+                            }
+                            onSaved()
+                        }
+                    }
+                },
+            ) { Text("Save") }
+        },
+        dismissButton = { TextButton(onClick = onDismiss) { Text("Cancel") } },
+    )
 }
 
 @Composable
@@ -382,6 +506,7 @@ fun LinksScreen(modifier: Modifier = Modifier) {
     }
     var confirmingDisconnect by remember { mutableStateOf<LinkRow?>(null) }
     var confirmingRemove by remember { mutableStateOf<LinkRow?>(null) }
+    var editing by remember { mutableStateOf<LinkRow?>(null) }
 
     Column(modifier.fillMaxSize()) {
     notice?.let {
@@ -422,6 +547,7 @@ fun LinksScreen(modifier: Modifier = Modifier) {
                         }
                     },
                     onRemove = { confirmingRemove = row },
+                    onEdit = { editing = row },
                 )
                 HorizontalDivider()
             }
@@ -438,7 +564,7 @@ fun LinksScreen(modifier: Modifier = Modifier) {
         item(key = "note") {
             FootNote(
                 "Automatic connections are not listed here — they come and go on their own. " +
-                    "Serial and Bluetooth links are set up on the desktop.",
+                    "Bluetooth links are set up on the desktop.",
             )
         }
     }
@@ -447,6 +573,14 @@ fun LinksScreen(modifier: Modifier = Modifier) {
 
     if (adding) {
         AddLinkDialog(onDismiss = { adding = false }, onAdded = { adding = false })
+    }
+
+    editing?.let { row ->
+        EditLinkDialog(
+            row = row,
+            onDismiss = { editing = null },
+            onSaved = { editing = null },
+        )
     }
 
     confirmingDisconnect?.let { row ->
