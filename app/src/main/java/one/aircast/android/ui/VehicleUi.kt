@@ -80,31 +80,16 @@ internal fun instruments(view: JSONObject?): List<Instrument> {
     }
 }
 
-internal fun vehicleSubtitle(
-    available: Boolean,
-    communicationLost: Boolean,
-    flightMode: String,
-    armed: Boolean,
-): String = when {
-    !available -> "No vehicle"
-    communicationLost -> "Communication lost"
-    else -> listOfNotNull(
-        flightMode.ifBlank { null },
-        if (armed) "Armed" else "Disarmed",
-    ).joinToString(" · ")
-}
-
 @Composable
 fun VehicleTitle() {
-    val available by qgcBool("vehicles.activeVehicleAvailable")
-    val flightMode by qgcString("vehicle.flightMode")
-    val armed by qgcBool("vehicle.armed")
-    val communicationLost by qgcBool("vehicle.vehicleLinkManager.communicationLost")
+    val json by qgcPath(FLY_STATE)
+    val fly = remember(json) { flyState(json) }
+    val communicationLost = fly?.contactLost == true
 
     Column {
         Text("Aircast", style = MaterialTheme.typography.titleMedium)
         Text(
-            text = vehicleSubtitle(available, communicationLost, flightMode, armed),
+            text = vehicleSubtitle(fly),
             style = MaterialTheme.typography.bodySmall,
             fontWeight = if (communicationLost) FontWeight.Bold else FontWeight.Normal,
             color = if (communicationLost) {
@@ -121,13 +106,15 @@ fun VehicleTitle() {
 fun TelemetryRow(modifier: Modifier = Modifier) {
     val view by qgcPath(INSTRUMENTS)
     val shown = remember(view) { instruments(view) }
-    val silent by qgcBool("vehicle.vehicleLinkManager.communicationLost")
+    val stateJson by qgcPath(FLY_STATE)
+    val stale = remember(stateJson) { flyState(stateJson)?.staleNotice.orEmpty() }
+    val silent = stale.isNotBlank()
 
     if (shown.isEmpty()) return
 
     if (silent) {
         Text(
-            text = "No contact - these are the last values the vehicle sent.",
+            text = stale,
             style = MaterialTheme.typography.bodySmall,
             color = MaterialTheme.colorScheme.error,
             modifier = Modifier.fillMaxWidth().padding(horizontal = 8.dp),
