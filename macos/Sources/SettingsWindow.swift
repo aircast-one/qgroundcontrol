@@ -219,7 +219,18 @@ struct FactControl: View {
             }
             .labelsHidden()
 
-        case .text, .number, .unknown:
+        case .bitmask where fact.drawsBits:
+            VStack(alignment: .leading, spacing: 2) {
+                ForEach(fact.bits) { bit in
+                    Toggle(bit.label, isOn: Binding(
+                        get: { bit.set },
+                        set: { write(fact.toggling(bit, on: $0)) }))
+                        .disabled(fact.readOnly)
+                }
+            }
+            .frame(maxWidth: .infinity, alignment: .trailing)
+
+        case .text, .number, .bitmask, .unknown:
             TextField("", text: $draft)
                 .textFieldStyle(.roundedBorder)
                 .multilineTextAlignment(.trailing)

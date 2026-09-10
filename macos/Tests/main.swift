@@ -66,6 +66,46 @@ expect(SettingsControl(["control": "toggle"]) == nil,
 expect(SettingsControl(["path": "g.y", "control": "invented"])?.kind == .unknown,
        "a control kind this head does not know is unknown, and falls through to a plain field")
 
+let arming = SettingsControl([
+    "path": "vehicle.parameter.ARMING_CHECK", "name": "ARMING_CHECK", "control": "bitmask",
+    "value": 82 as NSNumber, "valueString": "82",
+    "bits": [["label": "All", "raw": "1", "set": false as NSNumber],
+             ["label": "Barometer", "raw": "2", "set": true as NSNumber],
+             ["label": "Compass", "raw": "4", "set": false as NSNumber],
+             ["label": "GPS lock", "raw": "16", "set": true as NSNumber],
+             ["label": "Parameters", "raw": "64", "set": true as NSNumber]],
+])
+expect(arming?.kind == .bitmask,
+       "a parameter an operator sets bit by bit is a bitmask, not a number; it used to fall "
+       + "through to a text field that accepted typing and silently discarded it")
+expect(arming?.drawsBits == true, "and it draws a box per bit")
+expect(arming?.bits.filter(\.set).map(\.label).joined(separator: ",") ?? "",
+       "Barometer,GPS lock,Parameters",
+       "the core says which bits are set and this head does not re-derive them from the value")
+
+expect(arming.map { $0.toggling($0.bits[2], on: true) } == 86,
+       "ticking Compass adds its bit to the value the core reported, rather than replacing it")
+expect(arming.map { $0.toggling($0.bits[3], on: false) } == 66,
+       "and clearing GPS lock removes only that bit, leaving the other two set")
+expect(arming.map { $0.toggling($0.bits[1], on: true) } == 82,
+       "ticking a bit that is already set changes nothing, so a redraw cannot corrupt the value")
+
+expect(SettingsControl(["path": "g.b", "control": "bitmask",
+                        "bits": [["label": "None", "raw": "0", "set": false as NSNumber]]])?
+    .bits.isEmpty == true,
+       "a zero bit is dropped: it can never be set and its box could never change the value, "
+       + "so it would be a control that does nothing")
+expect(SettingsControl(["path": "g.b", "control": "bitmask",
+                        "bits": [["label": "Odd", "raw": "2.5", "set": false as NSNumber]]])?
+    .bits.isEmpty == true,
+       "and a bit whose raw is not a whole number is dropped rather than toggling nothing")
+
+let emptyMask = SettingsControl(["path": "g.b", "name": "b", "control": "bitmask",
+                                 "value": 7 as NSNumber, "valueString": "7"])
+expect(emptyMask?.kind == .bitmask && emptyMask?.drawsBits == false,
+       "a bitmask the core sent no usable bits for shows its value instead of an editor with "
+       + "nothing in it; an absent bits list must not draw an empty box list")
+
 func link(_ overrides: [String: Any]) -> LinkConfig? {
     var json: [String: Any] = ["index": 0 as NSNumber, "type": "tcp"]
     overrides.forEach { json[$0.key] = $0.value }
@@ -2923,6 +2963,10 @@ func checkViewContract() {
         ("view.guidedSpeed(3)", [],
          ["available", "minimum", "maximum", "initial", "label", "unit", "command",
           "targetMetersSecond"]),
+        ("view.control(settings.appSettings.audioMuted)", [],
+         ["path", "name", "label", "control", "value", "valueString", "display", "units",
+          "readOnly", "options", "bits", "decimalPlaces", "minimum", "maximum", "rebootRequired",
+          "vehicleRebootRequired", "applicationRestartRequired", "restartNotices"]),
         ("view.flyState", [],
          ["connected", "armed", "flying", "landing", "contactLost", "state", "stateText",
           "staleNotice", "mode"]),
@@ -3088,8 +3132,8 @@ func checkViewContract() {
            "the worst level takes the same three, and is absent rather than normal when unknown")
 
     let controlKinds = recorded("view.control.control")
-    expect(controlKinds.sorted().joined(separator: ","), "choice,number,text,toggle",
-           "the four control kinds are the four this editor draws")
+    expect(controlKinds.sorted().joined(separator: ","), "bitmask,choice,number,text,toggle",
+           "the five control kinds are the five this editor draws")
     expect(controlKinds.filter { SettingsControl.Kind($0) == .unknown }.joined(separator: ","), "",
            "and every one of them decodes to an editor, rather than falling through to a field")
 

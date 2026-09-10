@@ -17,10 +17,28 @@ struct ControlOption: Identifiable, Equatable {
     }
 }
 
+struct ControlBit: Identifiable, Equatable {
+    let label: String
+    let value: Int
+    let set: Bool
+
+    var id: Int { value }
+
+    init?(_ json: Any?) {
+        guard let json = json as? [String: Any],
+              let raw = json["raw"] as? String,
+              let value = Int(raw), value != 0 else { return nil }
+        self.value = value
+        label = (json["label"] as? String) ?? ""
+        set = (json["set"] as? NSNumber)?.boolValue ?? false
+    }
+}
+
 struct SettingsControl: Identifiable, Equatable {
     enum Kind {
         case toggle
         case choice
+        case bitmask
         case text
         case number
         case unknown
@@ -29,6 +47,7 @@ struct SettingsControl: Identifiable, Equatable {
             switch reported {
             case "toggle": self = .toggle
             case "choice": self = .choice
+            case "bitmask": self = .bitmask
             case "text": self = .text
             case "number": self = .number
             default: self = .unknown
@@ -47,6 +66,7 @@ struct SettingsControl: Identifiable, Equatable {
     let readOnly: Bool
     let rebootRequired: Bool
     let options: [ControlOption]
+    let bits: [ControlBit]
     let decimalPlaces: Int
     let minimum: Double?
     let maximum: Double?
@@ -71,6 +91,12 @@ struct SettingsControl: Identifiable, Equatable {
         return parts.joined(separator: " \u{00B7} ")
     }
 
+    var drawsBits: Bool { kind == .bitmask && !bits.isEmpty }
+
+    func toggling(_ bit: ControlBit, on: Bool) -> Int {
+        on ? intValue | bit.value : intValue & ~bit.value
+    }
+
     var parameterOptions: [ParameterOption] {
         options.map { ParameterOption(label: $0.label, raw: $0.raw) }
     }
@@ -90,6 +116,7 @@ struct SettingsControl: Identifiable, Equatable {
         readOnly = (json["readOnly"] as? NSNumber)?.boolValue ?? false
         rebootRequired = (json["rebootRequired"] as? NSNumber)?.boolValue ?? false
         options = ((json["options"] as? [Any]) ?? []).compactMap(ControlOption.init)
+        bits = ((json["bits"] as? [Any]) ?? []).compactMap(ControlBit.init)
         decimalPlaces = (json["decimalPlaces"] as? NSNumber)?.intValue ?? 0
         minimum = (json["minimum"] as? NSNumber)?.doubleValue
         maximum = (json["maximum"] as? NSNumber)?.doubleValue
