@@ -493,7 +493,7 @@ struct PlanInspector: View {
                         current: item.isCurrent,
                         leading: {
                             Seal(label: "\(item.sequence)",
-                                 colour: item.blocked ? Overlay.blocked
+                                 colour: item.stopsSave ? Overlay.blocked
                                      : (item.isLaunch ? Overlay.launch : Overlay.mission))
                         },
                         trailing: {

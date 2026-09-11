@@ -140,7 +140,7 @@ final class MissionStore: ObservableObject, Probeable, WriteReporting {
         let offered = (controller["complexMissionItemNames"] as? [String]) ?? []
         if offered != patterns { patterns = offered }
 
-        let elements = readItems()
+        let listed = readItems()
         let plan = Bridge.group("plan")
         let busy = (plan["syncInProgress"] as? NSNumber)?.boolValue ?? false
         if busy != syncing { syncing = busy }
@@ -177,8 +177,7 @@ final class MissionStore: ObservableObject, Probeable, WriteReporting {
         hoverSpeed = (Bridge.group("settings.appSettings.offlineEditingHoverSpeed")["valueString"] as? String) ?? ""
         launch = LaunchPosition(
             home: (controllerVehicle["homePosition"] as? [String: Any]) ?? [:],
-            item: elements.first ?? [:],
-            altitude: Bridge.group("plan.missionController.visualItems.0.plannedHomePositionAltitude"))
+            item: listed.first ?? [:])
         canUndo = (plan["canUndo"] as? NSNumber)?.boolValue ?? false
         canRedo = (plan["canRedo"] as? NSNumber)?.boolValue ?? false
         loadCommands()
@@ -326,11 +325,9 @@ final class MissionStore: ObservableObject, Probeable, WriteReporting {
 
     @discardableResult
     private func readItems() -> [[String: Any]] {
-        let elements = (Bridge.group("plan.missionController.visualItems")["elements"]
-            as? [[String: Any]]) ?? []
-        let listed = elements.enumerated().map {
-            MissionItem(json: $0.element, index: $0.offset,
-                        verticalMeasure: AppUnits.measure(AppUnits.vertical))
+        let elements = (Bridge.group("view.missionItems")["items"] as? [[String: Any]]) ?? []
+        let listed = elements.map {
+            MissionItem(view: $0)
         }
         if listed != items { items = listed }
         return elements

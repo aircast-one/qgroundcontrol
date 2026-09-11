@@ -314,42 +314,34 @@ expect(FlightModePosition.present(in: ["FLTMODE1", "FLTMODE3"]).map(\.index).map
        "1,3", "only reported positions appear")
 expect(FlightModePosition.present(in: []).isEmpty, "a vehicle without them shows no positions")
 
-let waypoint = MissionItem(json: [
-    "sequenceNumber": 1, "commandName": "Waypoint", "isCurrentItem": false,
-    "coordinate": ["latitude": -35.3629, "longitude": 149.165, "altitude": NSNull()],
-    "facts": [["name": "Altitude", "value": 50.0, "units": "ft"]],
-    "specifiesAltitude": true], index: 1)
+let waypoint = MissionItem(view: [
+    "index": 1, "sequence": 1, "name": "Waypoint", "current": false,
+    "coordinate": ["latitude": -35.3629, "longitude": 149.165],
+    "altitude": 50.0, "altitudeUnits": "ft", "specifiesAltitude": true])
 expect(waypoint.altitudeText, "50.0 ft",
-       "altitude comes from the fact, and so does the unit beside it")
+       "the core hands over the altitude AND the unit it wrote it in, so this labels the number "
+       + "rather than converting it again or assuming the app setting matches the fact's own")
 expect(waypoint.positionText, "-35.362900, 149.165000", "position formats to six decimals")
-expect(waypoint.hasPosition, "a waypoint with a coordinate has a position")
+expect(waypoint.hasPosition, "a waypoint the core gave a coordinate has a position")
 
-let start = MissionItem(json: [
-    "sequenceNumber": 0, "commandName": "Mission Start", "isCurrentItem": true,
-    "coordinate": ["latitude": -35.36, "longitude": 149.16, "altitude": 584.09],
-    "facts": []], index: 0)
-expect(start.altitudeText, "584 m", "falls back to the coordinate altitude")
+let start = MissionItem(view: [
+    "index": 0, "sequence": 0, "name": "Mission Start", "current": true, "kind": "settings",
+    "coordinate": ["latitude": -35.36, "longitude": 149.16], "altitude": 584.09])
+expect(start.altitudeText, "584 m",
+       "a measure of a hundred or more is a whole number -- what format_measure spells in the "
+       + "core and what the summary strip beside this row already shows")
 
-let startFact = MissionItem(json: [
-    "sequenceNumber": 0, "commandName": "Mission Start",
-    "coordinate": ["latitude": -35.36, "longitude": 149.16, "altitude": 584.09],
-    "facts": [["name": "PlannedHomePositionAltitude", "value": 1916.3, "units": "ft"]]], index: 0)
-expect(startFact.altitudeText, "1916 ft",
-       "but mission start has its own altitude fact, and the row must not disagree with the field below it")
-
-let startInFeet = MissionItem(json: [
-    "sequenceNumber": 0, "commandName": "Mission Start",
-    "coordinate": ["latitude": -35.36, "longitude": 149.16, "altitude": 584.09],
-    "facts": []], index: 0, verticalMeasure: Measure(units: "ft", factor: 3.28084))
-expect(startInFeet.altitudeText, "1916 ft",
-       "and when only the coordinate is left, its metres are converted rather than relabelled")
+let startInFeet = MissionItem(view: [
+    "index": 0, "sequence": 0, "name": "Mission Start", "altitude": 1916.3,
+    "altitudeUnits": "ft"])
+expect(startInFeet.altitudeText, "1916 ft", "and the same in feet, relabelled not reconverted")
 expect(start.isCurrent, "the current item is flagged")
 expect(waypoint.index == 1, "an item remembers the list position its bridge path needs")
 expect(waypoint.specifiesAltitude, "a waypoint's altitude is editable")
 expect(!start.specifiesAltitude, "an item that does not specify altitude is not editable")
 
-let bare = MissionItem(json: ["sequenceNumber": 2, "commandName": "Delay", "facts": []], index: 2)
-expect(!bare.hasPosition, "an item without a coordinate has no position")
+let bare = MissionItem(view: ["index": 2, "sequence": 2, "name": "Delay"])
+expect(!bare.hasPosition, "an item the core gave no coordinate has no position")
 expect(bare.positionText, "—", "and shows nothing rather than a false one")
 expect(bare.altitudeText, "—", "same for altitude")
 
@@ -574,8 +566,8 @@ func checkParameterOptions() {
 checkParameterOptions()
 
 func checkMissionItemRemoval() {
-    let home = MissionItem(json: ["sequenceNumber": 0, "commandName": "Mission Start"], index: 0)
-    let waypoint = MissionItem(json: ["sequenceNumber": 1, "commandName": "Waypoint"], index: 1)
+    let home = MissionItem(view: ["index": 0, "sequence": 0, "name": "Mission Start"])
+    let waypoint = MissionItem(view: ["index": 1, "sequence": 1, "name": "Waypoint"])
     expect(!home.canRemove, "the mission start is not a waypoint an operator can delete")
     expect(waypoint.canRemove, "a waypoint can be deleted")
 }
@@ -713,15 +705,12 @@ func checkMissionCommands() {
     expect(described[1].summary, "",
            "a command with no description reads as empty, not as a missing row")
 
-    let waypoint = MissionItem(json: [
-        "sequenceNumber": 1, "commandName": "Waypoint", "isSimpleItem": true,
-    ], index: 1)
-    let home = MissionItem(json: [
-        "sequenceNumber": 0, "commandName": "Mission Start", "isSimpleItem": true,
-    ], index: 0)
-    let survey = MissionItem(json: [
-        "sequenceNumber": 2, "commandName": "Survey", "isSimpleItem": false,
-    ], index: 2)
+    let waypoint = MissionItem(view: [
+        "index": 1, "sequence": 1, "name": "Waypoint", "simple": true])
+    let home = MissionItem(view: [
+        "index": 0, "sequence": 0, "name": "Mission Start", "simple": true, "kind": "settings"])
+    let survey = MissionItem(view: [
+        "index": 2, "sequence": 2, "name": "Survey", "simple": false, "kind": "survey"])
     expect(waypoint.canChangeCommand, "a simple waypoint can become another command")
     expect(!home.canChangeCommand, "mission start is not a command an operator retypes")
     expect(!survey.canChangeCommand, "a complex item is not a simple command swap")
@@ -784,25 +773,31 @@ func checkItemFacts() {
 checkItemFacts()
 
 func checkUnplacedCommands() {
-    let delay = MissionItem(json: [
-        "sequenceNumber": 1, "commandName": "Delay", "isSimpleItem": true,
-        "specifiesCoordinate": false,
-        "coordinate": ["latitude": 0, "longitude": 0],
-    ], index: 1)
-    expect(!delay.hasPosition, "a command with no position of its own is not placed at 0,0")
+    // The head used to reject a 0,0 coordinate itself, because a command with no place of its own
+    // still reported one and the Gulf of Guinea ended up in the map's bounding box. The core
+    // decides that now and sends no coordinate at all, so what is checked here is that the head
+    // asks the right question -- is there a coordinate -- and does not second-guess one it got.
+    let delay = MissionItem(view: ["index": 1, "sequence": 1, "name": "Delay", "simple": true])
+    expect(!delay.hasPosition, "a command the core gave no place is not placed")
     expect(delay.positionText, "\u{2014}", "and shows nothing rather than the Gulf of Guinea")
+    expect(!delay.flownLeg, "and no leg is drawn to it")
 
-    let waypoint = MissionItem(json: [
-        "sequenceNumber": 2, "commandName": "Waypoint", "specifiesCoordinate": true,
-        "coordinate": ["latitude": -35.363, "longitude": 149.165],
-    ], index: 2)
-    expect(waypoint.hasPosition, "a waypoint with a real coordinate is placed")
+    let waypoint = MissionItem(view: [
+        "index": 2, "sequence": 2, "name": "Waypoint", "flownLeg": true,
+        "coordinate": ["latitude": -35.363, "longitude": 149.165]])
+    expect(waypoint.hasPosition, "a waypoint the core placed is placed")
+    expect(waypoint.flownLeg, "and the vehicle flies a leg to it")
 
-    let nullIsland = MissionItem(json: [
-        "sequenceNumber": 3, "commandName": "Waypoint", "specifiesCoordinate": true,
-        "coordinate": ["latitude": 0, "longitude": 0],
-    ], index: 3)
-    expect(!nullIsland.hasPosition, "an unset coordinate is not a position even when the command wants one")
+    let roi = MissionItem(view: [
+        "index": 3, "sequence": 3, "name": "Region of interest", "flownLeg": false,
+        "coordinate": ["latitude": -35.33, "longitude": 149.25]])
+    expect(roi.hasPosition,
+           "a region of interest has a place and earns a marker -- measured on the running app, "
+           + "where the core listed it with a coordinate and flownLeg false")
+    expect(!roi.flownLeg,
+           "and the vehicle never goes there. One list answered both questions, so the planned "
+           + "route drew a leg out to the ROI and back: a dogleg to a point the aircraft does not "
+           + "visit, on the map an operator checks the shape of the mission against")
 }
 
 checkUnplacedCommands()
@@ -1269,6 +1264,7 @@ func checkMissionItemKinds() {
     checkRemoveOutcome()
     checkTerrainWatch()
     checkSurveyWatch()
+    checkFlownLeg()
     checkVehicleMessageOrder()
     checkBlockedBanner()
     checkMavlinkConsole()
@@ -2749,24 +2745,24 @@ FileHandle.standardError.write("\(failures) check(s) failed\n".data(using: .utf8
 exit(1)
 
 func checkLaunchPosition() {
-    let absent = LaunchPosition(home: ["valid": false],
-                                item: [:],
-                                altitude: ["value": 0 as NSNumber, "units": "m"])
+    let absent = LaunchPosition(home: ["valid": false], item: [:])
     expect(absent.editable, "no vehicle home means the plan owns the launch position")
     expect(absent.positionText == "Not set", "an unplaced launch position says so")
 
     let onVehicle = LaunchPosition(home: ["valid": true],
                                    item: ["coordinate": ["latitude": -35.36 as NSNumber,
-                                                         "longitude": 149.16 as NSNumber]],
-                                   altitude: ["value": 583.0 as NSNumber, "units": "m"])
+                                                         "longitude": 149.16 as NSNumber],
+                                          "altitude": 583.0 as NSNumber, "altitudeUnits": "m"])
     expect(!onVehicle.editable, "the vehicle's own home position wins over the plan's")
-    expect(onVehicle.altitude == 583.0, "the launch altitude comes from its fact")
-    expect(onVehicle.altitudeText, "583 m", "and reads out with the fact's own units")
+    expect(onVehicle.altitude == 583.0,
+           "the launch height rides on the plan's first item, which is where its place already "
+           + "came from -- it used to take a bridge read of its own for the same number")
+    expect(onVehicle.altitudeText, "583 m", "and reads out with the unit the core wrote it in")
     expect(onVehicle.positionText == "-35.360000, 149.160000", "a placed launch position reads out")
 
-    let feet = LaunchPosition(home: ["valid": false], item: [:],
-                              altitude: ["value": 100.0 as NSNumber, "units": "ft"])
-    expect(feet.units == "ft", "the launch altitude takes its units from the fact")
+    let feet = LaunchPosition(home: ["valid": false],
+                              item: ["altitude": 100.0 as NSNumber, "altitudeUnits": "ft"])
+    expect(feet.units == "ft", "the launch altitude takes the units the core wrote it in")
     expect(feet.altitudeText, "100 ft", "so an operator on feet is not told metres")
     expect(feet.note.contains("ground height"),
            "and the note says the terrain fills that altitude in, which QGC does two seconds later")
@@ -4068,6 +4064,35 @@ func checkVehicleMessageOrder() {
     expect(VehicleMessages.empty.newest(6).isEmpty, "and an empty one stays empty")
 }
 
+func checkFlownLeg() {
+    let roi = MissionItem(view: ["index": 2, "sequence": 2, "name": "Region of interest",
+                                 "flownLeg": false,
+                                 "coordinate": ["latitude": -35.33, "longitude": 149.25]])
+    let waypoint = MissionItem(view: ["index": 1, "sequence": 1, "name": "Waypoint",
+                                      "flownLeg": true,
+                                      "coordinate": ["latitude": -35.35, "longitude": 149.20]])
+    expect(roi.hasPosition && waypoint.hasPosition,
+           "both earn a marker, because both are somewhere on the map")
+    expect([roi, waypoint].filter(\.flownLeg).map(\.sequence).map(String.init).joined(separator: ","),
+           "1",
+           "but only one is a leg the vehicle flies. Measured on the running app: a plan of "
+           + "takeoff, waypoint, ROI, waypoint reported four placed items and drew one line "
+           + "through all four, so the route doglegged out to the ROI and back")
+
+    let unplaced = MissionItem(view: ["index": 3, "sequence": 3, "name": "Delay"])
+    expect(!unplaced.flownLeg && !unplaced.hasPosition,
+           "an item with no place at all is neither a marker nor a leg")
+
+    let atOrigin = MissionItem(view: ["index": 4, "sequence": 4, "name": "Waypoint",
+                                      "flownLeg": true,
+                                      "coordinate": ["latitude": 0, "longitude": 0]])
+    expect(atOrigin.hasPosition,
+           "and a coordinate the core did send is taken at face value, even at 0,0. The head used "
+           + "to throw those away itself because an unplaced command reported one; the core sends "
+           + "no coordinate for those now, so re-adding the guard here would only lose a waypoint "
+           + "somebody really put in the Gulf of Guinea")
+}
+
 func checkSurveyWatch() {
     expect(SurveyWatch.signals(2).joined(separator: ","),
            "plan.missionController.visualItems.2.cameraShots,"
@@ -4167,14 +4192,14 @@ func checkBridgeWatchers() {
 }
 
 func checkBlockedItems() {
-    let ok = MissionItem(json: ["sequenceNumber": 2 as NSNumber, "commandName": "Waypoint",
-                                "readyForSaveState": 0 as NSNumber], index: 2)
+    let ok = MissionItem(view: ["index": 2, "sequence": 2, "name": "Waypoint",
+                                "blocked": false, "awaitingTerrain": false])
     expect(!ok.blocked, "an item the controller calls ready does not block the plan")
     expect(ok.blockedReason == nil, "and carries no reason to show")
 
-    let unset = MissionItem(json: ["sequenceNumber": 1 as NSNumber, "commandName": "Takeoff",
-                                   "readyForSaveState": 2 as NSNumber,
-                                   "readyForSaveMessage": "Set its location"], index: 1)
+    let unset = MissionItem(view: ["index": 1, "sequence": 1, "name": "Takeoff",
+                                   "blocked": true, "awaitingTerrain": false,
+                                   "blockedReason": "Set its location"])
     expect(unset.blocked,
            "a takeoff whose location was never set blocks the plan. Measured on the running app: "
            + "it reads state 2 and \"Set its location\", its coordinate is 0,0, and nothing in "
@@ -4183,24 +4208,25 @@ func checkBlockedItems() {
     expect(unset.blockedReason ?? "", "Set its location",
            "and the controller's own sentence is what gets shown, not one invented here")
 
-    let silent = MissionItem(json: ["sequenceNumber": 1 as NSNumber, "commandName": "Takeoff",
-                                    "readyForSaveState": 2 as NSNumber,
-                                    "readyForSaveMessage": ""], index: 1)
+    let silent = MissionItem(view: ["index": 1, "sequence": 1, "name": "Takeoff",
+                                    "blocked": true, "awaitingTerrain": false,
+                                    "blockedReason": ""])
     expect(silent.blocked && silent.blockedReason == nil,
            "an item that blocks without saying why still blocks -- the row cannot explain it, "
            + "but the plan is no more saveable for the silence")
 
-    let terrain = MissionItem(json: ["sequenceNumber": 3 as NSNumber, "commandName": "Waypoint",
-                                     "readyForSaveState": 1 as NSNumber,
-                                     "readyForSaveMessage": "Waiting for terrain"], index: 3)
-    expect(terrain.blocked && terrain.awaitingTerrain,
+    let terrain = MissionItem(view: ["index": 3, "sequence": 3, "name": "Waypoint",
+                                     "blocked": false, "awaitingTerrain": true,
+                                     "blockedReason": "Waiting for terrain"])
+    expect(!terrain.blocked && terrain.awaitingTerrain && terrain.stopsSave,
            "an item waiting on terrain heights stops the save too, but it is a wait on a server "
            + "and not a task for the operator. QGC keeps the two apart -- NotReadyForSaveData "
            + "lists the incomplete items and selects the next one, NotReadyForSaveTerrain shows "
            + "a different message with no item list because there is nothing to select")
-    expect(!unset.awaitingTerrain, "and an item the operator has to finish is not a terrain wait")
+    expect(!unset.awaitingTerrain && unset.blocked && unset.stopsSave,
+           "and an item the operator has to finish is not a terrain wait, though both stop the save")
 
-    let absent = MissionItem(json: ["sequenceNumber": 1 as NSNumber], index: 1)
+    let absent = MissionItem(view: ["index": 1, "sequence": 1])
     expect(!absent.blocked,
            "and an item whose state the controller did not report does NOT block. Every other "
            + "item would decode to blocked on one missing key, and a plan that refuses to save "
@@ -4210,9 +4236,9 @@ func checkBlockedItems() {
 
 func checkBlockedBanner() {
     func item(_ seq: Int, _ name: String, _ state: Int, _ message: String = "") -> MissionItem {
-        MissionItem(json: ["sequenceNumber": seq as NSNumber, "commandName": name,
-                           "readyForSaveState": state as NSNumber,
-                           "readyForSaveMessage": message], index: seq)
+        MissionItem(view: ["index": seq, "sequence": seq, "name": name,
+                           "blocked": state == 2, "awaitingTerrain": state == 1,
+                           "blockedReason": message])
     }
     let general = "An item is still being drawn, so the plan cannot be saved or sent."
     let one = [item(0, "Mission Start", 0), item(1, "Takeoff", 2, "Set its location"),

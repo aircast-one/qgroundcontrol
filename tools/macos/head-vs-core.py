@@ -29,6 +29,7 @@ LAUNCH = (-35.363, 149.165)
 DISTANT = (-35.30, 149.30)
 SURVEY = (-35.28, 149.34)
 RALLY = (-35.36, 149.17)
+REGION = (-35.29, 149.32)
 TERRAIN_SETTLE_SECONDS = 4
 NO_ALTITUDE = "\u2014"
 
@@ -61,7 +62,8 @@ def build_plan():
     time.sleep(2.5)
     probe("&action=createPlan")
     time.sleep(1.0)
-    for kind, (latitude, longitude) in (("takeoff", LAUNCH), ("waypoint", DISTANT), ("survey", SURVEY)):
+    for kind, (latitude, longitude) in (("takeoff", LAUNCH), ("waypoint", DISTANT),
+                                        ("roi", REGION), ("survey", SURVEY)):
         probe(f"&action=arm&kind={kind}")
         time.sleep(0.5)
         probe(f"&action=addWaypoint&latitude={latitude}&longitude={longitude}")
@@ -166,6 +168,12 @@ def comparisons():
     core["fences"] = view("fences")
     fences = fence_comparisons(fence_probe()["state"], core["fences"])
     return core, fences + survey_checks + item_comparisons(head["items"], items["items"]) + [
+        # The markers and the route are different questions and were once one list, so the route
+        # detoured through a region of interest the aircraft never visits.
+        ("items with a place on the map", head["map"]["placed"],
+         sum(1 for item in items["items"] if item["coordinate"])),
+        ("legs the vehicle flies", head["map"]["routeLegs"],
+         sum(1 for item in items["items"] if item["flownLeg"] and item["coordinate"])),
         ("plan is ready to save", head["readyToSave"], plan["readiness"]["ready"]),
         ("why it is not ready", head["notReadyReason"], plan["readiness"]["reason"]),
         ("plan is dirty", head["dirty"], plan["dirty"]),
@@ -201,6 +209,8 @@ def worth_comparing(core):
     elif not survey.get("shotsText"):
         missing.append("the core computed no shot count, which is what the stale panel also showed")
     fences = core.get("fences") or {}
+    if not any(not item["flownLeg"] and item["coordinate"] for item in items["items"]):
+        missing.append("no item has a place without a leg, so the route cannot detour through one")
     if not (fences.get("polygons") or fences.get("circles")):
         missing.append("no fence was drawn, so the fence panel cannot be wrong about one")
     if not fences.get("rallyPoints"):

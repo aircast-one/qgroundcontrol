@@ -16,10 +16,12 @@ struct LaunchPosition: Equatable {
         self.coordinate = coordinate
     }
 
-    init(home: [String: Any], item: [String: Any], altitude fact: [String: Any]) {
+    // The plan's first item carries the launch place and its height together. Both used to come
+    // from separate reads because the raw element held the height only as a fact to be dug out.
+    init(home: [String: Any], item: [String: Any]) {
         vehicleHasHome = (home["valid"] as? NSNumber)?.boolValue ?? false
-        self.altitude = (fact["value"] as? NSNumber)?.doubleValue
-        units = (fact["units"] as? String) ?? "m"
+        altitude = (item["altitude"] as? NSNumber)?.doubleValue
+        units = (item["altitudeUnits"] as? String) ?? "m"
         coordinate = GeoPoint(json: item["coordinate"])
     }
 
