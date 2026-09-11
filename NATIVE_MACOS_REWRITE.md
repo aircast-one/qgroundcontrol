@@ -1858,3 +1858,26 @@ So the rule is not "every walk over items needs both guards". It is: **a walk th
 question about the flight needs both; a walk that answers a question about the drawing needs
 neither.** Every instance found so far has been the first kind, which is why the shorter version
 is tempting and wrong.
+
+**Why the guard goes missing: one hypothesis offered, refuted by its own author's timestamps,
+replaced by a better one.** The first guess was recency — that the rule just learned stays live
+and the older one is dropped. The core session tested it against its own commit times rather
+than agreeing: `endsRoute` was learned four hours earlier the same day, from this stream, in the
+function immediately next door; `flownLeg` was months old. **The recent one vanished and the old
+one made the copy — backwards from the prediction.**
+
+What replaced it is structural. `flownLeg` is a filter *inside* the iteration; `endsRoute` is a
+truncation *around* the collection, before iteration begins. Reproducing a function's shape —
+iterate, filter, fold — carries the guards that live inside that shape and leaves behind the ones
+that sit outside it, whenever they were learned. Three for three on the core's side.
+
+This stream cannot test it independently and should not claim to. `route` and `unreached` both
+carry `routeEnd`, but only because it was extracted deliberately after the first defect, so they
+are the fix and not evidence. What is visible here is that the two positions the hypothesis names
+are the two positions these functions actually use: `flownLeg` and `hasPosition` inside
+`.filter { }`, `routeEnd` wrapped around the collection in a `.prefix` and a `.dropFirst`.
+
+**The remedy was reached twice from different diagnoses**, which is worth more than either
+diagnosis: "the guard outside the shape gets dropped, so make there be one walk" and "two places
+that must agree will eventually disagree, so make there be one rule" produce the same fix. That
+says the fix is well-founded and says nothing about which explanation is right.
