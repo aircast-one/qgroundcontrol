@@ -1159,15 +1159,22 @@ bool tileCacheIsReady(const QString &path)
     if (!QFileInfo::exists(path)) {
         return false;
     }
-    QSqlDatabase probe = QSqlDatabase::addDatabase(QStringLiteral("QSQLITE"), QStringLiteral("tileCacheReady"));
-    probe.setDatabaseName(path);
+    // removeDatabase while a QSqlDatabase copy or a query on it is still in scope leaks the
+    // connection - Qt says so on stderr and then carries on. This is called from a QTRY loop, so
+    // a leak here is dozens of open handles on one SQLite file, which is a plausible way for the
+    // Rust reader's own open to start failing.
+    const QString name = QStringLiteral("tileCacheReady");
     bool ready = false;
-    if (probe.open()) {
-        QSqlQuery sets(probe);
-        ready = sets.exec(QStringLiteral("SELECT setID FROM TileSets WHERE defaultSet = 1")) && sets.next();
+    {
+        QSqlDatabase probe = QSqlDatabase::addDatabase(QStringLiteral("QSQLITE"), name);
+        probe.setDatabaseName(path);
+        if (probe.open()) {
+            QSqlQuery sets(probe);
+            ready = sets.exec(QStringLiteral("SELECT setID FROM TileSets WHERE defaultSet = 1")) && sets.next();
+        }
         probe.close();
     }
-    QSqlDatabase::removeDatabase(QStringLiteral("tileCacheReady"));
+    QSqlDatabase::removeDatabase(name);
     return ready;
 }
 
@@ -3090,9 +3097,11 @@ void QGCCoreCTest::_theRustCacheServesATileQtWroteIntoTheSameDatabase()
     }
     QString stored;
     if (qgc_core_tile_size(hash.toUtf8().constData()) != drawn.size()) {
+        {
         QSqlDatabase probe = QSqlDatabase::addDatabase(QStringLiteral("QSQLITE"), QStringLiteral("tileRowProbe"));
         probe.setDatabaseName(databasePath);
         QVERIFY(probe.open());
+        {
         QSqlQuery rows(probe);
         stored = QStringLiteral("file %1 bytes; ").arg(QFileInfo(databasePath).size());
         if (rows.exec(QStringLiteral("SELECT hash, size, typeof(type) FROM Tiles"))) {
@@ -3105,7 +3114,9 @@ void QGCCoreCTest::_theRustCacheServesATileQtWroteIntoTheSameDatabase()
         } else {
             stored += QStringLiteral("the Tiles table could not be read at all: %1").arg(rows.lastError().text());
         }
+        }
         probe.close();
+        }
         QSqlDatabase::removeDatabase(QStringLiteral("tileRowProbe"));
     }
     QVERIFY2(qgc_core_tile_size(hash.toUtf8().constData()) == drawn.size(),
