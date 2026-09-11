@@ -1,6 +1,6 @@
 use serde_json::{Value, json};
 
-use crate::read::{flag, integer, object, text};
+use crate::read::{Unit, flag, format_measure, integer, object, text};
 use crate::router::Backend;
 
 pub const DEPS: &[&str] = &["plan.missionController.visualItems.count", "plan.missionController.currentPlanViewVIIndex", "plan.missionController.containsItems"];
@@ -13,8 +13,7 @@ const RETURN_TO_LAUNCH: i64 = 20;
 
 pub fn items_view(backend: &dyn Backend, args: &[String]) -> Value {
     let everything = args.iter().any(|arg| arg == "fields");
-    let units = object(&backend.get_fields("units", "appSettingsVerticalDistanceUnitsString"));
-    let feet = text(&units, "appSettingsVerticalDistanceUnitsString") == "ft";
+    let vertical = Unit::vertical(backend);
     let shapes = args.iter().any(|arg| arg == "geometry");
     let count = integer(&object(&backend.get("plan.missionController.visualItems.count")), "value").unwrap_or(0);
     let has_items = flag(&object(&backend.get_fields("plan.missionController", "containsItems")), "containsItems");
@@ -24,9 +23,9 @@ pub fn items_view(backend: &dyn Backend, args: &[String]) -> Value {
     let current = integer(&object(&backend.get("plan.missionController.currentPlanViewVIIndex")), "value").unwrap_or(-1);
     let listed = object(&backend.get_fields("plan.missionController.visualItems", FIELDS));
     let items: Vec<Value> = match listed.get("elements").and_then(Value::as_array) {
-        Some(elements) => elements.iter().enumerate().map(|(index, element)| item(element, index as i64, feet)).collect(),
+        Some(elements) => elements.iter().enumerate().map(|(index, element)| item(element, index as i64, &vertical)).collect(),
         None => (0..count)
-            .map(|index| item(&object(&backend.get_fields(&format!("plan.missionController.visualItems.{index}"), FIELDS)), index, feet))
+            .map(|index| item(&object(&backend.get_fields(&format!("plan.missionController.visualItems.{index}"), FIELDS)), index, &vertical))
             .collect(),
     };
     let items: Vec<Value> = match shapes {
@@ -82,7 +81,7 @@ fn at_key(read: &Value, key: &str) -> Option<Value> {
     (at.get("valid").and_then(Value::as_bool) == Some(true) && !unset).then(|| at.clone())
 }
 
-fn item(read: &Value, index: i64, feet: bool) -> Value {
+fn item(read: &Value, index: i64, vertical: &Unit) -> Value {
     let coordinate = placed(read);
     let exit = match flag(read, "exitCoordinateSameAsEntry") {
         true => None,
@@ -100,8 +99,8 @@ fn item(read: &Value, index: i64, feet: bool) -> Value {
         "coordinate": coordinate,
         "exitCoordinate": exit,
         "altitude": height(read),
-        "altitudeText": height(read).map(|metres| altitude_text(metres, feet)),
-        "altitudeUnits": height(read).map(|_| if feet { "ft" } else { "m" }),
+        "altitudeText": height(read).map(|metres| format_measure(vertical.show(metres), &vertical.name)),
+        "altitudeUnits": height(read).map(|_| vertical.name.clone()),
         "altitudeFactUnits": fact_units(read, "altitude").or_else(|| fact_units(read, "plannedHomePositionAltitude")),
         "specifiesAltitude": flag(read, "specifiesAltitude"),
         "category": Some(text(read, "category")).filter(|category| !category.is_empty()),
@@ -153,13 +152,6 @@ fn fact_units(read: &Value, name: &str) -> Option<String> {
 
 fn height(read: &Value) -> Option<f64> {
     fact_number(read, "altitude").or_else(|| fact_number(read, "plannedHomePositionAltitude"))
-}
-
-fn altitude_text(metres: f64, feet: bool) -> String {
-    match feet {
-        true => format!("{:.1} ft", metres * 3.2808399),
-        false => format!("{metres:.1} m"),
-    }
 }
 
 fn geometry_of(backend: &dyn Backend, index: i64, kind: &str) -> Value {
@@ -429,7 +421,12 @@ mod reported {
                 }
             }
             fn set(&self, _p: &str, _v: &str) -> String { String::new() }
-            fn invoke(&self, _p: &str, _a: &str) -> String { String::new() }
+            fn invoke(&self, path: &str, args: &str) -> String {
+                match path {
+                    "units.metersToAppSettingsVerticalDistanceUnits" => json!({ "ok": true, "result": serde_json::from_str::<Vec<f64>>(args).unwrap()[0] * 3.2808399 }).to_string(),
+                    _ => String::new(),
+                }
+            }
             fn watch(&self, _p: &[String]) {}
         }
         let item = json!({ "kind": "object", "sequenceNumber": 1, "isSimpleItem": true, "specifiesAltitude": true, "category": "Basic", "facts": [ { "name": "Altitude", "property": "altitude", "value": 75.0 } ] });
@@ -442,7 +439,7 @@ mod reported {
         assert_eq!(metric["simple"], true, "whether a command can be changed follows from this, and inferring it from the presence of a command number is inferring a fact from the absence of another");
 
         let imperial = items_view(&Imperial(item), &[])["items"][1].clone();
-        assert_eq!(imperial["altitudeText"], "246.1 ft");
+        assert_eq!(imperial["altitudeText"], "246 ft", "the feet come from the app's own conversion, not a factor the core keeps its own copy of");
         assert_eq!(imperial["altitudeUnits"], "ft");
         assert_eq!(imperial["altitude"], 75.0);
     }
@@ -510,7 +507,7 @@ mod reported {
             "facts": [ { "name": "Altitude", "property": "plannedHomePositionAltitude", "value": 585.0 } ],
         }));
         assert_eq!(launch["altitude"], 585.0, "the launch elevation is a height and the row that shows it goes blank if only the waypoint name is looked for");
-        assert_eq!(launch["altitudeText"], "585.0 m");
+        assert_eq!(launch["altitudeText"], "585 m", "every measure the core serves rounds the same way, and a row that kept a tenth here read 585.0 m beside a summary saying 585 m to 660 m");
     }
 
     #[test]
