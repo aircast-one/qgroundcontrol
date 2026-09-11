@@ -8,12 +8,13 @@ use crate::router::Backend;
 // count is bindable and moves whenever the list does.
 pub const DEPS: &[&str] = &["plan.missionController.visualItems.count", "plan.missionController.currentPlanViewVIIndex", "plan.missionController.containsItems"];
 
-const FIELDS: &str = "sequenceNumber,abbreviation,commandName,commandDescription,isCurrentItem,specifiesCoordinate,isStandaloneCoordinate,specifiesAltitudeOnly,isSimpleItem,isTakeoffItem,isLandCommand,isSurveyItem,homePosition,coordinate,amslEntryAlt,altDifference,azimuth,distance,distanceFromStart,readyForSaveState,readyForSaveMessage,dirty,altitude,altitudeMode";
+const FIELDS: &str = "sequenceNumber,abbreviation,commandName,commandDescription,isCurrentItem,specifiesCoordinate,isStandaloneCoordinate,specifiesAltitudeOnly,isSimpleItem,isTakeoffItem,isLandCommand,isSurveyItem,homePosition,coordinate,amslEntryAlt,altDifference,azimuth,distance,distanceFromStart,readyForSaveState,readyForSaveMessage,dirty,altitude,altitudeMode,isIncomplete";
 
 const READY_TO_SAVE: i64 = 0;
 const AWAITING_TERRAIN: i64 = 1;
 
-pub fn items_view(backend: &dyn Backend, _args: &[String]) -> Value {
+pub fn items_view(backend: &dyn Backend, args: &[String]) -> Value {
+    let everything = args.iter().any(|arg| arg == "fields");
     // A plan always holds its settings entry, so a count of one is an empty plan rather than a
     // plan with something in it. The controller answers that question itself.
     let count = integer(&object(&backend.get("plan.missionController.visualItems.count")), "value").unwrap_or(0);
@@ -29,6 +30,20 @@ pub fn items_view(backend: &dyn Backend, _args: &[String]) -> Value {
         Some(elements) => elements.iter().enumerate().map(|(index, element)| item(element, index as i64)).collect(),
         None => (0..count)
             .map(|index| item(&object(&backend.get_fields(&format!("plan.missionController.visualItems.{index}"), FIELDS)), index))
+            .collect(),
+    };
+    // Asking for fields costs an unfiltered read of every item, because which facts an item has
+    // depends on what it is. A head that edits whatever the operator tapped rather than whatever
+    // is current asks for them; one that only draws the list does not pay for them.
+    let items: Vec<Value> = match everything {
+        false => items,
+        true => items
+            .into_iter()
+            .enumerate()
+            .map(|(index, mut listed)| {
+                listed["fields"] = fields_of(backend, index as i64);
+                listed
+            })
             .collect(),
     };
     json!({
@@ -84,6 +99,11 @@ fn item(read: &Value, index: i64) -> Value {
         "distance": number(read, "distance"),
         "distanceFromStart": number(read, "distanceFromStart"),
         "edited": flag(read, "dirty"),
+        // A complex item is incomplete until it has its geometry, and only a complex item has the
+        // property at all. Whether a leg is drawn on the map is this and the two coordinate flags
+        // together, which is item knowledge rather than something a head should compose.
+        "incomplete": flag(read, "isIncomplete"),
+        "flownLeg": flag(read, "specifiesCoordinate") && !flag(read, "isStandaloneCoordinate") && !flag(read, "isIncomplete"),
         // Waiting for terrain heights is not the operator's task and there is nothing for them to
         // fix, so it is not the same answer as an item that is missing something. Conflating them
         // turns a wait on a terrain server into a banner inviting a click that cannot help.
@@ -103,7 +123,17 @@ fn editable(backend: &dyn Backend, current: i64) -> Value {
     if current <= 0 {
         return Value::Null;
     }
-    let path = format!("plan.missionController.visualItems.{current}");
+    match fields_of(backend, current) {
+        Value::Null => Value::Null,
+        fields => json!({ "index": current, "fields": fields }),
+    }
+}
+
+fn fields_of(backend: &dyn Backend, index: i64) -> Value {
+    if index <= 0 {
+        return Value::Null;
+    }
+    let path = format!("plan.missionController.visualItems.{index}");
     let item = object(&backend.get(&path));
     let Some(facts) = item.get("facts").and_then(Value::as_array) else {
         return Value::Null;
@@ -128,7 +158,7 @@ fn editable(backend: &dyn Backend, current: i64) -> Value {
         .collect();
     match fields.is_empty() {
         true => Value::Null,
-        false => json!({ "index": current, "fields": fields }),
+        false => Value::Array(fields),
     }
 }
 
@@ -369,6 +399,31 @@ mod reported {
         assert_eq!(item["altitude"], 75.0, "the number the operator typed");
         assert_eq!(item["altitudeAmsl"], 660.0, "and the one it flies at, which differ by the launch elevation");
         assert_eq!(item["altitudeMode"], 1, "and which of the two the operator was setting");
+    }
+
+
+    #[test]
+    fn a_complex_item_with_no_shape_yet_is_not_a_leg_the_vehicle_flies() {
+        let drawn = listed(json!({
+            "kind": "object", "sequenceNumber": 1, "isSimpleItem": false, "isSurveyItem": true,
+            "specifiesCoordinate": true, "isIncomplete": true,
+            "coordinate": { "kind": "coordinate", "valid": true, "latitude": 47.0, "longitude": 8.0 },
+        }));
+        assert_eq!(drawn["incomplete"], true);
+        assert_eq!(drawn["flownLeg"], false, "a survey still being drawn has a centre but no route through it, and drawing a leg to it puts a line across the map");
+
+        let finished = listed(json!({
+            "kind": "object", "sequenceNumber": 1, "isSimpleItem": false, "isSurveyItem": true,
+            "specifiesCoordinate": true, "isIncomplete": false,
+            "coordinate": { "kind": "coordinate", "valid": true, "latitude": 47.0, "longitude": 8.0 },
+        }));
+        assert_eq!(finished["flownLeg"], true);
+
+        let standalone = listed(json!({
+            "kind": "object", "sequenceNumber": 1, "isSimpleItem": true, "specifiesCoordinate": true, "isStandaloneCoordinate": true,
+            "coordinate": { "kind": "coordinate", "valid": true, "latitude": 47.0, "longitude": 8.0 },
+        }));
+        assert_eq!(standalone["flownLeg"], false, "a region of interest has a place and the vehicle does not fly to it");
     }
 
     #[test]

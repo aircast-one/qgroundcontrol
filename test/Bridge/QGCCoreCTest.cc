@@ -3192,6 +3192,9 @@ void QGCCoreCTest::_everyEditablePathTheCoreNamesAcceptsAWrite()
         QJsonObject editing;
         QTRY_VERIFY_WITH_TIMEOUT(!(editing = take(qgc_core_get("view.missionItems")).value(QStringLiteral("editing")).toObject()).isEmpty(), 10000);
         const QJsonArray fields = editing.value(QStringLiteral("fields")).toArray();
+        const QJsonArray everyItem = take(qgc_core_get("view.missionItems(fields)")).value(QStringLiteral("items")).toArray();
+        QVERIFY2(everyItem.last().toObject().value(QStringLiteral("fields")).toArray().count() == fields.count(),
+                 "asking for fields has to answer for every item, not only the one being edited");
         QVERIFY2(!fields.isEmpty(), qPrintable(QStringLiteral("%1 offers nothing to edit, which is what naming no paths looks like").arg(kind)));
 
         for (const QJsonValue &entry : fields) {
