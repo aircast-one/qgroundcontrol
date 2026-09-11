@@ -103,28 +103,19 @@ object PlanBridge {
     fun rawItems(): JSONObject? =
         runCatching { JSONObject(QGCBridge.get(PLAN_VIEW)) }.getOrNull()
 
-    fun loadFromVehicle() = invoke("$PLAN_ROOT.loadFromVehicle")
+    fun loadFromVehicle() = invokeOk("$PLAN_ROOT.loadFromVehicle")
 
-    fun clearPlan() = invoke("$PLAN_ROOT.removeAll")
+    fun clearPlan() = invokeOk("$PLAN_ROOT.removeAll")
 
-    fun sendToVehicle() = invoke("$PLAN_ROOT.sendToVehicle")
+    fun sendToVehicle() = invokeOk("$PLAN_ROOT.sendToVehicle")
 
     fun setAltitude(index: Int, metres: Double): Boolean =
-        runCatching {
-            JSONObject(QGCBridge.set("$PLAN_ITEMS.$index.altitude", "{\"value\":$metres}"))
-                .optBoolean("ok")
-        }.getOrDefault(false)
+        setOk("$PLAN_ITEMS.$index.altitude", settingJson("$metres"))
 
     fun removeItem(index: Int): Boolean = removeMissionItem(index).ok
 
     fun moveItem(index: Int, latitude: Double, longitude: Double): Boolean =
-        runCatching {
-            val value = "{\"value\":{\"latitude\":$latitude,\"longitude\":$longitude,\"altitude\":0}}"
-            JSONObject(QGCBridge.set("$PLAN_ITEMS.$index.coordinate", value)).optBoolean("ok")
-        }.getOrDefault(false)
-
-    private fun invoke(path: String, args: String = "[]"): Boolean =
-        runCatching { JSONObject(QGCBridge.invoke(path, args)).optBoolean("ok") }.getOrDefault(false)
+        setOk("$PLAN_ITEMS.$index.coordinate", settingJson(coordinateJson(latitude, longitude)))
 }
 
 internal fun takeoffMissing(items: List<MissionItem>): Boolean =

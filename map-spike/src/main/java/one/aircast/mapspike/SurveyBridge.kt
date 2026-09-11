@@ -77,27 +77,14 @@ object SurveyBridge {
         }.getOrDefault(Double.NaN)
 
     fun setAltitude(itemIndex: Int, metres: Double): Boolean =
-        runCatching {
-            JSONObject(QGCBridge.set(altitudePath(itemIndex), "{\"value\":$metres}"))
-                .optBoolean("ok")
-        }.getOrDefault(false)
+        setOk(altitudePath(itemIndex), settingJson("$metres"))
 
     fun setGridAngle(itemIndex: Int, degrees: Double): Boolean =
-        runCatching {
-            JSONObject(
-                QGCBridge.set("$PLAN_ITEMS.$itemIndex.gridAngle", "{\"value\":$degrees}"),
-            ).optBoolean("ok")
-        }.getOrDefault(false)
+        setOk("$PLAN_ITEMS.$itemIndex.gridAngle", settingJson("$degrees"))
 
     fun adjustVertex(survey: Survey, vertex: Int, latitude: Double, longitude: Double): Boolean =
-        invoke(
+        invokeOk(
             "$PLAN_ITEMS.${survey.index}.${survey.property}.adjustVertex",
-            "[$vertex, ${coordinate(latitude, longitude)}]",
+            "[$vertex, ${coordinateJson(latitude, longitude)}]",
         )
-
-    private fun coordinate(latitude: Double, longitude: Double) =
-        "{\"latitude\":$latitude,\"longitude\":$longitude,\"altitude\":0}"
-
-    private fun invoke(path: String, args: String): Boolean =
-        runCatching { JSONObject(QGCBridge.invoke(path, args)).optBoolean("ok") }.getOrDefault(false)
 }

@@ -66,56 +66,41 @@ object FenceBridge {
         runCatching { JSONObject(QGCBridge.get(FENCES_VIEW)) }.getOrNull()
 
     fun addInclusionPolygon(topLeft: TrackPoint, bottomRight: TrackPoint): Boolean =
-        invoke(
+        invokeOk(
             "$FENCE_ROOT.addInclusionPolygon",
-            "[${point(topLeft)}, ${point(bottomRight)}]",
+            "[${coordinateJson(topLeft)}, ${coordinateJson(bottomRight)}]",
         )
 
     fun addInclusionCircle(topLeft: TrackPoint, bottomRight: TrackPoint): Boolean =
-        invoke("$FENCE_ROOT.addInclusionCircle", "[${point(topLeft)}, ${point(bottomRight)}]")
+        invokeOk("$FENCE_ROOT.addInclusionCircle", "[${coordinateJson(topLeft)}, ${coordinateJson(bottomRight)}]")
 
     fun addRallyPoint(latitude: Double, longitude: Double): Boolean =
-        invoke("$RALLY_ROOT.addPoint", "[{\"latitude\":$latitude,\"longitude\":$longitude,\"altitude\":0}]")
+        invokeOk("$RALLY_ROOT.addPoint", "[${coordinateJson(latitude, longitude)}]")
 
     fun moveRallyPoint(index: Int, latitude: Double, longitude: Double): Boolean =
-        runCatching {
-            val value = "{\"value\":{\"latitude\":$latitude,\"longitude\":$longitude,\"altitude\":0}}"
-            JSONObject(QGCBridge.set("$RALLY_POINTS.$index.coordinate", value)).optBoolean("ok")
-        }.getOrDefault(false)
+        setOk("$RALLY_POINTS.$index.coordinate", settingJson(coordinateJson(latitude, longitude)))
 
     fun moveCircle(index: Int, latitude: Double, longitude: Double): Boolean =
-        runCatching {
-            val value = "{\"value\":{\"latitude\":$latitude,\"longitude\":$longitude,\"altitude\":0}}"
-            JSONObject(QGCBridge.set("$FENCE_CIRCLES.$index.center", value)).optBoolean("ok")
-        }.getOrDefault(false)
+        setOk("$FENCE_CIRCLES.$index.center", settingJson(coordinateJson(latitude, longitude)))
 
     fun setCircleRadius(index: Int, metres: Double): Boolean =
-        runCatching {
-            JSONObject(QGCBridge.set("$FENCE_CIRCLES.$index.radius", "{\"value\":$metres}"))
-                .optBoolean("ok")
-        }.getOrDefault(false)
+        setOk("$FENCE_CIRCLES.$index.radius", settingJson("$metres"))
 
-    fun deletePolygon(index: Int): Boolean = invoke("$FENCE_ROOT.deletePolygon", "[$index]")
+    fun deletePolygon(index: Int): Boolean = invokeOk("$FENCE_ROOT.deletePolygon", "[$index]")
 
-    fun deleteCircle(index: Int): Boolean = invoke("$FENCE_ROOT.deleteCircle", "[$index]")
+    fun deleteCircle(index: Int): Boolean = invokeOk("$FENCE_ROOT.deleteCircle", "[$index]")
 
     fun removeRallyPoint(index: Int): Boolean =
-        invoke("$RALLY_ROOT.removePoint", "[\"@$RALLY_POINTS.$index\"]")
+        invokeOk("$RALLY_ROOT.removePoint", "[\"@$RALLY_POINTS.$index\"]")
 
     fun removeVertex(polygon: Int, vertex: Int): Boolean =
-        invoke("$FENCE_POLYGONS.$polygon.removeVertex", "[$vertex]")
+        invokeOk("$FENCE_POLYGONS.$polygon.removeVertex", "[$vertex]")
 
     fun adjustVertex(polygon: Int, vertex: Int, latitude: Double, longitude: Double): Boolean =
-        invoke(
+        invokeOk(
             "$FENCE_POLYGONS.$polygon.adjustVertex",
-            "[$vertex, {\"latitude\":$latitude,\"longitude\":$longitude,\"altitude\":0}]",
+            "[$vertex, ${coordinateJson(latitude, longitude)}]",
         )
-
-    private fun point(value: TrackPoint) =
-        "{\"latitude\":${value.latitude},\"longitude\":${value.longitude},\"altitude\":0}"
-
-    private fun invoke(path: String, args: String = "[]"): Boolean =
-        runCatching { JSONObject(QGCBridge.invoke(path, args)).optBoolean("ok") }.getOrDefault(false)
 }
 
 private const val EARTH_RADIUS_M = 6_371_000.0
