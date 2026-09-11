@@ -4354,6 +4354,35 @@ true. And the first tap *looked* correct — a takeoff went in, which is what su
 the item count going 2 to 3 showed it was the second one. A green suite and a plausible screen, and
 the count was the only witness.
 
+### The plan was reading the vehicle's translated command names
+
+I reported this defect in the core's `endsRoute` this morning and did not look for it in my own code.
+Two places in map-spike matched on a mission item's command *name*. That name is the core's
+`commandName`, which is `friendlyName`, which is in QGC's `translateKeys` — so it is translated.
+
+`waypointColour` matched `contains("takeoff")`, `contains("land")`, `contains("return")`. In any
+locale but English every marker fell through to the default colour and takeoff, land, RTL and loiter
+lost their distinct markers.
+
+`takeoffMissing` looked for `"TAKEOFF"` and had the worse consequence: a German plan that already
+takes off was told it needed one inserted first, and the insert went to the front of a plan that was
+already correct. Its tests passed `"NAV_TAKEOFF"` — a string the core never serves; it serves
+`"Takeoff"` — so the tests agreed with the code and neither of them agreed with the field.
+
+Both now read `kind` and the command id, which are the same in every locale. Break-checks: blanking
+`waypointColour` turns 4 tests red, pointing `takeoffMissing` at a kind that does not exist turns 3.
+
+**One instance of this cannot be fixed in a head.** `Fact.valueIsOffTheEnumList` matches the
+`tr("Unknown: %1")` label QGC synthesises for a value that is not in a parameter's enum list, and it
+is what keeps a float with suggested values (`ACRO_RP_RATE_TC`) from becoming a dropdown with no way
+to type a number. `Fact::enumIndex()` *appends* that synthesised entry to the shared `FactMetaData`
+and returns its index, so after the first read the value is genuinely in the list and no data
+distinguishes it — and the bridge cannot avoid triggering the append, because `enumOrValueString`,
+which is how both heads render a readable value, calls `enumStringValue` calls `enumIndex`. The
+macOS head carries the same `hasPrefix` check for the same reason. Fixing it means teaching
+`FactMetaData` to remember which entries it synthesised; that is a FactSystem change, not a head one,
+and it is not worth it for one screen in one locale. Recorded rather than attempted.
+
 ## Phase 6 — Shell · 2 weeks
 
 Cheaper than macOS, because Qt is already off the main thread.
