@@ -408,6 +408,51 @@ critical path and is what would answer the list above.
 - The QWindowKit integrated-titlebar work is replaced by the real thing and deleted.
 - Notarized universal build through the existing release CI; `make release.*` updated.
 
+### A head that reads a view once is the recurring defect, and how to find it (2026-09-11)
+
+Six defects in the Plan window in one session, and four of them were one shape: the head reads a
+view once, what it read is not final, and nothing reads again. The plan summary sat an edit behind
+and showed the distance of the plan before the last waypoint. The terrain panel said the mission
+cleared ground it flew into. A survey would not say how many photos it takes or how far it flies. A
+survey was missing from the map entirely. Only **which property lands late** varied.
+
+**The Plan window's store never polls, by design, and that is why the class lives there.** The Fly
+view's copy re-reads twice a second, which hides the same mistake rather than avoiding it.
+
+**Fence and rally were measured and are clean**, which is what makes the class precise: a fence is
+computed the moment its shape exists, with no terrain server to wait for and no transects to lay
+out. So the question when wiring any panel is not "does this window poll" but **"what arrives after
+the first read"**. Terrain heights and their collision verdicts land separately, one after the
+other. A survey's area and shot interval land with its polygon; its shot count, its flown distance
+and its own entry coordinate land with its transects.
+
+Each was fixed the same way: watch the controller properties that land late through the bridge's
+push channel, and re-read the core's view, which stays the authority. Coalesce the re-read — two
+signals per item all arrive in one turn, and re-reading on each measured 7.1 ms a time for a
+three-item plan against a gate of a two-hundred-waypoint survey.
+
+**The other two defects were one list answering two questions.** The map drew a single polyline
+through every placed item, so a region of interest — which earns a marker and which the aircraft
+never flies to — put a dogleg in the planned route; and an item after a return to launch, which is
+uploaded and never reached, got a leg drawn across the map to it. `flownLeg` and `endsRoute` answer
+those separately, and neither field alone would have been enough: leaving an item out of a route
+and ending a route are different questions.
+
+**`tools/macos/head-vs-core.py` is what finds these.** It builds a plan through the debug probe —
+takeoff, a waypoint over real terrain, a region of interest, a survey, a landing, and a waypoint
+after it — then compares every fact the window draws against the core's answer for the same fact on
+a live app, and fails on any disagreement. It found the survey's missing position by itself and the
+core's null altitudes on its first run. Three rules earned the hard way:
+
+- **It compares what the operator sees**, string against string, so neither side parses the other's
+  back into a number.
+- **It reports a disagreement without attributing it.** The core has been the wrong half three
+  times.
+- **Its guard asks the core whether a run is worth reporting, never the head.** The first version
+  asked the head, and when the head was broken on purpose to prove the tool caught it, the guard
+  read the defect as a trivial plan and went quiet. A guard that consults the thing under test goes
+  silent exactly when it is needed.
+
 ### What Phase 6 deletes, swept (2026-09-11)
 
 Two QML extensibility points were on the open list -- `instrumentQmlFile2` and `Viewer3D` -- with a
