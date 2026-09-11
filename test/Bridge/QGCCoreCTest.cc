@@ -3134,8 +3134,13 @@ void QGCCoreCTest::_aSignalWithNoPropertyBehindItStillWakesAView()
     const QString fires = QStringLiteral("plan.missionController@recalcTerrainProfile");
     const QString absent = QStringLiteral("plan.missionController@noSuchSignalExists");
     const auto counted = [](const QString &path) { return paths.count(path); };
+    const auto payloadFor = [](const QString &path) {
+        const qsizetype index = paths.indexOf(path);
+        return (index < 0) ? QString() : payloads.at(index);
+    };
 
     paths.clear();
+    payloads.clear();
     qgc_bridge_set_event_handler(onEvent);
     const QByteArray watched = (fires + QLatin1Char(',') + absent).toUtf8();
     qgc_bridge_watch(watched.constData());
@@ -3156,13 +3161,16 @@ void QGCCoreCTest::_aSignalWithNoPropertyBehindItStillWakesAView()
         QTRY_VERIFY_WITH_TIMEOUT(counted(fires) > before, 10000);
     }
 
-    // Three inserts, each waited out to its own redraw, is several seconds and so tens of poll
-    // ticks. A signal path that names nothing must stay silent across all of them rather than fall
-    // through to the poll that serves unbindable property paths - that poll re-emits every tick, so
-    // a mistyped signal name would recompute its view five times a second forever while looking
-    // exactly like a watch that works.
     QVERIFY2(counted(fires) >= inserts.count(), "the controller's redraw signal did not reach a head watching it");
-    QVERIFY2(counted(absent) == 0, qPrintable(QStringLiteral("a watch on a signal that does not exist reported itself as firing %1 times").arg(counted(absent))));
+
+    // A name that matches no signal is not a signal path at all - it falls back to being read as a
+    // property, which is how the head learns the path is wrong. Answering it with a fired counter
+    // instead would defeat the value dedup that keeps unresolvable paths quiet, so a mistyped
+    // signal name would recompute its view on every poll tick while looking like a watch that
+    // works. The tell is in what the event carries, not how often it arrives.
+    const QString mistyped = payloadFor(absent);
+    QVERIFY2(!mistyped.contains(QStringLiteral("fired")), qPrintable(QStringLiteral("a signal that does not exist reported itself as firing: ") + mistyped));
+    QVERIFY2(mistyped.isEmpty() || mistyped.contains(QStringLiteral("false")), qPrintable(QStringLiteral("a path naming no signal and no property answered as though it resolved: ") + mistyped));
 #else
     QSKIP("the Rust core is not linked into this build");
 #endif

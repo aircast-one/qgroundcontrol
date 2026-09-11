@@ -801,24 +801,21 @@ private:
                 }
                 continue;
             }
-            const bool bindable = _bind(path);
-            if (bindable || !path.contains(kSignalSeparator)) {
-                _emit(path);
-            }
+            (void) _bind(path);
+            _emit(path);
         }
     }
 
     bool _bind(const QString &path)
     {
-        const int separator = path.indexOf(kSignalSeparator);
-        const Resolved resolved = (separator < 0) ? resolve(path) : resolve(path.left(separator));
+        const Resolved named = _resolveSignal(path);
+        const Resolved resolved = named.object ? named : resolve(path);
         QObject *const object = resolved.object;
         if (!object || resolved.property.contains(QLatin1Char('.'))) {
             return false;
         }
-        const QMetaMethod signal = (separator < 0)
-            ? _changeSignal(object, resolved.property)
-            : _namedSignal(object, path.mid(separator + 1));
+        const bool signalOnly = named.object != nullptr;
+        const QMetaMethod signal = signalOnly ? _namedSignal(object, named.property) : _changeSignal(object, resolved.property);
         if (!signal.isValid()) {
             return false;
         }
@@ -829,7 +826,7 @@ private:
         }
         _bound.insert(path, Binding {
             qobject_cast<Fact *>(object) != nullptr,
-            separator >= 0,
+            signalOnly,
             change,
             connect(object, &QObject::destroyed, this, [this, path, object]() {
                 _bound.remove(path);
@@ -838,6 +835,20 @@ private:
         });
         _byObject[object].append(path);
         return true;
+    }
+
+    static Resolved _resolveSignal(const QString &path)
+    {
+        const int separator = path.lastIndexOf(kSignalSeparator);
+        if (separator < 0) {
+            return Resolved();
+        }
+        const Resolved holder = resolve(path.left(separator));
+        if (!holder.object || !holder.property.isEmpty()) {
+            return Resolved();
+        }
+        const QString name = path.mid(separator + 1);
+        return _namedSignal(holder.object, name).isValid() ? Resolved { holder.object, name } : Resolved();
     }
 
     static QMetaMethod _namedSignal(QObject *object, const QString &name)
@@ -871,7 +882,8 @@ private:
         if (!g_eventHandler) {
             return;
         }
-        if (path.contains(kSignalSeparator)) {
+        const auto bound = _bound.constFind(path);
+        if (bound != _bound.constEnd() && bound->signalOnly) {
             g_eventHandler(path, QStringLiteral("{\"fired\":%1}").arg(++_fired));
             return;
         }
