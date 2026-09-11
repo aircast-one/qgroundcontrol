@@ -26,9 +26,9 @@ class SetupScreenTest {
 
     @Test
     fun `a component only needs attention when setup is required and missing`() {
-        val required = SetupComponent(0, "Radio", "", requiresSetup = true, setupComplete = false)
-        val done = SetupComponent(1, "Radio", "", requiresSetup = true, setupComplete = true)
-        val optional = SetupComponent(2, "Camera", "", requiresSetup = false, setupComplete = false)
+        val required = SetupComponent(0, "Radio", requiresSetup = true, setupComplete = false)
+        val done = SetupComponent(1, "Radio", requiresSetup = true, setupComplete = true)
+        val optional = SetupComponent(2, "Camera", requiresSetup = false, setupComplete = false)
         assertEquals(true, required.needsAttention)
         assertEquals(false, done.needsAttention)
         assertEquals(false, optional.needsAttention)
@@ -37,9 +37,9 @@ class SetupScreenTest {
     @Test
     fun `a component promoted for attention is not listed a second time`() {
         val components = listOf(
-            SetupComponent(0, "Frame", "", requiresSetup = false, setupComplete = false),
-            SetupComponent(1, "Sensors", "", requiresSetup = true, setupComplete = false),
-            SetupComponent(2, "Power", "", requiresSetup = true, setupComplete = true),
+            SetupComponent(0, "Frame", requiresSetup = false, setupComplete = false),
+            SetupComponent(1, "Sensors", requiresSetup = true, setupComplete = false),
+            SetupComponent(2, "Power", requiresSetup = true, setupComplete = true),
         )
 
         assertEquals(listOf("Frame", "Power"), remainingSetup(components).map { it.name })
@@ -48,7 +48,7 @@ class SetupScreenTest {
     @Test
     fun `every component needing attention leaves nothing for the full list`() {
         val components = listOf(
-            SetupComponent(0, "Sensors", "", requiresSetup = true, setupComplete = false),
+            SetupComponent(0, "Sensors", requiresSetup = true, setupComplete = false),
         )
 
         assertEquals(emptyList<String>(), remainingSetup(components).map { it.name })
@@ -60,7 +60,6 @@ class SetupScreenTest {
     ) = SetupComponent(
         index = 0,
         name = "Sensors",
-        description = "",
         requiresSetup = true,
         setupComplete = false,
         allowSetupWhileArmed = allowArmed,

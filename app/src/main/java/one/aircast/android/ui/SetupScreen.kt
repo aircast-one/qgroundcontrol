@@ -56,7 +56,6 @@ internal fun firmwareSummary(
 internal data class SetupComponent(
     val index: Int,
     val name: String,
-    val description: String,
     val requiresSetup: Boolean,
     val setupComplete: Boolean,
     val allowSetupWhileArmed: Boolean = false,
@@ -79,7 +78,6 @@ private fun readComponents(): List<SetupComponent> {
             SetupComponent(
                 index = index,
                 name = name,
-                description = json.optString("description"),
                 requiresSetup = json.optBoolean("requiresSetup"),
                 setupComplete = json.optBoolean("setupComplete"),
                 allowSetupWhileArmed = json.optBoolean("allowSetupWhileArmed"),
