@@ -4,21 +4,13 @@ import org.json.JSONArray
 import org.json.JSONObject
 import org.mavlink.qgroundcontrol.QGCBridge
 
-fun factValue(element: JSONObject, name: String): Double {
-    val facts = element.optJSONArray("facts") ?: return Double.NaN
-    return (0 until facts.length())
-        .mapNotNull { facts.optJSONObject(it) }
-        .firstOrNull { it.optString("name").equals(name, ignoreCase = true) }
-        ?.optDouble("value", Double.NaN)
-        ?: Double.NaN
-}
-
 const val FENCE_ROOT = "$PLAN_ROOT.geoFenceController"
 const val RALLY_ROOT = "$PLAN_ROOT.rallyPointController"
 
 const val FENCE_POLYGONS = "$FENCE_ROOT.polygons"
 const val FENCE_CIRCLES = "$FENCE_ROOT.circles"
 const val RALLY_POINTS = "$RALLY_ROOT.points"
+const val FENCES_VIEW = "view.fences"
 
 data class FencePolygon(val index: Int, val inclusion: Boolean, val vertices: List<TrackPoint>)
 data class FenceCircle(val index: Int, val inclusion: Boolean, val centre: TrackPoint, val radius: Double)
@@ -31,7 +23,7 @@ private fun coordinate(json: JSONObject?): TrackPoint? {
     return TrackPoint(latitude, longitude)
 }
 
-private fun elements(json: JSONObject?): JSONArray? = json?.optJSONArray("elements")
+private fun listed(json: JSONObject?, key: String): JSONArray? = json?.optJSONArray(key)
 
 const val FENCE_POLYGON_MINIMUM = 3
 
@@ -39,42 +31,39 @@ internal fun cornerRemovable(polygon: FencePolygon?): Boolean =
     (polygon?.vertices?.size ?: 0) > FENCE_POLYGON_MINIMUM
 
 fun fencePolygons(json: JSONObject?): List<FencePolygon> {
-    val list = elements(json) ?: return emptyList()
+    val list = listed(json, "polygons") ?: return emptyList()
     return (0 until list.length()).mapNotNull { index ->
         val element = list.optJSONObject(index) ?: return@mapNotNull null
-        val path = element.optJSONArray("path") ?: return@mapNotNull null
-        val vertices = (0 until path.length()).mapNotNull { coordinate(path.optJSONObject(it)) }
-        if (vertices.size < 3) return@mapNotNull null
-        FencePolygon(index, element.optBoolean("inclusion", true), vertices)
+        val corners = element.optJSONArray("vertices") ?: return@mapNotNull null
+        val vertices = (0 until corners.length()).mapNotNull { coordinate(corners.optJSONObject(it)) }
+        if (vertices.size < FENCE_POLYGON_MINIMUM) return@mapNotNull null
+        FencePolygon(element.optInt("index", index), element.optBoolean("inclusion", true), vertices)
     }
 }
 
 fun fenceCircles(json: JSONObject?): List<FenceCircle> {
-    val list = elements(json) ?: return emptyList()
+    val list = listed(json, "circles") ?: return emptyList()
     return (0 until list.length()).mapNotNull { index ->
         val element = list.optJSONObject(index) ?: return@mapNotNull null
-        val centre = coordinate(element.optJSONObject("center")) ?: return@mapNotNull null
-        val radius = factValue(element, "Radius")
+        val centre = coordinate(element.optJSONObject("centre")) ?: return@mapNotNull null
+        val radius = element.optDouble("radius", Double.NaN)
         if (radius.isNaN() || radius <= 0.0) return@mapNotNull null
-        FenceCircle(index, element.optBoolean("inclusion", true), centre, radius)
+        FenceCircle(element.optInt("index", index), element.optBoolean("inclusion", true), centre, radius)
     }
 }
 
 fun rallyPoints(json: JSONObject?): List<RallyPoint> {
-    val list = elements(json) ?: return emptyList()
+    val list = listed(json, "rallyPoints") ?: return emptyList()
     return (0 until list.length()).mapNotNull { index ->
         val element = list.optJSONObject(index) ?: return@mapNotNull null
-        val point = coordinate(element.optJSONObject("coordinate")) ?: return@mapNotNull null
-        RallyPoint(index, point.latitude, point.longitude)
+        val point = coordinate(element) ?: return@mapNotNull null
+        RallyPoint(element.optInt("index", index), point.latitude, point.longitude)
     }
 }
 
 object FenceBridge {
-    fun polygons(): List<FencePolygon> = fencePolygons(read(FENCE_POLYGONS))
-
-    fun circles(): List<FenceCircle> = fenceCircles(read(FENCE_CIRCLES))
-
-    fun rally(): List<RallyPoint> = rallyPoints(read(RALLY_POINTS))
+    fun read(): JSONObject? =
+        runCatching { JSONObject(QGCBridge.get(FENCES_VIEW)) }.getOrNull()
 
     fun addInclusionPolygon(topLeft: TrackPoint, bottomRight: TrackPoint): Boolean =
         invoke(
@@ -124,9 +113,6 @@ object FenceBridge {
 
     private fun point(value: TrackPoint) =
         "{\"latitude\":${value.latitude},\"longitude\":${value.longitude},\"altitude\":0}"
-
-    private fun read(path: String): JSONObject? =
-        runCatching { JSONObject(QGCBridge.getFields(path, "*")) }.getOrNull()
 
     private fun invoke(path: String, args: String = "[]"): Boolean =
         runCatching { JSONObject(QGCBridge.invoke(path, args)).optBoolean("ok") }.getOrDefault(false)

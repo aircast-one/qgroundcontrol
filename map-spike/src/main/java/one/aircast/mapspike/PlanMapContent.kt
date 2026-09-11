@@ -204,9 +204,10 @@ internal fun MapSpikeScreen(
             val nextItemCount = planItemCount(plan)
             val nextShape = planShape(plan)
             val nextLink = linksStartToHome(plan)
-            val nextFences = FenceBridge.polygons()
-            val nextRally = FenceBridge.rally()
-            val nextCircles = FenceBridge.circles()
+            val fenceView = FenceBridge.read()
+            val nextFences = fencePolygons(fenceView)
+            val nextRally = rallyPoints(fenceView)
+            val nextCircles = fenceCircles(fenceView)
             val nextSurveys = SurveyBridge.surveysFrom(plan)
             withContext(Dispatchers.Main) {
                 items = nextItems

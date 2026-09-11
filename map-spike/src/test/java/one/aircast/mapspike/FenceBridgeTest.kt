@@ -11,10 +11,16 @@ class FenceBridgeTest {
         """{"latitude":$latitude,"longitude":$longitude}"""
 
     private fun polygon(vararg vertices: String, inclusion: Boolean = true) =
-        """{"inclusion":$inclusion,"path":[${vertices.joinToString(",")}]}"""
+        """{"inclusion":$inclusion,"vertices":[${vertices.joinToString(",")}]}"""
 
     private fun model(vararg elements: String) =
-        JSONObject("""{"kind":"object","elements":[${elements.joinToString(",")}]}""")
+        JSONObject("""{"kind":"object","polygons":[${elements.joinToString(",")}]}""")
+
+    private fun circles(vararg elements: String) =
+        JSONObject("""{"kind":"object","circles":[${elements.joinToString(",")}]}""")
+
+    private fun rally(vararg elements: String) =
+        JSONObject("""{"kind":"object","rallyPoints":[${elements.joinToString(",")}]}""")
 
     private val square = arrayOf(
         vertex(41.0, 44.0),
@@ -54,13 +60,12 @@ class FenceBridgeTest {
         assertEquals(0, polygons.size)
     }
 
-    private fun radiusFact(value: Double) = """{"name":"Radius","value":$value}"""
 
     @Test
-    fun `a circle reads its radius from the fact list`() {
-        val good = """{"inclusion":true,"center":${vertex(41.0, 44.0)},"facts":[${radiusFact(136.0)}]}"""
+    fun `a circle reads the radius the core resolved`() {
+        val good = """{"inclusion":true,"centre":${vertex(41.0, 44.0)},"radius":136.0}"""
 
-        val circles = fenceCircles(model(good))
+        val circles = fenceCircles(circles(good))
 
         assertEquals(1, circles.size)
         assertEquals(136.0, circles.single().radius, 1e-9)
@@ -69,20 +74,20 @@ class FenceBridgeTest {
 
     @Test
     fun `circles without a centre or a usable radius are dropped`() {
-        val noRadius = """{"inclusion":true,"center":${vertex(41.0, 44.0)},"facts":[${radiusFact(0.0)}]}"""
-        val noFacts = """{"inclusion":true,"center":${vertex(41.0, 44.0)}}"""
-        val noCentre = """{"inclusion":true,"facts":[${radiusFact(120.0)}]}"""
-        val otherFact = """{"center":${vertex(41.0, 44.0)},"facts":[{"name":"Altitude","value":50.0}]}"""
+        val noRadius = """{"inclusion":true,"centre":${vertex(41.0, 44.0)},"radius":0.0}"""
+        val noRadiusField = """{"inclusion":true,"centre":${vertex(41.0, 44.0)}}"""
+        val noCentre = """{"inclusion":true,"radius":120.0}"""
+        val otherFact = """{"centre":${vertex(41.0, 44.0)},"radius":null}"""
 
-        assertEquals(0, fenceCircles(model(noRadius, noFacts, noCentre, otherFact)).size)
+        assertEquals(0, fenceCircles(circles(noRadius, noRadiusField, noCentre, otherFact)).size)
     }
 
     @Test
     fun `rally points read their coordinate`() {
         val points = rallyPoints(
-            model(
-                """{"coordinate":${vertex(41.2, 44.2)}}""",
-                """{"coordinate":${vertex(0.0, 0.0)}}""",
+            rally(
+                vertex(41.2, 44.2),
+                vertex(0.0, 0.0),
                 """{}""",
             ),
         )

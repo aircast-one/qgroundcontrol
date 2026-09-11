@@ -46,15 +46,16 @@ fun FlyMap(modifier: Modifier = Modifier, cameraBottomPx: Int = 0) {
             while (true) {
                 val next = withContext(Dispatchers.Default) {
                     val raw = PlanBridge.rawItems()
+                    val fences = FenceBridge.read()
                     if (raw != null) {
                         MapBridge.markReachable()
                     }
                     FlownPlan(
                         items = missionItems(raw),
                         linkStartToHome = linksStartToHome(raw),
-                        fences = FenceBridge.polygons(),
-                        circles = FenceBridge.circles(),
-                        rally = FenceBridge.rally(),
+                        fences = fencePolygons(fences),
+                        circles = fenceCircles(fences),
+                        rally = rallyPoints(fences),
                         surveys = SurveyBridge.surveysFrom(raw),
                     )
                 }
