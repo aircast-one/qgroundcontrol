@@ -151,27 +151,7 @@ pub fn telemetry_terms(items: &[Value]) -> Vec<(i64, f64, f64)> {
 }
 
 pub fn max_telemetry_distance(items: &[Value]) -> f64 {
-    let Some(home) = items.first().and_then(|item| item.get("coordinate")).and_then(point_of) else {
-        return 0.0;
-    };
-    flown(items)
-        // The plan's own entry is where the walk starts and is not somewhere the vehicle goes to,
-        // so it is excluded by name rather than by position - a skip would silently drop the first
-        // real item the day the settings entry stops passing the walk's own filter.
-        .filter(|item| item.get("kind").and_then(Value::as_str) != Some("settings"))
-        .map(|item| {
-            let Some(entry) = item.get("coordinate").and_then(point_of) else { return 0.0 };
-            let from_home = crate::surveygrid::distance_between(home, entry);
-            let exit = item.get("exitCoordinate").and_then(point_of).unwrap_or(entry);
-            let span = item
-                .get("geometry")
-                .and_then(|shape| shape.get("transects"))
-                .and_then(Value::as_array)
-                .map(|points| points.iter().filter_map(point_of).map(|at| crate::surveygrid::distance_between(exit, at)).fold(0.0, f64::max))
-                .unwrap_or(0.0);
-            from_home.max(span)
-        })
-        .fold(0.0, f64::max)
+    telemetry_terms(items).iter().map(|(_, from_home, span)| from_home.max(*span)).fold(0.0, f64::max)
 }
 
 // How long the mission takes. Every leg is flown at one of two speeds and the vehicle class picks
@@ -417,6 +397,35 @@ mod tests {
 
     fn tiltrotor() -> Value {
         json!({ "kind": "object", "multiRotor": false, "vtol": true })
+    }
+
+    fn at(latitude: f64, longitude: f64) -> Value {
+        json!({ "latitude": latitude, "longitude": longitude })
+    }
+
+    #[test]
+    fn the_telemetry_terms_are_the_ones_the_answer_folds() {
+        let plan = vec![
+            json!({ "kind": "settings", "sequence": 0, "coordinate": at(50.0, 30.0), "flownLeg": true }),
+            json!({ "kind": "waypoint", "sequence": 1, "coordinate": at(50.0, 30.0100), "flownLeg": true }),
+            json!({ "kind": "roi", "sequence": 2, "coordinate": at(50.0, 30.0900), "flownLeg": false }),
+            json!({ "kind": "survey", "sequence": 3, "coordinate": at(50.0, 30.0200), "flownLeg": true,
+                    "exitCoordinate": at(50.0, 30.0200),
+                    "geometry": { "transects": [at(50.0, 30.0250), at(50.0, 30.0700)] } }),
+            json!({ "kind": "land", "sequence": 4, "coordinate": at(50.0, 30.0300), "flownLeg": true, "endsRoute": true }),
+            json!({ "kind": "waypoint", "sequence": 5, "coordinate": at(50.0, 31.0000), "flownLeg": true }),
+        ];
+
+        let terms = telemetry_terms(&plan);
+        let sequences: Vec<i64> = terms.iter().map(|(sequence, _, _)| *sequence).collect();
+        assert_eq!(sequences, vec![1, 3, 4], "the ROI is not a flown leg, the settings entry is not somewhere the vehicle goes, and everything past the landing is not reached");
+
+        let folded = terms.iter().map(|(_, from_home, span)| from_home.max(*span)).fold(0.0, f64::max);
+        assert_eq!(max_telemetry_distance(&plan), folded, "the answer is the fold of these exact terms, so the inputs served beside it cannot describe a different walk");
+
+        let survey = terms.iter().find(|(sequence, _, _)| *sequence == 3).unwrap();
+        assert!(survey.2 > survey.1, "the survey's furthest transect is further from its own exit than its entry is from home, which is the term that makes this second and not a distance from launch at all");
+        assert!(max_telemetry_distance(&plan) >= survey.2);
     }
 
     #[test]
