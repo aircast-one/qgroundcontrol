@@ -35,7 +35,7 @@ class MissionSummaryTest {
     fun `rows the summary does not show are ignored`() {
         assertEquals(
             "4.82 km",
-            missionSummaryText(view("Batteries" to "2", "Distance" to "4.82 km", "Hover" to "1 km")),
+            missionSummaryText(view("Cruise" to "3 km", "Distance" to "4.82 km", "Hover" to "1 km")),
         )
     }
 
