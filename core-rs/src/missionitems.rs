@@ -127,6 +127,7 @@ fn item(read: &Value, index: i64, vertical: &Unit, imperial: bool) -> Value {
         "speedChange": number(read, "specifiedFlightSpeed"),
         "altitudeAmslLowest": number(read, "minAMSLAltitude"),
         "altitudeAmslHighest": number(read, "maxAMSLAltitude"),
+        "altitudeBandText": band(read, vertical),
         "specifiesCoordinate": flag(read, "specifiesCoordinate"),
         "altitudeChange": number(read, "altDifference"),
         "altitudeChangeText": number(read, "altDifference").map(|change| crate::read::altitude_text(change, vertical, true)),
@@ -187,6 +188,15 @@ fn unwalked(item: Value) -> Value {
             Value::Object(fields)
         }
         other => other,
+    }
+}
+
+fn band(read: &Value, vertical: &Unit) -> Option<String> {
+    let edge = |key: &str| number(read, key).filter(|metres| metres.is_finite());
+    match (edge("minAMSLAltitude"), edge("maxAMSLAltitude")) {
+        (Some(low), Some(high)) if high > low => Some(crate::read::range_text(low, high, vertical)),
+        (Some(low), Some(high)) if high == low => Some(crate::read::altitude_text(low, vertical, false)),
+        _ => None,
     }
 }
 
@@ -528,6 +538,28 @@ mod reported {
         assert_eq!(imperial["altitudeText"], "246 ft", "the feet come from the app's own conversion, not a factor the core keeps its own copy of");
         assert_eq!(imperial["altitudeUnits"], "ft");
         assert_eq!(imperial["altitude"], 75.0);
+    }
+
+    #[test]
+    fn a_pattern_that_spans_heights_says_the_span_rather_than_nothing() {
+        let survey = listed(json!({
+            "kind": "object", "sequenceNumber": 3, "isSimpleItem": false, "specifiesCoordinate": true,
+            "minAMSLAltitude": 585.0, "maxAMSLAltitude": 660.0,
+        }));
+        assert_eq!(survey["altitudeText"], Value::Null, "a survey has no single altitude fact, so the row it draws has always been blank");
+        assert_eq!(survey["altitudeBandText"], "585 m to 660 m", "it has a band instead, which minAMSLAltitude and maxAMSLAltitude have been carrying all along");
+
+        let flat = listed(json!({
+            "kind": "object", "sequenceNumber": 3, "isSimpleItem": false, "specifiesCoordinate": true,
+            "minAMSLAltitude": 585.0, "maxAMSLAltitude": 585.0,
+        }));
+        assert_eq!(flat["altitudeBandText"], "585 m", "a pattern over level ground spans nothing, and \"585 m to 585 m\" reads as a mistake");
+
+        let waypoint = listed(json!({
+            "kind": "object", "sequenceNumber": 1, "isSimpleItem": true, "specifiesAltitude": true,
+            "specifiesCoordinate": true, "facts": [ { "property": "altitude", "value": 50.0 } ],
+        }));
+        assert_eq!(waypoint["altitudeBandText"], Value::Null, "a simple item carries no band - the property is declared on ComplexMissionItem - and inventing one from its single altitude would be a second spelling of the same number");
     }
 
     #[test]
