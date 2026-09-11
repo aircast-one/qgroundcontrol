@@ -51,7 +51,6 @@ import androidx.compose.ui.unit.dp
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
-import org.json.JSONObject
 import org.mavlink.qgroundcontrol.QGCBridge
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.withContext
@@ -109,7 +108,6 @@ internal fun MapSpikeScreen(
     var rally by remember { mutableStateOf<List<RallyPoint>>(emptyList()) }
     var circles by remember { mutableStateOf<List<FenceCircle>>(emptyList()) }
     var surveyList by remember { mutableStateOf<List<Survey>>(emptyList()) }
-    var profile by remember { mutableStateOf(TerrainProfile(emptyList())) }
     var selected by remember { mutableStateOf<MapHit?>(null) }
 
     BackHandler(enabled = selected != null) { selected = null }
@@ -172,6 +170,8 @@ internal fun MapSpikeScreen(
     val planSyncing by mapBool("plan.syncInProgress")
     var uploadAsk by remember { mutableStateOf<UploadGate?>(null) }
     val missionSummaryView by mapPath("view.missionSummary")
+    val terrainView by mapPath(TERRAIN_VIEW)
+    val profile = remember(terrainView) { terrainProfile(terrainView) }
     val mode by mapString("vehicle.flightMode")
     val vehicleId by mapInt("vehicle.id")
     val vehicleCount by mapCount("vehicles.vehicles")
@@ -208,9 +208,6 @@ internal fun MapSpikeScreen(
             val nextRally = FenceBridge.rally()
             val nextCircles = FenceBridge.circles()
             val nextSurveys = SurveyBridge.surveysFrom(plan)
-            val nextProfile = terrainProfile(
-                runCatching { JSONObject(QGCBridge.get(TERRAIN_VIEW)) }.getOrNull(),
-            )
             withContext(Dispatchers.Main) {
                 items = nextItems
                 itemCount = nextItemCount
@@ -223,7 +220,6 @@ internal fun MapSpikeScreen(
                 }
                 circles = nextCircles
                 surveyList = nextSurveys
-                profile = nextProfile
             }
         }
     }
