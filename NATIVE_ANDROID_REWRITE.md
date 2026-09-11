@@ -4134,16 +4134,34 @@ Most of the 54 are single scalars — `vehicle.latitude`, `vehicle.armed`, `vehi
 — where a projection would add nothing. The ones that matter are where the head reads several raw
 values and **combines** them, because that is a rule two heads would each have to write.
 
-`SetupScreen` is the clearest: nine raw vehicle paths feeding `firmwareSummary` and
-`setupBlockedReason`. Both were checked this pass and **both are correct** — `setupBlockedReason`
-reproduces `SetupPage.qml` exactly, including the rover clause that looks like a local addition and is
-not:
+`SetupScreen` was the clearest: nine raw vehicle paths feeding `firmwareSummary` and
+`setupBlockedReason`, the latter reproducing `SetupPage.qml` exactly including the rover clause that
+looks like a local addition and is not. The note said it was for whoever moved it into the core.
 
-    _disableDueToArmed:  !allowSetupWhileArmed && armed
-    _disableDueToFlying: !isRover && !allowSetupWhileFlying && flying
+**That happened on 2026-09-11.** `view.setup` now carries `openable` and `blockedReason` per
+component, so the screen's `armed`, `flying` and `rover` watches and its per-component reads of
+`vehicle.autopilotPlugin` are gone (aircast-android `59e323d`). The core session encoding it found
+the part a second head would get wrong: when a component forbids setup both while armed and while
+flying and both hold, the reason named must be *armed*, because telling an operator to land when
+disarming is what is wanted is worse than saying nothing.
 
-So it is duplication rather than divergence, and the note is for whoever moves it into the core when
-macOS grows a Setup page — not a defect to fix now.
+The same pass took the plan's last bulk read. `PlanBridge.rawItems()`, `FenceBridge`'s three
+`getFields(path, "*")` calls, `VehiclePicker` and the import rules all read views now. What is left
+reading Qt directly falls into three groups, each with a reason rather than a backlog entry:
+
+- **Facts, not values.** `ParametersScreen` and the extra-video-source editor read a `Fact` — units,
+  range, enum strings — to render an editor. The views serve resolved values, which is the wrong
+  shape for a control that has to offer choices.
+- **Firmware-dependent lists.** `patternNames()` reads `complexMissionItemNames`, which is what the
+  connected firmware offers. `view.missionKinds` looks like the replacement and is a static catalogue
+  of seven; adopting it would silently drop import targets a vehicle actually supports.
+- **Deliberate on-demand reads.** A survey's grid angle and altitude are read when the control is
+  tapped rather than on every poll, which is why they are not in a view.
+
+The counts above are left as last measured rather than refreshed, because the sweep that produced
+them did not record its method and a re-count with a different one is not comparable. Anyone
+refreshing them should record the matcher alongside the number — three sweeps this session produced
+false positives from path constants and path-building helpers that hide a `view.` prefix.
 
 ### The Plan-entry stall did not get worse
 
