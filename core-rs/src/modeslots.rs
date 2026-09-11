@@ -85,7 +85,7 @@ pub fn slots_view(backend: &dyn Backend, _args: &[String]) -> Value {
         "class": "ModeSlots",
         "available": true,
         "channel": channel_index + 1,
-        "channelPwm": reachable.then(|| pwm.get(channel_index as usize).copied()).flatten(),
+        "channelPwm": pwm.get(channel_index as usize).copied(),
         "liveSlot": live,
         "slots": slots,
         "channelOptions": options,
@@ -236,6 +236,14 @@ mod tests {
         assert_eq!(view["channelPwm"], Value::Null, "there is no reading for a channel that is not being received");
         assert!(view["slots"].as_array().unwrap().iter().all(|slot| slot["live"] == false), "no slot may be marked live when the channel carrying the selection is not being received");
         assert!(view["reason"].as_str().unwrap().contains("not sending"));
+
+        // A channel parameter of zero puts the index at -1. The guard that used to wrap this read
+        // was redundant - the cast wraps to a value no channel list reaches, so the lookup misses
+        // either way - and removing it must not change the answer.
+        let below = slots_view(&copter(0.0, channels(1500, 8)), &[]);
+        assert_eq!(below["channelPwm"], Value::Null, "a mode channel of zero names no channel, so there is no reading rather than the last one");
+        assert_eq!(below["liveSlot"], 0);
+        assert!(below["reason"].as_str().unwrap().contains("not sending"));
     }
 
     #[test]

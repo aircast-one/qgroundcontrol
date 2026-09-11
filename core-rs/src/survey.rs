@@ -107,4 +107,41 @@ mod tests {
         assert_eq!(view["tooFast"], true);
         assert_eq!(survey_stats_view(&Fake, &[])["kind"], "null");
     }
+
+    #[test]
+    fn a_footprint_nothing_has_measured_yet_reads_as_absent_rather_than_as_zero() {
+        struct Unmeasured;
+        impl Backend for Unmeasured {
+            fn get(&self, path: &str) -> String {
+                match path.ends_with("cameraCalc") {
+                    true => json!({ "kind": "object", "facts": [
+                        { "property": "adjustedFootprintSide", "value": 0.0, "units": "m" },
+                        { "property": "adjustedFootprintFrontal", "value": 0.0, "units": "m" },
+                    ] }),
+                    false => json!({ "kind": "null" }),
+                }
+                .to_string()
+            }
+            fn get_fields(&self, path: &str, _f: &str) -> String {
+                match path {
+                    "plan.missionController.visualItems.3" => json!({ "kind": "object", "isSurveyItem": true, "cameraShots": 0, "coveredArea": 0.0, "complexDistance": 0.0 }),
+                    _ => json!({ "kind": "object", "appSettingsAreaUnitsString": "m\u{b2}", "appSettingsHorizontalDistanceUnitsString": "m" }),
+                }
+                .to_string()
+            }
+            fn set(&self, _p: &str, _v: &str) -> String { String::new() }
+            fn invoke(&self, _p: &str, _a: &str) -> String { json!({ "ok": true, "result": 1.0 }).to_string() }
+            fn watch(&self, _p: &[String]) {}
+        }
+
+        // A survey whose camera has not resolved a footprint yet reports zero for both sides, and
+        // "0.0 x 0.0 m" reads as a measured footprint of nothing rather than as no measurement.
+        // Every other measure in this view already says absent at zero; this one was not tested.
+        let view = survey_stats_view(&Unmeasured, &["3".to_string()]);
+        assert_eq!(view["footprintText"], ABSENT);
+        assert_eq!(view["footprintSide"], 0.0, "the raw numbers still travel, so a head that wants to know it is zero can");
+        assert_eq!(view["shotsText"], ABSENT);
+        assert_eq!(view["areaText"], ABSENT);
+        assert_eq!(view["available"], false, "nothing has been computed, so there is nothing for a panel to show");
+    }
 }

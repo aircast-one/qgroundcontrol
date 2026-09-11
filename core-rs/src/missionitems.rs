@@ -508,6 +508,21 @@ mod reported {
         }));
         assert_eq!(launch["altitude"], 585.0, "the launch elevation is a height and the row that shows it goes blank if only the waypoint name is looked for");
         assert_eq!(launch["altitudeText"], "585 m", "every measure the core serves rounds the same way, and a row that kept a tenth here read 585.0 m beside a summary saying 585 m to 660 m");
+
+        // The launch entry has no fact called altitude, so the units an editor needs for its field
+        // come only from the fallback. Dropping it left the row with a number and nothing to label
+        // it, and no test noticed.
+        let labelled = listed(json!({
+            "kind": "object", "sequenceNumber": 0, "homePosition": true, "isSimpleItem": false,
+            "facts": [ { "name": "Altitude", "property": "plannedHomePositionAltitude", "value": 585.0, "units": "m" } ],
+        }));
+        assert_eq!(labelled["altitudeFactUnits"], "m");
+
+        let waypoint = listed(json!({
+            "kind": "object", "sequenceNumber": 1, "isSimpleItem": true,
+            "facts": [ { "name": "Altitude", "property": "altitude", "value": 50.0, "units": "ft" } ],
+        }));
+        assert_eq!(waypoint["altitudeFactUnits"], "ft", "a waypoint's own fact still wins, so the fallback is a fallback rather than an override");
     }
 
     #[test]
