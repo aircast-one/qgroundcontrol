@@ -568,10 +568,24 @@ internal fun MapSpikeScreen(
                                 ) { Text("-10") }
                             }
 
-                            TextButton(onClick = {
-                                onBridge { PlanBridge.removeItem(item.index) }
-                                selected = null
-                            }) { Text("Delete #${item.index}") }
+                            if (item.index > HOME_ITEM) {
+                                TextButton(onClick = {
+                                    scope.launch {
+                                        busy = "Removing #${item.index}"
+                                        val outcome = withContext(Dispatchers.Default) {
+                                            removeMissionItem(item.index)
+                                        }
+                                        selected = null
+                                        if (outcome.ok) {
+                                            busy = null
+                                        } else {
+                                            busy = outcome.reason
+                                            delay(FAILURE_MESSAGE_MS)
+                                            busy = null
+                                        }
+                                    }
+                                }) { Text("Delete #${item.index}") }
+                            }
                         }
 
                         fenceHit?.let { hit ->

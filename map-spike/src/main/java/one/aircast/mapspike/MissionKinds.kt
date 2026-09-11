@@ -4,6 +4,7 @@ import org.json.JSONObject
 import org.mavlink.qgroundcontrol.QGCBridge
 
 const val AT_END = -1
+const val HOME_ITEM = 0
 const val BEFORE_THE_REST = 1
 
 data class InsertOutcome(val ok: Boolean, val reason: String)
