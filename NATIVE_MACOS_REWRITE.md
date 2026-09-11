@@ -2151,3 +2151,44 @@ core-plugin properties the way `hostProvidesPlanUI` is bound would take consider
 of this build than the plan gate did. **Not done here**, because it first needs evidence that the
 SwiftUI windows cover navigation and guided actions as completely as they cover planning, and this
 window has no vehicle to establish that with.
+
+### The leg row, and two things found by drawing it (2026-09-12)
+
+The parity gap recorded yesterday is closed. The core spells all three figures
+(`783187382`), so nothing is formatted here: distance is horizontal, the altitude change is
+vertical, an operator can set those units differently, and either formatted in the head would be
+a second copy of that choice drawn directly under a strip that used the core's.
+
+**Which items get a row is the part worth reading.** The core serves 0° over 0 m for every item
+not reached by a leg, and that cannot be the signal: **due north is a real bearing of exactly 0**,
+so reading the zero as absence would hide a leg flown due north. `legs()` is the route's own rule
+instead — flown to, placed, before the mission ends — with its first point dropped, because
+nothing flies a leg to where the route begins. On a takeoff → waypoint → survey → RTL plan with a
+waypoint past the end, that rule independently selects exactly the items the core gave non-zero
+figures. Two derivations agreeing, rather than one trusted.
+
+**An unknown mission time was drawn as nothing at all.** The core declines for a VTOL, and the
+strip's `if let` made the clock chip disappear. With every surrounding figure still drawn, a
+missing chip reads as "I did not look" rather than "not known" — so it now draws an em dash and
+says why in its help text, which is the reading the nineteen-fallback sweep found everywhere else
+in this head. It needs a VTOL to exercise and there is no vehicle, so the fixture is the whole of
+the evidence.
+
+**Standing job (B) on the core's horizontal-unit bug: no twin, because the mechanism was dead.**
+`AppUnits` built a `Measure` keyed on `HorizontalDistance` / `VerticalDistance` / `Area` / `Speed`,
+and passing the wrong kind for an altitude is precisely the mistake the core just fixed in itself.
+Nothing had called it since the core began serving every measure as text beside its unit. Deleted.
+Checked with a control rather than trusting a grep that returned nothing: the same search finds
+`Measure.reading` in three files, so the search works.
+
+**Reported to the core rather than filtered here: "Cruise 0 m".** On a multirotor the strip shows
+it, and it lands in the cell the layout truncates first, so the operator sees `Crui…` — a cell
+spending width to say nothing. The vehicle reports `cruiseSpeed: ""`; a multirotor has no cruise
+regime, so the row is structurally zero rather than measured. **Not filtered here deliberately**,
+because doing so means matching the label `"Cruise"`, and a row label is the core's string and
+could be translated. Whether an aircraft has a cruise regime is what the vehicle *is*.
+
+**`commit.sh` has a third case.** It refused the `AppUnits` deletion because `git rm` had staged
+it — a deliberate staging of mine read as the shared index being armed against someone. Its own
+message covers it, but the way through is to unstage and delete from the working tree so the
+script stages the removal itself.
