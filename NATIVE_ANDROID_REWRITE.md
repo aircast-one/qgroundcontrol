@@ -939,6 +939,35 @@ Same error as the ones this document already records twice: a measurement that d
 thing being blamed from what sits next to it. It came from reading a screenshot by eye rather than from
 the node positions, which were available the whole time.
 
+### Placing the unplaced takeoff moved the launch point instead, and was reverted
+
+Having made the list show `1 Takeoff · no position`, the obvious next step was to let the operator do
+something about it: select the item, long press the map, and `plan.missionItems.1.coordinate` gets the
+point. Built, unit-tested, installed, and **reverted after one run on the handset**.
+
+What actually happened: the takeoff still read "no position" afterwards, and the plan's distance went
+**1.15 km to 920 m**. So the write did not place the item, and it did change the plan. Item 0 —
+Mission Start, which *is* the launch position — had moved.
+
+`TakeoffMissionItem::setCoordinate` explains it: for a multirotor `_initLaunchTakeoffAtSameLocation`
+sets `_launchTakeoffAtSameLocation` true, and the setter then does
+`_settingsItem->setCoordinate(coordinate)` as well. So writing a takeoff's coordinate writes the
+mission's launch point. The operator would have read "Long press the map to place it", long pressed,
+watched the item stay unplaced, and had the plan's launch position silently relocated underneath them.
+
+**The unit tests were green and proved nothing about this.** They pinned which branch the long press
+takes, which was never the question — the question was what the bridge write does on the other side,
+and only the device could answer it. Same shape as the Add Item gate recorded earlier in this
+document: a constructed input proves the decode and says nothing about whether the decision is true.
+
+Not chased further, because the reverted version is not the fix: whatever the right way to give a
+takeoff a position is, it is not writing `coordinate` and hoping. Recorded so the next person does not
+rebuild it. `1 Takeoff · no position` staying as a statement of fact is the correct behaviour for now.
+
+One thing left behind on the bench: that plan's launch point is where I long pressed. It is an unsaved
+simulator plan that gets rebuilt constantly, so it was not worth clearing someone else's work over,
+but do not read its geometry as intentional.
+
 ### A guard that failed open for six hours
 
 `ui.sh tap` refuses a tap that lands on Arm, Land, RTL or any other flight control unless
