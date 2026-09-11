@@ -366,6 +366,38 @@ actuated accidentally. Sub-200 ms glass-to-glass on WHEP. A 30-minute flight wit
 
 This is the phase where a bug hurts someone. Budget review time, not just build time.
 
+### Multi-vehicle: the head identifies, it does not command (2026-09-11)
+
+`FlyViewTopRightPanel.qml` is entirely multi-vehicle -- a vehicle list, Select All, Deselect All,
+and multi-vehicle Arm, Disarm, Start and Pause. It appeared in no phase of this plan, in no view
+the core serves, and in neither native head. That was an omission rather than a decision, and this
+is the decision.
+
+**The multi-vehicle commands are not ported.** Commanding several aircraft to arm at once is the
+highest-consequence action in the application. Nothing in this environment can exercise one, so it
+would ship having never run; the standing rule here is that a gate which fails closed may ship
+unverified but a capability that fails by *doing* something may not, and this is the second kind
+six times over. No requirement for it is recorded in the repository or the handbook.
+
+**Identifying the active aircraft is not optional, and today the head does not.** With two vehicles
+connected the native head reads `vehicle.*`, which is whichever one is active, and draws its
+telemetry with nothing naming it and no way to change it. `vehicles.activeVehicleAvailable` is a
+boolean and is the only thing either head knows about how many there are. So an operator with two
+aircraft up cannot tell which one an arm or an RTL reaches. QML at least shows the list. Declining
+to support multi-vehicle is defensible; supporting it silently and wrongly is not, and that is
+what the head does now.
+
+**The core moves first.** No `view.*` carries a vehicle list. What a head needs is the id, the name,
+which one is active, which link each arrived on, and a way to make one active -- nothing that
+commands, and no aggregate action.
+
+**Phase 5 gate, added:** whenever more than one vehicle is connected, the head names the one it is
+commanding and can switch between them. No multi-vehicle command is ported.
+
+**Phase 6 may then delete the multi-vehicle half of `FlyViewTopRightPanel`** as a recorded
+non-port rather than an oversight. `MultiVehicleManager` itself stays -- it is on the core's
+critical path and is what would answer the list above.
+
 ## Phase 6 — Shell · 3 weeks
 
 - `qgc_run()` flips from `QApplication::exec()` on the main thread to a worker-thread
