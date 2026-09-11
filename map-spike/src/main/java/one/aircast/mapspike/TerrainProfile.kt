@@ -27,6 +27,9 @@ data class ProfilePoint(
 data class TerrainProfile(
     val points: List<ProfilePoint>,
     val clearance: Clearance? = null,
+    val lowestText: String = "",
+    val highestText: String = "",
+    val distanceText: String = "",
 ) {
     val distance: Double get() = points.lastOrNull()?.distance ?: 0.0
 
@@ -105,5 +108,8 @@ fun terrainProfile(view: JSONObject?): TerrainProfile {
             )
         },
         clearance = clearanceOf(view),
+        lowestText = view.optString("lowestText"),
+        highestText = view.optString("highestText"),
+        distanceText = view.optString("distanceText"),
     )
 }

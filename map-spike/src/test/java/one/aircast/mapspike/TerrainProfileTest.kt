@@ -158,3 +158,30 @@ class TerrainViewTest {
         assertFalse(terrainProfile(view()).drawable)
     }
 }
+
+class HeightRangeTest {
+    private fun profile(low: Double, high: Double, lowText: String = "", highText: String = "") =
+        TerrainProfile(
+            points = listOf(
+                ProfilePoint(0.0, null, low),
+                ProfilePoint(100.0, null, high),
+            ),
+            lowestText = lowText,
+            highestText = highText,
+        )
+
+    @Test
+    fun `the range is spelled by the core, so it is right in any unit`() {
+        assertEquals("0 ft–164 ft AMSL", heightRange(profile(0.0, 50.0, "0 ft", "164 ft")))
+    }
+
+    @Test
+    fun `a flat route names one height, not a range of one`() {
+        assertEquals("50 m AMSL", heightRange(profile(50.0, 50.0, "50 m", "50 m")))
+    }
+
+    @Test
+    fun `a core that does not spell it leaves the old metres rather than a blank`() {
+        assertEquals("0–50 m AMSL", heightRange(profile(0.0, 50.0)))
+    }
+}
