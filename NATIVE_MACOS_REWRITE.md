@@ -2417,3 +2417,50 @@ Their note that this is uncatchable in their unit tests — the JVM `org.json` r
 same call, so a test asserting the device behaviour fails on the JVM — has no analogue here, but
 the general shape does: **a decoder's behaviour on a value the producer has only just started
 sending is not something either side's tests were written against.**
+
+### Android's index-versus-sequence defect has no twin here, and the reason is structural (2026-09-12)
+
+Android found one screen showing three different numbers for one waypoint — `#6` in the summary
+chip, `Delete #6` on the button, `Adding after #72` by the toolbar — because `index` counts a
+complex item as one and `sequence` counts every item a survey expands to. They agree exactly until
+a complex item is in the plan. The dangerous half was the Delete button naming a real marker it
+would not have deleted.
+
+**Checked here and clean, but the interesting part is why.** Every one of the 23 `.index`
+interpolations in this head is a **bridge path** — `plan.missionController.visualItems.\(index)…`
+— which is the correct use, because `visualItems` is addressed by list position. Every
+operator-facing label reads `.sequence`: the blocked banner, the map annotation title, and the list
+badge. Three call sites, one field. Android's three call sites used two fields.
+
+So the split is not a convention anyone remembered to follow; it falls out of the two names meaning
+two different things in the only two places they are used. Nothing here would have caught the
+mistake if it had been made — the protection is that `index` never leaves a path string.
+
+**Measured on the discriminating case**, because index and sequence agree on every plan without a
+complex item and a check on one of those proves nothing:
+
+| index | sequence | name |
+|---|---|---|
+| 0 | 0 | Mission Start |
+| 1 | 1 | Takeoff |
+| 2 | 2 | Survey |
+| **3** | **144** | Waypoint |
+
+The badge on that row draws **144**, and the terrain profile's marks read 0–1, 2, 144. A difference
+of 141 between the two candidate answers, so the observation separates them.
+
+### The remaining list filters, and what makes one right (2026-09-12)
+
+Finishing the audit begun on the plan side.
+
+- **`GuidedOffer.shown`** is `offer != "hidden"`, and `blocked` is `shown && !ready`. The producer
+  decides what is absent; a refused action stays visible and keeps its reason. Correct shape.
+  Unobservable here — `connected: false`, so the offer list is empty without a vehicle.
+- **`FlightModeChoice.everyday` / `.folded`** is a partition, not a filter: every mode appears in
+  one or the other, and the folded ones sit behind "More modes". Nothing is dropped.
+- **`SetupPage.draws`** is examined above — it drops what this head cannot draw, and the one page
+  it drops on ArduPilot is one QGC does not have for that firmware.
+
+Which leaves the rule intact across every list either window draws: **the producer decides what is
+absent, and a member it refuses keeps its reason.** `AltitudeMode.choosable` was the only place
+that took a refusal and threw the reason away.
