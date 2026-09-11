@@ -5,13 +5,14 @@ use crate::router::Backend;
 
 pub const DEPS: &[&str] = &["plan.missionController.visualItems.count", "plan.missionController.currentPlanViewVIIndex", "plan.missionController.containsItems"];
 
-const FIELDS: &str = "sequenceNumber,abbreviation,commandName,commandDescription,isCurrentItem,specifiesCoordinate,isStandaloneCoordinate,specifiesAltitudeOnly,isSimpleItem,isTakeoffItem,isLandCommand,isSurveyItem,homePosition,coordinate,amslEntryAlt,altDifference,azimuth,distance,distanceFromStart,readyForSaveState,readyForSaveMessage,dirty,altitude,altitudeMode,isIncomplete,exitCoordinate,exitCoordinateSameAsEntry";
+const FIELDS: &str = "sequenceNumber,abbreviation,commandName,commandDescription,isCurrentItem,specifiesCoordinate,isStandaloneCoordinate,specifiesAltitudeOnly,isSimpleItem,isTakeoffItem,isLandCommand,isSurveyItem,homePosition,coordinate,amslEntryAlt,altDifference,azimuth,distance,distanceFromStart,readyForSaveState,readyForSaveMessage,dirty,altitude,altitudeMode,isIncomplete,exitCoordinate,exitCoordinateSameAsEntry,commandName";
 
 const READY_TO_SAVE: i64 = 0;
 const AWAITING_TERRAIN: i64 = 1;
 
 pub fn items_view(backend: &dyn Backend, args: &[String]) -> Value {
     let everything = args.iter().any(|arg| arg == "fields");
+    let shapes = args.iter().any(|arg| arg == "geometry");
     let count = integer(&object(&backend.get("plan.missionController.visualItems.count")), "value").unwrap_or(0);
     let has_items = flag(&object(&backend.get_fields("plan.missionController", "containsItems")), "containsItems");
     if count <= 0 {
@@ -23,6 +24,17 @@ pub fn items_view(backend: &dyn Backend, args: &[String]) -> Value {
         Some(elements) => elements.iter().enumerate().map(|(index, element)| item(element, index as i64)).collect(),
         None => (0..count)
             .map(|index| item(&object(&backend.get_fields(&format!("plan.missionController.visualItems.{index}"), FIELDS)), index))
+            .collect(),
+    };
+    let items: Vec<Value> = match shapes {
+        false => items,
+        true => items
+            .into_iter()
+            .enumerate()
+            .map(|(index, mut listed)| {
+                listed["geometry"] = geometry_of(backend, index as i64, listed["kind"].as_str().unwrap_or_default());
+                listed
+            })
             .collect(),
     };
     let items: Vec<Value> = match everything {
@@ -93,6 +105,7 @@ fn item(read: &Value, index: i64) -> Value {
         "distanceFromStart": number(read, "distanceFromStart"),
         "edited": flag(read, "dirty"),
         "incomplete": flag(read, "isIncomplete"),
+        "endsRoute": flag(read, "isLandCommand") || text(read, "commandName").contains("Return"),
         "flownLeg": flag(read, "specifiesCoordinate") && !flag(read, "isStandaloneCoordinate") && !flag(read, "isIncomplete"),
         "blocked": ready.is_some_and(|state| state != READY_TO_SAVE && state != AWAITING_TERRAIN),
         "awaitingTerrain": ready == Some(AWAITING_TERRAIN),
@@ -110,6 +123,27 @@ fn editable(backend: &dyn Backend, current: i64) -> Value {
     match fields_of(backend, current) {
         Value::Null => Value::Null,
         fields => json!({ "index": current, "fields": fields }),
+    }
+}
+
+fn geometry_of(backend: &dyn Backend, index: i64, kind: &str) -> Value {
+    let Some(shape) = crate::missionkinds::lookup(kind).and_then(|kind| kind.geometry) else {
+        return Value::Null;
+    };
+    let vertices = object(&backend.get(&format!("plan.missionController.visualItems.{index}.{}.path", shape.1)));
+    let listed: Vec<Value> = vertices
+        .get("value")
+        .and_then(Value::as_array)
+        .map(|points| {
+            points
+                .iter()
+                .filter_map(|at| Some(json!({ "latitude": at.get("latitude")?.as_f64()?, "longitude": at.get("longitude")?.as_f64()? })))
+                .collect()
+        })
+        .unwrap_or_default();
+    match listed.is_empty() {
+        true => Value::Null,
+        false => json!({ "shape": shape.0, "property": shape.1, "vertices": listed }),
     }
 }
 
@@ -171,7 +205,7 @@ fn kind(read: &Value) -> &'static str {
         return "land";
     }
     if read.get("isSimpleItem").and_then(Value::as_bool) == Some(false) {
-        return "complex";
+        return crate::missionkinds::lookup(&text(read, "commandName")).map(|kind| kind.id).unwrap_or("complex");
     }
     if !flag(read, "isSimpleItem") {
         return "unreadable";
@@ -300,6 +334,8 @@ mod tests {
         let pattern = json!({ "kind": "object", "sequenceNumber": 5, "abbreviation": "FWL", "commandName": "Fixed Wing Landing", "isSimpleItem": false });
         let view = items_view(&Plan(vec![settings(), pattern], 1), &[]);
         assert_eq!(view["items"][1]["kind"], "complex", "an item type the core has no entry for still has to draw as something rather than as a waypoint");
+        let corridor = items_view(&Plan(vec![settings(), json!({ "kind": "object", "sequenceNumber": 1, "isSimpleItem": false, "commandName": "Corridor Scan" })], 1), &[]);
+        assert_eq!(corridor["items"][1]["kind"], "corridor", "a complex item the catalogue does know is named, because its geometry and its shape are looked up by that name");
         assert_eq!(view["items"][1]["name"], "Fixed Wing Landing");
     }
 }

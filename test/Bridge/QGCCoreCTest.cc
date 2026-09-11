@@ -3227,6 +3227,14 @@ void QGCCoreCTest::_everyEditablePathTheCoreNamesAcceptsAWrite()
         QTRY_VERIFY_WITH_TIMEOUT(!(editing = take(qgc_core_get("view.missionItems")).value(QStringLiteral("editing")).toObject()).isEmpty(), 10000);
         const QJsonArray fields = editing.value(QStringLiteral("fields")).toArray();
         const QJsonArray everyItem = take(qgc_core_get("view.missionItems(fields)")).value(QStringLiteral("items")).toArray();
+        if (kind == QStringLiteral("survey") || kind == QStringLiteral("corridor")) {
+            const QJsonArray shaped = take(qgc_core_get("view.missionItems(geometry)")).value(QStringLiteral("items")).toArray();
+            const QJsonObject geometry = shaped.last().toObject().value(QStringLiteral("geometry")).toObject();
+            QVERIFY2(geometry.value(QStringLiteral("vertices")).toArray().count() >= 2,
+                     qPrintable(QStringLiteral("a %1 draws as its own shape, and asking for geometry gave %2 vertices")
+                                    .arg(kind).arg(geometry.value(QStringLiteral("vertices")).toArray().count())));
+            QCOMPARE(geometry.value(QStringLiteral("shape")).toString(), kind == QStringLiteral("survey") ? QStringLiteral("area") : QStringLiteral("line"));
+        }
         QVERIFY2(everyItem.last().toObject().value(QStringLiteral("fields")).toArray().count() == fields.count(),
                  "asking for fields has to answer for every item, not only the one being edited");
         QVERIFY2(!fields.isEmpty(), qPrintable(QStringLiteral("%1 offers nothing to edit, which is what naming no paths looks like").arg(kind)));
