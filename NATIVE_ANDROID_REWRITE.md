@@ -5375,3 +5375,40 @@ overstating it: a real 200+ waypoint survey is normally one Survey complex item,
 drawn as an area with transects, and this shape only arises for a plan built
 from individual waypoints or imported from another tool. Worth a zoom-interpolated
 marker size if that case turns out to matter.
+
+### Correcting the entry above: the home altitude was not the cause
+
+The trace I sent the core session was line-exact and wrong. They landed
+`6c16bacb9` on it, scoping the `plannedHomePositionAltitude` fallback to the
+home row. Rebuilt, confirmed the installed app is running their core — the `.so`
+inside `AircastQGC.aar` and the one in the installed APK are the same SHA-256 —
+and the row still reads `Change speed · 0.0 m`.
+
+The altitude fact is not NaN for that item. It is a real 0.0, so `fact_number`
+returns `Some(0.0)` and never reaches the fallback at all. `SimpleMissionItem.cc:97`
+does gate on `specifiesAltitude()`, but it is in the `MissionItem` constructor;
+a plan loaded from JSON takes a different path, and **neither branch of it applies
+the gate** — `:310` sets the fact from the file's `Altitude` key, `:314` from
+`param7` when the file has none, both unconditionally. For command 178 param7 is
+unused and reads 0.
+
+**And my fixture was malformed, which is how I got there.** My first file carried
+`"Altitude": 0.0` on the `DO_` item. `SimpleMissionItem.cc:263` shows QGC writes
+`Altitude` only when `specifiesAltitude()`, so no plan QGC saves looks like that.
+I should have checked the writer before trusting the file. Regenerated it without
+the key — the shape QGC actually produces — and the row still reads `0.0 m`, so
+the defect is real and reachable from a well-formed plan. Only the mechanism was
+invented.
+
+So `specifiesAltitude` is the correct gate, which is the option the core session
+considered and declined in favour of `homePosition`. Their reasoning was sound
+about the fallback; this is a different question — whether an item that does not
+specify an altitude should carry `altitudeText` at all.
+
+**The lesson is the fixture, not the trace.** [[test-fake-agrees-with-the-bug]]
+says a hand-written fake encodes the same misreading as the code. This is the
+sharper version: a hand-written *input* can manufacture a symptom that no real
+producer emits, and a trace explaining that symptom will be internally consistent
+the whole way down. Before reporting a defect found with a file you wrote
+yourself, find the code that writes that file for real and check your file
+against it.
