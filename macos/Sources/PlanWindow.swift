@@ -3,9 +3,6 @@ import SwiftUI
 import UniformTypeIdentifiers
 
 struct AltitudeField: View {
-    // Named for what it carries, not for metres: an altitude fact hands over its COOKED
-    // value, so this is feet whenever the operator works in feet, and the units label
-    // beside it comes from the same fact.
     let value: Double?
     var units = "m"
     var decimals = 0
@@ -461,12 +458,6 @@ struct PlanInspector: View {
                 .font(.caption.monospacedDigit())
                 .foregroundColor(.secondary)
                 .labelStyle(.titleAndIcon)
-                // A figure broken across lines stops being a figure: 14.11 km rendered as "14."
-                // over "11" over "km" reads as two numbers, and the strip was laid out when every
-                // value was 0 m and nothing here had ever been wide. fixedSize stops the wrap but
-                // pushes its width onto the panel, which then ran past the window edge; one line
-                // per cell with the distance and the duration outranking the rest truncates the
-                // least important cell instead of dragging the inspector out of the window.
                 .lineLimit(1)
 
                 if !mission.summary.altitudeRange.isEmpty {
@@ -614,7 +605,7 @@ struct PlanInspector: View {
                 })
 
                 GroupRow(title: "Altitude for new items", trailing: {
-                    ValueField(value: mission.defaultAltitude, units: "m") {
+                    ValueField(value: mission.defaultAltitude, units: mission.defaultAltitudeUnits) {
                         mission.setDefaultAltitude($0)
                     }
                 })
@@ -722,7 +713,7 @@ struct PlanInspector: View {
                 }
                 if mission.vehicle.showsCruiseSpeed {
                     GroupRow(title: "Cruise speed", showSeparator: mission.vehicle.isDescribed, trailing: {
-                        ValueField(value: mission.cruiseSpeed, units: "m/s") {
+                        ValueField(value: mission.cruiseSpeed, units: mission.speedUnits) {
                             mission.setCruiseSpeed($0)
                         }
                     })
@@ -731,7 +722,7 @@ struct PlanInspector: View {
                     GroupRow(title: "Hover speed",
                              showSeparator: mission.vehicle.isDescribed || mission.vehicle.showsCruiseSpeed,
                              trailing: {
-                        ValueField(value: mission.hoverSpeed, units: "m/s") {
+                        ValueField(value: mission.hoverSpeed, units: mission.speedUnits) {
                             mission.setHoverSpeed($0)
                         }
                     })

@@ -7,7 +7,7 @@ struct ItemSpeed: Equatable {
     let units: String
 
     static let unavailable = ItemSpeed(available: false, specified: false,
-                                       value: nil, units: "m/s")
+                                       value: nil, units: ItemSpeed.metresPerSecond)
 
     init(available: Bool, specified: Bool, value: Double?, units: String) {
         self.available = available
@@ -23,8 +23,10 @@ struct ItemSpeed: Equatable {
         let fact = ((json["facts"] as? [[String: Any]]) ?? [])
             .first { ($0["name"] as? String) == ItemSpeed.factName }
         value = (fact?["value"] as? NSNumber)?.doubleValue
-        units = (fact?["units"] as? String) ?? "m/s"
+        units = (fact?["units"] as? String) ?? ItemSpeed.metresPerSecond
     }
+
+    static let metresPerSecond = "m/s"
 
     static let factName = "FlightSpeed"
     static let property = "flightSpeed"

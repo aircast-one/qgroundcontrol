@@ -33,6 +33,8 @@ final class MissionStore: ObservableObject, Probeable, WriteReporting {
     @Published private(set) var itemModes: [AltitudeModeOffer] = []
     @Published private(set) var distanceModes: [AltitudeModeOffer] = []
     @Published private(set) var defaultAltitude = ""
+    @Published private(set) var defaultAltitudeUnits = Measure.metres.units
+    @Published private(set) var speedUnits = ItemSpeed.metresPerSecond
     @Published private(set) var summary = MissionSummary.empty
     @Published private(set) var vehicle = MissionVehicle.unknown
     @Published private(set) var cruiseSpeed = ""
@@ -183,7 +185,9 @@ final class MissionStore: ObservableObject, Probeable, WriteReporting {
         watchViews()
         let read = MissionSummary(Bridge.group("view.missionSummary"))
         if read != summary { summary = read }
-        defaultAltitude = (Bridge.group("settings.appSettings.defaultMissionItemAltitude")["valueString"] as? String) ?? ""
+        let altitudeFact = Bridge.group("settings.appSettings.defaultMissionItemAltitude")
+        defaultAltitude = (altitudeFact["valueString"] as? String) ?? ""
+        defaultAltitudeUnits = (altitudeFact["units"] as? String) ?? Measure.metres.units
 
         let controllerVehicle = Bridge.group("plan.controllerVehicle")
         vehicle = MissionVehicle(
@@ -192,8 +196,12 @@ final class MissionStore: ObservableObject, Probeable, WriteReporting {
             multiRotor: (controllerVehicle["multiRotor"] as? NSNumber)?.boolValue ?? false,
             vtol: (controllerVehicle["vtol"] as? NSNumber)?.boolValue ?? false,
             apmFirmware: (controllerVehicle["apmFirmware"] as? NSNumber)?.boolValue ?? false)
-        cruiseSpeed = (Bridge.group("settings.appSettings.offlineEditingCruiseSpeed")["valueString"] as? String) ?? ""
-        hoverSpeed = (Bridge.group("settings.appSettings.offlineEditingHoverSpeed")["valueString"] as? String) ?? ""
+        let cruiseFact = Bridge.group("settings.appSettings.offlineEditingCruiseSpeed")
+        cruiseSpeed = (cruiseFact["valueString"] as? String) ?? ""
+        let hoverFact = Bridge.group("settings.appSettings.offlineEditingHoverSpeed")
+        hoverSpeed = (hoverFact["valueString"] as? String) ?? ""
+        speedUnits = (cruiseFact["units"] as? String)
+            ?? (hoverFact["units"] as? String) ?? ItemSpeed.metresPerSecond
         launch = LaunchPosition(
             home: (controllerVehicle["homePosition"] as? [String: Any]) ?? [:],
             item: listed.first ?? [:])
