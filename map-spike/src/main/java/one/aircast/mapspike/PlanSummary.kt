@@ -42,8 +42,7 @@ private fun selectionText(
 ): String? = when (selected) {
     is MapHit.Waypoint ->
         items.firstOrNull { it.index == selected.index }
-            ?.altitudeText?.ifBlank { null }
-            ?.let { "#${selected.index} at $it" }
+            ?.let { item -> item.altitudeText.ifBlank { null }?.let { "#${item.sequence} at $it" } }
     is MapHit.Circle -> circles.firstOrNull { it.index == selected.index }?.let(::circleText)
     is MapHit.CircleCentre -> circles.firstOrNull { it.index == selected.index }?.let(::circleText)
     is MapHit.FenceVertex -> polygons.firstOrNull { it.index == selected.polygon }

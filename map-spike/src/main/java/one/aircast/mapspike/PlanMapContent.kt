@@ -645,7 +645,7 @@ internal fun MapSpikeScreen(
                                             busy = null
                                         }
                                     }
-                                }) { Text("Delete #${item.index}") }
+                                }) { Text("Delete #${item.sequence}") }
                             }
                         }
 

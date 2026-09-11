@@ -60,13 +60,17 @@ class PlanSummaryTest {
     }
 
     @Test
-    fun `a selected waypoint shows its altitude`() {
+    fun `a selected waypoint shows its altitude against the number on its marker`() {
         val text = summary(
             items = listOf(item(index = 3, altitude = 75.0)),
             selected = MapHit.Waypoint(3),
         )
 
-        assertTrue(text.endsWith("#3 at 75 m"))
+        assertTrue(
+            "the map marker and the list row are labelled with the sequence, so naming the " +
+                "index here would point at a different item once a survey is in the plan: $text",
+            text.endsWith("#4 at 75 m"),
+        )
     }
 
     @Test
