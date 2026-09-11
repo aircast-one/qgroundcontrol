@@ -1032,7 +1032,10 @@ QString set(const QString &path, const QString &valueJson)
 {
     const std::optional<QVariant> value = variantFromJsonText(valueJson);
     if (!value) {
-        return jsonToString(QJsonObject { { QStringLiteral("ok"), false } });
+        return jsonToString(QJsonObject {
+            { QStringLiteral("ok"), false },
+            { QStringLiteral("reason"), QStringLiteral("a write takes {\"value\": ...}, and %1 is not that").arg(valueJson) },
+        });
     }
 
     QString result;

@@ -17,6 +17,7 @@
 #include "LinkManager.h"
 #include "LogReplayLink.h"
 #include "MultiVehicleManager.h"
+#include "ParameterManager.h"
 #include "CoreLink.h"
 #include "QGCBridgeC.h"
 #include "QGCCoreC.h"
@@ -3252,6 +3253,13 @@ void QGCCoreCTest::_everyDependencyAViewDeclaresNamesSomethingTheBridgeHas()
             if (named.contains(QLatin1Char('@'))) {
                 continue;
             }
+            // Which parameters a vehicle has is the vehicle's business: the mode-slot names differ
+            // between firmware families and only one family is ever present, so an unresolved
+            // parameter here is the expected state rather than a misspelling. Everything else has
+            // to resolve.
+            if (named.startsWith(QStringLiteral("vehicle.parameterManager.getParameter("))) {
+                continue;
+            }
             checked++;
             const QByteArray utf8 = named.toUtf8();
             const QJsonObject read = take(qgc_bridge_get(utf8.constData()));
@@ -3262,6 +3270,61 @@ void QGCCoreCTest::_everyDependencyAViewDeclaresNamesSomethingTheBridgeHas()
     }
     QVERIFY2(checked > 100, qPrintable(QStringLiteral("only %1 deps were resolved, which is too few to be the whole set").arg(checked)));
     QVERIFY2(unknown.isEmpty(), qPrintable(QStringLiteral("these deps name nothing the bridge has, so their views never recompute: %1").arg(unknown.join(QStringLiteral(", ")))));
+#else
+    QSKIP("the Rust core is not linked into this build");
+#endif
+}
+
+void QGCCoreCTest::_changingAModeSlotWakesThePanelThatShowsIt()
+{
+#ifdef QGC_RUST_CORE
+    _connectMockLink(MAV_AUTOPILOT_ARDUPILOTMEGA);
+    QTRY_VERIFY_WITH_TIMEOUT(MultiVehicleManager::instance()->activeVehicle() && MultiVehicleManager::instance()->activeVehicle()->parameterManager()->parametersReady(), 20000);
+
+    const auto leaveNothingWatched = qScopeGuard([]() {
+        qgc_bridge_watch("");
+        qgc_bridge_set_event_handler(nullptr);
+    });
+
+    const QJsonObject panel = take(qgc_core_get("view.modeSlots"));
+    QVERIFY2(panel.value(QStringLiteral("available")).toBool(false), qPrintable(QStringLiteral("this vehicle does not offer mode slots, so the test proves nothing: %1").arg(panel.value(QStringLiteral("reason")).toString())));
+
+    paths.clear();
+    qgc_bridge_set_event_handler(onEvent);
+    qgc_bridge_watch("view.modeSlots");
+    QTRY_VERIFY_WITH_TIMEOUT(paths.contains(QStringLiteral("view.modeSlots")), 10000);
+
+    // The slot parameters are the whole content of this panel and were read through getParameter,
+    // which no dep named - so changing a mode left the panel showing the old one until something
+    // unrelated happened to fire. Watching the parameter is only worth anything if the watcher can
+    // actually bind to it, which is what this asserts rather than assumes.
+    const QJsonArray before = take(qgc_core_get("view.modeSlots")).value(QStringLiteral("slots")).toArray();
+    QVERIFY(before.count() >= 2);
+    const QString firstMode = before.at(0).toObject().value(QStringLiteral("mode")).toString();
+
+    // ArduCopter names these MODE1..6 and ArduPlane FLTMODE1..6, which is exactly why both
+    // families are in the deps. The test has to ask rather than assume, or it writes to a name
+    // this vehicle does not have and reports the watch broken when it is the write that missed.
+    const bool copterNames = take(qgc_bridge_invoke("vehicle.parameterManager.parameterExists", "[-1,\"MODE_CH\"]")).value(QStringLiteral("result")).toBool(false);
+    const QString slotName = copterNames ? QStringLiteral("MODE1") : QStringLiteral("FLTMODE1");
+    const QByteArray slotPath = QStringLiteral("vehicle.parameterManager.getParameter(-1,%1).rawValue").arg(slotName).toUtf8();
+
+    const double current = take(qgc_bridge_get(slotPath.constData())).value(QStringLiteral("value")).toDouble(-1.0);
+    QVERIFY2(current >= 0.0, qPrintable(QStringLiteral("%1 did not read back, so the write below would prove nothing").arg(slotName)));
+    const double wanted = (current == 7.0) ? 5.0 : 7.0;
+
+    paths.clear();
+    const QByteArray writeValue = QStringLiteral("{\"value\":%1}").arg(wanted).toUtf8();
+    const QJsonObject written = take(qgc_bridge_set(slotPath.constData(), writeValue.constData()));
+    QVERIFY2(written.value(QStringLiteral("ok")).toBool(false),
+             qPrintable(QStringLiteral("%1 would not take a write: %2").arg(slotName, written.value(QStringLiteral("reason")).toString())));
+
+    // Order matters: if the value never changes, the watch has nothing to report and a failure
+    // here would be blamed on the watch. Prove the write landed first, then that it woke anyone.
+    QTRY_VERIFY_WITH_TIMEOUT(take(qgc_core_get("view.modeSlots")).value(QStringLiteral("slots")).toArray().at(0).toObject().value(QStringLiteral("mode")).toString() != firstMode, 15000);
+    QVERIFY2(paths.contains(QStringLiteral("view.modeSlots")),
+             qPrintable(QStringLiteral("the slot changed from %1 to %2 and no one watching the panel was told")
+                            .arg(firstMode, take(qgc_core_get("view.modeSlots")).value(QStringLiteral("slots")).toArray().at(0).toObject().value(QStringLiteral("mode")).toString())));
 #else
     QSKIP("the Rust core is not linked into this build");
 #endif

@@ -3,7 +3,29 @@ use serde_json::{Value, json};
 use crate::read::{object, result_flag, value_number};
 use crate::router::Backend;
 
-pub const DEPS: &[&str] = &["vehicles.activeVehicleAvailable", "vehicle.apmFirmware", "radioCal.rcValues"];
+// The slot parameters are what this panel is for, and reading them through getParameter meant
+// nothing watched them: changing a mode left the panel showing the old one until something else
+// happened to fire. Both families are listed because the deps are static and the names are chosen
+// from the vehicle; the pair that does not exist binds to nothing and costs a miss on one poll.
+pub const DEPS: &[&str] = &[
+    "vehicles.activeVehicleAvailable",
+    "vehicle.apmFirmware",
+    "radioCal.rcValues",
+    "vehicle.parameterManager.getParameter(-1,FLTMODE_CH).rawValue",
+    "vehicle.parameterManager.getParameter(-1,FLTMODE1).rawValue",
+    "vehicle.parameterManager.getParameter(-1,FLTMODE2).rawValue",
+    "vehicle.parameterManager.getParameter(-1,FLTMODE3).rawValue",
+    "vehicle.parameterManager.getParameter(-1,FLTMODE4).rawValue",
+    "vehicle.parameterManager.getParameter(-1,FLTMODE5).rawValue",
+    "vehicle.parameterManager.getParameter(-1,FLTMODE6).rawValue",
+    "vehicle.parameterManager.getParameter(-1,MODE_CH).rawValue",
+    "vehicle.parameterManager.getParameter(-1,MODE1).rawValue",
+    "vehicle.parameterManager.getParameter(-1,MODE2).rawValue",
+    "vehicle.parameterManager.getParameter(-1,MODE3).rawValue",
+    "vehicle.parameterManager.getParameter(-1,MODE4).rawValue",
+    "vehicle.parameterManager.getParameter(-1,MODE5).rawValue",
+    "vehicle.parameterManager.getParameter(-1,MODE6).rawValue",
+];
 
 pub const SLOTS: usize = 6;
 pub const CHANNEL_OPTIONS: usize = 11;

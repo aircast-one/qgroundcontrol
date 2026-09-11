@@ -60,9 +60,38 @@ char *qgc_qt_invoke(const char *path, const char *args_json)
     return duplicate(onQtThread([&] { return QGCBridgeCore::invoke(copiedPath, copiedArgs); }));
 }
 
+namespace
+{
+// A path may carry a comma inside a call segment - getParameter(-1,FLTMODE1) is how every
+// parameter is reached - so splitting the list on every comma cuts those in half. The core's own
+// splitter already counts parentheses; this is the half that did not, which silently truncated
+// the path to something that resolves to the manager rather than the fact and binds to nothing.
+QStringList splitWatchPaths(const QString &csv)
+{
+    QStringList paths;
+    QString current;
+    int depth = 0;
+    for (const QChar c : csv) {
+        if (c == QLatin1Char('(')) {
+            depth++;
+        } else if (c == QLatin1Char(')')) {
+            depth = qMax(0, depth - 1);
+        } else if (c == QLatin1Char(',') && depth == 0) {
+            paths.append(current);
+            current.clear();
+            continue;
+        }
+        current.append(c);
+    }
+    paths.append(current);
+    paths.removeAll(QString());
+    return paths;
+}
+}
+
 void qgc_qt_watch(const char *paths_csv)
 {
-    QGCBridgeCore::watch(QString::fromUtf8(paths_csv).split(QLatin1Char(','), Qt::SkipEmptyParts));
+    QGCBridgeCore::watch(splitWatchPaths(QString::fromUtf8(paths_csv)));
 }
 
 void qgc_qt_set_event_handler(QGCCoreEventFn handler)
