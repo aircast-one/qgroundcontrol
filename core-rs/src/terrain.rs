@@ -316,6 +316,8 @@ mod walking {
         assert_eq!(hits["minClearanceMetres"], -150.0, "the depth comes from the samples, not from the flag, so the two can disagree and this says they do not");
         assert_eq!(hits["clearanceComplete"], true);
 
+        assert!(hits.get("bandText").is_some(), "the key must reach a head in whatever profile it was built with");
+        assert!(hits["bandText"].as_str().unwrap().contains(" to "));
         let clears = terrain_view(&Route(json!({ "kind": "object", "elements": [leg(0.0, 700.0, 600.0, false), leg(100.0, 700.0, 650.0, false)] })), &[]);
         assert_eq!(clears["hasCollision"], false);
         assert_eq!(clears["minClearanceMetres"], 50.0);
