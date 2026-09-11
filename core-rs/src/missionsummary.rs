@@ -128,6 +128,27 @@ pub fn max_telemetry_distance(items: &[Value]) -> f64 {
         .fold(0.0, f64::max)
 }
 
+// The band the mission occupies, which the terrain panel draws its altitudes against. A simple
+// item contributes the height it flies at; a pattern contributes its own lowest and highest,
+// because a survey over sloping ground covers a range rather than a point. A standalone item
+// counts here even though it is never flown to - the controller takes the band from anything
+// with a coordinate, which is a different question from where the vehicle goes.
+pub fn altitude_band(items: &[Value]) -> Option<(f64, f64)> {
+    items
+        .iter()
+        .filter(|item| item.get("coordinate").and_then(point_of).is_some())
+        .filter_map(|item| {
+            let lowest = item.get("altitudeAmslLowest").and_then(Value::as_f64);
+            let highest = item.get("altitudeAmslHighest").and_then(Value::as_f64);
+            match (lowest, highest) {
+                (Some(low), Some(high)) if high >= low => Some((low, high)),
+                _ => item.get("altitudeAmsl").and_then(Value::as_f64).map(|at| (at, at)),
+            }
+        })
+        .filter(|(low, high)| low.is_finite() && high.is_finite())
+        .reduce(|(low, high), (next_low, next_high)| (low.min(next_low), high.max(next_high)))
+}
+
 pub fn summary_view(backend: &dyn Backend, args: &[String]) -> Value {
     let verify = args.iter().any(|arg| arg == "verify");
     let imperial = value_number(&backend.get("settings.unitsSettings.horizontalDistanceUnits.rawValue")) == Some(HORIZONTAL_UNITS_FEET);
@@ -163,6 +184,13 @@ pub fn summary_view(backend: &dyn Backend, args: &[String]) -> Value {
         // which is the only way a port of this arithmetic can be trusted before it replaces it.
         // Opt-in, because working it out costs a whole view.missionItems and every head reading
         // the summary would pay for a figure only a test compares. view.missionSummary(verify).
+        "altitudeBandComputed": verify
+            .then(|| {
+                let items = crate::missionitems::items_view(backend, &[]);
+                items.get("items").and_then(Value::as_array).and_then(|items| altitude_band(items)).map(|(low, high)| json!([low, high]))
+            })
+            .flatten(),
+        "altitudeBandMetres": verify.then(|| json!([metres("minAMSLAltitude"), metres("maxAMSLAltitude")])),
         "maxTelemetryMetres": verify.then(|| metres("missionMaxTelemetry")).flatten(),
         "maxTelemetryComputedMetres": verify
             .then(|| crate::missionitems::items_view(backend, &["geometry".to_string()]).get("items").and_then(Value::as_array).map(|items| max_telemetry_distance(items)))

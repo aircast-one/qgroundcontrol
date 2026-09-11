@@ -3496,6 +3496,20 @@ void QGCCoreCTest::_theCoreWorksOutTheSameFlownDistanceTheControllerDoes()
         QVERIFY2(reachQt > 0.0, qPrintable(QStringLiteral("%1: the controller reported no telemetry reach").arg(shape)));
         QVERIFY2(qAbs(reachCore - reachQt) < qMax(1.0, reachQt * 0.001),
                  qPrintable(QStringLiteral("%1: the core reaches %2 m and the controller %3 m").arg(shape).arg(reachCore).arg(reachQt)));
+
+        // The altitude band the terrain panel draws against. A pattern contributes its own lowest
+        // and highest rather than the height at its entry, so a survey over sloping ground widens
+        // the band and a comparison that only reads entry altitudes would not notice.
+        const QJsonArray bandQt = summary.value(QStringLiteral("altitudeBandMetres")).toArray();
+        const QJsonArray bandCore = summary.value(QStringLiteral("altitudeBandComputed")).toArray();
+        QCOMPARE(bandQt.count(), 2);
+        QVERIFY2(bandCore.count() == 2, qPrintable(QStringLiteral("%1: the core worked out no altitude band").arg(shape)));
+        for (int edge = 0; edge < 2; edge++) {
+            const double mine = bandCore.at(edge).toDouble();
+            const double theirs = bandQt.at(edge).toDouble();
+            QVERIFY2(qAbs(mine - theirs) < 1.0,
+                     qPrintable(QStringLiteral("%1: the band's %2 edge is %3 m for the core and %4 m for the controller").arg(shape, edge == 0 ? "lower" : "upper").arg(mine).arg(theirs)));
+        }
     };
 
     const auto insert = [](const char *args) {

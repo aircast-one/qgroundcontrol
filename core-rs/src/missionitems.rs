@@ -15,7 +15,7 @@ pub const DEPS: &[&str] = &[
     "plan.missionController@newItemsFromVehicle",
 ];
 
-const FIELDS: &str = "sequenceNumber,abbreviation,commandName,commandDescription,isCurrentItem,specifiesCoordinate,isStandaloneCoordinate,specifiesAltitudeOnly,isSimpleItem,isTakeoffItem,isLandCommand,isSurveyItem,homePosition,coordinate,amslEntryAlt,altDifference,azimuth,distance,distanceFromStart,readyForSaveState,readyForSaveMessage,dirty,altitude,altitudeMode,isIncomplete,exitCoordinate,exitCoordinateSameAsEntry,commandName,command,category,specifiesAltitude,cameraShots,complexDistance,plannedHomePositionAltitude";
+const FIELDS: &str = "minAMSLAltitude,maxAMSLAltitude,sequenceNumber,abbreviation,commandName,commandDescription,isCurrentItem,specifiesCoordinate,isStandaloneCoordinate,specifiesAltitudeOnly,isSimpleItem,isTakeoffItem,isLandCommand,isSurveyItem,homePosition,coordinate,amslEntryAlt,altDifference,azimuth,distance,distanceFromStart,readyForSaveState,readyForSaveMessage,dirty,altitude,altitudeMode,isIncomplete,exitCoordinate,exitCoordinateSameAsEntry,commandName,command,category,specifiesAltitude,cameraShots,complexDistance,plannedHomePositionAltitude";
 
 const READY_TO_SAVE: i64 = 0;
 const AWAITING_TERRAIN: i64 = 1;
@@ -119,6 +119,11 @@ fn item(read: &Value, index: i64, vertical: &Unit) -> Value {
         "simple": read.get("isSimpleItem").and_then(Value::as_bool),
         "altitudeMode": number(read, "altitudeMode").map(|mode| mode as i64),
         "altitudeAmsl": number(read, "amslEntryAlt"),
+        // A pattern covers a range of heights rather than one, and the controller takes the
+        // mission's altitude band from these rather than from the entry altitude. Both are
+        // Q_PROPERTY with a notify, so they are watchable as well as readable.
+        "altitudeAmslLowest": number(read, "minAMSLAltitude"),
+        "altitudeAmslHighest": number(read, "maxAMSLAltitude"),
         "altitudeChange": number(read, "altDifference"),
         "azimuth": number(read, "azimuth"),
         "distance": number(read, "distance"),
