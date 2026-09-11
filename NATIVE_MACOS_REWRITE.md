@@ -1291,3 +1291,44 @@ single largest piece of unused mechanism in the head.** Adopting it is not a sma
 
 Worth doing per-store, starting with `view.missionSummary` where there is a measured defect
 and a proven signal, rather than as a sweep.
+
+### The staleness sweep run from the other end, and the premise it nearly rested on (2026-09-11)
+
+The four staleness defects found in the Plan window were all found the same way: something
+arrived after the read that drew the panel. That question is exhausted. The productive
+inversion is **what can change without an edit at all** — a fact the window would never
+re-read because nothing the operator did caused it to change.
+
+Run over every view the Plan window reads, against the `DEPS` each one declares in
+`core-rs`:
+
+| view | deps | verdict |
+|---|---|---|
+| `view.missionItems` | `visualItems.count`, `currentPlanViewVIIndex`, `containsItems` | plan-edit driven |
+| `view.missionKinds` | `currentPlanViewSeqNum`, the four insert-validity flags | plan-edit driven |
+| `view.fences` | `geoFenceController.polygons`, `circles`, `rallyPointController.points` | plan-edit driven |
+| `view.surveyStats` | `missionItemCount`, `plan.dirty` | plan-edit driven |
+| `view.plan` | …`vehicles.activeVehicleAvailable`, `vehicle.armed`, `vehicle.flightMode` | **vehicle state** |
+| `view.altitudeModes` | `vehicles.activeVehicleAvailable`, `vehicle.supportsTerrainFrame`, … | **vehicle state** |
+
+Two of six, both now watched (`7232847c9`, `d45d9f5e8`). The other four are not a gap to
+fill later — they are provably covered by the reload an edit already triggers, and that is
+the useful half of the result.
+
+**The near-miss is the part worth keeping.** Both fixes were written on the stated premise
+that this window never polls. That premise was asserted twice before it was checked, and it
+survives only on a technicality: `MissionStore` is constructed twice — `PlanWindow.swift`
+and `FlyWindow.swift` — and `startWatching()`, which reloads on a 0.5 s timer, is called
+**only by the Fly window**. The Fly view reads a plan it does not edit, so it has to look
+again; the Plan window edits the plan and reloads on the edit. So one instance of this class
+polls at 2 Hz and the other never polls, and *any rule reasoned about "the store" is wrong
+for one of them*. Had the call sat one line higher, both commits would have been fixing
+something a 500 ms timer already fixed.
+
+The lesson generalises past this file: **a staleness argument is about an instance, not a
+class.** Ask which construction site you are reasoning about before claiming what it does
+not do.
+
+One consequence is accepted rather than fixed: the Fly window's instance now also carries the
+vehicle-presence watch, which is redundant against its own 2 Hz poll. It is one extra reload
+on a rare event, and scoping the watch per-instance would cost more than it saves.
