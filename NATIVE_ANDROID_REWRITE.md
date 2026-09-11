@@ -5258,3 +5258,43 @@ Swept the rest of both modules for the same shape. The `ifBlank` calls that
 remain supply names and prose — "Camera 2" for an unnamed stream, a sentence
 when a refusal carries no reason — and none of them invent a number with a
 unit on it.
+
+### Half the map was not being drawn, 2026-09-12
+
+Screenshotting the Plan tab to re-check the 2026-09-08 UX findings turned up
+something none of them named: 37.3% of the map canvas was one flat olive
+colour and another 12.1% pure black, stable across a 20-second wait. The
+plan's route was drawn over ground the operator cannot see.
+
+Not a rendering bug and nothing in logcat. `QgcTileInterceptor` served the map
+**only** from QGC's offline cache and returned 404 on a miss, so MapLibre
+painted the style background. `installQgcTileSource` does fall back to
+`OSM_RASTER_STYLE`, but only when the cache is empty — a cache holding a
+handful of tiles won for the entire world, permanently. And nothing in this
+head can fill it: MapLibre replaced the QML map, so QGC's tile downloader is
+never triggered. The cache on this handset is 1350 Bing Hybrid tiles, 1069 of
+them at z17, against a plan being viewed at roughly z14.
+
+The fallback is now per tile instead of per session, to the same OSM source
+the app already falls back to wholesale (one `OSM_TILE_URL` const now, so the
+two cannot drift). Blank went to 0% + 0% at the same plan and zoom.
+
+**What I did not verify.** The cache-hit branch is untouched, so cached
+imagery still wins where it covers the requested zoom — but this cache's z17
+tiles are for a different area than this plan, so no native-zoom hit was
+reachable to demonstrate. What is visible is a consequence worth knowing: where
+the cache held only a lower-zoom parent, MapLibre used to stretch it to fill,
+and now the native-zoom OSM tile is available and wins. The satellite patch in
+the "before" screenshot was that stretching.
+
+### Two of the 2026-09-08 UX findings no longer hold
+
+Re-checked against the rendered screen rather than the note. **"Twelve controls
+of identical weight, Upload styled exactly like Fit" is false now**: Upload is a
+filled `Button` with wider padding and the other eight are `TextButton`s, so the
+action that completes the job is the only weighted thing on the row. **"The
+bottom grid mixes vehicle sync, item creation and view control with nothing
+separating them" is also false**: dividers separate the three groups, visible in
+the screenshot. Both were fixed at some point without the note being updated,
+which is the same failure as the withdrawn claim corrected in `118d14097` — a
+finding left standing reads as current work outstanding.
