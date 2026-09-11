@@ -53,6 +53,8 @@ data class MissionItem(
     val altitude: Double = Double.NaN,
     val exit: TrackPoint? = null,
     val routed: Boolean = true,
+    val kind: String = "",
+    val commandId: Int = 0,
 )
 
 fun routeEndsAfter(items: JSONArray?): Int =
@@ -80,6 +82,8 @@ fun missionItems(json: JSONObject?): List<MissionItem> {
             latitude = at.latitude,
             longitude = at.longitude,
             command = element.optString("name"),
+            kind = element.optString("kind"),
+            commandId = element.optInt("command"),
             current = element.optBoolean("current"),
             altitude = element.optDouble("altitude", Double.NaN),
             routed = element.optBoolean("flownLeg") && index <= endsAfter,
@@ -119,4 +123,4 @@ object PlanBridge {
 
 internal fun takeoffMissing(items: List<MissionItem>): Boolean =
     items.any { it.latitude != 0.0 || it.longitude != 0.0 } &&
-        items.none { it.command.contains("TAKEOFF", ignoreCase = true) }
+        items.none { it.kind == "takeoff" }

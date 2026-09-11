@@ -32,16 +32,22 @@ const val LOITER_COLOUR = "#26A69A"
 const val START_COLOUR = "#7E57C2"
 const val WAYPOINT_COLOUR = "#FFB300"
 
-fun waypointColour(command: String): String {
-    val name = command.lowercase()
-    return when {
-        name.contains("mission start") -> START_COLOUR
-        name.contains("takeoff") -> TAKEOFF_COLOUR
-        name.contains("land") -> LAND_COLOUR
-        name.contains("return") || name.contains("rtl") -> RETURN_COLOUR
-        name.contains("loiter") || name.contains("orbit") -> LOITER_COLOUR
-        else -> WAYPOINT_COLOUR
-    }
+const val MAV_CMD_NAV_LOITER_UNLIM = 17
+const val MAV_CMD_NAV_LOITER_TURNS = 18
+const val MAV_CMD_NAV_LOITER_TIME = 19
+const val MAV_CMD_DO_ORBIT = 34
+
+private val LOITER_COMMANDS = setOf(
+    MAV_CMD_NAV_LOITER_UNLIM, MAV_CMD_NAV_LOITER_TURNS, MAV_CMD_NAV_LOITER_TIME, MAV_CMD_DO_ORBIT,
+)
+
+fun waypointColour(kind: String, commandId: Int): String = when {
+    kind == "settings" -> START_COLOUR
+    kind == "takeoff" -> TAKEOFF_COLOUR
+    kind == "land" -> LAND_COLOUR
+    commandId == MAV_CMD_NAV_RETURN_TO_LAUNCH -> RETURN_COLOUR
+    commandId in LOITER_COMMANDS -> LOITER_COLOUR
+    else -> WAYPOINT_COLOUR
 }
 
 fun installMissionLayers(style: Style) {
@@ -96,7 +102,7 @@ fun missionFeatures(items: List<MissionItem>, selectedIndex: Int? = null): Featu
         Feature.fromGeometry(Point.fromLngLat(item.longitude, item.latitude)).apply {
             addNumberProperty(WAYPOINT_ID_PROPERTY, item.index)
             addStringProperty(WAYPOINT_LABEL_PROPERTY, item.sequence.toString())
-            addStringProperty(WAYPOINT_COLOUR_PROPERTY, waypointColour(item.command))
+            addStringProperty(WAYPOINT_COLOUR_PROPERTY, waypointColour(item.kind, item.commandId))
             addBooleanProperty(WAYPOINT_SELECTED_PROPERTY, item.index == selectedIndex)
         }
     }

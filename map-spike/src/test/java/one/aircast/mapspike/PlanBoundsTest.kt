@@ -149,22 +149,27 @@ class LongitudeWraparoundTest {
 }
 
 class TakeoffMissingTest {
-    private fun item(command: String, lat: Double = 41.0, lon: Double = 44.0) =
-        MissionItem(0, 1, lat, lon, command, false, 50.0)
+    private fun item(kind: String, name: String, lat: Double = 41.0, lon: Double = 44.0) =
+        MissionItem(0, 1, lat, lon, name, false, 50.0, kind = kind)
 
     @Test
     fun `waypoints with no takeoff need one inserted first`() {
-        assertTrue(takeoffMissing(listOf(item("NAV_WAYPOINT"), item("NAV_WAYPOINT"))))
+        assertTrue(takeoffMissing(listOf(item("waypoint", "Waypoint"), item("waypoint", "Waypoint"))))
     }
 
     @Test
     fun `a plan that already has a takeoff does not get another`() {
-        assertFalse(takeoffMissing(listOf(item("NAV_TAKEOFF"), item("NAV_WAYPOINT"))))
+        assertFalse(takeoffMissing(listOf(item("takeoff", "Takeoff"), item("waypoint", "Waypoint"))))
     }
 
     @Test
     fun `a VTOL takeoff counts as a takeoff`() {
-        assertFalse(takeoffMissing(listOf(item("NAV_VTOL_TAKEOFF"), item("NAV_WAYPOINT"))))
+        assertFalse(takeoffMissing(listOf(item("takeoff", "VTOL Takeoff"), item("waypoint", "Waypoint"))))
+    }
+
+    @Test
+    fun `a takeoff named in another language still counts`() {
+        assertFalse(takeoffMissing(listOf(item("takeoff", "Starten"), item("waypoint", "Wegpunkt"))))
     }
 
     @Test
@@ -174,6 +179,6 @@ class TakeoffMissingTest {
 
     @Test
     fun `items with no coordinate do not by themselves require a takeoff`() {
-        assertFalse(takeoffMissing(listOf(item("NAV_RETURN_TO_LAUNCH", 0.0, 0.0))))
+        assertFalse(takeoffMissing(listOf(item("command", "Return To Launch", 0.0, 0.0))))
     }
 }
