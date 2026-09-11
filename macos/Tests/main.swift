@@ -1274,6 +1274,7 @@ func checkMissionItemKinds() {
     checkUnreachedItems()
     checkLegsSpelled()
     checkTerrainMarkers()
+    checkGroundDrawnFromKnownSamples()
     checkUnknownMissionTime()
     checkOnlyAPlacedItemMoves()
     checkComplexGeometryInAnyLocale()
@@ -4354,6 +4355,38 @@ func checkUnknownMissionTime() {
            + "from having missed it")
 }
 
+func checkGroundDrawnFromKnownSamples() {
+    func sample(_ x: Double, terrain: Double?) -> [String: Any] {
+        var json: [String: Any] = ["x": x as NSNumber, "missionAltitude": 100.0 as NSNumber,
+                                   "sequence": 0 as NSNumber]
+        if let terrain { json["terrainAltitude"] = terrain as NSNumber }
+        return json
+    }
+    func profile(_ points: [[String: Any]]) -> TerrainProfile {
+        TerrainProfile(["points": points, "usable": true as NSNumber])
+    }
+
+    let whole = profile([sample(0, terrain: 50), sample(0.5, terrain: 60), sample(1, terrain: 70)])
+    expect(whole.groundRuns.count == 1, "ground sampled throughout is one filled run")
+    expect(whole.groundRuns.first?.count == 3,
+           "carrying every sample, without which the assertions below compare empty to empty")
+
+    let oneMissing = profile([sample(0, terrain: 50), sample(0.1, terrain: nil),
+                              sample(0.5, terrain: 60), sample(1, terrain: 70)])
+    expect(oneMissing.groundRuns.count == 1,
+           "one unplaced item leaves its sample without terrain, and that must not erase the "
+           + "ground everywhere else -- the core's groundKnown means every sample is known, so "
+           + "gating the whole drawing on it threw away four hundred measured samples for one")
+    expect(oneMissing.groundRuns.first?.count == 2,
+           "the run resumes after the gap rather than swallowing it")
+
+    let gap = profile([sample(0, terrain: 50), sample(0.2, terrain: 55), sample(0.4, terrain: nil),
+                       sample(0.6, terrain: 60), sample(0.8, terrain: 65)])
+    expect(gap.groundRuns.count == 2,
+           "and a gap in the middle breaks the fill in two, because one shape spanning it would "
+           + "draw ground at a height nothing measured")
+}
+
 func checkTerrainMarkers() {
     func point(_ x: Double, _ sequence: Int) -> [String: Any] {
         ["x": x as NSNumber, "missionAltitude": 100.0 as NSNumber,
@@ -4368,7 +4401,7 @@ func checkTerrainMarkers() {
     expect(survey.points.count == 6,
            "the fixture carries the samples the assertions below count, without which every one "
            + "of them compares an empty list against an empty list")
-    expect(survey.markers.map(\.sequence) == [0, 2, 3],
+    expect(survey.markers.map(\.label).joined(separator: ","), "0,2,3",
            "one mark per item, in the order the flight reaches them -- a takeoff the vehicle "
            + "flies no leg to contributes no samples and so earns no mark")
     expect(survey.markers.map(\.x) == [0, 0.54, 0.73],
@@ -4382,9 +4415,17 @@ func checkTerrainMarkers() {
     expect(survey.labelX(survey.markers[1], width: 400, inset: 8) == 216,
            "and a mark with room either side is not moved at all")
 
+    let climb = profile([point(0, 0), point(0, 1), point(0.54, 2)])
+    expect(climb.markers.map(\.label).joined(separator: ","), "0\u{2013}1,2",
+           "an ArduPilot takeoff climbs straight up, so the core gives it the launch point's own "
+           + "place on the axis -- two items at one x are one mark, and drawing both put their "
+           + "numbers on top of each other and hid the takeoff entirely")
+    expect(climb.markers.count == 2,
+           "and they are one mark, not two at the same place")
+
     let unstamped = profile([point(0, 0), ["x": 0.5 as NSNumber,
                                            "missionAltitude": 100.0 as NSNumber]])
-    expect(unstamped.markers.map(\.sequence) == [0],
+    expect(unstamped.markers.map(\.label) == ["0"],
            "a sample the core did not stamp is drawn in the line and marked nowhere, rather than "
            + "collecting under a sequence of zero that would put a second mark on item 0")
 }

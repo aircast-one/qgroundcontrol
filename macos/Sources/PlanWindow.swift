@@ -174,10 +174,10 @@ struct TerrainProfileSheet: View {
             let height = geometry.size.height
 
             ZStack {
-                if profile.groundKnown {
-                    ground(width: width, height: height)
+                ForEach(Array(profile.groundRuns.enumerated()), id: \.offset) { _, run in
+                    ground(run, width: width, height: height)
                         .fill(Overlay.launch.opacity(0.25))
-                    ground(width: width, height: height)
+                    ground(run, width: width, height: height)
                         .stroke(Overlay.launch, lineWidth: 1.5)
                 }
 
@@ -190,7 +190,7 @@ struct TerrainProfileSheet: View {
                         .fill(Color.secondary.opacity(0.45))
                         .frame(width: 1, height: height)
                         .position(x: at, y: height / 2)
-                    Text("\(marker.sequence)")
+                    Text(marker.label)
                         .font(.system(size: Overlay.markerType, weight: .semibold))
                         .foregroundColor(.secondary)
                         .position(x: profile.labelX(marker, width: width, inset: Overlay.markerType),
@@ -219,9 +219,8 @@ struct TerrainProfileSheet: View {
         }
     }
 
-    private func ground(width: Double, height: Double) -> Path {
-        let known = profile.points.filter { $0.terrainAltitude != nil }
-        return Path { path in
+    private func ground(_ known: [TerrainPoint], width: Double, height: Double) -> Path {
+        Path { path in
             known.enumerated().forEach { index, point in
                 let location = CGPoint(x: profile.x(point, width: width),
                                        y: profile.y(point.terrainAltitude ?? 0, height: height))

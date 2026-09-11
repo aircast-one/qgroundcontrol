@@ -20,10 +20,15 @@ struct TerrainPoint: Equatable {
 }
 
 struct TerrainMarker: Equatable, Identifiable {
-    let sequence: Int
+    let sequences: [Int]
     let x: Double
 
-    var id: Int { sequence }
+    var id: Int { sequences.first ?? -1 }
+
+    var label: String {
+        guard let first = sequences.first, let last = sequences.last else { return "" }
+        return first == last ? "\(first)" : "\(first)\u{2013}\(last)"
+    }
 }
 
 struct TerrainProfile: Equatable {
@@ -97,11 +102,30 @@ struct TerrainProfile: Equatable {
     }
 
     var markers: [TerrainMarker] {
-        points.reduce(into: [TerrainMarker]()) { found, point in
+        let firsts = points.reduce(into: [(sequence: Int, x: Double)]()) { found, point in
             guard point.sequence >= 0,
                   !found.contains(where: { $0.sequence == point.sequence }) else { return }
-            found.append(TerrainMarker(sequence: point.sequence, x: point.x))
+            found.append((point.sequence, point.x))
         }
+        return firsts.reduce(into: [TerrainMarker]()) { grouped, entry in
+            guard let last = grouped.last, last.x == entry.x else {
+                return grouped.append(TerrainMarker(sequences: [entry.sequence], x: entry.x))
+            }
+            grouped[grouped.count - 1] = TerrainMarker(sequences: last.sequences + [entry.sequence],
+                                                       x: last.x)
+        }
+    }
+
+    var groundRuns: [[TerrainPoint]] {
+        points.reduce(into: (runs: [[TerrainPoint]](), open: false)) { state, point in
+            guard point.terrainAltitude != nil else { return state.open = false }
+            if state.open {
+                state.runs[state.runs.count - 1].append(point)
+            } else {
+                state.runs.append([point])
+                state.open = true
+            }
+        }.runs.filter { $0.count > 1 }
     }
 
     var collisionRuns: [ClosedRange<Double>] {
