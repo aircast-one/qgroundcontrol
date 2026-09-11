@@ -4135,7 +4135,7 @@ func checkClearanceSentence() {
         TerrainProfile(["usable": true as NSNumber, "groundKnown": true as NSNumber,
                         "points": []].merging(extra) { _, new in new })
     }
-    let intruding = profile(["hasCollision": true as NSNumber,
+    let intruding = profile(["hasCollision": true as NSNumber, "clearanceComplete": true as NSNumber,
                              "minClearanceMetres": -168.0 as NSNumber, "clearanceText": "168 m"])
     expect(intruding.clearanceSentence, "Mission is below terrain by up to 168 m",
            "the operator's next move after a collision is to pick a new altitude, and the only "
@@ -4143,20 +4143,46 @@ func checkClearanceSentence() {
            + "305 m -- 3.4 m per point. Measured on the running app, that mission ran 168 m under")
     expect(intruding.showsClearance, "and a collision always says its depth")
 
-    let clearing = profile(["hasCollision": false as NSNumber,
+    let clearing = profile(["hasCollision": false as NSNumber, "clearanceComplete": true as NSNumber,
                             "minClearanceMetres": 42.0 as NSNumber, "clearanceText": "42 m"])
     expect(clearing.clearanceSentence, "Clears terrain by 42 m",
            "the core signs it -- headroom above, intrusion below -- so one sentence serves both "
            + "and neither head decides which way round the subtraction goes")
     expect(clearing.showsClearance, "and a margin is worth knowing before flying, not only a fault")
 
-    let partial = profile(["hasCollision": false as NSNumber, "unknownTerrain": 3 as NSNumber,
+    let partial = profile(["hasCollision": false as NSNumber, "clearanceComplete": false as NSNumber,
+                           "unknownTerrain": 3 as NSNumber,
                            "minClearanceMetres": 42.0 as NSNumber, "clearanceText": "42 m"])
     expect(!partial.showsClearance,
-           "but not with ground missing under part of the route: the smallest clearance measured "
-           + "is not the smallest there is, and a reassuring number is worse than none")
+           "but not when the core says the measurement is incomplete: the smallest clearance it "
+           + "could take is not the smallest there is, and a reassuring number is worse than none. "
+           + "The head worked this out from the unknown count until the core began answering it")
 
-    let silent = profile(["hasCollision": true as NSNumber])
+    let intrudingPartly = profile(["hasCollision": true as NSNumber,
+                                   "clearanceComplete": false as NSNumber,
+                                   "unknownTerrain": 3 as NSNumber,
+                                   "minClearanceMetres": -90.0 as NSNumber, "clearanceText": "90 m"])
+    expect(intrudingPartly.showsClearance,
+           "a collision states its depth even with ground missing elsewhere -- being under the "
+           + "ground somewhere is not made uncertain by not knowing the rest, and the depth found "
+           + "is a floor on the depth there is")
+
+    // The two disagree here, which is the case the head's old derivation got wrong. The core
+    // answers false because it measured no clearance at all; counting unknown points says zero,
+    // because there are no points to be unknown about. The old rule then showed the grey line
+    // with an empty figure -- and an empty figure makes the sentence fall back to its collision
+    // wording, so a mission that clears the ground was labelled as being under it.
+    let unmeasured = profile(["hasCollision": false as NSNumber,
+                              "clearanceComplete": false as NSNumber,
+                              "unknownTerrain": 0 as NSNumber])
+    expect(!unmeasured.showsClearance,
+           "nothing measured is not the same as nothing in the way, and the core is what knows "
+           + "which of those it found")
+    expect(unmeasured.clearanceSentence, "Mission is below terrain",
+           "the sentence still falls back to the collision wording with no figure, which is why "
+           + "it must never be shown for a mission that has not collided")
+
+    let silent = profile(["hasCollision": true as NSNumber, "clearanceComplete": false as NSNumber])
     expect(silent.clearanceSentence, "Mission is below terrain",
            "a collision the core could not put a depth on still says it collides, rather than "
            + "reading as a sentence with its number dropped out")

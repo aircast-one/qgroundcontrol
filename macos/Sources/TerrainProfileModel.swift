@@ -30,6 +30,7 @@ struct TerrainProfile: Equatable {
     let highestText: String
     let clearanceText: String
     let minClearance: Double?
+    let clearanceComplete: Bool
 
     static let empty = TerrainProfile()
 
@@ -46,6 +47,7 @@ struct TerrainProfile: Equatable {
         highestText = ""
         clearanceText = ""
         minClearance = nil
+        clearanceComplete = false
     }
 
     init(_ json: [String: Any]) {
@@ -61,6 +63,7 @@ struct TerrainProfile: Equatable {
         distanceText = text("distanceText")
         clearanceText = text("clearanceText")
         minClearance = (json["minClearanceMetres"] as? NSNumber)?.doubleValue
+        clearanceComplete = flag("clearanceComplete")
         lowestText = text("lowestText")
         highestText = text("highestText")
     }
@@ -79,9 +82,13 @@ struct TerrainProfile: Equatable {
             : "\(TerrainProfile.clears) by \(clearanceText)"
     }
 
-    // Worth telling an operator their margin only when it is the whole story: with ground missing
-    // under part of the route, the smallest clearance measured is not the smallest there is.
-    var showsClearance: Bool { hasCollision || (!clearanceText.isEmpty && unknownTerrain == 0) }
+    // A margin is worth stating only when it is the whole story, and whether it is belongs to
+    // whoever measured it: the head worked that out from the unknown count until the core began
+    // answering it, which meant the second head had to rediscover it or reassure wrongly.
+    //
+    // A collision needs no such qualification. Being below the ground somewhere is not made
+    // uncertain by not knowing the rest.
+    var showsClearance: Bool { hasCollision || clearanceComplete }
 
     func x(_ point: TerrainPoint, width: Double) -> Double { point.x * width }
 
