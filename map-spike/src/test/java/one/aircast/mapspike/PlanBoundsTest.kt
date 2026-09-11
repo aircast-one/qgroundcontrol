@@ -186,17 +186,29 @@ class TakeoffMissingTest {
 class FitsPlanOnEntryTest {
     @Test
     fun `a plan that was already there is what the tab opens on`() {
-        assertTrue(fitsPlanOnEntry(firstRead = true, planIsDrawn = true))
+        assertTrue(fitsPlanOnEntry(firstRead = true, planRead = true, planIsDrawn = true))
     }
 
     @Test
     fun `an empty plan leaves the camera on the vehicle`() {
-        assertFalse(fitsPlanOnEntry(firstRead = true, planIsDrawn = false))
+        assertFalse(fitsPlanOnEntry(firstRead = true, planRead = true, planIsDrawn = false))
     }
 
     @Test
     fun `the first item added later does not yank the camera`() {
-        assertFalse(fitsPlanOnEntry(firstRead = false, planIsDrawn = true))
+        assertFalse(fitsPlanOnEntry(firstRead = false, planRead = true, planIsDrawn = true))
+    }
+
+    @Test
+    fun `a read that never reached the plan does not spend the one chance to fit`() {
+        assertFalse(fitsPlanOnEntry(firstRead = true, planRead = false, planIsDrawn = false))
+        assertTrue(stillFirstRead(firstRead = true, planRead = false))
+    }
+
+    @Test
+    fun `a read that reached the plan settles it, whatever the plan held`() {
+        assertFalse(stillFirstRead(firstRead = true, planRead = true))
+        assertFalse(stillFirstRead(firstRead = false, planRead = false))
     }
 
     @Test

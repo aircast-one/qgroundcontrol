@@ -70,4 +70,7 @@ fun planIsDrawn(
     rally: List<RallyPoint>,
 ): Boolean = listOf(items, surveys, polygons, circles, rally).any { it.isNotEmpty() }
 
-fun fitsPlanOnEntry(firstRead: Boolean, planIsDrawn: Boolean): Boolean = firstRead && planIsDrawn
+fun fitsPlanOnEntry(firstRead: Boolean, planRead: Boolean, planIsDrawn: Boolean): Boolean =
+    firstRead && planRead && planIsDrawn
+
+fun stillFirstRead(firstRead: Boolean, planRead: Boolean): Boolean = firstRead && !planRead

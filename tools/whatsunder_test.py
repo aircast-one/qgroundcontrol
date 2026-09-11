@@ -45,6 +45,13 @@ def main():
     broken = run("not xml at all", "x", 300)
     assert broken.returncode != 0, "a guard that cannot answer must exit non-zero, not allow the tap"
 
+    truncated = fly[: fly.index("<node text=\"Fly\"")]
+    assert "</hierarchy>" not in truncated
+    assert labels_under(truncated, 200, 300) == ["Arm"], (
+        "a truncated dump still parses, which is why ui.sh checks for the closing tag "
+        "rather than trusting a non-empty read"
+    )
+
     print("whatsunder: ok")
 
 

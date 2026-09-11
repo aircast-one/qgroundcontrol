@@ -200,11 +200,11 @@ internal fun MapSpikeScreen(
             val nextSurveys = SurveyBridge.surveysFrom(plan)
             val drawn = planIsDrawn(nextItems, nextSurveys, nextFences, nextCircles, nextRally)
             withContext(Dispatchers.Main) {
-                if (fitsPlanOnEntry(firstRead, drawn)) {
+                if (fitsPlanOnEntry(firstRead, plan != null, drawn)) {
                     follow = false
                     fitRequest += 1
                 }
-                firstRead = false
+                firstRead = stillFirstRead(firstRead, plan != null)
                 items = nextItems
                 itemCount = nextItemCount
                 shape = nextShape
@@ -265,7 +265,7 @@ internal fun MapSpikeScreen(
                         is MapHit.Waypoint -> PlanBridge.moveItem(hit.index, lat, lon)
                         is MapHit.FenceVertex -> FenceBridge.adjustVertex(hit.polygon, hit.vertex, lat, lon)
                         is MapHit.SurveyVertex -> surveyList.firstOrNull { it.index == hit.item }
-                            ?.let { SurveyBridge.adjustAreaVertex(it, hit.vertex, lat, lon) } == true
+                            ?.let { SurveyBridge.adjustVertex(it, hit.vertex, lat, lon) } == true
                         is MapHit.Rally -> FenceBridge.moveRallyPoint(hit.index, lat, lon)
                         is MapHit.CircleCentre -> FenceBridge.moveCircle(hit.index, lat, lon)
                         is MapHit.Circle -> true

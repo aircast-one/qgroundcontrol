@@ -68,10 +68,13 @@ refuse_flight_control() {
     local under dump
     dump=$(adb shell uiautomator dump /sdcard/ui-guard.xml >/dev/null 2>&1 &&
         adb shell cat /sdcard/ui-guard.xml 2>/dev/null)
-    if [ -z "$dump" ]; then
-        echo "REFUSED: the screen could not be read, so ($1,$2) cannot be cleared." >&2
-        exit 1
-    fi
+    case "$dump" in
+        *"</hierarchy>"*) ;;
+        *)
+            echo "REFUSED: the screen read back incomplete, so ($1,$2) cannot be cleared." >&2
+            exit 1
+            ;;
+    esac
     if ! under=$(printf '%s' "$dump" | python3 "$(dirname "$0")/whatsunder.py" "$1" "$2"); then
         echo "REFUSED: the flight-control guard failed, so ($1,$2) cannot be cleared." >&2
         exit 1

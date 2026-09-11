@@ -89,7 +89,7 @@ object SurveyBridge {
             ).optBoolean("ok")
         }.getOrDefault(false)
 
-    fun adjustAreaVertex(survey: Survey, vertex: Int, latitude: Double, longitude: Double): Boolean =
+    fun adjustVertex(survey: Survey, vertex: Int, latitude: Double, longitude: Double): Boolean =
         invoke(
             "$PLAN_ITEMS.${survey.index}.${survey.property}.adjustVertex",
             "[$vertex, ${coordinate(latitude, longitude)}]",
