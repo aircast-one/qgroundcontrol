@@ -12,8 +12,8 @@ struct VehicleMessage: Identifiable, Equatable {
     let level: Level
     let text: String
 
-    // The list only ever grows at the front, so a key taken from the message itself keeps a
-    // row's identity when one arrives; the core's index would shift every row down by one.
+    // A key taken from the message itself, so a row keeps its identity when another arrives at
+    // either end of the list; the core's index shifts under every row as soon as one does.
     var id: String { "\(time)|\(component.map(String.init) ?? "")|\(text)" }
 
     var stamp: String { String(time.prefix(8)) }
@@ -35,5 +35,34 @@ struct VehicleMessage: Identifiable, Equatable {
         if messages.contains(where: { $0.level == .error }) { return .error }
         if messages.contains(where: { $0.level == .warning }) { return .warning }
         return .normal
+    }
+}
+
+struct VehicleMessages: Equatable {
+    enum Order: String {
+        case oldestFirst
+        case newestFirst
+    }
+
+    let order: Order
+    let all: [VehicleMessage]
+
+    static let empty = VehicleMessages(order: .oldestFirst, all: [])
+
+    init(order: Order, all: [VehicleMessage]) {
+        self.order = order
+        self.all = all
+    }
+
+    init(_ json: [String: Any]) {
+        order = Order(rawValue: (json["order"] as? String) ?? "") ?? .oldestFirst
+        all = VehicleMessage.list(json["items"])
+    }
+
+    var isEmpty: Bool { all.isEmpty }
+
+    // Newest at the top, which is where it was when the core's list ran the other way.
+    func newest(_ limit: Int) -> [VehicleMessage] {
+        order == .newestFirst ? Array(all.prefix(limit)) : Array(all.suffix(limit).reversed())
     }
 }

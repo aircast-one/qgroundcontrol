@@ -8,7 +8,7 @@ final class FlyStore: ObservableObject, Probeable, WriteReporting {
     @Published private(set) var state = FlyState.none
     @Published private(set) var track = VehicleTrack.none
     @Published private(set) var position: VehicleMarker?
-    @Published private(set) var messages: [VehicleMessage] = []
+    @Published private(set) var messages = VehicleMessages.empty
     @Published private(set) var warnings: [VehicleWarning] = []
     @Published private(set) var armingBlocker: String?
     @Published private(set) var airframe = "Generic"
@@ -77,7 +77,7 @@ final class FlyStore: ObservableObject, Probeable, WriteReporting {
         guard vehicle["kind"] as? String == "object" else {
             if telemetry != FlyTelemetry() { telemetry = FlyTelemetry() }
             if position != nil { position = nil }
-            if !messages.isEmpty { messages = [] }
+            if !messages.isEmpty { messages = .empty }
             if !warnings.isEmpty { warnings = [] }
             if armingBlocker != nil { armingBlocker = nil }
             if !batteries.isEmpty { batteries = [] }
@@ -127,7 +127,7 @@ final class FlyStore: ObservableObject, Probeable, WriteReporting {
         if reading != telemetry { telemetry = reading }
         if placed != position { position = placed }
 
-        let heard = VehicleMessage.list(Bridge.group("view.messages")["items"])
+        let heard = VehicleMessages(Bridge.group("view.messages"))
         if heard != messages { messages = heard }
 
         let flightModes = Bridge.group("view.flightModes")
@@ -152,7 +152,7 @@ final class FlyStore: ObservableObject, Probeable, WriteReporting {
         }
     }
 
-    var latestMessages: [VehicleMessage] { Array(messages.prefix(FlyStore.messageLimit)) }
+    var latestMessages: [VehicleMessage] { messages.newest(FlyStore.messageLimit) }
 
     // The core answers the checklist with no vehicle connected, and says so in each reason.
     // "Before you power up" is the group an operator works through while nothing is connected

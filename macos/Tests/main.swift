@@ -1268,6 +1268,7 @@ func checkMissionItemKinds() {
     checkBridgeWatchers()
     checkRemoveOutcome()
     checkTerrainWatch()
+    checkVehicleMessageOrder()
     checkBlockedBanner()
     checkMavlinkConsole()
     checkModeSlots()
@@ -3402,7 +3403,7 @@ func checkViewContract() {
          ["connected", "requestingList", "downloading", "canRefresh", "canDownload", "canCancel",
           "canErase", "emptyText", "eraseWarning", "entries"]),
         ("view.label(altitudeRelative)", [], ["value"]),
-        ("view.messages", [], ["count", "items"]),
+        ("view.messages", [], ["count", "items", "order"]),
         ("view.missionSeed(survey,47,8)", ["points"], ["latitude", "longitude"]),
         ("view.links", ["configured"],
          ["index", "path", "name", "type", "typeLabel", "editing", "displaySummary", "connected",
@@ -4025,6 +4026,45 @@ func checkHostNotices() {
     expect(served.navigation?.id == 1,
            "the navigation request is found among notices that are not navigation, because it "
            + "arrives paired with the message that explains it and never alone")
+}
+
+func checkVehicleMessageOrder() {
+    func message(_ text: String, _ level: String = "normal") -> [String: Any] {
+        ["text": text, "time": "12:00:0\(text)", "level": level]
+    }
+    let seven = (1...7).map { message("\($0)") }
+
+    let oldestFirst = VehicleMessages(["order": "oldestFirst", "items": seven])
+    expect(oldestFirst.newest(6).map(\.text).joined(separator: ","), "7,6,5,4,3,2",
+           "the core serves its lists oldest first and says so. This head took the FRONT and "
+           + "called it the latest, so past the limit the operator never saw a new message again "
+           + "-- the panel froze on the first six the vehicle ever sent")
+
+    let newestFirst = VehicleMessages(["order": "newestFirst", "items": seven])
+    expect(newestFirst.newest(6).map(\.text).joined(separator: ","), "1,2,3,4,5,6",
+           "and if the core ever turns a list around it says which way, so this head reads the "
+           + "answer rather than carrying an assumption that was right once")
+
+    expect(VehicleMessages(["items": seven]).order == .oldestFirst,
+           "a list that does not say takes the core's stated contract, which is what every one of "
+           + "its lists answers today")
+    expect(VehicleMessages(["order": "sideways", "items": seven]).order == .oldestFirst,
+           "and so does one that says something this head does not know, rather than falling "
+           + "through to the end that happens to be listed first here")
+
+    expect(VehicleMessage.worst(oldestFirst.newest(6)) == .normal, "six ordinary messages are ordinary")
+    let shouting = VehicleMessages(["order": "oldestFirst",
+                                    "items": seven + [message("8", "error")]])
+    expect(VehicleMessage.worst(shouting.newest(6)) == .error,
+           "an error that has just arrived is the worst of the window. The probe's worstMessage "
+           + "reads this same window -- nothing in the interface does, each row draws its own "
+           + "colour -- so taking the wrong end had it reporting on the six oldest messages and "
+           + "an error the vehicle had just raised could not reach it")
+
+    expect(VehicleMessages(["order": "oldestFirst", "items": [message("1")]])
+        .newest(6).map(\.text).joined(separator: ","), "1",
+           "a list shorter than the limit is taken whole rather than padded or trimmed to nothing")
+    expect(VehicleMessages.empty.newest(6).isEmpty, "and an empty one stays empty")
 }
 
 func checkTerrainWatch() {
