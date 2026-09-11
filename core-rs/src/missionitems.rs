@@ -384,6 +384,34 @@ mod tests {
         assert_eq!(none["current"], -1);
     }
 
+    // get_fields answers only the fields it was asked for, plus four the bridge inserts on every
+    // object read: kind, class, facts and children (QGCBridgeCore::objectJson). So reading a key
+    // that is neither requested nor one of those four silently yields a default - a plausible
+    // value that answers nothing, which is the shape of half this week's defects.
+    const ALWAYS_PRESENT: [&str; 4] = ["kind", "class", "facts", "children"];
+
+    #[test]
+    fn every_field_this_view_reads_is_one_it_asked_for() {
+        let body = include_str!("missionitems.rs").split("#[cfg(test)]").next().unwrap().to_string();
+        let requested: Vec<&str> = FIELDS.split(',').map(str::trim).collect();
+        let read: Vec<String> = ["flag(read, \"", "number(read, \"", "integer(read, \"", "text(read, \"", "read.get(\"", "at_key(read, \""]
+            .iter()
+            .flat_map(|opener| {
+                body.match_indices(opener).filter_map(|(at, _)| {
+                    let tail = &body[at + opener.len()..];
+                    tail.find('"').map(|end| tail[..end].to_string())
+                })
+            })
+            .collect();
+        assert!(read.len() > 20, "the scan found {} reads, too few to be this view", read.len());
+
+        let unasked: Vec<&String> = read
+            .iter()
+            .filter(|key| !requested.contains(&key.as_str()) && !ALWAYS_PRESENT.contains(&key.as_str()))
+            .collect();
+        assert!(unasked.is_empty(), "these are read from an item and never requested, so they always come back missing: {unasked:?}");
+    }
+
     #[test]
     fn an_item_with_no_position_is_not_one_a_head_can_drag() {
         // An unplaced takeoff is the case this exists for. It reads as an ordinary item, has no
