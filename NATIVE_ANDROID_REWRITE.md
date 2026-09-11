@@ -1132,9 +1132,11 @@ Measured on the OnePlus 6 with nothing between the two runs but which row was ta
 
 `d760e46` made a new item land after the selected one, which is what QGC does and what the item list
 made reachable. It also made selection silently decide where things go, with nothing on screen saying
-so — an invisible mode. `380e31f` put "Adding after #3" in the add row. That exposed the next hole:
-there was no way to *clear* a selection at all, because `onSelected` was only ever called with a hit,
-so an operator could be stuck adding after #2 forever. `563a870` made a tap on empty map clear it —
+so — an invisible mode. `380e31f` put "Adding after #3" in the add row. That exposed the next hole: no way to *clear* a
+selection **by touching the map** — `onSelected` was only ever called with a hit. I wrote it up as "no
+way at all", which was wrong: `BackHandler(enabled = selected != null)` at `PlanMapContent.kt:125` has
+been clearing it the whole time, confirmed on the handset. The gap was discoverability, not absence,
+and reading the file around the code I was changing would have shown it. `563a870` made a tap on empty map clear it —
 and broke the first feature, because a long press also ends in a tap-shaped up, so every add cleared
 the insertion point it had just used. `5e985d5` fixed that two ways: a gesture that added something no
 longer deselects, and a successful insert selects the item it created, which the core's answer already
@@ -1176,6 +1178,31 @@ takeoff is not missing a place, it has one that the plan view is not in the busi
 
 Also confirms the altitude fix against a plan the head did not build: the downloaded takeoff reads
 "1 Takeoff · 50 m", not "no position".
+### Two host flags in MainWindow.qml cannot be set, and the define trap next to them
+
+Raised by the macOS session while gating the QML plan chrome, checked here because these are stream E
+files.
+
+    MainWindow.qml:119  readonly property bool hostProvidesNavigation:   false
+    MainWindow.qml:120  readonly property bool hostProvidesGuidedActions: false
+    MainWindow.qml:121  readonly property bool hostProvidesPlanUI: QGroundControl.corePlugin.hostProvidesPlanUI
+
+The first two are `readonly` **and** literal, which is a compile-time constant — no host, no C++, no
+runtime flag can make either true. Their three readers, `GuidedActionRTL.qml:15`,
+`FlyViewWidgetLayer.qml:320` and `PlanToolBarIndicators.qml:174`, have been evaluating `!false` since
+they were written. Line 121, added for the plan gate, is the working shape of the same idea: `readonly`
+bound to a `Q_PROPERTY` is readonly in QML while still reflecting what the host set. Wiring the other
+two that way would take the QML RTL button and the guided-action layer out of a native build. Left to
+the macOS session, which has the rig to measure it; the Android head loads none of those components and
+never loads `MainWindow.qml` at all.
+
+**The trap they hit first is worth more than the finding.** The gate was initially `#ifdef
+QGC_NATIVE_UI` inside `QGCCorePlugin.cc` — and that define is PRIVATE to the app target while
+`QGCCorePlugin` lives in a library, so it would have compiled to false, left the Loader active, and
+gated nothing. A null result byte-identical to a healthy one. Same shape as the day's other two: a
+bridge `set` that answered `ok` and changed nothing, and a takeoff that read back with no coordinate
+because the metadata says it has none. Three ways to get an answer that looks like success and is not,
+in one day, in three different layers.
 ### A guard that failed open for six hours
 
 `ui.sh tap` refuses a tap that lands on Arm, Land, RTL or any other flight control unless
