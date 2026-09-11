@@ -1772,3 +1772,40 @@ no components at all, so the comparison never runs. The defect is established fr
 initialisation site and the translation files, not from a running instance — which is exactly the
 kind of claim that has been wrong three times today, so it is recorded as reasoning and labelled
 as such rather than asserted.
+
+### The fixture-shape checker was built, measured and thrown away (2026-09-11)
+
+Three fixtures in one day held something the producer does not send — a flat `latitude` where
+`MissionItem` reads `json["coordinate"]`, fixtures missing `movable` once the core served it,
+and a coordinate in the core's own tests lacking `valid`. That is the threshold this stream set
+for building the obvious tool, so it was built: compare every key a test fixture sets against
+every key the model actually reads, statically, no running app.
+
+**It does not work, and the reason is more useful than the tool.** Its premise — a fixture
+setting a key the model never reads is a defect — is wrong. It flagged nine, and every one is a
+fixture faithfully carrying a key the producer really emits and the model has no need for:
+`inserted` and `refused` on an insert answer, `removed` and `remaining` on a remove,
+`compId` on a MAVLink message, `mode`, `storageStatus`, `shots` and `batteryRemaining` on a
+camera. All nine verified against `core-rs`. Mirroring the producer is exactly what a fixture
+should do, so the check punishes the right behaviour.
+
+**And it caught the motivating bug by accident.** Reintroduced, the flat-`latitude` fixture is
+flagged — but only because the model reads it as `coordinate?["latitude"]`, and the `?` breaks
+the `\w+\[` the key-extractor matches on. Written without the optional chain, the key would have
+been collected and the bug would have passed. Detection resting on a regex quirk is not
+detection.
+
+The real defect shape is narrower than the tool's premise: **a fixture setting a key at the
+wrong nesting level** — a name that exists in the model's vocabulary, at a different depth. That
+is what makes it invisible to review, because the key looks right.
+
+Two smaller things worth keeping. The first version used a bare `"([^"]+)"` to find keys and
+paired the closing quote of one literal with the opening quote of the next, reporting the code
+*between* keys as a key and declaring 247 fixtures broken — a tool crying wolf at maximum volume
+on its first run. And checking the four camera keys against `core-rs/src/camera.rs` alone
+returned zero for all of them; the file is `cameracalc.rs` and the keys are elsewhere in the
+crate. Concluding from one file would have been a four-finding phantom inside the investigation
+of a tool built to prevent phantoms.
+
+The guard that does work is the cheap one already in place: assert the fixture satisfies the
+precondition the test depends on, next to the assertion that depends on it.
