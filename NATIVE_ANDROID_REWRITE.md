@@ -4336,6 +4336,21 @@ So the four `_rootQmlObject()` call sites now read: two messages and one navigat
 notice first and no longer depend on QML, plus `attemptWindowClose`, which is still missing and still
 has no caller outside `QGCApplication` — it is desktop window-close.
 
+**That was only half the path, and I recorded it as the whole thing earlier the same day.** The post
+reached the head; the head then dropped it. `LaunchedEffect(notices)` in `MainActivity` was keyed on
+`host`, and acknowledging a batch is a **write to `host`** — so the effect cancelled itself inside
+`Qgc.invoke("host.acknowledgeThrough")`, before the `showSnackbar` loop after it, and the restart
+found the batch already claimed. Deterministic, not a race. Navigation survived only because it is
+applied before the suspend, which is exactly the headline case: **the app jumped the operator to Setup
+and the message beside it was cancelled on its way to the screen.** Fixed in aircast-android
+`3e118f8` by running the acknowledge and the snackbars in a `rememberCoroutineScope`.
+
+Measured over matched 45 s windows on the handset: before, 18 samples and no snackbar; after, the
+parameter-missing warning and `EKF variance` both render. Worth stating how close this came to being
+missed — the first probe grepped for a guessed banner string, found nothing, and read as "the channel
+is dead"; the second, after the fix, found nothing for the same reason and read as "the fix failed".
+The title is `Aircast QGC Daily`. Two opposite wrong conclusions from one bad string.
+
 **Verified on the handset rather than from source.** The rig's `apmvehicle.py` sends a severity-3
 `EKF variance` status text every 60 s. The Fly view banner reads **`EKF variance · 216 messages from
 the vehicle`** — worst severity first, count behind it. The operator gets the message. Note that
