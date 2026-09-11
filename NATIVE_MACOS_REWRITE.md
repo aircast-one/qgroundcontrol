@@ -1738,8 +1738,15 @@ three in under a minute.
 Applying the question that settled the survey outline — *which of two names does this path read,
 and is it frozen or live?* — to the rest of the head found one more:
 
-    VehicleSetupWindow.swift:738  component.name == "Sensors" && !sensors.failing.isEmpty
-    VehicleSetupWindow.swift:856  page.name == "Sensors" && !sensors.failing.isEmpty
+    VehicleSetupWindow.swift:738  component.name == "Sensors" && !sensors.failing.isEmpty   <- the defect
+    VehicleSetupWindow.swift:856  page.name      == "Sensors" && !sensors.failing.isEmpty   <- safe
+
+**Only the first of those two is a defect, and grouping them was the same error again.** They
+look identical and read different sources. A *page* name comes from `PAGES` in `core-rs/setup.rs`,
+a core-owned static of English literals, so line 856 compares a core literal against a head
+literal and is correct in every locale. A *component* name comes from QGC's `VehicleComponent`.
+Two lines one apart, matching the same string, and only one of them crosses a translation
+boundary — which is the pair problem a third time, inside the finding written to explain it.
 
 The name comes from `view.setup`'s components, which the core reads from QGC's
 `VehicleComponent`. `SensorsComponent.cc:16` initialises it as `_name(tr("Sensors"))` — a
