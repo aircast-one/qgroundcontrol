@@ -3819,7 +3819,12 @@ void QGCCoreCTest::_theFleetIsNamedAndTheCommandedOneCanBeChosen()
     const QJsonObject chosen = take(qgc_core_invoke("vehicles.setActive", QStringLiteral("[%1]").arg(id).toUtf8().constData()));
     QVERIFY2(chosen.value(QStringLiteral("ok")).toBool(false),
              qPrintable(QStringLiteral("choosing the one connected vehicle failed: %1").arg(chosen.value(QStringLiteral("reason")).toString())));
-    QCOMPARE(take(qgc_core_get("view.vehicles")).value(QStringLiteral("activeId")).toInt(-1), id);
+    // The answer names what was asked for, not what is true yet: setActiveVehicle defers the
+    // change through a 20ms singleShot, so the core cannot confirm it without waiting and does not
+    // pretend to. A head learns it happened from view.vehicles, which is watched.
+    QCOMPARE(chosen.value(QStringLiteral("activating")).toInt(-1), id);
+    QVERIFY2(chosen.value(QStringLiteral("active")).isUndefined(), "the answer must not claim the vehicle is already the active one");
+    QTRY_COMPARE_WITH_TIMEOUT(take(qgc_core_get("view.vehicles")).value(QStringLiteral("activeId")).toInt(-1), id, 5000);
 
     const QJsonObject absent = take(qgc_core_invoke("vehicles.setActive", "[99]"));
     QCOMPARE(absent.value(QStringLiteral("ok")).toBool(true), false);

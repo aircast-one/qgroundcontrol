@@ -171,8 +171,12 @@ fn activate(backend: &dyn Backend, args: &str) -> Value {
         return json!({ "ok": false, "reason": format!("no vehicle {wanted} is connected") });
     };
     let written: Value = serde_json::from_str(&backend.set("vehicles.activeVehicle", &json!({ "value": format!("@vehicles.vehicles.{index}") }).to_string())).unwrap_or(Value::Null);
+    // No read-back here, and deliberately not. MultiVehicleManager::setActiveVehicle defers the
+    // change through a 20ms singleShot, so a coordinate-style read-back would refuse a switch that
+    // is about to happen. The answer says what was asked for rather than what is true: the change
+    // is requested, and a head learns it happened by watching view.vehicles, which is watched.
     match written.get("ok").and_then(Value::as_bool) {
-        Some(true) => json!({ "ok": true, "active": wanted }),
+        Some(true) => json!({ "ok": true, "activating": wanted }),
         _ => json!({ "ok": false, "reason": written.get("reason").and_then(Value::as_str).unwrap_or("the vehicle could not be made active").to_string() }),
     }
 }
