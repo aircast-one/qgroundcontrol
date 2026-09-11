@@ -642,6 +642,33 @@ exists, with the enable toggle sitting at the top of them.
 
 Not urgent: `enabled` defaults to false, so nobody meets this unless they go looking.
 
+#### Decided: the 3D viewer is deleted with its settings group, not rebuilt (2026-09-11)
+
+Measured before deciding. `src/Viewer3D/` is 4,462 lines, and the bulk of it is QML: a scene, a
+progress bar, waypoint and line models, and a DJI F450 modelled part by part — `DroneModel_BLDC_1`,
+`DroneModel_propeller22_2` and siblings, one QML file each. `Viewer3D.SettingsGroup.json` defaults
+`enabled` to false and defaults `osmFilePath` to the literal string "Please select an OSM file", so
+the feature does nothing at all until an operator sources an OpenStreetMap extract themselves and
+points the setting at it. It is also the only thing in the tree that links `Qt6::Quick3D`.
+
+So the choice is not "port one view". Keeping it keeps a whole Qt module, and its QML content, in
+the macOS dependency set that Phase 6 exists to empty — for a feature that is off by default, inert
+until a manual download, and that nothing in this repository or the handbook records a requirement
+for.
+
+**What survives is the half worth keeping.** `OsmParser`, `OsmParserThread`, `CityMapGeometry` and
+`earcut.hpp` are C++ and have nothing to do with Qt's scene graph. If a 3D view is ever wanted back
+it returns as a native one — SceneKit against that same parser — which is a project with its own
+justification rather than a line item inside a port. Deleting the QML does not burn that bridge; it
+only declines to carry a QML scene across a boundary built to leave QML behind.
+
+**The viewer and the settings group go together**, which is the failure the section above names:
+an operator left with four controls and an enable toggle for a feature that is not there.
+
+This is a product call as much as an engineering one, and it is recorded here so it can be
+overturned by someone who knows a customer uses it. What it must not do is stay undecided until
+the deletion discovers it.
+
 ### The capability-versus-readiness sweep, and how to run it properly (2026-09-10)
 
 Both heads hit the same shape four times: **the head reached for the predicate whose name sounded
