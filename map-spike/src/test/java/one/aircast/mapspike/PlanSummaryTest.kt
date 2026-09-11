@@ -78,13 +78,6 @@ class PlanSummaryTest {
     }
 
     @Test
-    fun `a core that does not spell the radius leaves metres rather than a blank`() {
-        val circle = FenceCircle(1, true, TrackPoint(41.0, 44.0), 136.0)
-
-        assertEquals("136 m radius", circleText(circle))
-    }
-
-    @Test
     fun `a selection with nothing to say adds nothing`() {
         assertEquals("1 item", summary(items = listOf(item()), selected = MapHit.Waypoint(0)))
     }

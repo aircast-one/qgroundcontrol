@@ -32,7 +32,7 @@ fun planSummary(
 }
 
 internal fun circleText(circle: FenceCircle): String =
-    circle.detailText.ifBlank { "${circle.radius.toInt()} m radius" }
+    circle.detailText
 
 private fun selectionText(
     selected: MapHit?,

@@ -53,19 +53,13 @@ private fun pathOf(points: List<Offset>): Path = Path().apply {
     }
 }
 
-internal fun heightRange(profile: TerrainProfile): String = when {
-    profile.flat && profile.lowestText.isNotBlank() -> "${profile.lowestText} AMSL"
-    profile.bandText.isNotBlank() -> "${profile.bandText} AMSL"
-    profile.lowestText.isNotBlank() && profile.highestText.isNotBlank() ->
-        "${profile.lowestText}\u2013${profile.highestText} AMSL"
-    profile.flat -> "${profile.lowest.toInt()} m AMSL"
-    else -> "${profile.lowest.toInt()}\u2013${profile.highest.toInt()} m AMSL"
-}
+internal fun heightRange(profile: TerrainProfile): String =
+    if (profile.flat) "${profile.lowestText} AMSL" else "${profile.bandText} AMSL"
 
 internal fun profileLabel(profile: TerrainProfile): String =
     terrainWarning(profile.clearance)?.let { "$it " } .orEmpty() +
     heightRange(profile) +
-        " \u00b7 ${profile.distanceText.ifBlank { "${(profile.distance / 1000).format2()} km" }}" +
+        " \u00b7 ${profile.distanceText}" +
         when {
             !profile.hasTerrain -> " \u00b7 ground height unknown"
             profile.terrainCoverage < FULL_TERRAIN ->
@@ -125,4 +119,3 @@ fun TerrainProfileView(profile: TerrainProfile, modifier: Modifier = Modifier) {
     }
 }
 
-private fun Double.format2(): String = "%.2f".format(this)
