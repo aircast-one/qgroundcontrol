@@ -3650,6 +3650,45 @@ void QGCCoreCTest::_aTakeoffReportedInsertedHasAPlaceOnTheMap()
 #endif
 }
 
+void QGCCoreCTest::_theFourPropertiesAddedForTheCoreAreReadableThroughTheBridge()
+{
+#ifdef QGC_RUST_CORE
+    _connectMockLink(MAV_AUTOPILOT_PX4);
+    QTRY_VERIFY_WITH_TIMEOUT(MultiVehicleManager::instance()->activeVehicle() != nullptr, 10000);
+    (void) take(qgc_bridge_invoke("plan.start", "[]"));
+    const auto leaveNoPlanBehind = qScopeGuard([]() { (void) take(qgc_bridge_invoke("plan.removeAll", "[]")); });
+
+    // Four Q_PROPERTYs added so the core can reach things it previously could not. A property that
+    // compiles and does not resolve through the bridge is the shape that has cost most today, so
+    // each is read here rather than assumed - found:false is the answer that means a wrong name.
+    const auto reads = [](const char *path) {
+        const QJsonObject answer = take(qgc_bridge_get(path));
+        QVERIFY2(answer.value(QStringLiteral("found")).toBool(true),
+                 qPrintable(QStringLiteral("%1 does not resolve, so the core cannot read what was added for it").arg(QString::fromUtf8(path))));
+    };
+
+    // The vehicle's own current mission item, which needed the manager to be traversable as well.
+    reads("vehicle.missionManager.currentIndex");
+    QVERIFY2(take(qgc_bridge_get("vehicle.missionManager.currentIndex")).value(QStringLiteral("value")).toInt(-99) >= -1,
+             "the index reads as a number rather than as an absent property");
+
+    // The custom mode behind each flight mode name, which is the locale-stable identity.
+    const QJsonArray named = take(qgc_bridge_get("vehicle.flightModes")).value(QStringLiteral("value")).toArray();
+    const QJsonArray ids = take(qgc_bridge_get("vehicle.flightModeIds")).value(QStringLiteral("value")).toArray();
+    QVERIFY2(named.count() > 3, "this vehicle offers no flight modes, so the pairing proves nothing");
+    QCOMPARE(ids.count(), named.count());
+    QVERIFY2(std::any_of(ids.cbegin(), ids.cend(), [](const QJsonValue &id) { return id.toInt(-1) > 0; }),
+             "every mode id came back zero, which is what an unmatched name list looks like");
+
+    // The per-item delay that mission time cannot be computed without. Read on the entry the plan
+    // always has rather than one this test inserts - with a vehicle connected the plan may already
+    // hold a downloaded mission and refuse a takeoff, which says nothing about the property.
+    reads("plan.missionController.visualItems.0.additionalTimeDelay");
+#else
+    QSKIP("the Rust core is not linked into this build");
+#endif
+}
+
 void QGCCoreCTest::_theItemListNamesWhatTheControllerHolds()
 {
 #ifdef QGC_RUST_CORE

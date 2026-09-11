@@ -88,6 +88,7 @@ private slots:
     void _theCoreWorksOutTheSameFlownDistanceTheControllerDoes();
     void _everyClassTheCatalogueNamesIsTheClassTheEditorBuilds();
     void _aTakeoffReportedInsertedHasAPlaceOnTheMap();
+    void _theFourPropertiesAddedForTheCoreAreReadableThroughTheBridge();
 
 private:
     static bool _unavailable(const char *path);
