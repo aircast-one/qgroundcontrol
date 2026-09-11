@@ -54,18 +54,34 @@ class PlanItemsTest {
     }
 
     @Test
-    fun `an item the map cannot draw is still listed, and says why it cannot be tapped`() {
+    fun `a command with no place by design is listed and says nothing about position`() {
         val rows = itemRows(
             listOf(
                 MissionItem(
                     1, 1, Double.NaN, Double.NaN, "Change Speed", false, Double.NaN,
                     kind = "command", commandId = 178, placed = false,
+                    specifiesCoordinate = false,
+                ),
+            ),
+        )
+
+        assertEquals("", rows.single().detail)
+        assertEquals(false, rows.single().placed)
+    }
+
+    @Test
+    fun `an item that is supposed to have a place and has none still says so`() {
+        val rows = itemRows(
+            listOf(
+                MissionItem(
+                    1, 1, Double.NaN, Double.NaN, "Waypoint", false, Double.NaN,
+                    kind = "waypoint", commandId = 16, placed = false,
+                    specifiesCoordinate = true,
                 ),
             ),
         )
 
         assertEquals(NO_POSITION, rows.single().detail)
-        assertEquals(false, rows.single().placed)
     }
 
     @Test
