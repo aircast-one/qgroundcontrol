@@ -99,40 +99,46 @@ pub fn flown_distance(items: &[Value]) -> f64 {
         .0
 }
 
-// The furthest the vehicle gets from the launch point, which is what a telemetry link has to
-// reach. MissionController measures every item's coordinate against the plan's home, and for a
-// pattern takes the greatest distance to any of its transect points rather than to its entry -
-// a survey's far corner is further away than the corner it starts at.
+// What the controller calls the mission's maximum telemetry distance. Two terms, and the second
+// is not what its name suggests: for every flown item it takes the distance from the launch point
+// to that item, and for a pattern it also folds in greatestDistanceTo(exitCoordinate) - the
+// pattern's own greatest internal span, measured from its exit rather than from home.
+//
+// That second term is a category error in the original: it mixes a span with a set of distances
+// from a fixed point, so a large survey near home can raise a figure that means "furthest from
+// launch". Reproduced exactly anyway, because a port that quietly improves its source can never be
+// checked against it. Recorded in the plan as a question to settle deliberately.
+//
+// The walk stops where the route ends, for the same reason the distance walk does: an item after a
+// return to launch is uploaded and never reached, so it is nowhere the vehicle gets to.
 pub fn max_telemetry_distance(items: &[Value]) -> f64 {
     let Some(home) = items.first().and_then(|item| item.get("coordinate")).and_then(point_of) else {
         return 0.0;
     };
-    items
+    let ends = items.iter().position(|item| flag_of(item, "endsRoute"));
+    let flown = match ends {
+        Some(at) => &items[..=at],
+        None => items,
+    };
+    flown
         .iter()
         .skip(1)
-        // Only places the vehicle actually flies to. A region of interest has a position and the
-        // aircraft never goes there, so counting it puts the telemetry reach a kilometre past
-        // anywhere the vehicle will be - the same conflation the distance walk exists to avoid,
-        // written into a new computation ten minutes after getting it right in the old one.
         .filter(|item| flag_of(item, "flownLeg"))
         .map(|item| {
-            let entry = item.get("coordinate").and_then(point_of).map_or(0.0, |at| crate::surveygrid::distance_between(home, at));
-            let inside = item
+            let Some(entry) = item.get("coordinate").and_then(point_of) else { return 0.0 };
+            let from_home = crate::surveygrid::distance_between(home, entry);
+            let exit = item.get("exitCoordinate").and_then(point_of).unwrap_or(entry);
+            let span = item
                 .get("geometry")
                 .and_then(|shape| shape.get("transects"))
                 .and_then(Value::as_array)
-                .map(|points| points.iter().filter_map(point_of).map(|at| crate::surveygrid::distance_between(home, at)).fold(0.0, f64::max))
+                .map(|points| points.iter().filter_map(point_of).map(|at| crate::surveygrid::distance_between(exit, at)).fold(0.0, f64::max))
                 .unwrap_or(0.0);
-            entry.max(inside)
+            from_home.max(span)
         })
         .fold(0.0, f64::max)
 }
 
-// The band the mission occupies, which the terrain panel draws its altitudes against. A simple
-// item contributes the height it flies at; a pattern contributes its own lowest and highest,
-// because a survey over sloping ground covers a range rather than a point. A standalone item
-// counts here even though it is never flown to - the controller takes the band from anything
-// with a coordinate, which is a different question from where the vehicle goes.
 pub fn altitude_band(items: &[Value]) -> Option<(f64, f64)> {
     items
         .iter()
