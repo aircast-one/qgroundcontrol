@@ -1809,3 +1809,39 @@ of a tool built to prevent phantoms.
 
 The guard that does work is the cheap one already in place: assert the fixture satisfies the
 precondition the test depends on, next to the assertion that depends on it.
+
+### Walking the core's ports has paid three times, always on the same pair (2026-09-11)
+
+`98a5ad94f` ports the mission's altitude band and the telemetry reach, serving each beside the
+controller's answer behind `view.missionSummary(verify)`. Walked on this stream's plan shapes:
+
+| shape | controller | computed | delta |
+|---|---|---|---|
+| takeoff + 2 waypoints | 562.90 | 562.90 | 0.00 |
+| with a survey in the middle | 925.05 | 1129.45 | +204.40 |
+| ending in a return to launch | 925.05 | 1129.45 | +204.40 |
+| **a waypoint after the landing** | **925.05** | **1616.59** | **+691.54** |
+
+The altitude band agrees on every shape. The reach does not, in two unrelated ways, and only one
+of them is arithmetic.
+
+**The post-landing disagreement is the `endsRoute` half, missing from a walk written beside the
+one where it had just been added.** `flown_distance` truncates the list at the item that ends the
+route; `max_telemetry_distance` filters on `flownLeg` and never truncates, so it measures to an
+item the vehicle turns for home before reaching. Exact: that waypoint is 1616.59 m from home and
+the computed answer is 1616.59.
+
+**The survey disagreement is a question, not a slip, and was reported without attributing it.**
+The survey's entry is 925.05 m from home and the controller answers exactly that, while the
+computed walks the transects to 1129.45. A survey's far corner genuinely is further away and a
+telemetry link genuinely has to reach it, so the computed may be the better answer and the
+controller the one with the bug — but that decides what the row means, and it is the core's call.
+Worth knowing that the row's value will move when the port lands.
+
+**Three hits from this job now, all the same family: a rule about WHICH ITEMS COUNT, applied in
+one walk and not in the next one written.** The route stops at a landing; a region of interest is
+never flown to; an item after the end is uploaded and never reached. Each is a filter, each has
+been got right once and then omitted from a sibling function within the hour. So the thing to
+check on any new walk over items is not whether it is correct in general but whether it carries
+**both** guards — `flownLeg` and `endsRoute` — because carrying one and not the other is what
+every instance has looked like.
