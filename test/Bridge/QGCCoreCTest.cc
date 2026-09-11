@@ -3341,6 +3341,42 @@ void QGCCoreCTest::_changingAModeSlotWakesThePanelThatShowsIt()
 #endif
 }
 
+void QGCCoreCTest::_replacingAPlanWithOneTheSameLengthStillWakesTheItemList()
+{
+#ifdef QGC_RUST_CORE
+    const QString fixture = QFileInfo(QString::fromUtf8(__FILE__)).dir().filePath(QStringLiteral("../MissionManager/SectionTest.plan"));
+    const QByteArray loadArgs = QJsonDocument(QJsonArray { fixture }).toJson(QJsonDocument::Compact);
+
+    (void) take(qgc_bridge_invoke("plan.start", "[]"));
+    const auto leaveNoPlanBehind = qScopeGuard([]() {
+        (void) take(qgc_bridge_invoke("plan.removeAll", "[]"));
+        qgc_bridge_watch("");
+        qgc_bridge_set_event_handler(nullptr);
+    });
+    QVERIFY2(take(qgc_bridge_invoke("plan.loadFromFile", loadArgs.constData())).value(QStringLiteral("result")).toBool(false), "the loader refused the fixture");
+    QTRY_VERIFY_WITH_TIMEOUT(take(qgc_core_get("view.missionItems")).value(QStringLiteral("items")).toArray().count() > 1, 10000);
+    const int held = take(qgc_core_get("view.missionItems")).value(QStringLiteral("items")).toArray().count();
+
+    paths.clear();
+    qgc_bridge_set_event_handler(onEvent);
+    qgc_bridge_watch("view.missionItems");
+    QTRY_VERIFY_WITH_TIMEOUT(paths.contains(QStringLiteral("view.missionItems")), 10000);
+
+    // A fly view never edits this plan - it receives one from the vehicle or from a file. Loading
+    // the same file again replaces every item and leaves the count, the current index and
+    // containsItems exactly as they were, so the three property deps cannot see it. Without the
+    // controller's own rebuild signal a head watching this view would sit on the old plan and a
+    // 2Hz poll would be the only thing that noticed.
+    paths.clear();
+    QVERIFY2(take(qgc_bridge_invoke("plan.loadFromFile", loadArgs.constData())).value(QStringLiteral("result")).toBool(false), "the loader refused the second load");
+    QCOMPARE(take(qgc_core_get("view.missionItems")).value(QStringLiteral("items")).toArray().count(), held);
+    QVERIFY2(paths.contains(QStringLiteral("view.missionItems")),
+             qPrintable(QStringLiteral("the plan was replaced with another of %1 items and nobody watching the list was told").arg(held)));
+#else
+    QSKIP("the Rust core is not linked into this build");
+#endif
+}
+
 void QGCCoreCTest::_theItemListNamesWhatTheControllerHolds()
 {
 #ifdef QGC_RUST_CORE

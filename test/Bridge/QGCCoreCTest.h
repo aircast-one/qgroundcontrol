@@ -83,6 +83,7 @@ private slots:
     void _aSignalWithNoPropertyBehindItStillWakesAView();
     void _everyDependencyAViewDeclaresNamesSomethingTheBridgeHas();
     void _changingAModeSlotWakesThePanelThatShowsIt();
+    void _replacingAPlanWithOneTheSameLengthStillWakesTheItemList();
 
 private:
     static bool _unavailable(const char *path);

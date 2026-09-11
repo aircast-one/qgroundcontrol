@@ -3,7 +3,17 @@ use serde_json::{Value, json};
 use crate::read::{Unit, flag, format_measure, integer, object, text};
 use crate::router::Backend;
 
-pub const DEPS: &[&str] = &["plan.missionController.visualItems.count", "plan.missionController.currentPlanViewVIIndex", "plan.missionController.containsItems"];
+// The three property deps all read the same when a plan is replaced by one of the same length,
+// which is the case a fly view cares about most: it never edits this plan, it receives one from
+// the vehicle or from a file. visualItemsChanged is emitted where the list is rebuilt, so it fires
+// on a replacement that no count or index can see.
+pub const DEPS: &[&str] = &[
+    "plan.missionController.visualItems.count",
+    "plan.missionController.currentPlanViewVIIndex",
+    "plan.missionController.containsItems",
+    "plan.missionController@visualItemsChanged",
+    "plan.missionController@newItemsFromVehicle",
+];
 
 const FIELDS: &str = "sequenceNumber,abbreviation,commandName,commandDescription,isCurrentItem,specifiesCoordinate,isStandaloneCoordinate,specifiesAltitudeOnly,isSimpleItem,isTakeoffItem,isLandCommand,isSurveyItem,homePosition,coordinate,amslEntryAlt,altDifference,azimuth,distance,distanceFromStart,readyForSaveState,readyForSaveMessage,dirty,altitude,altitudeMode,isIncomplete,exitCoordinate,exitCoordinateSameAsEntry,commandName,command,category,specifiesAltitude,cameraShots,complexDistance,plannedHomePositionAltitude";
 
