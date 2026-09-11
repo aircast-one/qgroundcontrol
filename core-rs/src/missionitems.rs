@@ -15,7 +15,7 @@ pub const DEPS: &[&str] = &[
     "plan.missionController@newItemsFromVehicle",
 ];
 
-const FIELDS: &str = "minAMSLAltitude,maxAMSLAltitude,sequenceNumber,abbreviation,commandName,commandDescription,isCurrentItem,specifiesCoordinate,isStandaloneCoordinate,specifiesAltitudeOnly,isSimpleItem,isTakeoffItem,isLandCommand,isSurveyItem,homePosition,coordinate,amslEntryAlt,altDifference,azimuth,distance,distanceFromStart,readyForSaveState,readyForSaveMessage,dirty,altitude,altitudeMode,isIncomplete,exitCoordinate,exitCoordinateSameAsEntry,commandName,command,category,specifiesAltitude,cameraShots,complexDistance,plannedHomePositionAltitude";
+const FIELDS: &str = "additionalTimeDelay,minAMSLAltitude,maxAMSLAltitude,sequenceNumber,abbreviation,commandName,commandDescription,isCurrentItem,specifiesCoordinate,isStandaloneCoordinate,specifiesAltitudeOnly,isSimpleItem,isTakeoffItem,isLandCommand,isSurveyItem,homePosition,coordinate,amslEntryAlt,altDifference,azimuth,distance,distanceFromStart,readyForSaveState,readyForSaveMessage,dirty,altitude,altitudeMode,isIncomplete,exitCoordinate,exitCoordinateSameAsEntry,commandName,command,category,specifiesAltitude,cameraShots,complexDistance,plannedHomePositionAltitude";
 
 const READY_TO_SAVE: i64 = 0;
 const AWAITING_TERRAIN: i64 = 1;
@@ -131,6 +131,10 @@ fn item(read: &Value, index: i64, vertical: &Unit) -> Value {
         // A pattern covers a range of heights rather than one, and the controller takes the
         // mission's altitude band from these rather than from the entry altitude. Both are
         // Q_PROPERTY with a notify, so they are watchable as well as readable.
+        // A delay an item adds to the mission beyond the time spent flying to it - a loiter, a
+        // camera pause. Nothing else accounts for it, so a time computed without it is short by
+        // however long the vehicle sits still.
+        "extraSeconds": number(read, "additionalTimeDelay"),
         "altitudeAmslLowest": number(read, "minAMSLAltitude"),
         "altitudeAmslHighest": number(read, "maxAMSLAltitude"),
         "altitudeChange": number(read, "altDifference"),

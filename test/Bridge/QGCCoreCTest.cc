@@ -3500,6 +3500,17 @@ void QGCCoreCTest::_theCoreWorksOutTheSameFlownDistanceTheControllerDoes()
         // The altitude band the terrain panel draws against. A pattern contributes its own lowest
         // and highest rather than the height at its entry, so a survey over sloping ground widens
         // the band and a comparison that only reads entry altitudes would not notice.
+        // How long the mission takes. Not attempted for a VTOL, which answers null rather than a
+        // number that would be right before a transition and wrong after it.
+        const double heldSeconds = summary.value(QStringLiteral("durationSeconds")).toDouble(-1.0);
+        const QJsonValue computedSeconds = summary.value(QStringLiteral("durationComputedSeconds"));
+        QVERIFY2(heldSeconds > 0.0, qPrintable(QStringLiteral("%1: the controller reported no mission time").arg(shape)));
+        QVERIFY2(!computedSeconds.isNull(), qPrintable(QStringLiteral("%1: the core worked out no duration for a vehicle that is not a VTOL").arg(shape)));
+        QVERIFY2(qAbs(computedSeconds.toDouble() - heldSeconds) < qMax(1.0, heldSeconds * 0.01),
+                 qPrintable(QStringLiteral("%1: the core takes %2 s and the controller %3 s, from %4")
+                                .arg(shape).arg(computedSeconds.toDouble()).arg(heldSeconds)
+                                .arg(QString::fromUtf8(QJsonDocument(summary.value(QStringLiteral("durationInputs")).toObject()).toJson(QJsonDocument::Compact)))));
+
         const QJsonArray bandQt = summary.value(QStringLiteral("altitudeBandMetres")).toArray();
         const QJsonArray bandCore = summary.value(QStringLiteral("altitudeBandComputed")).toArray();
         QCOMPARE(bandQt.count(), 2);

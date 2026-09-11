@@ -1,6 +1,7 @@
 #include "QGCEntry.h"
 
 #include "QGCApplication.h"
+#include "QGCCorePlugin.h"
 
 #include <QtGui/QWindow>
 #include <QtQuick/QQuickWindow>
@@ -11,6 +12,11 @@ namespace
 QWindow *g_container = nullptr;
 
 } // namespace
+
+void qgc_set_host_provides_plan_ui(int provides)
+{
+    QGCCorePlugin::setHostProvidesPlanUI(provides != 0);
+}
 
 void qgc_embed_main_window(void *native_view)
 {

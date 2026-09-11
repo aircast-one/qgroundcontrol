@@ -20,6 +20,14 @@ pub const DEPS: &[&str] = &[
     "plan.missionController.minAMSLAltitude",
     "plan.missionController.maxAMSLAltitude",
     "settings.unitsSettings.horizontalDistanceUnits",
+    // The duration depends on the vehicle class and on the two speeds it is flown at, and all four
+    // change without the plan changing: a different airframe connects, or the operator edits the
+    // offline editing speeds in settings.
+    "plan.controllerVehicle.multiRotor",
+    "plan.controllerVehicle.vtol",
+    "settings.appSettings.offlineEditingHoverSpeed",
+    "settings.appSettings.offlineEditingCruiseSpeed",
+    "settings.appSettings.offlineEditingAscentSpeed",
 ];
 
 const FEET_PER_METRE: f64 = 3.2808399;
@@ -142,6 +150,45 @@ pub fn max_telemetry_distance(items: &[Value]) -> f64 {
         .fold(0.0, f64::max)
 }
 
+// How long the mission takes. Every leg is flown at one of two speeds and the vehicle class picks
+// which: a multirotor hovers the whole way, anything else cruises. Each item can also add a delay
+// of its own - a loiter, a camera pause - which is time nothing else accounts for.
+//
+// A VTOL is not attempted and answers None rather than a plausible number. MissionController flips
+// vtolMode between multirotor and fixed wing as the walk passes a transition item, so the speed
+// changes partway through a mission; a single-speed answer would be right for the legs before the
+// transition and quietly wrong after it. That is the shape refused twice already today.
+pub fn flown_seconds(items: &[Value], hover: f64, cruise: f64, ascent: f64, multirotor: bool, vtol: bool) -> Option<f64> {
+    if vtol {
+        return None;
+    }
+    let speed = match multirotor {
+        true => hover,
+        false => cruise,
+    };
+    if !speed.is_finite() || speed <= 0.0 {
+        return None;
+    }
+    let delays: f64 = flown(items).filter_map(|item| item.get("extraSeconds").and_then(Value::as_f64)).filter(|extra| extra.is_finite()).sum();
+    Some(flown_distance(items) / speed + delays + climb(items, ascent, multirotor))
+}
+
+// A rotor takes off straight up, so the height it climbs to is time the horizontal walk does not
+// account for - MissionController special-cases it at the ascent speed rather than the hover
+// speed. Absent from the first version of this and worth exactly 16.667 s on the default plan:
+// fifty metres at three metres a second, which is what the disagreement turned out to be.
+fn climb(items: &[Value], ascent: f64, multirotor: bool) -> f64 {
+    if !multirotor || !ascent.is_finite() || ascent <= 0.0 {
+        return 0.0;
+    }
+    let launch = items.first().and_then(|item| item.get("altitudeAmsl")).and_then(Value::as_f64);
+    let first = flown(items).nth(1).and_then(|item| item.get("altitudeAmsl")).and_then(Value::as_f64);
+    match (launch, first) {
+        (Some(from), Some(to)) => (to - from).abs() / ascent,
+        _ => 0.0,
+    }
+}
+
 pub fn altitude_band(items: &[Value]) -> Option<(f64, f64)> {
     items
         .iter()
@@ -193,6 +240,31 @@ pub fn summary_view(backend: &dyn Backend, args: &[String]) -> Value {
         // which is the only way a port of this arithmetic can be trusted before it replaces it.
         // Opt-in, because working it out costs a whole view.missionItems and every head reading
         // the summary would pay for a figure only a test compares. view.missionSummary(verify).
+        "durationComputedSeconds": verify
+            .then(|| {
+                // The plan's own vehicle, not the active one. MissionController measures against
+                // _controllerVehicle, which offline is the airframe the plan is being edited for -
+                // a multirotor by default. Reading the active vehicle answers nothing with no
+                // aircraft connected, and a mission still has a duration then.
+                let vehicle = object(&backend.get_fields("plan.controllerVehicle", "multiRotor,vtol"));
+                let speed = |name: &str| value_number(&backend.get(&format!("settings.appSettings.{name}.rawValue"))).unwrap_or(0.0);
+                let items = crate::missionitems::items_view(backend, &[]);
+                items
+                    .get("items")
+                    .and_then(Value::as_array)
+                    .and_then(|items| flown_seconds(items, speed("offlineEditingHoverSpeed"), speed("offlineEditingCruiseSpeed"), speed("offlineEditingAscentSpeed"), crate::read::flag(&vehicle, "multiRotor"), crate::read::flag(&vehicle, "vtol")))
+            })
+            .flatten(),
+        "durationSeconds": verify.then(|| metres("missionTime")).flatten(),
+        // The inputs, so a disagreement can be read rather than inferred. Working out which term
+        // differs from two totals is guesswork; showing the terms is not.
+        "durationInputs": verify.then(|| json!({
+            "hover": value_number(&backend.get("settings.appSettings.offlineEditingHoverSpeed.rawValue")),
+            "cruise": value_number(&backend.get("settings.appSettings.offlineEditingCruiseSpeed.rawValue")),
+            "ascent": value_number(&backend.get("settings.appSettings.offlineEditingAscentSpeed.rawValue")),
+            "multiRotor": crate::read::flag(&object(&backend.get_fields("plan.controllerVehicle", "multiRotor")), "multiRotor"),
+            "distance": crate::missionitems::items_view(backend, &[]).get("items").and_then(Value::as_array).map(|items| flown_distance(items)),
+        })),
         "altitudeBandComputed": verify
             .then(|| {
                 let items = crate::missionitems::items_view(backend, &[]);
