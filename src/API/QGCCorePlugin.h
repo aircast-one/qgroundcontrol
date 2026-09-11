@@ -41,6 +41,7 @@ class QGCCorePlugin : public QObject
     Q_PROPERTY(bool showAdvancedUI                      READ showAdvancedUI                     WRITE _setShowAdvancedUI    NOTIFY showAdvancedUIChanged)
     Q_PROPERTY(bool showTouchAreas                      READ showTouchAreas                     WRITE _setShowTouchAreas    NOTIFY showTouchAreasChanged)
     Q_PROPERTY(int defaultSettings                      READ defaultSettings                                                CONSTANT)
+    Q_PROPERTY(bool hostProvidesPlanUI                  READ hostProvidesPlanUI                                             CONSTANT)
     Q_PROPERTY(int offlineVehicleFirstRunPromptId       MEMBER kOfflineVehicleFirstRunPromptId                              CONSTANT)
     Q_PROPERTY(int unitsFirstRunPromptId                MEMBER kUnitsFirstRunPromptId                                       CONSTANT)
     Q_PROPERTY(const QGCOptions *options                READ options                                                        CONSTANT)
@@ -68,6 +69,9 @@ public:
     /// The default settings panel to show
     /// @return The settings index
     virtual int defaultSettings() { return 0; }
+
+    bool hostProvidesPlanUI() const;
+    static void setHostProvidesPlanUI(bool provides);
 
     /// Global options
     /// @return An instance of QGCOptions

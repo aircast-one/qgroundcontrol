@@ -118,6 +118,7 @@ ApplicationWindow {
     property bool flyViewActive: true
     readonly property bool hostProvidesNavigation: false
     readonly property bool hostProvidesGuidedActions: false
+    readonly property bool hostProvidesPlanUI: QGroundControl.corePlugin.hostProvidesPlanUI
 
     function showPlanView() {
         flyViewActive = false
@@ -218,7 +219,7 @@ ApplicationWindow {
     property string closeDialogTitle: qsTr("Close %1").arg(QGroundControl.appName)
 
     function checkForUnsavedMission() {
-        if (planView._planMasterController.dirty) {
+        if (planViewLoader.item && planViewLoader.item._planMasterController.dirty) {
             showMessageDialog(closeDialogTitle,
                               qsTr("You have a mission edit in progress which has not been saved/sent. If you close you will lose changes. Are you sure you want to close?"),
                               Dialog.Yes | Dialog.No,
@@ -271,16 +272,20 @@ ApplicationWindow {
         utmspSendActTrigger:    _utmspSendActTrigger
     }
 
-    PlanView {
-        id:             planView
+    Loader {
+        id:             planViewLoader
         anchors.fill:   parent
-        map:            flyView.mapControl
-        planActive:     !mainWindow.flyViewActive
-        opacity:        mainWindow.flyViewActive ? 0 : 1
-        visible:        opacity > 0
-        enabled:        !mainWindow.flyViewActive
+        active:         !mainWindow.hostProvidesPlanUI
 
-        Behavior on opacity { NumberAnimation { duration: 220; easing.type: Easing.InOutQuad } }
+        sourceComponent: PlanView {
+            map:            flyView.mapControl
+            planActive:     !mainWindow.flyViewActive
+            opacity:        mainWindow.flyViewActive ? 0 : 1
+            visible:        opacity > 0
+            enabled:        !mainWindow.flyViewActive
+
+            Behavior on opacity { NumberAnimation { duration: 220; easing.type: Easing.InOutQuad } }
+        }
     }
 
     footer: LogReplayStatusBar {

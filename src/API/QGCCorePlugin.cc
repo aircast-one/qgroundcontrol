@@ -268,6 +268,23 @@ void QGCCorePlugin::setupEmbeddedEngine(QObject *rootObject)
     _setQmlContextProperties(engine);
 }
 
+namespace
+{
+
+bool s_hostProvidesPlanUI = false;
+
+} // namespace
+
+void QGCCorePlugin::setHostProvidesPlanUI(bool provides)
+{
+    s_hostProvidesPlanUI = provides;
+}
+
+bool QGCCorePlugin::hostProvidesPlanUI() const
+{
+    return s_hostProvidesPlanUI;
+}
+
 void QGCCorePlugin::createRootWindow(QQmlApplicationEngine *qmlEngine)
 {
     qmlEngine->load(QUrl(QStringLiteral("qrc:/qml/QGroundControl/MainWindow/MainWindow.qml")));

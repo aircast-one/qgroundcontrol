@@ -2092,3 +2092,62 @@ Also carried across: a VTOL answers null for mission time, because `vtolMode` fl
 multirotor and fixed wing as the walk passes a transition item, so a single-speed answer is right
 before it and wrong after. This window draws mission time from the core's text, so a null has to
 read as *not known for this aircraft* rather than as a blank.
+
+### The macOS build has stopped loading the QML Plan view (2026-09-11)
+
+Phase 4's last unmet criterion. Both peers cleared it first, and both checked rather than
+remembered: the Android head never loads `MainWindow.qml` at all — its host is a nine-line
+`Item { id: mainWindow }` — and the core session's instruments reach Qt only through
+`qgc_bridge_get`/`invoke`, none of whose roots is a QML item.
+
+**Why it is safe, which was the question worth answering before writing any of it.** The bridge's
+`plan` root constructs its *own* `PlanMasterController`, with the comment "Native frontends have
+no QML view to own a plan controller". The QML `PlanView` holds a second, entirely separate
+controller that nothing native has ever read. Had it gone the other way, the gate would have
+removed this window's whole data source while leaving every panel drawing stale values.
+
+`QGCCorePlugin` gains a `hostProvidesPlanUI` property, set once by the host before `qgc_start`
+from the same argument that installs the native windows, and the `PlanView` in `MainWindow.qml`
+becomes a `Loader` gated on it. No QML file is deleted and no other build's tree changes.
+
+**Both paths measured in the same binary**, because a gate that silently does nothing produces a
+tree indistinguishable from a healthy one:
+
+| `hostProvidesPlanUI` | live QML nodes | plan chrome |
+|---|---|---|
+| `true` — native macOS | 107 | **0** |
+| `false` — every other build | 132 | **23** |
+
+The false row is the one that matters. Verifying only that the nodes disappear would have left
+Linux, Windows and the Qt Android path untested, and a `Loader` that fails to construct its
+component looks exactly like a `Loader` that was told not to. The native Plan window is unaffected:
+50 of 50 facts still agree with the core, 28 of 30 watched deps still bound, 0 binding to nothing.
+
+**The trap that nearly landed instead.** The first version was `#ifdef QGC_NATIVE_UI` inside
+`QGCCorePlugin.cc`. That define is `PRIVATE` to the app target and `QGCCorePlugin` lives in a
+library, so it would have compiled to `false`, the `Loader` would have stayed active, and the gate
+would have done nothing at all — caught only by checking which target carried the definition, not
+by anything the compiler said. The property is `CONSTANT`, so anything trying to set it after
+startup is ignored with no warning; it is a host declaration, not a runtime toggle.
+
+**Two suite anomalies, both traced to a running app rather than to this change.** A first full run
+gave 705/1/89 on `AircastDeviceSetupTest::_reapplyReplacesExistingLink`; a second died in
+`FactSystemTest*`'s `qmlUpdate_test` with a SIGSEGV whose handler re-entered 21,898 times and
+filled a 200 MB log. All three suites pass in isolation, and `FactSystemTest` loads
+`qrc:unittest/FactSystemTest.qml` — never `MainWindow.qml` or the core plugin — so this change
+cannot reach it. With no app running the suite is **706/0/89**, the exact baseline.
+
+That is two dirty runs with an app up against one clean run without, which is suggestive and not
+established — the existing note that these flakes occur with or without a running app still
+stands, and one clean run does not overturn it. Recorded so the next dirty run starts by asking
+what else was running.
+
+**Handed over by the Android session, and worth taking.** `hostProvidesNavigation` and
+`hostProvidesGuidedActions` sit two lines above the new property as `readonly property bool … :
+false`. `readonly` bound to a literal is a compile-time constant, so no host and no C++ can ever
+make them true: their three readers in `GuidedActionRTL.qml`, `FlyViewWidgetLayer.qml` and
+`PlanToolBarIndicators.qml` have been evaluating `!false` since they were written. Binding them to
+core-plugin properties the way `hostProvidesPlanUI` is bound would take considerably more QML out
+of this build than the plan gate did. **Not done here**, because it first needs evidence that the
+SwiftUI windows cover navigation and guided actions as completely as they cover planning, and this
+window has no vehicle to establish that with.

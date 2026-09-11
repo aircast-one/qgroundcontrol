@@ -5,10 +5,12 @@ import QGCEntry
 enum AppShell {
     static func run(_ argc: Int32, _ argv: UnsafeMutablePointer<UnsafeMutablePointer<CChar>?>) -> Int32 {
         NativeDebug.install()
+        let nativeWindows = CommandLine.arguments.contains("--native-window")
+        qgc_set_host_provides_plan_ui(nativeWindows ? 1 : 0)
         let startCode = qgc_start(argc, argv)
         guard startCode == 0 else { return startCode }
 
-        if CommandLine.arguments.contains("--native-window") {
+        if nativeWindows {
             installMenuBar()
             QtHostWindow.shared.show()
         }
