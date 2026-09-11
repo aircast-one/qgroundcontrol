@@ -977,23 +977,31 @@ One thing left behind on the bench: that plan's launch point is where I long pre
 simulator plan that gets rebuilt constantly, so it was not worth clearing someone else's work over,
 but do not read its geometry as intentional.
 
-### Nothing can be added to an empty plan, and it is not today's changes
+### An inserted takeoff has no position, and neither does the plan's launch point
 
-Measured on the OnePlus 6 against a fresh empty plan with the sim connected and a GPS fix: **neither
-the Takeoff toolbar button nor a long press on the map adds an item.** The chip stays "Empty plan ·
-long press to add", no `busy` message appears at any sample from 0 to 6 seconds, and `adb logcat`
-carries nothing on any tag. Both paths end in `insertMissionItem`, which is untouched by every commit
-made today, so this is not a regression from the list work — but it is the reason the one outstanding
-device check could not run: it needs a plan with an unplaced takeoff and no plan can be built at all.
+~~Nothing can be added to an empty plan.~~ **That was wrong and is withdrawn.** Insert works every
+time, including immediately after New plan: the chip goes straight to "1 item (takeoff) · 0 m · 0:17".
+I reported the opposite an hour earlier on the strength of a run I could not reproduce, and the
+filter I sampled it with could not have shown success anyway — it matched `items \(` against a
+summary that reads `1 item (takeoff)`. Two wrong findings today, both from a filter that could not
+see the outcome it was looking for. That is now four instances of the same instrument failure.
 
-Not chased past the measurement, which is the honest stopping point: the symptom is a silent failure
-in a call the head has been making since long before today, and guessing at it is how the last two
-defects in this document got written. What is known is exactly the above.
+**What the working insert exposes is worse than what I thought I had found.** Add a takeoff to an
+empty plan with a connected, fixed vehicle and:
 
-Worth noting what it is *not*: `missionkinds::refusal` would refuse a waypoint into an empty plan with
-"This mission starts from the ground, so a takeoff has to come before anything else", but a takeoff is
-permitted — `isInsertTakeoffValid` holds its default `true`, which is the constant-gate finding
-recorded earlier in this document. A refusal would also have printed. Nothing printed.
+    list      0 Mission Start · 0 m
+              1 Takeoff · no position
+    summary   1 item (takeoff) · 0 m · 0:17
+    map       nothing at all - no takeoff pin, no Mission Start pin
+
+The core's `insert` already writes `launchCoordinate` in `shape()` and treats `ok: true` from the
+bridge as success, so it reports the item inserted. Both items are positionless afterwards. Either
+the write is not reaching `TakeoffMissionItem::setLaunchCoordinate` or it is being applied to
+something that does not stick — and the bridge said ok either way, which is the same shape as the
+reverted `coordinate` write: **a `set` that answers ok and changes nothing.**
+
+Raised with the core, since `shape()` is where the claim of success is made. Not diagnosed further
+here.
 
 **One defect in today's work did come out of it** (`aircast-android fb02aa4`). The chip's list icon was
 gated on `allItems.isNotEmpty()`, and QGC's plan always holds the Mission Start settings item, so an
