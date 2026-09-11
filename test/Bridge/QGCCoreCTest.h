@@ -87,6 +87,7 @@ private slots:
     void _replacingAPlanWithOneTheSameLengthStillWakesTheItemList();
     void _theCoreWorksOutTheSameFlownDistanceTheControllerDoes();
     void _everyClassTheCatalogueNamesIsTheClassTheEditorBuilds();
+    void _aTakeoffReportedInsertedHasAPlaceOnTheMap();
 
 private:
     static bool _unavailable(const char *path);

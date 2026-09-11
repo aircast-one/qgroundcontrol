@@ -99,6 +99,35 @@ pub fn flown_distance(items: &[Value]) -> f64 {
         .0
 }
 
+// The furthest the vehicle gets from the launch point, which is what a telemetry link has to
+// reach. MissionController measures every item's coordinate against the plan's home, and for a
+// pattern takes the greatest distance to any of its transect points rather than to its entry -
+// a survey's far corner is further away than the corner it starts at.
+pub fn max_telemetry_distance(items: &[Value]) -> f64 {
+    let Some(home) = items.first().and_then(|item| item.get("coordinate")).and_then(point_of) else {
+        return 0.0;
+    };
+    items
+        .iter()
+        .skip(1)
+        // Only places the vehicle actually flies to. A region of interest has a position and the
+        // aircraft never goes there, so counting it puts the telemetry reach a kilometre past
+        // anywhere the vehicle will be - the same conflation the distance walk exists to avoid,
+        // written into a new computation ten minutes after getting it right in the old one.
+        .filter(|item| flag_of(item, "flownLeg"))
+        .map(|item| {
+            let entry = item.get("coordinate").and_then(point_of).map_or(0.0, |at| crate::surveygrid::distance_between(home, at));
+            let inside = item
+                .get("geometry")
+                .and_then(|shape| shape.get("transects"))
+                .and_then(Value::as_array)
+                .map(|points| points.iter().filter_map(point_of).map(|at| crate::surveygrid::distance_between(home, at)).fold(0.0, f64::max))
+                .unwrap_or(0.0);
+            entry.max(inside)
+        })
+        .fold(0.0, f64::max)
+}
+
 pub fn summary_view(backend: &dyn Backend, args: &[String]) -> Value {
     let verify = args.iter().any(|arg| arg == "verify");
     let imperial = value_number(&backend.get("settings.unitsSettings.horizontalDistanceUnits.rawValue")) == Some(HORIZONTAL_UNITS_FEET);
@@ -134,6 +163,10 @@ pub fn summary_view(backend: &dyn Backend, args: &[String]) -> Value {
         // which is the only way a port of this arithmetic can be trusted before it replaces it.
         // Opt-in, because working it out costs a whole view.missionItems and every head reading
         // the summary would pay for a figure only a test compares. view.missionSummary(verify).
+        "maxTelemetryMetres": verify.then(|| metres("missionMaxTelemetry")).flatten(),
+        "maxTelemetryComputedMetres": verify
+            .then(|| crate::missionitems::items_view(backend, &["geometry".to_string()]).get("items").and_then(Value::as_array).map(|items| max_telemetry_distance(items)))
+            .flatten(),
         "distanceComputedMetres": verify
             .then(|| crate::missionitems::items_view(backend, &[]).get("items").and_then(Value::as_array).map(|items| flown_distance(items)))
             .flatten(),

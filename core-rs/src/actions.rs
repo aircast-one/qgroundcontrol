@@ -189,9 +189,17 @@ fn shape(backend: &dyn Backend, kind: &crate::missionkinds::Kind, index: i64, la
     if kind.id == "takeoff" {
         let at = json!({ "latitude": latitude, "longitude": longitude, "altitude": 0.0 });
         let written: Value = serde_json::from_str(&backend.set(&format!("plan.missionController.visualItems.{index}.launchCoordinate"), &json!({ "value": at }).to_string())).unwrap_or(Value::Null);
-        return match written.get("ok").and_then(Value::as_bool) {
+        if written.get("ok").and_then(Value::as_bool) != Some(true) {
+            return Err("the takeoff would not take a launch position, and a takeoff without one cannot be flown".to_string());
+        }
+        // ok means setProperty accepted a value, not that the item ended up anywhere. The Android
+        // head saw a takeoff reported inserted with no position on it and none on the plan's own
+        // entry either - a write that answered ok and left nothing behind. Read it back rather
+        // than believe the answer; the caller removes the item when this fails.
+        let landed = object(&backend.get_fields(&format!("plan.missionController.visualItems.{index}"), "coordinate"));
+        return match landed.get("coordinate").and_then(|at| at.get("valid")).and_then(Value::as_bool) {
             Some(true) => Ok(()),
-            _ => Err("the takeoff would not take a launch position, and a takeoff without one cannot be flown".to_string()),
+            _ => Err("the launch position was accepted and the takeoff still has no place on the map, so the plan would carry an item nothing can draw".to_string()),
         };
     }
     let Some((geometry, property)) = kind.geometry else { return Ok(()) };
@@ -245,6 +253,14 @@ mod tests {
         fn get_fields(&self, path: &str, _f: &str) -> String {
             match path {
                 "plan.missionController" => self.mission.to_string(),
+                // A takeoff reads its coordinate back after the launch position is written,
+                // because an accepted write is not the same as an item that ended up somewhere.
+                // The fake answers what a placed item answers, so a test that breaks the write
+                // sees the refusal rather than the fake's silence.
+                path if path.starts_with("plan.missionController.visualItems.") => {
+                    let placed = self.calls.lock().unwrap().iter().any(|(called, _)| called.ends_with(".launchCoordinate"));
+                    json!({ "kind": "object", "coordinate": { "kind": "coordinate", "valid": placed, "latitude": 47.0, "longitude": 8.0 } }).to_string()
+                }
                 _ => String::new(),
             }
         }

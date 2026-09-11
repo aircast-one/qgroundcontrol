@@ -3487,6 +3487,15 @@ void QGCCoreCTest::_theCoreWorksOutTheSameFlownDistanceTheControllerDoes()
         QVERIFY2(controller > 0.0, qPrintable(QStringLiteral("%1: the controller reported no distance, so there is nothing to agree with").arg(shape)));
         QVERIFY2(qAbs(core - controller) < qMax(1.0, controller * 0.001),
                  qPrintable(QStringLiteral("%1: the core makes it %2 m and the controller %3 m").arg(shape).arg(core).arg(controller)));
+
+        // The furthest point from launch, which the controller measures over a pattern's transect
+        // points rather than its entry corner - so a survey's far side counts and the corner it
+        // starts at does not decide it.
+        const double reachQt = summary.value(QStringLiteral("maxTelemetryMetres")).toDouble(-1.0);
+        const double reachCore = summary.value(QStringLiteral("maxTelemetryComputedMetres")).toDouble(-1.0);
+        QVERIFY2(reachQt > 0.0, qPrintable(QStringLiteral("%1: the controller reported no telemetry reach").arg(shape)));
+        QVERIFY2(qAbs(reachCore - reachQt) < qMax(1.0, reachQt * 0.001),
+                 qPrintable(QStringLiteral("%1: the core reaches %2 m and the controller %3 m").arg(shape).arg(reachCore).arg(reachQt)));
     };
 
     const auto insert = [](const char *args) {
@@ -3580,6 +3589,41 @@ void QGCCoreCTest::_everyClassTheCatalogueNamesIsTheClassTheEditorBuilds()
         checked++;
     }
     QVERIFY2(checked >= 2, qPrintable(QStringLiteral("only %1 classes were checked, too few to be the complex kinds").arg(checked)));
+#else
+    QSKIP("the Rust core is not linked into this build");
+#endif
+}
+
+void QGCCoreCTest::_aTakeoffReportedInsertedHasAPlaceOnTheMap()
+{
+#ifdef QGC_RUST_CORE
+    (void) take(qgc_bridge_invoke("plan.start", "[]"));
+    const auto restore = []() { (void) take(qgc_bridge_invoke("plan.removeAll", "[]")); };
+    const auto leaveNoPlanBehind = qScopeGuard(restore);
+    restore();
+
+    // The insert answers ok when the write answers ok, and a write answers ok when setProperty
+    // accepted a value - which is not the same as the item having a position afterwards. The
+    // Android head sees a takeoff reported inserted with no position on it and none on the plan's
+    // own entry either, so the claim of success has to be checked against what the item reads back.
+    const QJsonObject answered = take(qgc_core_invoke("mission.insert", "[\"takeoff\", 47.3960, 8.5440, -1]"));
+    QVERIFY2(answered.value(QStringLiteral("ok")).toBool(false),
+             qPrintable(QStringLiteral("the takeoff was refused: %1").arg(answered.value(QStringLiteral("reason")).toString())));
+
+    QTRY_VERIFY_WITH_TIMEOUT(take(qgc_core_get("view.missionItems")).value(QStringLiteral("items")).toArray().count() >= 2, 10000);
+    const QJsonArray items = take(qgc_core_get("view.missionItems")).value(QStringLiteral("items")).toArray();
+
+    const QJsonObject settings = items.at(0).toObject();
+    const QJsonObject takeoff = items.at(1).toObject();
+    QCOMPARE(settings.value(QStringLiteral("kind")).toString(), QStringLiteral("settings"));
+    QCOMPARE(takeoff.value(QStringLiteral("kind")).toString(), QStringLiteral("takeoff"));
+
+    QVERIFY2(!settings.value(QStringLiteral("coordinate")).isNull(),
+             "setLaunchCoordinate places the plan's own entry, so a launch position that landed shows there first");
+    QVERIFY2(!takeoff.value(QStringLiteral("coordinate")).isNull(),
+             "a takeoff reported inserted and carrying no position is an insert that claimed a success it did not have");
+    QVERIFY2(takeoff.value(QStringLiteral("movable")).toBool(false),
+             "and a head cannot draw a pin for it either, which is how this is seen rather than read");
 #else
     QSKIP("the Rust core is not linked into this build");
 #endif
