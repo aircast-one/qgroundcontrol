@@ -63,40 +63,44 @@ pub fn duration_text(seconds: f64) -> String {
     }
 }
 
-const LAND_COMMANDS: [i64; 2] = [21, 85];
-
 fn point_of(value: &Value) -> Option<(f64, f64)> {
     let at = value.as_object()?;
     Some((at.get("latitude")?.as_f64()?, at.get("longitude")?.as_f64()?))
 }
 
-// MissionController walks the fly-through items and measures each leg from the previous item's
-// exit to this one's entry, adds a pattern's own path where there is one, and drops the leg that
-// follows a landing because the route restarts there. The first leg is not counted either: the
-// walk begins at the plan's settings entry, which is not a place the aircraft flies from.
+fn flag_of(item: &Value, key: &str) -> bool {
+    item.get(key).and_then(Value::as_bool) == Some(true)
+}
+
+// MissionController measures each leg from the previous item's exit to this one's entry and adds a
+// pattern's own path on top. Two things it does not do: it does not fly to an item that only
+// carries a position, and it does not continue past the item that ends the route - anything after
+// a landing or a return is uploaded and never reached. Both questions are already answered on
+// every item, by flownLeg and endsRoute, and they are separate questions: a return to launch ends
+// the route while being no leg at all.
 pub fn flown_distance(items: &[Value]) -> f64 {
-    items
+    let ends = items.iter().position(|item| flag_of(item, "endsRoute"));
+    let flown = match ends {
+        Some(at) => &items[..=at],
+        None => items,
+    };
+    flown
         .iter()
-        .fold((0.0, None, false), |(total, previous, after_landing), item| {
+        .filter(|item| flag_of(item, "flownLeg"))
+        .fold((0.0, None), |(total, previous), item| {
             let pattern = item.get("patternDistance").and_then(Value::as_f64).unwrap_or(0.0);
-            if item.get("flownLeg").and_then(Value::as_bool) != Some(true) {
-                return (total, previous, after_landing);
-            }
             let Some(entry) = item.get("coordinate").and_then(point_of) else {
-                return (total, previous, after_landing);
+                return (total, previous);
             };
-            let leg = match (previous, after_landing) {
-                (Some(from), false) => crate::surveygrid::distance_between(from, entry),
-                _ => 0.0,
-            };
+            let leg = previous.map_or(0.0, |from| crate::surveygrid::distance_between(from, entry));
             let exit = item.get("exitCoordinate").and_then(point_of).unwrap_or(entry);
-            let lands = item.get("command").and_then(Value::as_i64).is_some_and(|command| LAND_COMMANDS.contains(&command));
-            (total + leg + pattern, Some(exit), lands)
+            (total + leg + pattern, Some(exit))
         })
         .0
 }
 
-pub fn summary_view(backend: &dyn Backend, _args: &[String]) -> Value {
+pub fn summary_view(backend: &dyn Backend, args: &[String]) -> Value {
+    let verify = args.iter().any(|arg| arg == "verify");
     let imperial = value_number(&backend.get("settings.unitsSettings.horizontalDistanceUnits.rawValue")) == Some(HORIZONTAL_UNITS_FEET);
     let mission = object(&backend.get_fields(
         "plan.missionController",
@@ -128,7 +132,11 @@ pub fn summary_view(backend: &dyn Backend, _args: &[String]) -> Value {
         // The same figure worked out by the core rather than read from the controller. Served
         // beside it so the two can be compared on every run against every plan a test builds,
         // which is the only way a port of this arithmetic can be trusted before it replaces it.
-        "distanceComputedMetres": crate::missionitems::items_view(backend, &[]).get("items").and_then(Value::as_array).map(|items| flown_distance(items)),
+        // Opt-in, because working it out costs a whole view.missionItems and every head reading
+        // the summary would pay for a figure only a test compares. view.missionSummary(verify).
+        "distanceComputedMetres": verify
+            .then(|| crate::missionitems::items_view(backend, &[]).get("items").and_then(Value::as_array).map(|items| flown_distance(items)))
+            .flatten(),
         "timeSeconds": seconds("missionTime"),
         "batteriesRequired": batteries,
         "altitudeRange": altitude_range(&mission, imperial),
@@ -165,6 +173,37 @@ fn altitude_range(mission: &Value, imperial: bool) -> Value {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    fn leg(lat: f64, lon: f64) -> Value {
+        json!({ "flownLeg": true, "endsRoute": false, "coordinate": { "latitude": lat, "longitude": lon } })
+    }
+
+    #[test]
+    fn the_walk_stops_where_the_route_ends_and_steps_over_what_is_not_flown() {
+        let straight = vec![leg(47.3960, 8.5440), leg(47.3990, 8.5480)];
+        let plain = flown_distance(&straight);
+        assert!(plain > 400.0 && plain < 500.0, "two points about four hundred metres apart measured {plain}");
+
+        // A return to launch carries no coordinate and ends the route. Anything after it is
+        // uploaded and never reached, and the plan editor will not let one be built by appending -
+        // it refuses to add after a landing - so the shape only arises from a return, and only a
+        // list built by hand can put it in front of this function.
+        let past_the_end = vec![
+            leg(47.3960, 8.5440),
+            leg(47.3990, 8.5480),
+            json!({ "flownLeg": false, "endsRoute": true }),
+            leg(47.4200, 8.5700),
+        ];
+        assert_eq!(flown_distance(&past_the_end), plain, "an item beyond the end of the route cannot lengthen the mission");
+
+        // And a region of interest is a place with no leg to it, wherever it sits.
+        let with_roi = vec![
+            leg(47.3960, 8.5440),
+            json!({ "flownLeg": false, "endsRoute": false, "coordinate": { "latitude": 47.4200, "longitude": 8.5700 } }),
+            leg(47.3990, 8.5480),
+        ];
+        assert_eq!(flown_distance(&with_roi), plain, "an item that is not flown to adds no distance and no dogleg");
+    }
 
     #[test]
     fn a_distance_reads_in_the_unit_the_operator_chose() {

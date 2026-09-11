@@ -3095,8 +3095,13 @@ void QGCCoreCTest::_theRustCacheServesATileQtWroteIntoTheSameDatabase()
         QTest::qWait(100);
         (void) take(qgc_core_tile_open(databasePath.toUtf8().constData()));
     }
+    // Read the size once. Calling it in the condition and again in the assertion let the two
+    // disagree - the Qt worker is still writing to the same database - so the diagnostic block was
+    // skipped while the assertion failed, which is how this failure produced an empty report every
+    // time it fired.
+    const qint64 served = qgc_core_tile_size(hash.toUtf8().constData());
     QString stored;
-    if (qgc_core_tile_size(hash.toUtf8().constData()) != drawn.size()) {
+    if (served != drawn.size()) {
         {
         QSqlDatabase probe = QSqlDatabase::addDatabase(QStringLiteral("QSQLITE"), QStringLiteral("tileRowProbe"));
         probe.setDatabaseName(databasePath);
@@ -3119,8 +3124,8 @@ void QGCCoreCTest::_theRustCacheServesATileQtWroteIntoTheSameDatabase()
         }
         QSqlDatabase::removeDatabase(QStringLiteral("tileRowProbe"));
     }
-    QVERIFY2(qgc_core_tile_size(hash.toUtf8().constData()) == drawn.size(),
-             qPrintable(QStringLiteral("the Rust cache did not serve the tile the Qt worker wrote. What the database holds:\n%1").arg(stored)));
+    QVERIFY2(served == drawn.size(),
+             qPrintable(QStringLiteral("the Rust cache served %1 bytes where Qt wrote %2. What the database holds:\n%3").arg(served).arg(drawn.size()).arg(stored)));
 
 
     QByteArray read(drawn.size(), char(0));
@@ -3467,7 +3472,7 @@ void QGCCoreCTest::_theCoreWorksOutTheSameFlownDistanceTheControllerDoes()
     restore();
 
     const auto agree = [](const char *shape) {
-        const QJsonObject summary = take(qgc_core_get("view.missionSummary"));
+        const QJsonObject summary = take(qgc_core_get("view.missionSummary(verify)"));
         const double controller = summary.value(QStringLiteral("distanceMetres")).toDouble(-1.0);
         const double core = summary.value(QStringLiteral("distanceComputedMetres")).toDouble(-1.0);
         QVERIFY2(controller > 0.0, qPrintable(QStringLiteral("%1: the controller reported no distance, so there is nothing to agree with").arg(shape)));
@@ -3476,7 +3481,9 @@ void QGCCoreCTest::_theCoreWorksOutTheSameFlownDistanceTheControllerDoes()
     };
 
     const auto insert = [](const char *args) {
-        QVERIFY2(take(qgc_core_invoke("mission.insert", args)).value(QStringLiteral("ok")).toBool(false), "an insert was refused");
+        const QJsonObject answered = take(qgc_core_invoke("mission.insert", args));
+        QVERIFY2(answered.value(QStringLiteral("ok")).toBool(false),
+                 qPrintable(QStringLiteral("%1 was refused: %2").arg(QString::fromUtf8(args), answered.value(QStringLiteral("reason")).toString())));
     };
 
     // The arithmetic has rules that are invisible from the answer: the leg is measured from the
@@ -3511,6 +3518,16 @@ void QGCCoreCTest::_theCoreWorksOutTheSameFlownDistanceTheControllerDoes()
     insert("[\"land\", 47.3960, 8.5440, -1]");
     QTRY_VERIFY_WITH_TIMEOUT(take(qgc_core_get("view.missionItems")).value(QStringLiteral("items")).toArray().count() >= 7, 20000);
     agree("ending in a landing");
+
+    // A landing that is last cannot distinguish "the leg after it is dropped" from "there is no
+    // leg after it". This is the shape that separates them, and the first rule I wrote - negating
+    // on a land command - walked straight past a return to launch into an item that is uploaded
+    // and never reached. The macOS head found it by building a plan my tests did not.
+    // The shape that exposed the first version of this rule - an item left beyond the end of the
+    // route - cannot be built here. The plan editor refuses to append after a landing, and the
+    // core's own insert refuses to put a landing in front of places the vehicle flies through. It
+    // arises from a return to launch, which nothing here can insert, so the rule is pinned as a
+    // unit test over a hand-built list instead: missionsummary::the_walk_stops_where_the_route_ends.
 #else
     QSKIP("the Rust core is not linked into this build");
 #endif
