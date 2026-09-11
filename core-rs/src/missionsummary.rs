@@ -130,6 +130,27 @@ pub fn flown_distance(items: &[Value]) -> f64 {
 //
 // The walk stops where the route ends, for the same reason the distance walk does: an item after a
 // return to launch is uploaded and never reached, so it is nowhere the vehicle gets to.
+pub fn telemetry_terms(items: &[Value]) -> Vec<(i64, f64, f64)> {
+    let Some(home) = items.first().and_then(|item| item.get("coordinate")).and_then(point_of) else {
+        return Vec::new();
+    };
+    flown(items)
+        .filter(|item| item.get("kind").and_then(Value::as_str) != Some("settings"))
+        .map(|item| {
+            let sequence = item.get("sequence").and_then(Value::as_i64).unwrap_or(-1);
+            let Some(entry) = item.get("coordinate").and_then(point_of) else { return (sequence, 0.0, 0.0) };
+            let exit = item.get("exitCoordinate").and_then(point_of).unwrap_or(entry);
+            let span = item
+                .get("geometry")
+                .and_then(|shape| shape.get("transects"))
+                .and_then(Value::as_array)
+                .map(|points| points.iter().filter_map(point_of).map(|at| crate::surveygrid::distance_between(exit, at)).fold(0.0, f64::max))
+                .unwrap_or(0.0);
+            (sequence, crate::surveygrid::distance_between(home, entry), span)
+        })
+        .collect()
+}
+
 pub fn max_telemetry_distance(items: &[Value]) -> f64 {
     let Some(home) = items.first().and_then(|item| item.get("coordinate")).and_then(point_of) else {
         return 0.0;
@@ -211,6 +232,9 @@ pub fn altitude_band(items: &[Value]) -> Option<(f64, f64)> {
 
 pub fn summary_view(backend: &dyn Backend, args: &[String]) -> Value {
     let verify = args.iter().any(|arg| arg == "verify");
+    let walked = verify
+        .then(|| crate::missionitems::items_view(backend, &["geometry".to_string()]))
+        .and_then(|view| view.get("items").and_then(Value::as_array).cloned());
     let imperial = imperial(backend);
     let mission = object(&backend.get_fields(
         "plan.missionController",
@@ -244,45 +268,34 @@ pub fn summary_view(backend: &dyn Backend, args: &[String]) -> Value {
         // which is the only way a port of this arithmetic can be trusted before it replaces it.
         // Opt-in, because working it out costs a whole view.missionItems and every head reading
         // the summary would pay for a figure only a test compares. view.missionSummary(verify).
-        "durationComputedSeconds": verify
-            .then(|| {
-                // The plan's own vehicle, not the active one. MissionController measures against
-                // _controllerVehicle, which offline is the airframe the plan is being edited for -
-                // a multirotor by default. Reading the active vehicle answers nothing with no
-                // aircraft connected, and a mission still has a duration then.
+        "durationComputedSeconds": walked
+            .as_ref()
+            .and_then(|items| {
                 let vehicle = object(&backend.get_fields("plan.controllerVehicle", "multiRotor,vtol"));
                 let speed = |name: &str| value_number(&backend.get(&format!("settings.appSettings.{name}.rawValue"))).unwrap_or(0.0);
-                let items = crate::missionitems::items_view(backend, &[]);
-                items
-                    .get("items")
-                    .and_then(Value::as_array)
-                    .and_then(|items| flown_seconds(items, speed("offlineEditingHoverSpeed"), speed("offlineEditingCruiseSpeed"), speed("offlineEditingAscentSpeed"), crate::read::flag(&vehicle, "multiRotor"), crate::read::flag(&vehicle, "vtol")))
-            })
-            .flatten(),
+                flown_seconds(items, speed("offlineEditingHoverSpeed"), speed("offlineEditingCruiseSpeed"), speed("offlineEditingAscentSpeed"), crate::read::flag(&vehicle, "multiRotor"), crate::read::flag(&vehicle, "vtol"))
+            }),
         "durationSeconds": verify.then(|| metres("missionTime")).flatten(),
-        // The inputs, so a disagreement can be read rather than inferred. Working out which term
-        // differs from two totals is guesswork; showing the terms is not.
-        "durationInputs": verify.then(|| json!({
+        "durationInputs": walked.as_ref().map(|items| json!({
             "hover": value_number(&backend.get("settings.appSettings.offlineEditingHoverSpeed.rawValue")),
             "cruise": value_number(&backend.get("settings.appSettings.offlineEditingCruiseSpeed.rawValue")),
             "ascent": value_number(&backend.get("settings.appSettings.offlineEditingAscentSpeed.rawValue")),
             "multiRotor": crate::read::flag(&object(&backend.get_fields("plan.controllerVehicle", "multiRotor")), "multiRotor"),
-            "distance": crate::missionitems::items_view(backend, &[]).get("items").and_then(Value::as_array).map(|items| flown_distance(items)),
+            "distance": flown_distance(items),
         })),
-        "altitudeBandComputed": verify
-            .then(|| {
-                let items = crate::missionitems::items_view(backend, &[]);
-                items.get("items").and_then(Value::as_array).and_then(|items| altitude_band(items)).map(|(low, high)| json!([low, high]))
-            })
-            .flatten(),
+        "altitudeBandComputed": walked.as_ref().and_then(|items| altitude_band(items)).map(|(low, high)| json!([low, high])),
         "altitudeBandMetres": verify.then(|| json!([metres("minAMSLAltitude"), metres("maxAMSLAltitude")])),
         "maxTelemetryMetres": verify.then(|| metres("missionMaxTelemetry")).flatten(),
-        "maxTelemetryComputedMetres": verify
-            .then(|| crate::missionitems::items_view(backend, &["geometry".to_string()]).get("items").and_then(Value::as_array).map(|items| max_telemetry_distance(items)))
-            .flatten(),
-        "distanceComputedMetres": verify
-            .then(|| crate::missionitems::items_view(backend, &[]).get("items").and_then(Value::as_array).map(|items| flown_distance(items)))
-            .flatten(),
+        "maxTelemetryComputedMetres": walked.as_ref().map(|items| max_telemetry_distance(items)),
+        "maxTelemetryInputs": walked.as_ref().map(|items| json!({
+            "terms": telemetry_terms(items).iter().map(|(sequence, from_home, span)| json!({ "sequence": sequence, "fromHome": from_home, "spanFromExit": span })).collect::<Vec<_>>(),
+        })),
+        "distanceComputedMetres": walked.as_ref().map(|items| flown_distance(items)),
+        "distanceInputs": walked.as_ref().map(|items| json!({
+            "legs": items.iter().filter(|item| crate::read::flag(item, "flownLeg")).count(),
+            "endsRouteAt": items.iter().position(|item| crate::read::flag(item, "endsRoute")),
+            "total": items.len(),
+        })),
         "timeSeconds": seconds("missionTime"),
         "batteriesRequired": batteries,
         "altitudeRange": altitude_range(&mission, &Unit::vertical(backend)),
