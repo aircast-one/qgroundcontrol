@@ -54,6 +54,7 @@ private fun pathOf(points: List<Offset>): Path = Path().apply {
 }
 
 internal fun profileLabel(profile: TerrainProfile): String =
+    terrainWarning(profile.clearance)?.let { "$it " } .orEmpty() +
     (if (profile.flat) {
         "${profile.lowest.toInt()} m AMSL"
     } else {

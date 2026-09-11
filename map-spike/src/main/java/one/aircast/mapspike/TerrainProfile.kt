@@ -11,13 +11,23 @@ import kotlin.math.sqrt
 private const val EARTH_RADIUS_METRES = 6_371_000.0
 private const val MIN_SPAN_METRES = 1.0
 
+data class Clearance(
+    val collides: Boolean,
+    val metres: Double?,
+    val text: String,
+    val complete: Boolean,
+)
+
 data class ProfilePoint(
     val distance: Double,
     val terrain: Double?,
     val planned: Double,
 )
 
-data class TerrainProfile(val points: List<ProfilePoint>) {
+data class TerrainProfile(
+    val points: List<ProfilePoint>,
+    val clearance: Clearance? = null,
+) {
     val distance: Double get() = points.lastOrNull()?.distance ?: 0.0
 
     val lowest: Double
@@ -55,10 +65,36 @@ fun metresBetween(from: TrackPoint, to: TrackPoint): Double {
 
 const val TERRAIN_VIEW = "view.terrainProfile"
 
+internal fun clearanceOf(view: JSONObject?): Clearance? {
+    if (view == null) return null
+    return Clearance(
+        collides = view.optBoolean("hasCollision"),
+        metres = view.optDouble("minClearanceMetres", Double.NaN).takeIf { !it.isNaN() },
+        text = view.optString("clearanceText").takeIf { !view.isNull("clearanceText") }.orEmpty(),
+        complete = view.optBoolean("clearanceComplete"),
+    )
+}
+
+// A mission below the ground is below it whether or not every sample has ground
+// under it; a mission that clears is only known to clear by as much as the
+// smallest measured gap, which is not the smallest gap when samples are missing.
+internal fun terrainWarning(clearance: Clearance?): String? {
+    if (clearance == null) return null
+    val metres = clearance.metres
+    return when {
+        clearance.collides || (metres != null && metres < 0.0) ->
+            clearance.text.takeIf { it.isNotBlank() }
+                ?.let { "The route goes $it below the ground." }
+                ?: "The route goes below the ground."
+        metres == null || !clearance.complete -> null
+        else -> null
+    }
+}
+
 fun terrainProfile(view: JSONObject?): TerrainProfile {
     val points = view?.optJSONArray("points") ?: return TerrainProfile(emptyList())
     return TerrainProfile(
-        (0 until points.length()).mapNotNull { index ->
+        points = (0 until points.length()).mapNotNull { index ->
             val point = points.optJSONObject(index) ?: return@mapNotNull null
             val planned = point.optDouble("missionAltitude", Double.NaN)
             if (planned.isNaN()) return@mapNotNull null
@@ -68,5 +104,6 @@ fun terrainProfile(view: JSONObject?): TerrainProfile {
                 planned = planned,
             )
         },
+        clearance = clearanceOf(view),
     )
 }
