@@ -44,6 +44,25 @@ def swift_names(path, anchor):
     return keyed or re.findall(r'"([^"]+)"', literal)
 
 
+def component_classes(*headers):
+    """VehicleComponent subclasses declared in these headers."""
+    return {
+        match.group(1)
+        for header in headers
+        for match in re.finditer(r"class\s+(\w+)\s*:\s*public\s+VehicleComponent\b", read(header))
+    }
+
+
+def check_classes(what, names, headers):
+    declared = component_classes(*headers)
+    where = " or ".join(headers)
+    bad = [f"{what}: {name!r} is not a VehicleComponent subclass in {where}" for name in names
+           if name not in declared]
+    for line in bad:
+        print(line, file=sys.stderr)
+    return not bad
+
+
 def check(what, names, headers, needs_write):
     declared = properties(*headers)
     where = " or ".join(headers)
@@ -61,8 +80,9 @@ def check(what, names, headers, needs_write):
 lists = swift_names("macos/Sources/ItemFactModel.swift", "static let lists")
 labels = swift_names("macos/Sources/GeoTag.swift", "static let labels")
 survey = swift_names("macos/Sources/SurveyStatsModel.swift", "static let properties")
+sensors = swift_names("macos/Sources/VehicleComponentModel.swift", "static let sensorClasses")
 
-if not lists or not labels or not survey:
+if not lists or not labels or not survey or not sensors:
     print("found no names to check, which is a broken reader rather than a clean result",
           file=sys.stderr)
     sys.exit(1)
@@ -75,6 +95,13 @@ ok &= check("SurveyWatch.properties", survey,
             ["src/MissionManager/TransectStyleComplexItem.h",
              "src/MissionManager/ComplexMissionItem.h"], False)
 
+# Class names rather than properties: the head recognises the sensors component by class because
+# its name is translated, and a hand-written list of C++ class names rots exactly as silently as a
+# hand-written list of property names.
+ok &= check_classes("VehicleComponentInfo.sensorClasses", sensors,
+                    ["src/AutoPilotPlugins/PX4/SensorsComponent.h",
+                     "src/AutoPilotPlugins/APM/APMSensorsComponent.h"])
+
 if ok:
-    print(f"interpolated names pinned: {', '.join(lists + labels + survey)}")
+    print(f"interpolated names pinned: {', '.join(lists + labels + survey + sensors)}")
 sys.exit(0 if ok else 1)

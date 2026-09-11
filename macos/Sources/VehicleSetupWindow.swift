@@ -735,7 +735,7 @@ struct SetupSummaryView: View {
                         } else {
                             ForEach(store.components) { component in
                                 let opens = store.pageNames.contains(component.name)
-                                let faulted = component.name == "Sensors" && !sensors.failing.isEmpty
+                                let faulted = component.isSensors && !sensors.failing.isEmpty
                                 let good = !component.needsAttention && !faulted
                                 GroupRow(title: component.name,
                                          value: component.needsAttention ? "Needs setup"

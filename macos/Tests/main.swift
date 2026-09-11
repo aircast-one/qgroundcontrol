@@ -1268,6 +1268,7 @@ func checkMissionItemKinds() {
     checkClearanceSentence()
     checkUnreachedItems()
     checkComplexGeometryInAnyLocale()
+    checkSensorsComponentIsFoundByClass()
     checkShapeAbsence()
     checkBatteryReading()
     checkFlownLeg()
@@ -4215,6 +4216,26 @@ func checkShapeAbsence() {
     expect(PlanShapeAbsence.rally(connected: true, supported: false),
            "This vehicle's firmware does not support rally points.",
            "and does not invite an operator to add what cannot be taken")
+}
+
+func checkSensorsComponentIsFoundByClass() {
+    func component(name: String, className: String) -> VehicleComponentInfo? {
+        VehicleComponentInfo(["name": name, "className": className,
+                              "needsAttention": false as NSNumber])
+    }
+    // QGC builds a component's name through tr() in its constructor, after the translators are
+    // installed, so it really is translated -- unlike SurveyComplexItem::name, which is a
+    // file-scope static frozen before main(). These are the shipped ja_JP and ko_KR strings.
+    expect(component(name: "センサ", className: "SensorsComponent")?.isSensors ?? false,
+           "the sensors component is recognised by its class, because matching its name meant "
+           + "the fault badge never appeared in the five locales that translate Sensors")
+    expect(component(name: "센서", className: "APMSensorsComponent")?.isSensors ?? false,
+           "and ArduPilot's own sensors component is the same component to this window")
+    expect(!(component(name: "Radio", className: "RadioComponent")?.isSensors ?? true),
+           "another component is not it, whatever it is called")
+    expect(component(name: "センサ", className: "SensorsComponent")?.id ?? "", "SensorsComponent",
+           "identity comes from the class too -- keying it on a translated name would have "
+           + "rebuilt every row the moment the language changed")
 }
 
 func checkComplexGeometryInAnyLocale() {
