@@ -483,7 +483,7 @@ internal fun MapSpikeScreen(
 
                     TextButton(onClick = {
                         val at = placeAt()
-                        addMissionItem("survey", "Adding survey", at)
+                        addMissionItem("survey", "Adding survey", at, insertAfter(selected, allItems))
                     }) { Text("Survey") }
 
                     TextButton(onClick = {
@@ -509,14 +509,18 @@ internal fun MapSpikeScreen(
                                 "takeoff",
                                 "Adding a takeoff",
                                 at,
-                                if (takeoffMissing(items)) BEFORE_THE_REST else AT_END,
+                                if (takeoffMissing(items)) {
+                                    BEFORE_THE_REST
+                                } else {
+                                    insertAfter(selected, allItems)
+                                },
                             )
                         },
                     ) { Text("Takeoff") }
                     TextButton(
                         onClick = {
                             val at = placeAt()
-                            addMissionItem("land", "Adding a landing", at)
+                            addMissionItem("land", "Adding a landing", at, insertAfter(selected, allItems))
                         },
                     ) { Text("Land") }
                     GroupBreak()
