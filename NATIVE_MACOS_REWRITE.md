@@ -1399,3 +1399,37 @@ change, and the Fly window is another stream's file; both have been told.
 
 Recorded rather than fixed: no head-side change here is both safe and worth 220 ms, and the
 two candidate shortcuts are the staleness class this window just spent four commits removing.
+
+### The screenshot cannot see the map, and it reports that as an empty map (2026-09-11)
+
+`native_screenshot` captures an AppKit window by window id. It does **not** capture the
+Metal-composited content of an `MKMapView`. Two captures of the Plan window over a 120-point
+lawnmower mission, correctly framed, showed a flat beige rectangle: no satellite imagery
+despite `mapType: Bing Satellite`, no route polyline, and in one of the two a handful of pins
+and in the other none at all.
+
+Every one of those absences is the capture, not the map. The head's own counters, read from
+the same running app in the same second:
+
+    placed 120   annotations 120   routeLegs 120   tileOverlay true   framed true
+    renderers { calls: 347, kinds: [CachedTileOverlay, MKPolyline] }
+
+and the map centre sits within 0.1 screens of the mission's centroid. Both renderers had run.
+The zero additional draw calls over the next six seconds are a static map not redrawing, which
+is correct, not a stall.
+
+**This nearly became a severe phantom defect.** The first capture, at a wider frame, showed
+three pins for a 216-item mission, and the obvious reading was that MapKit was decluttering
+`displayPriority = .defaultHigh` annotations down to a handful — a plausible defect at exactly
+the gate scale, with a named line of code to blame. It survived one screenshot and died on the
+second, where a tighter frame produced *fewer* pins rather than more. An instrument that cannot
+see its subject does not return nothing; it returns something that reads as a finding.
+
+So the pin-density question is **not answered, in either direction** — nothing here says
+MapKit does or does not cull at 200 waypoints, only that screenshots cannot be used to ask.
+Answering it needs an instrument inside the process: a count of annotation views MapKit
+actually vends, which is what `viewFor annotation` could report and does not.
+
+The terrain panel in the same captures rendered perfectly, because it is drawn in SwiftUI.
+That contrast is the tell, and it is what makes the empty map look like a real defect rather
+than a blind spot.
