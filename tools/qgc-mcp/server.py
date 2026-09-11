@@ -511,13 +511,38 @@ def set_video_setting(fact: str, value: str) -> dict:
 
 
 @mcp.tool()
+def _signing_identity() -> str:
+    override = os.environ.get("QGC_DEV_SIGNING_IDENTITY", "").strip()
+    if override:
+        return override
+    found = subprocess.run(
+        ["security", "find-identity", "-v", "-p", "codesigning"],
+        capture_output=True, text=True,
+    )
+    quoted = [line.split('"')[1] for line in found.stdout.splitlines() if '"' in line]
+    return next((name for name in quoted if name.startswith("Apple Develop")), "")
+
+
+def _sign(bundle: pathlib.Path) -> str:
+    identity = _signing_identity()
+    if not identity or not bundle.is_dir():
+        return " (unsigned: no codesigning identity)" if bundle.is_dir() else ""
+    signed = subprocess.run(
+        ["codesign", "--force", "--deep", "--sign", identity, str(bundle)],
+        capture_output=True, text=True, timeout=600,
+    )
+    if signed.returncode != 0:
+        return f" (signing failed: {signed.stderr.strip()[-200:]})"
+    return ""
+
+
 def build(target: str = "release") -> str:
     """Build the app. target: "release" (AircastQGC) or "test" (Debug unit-test build)."""
     cwd = RELEASE_BUILD if target == "release" else TEST_BUILD
     args = ["ninja"] + (["AircastQGC"] if target == "release" else [])
     result = subprocess.run(args, cwd=cwd, capture_output=True, text=True, timeout=1800)
     if result.returncode == 0:
-        return "build ok"
+        return "build ok" + _sign((RELEASE_APP if target == "release" else TEST_APP).parents[2])
     output = result.stdout + result.stderr
     errors = "\n".join(line for line in output.splitlines() if "error" in line.lower() or "FAILED" in line)
     return f"build failed:\n{errors or output[-2000:]}"
