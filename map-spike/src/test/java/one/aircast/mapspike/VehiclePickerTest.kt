@@ -7,14 +7,16 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class VehiclePickerTest {
-    private fun list(vararg ids: Int) =
+    private fun list(vararg ids: Int, activeId: Int = -1) =
         JSONObject(
-            """{"kind":"object","elements":[${ids.joinToString(",") { """{"id":$it}""" }}]}""",
+            """{"kind":"object","vehicles":[${
+                ids.joinToString(",") { """{"id":$it,"active":${it == activeId}}""" }
+            }]}""",
         )
 
     @Test
     fun `each connected vehicle is an entry named by its id`() {
-        val entries = vehicleEntries(list(1, 2), activeId = 2)
+        val entries = vehicleEntries(list(1, 2, activeId = 2))
 
         assertEquals(
             "the id is what selects an aircraft; a list position can shift between read and write",
@@ -25,26 +27,26 @@ class VehiclePickerTest {
 
     @Test
     fun `the active one is marked and the others are not`() {
-        val entries = vehicleEntries(list(1, 2), activeId = 2)
+        val entries = vehicleEntries(list(1, 2, activeId = 2))
 
         assertEquals(listOf(false, true), entries.map { it.active })
     }
 
     @Test
-    fun `no vehicle is active when none matches`() {
-        assertTrue(vehicleEntries(list(1, 2), activeId = -1).none { it.active })
+    fun `the head does not decide which is active, the core does`() {
+        assertTrue(vehicleEntries(list(1, 2)).none { it.active })
     }
 
     @Test
     fun `an entry without an id is not offered`() {
-        val json = JSONObject("""{"kind":"object","elements":[{"id":1},{}]}""")
+        val json = JSONObject("""{"kind":"object","vehicles":[{"id":1},{}]}""")
 
-        assertEquals(1, vehicleEntries(json, activeId = 1).size)
+        assertEquals(1, vehicleEntries(json).size)
     }
 
     @Test
     fun `nothing connected is an empty list rather than a failure`() {
-        assertTrue(vehicleEntries(null, activeId = 1).isEmpty())
+        assertTrue(vehicleEntries(null).isEmpty())
     }
 
 }

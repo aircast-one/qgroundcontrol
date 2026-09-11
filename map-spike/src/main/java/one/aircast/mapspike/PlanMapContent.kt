@@ -416,7 +416,7 @@ internal fun MapSpikeScreen(
                         }
                         LaunchedEffect(vehicleCount, vehicleId) {
                             vehicles = withContext(Dispatchers.Default) {
-                                VehicleBridge.entries(vehicleId)
+                                VehicleBridge.entries()
                             }
                         }
                         vehicles.filterNot { it.active }.forEach { entry ->
