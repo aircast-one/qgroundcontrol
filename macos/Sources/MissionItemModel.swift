@@ -102,12 +102,16 @@ struct MissionItem: Identifiable, Equatable {
         return "\(only.command) (\(only.sequence)): \(why.lowercasedFirst)"
     }
 
-    init(view json: [String: Any]) {
+    // The editor's selection is one index on the view, not a flag on each item: the core stopped
+    // serving a per-item "current" because it invited a head to draw a marker meaning "the
+    // aircraft is here", which is a different fact QGC only sets in the fly view. Read through
+    // here so every caller keeps asking the item, and so the comparison is pinned by a test.
+    init(view json: [String: Any], selected: Int) {
         index = (json["index"] as? NSNumber)?.intValue ?? 0
         sequence = (json["sequence"] as? NSNumber)?.intValue ?? 0
         command = (json["name"] as? String) ?? ""
         description = (json["description"] as? String) ?? ""
-        isCurrent = (json["current"] as? NSNumber)?.boolValue ?? false
+        isCurrent = index == selected
         specifiesAltitude = (json["specifiesAltitude"] as? NSNumber)?.boolValue ?? false
         commandId = (json["command"] as? NSNumber)?.intValue ?? 0
         isSimpleItem = (json["simple"] as? NSNumber)?.boolValue ?? false

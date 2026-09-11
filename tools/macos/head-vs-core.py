@@ -89,9 +89,15 @@ def build_plan():
     time.sleep(TERRAIN_SETTLE_SECONDS)
 
 
-def selected_survey(core_items):
-    return next((item["index"] for item in core_items
-                 if item.get("kind") == "survey" and item.get("current")), None)
+# The editor's selection is one index on the view, not a flag on each item. It was a per-item
+# "current" until the core renamed it -- the rename broke this tool and the head together, and
+# this guard refusing to run is what surfaced it, because it asks the core rather than the head.
+def selected_survey(core):
+    chosen = core.get("selected")
+    if chosen is None:
+        return None
+    return next((item["index"] for item in core["items"]
+                 if item["index"] == chosen and item.get("kind") == "survey"), None)
 
 
 # Not every item has an altitude of its own. The plan's settings entry carries a planned home
@@ -135,8 +141,8 @@ def item_comparisons(head_items, core_items):
 
 # Only the selected survey has stats in the head, so the comparison follows the selection rather
 # than assuming an index.
-def survey_comparisons(head, core_items):
-    index = selected_survey(core_items)
+def survey_comparisons(head, core):
+    index = selected_survey(core)
     if index is None:
         return [], None
     mine, theirs = head["surveyStats"], view(f"surveyStats({index})")
@@ -177,12 +183,21 @@ def flown_legs(core_items):
     return sum(1 for item in core_items[:ends] if item["flownLeg"] and item["coordinate"])
 
 
+# Everything after the item that ends the route is uploaded and never reached. Derived from the
+# core's own flags so the head's routeEnd derivation is checked against them rather than against
+# a fixture this stream wrote. The plan built above ends in a return to launch with a waypoint
+# after it, which is the only shape where this is not zero.
+def unreached_after_route(core_items):
+    ends = next((n for n, item in enumerate(core_items) if item["endsRoute"]), None)
+    return 0 if ends is None else len(core_items) - (ends + 1)
+
+
 def comparisons():
     head = probe()["state"]
     core = {name: view(name) for name in ("plan", "missionSummary", "terrainProfile", "missionItems")}
     plan, summary, terrain, items = (core[name] for name in
                                      ("plan", "missionSummary", "terrainProfile", "missionItems"))
-    survey_checks, core["surveyStats"] = survey_comparisons(head, items["items"])
+    survey_checks, core["surveyStats"] = survey_comparisons(head, items)
     core["fences"] = view("fences")
     fences = fence_comparisons(fence_probe()["state"], core["fences"])
     return core, fences + survey_checks + item_comparisons(head["items"], items["items"]) + [
@@ -191,6 +206,7 @@ def comparisons():
         ("items with a place on the map", head["map"]["placed"],
          sum(1 for item in items["items"] if item["coordinate"])),
         ("legs the vehicle flies", head["map"]["routeLegs"], flown_legs(items["items"])),
+        ("rows marked never flown to", head["unreached"], unreached_after_route(items["items"])),
         ("plan is ready to save", head["readyToSave"], plan["readiness"]["ready"]),
         ("why it is not ready", head["notReadyReason"], plan["readiness"]["reason"]),
         ("plan is dirty", head["dirty"], plan["dirty"]),

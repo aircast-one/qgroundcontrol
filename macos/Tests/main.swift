@@ -315,10 +315,10 @@ expect(FlightModePosition.present(in: ["FLTMODE1", "FLTMODE3"]).map(\.index).map
 expect(FlightModePosition.present(in: []).isEmpty, "a vehicle without them shows no positions")
 
 let waypoint = MissionItem(view: [
-    "index": 1, "sequence": 1, "name": "Waypoint", "current": false,
+    "index": 1, "sequence": 1, "name": "Waypoint",
     "coordinate": ["latitude": -35.3629, "longitude": 149.165],
     "altitude": 50.0, "altitudeUnits": "ft", "altitudeText": "50.0 ft",
-    "specifiesAltitude": true])
+    "specifiesAltitude": true], selected: -1)
 expect(waypoint.altitudeText, "50.0 ft",
        "the core spells the altitude and the head shows what it said. The number and the unit "
        + "travel alongside because the row's editor needs them apart, but nothing here writes a "
@@ -327,23 +327,28 @@ expect(waypoint.positionText, "-35.362900, 149.165000", "position formats to six
 expect(waypoint.hasPosition, "a waypoint the core gave a coordinate has a position")
 
 let start = MissionItem(view: [
-    "index": 0, "sequence": 0, "name": "Mission Start", "current": true, "kind": "settings",
+    "index": 0, "sequence": 0, "name": "Mission Start", "kind": "settings",
     "coordinate": ["latitude": -35.36, "longitude": 149.16], "altitude": 584.09,
-    "altitudeText": "584 m"])
+    "altitudeText": "584 m"], selected: 0)
 expect(start.altitudeText, "584 m",
        "and the settings row is spelled by the same formatter as the summary strip above it, "
        + "which is what stopped it reading 584.1 m beside 584 m to 660 m")
 
 let startInFeet = MissionItem(view: [
     "index": 0, "sequence": 0, "name": "Mission Start", "altitude": 1916.3,
-    "altitudeUnits": "ft", "altitudeText": "1916 ft"])
+    "altitudeUnits": "ft", "altitudeText": "1916 ft"], selected: -1)
 expect(startInFeet.altitudeText, "1916 ft", "and an operator on feet is told feet")
-expect(start.isCurrent, "the current item is flagged")
+expect(start.isCurrent,
+       "the editor's selection is one index on the view, not a flag on each item -- the core "
+       + "stopped serving a per-item \"current\" because it invited a head to draw a marker "
+       + "meaning the aircraft is there, and this head went on reading the absent key and "
+       + "selected nothing at all")
+expect(!startInFeet.isCurrent, "and an item whose index is not the selected one is not selected")
 expect(waypoint.index == 1, "an item remembers the list position its bridge path needs")
 expect(waypoint.specifiesAltitude, "a waypoint's altitude is editable")
 expect(!start.specifiesAltitude, "an item that does not specify altitude is not editable")
 
-let bare = MissionItem(view: ["index": 2, "sequence": 2, "name": "Delay"])
+let bare = MissionItem(view: ["index": 2, "sequence": 2, "name": "Delay"], selected: -1)
 expect(!bare.hasPosition, "an item the core gave no coordinate has no position")
 expect(bare.positionText, "—", "and shows nothing rather than a false one")
 expect(bare.altitudeText, "—",
@@ -570,8 +575,8 @@ func checkParameterOptions() {
 checkParameterOptions()
 
 func checkMissionItemRemoval() {
-    let home = MissionItem(view: ["index": 0, "sequence": 0, "name": "Mission Start"])
-    let waypoint = MissionItem(view: ["index": 1, "sequence": 1, "name": "Waypoint"])
+    let home = MissionItem(view: ["index": 0, "sequence": 0, "name": "Mission Start"], selected: -1)
+    let waypoint = MissionItem(view: ["index": 1, "sequence": 1, "name": "Waypoint"], selected: -1)
     expect(!home.canRemove, "the mission start is not a waypoint an operator can delete")
     expect(waypoint.canRemove, "a waypoint can be deleted")
 }
@@ -710,11 +715,11 @@ func checkMissionCommands() {
            "a command with no description reads as empty, not as a missing row")
 
     let waypoint = MissionItem(view: [
-        "index": 1, "sequence": 1, "name": "Waypoint", "simple": true])
+        "index": 1, "sequence": 1, "name": "Waypoint", "simple": true], selected: -1)
     let home = MissionItem(view: [
-        "index": 0, "sequence": 0, "name": "Mission Start", "simple": true, "kind": "settings"])
+        "index": 0, "sequence": 0, "name": "Mission Start", "simple": true, "kind": "settings"], selected: -1)
     let survey = MissionItem(view: [
-        "index": 2, "sequence": 2, "name": "Survey", "simple": false, "kind": "survey"])
+        "index": 2, "sequence": 2, "name": "Survey", "simple": false, "kind": "survey"], selected: -1)
     expect(waypoint.canChangeCommand, "a simple waypoint can become another command")
     expect(!home.canChangeCommand, "mission start is not a command an operator retypes")
     expect(!survey.canChangeCommand, "a complex item is not a simple command swap")
@@ -781,20 +786,20 @@ func checkUnplacedCommands() {
     // still reported one and the Gulf of Guinea ended up in the map's bounding box. The core
     // decides that now and sends no coordinate at all, so what is checked here is that the head
     // asks the right question -- is there a coordinate -- and does not second-guess one it got.
-    let delay = MissionItem(view: ["index": 1, "sequence": 1, "name": "Delay", "simple": true])
+    let delay = MissionItem(view: ["index": 1, "sequence": 1, "name": "Delay", "simple": true], selected: -1)
     expect(!delay.hasPosition, "a command the core gave no place is not placed")
     expect(delay.positionText, "\u{2014}", "and shows nothing rather than the Gulf of Guinea")
     expect(!delay.flownLeg, "and no leg is drawn to it")
 
     let waypoint = MissionItem(view: [
         "index": 2, "sequence": 2, "name": "Waypoint", "flownLeg": true,
-        "coordinate": ["latitude": -35.363, "longitude": 149.165]])
+        "coordinate": ["latitude": -35.363, "longitude": 149.165]], selected: -1)
     expect(waypoint.hasPosition, "a waypoint the core placed is placed")
     expect(waypoint.flownLeg, "and the vehicle flies a leg to it")
 
     let roi = MissionItem(view: [
         "index": 3, "sequence": 3, "name": "Region of interest", "flownLeg": false,
-        "coordinate": ["latitude": -35.33, "longitude": 149.25]])
+        "coordinate": ["latitude": -35.33, "longitude": 149.25]], selected: -1)
     expect(roi.hasPosition,
            "a region of interest has a place and earns a marker -- measured on the running app, "
            + "where the core listed it with a coordinate and flownLeg false")
@@ -4111,10 +4116,10 @@ func checkVehicleMessageOrder() {
 func checkFlownLeg() {
     let roi = MissionItem(view: ["index": 2, "sequence": 2, "name": "Region of interest",
                                  "flownLeg": false,
-                                 "coordinate": ["latitude": -35.33, "longitude": 149.25]])
+                                 "coordinate": ["latitude": -35.33, "longitude": 149.25]], selected: -1)
     let waypoint = MissionItem(view: ["index": 1, "sequence": 1, "name": "Waypoint",
                                       "flownLeg": true,
-                                      "coordinate": ["latitude": -35.35, "longitude": 149.20]])
+                                      "coordinate": ["latitude": -35.35, "longitude": 149.20]], selected: -1)
     expect(roi.hasPosition && waypoint.hasPosition,
            "both earn a marker, because both are somewhere on the map")
     expect([roi, waypoint].filter(\.flownLeg).map(\.sequence).map(String.init).joined(separator: ","),
@@ -4123,7 +4128,7 @@ func checkFlownLeg() {
            + "takeoff, waypoint, ROI, waypoint reported four placed items and drew one line "
            + "through all four, so the route doglegged out to the ROI and back")
 
-    let unplaced = MissionItem(view: ["index": 3, "sequence": 3, "name": "Delay"])
+    let unplaced = MissionItem(view: ["index": 3, "sequence": 3, "name": "Delay"], selected: -1)
     expect(!unplaced.flownLeg && !unplaced.hasPosition,
            "an item with no place at all is neither a marker nor a leg")
 
@@ -4135,11 +4140,11 @@ func checkFlownLeg() {
         MissionItem(view: ["index": seq, "sequence": seq, "name": name,
                            "flownLeg": flown, "endsRoute": ends,
                            "coordinate": ["latitude": -35.3 - Double(seq) / 100,
-                                          "longitude": 149.2]])
+                                          "longitude": 149.2]], selected: -1)
     }
     let past = [leg(0, "Mission Start", flown: true), leg(2, "Waypoint", flown: true),
                 MissionItem(view: ["index": 3, "sequence": 3, "name": "Return To Launch",
-                                   "flownLeg": false, "endsRoute": true]),
+                                   "flownLeg": false, "endsRoute": true], selected: -1),
                 leg(4, "Waypoint", flown: true)]
     expect(MissionItem.route(past).map(\.sequence).map(String.init).joined(separator: ","), "0,2",
            "the route stops where the mission does. The waypoint after the return is in the plan "
@@ -4161,7 +4166,7 @@ func checkFlownLeg() {
 
     let atOrigin = MissionItem(view: ["index": 4, "sequence": 4, "name": "Waypoint",
                                       "flownLeg": true,
-                                      "coordinate": ["latitude": 0, "longitude": 0]])
+                                      "coordinate": ["latitude": 0, "longitude": 0]], selected: -1)
     expect(atOrigin.hasPosition,
            "and a coordinate the core did send is taken at face value, even at 0,0. The head used "
            + "to throw those away itself because an unplaced command reported one; the core sends "
@@ -4248,7 +4253,7 @@ func checkComplexGeometryInAnyLocale() {
     ]])
     func item(_ kind: String, named: String) -> MissionItem {
         MissionItem(view: ["index": 1 as NSNumber, "sequence": 1 as NSNumber,
-                           "name": named, "kind": kind])
+                           "name": named, "kind": kind], selected: -1)
     }
     // Real strings from translations/qgc_source_ja_JP.ts, not invented ones. Five shipped
     // locales translate these names -- az_AZ, ja_JP, ko_KR, pt_PT and zh_CN -- and the rest,
@@ -4275,7 +4280,7 @@ func checkOnlyAPlacedItemMoves() {
         if placed {
             view["coordinate"] = ["latitude": -35.0 as NSNumber, "longitude": 149.0 as NSNumber]
         }
-        return MissionItem(view: view)
+        return MissionItem(view: view, selected: -1)
     }
     expect(item(2, "waypoint", movable: true, placed: true).canMove,
            "a placed waypoint is drawn, so it can be dragged")
@@ -4303,7 +4308,7 @@ func checkUnreachedItems() {
                            // position, so route() filtered them all out and the assertion below
                            // compared 0 against 0.
                            "coordinate": ["latitude": -35.0 as NSNumber,
-                                          "longitude": 149.0 as NSNumber]])
+                                          "longitude": 149.0 as NSNumber]], selected: -1)
     }
     let plain = [item(0, "waypoint", ends: false), item(1, "waypoint", ends: false)]
     expect(MissionItem.unreached(plain).isEmpty,
@@ -4508,13 +4513,13 @@ func checkBridgeWatchers() {
 
 func checkBlockedItems() {
     let ok = MissionItem(view: ["index": 2, "sequence": 2, "name": "Waypoint",
-                                "blocked": false, "awaitingTerrain": false])
+                                "blocked": false, "awaitingTerrain": false], selected: -1)
     expect(!ok.blocked, "an item the controller calls ready does not block the plan")
     expect(ok.blockedReason == nil, "and carries no reason to show")
 
     let unset = MissionItem(view: ["index": 1, "sequence": 1, "name": "Takeoff",
                                    "blocked": true, "awaitingTerrain": false,
-                                   "blockedReason": "Set its location"])
+                                   "blockedReason": "Set its location"], selected: -1)
     expect(unset.blocked,
            "a takeoff whose location was never set blocks the plan. Measured on the running app: "
            + "it reads state 2 and \"Set its location\", its coordinate is 0,0, and nothing in "
@@ -4525,14 +4530,14 @@ func checkBlockedItems() {
 
     let silent = MissionItem(view: ["index": 1, "sequence": 1, "name": "Takeoff",
                                     "blocked": true, "awaitingTerrain": false,
-                                    "blockedReason": ""])
+                                    "blockedReason": ""], selected: -1)
     expect(silent.blocked && silent.blockedReason == nil,
            "an item that blocks without saying why still blocks -- the row cannot explain it, "
            + "but the plan is no more saveable for the silence")
 
     let terrain = MissionItem(view: ["index": 3, "sequence": 3, "name": "Waypoint",
                                      "blocked": false, "awaitingTerrain": true,
-                                     "blockedReason": "Waiting for terrain"])
+                                     "blockedReason": "Waiting for terrain"], selected: -1)
     expect(!ok.stopsSave,
            "an item the controller calls ready does not stop the save -- pinning stopsSave to a "
            + "constant true fired nothing, so a plan where every row wore the amber seal and the "
@@ -4545,7 +4550,7 @@ func checkBlockedItems() {
     expect(!unset.awaitingTerrain && unset.blocked && unset.stopsSave,
            "and an item the operator has to finish is not a terrain wait, though both stop the save")
 
-    let absent = MissionItem(view: ["index": 1, "sequence": 1])
+    let absent = MissionItem(view: ["index": 1, "sequence": 1], selected: -1)
     expect(!absent.blocked,
            "and an item whose state the controller did not report does NOT block. Every other "
            + "item would decode to blocked on one missing key, and a plan that refuses to save "
@@ -4557,7 +4562,7 @@ func checkBlockedBanner() {
     func item(_ seq: Int, _ name: String, _ state: Int, _ message: String = "") -> MissionItem {
         MissionItem(view: ["index": seq, "sequence": seq, "name": name,
                            "blocked": state == 2, "awaitingTerrain": state == 1,
-                           "blockedReason": message])
+                           "blockedReason": message], selected: -1)
     }
     let general = "An item is still being drawn, so the plan cannot be saved or sent."
     let one = [item(0, "Mission Start", 0), item(1, "Takeoff", 2, "Set its location"),

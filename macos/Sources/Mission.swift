@@ -344,9 +344,11 @@ final class MissionStore: ObservableObject, Probeable, WriteReporting {
 
     @discardableResult
     private func readItems() -> [[String: Any]] {
-        let elements = (Bridge.group("view.missionItems")["items"] as? [[String: Any]]) ?? []
+        let read = Bridge.group("view.missionItems")
+        let elements = (read["items"] as? [[String: Any]]) ?? []
+        let chosen = (read["selected"] as? NSNumber)?.intValue ?? -1
         let listed = elements.map {
-            MissionItem(view: $0)
+            MissionItem(view: $0, selected: chosen)
         }
         if listed != items { items = listed }
         return elements
@@ -891,6 +893,10 @@ final class MissionStore: ObservableObject, Probeable, WriteReporting {
                    "fromChildren": CachedTileOverlay.fromChildren,
                    "missed": CachedTileOverlay.missed],
          "placed": items.filter(\.hasPosition).count,
+         // The rows the list marks "Never flown to". Derived here from routeEnd, and compared
+         // against the core's own endsRoute flags by head-vs-core.py, because unit fixtures pin
+         // this rule only against item lists this stream wrote itself.
+         "unreached": MissionItem.unreached(items).count,
          "vehiclePlaced": vehiclePosition != nil,
          "map": MissionMap.lastRender["plan"] ?? [:],
          "frame": MissionStore.frameProbe(items),
