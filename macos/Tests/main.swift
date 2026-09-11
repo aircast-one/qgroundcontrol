@@ -4269,22 +4269,28 @@ func checkComplexGeometryInAnyLocale() {
 }
 
 func checkOnlyAPlacedItemMoves() {
-    func item(_ sequence: Int, _ kind: String, placed: Bool) -> MissionItem {
+    func item(_ sequence: Int, _ kind: String, movable: Bool, placed: Bool) -> MissionItem {
         var view: [String: Any] = ["index": sequence as NSNumber, "sequence": sequence as NSNumber,
-                                   "name": kind, "kind": kind]
+                                   "name": kind, "kind": kind, "movable": movable as NSNumber]
         if placed {
             view["coordinate"] = ["latitude": -35.0 as NSNumber, "longitude": 149.0 as NSNumber]
         }
         return MissionItem(view: view)
     }
-    expect(item(2, "waypoint", placed: true).canMove,
+    expect(item(2, "waypoint", movable: true, placed: true).canMove,
            "a placed waypoint is drawn, so it can be dragged")
-    expect(!item(1, "takeoff", placed: false).canMove,
+    expect(!item(1, "takeoff", movable: false, placed: false).canMove,
            "an unplaced takeoff is drawn nowhere and must not be moved: writing its coordinate "
            + "leaves it unplaced and relocates the launch point instead, because "
            + "TakeoffMissionItem::setCoordinate also writes the settings item for a multirotor")
-    expect(!item(0, "settings", placed: true).canMove,
-           "and the mission start is never dragged even though it has a position")
+    // The case that separates the core's answer from anything this head could derive from a
+    // position: the settings entry HAS a coordinate and still is not on the map. A rule built on
+    // hasPosition alone says yes here.
+    expect(!item(0, "settings", movable: false, placed: true).canMove,
+           "the plan's own entry is not dragged even though it reports a coordinate")
+    expect(item(3, "waypoint", movable: true, placed: false).canMove,
+           "and the head takes the core's answer rather than second-guessing it from a position "
+           + "the view may not have sent")
 }
 
 func checkUnreachedItems() {

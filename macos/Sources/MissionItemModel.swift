@@ -13,6 +13,7 @@ struct MissionItem: Identifiable, Equatable {
     let commandId: Int
     let isSimpleItem: Bool
     let kind: String
+    let movable: Bool
     let category: String
     let altitudeUnits: String
 
@@ -47,12 +48,12 @@ struct MissionItem: Identifiable, Equatable {
 
     var canRemove: Bool { sequence > 0 }
 
-    // Dragging is the only way this window moves an item, and only a placed item is drawn to
-    // drag. Without the position test, writing a coordinate to an unplaced takeoff left it
-    // unplaced and moved the launch point instead, because TakeoffMissionItem::setCoordinate
-    // also writes the settings item when launchTakeoffAtSameLocation is set -- true for a
-    // multirotor. The map and the store both ask this rather than each testing canRemove.
-    var canMove: Bool { canRemove && hasPosition }
+    // The core's answer, not a rule of this head's. Writing a coordinate to an unplaced takeoff
+    // leaves it unplaced and moves the launch point instead, through
+    // TakeoffMissionItem::setCoordinate; the plan's own settings entry has a coordinate and is
+    // not on the map at all. Both are facts about the item, and the head that derives them is the
+    // head that eventually derives them differently from the other one.
+    var canMove: Bool { movable }
 
     var isLaunch: Bool { kind == MissionItem.takeoffKind || kind == MissionItem.settingsKind }
     var isSurveyItem: Bool { kind == MissionItem.surveyKind }
@@ -118,6 +119,7 @@ struct MissionItem: Identifiable, Equatable {
         endsRoute = (json["endsRoute"] as? NSNumber)?.boolValue ?? false
 
         kind = (json["kind"] as? String) ?? ""
+        movable = (json["movable"] as? NSNumber)?.boolValue ?? false
 
         let coordinate = json["coordinate"] as? [String: Any]
         latitude = (coordinate?["latitude"] as? NSNumber)?.doubleValue
