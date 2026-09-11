@@ -183,14 +183,13 @@ struct TerrainProfileSheet: View {
                 route(width: width, height: height)
                     .stroke(Overlay.mission, style: StrokeStyle(lineWidth: 2, lineJoin: .round))
 
-                ForEach(Array(profile.points.enumerated()), id: \.offset) { _, point in
-                    if point.collision {
-                        Circle()
-                            .fill(Overlay.vehicle)
-                            .frame(width: 7, height: 7)
-                            .position(x: profile.x(point, width: width),
-                                      y: profile.y(point.missionAltitude, height: height))
-                    }
+                ForEach(profile.collisionRuns, id: \.lowerBound) { run in
+                    let from = run.lowerBound * width
+                    let to = run.upperBound * width
+                    Capsule()
+                        .fill(Overlay.vehicle)
+                        .frame(width: max(to - from, Overlay.collisionMark), height: Overlay.collisionMark)
+                        .position(x: (from + to) / 2, y: height - Overlay.collisionMark)
                 }
             }
         }

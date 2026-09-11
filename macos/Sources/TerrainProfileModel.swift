@@ -61,6 +61,26 @@ struct TerrainProfile: Equatable {
 
     func x(_ point: TerrainPoint, width: Double) -> Double { point.x * width }
 
+    // Where the mission is under the ground, as unbroken stretches rather than a mark per sample.
+    // A survey samples its whole flown path, so a collision that is one continuous run arrived as
+    // four hundred overlapping dots -- each covering six of its neighbours, rebuilt on every
+    // terrain event, and smeared into a bar that could not be told from two separate stretches.
+    //
+    // Adjacency is by position in the list, not by comparing x values: the first version looked
+    // up each point's predecessor by scanning for it, which is a quadratic walk of four hundred
+    // samples on every redraw.
+    var collisionRuns: [ClosedRange<Double>] {
+        points.reduce(into: (runs: [ClosedRange<Double>](), continuing: false)) { state, point in
+            guard point.collision else { return state.continuing = false }
+            if state.continuing, let open = state.runs.last {
+                state.runs[state.runs.count - 1] = open.lowerBound...point.x
+            } else {
+                state.runs.append(point.x...point.x)
+            }
+            state.continuing = true
+        }.runs
+    }
+
     func y(_ altitude: Double, height: Double) -> Double {
         let span = maxAltitude - minAltitude
         guard span > 0 else { return height / 2 }

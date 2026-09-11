@@ -1267,6 +1267,7 @@ func checkMissionItemKinds() {
     checkBridgeWatchers()
     checkRemoveOutcome()
     checkSurveyWatch()
+    checkCollisionRuns()
     checkFlownLeg()
     checkVehicleMessageOrder()
     checkBlockedBanner()
@@ -4126,6 +4127,34 @@ func checkFlownLeg() {
            + "to throw those away itself because an unplaced command reported one; the core sends "
            + "no coordinate for those now, so re-adding the guard here would only lose a waypoint "
            + "somebody really put in the Gulf of Guinea")
+}
+
+func checkCollisionRuns() {
+    func profile(_ flags: [Bool]) -> TerrainProfile {
+        TerrainProfile(["usable": true as NSNumber, "groundKnown": true as NSNumber,
+                        "points": flags.enumerated().map { index, hit in
+                            ["x": Double(index) / Double(max(flags.count - 1, 1)) as NSNumber,
+                             "missionAltitude": 100.0 as NSNumber,
+                             "terrainAltitude": 50.0 as NSNumber,
+                             "collision": hit as NSNumber]
+                        }])
+    }
+    func spans(_ flags: [Bool]) -> String {
+        profile(flags).collisionRuns
+            .map { String(format: "%.2f-%.2f", $0.lowerBound, $0.upperBound) }
+            .joined(separator: ",")
+    }
+
+    expect(spans([false, true, true, true, false]), "0.25-0.75",
+           "one unbroken stretch is one span. Measured on the running app: a survey's 407 samples "
+           + "gave 405 colliding points in a single run, drawn as 405 overlapping dots each "
+           + "covering six of its neighbours")
+    expect(spans([true, true, false, false, true]), "0.00-0.25,1.00-1.00",
+           "two separate stretches stay two, which is the whole reason not to draw a dot per "
+           + "sample -- smeared together they read as one region of ground to clear")
+    expect(spans([false, false, false]), "", "a mission that clears the ground marks nothing")
+    expect(spans([true, true, true]), "0.00-1.00", "and one that never clears it is a single span")
+    expect(spans([]), "", "an empty profile has nothing to mark rather than trapping")
 }
 
 func checkSurveyWatch() {
