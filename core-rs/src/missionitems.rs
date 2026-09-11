@@ -101,6 +101,8 @@ fn item(read: &Value, index: i64, feet: bool) -> Value {
         "exitCoordinate": exit,
         "altitude": height(read),
         "altitudeText": height(read).map(|metres| altitude_text(metres, feet)),
+        "altitudeUnits": height(read).map(|_| if feet { "ft" } else { "m" }),
+        "altitudeFactUnits": fact_units(read, "altitude").or_else(|| fact_units(read, "plannedHomePositionAltitude")),
         "specifiesAltitude": flag(read, "specifiesAltitude"),
         "category": Some(text(read, "category")).filter(|category| !category.is_empty()),
         "cameraShots": number(read, "cameraShots").map(|shots| shots as i64).filter(|shots| *shots > 0),
@@ -139,6 +141,16 @@ fn editable(backend: &dyn Backend, current: i64) -> Value {
 // The plan's own entry keeps its height under a different name, because it is where the vehicle
 // launches from rather than a height the operator set for a waypoint. A head reading only the
 // waypoint name draws that row blank.
+fn fact_units(read: &Value, name: &str) -> Option<String> {
+    read.get("facts")
+        .and_then(Value::as_array)
+        .and_then(|facts| facts.iter().find(|fact| fact.get("property").and_then(Value::as_str) == Some(name)))
+        .and_then(|fact| fact.get("units"))
+        .and_then(Value::as_str)
+        .filter(|units| !units.is_empty())
+        .map(str::to_string)
+}
+
 fn height(read: &Value) -> Option<f64> {
     fact_number(read, "altitude").or_else(|| fact_number(read, "plannedHomePositionAltitude"))
 }
@@ -423,6 +435,7 @@ mod reported {
         let item = json!({ "kind": "object", "sequenceNumber": 1, "isSimpleItem": true, "specifiesAltitude": true, "category": "Basic", "facts": [ { "name": "Altitude", "property": "altitude", "value": 75.0 } ] });
         let metric = listed(item.clone());
         assert_eq!(metric["altitudeText"], "75.0 m");
+        assert_eq!(metric["altitudeUnits"], "m", "an editor needs the number and the unit apart, and parsing them back out of the text is the shape this replaces");
         assert_eq!(metric["altitude"], 75.0, "the raw metres travel too, so a head drawing a bar is not parsing its own string back");
         assert_eq!(metric["specifiesAltitude"], true, "an item that specifies an altitude of zero would be indistinguishable from one that specifies none, if this were inferred from the value");
         assert_eq!(metric["category"], "Basic");
@@ -430,6 +443,7 @@ mod reported {
 
         let imperial = items_view(&Imperial(item), &[])["items"][1].clone();
         assert_eq!(imperial["altitudeText"], "246.1 ft");
+        assert_eq!(imperial["altitudeUnits"], "ft");
         assert_eq!(imperial["altitude"], 75.0);
     }
 
