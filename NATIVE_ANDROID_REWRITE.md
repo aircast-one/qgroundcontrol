@@ -977,6 +977,30 @@ One thing left behind on the bench: that plan's launch point is where I long pre
 simulator plan that gets rebuilt constantly, so it was not worth clearing someone else's work over,
 but do not read its geometry as intentional.
 
+### Nothing can be added to an empty plan, and it is not today's changes
+
+Measured on the OnePlus 6 against a fresh empty plan with the sim connected and a GPS fix: **neither
+the Takeoff toolbar button nor a long press on the map adds an item.** The chip stays "Empty plan ·
+long press to add", no `busy` message appears at any sample from 0 to 6 seconds, and `adb logcat`
+carries nothing on any tag. Both paths end in `insertMissionItem`, which is untouched by every commit
+made today, so this is not a regression from the list work — but it is the reason the one outstanding
+device check could not run: it needs a plan with an unplaced takeoff and no plan can be built at all.
+
+Not chased past the measurement, which is the honest stopping point: the symptom is a silent failure
+in a call the head has been making since long before today, and guessing at it is how the last two
+defects in this document got written. What is known is exactly the above.
+
+Worth noting what it is *not*: `missionkinds::refusal` would refuse a waypoint into an empty plan with
+"This mission starts from the ground, so a takeoff has to come before anything else", but a takeoff is
+permitted — `isInsertTakeoffValid` holds its default `true`, which is the constant-gate finding
+recorded earlier in this document. A refusal would also have printed. Nothing printed.
+
+**One defect in today's work did come out of it** (`aircast-android fb02aa4`). The chip's list icon was
+gated on `allItems.isNotEmpty()`, and QGC's plan always holds the Mission Start settings item, so an
+empty plan read "Empty plan · long press to add" with an icon beside it opening a sheet containing one
+row the operator never added. `worthListing` asks the question the icon is about. Found only by opening
+the tab against an empty plan, which no run before today did.
+
 ### A guard that failed open for six hours
 
 `ui.sh tap` refuses a tap that lands on Arm, Land, RTL or any other flight control unless
