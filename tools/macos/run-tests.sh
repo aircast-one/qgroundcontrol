@@ -9,6 +9,12 @@
 #    over two hours and made timing-sensitive link tests fail;
 #  - several tests are timing-sensitive (LinkStateTest sets a 50ms stall threshold),
 #    so the run waits for the machine to settle first;
+#  - the suite binary is whatever was last built, so a caller that builds separately and
+#    does not check can run a stale one. This script builds and refuses rather than
+#    leaving that to the caller's attention: I read "74 passed" off a binary predating a
+#    test file that did not compile, minutes after another session described doing the
+#    same thing. A number from a build that failed is not a smaller number, it is someone
+#    else's number;
 #  - two suites at once share one QSettings space and corrupt each other. A run that
 #    overlapped another session's died on a SIGSEGV that would not reproduce alone, and
 #    cost that session an afternoon proving the crash was real and separate. Checking by
@@ -54,6 +60,17 @@ for _ in $(seq 1 12); do
     sleep 10
 done
 echo "starting with load $(sysctl -n vm.loadavg | awk '{print $2}')"
+
+# Build first, and treat a failed build as a failed run rather than testing what was there
+# before. The log is left with the failure in it, so a caller parsing it for PASS/FAIL/suites
+# sees zero suites and trips the rule that a low suite count is not a pass.
+mkdir -p "$stage"
+if ! cmake --build "$root/build-test" > "$stage/build.log" 2>&1; then
+    print "REFUSED: the build failed, so this suite would have run a stale binary" >> "$log"
+    grep -E 'error:|FAILED' "$stage/build.log" | tail -20 >> "$log"
+    grep -E 'error:|FAILED' "$stage/build.log" | tail -20 >&2
+    exit 1
+fi
 
 # Refresh one clone in place rather than making a new one per run. `codesign --force`
 # breaks APFS reflink dedup, so every clone is a full physical copy of a ~100MB bundle;
