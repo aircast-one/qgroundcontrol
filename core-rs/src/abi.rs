@@ -407,16 +407,23 @@ pub unsafe extern "C" fn qgc_core_tile_close() {
 
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn qgc_core_tile_size(hash: *const c_char) -> i64 {
-    TILE_CACHE.lock().unwrap().as_ref().and_then(|cache| cache.tile(&text(hash))).map(|tile| tile.image.len() as i64).unwrap_or(-1)
+    match TILE_CACHE.lock().unwrap().as_ref().map(|cache| cache.tile(&text(hash))) {
+        Some(Ok(Some(tile))) => tile.image.len() as i64,
+        Some(Ok(None)) | None => -1,
+        Some(Err(_)) => -3,
+    }
 }
 
 /// Copies the tile into a buffer the caller owns, so nothing crosses the boundary that either side
-/// has to remember to free. Answers the number of bytes written, or -1 when the cache has no such
-/// tile and -2 when it has one and the buffer is too small to hold it.
+/// has to remember to free. Answers the number of bytes written, -1 when the cache has no such
+/// tile, -2 when the buffer is too small, and -3 when the database could not be read - which is a
+/// different fact from an absent tile and used to be reported as one.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn qgc_core_tile_copy(hash: *const c_char, into: *mut u8, capacity: i64) -> i64 {
-    let Some(tile) = TILE_CACHE.lock().unwrap().as_ref().and_then(|cache| cache.tile(&text(hash))) else {
-        return -1;
+    let tile = match TILE_CACHE.lock().unwrap().as_ref().map(|cache| cache.tile(&text(hash))) {
+        Some(Ok(Some(tile))) => tile,
+        Some(Ok(None)) | None => return -1,
+        Some(Err(_)) => return -3,
     };
     if into.is_null() || capacity < tile.image.len() as i64 {
         return -2;

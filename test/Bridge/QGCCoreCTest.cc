@@ -3062,7 +3062,9 @@ void QGCCoreCTest::_theRustCacheServesATileQtWroteIntoTheSameDatabase()
 
 
     QByteArray read(drawn.size(), char(0));
-    QCOMPARE(qgc_core_tile_copy(hash.toUtf8().constData(), reinterpret_cast<unsigned char *>(read.data()), read.size()), qint64(drawn.size()));
+    const qint64 copied = qgc_core_tile_copy(hash.toUtf8().constData(), reinterpret_cast<unsigned char *>(read.data()), read.size());
+    QVERIFY2(copied != -3, "the database could not be read, which is a different fact from the tile being absent and used to be reported as one");
+    QCOMPARE(copied, qint64(drawn.size()));
     QVERIFY2(read == drawn, "the bytes came back changed, so the two sides disagree about what is stored rather than about where");
 
     QByteArray tooSmall(drawn.size() - 1, char(0));
@@ -3300,6 +3302,64 @@ void QGCCoreCTest::_theFleetIsNamedAndTheCommandedOneCanBeChosen()
     const QJsonObject absent = take(qgc_core_invoke("vehicles.setActive", "[99]"));
     QCOMPARE(absent.value(QStringLiteral("ok")).toBool(true), false);
     QCOMPARE(take(qgc_core_get("view.vehicles")).value(QStringLiteral("activeId")).toInt(-1), id);
+#else
+    QSKIP("the Rust core is not linked into this build");
+#endif
+}
+
+void QGCCoreCTest::_twoVehiclesAreToldApartAndEitherCanBeCommanded()
+{
+#ifdef QGC_RUST_CORE
+    MockLink *const first = MockLink::startPX4MockLink(false);
+    MockLink *const second = MockLink::startAPMArduCopterMockLink(false);
+    const auto disconnectBoth = qScopeGuard([first, second]() {
+        second->disconnect();
+        first->disconnect();
+        // The shared helper waits for the active vehicle to go as well as the list to empty, and a
+        // test that leaves one behind fails the next test's connect rather than its own.
+        QTRY_VERIFY_WITH_TIMEOUT(MultiVehicleManager::instance()->vehicles()->count() == 0, 20000);
+        QTRY_VERIFY_WITH_TIMEOUT(MultiVehicleManager::instance()->activeVehicle() == nullptr, 20000);
+    });
+    QVERIFY(first && second);
+    QTRY_COMPARE_WITH_TIMEOUT(take(qgc_core_get("view.vehicles")).value(QStringLiteral("count")).toInt(-1), 2, 30000);
+
+    // The second vehicle arriving moves the active one, so the fleet is not settled the moment it
+    // is two long. Wait for exactly one row to be the one being commanded.
+    const auto commandedRows = []() {
+        const QJsonArray rows = take(qgc_core_get("view.vehicles")).value(QStringLiteral("vehicles")).toArray();
+        return std::count_if(rows.cbegin(), rows.cend(), [](const QJsonValue &row) {
+            return row.toObject().value(QStringLiteral("active")).toBool();
+        });
+    };
+    QTRY_COMPARE_WITH_TIMEOUT(commandedRows(), 1, 30000);
+
+    const QJsonObject fleet = take(qgc_core_get("view.vehicles"));
+    QVERIFY2(fleet.value(QStringLiteral("ambiguous")).toBool(false),
+             "with two aircraft up an arm reaches one of them, and a head that is not told which cannot say");
+
+    const QJsonArray listed = fleet.value(QStringLiteral("vehicles")).toArray();
+    QCOMPARE(listed.count(), 2);
+    const int one = listed.at(0).toObject().value(QStringLiteral("id")).toInt(-1);
+    const int two = listed.at(1).toObject().value(QStringLiteral("id")).toInt(-2);
+    QVERIFY2(one != two && one > 0 && two > 0, qPrintable(QStringLiteral("the two vehicles carry ids %1 and %2").arg(one).arg(two)));
+    QVERIFY2(listed.at(0).toObject().value(QStringLiteral("name")).toString() != listed.at(1).toObject().value(QStringLiteral("name")).toString(),
+             "two aircraft that read the same name cannot be told apart by an operator");
+    for (const QJsonValue &entry : listed) {
+        QVERIFY2(!entry.toObject().value(QStringLiteral("link")).toString().isEmpty(),
+                 "which link it arrived on is how two identical airframes are told apart, and it read as nothing");
+    }
+    QCOMPARE(commandedRows(), 1);
+
+    for (const int wanted : { two, one, two }) {
+        const QJsonObject chosen = take(qgc_core_invoke("vehicles.setActive", QStringLiteral("[%1]").arg(wanted).toUtf8().constData()));
+        QVERIFY2(chosen.value(QStringLiteral("ok")).toBool(false), qPrintable(chosen.value(QStringLiteral("reason")).toString()));
+        QTRY_COMPARE_WITH_TIMEOUT(take(qgc_core_get("view.vehicles")).value(QStringLiteral("activeId")).toInt(-1), wanted, 10000);
+        QCOMPARE(commandedRows(), 1);
+        const QJsonArray now = take(qgc_core_get("view.vehicles")).value(QStringLiteral("vehicles")).toArray();
+        const QJsonObject marked = now.at(0).toObject().value(QStringLiteral("id")).toInt() == wanted ? now.at(0).toObject() : now.at(1).toObject();
+        QVERIFY2(marked.value(QStringLiteral("active")).toBool(),
+                 "the row marked active has to be the vehicle that was chosen, or an operator reads one aircraft and commands the other");
+    }
 #else
     QSKIP("the Rust core is not linked into this build");
 #endif

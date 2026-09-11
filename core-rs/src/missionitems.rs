@@ -5,13 +5,16 @@ use crate::router::Backend;
 
 pub const DEPS: &[&str] = &["plan.missionController.visualItems.count", "plan.missionController.currentPlanViewVIIndex", "plan.missionController.containsItems"];
 
-const FIELDS: &str = "sequenceNumber,abbreviation,commandName,commandDescription,isCurrentItem,specifiesCoordinate,isStandaloneCoordinate,specifiesAltitudeOnly,isSimpleItem,isTakeoffItem,isLandCommand,isSurveyItem,homePosition,coordinate,amslEntryAlt,altDifference,azimuth,distance,distanceFromStart,readyForSaveState,readyForSaveMessage,dirty,altitude,altitudeMode,isIncomplete,exitCoordinate,exitCoordinateSameAsEntry,commandName";
+const FIELDS: &str = "sequenceNumber,abbreviation,commandName,commandDescription,isCurrentItem,specifiesCoordinate,isStandaloneCoordinate,specifiesAltitudeOnly,isSimpleItem,isTakeoffItem,isLandCommand,isSurveyItem,homePosition,coordinate,amslEntryAlt,altDifference,azimuth,distance,distanceFromStart,readyForSaveState,readyForSaveMessage,dirty,altitude,altitudeMode,isIncomplete,exitCoordinate,exitCoordinateSameAsEntry,commandName,command,category,specifiesAltitude";
 
 const READY_TO_SAVE: i64 = 0;
 const AWAITING_TERRAIN: i64 = 1;
+const RETURN_TO_LAUNCH: i64 = 20;
 
 pub fn items_view(backend: &dyn Backend, args: &[String]) -> Value {
     let everything = args.iter().any(|arg| arg == "fields");
+    let units = object(&backend.get_fields("units", "appSettingsVerticalDistanceUnitsString"));
+    let feet = text(&units, "appSettingsVerticalDistanceUnitsString") == "ft";
     let shapes = args.iter().any(|arg| arg == "geometry");
     let count = integer(&object(&backend.get("plan.missionController.visualItems.count")), "value").unwrap_or(0);
     let has_items = flag(&object(&backend.get_fields("plan.missionController", "containsItems")), "containsItems");
@@ -21,9 +24,9 @@ pub fn items_view(backend: &dyn Backend, args: &[String]) -> Value {
     let current = integer(&object(&backend.get("plan.missionController.currentPlanViewVIIndex")), "value").unwrap_or(-1);
     let listed = object(&backend.get_fields("plan.missionController.visualItems", FIELDS));
     let items: Vec<Value> = match listed.get("elements").and_then(Value::as_array) {
-        Some(elements) => elements.iter().enumerate().map(|(index, element)| item(element, index as i64)).collect(),
+        Some(elements) => elements.iter().enumerate().map(|(index, element)| item(element, index as i64, feet)).collect(),
         None => (0..count)
-            .map(|index| item(&object(&backend.get_fields(&format!("plan.missionController.visualItems.{index}"), FIELDS)), index))
+            .map(|index| item(&object(&backend.get_fields(&format!("plan.missionController.visualItems.{index}"), FIELDS)), index, feet))
             .collect(),
     };
     let items: Vec<Value> = match shapes {
@@ -79,7 +82,7 @@ fn at_key(read: &Value, key: &str) -> Option<Value> {
     (at.get("valid").and_then(Value::as_bool) == Some(true) && !unset).then(|| at.clone())
 }
 
-fn item(read: &Value, index: i64) -> Value {
+fn item(read: &Value, index: i64, feet: bool) -> Value {
     let coordinate = placed(read);
     let exit = match flag(read, "exitCoordinateSameAsEntry") {
         true => None,
@@ -97,6 +100,10 @@ fn item(read: &Value, index: i64) -> Value {
         "coordinate": coordinate,
         "exitCoordinate": exit,
         "altitude": fact_number(read, "altitude"),
+        "altitudeText": fact_number(read, "altitude").map(|metres| altitude_text(metres, feet)),
+        "specifiesAltitude": flag(read, "specifiesAltitude"),
+        "category": Some(text(read, "category")).filter(|category| !category.is_empty()),
+        "simple": read.get("isSimpleItem").and_then(Value::as_bool),
         "altitudeMode": number(read, "altitudeMode").map(|mode| mode as i64),
         "altitudeAmsl": number(read, "amslEntryAlt"),
         "altitudeChange": number(read, "altDifference"),
@@ -105,7 +112,8 @@ fn item(read: &Value, index: i64) -> Value {
         "distanceFromStart": number(read, "distanceFromStart"),
         "edited": flag(read, "dirty"),
         "incomplete": flag(read, "isIncomplete"),
-        "endsRoute": flag(read, "isLandCommand") || text(read, "commandName").contains("Return"),
+        "endsRoute": flag(read, "isLandCommand") || integer(read, "command") == Some(RETURN_TO_LAUNCH),
+        "command": integer(read, "command"),
         "flownLeg": flag(read, "specifiesCoordinate") && !flag(read, "isStandaloneCoordinate") && !flag(read, "isIncomplete"),
         "blocked": ready.is_some_and(|state| state != READY_TO_SAVE && state != AWAITING_TERRAIN),
         "awaitingTerrain": ready == Some(AWAITING_TERRAIN),
@@ -123,6 +131,13 @@ fn editable(backend: &dyn Backend, current: i64) -> Value {
     match fields_of(backend, current) {
         Value::Null => Value::Null,
         fields => json!({ "index": current, "fields": fields }),
+    }
+}
+
+fn altitude_text(metres: f64, feet: bool) -> String {
+    match feet {
+        true => format!("{:.1} ft", metres * 3.2808399),
+        false => format!("{metres:.1} m"),
     }
 }
 
@@ -372,6 +387,34 @@ mod reported {
     }
 
     #[test]
+    fn an_altitude_is_drawn_in_the_unit_the_operator_chose_by_the_core_and_not_by_a_head() {
+        struct Imperial(Value);
+        impl Backend for Imperial {
+            fn get(&self, path: &str) -> String { One(self.0.clone()).get(path) }
+            fn get_fields(&self, path: &str, fields: &str) -> String {
+                match path {
+                    "units" => json!({ "kind": "object", "appSettingsVerticalDistanceUnitsString": "ft" }).to_string(),
+                    _ => One(self.0.clone()).get_fields(path, fields),
+                }
+            }
+            fn set(&self, _p: &str, _v: &str) -> String { String::new() }
+            fn invoke(&self, _p: &str, _a: &str) -> String { String::new() }
+            fn watch(&self, _p: &[String]) {}
+        }
+        let item = json!({ "kind": "object", "sequenceNumber": 1, "isSimpleItem": true, "specifiesAltitude": true, "category": "Basic", "facts": [ { "name": "Altitude", "property": "altitude", "value": 75.0 } ] });
+        let metric = listed(item.clone());
+        assert_eq!(metric["altitudeText"], "75.0 m");
+        assert_eq!(metric["altitude"], 75.0, "the raw metres travel too, so a head drawing a bar is not parsing its own string back");
+        assert_eq!(metric["specifiesAltitude"], true, "an item that specifies an altitude of zero would be indistinguishable from one that specifies none, if this were inferred from the value");
+        assert_eq!(metric["category"], "Basic");
+        assert_eq!(metric["simple"], true, "whether a command can be changed follows from this, and inferring it from the presence of a command number is inferring a fact from the absence of another");
+
+        let imperial = items_view(&Imperial(item), &[])["items"][1].clone();
+        assert_eq!(imperial["altitudeText"], "246.1 ft");
+        assert_eq!(imperial["altitude"], 75.0);
+    }
+
+    #[test]
     fn waiting_for_terrain_is_not_the_operators_task() {
         let waiting = listed(json!({
             "kind": "object", "sequenceNumber": 1, "isSimpleItem": true, "specifiesCoordinate": true,
@@ -421,6 +464,20 @@ mod reported {
     }
 
 
+
+
+    #[test]
+    fn a_route_stops_at_a_command_number_rather_than_at_a_word() {
+        let rtl = listed(json!({ "kind": "object", "sequenceNumber": 1, "isSimpleItem": true, "command": RETURN_TO_LAUNCH, "commandName": "Zur\u{00fc}ck zum Start" }));
+        assert_eq!(rtl["endsRoute"], true, "a translated command name is a different string in every locale, and a route drawn past a return to launch is a line across the map");
+        assert_eq!(rtl["command"], RETURN_TO_LAUNCH);
+
+        let land = listed(json!({ "kind": "object", "sequenceNumber": 1, "isSimpleItem": true, "isLandCommand": true, "command": 21 }));
+        assert_eq!(land["endsRoute"], true);
+
+        let waypoint = listed(json!({ "kind": "object", "sequenceNumber": 1, "isSimpleItem": true, "command": 16, "commandName": "Waypoint" }));
+        assert_eq!(waypoint["endsRoute"], false);
+    }
 
     #[test]
     fn a_pattern_the_vehicle_leaves_by_another_corner_says_where_it_leaves() {

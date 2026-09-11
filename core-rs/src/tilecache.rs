@@ -148,14 +148,12 @@ impl Cache {
         self.connection.query_row("SELECT setID FROM TileSets WHERE defaultSet = 1", [], |row| row.get(0))
     }
 
-    pub fn tile(&self, hash: &str) -> Option<Tile> {
+    pub fn tile(&self, hash: &str) -> rusqlite::Result<Option<Tile>> {
         self.connection
             .query_row("SELECT tile, format, type FROM Tiles WHERE hash = ?1", params![hash], |row| {
                 Ok(Tile { hash: hash.to_string(), image: row.get(0)?, format: row.get(1)?, kind: row.get::<_, Option<String>>(2)?.unwrap_or_default() })
             })
             .optional()
-            .ok()
-            .flatten()
     }
 
     pub fn save(&self, tile: &Tile, set: Option<i64>) -> rusqlite::Result<bool> {
@@ -364,13 +362,13 @@ mod tests {
             owner.save(&tile(&hash, 512), None).unwrap();
         }
         let reader = Cache::serve(&scratch).unwrap();
-        assert_eq!(reader.tile(&hash).unwrap().image.len(), 512);
+        assert_eq!(reader.tile(&hash).unwrap().unwrap().image.len(), 512);
         assert!(reader.save(&tile(&hash_for(1), 10), None).is_err(), "a reader must not be able to write into a database it does not own");
         assert!(Cache::serve(&std::env::temp_dir().join("qgc-core-not-here.db")).is_err(), "and it must not create one that is not there");
         let odd = std::env::temp_dir().join(format!("qgc core serve?{}.db", std::process::id()));
         let _ = std::fs::remove_file(&odd);
         Cache::open(&odd).unwrap().save(&tile(&hash, 8), None).unwrap();
-        assert_eq!(Cache::serve(&odd).unwrap().tile(&hash).unwrap().image.len(), 8, "a path with a question mark in it is a path, not the start of a query string");
+        assert_eq!(Cache::serve(&odd).unwrap().tile(&hash).unwrap().unwrap().image.len(), 8, "a path with a question mark in it is a path, not the start of a query string");
         let _ = std::fs::remove_file(&odd);
         let _ = std::fs::remove_file(&scratch);
     }
@@ -379,9 +377,9 @@ mod tests {
     fn a_saved_tile_comes_back_whole() {
         let cache = Cache::open_in_memory().unwrap();
         let hash = hash_for(8523);
-        assert!(cache.tile(&hash).is_none(), "an empty cache serves nothing rather than an empty tile");
+        assert!(cache.tile(&hash).unwrap().is_none(), "an empty cache serves nothing rather than an empty tile");
         assert!(cache.save(&tile(&hash, 2048), None).unwrap());
-        let served = cache.tile(&hash).unwrap();
+        let served = cache.tile(&hash).unwrap().unwrap();
         assert_eq!(served.image.len(), 2048);
         assert_eq!(served.format, "png");
         assert_eq!(served.kind, "Bing Road", "the provider name is what the Qt worker writes into this column, whatever the schema calls it");
@@ -394,7 +392,7 @@ mod tests {
         let cache = Cache::open_in_memory().unwrap();
         let hash = hash_for(1);
         assert!(cache.save(&tile(&hash, 0), None).unwrap());
-        assert_eq!(cache.tile(&hash).unwrap().image.len(), 0, "an empty tile is a tile the server sent, and re-fetching it would be endless");
+        assert_eq!(cache.tile(&hash).unwrap().unwrap().image.len(), 0, "an empty tile is a tile the server sent, and re-fetching it would be endless");
         assert_eq!(cache.total_size().unwrap(), 0);
     }
 
@@ -422,8 +420,8 @@ mod tests {
         let (cache, hashes) = aged_cache(5);
         assert_eq!(cache.total_size().unwrap(), 5000);
         assert_eq!(cache.prune(2500).unwrap(), 3, "tiles go until the debt is paid, so three thousand bytes cover a debt of two and a half");
-        assert!(cache.tile(&hashes[0]).is_none(), "the oldest tile is the first to go");
-        assert!(cache.tile(&hashes[3]).is_some(), "the newest tiles stay");
+        assert!(cache.tile(&hashes[0]).unwrap().is_none(), "the oldest tile is the first to go");
+        assert!(cache.tile(&hashes[3]).unwrap().is_some(), "the newest tiles stay");
         assert_eq!(cache.total_size().unwrap(), 2000);
         assert_eq!(cache.connection.query_row("SELECT COUNT(*) FROM SetTiles", [], |row| row.get::<_, i64>(0)).unwrap(), 2, "a pruned tile leaves no row behind in its set");
     }
@@ -437,7 +435,7 @@ mod tests {
         cache.connection.execute("INSERT INTO SetTiles(tileID, setID) VALUES(?1, ?2)", params![oldest, offline]).unwrap();
 
         assert_eq!(cache.prune(3000).unwrap(), 2, "only the two tiles nothing else holds can go");
-        assert!(cache.tile(&hashes[0]).is_some(), "the oldest tile is in an offline set the operator downloaded for a flight, and pruning must not take it");
+        assert!(cache.tile(&hashes[0]).unwrap().is_some(), "the oldest tile is in an offline set the operator downloaded for a flight, and pruning must not take it");
         assert_eq!(cache.saved(offline).unwrap(), (1, 1000));
     }
 
