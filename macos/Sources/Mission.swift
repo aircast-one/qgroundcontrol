@@ -68,6 +68,7 @@ final class MissionStore: ObservableObject, Probeable, WriteReporting {
     }
     private let summaryClient = "missionSummary.\(MissionStore.nextClient())"
     private let terrainClient = "terrainProfile.\(MissionStore.nextClient())"
+    private let planClient = "plan.\(MissionStore.nextClient())"
     private let surveyClient = "surveyStats.\(MissionStore.nextClient())"
 
 
@@ -92,6 +93,16 @@ final class MissionStore: ObservableObject, Probeable, WriteReporting {
     // The Plan window does not poll, so nothing corrected it. The core watches this view's deps
     // and re-renders it, sending only what changed, which is why a stale read fixes itself here
     // without a timer that would fight the editor.
+    // Whether the plan can be saved and whether it can be sent, from one read. reload takes the
+    // first one and the watch keeps it current; both go through here so the two cannot drift.
+    private func readPlanVerdicts(_ view: [String: Any]) {
+        let readiness = PlanReadiness(view["readiness"]) ?? .unknown
+        if readiness.ready != readyToSave { readyToSave = readiness.ready }
+        if readiness.reason != notReadyReason { notReadyReason = readiness.reason }
+        let sending = PlanUpload(view["upload"]) ?? .unknown
+        if sending != upload { upload = sending }
+    }
+
     private func watchViews() {
         guard !watchingViews else { return }
         watchingViews = true
@@ -105,6 +116,13 @@ final class MissionStore: ObservableObject, Probeable, WriteReporting {
         // bind to. The head watched each item's terrainAltitude and terrainCollision to get at
         // the same moment; it does not have to any more, and the event carries the rendered
         // profile so there is nothing to read back.
+        // Readiness and the upload verdict turn on vehicle state -- whether one is connected, armed
+        // or flying -- which changes with no edit to the plan. This window never polls, so without
+        // this a vehicle could connect and the Upload button would go on saying there is nowhere to
+        // send the plan until the operator happened to touch an item.
+        BridgeWatch.watch(planClient, ["view.plan"]) { [weak self] view in
+            self?.readPlanVerdicts(view)
+        }
         BridgeWatch.watch(terrainClient, ["view.terrainProfile"]) { [weak self] view in
             guard let self else { return }
             let profile = TerrainProfile(view)
@@ -115,6 +133,7 @@ final class MissionStore: ObservableObject, Probeable, WriteReporting {
     deinit {
         BridgeWatch.stop(summaryClient)
         BridgeWatch.stop(terrainClient)
+        BridgeWatch.stop(planClient)
         BridgeWatch.stop(surveyClient)
     }
 
@@ -127,12 +146,7 @@ final class MissionStore: ObservableObject, Probeable, WriteReporting {
             return
         }
 
-        let planView = Bridge.group("view.plan")
-        let readiness = PlanReadiness(planView["readiness"]) ?? .unknown
-        if readiness.ready != readyToSave { readyToSave = readiness.ready }
-        if readiness.reason != notReadyReason { notReadyReason = readiness.reason }
-        let sending = PlanUpload(planView["upload"]) ?? .unknown
-        if sending != upload { upload = sending }
+        readPlanVerdicts(Bridge.group("view.plan"))
 
         let offered = (controller["complexMissionItemNames"] as? [String]) ?? []
         if offered != patterns { patterns = offered }
