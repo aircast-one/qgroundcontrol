@@ -94,8 +94,10 @@ for w in unparsed:
 # itself (Watcher::_poll calls _bind again every tick), while a dep that resolves and still
 # does not bind has no notify signal and never will. Asking the bridge whether the path
 # resolves is what separates them -- an earlier version exempted everything under vehicle.*,
-# which would have called a CONSTANT list property like vehicle.formattedMessages "awaiting a
-# vehicle" forever, explaining away exactly the class this exists to catch.
+# which would have explained away, forever, whatever unbindable dep happens to live under that
+# prefix. geoFenceController.polygons is the shape to keep in mind: declared
+# Q_PROPERTY(QmlObjectListModel* polygons READ polygons CONSTANT), so it resolves perfectly
+# well and binds to nothing, because Qt gives a CONSTANT property no notify signal.
 def watch_bindings():
     req = urllib.request.Request(f"http://127.0.0.1:{PORT}/native/probe?id=mission",
                                  headers={"X-QGC-Debug-Api": "1"})
