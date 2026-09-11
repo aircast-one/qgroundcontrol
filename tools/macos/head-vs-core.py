@@ -28,6 +28,7 @@ HEADERS = {"X-QGC-Debug-Api": "1"}
 LAUNCH = (-35.363, 149.165)
 DISTANT = (-35.30, 149.30)
 SURVEY = (-35.28, 149.34)
+RALLY = (-35.36, 149.17)
 TERRAIN_SETTLE_SECONDS = 4
 NO_ALTITUDE = "\u2014"
 
@@ -43,6 +44,10 @@ def view(name):
 
 def probe(action=""):
     return ask(f"/native/probe?id=mission{action}")
+
+
+def fence_probe(action=""):
+    return ask(f"/native/probe?id=fenceRally{action}")
 
 
 def rows(listed):
@@ -61,6 +66,13 @@ def build_plan():
         time.sleep(0.5)
         probe(f"&action=addWaypoint&latitude={latitude}&longitude={longitude}")
         time.sleep(0.5)
+    # A fence and a rally point, because the Fence and Rally tabs live in the same window that has
+    # produced every staleness defect so far and are read the same way -- once, with no poll.
+    # addFence takes no coordinates; it uses the map centre, which is the same map both sides read.
+    for circle in ("0", "1"):
+        fence_probe(f"&action=addFence&circle={circle}")
+        time.sleep(0.6)
+    fence_probe(f"&action=addRally&latitude={RALLY[0]}&longitude={RALLY[1]}")
     time.sleep(TERRAIN_SETTLE_SECONDS)
 
 
@@ -124,13 +136,36 @@ def survey_comparisons(head, core_items):
     ], theirs
 
 
+# The head draws a fence by its kind, its one-line detail and its vertex count; the core computes
+# all three. Compared as sorted sets rather than row by row: the head keeps one list and the core
+# keeps polygons apart from circles, so pairing them by position would compare a polygon against a
+# circle the moment a plan held two of one kind, and report a disagreement that was only an order.
+def fence_comparisons(head, core):
+    def described(shapes):
+        return sorted(f"{kind} | {detail} | {vertices} vertices"
+                      for kind, detail, vertices in shapes)
+
+    drawn = described((row["kind"], row["detail"], row["vertices"]) for row in head["fence"])
+    computed = described((shape["kindText"], shape["detailText"], len(shape.get("vertices") or []))
+                         for shape in core["polygons"] + core["circles"])
+    return [
+        ("every fence the head draws is one the core computed", drawn, computed),
+        ("rally count", len(head["rally"]), len(core["rallyPoints"])),
+        ("rally positions", sorted(row["position"] for row in head["rally"]),
+         sorted(f"{point['latitude']:.6f}, {point['longitude']:.6f}"
+                for point in core["rallyPoints"])),
+    ]
+
+
 def comparisons():
     head = probe()["state"]
     core = {name: view(name) for name in ("plan", "missionSummary", "terrainProfile", "missionItems")}
     plan, summary, terrain, items = (core[name] for name in
                                      ("plan", "missionSummary", "terrainProfile", "missionItems"))
     survey_checks, core["surveyStats"] = survey_comparisons(head, items["items"])
-    return core, survey_checks + item_comparisons(head["items"], items["items"]) + [
+    core["fences"] = view("fences")
+    fences = fence_comparisons(fence_probe()["state"], core["fences"])
+    return core, fences + survey_checks + item_comparisons(head["items"], items["items"]) + [
         ("plan is ready to save", head["readyToSave"], plan["readiness"]["ready"]),
         ("why it is not ready", head["notReadyReason"], plan["readiness"]["reason"]),
         ("plan is dirty", head["dirty"], plan["dirty"]),
@@ -165,6 +200,11 @@ def worth_comparing(core):
         missing.append("no survey is selected, so its late-arriving numbers cannot be wrong yet")
     elif not survey.get("shotsText"):
         missing.append("the core computed no shot count, which is what the stale panel also showed")
+    fences = core.get("fences") or {}
+    if not (fences.get("polygons") or fences.get("circles")):
+        missing.append("no fence was drawn, so the fence panel cannot be wrong about one")
+    if not fences.get("rallyPoints"):
+        missing.append("no rally point was placed, so that panel cannot be wrong either")
     return missing
 
 
