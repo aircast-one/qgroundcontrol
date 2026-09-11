@@ -1,11 +1,13 @@
 package one.aircast.mapspike
 
 import androidx.activity.compose.BackHandler
+import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.layout.ExperimentalLayoutApi
 import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
@@ -18,7 +20,11 @@ import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.items
 import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.Button
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.VerticalDivider
@@ -38,8 +44,10 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.layout.positionInParent
 import androidx.lifecycle.compose.LocalLifecycleOwner
@@ -89,7 +97,7 @@ private fun GroupBreak() {
     )
 }
 
-@OptIn(ExperimentalLayoutApi::class)
+@OptIn(ExperimentalLayoutApi::class, ExperimentalMaterial3Api::class)
 @Composable
 internal fun MapSpikeScreen(
     mapStyle: String,
@@ -101,6 +109,7 @@ internal fun MapSpikeScreen(
     var loadArmed by remember { mutableStateOf(false) }
     var clearArmed by remember { mutableStateOf(false) }
     var items by remember { mutableStateOf<List<MissionItem>>(emptyList()) }
+    var allItems by remember { mutableStateOf<List<MissionItem>>(emptyList()) }
     var itemCount by remember { mutableIntStateOf(0) }
     var shape by remember { mutableStateOf<List<String>>(emptyList()) }
     var linkStartToHome by remember { mutableStateOf(false) }
@@ -182,6 +191,9 @@ internal fun MapSpikeScreen(
     }
 
     var firstRead by remember { mutableStateOf(true) }
+    var listOpen by remember { mutableStateOf(false) }
+    var centreRequest by remember { mutableIntStateOf(0) }
+    var centreOn by remember { mutableStateOf<TrackPoint?>(null) }
 
     suspend fun refresh() {
         withContext(Dispatchers.Default) {
@@ -189,7 +201,8 @@ internal fun MapSpikeScreen(
             if (plan != null) {
                 MapBridge.markReachable()
             }
-            val nextItems = missionItems(plan)
+            val nextAll = allMissionItems(plan)
+            val nextItems = nextAll.filter { it.placed }
             val nextItemCount = planItemCount(plan)
             val nextShape = planShape(plan)
             val nextLink = linksStartToHome(plan)
@@ -205,6 +218,7 @@ internal fun MapSpikeScreen(
                     fitRequest += 1
                 }
                 firstRead = stillFirstRead(firstRead, plan != null)
+                allItems = nextAll
                 items = nextItems
                 itemCount = nextItemCount
                 shape = nextShape
@@ -283,6 +297,8 @@ internal fun MapSpikeScreen(
             topInsetPx = topOverlayPx,
             fitRequest = fitRequest,
             onFitFailed = { onBridge("Fitting the plan") { false } },
+            centreRequest = centreRequest,
+            centreOn = centreOn,
         )
 
         FilterChip(
@@ -306,6 +322,8 @@ internal fun MapSpikeScreen(
             Surface(
                 color = MaterialTheme.colorScheme.surface.copy(alpha = 0.88f),
                 shape = MaterialTheme.shapes.small,
+                onClick = { listOpen = true },
+                enabled = allItems.isNotEmpty(),
             ) {
                 val ready by MapBridge.bridgeReady.collectAsState()
                 Text(
@@ -675,6 +693,52 @@ internal fun MapSpikeScreen(
                     }
                 }
             }
+        }
+
+        if (listOpen) {
+            ModalBottomSheet(onDismissRequest = { listOpen = false }) {
+                LazyColumn(Modifier.fillMaxWidth().padding(bottom = 24.dp)) {
+                    items(itemRows(allItems), key = { it.index }) { row ->
+                        ItemRowView(row, selected = (selected as? MapHit.Waypoint)?.index == row.index) {
+                            selected = MapHit.Waypoint(row.index)
+                            centreOn = items.firstOrNull { it.index == row.index }
+                                ?.let { TrackPoint(it.latitude, it.longitude) }
+                            centreRequest += 1
+                            follow = false
+                            listOpen = false
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun ItemRowView(row: ItemRow, selected: Boolean, onClick: () -> Unit) {
+    Surface(
+        onClick = onClick,
+        enabled = row.placed,
+        color = if (selected) {
+            MaterialTheme.colorScheme.secondaryContainer
+        } else {
+            MaterialTheme.colorScheme.surface
+        },
+    ) {
+        Row(
+            Modifier.fillMaxWidth().padding(horizontal = 20.dp, vertical = 12.dp),
+            horizontalArrangement = Arrangement.spacedBy(12.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Box(
+                Modifier.size(14.dp).background(
+                    Color(android.graphics.Color.parseColor(row.colour)),
+                    CircleShape,
+                ),
+            )
+            Text(row.number, style = MaterialTheme.typography.labelLarge)
+            Text(row.name, Modifier.weight(1f), style = MaterialTheme.typography.bodyMedium)
+            Text(row.detail, style = MaterialTheme.typography.labelSmall)
         }
     }
 }

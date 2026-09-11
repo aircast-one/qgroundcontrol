@@ -165,6 +165,8 @@ fun VehicleMap(
     cameraBottomPx: Int = 0,
     fitRequest: Int = 0,
     onFitFailed: () -> Unit = {},
+    centreRequest: Int = 0,
+    centreOn: TrackPoint? = null,
 ) {
     val latitude by mapDouble("vehicle.latitude")
     val longitude by mapDouble("vehicle.longitude")
@@ -278,6 +280,12 @@ fun VehicleMap(
         val settings = map?.uiSettings ?: return@LaunchedEffect
         settings.setLogoMargins(LOGO_EDGE_MARGIN_PX, 0, 0, bottomInsetPx + LOGO_EDGE_MARGIN_PX)
         settings.setAttributionMargins(LOGO_EDGE_MARGIN_PX, 0, 0, bottomInsetPx + LOGO_EDGE_MARGIN_PX)
+    }
+
+    LaunchedEffect(centreRequest) {
+        if (centreRequest == 0) return@LaunchedEffect
+        val at = centreOn?.takeIf { isPlottable(it.latitude, it.longitude) } ?: return@LaunchedEffect
+        map?.animateCamera(CameraUpdateFactory.newLatLng(LatLng(at.latitude, at.longitude)))
     }
 
     LaunchedEffect(fitRequest) {

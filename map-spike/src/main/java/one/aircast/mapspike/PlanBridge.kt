@@ -55,6 +55,7 @@ data class MissionItem(
     val routed: Boolean = true,
     val kind: String = "",
     val commandId: Int = 0,
+    val placed: Boolean = true,
 )
 
 fun routeEndsAfter(items: JSONArray?): Int =
@@ -69,29 +70,32 @@ internal fun placed(element: JSONObject, key: String): TrackPoint? {
     return TrackPoint(latitude, longitude).takeIf { isPlottable(latitude, longitude) }
 }
 
-fun missionItems(json: JSONObject?): List<MissionItem> {
+fun allMissionItems(json: JSONObject?): List<MissionItem> {
     val items = planItems(json) ?: return emptyList()
     val endsAfter = routeEndsAfter(items)
     return (0 until items.length()).mapNotNull { index ->
         val element = items.optJSONObject(index) ?: return@mapNotNull null
-        val at = placed(element, "coordinate") ?: return@mapNotNull null
+        val at = placed(element, "coordinate")
 
         MissionItem(
             index = index,
             sequence = element.optInt("sequence", index),
-            latitude = at.latitude,
-            longitude = at.longitude,
+            latitude = at?.latitude ?: Double.NaN,
+            longitude = at?.longitude ?: Double.NaN,
             command = element.optString("name"),
             kind = element.optString("kind"),
             commandId = element.optInt("command"),
             current = element.optBoolean("current"),
             altitude = element.optDouble("altitude", Double.NaN),
             routed = element.optBoolean("flownLeg") && index <= endsAfter,
+            placed = at != null,
             exit = placed(element, "exitCoordinate")
-                ?.takeIf { it.latitude != at.latitude || it.longitude != at.longitude },
+                ?.takeIf { at == null || it.latitude != at.latitude || it.longitude != at.longitude },
         )
     }
 }
+
+fun missionItems(json: JSONObject?): List<MissionItem> = allMissionItems(json).filter { it.placed }
 
 object PlanBridge {
     fun rawItems(): JSONObject? =
