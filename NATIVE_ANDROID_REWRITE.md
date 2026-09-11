@@ -5412,3 +5412,34 @@ producer emits, and a trace explaining that symptom will be internally consisten
 the whole way down. Before reporting a defect found with a file you wrote
 yourself, find the code that writes that file for real and check your file
 against it.
+
+### A withheld field printed as the word "null", 2026-09-12
+
+The core session landed the `specifiesAltitude` gate (`a8f4d8766`), scoped to
+`isSimpleItem` because the property exists only on `SimpleMissionItem` — a bare
+gate would have blanked the launch row and every survey, since a missing
+`Q_PROPERTY` reads as `false` rather than as "no". Re-verified on the handset:
+the `DO_` row carries no altitude, `Mission Start` keeps `0.0 m`.
+
+But the first build after it drew **`Change speed · null`**, literally.
+**Android's `org.json` returns the string `"null"` from `optString` for a JSON
+null.** The moment the core began withholding a figure it did not want to vouch
+for, the head printed the word.
+
+Fixed in `a0b7caa` across all 150 `optString` call sites rather than the handful
+nullable today — which fields the core withholds is the core's business to
+change, and the head should not need a patch each time it does.
+
+**The part worth keeping: this is not catchable in a unit test here.** The JVM
+`org.json` the test source set runs against returns `""` for the same call, so
+the trap exists only on the device. A test asserting the `"null"` behaviour
+fails on the JVM — which is how the divergence turned up, after I wrote one.
+So the tests pin `optText`'s contract, which holds on both platforms, and the
+bug itself is only ever visible on hardware. Green head tests say nothing about
+what the handset draws when the core starts returning nulls.
+
+**A gap this surfaced, not a regression**: a survey shows no altitude in the
+item list. Their gate cannot cause it — a survey is not a simple item, so
+`height()` reaches `fact_number("altitude")` unchanged and gets `None`. The
+survey's altitude is not in the item's facts at all; the head reads it through
+`SurveyBridge` on a separate path.
