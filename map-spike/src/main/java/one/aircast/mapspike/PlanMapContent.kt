@@ -486,6 +486,11 @@ internal fun MapSpikeScreen(
                         }
                     }) { Text("Fence") }
 
+                    addingAfterText(selected, allItems)?.let {
+                        Text(it, style = MaterialTheme.typography.labelSmall)
+                        GroupBreak()
+                    }
+
                     TextButton(onClick = {
                         val at = placeAt()
                         addMissionItem("survey", "Adding survey", at, insertAfter(selected, allItems))

@@ -212,3 +212,30 @@ class SelectionSequenceTest {
         assertNull(selectionSequence(MapHit.FenceVertex(0, 1), plan))
     }
 }
+
+class AddingAfterTextTest {
+    private val plan = listOf(
+        MissionItem(0, 0, 41.0, 44.0, "Mission Start", false, 0.0, kind = "settings"),
+        MissionItem(2, 5, 41.0, 44.0, "Waypoint", false, 50.0, kind = "waypoint"),
+    )
+
+    @Test
+    fun `the line names the sequence the operator sees on the marker`() {
+        assertEquals("Adding after #5", addingAfterText(MapHit.Waypoint(2), plan))
+    }
+
+    @Test
+    fun `with nothing selected the insertion point is the end and needs no line`() {
+        assertNull(addingAfterText(null, plan))
+    }
+
+    @Test
+    fun `a fence vertex does not move the insertion point, so it says nothing`() {
+        assertNull(addingAfterText(MapHit.FenceVertex(0, 1), plan))
+    }
+
+    @Test
+    fun `a selection the plan no longer holds says nothing rather than a stale number`() {
+        assertNull(addingAfterText(MapHit.Waypoint(9), plan))
+    }
+}

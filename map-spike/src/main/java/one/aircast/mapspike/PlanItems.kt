@@ -47,3 +47,9 @@ fun selectionSequence(selected: MapHit?, items: List<MissionItem>): Int? {
     return items.firstOrNull { it.index == index }?.sequence
 }
 
+fun addingAfterText(selected: MapHit?, items: List<MissionItem>): String? {
+    val index = (selected as? MapHit.Waypoint)?.index ?: return null
+    val item = items.firstOrNull { it.index == index } ?: return null
+    return "Adding after #${item.sequence}"
+}
+
