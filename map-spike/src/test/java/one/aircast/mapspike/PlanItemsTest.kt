@@ -152,3 +152,35 @@ class WorthListingTest {
         assertFalse(worthListing(emptyList()))
     }
 }
+
+class InsertAfterTest {
+    private fun item(index: Int) =
+        MissionItem(index, index, 41.0, 44.0, "Waypoint", false, 50.0, kind = "waypoint")
+
+    private val plan = listOf(item(0), item(1), item(2))
+
+    @Test
+    fun `with nothing selected an item goes on the end`() {
+        assertEquals(AT_END, insertAfter(null, plan))
+    }
+
+    @Test
+    fun `a new item follows the one the operator selected, as it does in QGC`() {
+        assertEquals(2, insertAfter(MapHit.Waypoint(1), plan))
+    }
+
+    @Test
+    fun `selecting the last item still means the end, not a place past it`() {
+        assertEquals(AT_END, insertAfter(MapHit.Waypoint(2), plan))
+    }
+
+    @Test
+    fun `a selection the plan no longer holds does not name a position`() {
+        assertEquals(AT_END, insertAfter(MapHit.Waypoint(9), plan))
+    }
+
+    @Test
+    fun `a selection that is not an item does not move the insertion point`() {
+        assertEquals(AT_END, insertAfter(MapHit.SurveyVertex(1, 0), plan))
+    }
+}

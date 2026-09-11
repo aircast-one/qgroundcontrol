@@ -274,7 +274,10 @@ internal fun MapSpikeScreen(
             surveys = surveyList,
             editable = true,
             onAdd = { lat, lon ->
-                addMissionItem("waypoint", "Adding a waypoint", TrackPoint(lat, lon))
+                addMissionItem(
+                    "waypoint", "Adding a waypoint", TrackPoint(lat, lon),
+                    insertAfter(selected, allItems),
+                )
             },
             onMove = { hit, lat, lon ->
                 onBridge {

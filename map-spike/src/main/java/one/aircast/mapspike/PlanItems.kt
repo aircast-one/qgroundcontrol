@@ -35,3 +35,10 @@ internal fun itemDetail(item: MissionItem): String = listOfNotNull(
 fun worthListing(items: List<MissionItem>): Boolean = items.any { it.index != HOME_ITEM }
 
 fun rowAt(rows: List<ItemRow>, index: Int): ItemRow? = rows.firstOrNull { it.index == index }
+
+fun insertAfter(selected: MapHit?, items: List<MissionItem>): Int {
+    val index = (selected as? MapHit.Waypoint)?.index ?: return AT_END
+    if (items.none { it.index == index }) return AT_END
+    return if (index + 1 >= items.size) AT_END else index + 1
+}
+
