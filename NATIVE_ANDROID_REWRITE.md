@@ -4678,8 +4678,14 @@ Phases 0 and 1 are done, the library target was free, and the thread separation 
    airframes. Book hardware time before writing code.
 2. **Map editing.** Phase 4 is the one place Qt does real work MapLibre does not replace. If the
    schedule slips, it slips here. Same risk as macOS, different SDK.
-3. **The bridge has no tests.** Every native screen depends on it and nothing guards it. This is the
-   one item that should be fixed before Phase 3, not after.
+3. ~~**The bridge has no tests.**~~ **It has had 121 since before this plan was written.** This risk
+   was stale on the day it was recorded: `ff1327d5d` is titled "Add bridge unit tests and the Android
+   migration plan" and added both in the same commit. `test/Bridge/` holds 43 `QGCBridgeCoreTest`
+   cases over path resolution, fact reads and writes, unit conversion, accessor calls, projected
+   reads, the plan roots and refusal reporting, plus 78 `QGCCoreCTest` cases; both are registered in
+   `UnitTestList.cc` and neither appears in 58 recorded suite runs' flake history. Left in place
+   rather than deleted, because "fix this before Phase 3" sent me looking for work that was already
+   done, and the next person deserves to know it was never outstanding.
 4. **Blocking calls from the Android main thread.** `runOnQtThread` uses a `BlockingQueuedConnection`
    when called off the Qt thread. A Qt thread that is itself waiting on the Android main thread would
    deadlock. Not observed, not prevented.
