@@ -416,7 +416,7 @@ internal fun MapSpikeScreen(
                             TextButton(onClick = {
                                 scope.launch {
                                     val switched = withContext(Dispatchers.Default) {
-                                        VehicleBridge.askFor(entry.index)
+                                        VehicleBridge.askFor(entry.id)
                                     }
                                     busy = if (switched) {
                                         "Asked for vehicle ${entry.id}"

@@ -13,11 +13,14 @@ class VehiclePickerTest {
         )
 
     @Test
-    fun `each connected vehicle is an entry at its list index`() {
+    fun `each connected vehicle is an entry named by its id`() {
         val entries = vehicleEntries(list(1, 2), activeId = 2)
 
-        assertEquals(listOf(0, 1), entries.map { it.index })
-        assertEquals(listOf(1, 2), entries.map { it.id })
+        assertEquals(
+            "the id is what selects an aircraft; a list position can shift between read and write",
+            listOf(1, 2),
+            entries.map { it.id },
+        )
     }
 
     @Test

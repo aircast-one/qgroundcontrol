@@ -6,7 +6,7 @@ import org.mavlink.qgroundcontrol.QGCBridge
 private const val VEHICLES_ROOT = "vehicles"
 private const val VEHICLE_LIST = "$VEHICLES_ROOT.vehicles"
 
-data class VehicleEntry(val index: Int, val id: Int, val active: Boolean)
+data class VehicleEntry(val id: Int, val active: Boolean)
 
 fun vehicleEntries(json: JSONObject?, activeId: Int): List<VehicleEntry> {
     val elements = json?.optJSONArray("elements") ?: return emptyList()
@@ -14,7 +14,7 @@ fun vehicleEntries(json: JSONObject?, activeId: Int): List<VehicleEntry> {
     return (0 until elements.length()).mapNotNull { index ->
         val element = elements.optJSONObject(index) ?: return@mapNotNull null
         val id = element.optInt("id", -1).takeIf { it >= 0 } ?: return@mapNotNull null
-        VehicleEntry(index = index, id = id, active = id == activeId)
+        VehicleEntry(id = id, active = id == activeId)
     }
 }
 
@@ -22,14 +22,9 @@ object VehicleBridge {
     var lastRefusal: String? = null
         private set
 
-    fun askFor(index: Int): Boolean =
+    fun askFor(id: Int): Boolean =
         runCatching {
-            val answer = JSONObject(
-                QGCBridge.set(
-                    "$VEHICLES_ROOT.activeVehicle",
-                    "{\"value\":\"@$VEHICLE_LIST.$index\"}",
-                ),
-            )
+            val answer = JSONObject(QGCBridge.invoke("vehicles.setActive", "[$id]"))
             lastRefusal = answer.optString("reason").takeIf { it.isNotBlank() }
             answer.optBoolean("ok")
         }.onFailure { lastRefusal = "bridge threw: ${it.message}" }.getOrDefault(false)
