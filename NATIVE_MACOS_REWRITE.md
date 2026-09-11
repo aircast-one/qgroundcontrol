@@ -1692,3 +1692,43 @@ nothing and `strings` on the dylib returns nothing, and both of those are the in
 blind rather than the translations being absent — the third false negative from that family
 today. The launcher now forwards trailing arguments so a single instance can run in another
 locale via `-AppleLanguages`, which sets NSArgumentDomain and persists nothing.
+
+### Only one of the three locale defects is real, and a static initialiser is why (2026-09-11)
+
+Verified on a running Japanese instance (`build-run.sh -AppleLanguages '(ja)'`), which is the
+first time any of this was exercised rather than reasoned about. Three results, and two of them
+contradict what both sessions believed:
+
+    plan.missionController.complexMissionItemNames -> ['Survey', 'Corridor Scan', 'Structure Scan']
+    the inserted survey item's name                -> 調査
+    surveys [4], surveyOverlays 1, SurveyPolygon rendering
+
+The list is English while the item is Japanese, in the same process, at the same moment. The
+cause is in two lines of QGC:
+
+    const QString SurveyComplexItem::name(SurveyComplexItem::tr("Survey"));   // static
+    QString commandName() const final { return tr("Survey"); }                // per call
+
+The static is initialised before `main()`, and therefore before `QGCApplication` installs any
+translator, so it holds the source string for the life of the process. `commandName()` is
+evaluated on each call, after the translators are in, so it is translated. **Everything keyed on
+`::name` is permanently English; only what is keyed on `commandName()` moves with the locale.**
+
+So of the three defects attributed to one cause:
+
+- **Inserting a complex item works.** `complexMissionItemNames` is built from the statics, the
+  core passes its English literal, and `insertComplexMissionItem` compares against the same
+  statics. A survey was inserted in the Japanese run above. The core's note in `actions.rs` says
+  this fails outside English; it does not.
+- **The pattern menu keeps its glyphs.** It is driven by `complexMissionItemNames`, which is
+  English, so `byComplexName` matches and the symbol resolves. This stream reported that as
+  broken; it is not.
+- **The geometry lookup really was broken**, because it alone used the item's `name`, which is
+  `commandName()` and therefore translated. That is `eddf72d1f`, and the Japanese run is the
+  evidence: the polygon draws.
+
+Two sessions each reasoned from "the name is `tr()`, therefore the locale breaks it" and neither
+checked which of two names a given path reads. The reasoning was sound and applied to the wrong
+half of a pair — the same failure as the duty-cycle figure and the flick mechanism, in a
+different costume. A single run in a locale that actually translates these strings settled all
+three in under a minute.
