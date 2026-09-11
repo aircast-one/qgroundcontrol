@@ -5493,3 +5493,42 @@ The removal message itself was not seen on screen. It clears inside a single
 uiautomator dump, and a plan with no complex item cannot distinguish the two
 numbers anyway, so the discriminating check was the survey case already verified
 for the other three labels.
+
+### Three setup pages PX4 has not got, 2026-09-12
+
+Raised by the macOS session against their own head; checked here before passing
+it on, and the page they named is not one of them. **PX4 does have a frame
+page** — `PX4AutoPilotPlugin.cc:66` constructs `AirframeComponent`. The PX4
+files are named Airframe, so a search for `*Frame*` finds only the APM ones. The
+same shape as the `tr()` trap: the name searched for is not the name the other
+side uses.
+
+What the plugins actually construct:
+
+- **PX4**: airframe, radio, flightModes, sensors, power, actuator, motor,
+  safety, tuning, esp8266, syslink
+- **APM**: airframe, radio, flightModes, sensors, power, motor, safety, follow,
+  heli, tuning, camera, lights, subFrame, esp8266, remoteSupport
+
+So **Camera, Lights and Remote Support** are the APM-only pages; Frame and
+Tuning exist on both.
+
+`setup.rs` `PAGES` is a flat constant with no firmware in it, while
+`sections_for` immediately below it already takes a `px4` flag. That asymmetry
+is the defect. On this head it surfaces through `SetupScreen`'s fallback notice,
+"<page> is set up on the desktop", shown whenever `parameterSections` is false —
+true for Frame and Tuning on PX4, **false for Camera and Lights**, where it
+points the operator at a page QGC does not offer for their firmware. Remote
+Support is worse: this head dispatches it to a native screen on the page name
+alone, so on PX4 it would open a screen for a feature the firmware lacks.
+
+The core's comment at `setup.rs:99` refuses to answer "does a head have a screen
+for this page", and that refusal is correct — it is the `completes` lesson. But
+"does this firmware offer this page at all" is vehicle state, not head
+capability, so it belongs to the core under the same rule. Reported; not
+changed here.
+
+**Read from source, not observed.** The connected sim is ArduPilot and MockLink
+is Debug-only, so neither head can currently put a PX4 vehicle in front of this
+screen. What is testable here is the regression direction — that no APM page
+disappears — and that check runs on this rig.
