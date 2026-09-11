@@ -106,12 +106,14 @@ find)
 text)
     hierarchy | python3 -c '
 import re, sys, html
-seen = dict.fromkeys(
+# Every value, in screen order. Collapsing repeats hid a rate that two rows
+# shared and read as a missing one, four separate times.
+found = [
     html.unescape(m)
     for m in re.findall(r"(?:text|content-desc)=\"([^\"]*)\"", sys.stdin.read())
     if m.strip()
-)
-print(" | ".join(seen))
+]
+print(" | ".join(found))
 '
     ;;
 pick)
