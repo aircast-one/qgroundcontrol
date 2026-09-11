@@ -77,24 +77,30 @@ fn flag_of(item: &Value, key: &str) -> bool {
     item.get(key).and_then(Value::as_bool) == Some(true)
 }
 
-fn flown(items: &[Value]) -> impl Iterator<Item = &Value> {
-    let ends = items.iter().position(|item| flag_of(item, "endsRoute"));
-    let reached = match ends {
+fn reached(items: &[Value]) -> &[Value] {
+    match items.iter().position(|item| flag_of(item, "endsRoute")) {
         Some(at) => &items[..=at],
         None => items,
-    };
-    reached.iter().filter(|item| flag_of(item, "flownLeg"))
+    }
+}
+
+fn flown(items: &[Value]) -> impl Iterator<Item = &Value> {
+    reached(items).iter().filter(|item| flag_of(item, "flownLeg"))
+}
+
+fn leg_metres(item: &Value, previous: Option<(f64, f64)>) -> Option<(f64, (f64, f64))> {
+    let entry = item.get("coordinate").and_then(point_of)?;
+    let pattern = item.get("patternDistance").and_then(Value::as_f64).unwrap_or(0.0);
+    let leg = previous.map_or(0.0, |from| crate::surveygrid::distance_between(from, entry));
+    let exit = item.get("exitCoordinate").and_then(point_of).unwrap_or(entry);
+    Some((leg + pattern, exit))
 }
 
 pub fn flown_distance(items: &[Value]) -> f64 {
-    flown(items).fold((0.0, None), |(total, previous), item| {
-            let pattern = item.get("patternDistance").and_then(Value::as_f64).unwrap_or(0.0);
-            let Some(entry) = item.get("coordinate").and_then(point_of) else {
-                return (total, previous);
-            };
-            let leg = previous.map_or(0.0, |from| crate::surveygrid::distance_between(from, entry));
-            let exit = item.get("exitCoordinate").and_then(point_of).unwrap_or(entry);
-            (total + leg + pattern, Some(exit))
+    flown(items)
+        .fold((0.0, None), |(total, previous), item| match leg_metres(item, previous) {
+            Some((metres, exit)) => (total + metres, Some(exit)),
+            None => (total, previous),
         })
         .0
 }
@@ -128,15 +134,41 @@ pub fn flown_seconds(items: &[Value], hover: f64, cruise: f64, ascent: f64, mult
     if vtol {
         return None;
     }
-    let speed = match multirotor {
+    let base = match multirotor {
         true => hover,
         false => cruise,
     };
-    if !speed.is_finite() || speed <= 0.0 {
+    if !base.is_finite() || base <= 0.0 {
         return None;
     }
-    let delays: f64 = flown(items).filter_map(|item| item.get("extraSeconds").and_then(Value::as_f64)).filter(|extra| extra.is_finite()).sum();
-    Some(flown_distance(items) / speed + delays + climb(items, ascent, multirotor))
+    let flying = reached(items)
+        .iter()
+        .enumerate()
+        .fold((hover, cruise, 0.0, None), |(hover, cruise, total, previous), (index, item)| {
+            if index == 0 {
+                return (hover, cruise, total, leg_metres(item, previous).map(|(_, exit)| exit).or(previous));
+            }
+            let speed = match multirotor {
+                true => hover,
+                false => cruise,
+            };
+            let (leg, exit) = match flag_of(item, "flownLeg") {
+                true => match leg_metres(item, previous) {
+                    Some((metres, exit)) => (metres / speed, Some(exit)),
+                    None => (0.0, previous),
+                },
+                false => (0.0, previous),
+            };
+            let delay = item.get("extraSeconds").and_then(Value::as_f64).filter(|seconds| seconds.is_finite()).unwrap_or(0.0);
+            let spent = total + leg + delay;
+            match item.get("speedChange").and_then(Value::as_f64).filter(|speed| speed.is_finite() && *speed > 0.0) {
+                Some(changed) if multirotor => (changed, cruise, spent, exit),
+                Some(changed) => (hover, changed, spent, exit),
+                None => (hover, cruise, spent, exit),
+            }
+        })
+        .2;
+    Some(flying + climb(items, ascent, multirotor))
 }
 
 fn climb(items: &[Value], ascent: f64, multirotor: bool) -> f64 {
@@ -349,6 +381,48 @@ mod tests {
 
     fn at(latitude: f64, longitude: f64) -> Value {
         json!({ "latitude": latitude, "longitude": longitude })
+    }
+
+    #[test]
+    fn a_speed_the_plan_sets_applies_to_the_legs_after_it_and_not_before() {
+        let leg = |sequence: i64, longitude: f64| json!({ "kind": "waypoint", "sequence": sequence, "coordinate": at(50.0, longitude), "flownLeg": true });
+        let change = |sequence: i64, speed: f64| json!({ "kind": "command", "sequence": sequence, "flownLeg": false, "speedChange": speed });
+
+        let steady = vec![
+            json!({ "kind": "settings", "sequence": 0, "coordinate": at(50.0, 30.0), "flownLeg": true }),
+            leg(1, 30.0100),
+            leg(2, 30.0200),
+        ];
+        let metres = flown_distance(&steady);
+        let at_ten = flown_seconds(&steady, 5.0, 10.0, 3.0, false, false).unwrap();
+        assert!((at_ten - metres / 10.0).abs() < 1e-6, "with no speed item the whole plan flies at the cruise speed from settings");
+
+        let halved = vec![
+            json!({ "kind": "settings", "sequence": 0, "coordinate": at(50.0, 30.0), "flownLeg": true }),
+            leg(1, 30.0100),
+            change(2, 5.0),
+            leg(3, 30.0200),
+        ];
+        let mixed = flown_seconds(&halved, 5.0, 10.0, 3.0, false, false).unwrap();
+        assert!(mixed > at_ten, "halving the speed halfway can only make the mission longer, and answering the settings speed for the whole plan was the silent version of this");
+        let first = crate::surveygrid::distance_between((50.0, 30.0), (50.0, 30.0100));
+        let second = crate::surveygrid::distance_between((50.0, 30.0100), (50.0, 30.0200));
+        assert!((mixed - (first / 10.0 + second / 5.0)).abs() < 1e-6, "the leg before the change keeps the old speed - QGC applies a speed item to the next item, not its own");
+
+        let rotor = flown_seconds(&halved, 5.0, 10.0, 3.0, true, false).unwrap();
+        assert!((rotor - (first / 5.0 + second / 5.0)).abs() < 1e-6, "on a multirotor the same item sets the hover speed, because that is the regime every leg is flown in");
+    }
+
+    #[test]
+    fn a_delay_on_an_item_that_is_not_a_leg_is_still_time_the_mission_takes() {
+        let plan = vec![
+            json!({ "kind": "settings", "sequence": 0, "coordinate": at(50.0, 30.0), "flownLeg": true, "extraSeconds": 99.0 }),
+            json!({ "kind": "waypoint", "sequence": 1, "coordinate": at(50.0, 30.0100), "flownLeg": true }),
+            json!({ "kind": "command", "sequence": 2, "flownLeg": false, "extraSeconds": 30.0 }),
+        ];
+        let flying = flown_distance(&plan) / 10.0;
+        let total = flown_seconds(&plan, 5.0, 10.0, 3.0, false, false).unwrap();
+        assert!((total - (flying + 30.0)).abs() < 1e-6, "a loiter or a camera pause is time the aircraft spends, and it hangs on items that are not legs; the settings entry's own delay is skipped the way QGC skips item zero");
     }
 
     #[test]

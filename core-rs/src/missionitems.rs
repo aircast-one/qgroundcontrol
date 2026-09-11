@@ -13,7 +13,7 @@ pub const DEPS: &[&str] = &[
     "settings.unitsSettings.verticalDistanceUnits",
 ];
 
-const FIELDS: &str = "additionalTimeDelay,minAMSLAltitude,maxAMSLAltitude,sequenceNumber,abbreviation,commandName,commandDescription,isCurrentItem,specifiesCoordinate,isStandaloneCoordinate,specifiesAltitudeOnly,isSimpleItem,isTakeoffItem,isLandCommand,isSurveyItem,homePosition,coordinate,amslEntryAlt,altDifference,azimuth,distance,distanceFromStart,readyForSaveState,readyForSaveMessage,dirty,altitude,altitudeMode,isIncomplete,exitCoordinate,exitCoordinateSameAsEntry,commandName,command,category,specifiesAltitude,cameraShots,complexDistance,plannedHomePositionAltitude";
+const FIELDS: &str = "specifiedFlightSpeed,additionalTimeDelay,minAMSLAltitude,maxAMSLAltitude,sequenceNumber,abbreviation,commandName,commandDescription,isCurrentItem,specifiesCoordinate,isStandaloneCoordinate,specifiesAltitudeOnly,isSimpleItem,isTakeoffItem,isLandCommand,isSurveyItem,homePosition,coordinate,amslEntryAlt,altDifference,azimuth,distance,distanceFromStart,readyForSaveState,readyForSaveMessage,dirty,altitude,altitudeMode,isIncomplete,exitCoordinate,exitCoordinateSameAsEntry,commandName,command,category,specifiesAltitude,cameraShots,complexDistance,plannedHomePositionAltitude";
 
 const READY_TO_SAVE: i64 = 0;
 const AWAITING_TERRAIN: i64 = 1;
@@ -120,6 +120,7 @@ fn item(read: &Value, index: i64, vertical: &Unit, imperial: bool) -> Value {
         "altitudeMode": number(read, "altitudeMode").map(|mode| mode as i64),
         "altitudeAmsl": number(read, "amslEntryAlt"),
         "extraSeconds": number(read, "additionalTimeDelay"),
+        "speedChange": number(read, "specifiedFlightSpeed"),
         "altitudeAmslLowest": number(read, "minAMSLAltitude"),
         "altitudeAmslHighest": number(read, "maxAMSLAltitude"),
         "specifiesCoordinate": flag(read, "specifiesCoordinate"),

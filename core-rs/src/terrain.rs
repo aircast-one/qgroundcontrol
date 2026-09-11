@@ -5,7 +5,7 @@ use crate::router::Backend;
 
 pub const DEPS: &[&str] = &["plan.missionController.missionItemCount", "plan.missionController.containsItems", "plan.dirty", "vehicles.activeVehicleAvailable", "plan.missionController@recalcTerrainProfile"];
 
-const FIELDS: &str = "specifiesCoordinate,specifiesAltitudeOnly,distanceFromStart,amslEntryAlt,terrainAltitude,terrainCollision,sequenceNumber,complexDistance";
+const FIELDS: &str = "specifiesCoordinate,specifiesAltitudeOnly,altitudeMode,distanceFromStart,amslEntryAlt,terrainAltitude,terrainCollision,sequenceNumber,complexDistance";
 
 #[derive(Debug, PartialEq, Clone)]
 pub struct Point {
@@ -47,6 +47,21 @@ pub fn clearance_complete(profile: &Profile) -> bool {
     profile.min_clearance.is_some() && profile.unknown_terrain == 0
 }
 
+const TERRAIN_FRAME: i64 = 4;
+
+fn drawable(item: &Value) -> bool {
+    let flag = |key: &str| item.get(key).and_then(Value::as_bool).unwrap_or(false);
+    if flag("specifiesCoordinate") {
+        return true;
+    }
+    if !flag("specifiesAltitudeOnly") {
+        return false;
+    }
+    let terrain_framed = item.get("altitudeMode").and_then(Value::as_i64) == Some(TERRAIN_FRAME);
+    let ground_known = item.get("terrainAltitude").and_then(Value::as_f64).is_some_and(f64::is_finite);
+    !terrain_framed || ground_known
+}
+
 pub fn points(model: &Value) -> Vec<Point> {
     model
         .get("elements")
@@ -54,7 +69,7 @@ pub fn points(model: &Value) -> Vec<Point> {
         .map(|elements| {
             elements
                 .iter()
-                .filter(|e| ["specifiesCoordinate", "specifiesAltitudeOnly"].iter().any(|key| e.get(key).and_then(Value::as_bool).unwrap_or(false)))
+                .filter(|e| drawable(e))
                 .filter_map(|e| {
                     let number = |key: &str| e.get(key).and_then(Value::as_f64).filter(|v| v.is_finite());
                     Some(Point {
@@ -278,6 +293,14 @@ mod tests {
         assert_eq!(listed.iter().map(|p| p.sequence).collect::<Vec<_>>(), vec![0, 1, 2], "ArduPilot declares MAV_CMD_NAV_TAKEOFF specifiesCoordinate false and specifiesAltitudeOnly true, so filtering on a coordinate alone drops the climb from the profile on every APM plan");
         assert_eq!(listed[1].distance, 0.0, "the climb covers no ground, so it shares the launch point's place on the axis rather than being given width it does not have");
         assert_eq!(listed[1].mission_altitude, 150.0);
+
+        let terrain_framed = json!({ "elements": [
+            { "specifiesCoordinate": true, "sequenceNumber": 0, "distanceFromStart": 0.0, "amslEntryAlt": 585.0, "terrainAltitude": 585.0 },
+            { "specifiesCoordinate": false, "specifiesAltitudeOnly": true, "altitudeMode": 4, "sequenceNumber": 1, "distanceFromStart": 0.0, "amslEntryAlt": 50.0 },
+            { "specifiesCoordinate": true, "sequenceNumber": 2, "distanceFromStart": 500.0, "amslEntryAlt": 660.0, "terrainAltitude": 640.0 },
+        ] });
+        let drawn = points(&terrain_framed);
+        assert_eq!(drawn.iter().map(|p| p.sequence).collect::<Vec<_>>(), vec![0, 2], "a terrain-framed altitude is param7 plus the ground under the item, and an item with no place has no ground to query - so its amslEntryAlt is the bare relative height and putting it on an AMSL axis drags the band down by the height of the hill");
 
         let at_launch: Vec<f64> = listed.iter().filter(|p| p.distance == 0.0).map(|p| p.mission_altitude).collect();
         assert_eq!(at_launch, vec![100.0, 150.0], "two heights at one place is what a vertical climb is; without the second the head interpolates from the ground straight to the first waypoint and draws a diagonal the aircraft never flies");
