@@ -23,12 +23,6 @@ pub fn run(backend: &dyn Backend, path: &str, args: &str) -> Value {
     }
 }
 
-// What may be inserted next is recomputed only when the plan view selects an item, so a head that
-// never selects one reads whatever the controller was constructed with. The insert point is chosen
-// here before the question is asked, which is the same thing the plan view does when a user clicks.
-// QML asks about the selected item and inserts after it, so the question belongs to the slot
-// before the insertion point. Asking at the insertion point asks about the item that will be
-// displaced, which is a different item with a different answer.
 fn point_at(backend: &dyn Backend, index: i64) -> Option<i64> {
     let count = item_count(backend)?;
     if count <= 0 {
@@ -55,18 +49,12 @@ fn insert(backend: &dyn Backend, args: &str) -> Value {
         return json!({ "ok": false, "reason": "mission.insert takes a kind, a latitude, a longitude and an index" });
     };
     let Some(kind) = lookup(named) else {
-        // Refusing a kind and never having heard of it are different answers. QGC has item types
-        // this catalogue does not list, and a head holding one needs to know it can insert it
-        // directly rather than that the plan turned it down.
         return json!({ "ok": false, "unknown": named, "reason": format!("the core has no {named} in its catalogue, so this one has to be inserted directly") });
     };
     let index = args.get(3).and_then(Value::as_i64).unwrap_or(-1);
     let Some(held) = item_count(backend).filter(|count| *count > 0) else {
         return json!({ "ok": false, "reason": "the plan did not say how many items it holds" });
     };
-    // Index 0 would put an item before the plan's own settings entry, which every later read of
-    // visualItems[0] assumes is there. QmlObjectListModel::insert warns on an index past the end
-    // and inserts anyway.
     if index >= 0 && (index < 1 || index > held) {
         return json!({ "ok": false, "reason": format!("this plan has no place {index} to put an item") });
     }
@@ -78,8 +66,6 @@ fn insert(backend: &dyn Backend, args: &str) -> Value {
         return json!({ "ok": false, "reason": reason, "refused": kind.id, "atSequence": at_sequence });
     }
     let at = json!({ "latitude": latitude, "longitude": longitude, "altitude": 0.0 });
-    // The controller recomputes what may be inserted next from whichever item the plan view has
-    // selected, so an insert that does not select what it added leaves the next answer stale.
     let call: Vec<Value> = match kind.complex_name {
         Some(name) => vec![json!(name), at, json!(index), json!(true)],
         None => vec![at, json!(index), json!(true)],
@@ -88,9 +74,6 @@ fn insert(backend: &dyn Backend, args: &str) -> Value {
     if answered.get("ok").and_then(Value::as_bool) != Some(true) {
         return json!({ "ok": false, "reason": answered.get("reason").and_then(Value::as_str).unwrap_or("the plan refused the item").to_string() });
     }
-    // These invokables return void, so the bridge answers ok whether or not anything was added.
-    // Without counting, a failed insert leaves the selection on an item the operator already had,
-    // and the rollback below would delete it.
     if item_count(backend) != Some(held + 1) {
         return json!({ "ok": false, "reason": "the plan did not grow, so nothing was added" });
     }
@@ -106,9 +89,6 @@ fn insert(backend: &dyn Backend, args: &str) -> Value {
     }
 }
 
-// Index 0 is the mission settings item, which holds the planned home position and is not something
-// an operator deletes; the plan view offers no way to. Removing it leaves a plan the controller
-// cannot describe rather than a shorter one.
 const SETTINGS_ITEM: i64 = 0;
 
 fn remove(backend: &dyn Backend, args: &str) -> Value {
@@ -133,10 +113,6 @@ fn remove(backend: &dyn Backend, args: &str) -> Value {
     }
 }
 
-// guidedModeOrbit takes a radius whose sign is the turn direction and an altitude above sea level.
-// A head asked to compose that is holding two pieces of vehicle knowledge it has no way to check,
-// and the macOS head sent zero for both to a flying aircraft. It says where, how wide, which way
-// round and how far above the launch point; the sign and the sea level conversion happen here.
 fn orbit(backend: &dyn Backend, args: &str) -> Value {
     let args: Value = serde_json::from_str(args).unwrap_or(Value::Null);
     let Some(args) = args.as_array() else {
@@ -182,9 +158,6 @@ fn orbit(backend: &dyn Backend, args: &str) -> Value {
     }
 }
 
-// activeVehicle is a pointer property, so it cannot be set by value. The bridge writes one by
-// @path, and the path is an index into a list, so a head asking by id would otherwise have to find
-// the index itself and hold it across a read and a write.
 fn activate(backend: &dyn Backend, args: &str) -> Value {
     let args: Value = serde_json::from_str(args).unwrap_or(Value::Null);
     let Some(wanted) = args.as_array().and_then(|args| args.first()).and_then(Value::as_i64) else {
@@ -212,9 +185,6 @@ fn inserted_index(backend: &dyn Backend) -> Option<i64> {
     serde_json::from_str::<Value>(&backend.get("plan.missionController.currentPlanViewVIIndex")).ok().and_then(|v| v.get("value").and_then(Value::as_i64)).filter(|index| *index > 0)
 }
 
-// An item the plan draws with a shape is useless without one, and a takeoff that does not know where
-// the vehicle launches from is worse than useless, so a shape that cannot be written takes the item
-// with it rather than leaving a survey with no area for an operator to find later.
 fn shape(backend: &dyn Backend, kind: &crate::missionkinds::Kind, index: i64, latitude: f64, longitude: f64) -> Result<(), String> {
     if kind.id == "takeoff" {
         let at = json!({ "latitude": latitude, "longitude": longitude, "altitude": 0.0 });
@@ -284,8 +254,6 @@ mod tests {
         }
         fn invoke(&self, path: &str, args: &str) -> String {
             self.calls.lock().unwrap().push((path.to_string(), args.to_string()));
-            // These invokables return void and the bridge answers ok either way, so a stub that
-            // never grows the plan is a stub of a plan that never accepts anything.
             if path.contains("insert") && self.answer.get("ok").and_then(Value::as_bool) == Some(true) {
                 *self.count.lock().unwrap() += 1;
             }
@@ -343,9 +311,6 @@ mod tests {
 
     #[test]
     fn in_a_state_that_wants_a_takeoff_first_a_takeoff_is_the_one_thing_accepted() {
-        // Each call is asked in the same state, because this stub's flags do not move. What a real
-        // controller answers after a takeoff has gone in is a different question and belongs to a
-        // test with a real controller behind it; asserting it here would pin the fixture.
         let plan = Plan::new(empty_ground_mission());
         assert_eq!(run(&plan, "mission.insert", "[\"takeoff\", 47.0, 8.0, -1]")["ok"], true);
         let refused = Plan::new(empty_ground_mission());

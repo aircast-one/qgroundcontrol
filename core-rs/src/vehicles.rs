@@ -32,8 +32,6 @@ pub fn vehicles_view(backend: &dyn Backend, _args: &[String]) -> Value {
         "class": "Vehicles",
         "count": listed.len(),
         "activeId": active,
-        // A head that draws one vehicle and never says which is safe with one aircraft and unsafe
-        // with two, because an arm or a return reaches whichever is active and nothing says which.
         "ambiguous": listed.len() > 1,
         "vehicles": listed,
     })

@@ -1100,6 +1100,24 @@ QJsonObject snapshotOfEveryView(const char *const *paths, int count)
     return flat;
 }
 
+QStringList fieldsAlwaysNull(const QList<QJsonObject> &states)
+{
+    QStringList null;
+    if (states.isEmpty()) {
+        return null;
+    }
+    for (auto it = states.first().begin(); it != states.first().end(); ++it) {
+        const bool everywhere = std::all_of(states.cbegin(), states.cend(), [&it](const QJsonObject &state) {
+            return state.value(it.key()).isNull();
+        });
+        if (everywhere && it.value().isNull()) {
+            null.append(it.key());
+        }
+    }
+    null.sort();
+    return null;
+}
+
 QStringList fieldsThatNeverVaried(const QList<QJsonObject> &states)
 {
     QStringList unchanged;
@@ -1297,6 +1315,7 @@ void QGCCoreCTest::_viewShapesMatchTheRecordedContract()
     observed.removeDuplicates();
     observed.sort();
     recorded.insert(QStringLiteral("_observed"), QJsonArray::fromStringList(observed));
+    recorded.insert(QStringLiteral("_alwaysNull"), QJsonArray::fromStringList(fieldsAlwaysNull(states)));
     const QByteArray current = QJsonDocument(recorded).toJson(QJsonDocument::Indented);
 
     const QString fixture = QFileInfo(QString::fromUtf8(__FILE__)).dir().filePath(QStringLiteral("fixtures/view-shapes.json"));
@@ -1330,6 +1349,21 @@ void QGCCoreCTest::_viewShapesMatchTheRecordedContract()
             stopped.append(field.toString());
         }
     }
+    QSet<QString> allowedNull;
+    for (const QJsonValue &field : expected.value(QStringLiteral("_alwaysNull")).toArray()) {
+        allowedNull.insert(field.toString());
+    }
+    QStringList neverAnswered;
+    for (const QJsonValue &field : recorded.value(QStringLiteral("_alwaysNull")).toArray()) {
+        if (!allowedNull.contains(field.toString())) {
+            neverAnswered.append(field.toString());
+        }
+    }
+    QVERIFY2(neverAnswered.isEmpty(),
+             qPrintable(QStringLiteral("these answered null with no vehicle, with one connected and with a plan on it. A field that is never anything "
+                                       "is usually a field read under a name its producer does not use, which is how two of this week's defects got in: %1")
+                            .arg(neverAnswered.mid(0, 12).join(QStringLiteral(", ")))));
+
     QVERIFY2(stopped.isEmpty(),
              qPrintable(QStringLiteral("these read the same with no vehicle, with one connected and with a plan on it, and they did not before. "
                                        "A value that never varies is not answering the question its name asks: %1").arg(stopped.mid(0, 12).join(QStringLiteral(", ")))));

@@ -24,9 +24,6 @@ pub fn option_enabled(pwm: Option<i64>) -> bool {
     pwm.is_some_and(|value| value > OPTION_ON_ABOVE)
 }
 
-// Which parameters name the slots is decided by which ones the vehicle has, exactly as the Qt
-// controller decides it. A rover names them MODE1 to MODE6 and its channel MODE_CH. Asking the
-// vehicle type instead would be asking a different question and getting it wrong for a VTOL.
 fn names(backend: &dyn Backend) -> (&'static str, &'static str) {
     match exists(backend, "MODE_CH") {
         true => ("MODE_CH", "MODE"),
@@ -38,9 +35,6 @@ fn exists(backend: &dyn Backend, name: &str) -> bool {
     result_flag(&backend.invoke("vehicle.parameterManager.parameterExists", &json!([-1, name]).to_string()))
 }
 
-// A serialised fact carries value and not rawValue, so reading rawValue out of the fact object
-// finds nothing and every vehicle looks like it has no such parameter. rawValue resolves as a path
-// segment because Fact declares it, which is the form the rest of the core uses.
 fn parameter(backend: &dyn Backend, name: &str) -> Option<f64> {
     exists(backend, name).then(|| value_number(&backend.get(&format!("vehicle.parameterManager.getParameter(-1,{name}).rawValue")))).flatten()
 }
@@ -135,9 +129,6 @@ mod tests {
         assert!(!option_enabled(None));
     }
 
-    // The bridge serialises a fact with a value key and no rawValue, and Vehicle has no vehicleType
-    // property. This fixture answers exactly what the bridge answers, because the first version of
-    // it invented both of those names and the tests then agreed with a view that read neither.
     struct Fake {
         parameters: Vec<(String, f64, String)>,
         pwm: Vec<i64>,
@@ -203,8 +194,6 @@ mod tests {
 
     #[test]
     fn the_channel_the_vehicle_names_is_the_channel_that_is_read() {
-        // Channel 7 carries the switch and channel 5 carries something else. Reading the parameter
-        // wrongly used to leave every vehicle on channel 5, which lights whatever is on the wrong one.
         let view = slots_view(&copter(7.0, channels(1200, 6)), &[]);
         assert_eq!(view["channel"], 7);
         assert_eq!(view["liveSlot"], 1, "twelve hundred on channel seven is the first slot");

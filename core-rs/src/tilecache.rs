@@ -48,9 +48,6 @@ pub struct Tile {
     pub hash: String,
     pub format: String,
     pub image: Vec<u8>,
-    // Declared INTEGER by the schema and written by Qt from QGCCacheTile::type(), which is a
-    // QString holding the provider name. SQLite keeps the text, so reading this as a number
-    // fails on every tile the Qt worker ever saved.
     pub kind: String,
 }
 
@@ -118,10 +115,6 @@ impl Cache {
     /// Opens a database another writer owns. No schema is created and nothing is written, so this
     /// takes no write lock and cannot collide with the Qt worker holding the same file.
     pub fn serve(path: &Path) -> rusqlite::Result<Cache> {
-        // Private cache, explicitly. The Qt worker opens this file with QSQLITE_ENABLE_SHARED_CACHE,
-        // and a second connection that joins that cache sees its table locks and its uncommitted
-        // state: reads intermittently answered a disk I/O error, and a row that had just been read
-        // successfully came back missing on the next identical query.
         let connection = Connection::open_with_flags(
             &format!("file:{}?mode=ro&cache=private", uri_escaped(path)),
             rusqlite::OpenFlags::SQLITE_OPEN_READ_ONLY | rusqlite::OpenFlags::SQLITE_OPEN_URI,

@@ -89,9 +89,6 @@ fn row(label: &str, value: Option<String>) -> Value {
     json!({ "label": label, "value": value })
 }
 
-// An altitude is signed and a distance is not. Handing a below sea level altitude to the distance
-// formatter reads it as a number that was never computed and prints a dash, which is a plan over
-// the Dead Sea drawn as a plan with no altitudes.
 fn altitude_text(metres: f64, imperial: bool) -> String {
     match metres < 0.0 {
         true => format!("-{}", distance_text(-metres, imperial)),

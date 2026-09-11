@@ -3,28 +3,21 @@ use serde_json::{Value, json};
 use crate::read::{flag, integer, object, text};
 use crate::router::Backend;
 
-// visualItems is a list model, and a watch on it cannot bind to a change signal, so the watcher
-// re-resolves and re-serialises every property and every fact of every item on each tick. The
-// count is bindable and moves whenever the list does.
 pub const DEPS: &[&str] = &["plan.missionController.visualItems.count", "plan.missionController.currentPlanViewVIIndex", "plan.missionController.containsItems"];
 
-const FIELDS: &str = "sequenceNumber,abbreviation,commandName,commandDescription,isCurrentItem,specifiesCoordinate,isStandaloneCoordinate,specifiesAltitudeOnly,isSimpleItem,isTakeoffItem,isLandCommand,isSurveyItem,homePosition,coordinate,amslEntryAlt,altDifference,azimuth,distance,distanceFromStart,readyForSaveState,readyForSaveMessage,dirty,altitude,altitudeMode,isIncomplete";
+const FIELDS: &str = "sequenceNumber,abbreviation,commandName,commandDescription,isCurrentItem,specifiesCoordinate,isStandaloneCoordinate,specifiesAltitudeOnly,isSimpleItem,isTakeoffItem,isLandCommand,isSurveyItem,homePosition,coordinate,amslEntryAlt,altDifference,azimuth,distance,distanceFromStart,readyForSaveState,readyForSaveMessage,dirty,altitude,altitudeMode,isIncomplete,exitCoordinate,exitCoordinateSameAsEntry";
 
 const READY_TO_SAVE: i64 = 0;
 const AWAITING_TERRAIN: i64 = 1;
 
 pub fn items_view(backend: &dyn Backend, args: &[String]) -> Value {
     let everything = args.iter().any(|arg| arg == "fields");
-    // A plan always holds its settings entry, so a count of one is an empty plan rather than a
-    // plan with something in it. The controller answers that question itself.
     let count = integer(&object(&backend.get("plan.missionController.visualItems.count")), "value").unwrap_or(0);
     let has_items = flag(&object(&backend.get_fields("plan.missionController", "containsItems")), "containsItems");
     if count <= 0 {
         return json!({ "kind": "object", "class": "MissionItems", "available": false, "items": [], "current": -1, "reason": "This plan has no items yet." });
     }
     let current = integer(&object(&backend.get("plan.missionController.currentPlanViewVIIndex")), "value").unwrap_or(-1);
-    // One read for the whole list rather than one per item: the bridge already serialises a list
-    // model's elements, honouring the same field filter.
     let listed = object(&backend.get_fields("plan.missionController.visualItems", FIELDS));
     let items: Vec<Value> = match listed.get("elements").and_then(Value::as_array) {
         Some(elements) => elements.iter().enumerate().map(|(index, element)| item(element, index as i64)).collect(),
@@ -32,9 +25,6 @@ pub fn items_view(backend: &dyn Backend, args: &[String]) -> Value {
             .map(|index| item(&object(&backend.get_fields(&format!("plan.missionController.visualItems.{index}"), FIELDS)), index))
             .collect(),
     };
-    // Asking for fields costs an unfiltered read of every item, because which facts an item has
-    // depends on what it is. A head that edits whatever the operator tapped rather than whatever
-    // is current asks for them; one that only draws the list does not pay for them.
     let items: Vec<Value> = match everything {
         false => items,
         true => items
@@ -60,14 +50,15 @@ pub fn items_view(backend: &dyn Backend, args: &[String]) -> Value {
     })
 }
 
-// A QGeoCoordinate of zero, zero is valid by Qt's definition, which only checks the ranges. A
-// takeoff whose launch position was never set carries exactly that, and a head trusting valid
-// draws it in the Atlantic. An item that does not place itself on the map carries no place.
 fn placed(read: &Value) -> Option<Value> {
+    at_key(read, "coordinate")
+}
+
+fn at_key(read: &Value, key: &str) -> Option<Value> {
     if !flag(read, "specifiesCoordinate") {
         return None;
     }
-    let at = read.get("coordinate")?;
+    let at = read.get(key)?;
     let number = |key: &str| at.get(key).and_then(Value::as_f64).filter(|value| value.is_finite());
     let (Some(latitude), Some(longitude)) = (number("latitude"), number("longitude")) else {
         return None;
@@ -78,6 +69,10 @@ fn placed(read: &Value) -> Option<Value> {
 
 fn item(read: &Value, index: i64) -> Value {
     let coordinate = placed(read);
+    let exit = match flag(read, "exitCoordinateSameAsEntry") {
+        true => None,
+        false => at_key(read, "exitCoordinate").filter(|exit| Some(exit) != coordinate.as_ref()),
+    };
     let ready = integer(read, "readyForSaveState");
     json!({
         "index": index,
@@ -88,25 +83,17 @@ fn item(read: &Value, index: i64) -> Value {
         "kind": kind(read),
         "current": flag(read, "isCurrentItem"),
         "coordinate": coordinate,
-        // The altitude the operator set, in whatever the item's mode measures it against, beside
-        // the height above sea level the same item flies at. A head showing one and labelling it
-        // the other is off by the launch elevation, which on this test site is 585 metres.
+        "exitCoordinate": exit,
         "altitude": fact_number(read, "altitude"),
-        "altitudeMode": fact_number(read, "altitudeMode").map(|mode| mode as i64),
+        "altitudeMode": number(read, "altitudeMode").map(|mode| mode as i64),
         "altitudeAmsl": number(read, "amslEntryAlt"),
         "altitudeChange": number(read, "altDifference"),
         "azimuth": number(read, "azimuth"),
         "distance": number(read, "distance"),
         "distanceFromStart": number(read, "distanceFromStart"),
         "edited": flag(read, "dirty"),
-        // A complex item is incomplete until it has its geometry, and only a complex item has the
-        // property at all. Whether a leg is drawn on the map is this and the two coordinate flags
-        // together, which is item knowledge rather than something a head should compose.
         "incomplete": flag(read, "isIncomplete"),
         "flownLeg": flag(read, "specifiesCoordinate") && !flag(read, "isStandaloneCoordinate") && !flag(read, "isIncomplete"),
-        // Waiting for terrain heights is not the operator's task and there is nothing for them to
-        // fix, so it is not the same answer as an item that is missing something. Conflating them
-        // turns a wait on a terrain server into a banner inviting a click that cannot help.
         "blocked": ready.is_some_and(|state| state != READY_TO_SAVE && state != AWAITING_TERRAIN),
         "awaitingTerrain": ready == Some(AWAITING_TERRAIN),
         "blockedReason": match ready {
@@ -116,9 +103,6 @@ fn item(read: &Value, index: i64) -> Value {
     })
 }
 
-// A head editing an item writes to a path it builds from a name, and a name it spells itself that
-// does not resolve is a write that silently does not happen. The core names the paths for the item
-// being edited, read without a field filter because which facts an item has depends on what it is.
 fn editable(backend: &dyn Backend, current: i64) -> Value {
     if current <= 0 {
         return Value::Null;
@@ -141,8 +125,6 @@ fn fields_of(backend: &dyn Backend, index: i64) -> Value {
     let fields: Vec<Value> = facts
         .iter()
         .filter_map(|fact| {
-            // property is the name the path is built from. name is what the fact calls itself for
-            // an operator to read, and it has spaces in it.
             let property = fact.get("property").and_then(Value::as_str).filter(|property| !property.is_empty())?;
             let name = fact.get("name").and_then(Value::as_str).filter(|name| !name.is_empty()).unwrap_or(property);
             Some(json!({
@@ -165,7 +147,7 @@ fn fields_of(backend: &dyn Backend, index: i64) -> Value {
 fn fact_number(read: &Value, name: &str) -> Option<f64> {
     read.get("facts")
         .and_then(Value::as_array)
-        .and_then(|facts| facts.iter().find(|fact| fact.get("name").and_then(Value::as_str) == Some(name)))
+        .and_then(|facts| facts.iter().find(|fact| fact.get("property").and_then(Value::as_str) == Some(name)))
         .and_then(|fact| fact.get("value"))
         .and_then(Value::as_f64)
         .filter(|value| value.is_finite())
@@ -394,13 +376,34 @@ mod reported {
         let item = listed(json!({
             "kind": "object", "sequenceNumber": 1, "isSimpleItem": true, "specifiesCoordinate": true,
             "amslEntryAlt": 660.0,
-            "facts": [ { "name": "altitude", "value": 75.0 }, { "name": "altitudeMode", "value": 1 } ],
+            "altitudeMode": 1,
+            "facts": [ { "name": "Altitude", "property": "altitude", "value": 75.0 } ],
         }));
-        assert_eq!(item["altitude"], 75.0, "the number the operator typed");
+        assert_eq!(item["altitude"], 75.0, "a fact is found by its property, because name is the label an operator reads and has a capital in it");
         assert_eq!(item["altitudeAmsl"], 660.0, "and the one it flies at, which differ by the launch elevation");
-        assert_eq!(item["altitudeMode"], 1, "and which of the two the operator was setting");
+        assert_eq!(item["altitudeMode"], 1, "altitudeMode is a plain property on the item and not a fact, so searching the facts for it finds nothing");
     }
 
+
+
+    #[test]
+    fn a_pattern_the_vehicle_leaves_by_another_corner_says_where_it_leaves() {
+        let survey = listed(json!({
+            "kind": "object", "sequenceNumber": 1, "isSimpleItem": false, "isSurveyItem": true,
+            "specifiesCoordinate": true, "isIncomplete": false, "exitCoordinateSameAsEntry": false,
+            "coordinate": { "kind": "coordinate", "valid": true, "latitude": 47.0, "longitude": 8.0 },
+            "exitCoordinate": { "kind": "coordinate", "valid": true, "latitude": 47.1, "longitude": 8.1 },
+        }));
+        assert_eq!(survey["exitCoordinate"]["latitude"], 47.1, "a route drawn from where the vehicle went in doubles back across the pattern");
+        assert_eq!(survey["coordinate"]["latitude"], 47.0);
+
+        let waypoint = listed(json!({
+            "kind": "object", "sequenceNumber": 1, "isSimpleItem": true, "specifiesCoordinate": true, "exitCoordinateSameAsEntry": true,
+            "coordinate": { "kind": "coordinate", "valid": true, "latitude": 47.0, "longitude": 8.0 },
+            "exitCoordinate": { "kind": "coordinate", "valid": true, "latitude": 47.0, "longitude": 8.0 },
+        }));
+        assert_eq!(waypoint["exitCoordinate"], Value::Null, "a waypoint is left where it was entered, and drawing a second point there is a point on top of a point");
+    }
 
     #[test]
     fn a_complex_item_with_no_shape_yet_is_not_a_leg_the_vehicle_flies() {
