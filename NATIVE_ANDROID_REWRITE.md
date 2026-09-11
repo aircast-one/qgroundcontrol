@@ -4619,13 +4619,23 @@ Measured on the device with three items in the plan, one already a takeoff:
 So the gate is **exactly inverted**: it would have made Land and Survey permanently unavailable while
 leaving the one case it exists to prevent — a second takeoff — wide open.
 
-**Half of that is no longer true, measured 2026-09-11 evening.** The core's `point_at()` calls
-`setCurrentPlanViewSeqNum` on every insert, so the flags are driven now rather than sitting at their
-defaults. With a takeoff at 1 and item 2 selected, adding a takeoff is **correctly refused**: "The
-mission already takes off before this point." — the case this gate exists to prevent, working, and the
-refusal is position-dependent so the index reached it. Land and Survey are still refused on this head,
-so that half stands. Whoever revisits this should re-measure all three rather than trust the table
-above. The ungated buttons are
+**The whole table is obsolete, re-measured on the handset 2026-09-11 evening.** The core's `point_at()`
+calls `setCurrentPlanViewSeqNum` on every insert, so the three flags are driven now rather than holding
+their member defaults. Same device, same sim, one plan built up from empty:
+
+    Takeoff, one already present, item 2 selected   REFUSED, "The mission already takes off
+                                                    before this point." - the case the gate exists for
+    Land, last item selected                        inserted; plan reads "4 items (takeoff, RTL)"
+    Survey, middle item selected                    inserted with a real area; "5 items (takeoff, RTL)
+                                                    · 52 scan pts · 5.28 km"
+
+So all three are now correct, and **the reverted `view.missionKinds` wiring is worth revisiting** — it
+was reverted because the flags it rests on were constant, and they are not any more. Whoever picks that
+up should re-measure rather than trust either version of this table: the first one was true when it was
+taken.
+
+Worth noting in passing, because it confirms something the core session reported: asking for a "land"
+produced an **RTL**, which is what ArduCopter maps it to. What "land" gives you depends on the vehicle. The ungated buttons are
 worse in theory and better in practice, so they stay until the input varies. Raised with the core;
 `flyThroughCommandsAllowed` is fine, being genuinely computed.
 
