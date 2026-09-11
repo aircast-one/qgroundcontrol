@@ -27,10 +27,8 @@ fun itemRows(items: List<MissionItem>): List<ItemRow> = items.map { item ->
 }
 
 internal fun itemDetail(item: MissionItem): String = listOfNotNull(
-    when {
-        !item.placed -> NO_POSITION
-        else -> item.altitude.takeIf { !it.isNaN() }?.let { "${it.roundToInt()} m" }
-    },
+    item.altitude.takeIf { !it.isNaN() }?.let { "${it.roundToInt()} m" }
+        ?: NO_POSITION.takeIf { !item.placed },
     AFTER_THE_ROUTE_ENDS.takeIf { item.afterRouteEnds },
 ).joinToString(" \u00b7 ")
 

@@ -68,6 +68,16 @@ class PlanItemsTest {
     }
 
     @Test
+    fun `an ArduPilot takeoff specifies an altitude and no place, so the altitude is what it says`() {
+        val takeoff = MissionItem(
+            1, 1, Double.NaN, Double.NaN, "Takeoff", false, 50.0,
+            kind = KIND_TAKEOFF, commandId = 22, placed = false,
+        )
+
+        assertEquals("50 m", itemRows(listOf(takeoff)).single().detail)
+    }
+
+    @Test
     fun `an item sitting after the land says so, because the map just draws no line to it`() {
         val stranded = MissionItem(
             3, 3, 41.0, 44.0, "Waypoint", false, 50.0,
