@@ -1274,6 +1274,7 @@ func checkMissionItemKinds() {
     checkUnreachedItems()
     checkLegsSpelled()
     checkTerrainMarkers()
+    checkAltitudeModePickerIsOffered()
     checkGroundDrawnFromKnownSamples()
     checkUnknownMissionTime()
     checkOnlyAPlacedItemMoves()
@@ -4385,6 +4386,25 @@ func checkGroundDrawnFromKnownSamples() {
     expect(gap.groundRuns.count == 2,
            "and a gap in the middle breaks the fill in two, because one shape spanning it would "
            + "draw ground at a height nothing measured")
+}
+
+func checkAltitudeModePickerIsOffered() {
+    let offers = AltitudeMode.offers(["modes": [["raw": 1 as NSNumber, "title": "Relative To Launch",
+                                                 "enabled": true as NSNumber, "reason": ""],
+                                                ["raw": 2 as NSNumber, "title": "AMSL",
+                                                 "enabled": true as NSNumber, "reason": ""]]])
+    expect(offers.count == 2,
+           "the fixture carries the modes the assertions below depend on, without which every one "
+           + "of them passes because the list is empty rather than because the rule works")
+
+    expect(AltitudeMode.offersPicker(mode: 1, in: offers),
+           "an item that measures its altitude somehow gets the picker")
+    expect(!AltitudeMode.offersPicker(mode: AltitudeMode.none, in: offers),
+           "a mission start entry has no altitude of its own, so the core offers modes when asked "
+           + "and the item still has none -- gating on the offers alone drew a picker with "
+           + "nothing selected and no way to tell it from a broken control")
+    expect(!AltitudeMode.offersPicker(mode: 1, in: []),
+           "and nothing is drawn when the core offers no modes at all")
 }
 
 func checkTerrainMarkers() {

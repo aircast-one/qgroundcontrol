@@ -578,7 +578,8 @@ struct PlanInspector: View {
     }
 
     private func showsAltitudeMode(in group: String) -> Bool {
-        group == ItemFact.itemGroup && !mission.itemModes.isEmpty
+        group == ItemFact.itemGroup
+            && AltitudeMode.offersPicker(mode: mission.itemAltitudeMode, in: mission.itemModes)
     }
 
     private var showsMissionSettings: Bool {

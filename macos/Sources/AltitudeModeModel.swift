@@ -63,6 +63,10 @@ enum AltitudeMode {
         return offer.enabled ? nil : offer.reason
     }
 
+    static func offersPicker(mode raw: Int, in offers: [AltitudeModeOffer]) -> Bool {
+        raw != none && !offers.isEmpty
+    }
+
     static func title(for raw: Int, in offers: [AltitudeModeOffer]) -> String {
         guard raw != none, raw != unrelatedRaw else { return "" }
         return offers.first { $0.raw == raw }?.title ?? "Mode \(raw)"
