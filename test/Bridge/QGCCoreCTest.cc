@@ -3542,6 +3542,49 @@ void QGCCoreCTest::_theCoreWorksOutTheSameFlownDistanceTheControllerDoes()
 #endif
 }
 
+void QGCCoreCTest::_everyClassTheCatalogueNamesIsTheClassTheEditorBuilds()
+{
+#ifdef QGC_RUST_CORE
+    (void) take(qgc_bridge_invoke("plan.start", "[]"));
+    const auto restore = []() { (void) take(qgc_bridge_invoke("plan.removeAll", "[]")); };
+    const auto leaveNoPlanBehind = qScopeGuard(restore);
+    restore();
+
+    // className is a hand-written C++ class name, and a hand-written list of names rots exactly as
+    // silently as the translated ones it replaced: misspell one and by_class matches nothing, the
+    // item falls back to "complex", and it loses its geometry again with nothing failing. Building
+    // one of each and asking what the editor actually made is the only check that cannot drift.
+    const QJsonArray kinds = take(qgc_core_get("view.missionKinds")).value(QStringLiteral("kinds")).toArray();
+    QVERIFY2(kinds.count() > 3, "the catalogue served nothing, so this would pass by checking none of it");
+
+    int checked = 0;
+    for (const QJsonValue &entry : kinds) {
+        const QString named = entry.toObject().value(QStringLiteral("className")).toString();
+        if (named.isEmpty()) {
+            continue;
+        }
+        const QString id = entry.toObject().value(QStringLiteral("id")).toString();
+        restore();
+        // The core refuses a pattern before a takeoff, so each round needs a plan it will accept.
+        QVERIFY2(take(qgc_core_invoke("mission.insert", "[\"takeoff\", 47.3960, 8.5440, -1]")).value(QStringLiteral("ok")).toBool(false), "the takeoff was refused");
+        const QByteArray args = QStringLiteral("[\"%1\", 47.3970, 8.5460, -1]").arg(id).toUtf8();
+        const QJsonObject answered = take(qgc_core_invoke("mission.insert", args.constData()));
+        QVERIFY2(answered.value(QStringLiteral("ok")).toBool(false),
+                 qPrintable(QStringLiteral("%1 was refused: %2").arg(id, answered.value(QStringLiteral("reason")).toString())));
+        QTRY_VERIFY_WITH_TIMEOUT(take(qgc_core_get("view.missionItems")).value(QStringLiteral("items")).toArray().count() >= 3, 20000);
+
+        const QJsonArray items = take(qgc_core_get("view.missionItems")).value(QStringLiteral("items")).toArray();
+        QVERIFY2(items.last().toObject().value(QStringLiteral("kind")).toString() == id,
+                 qPrintable(QStringLiteral("the catalogue calls it %1 and the item reads back as %2, so the class name does not match what the editor built")
+                                .arg(id, items.last().toObject().value(QStringLiteral("kind")).toString())));
+        checked++;
+    }
+    QVERIFY2(checked >= 2, qPrintable(QStringLiteral("only %1 classes were checked, too few to be the complex kinds").arg(checked)));
+#else
+    QSKIP("the Rust core is not linked into this build");
+#endif
+}
+
 void QGCCoreCTest::_theItemListNamesWhatTheControllerHolds()
 {
 #ifdef QGC_RUST_CORE

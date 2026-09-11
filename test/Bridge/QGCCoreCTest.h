@@ -86,6 +86,7 @@ private slots:
     void _changingAModeSlotWakesThePanelThatShowsIt();
     void _replacingAPlanWithOneTheSameLengthStillWakesTheItemList();
     void _theCoreWorksOutTheSameFlownDistanceTheControllerDoes();
+    void _everyClassTheCatalogueNamesIsTheClassTheEditorBuilds();
 
 private:
     static bool _unavailable(const char *path);
