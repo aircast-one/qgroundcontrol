@@ -3377,6 +3377,76 @@ void QGCCoreCTest::_replacingAPlanWithOneTheSameLengthStillWakesTheItemList()
 #endif
 }
 
+void QGCCoreCTest::_everyDependencyAViewDeclaresActuallyBindsToASignal()
+{
+#ifdef QGC_RUST_CORE
+    _connectMockLink(MAV_AUTOPILOT_PX4);
+    QTRY_VERIFY_WITH_TIMEOUT(MultiVehicleManager::instance()->activeVehicle() != nullptr, 10000);
+    (void) take(qgc_bridge_invoke("plan.start", "[]"));
+    const auto leaveNothingWatched = qScopeGuard([]() {
+        qgc_bridge_watch("");
+        qgc_bridge_set_event_handler(nullptr);
+    });
+    // Binding happens inside the poll, and the poll returns immediately when no event handler is
+    // set - so without this every dep reads as unbound and the test reports the entire watch
+    // system broken. It did exactly that twice before this line existed.
+    paths.clear();
+    qgc_bridge_set_event_handler(onEvent);
+
+    // A dep that does not bind is not an error and says so nowhere: it falls through to a re-read
+    // that only runs while the event loop is idle, and no test can tell the two apart because
+    // QTRY spins that loop. Asking the watcher directly is the only way to see it.
+    // Each of these names a list model, a bare object root, or a CONSTANT property, none of which
+    // Qt gives a notify signal. They are served by the poll and that is now a recorded decision
+    // rather than an accident. Anything new arriving here needs a signal dep instead.
+    const QStringList knowinglyPolled = {
+        QStringLiteral("plan.geoFenceController.polygons"),
+        QStringLiteral("plan.geoFenceController.circles"),
+        QStringLiteral("plan.rallyPointController.points"),
+        QStringLiteral("links.linkConfigurations"),
+        QStringLiteral("logDownload.model"),
+        QStringLiteral("mavlinkInspector.activeSystem.messages"),
+        QStringLiteral("radioCal"),
+        QStringLiteral("sensorsCal"),
+        QStringLiteral("vehicle.id"),
+        QStringLiteral("vehicle.sysStatusSensorInfo"),
+        QStringLiteral("vehicle.vibration"),
+    };
+
+    const QJsonArray views = take(qgc_core_get("view.dependencies")).value(QStringLiteral("views")).toArray();
+    QVERIFY(views.count() > 40);
+    QStringList everyView;
+    for (const QJsonValue &view : views) {
+        if (!view.toObject().value(QStringLiteral("deps")).toArray().isEmpty()) {
+            everyView.append(view.toObject().value(QStringLiteral("path")).toString());
+        }
+    }
+
+    // Watching them all at once and reading the result once avoids racing the queued setPaths
+    // per view, which is what made the first version of this report every dep unbound.
+    const QByteArray asked = everyView.join(QLatin1Char(',')).toUtf8();
+    qgc_bridge_watch(asked.constData());
+    QTRY_VERIFY_WITH_TIMEOUT(take(qgc_bridge_watch_status()).value(QStringLiteral("paths")).toArray().count() > 80, 10000);
+
+    const QJsonArray reported = take(qgc_bridge_watch_status()).value(QStringLiteral("paths")).toArray();
+    QStringList unbound;
+    for (const QJsonValue &entry : reported) {
+        const QString dep = entry.toObject().value(QStringLiteral("path")).toString();
+        if (dep.startsWith(QStringLiteral("vehicle.parameterManager.getParameter(")) || knowinglyPolled.contains(dep)) {
+            continue;
+        }
+        if (!entry.toObject().value(QStringLiteral("bound")).toBool(false)) {
+            unbound.append(dep);
+        }
+    }
+    QVERIFY2(unbound.isEmpty(),
+             qPrintable(QStringLiteral("%1 of %2 deps bound to no signal, so their views are served by the idle poll rather than watched: %3")
+                            .arg(unbound.count()).arg(reported.count()).arg(unbound.mid(0, 14).join(QStringLiteral(", ")))));
+#else
+    QSKIP("the Rust core is not linked into this build");
+#endif
+}
+
 void QGCCoreCTest::_theItemListNamesWhatTheControllerHolds()
 {
 #ifdef QGC_RUST_CORE

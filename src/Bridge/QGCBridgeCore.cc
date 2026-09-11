@@ -773,6 +773,24 @@ public:
         _timer.setInterval(kPollIntervalMSecs);
     }
 
+    // A path that fails to bind is not an error and says nothing on any channel: it falls through
+    // to the re-read that only runs while the event loop is idle. Every CONSTANT property in QGC
+    // is in that state, which is most list models, so the degradation is invisible by default.
+    QJsonArray status() const
+    {
+        QJsonArray reported;
+        for (const QString &path : std::as_const(_paths)) {
+            const auto bound = _bound.constFind(path);
+            reported.append(QJsonObject {
+                { QStringLiteral("path"), path },
+                { QStringLiteral("bound"), bound != _bound.constEnd() },
+                { QStringLiteral("fact"), bound != _bound.constEnd() && bound->fact },
+                { QStringLiteral("signal"), bound != _bound.constEnd() && bound->signalOnly },
+            });
+        }
+        return reported;
+    }
+
     void setPaths(const QStringList &paths)
     {
         _unbindAll();
@@ -1058,6 +1076,15 @@ void watch(const QStringList &paths)
         return;
     }
     QMetaObject::invokeMethod(app, [paths]() { watcher()->setPaths(paths); }, Qt::QueuedConnection);
+}
+
+QString watchStatus()
+{
+    QString result;
+    runOnQtThread([&result]() {
+        result = jsonToString(QJsonObject { { QStringLiteral("paths"), watcher()->status() } });
+    });
+    return result;
 }
 
 void setEventHandler(EventHandler handler)

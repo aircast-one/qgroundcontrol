@@ -82,6 +82,7 @@ private slots:
     void _terrainTileNeedsAFile();
     void _aSignalWithNoPropertyBehindItStillWakesAView();
     void _everyDependencyAViewDeclaresNamesSomethingTheBridgeHas();
+    void _everyDependencyAViewDeclaresActuallyBindsToASignal();
     void _changingAModeSlotWakesThePanelThatShowsIt();
     void _replacingAPlanWithOneTheSameLengthStillWakesTheItemList();
 

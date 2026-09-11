@@ -3,7 +3,24 @@ use serde_json::{Value, json};
 use crate::read::{integer, object, value_number};
 use crate::router::Backend;
 
-pub const DEPS: &[&str] = &["plan.missionController", "settings.unitsSettings.horizontalDistanceUnits"];
+// "plan.missionController" names an object rather than a property, so the watcher has nothing to
+// bind to and every change reached this view through the re-read that only runs while the event
+// loop is idle. The fields it actually reads each carry a notify signal.
+pub const DEPS: &[&str] = &[
+    "plan.missionController.containsItems",
+    "plan.missionController.missionTotalDistance",
+    "plan.missionController.missionPlannedDistance",
+    "plan.missionController.missionTime",
+    "plan.missionController.missionHoverDistance",
+    "plan.missionController.missionCruiseDistance",
+    "plan.missionController.missionHoverTime",
+    "plan.missionController.missionCruiseTime",
+    "plan.missionController.missionMaxTelemetry",
+    "plan.missionController.batteriesRequired",
+    "plan.missionController.minAMSLAltitude",
+    "plan.missionController.maxAMSLAltitude",
+    "settings.unitsSettings.horizontalDistanceUnits",
+];
 
 const FEET_PER_METRE: f64 = 3.2808399;
 const HORIZONTAL_UNITS_FEET: f64 = 0.0;

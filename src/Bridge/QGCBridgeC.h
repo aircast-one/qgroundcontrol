@@ -11,6 +11,7 @@ char *qgc_bridge_get_fields(const char *path, const char *fields_csv);
 char *qgc_bridge_set(const char *path, const char *value_json);
 char *qgc_bridge_invoke(const char *path, const char *args_json);
 void qgc_bridge_watch(const char *paths_csv);
+char *qgc_bridge_watch_status(void);
 void qgc_bridge_watch_client(const char *client, const char *paths_csv);
 void qgc_bridge_set_event_handler(QGCBridgeEventFn handler);
 void qgc_bridge_free(char *text);
