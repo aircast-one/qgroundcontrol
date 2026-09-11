@@ -2,7 +2,7 @@ import subprocess
 import sys
 from pathlib import Path
 
-from whatsunder import labels_under, nodes
+from whatsunder import PLANNING_SCREENS, labels_under, nodes
 
 HERE = Path(__file__).parent
 
@@ -37,8 +37,19 @@ def main():
     )
     assert labels_under(planning, 50, 250) == [], "Land on the plan screen adds an item"
 
+    heading = next(
+        line.split('"')[1]
+        for line in (HERE.parent / "map-spike/src/main/java/one/aircast/mapspike/PlanItems.kt")
+        .read_text().splitlines()
+        if "PLAN_ITEMS_HEADING" in line
+    )
+    assert {heading} in PLANNING_SCREENS, (
+        f"the sheet calls itself {heading!r}; whatsunder.py is still looking for "
+        f"{[sorted(m) for m in PLANNING_SCREENS]} and would guard the plan list as a flight view"
+    )
+
     sheet = screen(
-        node("Plan items", "[0,0][400,60]"),
+        node(heading, "[0,0][400,60]"),
         node("Takeoff", "[0,200][400,300]"),
     )
     assert labels_under(sheet, 200, 250) == [], (

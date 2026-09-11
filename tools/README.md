@@ -17,6 +17,8 @@ copy there.
 | `regress.sh` | Drives Fly, the Actions sheet, Vibration, Log Download and Settings, captures each, and fails a capture under 100 000 bytes because a sleeping screen photographs as a small black rectangle. |
 | `detrig.sh` | `up`/`down` for the detection overlay: an SSE feed on 8099 and a TCP video stream on 8100, both through `adb reverse`, with the device ini pointed at `127.0.0.1`. |
 | `detfeed.py` | The SSE detection feed `detrig.sh` serves — two boxes, one of them moving. |
+| `whatsunder.py` | What flight control, if any, sits under a point. `ui.sh tap` refuses rather than guess, and refuses when this cannot answer — it failed open for six hours on 2026-09-11 because its own pattern would not parse. |
+| `whatsunder_test.py` | `python3 tools/whatsunder_test.py`. No device needed. Pins both quote styles, the planning-screen exemptions, that unreadable input exits non-zero, and that `PLAN_ITEMS_HEADING` in the Kotlin still matches the literal the guard looks for. |
 | `watchprobe.py` | `on`/`off` around timing instrumentation in `Watcher::_poll`. It asserts the poll body is in the shape it expects, so it fails loudly when the bridge changes rather than patching the wrong thing. |
 
 The rule these were built to serve: an empty screen is not evidence that a screen works. Every
