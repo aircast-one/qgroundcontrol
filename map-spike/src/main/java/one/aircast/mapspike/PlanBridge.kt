@@ -58,13 +58,6 @@ fun planShape(json: JSONObject?): List<String> {
     )
 }
 
-fun insertedAnItem(raw: String): Boolean =
-    runCatching {
-        val answer = JSONObject(raw)
-        answer.optBoolean("ok") &&
-            answer.optJSONObject("result")?.optString("kind") == "object"
-    }.getOrDefault(false)
-
 fun factValue(element: JSONObject, name: String): Double {
     val facts = element.optJSONArray("facts") ?: return Double.NaN
     for (index in 0 until facts.length()) {
@@ -75,8 +68,6 @@ fun factValue(element: JSONObject, name: String): Double {
     }
     return Double.NaN
 }
-
-private const val FIRST_FLIGHT_ITEM = 1
 
 data class MissionItem(
     val index: Int,
@@ -144,40 +135,11 @@ object PlanBridge {
     fun rawItems(): JSONObject? =
         runCatching { JSONObject(QGCBridge.getFields(PLAN_ITEMS, "*")) }.getOrNull()
 
-    fun items(): List<MissionItem> = missionItems(rawItems())
-
     fun loadFromVehicle() = invoke("$PLAN_ROOT.loadFromVehicle")
 
     fun clearPlan() = invoke("$PLAN_ROOT.removeAll")
 
     fun sendToVehicle() = invoke("$PLAN_ROOT.sendToVehicle")
-
-    fun rawItemCount(): Int? =
-        runCatching {
-            JSONObject(QGCBridge.getFields(PLAN_ITEMS, "sequenceNumber"))
-                .optJSONArray("elements")?.length()
-        }
-            .getOrNull()
-
-    fun appendWaypoint(latitude: Double, longitude: Double): Boolean =
-        insertAt("insertSimpleMissionItem", latitude, longitude) != null
-
-    private fun insertAt(
-        method: String,
-        latitude: Double,
-        longitude: Double,
-        atStart: Boolean = false,
-    ): Int? {
-        val count = rawItemCount()?.takeIf { it > 0 } ?: return null
-        val target = if (atStart) FIRST_FLIGHT_ITEM else count
-        val raw = runCatching {
-            QGCBridge.invoke(
-                "$PLAN_ROOT.missionController.$method",
-                "[{\"latitude\":$latitude,\"longitude\":$longitude,\"altitude\":0}, $target]",
-            )
-        }.getOrDefault("")
-        return if (insertedAnItem(raw)) target else null
-    }
 
     fun setAltitude(index: Int, metres: Double): Boolean =
         runCatching {

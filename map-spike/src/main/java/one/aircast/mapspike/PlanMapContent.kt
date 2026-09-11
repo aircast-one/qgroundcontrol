@@ -262,7 +262,9 @@ internal fun MapSpikeScreen(
             rallyPoints = rally,
             surveys = surveyList,
             editable = true,
-            onAdd = { lat, lon -> onBridge { PlanBridge.appendWaypoint(lat, lon) } },
+            onAdd = { lat, lon ->
+                addMissionItem("waypoint", "Adding a waypoint", TrackPoint(lat, lon))
+            },
             onMove = { hit, lat, lon ->
                 onBridge {
                     when (hit) {
