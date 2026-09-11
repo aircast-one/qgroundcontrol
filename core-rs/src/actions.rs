@@ -75,7 +75,15 @@ fn insert(backend: &dyn Backend, args: &str) -> Value {
         return json!({ "ok": false, "reason": answered.get("reason").and_then(Value::as_str).unwrap_or("the plan refused the item").to_string() });
     }
     if item_count(backend) != Some(held + 1) {
-        return json!({ "ok": false, "reason": "the plan did not grow, so nothing was added" });
+        // insertComplexMissionItem matches the name it is given against SurveyComplexItem::name
+        // and its siblings, and every one of those is a tr() string. The name here is an English
+        // literal, so in any other locale nothing matches, the call answers null, and the plan
+        // does not grow. Naming the cause because the symptom is silent and the fix is not local.
+        let reason = match kind.complex_name {
+            Some(name) => format!("the plan did not grow, so nothing was added. {name} is matched against a translated name, so this fails in any build that is not English"),
+            None => "the plan did not grow, so nothing was added".to_string(),
+        };
+        return json!({ "ok": false, "reason": reason });
     }
     let Some(placed) = inserted_index(backend) else {
         return json!({ "ok": false, "reason": "the item was added and then could not be found, so the plan is not in a state to build on" });
