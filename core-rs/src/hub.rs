@@ -1854,7 +1854,7 @@ mod tests {
         uri[..text.len()].copy_from_slice(text);
         let metadata = MavMessage::COMPONENT_METADATA(COMPONENT_METADATA_DATA { time_boot_ms: 0, file_crc: 7, uri: uri.into() });
         let general = br#"{"version":1,"metadataTypes":[{"type":1,"uri":"mftp://etc/extras/parameters.json.xz","fileCrc":99}]}"#.to_vec();
-        let plain = br#"{"version":1,"parameters":[{"name":"RTL_ALT","type":"float","shortDesc":"Return altitude","units":"m","min":0,"max":8000},{"name":"CAM_{n}_MODE","type":"uint8","shortDesc":"Camera {n} mode"}]}"#;
+        let plain = br#"{"version":1,"parameters":[{"name":"RTL_ALT","type":"float","shortDesc":"Return altitude","units":"m","min":0,"max":8000},{"name":"CAM_{n}_MODE","type":"uint8","shortDesc":"Camera {n} mode"},{"name":"SERIAL1_PROTOCOL","type":"int32","shortDesc":"Serial 1 protocol","rebootRequired":true}]}"#;
         let mut parameters = Vec::new();
         lzma_rs::xz_compress(&mut std::io::Cursor::new(plain.as_slice()), &mut parameters).unwrap();
         let mut files = BTreeMap::new();
@@ -1877,11 +1877,21 @@ mod tests {
         assert!(parameter_file_opened, "the general file named the parameter file, which was fetched next");
         assert!(matches!(decode(&pending[0].1), MavMessage::PARAM_REQUEST_LIST(_)), "after the metadata the connect sequence moves on to the parameters");
         let snapshot = hub.snapshot();
-        assert_eq!(snapshot["vehicle"]["componentInformation"], json!({ "types": [1], "parameterMetadata": 2 }));
+        assert_eq!(snapshot["vehicle"]["componentInformation"], json!({ "types": [1], "parameterMetadata": 3 }));
         let meta = hub.active().unwrap().parameter_meta("RTL_ALT", Some(ParamValue::F32(0.0))).unwrap();
         assert_eq!((meta["shortDescription"].as_str(), meta["units"].as_str(), meta["max"].as_f64()), (Some("Return altitude"), Some("m"), Some(8000.0)));
         assert_eq!(hub.active().unwrap().parameter_meta("CAM_2_MODE", Some(ParamValue::U8(0))).unwrap()["shortDescription"], "Camera 2 mode");
         assert!(hub.active().unwrap().parameter_meta("NOPE", None).is_none());
+
+        // A parameter the vehicle will not honour until it restarts is the one thing a head has to
+        // say out loud after a write, and nothing here covered it: inverting the rule changed no
+        // assertion in the crate.
+        let restart = hub.active().unwrap().parameter_meta("SERIAL1_PROTOCOL", Some(ParamValue::I32(0))).unwrap();
+        assert_eq!(restart["rebootRequired"], true);
+        assert_eq!(restart["vehicleRebootRequired"], true, "the two are served apart because a vehicle reboot and a ground station restart are different asks of the operator");
+        assert_eq!(restart["applicationRestartRequired"], false);
+        assert_eq!(restart["restartNotices"].as_array().map(Vec::len), Some(1));
+        assert_eq!(meta["rebootRequired"], false, "a parameter that takes effect immediately must not ask for a restart, or the notice stops meaning anything");
         assert!(hub.active().unwrap().ftp_seq > 0, "the ftp sequence carries across downloads as it does in the Qt manager");
     }
 
