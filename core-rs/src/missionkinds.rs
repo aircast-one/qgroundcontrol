@@ -12,18 +12,22 @@ pub struct Kind {
     pub title: &'static str,
     pub invokable: &'static str,
     pub complex_name: Option<&'static str>,
+    // The class the item reports through the bridge. complex_name is what QGC's insert compares
+    // against and is itself a tr() string, so it identifies an existing item only in an English
+    // build; a class name is the same in every locale.
+    pub class_name: Option<&'static str>,
     pub geometry: Option<(&'static str, &'static str)>,
     pub placement_hint: &'static str,
 }
 
 pub const KINDS: &[Kind] = &[
-    Kind { id: "waypoint", title: "Waypoint", invokable: "insertSimpleMissionItem", complex_name: None, geometry: None, placement_hint: "Click the map to place a waypoint." },
-    Kind { id: "takeoff", title: "Takeoff", invokable: "insertTakeoffItem", complex_name: None, geometry: None, placement_hint: "Click the map to place a takeoff." },
-    Kind { id: "land", title: "Land", invokable: "insertLandItem", complex_name: None, geometry: None, placement_hint: "Click the map to place a land." },
-    Kind { id: "roi", title: "Region of Interest", invokable: "insertROIMissionItem", complex_name: None, geometry: None, placement_hint: "Click the map to place a region of interest." },
-    Kind { id: "survey", title: "Survey", invokable: "insertComplexMissionItem", complex_name: Some("Survey"), geometry: Some(("area", "surveyAreaPolygon")), placement_hint: "Click the map to place a survey area." },
-    Kind { id: "corridor", title: "Corridor Scan", invokable: "insertComplexMissionItem", complex_name: Some("Corridor Scan"), geometry: Some(("line", "corridorPolyline")), placement_hint: "Click the map to place a corridor to scan along." },
-    Kind { id: "structure", title: "Structure Scan", invokable: "insertComplexMissionItem", complex_name: Some("Structure Scan"), geometry: Some(("area", "structurePolygon")), placement_hint: "Click the map to place a structure to scan around." },
+    Kind { id: "waypoint", title: "Waypoint", invokable: "insertSimpleMissionItem", complex_name: None, class_name: None, geometry: None, placement_hint: "Click the map to place a waypoint." },
+    Kind { id: "takeoff", title: "Takeoff", invokable: "insertTakeoffItem", complex_name: None, class_name: None, geometry: None, placement_hint: "Click the map to place a takeoff." },
+    Kind { id: "land", title: "Land", invokable: "insertLandItem", complex_name: None, class_name: None, geometry: None, placement_hint: "Click the map to place a land." },
+    Kind { id: "roi", title: "Region of Interest", invokable: "insertROIMissionItem", complex_name: None, class_name: None, geometry: None, placement_hint: "Click the map to place a region of interest." },
+    Kind { id: "survey", title: "Survey", invokable: "insertComplexMissionItem", complex_name: Some("Survey"), class_name: Some("SurveyComplexItem"), geometry: Some(("area", "surveyAreaPolygon")), placement_hint: "Click the map to place a survey area." },
+    Kind { id: "corridor", title: "Corridor Scan", invokable: "insertComplexMissionItem", complex_name: Some("Corridor Scan"), class_name: Some("CorridorScanComplexItem"), geometry: Some(("line", "corridorPolyline")), placement_hint: "Click the map to place a corridor to scan along." },
+    Kind { id: "structure", title: "Structure Scan", invokable: "insertComplexMissionItem", complex_name: Some("Structure Scan"), class_name: Some("StructureScanComplexItem"), geometry: Some(("area", "structurePolygon")), placement_hint: "Click the map to place a structure to scan around." },
 ];
 
 impl Kind {
@@ -38,6 +42,14 @@ impl Kind {
 
 pub fn lookup(id_or_name: &str) -> Option<&'static Kind> {
     KINDS.iter().find(|k| k.id == id_or_name || k.complex_name == Some(id_or_name))
+}
+
+// Identify an item the vehicle or the editor built, from the class it reports rather than from a
+// display name. commandName is tr() on every complex item, so matching it named a corridor scan
+// only in an English build and everything else fell through to "complex" - taking its geometry,
+// its title and its placement hint with it.
+pub fn by_class(class: &str) -> Option<&'static Kind> {
+    KINDS.iter().find(|k| k.class_name == Some(class))
 }
 
 const NEEDS_TAKEOFF_FIRST: &str = "This mission starts from the ground, so a takeoff has to come before anything else.";

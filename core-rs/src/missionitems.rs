@@ -253,7 +253,7 @@ fn kind(read: &Value) -> &'static str {
         return "land";
     }
     if read.get("isSimpleItem").and_then(Value::as_bool) == Some(false) {
-        return crate::missionkinds::lookup(&text(read, "commandName")).map(|kind| kind.id).unwrap_or("complex");
+        return crate::missionkinds::by_class(&text(read, "class")).map(|kind| kind.id).unwrap_or("complex");
     }
     if !flag(read, "isSimpleItem") {
         return "unreadable";
@@ -382,8 +382,14 @@ mod tests {
         let pattern = json!({ "kind": "object", "sequenceNumber": 5, "abbreviation": "FWL", "commandName": "Fixed Wing Landing", "isSimpleItem": false });
         let view = items_view(&Plan(vec![settings(), pattern], 1), &[]);
         assert_eq!(view["items"][1]["kind"], "complex", "an item type the core has no entry for still has to draw as something rather than as a waypoint");
-        let corridor = items_view(&Plan(vec![settings(), json!({ "kind": "object", "sequenceNumber": 1, "isSimpleItem": false, "commandName": "Corridor Scan" })], 1), &[]);
-        assert_eq!(corridor["items"][1]["kind"], "corridor", "a complex item the catalogue does know is named, because its geometry and its shape are looked up by that name");
+        // The class the bridge reports is the same in every locale; commandName is tr() on every
+        // complex item, so a German build named none of them and each fell through to "complex",
+        // losing its geometry, its title and its placement hint with it.
+        let corridor = items_view(&Plan(vec![settings(), json!({ "kind": "object", "sequenceNumber": 1, "isSimpleItem": false, "class": "CorridorScanComplexItem", "commandName": "Korridor-Scan" })], 1), &[]);
+        assert_eq!(corridor["items"][1]["kind"], "corridor", "a complex item is identified by what it is, not by what the interface happens to call it here");
+
+        let structure = items_view(&Plan(vec![settings(), json!({ "kind": "object", "sequenceNumber": 1, "isSimpleItem": false, "class": "StructureScanComplexItem", "commandName": "Strukturscan" })], 1), &[]);
+        assert_eq!(structure["items"][1]["kind"], "structure");
         assert_eq!(view["items"][1]["name"], "Fixed Wing Landing");
     }
 }
