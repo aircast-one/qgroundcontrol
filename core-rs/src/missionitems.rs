@@ -128,6 +128,13 @@ fn item(read: &Value, index: i64, vertical: &Unit) -> Value {
         "endsRoute": flag(read, "isLandCommand") || integer(read, "command") == Some(RETURN_TO_LAUNCH),
         "command": integer(read, "command"),
         "flownLeg": flag(read, "specifiesCoordinate") && !flag(read, "isStandaloneCoordinate") && !flag(read, "isIncomplete"),
+        // Whether this item has a position that can be dragged. An unplaced takeoff is the case
+        // that matters: it reads as a mission item and has no location, and writing a coordinate
+        // to one moves the launch point instead through TakeoffMissionItem::setCoordinate. The
+        // plan's own settings entry is not an item on the map at all. Served because it is a fact
+        // about the item, and because two heads deciding it separately is how one of them gets it
+        // wrong - which is exactly what happened.
+        "movable": coordinate.is_some() && kind(read) != "settings",
         "blocked": ready.is_some_and(|state| state != READY_TO_SAVE && state != AWAITING_TERRAIN),
         "awaitingTerrain": ready == Some(AWAITING_TERRAIN),
         "blockedReason": match ready {
@@ -375,6 +382,26 @@ mod tests {
         assert_eq!(none["available"], false);
         assert_eq!(none["items"].as_array().unwrap().len(), 0);
         assert_eq!(none["current"], -1);
+    }
+
+    #[test]
+    fn an_item_with_no_position_is_not_one_a_head_can_drag() {
+        // An unplaced takeoff is the case this exists for. It reads as an ordinary item, has no
+        // location, and writing a coordinate to it moves the launch point instead of the item -
+        // so a head that offers a drag on "anything removable" moves the wrong thing and reports
+        // success. The macOS head had exactly that, from two guards that happened to agree.
+        let unplaced = items_view(&Plan(vec![settings(), json!({ "kind": "object", "sequenceNumber": 1, "isSimpleItem": true, "specifiesCoordinate": true, "coordinate": { "kind": "coordinate", "valid": true, "latitude": 0.0, "longitude": 0.0 } })], 1), &[]);
+        // The bridge marks a coordinate read with "valid", which the fixture has to carry or the
+        // view discards it and every item reads unplaced - a fixture that agrees with the answer
+        // for the wrong reason.
+        assert_eq!(unplaced["items"][1]["coordinate"], Value::Null, "nought by nought is the unset coordinate, not a place off Africa");
+        assert_eq!(unplaced["items"][1]["movable"], false);
+
+        let placed = items_view(&Plan(vec![settings(), json!({ "kind": "object", "sequenceNumber": 1, "isSimpleItem": true, "specifiesCoordinate": true, "coordinate": { "kind": "coordinate", "valid": true, "latitude": 47.397, "longitude": 8.546 } })], 1), &[]);
+        assert_eq!(placed["items"][1]["movable"], true);
+
+        assert_eq!(unplaced["items"][0]["kind"], "settings");
+        assert_eq!(unplaced["items"][0]["movable"], false, "the plan's own entry is not on the map, whatever coordinate it reports");
     }
 
     #[test]
