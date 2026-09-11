@@ -53,11 +53,13 @@ fun addingAfterText(selected: MapHit?, items: List<MissionItem>): String? {
 }
 
 fun legText(item: MissionItem): String? {
-    if (item.distance.isNaN() || item.distance <= 0.0) return null
-    val climb = item.altitudeChangeText
-        .takeIf { !item.altitudeChange.isNaN() && item.altitudeChange != 0.0 }
-        .orEmpty()
-    return listOf(item.distanceText, item.azimuthText, climb)
+    val travelled = !item.distance.isNaN() && item.distance > 0.0
+    val climbed = !item.altitudeChange.isNaN() && item.altitudeChange != 0.0
+    return listOf(
+        item.distanceText.takeIf { travelled }.orEmpty(),
+        item.azimuthText.takeIf { travelled }.orEmpty(),
+        item.altitudeChangeText.takeIf { climbed }.orEmpty(),
+    )
         .filter { it.isNotBlank() }
         .takeIf { it.isNotEmpty() }
         ?.joinToString(" \u00b7 ")

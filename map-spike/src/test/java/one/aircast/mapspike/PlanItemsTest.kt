@@ -302,6 +302,19 @@ class LegTextTest {
     }
 
     @Test
+    fun `a climb straight up still says the climb, having no distance to report`() {
+        assertEquals(
+            "+10.0 m",
+            legText(item(0.0, altitudeChange = 10.0, altitudeChangeText = "+10.0 m")),
+        )
+    }
+
+    @Test
+    fun `a leg with neither distance nor climb says nothing`() {
+        assertNull(legText(item(0.0)))
+    }
+
+    @Test
     fun `a climbing leg says how much it climbs, signed and in the vertical unit`() {
         assertEquals(
             "449 m · 47° · +12.0 m",
