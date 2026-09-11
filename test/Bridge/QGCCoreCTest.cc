@@ -3396,9 +3396,21 @@ void QGCCoreCTest::_everyDependencyAViewDeclaresActuallyBindsToASignal()
     // A dep that does not bind is not an error and says so nowhere: it falls through to a re-read
     // that only runs while the event loop is idle, and no test can tell the two apart because
     // QTRY spins that loop. Asking the watcher directly is the only way to see it.
-    // Each of these names a list model, a bare object root, or a CONSTANT property, none of which
-    // Qt gives a notify signal. They are served by the poll and that is now a recorded decision
-    // rather than an accident. Anything new arriving here needs a signal dep instead.
+    // Each of these names a list model or a bare object root, none of which Qt gives a notify
+    // signal, so each is served by the poll. That is a recorded decision per entry rather than an
+    // accident, and anything new arriving here has to earn its place:
+    //
+    //   fence polygons, circles, rally points - CONSTANT list models. Replacement is covered by
+    //     plan.geoFenceController@loadComplete; drawing a fence is not, and the only signal that
+    //     would cover it carries an argument, which the watcher does not bind to. Left polled
+    //     deliberately: a watch right for two of three edit shapes is worse than no watch.
+    //   links.linkConfigurations - CONSTANT list model, and link edits are rare enough that a
+    //     200ms re-read costs nothing.
+    //   logDownload.model - CONSTANT list model, but the list arriving is already covered:
+    //     requestingList goes false when the fetch completes and that dep does bind.
+    //   mavlinkInspector.activeSystem.messages - CONSTANT list model, and message arrival is a
+    //     flood. A rate display wants sampling, not an event per packet.
+    //   radioCal, sensorsCal - bare object roots, which name no property at all.
     const QStringList knowinglyPolled = {
         QStringLiteral("plan.geoFenceController.polygons"),
         QStringLiteral("plan.geoFenceController.circles"),
