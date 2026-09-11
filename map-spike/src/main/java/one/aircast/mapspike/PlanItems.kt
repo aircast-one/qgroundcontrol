@@ -35,6 +35,8 @@ internal fun itemDetail(item: MissionItem): String = listOfNotNull(
     AFTER_THE_ROUTE_ENDS.takeIf { item.afterRouteEnds },
 ).joinToString(" \u00b7 ")
 
+fun worthListing(items: List<MissionItem>): Boolean = items.any { it.index != HOME_ITEM }
+
 fun rowAt(rows: List<ItemRow>, index: Int): ItemRow? = rows.firstOrNull { it.index == index }
 
 sealed interface LongPress {

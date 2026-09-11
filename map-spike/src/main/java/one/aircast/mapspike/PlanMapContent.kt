@@ -332,7 +332,7 @@ internal fun MapSpikeScreen(
                 color = MaterialTheme.colorScheme.surface.copy(alpha = 0.88f),
                 shape = MaterialTheme.shapes.small,
                 onClick = { listOpen = true },
-                enabled = allItems.isNotEmpty(),
+                enabled = worthListing(allItems),
             ) {
                 val ready by MapBridge.bridgeReady.collectAsState()
                 Row(
@@ -351,7 +351,7 @@ internal fun MapSpikeScreen(
                         },
                         style = MaterialTheme.typography.bodySmall,
                     )
-                    if (allItems.isNotEmpty()) {
+                    if (worthListing(allItems)) {
                         Icon(
                             Icons.AutoMirrored.Filled.List,
                             contentDescription = "Show the plan as a list",

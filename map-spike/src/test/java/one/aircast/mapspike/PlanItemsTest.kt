@@ -171,3 +171,23 @@ class LongPressActionTest {
         )
     }
 }
+
+class WorthListingTest {
+    private fun item(index: Int) =
+        MissionItem(index, index, 41.0, 44.0, "Waypoint", false, 50.0, kind = "waypoint")
+
+    @Test
+    fun `a plan holding only its settings item has nothing to list`() {
+        assertFalse(worthListing(listOf(item(HOME_ITEM))))
+    }
+
+    @Test
+    fun `one real item is enough to be worth listing`() {
+        assertTrue(worthListing(listOf(item(HOME_ITEM), item(1))))
+    }
+
+    @Test
+    fun `no plan at all is nothing to list`() {
+        assertFalse(worthListing(emptyList()))
+    }
+}
