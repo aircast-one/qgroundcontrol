@@ -910,6 +910,7 @@ final class MissionStore: ObservableObject, Probeable, WriteReporting {
                                    "reason": $0.disabledReason ?? ""] },
          "planFile": planFile, "watching": watchPoll != nil, "planName": planName,
          "watchEvents": BridgeWatch.delivered,
+         "watchBindings": BridgeWatch.bindings,
          "readyToSave": readyToSave, "notReadyReason": notReadyReason,
          "uploadCheckable": preCheck() != nil,
          "uploadWarning": uploadWarning.map(\.refusal) ?? "",

@@ -1,5 +1,11 @@
 #!/usr/bin/env python3
-"""Every literal bridge path in macos/Sources must resolve against a running app.
+"""Every literal bridge path in macos/Sources must resolve, and every watched dep must bind.
+
+Two questions about the same subject, both of which fail silently. A path that does not
+resolve reads back as a default. A path that resolves but never BINDS is worse: the watcher
+falls back to a re-read that runs only while the event loop is idle and dedupes on the
+serialised value, so the view goes stale exactly when the loop is busy and reports nothing.
+The binding half needs a window open, because a head with no window registers no watches.
 
 A path is a string the head hands to a reflection lookup. A typo does not raise:
 it resolves to nothing and every decoder turns that into its default, which the
@@ -81,7 +87,48 @@ print(f"checked {len(reads)} literal read paths: "
 # is worse than one that covers four and names the fifth.
 for w in unparsed:
     print(f"  NOT PINNED {w} - watch paths are not an array literal")
+
+
+# The core reports whether each resolved dep bound. It does not report WHY one did not, and
+# the two reasons need opposite responses: a dep whose object does not exist yet rebinds by
+# itself (Watcher::_poll calls _bind again every tick), while a dep that resolves and still
+# does not bind has no notify signal and never will. Asking the bridge whether the path
+# resolves is what separates them -- an earlier version exempted everything under vehicle.*,
+# which would have called a CONSTANT list property like vehicle.formattedMessages "awaiting a
+# vehicle" forever, explaining away exactly the class this exists to catch.
+def watch_bindings():
+    req = urllib.request.Request(f"http://127.0.0.1:{PORT}/native/probe?id=mission",
+                                 headers={"X-QGC-Debug-Api": "1"})
+    state = json.loads(urllib.request.urlopen(req, timeout=10).read())["state"]
+    reported = state.get("watchBindings", {})
+    return reported.get("bound", 0), reported.get("unbound", [])
+
+unbound_broken = []
+asked = True
+bound, unbound = 0, []
+try:
+    bound, unbound = watch_bindings()
+except Exception as error:
+    print(f"  watch bindings NOT CHECKED - {error}")
+    asked = False
+
+if not asked:
+    pass
+elif bound == 0 and not unbound:
+    # No window open means no watches at all, and an empty answer would read exactly like a
+    # clean one.
+    print("  watch bindings NOT CHECKED - no watches registered; open the Plan window first")
+else:
+    resolves = {p: answer(p) in RESOLVES or answer(p) == "value" for p in unbound}
+    waiting = [p for p in unbound if not resolves[p]]
+    unbound_broken = [p for p in unbound if resolves[p]]
+    print(f"checked {bound + len(unbound)} watched deps: {bound} bound, "
+          f"{len(waiting)} not resolvable yet, {len(unbound_broken)} BINDING TO NOTHING")
+    for p in waiting:
+        print(f"  waiting {p} - resolves to nothing yet; _poll rebinds when it appears")
+    for p in unbound_broken:
+        print(f"  UNBOUND {p} - resolves but binds to no signal; rides the idle-only poll")
 for k, p, w in bad:
     why = "no such root" if k == "null" else k
     print(f"  BROKEN {p}  ({w}) - {why}")
-sys.exit(1 if bad else 0)
+sys.exit(1 if bad or unbound_broken else 0)

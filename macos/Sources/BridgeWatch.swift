@@ -16,6 +16,26 @@ enum BridgeWatch {
         return counts
     }
 
+    // A watch that registers but never binds is indistinguishable from a value that never
+    // changed. The watcher falls back to a re-read that only runs while the event loop is idle
+    // and dedupes on the serialised value, so an unbound dep goes stale exactly when the loop
+    // is busy -- which is when a vehicle is arriving. The core has always known which deps
+    // bound and nothing on this side had ever asked it. One call, because each one crosses to
+    // the Qt thread and back.
+    static var bindings: [String: Any] {
+        guard let raw = qgc_bridge_watch_status() else { return ["bound": 0, "unbound": [String]()] }
+        defer { qgc_bridge_free(raw) }
+        guard let data = String(cString: raw).data(using: .utf8),
+              let top = (try? JSONSerialization.jsonObject(with: data)) as? [String: Any],
+              let paths = top["paths"] as? [[String: Any]]
+        else { return ["bound": 0, "unbound": [String]()] }
+        let isBound = { (entry: [String: Any]) in (entry["bound"] as? NSNumber)?.boolValue == true }
+        return [
+            "bound": paths.filter(isBound).count,
+            "unbound": paths.filter { !isBound($0) }.compactMap { $0["path"] as? String }.sorted(),
+        ]
+    }
+
     static func watch(_ client: String, _ paths: [String],
                       _ onChange: (([String: Any]) -> Void)? = nil) {
         lock.lock()
