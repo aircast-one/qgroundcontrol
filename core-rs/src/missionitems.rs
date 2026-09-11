@@ -37,6 +37,10 @@ pub fn items_view(backend: &dyn Backend, args: &[String]) -> Value {
             .map(|index| item(&object(&backend.get_fields(&format!("plan.missionController.visualItems.{index}"), FIELDS)), index, &vertical, imperial))
             .collect(),
     };
+    let items: Vec<Value> = match walked(&items) {
+        true => items,
+        false => items.into_iter().map(unwalked).collect(),
+    };
     let items: Vec<Value> = match shapes {
         false => items,
         true => items
@@ -166,7 +170,30 @@ fn fact_units(read: &Value, name: &str) -> Option<String> {
         .map(str::to_string)
 }
 
+const LEG_FIGURES: [&str; 6] = ["distance", "distanceText", "distanceFromStart", "azimuth", "azimuthText", "altitudeChangeText"];
+
+fn walked(items: &[Value]) -> bool {
+    let legs = items.iter().filter(|item| flag(item, "flownLeg")).count();
+    let reached = |item: &Value| item.get("distanceFromStart").and_then(Value::as_f64).is_some_and(|metres| metres > 0.0);
+    legs < 2 || items.iter().any(reached)
+}
+
+fn unwalked(item: Value) -> Value {
+    match item {
+        Value::Object(mut fields) => {
+            LEG_FIGURES.iter().for_each(|key| {
+                fields.insert((*key).to_string(), Value::Null);
+            });
+            Value::Object(fields)
+        }
+        other => other,
+    }
+}
+
 fn height(read: &Value) -> Option<f64> {
+    if flag(read, "isSimpleItem") && !flag(read, "specifiesAltitude") {
+        return None;
+    }
     match flag(read, "homePosition") {
         true => fact_number(read, "altitude").or_else(|| fact_number(read, "plannedHomePositionAltitude")),
         false => fact_number(read, "altitude"),
@@ -504,6 +531,73 @@ mod reported {
     }
 
     #[test]
+    fn only_a_command_that_states_an_altitude_shows_one() {
+        let altitude = |value: f64| json!({ "property": "altitude", "value": value });
+        let speed = listed(json!({
+            "kind": "object", "sequenceNumber": 2, "isSimpleItem": true, "specifiesAltitude": false,
+            "specifiesCoordinate": false, "facts": [ altitude(0.0) ],
+        }));
+        assert_eq!(speed["altitudeText"], Value::Null, "a plan loaded from a file sets the altitude fact from param7 without asking whether the command specifies one, so a DO_ item carries a real zero rather than a NaN and no fallback is involved");
+        assert_eq!(speed["altitude"], Value::Null);
+
+        let waypoint = listed(json!({
+            "kind": "object", "sequenceNumber": 1, "isSimpleItem": true, "specifiesAltitude": true,
+            "specifiesCoordinate": true, "facts": [ altitude(0.0) ],
+        }));
+        assert_eq!(waypoint["altitudeText"], "0.0 m", "a waypoint at zero states an altitude of zero, which is a different thing from stating none");
+
+        let home = listed(json!({
+            "kind": "object", "sequenceNumber": 0, "homePosition": true, "isSimpleItem": false,
+            "facts": [ json!({ "property": "plannedHomePositionAltitude", "value": 12.0 }) ],
+        }));
+        assert_eq!(home["altitudeText"], "12.0 m", "the launch row is not a SimpleMissionItem, so it carries no specifiesAltitude property at all - gating on the bare flag would have blanked it");
+
+        let survey = listed(json!({
+            "kind": "object", "sequenceNumber": 3, "isSimpleItem": false, "specifiesCoordinate": true,
+            "facts": [ altitude(80.0) ],
+        }));
+        assert_eq!(survey["altitudeText"], "80.0 m", "and a complex item carries none either, for the same reason");
+    }
+
+    #[test]
+    fn leg_figures_are_absent_until_the_controller_has_walked_the_plan() {
+        struct Plan(Vec<Value>);
+        impl Backend for Plan {
+            fn get(&self, path: &str) -> String {
+                match path {
+                    "plan.missionController.visualItems.count" => json!({ "kind": "value", "value": self.0.len() }).to_string(),
+                    "plan.missionController.currentPlanViewVIIndex" => json!({ "kind": "value", "value": 1 }).to_string(),
+                    _ => String::new(),
+                }
+            }
+            fn get_fields(&self, path: &str, _f: &str) -> String {
+                match path {
+                    "plan.missionController" => json!({ "kind": "object", "containsItems": true }).to_string(),
+                    "plan.missionController.visualItems" => json!({ "kind": "object", "elements": self.0 }).to_string(),
+                    _ => String::new(),
+                }
+            }
+            fn set(&self, _p: &str, _v: &str) -> String { String::new() }
+            fn invoke(&self, _p: &str, _a: &str) -> String { String::new() }
+            fn watch(&self, _p: &[String]) {}
+        }
+        let place = |sequence: i64| json!({ "kind": "object", "sequenceNumber": sequence, "isSimpleItem": true, "specifiesCoordinate": true, "distance": 0.0, "distanceFromStart": 0.0, "azimuth": 0.0, "altDifference": 0.0 });
+        let fresh = items_view(&Plan(vec![place(0), place(1), place(2)]), &[]);
+        let row = &fresh["items"][1];
+        assert_eq!(row["distance"], Value::Null, "the controller fills these in a walk that runs after an insert returns, and until it does every one of them reads zero - which is a real possible distance, so a head cannot tell the difference and caches it");
+        assert_eq!(row["distanceText"], Value::Null);
+        assert_eq!(row["distanceFromStart"], Value::Null);
+        assert_eq!(row["azimuthText"], Value::Null, "a bearing of zero is due north, which is the same trap one field over");
+        assert_eq!(row["altitudeChangeText"], Value::Null);
+        assert_eq!(row["kind"], "waypoint", "everything the walk does not produce still travels; this withholds four figures, not the item");
+
+        let walked_plan = vec![place(0), json!({ "kind": "object", "sequenceNumber": 1, "isSimpleItem": true, "specifiesCoordinate": true, "distance": 120.0, "distanceFromStart": 120.0 }), place(2)];
+        let done = items_view(&Plan(walked_plan), &[]);
+        assert_eq!(done["items"][1]["distanceText"], "120 m", "one item reporting a distance from the start is the tell that the walk has run, and then every figure it produced is trusted - including the zeros, which are real once something moved");
+        assert_eq!(done["items"][2]["distance"], 0.0);
+    }
+
+    #[test]
     fn a_command_with_no_altitude_does_not_inherit_the_launch_altitude() {
         let home_altitude = json!({ "property": "plannedHomePositionAltitude", "value": 0.0 });
         let speed_change = listed(json!({
@@ -542,7 +636,7 @@ mod reported {
             }
             fn watch(&self, _p: &[String]) {}
         }
-        let leg = |metres: f64| json!({ "kind": "object", "sequenceNumber": 1, "isSimpleItem": true, "specifiesCoordinate": true, "distance": metres, "azimuth": 47.4, "altDifference": -12.0 });
+        let leg = |metres: f64| json!({ "kind": "object", "sequenceNumber": 1, "isSimpleItem": true, "specifiesCoordinate": true, "distance": metres, "distanceFromStart": metres, "azimuth": 47.4, "altDifference": -12.0 });
         let row = |item: Value, raw: f64| items_view(&Units(item, raw), &[])["items"][1].clone();
 
         let short = row(leg(449.36), 1.0);
@@ -612,7 +706,7 @@ mod reported {
     #[test]
     fn the_height_the_operator_set_travels_beside_the_height_above_the_sea() {
         let item = listed(json!({
-            "kind": "object", "sequenceNumber": 1, "isSimpleItem": true, "specifiesCoordinate": true,
+            "kind": "object", "sequenceNumber": 1, "isSimpleItem": true, "specifiesCoordinate": true, "specifiesAltitude": true,
             "amslEntryAlt": 660.0,
             "altitudeMode": 1,
             "facts": [ { "name": "Altitude", "property": "altitude", "value": 75.0 } ],
