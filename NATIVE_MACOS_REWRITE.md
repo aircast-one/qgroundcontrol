@@ -1498,3 +1498,17 @@ A third instrument lesson, cheaply learned this time. The first attempt asked
 build". The same command returns 0 for `FlyView.qml`, which is certainly in the build —
 qmlcachegen leaves no plain filename to find. The control case was in the same command as the
 question, so the blindness surfaced immediately instead of becoming a finding.
+
+### The alarming fallback had no siblings (2026-09-11)
+
+`db76aa585` fixed a rule whose missing-value fallback returned an *assertion* — "Mission is
+below terrain" — rather than an admission that nothing was known. Worth asking immediately
+whether any other model does the same, since the shape is easy to write by accident.
+
+Swept every `guard … else { return <named constant> }` in `macos/Sources/*Model*.swift`.
+Nineteen hits, no siblings. Every other one marks the value unknown (`—`, `Not set`,
+`.unknown`) or degrades to a lesser fact it does hold (a detection without a confidence draws
+its label; a GPS fix without a satellite count draws the fix). None of them claims a state the
+data does not support.
+
+So this was a one-off, not a habit, and the sweep does not need running again.
