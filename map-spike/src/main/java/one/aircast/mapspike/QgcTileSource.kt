@@ -16,6 +16,11 @@ internal fun tileCoords(path: String): Triple<Int, Int, Int>? =
         runCatching { Triple(z.toInt(), x.toInt(), y.toInt()) }.getOrNull()
     }
 
+internal fun uncachedTileUrl(path: String): String? =
+    tileCoords(path)?.let { (z, x, y) ->
+        OSM_TILE_URL.replace("{z}", "$z").replace("{x}", "$x").replace("{y}", "$y")
+    }
+
 fun qgcRasterStyle(): String = """
 {
   "version": 8,
@@ -56,12 +61,26 @@ class QgcTileInterceptor(
             }
         }.getOrNull()
 
-        return Response.Builder()
+        if (tile != null) {
+            return Response.Builder()
+                .request(request)
+                .protocol(Protocol.HTTP_1_1)
+                .code(200)
+                .message("OK")
+                .body(tile.toResponseBody(mediaType))
+                .build()
+        }
+
+        val online = uncachedTileUrl(request.url.encodedPath)?.let { url ->
+            runCatching { chain.proceed(request.newBuilder().url(url).build()) }.getOrNull()
+        }
+
+        return online ?: Response.Builder()
             .request(request)
             .protocol(Protocol.HTTP_1_1)
-            .code(if (tile == null) 404 else 200)
-            .message(if (tile == null) "No cached tile" else "OK")
-            .body((tile ?: ByteArray(0)).toResponseBody(mediaType))
+            .code(404)
+            .message("No cached tile")
+            .body(ByteArray(0).toResponseBody(mediaType))
             .build()
     }
 }

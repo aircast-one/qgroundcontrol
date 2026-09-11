@@ -60,13 +60,15 @@ private const val STALE_COLOUR = "#9E9E9E"
 
 const val DEMO_STYLE_URL = "https://demotiles.maplibre.org/style.json"
 
+const val OSM_TILE_URL = "https://tile.openstreetmap.org/{z}/{x}/{y}.png"
+
 const val OSM_RASTER_STYLE = """
 {
   "version": 8,
   "sources": {
     "osm": {
       "type": "raster",
-      "tiles": ["https://tile.openstreetmap.org/{z}/{x}/{y}.png"],
+      "tiles": ["$OSM_TILE_URL"],
       "tileSize": 256,
       "attribution": "(c) OpenStreetMap contributors"
     }
