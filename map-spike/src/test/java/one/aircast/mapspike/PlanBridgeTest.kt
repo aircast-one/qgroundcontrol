@@ -29,6 +29,37 @@ class PlanBridgeTest {
         JSONObject("""{"kind":"object","items":[${elements.joinToString(",")}]}""")
 
     @Test
+    fun `everything after the item that ends the route is flagged, read from the plan itself`() {
+        val plan = JSONObject(
+            """{"kind":"object","items":[""" +
+                """{"sequence":0,"name":"Mission Start","flownLeg":false,""" +
+                """"coordinate":{"latitude":41.0,"longitude":44.0}},""" +
+                """{"sequence":1,"name":"Waypoint","flownLeg":true,""" +
+                """"coordinate":{"latitude":41.1,"longitude":44.1}},""" +
+                """{"sequence":2,"name":"Land","flownLeg":true,"endsRoute":true,"command":21,""" +
+                """"coordinate":{"latitude":41.2,"longitude":44.2}},""" +
+                """{"sequence":3,"name":"Waypoint","flownLeg":true,""" +
+                """"coordinate":{"latitude":41.3,"longitude":44.3}}]}""",
+        )
+
+        val items = missionItems(plan)
+
+        assertEquals(
+            listOf(false, false, false, true),
+            items.map { it.afterRouteEnds },
+        )
+        assertFalse("the land itself is the end, not past it", items[2].afterRouteEnds)
+        assertFalse("and the map draws no leg to what follows", items[3].routed)
+    }
+
+    @Test
+    fun `a plan that never ends its route strands nothing`() {
+        val items = missionItems(model(element(sequence = 1), element(sequence = 2)))
+
+        assertEquals(listOf(false, false), items.map { it.afterRouteEnds })
+    }
+
+    @Test
     fun `items carry their sequence command and position`() {
         val items = missionItems(
             model(

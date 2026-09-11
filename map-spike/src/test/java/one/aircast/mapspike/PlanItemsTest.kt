@@ -68,6 +68,26 @@ class PlanItemsTest {
     }
 
     @Test
+    fun `an item sitting after the land says so, because the map just draws no line to it`() {
+        val stranded = MissionItem(
+            3, 3, 41.0, 44.0, "Waypoint", false, 50.0,
+            routed = false, kind = "waypoint", commandId = 16, afterRouteEnds = true,
+        )
+
+        assertEquals("50 m \u00b7 after the route ends", itemRows(listOf(stranded)).single().detail)
+    }
+
+    @Test
+    fun `an item the route does not pass through is not accused of being stranded`() {
+        val roi = MissionItem(
+            2, 2, 41.0, 44.0, "Region Of Interest", false, Double.NaN,
+            routed = false, kind = "roi", commandId = 201,
+        )
+
+        assertEquals("", itemRows(listOf(roi)).single().detail)
+    }
+
+    @Test
     fun `a row is found by the index the map selects with, not by position`() {
         val rows = itemRows(listOf(item(4, 1, "Waypoint"), item(9, 2, "Land", kind = "land", commandId = 21)))
 
