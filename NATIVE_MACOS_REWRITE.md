@@ -1591,3 +1591,33 @@ delta 0.00, and still 0.00 with two waypoints after the landing. The scaffolding
 (`view.missionSummary(verify)`), so the watched plain path is back to ~1.0 ms at 121 items from
 202 ms, with the key present and null rather than absent — the shape stays constant, which is
 why no contract re-record was needed on this side.
+
+### An intermittent failure can be a constant failure with intermittent visibility (2026-09-11)
+
+The tile-cache test has failed in full suite runs all day, passed alone every time, and resisted
+reproduction in the core session's tree. With the core's diagnostic finally on the function that
+was answering `-3`, the first run here produced this — **in a run that passed 703/0/89**:
+
+    qgc_core_tile_size: the tile database could not be read: attempt to write a readonly database
+
+The database errors on the runs that succeed as well. The test polls in a loop that tolerates a
+failed read and asserts on whatever the call after the loop returns, so what varies between a red
+run and a green one is not whether the read fails but **which call catches it**. Every green run
+was evidence of nothing, and so was every count of them.
+
+The mechanism follows from the error and one pragma: `journal_mode` is `delete`, a rollback
+journal rather than WAL, and the reader opens `mode=ro`. A read-only connection that meets a
+journal the writer has open mid-transaction must roll it back before it can read, and rolling
+back is a write. Reported; the database and its reader are the core's.
+
+**Two attributions abandoned on the way, both mine and both plausible.** First that a leftover app
+was writing the same file — the database is `QDir::temp()/qgc-core-tilecache-<applicationPid>.db`,
+created fresh per test process, so nothing outside the suite can touch it. Second, and more
+tempting, that this stream's habit of `kill -9` on the app left hot journals behind: same
+refutation, and it would have been a satisfying story about a runbook instruction causing a bug.
+The writer is the test's own map engine, on its own thread, in its own process.
+
+**The general form is worth keeping.** "Intermittent" describes the observation, not the fault. Ask
+whether the fault is constant and only its visibility varies, because a green run of a test that
+swallows its own failures proves less than it appears to, and counting green runs multiplies that
+by nothing.
