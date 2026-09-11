@@ -95,6 +95,7 @@ pub mod ulogstream;
 pub mod router;
 pub mod rtcm;
 pub mod vibration;
+pub mod vehicles;
 pub mod video;
 pub mod vehiclefacts;
 pub mod view;

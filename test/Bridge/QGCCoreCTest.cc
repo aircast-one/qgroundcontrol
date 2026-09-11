@@ -1216,7 +1216,7 @@ constexpr int kMockStatusTextCount = 9;
 const char *const kViewPaths[] = {
     "view.messages", "view.plan", "view.guidedActions", "view.guidedAltitude", "view.guidedAltitude(30)",
     "view.guidedTakeoff", "view.guidedTakeoff(10)", "view.guidedSpeed", "view.guidedSpeed(3)", "view.battery",
-    "view.preflight", "view.warnings", "view.modeSlots", "view.missionSummary", "view.missionItems", "view.label(altitudeRelative)", "view.instruments", "view.vibration",
+    "view.preflight", "view.warnings", "view.modeSlots", "view.missionSummary", "view.missionItems", "view.vehicles", "view.label(altitudeRelative)", "view.instruments", "view.vibration",
     "view.sensors", "view.control(settings.appSettings.audioMuted)", "view.links", "view.linkForm(udp,,14550)",
     "view.mapScale(120)", "view.terrainProfile", "view.missionKinds", "view.missionSeed(survey,47,8)",
     "view.calibration", "view.radio", "view.logs", "view.inspector", "view.flightModes", "view.settings",
@@ -3223,6 +3223,41 @@ void QGCCoreCTest::_everyEditablePathTheCoreNamesAcceptsAWrite()
              qPrintable(QStringLiteral("the core named %1 paths a head cannot write, and a write that does not resolve does not happen and says nothing:\n%2")
                             .arg(unwritable.count())
                             .arg(unwritable.join(QStringLiteral("\n")))));
+#else
+    QSKIP("the Rust core is not linked into this build");
+#endif
+}
+
+void QGCCoreCTest::_theFleetIsNamedAndTheCommandedOneCanBeChosen()
+{
+#ifdef QGC_RUST_CORE
+    const QJsonObject none = take(qgc_core_get("view.vehicles"));
+    QCOMPARE(none.value(QStringLiteral("count")).toInt(-1), 0);
+    QCOMPARE(none.value(QStringLiteral("ambiguous")).toBool(true), false);
+
+    _connectMockLink(MAV_AUTOPILOT_PX4);
+    const auto disconnectWhenDone = qScopeGuard([this]() { _disconnectMockLink(); });
+    QTRY_COMPARE_WITH_TIMEOUT(take(qgc_core_get("view.vehicles")).value(QStringLiteral("count")).toInt(-1), 1, 10000);
+
+    const QJsonObject fleet = take(qgc_core_get("view.vehicles"));
+    const QJsonObject only = fleet.value(QStringLiteral("vehicles")).toArray().first().toObject();
+    const int id = only.value(QStringLiteral("id")).toInt(-1);
+    QVERIFY2(id > 0, "the vehicle has no id, so nothing could name it");
+    QCOMPARE(fleet.value(QStringLiteral("activeId")).toInt(-1), id);
+    QCOMPARE(only.value(QStringLiteral("active")).toBool(), true);
+    QVERIFY2(!only.value(QStringLiteral("name")).toString().isEmpty(), "an operator with two aircraft up needs each one named");
+    QVERIFY2(!only.value(QStringLiteral("link")).toString().isEmpty(),
+             "which link it arrived on is how an operator tells two identical airframes apart, and it read as nothing");
+    QCOMPARE(fleet.value(QStringLiteral("ambiguous")).toBool(true), false);
+
+    const QJsonObject chosen = take(qgc_core_invoke("vehicles.setActive", QStringLiteral("[%1]").arg(id).toUtf8().constData()));
+    QVERIFY2(chosen.value(QStringLiteral("ok")).toBool(false),
+             qPrintable(QStringLiteral("choosing the one connected vehicle failed: %1").arg(chosen.value(QStringLiteral("reason")).toString())));
+    QCOMPARE(take(qgc_core_get("view.vehicles")).value(QStringLiteral("activeId")).toInt(-1), id);
+
+    const QJsonObject absent = take(qgc_core_invoke("vehicles.setActive", "[99]"));
+    QCOMPARE(absent.value(QStringLiteral("ok")).toBool(true), false);
+    QCOMPARE(take(qgc_core_get("view.vehicles")).value(QStringLiteral("activeId")).toInt(-1), id);
 #else
     QSKIP("the Rust core is not linked into this build");
 #endif

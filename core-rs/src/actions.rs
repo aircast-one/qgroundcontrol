@@ -7,9 +7,10 @@ use crate::router::Backend;
 const INSERT: &str = "mission.insert";
 const REMOVE: &str = "mission.remove";
 const ORBIT: &str = "guided.orbit";
+const ACTIVATE: &str = "vehicles.setActive";
 
 pub fn owns(path: &str) -> bool {
-    matches!(path, INSERT | REMOVE | ORBIT)
+    matches!(path, INSERT | REMOVE | ORBIT | ACTIVATE)
 }
 
 pub fn run(backend: &dyn Backend, path: &str, args: &str) -> Value {
@@ -17,6 +18,7 @@ pub fn run(backend: &dyn Backend, path: &str, args: &str) -> Value {
         INSERT => insert(backend, args),
         REMOVE => remove(backend, args),
         ORBIT => orbit(backend, args),
+        ACTIVATE => activate(backend, args),
         _ => json!({ "ok": false, "reason": format!("{path} is not an action the core performs") }),
     }
 }
@@ -177,6 +179,28 @@ fn orbit(backend: &dyn Backend, args: &str) -> Value {
     match called.get("ok").and_then(Value::as_bool) {
         Some(true) => json!({ "ok": true, "radius": signed, "altitudeAmsl": amsl }),
         _ => json!({ "ok": false, "reason": called.get("reason").and_then(Value::as_str).unwrap_or("the vehicle refused the orbit").to_string() }),
+    }
+}
+
+// activeVehicle is a pointer property, so it cannot be set by value. The bridge writes one by
+// @path, and the path is an index into a list, so a head asking by id would otherwise have to find
+// the index itself and hold it across a read and a write.
+fn activate(backend: &dyn Backend, args: &str) -> Value {
+    let args: Value = serde_json::from_str(args).unwrap_or(Value::Null);
+    let Some(wanted) = args.as_array().and_then(|args| args.first()).and_then(Value::as_i64) else {
+        return json!({ "ok": false, "reason": "vehicles.setActive takes the id of the vehicle to command" });
+    };
+    let count = serde_json::from_str::<Value>(&backend.get("vehicles.vehicles.count")).ok().and_then(|v| v.get("value").and_then(Value::as_i64)).unwrap_or(0);
+    let found = (0..count).find(|index| {
+        crate::read::integer(&object(&backend.get_fields(&format!("vehicles.vehicles.{index}"), "id")), "id") == Some(wanted)
+    });
+    let Some(index) = found else {
+        return json!({ "ok": false, "reason": format!("no vehicle {wanted} is connected") });
+    };
+    let written: Value = serde_json::from_str(&backend.set("vehicles.activeVehicle", &json!({ "value": format!("@vehicles.vehicles.{index}") }).to_string())).unwrap_or(Value::Null);
+    match written.get("ok").and_then(Value::as_bool) {
+        Some(true) => json!({ "ok": true, "active": wanted }),
+        _ => json!({ "ok": false, "reason": written.get("reason").and_then(Value::as_str).unwrap_or("the vehicle could not be made active").to_string() }),
     }
 }
 
