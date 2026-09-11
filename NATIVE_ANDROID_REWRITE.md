@@ -5443,3 +5443,36 @@ item list. Their gate cannot cause it — a survey is not a simple item, so
 `height()` reaches `fact_number("altitude")` unchanged and gets `None`. The
 survey's altitude is not in the item's facts at all; the head reads it through
 `SurveyBridge` on a separate path.
+
+### Delete named a different item than the map did, 2026-09-12
+
+Found while checking something else — the insert-window zeros — by dumping a
+whole frame instead of grepping it. The filter I had written would have hidden
+this completely.
+
+One screen, one selected waypoint, three labels: `#6 at 50.0 m` in the summary
+chip, `Delete #6` on the button, and `Adding after #72` beside the toolbar. The
+map marker and the list row both said 72.
+
+`index` is the position in the item list, counting a complex item as one.
+`sequence` is QGC's sequence number, counting every item a survey expands to.
+They agree exactly until a complex item is in the plan, which is why this
+survived until a survey went into a test plan — the survey added 52 scan points,
+so item 6 became sequence 72.
+
+**The dangerous half is the Delete button**, because #6 is also a real marker on
+the map and a different item. The button appeared to name something it would not
+delete. All three now read the sequence, matching the map and the list. Verified
+on the handset: `#72 at 50.0 m`, `Adding after #72`, `Delete #72`.
+
+The test that broke was asserting `#3` from a fixture whose sequence was
+`index + 1` — it had been pinning the index, and its own fixture already
+distinguished the two.
+
+**The insert-window zeros, which is what I was actually looking for**: no
+visible change on this head, and I believe none is possible. `legText` already
+required `distance > 0`, so a served zero rendered as nothing before the core
+session's fix and renders as nothing after it. Sampled six frames across the
+window after an insert — the leg read `945 m · 15°` throughout, with no `0 m`
+and no `null` in any frame. Their fix matters for a head that does not guard;
+this one did.
