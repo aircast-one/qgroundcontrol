@@ -1433,3 +1433,31 @@ actually vends, which is what `viewFor annotation` could report and does not.
 The terrain panel in the same captures rendered perfectly, because it is drawn in SwiftUI.
 That contrast is the tell, and it is what makes the empty map look like a real defect rather
 than a blind spot.
+
+### The pin-density question, closed as a decision rather than a measurement (2026-09-11)
+
+Left open by `d05f7a084`: at 200+ waypoints, does MapKit declutter the mission pins down to a
+handful, and is that a defect? The instrument that would answer it — a count of annotation
+views MapKit actually vends, or better, how many of those end up `isHidden` — was the next
+piece of work. It is not being built, and the reason is worth more than the count.
+
+**The answer would change nothing, because the current behaviour is already the right policy.**
+`MissionMap.swift:693` sets `displayPriority = item.isCurrent ? .required : .defaultHigh`.
+`.defaultHigh` is exactly the setting that lets MapKit hide a pin when it collides with
+another, and the selected item is pinned to `.required` so it is never the one hidden. At the
+gate's own scale that is the behaviour to want, and this window already learned why the hard
+way: 405 overlapping collision circles on the terrain profile were drawn faithfully and read
+as one solid smear, fixed in `b44045f1b` by drawing runs instead of points. Two hundred
+overlapping numbered markers is the same defect with a different shape. Decluttering is not
+MapKit losing the operator's data; it is MapKit declining to reproduce that smear.
+
+**The mission's shape does not depend on the pins.** The route is an `MKPolyline` overlay, and
+overlays are not subject to annotation decluttering — they always render. `renderers` confirms
+it runs (`[CachedTileOverlay, MKPolyline]`). So the operator sees the full path at any density,
+with markers thinning out as they collide and the selected one always drawn. That is the
+correct reading of the panel, not a degraded one.
+
+What stays genuinely unknown is the exact count MapKit shows at a given zoom, and nothing here
+needs it. Recorded so the next pass does not rebuild the instrument to answer a question whose
+answer has no consequence — and so that if the policy is ever changed to `.required` for every
+item, this is the note explaining why it was not.
