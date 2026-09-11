@@ -2464,3 +2464,38 @@ Finishing the audit begun on the plan side.
 Which leaves the rule intact across every list either window draws: **the producer decides what is
 absent, and a member it refuses keeps its reason.** `AltitudeMode.choosable` was the only place
 that took a refusal and threw the reason away.
+
+### Correcting the entry above: Frame is on both firmwares, and I counted files instead of reading the list
+
+The Android session checked the setup finding and the naming half of it was wrong. **PX4 has a
+frame page; it is called Airframe.** `PX4AutoPilotPlugin.cc:66` constructs `AirframeComponent`,
+`APMAutoPilotPlugin.cc:61` constructs `APMAirframeComponent`. Gating Frame would have removed a
+page PX4 operators need.
+
+**The method was the error, not the arithmetic.** I counted files matching a case-sensitive glob
+for the page name. `Airframe` does not contain `Frame`, so the PX4 half was invisible, and the one
+"PX4 Camera file" the count did find is `Images/CameraTrigger.svg` — an icon. A filename is a weak
+signal in exactly the way a QML name match is, and the rule that covers it was already written
+down: *read the hit*. The list that decides is the set of components each plugin constructs, and
+reading that takes one grep:
+
+| | |
+|---|---|
+| **APM only** | Camera, Follow, Heli, **Lights**, **RemoteSupport**, SubFrame |
+| **PX4 only** | Actuator, Syslink |
+| **both** | **Airframe**, ESP8266, FlightModes, Motor, Power, Radio, Safety, Sensors, **Tuning** |
+
+**So the finding stands and its scope changes.** `SetupPage.bespoke` lists thirteen pages, and
+three of them — **Camera, Lights and Remote Support** — exist only on ArduPilot. Not Frame, and not
+Tuning. One of the three I named was right, one was wrong, and two I had not looked for.
+
+Android adds a consequence this window shares: their setup screen falls through to *"<page> is set
+up on the desktop"* when the core reports no parameter sections, which is **true** for a page the
+desktop has and **false** for Camera and Lights, where it points an operator at something QGC does
+not offer for their firmware at all.
+
+Still not fixed here, for the reason that has not changed: the asymmetry is that `PAGES` in
+`setup.rs` is a flat constant while `sections_for` directly beneath it already takes a `px4` flag,
+and no head can test the other firmware. The core's comment refusing to answer *"does a head have a
+screen for this page"* remains right — but *"does this firmware offer this page"* is vehicle state,
+which is theirs by the same rule.
