@@ -1461,3 +1461,40 @@ What stays genuinely unknown is the exact count MapKit shows at a given zoom, an
 needs it. Recorded so the next pass does not rebuild the instrument to answer a question whose
 answer has no consequence — and so that if the policy is ever changed to `.required` for every
 item, this is the note explaining why it was not.
+
+### Phase 4's real completion test, and where this window actually stands (2026-09-11)
+
+The working rule has been "a view is not converted until its QML is deleted". For this tree
+that rule was already corrected above: the QML stays while Linux, Windows and the Qt-hosted
+Android path ship from it, so the deletion becomes **"macOS stops loading it"**. That is a
+checkable fact and it had never been checked for the Plan view.
+
+**It has not stopped loading.** Reading the live QML tree of the running macOS app, with every
+native window open:
+
+    20 of 133 QML nodes are plan chrome, 0 visible
+
+    planDock, planDockAdd, planDockAddWaypoint, planDockCenter, planDockFile, planDockMapType,
+    planInspector, planTerrainSheet, planUploadButton, planNameCapsule, planStatsCapsule,
+    planLayerSelector (+3 options), planViewSwitch (+2 options), planPlacementHint,
+    planDetailBack
+
+Every one of those is something `PlanWindow.swift` now draws natively. They are constructed
+and invisible, not absent. So the native Plan window is complete enough to use and the QML
+Plan view is still being built alongside it on every launch.
+
+What this does **not** establish: whether those nodes cost anything meaningful once invisible,
+whether any are shared with the Fly view's toolbar rather than being Plan-only, or how hard
+they are to stop constructing. The idle-CPU floor measured in `a203d62f4` was attributed to a
+running GStreamer pipeline and that attribution is unchanged — this is not a competing
+explanation for it, only a second thing that is also happening.
+
+**Whose call it is.** What the Qt host loads is decided in `src/main.cc`, `src/Bridge/QGCEmbed.cc`
+and `AppShell.swift` — stream A's files, not this one. Recorded here and raised with the peers
+rather than changed.
+
+A third instrument lesson, cheaply learned this time. The first attempt asked
+`strings -a libAircastQGC.dylib` for `PlanView.qml` and got 0, which reads as "not in the
+build". The same command returns 0 for `FlyView.qml`, which is certainly in the build —
+qmlcachegen leaves no plain filename to find. The control case was in the same command as the
+question, so the blindness surfaced immediately instead of becoming a finding.
