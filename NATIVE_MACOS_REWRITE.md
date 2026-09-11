@@ -1908,3 +1908,28 @@ Two blind spots recorded rather than papered over. `vehicle.*` cannot be checked
 aircraft, which is the same limit as everywhere else in this stream. And a path assembled by
 interpolation — `visualItems.\(index).\(property)` — cannot be read literally; those segments are
 pinned separately by `interpolated-names.py` against the `Q_PROPERTY` that answers them.
+
+### The Plan window's action parity, compared and with the method's limit stated (2026-09-11)
+
+Phase 4's gate is this window replacing the QML one, so the open question is whether an operator
+can still do what they could. Compared the user-visible actions `PlanView.qml` offers against
+what this window exposes.
+
+Every one has an equivalent, with two exceptions that are not gaps:
+
+- **Clear Mission** is absent deliberately. It clears the mission *from the vehicle*, which this
+  stream is forbidden from doing, so there is no probe hook capable of it and no button.
+- **Coordinates…** looked like a gap and is not. It reads as numeric position entry for an item;
+  it is inside the *centre* menu and calls `centerToSpecifiedLocation`, so it centres the map on
+  a typed position. This window has it, in the same menu, beside Mission, Launch and Vehicle.
+
+**The item inspector offers one editable fact for a waypoint — Hold — and that matches**, because
+the core serves the editable facts and the head draws what it is given rather than deciding.
+Position is not among them: an item is moved by dragging, gated on `movable`, which is the same
+gate the map uses to decide whether to draw a draggable annotation.
+
+**The limit of this comparison, stated because it would otherwise read as stronger than it is.**
+It enumerates `qsTr(...)` strings out of one QML file. That finds menu items and buttons and
+will not find an affordance whose label is composed, whose control carries no text, or that
+lives in a file `PlanView.qml` merely instantiates. So this is evidence that the actions with
+visible labels are covered, and it is not an exhaustive inventory of the QML view's behaviour.
