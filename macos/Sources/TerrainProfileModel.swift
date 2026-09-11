@@ -76,7 +76,7 @@ struct TerrainProfile: Equatable {
     static let clears = "Clears terrain"
 
     var clearanceSentence: String {
-        guard !clearanceText.isEmpty else { return TerrainProfile.below }
+        guard !clearanceText.isEmpty else { return hasCollision ? TerrainProfile.below : "" }
         return hasCollision
             ? "\(TerrainProfile.below) by up to \(clearanceText)"
             : "\(TerrainProfile.clears) by \(clearanceText)"
@@ -88,7 +88,7 @@ struct TerrainProfile: Equatable {
     //
     // A collision needs no such qualification. Being below the ground somewhere is not made
     // uncertain by not knowing the rest.
-    var showsClearance: Bool { hasCollision || clearanceComplete }
+    var showsClearance: Bool { hasCollision || (clearanceComplete && !clearanceText.isEmpty) }
 
     func x(_ point: TerrainPoint, width: Double) -> Double { point.x * width }
 

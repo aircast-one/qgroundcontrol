@@ -4266,14 +4266,31 @@ func checkClearanceSentence() {
     expect(!unmeasured.showsClearance,
            "nothing measured is not the same as nothing in the way, and the core is what knows "
            + "which of those it found")
-    expect(unmeasured.clearanceSentence, "Mission is below terrain",
-           "the sentence still falls back to the collision wording with no figure, which is why "
-           + "it must never be shown for a mission that has not collided")
+    expect(unmeasured.clearanceSentence, "",
+           "and with nothing measured and nothing struck there is no sentence to say -- this "
+           + "used to fall back to the collision wording and rely on showsClearance never being "
+           + "true here, which held only as long as the core paired complete with a magnitude")
 
     let silent = profile(["hasCollision": true as NSNumber, "clearanceComplete": false as NSNumber])
     expect(silent.clearanceSentence, "Mission is below terrain",
            "a collision the core could not put a depth on still says it collides, rather than "
            + "reading as a sentence with its number dropped out")
+
+    // The case above says the fallback must never be shown for a mission that has not collided,
+    // and then leaves that to a contract: the core is trusted to pair a complete measurement with
+    // a magnitude. Nothing enforces it. Signed complete with the text empty, showsClearance is
+    // true through clearanceComplete and the sentence is the collision wording -- so a mission
+    // that clears the ground is labelled as being under it, in the calm grey the non-collision
+    // branch draws, which reads less like an alarm and more like a fact.
+    let completeWithoutFigure = profile(["hasCollision": false as NSNumber,
+                                         "clearanceComplete": true as NSNumber,
+                                         "clearanceText": ""])
+    expect(completeWithoutFigure.clearanceSentence != TerrainProfile.below,
+           "a mission that did not collide is never given the collision wording, whatever the "
+           + "core paired with it")
+    expect(!completeWithoutFigure.showsClearance,
+           "and a clearance with no magnitude to state is not a sentence worth drawing")
+
 }
 
 func checkCollisionRuns() {
