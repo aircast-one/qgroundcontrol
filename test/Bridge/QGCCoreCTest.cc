@@ -3396,8 +3396,9 @@ void QGCCoreCTest::_everyDependencyAViewDeclaresActuallyBindsToASignal()
     // A dep that does not bind is not an error and says so nowhere: it falls through to a re-read
     // that only runs while the event loop is idle, and no test can tell the two apart because
     // QTRY spins that loop. Asking the watcher directly is the only way to see it.
-    // Each of these names a list model or a bare object root, none of which Qt gives a notify
-    // signal, so each is served by the poll. That is a recorded decision per entry rather than an
+    // Each of these names a list model or a bare object root whose Q_PROPERTY was read and found
+    // to be CONSTANT. Not because list models are CONSTANT - 33 of them in this tree are and 21
+    // are not, visualItems among the latter - but because these six were checked one at a time. That is a recorded decision per entry rather than an
     // accident, and anything new arriving here has to earn its place:
     //
     //   fence polygons, circles, rally points - CONSTANT list models. Replacement is covered by
