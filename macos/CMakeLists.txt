@@ -84,7 +84,6 @@ add_library(QGCNativeUI STATIC
     Sources/PolygonEditModel.swift
     Sources/MotorTestModel.swift
     Sources/RemoteSupportModel.swift
-    Sources/AppUnits.swift
     Sources/VehicleSetupTextModel.swift
     Sources/SurveyStatsModel.swift
     Sources/MissionVehicleModel.swift
