@@ -1348,12 +1348,26 @@ timed through `/bridge/get` with a 1.6 ms HTTP floor subtracted where it matters
 Linear at **0.64 ms per item** for `view.missionItems`, about half that for the terrain
 profile. Every other view this window reads is free at any size — the cost is two reads.
 
-**The consequence is not in the Plan window.** It reloads on an edit, so it pays this once
-per edit. The Fly window's instance of `MissionStore` calls `startWatching()`, which reloads
-on a **0.5 s repeating timer on the main thread**. At the gate's own scale that is ~220 ms of
-bridge work every 500 ms — a 44% main-thread duty cycle, while flying, which is also when
-Phase 5's gate asks for a 30-minute flight. Extrapolating the measured slope, a survey around
-600 items saturates the timer entirely.
+**Correction (same day): the duty-cycle claim above was wrong, and the table is not what it
+looks like.** Every figure in it was timed through `/bridge/get`, so each one includes a TCP
+round-trip, JSON serialisation and a Python-side parse. None of that happens when the head
+calls `Bridge.group` in-process, and the difference is not a constant factor — it is most of
+the number. What the table actually measures is the cost of *observing* these views from a
+test harness, which is worth knowing and is not what it was first written up as.
+
+The claim was tested directly rather than argued about. `readItems()` was put behind a cache
+that only re-reads when a watch says the list changed, so the 0.5 s tick stops re-reading
+`view.missionItems` entirely; the Fly window was then opened on a 121-item plan and CPU
+sampled with `top` once settled. **Cache on: 52.3%. Cache off, re-reading every tick: 51.4%.**
+Within noise. The read the table called the dominant cost is not measurable at the process
+level, and the optimisation built on it was reverted rather than kept as a change that looks
+principled and does nothing.
+
+What the ~50% is remains open. It is not the tick's reads, and the map is drawing 121
+annotations, a route polyline and a tile overlay, so that is where to look next.
+
+`ps -o %cpu` on macOS is a decaying one-minute average and reads high straight after a plan
+build; the settled `top` samples above are the ones to trust.
 
 **Why the poll cannot simply become a watch.** The comment on `startWatching()` gives the
 real reason it exists: the Fly view does not edit this plan, and a plan can arrive from the
