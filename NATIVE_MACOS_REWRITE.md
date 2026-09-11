@@ -1493,6 +1493,34 @@ explanation for it, only a second thing that is also happening.
 and `AppShell.swift` — stream A's files, not this one. Recorded here and raised with the peers
 rather than changed.
 
+**Two of those three open questions are now answered, and the count has moved (2026-09-11).**
+Re-measured on a running native build rather than carried forward: **23 of 142 live QML nodes
+are plan chrome, still 0 visible.** It was 20 of 133. The QML plan UI is growing while this
+window replaces it, which is the actual argument for acting rather than the node count itself.
+
+**How hard they are to stop constructing: one gate.** All 23 descend from a single object,
+`PlanView { id: planView }` at `src/UI/MainWindow.qml:274`. **They are Plan-only** — the second
+open question — because `PlanViewToolBar` is instantiated *inside* `PlanView`, at
+`PlanView.qml:382`, so the toolbar capsules are not shared with the Fly view's toolbar despite
+appearing as siblings of it in a tree dump. They read as direct children of `MainWindow` only
+because `planView` carries an `id` and no `objectName`, so `namedAncestors` skips over it. Worth
+stating plainly, since the earlier reading implied otherwise.
+
+A correction to what the list above implies: these are **not** the upstream plan view. They are
+the Aircast redesign's overlay chrome, declared across `PlanView.qml` and
+`PlanToolBarIndicators.qml`. The distinction matters because it is the redesign the other two
+sessions compare against, not dead upstream code nobody reads.
+
+What the third question still lacks is a measurement: whether 23 invisible nodes cost anything.
+They are not drawn, and the idle-CPU floor remains attributed to the GStreamer pipeline.
+
+**Proposed, and put to both peers rather than landed.** A `Q_PROPERTY` on `QGCCorePlugin` saying
+the host provides its own plan UI, true only under `QGC_NATIVE_UI`, with the `PlanView` becoming
+a `Loader` gated on it. No QML deleted and no tree changed for any build that is not native
+macOS, so both peers' probes keep working unchanged. Held until they answer whether either
+verifies against the QML plan chrome *on a macOS build specifically* — on any other build the
+gate costs them nothing.
+
 A third instrument lesson, cheaply learned this time. The first attempt asked
 `strings -a libAircastQGC.dylib` for `PlanView.qml` and got 0, which reads as "not in the
 build". The same command returns 0 for `FlyView.qml`, which is certainly in the build —
