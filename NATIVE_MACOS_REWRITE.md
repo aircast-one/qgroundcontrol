@@ -2270,3 +2270,47 @@ The remaining unread fields sit in views belonging to other windows and mostly n
 `enoughChannels` / `liveChannels` / `minimumChannels` on `radio`, `waitingForCancel` and the two
 `*Needed` flags on `calibration`, `everyday` / `folded` / `currentSummary` on `flightModes`,
 `dynamic` on `links`, `anyDownloaded` on `logs`. Recorded, not chased.
+
+### The null-verdict finding, refuted by looking (2026-09-12)
+
+`missionkinds.rs` serves `enabled: null` and `disabledReason: null` when the plan view has
+selected nothing, deliberately — *"what can be inserted depends on where, so an answer with no
+where is not an answer"* — and its test warns that a head reading those would take the
+controller's constructor values as a verdict. `MissionItemKind.swift` turns a missing `enabled`
+into `false`, and `PlanWindow.swift` draws `.disabled(!kind.enabled)` with
+`.help(kind.disabledReason ?? "")`. Read together that says: the Add menu greys out every kind
+with an empty tooltip.
+
+**It does not happen, because the state is not reachable.** On a fresh plan the core answers
+`selected: 0`, `atSequence: 0`, and every kind carries a real boolean beside a real sentence —
+*"This mission starts from the ground, so a takeoff has to come before anything else."* The plan
+always holds its settings entry and that entry is always selected, so the core always has a
+*where*. Dropped.
+
+Worth keeping for the method rather than the result. The reasoning was sound at every step and
+predicted a defect that is not there; only reading the live view settled it. **The one piece of
+evidence that looked supporting was not evidence at all** — an earlier capture of the mission
+probe showed a `kinds` array carrying `reason`, not `disabledReason`, because the probe serves its
+own compact projection with renamed and dropped fields. A projection is not the view, and treating
+it as one would have produced a confident finding about a payload that does not exist.
+
+### Three unit literals the head still spelled (2026-09-12)
+
+The core swept itself for unit literals and found two (`26a01d10a`), with the tell recorded:
+*"reading the screens never found them because each was right in the units under test; grepping
+for unit literals did."* Ran the same sweep here — 13 hits, control confirming the search works.
+
+Ten are `?? "m"` fallbacks beside a unit the core serves, which is the established pattern.
+**Three were hardcoded**: the default item altitude and both offline speeds, drawn `units: "m"`
+and `units: "m/s"` regardless of what the operator set. All three come from Qt settings facts, and
+a Fact carries `units` — `FenceRally`, `LaunchPosition` and `ItemSpeed` all already read it. These
+three were simply never wired.
+
+**The control matters more than the change here**, because on a metric build reading the fact and
+hardcoding `"m"` produce identical output — the null result and the healthy one are the same
+pixels. Replacing both fallbacks with `"ZZ"` and rebuilding: the panel still read **75.0 m** and
+**5.00 m/s**, so the unit came from the fact. A rename of a hardcode would have shown `ZZ`.
+
+The imperial path itself cannot be exercised: proving it renders feet needs a settings fact
+written, which is forbidden here. What is proven is the source of the string, not its behaviour
+under a setting this session may not change.
