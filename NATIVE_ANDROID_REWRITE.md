@@ -5229,3 +5229,32 @@ under the comment "No values for first item".
 The pattern that found the second bug is the one worth keeping: the feature
 was already committed and verified on hardware before I asked what the gate
 does when its input is zero for a reason other than the one I had in mind.
+
+### The fallbacks were the last of the unit defects, 2026-09-12
+
+The four unit bugs found earlier by grepping for `" m"` were each fixed by
+reading the core's text — but each fix left the head's own version behind as
+an `ifBlank` fallback. `format_measure`, `range_text` and `distance_text` are
+unconditional and `detailText` is a plain `format!`, so none of them can
+return blank: every fallback was unreachable while the core answers, and
+reachable only when the head runs against a library older than itself. In
+that case it prints a metres label on a feet build — a wrong reading with no
+tell.
+
+It is not hypothetical. That is precisely what made the `bandText` hunt take
+three rounds: the terrain label looked healthy while the library was stale,
+because the fallback caught the blank and said metres. Removing it makes a
+skew show as a missing measurement instead of a confident wrong one.
+
+`heightRange` collapsed from five branches to two — flat names one height,
+everything else is the band. The fixtures went with the branches: a fixture
+leaving `lowestText` and `bandText` empty described a core that does not
+exist, which is how those tests came to assert a string the head had
+assembled. The same rule as before, now with the deletion to match it — a
+test asserting a measurement the head built is a test that the head is
+answering a question it should be asking.
+
+Swept the rest of both modules for the same shape. The `ifBlank` calls that
+remain supply names and prose — "Camera 2" for an unnamed stream, a sentence
+when a refusal carries no reason — and none of them invent a number with a
+unit on it.
