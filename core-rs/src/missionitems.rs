@@ -13,6 +13,8 @@ pub const DEPS: &[&str] = &[
     "plan.missionController.containsItems",
     "plan.missionController@visualItemsChanged",
     "plan.missionController@newItemsFromVehicle",
+    "settings.unitsSettings.horizontalDistanceUnits",
+    "settings.unitsSettings.verticalDistanceUnits",
 ];
 
 const FIELDS: &str = "additionalTimeDelay,minAMSLAltitude,maxAMSLAltitude,sequenceNumber,abbreviation,commandName,commandDescription,isCurrentItem,specifiesCoordinate,isStandaloneCoordinate,specifiesAltitudeOnly,isSimpleItem,isTakeoffItem,isLandCommand,isSurveyItem,homePosition,coordinate,amslEntryAlt,altDifference,azimuth,distance,distanceFromStart,readyForSaveState,readyForSaveMessage,dirty,altitude,altitudeMode,isIncomplete,exitCoordinate,exitCoordinateSameAsEntry,commandName,command,category,specifiesAltitude,cameraShots,complexDistance,plannedHomePositionAltitude";
@@ -24,6 +26,7 @@ const RETURN_TO_LAUNCH: i64 = 20;
 pub fn items_view(backend: &dyn Backend, args: &[String]) -> Value {
     let everything = args.iter().any(|arg| arg == "fields");
     let vertical = Unit::vertical(backend);
+    let imperial = crate::missionsummary::imperial(backend);
     let shapes = args.iter().any(|arg| arg == "geometry");
     let count = integer(&object(&backend.get("plan.missionController.visualItems.count")), "value").unwrap_or(0);
     let has_items = flag(&object(&backend.get_fields("plan.missionController", "containsItems")), "containsItems");
@@ -33,9 +36,9 @@ pub fn items_view(backend: &dyn Backend, args: &[String]) -> Value {
     let current = integer(&object(&backend.get("plan.missionController.currentPlanViewVIIndex")), "value").unwrap_or(-1);
     let listed = object(&backend.get_fields("plan.missionController.visualItems", FIELDS));
     let items: Vec<Value> = match listed.get("elements").and_then(Value::as_array) {
-        Some(elements) => elements.iter().enumerate().map(|(index, element)| item(element, index as i64, &vertical)).collect(),
+        Some(elements) => elements.iter().enumerate().map(|(index, element)| item(element, index as i64, &vertical, imperial)).collect(),
         None => (0..count)
-            .map(|index| item(&object(&backend.get_fields(&format!("plan.missionController.visualItems.{index}"), FIELDS)), index, &vertical))
+            .map(|index| item(&object(&backend.get_fields(&format!("plan.missionController.visualItems.{index}"), FIELDS)), index, &vertical, imperial))
             .collect(),
     };
     let items: Vec<Value> = match shapes {
@@ -95,7 +98,12 @@ fn at_key(read: &Value, key: &str) -> Option<Value> {
     (at.get("valid").and_then(Value::as_bool) == Some(true) && !unset).then(|| at.clone())
 }
 
-fn item(read: &Value, index: i64, vertical: &Unit) -> Value {
+fn signed_altitude_text(change: f64, vertical: &Unit) -> String {
+    let sign = if change < 0.0 { "-" } else { "+" };
+    format!("{sign}{}", crate::read::format_measure(vertical.show(change.abs()), &vertical.name))
+}
+
+fn item(read: &Value, index: i64, vertical: &Unit, imperial: bool) -> Value {
     let coordinate = placed(read);
     let exit = match flag(read, "exitCoordinateSameAsEntry") {
         true => None,
@@ -138,8 +146,11 @@ fn item(read: &Value, index: i64, vertical: &Unit) -> Value {
         "altitudeAmslLowest": number(read, "minAMSLAltitude"),
         "altitudeAmslHighest": number(read, "maxAMSLAltitude"),
         "altitudeChange": number(read, "altDifference"),
+        "altitudeChangeText": number(read, "altDifference").filter(|change| change.is_finite()).map(|change| signed_altitude_text(change, vertical)),
         "azimuth": number(read, "azimuth"),
+        "azimuthText": number(read, "azimuth").map(|bearing| format!("{}\u{b0}", (bearing.round() as i64).rem_euclid(360))),
         "distance": number(read, "distance"),
+        "distanceText": number(read, "distance").filter(|metres| metres.is_finite()).map(|metres| crate::missionsummary::distance_text(metres, imperial)),
         "distanceFromStart": number(read, "distanceFromStart"),
         "edited": flag(read, "dirty"),
         "incomplete": flag(read, "isIncomplete"),
@@ -538,6 +549,54 @@ mod reported {
         assert_eq!(imperial["altitudeText"], "246 ft", "the feet come from the app's own conversion, not a factor the core keeps its own copy of");
         assert_eq!(imperial["altitudeUnits"], "ft");
         assert_eq!(imperial["altitude"], 75.0);
+    }
+
+    #[test]
+    fn a_leg_is_spelled_by_the_same_code_that_spells_the_strip_above_it() {
+        struct Units(Value, f64);
+        impl Backend for Units {
+            fn get(&self, path: &str) -> String {
+                match path {
+                    "settings.unitsSettings.horizontalDistanceUnits.rawValue" => json!({ "kind": "value", "value": self.1 }).to_string(),
+                    _ => One(self.0.clone()).get(path),
+                }
+            }
+            fn get_fields(&self, path: &str, fields: &str) -> String {
+                match (path, self.1) {
+                    ("units", 0.0) => json!({ "kind": "object", "appSettingsVerticalDistanceUnitsString": "ft" }).to_string(),
+                    _ => One(self.0.clone()).get_fields(path, fields),
+                }
+            }
+            fn set(&self, _p: &str, _v: &str) -> String { String::new() }
+            fn invoke(&self, path: &str, args: &str) -> String {
+                match (path, self.1) {
+                    ("units.metersToAppSettingsVerticalDistanceUnits", 0.0) => json!({ "ok": true, "result": serde_json::from_str::<Vec<f64>>(args).unwrap()[0] * 3.2808399 }).to_string(),
+                    _ => String::new(),
+                }
+            }
+            fn watch(&self, _p: &[String]) {}
+        }
+        let leg = |metres: f64| json!({ "kind": "object", "sequenceNumber": 1, "isSimpleItem": true, "distance": metres, "azimuth": 47.4, "altDifference": -12.0 });
+        let row = |item: Value, raw: f64| items_view(&Units(item, raw), &[])["items"][1].clone();
+
+        let short = row(leg(449.36), 1.0);
+        assert_eq!(short["distanceText"], "449 m");
+        assert_eq!(short["distanceText"], crate::missionsummary::distance_text(449.36, false), "the strip and the row are one function, so they cannot disagree about a number they both draw");
+        assert_eq!(short["azimuthText"], "47\u{b0}");
+        assert_eq!(row(json!({ "kind": "object", "sequenceNumber": 1, "isSimpleItem": true, "azimuth": 359.7 }), 1.0)["azimuthText"], "0\u{b0}", "QGC rounds before it wraps, so a bearing a third of a degree short of north reads as north and never as 360");
+        assert_eq!(short["altitudeChangeText"], "-12.0 m", "a descent reads as a descent; the bare magnitude leaves the operator to work out the direction from the two altitudes either side");
+        assert_eq!(short["altitudeChange"], -12.0, "the signed number still travels, so a head drawing an arrow is not parsing its own string back");
+
+        let far = row(leg(1500.0), 1.0);
+        assert_eq!(far["distanceText"], "1.50 km", "the kilometre threshold is the part a head reimplementing this would get wrong");
+
+        let feet = row(leg(449.36), 0.0);
+        assert_eq!(feet["distanceText"], "1474 ft");
+        assert_eq!(feet["altitudeChangeText"], "-39.4 ft", "an altitude is drawn in the vertical unit, which QGC keeps apart from the horizontal one, and by the app's own conversion rather than a factor the core copies");
+
+        let climb = row(json!({ "kind": "object", "sequenceNumber": 1, "isSimpleItem": true, "altDifference": 12.0 }), 1.0);
+        assert_eq!(climb["altitudeChangeText"], "+12.0 m");
+        assert_eq!(climb["distanceText"], Value::Null, "a leg with no distance has no text, rather than a plausible zero");
     }
 
     #[test]

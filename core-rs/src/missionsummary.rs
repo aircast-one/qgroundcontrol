@@ -1,6 +1,6 @@
 use serde_json::{Value, json};
 
-use crate::read::{integer, object, value_number};
+use crate::read::{Unit, integer, object, value_number};
 use crate::router::Backend;
 
 // "plan.missionController" names an object rather than a property, so the watcher has nothing to
@@ -37,6 +37,10 @@ const FEET_PER_MILE: f64 = 5280.0;
 const SECONDS_PER_MINUTE: i64 = 60;
 const SECONDS_PER_HOUR: i64 = 3600;
 const UNKNOWN: &str = "\u{2014}";
+
+pub fn imperial(backend: &dyn Backend) -> bool {
+    value_number(&backend.get("settings.unitsSettings.horizontalDistanceUnits.rawValue")) == Some(HORIZONTAL_UNITS_FEET)
+}
 
 pub fn distance_text(metres: f64, imperial: bool) -> String {
     if !metres.is_finite() || metres < 0.0 {
@@ -207,7 +211,7 @@ pub fn altitude_band(items: &[Value]) -> Option<(f64, f64)> {
 
 pub fn summary_view(backend: &dyn Backend, args: &[String]) -> Value {
     let verify = args.iter().any(|arg| arg == "verify");
-    let imperial = value_number(&backend.get("settings.unitsSettings.horizontalDistanceUnits.rawValue")) == Some(HORIZONTAL_UNITS_FEET);
+    let imperial = imperial(backend);
     let mission = object(&backend.get_fields(
         "plan.missionController",
         "containsItems,missionTotalDistance,missionPlannedDistance,missionTime,missionHoverDistance,missionCruiseDistance,missionHoverTime,missionCruiseTime,missionMaxTelemetry,batteriesRequired,minAMSLAltitude,maxAMSLAltitude",
@@ -281,7 +285,7 @@ pub fn summary_view(backend: &dyn Backend, args: &[String]) -> Value {
             .flatten(),
         "timeSeconds": seconds("missionTime"),
         "batteriesRequired": batteries,
-        "altitudeRange": altitude_range(&mission, imperial),
+        "altitudeRange": altitude_range(&mission, &Unit::vertical(backend)),
         "reason": match has_items {
             true => "",
             false => "This plan has no items yet.",
@@ -293,20 +297,18 @@ fn row(label: &str, value: Option<String>) -> Value {
     json!({ "label": label, "value": value })
 }
 
-fn altitude_text(metres: f64, imperial: bool) -> String {
-    match metres < 0.0 {
-        true => format!("-{}", distance_text(-metres, imperial)),
-        false => distance_text(metres, imperial),
-    }
+fn altitude_text(metres: f64, vertical: &Unit) -> String {
+    let sign = if metres < 0.0 { "-" } else { "" };
+    format!("{sign}{}", crate::read::format_measure(vertical.show(metres.abs()), &vertical.name))
 }
 
-fn altitude_range(mission: &Value, imperial: bool) -> Value {
+fn altitude_range(mission: &Value, vertical: &Unit) -> Value {
     let read = |key: &str| mission.get(key).and_then(Value::as_f64).filter(|value| value.is_finite());
     match (read("minAMSLAltitude"), read("maxAMSLAltitude")) {
         (Some(low), Some(high)) if high >= low => json!({
             "lowest": low,
             "highest": high,
-            "text": format!("{} to {}", altitude_text(low, imperial), altitude_text(high, imperial)),
+            "text": format!("{} to {}", altitude_text(low, vertical), altitude_text(high, vertical)),
         }),
         _ => Value::Null,
     }
@@ -380,11 +382,18 @@ mod tests {
         fn get_fields(&self, path: &str, _fields: &str) -> String {
             match path {
                 "plan.missionController" => self.0.to_string(),
+                "units" => json!({ "kind": "object", "appSettingsHorizontalDistanceUnitsString": if self.1 == 0.0 { "ft" } else { "m" }, "appSettingsVerticalDistanceUnitsString": "m" }).to_string(),
                 _ => String::new(),
             }
         }
         fn set(&self, _p: &str, _v: &str) -> String { String::new() }
-        fn invoke(&self, _p: &str, _a: &str) -> String { String::new() }
+        fn invoke(&self, path: &str, args: &str) -> String {
+            let metres = || serde_json::from_str::<Vec<f64>>(args).unwrap()[0];
+            match (path, self.1) {
+                ("units.metersToAppSettingsHorizontalDistanceUnits", 0.0) => json!({ "ok": true, "result": metres() * FEET_PER_METRE }).to_string(),
+                _ => String::new(),
+            }
+        }
         fn watch(&self, _p: &[String]) {}
     }
 
@@ -429,6 +438,7 @@ mod tests {
         assert_eq!(labelled(&longer, "Distance").unwrap(), "1.86 mi");
         assert_eq!(labelled(&view, "Time").unwrap(), "3:05", "time is not a unit the operator chooses");
         assert_eq!(view["distanceMetres"], 1500.0, "the raw number stays metric whichever way it is drawn");
+        assert_eq!(view["altitudeRange"]["text"], "480 m to 530 m", "QGC keeps the vertical unit apart from the horizontal one, and an operator flying in feet over a map in miles still reads altitudes in the unit they set for altitudes");
     }
 
     #[test]
