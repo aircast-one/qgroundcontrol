@@ -4240,6 +4240,30 @@ It was declined once, correctly: at that point the action inserted a survey with
 takeoff with no launch coordinate, so adopting it would have been a regression rather than a
 simplification. The seeding is what made it an improvement.
 
+### One bulk read feeds six consumers, which changes what adopting a view costs
+
+`view.missionItems` was offered as replacing a bridge call per item with one call for the list. This
+head never had that shape. `PlanMapContent.refresh()` makes **one** read —
+`getFields("plan.missionController.visualItems", "*")` — and derives six things from it: the mission
+items, the item count, the plan's shape names, whether the route links to home, the surveys, and the
+terrain profile.
+
+`view.missionItems` covers the first four. Surveys need polygon vertices and the profile needs
+`flightPathSegments`, neither of which it carries, so adopting it leaves `"*"` in place and the head
+makes **two** reads where it made one — holding two descriptions of the same plan, which is the
+two-sources problem that made the first `mission.insert` adoption a regression.
+
+So the unit of adoption here is not a view, it is the **read**: `missionItems` plus whatever covers
+surveys and the profile, landing together, after which `"*"` goes. Taking the first four and leaving
+a TODO is the one option worth refusing — two plans that disagree show up as a line drawn across a
+map rather than as an error.
+
+Recorded rather than acted on, because the decision is about the shape and belongs with whoever owns
+the views. Two smaller gaps found while mapping it, in case the answer is yes: `exitCoordinate`
+landed (`3d0ad0fa6`), and `routeEndsAfter` still needs `isLandCommand` or an `endsRoute` composed the
+way `flownLeg` is — `kind` cannot stand in, because RTL specifies no coordinate and reads as
+`"command"` while Land specifies one and reads as `"waypoint"`.
+
 ### The Add Item gate is constant, because it rests on the three flags
 
 `view.missionKinds` gained `enabled` and `disabledReason` per kind, with refusals written for an
