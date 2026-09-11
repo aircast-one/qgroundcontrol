@@ -167,7 +167,10 @@ fn fact_units(read: &Value, name: &str) -> Option<String> {
 }
 
 fn height(read: &Value) -> Option<f64> {
-    fact_number(read, "altitude").or_else(|| fact_number(read, "plannedHomePositionAltitude"))
+    match flag(read, "homePosition") {
+        true => fact_number(read, "altitude").or_else(|| fact_number(read, "plannedHomePositionAltitude")),
+        false => fact_number(read, "altitude"),
+    }
 }
 
 fn geometry_of(backend: &dyn Backend, index: i64, kind: &str) -> Value {
@@ -498,6 +501,20 @@ mod reported {
         assert_eq!(imperial["altitudeText"], "246 ft", "the feet come from the app's own conversion, not a factor the core keeps its own copy of");
         assert_eq!(imperial["altitudeUnits"], "ft");
         assert_eq!(imperial["altitude"], 75.0);
+    }
+
+    #[test]
+    fn a_command_with_no_altitude_does_not_inherit_the_launch_altitude() {
+        let home_altitude = json!({ "property": "plannedHomePositionAltitude", "value": 0.0 });
+        let speed_change = listed(json!({
+            "kind": "object", "sequenceNumber": 2, "isSimpleItem": true, "specifiesCoordinate": false,
+            "facts": [ { "property": "altitude", "value": null }, home_altitude.clone() ],
+        }));
+        assert_eq!(speed_change["altitudeText"], Value::Null, "QGC sets the altitude fact to NaN when an item specifies no altitude, so falling back to the launch altitude gave every DO_ command the home height as its own");
+        assert_eq!(speed_change["altitude"], Value::Null);
+
+        let start = items_view(&One(json!({ "kind": "object", "sequenceNumber": 0, "homePosition": true, "facts": [ home_altitude ] })), &[])["items"][1].clone();
+        assert_eq!(start["altitudeText"], "0.0 m", "the fallback is right for the row whose altitude is the launch altitude, which is the row it was written for");
     }
 
     #[test]
