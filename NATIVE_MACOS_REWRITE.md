@@ -1881,3 +1881,30 @@ are the two positions these functions actually use: `flownLeg` and `hasPosition`
 diagnosis: "the guard outside the shape gets dropped, so make there be one walk" and "two places
 that must agree will eventually disagree, so make there be one rule" produce the same fix. That
 says the fix is well-founded and says nothing about which explanation is right.
+
+### The raw-property fields are clean, and deliberately have no checker (2026-09-11)
+
+`view-fields.py` covers the keys this head reads out of a `view.*` payload. It does not cover
+the fields read from raw Qt property groups — `Bridge.group("plan")`, `"plan.controllerVehicle"`,
+`"plan.missionController"`, `"vehicle"` — and the selection regression was exactly a silently
+renamed field, so the gap was worth measuring.
+
+Measured against the live bridge rather than reasoned about. Every field is present:
+
+    plan                     5 fields read, 18 live keys, none missing
+    plan.controllerVehicle   6 fields read, 141 live keys, none missing
+    plan.missionController   3 fields read, 43 live keys, none missing
+    vehicle                  2 fields read — unverifiable, no aircraft connected
+
+**No checker was built for this, and the reason is an asymmetry rather than laziness.** A
+`view.*` field is invented by the core, renamed by the core, and consumed only by the two heads —
+so when one is renamed there is nobody else to notice, which is precisely how `current` went
+missing here for hours. A Qt property is upstream, and the QML application reads the same
+properties: a rename there breaks QGC's own UI loudly and in the same commit. The failure this
+head is exposed to is a quiet rename of a field whose only consumers are heads, and that is what
+`view-fields.py` covers.
+
+Two blind spots recorded rather than papered over. `vehicle.*` cannot be checked without an
+aircraft, which is the same limit as everywhere else in this stream. And a path assembled by
+interpolation — `visualItems.\(index).\(property)` — cannot be read literally; those segments are
+pinned separately by `interpolated-names.py` against the `Q_PROPERTY` that answers them.
