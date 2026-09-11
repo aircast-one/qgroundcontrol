@@ -580,6 +580,19 @@ needs a real camera, which puts it with the other gates that need hardware.
 **Gate (HW):** log download from real hardware; chart values match the Qt build. `src/AnalyzeView/`
 QML deleted.
 
+**The download half is walked against the sim as of 2026-09-11**, which does not discharge a
+hardware gate but does move it from "never exercised" to "exercised everywhere except on hardware".
+`apmvehicle.py` answers `LOG_REQUEST_LIST`, `LOG_REQUEST_DATA` and `LOG_REQUEST_END`, so the whole
+protocol runs. The screen listed `Log 0 · 4.0 KB · Available` and `Log 1 · 10.0 KB · Available` with
+timestamps, selecting one relabelled the button `Download (1)`, the transfer showed a Cancel while it
+ran, and it finished as `Downloaded` with the destination named. On disk:
+`log_0_2025-9-8-01-20-00_2.bin`, **4096 bytes — exactly the size the list advertised.**
+
+What that leaves for the hardware gate is narrower than it was: not whether the flow works, but
+whether a real autopilot's log sizes, timestamps and multi-megabyte transfers behave the same. The
+2.9 MB file already in that directory from an earlier session says the large case has been seen at
+least once.
+
 **Half that gate is already discharged, by construction rather than comparison.**
 `VibrationPage.qml` declares `_barMinimum 0`, `_barMaximum 90`, `_barBadValue 60`,
 `_barMidValue 30` and draws each bar at `min(max, value) / (max - min)`. The native screen
