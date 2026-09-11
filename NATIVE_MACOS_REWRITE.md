@@ -408,6 +408,46 @@ critical path and is what would answer the list above.
 - The QWindowKit integrated-titlebar work is replaced by the real thing and deleted.
 - Notarized universal build through the existing release CI; `make release.*` updated.
 
+### A guard that never opens looks exactly like a careful guard (2026-09-11)
+
+Both sessions audited their own rules this morning, found nothing by reading, and then found
+eleven and six by mutation. The method is cheap and the reason it works is worth stating, because
+neither of us reached it by thinking about it.
+
+**Replace each rule's body with a constant and see whether anything fails.** Not invert it —
+invert is the weaker probe, and the core session ran it first and found nothing. An inverted rule
+still fails a test that asserts only one direction, so a one-sided rule scores as covered. A
+constant asks the real question: is there any test that distinguishes this rule from `true`, and
+any that distinguishes it from `false`.
+
+**Run both directions.** The macOS head ran only the `false` direction and found `offersShutter`,
+which guards taking a photo: every assertion said the shutter was *not* offered, so a head whose
+shutter never worked passed. The mirror found `GuidedOffer.blocked`, which gates arm, takeoff,
+return and land: every assertion said an action *was* blocked, so a head where no guided command
+could ever be pressed passed. The core session's mirror found `save` and `clearMission` only ever
+unavailable, and a calibration panel's `busy` only ever false — a screen that exists to show a
+routine running, never shown running.
+
+**Both sides' findings were on actuators, and that is not coincidence.** The assertions people
+write about a guard are the ones where it refuses; nobody writes "and this really can fire" with
+the same instinct. So the safe-seeming direction is the one that goes untested, and the failure it
+hides — a control that can never be used — is invisible in a build with nothing to control.
+
+**One-sided is more dangerous than uncovered.** An uncovered rule has no tests to reassure anyone.
+A one-sided one has four.
+
+**Check the harness before publishing its numbers.** The core session's restored files with a
+backup's mtime, so the build fingerprint reused the mutant and the following run measured the
+previous mutation. The failure is asymmetric and worth remembering: a mutant is always written
+fresh, so **a survivor is always real, but a kill may be spurious.**
+
+Two other rules fall out of this. A rule in a file the checks cannot compile is unpinned however
+carefully it was written — `swift-checks.sh` builds 68 of 112 macOS sources, and the window files
+are not among them. And, narrower than "move every rule": **a sentence making a claim about the
+aircraft should be somewhere a test can read it back.** Two of those were found and moved — the
+Upload button explaining itself with the plan's readiness sentence, and the Fence tab telling an
+operator their firmware lacks a feature.
+
 ### A head that reads a view once is the recurring defect, and how to find it (2026-09-11)
 
 Six defects in the Plan window in one session, and four of them were one shape: the head reads a
