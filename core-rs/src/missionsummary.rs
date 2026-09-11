@@ -16,7 +16,6 @@ pub const DEPS: &[&str] = &[
     "plan.missionController.missionHoverTime",
     "plan.missionController.missionCruiseTime",
     "plan.missionController.missionMaxTelemetry",
-    "plan.missionController.batteriesRequired",
     "plan.missionController.minAMSLAltitude",
     "plan.missionController.maxAMSLAltitude",
     "settings.unitsSettings.horizontalDistanceUnits",
@@ -238,14 +237,13 @@ pub fn summary_view(backend: &dyn Backend, args: &[String]) -> Value {
     let imperial = imperial(backend);
     let mission = object(&backend.get_fields(
         "plan.missionController",
-        "containsItems,missionTotalDistance,missionPlannedDistance,missionTime,missionHoverDistance,missionCruiseDistance,missionHoverTime,missionCruiseTime,missionMaxTelemetry,batteriesRequired,minAMSLAltitude,maxAMSLAltitude",
+        "containsItems,missionTotalDistance,missionPlannedDistance,missionTime,missionHoverDistance,missionCruiseDistance,missionHoverTime,missionCruiseTime,missionMaxTelemetry,minAMSLAltitude,maxAMSLAltitude",
     ));
     let has_items = mission.get("containsItems").and_then(Value::as_bool).unwrap_or(false);
     let metres = |key: &str| mission.get(key).and_then(Value::as_f64).filter(|value| value.is_finite() && *value >= 0.0);
     let seconds = |key: &str| mission.get(key).and_then(Value::as_f64).filter(|value| value.is_finite() && *value >= 0.0);
 
     let total = metres("missionTotalDistance");
-    let batteries = integer(&mission, "batteriesRequired").filter(|count| *count > 0);
     let rows: Vec<Value> = vec![
         row("Distance", total.map(|value| distance_text(value, imperial))),
         row("Planned", metres("missionPlannedDistance").map(|value| distance_text(value, imperial))),
@@ -253,7 +251,6 @@ pub fn summary_view(backend: &dyn Backend, args: &[String]) -> Value {
         row("Hover", metres("missionHoverDistance").map(|value| distance_text(value, imperial))),
         row("Cruise", metres("missionCruiseDistance").map(|value| distance_text(value, imperial))),
         row("Furthest from launch", metres("missionMaxTelemetry").map(|value| distance_text(value, imperial))),
-        row("Batteries", batteries.map(|count| count.to_string())),
     ];
 
     json!({
@@ -297,7 +294,6 @@ pub fn summary_view(backend: &dyn Backend, args: &[String]) -> Value {
             "total": items.len(),
         })),
         "timeSeconds": seconds("missionTime"),
-        "batteriesRequired": batteries,
         "altitudeRange": altitude_range(&mission, &Unit::vertical(backend)),
         "reason": match has_items {
             true => "",
@@ -415,7 +411,6 @@ mod tests {
             "missionHoverDistance": 200.0,
             "missionCruiseDistance": 1300.0,
             "missionMaxTelemetry": 640.0,
-            "batteriesRequired": 2,
             "minAMSLAltitude": 480.0,
             "maxAMSLAltitude": 530.0,
         })
@@ -432,7 +427,6 @@ mod tests {
         assert_eq!(labelled(&view, "Distance").unwrap(), "1.50 km");
         assert_eq!(labelled(&view, "Time").unwrap(), "3:05");
         assert_eq!(labelled(&view, "Furthest from launch").unwrap(), "640 m");
-        assert_eq!(labelled(&view, "Batteries").unwrap(), "2");
         assert_eq!(view["altitudeRange"]["text"], "480 m to 530 m");
         assert_eq!(view["distanceMetres"], 1500.0, "the raw metres travel too, so a head that wants to draw a bar is not parsing a string back");
     }
@@ -453,10 +447,8 @@ mod tests {
     fn a_row_the_controller_did_not_compute_is_left_out_rather_than_shown_as_zero() {
         let mut sparse = flown();
         sparse["missionHoverDistance"] = json!(-1.0);
-        sparse["batteriesRequired"] = json!(0);
         let view = summary_view(&Plan(sparse, 1.0), &[]);
         assert!(labelled(&view, "Hover").is_none(), "minus one is what this controller answers when it has not worked something out, and drawing it as a distance would be a lie");
-        assert!(labelled(&view, "Batteries").is_none(), "no battery model means no answer, which is not the same as needing no batteries");
         assert!(labelled(&view, "Distance").is_some());
     }
 
