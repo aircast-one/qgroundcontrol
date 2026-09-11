@@ -32,6 +32,20 @@ struct PlanUpload: Equatable {
     let canProceed: Bool
     let pausesFirst: Bool
 
+    static let unknown = PlanUpload(canSend: false, refusal: PlanUpload.uncheckable,
+                                    heading: "", proceedTitle: "", canProceed: false,
+                                    pausesFirst: false)
+
+    init(canSend: Bool, refusal: String, heading: String, proceedTitle: String,
+         canProceed: Bool, pausesFirst: Bool) {
+        self.canSend = canSend
+        self.refusal = refusal
+        self.heading = heading
+        self.proceedTitle = proceedTitle
+        self.canProceed = canProceed
+        self.pausesFirst = pausesFirst
+    }
+
     init?(_ json: Any?) {
         guard let json = json as? [String: Any] else { return nil }
         canSend = (json["canSend"] as? NSNumber)?.boolValue ?? false

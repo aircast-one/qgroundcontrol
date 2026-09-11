@@ -40,6 +40,12 @@ final class MissionStore: ObservableObject, Probeable, WriteReporting {
     @Published private(set) var planFile = ""
     @Published private(set) var readyToSave = false
     @Published private(set) var notReadyReason = ""
+
+    // Whether the plan can go to the vehicle, and why not. Read here rather than worked out from
+    // the pieces: the button used to compose its own answer from four of them and then explain
+    // itself with the plan's readiness sentence, which is a different question with a different
+    // answer -- it told an operator to finish drawing an item when what was missing was a vehicle.
+    @Published private(set) var upload = PlanUpload.unknown
     @Published var uploadWarning: PlanUpload?
     @Published var writeFailure: String?
     @Published var focus: MapFrame?
@@ -121,9 +127,12 @@ final class MissionStore: ObservableObject, Probeable, WriteReporting {
             return
         }
 
-        let readiness = PlanReadiness(Bridge.group("view.plan")["readiness"]) ?? .unknown
+        let planView = Bridge.group("view.plan")
+        let readiness = PlanReadiness(planView["readiness"]) ?? .unknown
         if readiness.ready != readyToSave { readyToSave = readiness.ready }
         if readiness.reason != notReadyReason { notReadyReason = readiness.reason }
+        let sending = PlanUpload(planView["upload"]) ?? .unknown
+        if sending != upload { upload = sending }
 
         let offered = (controller["complexMissionItemNames"] as? [String]) ?? []
         if offered != patterns { patterns = offered }

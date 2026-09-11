@@ -3824,6 +3824,24 @@ func checkPlanViewState() {
     expect(PlanUpload(["refusal": "unset"])?.canProceed == false,
            "nor can the operator wave it through")
 
+    // The button used to compose its own answer -- syncing, connected, items, readyToSave -- and
+    // then explain itself with the plan's READINESS sentence. Those are two different questions.
+    // Measured with a half-drawn takeoff and no vehicle: readiness said "An item is still being
+    // drawn" while the refusal was "No vehicle is connected". An operator hovering Upload went and
+    // finished the item, and the button stayed disabled.
+    let noVehicle = PlanUpload(["canSend": false as NSNumber,
+                                "refusal": "No vehicle is connected, so there is nowhere to send this plan."])
+    expect(noVehicle?.refusal ?? "", "No vehicle is connected, so there is nowhere to send this plan.",
+           "the button says why it will not send, and the reason comes from the question it asked")
+    expect(noVehicle?.canSend == false, "and the same answer decides whether it is enabled at all")
+
+    expect(PlanUpload.unknown.canSend == false,
+           "an upload state the core never answered refuses, because a plan is not sendable until "
+           + "something said it was -- this is the value the store holds before its first read")
+    expect(PlanUpload.unknown.refusal, PlanUpload.uncheckable,
+           "and it says the check itself did not happen rather than inventing a refusal that "
+           + "sounds like the vehicle's")
+
     expect(PlanUpload.uncheckable.contains("not sent"),
            "when the upload check cannot be read at all the plan is not sent and the refusal "
            + "says so; uploadToVehicle used to treat an unreadable check as permission, so a "

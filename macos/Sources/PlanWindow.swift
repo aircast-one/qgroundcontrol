@@ -1053,11 +1053,9 @@ struct PlanInspector: View {
             }
             Button("Upload", action: mission.uploadToVehicle)
                 .buttonStyle(.borderedProminent)
-                .disabled(mission.syncing || !mission.connected || mission.items.isEmpty
-                    || !mission.readyToSave)
-                .help(mission.notReadyReason.isEmpty
-                    ? "Send this plan to the vehicle"
-                    : mission.notReadyReason)
+                .disabled(mission.syncing || !mission.upload.canSend)
+                .help(mission.upload.canSend ? "Send this plan to the vehicle"
+                    : mission.upload.refusal)
         }
     }
 
