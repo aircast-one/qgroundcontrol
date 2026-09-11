@@ -2414,6 +2414,18 @@ void QGCCoreCTest::_operatorNoticesReachAHeadWithNoQmlRoot()
     QVERIFY2(notices().last().toObject().value(QStringLiteral("repeated")).toInt() == 0,
              "only a run of identical notices collapses; the same text after something else is news again");
 
+    // A condition that is still ongoing and one that cleared and came back read the same to the
+    // queue, and no rule about elapsed time can separate them. Acknowledgement can: once a head has
+    // taken the notice, the operator has been told, so the next occurrence is news and arrives
+    // under its own id. Collapsing only holds while the notice is still waiting to be read.
+    const qint64 waiting = notices().last().toObject().value(QStringLiteral("id")).toInteger();
+    (void) take(qgc_bridge_invoke("host.acknowledge", QStringLiteral("[%1]").arg(waiting).toUtf8().constData()));
+    repeat();
+    QCOMPARE(notices().count(), 3);
+    QVERIFY2(notices().last().toObject().value(QStringLiteral("id")).toInteger() > waiting,
+             "a recurrence after the operator has been told is a new notice, not a repeat of one that is no longer on screen");
+    QCOMPARE(notices().last().toObject().value(QStringLiteral("repeated")).toInt(), 0);
+
     drain();
     QCOMPARE(notices().count(), 0);
 
