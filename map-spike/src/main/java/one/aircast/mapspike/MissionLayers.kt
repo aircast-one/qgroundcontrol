@@ -14,6 +14,16 @@ import org.maplibre.geojson.LineString
 import org.maplibre.geojson.Point
 import org.maplibre.geojson.Polygon
 
+internal const val CROWDED_ITEMS = 40
+internal const val CROWDED_RADIUS = 4.0
+internal const val MARKER_RADIUS = 13.0
+private const val CROWDED_STROKE = 0.5
+private const val MARKER_STROKE = 2.0
+private const val SELECTED_STROKE = 5.0
+const val WAYPOINT_RADIUS_PROPERTY = "waypointRadius"
+const val WAYPOINT_STROKE_PROPERTY = "waypointStroke"
+
+
 const val MISSION_SOURCE = "aircast-mission"
 const val MISSION_LAYER = "aircast-mission-layer"
 const val MISSION_DOT_LAYER = "aircast-mission-dot-layer"
@@ -21,7 +31,7 @@ const val MISSION_PATH_SOURCE = "aircast-mission-path"
 const val MISSION_PATH_LAYER = "aircast-mission-path-layer"
 
 const val WAYPOINT_ID_PROPERTY = "waypointId"
-private const val WAYPOINT_LABEL_PROPERTY = "label"
+internal const val WAYPOINT_LABEL_PROPERTY = "label"
 const val WAYPOINT_COLOUR_PROPERTY = "waypointColour"
 const val WAYPOINT_SELECTED_PROPERTY = "waypointSelected"
 
@@ -67,19 +77,14 @@ fun installMissionLayers(style: Style) {
         style.addLayer(
             CircleLayer(MISSION_DOT_LAYER, MISSION_SOURCE).withProperties(
                 PropertyFactory.circleColor(Expression.get(WAYPOINT_COLOUR_PROPERTY)),
-                PropertyFactory.circleRadius(13f),
+                PropertyFactory.circleRadius(Expression.get(WAYPOINT_RADIUS_PROPERTY)),
                 PropertyFactory.circleStrokeColor(
                     Expression.switchCase(
                         Expression.get(WAYPOINT_SELECTED_PROPERTY), Expression.literal("#FFFFFF"),
                         Expression.literal("#37474F"),
                     ),
                 ),
-                PropertyFactory.circleStrokeWidth(
-                    Expression.switchCase(
-                        Expression.get(WAYPOINT_SELECTED_PROPERTY), Expression.literal(5f),
-                        Expression.literal(2f),
-                    ),
-                ),
+                PropertyFactory.circleStrokeWidth(Expression.get(WAYPOINT_STROKE_PROPERTY)),
             ),
         )
         style.addLayer(
@@ -97,11 +102,34 @@ fun installMissionLayers(style: Style) {
     }
 }
 
+fun crowded(itemCount: Int): Boolean = itemCount > CROWDED_ITEMS
+
+fun waypointLabel(sequence: Int, crowded: Boolean): String =
+    if (crowded) "" else sequence.toString()
+
+fun markerRadius(crowded: Boolean, selected: Boolean): Double =
+    if (crowded && !selected) CROWDED_RADIUS else MARKER_RADIUS
+
+fun markerStroke(crowded: Boolean, selected: Boolean): Double = when {
+    selected -> SELECTED_STROKE
+    crowded -> CROWDED_STROKE
+    else -> MARKER_STROKE
+}
+
 fun missionFeatures(items: List<MissionItem>, selectedIndex: Int? = null): FeatureCollection {
+    val crowded = crowded(items.size)
     val features = items.map { item ->
         Feature.fromGeometry(Point.fromLngLat(item.longitude, item.latitude)).apply {
             addNumberProperty(WAYPOINT_ID_PROPERTY, item.index)
-            addStringProperty(WAYPOINT_LABEL_PROPERTY, item.sequence.toString())
+            addStringProperty(WAYPOINT_LABEL_PROPERTY, waypointLabel(item.sequence, crowded))
+            addNumberProperty(
+                WAYPOINT_RADIUS_PROPERTY,
+                markerRadius(crowded, item.index == selectedIndex),
+            )
+            addNumberProperty(
+                WAYPOINT_STROKE_PROPERTY,
+                markerStroke(crowded, item.index == selectedIndex),
+            )
             addStringProperty(WAYPOINT_COLOUR_PROPERTY, waypointColour(item.kind, item.commandId))
             addBooleanProperty(WAYPOINT_SELECTED_PROPERTY, item.index == selectedIndex)
         }
