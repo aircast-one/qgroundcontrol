@@ -418,14 +418,15 @@ mod tests {
         // location, and writing a coordinate to it moves the launch point instead of the item -
         // so a head that offers a drag on "anything removable" moves the wrong thing and reports
         // success. The macOS head had exactly that, from two guards that happened to agree.
-        let unplaced = items_view(&Plan(vec![settings(), json!({ "kind": "object", "sequenceNumber": 1, "isSimpleItem": true, "specifiesCoordinate": true, "coordinate": { "kind": "coordinate", "valid": true, "latitude": 0.0, "longitude": 0.0 } })], 1), &[]);
-        // The bridge marks a coordinate read with "valid", which the fixture has to carry or the
-        // view discards it and every item reads unplaced - a fixture that agrees with the answer
-        // for the wrong reason.
+        let unplaced = items_view(&Plan(vec![settings(), json!({ "kind": "object", "sequenceNumber": 1, "isSimpleItem": true, "specifiesCoordinate": true, "coordinate": at(0.0, 0.0) })], 1), &[]);
+        // Built by at(), not by hand. This test originally wrote the coordinate inline and left
+        // out "valid", so the view discarded it, every item read unplaced, and the assertion
+        // passed for the wrong reason. One helper that knows the shape removes the chance to get
+        // it wrong, rather than a check that notices afterwards.
         assert_eq!(unplaced["items"][1]["coordinate"], Value::Null, "nought by nought is the unset coordinate, not a place off Africa");
         assert_eq!(unplaced["items"][1]["movable"], false);
 
-        let placed = items_view(&Plan(vec![settings(), json!({ "kind": "object", "sequenceNumber": 1, "isSimpleItem": true, "specifiesCoordinate": true, "coordinate": { "kind": "coordinate", "valid": true, "latitude": 47.397, "longitude": 8.546 } })], 1), &[]);
+        let placed = items_view(&Plan(vec![settings(), json!({ "kind": "object", "sequenceNumber": 1, "isSimpleItem": true, "specifiesCoordinate": true, "coordinate": at(47.397, 8.546) })], 1), &[]);
         assert_eq!(placed["items"][1]["movable"], true);
 
         assert_eq!(unplaced["items"][0]["kind"], "settings");
