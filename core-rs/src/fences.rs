@@ -3,7 +3,16 @@ use serde_json::{Value, json};
 use crate::read::object;
 use crate::router::Backend;
 
-pub const DEPS: &[&str] = &["plan.geoFenceController.polygons", "plan.geoFenceController.circles", "plan.rallyPointController.points"];
+// The three list properties are QmlObjectListModel* and CONSTANT, as every list model in QGC is,
+// so the watcher cannot bind to them and they are served by the poll that only runs while the
+// event loop is idle. loadComplete is a real signal and fires where a fence plan replaces all
+// three at once, which is the case no count or property can see.
+pub const DEPS: &[&str] = &[
+    "plan.geoFenceController.polygons",
+    "plan.geoFenceController.circles",
+    "plan.rallyPointController.points",
+    "plan.geoFenceController@loadComplete",
+];
 const METRES_PER_DEGREE: f64 = 111_320.0;
 
 fn point(json: &Value) -> Option<(f64, f64)> {
