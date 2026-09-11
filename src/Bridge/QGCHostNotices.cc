@@ -59,6 +59,23 @@ void QGCHostNotices::post(Kind kind, const QString &title, const QString &text)
 {
     {
         QMutexLocker locked(&_lock);
+        const QString token = QGCHostNotices::token(kind);
+        if (!_notices.isEmpty()) {
+            const QVariantMap newest = _notices.last().toMap();
+            const bool same = newest.value(QStringLiteral("kind")).toString() == token
+                    && newest.value(QStringLiteral("title")).toString() == title
+                    && newest.value(QStringLiteral("text")).toString() == text;
+            if (same) {
+                QVariantMap repeated = newest;
+                repeated.insert(QStringLiteral("repeated"), newest.value(QStringLiteral("repeated")).toInt() + 1);
+                repeated.insert(QStringLiteral("at"), QDateTime::currentMSecsSinceEpoch());
+                _notices.replace(_notices.count() - 1, repeated);
+                locked.unlock();
+                emit noticesChanged();
+                return;
+            }
+        }
+
         while (_notices.count() >= kMaxNotices) {
             _notices.removeAt(qMin(kKeepOldest, _notices.count() - 1));
             _dropped++;
@@ -66,7 +83,8 @@ void QGCHostNotices::post(Kind kind, const QString &title, const QString &text)
 
         _notices.append(QVariantMap {
             { QStringLiteral("id"), _nextId++ },
-            { QStringLiteral("kind"), token(kind) },
+            { QStringLiteral("kind"), token },
+            { QStringLiteral("repeated"), 0 },
             { QStringLiteral("title"), title },
             { QStringLiteral("text"), text },
             { QStringLiteral("at"), QDateTime::currentMSecsSinceEpoch() },

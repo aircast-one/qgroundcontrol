@@ -2394,6 +2394,29 @@ void QGCCoreCTest::_operatorNoticesReachAHeadWithNoQmlRoot()
     QCOMPARE(notices().count(), 0);
     QCOMPARE(take(qgc_bridge_get("host.count")).value(QStringLiteral("value")).toInt(), 0);
 
+    // ParameterManager posts "Parameters are missing from firmware" once a second for as long as
+    // the condition holds. Sixty of those are one piece of news, and while the queue keeps the
+    // oldest eight and the newest, the duplicates in between displace every distinct message the
+    // operator has not read yet - a vehicle error a minute old is what goes.
+    const auto repeat = []() { qgcApp()->showAppMessage(QStringLiteral("Parameters are missing from firmware"), QStringLiteral("Parameters")); };
+    repeat();
+    const qint64 first = notices().last().toObject().value(QStringLiteral("id")).toInteger();
+    repeat();
+    repeat();
+    QCOMPARE(notices().count(), 1);
+    QCOMPARE(notices().last().toObject().value(QStringLiteral("repeated")).toInt(), 2);
+    QVERIFY2(notices().last().toObject().value(QStringLiteral("id")).toInteger() == first,
+             "a repeat is the same news, so it keeps the id a head has already drawn rather than arriving as a new banner");
+
+    qgcApp()->showCriticalVehicleMessage(QStringLiteral("Compass calibration required"));
+    repeat();
+    QCOMPARE(notices().count(), 3);
+    QVERIFY2(notices().last().toObject().value(QStringLiteral("repeated")).toInt() == 0,
+             "only a run of identical notices collapses; the same text after something else is news again");
+
+    drain();
+    QCOMPARE(notices().count(), 0);
+
     // A head cannot see this channel work without something posting on it, and every real poster
     // needs a vehicle, an upload or a settings write. This is how a rig makes one arrive.
     QVERIFY2(take(qgc_bridge_invoke("host.postNotice", "[\"navigation\",\"setup\",\"\"]")).value(QStringLiteral("result")).toBool(false),
@@ -3049,10 +3072,16 @@ void QGCCoreCTest::_theRustCacheServesATileQtWroteIntoTheSameDatabase()
         probe.setDatabaseName(databasePath);
         QVERIFY(probe.open());
         QSqlQuery rows(probe);
+        stored = QStringLiteral("file %1 bytes; ").arg(QFileInfo(databasePath).size());
         if (rows.exec(QStringLiteral("SELECT hash, size, typeof(type) FROM Tiles"))) {
+            int counted = 0;
             while (rows.next()) {
-                stored += QStringLiteral("%1 %2 bytes, type stored as %3\n").arg(rows.value(0).toString()).arg(rows.value(1).toInt()).arg(rows.value(2).toString());
+                counted++;
+                stored += QStringLiteral("\n  %1 %2 bytes, type stored as %3").arg(rows.value(0).toString()).arg(rows.value(1).toInt()).arg(rows.value(2).toString());
             }
+            stored += QStringLiteral("\n  %1 rows in Tiles, and the one wanted is %2").arg(counted).arg(hash);
+        } else {
+            stored += QStringLiteral("the Tiles table could not be read at all: %1").arg(rows.lastError().text());
         }
         probe.close();
         QSqlDatabase::removeDatabase(QStringLiteral("tileRowProbe"));

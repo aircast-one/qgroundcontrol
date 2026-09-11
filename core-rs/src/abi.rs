@@ -423,7 +423,10 @@ pub unsafe extern "C" fn qgc_core_tile_copy(hash: *const c_char, into: *mut u8, 
     let tile = match TILE_CACHE.lock().unwrap().as_ref().map(|cache| cache.tile(&text(hash))) {
         Some(Ok(Some(tile))) => tile,
         Some(Ok(None)) | None => return -1,
-        Some(Err(_)) => return -3,
+        Some(Err(error)) => {
+            eprintln!("qgc_core_tile_copy: the tile database could not be read: {error}");
+            return -3;
+        }
     };
     if into.is_null() || capacity < tile.image.len() as i64 {
         return -2;
