@@ -13,7 +13,7 @@ class PlanBridgeTest {
         specifies: Boolean = true,
         sequence: Int = 1,
         command: String = "Waypoint",
-        current: Boolean = false,
+        selected: Boolean = false,
         withCoordinate: Boolean = true,
     ): String {
         val coordinate = if (withCoordinate && specifies) {
@@ -22,7 +22,7 @@ class PlanBridgeTest {
             ""
         }
         return """{"flownLeg":$specifies,"sequence":$sequence,""" +
-            """"name":"$command","current":$current$coordinate}"""
+            """"name":"$command","selected":$selected$coordinate}"""
     }
 
     private fun model(vararg elements: String) =
@@ -64,7 +64,7 @@ class PlanBridgeTest {
         val items = missionItems(
             model(
                 element(latitude = 41.1, longitude = 44.1, sequence = 1, command = "Takeoff"),
-                element(latitude = 41.2, longitude = 44.2, sequence = 2, current = true),
+                element(latitude = 41.2, longitude = 44.2, sequence = 2, selected = true),
             ),
         )
 
@@ -72,7 +72,7 @@ class PlanBridgeTest {
         assertEquals("Takeoff", items[0].command)
         assertEquals(1, items[0].sequence)
         assertEquals(41.1, items[0].latitude, 1e-9)
-        assertTrue(items[1].current)
+        assertTrue("the editor selection, which is what the core calls it", items[1].selected)
     }
 
     @Test
