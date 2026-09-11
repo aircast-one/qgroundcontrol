@@ -3,7 +3,14 @@ use serde_json::{Value, json};
 use crate::read::object;
 use crate::router::Backend;
 
-pub const DEPS: &[&str] = &["vehicles.activeVehicleAvailable", "vehicle.sysStatusSensorInfo"];
+// The group object itself has no notify signal; the four lists this view reads all carry one.
+pub const DEPS: &[&str] = &[
+    "vehicles.activeVehicleAvailable",
+    "vehicle.sysStatusSensorInfo.sensorNames",
+    "vehicle.sysStatusSensorInfo.sensorStatus",
+    "vehicle.sysStatusSensorInfo.sensorHealthy",
+    "vehicle.sysStatusSensorInfo.sensorEnabled",
+];
 
 pub fn state(enabled: bool, healthy: bool) -> &'static str {
     match (enabled, healthy) {

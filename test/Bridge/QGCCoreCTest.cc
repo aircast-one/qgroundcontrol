@@ -3409,8 +3409,6 @@ void QGCCoreCTest::_everyDependencyAViewDeclaresActuallyBindsToASignal()
         QStringLiteral("radioCal"),
         QStringLiteral("sensorsCal"),
         QStringLiteral("vehicle.id"),
-        QStringLiteral("vehicle.sysStatusSensorInfo"),
-        QStringLiteral("vehicle.vibration"),
     };
 
     const QJsonArray views = take(qgc_core_get("view.dependencies")).value(QStringLiteral("views")).toArray();

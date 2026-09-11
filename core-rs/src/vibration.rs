@@ -3,7 +3,18 @@ use serde_json::{Value, json};
 use crate::read::object;
 use crate::router::Backend;
 
-pub const DEPS: &[&str] = &["vehicles.activeVehicleAvailable", "vehicle.vibration"];
+// "vehicle.vibration" is a fact group object, so the watcher had nothing to bind to and every
+// reading arrived through the re-read that only runs while the event loop is idle. Each fact
+// underneath it binds through Fact::rawValueChanged, which is the whole content of this view.
+pub const DEPS: &[&str] = &[
+    "vehicles.activeVehicleAvailable",
+    "vehicle.vibration.xAxis",
+    "vehicle.vibration.yAxis",
+    "vehicle.vibration.zAxis",
+    "vehicle.vibration.clipCount1",
+    "vehicle.vibration.clipCount2",
+    "vehicle.vibration.clipCount3",
+];
 
 pub const SCALE_MAXIMUM: f64 = 90.0;
 pub const WARNING_LEVEL: f64 = 30.0;
