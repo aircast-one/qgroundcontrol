@@ -243,13 +243,18 @@ pub fn summary_view(backend: &dyn Backend, args: &[String]) -> Value {
     let metres = |key: &str| mission.get(key).and_then(Value::as_f64).filter(|value| value.is_finite() && *value >= 0.0);
     let seconds = |key: &str| mission.get(key).and_then(Value::as_f64).filter(|value| value.is_finite() && *value >= 0.0);
 
+    let airframe = object(&backend.get_fields("plan.controllerVehicle", "multiRotor,vtol"));
+    let vtol = crate::read::flag(&airframe, "vtol");
+    let hovers = vtol || crate::read::flag(&airframe, "multiRotor");
+    let cruises = vtol || !crate::read::flag(&airframe, "multiRotor");
+
     let total = metres("missionTotalDistance");
     let rows: Vec<Value> = vec![
         row("Distance", total.map(|value| distance_text(value, imperial))),
         row("Planned", metres("missionPlannedDistance").map(|value| distance_text(value, imperial))),
         row("Time", seconds("missionTime").map(duration_text)),
-        row("Hover", metres("missionHoverDistance").map(|value| distance_text(value, imperial))),
-        row("Cruise", metres("missionCruiseDistance").map(|value| distance_text(value, imperial))),
+        row("Hover", hovers.then(|| metres("missionHoverDistance")).flatten().map(|value| distance_text(value, imperial))),
+        row("Cruise", cruises.then(|| metres("missionCruiseDistance")).flatten().map(|value| distance_text(value, imperial))),
         row("Furthest from launch", metres("missionMaxTelemetry").map(|value| distance_text(value, imperial))),
     ];
 
@@ -374,7 +379,7 @@ mod tests {
         assert_eq!(duration_text(-5.0), UNKNOWN);
     }
 
-    struct Plan(Value, f64);
+    struct Plan(Value, f64, Value);
 
     impl Backend for Plan {
         fn get(&self, path: &str) -> String {
@@ -385,6 +390,7 @@ mod tests {
         }
         fn get_fields(&self, path: &str, _fields: &str) -> String {
             match path {
+                "plan.controllerVehicle" => self.2.clone().to_string(),
                 "plan.missionController" => self.0.to_string(),
                 "units" => json!({ "kind": "object", "appSettingsHorizontalDistanceUnitsString": if self.1 == 0.0 { "ft" } else { "m" }, "appSettingsVerticalDistanceUnitsString": "m" }).to_string(),
                 _ => String::new(),
@@ -399,6 +405,35 @@ mod tests {
             }
         }
         fn watch(&self, _p: &[String]) {}
+    }
+
+    fn quad() -> Value {
+        json!({ "kind": "object", "multiRotor": true, "vtol": false })
+    }
+
+    fn wing() -> Value {
+        json!({ "kind": "object", "multiRotor": false, "vtol": false })
+    }
+
+    fn tiltrotor() -> Value {
+        json!({ "kind": "object", "multiRotor": false, "vtol": true })
+    }
+
+    #[test]
+    fn a_regime_the_airframe_does_not_have_is_absent_rather_than_zero() {
+        let both = { let mut plan = flown(); plan["missionCruiseDistance"] = json!(0.0); plan };
+        let rotor = summary_view(&Plan(both.clone(), 1.0, quad()), &[]);
+        assert!(labelled(&rotor, "Cruise").is_none(), "a multirotor has no cruise regime, so a zero there is what the aircraft is and not something measured - and it lands in the cell the strip truncates first, spending width to say nothing");
+        assert_eq!(labelled(&rotor, "Hover").unwrap(), "200 m");
+
+        let fixed = { let mut plan = flown(); plan["missionHoverDistance"] = json!(0.0); plan };
+        let plane = summary_view(&Plan(fixed, 1.0, wing()), &[]);
+        assert!(labelled(&plane, "Hover").is_none(), "and symmetrically, a fixed wing does not hover");
+        assert_eq!(labelled(&plane, "Cruise").unwrap(), "1.30 km");
+
+        let vtol = summary_view(&Plan(both, 1.0, tiltrotor()), &[]);
+        assert_eq!(labelled(&vtol, "Hover").unwrap(), "200 m", "a VTOL flies in both regimes, so both rows are real even when one reads zero");
+        assert_eq!(labelled(&vtol, "Cruise").unwrap(), "0 m");
     }
 
     fn flown() -> Value {
@@ -422,7 +457,7 @@ mod tests {
 
     #[test]
     fn a_flown_plan_reports_what_it_will_cost_to_fly() {
-        let view = summary_view(&Plan(flown(), 1.0), &[]);
+        let view = summary_view(&Plan(flown(), 1.0, quad()), &[]);
         assert_eq!(view["available"], true);
         assert_eq!(labelled(&view, "Distance").unwrap(), "1.50 km");
         assert_eq!(labelled(&view, "Time").unwrap(), "3:05");
@@ -433,10 +468,10 @@ mod tests {
 
     #[test]
     fn the_same_plan_reads_in_feet_when_that_is_what_was_chosen() {
-        let view = summary_view(&Plan(flown(), 0.0), &[]);
+        let view = summary_view(&Plan(flown(), 0.0, quad()), &[]);
         assert_eq!(view["imperial"], true);
         assert_eq!(labelled(&view, "Distance").unwrap(), "4921 ft", "fifteen hundred metres is under a mile, so it reads in feet");
-        let longer = summary_view(&Plan({ let mut plan = flown(); plan["missionTotalDistance"] = json!(3000.0); plan }, 0.0), &[]);
+        let longer = summary_view(&Plan({ let mut plan = flown(); plan["missionTotalDistance"] = json!(3000.0); plan }, 0.0, quad()), &[]);
         assert_eq!(labelled(&longer, "Distance").unwrap(), "1.86 mi");
         assert_eq!(labelled(&view, "Time").unwrap(), "3:05", "time is not a unit the operator chooses");
         assert_eq!(view["distanceMetres"], 1500.0, "the raw number stays metric whichever way it is drawn");
@@ -447,7 +482,7 @@ mod tests {
     fn a_row_the_controller_did_not_compute_is_left_out_rather_than_shown_as_zero() {
         let mut sparse = flown();
         sparse["missionHoverDistance"] = json!(-1.0);
-        let view = summary_view(&Plan(sparse, 1.0), &[]);
+        let view = summary_view(&Plan(sparse, 1.0, quad()), &[]);
         assert!(labelled(&view, "Hover").is_none(), "minus one is what this controller answers when it has not worked something out, and drawing it as a distance would be a lie");
         assert!(labelled(&view, "Distance").is_some());
     }
@@ -455,7 +490,7 @@ mod tests {
     #[test]
     fn an_empty_plan_says_so_rather_than_reporting_a_mission_of_nothing() {
         let empty = json!({ "kind": "object", "containsItems": false, "missionTotalDistance": 0.0, "missionTime": 0.0 });
-        let view = summary_view(&Plan(empty, 1.0), &[]);
+        let view = summary_view(&Plan(empty, 1.0, quad()), &[]);
         assert_eq!(view["available"], false);
         assert_eq!(view["reason"], "This plan has no items yet.");
     }
@@ -465,7 +500,7 @@ mod tests {
         let mut low = flown();
         low["minAMSLAltitude"] = json!(-390.0);
         low["maxAMSLAltitude"] = json!(-340.0);
-        let view = summary_view(&Plan(low, 1.0), &[]);
+        let view = summary_view(&Plan(low, 1.0, quad()), &[]);
         assert_eq!(view["altitudeRange"]["text"], "-390 m to -340 m", "the Dead Sea is four hundred metres down and a plan flown over it still has altitudes");
         assert_eq!(view["altitudeRange"]["lowest"], -390.0);
     }
@@ -475,9 +510,9 @@ mod tests {
         let mut wrong = flown();
         wrong["minAMSLAltitude"] = json!(530.0);
         wrong["maxAMSLAltitude"] = json!(480.0);
-        assert_eq!(summary_view(&Plan(wrong, 1.0), &[])["altitudeRange"], Value::Null);
+        assert_eq!(summary_view(&Plan(wrong, 1.0, quad()), &[])["altitudeRange"], Value::Null);
         let mut absent = flown();
         absent["maxAMSLAltitude"] = json!(f64::NAN.to_string());
-        assert_eq!(summary_view(&Plan(absent, 1.0), &[])["altitudeRange"], Value::Null);
+        assert_eq!(summary_view(&Plan(absent, 1.0, quad()), &[])["altitudeRange"], Value::Null);
     }
 }
