@@ -7,7 +7,10 @@ import org.junit.Test
 
 class PlanSummaryTest {
     private fun item(index: Int = 0, altitude: Double = Double.NaN) =
-        MissionItem(index, index + 1, 41.0, 44.0, "Waypoint", false, altitude)
+        MissionItem(
+            index, index + 1, 41.0, 44.0, "Waypoint", false, altitude,
+            altitudeText = if (altitude.isNaN()) "" else "${altitude.toInt()} m",
+        )
 
     private fun summary(
         items: List<MissionItem> = emptyList(),

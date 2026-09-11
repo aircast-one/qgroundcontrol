@@ -39,8 +39,8 @@ private fun selectionText(
 ): String? = when (selected) {
     is MapHit.Waypoint ->
         items.firstOrNull { it.index == selected.index }
-            ?.altitude?.takeIf { !it.isNaN() }
-            ?.let { "#${selected.index} at ${it.toInt()} m" }
+            ?.altitudeText?.ifBlank { null }
+            ?.let { "#${selected.index} at $it" }
     is MapHit.Circle -> circles.firstOrNull { it.index == selected.index }
         ?.let { "circle ${it.radius.toInt()} m" }
     is MapHit.CircleCentre -> circles.firstOrNull { it.index == selected.index }

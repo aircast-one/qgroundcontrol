@@ -1,6 +1,5 @@
 package one.aircast.mapspike
 
-import kotlin.math.roundToInt
 
 const val NO_POSITION = "no position"
 const val AFTER_THE_ROUTE_ENDS = "after the route ends"
@@ -27,8 +26,7 @@ fun itemRows(items: List<MissionItem>): List<ItemRow> = items.map { item ->
 }
 
 internal fun itemDetail(item: MissionItem): String = listOfNotNull(
-    item.altitude.takeIf { !it.isNaN() }?.let { "${it.roundToInt()} m" }
-        ?: NO_POSITION.takeIf { !item.placed },
+    item.altitudeText.ifBlank { null } ?: NO_POSITION.takeIf { !item.placed },
     AFTER_THE_ROUTE_ENDS.takeIf { item.afterRouteEnds },
 ).joinToString(" \u00b7 ")
 

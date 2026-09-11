@@ -17,6 +17,7 @@ class PlanItemsTest {
     ) = MissionItem(
         index, sequence, 41.0, 44.0, name, false, altitude,
         kind = kind, commandId = commandId,
+        altitudeText = if (altitude.isNaN()) "" else "${altitude.toInt()} m",
     )
 
     @Test
@@ -25,7 +26,7 @@ class PlanItemsTest {
 
         assertEquals(listOf("1"), rows.map { it.number })
         assertEquals(listOf("Waypoint"), rows.map { it.name })
-        assertEquals(listOf("50 m"), rows.map { it.detail })
+        assertEquals(listOf("49 m"), rows.map { it.detail })
         assertEquals(listOf(WAYPOINT_COLOUR), rows.map { it.colour })
     }
 
@@ -71,10 +72,20 @@ class PlanItemsTest {
     fun `an ArduPilot takeoff specifies an altitude and no place, so the altitude is what it says`() {
         val takeoff = MissionItem(
             1, 1, Double.NaN, Double.NaN, "Takeoff", false, 50.0,
-            kind = KIND_TAKEOFF, commandId = 22, placed = false,
+            kind = KIND_TAKEOFF, commandId = 22, placed = false, altitudeText = "50 m",
         )
 
         assertEquals("50 m", itemRows(listOf(takeoff)).single().detail)
+    }
+
+    @Test
+    fun `the altitude is whatever the core spelled, because the operator may not be in metres`() {
+        val feet = MissionItem(
+            1, 1, 41.0, 44.0, "Waypoint", false, 75.0,
+            kind = "waypoint", commandId = 16, altitudeText = "246 ft",
+        )
+
+        assertEquals("246 ft", itemRows(listOf(feet)).single().detail)
     }
 
     @Test
@@ -82,6 +93,7 @@ class PlanItemsTest {
         val stranded = MissionItem(
             3, 3, 41.0, 44.0, "Waypoint", false, 50.0,
             routed = false, kind = "waypoint", commandId = 16, afterRouteEnds = true,
+            altitudeText = "50 m",
         )
 
         assertEquals("50 m \u00b7 after the route ends", itemRows(listOf(stranded)).single().detail)
