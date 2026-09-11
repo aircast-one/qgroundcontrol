@@ -5476,3 +5476,20 @@ session's fix and renders as nothing after it. Sampled six frames across the
 window after an insert — the leg read `945 m · 15°` throughout, with no `0 m`
 and no `null` in any frame. Their fix matters for a head that does not guard;
 this one did.
+
+### Swept the rest of the numbering, 2026-09-12
+
+After the Delete finding, grepped `'#\$\{'` across both modules. One more hit:
+the progress message beside the button I had just fixed, `Removing #${item.index}`
+(`d3e586e`). The four places that show the operator a `#` number are now the
+summary chip, `Adding after`, `Delete` and `Removing`, all reading `sequence`.
+
+Everything else the sweep turned up is an *address* rather than a label —
+`$PLAN_ITEMS.$index.altitude`, `mission.remove`, `links.removeConfiguration`,
+LazyColumn keys — and `index` is correct in all of them. That is the distinction
+worth holding: `index` addresses an item, `sequence` names it.
+
+The removal message itself was not seen on screen. It clears inside a single
+uiautomator dump, and a plan with no complex item cannot distinguish the two
+numbers anyway, so the discriminating check was the survey case already verified
+for the other three labels.
