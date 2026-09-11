@@ -410,7 +410,10 @@ pub unsafe extern "C" fn qgc_core_tile_size(hash: *const c_char) -> i64 {
     match TILE_CACHE.lock().unwrap().as_ref().map(|cache| cache.tile(&text(hash))) {
         Some(Ok(Some(tile))) => tile.image.len() as i64,
         Some(Ok(None)) | None => -1,
-        Some(Err(_)) => -3,
+        Some(Err(error)) => {
+            eprintln!("qgc_core_tile_size: the tile database could not be read: {error}");
+            -3
+        }
     }
 }
 
