@@ -1845,3 +1845,16 @@ been got right once and then omitted from a sibling function within the hour. So
 check on any new walk over items is not whether it is correct in general but whether it carries
 **both** guards — `flownLeg` and `endsRoute` — because carrying one and not the other is what
 every instance has looked like.
+
+**Swept this head's own walks against that rule, and it is clean — but the rule has a limit worth
+stating before someone applies it too widely.** `MissionItem.route` carries both guards and
+`unreached` shares `routeEnd` with it. The other walks over items — `frameProbe` and
+`centreState`'s `missionPoints` — filter on `hasPosition` alone, and that is **correct**: they
+compute the map region that has to contain everything drawn, and a region of interest and an item
+after the landing are both drawn. Adding the route guards there would quietly drop items out of
+the frame the operator is looking at.
+
+So the rule is not "every walk over items needs both guards". It is: **a walk that answers a
+question about the flight needs both; a walk that answers a question about the drawing needs
+neither.** Every instance found so far has been the first kind, which is why the shorter version
+is tempting and wrong.
