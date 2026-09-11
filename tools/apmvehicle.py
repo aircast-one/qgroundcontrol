@@ -44,6 +44,10 @@ CENTRE_SHIFT = (SYSID - 1) * 0.01
 CENTRE_LAT = float(os.environ.get("SIM_LAT", "41.7151"))
 CENTRE_LON = float(os.environ.get("SIM_LON", "44.8271"))
 RADIUS_DEG = 0.004
+GROUND_SPEED = 8.0
+AIRSPEED = 7.5
+METRES_PER_DEGREE = 111320.0
+ORBIT_SECONDS = 2 * math.pi * RADIUS_DEG * METRES_PER_DEGREE / GROUND_SPEED
 
 
 class Sender:
@@ -64,7 +68,6 @@ def main():
     link = mavlink.MAVLink(Sender(sock, TARGET), srcSystem=SYSID,
                            srcComponent=mavlink.MAV_COMP_ID_AUTOPILOT1)
     parser = mavlink.MAVLink(None, srcSystem=255, srcComponent=0)
-    # A second component so QGC's camera manager has something to discover.
     sent_status = [0]
     cameras = {
         mavlink.MAV_COMP_ID_CAMERA: b"SimCam",
@@ -157,9 +160,6 @@ def main():
                                         mavlink.MAV_AUTOPILOT_INVALID, 0, 0,
                                         mavlink.MAV_STATE_ACTIVE)
         if tick % 5 == 0 and elapsed < 45:
-            # Stops after 45 s so a reader can see the display go stale.
-            # 72 sectors of 5 degrees. One obstacle to the right (index 18 = 90 deg)
-            # at 3.20 m; everything else out of range.
             ring = [65535] * 72
             ring[18] = 320
             try:
@@ -168,7 +168,7 @@ def main():
                 print("OBSTACLE sent", flush=True)
             except Exception as exc:
                 print("OBSTACLE FAILED %r" % (exc,), flush=True)
-        angle = (elapsed / 45.0) * 2 * math.pi
+        angle = (elapsed / ORBIT_SECONDS) * 2 * math.pi
         lat = CENTRE_LAT + CENTRE_SHIFT + RADIUS_DEG * math.cos(angle)
         lon = CENTRE_LON + RADIUS_DEG * math.sin(angle)
         heading = (math.degrees(angle) + 90.0) % 360.0
@@ -183,9 +183,6 @@ def main():
                             base_mode, mode, mavlink.MAV_STATE_ACTIVE)
         nofix = os.environ.get("NOFIX") == "1" and elapsed < float(os.environ.get("NOFIX_SECONDS", "1e9"))
         link.sys_status_send(GPS_SENSOR, GPS_SENSOR, GPS_SENSOR, 250, 12100, 3200, 78, 0, 0, 0, 0, 0, 0)
-        # Sent well after start, and again periodically: a ground station takes half a
-        # minute to bring its link up, and anything the vehicle says before that is said
-        # to nobody. Once cost an afternoon deciding the message banner was broken.
         status_at = float(os.environ.get("STATUS_AT", "45"))
         status_every = float(os.environ.get("STATUS_EVERY", "60"))
         if elapsed >= status_at + sent_status[0] * status_every:
@@ -227,7 +224,7 @@ def main():
                                     now_ms * 1000)
         link.gps_raw_int_send(now_ms * 1000, 0 if nofix else 3, int(lat * 1e7), int(lon * 1e7),
                               120000, 120, 120, 350, 0, 11)
-        link.vfr_hud_send(7.5, 8.1, int(heading), 55, altitude, 1.2)
+        link.vfr_hud_send(AIRSPEED, GROUND_SPEED, int(heading), 55, altitude, 1.2)
         link.attitude_send(now_ms, 0.02, -0.01, math.radians(heading), 0.0, 0.0, 0.0)
 
         if tick % 25 == 0:
@@ -278,9 +275,6 @@ def main():
                     print("RC_OVERRIDE %s" % active, flush=True)
                     continue
                 if kind == "FILE_TRANSFER_PROTOCOL":
-                    # ArduPilot makes QGC try the parameter download over MAVFTP first.
-                    # A NAK of FileNotFound is what makes it fall back to
-                    # PARAM_REQUEST_LIST; ignoring the request just makes it retry.
                     request = bytes(message.payload)
                     reply = bytearray(251)
                     seq = int.from_bytes(request[0:2], "little") + 1

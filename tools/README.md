@@ -24,3 +24,38 @@ copy there.
 The rule these were built to serve: an empty screen is not evidence that a screen works. Every
 one of them reports what the vehicle received or what the screen actually showed, not that a
 command was sent.
+
+## apmvehicle.py — what the fake actually does
+
+It is a **fake vehicle**, not a probe: it sends MAVLink at a target. Anything
+odd on a head's telemetry has to be checked against this file before it is
+called a defect.
+
+- **It orbits whether or not it is armed.** Position, heading and distance to
+  home all advance from elapsed time with no reference to the armed flag, so a
+  disarmed vehicle drifts across the map at a steady heading. That is the fake,
+  not the head. It cost a chunk of a session on 2026-09-12 before the hardcoded
+  speed gave it away.
+- **Speed now matches the orbit.** `GROUND_SPEED` drives `ORBIT_SECONDS`, so
+  what `VFR_HUD` reports is what the position is doing. It used to send a
+  hardcoded `8.1` while the circle implied 62.2 m/s — a 445 m radius every 45
+  seconds, which no quadrotor flies. Change `GROUND_SPEED` and the period
+  follows.
+- **A running instance keeps the old behaviour** until it is restarted, and the
+  sim is shared with the other sessions, so restart it deliberately rather than
+  as a side effect.
+
+Facts the code no longer states, which are still true:
+
+- A **second MAVLink component** is announced so QGC's camera manager has
+  something to discover.
+- The **obstacle ring stops after 45 s**, deliberately, so a reader can watch
+  the display go stale. It is 72 sectors of 5 degrees with one obstacle to the
+  right — index 18, 90 degrees — at 3.20 m, everything else out of range.
+- **`STATUS_TEXTS` are sent well after start and then periodically** (`STATUS_AT`
+  45 s, `STATUS_EVERY` 60 s). A ground station takes about half a minute to
+  bring its link up and anything the vehicle says before that is said to nobody.
+  This once cost an afternoon spent deciding the message banner was broken.
+- **ArduPilot makes QGC try the parameter download over MAVFTP first.** A NAK of
+  `FileNotFound` is what makes it fall back to `PARAM_REQUEST_LIST`; ignoring
+  the request just makes it retry.
