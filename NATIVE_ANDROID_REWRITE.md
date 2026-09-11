@@ -960,9 +960,18 @@ takes, which was never the question — the question was what the bridge write d
 and only the device could answer it. Same shape as the Add Item gate recorded earlier in this
 document: a constructed input proves the decode and says nothing about whether the decision is true.
 
-Not chased further, because the reverted version is not the fix: whatever the right way to give a
-takeoff a position is, it is not writing `coordinate` and hoping. Recorded so the next person does not
-rebuild it. `1 Takeoff · no position` staying as a statement of fact is the correct behaviour for now.
+**The right way is `setLaunchCoordinate`, which I had not looked for** (`aircast-android 54e67b5`). It
+sets the launch point and, when the takeoff has no coordinate, gives it one — the same place for a
+multirotor, offset by the climb-out distance for a fixed wing. That `if (!coordinate().isValid())`
+branch is precisely the symptom the list reports as "no position", and it is what QGC's own editor
+drives; its wording is worth copying exactly, "Click in map to set planned Takeoff location" when
+launch and takeoff share a location.
+
+**That version is committed and unverified on hardware.** The handset dropped off adb mid-check and
+would not reconnect over USB or Wi-Fi. The check is one step: select the unplaced takeoff from the
+list, long press the map, and the list must stop saying "no position" — the exact assertion the
+reverted version failed while its unit tests were green. Until someone runs it, the unit tests say
+only which branch the long press takes.
 
 One thing left behind on the bench: that plan's launch point is where I long pressed. It is an unsaved
 simulator plan that gets rebuilt constantly, so it was not worth clearing someone else's work over,
