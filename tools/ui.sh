@@ -122,6 +122,22 @@ found = [
 print(" | ".join(found))
 '
     ;;
+where)
+    hierarchy | python3 -c '
+import re, sys, html
+# Every value with where it sits. A flat list of strings cannot tell two
+# instruments apart when both read in metres, which is how a distance-to-home
+# reading got reported as an altitude.
+for m in re.finditer(r"<node[^>]*bounds=\"\[(\d+),(\d+)\]\[(\d+),(\d+)\]\"[^>]*>", sys.stdin.read()):
+    node = m.group(0)
+    found = re.search(r"""(?:text|content-desc)=(?:"([^"]*)"|\x27([^\x27]*)\x27)""", node)
+    label = html.unescape((found.group(1) or found.group(2) or "")) if found else ""
+    if label.strip():
+        x = (int(m.group(1)) + int(m.group(3))) // 2
+        y = (int(m.group(2)) + int(m.group(4))) // 2
+        print("%5d %5d  %s" % (x, y, label))
+'
+    ;;
 pick)
     shift
     spot=$(hierarchy | python3 "$(dirname "$0")/node.py" "$@") || {
