@@ -1,5 +1,6 @@
 package one.aircast.android.ui
 
+import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -26,6 +27,7 @@ import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
+import androidx.compose.material3.ListItem
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material3.OutlinedTextField
@@ -52,7 +54,7 @@ import one.aircast.android.bridge.Fact
 import one.aircast.android.bridge.Qgc
 import one.aircast.android.bridge.qgcFacts
 
-data class SettingsGroup(val path: String, val title: String)
+data class SettingsGroup(val path: String, val title: String, val description: String)
 
 const val LINKS_GROUP_PATH = "links"
 const val UNITS_GROUP_PATH = "settings.unitsSettings"
@@ -60,30 +62,36 @@ const val RC_CONTROLS_GROUP_PATH = "settings.flyViewSettings.rcControls"
 const val EXTRA_SOURCES_GROUP_PATH = "settings.videoSettings.extraVideoSources"
 
 val SETTINGS_GROUPS = listOf(
-    SettingsGroup(LINKS_GROUP_PATH, "Comm Links"),
-    SettingsGroup(UNITS_GROUP_PATH, "Units"),
-    SettingsGroup("settings.videoSettings", "Video"),
-    SettingsGroup(EXTRA_SOURCES_GROUP_PATH, "Extra cameras"),
-    SettingsGroup("settings.flyViewSettings", "Fly View"),
-    SettingsGroup(RC_CONTROLS_GROUP_PATH, "On-screen RC controls"),
-    SettingsGroup("settings.planViewSettings", "Plan View"),
-    SettingsGroup("settings.mapsSettings", "Maps"),
-    SettingsGroup("settings.batteryIndicatorSettings", "Battery"),
-    SettingsGroup("settings.autoConnectSettings", "AutoConnect"),
-    SettingsGroup("settings.mavlinkSettings", "MAVLink and telemetry logs"),
-    SettingsGroup("settings.rtkSettings", "RTK GPS"),
-    SettingsGroup("settings.appSettings", "General"),
+    SettingsGroup(LINKS_GROUP_PATH, "Comm Links", "Serial, UDP and TCP connections to the vehicle"),
+    SettingsGroup(UNITS_GROUP_PATH, "Units", "Metric or imperial, or each measurement chosen separately"),
+    SettingsGroup("settings.videoSettings", "Video", "Stream source and address, and camera names"),
+    SettingsGroup(EXTRA_SOURCES_GROUP_PATH, "Extra cameras", "Additional streams alongside the main one"),
+    SettingsGroup("settings.flyViewSettings", "Fly View", "What the flight screen shows, and how the map follows"),
+    SettingsGroup(RC_CONTROLS_GROUP_PATH, "On-screen RC controls", "Sliders and buttons that drive RC channels"),
+    SettingsGroup("settings.planViewSettings", "Plan View", "Defaults and rules for building a mission"),
+    SettingsGroup("settings.mapsSettings", "Maps", "How much map imagery is kept on this device"),
+    SettingsGroup("settings.batteryIndicatorSettings", "Battery", "What the battery indicator shows, and when it warns"),
+    SettingsGroup("settings.autoConnectSettings", "AutoConnect", "Which link types connect on their own"),
+    SettingsGroup("settings.mavlinkSettings", "MAVLink and telemetry logs", "Telemetry logging, stream requests and forwarding"),
+    SettingsGroup("settings.rtkSettings", "RTK GPS", "Base station accuracy and position"),
+    SettingsGroup("settings.appSettings", "General", "Offline editing defaults and other app-wide settings"),
 )
 
 @Composable
 fun SettingsScreen(modifier: Modifier = Modifier) {
     var group by remember { mutableStateOf<SettingsGroup?>(null) }
 
+    BackHandler(enabled = group != null) { group = null }
+
     val current = group
     if (current == null) {
         LazyColumn(modifier.fillMaxSize()) {
             items(SETTINGS_GROUPS) { entry ->
-                SetupRow(title = entry.title, onClick = { group = entry })
+                ListItem(
+                    headlineContent = { Text(entry.title) },
+                    supportingContent = { Text(entry.description) },
+                    modifier = Modifier.clickable { group = entry },
+                )
                 HorizontalDivider()
             }
         }
