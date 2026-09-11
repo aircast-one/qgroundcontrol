@@ -5532,3 +5532,31 @@ changed here.
 is Debug-only, so neither head can currently put a PX4 vehicle in front of this
 screen. What is testable here is the regression direction — that no APM page
 disappears — and that check runs on this rig.
+
+### A Fly-view defect that was the rig, 2026-09-12
+
+Turned the whole-frame read on the Fly view, having spent the night on Plan.
+Two things contradicted each other: the vehicle reported `Stabilize · Disarmed`
+at `0.0 m` while showing 8.1 m/s ground speed, with distance to home moving.
+Sampled four times: heading rotating uniformly 169 → 213 → 263 → 310, distance
+oscillating, **speed constant at 8.1 the whole time and for hours before**. A
+vehicle flying a circle — while disarmed on the ground.
+
+**No head defect. `tools/apmvehicle.py` is a fake vehicle, not a probe**, and it
+orbits from elapsed time with no reference to the armed flag. The 8.1 was a
+hardcoded literal in `vfr_hud_send`. The head was faithfully drawing an
+incoherent vehicle.
+
+This is the same class as the malformed `.plan` earlier tonight and the
+`strings` false negative before it, and this time it was caught before anyone
+was told. The tell was the constant: a figure that never varies across hours
+while its neighbours move is the instrument, not the subject
+([[qgc-bridge-silent-nulls]] has the same signature).
+
+Fixed the fake rather than only noting it (`d68aae4`): the orbit it flies works
+out at 62.2 m/s over a 445 m radius every 45 seconds, so the reported 8.1 was
+wrong about its own motion by a factor of about eight. `GROUND_SPEED` now drives
+the period, so what `VFR_HUD` says is what the position does. The file's
+comments moved to `tools/README.md` under the house rule, and the fact that it
+orbits whether or not it is armed is written down there now — that is the part
+that sent me looking for a head bug.
