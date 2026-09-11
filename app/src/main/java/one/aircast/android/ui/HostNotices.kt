@@ -44,12 +44,19 @@ internal fun noticesToShow(notices: List<HostNotice>): List<HostNotice> =
 internal fun noticeBanner(notice: HostNotice): String =
     listOf(notice.title, notice.text).filter { it.isNotBlank() }.joinToString(" · ")
 
-internal fun bannersToShow(notices: List<HostNotice>, lastShown: String?): List<String> =
+const val REPEAT_QUIET_MS = 30_000L
+
+internal fun bannersToShow(
+    notices: List<HostNotice>,
+    shownAt: Map<String, Long>,
+    now: Long,
+): List<String> =
     noticesToShow(notices)
         .map { noticeBanner(it) }
         .fold(emptyList<String>()) { kept, banner ->
-            when (banner) {
-                kept.lastOrNull() ?: lastShown -> kept
+            val quiet = shownAt[banner]?.let { now - it < REPEAT_QUIET_MS } == true
+            when {
+                kept.contains(banner) || quiet -> kept
                 else -> kept + banner
             }
         }
