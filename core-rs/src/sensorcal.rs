@@ -553,6 +553,9 @@ mod tests {
         cal.on_text("[cal] calibration started: 2 accel", 0);
         assert!(cal.sides.iter().all(|s| s.visible && s.stage == Stage::Waiting));
         assert_eq!(cal.snapshot()["help"], HELP_PLACE);
+        // The wire format carries the prefix - MockLink emits "[cal] calibration started: 2 gyro"
+        // - and SensorsComponentController strips "[cal] " before reading the side off the first
+        // word. This parser does the same, so the fixture is the text a vehicle actually sends.
         cal.on_text("[cal] down orientation detected", 0);
         assert_eq!(stages(&cal), ["inProgress", "waiting", "waiting", "waiting", "waiting", "waiting"]);
         assert!(!cal.sides[0].rotate, "only compass asks to rotate");

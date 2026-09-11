@@ -134,6 +134,8 @@ mod tests {
         impl Backend for Fake {
             fn get(&self, _p: &str) -> String { String::new() }
             fn get_fields(&self, _p: &str, _f: &str) -> String {
+                // Hold, Position, Acro and Offboard are PX4's own mode names, checked against
+                // PX4FirmwarePlugin.cc rather than chosen for plausibility.
                 json!({ "kind": "object", "flightMode": "Acro", "flightModes": ["Hold", "Position", "Acro", "Offboard"], "advancedFlightModes": ["Acro", "Offboard"], "flying": true, "rtlFlightMode": "Return", "landFlightMode": "Land", "flightModeSetAvailable": true }).to_string()
             }
             fn set(&self, _p: &str, _v: &str) -> String { String::new() }
