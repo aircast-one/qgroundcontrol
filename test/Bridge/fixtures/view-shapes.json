@@ -156,6 +156,10 @@
         "view.altitudeModes(item,4).modes.3.raw",
         "view.altitudeModes(item,4).modes.3.reason",
         "view.altitudeModes(item,4).modes.3.title",
+        "view.altitudeModes(item,4).omitted.#",
+        "view.altitudeModes(item,4).omitted.0.raw",
+        "view.altitudeModes(item,4).omitted.0.reason",
+        "view.altitudeModes(item,4).omitted.0.title",
         "view.altitudeModes(item,4).supportsTerrainFrame",
         "view.altitudeModes.class",
         "view.altitudeModes.context",
@@ -180,6 +184,10 @@
         "view.altitudeModes.modes.3.raw",
         "view.altitudeModes.modes.3.reason",
         "view.altitudeModes.modes.3.title",
+        "view.altitudeModes.omitted.#",
+        "view.altitudeModes.omitted.0.raw",
+        "view.altitudeModes.omitted.0.reason",
+        "view.altitudeModes.omitted.0.title",
         "view.altitudeModes.supportsTerrainFrame",
         "view.battery.class",
         "view.battery.kind",
@@ -2179,6 +2187,10 @@
         "view.altitudeModes(item,4).modes.3.raw",
         "view.altitudeModes(item,4).modes.3.reason",
         "view.altitudeModes(item,4).modes.3.title",
+        "view.altitudeModes(item,4).omitted.#",
+        "view.altitudeModes(item,4).omitted.0.raw",
+        "view.altitudeModes(item,4).omitted.0.reason",
+        "view.altitudeModes(item,4).omitted.0.title",
         "view.altitudeModes(item,4).supportsTerrainFrame",
         "view.altitudeModes.class",
         "view.altitudeModes.context",
@@ -2209,6 +2221,10 @@
         "view.altitudeModes.modes.3.raw",
         "view.altitudeModes.modes.3.reason",
         "view.altitudeModes.modes.3.title",
+        "view.altitudeModes.omitted.#",
+        "view.altitudeModes.omitted.0.raw",
+        "view.altitudeModes.omitted.0.reason",
+        "view.altitudeModes.omitted.0.title",
         "view.altitudeModes.supportsTerrainFrame",
         "view.battery.available",
         "view.battery.class",
@@ -5563,6 +5579,13 @@
                 "title": "string"
             }
         ],
+        "omitted": [
+            {
+                "raw": "number",
+                "reason": "string",
+                "title": "string"
+            }
+        ],
         "supportsTerrainFrame": "bool"
     },
     "view.altitudeModes(item,4)": {
@@ -5575,6 +5598,13 @@
                 "current": "bool",
                 "enabled": "bool",
                 "help": "string",
+                "raw": "number",
+                "reason": "string",
+                "title": "string"
+            }
+        ],
+        "omitted": [
+            {
                 "raw": "number",
                 "reason": "string",
                 "title": "string"

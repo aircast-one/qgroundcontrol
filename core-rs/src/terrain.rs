@@ -167,7 +167,6 @@ pub fn terrain_view(backend: &dyn Backend, _args: &[String]) -> Value {
     let mut all: Vec<Point> = entries.into_iter().chain(inside).collect();
     all.sort_by(|a, b| a.distance.partial_cmp(&b.distance).unwrap_or(std::cmp::Ordering::Equal));
     let profile = profile(all);
-    let horizontal = Unit::horizontal(backend);
     let vertical = Unit::vertical(backend);
     let usable = profile.points.len() > 1 && profile.max_altitude > profile.min_altitude;
     json!({

@@ -13,6 +13,8 @@ pub const TERRAIN_FRAME: i64 = 4;
 
 const NO_TERRAIN_FRAME: &str = "This vehicle's firmware cannot hold an altitude above terrain.";
 const NO_ITEMS_YET: &str = "Add a mission item before choosing how its altitude is measured.";
+const NOT_A_PLAN: &str = "Mixed applies to a whole plan, where each item sets its own.";
+const ABSOLUTE_HIDDEN: &str = "This build does not offer altitudes above mean sea level for mission items.";
 
 const MODES: &[(i64, &str, &str)] = &[
     (RELATIVE, "Relative To Launch", "Above the launch position."),
@@ -43,6 +45,23 @@ fn offered(mode: i64, inputs: &Inputs) -> bool {
 
 fn enabled(mode: i64, inputs: &Inputs) -> bool {
     mode == inputs.current || mode == MIXED || !inputs.mission || inputs.has_items
+}
+
+fn absence(mode: i64) -> &'static str {
+    match mode {
+        MIXED => NOT_A_PLAN,
+        TERRAIN_FRAME => NO_TERRAIN_FRAME,
+        ABSOLUTE => ABSOLUTE_HIDDEN,
+        _ => "",
+    }
+}
+
+pub fn omitted(inputs: &Inputs) -> Vec<Value> {
+    MODES
+        .iter()
+        .filter(|(mode, _, _)| !offered(*mode, inputs))
+        .map(|(mode, title, _)| json!({ "raw": mode, "title": title, "reason": absence(*mode) }))
+        .collect()
 }
 
 fn reason(mode: i64, inputs: &Inputs) -> &'static str {
@@ -89,6 +108,7 @@ pub fn altitude_modes_view(backend: &dyn Backend, args: &[String]) -> Value {
         "current": inputs.current,
         "supportsTerrainFrame": inputs.supports_terrain_frame,
         "modes": modes(&inputs),
+        "omitted": omitted(&inputs),
     })
 }
 
@@ -102,6 +122,27 @@ mod tests {
 
     fn raws(inputs: &Inputs) -> Vec<i64> {
         modes(inputs).iter().map(|m| m["raw"].as_i64().unwrap()).collect()
+    }
+
+    #[test]
+    fn a_mode_the_list_does_not_offer_says_why_it_is_not_there() {
+        let vtol = Inputs { mission: true, current: RELATIVE, supports_terrain_frame: true, has_items: true, show_absolute: true };
+        assert!(omitted(&vtol).is_empty(), "with everything supported nothing is left out, so an empty list is a real answer and not the only answer this can give");
+
+        let plain = Inputs { supports_terrain_frame: false, show_absolute: false, ..vtol };
+        let left_out = omitted(&plain);
+        let named: Vec<i64> = left_out.iter().map(|m| m["raw"].as_i64().unwrap()).collect();
+        assert_eq!(named, vec![ABSOLUTE, TERRAIN_FRAME], "a mode removed from the picker is indistinguishable from a mode that never existed, unless the list that dropped it says so");
+        assert!(left_out.iter().all(|m| !m["reason"].as_str().unwrap().is_empty()), "and an entry with no reason is the same silence one level in");
+        assert_eq!(left_out[1]["reason"], NO_TERRAIN_FRAME);
+
+        let single = Inputs { mission: false, ..vtol };
+        let alone = omitted(&single);
+        assert_eq!(alone.iter().map(|m| m["raw"].as_i64().unwrap()).collect::<Vec<_>>(), vec![MIXED], "one item cannot be mixed with itself");
+        assert_eq!(alone[0]["reason"], NOT_A_PLAN, "every omission carries its own reason, and asserting that over one subset leaves the others free to say nothing");
+
+        let holding = Inputs { mission: false, current: MIXED, ..vtol };
+        assert!(omitted(&holding).is_empty(), "except when it is the mode already in force, which the picker must keep so the operator can see what they are changing from");
     }
 
     #[test]

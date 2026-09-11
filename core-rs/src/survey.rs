@@ -34,7 +34,6 @@ pub fn survey_stats_view(backend: &dyn Backend, args: &[String]) -> Value {
     let footprint_units = fact("adjustedFootprintSide").and_then(|f| f.get("units")).and_then(Value::as_str).unwrap_or("m").to_string();
     let minimum_interval = fact_number("minTriggerInterval");
     let area = Unit::area(backend);
-    let distance = Unit::horizontal(backend);
     json!({
         "kind": "object",
         "class": "SurveyStats",
