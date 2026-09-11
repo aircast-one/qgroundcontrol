@@ -24,35 +24,13 @@ private fun points(array: JSONArray?): List<TrackPoint> {
     }
 }
 
-fun surveys(json: JSONObject?): List<Survey> {
-    val elements = json?.optJSONArray("elements") ?: return emptyList()
-    return (0 until elements.length()).mapNotNull { index ->
-        val element = elements.optJSONObject(index) ?: return@mapNotNull null
-        if (!element.optBoolean("isSurveyItem")) return@mapNotNull null
-
-        val transects = points(element.optJSONArray("visualTransectPoints"))
-        val area = points(element.optJSONObject("surveyAreaPolygon")?.optJSONArray("path"))
-        if (transects.isEmpty() && area.isEmpty()) return@mapNotNull null
-
-        Survey(
-            index = index,
-            area = area,
-            transects = transects,
-            cameraShots = element.optInt("cameraShots"),
-            gridAngle = factValue(element, "GridAngle"),
-        )
-    }
-}
-
 const val GRID_STEP_DEGREES = 30.0
 
 fun nextGridAngle(current: Double): Double =
     ((if (current.isNaN()) 0.0 else current) + GRID_STEP_DEGREES) % 360.0
 
 object SurveyBridge {
-    fun surveys(): List<Survey> = surveysFrom(PlanBridge.rawItems())
-
-    fun surveysFrom(json: JSONObject?): List<Survey> {
+    fun surveysFrom(json: JSONObject?, area: (Int) -> JSONArray? = ::polygonPath): List<Survey> {
         val elements = json?.optJSONArray("elements") ?: return emptyList()
 
         return (0 until elements.length()).mapNotNull { index ->
@@ -60,12 +38,12 @@ object SurveyBridge {
             if (!element.optBoolean("isSurveyItem")) return@mapNotNull null
 
             val transects = points(element.optJSONArray("visualTransectPoints"))
-            val area = points(polygonPath(index))
-            if (transects.isEmpty() && area.isEmpty()) return@mapNotNull null
+            val corners = points(area(index))
+            if (transects.isEmpty() && corners.isEmpty()) return@mapNotNull null
 
             Survey(
                 index = index,
-                area = area,
+                area = corners,
                 transects = transects,
                 cameraShots = element.optInt("cameraShots"),
                 gridAngle = factValue(element, "GridAngle"),
