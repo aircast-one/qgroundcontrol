@@ -67,3 +67,20 @@ struct TerrainProfile: Equatable {
         return height - (altitude - minAltitude) / span * height
     }
 }
+
+enum TerrainWatch {
+    // view.terrainProfile's deps in the core name the item count, containsItems, plan.dirty and
+    // whether a vehicle is available. Terrain heights arrive from a server AFTER the edit that
+    // asked for them and move none of those, so watching that view never fires in time. These two
+    // are what land, and they land separately -- the heights first, the verdicts after, which is
+    // why watching only the heights re-read the view one signal too early.
+    static let properties = ["terrainAltitude", "terrainCollision"]
+
+    static func signals(_ index: Int) -> [String] {
+        properties.map { "plan.missionController.visualItems.\(index).\($0)" }
+    }
+
+    static func signals(items: Int) -> [String] {
+        (0..<max(items, 0)).flatMap { signals($0) }
+    }
+}

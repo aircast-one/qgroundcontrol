@@ -58,15 +58,20 @@ def check(what, names, header, needs_write):
 
 lists = swift_names("macos/Sources/ItemFactModel.swift", "static let lists")
 labels = swift_names("macos/Sources/GeoTag.swift", "static let labels")
+terrain = swift_names("macos/Sources/TerrainProfileModel.swift", "static let properties")
 
-if not lists or not labels:
+if not lists or not labels or not terrain:
     print("found no names to check, which is a broken reader rather than a clean result",
           file=sys.stderr)
     sys.exit(1)
 
 ok = check("ItemFact.lists", lists, "src/MissionManager/SimpleMissionItem.h", False)
 ok &= check("GeoTagStore.labels", labels, "src/AnalyzeView/GeoTagController.h", True)
+# Watched, not read: a name that does not resolve is a signal that never arrives, and the panel
+# simply keeps whatever it last saw -- which for terrain is the answer from before the heights
+# landed, so the mission reads as clearing ground it flies into.
+ok &= check("TerrainWatch.properties", terrain, "src/MissionManager/VisualMissionItem.h", False)
 
 if ok:
-    print(f"interpolated names pinned: {', '.join(lists + labels)}")
+    print(f"interpolated names pinned: {', '.join(lists + labels + terrain)}")
 sys.exit(0 if ok else 1)

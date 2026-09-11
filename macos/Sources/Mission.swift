@@ -50,7 +50,8 @@ final class MissionStore: ObservableObject, Probeable, WriteReporting {
 
     private var undoPoll: Timer?
     private var watchPoll: Timer?
-    private var watchingSummary = false
+    private var watchingViews = false
+    private var terrainPending = false
     private static var clients = 0
 
     // A store's address is reused after it deallocates, so an identity derived from one is only
@@ -60,6 +61,8 @@ final class MissionStore: ObservableObject, Probeable, WriteReporting {
         return clients
     }
     private let summaryClient = "missionSummary.\(MissionStore.nextClient())"
+    private let terrainClient = "terrainProfile.\(MissionStore.nextClient())"
+
 
     // The Fly view only reads this plan; the Plan window is what edits it, and a plan can also
     // arrive from the vehicle or a file. So a reader has to look again rather than wait for a
@@ -82,9 +85,9 @@ final class MissionStore: ObservableObject, Probeable, WriteReporting {
     // The Plan window does not poll, so nothing corrected it. The core watches this view's deps
     // and re-renders it, sending only what changed, which is why a stale read fixes itself here
     // without a timer that would fight the editor.
-    private func watchSummary() {
-        guard !watchingSummary else { return }
-        watchingSummary = true
+    private func watchViews() {
+        guard !watchingViews else { return }
+        watchingViews = true
         BridgeWatch.watch(summaryClient, ["view.missionSummary"]) { [weak self] view in
             guard let self else { return }
             let read = MissionSummary(view)
@@ -92,8 +95,30 @@ final class MissionStore: ObservableObject, Probeable, WriteReporting {
         }
     }
 
+    private func watchTerrain() {
+        BridgeWatch.watch(terrainClient, TerrainWatch.signals(items: items.count)) {
+            [weak self] _ in self?.terrainChanged()
+        }
+    }
+
+    // Two signals per item all land in the same turn. Re-reading on each measured 7.1ms a time and
+    // 17 reads for a three item plan; the view walks six fields of every item, so the bill grows
+    // as items times items, and the plan this has to survive is a two hundred waypoint survey.
+    private func terrainChanged() {
+        guard !terrainPending else { return }
+        terrainPending = true
+        DispatchQueue.main.async { [weak self] in
+            guard let self else { return }
+            self.terrainPending = false
+            let profile = TerrainProfile(Bridge.group("view.terrainProfile"))
+            if profile != self.terrain { self.terrain = profile }
+        }
+    }
+
     deinit {
-        if watchingSummary { BridgeWatch.stop(summaryClient) }
+        guard watchingViews else { return }
+        BridgeWatch.stop(summaryClient)
+        BridgeWatch.stop(terrainClient)
     }
 
     func reload() {
@@ -130,6 +155,7 @@ final class MissionStore: ObservableObject, Probeable, WriteReporting {
         if bar != scaleBar { scaleBar = bar }
         let profile = TerrainProfile(Bridge.group("view.terrainProfile"))
         if profile != terrain { terrain = profile }
+        watchTerrain()
         let catalogue = MissionKinds(Bridge.group("view.missionKinds"))
         if !catalogue.all.isEmpty, catalogue != kinds { kinds = catalogue }
         let mode = AltitudeMode.read(controller["globalAltitudeMode"])
@@ -138,7 +164,7 @@ final class MissionStore: ObservableObject, Probeable, WriteReporting {
             Bridge.group("view.altitudeModes(\(AltitudeMode.missionContext),\(mode))"))
         if missionOffers != missionModes { missionModes = missionOffers }
 
-        watchSummary()
+        watchViews()
         let read = MissionSummary(Bridge.group("view.missionSummary"))
         if read != summary { summary = read }
         defaultAltitude = (Bridge.group("settings.appSettings.defaultMissionItemAltitude")["valueString"] as? String) ?? ""
@@ -826,6 +852,7 @@ final class MissionStore: ObservableObject, Probeable, WriteReporting {
          "kinds": kinds.all.map { ["id": $0.id, "enabled": $0.enabled,
                                    "reason": $0.disabledReason ?? ""] },
          "planFile": planFile, "watching": watchPoll != nil, "planName": planName,
+         "watchEvents": BridgeWatch.delivered,
          "readyToSave": readyToSave, "notReadyReason": notReadyReason,
          "uploadCheckable": preCheck() != nil,
          "uploadWarning": uploadWarning.map(\.refusal) ?? "",

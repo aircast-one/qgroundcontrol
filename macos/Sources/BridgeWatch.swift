@@ -6,6 +6,15 @@ enum BridgeWatch {
     private static var registry = BridgeWatchers()
     private static var handlers: [String: ([String: Any]) -> Void] = [:]
     private static var installed = false
+    private static var counts: [String: Int] = [:]
+
+    // A watch wired to a path that never moves is a correct handler nothing calls, and it looks
+    // identical from the outside to one that works. This counts what actually arrived.
+    static var delivered: [String: Int] {
+        lock.lock()
+        defer { lock.unlock() }
+        return counts
+    }
 
     static func watch(_ client: String, _ paths: [String],
                       _ onChange: (([String: Any]) -> Void)? = nil) {
@@ -30,6 +39,7 @@ enum BridgeWatch {
 
     static func deliver(_ path: String, _ json: String) {
         lock.lock()
+        counts[path, default: 0] += 1
         let called = registry.clients(watching: path).compactMap { handlers[$0] }
         lock.unlock()
         guard !called.isEmpty, let data = json.data(using: .utf8),
