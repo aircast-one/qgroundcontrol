@@ -1268,6 +1268,7 @@ func checkMissionItemKinds() {
     checkBridgeWatchers()
     checkRemoveOutcome()
     checkTerrainWatch()
+    checkSurveyWatch()
     checkVehicleMessageOrder()
     checkBlockedBanner()
     checkMavlinkConsole()
@@ -4065,6 +4066,26 @@ func checkVehicleMessageOrder() {
         .newest(6).map(\.text).joined(separator: ","), "1",
            "a list shorter than the limit is taken whole rather than padded or trimmed to nothing")
     expect(VehicleMessages.empty.newest(6).isEmpty, "and an empty one stays empty")
+}
+
+func checkSurveyWatch() {
+    expect(SurveyWatch.signals(2).joined(separator: ","),
+           "plan.missionController.visualItems.2.cameraShots,"
+           + "plan.missionController.visualItems.2.complexDistance",
+           "a survey answers its area and shot interval as soon as it has a polygon, and its shot "
+           + "COUNT and flown DISTANCE only once the transects are computed -- after the read that "
+           + "drew the panel. Measured: an em-dash for both while the core answered 1043 shots "
+           + "over 7047 m, and it stayed that way until something forced a reload")
+    expect(SurveyWatch.signals(survey: nil).isEmpty,
+           "and nothing is watched while no survey is selected, because the panel has no survey "
+           + "to be stale about")
+    expect(SurveyWatch.signals(survey: 2) == SurveyWatch.signals(2),
+           "a selected survey asks for exactly what that index asks for")
+    expect(SurveyWatch.properties.joined(separator: ","), "cameraShots,complexDistance",
+           "these two names are interpolated into bridge paths, where a misspelling is a signal "
+           + "that never arrives rather than an error. interpolated-names.py pins them, and they "
+           + "span two headers -- the shot count is on the transect class, the distance on the "
+           + "complex class above it")
 }
 
 func checkTerrainWatch() {

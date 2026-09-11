@@ -52,6 +52,7 @@ final class MissionStore: ObservableObject, Probeable, WriteReporting {
     private var watchPoll: Timer?
     private var watchingViews = false
     private var terrainPending = false
+    private var surveyPending = false
     private static var clients = 0
 
     // A store's address is reused after it deallocates, so an identity derived from one is only
@@ -62,6 +63,7 @@ final class MissionStore: ObservableObject, Probeable, WriteReporting {
     }
     private let summaryClient = "missionSummary.\(MissionStore.nextClient())"
     private let terrainClient = "terrainProfile.\(MissionStore.nextClient())"
+    private let surveyClient = "surveyStats.\(MissionStore.nextClient())"
 
 
     // The Fly view only reads this plan; the Plan window is what edits it, and a plan can also
@@ -119,6 +121,7 @@ final class MissionStore: ObservableObject, Probeable, WriteReporting {
         guard watchingViews else { return }
         BridgeWatch.stop(summaryClient)
         BridgeWatch.stop(terrainClient)
+        BridgeWatch.stop(surveyClient)
     }
 
     func reload() {
@@ -319,12 +322,39 @@ final class MissionStore: ObservableObject, Probeable, WriteReporting {
     }
 
     private func loadSurveyStats(for item: MissionItem) {
+        watchSurvey(item.isSurveyItem ? item.index : nil)
         guard item.isSurveyItem else {
             if surveyStats != .none { surveyStats = .none }
             return
         }
-        let read = SurveyStats(Bridge.group("view.surveyStats(\(item.index))"))
+        readSurveyStats(item.index)
+    }
+
+    private func readSurveyStats(_ index: Int) {
+        let read = SurveyStats(Bridge.group("view.surveyStats(\(index))"))
         if read != surveyStats { surveyStats = read }
+    }
+
+    // No survey selected asks for no paths, which is how the core drops the watch -- the same
+    // call that starts one stops it.
+    private func watchSurvey(_ index: Int?) {
+        BridgeWatch.watch(surveyClient, SurveyWatch.signals(survey: index)) { [weak self] _ in
+            self?.surveyChanged()
+        }
+    }
+
+    // The index is read again rather than carried in from the watch. Between the signal and this
+    // running the operator can have selected something else, and an index held across that gap
+    // writes one survey's numbers into the panel showing another.
+    private func surveyChanged() {
+        guard !surveyPending else { return }
+        surveyPending = true
+        DispatchQueue.main.async { [weak self] in
+            guard let self else { return }
+            self.surveyPending = false
+            guard let current = self.items.first(where: \.isCurrent), current.isSurveyItem else { return }
+            self.readSurveyStats(current.index)
+        }
     }
 
     private func surveyPolygon(of item: MissionItem) -> [GeoPoint] {

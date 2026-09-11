@@ -21,9 +21,10 @@ def read(path):
         return handle.read()
 
 
-def properties(header):
+def properties(*headers):
     return {
         match.group(2): match.group(0)
+        for header in headers
         for match in re.finditer(r"Q_PROPERTY\(\s*([\w:*<> ]+?)\s+(\w+)\s+([^)]*)\)", read(header))
     }
 
@@ -43,14 +44,15 @@ def swift_names(path, anchor):
     return keyed or re.findall(r'"([^"]+)"', literal)
 
 
-def check(what, names, header, needs_write):
-    declared = properties(header)
+def check(what, names, headers, needs_write):
+    declared = properties(*headers)
+    where = " or ".join(headers)
     bad = []
     for name in names:
         if name not in declared:
-            bad.append(f"{what}: {name!r} is not a Q_PROPERTY in {header}")
+            bad.append(f"{what}: {name!r} is not a Q_PROPERTY in {where}")
         elif needs_write and " WRITE " not in declared[name]:
-            bad.append(f"{what}: {name!r} in {header} has no WRITE, so the head's write is discarded")
+            bad.append(f"{what}: {name!r} in {where} has no WRITE, so the head's write is discarded")
     for line in bad:
         print(line, file=sys.stderr)
     return not bad
@@ -59,19 +61,25 @@ def check(what, names, header, needs_write):
 lists = swift_names("macos/Sources/ItemFactModel.swift", "static let lists")
 labels = swift_names("macos/Sources/GeoTag.swift", "static let labels")
 terrain = swift_names("macos/Sources/TerrainProfileModel.swift", "static let properties")
+survey = swift_names("macos/Sources/SurveyStatsModel.swift", "static let properties")
 
-if not lists or not labels or not terrain:
+if not lists or not labels or not terrain or not survey:
     print("found no names to check, which is a broken reader rather than a clean result",
           file=sys.stderr)
     sys.exit(1)
 
-ok = check("ItemFact.lists", lists, "src/MissionManager/SimpleMissionItem.h", False)
-ok &= check("GeoTagStore.labels", labels, "src/AnalyzeView/GeoTagController.h", True)
+ok = check("ItemFact.lists", lists, ["src/MissionManager/SimpleMissionItem.h"], False)
+ok &= check("GeoTagStore.labels", labels, ["src/AnalyzeView/GeoTagController.h"], True)
 # Watched, not read: a name that does not resolve is a signal that never arrives, and the panel
 # simply keeps whatever it last saw -- which for terrain is the answer from before the heights
 # landed, so the mission reads as clearing ground it flies into.
-ok &= check("TerrainWatch.properties", terrain, "src/MissionManager/VisualMissionItem.h", False)
+ok &= check("TerrainWatch.properties", terrain, ["src/MissionManager/VisualMissionItem.h"], False)
+# A survey's shot count lives on the transect base class and its flown distance on the complex
+# base above it, so this one spans two headers.
+ok &= check("SurveyWatch.properties", survey,
+            ["src/MissionManager/TransectStyleComplexItem.h",
+             "src/MissionManager/ComplexMissionItem.h"], False)
 
 if ok:
-    print(f"interpolated names pinned: {', '.join(lists + labels + terrain)}")
+    print(f"interpolated names pinned: {', '.join(lists + labels + terrain + survey)}")
 sys.exit(0 if ok else 1)

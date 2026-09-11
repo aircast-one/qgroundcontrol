@@ -37,3 +37,20 @@ struct SurveyStats: Equatable {
 
     var describes: Bool { available }
 }
+
+enum SurveyWatch {
+    // A survey answers its area and its shot interval as soon as it has a polygon, and its shot
+    // COUNT and flown DISTANCE only once the transects are computed -- which happens after the
+    // read that drew the panel. Measured: the panel showed an em-dash for both while the core
+    // answered 1043 shots over 7047 m, and it stayed that way until something forced a reload.
+    // Those are the two numbers an operator sizes a battery and a card by.
+    static let properties = ["cameraShots", "complexDistance"]
+
+    static func signals(_ index: Int) -> [String] {
+        properties.map { "plan.missionController.visualItems.\(index).\($0)" }
+    }
+
+    static func signals(survey index: Int?) -> [String] {
+        index.map(signals) ?? []
+    }
+}
