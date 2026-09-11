@@ -85,13 +85,18 @@ internal fun planStatusText(name: String?, dirty: Boolean, offline: Boolean): St
     else -> "$name \u00b7 not uploaded"
 }
 
+internal val DRAWN_KINDS = setOf(
+    "settings", "takeoff", "land", "waypoint", "command", "altitude", "roi", "survey",
+)
+
 private fun JSONArray.itemsAfterMissionSettings(): List<JSONObject> =
     (1 until length()).mapNotNull { optJSONObject(it) }
 
-internal fun undrawnItemNames(elements: JSONArray): List<String> =
-    elements.itemsAfterMissionSettings()
-        .filterNot { it.optBoolean("isSimpleItem") || it.optBoolean("isSurveyItem") }
-        .map { it.optString("patternName").ifBlank { it.optString("class") } }
+internal fun undrawnItemNames(items: JSONArray): List<String> =
+    (0 until items.length())
+        .mapNotNull { items.optJSONObject(it) }
+        .filterNot { it.optString("kind") in DRAWN_KINDS }
+        .map { it.optString("name") }
         .filter { it.isNotBlank() }
         .distinct()
 

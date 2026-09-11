@@ -22,6 +22,7 @@ private const val OPEN_CACHE = "opened.plan"
 private const val SAVE_CACHE = "saving.plan"
 private const val KML_CACHE = "export.kml"
 private const val MISSION_ROOT = "plan.missionController"
+private const val MISSION_ITEMS_VIEW = "view.missionItems"
 
 internal const val PLAN_MIME = "*/*"
 
@@ -85,11 +86,11 @@ private fun patternNames(): List<String> {
 }
 
 internal fun visualItems(): JSONArray =
-    Qgc.get("$MISSION_ROOT.visualItems").opt("elements") as? JSONArray ?: JSONArray()
+    Qgc.get(MISSION_ITEMS_VIEW).optJSONArray("items") ?: JSONArray()
 
 private fun lastDistance(items: JSONArray): Double? {
     val last = items.optJSONObject(items.length() - 1) ?: return null
-    return (last.opt("complexDistance") as? Number)?.toDouble()
+    return (last.opt("patternDistance") as? Number)?.toDouble()
 }
 
 private fun displayName(context: Context, uri: Uri): String? = runCatching {

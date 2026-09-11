@@ -287,26 +287,18 @@ class CalibrationBeganTest {
 
 
 class UndrawnItemsTest {
-    private fun item(
-        cls: String,
-        simple: Boolean = false,
-        survey: Boolean = false,
-        pattern: String = "",
-    ) = JSONObject()
-        .put("class", cls)
-        .put("isSimpleItem", simple)
-        .put("isSurveyItem", survey)
-        .put("patternName", pattern)
+    private fun item(kind: String, name: String = "") =
+        JSONObject().put("kind", kind).put("name", name)
 
     private fun plan(vararg items: JSONObject) = JSONArray().also { items.forEach(it::put) }
 
     @Test
     fun `an ordinary plan raises no warning`() {
         val ordinary = plan(
-            item("MissionSettingsItem"),
-            item("TakeoffMissionItem", simple = true),
-            item("SimpleMissionItem", simple = true),
-            item("SurveyComplexItem", survey = true, pattern = "Survey"),
+            item("settings"),
+            item("takeoff", "Takeoff"),
+            item("waypoint", "Waypoint"),
+            item("survey", "Survey"),
         )
 
         assertEquals(emptyList<String>(), undrawnItemNames(ordinary))
@@ -315,11 +307,7 @@ class UndrawnItemsTest {
 
     @Test
     fun `a corridor scan is named in the warning`() {
-        val mixed = plan(
-            item("MissionSettingsItem"),
-            item("SimpleMissionItem", simple = true),
-            item("CorridorScanComplexItem", pattern = "Corridor Scan"),
-        )
+        val mixed = plan(item("settings"), item("waypoint"), item("corridor", "Corridor Scan"))
 
         assertEquals(listOf("Corridor Scan"), undrawnItemNames(mixed))
         assertEquals(
@@ -331,50 +319,25 @@ class UndrawnItemsTest {
     @Test
     fun `each undrawn kind is named once however many the plan holds`() {
         val many = plan(
-            item("MissionSettingsItem"),
-            item("CorridorScanComplexItem", pattern = "Corridor Scan"),
-            item("CorridorScanComplexItem", pattern = "Corridor Scan"),
-            item("StructureScanComplexItem", pattern = "Structure Scan"),
+            item("settings"),
+            item("corridor", "Corridor Scan"),
+            item("corridor", "Corridor Scan"),
+            item("structure", "Structure Scan"),
         )
 
         assertEquals(listOf("Corridor Scan", "Structure Scan"), undrawnItemNames(many))
     }
 
     @Test
-    fun `an item with no pattern name falls back to its class`() {
-        assertEquals(
-            listOf("FixedWingLandingComplexItem"),
-            undrawnItemNames(plan(item("MissionSettingsItem"), item("FixedWingLandingComplexItem"))),
-        )
+    fun `a kind this head has never heard of is warned about rather than passed over`() {
+        val future = plan(item("settings"), item("spiral", "Spiral Scan"))
+
+        assertEquals(listOf("Spiral Scan"), undrawnItemNames(future))
     }
 
     @Test
-    fun `element zero is the settings item and is never named`() {
-        val settingsLast = plan(
-            item("MissionSettingsItem"),
-            item("MissionSettingsItem"),
-        )
-
-        assertEquals(listOf("MissionSettingsItem"), undrawnItemNames(settingsLast))
-    }
-
-    @Test
-    fun `a survey is recognised by what it says about itself, not by its class name`() {
-        val renamed = plan(
-            item("MissionSettingsItem"),
-            item("SomeFutureSurveySubclass", survey = true, pattern = "Survey"),
-        )
-
-        assertEquals(emptyList<String>(), undrawnItemNames(renamed))
-    }
-
-    @Test
-    fun `a build whose bridge does not send the class stays quiet rather than warning wrongly`() {
-        val older = JSONArray()
-            .put(JSONObject())
-            .put(JSONObject().put("isSimpleItem", false))
-
-        assertEquals(emptyList<String>(), undrawnItemNames(older))
+    fun `an undrawn item with no name cannot be warned about and is not a blank entry`() {
+        assertEquals(emptyList<String>(), undrawnItemNames(plan(item("complex"))))
     }
 }
 
