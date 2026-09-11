@@ -1266,7 +1266,6 @@ func checkMissionItemKinds() {
     checkBlockedItems()
     checkBridgeWatchers()
     checkRemoveOutcome()
-    checkTerrainWatch()
     checkSurveyWatch()
     checkFlownLeg()
     checkVehicleMessageOrder()
@@ -4149,28 +4148,6 @@ func checkSurveyWatch() {
            + "complex class above it")
 }
 
-func checkTerrainWatch() {
-    expect(TerrainWatch.signals(items: 2).joined(separator: ","),
-           "plan.missionController.visualItems.0.terrainAltitude,"
-           + "plan.missionController.visualItems.0.terrainCollision,"
-           + "plan.missionController.visualItems.1.terrainAltitude,"
-           + "plan.missionController.visualItems.1.terrainCollision",
-           "the terrain panel watches both terrain properties of every item. Measured on the "
-           + "running app: the heights land first and the collision verdicts after, so watching "
-           + "only the heights re-read the view one signal too early and the panel still said the "
-           + "mission cleared ground it flew into")
-    expect(TerrainWatch.signals(items: 0).isEmpty,
-           "a plan with no items asks for nothing, which is how the core drops the watch rather "
-           + "than holding a list of paths that resolve to no item")
-    expect(TerrainWatch.signals(items: -1).isEmpty,
-           "and a count that came back negative asks for nothing rather than trapping on a range")
-
-    expect(TerrainWatch.properties.joined(separator: ","), "terrainAltitude,terrainCollision",
-           "these two names are interpolated into bridge paths, so a misspelling is a signal that "
-           + "never arrives and a panel that keeps whatever it last saw. tools/macos/"
-           + "interpolated-names.py pins them against VisualMissionItem's Q_PROPERTYs, which is "
-           + "the only thing that would notice QGC renaming one")
-}
 
 func checkRemoveOutcome() {
     expect(RemoveOutcome(["ok": true as NSNumber, "removed": 2 as NSNumber,

@@ -51,7 +51,6 @@ final class MissionStore: ObservableObject, Probeable, WriteReporting {
     private var undoPoll: Timer?
     private var watchPoll: Timer?
     private var watchingViews = false
-    private var terrainPending = false
     private var surveyPending = false
     private static var clients = 0
 
@@ -95,30 +94,19 @@ final class MissionStore: ObservableObject, Probeable, WriteReporting {
             let read = MissionSummary(view)
             if read != self.summary { self.summary = read }
         }
-    }
-
-    private func watchTerrain() {
-        BridgeWatch.watch(terrainClient, TerrainWatch.signals(items: items.count)) {
-            [weak self] _ in self?.terrainChanged()
-        }
-    }
-
-    // Two signals per item all land in the same turn. Re-reading on each measured 7.1ms a time and
-    // 17 reads for a three item plan; the view walks six fields of every item, so the bill grows
-    // as items times items, and the plan this has to survive is a two hundred waypoint survey.
-    private func terrainChanged() {
-        guard !terrainPending else { return }
-        terrainPending = true
-        DispatchQueue.main.async { [weak self] in
+        // The core watches a signal for this one -- recalcTerrainProfile, which the controller
+        // already emits when heights arrive and which carries no value for a property watch to
+        // bind to. The head watched each item's terrainAltitude and terrainCollision to get at
+        // the same moment; it does not have to any more, and the event carries the rendered
+        // profile so there is nothing to read back.
+        BridgeWatch.watch(terrainClient, ["view.terrainProfile"]) { [weak self] view in
             guard let self else { return }
-            self.terrainPending = false
-            let profile = TerrainProfile(Bridge.group("view.terrainProfile"))
+            let profile = TerrainProfile(view)
             if profile != self.terrain { self.terrain = profile }
         }
     }
 
     deinit {
-        guard watchingViews else { return }
         BridgeWatch.stop(summaryClient)
         BridgeWatch.stop(terrainClient)
         BridgeWatch.stop(surveyClient)
@@ -152,7 +140,6 @@ final class MissionStore: ObservableObject, Probeable, WriteReporting {
         if bar != scaleBar { scaleBar = bar }
         let profile = TerrainProfile(Bridge.group("view.terrainProfile"))
         if profile != terrain { terrain = profile }
-        watchTerrain()
         let catalogue = MissionKinds(Bridge.group("view.missionKinds"))
         if !catalogue.all.isEmpty, catalogue != kinds { kinds = catalogue }
         let mode = AltitudeMode.read(controller["globalAltitudeMode"])
