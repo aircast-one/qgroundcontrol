@@ -114,6 +114,9 @@ object PlanBridge {
 
     fun removeItem(index: Int): Boolean = removeMissionItem(index).ok
 
+    fun selectSequence(sequence: Int): Boolean =
+        invokeOk("$MISSION_CONTROLLER.setCurrentPlanViewSeqNum", "[$sequence, true]")
+
     fun moveItem(index: Int, latitude: Double, longitude: Double): Boolean =
         setOk("$PLAN_ITEMS.$index.coordinate", settingJson(coordinateJson(latitude, longitude)))
 }

@@ -184,3 +184,31 @@ class InsertAfterTest {
         assertEquals(AT_END, insertAfter(MapHit.SurveyVertex(1, 0), plan))
     }
 }
+
+class SelectionSequenceTest {
+    private val plan = listOf(
+        MissionItem(0, 0, 41.0, 44.0, "Mission Start", false, 0.0, kind = "settings"),
+        MissionItem(1, 1, 41.0, 44.0, "Takeoff", false, 50.0, kind = KIND_TAKEOFF),
+        MissionItem(2, 4, 41.0, 44.0, "Waypoint", false, 50.0, kind = "waypoint"),
+    )
+
+    @Test
+    fun `the sequence is sent, not the index, because they are not the same number`() {
+        assertEquals(4, selectionSequence(MapHit.Waypoint(2), plan))
+    }
+
+    @Test
+    fun `nothing selected selects nothing`() {
+        assertNull(selectionSequence(null, plan))
+    }
+
+    @Test
+    fun `a selection the plan no longer holds sends nothing`() {
+        assertNull(selectionSequence(MapHit.Waypoint(9), plan))
+    }
+
+    @Test
+    fun `a fence vertex is not a mission item and does not move the plan view`() {
+        assertNull(selectionSequence(MapHit.FenceVertex(0, 1), plan))
+    }
+}

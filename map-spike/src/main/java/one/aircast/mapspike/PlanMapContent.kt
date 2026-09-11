@@ -198,6 +198,11 @@ internal fun MapSpikeScreen(
     var centreRequest by remember { mutableIntStateOf(0) }
     var centreOn by remember { mutableStateOf<TrackPoint?>(null) }
 
+    LaunchedEffect(selected, allItems) {
+        val sequence = selectionSequence(selected, allItems) ?: return@LaunchedEffect
+        withContext(Dispatchers.Default) { PlanBridge.selectSequence(sequence) }
+    }
+
     suspend fun refresh() {
         withContext(Dispatchers.Default) {
             val plan = PlanBridge.rawItems()

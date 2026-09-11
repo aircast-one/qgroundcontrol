@@ -42,3 +42,8 @@ fun insertAfter(selected: MapHit?, items: List<MissionItem>): Int {
     return if (index + 1 >= items.size) AT_END else index + 1
 }
 
+fun selectionSequence(selected: MapHit?, items: List<MissionItem>): Int? {
+    val index = (selected as? MapHit.Waypoint)?.index ?: return null
+    return items.firstOrNull { it.index == index }?.sequence
+}
+
