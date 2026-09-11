@@ -5,7 +5,7 @@ use crate::read::{flag, object};
 use crate::router::Backend;
 use crate::sensors;
 
-pub const DEPS: &[&str] = &["vehicles.activeVehicleAvailable", "vehicle.autopilotPlugin.vehicleComponents", "vehicle.sysStatusSensorInfo"];
+pub const DEPS: &[&str] = &["vehicles.activeVehicleAvailable", "vehicle.autopilotPlugin.vehicleComponents", "vehicle.sysStatusSensorInfo", "vehicle.armed", "vehicle.flying"];
 
 pub const PAGES: &[(&str, &[&str])] = &[
     ("Vehicle", &["Summary"]),
@@ -138,15 +138,40 @@ const COMPONENTS: &str = "vehicle.autopilotPlugin.vehicleComponents";
 // vehicleComponents is a plain QVariantList rather than a list model, so the bridge answers a value
 // holding pointers rather than an object holding elements. The count comes from the value and each
 // component is read by its own path.
-fn vehicle_components(backend: &dyn Backend) -> Vec<(String, bool)> {
+pub struct Component {
+    pub name: String,
+    pub needs_attention: bool,
+    pub blocked_reason: Option<&'static str>,
+}
+
+// SetupPage.qml gates a page on the vehicle's state and the component's own two permissions, and
+// exempts a rover from the flying gate because a rover's flying flag means nothing. All three are
+// the vehicle's knowledge, so a head that reads the raw flags has to carry the rover exemption and
+// the precedence as well - and would have to know that "armed" wins when both hold.
+fn blocked_by(component: &Value, armed: bool, flying: bool, rover: bool) -> Option<&'static str> {
+    let by_armed = !flag(component, "allowSetupWhileArmed") && armed;
+    let by_flying = !rover && !flag(component, "allowSetupWhileFlying") && flying;
+    match (by_armed, by_flying) {
+        (true, _) => Some("armed"),
+        (false, true) => Some("flying"),
+        (false, false) => None,
+    }
+}
+
+fn vehicle_components(backend: &dyn Backend) -> Vec<Component> {
+    let state = object(&backend.get_fields("vehicle", "armed,flying,rover"));
+    let (armed, flying, rover) = (flag(&state, "armed"), flag(&state, "flying"), flag(&state, "rover"));
     let listed = object(&backend.get(COMPONENTS));
     let count = listed.get("value").and_then(Value::as_array).map(|elements| elements.len()).unwrap_or(0);
     (0..count)
         .filter_map(|index| {
-            let component = object(&backend.get_fields(&format!("{COMPONENTS}.{index}"), "name,requiresSetup,setupComplete"));
+            let component = object(&backend.get_fields(&format!("{COMPONENTS}.{index}"), "name,requiresSetup,setupComplete,allowSetupWhileArmed,allowSetupWhileFlying"));
             let name = component.get("name").and_then(Value::as_str).filter(|name| !name.is_empty())?;
-            let needs = flag(&component, "requiresSetup") && !flag(&component, "setupComplete");
-            Some((name.to_string(), needs))
+            Some(Component {
+                name: name.to_string(),
+                needs_attention: flag(&component, "requiresSetup") && !flag(&component, "setupComplete"),
+                blocked_reason: blocked_by(&component, armed, flying, rover),
+            })
         })
         .collect()
 }
@@ -154,7 +179,8 @@ fn vehicle_components(backend: &dyn Backend) -> Vec<(String, bool)> {
 fn overview(backend: &dyn Backend, connected: bool, px4: bool) -> Value {
     let components = vehicle_components(backend);
     let faults: Vec<String> = sensors::sensors(&object(&backend.get("vehicle.sysStatusSensorInfo"))).into_iter().filter(|(_, s)| *s == "unhealthy").map(|(n, _)| n).collect();
-    let (ready, headline, detail) = readiness(connected, &components, &faults);
+    let named: Vec<(String, bool)> = components.iter().map(|c| (c.name.clone(), c.needs_attention)).collect();
+    let (ready, headline, detail) = readiness(connected, &named, &faults);
     json!({
         "kind": "object",
         "class": "VehicleSetup",
@@ -163,7 +189,12 @@ fn overview(backend: &dyn Backend, connected: bool, px4: bool) -> Value {
         "ready": ready,
         "headline": headline,
         "detail": detail,
-        "components": components.iter().map(|(n, needs)| json!({ "name": n, "needsAttention": needs })).collect::<Vec<_>>(),
+        "components": components.iter().map(|c| json!({
+            "name": c.name,
+            "needsAttention": c.needs_attention,
+            "openable": c.blocked_reason.is_none(),
+            "blockedReason": c.blocked_reason,
+        })).collect::<Vec<_>>(),
         "groups": PAGES.iter().map(|(title, pages)| json!({
             "title": title,
             "pages": pages.iter().map(|p| json!({ "name": p, "parameterSections": sections_for(p, px4).is_some() })).collect::<Vec<_>>(),
@@ -316,9 +347,9 @@ mod components {
         };
         let read = vehicle_components(&vehicle);
         assert_eq!(read.len(), 4, "vehicleComponents is a plain list property, so the bridge answers a value rather than an object with elements; reading elements found nothing on every vehicle there has ever been");
-        assert_eq!(read[1], ("Sensors".to_string(), true), "a component that requires setup and has not had it is the one that holds the vehicle back");
-        assert_eq!(read[0], ("Airframe".to_string(), false));
-        assert_eq!(read[3], ("Camera".to_string(), false), "a component that does not require setup is never outstanding");
+        assert_eq!((read[1].name.as_str(), read[1].needs_attention), ("Sensors", true), "a component that requires setup and has not had it is the one that holds the vehicle back");
+        assert_eq!((read[0].name.as_str(), read[0].needs_attention), ("Airframe", false));
+        assert_eq!((read[3].name.as_str(), read[3].needs_attention), ("Camera", false), "a component that does not require setup is never outstanding");
     }
 
     #[test]
@@ -340,6 +371,23 @@ mod components {
     #[test]
     fn a_component_with_no_name_is_not_counted() {
         let vehicle = Vehicle { components: vec![component("", true, false), component("Sensors", true, false)] };
-        assert_eq!(vehicle_components(&vehicle), vec![("Sensors".to_string(), true)]);
+        let read = vehicle_components(&vehicle);
+        assert_eq!(read.len(), 1);
+        assert_eq!(read[0].name, "Sensors");
+    }
+
+    #[test]
+    fn whether_a_page_can_be_opened_is_the_vehicles_answer_and_not_the_screens() {
+        let permits = |armed: bool, flying: bool| json!({ "allowSetupWhileArmed": armed, "allowSetupWhileFlying": flying });
+        let strict = permits(false, false);
+
+        assert_eq!(blocked_by(&strict, false, false, false), None, "a vehicle sitting on the ground blocks nothing");
+        assert_eq!(blocked_by(&strict, true, false, false), Some("armed"));
+        assert_eq!(blocked_by(&strict, false, true, false), Some("flying"));
+        assert_eq!(blocked_by(&strict, true, true, false), Some("armed"), "SetupPage names armed first when both hold, and a head choosing the other one would tell the operator to land when disarming is what is wanted");
+
+        assert_eq!(blocked_by(&permits(true, false), true, false, false), None, "a component that says it can be set up while armed is the whole point of the flag");
+        assert_eq!(blocked_by(&strict, false, true, true), None, "a rover's flying flag means nothing, and a head reading the raw permissions would have to know that too");
+        assert_eq!(blocked_by(&strict, true, true, true), Some("armed"), "the rover exemption is only about flying");
     }
 }

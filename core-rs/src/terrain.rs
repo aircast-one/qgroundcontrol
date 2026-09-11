@@ -156,6 +156,7 @@ pub fn terrain_view(backend: &dyn Backend, _args: &[String]) -> Value {
         "groundKnown": profile.unknown_terrain == 0 && profile.points.len() > 1,
         "hasCollision": profile.points.iter().any(|p| p.collision),
         "minClearanceMetres": profile.min_clearance,
+        "clearanceComplete": profile.min_clearance.is_some() && profile.unknown_terrain == 0,
         "clearanceText": profile.min_clearance.map(|clearance| crate::read::format_measure(vertical.show(clearance.abs()), &vertical.name)),
         "unknownTerrain": profile.unknown_terrain,
         "totalDistanceMeters": profile.total_distance,
@@ -196,6 +197,20 @@ mod tests {
 
         let partial = profile(vec![point(0.0, 700.0, None), point(100.0, 700.0, Some(720.0))]);
         assert_eq!(partial.min_clearance, Some(-20.0), "one sample with ground under it is enough to know the mission is below it somewhere");
+    }
+
+    #[test]
+    fn a_clearance_measured_over_missing_ground_is_a_bound_and_the_core_says_so() {
+        let complete = profile(vec![point(0.0, 700.0, Some(600.0)), point(100.0, 700.0, Some(690.0))]);
+        assert_eq!(complete.unknown_terrain, 0);
+        assert_eq!(complete.min_clearance, Some(10.0));
+
+        // The smallest clearance measured is not the smallest there is when part of the route has
+        // no ground under it, and a reassuring figure there is worse than none. Every head would
+        // otherwise have to rediscover that from unknownTerrain, and one of them would not.
+        let partial = profile(vec![point(0.0, 700.0, Some(600.0)), point(100.0, 700.0, None), point(200.0, 700.0, Some(690.0))]);
+        assert_eq!(partial.min_clearance, Some(10.0), "the samples that do have ground still measure, so the number is a bound rather than nothing");
+        assert_eq!(partial.unknown_terrain, 1);
     }
 
     #[test]
