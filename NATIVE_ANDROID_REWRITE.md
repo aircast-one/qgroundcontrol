@@ -1150,6 +1150,32 @@ instead of up front. Every consequence was discoverable by asking that question 
 decides the insertion point, it must be visible, it must be clearable, and it must survive the
 operation it exists to aim. The review step caught them, which is the system working; asking first
 would have been cheaper than being caught three times.
+### The plan goes to the vehicle and comes back the same
+
+Not the Phase 4 gate — that wants 200+ waypoints, flown, byte-identical — but the first end-to-end
+check that the whole tab works together rather than one change at a time. Sim connected, OnePlus 6:
+
+    build     takeoff plus two waypoints, long press, "3 items (takeoff) · 785 m · 2:54"
+    Upload    "Upload sent to vehicle", and the chip goes Unsaved plan -> New plan
+    sim log   seq=0 cmd=16  41.7138557 44.8232994 alt 0
+              seq=1 cmd=22  41.7151000 44.8271000 alt 50
+              seq=2 cmd=16  41.7169766 44.8225771 alt 50
+              seq=3 cmd=16  41.7191607 44.8268883 alt 50
+    New plan  "Empty plan · long press to add"
+    Download  "Download requested from vehicle", then "3 items (takeoff) · 785 m · 2:54"
+    list      0 Mission Start 0 m, 1 Takeoff 50 m, 2 Waypoint 50 m, 3 Waypoint 50 m
+
+Identical on both sides, and the wire content is read off the sim rather than inferred from the
+screen.
+
+**One thing the wire shows that the screen cannot.** `seq=1 cmd=22` carries a real latitude and
+longitude. The takeoff has a position all along — QGC just declines to *display* one, because
+`APM-MavCmdInfoCommon.json` marks `MAV_CMD_NAV_TAKEOFF` as `specifiesCoordinate: false` on ArduPilot.
+So the aircraft receives a complete plan, and the earlier finding stands in its corrected form: the
+takeoff is not missing a place, it has one that the plan view is not in the business of showing.
+
+Also confirms the altitude fix against a plan the head did not build: the downloaded takeoff reads
+"1 Takeoff · 50 m", not "no position".
 ### A guard that failed open for six hours
 
 `ui.sh tap` refuses a tap that lands on Arm, Land, RTL or any other flight control unless
