@@ -960,7 +960,39 @@ takes, which was never the question — the question was what the bridge write d
 and only the device could answer it. Same shape as the Add Item gate recorded earlier in this
 document: a constructed input proves the decode and says nothing about whether the decision is true.
 
-**The right way is `setLaunchCoordinate`, which I had not looked for** (`aircast-android 54e67b5`). It
+**The write was never broken, and it took three reverts to find that out.** On a rebuilt AAR the insert
+succeeds with no refusal, so the core's read-back in `31e5a524a` finds `coordinate.valid == true` —
+`setLaunchCoordinate` does reach the item. The list still said "no position". Two reads of the same
+item, moments apart, differing by one gate:
+
+    shape()   reads visualItems.N.coordinate and checks .valid            -> true
+    at_key()  requires specifiesCoordinate first, then valid, then !(0,0) -> None
+
+And `specifiesCoordinate` is false, from QGC's own metadata:
+
+    src/FirmwarePlugin/APM/APM-MavCmdInfoCommon.json
+    { "id": 22, "comment": "MAV_CMD_NAV_TAKEOFF",
+      "specifiesCoordinate": false, "specifiesAltitudeOnly": true }
+
+**On ArduPilot a takeoff specifies an altitude and no place.** The core is right to withhold the
+coordinate, the map is right to draw no takeoff pin, and QGC's own plan view draws none either.
+`coordinate.valid` reads true only because `SimpleMissionItem::coordinate()` returns param5 and param6
+whatever the metadata says — worth knowing about that read-back, which confirms the setter ran rather
+than that the item is drawable.
+
+So "1 Takeoff · no position" was true and useless: it fired on every takeoff anyone adds, which is the
+noise failure this document records three times about the undrawn-items warning. The row shows the
+altitude now (`aircast-android 7416fa2`), and "no position" is reserved for an item with neither a place
+nor an altitude, where it says something real.
+
+**The cost is the lesson.** Two features built and reverted, three messages to the core session, two of
+them sending it after a bug that was not there — all from one correct observation ("the takeoff has no
+position") and one wrong inference ("therefore the write failed"). The observation was never checked
+against the question *should this item have a position at all*, which QGC answers in a JSON file. Ask
+what the correct value is before concluding the wrong one arrived.
+
+~~**The right way is `setLaunchCoordinate`, which I had not looked for**~~ — the setter is fine and the
+feature built on it is reverted, because on ArduPilot there is no place to set: (`aircast-android 54e67b5`). It
 sets the launch point and, when the takeoff has no coordinate, gives it one — the same place for a
 multirotor, offset by the climb-out distance for a fixed wing. That `if (!coordinate().isValid())`
 branch is precisely the symptom the list reports as "no position", and it is what QGC's own editor
