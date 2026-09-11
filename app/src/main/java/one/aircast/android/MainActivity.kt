@@ -45,6 +45,7 @@ import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableLongStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -55,6 +56,7 @@ import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.core.view.WindowCompat
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import one.aircast.android.bridge.Qgc
 import one.aircast.android.ui.AnalyzePage
@@ -181,6 +183,7 @@ fun AircastShell(quickView: QtQuickView) {
     val notices by one.aircast.android.bridge.qgcPath("host")
     val snackbars = remember { SnackbarHostState() }
     var acknowledgedThrough by remember { mutableLongStateOf(-1L) }
+    val noticeScope = rememberCoroutineScope()
 
     BackHandler(enabled = tab != Tab.Fly) { tab = Tab.Fly }
 
@@ -193,11 +196,13 @@ fun AircastShell(quickView: QtQuickView) {
         val through = queued.last().id
         acknowledgedThrough = through
         one.aircast.android.ui.noticeDestination(queued)?.let { tab = Tab.from(it) }
-        withContext(Dispatchers.Default) {
-            Qgc.invoke("host.acknowledgeThrough", through)
-        }
-        one.aircast.android.ui.noticesToShow(queued).forEach {
-            snackbars.showSnackbar(one.aircast.android.ui.noticeBanner(it))
+        val banners = one.aircast.android.ui.noticesToShow(queued)
+            .map { one.aircast.android.ui.noticeBanner(it) }
+        noticeScope.launch {
+            withContext(Dispatchers.Default) {
+                Qgc.invoke("host.acknowledgeThrough", through)
+            }
+            banners.forEach { snackbars.showSnackbar(it) }
         }
     }
 
