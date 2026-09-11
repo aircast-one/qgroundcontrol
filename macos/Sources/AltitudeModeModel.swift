@@ -56,6 +56,15 @@ enum AltitudeMode {
         offers.filter(\.enabled)
     }
 
+    static func refusalNote(_ offers: [AltitudeModeOffer]) -> String? {
+        let reasons = offers.filter { !$0.enabled && !$0.reason.isEmpty }.map(\.reason)
+        let distinct = reasons.reduce(into: [String]()) { kept, reason in
+            guard !kept.contains(reason) else { return }
+            kept.append(reason)
+        }
+        return distinct.isEmpty ? nil : distinct.joined(separator: " ")
+    }
+
     static func refusal(_ offers: [AltitudeModeOffer], raw: Int) -> String? {
         guard let offer = offers.first(where: { $0.raw == raw }) else {
             return "This vehicle does not offer that altitude mode."

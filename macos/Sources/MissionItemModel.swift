@@ -113,9 +113,9 @@ struct MissionItem: Identifiable, Equatable {
         altitudeUnits = (json["altitudeUnits"] as? String) ?? Measure.metres.units
         altitudeText = (json["altitudeText"] as? String) ?? MissionItem.noAltitude
 
-        azimuthText = (json["azimuthText"] as? String) ?? ""
-        distanceText = (json["distanceText"] as? String) ?? ""
-        altitudeChangeText = (json["altitudeChangeText"] as? String) ?? ""
+        azimuthText = (json["azimuthText"] as? String) ?? MissionItem.noAltitude
+        distanceText = (json["distanceText"] as? String) ?? MissionItem.noAltitude
+        altitudeChangeText = (json["altitudeChangeText"] as? String) ?? MissionItem.noAltitude
     }
 
     var positionText: String {

@@ -588,7 +588,7 @@ struct PlanInspector: View {
     }
 
     private var missionCard: some View {
-        VStack(alignment: .leading, spacing: 0) {
+        VStack(alignment: .leading, spacing: Overlay.unit * 0.35) {
             SectionLabel(text: "Mission")
             GroupCard {
                 GroupRow(title: "Altitude mode", showSeparator: false, trailing: {
@@ -609,6 +609,13 @@ struct PlanInspector: View {
                         mission.setDefaultAltitude($0)
                     }
                 })
+            }
+            if let note = AltitudeMode.refusalNote(mission.missionModes) {
+                Text(note)
+                    .font(.caption)
+                    .foregroundColor(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+                    .padding(.horizontal, Overlay.horizontalPadding)
             }
         }
     }

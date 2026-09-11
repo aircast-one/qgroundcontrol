@@ -1273,7 +1273,9 @@ func checkMissionItemKinds() {
     checkClearanceSentence()
     checkUnreachedItems()
     checkLegsSpelled()
+    checkWithheldLegFigures()
     checkTerrainMarkers()
+    checkRefusedModesSayWhy()
     checkAltitudeReading()
     checkAltitudeModePickerIsOffered()
     checkGroundDrawnFromKnownSamples()
@@ -4427,6 +4429,35 @@ func checkAltitudeReading() {
            + "it was drawn as 0.0 m, a plausible height for an item that has none")
 }
 
+func checkRefusedModesSayWhy() {
+    func offer(_ raw: Int, _ title: String, enabled: Bool, reason: String) -> [String: Any] {
+        ["raw": raw as NSNumber, "title": title,
+         "enabled": enabled as NSNumber, "reason": reason]
+    }
+    let needsItem = "Add a mission item before choosing how its altitude is measured."
+    let listed = AltitudeMode.offers(["modes": [
+        offer(1, "Relative To Launch", enabled: true, reason: ""),
+        offer(2, "AMSL", enabled: false, reason: needsItem),
+        offer(3, "Calculated Above Terrain", enabled: false, reason: needsItem)]])
+
+    expect(listed.count == 3,
+           "the fixture carries all three, without which the assertions below pass because the "
+           + "list is empty rather than because the rule works")
+    expect(AltitudeMode.choosable(listed).count == 1,
+           "a refused mode stays out of the picker, because a picker offering a value that "
+           + "cannot be set is worse than a shorter one")
+    expect(AltitudeMode.refusalNote(listed) ?? "", needsItem,
+           "but the core's reason is drawn beside it: two modes vanished from the list and the "
+           + "operator was told nothing, while the sentence explaining it was already served")
+    expect(AltitudeMode.refusalNote(listed)?.contains("measured. Add") != true,
+           "and one sentence is said once, however many modes it refused")
+
+    let allOffered = AltitudeMode.offers(["modes": [offer(1, "Relative To Launch",
+                                                          enabled: true, reason: "")]])
+    expect(AltitudeMode.refusalNote(allOffered) == nil,
+           "nothing refused says nothing at all")
+}
+
 func checkTerrainMarkers() {
     func point(_ x: Double, _ sequence: Int) -> [String: Any] {
         ["x": x as NSNumber, "missionAltitude": 100.0 as NSNumber,
@@ -4468,6 +4499,24 @@ func checkTerrainMarkers() {
     expect(unstamped.markers.map(\.label) == ["0"],
            "a sample the core did not stamp is drawn in the line and marked nowhere, rather than "
            + "collecting under a sequence of zero that would put a second mark on item 0")
+}
+
+func checkWithheldLegFigures() {
+    let withheld = MissionItem(view: ["index": 2 as NSNumber, "sequence": 2 as NSNumber,
+                                      "name": "Waypoint", "kind": "waypoint",
+                                      "flownLeg": true as NSNumber,
+                                      "coordinate": ["latitude": -35.0 as NSNumber,
+                                                     "longitude": 149.0 as NSNumber]],
+                               selected: -1)
+    expect(withheld.hasPosition,
+           "the fixture is a placed item, so the leg row would be drawn for it and the readings "
+           + "below are the ones an operator would see")
+    expect(withheld.distanceText, MissionItem.noAltitude,
+           "the core withholds the four leg figures until its walk has run, because zero is a "
+           + "real distance and zero degrees is due north -- an empty string drew three blank "
+           + "rows, where the em dash says the figure is not known yet")
+    expect(withheld.azimuthText, MissionItem.noAltitude, "and the heading")
+    expect(withheld.altitudeChangeText, MissionItem.noAltitude, "and the altitude change")
 }
 
 func checkLegsSpelled() {
