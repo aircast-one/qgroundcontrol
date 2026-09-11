@@ -18,7 +18,7 @@ final class MissionAnnotation: NSObject, MKAnnotation {
         sequence = item.sequence
         isCurrent = item.isCurrent
         isLaunch = item.isLaunch
-        canMove = item.canRemove
+        canMove = item.canMove
     }
 }
 

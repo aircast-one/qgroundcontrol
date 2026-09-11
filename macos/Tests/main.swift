@@ -1267,6 +1267,7 @@ func checkMissionItemKinds() {
     checkCollisionRuns()
     checkClearanceSentence()
     checkUnreachedItems()
+    checkOnlyAPlacedItemMoves()
     checkComplexGeometryInAnyLocale()
     checkSensorsComponentIsFoundByClass()
     checkShapeAbsence()
@@ -4265,6 +4266,25 @@ func checkComplexGeometryInAnyLocale() {
            "an area is not offered as a line, which would append vertices to the wrong property")
     expect(catalogue.areaProperty(of: item("waypoint", named: "Waypoint")) == nil,
            "and a kind the catalogue does not shape has no geometry to read")
+}
+
+func checkOnlyAPlacedItemMoves() {
+    func item(_ sequence: Int, _ kind: String, placed: Bool) -> MissionItem {
+        var view: [String: Any] = ["index": sequence as NSNumber, "sequence": sequence as NSNumber,
+                                   "name": kind, "kind": kind]
+        if placed {
+            view["coordinate"] = ["latitude": -35.0 as NSNumber, "longitude": 149.0 as NSNumber]
+        }
+        return MissionItem(view: view)
+    }
+    expect(item(2, "waypoint", placed: true).canMove,
+           "a placed waypoint is drawn, so it can be dragged")
+    expect(!item(1, "takeoff", placed: false).canMove,
+           "an unplaced takeoff is drawn nowhere and must not be moved: writing its coordinate "
+           + "leaves it unplaced and relocates the launch point instead, because "
+           + "TakeoffMissionItem::setCoordinate also writes the settings item for a multirotor")
+    expect(!item(0, "settings", placed: true).canMove,
+           "and the mission start is never dragged even though it has a position")
 }
 
 func checkUnreachedItems() {

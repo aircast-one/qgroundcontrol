@@ -452,7 +452,7 @@ final class MissionStore: ObservableObject, Probeable, WriteReporting {
     }
 
     func move(sequence: Int, latitude: Double, longitude: Double) {
-        guard let item = items.first(where: { $0.sequence == sequence }), item.canRemove else { return }
+        guard let item = items.first(where: { $0.sequence == sequence }), item.canMove else { return }
         write("plan.missionController.visualItems.\(item.index).coordinate",
               ["latitude": latitude, "longitude": longitude], "where this item is")
         reload()
@@ -1024,8 +1024,10 @@ final class MissionStore: ObservableObject, Probeable, WriteReporting {
             guard let target = items.first(where: { $0.sequence == sequence }) else {
                 return ["ok": false, "error": "no item with that sequence"]
             }
-            guard target.canRemove else {
-                return ["ok": false, "error": "\(target.command) cannot be moved"]
+            guard target.canMove else {
+                return ["ok": false,
+                        "error": "\(target.command) cannot be moved",
+                        "placed": target.hasPosition]
             }
             move(sequence: sequence, latitude: latitude, longitude: longitude)
         case "failWrite":

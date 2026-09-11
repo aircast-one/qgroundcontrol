@@ -47,6 +47,13 @@ struct MissionItem: Identifiable, Equatable {
 
     var canRemove: Bool { sequence > 0 }
 
+    // Dragging is the only way this window moves an item, and only a placed item is drawn to
+    // drag. Without the position test, writing a coordinate to an unplaced takeoff left it
+    // unplaced and moved the launch point instead, because TakeoffMissionItem::setCoordinate
+    // also writes the settings item when launchTakeoffAtSameLocation is set -- true for a
+    // multirotor. The map and the store both ask this rather than each testing canRemove.
+    var canMove: Bool { canRemove && hasPosition }
+
     var isLaunch: Bool { kind == MissionItem.takeoffKind || kind == MissionItem.settingsKind }
     var isSurveyItem: Bool { kind == MissionItem.surveyKind }
 
