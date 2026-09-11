@@ -4617,7 +4617,15 @@ Measured on the device with three items in the plan, one already a takeoff:
     Survey    refused, plan unchanged  onlyInsertTakeoffValid defaults true -> always refused
 
 So the gate is **exactly inverted**: it would have made Land and Survey permanently unavailable while
-leaving the one case it exists to prevent — a second takeoff — wide open. The ungated buttons are
+leaving the one case it exists to prevent — a second takeoff — wide open.
+
+**Half of that is no longer true, measured 2026-09-11 evening.** The core's `point_at()` calls
+`setCurrentPlanViewSeqNum` on every insert, so the flags are driven now rather than sitting at their
+defaults. With a takeoff at 1 and item 2 selected, adding a takeoff is **correctly refused**: "The
+mission already takes off before this point." — the case this gate exists to prevent, working, and the
+refusal is position-dependent so the index reached it. Land and Survey are still refused on this head,
+so that half stands. Whoever revisits this should re-measure all three rather than trust the table
+above. The ungated buttons are
 worse in theory and better in practice, so they stay until the input varies. Raised with the core;
 `flyThroughCommandsAllowed` is fine, being genuinely computed.
 
