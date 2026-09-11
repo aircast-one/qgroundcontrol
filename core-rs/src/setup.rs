@@ -140,6 +140,12 @@ const COMPONENTS: &str = "vehicle.autopilotPlugin.vehicleComponents";
 // component is read by its own path.
 pub struct Component {
     pub name: String,
+    // The class the component reports. Its name is tr(), and unlike SurveyComplexItem::name -
+    // a file-scope static frozen before any translator exists - this one is a constructor
+    // initialiser, so it runs after QGCApplication installs them and really is translated. Same
+    // tr(), same apparent shape, opposite behaviour, decided only by where the initialisation
+    // sits relative to main().
+    pub class_name: String,
     pub needs_attention: bool,
     pub blocked_reason: Option<&'static str>,
 }
@@ -169,6 +175,7 @@ fn vehicle_components(backend: &dyn Backend) -> Vec<Component> {
             let name = component.get("name").and_then(Value::as_str).filter(|name| !name.is_empty())?;
             Some(Component {
                 name: name.to_string(),
+                class_name: component.get("class").and_then(Value::as_str).unwrap_or_default().to_string(),
                 needs_attention: flag(&component, "requiresSetup") && !flag(&component, "setupComplete"),
                 blocked_reason: blocked_by(&component, armed, flying, rover),
             })
@@ -191,6 +198,7 @@ fn overview(backend: &dyn Backend, connected: bool, px4: bool) -> Value {
         "detail": detail,
         "components": components.iter().map(|c| json!({
             "name": c.name,
+            "className": c.class_name,
             "needsAttention": c.needs_attention,
             "openable": c.blocked_reason.is_none(),
             "blockedReason": c.blocked_reason,
