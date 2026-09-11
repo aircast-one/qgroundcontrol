@@ -1027,15 +1027,29 @@ Only the mission render is missing, and only on the tab whose job it is.
 The Plan tab differs from Fly in exactly one argument, `editable = true`, which is what runs
 `attachMissionEditing` between `installMissionLayers` and `style = loadedStyle`.
 
-**Not diagnosed. Four rounds of static reasoning through the diff produced four hypotheses and
-disproved all of them** — a throwing `addLayer` (ruled out: the vehicle layer installs after the one I
-added and draws), an empty `items` (ruled out: the list reads positions off the same parse), a null
-`style` (ruled out: the vehicle effect shares it), and a stale `LaunchedEffect` key (the list is rebuilt
-each refresh). Reading the diff is not going to find this one; the next attempt should instrument the
-render path rather than argue about it.
+**Instrumented, and the render path is healthy.** Temporary probes in `VehicleMap` logged the mission
+effect's entry, whether `style` was null, the item count, and whether the source existed. On the
+editable map, every cold start since has logged
 
-Last verified drawing correctly at `aircast-android 66bec7f`, which is where the corridor scan was
-photographed on the map. Everything after that is the item-list work.
+    mission effect style=true items=1 editable=true
+    rendering 1 source=true loaded=true
+
+and drawn the plan. So when it works, the effect runs with the right data against a fully loaded style
+holding the source.
+
+**It has not reproduced in five cold starts since.** The failure is real — two screenshots show a plan
+with items and an empty map — but it is intermittent, and the "reproduced on a fresh process" framing
+above was true of the two runs it happened in and is not true now. **The claim that it is a regression
+since `66bec7f` is unsupported**: I never established the failure is new, only that I had not seen it
+before. Recorded as intermittent and undiagnosed rather than as a bisected regression.
+
+**The chase cost more than the finding, and the reason is worth more than either.** Half of it went into
+a `grep -E 'editable=true|threw'` over the probe output — and the line it was hunting for,
+`rendering 1 source=true loaded=true`, contains neither string. The probe had been printing the answer
+from the first run. That is the **fifth** filter in one day that could not see what it was looking for,
+after the `strings` ASCII read, the `^\d+\.\d+ m$` altitude sample, the fixed label list, and
+`items \(` against "1 item (takeoff)". Four of the five cost a wrong conclusion. Print the whole
+channel first, filter second.
 
 ### A guard that failed open for six hours
 
