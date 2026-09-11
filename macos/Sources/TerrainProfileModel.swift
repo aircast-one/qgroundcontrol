@@ -5,6 +5,7 @@ struct TerrainPoint: Equatable {
     let missionAltitude: Double
     let terrainAltitude: Double?
     let collision: Bool
+    let sequence: Int
 
     init?(_ json: Any?) {
         guard let json = json as? [String: Any],
@@ -14,7 +15,15 @@ struct TerrainPoint: Equatable {
         missionAltitude = mission
         terrainAltitude = (json["terrainAltitude"] as? NSNumber)?.doubleValue
         collision = (json["collision"] as? NSNumber)?.boolValue ?? false
+        sequence = (json["sequence"] as? NSNumber)?.intValue ?? -1
     }
+}
+
+struct TerrainMarker: Equatable, Identifiable {
+    let sequence: Int
+    let x: Double
+
+    var id: Int { sequence }
 }
 
 struct TerrainProfile: Equatable {
@@ -91,6 +100,32 @@ struct TerrainProfile: Equatable {
     var showsClearance: Bool { hasCollision || (clearanceComplete && !clearanceText.isEmpty) }
 
     func x(_ point: TerrainPoint, width: Double) -> Double { point.x * width }
+
+    // Which item each stretch of the profile belongs to. Without these the plot answers "the
+    // mission is below terrain somewhere" and leaves the operator to find where by eye, which is
+    // the one question the panel exists to answer. QGC draws the same ticks and positions them
+    // from distanceFromStart; the core already stamps every sample with its sequence, so the
+    // marks come from the profile itself rather than from a second measurement that could
+    // disagree with it.
+    //
+    // First sample per item, not every sample: a survey collapses to one sequence carrying four
+    // hundred of them, so marking each would redraw the whole strip as a solid rule.
+    // The tick sits exactly where the item begins; its number cannot, because a label centred on
+    // x=0 renders half outside the plot and item 0 -- always at the very start -- lost its left
+    // half every time. Pulled inside by half its own width at both ends, so the first and last
+    // marks read as numbers rather than as fragments.
+    func labelX(_ marker: TerrainMarker, width: Double, inset: Double) -> Double {
+        guard width > inset * 2 else { return width / 2 }
+        return min(max(marker.x * width, inset), width - inset)
+    }
+
+    var markers: [TerrainMarker] {
+        points.reduce(into: [TerrainMarker]()) { found, point in
+            guard point.sequence >= 0,
+                  !found.contains(where: { $0.sequence == point.sequence }) else { return }
+            found.append(TerrainMarker(sequence: point.sequence, x: point.x))
+        }
+    }
 
     // Where the mission is under the ground, as unbroken stretches rather than a mark per sample.
     // A survey samples its whole flown path, so a collision that is one continuous run arrived as

@@ -1273,6 +1273,7 @@ func checkMissionItemKinds() {
     checkClearanceSentence()
     checkUnreachedItems()
     checkLegsSpelled()
+    checkTerrainMarkers()
     checkUnknownMissionTime()
     checkOnlyAPlacedItemMoves()
     checkComplexGeometryInAnyLocale()
@@ -1637,18 +1638,17 @@ func checkPlanSummary() {
                                               ["label": "Planned", "value": "14.11 km"],
                                               ["label": "Time", "value": "47:27"],
                                               ["label": "Hover", "value": "14.11 km"],
-                                              ["label": "Cruise", "value": "0 m"],
                                               ["label": "Furthest from launch",
                                                "value": "14.11 km"]]])
-    expect(multirotor.extraRows.map(\.label).joined(separator: ","), "Cruise",
+    expect(multirotor.extraRows.isEmpty,
            "a figure already on the strip is not printed again under another name. A multirotor "
            + "hovers the whole way, so its Hover distance IS its total and its Planned distance "
            + "is that same figure a third time -- measured, the strip printed 14.11 km four "
            + "times across a sidebar that then wrapped every cell, rendering the distance as "
            + "\"14.\" over \"11\" over \"km\"")
-    expect(multirotor.extraRows.map(\.value).joined(separator: ","), "0 m",
-           "and a distinct figure stays even when it is zero: a multirotor that cruises no "
-           + "distance is a fact, where a missing row would be an unanswered question")
+    expect(!read.extraRows.isEmpty,
+           "and the case above keeps two rows, without which an extraRows that always answered "
+           + "empty would satisfy the assertion here for the wrong reason")
 
     expect(MissionSummaryRow(["label": "Distance", "value": ""]) == nil,
            "a row with an empty value is dropped rather than drawn as a label with nothing "
@@ -4352,6 +4352,41 @@ func checkUnknownMissionTime() {
            "a VTOL's speed changes at the transition, so the core declines rather than guessing "
            + "-- and a chip that vanished instead would leave the operator unable to tell that "
            + "from having missed it")
+}
+
+func checkTerrainMarkers() {
+    func point(_ x: Double, _ sequence: Int) -> [String: Any] {
+        ["x": x as NSNumber, "missionAltitude": 100.0 as NSNumber,
+         "terrainAltitude": 50.0 as NSNumber, "sequence": sequence as NSNumber]
+    }
+    func profile(_ points: [[String: Any]]) -> TerrainProfile {
+        TerrainProfile(["points": points, "usable": true as NSNumber])
+    }
+
+    let survey = profile([point(0, 0), point(0.54, 2),
+                          point(0.73, 3), point(0.8, 3), point(0.9, 3), point(1.0, 3)])
+    expect(survey.points.count == 6,
+           "the fixture carries the samples the assertions below count, without which every one "
+           + "of them compares an empty list against an empty list")
+    expect(survey.markers.map(\.sequence) == [0, 2, 3],
+           "one mark per item, in the order the flight reaches them -- a takeoff the vehicle "
+           + "flies no leg to contributes no samples and so earns no mark")
+    expect(survey.markers.map(\.x) == [0, 0.54, 0.73],
+           "each sits at the first sample of its item: a survey collapses to one sequence "
+           + "carrying four hundred samples, and marking every one would redraw the strip as a "
+           + "solid rule rather than as the boundary between two items")
+
+    expect(survey.labelX(survey.markers[0], width: 400, inset: 8) == 8,
+           "the number for item 0 is pulled inside the plot: centred on its own tick at x=0 it "
+           + "rendered half outside and lost its left half every time")
+    expect(survey.labelX(survey.markers[1], width: 400, inset: 8) == 216,
+           "and a mark with room either side is not moved at all")
+
+    let unstamped = profile([point(0, 0), ["x": 0.5 as NSNumber,
+                                           "missionAltitude": 100.0 as NSNumber]])
+    expect(unstamped.markers.map(\.sequence) == [0],
+           "a sample the core did not stamp is drawn in the line and marked nowhere, rather than "
+           + "collecting under a sequence of zero that would put a second mark on item 0")
 }
 
 func checkLegsSpelled() {

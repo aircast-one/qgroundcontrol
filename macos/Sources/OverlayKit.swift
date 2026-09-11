@@ -28,6 +28,7 @@ enum Overlay {
     // A single-sample collision still has to be visible, so a run narrower than this is drawn
     // at this width rather than as a hairline.
     static let collisionMark: CGFloat = 5
+    static let markerType: Double = 8
     static let vehicle = Color.red
 }
 

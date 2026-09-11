@@ -69,7 +69,8 @@ struct MissionSummary: Equatable {
     // Everything the strip does not already show. Dedup was by label, which cannot see that a
     // multirotor's Hover distance IS its total distance and its Planned distance is the same
     // figure again -- the strip printed 14.11 km four times and wrapped every cell doing it.
-    // Cruise 0 m stays, because a distinct figure is a fact even when it is zero.
+    // A row whose figure differs stays, whatever it is. The core no longer sends a regime the
+    // airframe does not have, so a multirotor arrives with nothing left over here at all.
     var extraRows: [MissionSummaryRow] {
         let shown = [MissionSummary.distance, MissionSummary.time, MissionSummary.furthest]
         let figures = Set(shown.compactMap(value))

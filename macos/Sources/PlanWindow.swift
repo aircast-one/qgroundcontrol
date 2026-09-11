@@ -187,6 +187,19 @@ struct TerrainProfileSheet: View {
                 route(width: width, height: height)
                     .stroke(Overlay.mission, style: StrokeStyle(lineWidth: 2, lineJoin: .round))
 
+                ForEach(profile.markers) { marker in
+                    let at = marker.x * width
+                    Rectangle()
+                        .fill(Color.secondary.opacity(0.45))
+                        .frame(width: 1, height: height)
+                        .position(x: at, y: height / 2)
+                    Text("\(marker.sequence)")
+                        .font(.system(size: Overlay.markerType, weight: .semibold))
+                        .foregroundColor(.secondary)
+                        .position(x: profile.labelX(marker, width: width, inset: Overlay.markerType),
+                                  y: Overlay.markerType)
+                }
+
                 ForEach(profile.collisionRuns, id: \.lowerBound) { run in
                     let from = run.lowerBound * width
                     let to = run.upperBound * width
