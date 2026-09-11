@@ -43,3 +43,13 @@ internal fun noticesToShow(notices: List<HostNotice>): List<HostNotice> =
 
 internal fun noticeBanner(notice: HostNotice): String =
     listOf(notice.title, notice.text).filter { it.isNotBlank() }.joinToString(" · ")
+
+internal fun bannersToShow(notices: List<HostNotice>, lastShown: String?): List<String> =
+    noticesToShow(notices)
+        .map { noticeBanner(it) }
+        .fold(emptyList<String>()) { kept, banner ->
+            when (banner) {
+                kept.lastOrNull() ?: lastShown -> kept
+                else -> kept + banner
+            }
+        }

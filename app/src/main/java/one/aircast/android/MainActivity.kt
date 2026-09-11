@@ -184,6 +184,7 @@ fun AircastShell(quickView: QtQuickView) {
     val snackbars = remember { SnackbarHostState() }
     var acknowledgedThrough by remember { mutableLongStateOf(-1L) }
     val noticeScope = rememberCoroutineScope()
+    var lastBanner by remember { mutableStateOf<String?>(null) }
 
     BackHandler(enabled = tab != Tab.Fly) { tab = Tab.Fly }
 
@@ -196,8 +197,8 @@ fun AircastShell(quickView: QtQuickView) {
         val through = queued.last().id
         acknowledgedThrough = through
         one.aircast.android.ui.noticeDestination(queued)?.let { tab = Tab.from(it) }
-        val banners = one.aircast.android.ui.noticesToShow(queued)
-            .map { one.aircast.android.ui.noticeBanner(it) }
+        val banners = one.aircast.android.ui.bannersToShow(queued, lastBanner)
+        banners.lastOrNull()?.let { lastBanner = it }
         noticeScope.launch {
             withContext(Dispatchers.Default) {
                 Qgc.invoke("host.acknowledgeThrough", through)
