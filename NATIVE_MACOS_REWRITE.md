@@ -408,6 +408,43 @@ critical path and is what would answer the list above.
 - The QWindowKit integrated-titlebar work is replaced by the real thing and deleted.
 - Notarized universal build through the existing release CI; `make release.*` updated.
 
+### What Phase 6 deletes, swept (2026-09-11)
+
+Two QML extensibility points were on the open list -- `instrumentQmlFile2` and `Viewer3D` -- with a
+note that they were a category rather than a pair. They are not the same kind of thing, and the
+category turns out to be almost empty.
+
+**The plugin surface is unused by this fork, so deleting it costs this product nothing.**
+`QGCCorePlugin` exposes the custom-build hooks that carry QML: `analyzePages`, `toolBarIndicators`,
+`customMapItems`, `brandImageIndoor`/`Outdoor`, `paletteOverride`, `createQmlApplicationEngine`,
+`createRootWindow` and `factValueGridCreateDefaultSettings`. The only thing overriding any of them
+is `custom-example/`, and that is not built here: `QGC_CUSTOM_BUILD` turns on only if a `custom/`
+directory exists and there is none. This fork changes QGC directly rather than through a plugin.
+Downstream custom builds would break, which is upstream's problem and not this one's.
+
+**`instrumentQmlFile2` is not a plugin hook at all, and it is the awkward one.** It is a settings
+fact whose *value* is a QML file path -- three of them, the integrated, horizontal and large
+vertical compass-and-attitude widgets, as `qrc:/qml/...` URLs. It is the only fact in the entire
+settings tree whose value is a qrc path; nothing else in `src/Settings/*.json` mentions one. So
+Phase 6 deletes the three files and leaves a persisted user setting naming things that no longer
+exist, in a QSettings space shared with the QML app -- the same trap as the video source fact.
+This needs a migration, not a deletion.
+
+And the native head has no equivalent of the choice. `InstrumentSelection` is the *values grid*
+(altitude, ground speed, climb rate and so on); which compass-and-attitude widget to draw is a
+separate control that this head does not offer at all. Porting it means offering the choice by
+name, never by file.
+
+**`Viewer3D` is a subsystem, not an extensibility point.** `src/Viewer3D/` is an OSM parser and
+parser thread, city-map geometry, an earcut triangulation header, shaders, a sample map and a
+manager, with its own settings group carrying `enabled`, `osmFilePath` and building dimensions.
+`FlyView.qml` imports it and instantiates it. It defaults to **off**. Nothing in either native head
+touches it. It needs a decision of the same shape multi-vehicle just got -- port it, or record the
+non-port -- and it should not be discovered during the Phase 6 deletion.
+
+**So the category is: one unused plugin surface, one settings migration, one undecided subsystem.**
+There is no third class hiding.
+
 ### Phase 6 carries a cost the bullet above hides (2026-09-10)
 
 "`runOnQtThread` already marshals correctly" is true and is not the whole question. `onQtThread`
