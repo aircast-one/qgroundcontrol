@@ -80,6 +80,7 @@ private slots:
     void _shapeFilesFollowShapeTest();
     void _geoConversionsMatchGeoTest();
     void _terrainTileNeedsAFile();
+    void _aSignalWithNoPropertyBehindItStillWakesAView();
 
 private:
     static bool _unavailable(const char *path);

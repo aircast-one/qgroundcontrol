@@ -3,7 +3,7 @@ use serde_json::{Value, json};
 use crate::read::{Unit, object};
 use crate::router::Backend;
 
-pub const DEPS: &[&str] = &["plan.missionController.missionItemCount", "plan.missionController.containsItems", "plan.dirty", "vehicles.activeVehicleAvailable"];
+pub const DEPS: &[&str] = &["plan.missionController.missionItemCount", "plan.missionController.containsItems", "plan.dirty", "vehicles.activeVehicleAvailable", "plan.missionController@recalcTerrainProfile"];
 
 const FIELDS: &str = "specifiesCoordinate,distanceFromStart,amslEntryAlt,terrainAltitude,terrainCollision,sequenceNumber,complexDistance";
 

@@ -46,6 +46,7 @@ QGCBridgeCore::EventHandler g_eventHandler;
 
 constexpr int kPollIntervalMSecs = 200;
 constexpr int kBoundPropertyRereadTicks = 5;
+constexpr QLatin1Char kSignalSeparator('@');
 constexpr int kMaxInvokeArgs = 4;
 
 struct Resolved {
@@ -795,24 +796,29 @@ private:
         for (const QString &path : std::as_const(_paths)) {
             const auto bound = _bound.constFind(path);
             if (bound != _bound.constEnd()) {
-                if (!bound->fact && (_tick % kBoundPropertyRereadTicks) == 0) {
+                if (!bound->fact && !bound->signalOnly && (_tick % kBoundPropertyRereadTicks) == 0) {
                     _emit(path);
                 }
                 continue;
             }
-            (void) _bind(path);
-            _emit(path);
+            const bool bindable = _bind(path);
+            if (bindable || !path.contains(kSignalSeparator)) {
+                _emit(path);
+            }
         }
     }
 
     bool _bind(const QString &path)
     {
-        const Resolved resolved = resolve(path);
+        const int separator = path.indexOf(kSignalSeparator);
+        const Resolved resolved = (separator < 0) ? resolve(path) : resolve(path.left(separator));
         QObject *const object = resolved.object;
         if (!object || resolved.property.contains(QLatin1Char('.'))) {
             return false;
         }
-        const QMetaMethod signal = _changeSignal(object, resolved.property);
+        const QMetaMethod signal = (separator < 0)
+            ? _changeSignal(object, resolved.property)
+            : _namedSignal(object, path.mid(separator + 1));
         if (!signal.isValid()) {
             return false;
         }
@@ -823,6 +829,7 @@ private:
         }
         _bound.insert(path, Binding {
             qobject_cast<Fact *>(object) != nullptr,
+            separator >= 0,
             change,
             connect(object, &QObject::destroyed, this, [this, path, object]() {
                 _bound.remove(path);
@@ -831,6 +838,19 @@ private:
         });
         _byObject[object].append(path);
         return true;
+    }
+
+    static QMetaMethod _namedSignal(QObject *object, const QString &name)
+    {
+        const QMetaObject *const meta = object->metaObject();
+        const QByteArray wanted = name.toUtf8();
+        for (int index = 0; index < meta->methodCount(); ++index) {
+            const QMetaMethod method = meta->method(index);
+            if (method.methodType() == QMetaMethod::Signal && method.name() == wanted && method.parameterCount() == 0) {
+                return method;
+            }
+        }
+        return QMetaMethod();
     }
 
     static QMetaMethod _changeSignal(QObject *object, const QString &property)
@@ -849,6 +869,10 @@ private:
     void _emit(const QString &path)
     {
         if (!g_eventHandler) {
+            return;
+        }
+        if (path.contains(kSignalSeparator)) {
+            g_eventHandler(path, QStringLiteral("{\"fired\":%1}").arg(++_fired));
             return;
         }
         const QString json = jsonToString(readPath(path));
@@ -881,6 +905,7 @@ private slots:
 private:
     struct Binding {
         bool fact;
+        bool signalOnly;
         QMetaObject::Connection change;
         QMetaObject::Connection gone;
     };
@@ -891,6 +916,7 @@ private:
     QHash<QObject *, QStringList> _byObject;
     QTimer _timer;
     quint64 _tick = 0;
+    quint64 _fired = 0;
 };
 
 Watcher *watcher()

@@ -3119,6 +3119,55 @@ void QGCCoreCTest::_theMissionSummaryArrivesOnItsOwnAfterAnEdit()
 #endif
 }
 
+void QGCCoreCTest::_aSignalWithNoPropertyBehindItStillWakesAView()
+{
+#ifdef QGC_RUST_CORE
+    (void) take(qgc_bridge_invoke("plan.start", "[]"));
+    const auto restore = []() { (void) take(qgc_bridge_invoke("plan.removeAll", "[]")); };
+    const auto leaveNoPlanBehind = qScopeGuard([&restore]() {
+        restore();
+        qgc_bridge_watch("");
+        qgc_bridge_set_event_handler(nullptr);
+    });
+    restore();
+
+    const QString fires = QStringLiteral("plan.missionController@recalcTerrainProfile");
+    const QString absent = QStringLiteral("plan.missionController@noSuchSignalExists");
+    const auto counted = [](const QString &path) { return paths.count(path); };
+
+    paths.clear();
+    qgc_bridge_set_event_handler(onEvent);
+    const QByteArray watched = (fires + QLatin1Char(',') + absent).toUtf8();
+    qgc_bridge_watch(watched.constData());
+
+    // Terrain heights arrive long after the item count and the dirty flag have settled, so a
+    // profile watched through those alone is drawn once with nothing in it and never redrawn. The
+    // controller already emits when the profile needs redrawing; that it carries no value was the
+    // only reason the watcher could not bind to it.
+    const QStringList inserts = {
+        QStringLiteral("[\"takeoff\", 47.3960, 8.5440, -1]"),
+        QStringLiteral("[\"waypoint\", 47.3990, 8.5480, -1]"),
+        QStringLiteral("[\"waypoint\", 47.3990, 8.5440, -1]"),
+    };
+    for (const QString &insert : inserts) {
+        const QByteArray args = insert.toUtf8();
+        QVERIFY2(take(qgc_core_invoke("mission.insert", args.constData())).value(QStringLiteral("ok")).toBool(false), "an insert was refused");
+        const int before = counted(fires);
+        QTRY_VERIFY_WITH_TIMEOUT(counted(fires) > before, 10000);
+    }
+
+    // Three inserts, each waited out to its own redraw, is several seconds and so tens of poll
+    // ticks. A signal path that names nothing must stay silent across all of them rather than fall
+    // through to the poll that serves unbindable property paths - that poll re-emits every tick, so
+    // a mistyped signal name would recompute its view five times a second forever while looking
+    // exactly like a watch that works.
+    QVERIFY2(counted(fires) >= inserts.count(), "the controller's redraw signal did not reach a head watching it");
+    QVERIFY2(counted(absent) == 0, qPrintable(QStringLiteral("a watch on a signal that does not exist reported itself as firing %1 times").arg(counted(absent))));
+#else
+    QSKIP("the Rust core is not linked into this build");
+#endif
+}
+
 void QGCCoreCTest::_theItemListNamesWhatTheControllerHolds()
 {
 #ifdef QGC_RUST_CORE
