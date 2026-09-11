@@ -3409,6 +3409,15 @@ void QGCCoreCTest::_theTerrainProfileIsSampledThroughASurveyRatherThanAtItsCorne
     }
     QVERIFY2(std::is_sorted(distances.cbegin(), distances.cend()),
              "the profile is drawn left to right, so its points have to arrive in the order they are flown");
+
+    // The x-axis has to span the mission the summary is describing. A profile that samples inside
+    // the pattern but stops the axis at the pattern's entry squashes the whole chart into the
+    // direct legs, and every altitude on it is drawn against the wrong ground.
+    const double axis = take(qgc_core_get("view.terrainProfile")).value(QStringLiteral("totalDistanceMeters")).toDouble();
+    const double flown = take(qgc_core_get("view.missionSummary")).value(QStringLiteral("distanceMetres")).toDouble();
+    QVERIFY2(flown > 0.0, "the summary reported no distance for a plan with a survey in it");
+    QVERIFY2(axis > flown * 0.9,
+             qPrintable(QStringLiteral("the profile axis spans %1 m for a mission the summary says is %2 m").arg(axis).arg(flown)));
 #else
     QSKIP("the Rust core is not linked into this build");
 #endif

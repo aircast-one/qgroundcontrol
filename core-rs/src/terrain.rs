@@ -62,14 +62,18 @@ pub fn points(model: &Value) -> Vec<Point> {
 // A pattern is one point on the profile unless its own path is walked. A survey covering a
 // kilometre of ground between its entry and its exit draws as a flat line across the hill it is
 // flying over, and the operator reads no collision because nothing sampled the middle.
+//
+// The length of a segment is totalDistance. distanceBetween is the spacing between terrain
+// samples along it, and it is zero until a terrain query answers - reading it as the length
+// collapses the whole pattern onto its entry point wherever terrain is unknown.
 pub fn along_segments(backend: &dyn Backend, index: usize, sequence: i64, start: f64) -> Vec<Point> {
-    let segments = object(&backend.get_fields(&format!("plan.missionController.visualItems.{index}.flightPathSegments"), "coord1AMSLAlt,coord2AMSLAlt,amslTerrainHeights,distanceBetween,terrainCollision"));
+    let segments = object(&backend.get_fields(&format!("plan.missionController.visualItems.{index}.flightPathSegments"), "coord1AMSLAlt,coord2AMSLAlt,amslTerrainHeights,totalDistance,terrainCollision"));
     let Some(listed) = segments.get("elements").and_then(Value::as_array) else { return Vec::new() };
     listed
         .iter()
         .scan(start, |walked, segment| {
             let number = |key: &str| segment.get(key).and_then(Value::as_f64).filter(|value| value.is_finite());
-            let length = number("distanceBetween").unwrap_or(0.0);
+            let length = number("totalDistance").unwrap_or(0.0);
             let from = *walked;
             *walked += length;
             let (low, high) = (number("coord1AMSLAlt"), number("coord2AMSLAlt"));
@@ -211,7 +215,7 @@ mod walking {
     }
 
     fn segment(low: f64, high: f64, length: f64, heights: Vec<f64>, collision: bool) -> Value {
-        json!({ "coord1AMSLAlt": low, "coord2AMSLAlt": high, "distanceBetween": length, "amslTerrainHeights": heights, "terrainCollision": collision })
+        json!({ "coord1AMSLAlt": low, "coord2AMSLAlt": high, "totalDistance": length, "distanceBetween": 0.0, "amslTerrainHeights": heights, "terrainCollision": collision })
     }
 
     #[test]
@@ -248,7 +252,7 @@ mod walking {
 
     #[test]
     fn a_segment_that_has_not_said_how_high_it_flies_contributes_nothing() {
-        let segments = json!({ "kind": "object", "elements": [json!({ "distanceBetween": 100.0, "amslTerrainHeights": [500.0] })] });
+        let segments = json!({ "kind": "object", "elements": [json!({ "totalDistance": 100.0, "amslTerrainHeights": [500.0] })] });
         assert!(along_segments(&Pattern(segments), 1, 3, 0.0).is_empty(), "a sample with no flown altitude cannot be drawn against the ground, and drawing it at zero puts the mission underground");
     }
 
