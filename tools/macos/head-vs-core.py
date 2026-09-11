@@ -30,6 +30,8 @@ DISTANT = (-35.30, 149.30)
 SURVEY = (-35.28, 149.34)
 RALLY = (-35.36, 149.17)
 REGION = (-35.29, 149.32)
+HOME = (-35.27, 149.36)
+BEYOND = (-35.25, 149.40)
 TERRAIN_SETTLE_SECONDS = 4
 NO_ALTITUDE = "\u2014"
 
@@ -62,8 +64,11 @@ def build_plan():
     time.sleep(2.5)
     probe("&action=createPlan")
     time.sleep(1.0)
+    # The land goes before the last waypoint on purpose: items after a return or a landing are
+    # uploaded and never flown, so this is the case where the route must stop short of the list.
     for kind, (latitude, longitude) in (("takeoff", LAUNCH), ("waypoint", DISTANT),
-                                        ("roi", REGION), ("survey", SURVEY)):
+                                        ("roi", REGION), ("survey", SURVEY),
+                                        ("land", HOME), ("waypoint", BEYOND)):
         probe(f"&action=arm&kind={kind}")
         time.sleep(0.5)
         probe(f"&action=addWaypoint&latitude={latitude}&longitude={longitude}")
@@ -75,6 +80,12 @@ def build_plan():
         fence_probe(f"&action=addFence&circle={circle}")
         time.sleep(0.6)
     fence_probe(f"&action=addRally&latitude={RALLY[0]}&longitude={RALLY[1]}")
+    # Only the selected item has survey stats, and the items added after the survey took the
+    # selection with them.
+    survey = next((item["sequence"] for item in view("missionItems")["items"]
+                   if item["kind"] == "survey"), None)
+    if survey is not None:
+        probe(f"&action=select&sequence={survey}")
     time.sleep(TERRAIN_SETTLE_SECONDS)
 
 
@@ -159,6 +170,13 @@ def fence_comparisons(head, core):
     ]
 
 
+# What the core's own fields say the route should be: the placed legs, stopping wherever the
+# mission ends. Computed from the core's answers and compared against what the head drew.
+def flown_legs(core_items):
+    ends = next((n for n, item in enumerate(core_items) if item["endsRoute"]), len(core_items))
+    return sum(1 for item in core_items[:ends] if item["flownLeg"] and item["coordinate"])
+
+
 def comparisons():
     head = probe()["state"]
     core = {name: view(name) for name in ("plan", "missionSummary", "terrainProfile", "missionItems")}
@@ -172,8 +190,7 @@ def comparisons():
         # detoured through a region of interest the aircraft never visits.
         ("items with a place on the map", head["map"]["placed"],
          sum(1 for item in items["items"] if item["coordinate"])),
-        ("legs the vehicle flies", head["map"]["routeLegs"],
-         sum(1 for item in items["items"] if item["flownLeg"] and item["coordinate"])),
+        ("legs the vehicle flies", head["map"]["routeLegs"], flown_legs(items["items"])),
         ("plan is ready to save", head["readyToSave"], plan["readiness"]["ready"]),
         ("why it is not ready", head["notReadyReason"], plan["readiness"]["reason"]),
         ("plan is dirty", head["dirty"], plan["dirty"]),
@@ -211,6 +228,11 @@ def worth_comparing(core):
     fences = core.get("fences") or {}
     if not any(not item["flownLeg"] and item["coordinate"] for item in items["items"]):
         missing.append("no item has a place without a leg, so the route cannot detour through one")
+    if not any(item["endsRoute"] for item in items["items"]):
+        missing.append("nothing ends the mission, so the route cannot be drawn past the end of it")
+    elif flown_legs(items["items"]) == sum(1 for item in items["items"]
+                                           if item["flownLeg"] and item["coordinate"]):
+        missing.append("nothing sits after the end of the mission, so stopping there proves nothing")
     if not (fences.get("polygons") or fences.get("circles")):
         missing.append("no fence was drawn, so the fence panel cannot be wrong about one")
     if not fences.get("rallyPoints"):

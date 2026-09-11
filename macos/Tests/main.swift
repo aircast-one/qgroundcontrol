@@ -317,24 +317,27 @@ expect(FlightModePosition.present(in: []).isEmpty, "a vehicle without them shows
 let waypoint = MissionItem(view: [
     "index": 1, "sequence": 1, "name": "Waypoint", "current": false,
     "coordinate": ["latitude": -35.3629, "longitude": 149.165],
-    "altitude": 50.0, "altitudeUnits": "ft", "specifiesAltitude": true])
+    "altitude": 50.0, "altitudeUnits": "ft", "altitudeText": "50.0 ft",
+    "specifiesAltitude": true])
 expect(waypoint.altitudeText, "50.0 ft",
-       "the core hands over the altitude AND the unit it wrote it in, so this labels the number "
-       + "rather than converting it again or assuming the app setting matches the fact's own")
+       "the core spells the altitude and the head shows what it said. The number and the unit "
+       + "travel alongside because the row's editor needs them apart, but nothing here writes a "
+       + "measurement any more")
 expect(waypoint.positionText, "-35.362900, 149.165000", "position formats to six decimals")
 expect(waypoint.hasPosition, "a waypoint the core gave a coordinate has a position")
 
 let start = MissionItem(view: [
     "index": 0, "sequence": 0, "name": "Mission Start", "current": true, "kind": "settings",
-    "coordinate": ["latitude": -35.36, "longitude": 149.16], "altitude": 584.09])
+    "coordinate": ["latitude": -35.36, "longitude": 149.16], "altitude": 584.09,
+    "altitudeText": "584 m"])
 expect(start.altitudeText, "584 m",
-       "a measure of a hundred or more is a whole number -- what format_measure spells in the "
-       + "core and what the summary strip beside this row already shows")
+       "and the settings row is spelled by the same formatter as the summary strip above it, "
+       + "which is what stopped it reading 584.1 m beside 584 m to 660 m")
 
 let startInFeet = MissionItem(view: [
     "index": 0, "sequence": 0, "name": "Mission Start", "altitude": 1916.3,
-    "altitudeUnits": "ft"])
-expect(startInFeet.altitudeText, "1916 ft", "and the same in feet, relabelled not reconverted")
+    "altitudeUnits": "ft", "altitudeText": "1916 ft"])
+expect(startInFeet.altitudeText, "1916 ft", "and an operator on feet is told feet")
 expect(start.isCurrent, "the current item is flagged")
 expect(waypoint.index == 1, "an item remembers the list position its bridge path needs")
 expect(waypoint.specifiesAltitude, "a waypoint's altitude is editable")
@@ -343,7 +346,8 @@ expect(!start.specifiesAltitude, "an item that does not specify altitude is not 
 let bare = MissionItem(view: ["index": 2, "sequence": 2, "name": "Delay"])
 expect(!bare.hasPosition, "an item the core gave no coordinate has no position")
 expect(bare.positionText, "—", "and shows nothing rather than a false one")
-expect(bare.altitudeText, "—", "same for altitude")
+expect(bare.altitudeText, "—",
+       "an item the core gave no altitude shows a dash, which is the core's own answer for one")
 
 func checkMapFraming() {
     let canberra = MapFrame(latitudes: [-35.363262, -35.362900],
@@ -4082,6 +4086,38 @@ func checkFlownLeg() {
     let unplaced = MissionItem(view: ["index": 3, "sequence": 3, "name": "Delay"])
     expect(!unplaced.flownLeg && !unplaced.hasPosition,
            "an item with no place at all is neither a marker nor a leg")
+
+    // Measured on the running app: takeoff, waypoint, land, waypoint gives a Return To Launch at
+    // index 3 with endsRoute true, and the head drew three legs -- one of them from the waypoint
+    // before the return to the waypoint after it, straight across the map to a place the aircraft
+    // never reaches, because items after a return are uploaded and never flown.
+    func leg(_ seq: Int, _ name: String, flown: Bool, ends: Bool = false) -> MissionItem {
+        MissionItem(view: ["index": seq, "sequence": seq, "name": name,
+                           "flownLeg": flown, "endsRoute": ends,
+                           "coordinate": ["latitude": -35.3 - Double(seq) / 100,
+                                          "longitude": 149.2]])
+    }
+    let past = [leg(0, "Mission Start", flown: true), leg(2, "Waypoint", flown: true),
+                MissionItem(view: ["index": 3, "sequence": 3, "name": "Return To Launch",
+                                   "flownLeg": false, "endsRoute": true]),
+                leg(4, "Waypoint", flown: true)]
+    expect(MissionItem.route(past).map(\.sequence).map(String.init).joined(separator: ","), "0,2",
+           "the route stops where the mission does. The waypoint after the return is in the plan "
+           + "and the vehicle never gets there, so a leg drawn to it is a line across the map")
+    expect(past.filter(\.hasPosition).count == 3,
+           "and all three placed items keep their markers, because the plan really does contain "
+           + "them and an operator editing one has to see it")
+
+    let finishing = [leg(0, "Mission Start", flown: true), leg(1, "Waypoint", flown: true),
+                     leg(2, "Land", flown: true, ends: true)]
+    expect(MissionItem.route(finishing).map(\.sequence).map(String.init).joined(separator: ","),
+           "0,1",
+           "a landing ends the route at the leg before it; nothing is drawn onward from where the "
+           + "mission finishes")
+
+    let plain = [leg(0, "Mission Start", flown: true), leg(1, "Waypoint", flown: true)]
+    expect(MissionItem.route(plain).count == 2,
+           "and a plan that never ends explicitly keeps every leg it has")
 
     let atOrigin = MissionItem(view: ["index": 4, "sequence": 4, "name": "Waypoint",
                                       "flownLeg": true,

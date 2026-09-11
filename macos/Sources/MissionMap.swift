@@ -9,7 +9,6 @@ final class MissionAnnotation: NSObject, MKAnnotation {
     let sequence: Int
     let isCurrent: Bool
     let isLaunch: Bool
-    let flownLeg: Bool
     let canMove: Bool
 
     init(item: MissionItem, latitude: Double, longitude: Double) {
@@ -19,7 +18,6 @@ final class MissionAnnotation: NSObject, MKAnnotation {
         sequence = item.sequence
         isCurrent = item.isCurrent
         isLaunch = item.isLaunch
-        flownLeg = item.flownLeg
         canMove = item.canRemove
     }
 }
@@ -229,12 +227,14 @@ struct MissionMap: NSViewRepresentable {
                            level: .aboveLabels)
         }
 
-        // The route is the legs the vehicle flies, which is not the same list as the markers. A
-        // region of interest earns a pin and no leg, and drawing one put a dogleg in the planned
-        // route to a place the aircraft never goes.
-        let route = placed.filter(\.flownLeg)
+        // The legs, not the markers. A region of interest earns a pin and no leg, and an item
+        // after a return to launch is uploaded and never reached.
+        let route = MissionItem.route(items).compactMap { item -> CLLocationCoordinate2D? in
+            guard let latitude = item.latitude, let longitude = item.longitude else { return nil }
+            return CLLocationCoordinate2D(latitude: latitude, longitude: longitude)
+        }
         if route.count > 1 {
-            var coordinates = route.map(\.coordinate)
+            var coordinates = route
             map.addOverlay(MKPolyline(coordinates: &coordinates, count: coordinates.count),
                            level: .aboveLabels)
         }

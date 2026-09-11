@@ -17,6 +17,10 @@ struct MissionItem: Identifiable, Equatable {
     let category: String
     let altitudeUnits: String
 
+    // The core's own sentence for the altitude. The head spelled this itself until the core's
+    // altitude formatting went through the same format_measure as every other measure it serves.
+    let altitudeText: String
+
     let blocked: Bool
     let blockedReason: String?
     let awaitingTerrain: Bool
@@ -25,6 +29,11 @@ struct MissionItem: Identifiable, Equatable {
     // a marker, and the aircraft never goes there; the route used to detour through it because
     // one list answered both questions.
     let flownLeg: Bool
+
+    // A return to launch or a landing is where the mission stops. Items can sit after one -- the
+    // plan uploads them and the vehicle never reaches them -- so a route drawn through them is a
+    // line across the map to somewhere the aircraft does not go.
+    let endsRoute: Bool
 
     var id: Int { sequence }
 
@@ -44,6 +53,13 @@ struct MissionItem: Identifiable, Equatable {
     static let settingsKind = "settings"
     static let takeoffKind = "takeoff"
     static let surveyKind = "survey"
+
+    // The legs the vehicle actually flies: the placed ones it visits, up to wherever the mission
+    // ends. Not the same list as the markers -- a region of interest earns a pin and no leg.
+    static func route(_ items: [MissionItem]) -> [MissionItem] {
+        let ends = items.firstIndex(where: \.endsRoute) ?? items.count
+        return items.prefix(ends).filter { $0.flownLeg && $0.hasPosition }
+    }
 
     static func blockedItem(_ items: [MissionItem]) -> MissionItem? {
         let blocked = items.filter(\.blocked)
@@ -71,6 +87,7 @@ struct MissionItem: Identifiable, Equatable {
         awaitingTerrain = (json["awaitingTerrain"] as? NSNumber)?.boolValue ?? false
         blockedReason = (json["blockedReason"] as? String).flatMap { $0.isEmpty ? nil : $0 }
         flownLeg = (json["flownLeg"] as? NSNumber)?.boolValue ?? false
+        endsRoute = (json["endsRoute"] as? NSNumber)?.boolValue ?? false
 
         let kind = (json["kind"] as? String) ?? ""
         isLaunch = kind == MissionItem.takeoffKind || kind == MissionItem.settingsKind
@@ -80,14 +97,11 @@ struct MissionItem: Identifiable, Equatable {
         latitude = (coordinate?["latitude"] as? NSNumber)?.doubleValue
         longitude = (coordinate?["longitude"] as? NSNumber)?.doubleValue
 
-        // The altitude the operator set, already in the units they work in, and the unit the core
-        // wrote it in rather than the app setting -- a fact carries its own units and assuming
-        // those never diverge is what this asked the core to stop making it assume.
-        //
-        // The core's own altitudeText is not read: it spells 585 as "585.0 m" where format_measure
-        // spells it "585 m", and the summary strip two rows above uses format_measure.
+        // The number and its unit travel apart because the row's altitude editor needs them
+        // apart; the sentence travels with them because nothing else here should be spelling one.
         altitude = (json["altitude"] as? NSNumber)?.doubleValue
         altitudeUnits = (json["altitudeUnits"] as? String) ?? Measure.metres.units
+        altitudeText = (json["altitudeText"] as? String) ?? MissionItem.noAltitude
     }
 
     var positionText: String {
@@ -95,9 +109,7 @@ struct MissionItem: Identifiable, Equatable {
         return String(format: "%.6f, %.6f", latitude, longitude)
     }
 
-    var altitudeText: String {
-        Measure.reading(altitude, altitudeUnits)
-    }
+    static let noAltitude = "\u{2014}"
 }
 
 extension String {
