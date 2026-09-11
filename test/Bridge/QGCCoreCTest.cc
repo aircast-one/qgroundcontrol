@@ -3497,8 +3497,19 @@ void QGCCoreCTest::_theCoreWorksOutTheSameFlownDistanceTheControllerDoes()
     QTRY_VERIFY_WITH_TIMEOUT(take(qgc_core_get("view.missionSummary")).value(QStringLiteral("distanceMetres")).toDouble(0.0) > 1000.0, 20000);
     agree("with a survey in the middle");
 
-    insert("[\"land\", 47.3960, 8.5440, -1]");
+    // A region of interest has a position and earns a marker, and the aircraft never flies to it.
+    // A walk that counts every placed item doglegs out to it and back - which is exactly the
+    // defect the macOS head found drawing the route on its map this morning, from the same
+    // conflation between "has a coordinate" and "is on the route".
+    const double beforeRoi = take(qgc_core_get("view.missionSummary")).value(QStringLiteral("distanceMetres")).toDouble(-1.0);
+    insert("[\"roi\", 47.4100, 8.5600, -1]");
     QTRY_VERIFY_WITH_TIMEOUT(take(qgc_core_get("view.missionItems")).value(QStringLiteral("items")).toArray().count() >= 6, 20000);
+    agree("with a region of interest off the route");
+    QVERIFY2(qAbs(take(qgc_core_get("view.missionSummary")).value(QStringLiteral("distanceMetres")).toDouble(-1.0) - beforeRoi) < 1.0,
+             "a region of interest is not flown to, so adding one a kilometre away must not lengthen the mission");
+
+    insert("[\"land\", 47.3960, 8.5440, -1]");
+    QTRY_VERIFY_WITH_TIMEOUT(take(qgc_core_get("view.missionItems")).value(QStringLiteral("items")).toArray().count() >= 7, 20000);
     agree("ending in a landing");
 #else
     QSKIP("the Rust core is not linked into this build");
