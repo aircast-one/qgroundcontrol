@@ -3761,6 +3761,13 @@ where reading the visible list is not.
 The vehicle round trip was re-walked in the same pass — upload, clear locally, download — and returns
 the identical summary, so both round trips are now covered rather than one.
 
+**All four picker flows are now walked**, not just the two the round trip needed. `Export KML…`
+writes 2337 bytes of well-formed KML — `<?xml version="1.0"?>`, `<kml xmlns=…/kml/2.2>`, a
+`<Document>` named for the app — and `Import boundary…` was exercised earlier the same day with a
+deliberately malformed `.plan`, which the head refused with **"That is not a plan file. The current
+plan is unchanged."** So the gap this section opened is closed across all four, and the refusal path
+is covered as well as the success path.
+
 **Closed. The round trip works, and the rig gap was smaller than it looked** (`971d82c`).
 
 Two things were wrong, neither of them resource ids. First, `ui.sh` allowed *reading* the picker —
