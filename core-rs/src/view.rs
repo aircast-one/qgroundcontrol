@@ -233,6 +233,26 @@ fn messages_view(backend: &dyn Backend, _args: &[String]) -> Value {
 
 
 #[cfg(test)]
+mod watch_paths {
+    use super::split_paths;
+
+    #[test]
+    fn a_view_path_carrying_commas_inside_its_arguments_survives_the_list() {
+        // The Fly instrument row is asked for as one path with four comma-separated arguments, and
+        // it travels to the core inside a comma-separated list of paths. Splitting on every comma
+        // would leave four fragments that name no view at all.
+        let asked = "view.instruments(altitudeRelative,groundSpeed,distanceToHome,heading)";
+        assert_eq!(split_paths(asked), vec![asked.to_string()]);
+        assert_eq!(
+            split_paths(&format!("view.plan,{asked},view.messages")),
+            vec!["view.plan".to_string(), asked.to_string(), "view.messages".to_string()],
+            "and it survives having neighbours, which is the case that actually happens"
+        );
+        assert_eq!(split_paths("view.a(x),view.b(y,z)"), vec!["view.a(x)".to_string(), "view.b(y,z)".to_string()]);
+    }
+}
+
+#[cfg(test)]
 mod deps_cover_reads {
     use std::collections::BTreeSet;
 
