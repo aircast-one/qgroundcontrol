@@ -1230,6 +1230,17 @@ states in metadata. Formatting a unit, deciding whether a command has a position
 by name — each was the head answering a question the core already answers, and each was wrong in a way
 that looked right.
 
+**A sweep for unit literals found two more of the same** (`66dea85`, `740e3c0`). The terrain band built
+`0-50 m AMSL · 1.15 km` from raw metres while the core served `lowestText`, `highestText` and
+`distanceText` for that view — easy to miss because the parser already used `clearanceText`, so it
+looked like it honoured the core's spelling. And the plan summary spelled a fence circle's radius
+itself while the core served `detailText`. `grep -rn '" m"\|" km"\|" ft"'` over the head's main sources
+is what found both; reading the screens did not, because every one of them was right in the units I was
+testing in. Four instances in one evening, one root.
+
+The tell worth keeping: **the tests that broke were pinning the head's own formatting.** A test that
+asserts a string the head built is a test that the head is answering a question it should be asking.
+
 Three fields arrived unused in the same commits and are worth a look before the row grows further:
 `azimuthText`, `distanceText`, `altitudeChangeText`, all per item and null when the controller has not
 worked the value out. A row reading `2 · Waypoint · 50.0 m · 449 m · 47°` tells an operator about a
