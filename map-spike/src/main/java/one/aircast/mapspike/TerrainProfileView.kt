@@ -54,14 +54,12 @@ private fun pathOf(points: List<Offset>): Path = Path().apply {
 }
 
 internal fun heightRange(profile: TerrainProfile): String = when {
-    profile.lowestText.isBlank() || profile.highestText.isBlank() ->
-        if (profile.flat) {
-            "${profile.lowest.toInt()} m AMSL"
-        } else {
-            "${profile.lowest.toInt()}\u2013${profile.highest.toInt()} m AMSL"
-        }
-    profile.flat -> "${profile.lowestText} AMSL"
-    else -> "${profile.lowestText}\u2013${profile.highestText} AMSL"
+    profile.flat && profile.lowestText.isNotBlank() -> "${profile.lowestText} AMSL"
+    profile.bandText.isNotBlank() -> "${profile.bandText} AMSL"
+    profile.lowestText.isNotBlank() && profile.highestText.isNotBlank() ->
+        "${profile.lowestText}\u2013${profile.highestText} AMSL"
+    profile.flat -> "${profile.lowest.toInt()} m AMSL"
+    else -> "${profile.lowest.toInt()}\u2013${profile.highest.toInt()} m AMSL"
 }
 
 internal fun profileLabel(profile: TerrainProfile): String =

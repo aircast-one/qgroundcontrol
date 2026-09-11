@@ -30,6 +30,7 @@ data class TerrainProfile(
     val lowestText: String = "",
     val highestText: String = "",
     val distanceText: String = "",
+    val bandText: String = "",
 ) {
     val distance: Double get() = points.lastOrNull()?.distance ?: 0.0
 
@@ -111,5 +112,6 @@ fun terrainProfile(view: JSONObject?): TerrainProfile {
         lowestText = view.optString("lowestText"),
         highestText = view.optString("highestText"),
         distanceText = view.optString("distanceText"),
+        bandText = view.optString("bandText"),
     )
 }

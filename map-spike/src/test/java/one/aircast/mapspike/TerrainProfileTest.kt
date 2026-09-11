@@ -160,28 +160,60 @@ class TerrainViewTest {
 }
 
 class HeightRangeTest {
-    private fun profile(low: Double, high: Double, lowText: String = "", highText: String = "") =
-        TerrainProfile(
-            points = listOf(
-                ProfilePoint(0.0, null, low),
-                ProfilePoint(100.0, null, high),
-            ),
-            lowestText = lowText,
-            highestText = highText,
-        )
+    private fun profile(
+        low: Double,
+        high: Double,
+        lowText: String = "",
+        highText: String = "",
+        bandText: String = "",
+    ) = TerrainProfile(
+        points = listOf(
+            ProfilePoint(0.0, null, low),
+            ProfilePoint(100.0, null, high),
+        ),
+        lowestText = lowText,
+        highestText = highText,
+        bandText = bandText,
+    )
 
     @Test
-    fun `the range is spelled by the core, so it is right in any unit`() {
-        assertEquals("0 ft–164 ft AMSL", heightRange(profile(0.0, 50.0, "0 ft", "164 ft")))
+    fun `the band is spelled by the core, which gives both ends one precision`() {
+        assertEquals(
+            "-33 ft to 197 ft AMSL",
+            heightRange(profile(-10.0, 60.0, "-32.8 ft", "197 ft", "-33 ft to 197 ft")),
+        )
     }
 
     @Test
     fun `a flat route names one height, not a range of one`() {
-        assertEquals("50 m AMSL", heightRange(profile(50.0, 50.0, "50 m", "50 m")))
+        assertEquals("50 m AMSL", heightRange(profile(50.0, 50.0, "50 m", "50 m", "50 m to 50 m")))
     }
 
     @Test
     fun `a core that does not spell it leaves the old metres rather than a blank`() {
         assertEquals("0–50 m AMSL", heightRange(profile(0.0, 50.0)))
+    }
+}
+
+class HeightRangeFallbackTest {
+    private fun profile(lowText: String, highText: String, bandText: String) =
+        TerrainProfile(
+            points = listOf(ProfilePoint(0.0, null, -10.0), ProfilePoint(100.0, null, 60.0)),
+            lowestText = lowText,
+            highestText = highText,
+            bandText = bandText,
+        )
+
+    @Test
+    fun `a core without the band still spells the units, rather than falling to metres`() {
+        assertEquals("-32.8 ft–197 ft AMSL", heightRange(profile("-32.8 ft", "197 ft", "")))
+    }
+
+    @Test
+    fun `the band wins when the core offers it`() {
+        assertEquals(
+            "-33 ft to 197 ft AMSL",
+            heightRange(profile("-32.8 ft", "197 ft", "-33 ft to 197 ft")),
+        )
     }
 }
