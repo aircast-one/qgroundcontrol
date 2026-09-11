@@ -1554,3 +1554,40 @@ than by imagination. Worth repeating for each port rather than waiting to be ask
 
 No permanent check was added for `distanceComputedMetres`: it is scaffolding due for deletion
 once the port is trusted, and pinning a temporary field would break its removal.
+
+### The probe does not build states the window forbids (2026-09-11)
+
+The core session fixed the flown-distance walk and recorded the shape that found it — a
+waypoint after a landing — as one that "cannot be built through the editor at all", pinned by a
+unit test over a hand-built item list because QGC refuses to append after a landing. That is
+true of a LAND command and not of the plan this stream actually built, and the difference
+matters: it decides whether the defect was reachable by an operator or only by a fixture.
+
+Checked on the running app rather than argued. `arm(land)` on this vehicle yields a **Return To
+Launch**, not a land:
+
+    seq=2  kind=command   Return To Launch   endsRoute=True   flownLeg=False
+    seq=3  kind=waypoint  Waypoint           endsRoute=False  flownLeg=True
+
+and `view.missionKinds` immediately after that RTL reports `waypoint` as `enabled: true` with an
+empty `disabledReason` — the same answer it gives before the RTL. So the Plan window offers the
+action, the insert succeeds, and an operator reaches this shape by clicking Land and then the
+map. **The defect was operator-reachable, not fixture-only.**
+
+**This was worth checking for a second reason: whether this stream's probe can build states the
+window would refuse.** If it could, any finding from a probe-built plan would be suspect — the
+instrument would be manufacturing its own evidence, which is the failure mode that produced two
+phantoms here today. It cannot: the gate is the core's `enabled`/`disabledReason` on
+`view.missionKinds`, the probe inserts through the same path the window's own picker uses, and
+the core reports the kind as offered. The probe reaches what the window reaches.
+
+The asymmetry underneath is real and correct on both sides: `endsRoute` is true on an RTL for
+the purpose of measuring the flown route, while the same item leaves `waypoint` insertable,
+because an item after a return to launch is still uploaded to the vehicle — it is simply never
+reached. One list, two questions, again.
+
+Verified after their fix, on the shape that found it: controller 7981.43, computed 7981.43,
+delta 0.00, and still 0.00 with two waypoints after the landing. The scaffolding is opt-in now
+(`view.missionSummary(verify)`), so the watched plain path is back to ~1.0 ms at 121 items from
+202 ms, with the key present and null rather than absent — the shape stays constant, which is
+why no contract re-record was needed on this side.
