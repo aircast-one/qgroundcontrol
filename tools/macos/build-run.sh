@@ -43,7 +43,11 @@ if [[ -n "$archive" && -f "$dylib" && "$archive" -nt "$dylib" ]]; then
     exit 1
 fi
 
-QGC_DEBUG_API_PORT="$port" nohup "$app" --allow-multiple --native-window > /tmp/qgc-app.log 2>&1 &
+# Trailing arguments reach the app. NSArgumentDomain is not persisted, so
+# `build-run.sh -AppleLanguages '(de)'` runs one instance in another locale without writing a
+# settings fact -- which is the only way to exercise a tr() path, since QGCApplication takes
+# QLocale::system() unless a language setting overrides it.
+QGC_DEBUG_API_PORT="$port" nohup "$app" --allow-multiple --native-window "$@" > /tmp/qgc-app.log 2>&1 &
 pid=$!
 echo "$pid" > /tmp/qgc-app.pid
 

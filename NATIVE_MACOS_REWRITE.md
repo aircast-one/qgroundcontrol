@@ -1657,3 +1657,38 @@ the mechanism offered for it did not survive two attempts to reproduce it. Sayin
 than leaving a confident story for someone else to act on — this stream published a
 0.64 ms-per-item figure and a 44% duty cycle earlier today on exactly that kind of reasoning, and
 had to retract both after measuring.
+
+### Which locales the survey-outline defect actually reached (2026-09-11)
+
+`eddf72d1f` says the survey outline was missing "in any build that was not English". That is
+wrong, and the correction is worth more than the fix because it is about how the defect hid.
+
+The lookup matched a `tr()` name against a fixed English literal, so it only broke where the
+name is *actually translated*. Reading `translations/qgc_source_*.ts` for the three complex item
+names:
+
+| locale | Survey | Corridor Scan |
+|---|---|---|
+| az_AZ | Müşahidə | Dəhliz Scan |
+| ja_JP | 調査 | 回廊スキャン |
+| ko_KR | 서베이 | 복도 스캔 |
+| pt_PT | Varredura | Varredura Corredor |
+| zh_CN | 勘测 | 走廊扫描 |
+
+**Five locales, not "not English".** Fifteen shipped translations leave these names in English,
+`tr_TR` translates "Survey" to "Survey", and **German is one of the untranslated ones** — which is
+the part worth keeping. German is the locale anyone reaches for first when testing this class,
+and it would have shown the polygon drawing perfectly.
+
+The test fixture was wrong in the same direction and for the same reason. It used "Vermessung"
+and "Korridor-Scan", words this software never produces, chosen because they are the obvious
+German for the English. Now it uses 調査 and 回廊スキャン, read out of `qgc_source_ja_JP.ts`. The
+rule under test is unchanged and the assertions still fail when the lookup is reverted; what
+changed is that the fixture now contains a string a running build can actually emit.
+
+Also established while checking: this build does compile and embed all 48 translations, as Qt
+resources under `:/i18n` rather than as files in the bundle. `find`ing the app for `*.qm` returns
+nothing and `strings` on the dylib returns nothing, and both of those are the instrument being
+blind rather than the translations being absent — the third false negative from that family
+today. The launcher now forwards trailing arguments so a single instance can run in another
+locale via `-AppleLanguages`, which sets NSArgumentDomain and persists nothing.

@@ -4228,17 +4228,19 @@ func checkComplexGeometryInAnyLocale() {
         MissionItem(view: ["index": 1 as NSNumber, "sequence": 1 as NSNumber,
                            "name": named, "kind": kind])
     }
-    // Every complex item's commandName is tr(), so these are what a German build reports while
-    // the catalogue's complexName stays the English string it is compared against.
-    expect(catalogue.areaProperty(of: item("survey", named: "Vermessung")) ?? "", "surveyAreaPolygon",
+    // Real strings from translations/qgc_source_ja_JP.ts, not invented ones. Five shipped
+    // locales translate these names -- az_AZ, ja_JP, ko_KR, pt_PT and zh_CN -- and the rest,
+    // German among them, leave them in English, which is why this never showed up in the obvious
+    // place to look. The catalogue's complexName stays the English literal it is compared against.
+    expect(catalogue.areaProperty(of: item("survey", named: "調査")) ?? "", "surveyAreaPolygon",
            "a survey draws its area from the item's kind, not from a name that is translated -- "
            + "matching the name found nothing outside an English build and the polygon that "
            + "tells the operator what ground is covered was simply absent")
-    expect(catalogue.lineProperty(of: item("corridor", named: "Korridor-Scan")) ?? "", "corridorPolyline",
+    expect(catalogue.lineProperty(of: item("corridor", named: "回廊スキャン")) ?? "", "corridorPolyline",
            "and a corridor draws its path the same way")
     expect(catalogue.areaProperty(of: item("corridor", named: "Corridor Scan")) == nil,
            "a line is never offered as an area, whatever it is called")
-    expect(catalogue.lineProperty(of: item("survey", named: "Vermessung")) == nil,
+    expect(catalogue.lineProperty(of: item("survey", named: "調査")) == nil,
            "an area is not offered as a line, which would append vertices to the wrong property")
     expect(catalogue.areaProperty(of: item("waypoint", named: "Waypoint")) == nil,
            "and a kind the catalogue does not shape has no geometry to read")
