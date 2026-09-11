@@ -814,11 +814,8 @@ struct PlanInspector: View {
     private var fenceShapes: some View {
         GroupCard {
             if fenceRally.shapes.isEmpty {
-                EmptyStateRow(text: fenceRally.connected && !fenceRally.fenceSupported
-                    ? "This vehicle's firmware does not support geofences."
-                    : fenceRally.connected
-                        ? "No geofence. Nothing will stop the vehicle leaving the area."
-                        : "No geofence in this plan.")
+                EmptyStateRow(text: PlanShapeAbsence.fence(connected: fenceRally.connected,
+                                                          supported: fenceRally.fenceSupported))
             } else {
                 ForEach(fenceRally.shapes) { shape in
                     GroupRow(
@@ -855,11 +852,8 @@ struct PlanInspector: View {
     private var rally: some View {
         GroupCard {
             if fenceRally.rallyPoints.isEmpty {
-                EmptyStateRow(text: fenceRally.connected && !fenceRally.rallySupported
-                    ? "This vehicle's firmware does not support rally points."
-                    : fenceRally.connected
-                        ? "No rally points. On a failsafe the vehicle returns to launch."
-                        : "No rally points in this plan.")
+                EmptyStateRow(text: PlanShapeAbsence.rally(connected: fenceRally.connected,
+                                                          supported: fenceRally.rallySupported))
             } else {
                 ForEach(fenceRally.rallyPoints) { point in
                     GroupRow(

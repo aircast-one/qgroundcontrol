@@ -126,3 +126,26 @@ struct RallyPointRow: Identifiable, Equatable {
         Measure.reading(altitude, altitudeUnits)
     }
 }
+
+// What an empty Fence or Rally tab tells the operator. It lived in the view as a three-way
+// condition, where nothing could reach it: a sentence claiming a vehicle's firmware lacks a
+// feature is a claim about the vehicle, and getting it wrong stops an operator trying something
+// that would have worked.
+enum PlanShapeAbsence {
+    static let noFence = "No geofence in this plan."
+    static let noRally = "No rally points in this plan."
+
+    static func fence(connected: Bool, supported: Bool) -> String {
+        guard connected else { return noFence }
+        return supported
+            ? "No geofence. Nothing will stop the vehicle leaving the area."
+            : "This vehicle's firmware does not support geofences."
+    }
+
+    static func rally(connected: Bool, supported: Bool) -> String {
+        guard connected else { return noRally }
+        return supported
+            ? "No rally points. On a failsafe the vehicle returns to launch."
+            : "This vehicle's firmware does not support rally points."
+    }
+}

@@ -1269,6 +1269,7 @@ func checkMissionItemKinds() {
     checkSurveyWatch()
     checkCollisionRuns()
     checkClearanceSentence()
+    checkShapeAbsence()
     checkFlownLeg()
     checkVehicleMessageOrder()
     checkBlockedBanner()
@@ -4158,6 +4159,33 @@ func checkFlownLeg() {
            + "to throw those away itself because an unplaced command reported one; the core sends "
            + "no coordinate for those now, so re-adding the guard here would only lose a waypoint "
            + "somebody really put in the Gulf of Guinea")
+}
+
+func checkShapeAbsence() {
+    expect(PlanShapeAbsence.fence(connected: false, supported: false),
+           PlanShapeAbsence.noFence,
+           "with no vehicle the plan simply has no geofence. Saying the firmware lacks the feature "
+           + "would be a claim about a vehicle nothing has looked at")
+    expect(PlanShapeAbsence.fence(connected: false, supported: true), PlanShapeAbsence.noFence,
+           "and it reads the same either way, because what a disconnected vehicle supports is not "
+           + "something this window knows")
+    expect(PlanShapeAbsence.fence(connected: true, supported: true),
+           "No geofence. Nothing will stop the vehicle leaving the area.",
+           "a connected vehicle that could hold one has not been given one, and the consequence "
+           + "is the point of saying so")
+    expect(PlanShapeAbsence.fence(connected: true, supported: false),
+           "This vehicle's firmware does not support geofences.",
+           "and one that cannot hold one says so instead -- telling an operator to draw a fence "
+           + "their firmware will not take is worse than saying nothing, because they will try")
+
+    expect(PlanShapeAbsence.rally(connected: false, supported: false), PlanShapeAbsence.noRally,
+           "the rally tab answers the same three ways")
+    expect(PlanShapeAbsence.rally(connected: true, supported: true),
+           "No rally points. On a failsafe the vehicle returns to launch.",
+           "and names what happens without one, which is the reason to add one")
+    expect(PlanShapeAbsence.rally(connected: true, supported: false),
+           "This vehicle's firmware does not support rally points.",
+           "and does not invite an operator to add what cannot be taken")
 }
 
 func checkClearanceSentence() {
