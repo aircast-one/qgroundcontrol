@@ -2499,3 +2499,40 @@ Still not fixed here, for the reason that has not changed: the asymmetry is that
 and no head can test the other firmware. The core's comment refusing to answer *"does a head have a
 screen for this page"* remains right — but *"does this firmware offer this page"* is vehicle state,
 which is theirs by the same rule.
+
+### The APM regression the core asked for, and why `omitted` is deliberately not drawn (2026-09-12)
+
+The core's `b5019228b` filters `view.setup`'s pages by firmware. Nobody has a PX4 vehicle, so the
+only check either session can make is that **no ArduPilot page disappeared**. Run here:
+
+    served now (13): Summary, Sensors, Radio, Frame, Flight Modes, Safety, Power, Motors,
+                     Tuning, Camera, Lights, Remote Support, Parameters
+    disappeared:     Flight Behavior only
+    newly present:   none
+
+Exactly the fourteen recorded before, minus the one PX4-only page. **The check is meaningful
+despite there being no vehicle**: `px4` is read from `vehicle.px4Firmware`, which is false when
+nothing is connected, so the filter took the ArduPilot branch. What it cannot speak to is the PX4
+branch, which remains unwatched by anyone.
+
+**A correction to my own first reading of it.** I reported `omitted` as null. It is not — it is
+served *per group*, beside each group's `pages`, and I looked for it at the top level. The same
+mistake as reading a probe projection for a view: I checked the shape I expected rather than the
+shape that exists. Read properly it carries a real sentence: *"This is a PX4 setup screen.
+ArduPilot firmware has no equivalent."*
+
+**And it is deliberately not drawn, which needs saying because it looks like the rule being
+broken.** The rule is that a member the producer refuses keeps its reason — applied twice tonight,
+to the altitude modes and the camera list. This is the other case. The distinction the camera work
+established is between **Camera 2**, which the operator switched on and which cannot work, and
+**Camera 4**, which was never asked for and is correctly absent. A PX4 setup page on an ArduPilot
+vehicle is Camera 4: nobody asked for it, nothing is missing from the operator's point of view, and
+a permanent row reading *"Flight Behavior — PX4 only"* is noise on every ArduPilot flight forever.
+The reason exists for a head that wants it; this one does not.
+
+**The core's change also closes an item that was open against this head.** `SetupPage.bespoke`
+lists Camera, Lights and Remote Support unconditionally, and on a PX4 vehicle that would have drawn
+three ArduPilot-only pages. It cannot now: `draws` is only ever applied to pages `view.setup`
+serves, and those three are filtered out upstream before the head sees them. The fix at the
+producer removed the need for the head to know anything — which was the argument for putting it
+there.
