@@ -22,7 +22,10 @@ import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.List
 import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.Icon
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.Button
@@ -225,7 +228,7 @@ internal fun MapSpikeScreen(
                 linkStartToHome = nextLink
                 fences = nextFences
                 rally = nextRally
-                if (!selectionSurvives(selected, nextItems, nextFences, nextCircles, nextRally, nextSurveys)) {
+                if (!selectionSurvives(selected, nextAll, nextFences, nextCircles, nextRally, nextSurveys)) {
                     selected = null
                 }
                 circles = nextCircles
@@ -326,18 +329,30 @@ internal fun MapSpikeScreen(
                 enabled = allItems.isNotEmpty(),
             ) {
                 val ready by MapBridge.bridgeReady.collectAsState()
-                Text(
-                    busy ?: if (!ready) {
-                        "Waiting for QGroundControl"
-                    } else {
-                        planSummary(
-                            itemCount, shape, items, fences, circles, rally, surveyList,
-                            missionSummaryText(missionSummaryView), selected,
-                        )
-                    },
+                Row(
                     Modifier.padding(horizontal = 10.dp, vertical = 6.dp),
-                    style = MaterialTheme.typography.bodySmall,
-                )
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Text(
+                        busy ?: if (!ready) {
+                            "Waiting for QGroundControl"
+                        } else {
+                            planSummary(
+                                itemCount, shape, items, fences, circles, rally, surveyList,
+                                missionSummaryText(missionSummaryView), selected,
+                            )
+                        },
+                        style = MaterialTheme.typography.bodySmall,
+                    )
+                    if (allItems.isNotEmpty()) {
+                        Icon(
+                            Icons.AutoMirrored.Filled.List,
+                            contentDescription = "Show the plan as a list",
+                            Modifier.size(18.dp),
+                        )
+                    }
+                }
             }
 
             centre?.let { at ->
@@ -524,7 +539,7 @@ internal fun MapSpikeScreen(
 
                 val survey = selectedSurvey(selected, surveyList)
                 val waypoint = (selected as? MapHit.Waypoint)
-                    ?.let { hit -> items.firstOrNull { it.index == hit.index } }
+                    ?.let { hit -> allItems.firstOrNull { it.index == hit.index } }
                 val fenceHit = selected as? MapHit.FenceVertex
                 val surveyHit = selected as? MapHit.SurveyVertex
                 val rallyHit = selected as? MapHit.Rally
@@ -697,14 +712,20 @@ internal fun MapSpikeScreen(
 
         if (listOpen) {
             ModalBottomSheet(onDismissRequest = { listOpen = false }) {
+                Text(
+                    PLAN_ITEMS_HEADING,
+                    Modifier.padding(horizontal = 20.dp, vertical = 8.dp),
+                    style = MaterialTheme.typography.titleSmall,
+                )
                 LazyColumn(Modifier.fillMaxWidth().padding(bottom = 24.dp)) {
                     items(itemRows(allItems), key = { it.index }) { row ->
                         ItemRowView(row, selected = (selected as? MapHit.Waypoint)?.index == row.index) {
                             selected = MapHit.Waypoint(row.index)
-                            centreOn = items.firstOrNull { it.index == row.index }
-                                ?.let { TrackPoint(it.latitude, it.longitude) }
-                            centreRequest += 1
-                            follow = false
+                            items.firstOrNull { it.index == row.index }?.let { placed ->
+                                centreOn = TrackPoint(placed.latitude, placed.longitude)
+                                centreRequest += 1
+                                follow = false
+                            }
                             listOpen = false
                         }
                     }
@@ -718,7 +739,7 @@ internal fun MapSpikeScreen(
 private fun ItemRowView(row: ItemRow, selected: Boolean, onClick: () -> Unit) {
     Surface(
         onClick = onClick,
-        enabled = row.placed,
+
         color = if (selected) {
             MaterialTheme.colorScheme.secondaryContainer
         } else {

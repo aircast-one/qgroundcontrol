@@ -15,12 +15,12 @@ NODE = re.compile(
 def nodes(xml):
     return [(label, left, top, right, bottom) for _, label, left, top, right, bottom in NODE.findall(xml)]
 
-PLANNING_MARKERS = {"Upload", "Download"}
+PLANNING_SCREENS = ({"Upload", "Download"}, {"Plan items"})
 
 
 def is_planning(xml):
     labels = {label.strip() for label, *_ in nodes(xml)}
-    return PLANNING_MARKERS <= labels
+    return any(markers <= labels for markers in PLANNING_SCREENS)
 
 
 def labels_under(xml, x, y):

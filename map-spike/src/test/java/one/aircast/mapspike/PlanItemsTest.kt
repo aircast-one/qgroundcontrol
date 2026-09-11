@@ -1,6 +1,8 @@
 package one.aircast.mapspike
 
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
+import org.junit.Assert.assertTrue
 import org.junit.Assert.assertNull
 import org.junit.Test
 
@@ -71,5 +73,32 @@ class PlanItemsTest {
 
         assertEquals("Land", rowAt(rows, 9)?.name)
         assertNull(rowAt(rows, 1))
+    }
+}
+
+class UnplacedSelectionTest {
+    private val unplaced = MissionItem(
+        1, 1, Double.NaN, Double.NaN, "Takeoff", false, Double.NaN,
+        kind = "takeoff", commandId = 22, placed = false,
+    )
+
+    @Test
+    fun `selecting an item the map cannot draw is not thrown away on the next read`() {
+        assertTrue(
+            selectionSurvives(
+                MapHit.Waypoint(1), listOf(unplaced),
+                emptyList(), emptyList(), emptyList(), emptyList(),
+            ),
+        )
+    }
+
+    @Test
+    fun `a selection of an item that left the plan is still thrown away`() {
+        assertFalse(
+            selectionSurvives(
+                MapHit.Waypoint(1), emptyList(),
+                emptyList(), emptyList(), emptyList(), emptyList(),
+            ),
+        )
     }
 }

@@ -37,6 +37,14 @@ def main():
     )
     assert labels_under(planning, 50, 250) == [], "Land on the plan screen adds an item"
 
+    sheet = screen(
+        node("Plan items", "[0,0][400,60]"),
+        node("Takeoff", "[0,200][400,300]"),
+    )
+    assert labels_under(sheet, 200, 250) == [], (
+        "the plan item sheet covers Upload and Download, so it names itself instead"
+    )
+
     assert nodes(fly), "the node pattern must match a real dump"
 
     done = run(fly, 200, 300)

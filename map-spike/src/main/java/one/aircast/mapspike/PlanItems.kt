@@ -3,6 +3,7 @@ package one.aircast.mapspike
 import kotlin.math.roundToInt
 
 const val NO_POSITION = "no position"
+const val PLAN_ITEMS_HEADING = "Plan items"
 
 data class ItemRow(
     val index: Int,
