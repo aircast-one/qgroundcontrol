@@ -218,3 +218,117 @@ fn messages_view(backend: &dyn Backend, _args: &[String]) -> Value {
     json!({ "kind": "object", "class": "VehicleMessages", "order": ORDER, "count": items.len(), "items": items })
 }
 
+
+#[cfg(test)]
+mod deps_cover_reads {
+    use std::collections::BTreeSet;
+
+    // A head that has dropped its own derivation in favour of a view has also dropped the thing
+    // that would have disagreed with it. Before, a missing dep here and a stale watch there had to
+    // line up to show a wrong answer; now one is enough. So a field a view reads and does not watch
+    // is only acceptable when the Qt property cannot change, and that has to be said out loud.
+    const UNWATCHED_BECAUSE_CONSTANT: &[&str] = &[
+        "vehicle.flightModeSetAvailable",
+        "vehicle.rtlFlightMode",
+        "vehicle.landFlightMode",
+        "links.linkTypeStrings",
+        "links.serialBaudRates",
+        "radioCal.channelCount",
+        "vehicle.guidedModeSupported",
+        "vehicle.takeoffVehicleSupported",
+        "vehicle.pauseVehicleSupported",
+        "vehicle.hasGripper",
+        "vehicle.smartRTLFlightMode",
+        "vehicle.missionFlightMode",
+        "vehicle.pauseFlightMode",
+    ];
+
+    fn deps_of(module: &str) -> Option<BTreeSet<String>> {
+        let start = module.find("pub const DEPS: &[&str] = &[")?;
+        let rest = &module[start..];
+        let end = rest.find("];")?;
+        Some(literals(&rest[..end]).into_iter().collect())
+    }
+
+    fn literals(text: &str) -> Vec<String> {
+        text.split('"').skip(1).step_by(2).map(str::to_string).collect()
+    }
+
+    fn literal_reads(body: &str) -> Vec<(String, String)> {
+        body.match_indices("get_fields(")
+            .filter_map(|(at, _)| {
+                let tail = &body[at..];
+                let close = tail.find(')')?;
+                let args = literals(&tail[..close]);
+                match args.len() {
+                    2 => Some((args[0].clone(), args[1].clone())),
+                    _ => None,
+                }
+            })
+            .collect()
+    }
+
+    fn covered(path: &str, field: &str, deps: &BTreeSet<String>) -> bool {
+        let full = format!("{path}.{field}");
+        UNWATCHED_BECAUSE_CONSTANT.contains(&full.as_str())
+            || deps.iter().any(|dep| *dep == full || dep == path || full.starts_with(&format!("{dep}.")) || dep.starts_with(&format!("{full}.")))
+    }
+
+    #[test]
+    fn every_field_a_view_reads_is_one_it_watches() {
+        let modules: &[(&str, &str)] = &[
+            ("altitudemodes", include_str!("altitudemodes.rs")),
+            ("calibration", include_str!("calibration.rs")),
+            ("control", include_str!("control.rs")),
+            ("fences", include_str!("fences.rs")),
+            ("flightmodes", include_str!("flightmodes.rs")),
+            ("flystate", include_str!("flystate.rs")),
+            ("guided", include_str!("guided.rs")),
+            ("links", include_str!("links.rs")),
+            ("logs", include_str!("logs.rs")),
+            ("missionitems", include_str!("missionitems.rs")),
+            ("missionsummary", include_str!("missionsummary.rs")),
+            ("modeslots", include_str!("modeslots.rs")),
+            ("plan", include_str!("plan.rs")),
+            ("preflight", include_str!("preflight.rs")),
+            ("setup", include_str!("setup.rs")),
+            ("survey", include_str!("survey.rs")),
+            ("terrain", include_str!("terrain.rs")),
+            ("vehicles", include_str!("vehicles.rs")),
+        ];
+        let unwatched: Vec<String> = modules
+            .iter()
+            .filter_map(|(name, source)| {
+                let body = source.split("#[cfg(test)]").next()?;
+                let deps = deps_of(body)?;
+                let missing: Vec<String> = literal_reads(body)
+                    .into_iter()
+                    .flat_map(|(path, fields)| {
+                        fields
+                            .split(',')
+                            .map(str::trim)
+                            .filter(|field| !field.is_empty() && !covered(&path, field, &deps))
+                            .map(|field| format!("{name}: {path}.{field}"))
+                            .collect::<Vec<_>>()
+                    })
+                    .collect();
+                (!missing.is_empty()).then_some(missing)
+            })
+            .flatten()
+            .collect();
+        assert!(
+            unwatched.is_empty(),
+            "these are read by a view and named in no dep, so the view is never recomputed when they change. Watch them, or add them to \
+             UNWATCHED_BECAUSE_CONSTANT once you have checked the Q_PROPERTY really is CONSTANT: {unwatched:?}"
+        );
+    }
+
+    #[test]
+    fn the_check_can_fail() {
+        let deps: BTreeSet<String> = ["vehicle.armed".to_string()].into_iter().collect();
+        assert!(covered("vehicle", "armed", &deps));
+        assert!(!covered("vehicle", "flying", &deps), "a field named in no dep and on no constant list has to come back uncovered, or the sweep above passes by construction");
+        assert!(covered("vehicle", "rtlFlightMode", &deps), "the constant list is the escape hatch, and it has to work");
+        assert_eq!(literal_reads(r#"let x = backend.get_fields("vehicle", "armed,flying");"#), vec![("vehicle".to_string(), "armed,flying".to_string())]);
+    }
+}
