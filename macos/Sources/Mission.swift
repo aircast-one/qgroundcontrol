@@ -73,6 +73,7 @@ final class MissionStore: ObservableObject, Probeable, WriteReporting {
     private let planClient = "plan.\(MissionStore.nextClient())"
     private let vehicleClient = "planVehicle.\(MissionStore.nextClient())"
     private let surveyClient = "surveyStats.\(MissionStore.nextClient())"
+    private let itemsClient = "missionItems.\(MissionStore.nextClient())"
 
 
     // The Fly view only reads this plan; the Plan window is what edits it, and a plan can also
@@ -133,6 +134,9 @@ final class MissionStore: ObservableObject, Probeable, WriteReporting {
         // bind to. The head watched each item's terrainAltitude and terrainCollision to get at
         // the same moment; it does not have to any more, and the event carries the rendered
         // profile so there is nothing to read back.
+        BridgeWatch.watch(itemsClient, ["view.missionItems"]) { [weak self] view in
+            self?.applyItems(view)
+        }
         BridgeWatch.watch(terrainClient, ["view.terrainProfile"]) { [weak self] view in
             guard let self else { return }
             let profile = TerrainProfile(view)
@@ -146,6 +150,7 @@ final class MissionStore: ObservableObject, Probeable, WriteReporting {
         BridgeWatch.stop(planClient)
         BridgeWatch.stop(vehicleClient)
         BridgeWatch.stop(surveyClient)
+        BridgeWatch.stop(itemsClient)
     }
 
     func reload() {
@@ -352,7 +357,11 @@ final class MissionStore: ObservableObject, Probeable, WriteReporting {
 
     @discardableResult
     private func readItems() -> [[String: Any]] {
-        let read = Bridge.group("view.missionItems")
+        applyItems(Bridge.group("view.missionItems"))
+    }
+
+    @discardableResult
+    private func applyItems(_ read: [String: Any]) -> [[String: Any]] {
         let elements = (read["items"] as? [[String: Any]]) ?? []
         let chosen = (read["selected"] as? NSNumber)?.intValue ?? -1
         let listed = elements.map {
