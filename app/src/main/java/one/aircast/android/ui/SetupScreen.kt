@@ -23,6 +23,7 @@ import androidx.compose.ui.unit.dp
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import one.aircast.android.bridge.Qgc
+import org.json.JSONObject
 import one.aircast.android.bridge.qgcBool
 import one.aircast.android.bridge.qgcPath
 import one.aircast.android.bridge.qgcDouble
@@ -35,7 +36,6 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.ui.Alignment
 
 private const val PLUGIN = "vehicle.autopilotPlugin"
-private const val COMPONENTS = "vehicle.autopilotPlugin.vehicleComponents"
 
 internal fun firmwareSummary(
     firmwareType: String,
@@ -56,34 +56,25 @@ internal fun firmwareSummary(
 internal data class SetupComponent(
     val index: Int,
     val name: String,
-    val requiresSetup: Boolean,
-    val setupComplete: Boolean,
-    val allowSetupWhileArmed: Boolean = false,
-    val allowSetupWhileFlying: Boolean = false,
-) {
-    val needsAttention: Boolean get() = requiresSetup && !setupComplete
-}
+    val needsAttention: Boolean,
+    val blockedReason: String? = null,
+)
 
 internal fun remainingSetup(components: List<SetupComponent>): List<SetupComponent> =
     components.filterNot { it.needsAttention }
 
-private fun readComponents(): List<SetupComponent> {
-    val count = Qgc.get(COMPONENTS).optJSONArray("value")?.length() ?: 0
-    return (0 until count).mapNotNull { index ->
-        val json = Qgc.get("$COMPONENTS.$index")
-        val name = json.optString("name")
-        if (name.isBlank()) {
-            null
-        } else {
-            SetupComponent(
-                index = index,
-                name = name,
-                requiresSetup = json.optBoolean("requiresSetup"),
-                setupComplete = json.optBoolean("setupComplete"),
-                allowSetupWhileArmed = json.optBoolean("allowSetupWhileArmed"),
-                allowSetupWhileFlying = json.optBoolean("allowSetupWhileFlying"),
-            )
-        }
+internal fun setupComponents(view: JSONObject?): List<SetupComponent> {
+    val listed = view?.optJSONArray("components") ?: return emptyList()
+    return (0 until listed.length()).mapNotNull { index ->
+        val element = listed.optJSONObject(index) ?: return@mapNotNull null
+        val name = element.optString("name").takeIf { it.isNotBlank() } ?: return@mapNotNull null
+        SetupComponent(
+            index = index,
+            name = name,
+            needsAttention = element.optBoolean("needsAttention"),
+            blockedReason = element.optString("blockedReason")
+                .takeIf { !element.isNull("blockedReason") && it.isNotBlank() },
+        )
     }
 }
 
@@ -104,9 +95,6 @@ fun SetupScreen(modifier: Modifier = Modifier) {
     val hasVehicle by qgcBool("vehicles.activeVehicleAvailable")
     val parametersReady by qgcBool("vehicle.parameterManager.parametersReady")
     val setupComplete by qgcBool("$PLUGIN.setupComplete")
-    val armed by qgcBool("vehicle.armed")
-    val flying by qgcBool("vehicle.flying")
-    val isRover by qgcBool("vehicle.rover")
     val isPx4 by qgcBool("vehicle.px4Firmware")
     val setupJson by qgcPath(SETUP)
     val vehicleId by qgcDouble("vehicle.id")
@@ -116,19 +104,15 @@ fun SetupScreen(modifier: Modifier = Modifier) {
     val versionType by qgcString("vehicle.firmwareVersionTypeString")
     val vehicleType by qgcString("vehicle.vehicleTypeString")
     val firmwareType by qgcString("vehicle.firmwareTypeString")
-    var components by remember { mutableStateOf(emptyList<SetupComponent>()) }
     var openComponent by remember { mutableStateOf<SetupComponent?>(null) }
 
     BackHandler(enabled = openComponent != null) { openComponent = null }
 
-    LaunchedEffect(hasVehicle, parametersReady, setupComplete) {
+    val components = remember(setupJson) { setupComponents(setupJson) }
+
+    LaunchedEffect(hasVehicle) {
         if (!hasVehicle) {
             openComponent = null
-        }
-        components = if (hasVehicle && parametersReady) {
-            withContext(Dispatchers.Default) { readComponents() }
-        } else {
-            emptyList()
         }
     }
 
@@ -156,7 +140,7 @@ fun SetupScreen(modifier: Modifier = Modifier) {
             }
             HorizontalDivider()
             val nativePage = setupPage(setupJson, open.name)
-            val blocked = setupBlockedReason(open, armed, flying, isRover)
+            val blocked = open.blockedReason
             when {
                 blocked != null -> SetupNotice(
                     "${open.name} cannot be set up while the vehicle is $blocked.",
@@ -183,9 +167,6 @@ fun SetupScreen(modifier: Modifier = Modifier) {
         versionType,
     )
     val needSetup = components.filter { it.needsAttention }
-    val blockedFor = { component: SetupComponent ->
-        setupBlockedReason(component, armed, flying, isRover)
-    }
 
     LazyColumn(modifier.fillMaxSize()) {
         item(key = "verdict") {
@@ -202,7 +183,7 @@ fun SetupScreen(modifier: Modifier = Modifier) {
         if (needSetup.isNotEmpty()) {
             item(key = "attention") { SectionHeader("Needs setup before flight") }
             items(needSetup, key = { "a${it.index}" }) { component ->
-                val blocked = blockedFor(component)
+                val blocked = component.blockedReason
                 val page = setupPage(setupJson, component.name)
                 SetupRow(
                     title = component.name,
@@ -228,7 +209,7 @@ fun SetupScreen(modifier: Modifier = Modifier) {
             items(remaining, key = { it.index }) { component ->
                 val page = setupPage(setupJson, component.name)
                 val openable = headCanOpen(page, component.name)
-                val blocked = blockedFor(component)
+                val blocked = component.blockedReason
                 SetupRow(
                     title = component.name,
                     status = when {
@@ -311,13 +292,3 @@ private fun ReadinessHeader(
     }
 }
 
-internal fun setupBlockedReason(
-    component: SetupComponent,
-    armed: Boolean,
-    flying: Boolean,
-    isRover: Boolean,
-): String? = when {
-    !component.allowSetupWhileArmed && armed -> "armed"
-    !isRover && !component.allowSetupWhileFlying && flying -> "flying"
-    else -> null
-}

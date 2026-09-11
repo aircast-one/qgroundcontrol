@@ -1,5 +1,6 @@
 package one.aircast.android.ui
 
+import org.json.JSONObject
 import org.junit.Assert.assertEquals
 import org.junit.Test
 
@@ -25,21 +26,30 @@ class SetupScreenTest {
     }
 
     @Test
-    fun `a component only needs attention when setup is required and missing`() {
-        val required = SetupComponent(0, "Radio", requiresSetup = true, setupComplete = false)
-        val done = SetupComponent(1, "Radio", requiresSetup = true, setupComplete = true)
-        val optional = SetupComponent(2, "Camera", requiresSetup = false, setupComplete = false)
-        assertEquals(true, required.needsAttention)
-        assertEquals(false, done.needsAttention)
-        assertEquals(false, optional.needsAttention)
+    fun `a component is read with the verdicts the core reached`() {
+        val view = JSONObject(
+            """{"components":[{"name":"Radio","needsAttention":true,"blockedReason":"armed"},""" +
+                """{"name":"Camera","needsAttention":false,"blockedReason":null}]}""",
+        )
+        val read = setupComponents(view)
+
+        assertEquals(listOf("Radio", "Camera"), read.map { it.name })
+        assertEquals(listOf(true, false), read.map { it.needsAttention })
+        assertEquals(listOf("armed", null), read.map { it.blockedReason })
+    }
+
+    @Test
+    fun `a component with no name is not offered, and no view is no components`() {
+        assertEquals(1, setupComponents(JSONObject("""{"components":[{"name":"Radio"},{}]}""")).size)
+        assertEquals(emptyList<String>(), setupComponents(null).map { it.name })
     }
 
     @Test
     fun `a component promoted for attention is not listed a second time`() {
         val components = listOf(
-            SetupComponent(0, "Frame", requiresSetup = false, setupComplete = false),
-            SetupComponent(1, "Sensors", requiresSetup = true, setupComplete = false),
-            SetupComponent(2, "Power", requiresSetup = true, setupComplete = true),
+            SetupComponent(0, "Frame", needsAttention = false),
+            SetupComponent(1, "Sensors", needsAttention = true),
+            SetupComponent(2, "Power", needsAttention = false),
         )
 
         assertEquals(listOf("Frame", "Power"), remainingSetup(components).map { it.name })
@@ -48,65 +58,10 @@ class SetupScreenTest {
     @Test
     fun `every component needing attention leaves nothing for the full list`() {
         val components = listOf(
-            SetupComponent(0, "Sensors", requiresSetup = true, setupComplete = false),
+            SetupComponent(0, "Sensors", needsAttention = true),
         )
 
         assertEquals(emptyList<String>(), remainingSetup(components).map { it.name })
     }
 
-    private fun component(
-        allowArmed: Boolean = false,
-        allowFlying: Boolean = false,
-    ) = SetupComponent(
-        index = 0,
-        name = "Sensors",
-        requiresSetup = true,
-        setupComplete = false,
-        allowSetupWhileArmed = allowArmed,
-        allowSetupWhileFlying = allowFlying,
-    )
-
-    @Test
-    fun `a disarmed vehicle on the ground blocks nothing`() {
-        assertEquals(null, setupBlockedReason(component(), armed = false, flying = false, isRover = false))
-    }
-
-    @Test
-    fun `calibration is refused on an armed vehicle`() {
-        assertEquals("armed", setupBlockedReason(component(), armed = true, flying = false, isRover = false))
-    }
-
-    @Test
-    fun `calibration is refused in flight`() {
-        assertEquals("flying", setupBlockedReason(component(), armed = false, flying = true, isRover = false))
-    }
-
-    @Test
-    fun `armed is reported before flying when both are true`() {
-        assertEquals("armed", setupBlockedReason(component(), armed = true, flying = true, isRover = false))
-    }
-
-    @Test
-    fun `a component that permits it is allowed while armed`() {
-        assertEquals(
-            null,
-            setupBlockedReason(component(allowArmed = true), armed = true, flying = false, isRover = false),
-        )
-    }
-
-    @Test
-    fun `a rover is never blocked for flying, matching the desktop`() {
-        assertEquals(
-            null,
-            setupBlockedReason(component(), armed = false, flying = true, isRover = true),
-        )
-    }
-
-    @Test
-    fun `a rover is still blocked while armed`() {
-        assertEquals(
-            "armed",
-            setupBlockedReason(component(), armed = true, flying = false, isRover = true),
-        )
-    }
 }
