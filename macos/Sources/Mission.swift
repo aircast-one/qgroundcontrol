@@ -1149,7 +1149,12 @@ final class MissionStore: ObservableObject, Probeable, WriteReporting {
         case "removeAll":
             removeAll()
         case "select":
-            select(sequence: Int(args["sequence"] ?? "") ?? -1)
+            let wanted = Int(args["sequence"] ?? "") ?? -1
+            guard items.contains(where: { $0.sequence == wanted }) else {
+                return ["ok": false, "error": "no item with that sequence",
+                        "sequences": items.map(\.sequence)]
+            }
+            select(sequence: wanted)
         case "remove":
             guard let target = items.first(where: { $0.sequence == Int(args["sequence"] ?? "") ?? -1 }) else {
                 return ["ok": false, "error": "no item with that sequence"]

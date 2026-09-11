@@ -207,6 +207,12 @@ def comparisons():
          sum(1 for item in items["items"] if item["coordinate"])),
         ("legs the vehicle flies", head["map"]["routeLegs"], flown_legs(items["items"])),
         ("rows marked never flown to", head["unreached"], unreached_after_route(items["items"])),
+        # The head reads the selection from the view's own index; this asks the OTHER field the
+        # core serves for it, the per-item flag, so the two sides come from different places and
+        # the comparison can actually differ. Both replaced a per-item "current" the head went on
+        # reading after it was renamed, which left nothing selected and no test noticing.
+        ("the selected row", head["selected"],
+         next((item["sequence"] for item in items["items"] if item.get("selected")), -1)),
         ("plan is ready to save", head["readyToSave"], plan["readiness"]["ready"]),
         ("why it is not ready", head["notReadyReason"], plan["readiness"]["reason"]),
         ("plan is dirty", head["dirty"], plan["dirty"]),
