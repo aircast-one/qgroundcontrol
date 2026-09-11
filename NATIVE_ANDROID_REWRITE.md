@@ -928,9 +928,16 @@ accepts, which is also better on its own terms: a bottom sheet that opens with n
 The coupling this buys is invisible and worth knowing: `PLAN_ITEMS_HEADING` in Kotlin and the literal
 in `whatsunder.py` must stay in step and nothing enforces it.
 
-**One finding from the same review is not fixed.** The Plan tab spends 21% of a portrait screen on
-Battery, Sats, HDOP and RC — telemetry the planning task does not use — above a map that gets 44%. That
-is a change to the shell's header, shared by all six tabs, not to the map module.
+**One finding from the same review is withdrawn, because I measured it wrong.** I wrote that the Plan
+tab spends "21% of a portrait screen on Battery, Sats, HDOP and RC — telemetry the planning task does
+not use". The 21% is the whole header down to the map: the vehicle title and flight-mode line (~130 px),
+the status strip (~110 px), and the Plan tab's own File row (~70 px) of 2280. **The telemetry strip is
+about 5%**, and the rest is the vehicle's identity and the tab's own chrome, neither of which is
+telemetry the task ignores. Reclaiming 5% is not worth a per-tab conditional in the shell.
+
+Same error as the ones this document already records twice: a measurement that does not separate the
+thing being blamed from what sits next to it. It came from reading a screenshot by eye rather than from
+the node positions, which were available the whole time.
 
 ### A guard that failed open for six hours
 
