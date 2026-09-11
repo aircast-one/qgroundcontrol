@@ -5,7 +5,7 @@ use crate::router::Backend;
 
 pub const DEPS: &[&str] = &["plan.missionController.missionItemCount", "plan.missionController.containsItems", "plan.dirty", "vehicles.activeVehicleAvailable", "plan.missionController@recalcTerrainProfile"];
 
-const FIELDS: &str = "specifiesCoordinate,distanceFromStart,amslEntryAlt,terrainAltitude,terrainCollision,sequenceNumber,complexDistance";
+const FIELDS: &str = "specifiesCoordinate,specifiesAltitudeOnly,distanceFromStart,amslEntryAlt,terrainAltitude,terrainCollision,sequenceNumber,complexDistance";
 
 #[derive(Debug, PartialEq, Clone)]
 pub struct Point {
@@ -54,7 +54,7 @@ pub fn points(model: &Value) -> Vec<Point> {
         .map(|elements| {
             elements
                 .iter()
-                .filter(|e| e.get("specifiesCoordinate").and_then(Value::as_bool).unwrap_or(false))
+                .filter(|e| ["specifiesCoordinate", "specifiesAltitudeOnly"].iter().any(|key| e.get(key).and_then(Value::as_bool).unwrap_or(false)))
                 .filter_map(|e| {
                     let number = |key: &str| e.get(key).and_then(Value::as_f64).filter(|v| v.is_finite());
                     Some(Point {
@@ -265,6 +265,22 @@ mod tests {
         assert_eq!(listed.len(), 2);
         assert_eq!(listed[1].sequence, 3);
         assert!(listed[1].collision);
+    }
+
+    #[test]
+    fn a_takeoff_that_states_only_a_height_is_still_a_height_the_profile_draws() {
+        let model = json!({ "elements": [
+            { "specifiesCoordinate": true, "sequenceNumber": 0, "distanceFromStart": 0.0, "amslEntryAlt": 100.0, "terrainAltitude": 100.0 },
+            { "specifiesCoordinate": false, "specifiesAltitudeOnly": true, "sequenceNumber": 1, "distanceFromStart": 0.0, "amslEntryAlt": 150.0, "terrainAltitude": 100.0 },
+            { "specifiesCoordinate": true, "sequenceNumber": 2, "distanceFromStart": 500.0, "amslEntryAlt": 150.0, "terrainAltitude": 140.0 },
+        ] });
+        let listed = points(&model);
+        assert_eq!(listed.iter().map(|p| p.sequence).collect::<Vec<_>>(), vec![0, 1, 2], "ArduPilot declares MAV_CMD_NAV_TAKEOFF specifiesCoordinate false and specifiesAltitudeOnly true, so filtering on a coordinate alone drops the climb from the profile on every APM plan");
+        assert_eq!(listed[1].distance, 0.0, "the climb covers no ground, so it shares the launch point's place on the axis rather than being given width it does not have");
+        assert_eq!(listed[1].mission_altitude, 150.0);
+
+        let at_launch: Vec<f64> = listed.iter().filter(|p| p.distance == 0.0).map(|p| p.mission_altitude).collect();
+        assert_eq!(at_launch, vec![100.0, 150.0], "two heights at one place is what a vertical climb is; without the second the head interpolates from the ground straight to the first waypoint and draws a diagonal the aircraft never flies");
     }
 }
 
