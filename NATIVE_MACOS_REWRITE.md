@@ -1933,3 +1933,36 @@ It enumerates `qsTr(...)` strings out of one QML file. That finds menu items and
 will not find an affordance whose label is composed, whose control carries no text, or that
 lives in a file `PlanView.qml` merely instantiates. So this is evidence that the actions with
 visible labels are covered, and it is not an exhaustive inventory of the QML view's behaviour.
+
+### What the core's four new Qt properties mean here: one adoption declined, one sweep clean (2026-09-11)
+
+`ef98b8fee` reaches four things the reflection bridge could not read before. Checked each
+against this head rather than waiting to be told.
+
+**`MissionManager::currentIndex` — reachable now, deliberately not adopted.** It is the item the
+vehicle is *executing*, as distinct from the plan editor's selection, and `27cf4ed97` recorded
+that no head could read it at all. Taking it would build a capability rather than replace a
+derivation, and with no aircraft connected there is no way to see it move, so it would ship
+unrendered and unverified. That is the same call already made for `openable`/`blockedReason` on
+`view.setup`. Worth having when a vehicle exists; not before.
+
+**`Vehicle::flightModeIds` — the right fix for a class this head turns out not to have.** Mode
+names are `tr()` strings, so anything keying on one breaks where it is translated; the ids are
+the stable identity. This head compares mode names in exactly two places, `FlyOverlays.keepsGoto`
+and its caller in `MapClick`, and both are safe for the reason the rule predicts: the two sides
+come from the same table. `Vehicle::flightMode()` calls `_firmwarePlugin->flightMode(base,
+custom)`, and `PX4FirmwarePlugin::gotoFlightMode()` returns
+`_modeEnumToString.value(AUTO_LOITER)` from the same `_modeEnumToString` — APM's routes through
+`guidedFlightMode()` to the same place. They translate together or not at all, which is the
+both-sides rule confirming a comparison rather than condemning one.
+
+Writing a mode by name (`vehicle.flightMode`) is the same shape: the name written came from
+`view.flightModes`, which came from that table, so it matches what QGC compares it against.
+
+**`additionalTimeDelay` is the core's own arithmetic** and reaches this head only as a figure in
+the summary, which the comparison tool already checks.
+
+Checked two levels into QGC rather than stopping at the Q_PROPERTY, because the pair problem is
+exactly two same-looking sources that turn out to differ. Noted in passing: `gotoFlightMode` is
+declared `CONSTANT`, so it has no notify signal — harmless here because this head reads it per
+reload and never watches it, but it belongs on the list of properties a watch cannot bind to.
