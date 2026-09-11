@@ -375,6 +375,50 @@ mod tests {
     }
 
     #[test]
+    fn a_wing_in_forward_flight_reads_the_wing_speed_limits_and_not_the_rotor_ones() {
+        struct Wing {
+            fixed_wing: bool,
+            fw_limits: bool,
+            mr_limits: bool,
+        }
+        impl Backend for Wing {
+            fn get(&self, _p: &str) -> String { String::new() }
+            fn get_fields(&self, path: &str, _f: &str) -> String {
+                match path {
+                    "vehicles" => json!({ "kind": "object", "activeVehicleAvailable": true }).to_string(),
+                    "vehicle" => json!({
+                        "kind": "object", "armed": true, "flying": true, "guidedModeSupported": true, "flightMode": "Guided",
+                        "fixedWing": self.fixed_wing, "haveFWSpeedLimits": self.fw_limits, "haveMRSpeedLimits": self.mr_limits,
+                        "px4Firmware": false, "apmFirmware": false,
+                    })
+                    .to_string(),
+                    _ => json!({ "kind": "object" }).to_string(),
+                }
+            }
+            fn set(&self, _p: &str, _v: &str) -> String { String::new() }
+            fn invoke(&self, _p: &str, _a: &str) -> String { json!({ "ok": true, "result": false }).to_string() }
+            fn watch(&self, _p: &[String]) {}
+        }
+        let offers = |backend: &Wing| {
+            guided_view(backend, &[])["actions"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .find(|action| action["id"] == "changeSpeed")
+                .map(|action| action["offer"].as_str().unwrap().to_string())
+                .unwrap_or_default()
+        };
+
+        // A wing in forward flight and a rotor have different speed limits and the vehicle reports
+        // them under different names. Swapping the two reads changed no assertion in the crate, so
+        // a wing could have been offered a speed change on the strength of a rotor's limits.
+        assert_eq!(offers(&Wing { fixed_wing: true, fw_limits: true, mr_limits: false }), "ready", "a wing with wing limits can be asked to change speed");
+        assert_eq!(offers(&Wing { fixed_wing: true, fw_limits: false, mr_limits: true }), "hidden", "a wing must not be offered a speed change because a rotor limit happens to be set");
+        assert_eq!(offers(&Wing { fixed_wing: false, fw_limits: false, mr_limits: true }), "ready", "and a rotor reads its own");
+        assert_eq!(offers(&Wing { fixed_wing: false, fw_limits: true, mr_limits: false }), "hidden");
+    }
+
+    #[test]
     fn in_flight_the_return_button_hides_while_returning_by_the_vehicles_own_mode_name() {
         let flying = GuidedState { armed: true, flying: true, speed_limits: true, ..ready_on_ground() };
         assert_eq!(offer_of(&flying, Action::Rtl), "ready");
