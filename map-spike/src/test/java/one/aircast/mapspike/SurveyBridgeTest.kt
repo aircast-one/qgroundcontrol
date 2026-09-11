@@ -1,9 +1,7 @@
 package one.aircast.mapspike
 
-import org.json.JSONArray
 import org.json.JSONObject
 import org.junit.Assert.assertEquals
-import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class SurveyBridgeTest {
@@ -12,24 +10,22 @@ class SurveyBridgeTest {
 
     private val threeCorners = listOf(point(41.0, 44.0), point(41.0, 44.1), point(41.1, 44.1))
 
-    private fun surveyElement(
+    private fun survey(
+        corners: List<String> = threeCorners,
         transects: List<String> = listOf(point(41.0, 44.0), point(41.0, 44.1)),
         shots: Int = 12,
-    ) = """{"isSurveyItem":true,"cameraShots":$shots,""" +
-        """"visualTransectPoints":[${transects.joinToString(",")}]}"""
+    ) = """{"kind":"survey","cameraShots":$shots,"geometry":{"shape":"area",""" +
+        """"vertices":[${corners.joinToString(",")}],""" +
+        """"transects":[${transects.joinToString(",")}]}}"""
 
-    private fun model(vararg elements: String) =
-        JSONObject("""{"kind":"object","elements":[${elements.joinToString(",")}]}""")
+    private fun plan(vararg items: String) =
+        JSONObject("""{"kind":"object","items":[${items.joinToString(",")}]}""")
 
-    private fun areaRead(corners: List<String> = threeCorners): (Int) -> JSONArray? =
-        { JSONArray("[${corners.joinToString(",")}]") }
-
-    private fun found(json: JSONObject?, corners: List<String> = threeCorners) =
-        SurveyBridge.surveysFrom(json, areaRead(corners))
+    private fun found(json: JSONObject?) = SurveyBridge.surveysFrom(json)
 
     @Test
     fun `a survey carries its area transects and shot count`() {
-        val surveys = found(model("""{"isSurveyItem":false}""", surveyElement()))
+        val surveys = found(plan("""{"kind":"settings"}""", survey()))
 
         assertEquals(1, surveys.size)
         assertEquals(1, surveys.single().index)
@@ -39,30 +35,28 @@ class SurveyBridgeTest {
     }
 
     @Test
-    fun `the area comes from its own read not from the listed element`() {
-        val element = """{"isSurveyItem":true,"visualTransectPoints":[],""" +
-            """"surveyAreaPolygon":{"path":[${threeCorners.joinToString(",")}]}}"""
-
-        assertEquals(0, SurveyBridge.surveysFrom(model(element)) { null }.size)
-    }
-
-    @Test
     fun `items that are not surveys are ignored`() {
-        assertEquals(0, found(model("""{"isSurveyItem":false}""", """{}""")).size)
+        assertEquals(0, found(plan("""{"kind":"waypoint"}""", """{"kind":"takeoff"}""")).size)
     }
 
     @Test
-    fun `a survey with neither area nor transects is not shown`() {
-        val empty = """{"isSurveyItem":true,"visualTransectPoints":[]}"""
+    fun `a survey the core gave no geometry is not shown`() {
+        assertEquals(0, found(plan("""{"kind":"survey","cameraShots":3}""")).size)
+    }
 
-        assertEquals(0, SurveyBridge.surveysFrom(model(empty)) { JSONArray("[]") }.size)
+    @Test
+    fun `transects that have not arrived yet leave the area drawable`() {
+        val surveys = found(plan(survey(transects = emptyList())))
+
+        assertEquals(3, surveys.single().area.size)
+        assertEquals(0, surveys.single().transects.size)
     }
 
     @Test
     fun `unusable points are dropped from the area and transects`() {
         val surveys = found(
-            model(
-                surveyElement(
+            plan(
+                survey(
                     transects = listOf(point(41.0, 44.0), point(0.0, 0.0), point(41.2, 44.2)),
                 ),
             ),
@@ -73,36 +67,20 @@ class SurveyBridgeTest {
 
     @Test
     fun `an area needs three corners before it is drawn`() {
-        val thin = listOf(point(41.0, 44.0), point(41.0, 44.1))
+        val thin = survey(corners = listOf(point(41.0, 44.0), point(41.0, 44.1)))
 
-        assertEquals(0, surveyAreaFeatures(found(model(surveyElement()), thin)).features()?.size)
+        assertEquals(0, surveyAreaFeatures(found(plan(thin))).features()?.size)
     }
 
     @Test
     fun `transects need two points before they are drawn`() {
-        val single = surveyElement(transects = listOf(point(41.0, 44.0)))
+        val single = survey(transects = listOf(point(41.0, 44.0)))
 
-        assertEquals(0, surveyTransectFeatures(found(model(single))).features()?.size)
+        assertEquals(0, surveyTransectFeatures(found(plan(single))).features()?.size)
     }
 
     @Test
-    fun `an absent model yields nothing`() {
+    fun `an absent plan yields nothing`() {
         assertEquals(0, found(null).size)
-    }
-
-    @Test
-    fun `a survey reads its grid angle from the fact list`() {
-        val element = """{"isSurveyItem":true,"visualTransectPoints":[${point(41.0, 44.0)},${point(41.0, 44.1)}],""" +
-            """"facts":[{"name":"GridAngle","value":45.0}]}"""
-
-        assertEquals(45.0, found(model(element)).single().gridAngle, 1e-9)
-    }
-
-    @Test
-    fun `a survey with no grid angle fact reports it as unknown`() {
-        val element = """{"isSurveyItem":true,"visualTransectPoints":[${point(41.0, 44.0)},${point(41.0, 44.1)}],""" +
-            """"facts":[{"name":"Something","value":1.0}]}"""
-
-        assertTrue(found(model(element)).single().gridAngle.isNaN())
     }
 }

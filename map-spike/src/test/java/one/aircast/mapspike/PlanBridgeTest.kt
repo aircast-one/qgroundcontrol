@@ -16,17 +16,17 @@ class PlanBridgeTest {
         current: Boolean = false,
         withCoordinate: Boolean = true,
     ): String {
-        val coordinate = if (withCoordinate) {
+        val coordinate = if (withCoordinate && specifies) {
             ""","coordinate":{"latitude":$latitude,"longitude":$longitude}"""
         } else {
             ""
         }
-        return """{"specifiesCoordinate":$specifies,"sequenceNumber":$sequence,""" +
-            """"commandName":"$command","isCurrentItem":$current$coordinate}"""
+        return """{"flownLeg":$specifies,"sequence":$sequence,""" +
+            """"name":"$command","current":$current$coordinate}"""
     }
 
     private fun model(vararg elements: String) =
-        JSONObject("""{"kind":"object","elements":[${elements.joinToString(",")}]}""")
+        JSONObject("""{"kind":"object","items":[${elements.joinToString(",")}]}""")
 
     @Test
     fun `items carry their sequence command and position`() {
@@ -85,21 +85,21 @@ class PlanBridgeTest {
     }
 
     @Test
-    fun `an item reads its altitude from the fact list`() {
-        val withAltitude = """{"specifiesCoordinate":true,"coordinate":{"latitude":41.0,"longitude":44.0},""" +
-            """"facts":[{"name":"Altitude","value":75.0}]}"""
+    fun `an item reads the altitude the core resolved for it`() {
+        val withAltitude = """{"flownLeg":true,"coordinate":{"latitude":41.0,"longitude":44.0},""" +
+            """"altitude":75.0}"""
 
         assertEquals(75.0, missionItems(model(withAltitude)).single().altitude, 1e-9)
     }
 
     @Test
-    fun `an item with no altitude fact reports it as unknown`() {
-        val plain = """{"specifiesCoordinate":true,"coordinate":{"latitude":41.0,"longitude":44.0}}"""
-        val otherFact = """{"specifiesCoordinate":true,"coordinate":{"latitude":41.0,"longitude":44.0},""" +
-            """"facts":[{"name":"Radius","value":5.0}]}"""
+    fun `an item the core gave no altitude reports it as unknown`() {
+        val plain = """{"flownLeg":true,"coordinate":{"latitude":41.0,"longitude":44.0}}"""
+        val nulled = """{"flownLeg":true,"coordinate":{"latitude":41.0,"longitude":44.0},""" +
+            """"altitude":null}"""
 
         assertTrue(missionItems(model(plain)).single().altitude.isNaN())
-        assertTrue(missionItems(model(otherFact)).single().altitude.isNaN())
+        assertTrue(missionItems(model(nulled)).single().altitude.isNaN())
     }
 
     @Test

@@ -79,9 +79,9 @@ class MissionPathTest {
     @Test
     fun `the rule is the same one the distance uses`() {
         val takeoffFirst = JSONObject(
-            """{"kind":"object","elements":[{},{"isTakeoffItem":true},{}]}""",
+            """{"kind":"object","items":[{},{"kind":"takeoff"},{}]}""",
         )
-        val waypointFirst = JSONObject("""{"kind":"object","elements":[{},{},{}]}""")
+        val waypointFirst = JSONObject("""{"kind":"object","items":[{},{},{}]}""")
 
         assertTrue(linksStartToHome(takeoffFirst))
         assertFalse(linksStartToHome(waypointFirst))

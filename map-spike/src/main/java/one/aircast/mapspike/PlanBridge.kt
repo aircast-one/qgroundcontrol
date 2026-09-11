@@ -6,67 +6,41 @@ import org.mavlink.qgroundcontrol.QGCBridge
 
 const val PLAN_ROOT = "plan"
 const val PLAN_ITEMS = "$PLAN_ROOT.missionController.visualItems"
+const val PLAN_VIEW = "view.missionItems(geometry)"
 
-fun planItemCount(json: JSONObject?): Int =
-    ((json?.optJSONArray("elements")?.length() ?: 0) - 1).coerceAtLeast(0)
+const val KIND_TAKEOFF = "takeoff"
+const val KIND_SURVEY = "survey"
 
 const val MAV_CMD_NAV_RETURN_TO_LAUNCH = 20
 
+internal fun planItems(json: JSONObject?): JSONArray? = json?.optJSONArray("items")
+
+fun planItemCount(json: JSONObject?): Int =
+    ((planItems(json)?.length() ?: 0) - 1).coerceAtLeast(0)
+
 fun linksStartToHome(json: JSONObject?): Boolean =
-    json?.optJSONArray("elements")?.optJSONObject(1)?.optBoolean("isTakeoffItem") == true
-
-fun complexIndices(json: JSONObject?): List<Int> {
-    val elements = json?.optJSONArray("elements") ?: return emptyList()
-
-    return (1 until elements.length()).filter { index ->
-        elements.optJSONObject(index)
-            ?.optDouble("complexDistance", 0.0)
-            ?.let { it > 0.0 && !it.isNaN() } == true
-    }
-}
-
-fun complexKey(json: JSONObject?, index: Int): String {
-    val element = json?.optJSONArray("elements")?.optJSONObject(index) ?: return ""
-    val coordinate = element.optJSONObject("coordinate")
-
-    return listOf(
-        coordinate?.optDouble("latitude", Double.NaN),
-        coordinate?.optDouble("longitude", Double.NaN),
-        element.optDouble("complexDistance", 0.0),
-    ).joinToString(",")
-}
+    planItems(json)?.optJSONObject(1)?.optString("kind") == KIND_TAKEOFF
 
 fun planShape(json: JSONObject?): List<String> {
-    val elements = json?.optJSONArray("elements") ?: return emptyList()
-    val endsAfter = routeEndsAfter(elements)
+    val items = planItems(json) ?: return emptyList()
+    val endsAfter = routeEndsAfter(items)
 
-    val named = (1 until elements.length())
-        .mapNotNull { index -> elements.optJSONObject(index) }
+    val named = (1 until items.length())
+        .mapNotNull { index -> items.optJSONObject(index) }
         .mapNotNull { element ->
             when {
-                element.optBoolean("isTakeoffItem") -> "takeoff"
+                element.optString("kind") == KIND_TAKEOFF -> "takeoff"
                 element.optInt("command") == MAV_CMD_NAV_RETURN_TO_LAUNCH -> "RTL"
                 else -> null
             }
         }
         .distinct()
 
-    val stranded = (1 until elements.length()).count { it > endsAfter }
+    val stranded = (1 until items.length()).count { it > endsAfter }
 
     return named + listOfNotNull(
         stranded.takeIf { it > 0 }?.let { "$it after the landing" },
     )
-}
-
-fun factValue(element: JSONObject, name: String): Double {
-    val facts = element.optJSONArray("facts") ?: return Double.NaN
-    for (index in 0 until facts.length()) {
-        val fact = facts.optJSONObject(index) ?: continue
-        if (fact.optString("name").equals(name, ignoreCase = true)) {
-            return fact.optDouble("value", Double.NaN)
-        }
-    }
-    return Double.NaN
 }
 
 data class MissionItem(
@@ -81,59 +55,43 @@ data class MissionItem(
     val routed: Boolean = true,
 )
 
-fun isFlownLeg(element: JSONObject?): Boolean =
-    element != null &&
-        element.optBoolean("specifiesCoordinate") &&
-        !element.optBoolean("isStandaloneCoordinate") &&
-        !element.optBoolean("isIncomplete")
-
-fun routeEndsAfter(elements: JSONArray?): Int =
-    (0 until (elements?.length() ?: 0))
-        .firstOrNull { index ->
-            elements?.optJSONObject(index)?.let { element ->
-                element.optBoolean("isLandCommand") ||
-                    element.optInt("command") == MAV_CMD_NAV_RETURN_TO_LAUNCH
-            } == true
-        }
+fun routeEndsAfter(items: JSONArray?): Int =
+    (0 until (items?.length() ?: 0))
+        .firstOrNull { index -> items?.optJSONObject(index)?.optBoolean("endsRoute") == true }
         ?: Int.MAX_VALUE
 
-fun missionItems(json: JSONObject?): List<MissionItem> {
-    val elements = json?.optJSONArray("elements") ?: return emptyList()
-    val endsAfter = routeEndsAfter(elements)
-    return (0 until elements.length()).mapNotNull { index ->
-        val element = elements.optJSONObject(index) ?: return@mapNotNull null
-        if (!element.optBoolean("specifiesCoordinate")) return@mapNotNull null
+internal fun placed(element: JSONObject, key: String): TrackPoint? {
+    val at = element.optJSONObject(key) ?: return null
+    val latitude = at.optDouble("latitude", Double.NaN)
+    val longitude = at.optDouble("longitude", Double.NaN)
+    return TrackPoint(latitude, longitude).takeIf { isPlottable(latitude, longitude) }
+}
 
-        val coordinate = element.optJSONObject("coordinate") ?: return@mapNotNull null
-        val latitude = coordinate.optDouble("latitude", Double.NaN)
-        val longitude = coordinate.optDouble("longitude", Double.NaN)
-        if (!isPlottable(latitude, longitude)) return@mapNotNull null
+fun missionItems(json: JSONObject?): List<MissionItem> {
+    val items = planItems(json) ?: return emptyList()
+    val endsAfter = routeEndsAfter(items)
+    return (0 until items.length()).mapNotNull { index ->
+        val element = items.optJSONObject(index) ?: return@mapNotNull null
+        val at = placed(element, "coordinate") ?: return@mapNotNull null
 
         MissionItem(
             index = index,
-            sequence = element.optInt("sequenceNumber", index),
-            latitude = latitude,
-            longitude = longitude,
-            command = element.optString("commandName"),
-            current = element.optBoolean("isCurrentItem"),
-            altitude = factValue(element, "Altitude"),
-            routed = isFlownLeg(element) && index <= endsAfter,
-            exit = element.optJSONObject("exitCoordinate")?.let { at ->
-                val exitLatitude = at.optDouble("latitude", Double.NaN)
-                val exitLongitude = at.optDouble("longitude", Double.NaN)
-                TrackPoint(exitLatitude, exitLongitude)
-                    .takeIf {
-                        isPlottable(exitLatitude, exitLongitude) &&
-                            (exitLatitude != latitude || exitLongitude != longitude)
-                    }
-            },
+            sequence = element.optInt("sequence", index),
+            latitude = at.latitude,
+            longitude = at.longitude,
+            command = element.optString("name"),
+            current = element.optBoolean("current"),
+            altitude = element.optDouble("altitude", Double.NaN),
+            routed = element.optBoolean("flownLeg") && index <= endsAfter,
+            exit = placed(element, "exitCoordinate")
+                ?.takeIf { it.latitude != at.latitude || it.longitude != at.longitude },
         )
     }
 }
 
 object PlanBridge {
     fun rawItems(): JSONObject? =
-        runCatching { JSONObject(QGCBridge.getFields(PLAN_ITEMS, "*")) }.getOrNull()
+        runCatching { JSONObject(QGCBridge.get(PLAN_VIEW)) }.getOrNull()
 
     fun loadFromVehicle() = invoke("$PLAN_ROOT.loadFromVehicle")
 

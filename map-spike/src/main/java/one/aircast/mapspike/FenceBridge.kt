@@ -4,6 +4,15 @@ import org.json.JSONArray
 import org.json.JSONObject
 import org.mavlink.qgroundcontrol.QGCBridge
 
+fun factValue(element: JSONObject, name: String): Double {
+    val facts = element.optJSONArray("facts") ?: return Double.NaN
+    return (0 until facts.length())
+        .mapNotNull { facts.optJSONObject(it) }
+        .firstOrNull { it.optString("name").equals(name, ignoreCase = true) }
+        ?.optDouble("value", Double.NaN)
+        ?: Double.NaN
+}
+
 const val FENCE_ROOT = "$PLAN_ROOT.geoFenceController"
 const val RALLY_ROOT = "$PLAN_ROOT.rallyPointController"
 

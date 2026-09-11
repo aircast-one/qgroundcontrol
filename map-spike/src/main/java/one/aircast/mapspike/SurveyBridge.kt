@@ -11,7 +11,6 @@ data class Survey(
     val area: List<TrackPoint>,
     val transects: List<TrackPoint>,
     val cameraShots: Int,
-    val gridAngle: Double = Double.NaN,
 )
 
 private fun points(array: JSONArray?): List<TrackPoint> {
@@ -30,32 +29,33 @@ fun nextGridAngle(current: Double): Double =
     ((if (current.isNaN()) 0.0 else current) + GRID_STEP_DEGREES) % 360.0
 
 object SurveyBridge {
-    fun surveysFrom(json: JSONObject?, area: (Int) -> JSONArray? = ::polygonPath): List<Survey> {
-        val elements = json?.optJSONArray("elements") ?: return emptyList()
+    fun surveysFrom(json: JSONObject?): List<Survey> {
+        val items = planItems(json) ?: return emptyList()
 
-        return (0 until elements.length()).mapNotNull { index ->
-            val element = elements.optJSONObject(index) ?: return@mapNotNull null
-            if (!element.optBoolean("isSurveyItem")) return@mapNotNull null
+        return (0 until items.length()).mapNotNull { index ->
+            val element = items.optJSONObject(index) ?: return@mapNotNull null
+            if (element.optString("kind") != KIND_SURVEY) return@mapNotNull null
+            val geometry = element.optJSONObject("geometry") ?: return@mapNotNull null
 
-            val transects = points(element.optJSONArray("visualTransectPoints"))
-            val corners = points(area(index))
-            if (transects.isEmpty() && corners.isEmpty()) return@mapNotNull null
+            val area = points(geometry.optJSONArray("vertices"))
+            val transects = points(geometry.optJSONArray("transects"))
+            if (transects.isEmpty() && area.isEmpty()) return@mapNotNull null
 
             Survey(
                 index = index,
-                area = corners,
+                area = area,
                 transects = transects,
                 cameraShots = element.optInt("cameraShots"),
-                gridAngle = factValue(element, "GridAngle"),
             )
         }
     }
 
-    private fun polygonPath(itemIndex: Int): JSONArray? =
-        runCatching {
-            JSONObject(QGCBridge.get("$PLAN_ITEMS.$itemIndex.surveyAreaPolygon"))
-                .optJSONArray("path")
-        }.getOrNull()
+    fun rotateGrid(itemIndex: Int): Boolean {
+        val current = runCatching {
+            JSONObject(QGCBridge.get("$PLAN_ITEMS.$itemIndex.gridAngle")).optDouble("value", Double.NaN)
+        }.getOrDefault(Double.NaN)
+        return setGridAngle(itemIndex, nextGridAngle(current))
+    }
 
     private fun altitudePath(itemIndex: Int) =
         "$PLAN_ITEMS.$itemIndex.cameraCalc.distanceToSurface"

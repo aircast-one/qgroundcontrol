@@ -7,9 +7,9 @@ import org.junit.Test
 class WaypointSelectionTest {
     private fun items() = missionItems(
         org.json.JSONObject(
-            """{"kind":"object","elements":[""" +
-                """{"specifiesCoordinate":true,"coordinate":{"latitude":41.0,"longitude":44.0}},""" +
-                """{"specifiesCoordinate":true,"coordinate":{"latitude":41.1,"longitude":44.1}}]}""",
+            """{"kind":"object","items":[""" +
+                """{"flownLeg":true,"coordinate":{"latitude":41.0,"longitude":44.0}},""" +
+                """{"flownLeg":true,"coordinate":{"latitude":41.1,"longitude":44.1}}]}""",
         ),
     )
 

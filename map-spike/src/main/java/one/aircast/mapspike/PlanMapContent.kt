@@ -51,6 +51,7 @@ import androidx.compose.ui.unit.dp
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
+import org.json.JSONObject
 import org.mavlink.qgroundcontrol.QGCBridge
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.withContext
@@ -207,8 +208,9 @@ internal fun MapSpikeScreen(
             val nextRally = FenceBridge.rally()
             val nextCircles = FenceBridge.circles()
             val nextSurveys = SurveyBridge.surveysFrom(plan)
-            SegmentBridge.beginPoll(plan)
-            val nextProfile = terrainProfile(plan, SegmentBridge::forItem)
+            val nextProfile = terrainProfile(
+                runCatching { JSONObject(QGCBridge.get(TERRAIN_VIEW)) }.getOrNull(),
+            )
             withContext(Dispatchers.Main) {
                 items = nextItems
                 itemCount = nextItemCount
@@ -529,7 +531,7 @@ internal fun MapSpikeScreen(
                         survey?.let {
                             TextButton(onClick = {
                                 onBridge("Rotating grid") {
-                                    SurveyBridge.setGridAngle(it.index, nextGridAngle(it.gridAngle))
+                                    SurveyBridge.rotateGrid(it.index)
                                 }
                             }) { Text("Rotate") }
                         }

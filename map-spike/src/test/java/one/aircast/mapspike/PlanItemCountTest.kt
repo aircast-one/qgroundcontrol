@@ -6,7 +6,7 @@ import org.junit.Test
 
 class PlanItemCountTest {
     private fun model(count: Int) =
-        JSONObject("""{"kind":"object","elements":[${List(count) { "{}" }.joinToString(",")}]}""")
+        JSONObject("""{"kind":"object","items":[${List(count) { "{}" }.joinToString(",")}]}""")
 
     @Test
     fun `the settings item is not something the pilot added`() {
@@ -23,10 +23,10 @@ class PlanItemCountTest {
     @Test
     fun `a takeoff and a return to launch are named by flag and command`() {
         val plan = JSONObject(
-            """{"kind":"object","elements":[{},""" +
-                """{"isTakeoffItem":true,"commandName":"Start"},""" +
-                """{"command":20,"commandName":"irrelevant"},""" +
-                """{"specifiesCoordinate":true}]}""",
+            """{"kind":"object","items":[{},""" +
+                """{"kind":"takeoff","name":"Start"},""" +
+                """{"kind":"command","command":20,"endsRoute":true,"name":"irrelevant"},""" +
+                """{"kind":"waypoint","flownLeg":true}]}""",
         )
 
         assertEquals(listOf("takeoff", "RTL", "1 after the landing"), planShape(plan))
@@ -41,8 +41,8 @@ class PlanItemCountTest {
     @Test
     fun `an item added after the landing is named as such`() {
         val plan = JSONObject(
-            """{"kind":"object","elements":[{},{"specifiesCoordinate":true},""" +
-                """{"command":20},{"specifiesCoordinate":true},{"specifiesCoordinate":true}]}""",
+            """{"kind":"object","items":[{},{"kind":"waypoint","flownLeg":true},""" +
+                """{"kind":"command","command":20,"endsRoute":true},{"kind":"waypoint","flownLeg":true},{"kind":"waypoint","flownLeg":true}]}""",
         )
 
         assertEquals(listOf("RTL", "2 after the landing"), planShape(plan))
@@ -51,7 +51,7 @@ class PlanItemCountTest {
     @Test
     fun `a plan that ends at its landing strands nothing`() {
         val plan = JSONObject(
-            """{"kind":"object","elements":[{},{"specifiesCoordinate":true},{"command":20}]}""",
+            """{"kind":"object","items":[{},{"kind":"waypoint","flownLeg":true},{"kind":"command","command":20,"endsRoute":true}]}""",
         )
 
         assertEquals(listOf("RTL"), planShape(plan))

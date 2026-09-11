@@ -33,8 +33,8 @@ class WaypointColourTest {
     fun `every item carries a colour so the layer never reads a missing property`() {
         val items = missionItems(
             org.json.JSONObject(
-                """{"kind":"object","elements":[{"specifiesCoordinate":true,""" +
-                    """"coordinate":{"latitude":41.0,"longitude":44.0},"commandName":"Takeoff"}]}""",
+                """{"kind":"object","items":[{"flownLeg":true,""" +
+                    """"coordinate":{"latitude":41.0,"longitude":44.0},"name":"Takeoff"}]}""",
             ),
         )
 
