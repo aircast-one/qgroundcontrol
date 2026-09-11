@@ -2440,6 +2440,18 @@ func checkCameraControlMatchesTheCore() {
     expect(!recording.offersShutter && recording.offersRecord,
            "and one property decides that for both the store's guard and the view's condition, "
            + "so a press cannot reach a camera the core says cannot take it")
+
+    // Every other assertion about offersShutter says it is false. Mutating it to a constant false
+    // fired none of them: nothing showed the shutter is ever offered at all, so a head that could
+    // never take a photo passed the suite. offersRecord beside it was asserted true and caught,
+    // and its coverage read as covering both.
+    let photographing = CameraControl(["present": true as NSNumber, "title": "Camera",
+                                       "canPhoto": true as NSNumber,
+                                       "canRecord": false as NSNumber])
+    expect(photographing.offersShutter,
+           "a camera the core says can take a photo offers its shutter -- a guard shown only to "
+           + "refuse has never been shown to let anything through")
+    expect(!photographing.offersRecord, "and offers no record button it was not given")
     expect(recording.isRecording, "and it says Stop rather than Record while running")
 
     let absent = CameraControl(["present": false as NSNumber, "title": "Camera",

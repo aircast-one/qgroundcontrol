@@ -17,5 +17,4 @@ struct BridgeWatchers {
         (watched[client] ?? []).joined(separator: BridgeWatchers.separator)
     }
 
-    var isEmpty: Bool { watched.isEmpty }
 }
