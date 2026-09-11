@@ -199,8 +199,10 @@ internal fun MapSpikeScreen(
     var centreRequest by remember { mutableIntStateOf(0) }
     var centreOn by remember { mutableStateOf<TrackPoint?>(null) }
 
-    LaunchedEffect(selected, allItems) {
-        val sequence = selectionSequence(selected, allItems) ?: return@LaunchedEffect
+    val selectedSequence = selectionSequence(selected, allItems)
+
+    LaunchedEffect(selectedSequence) {
+        val sequence = selectedSequence ?: return@LaunchedEffect
         withContext(Dispatchers.Default) { PlanBridge.selectSequence(sequence) }
     }
 
@@ -395,6 +397,7 @@ internal fun MapSpikeScreen(
                             else -> {
                                 loadArmed = false
                                 busy = "Downloading from vehicle"
+                                selected = null
                                 scope.launch {
                                     val outcome = withContext(Dispatchers.Default) {
                                         uploadOutcome(PlanBridge.loadFromVehicle())
