@@ -5517,6 +5517,9 @@
                 "warning",
                 "error"
             ],
+            "view.messages.order": [
+                "oldestFirst"
+            ],
             "view.missionKinds.kinds[].geometry": [
                 "area",
                 "line",
@@ -5578,6 +5581,9 @@
                 "Flight Behavior",
                 "Remote Support",
                 "Parameters"
+            ],
+            "view.track.order": [
+                "oldestFirst"
             ],
             "view.vibration.axes[].severity": [
                 "normal",

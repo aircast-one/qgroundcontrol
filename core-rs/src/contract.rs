@@ -13,6 +13,8 @@ fn routine_ids_or_null() -> Vec<Value> {
     routine_ids().iter().map(|id| json!(id)).chain(std::iter::once(Value::Null)).collect()
 }
 
+pub const ORDERS: [&str; 1] = ["oldestFirst"];
+
 pub fn enumerations() -> Value {
     json!({
         "view.guidedActions.actions[].offer": ["hidden", "ready", "blocked"],
@@ -39,6 +41,8 @@ pub fn enumerations() -> Value {
         "view.altitudeModes.modes[].raw": [0, 1, 2, 3, 4],
         "view.setup.groups[].pages[].name": crate::setup::PAGES.iter().flat_map(|(_, pages)| pages.iter().copied()).collect::<Vec<_>>(),
         "view.messages.items[].level": ["normal", "warning", "error"],
+        "view.messages.order": ORDERS,
+        "view.track.order": ORDERS,
         "view.coreCalibration.calibration.running": routine_ids_or_null(),
         "view.coreCalibration.calibration.last": routine_ids_or_null(),
         "view.coreCalibration.calibration.routines[].id": routine_ids(),
@@ -88,5 +92,8 @@ mod tests {
         let listed_states: std::collections::BTreeSet<&str> = listed["view.flyState.state"].as_array().unwrap().iter().map(|s| s.as_str().unwrap()).collect();
         assert_eq!(listed_states, reachable, "the contract lists the states the view can answer, not a hand-kept parallel list");
         assert!(listed["view.messages.items[].level"].as_array().unwrap().iter().all(|level| crate::messages::LEVELS.contains(&level.as_str().unwrap())));
+        ["view.messages.order", "view.track.order"].iter().for_each(|path| {
+            assert_eq!(listed[path], json!([crate::view::ORDER]), "{path} is the field whose whole purpose is to stop a head guessing which end is newest, so it is the one that most needs pinning");
+        });
     }
 }
