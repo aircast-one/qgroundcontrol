@@ -60,12 +60,69 @@ def build_plan():
     time.sleep(TERRAIN_SETTLE_SECONDS)
 
 
+# The head formats an altitude for the operator ("75.0 m"); the core answers the number. A
+# comparison that skipped every formatted value would skip most of what the window shows.
+#
+# Feet are converted rather than skipped. Returning None for them would have made the head look
+# like it had no altitude and reported a disagreement against every item, on nothing worse than
+# the operator's units setting.
+# An unreadable value returns something that equals nothing, never the None that means the item
+# has no altitude. Collapsing those two makes a value this cannot parse agree with a core that
+# answers null, which is a comparison reporting success about a number it never read.
+FEET_PER_METRE = 3.2808399
+ABSENT = None
+
+
+def metres(shown):
+    figure, _, unit = str(shown or "").partition(" ")
+    if not figure or figure == "\u2014":
+        return ABSENT
+    try:
+        value = float(figure)
+    except ValueError:
+        return f"unreadable: {shown!r}"
+    if unit.startswith("m"):
+        return round(value, 1)
+    if unit.startswith("ft"):
+        return round(value / FEET_PER_METRE, 1)
+    return f"unknown unit: {shown!r}"
+
+
+# Per item, and by sequence rather than by position, so a list that gained or lost one reports
+# that rather than reporting every row after it as wrong.
+def item_comparisons(head_items, core_items):
+    mine = {item["seq"]: item for item in head_items}
+    theirs = {item["sequence"]: item for item in core_items}
+    # Keying by sequence drops a duplicate silently, and a list that quietly got shorter is how a
+    # comparison agrees about items it never looked at. Both sides of these two are counts from
+    # the same list, so they say so rather than borrowing the head-versus-core wording.
+    collapsed = [
+        (f"{side} list has one sequence number per item", f"{listed} items", f"{keyed} distinct")
+        for side, listed, keyed in (("head", len(head_items), len(mine)),
+                                    ("core", len(core_items), len(theirs)))
+        if listed != keyed
+    ]
+    checks = collapsed + [(f"item {seq} exists in both", seq in mine, seq in theirs)
+                          for seq in sorted(set(mine) | set(theirs))]
+    return checks + [
+        check
+        for seq in sorted(set(mine) & set(theirs))
+        for check in (
+            (f"item {seq} name", mine[seq]["command"], theirs[seq]["name"]),
+            (f"item {seq} has a position", mine[seq]["position"] != "\u2014",
+             theirs[seq]["coordinate"] is not None),
+            (f"item {seq} altitude in metres", metres(mine[seq]["altitude"]),
+             None if theirs[seq]["altitude"] is None else round(theirs[seq]["altitude"], 1)),
+        )
+    ]
+
+
 def comparisons():
     head = probe()["state"]
     core = {name: view(name) for name in ("plan", "missionSummary", "terrainProfile", "missionItems")}
     plan, summary, terrain, items = (core[name] for name in
                                      ("plan", "missionSummary", "terrainProfile", "missionItems"))
-    return core, [
+    return core, item_comparisons(head["items"], items["items"]) + [
         ("plan is ready to save", head["readyToSave"], plan["readiness"]["ready"]),
         ("why it is not ready", head["notReadyReason"], plan["readiness"]["reason"]),
         ("plan is dirty", head["dirty"], plan["dirty"]),
