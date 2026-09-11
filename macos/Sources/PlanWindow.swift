@@ -430,11 +430,11 @@ struct PlanInspector: View {
                             .help("Distance flown")
                             .layoutPriority(2)
                     }
-                    if let time = mission.summary.value(MissionSummary.time) {
-                        Label(time, systemImage: "clock")
-                            .help("How long the mission takes")
-                            .layoutPriority(2)
-                    }
+                    Label(mission.summary.timeText, systemImage: "clock")
+                        .help(mission.summary.value(MissionSummary.time) == nil
+                              ? MissionSummary.unknownTimeHelp
+                              : "How long the mission takes")
+                        .layoutPriority(2)
                     ForEach(mission.summary.extraRows) { row in
                         Text("\(row.label) \(row.value)").help(row.label)
                     }

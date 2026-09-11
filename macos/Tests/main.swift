@@ -1273,6 +1273,7 @@ func checkMissionItemKinds() {
     checkClearanceSentence()
     checkUnreachedItems()
     checkLegsSpelled()
+    checkUnknownMissionTime()
     checkOnlyAPlacedItemMoves()
     checkComplexGeometryInAnyLocale()
     checkSensorsComponentIsFoundByClass()
@@ -4331,6 +4332,26 @@ func checkUnreachedItems() {
     expect(MissionItem.route(past).count == MissionItem.route(endsLast).count,
            "and the legs drawn are unchanged by appending past the end, because both answers "
            + "come from one routeEnd rather than two copies of the same rule")
+}
+
+func checkUnknownMissionTime() {
+    func summary(_ rows: [[String: Any]]) -> MissionSummary {
+        MissionSummary(["available": true as NSNumber, "rows": rows, "reason": ""])
+    }
+
+    let known = summary([["label": "Distance", "value": "26.10 km"],
+                         ["label": "Time", "value": "1:27:24"]])
+    expect(known.timeText, "1:27:24",
+           "the controller's own answer is drawn unchanged when it has one")
+
+    let vtol = summary([["label": "Distance", "value": "26.10 km"]])
+    expect(vtol.describes,
+           "the fixture still has rows, without which the strip draws nothing at all and the "
+           + "assertion below would pass for the wrong reason")
+    expect(vtol.timeText, MissionSummary.unknown,
+           "a VTOL's speed changes at the transition, so the core declines rather than guessing "
+           + "-- and a chip that vanished instead would leave the operator unable to tell that "
+           + "from having missed it")
 }
 
 func checkLegsSpelled() {

@@ -54,6 +54,16 @@ struct MissionSummary: Equatable {
         rows.first { $0.label == label }?.value
     }
 
+    // Absent when the controller could not work it out: a VTOL's speed changes as the walk passes
+    // a transition item, so a single-speed answer is right before it and wrong after, and the core
+    // declines rather than guessing. Drawn as unknown instead of omitted, because a chip that
+    // simply vanishes leaves the operator unable to tell "not known" from "I did not look" -- the
+    // same reading every other fallback in this head already takes.
+    var timeText: String { value(MissionSummary.time) ?? MissionSummary.unknown }
+
+    static let unknown = "\u{2014}"
+    static let unknownTimeHelp = "How long the mission takes -- not known for this aircraft"
+
     var describes: Bool { available && !rows.isEmpty }
 
     // Everything the strip does not already show. Dedup was by label, which cannot see that a
