@@ -41,6 +41,12 @@ struct MissionItem: Identifiable, Equatable {
 
     var canMove: Bool { movable }
 
+    var altitudeReading: String {
+        specifiesAltitude || kind == MissionItem.settingsKind
+            ? altitudeText
+            : MissionItem.noAltitude
+    }
+
     var isLaunch: Bool { kind == MissionItem.takeoffKind || kind == MissionItem.settingsKind }
     var isSurveyItem: Bool { kind == MissionItem.surveyKind }
 

@@ -1274,6 +1274,7 @@ func checkMissionItemKinds() {
     checkUnreachedItems()
     checkLegsSpelled()
     checkTerrainMarkers()
+    checkAltitudeReading()
     checkAltitudeModePickerIsOffered()
     checkGroundDrawnFromKnownSamples()
     checkUnknownMissionTime()
@@ -4405,6 +4406,25 @@ func checkAltitudeModePickerIsOffered() {
            + "nothing selected and no way to tell it from a broken control")
     expect(!AltitudeMode.offersPicker(mode: 1, in: []),
            "and nothing is drawn when the core offers no modes at all")
+}
+
+func checkAltitudeReading() {
+    func item(_ kind: String, specifies: Bool, text: String) -> MissionItem {
+        MissionItem(view: ["index": 0 as NSNumber, "sequence": 0 as NSNumber,
+                           "name": kind, "kind": kind,
+                           "specifiesAltitude": specifies as NSNumber,
+                           "altitudeText": text], selected: -1)
+    }
+
+    expect(item("waypoint", specifies: true, text: "75.0 m").altitudeReading, "75.0 m",
+           "an item that measures its altitude reads the core's own sentence")
+    expect(item("settings", specifies: false, text: "585 m").altitudeReading, "585 m",
+           "and the mission start entry keeps its reading: it specifies no altitude of its own, "
+           + "but the figure it carries is the planned home altitude, which is a real height")
+    expect(item("command", specifies: false, text: "0.0 m").altitudeReading,
+           MissionItem.noAltitude,
+           "a DO_ command has no altitude, so the zero in its unused parameter slot is not one -- "
+           + "it was drawn as 0.0 m, a plausible height for an item that has none")
 }
 
 func checkTerrainMarkers() {

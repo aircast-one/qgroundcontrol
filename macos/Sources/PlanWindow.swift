@@ -511,7 +511,7 @@ struct PlanInspector: View {
                                     AltitudeField(value: item.altitude, units: item.altitudeUnits,
                                                   commit: { mission.setAltitude(of: item, value: $0) })
                                 } else {
-                                    Text(item.altitudeText)
+                                    Text(item.altitudeReading)
                                         .font(.body.monospacedDigit())
                                         .foregroundColor(Overlay.value)
                                 }
