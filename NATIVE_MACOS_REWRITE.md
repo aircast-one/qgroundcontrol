@@ -2192,3 +2192,42 @@ could be translated. Whether an aircraft has a cruise regime is what the vehicle
 it — a deliberate staging of mine read as the shared index being armed against someone. Its own
 message covers it, but the way through is to unstage and delete from the working tree so the
 script stages the removal itself.
+
+### Reading the QML for served-but-unread fields, enumerated (2026-09-12)
+
+The direction `view-fields.py` cannot check. It catches a key this head reads that the core
+dropped; a key the core *serves* that no head reads is invisible to it, and has to stay invisible,
+because most served fields are legitimately unused by any given head. Only reading the other
+implementation separates "unused because nothing needs it" from "unused because we never built it".
+
+Enumerated rather than sampled this time. The core serves **41 fields per mission item; 15 are
+never named anywhere in `macos/Sources`** (control: the same search finds the other 26, so it
+works). Of those 15, grepping all QML found which QGC actually draws:
+
+| field | QML references | what QGC does with it |
+|---|---|---|
+| `distanceFromStart` | 4 | **positions a tick per item along the terrain profile** |
+| `abbreviation` | 7 | labels those ticks, and the fly view's mission status bar |
+| `specifiesCoordinate` | 14 | gates item-editor actions |
+| `exitCoordinate` | 6 | structure-scan map handles |
+| `azimuth` | 11 | the toolbar readout this window now draws from `azimuthText` |
+| `incomplete`, `edited` | 1 each | comments only, not drawn |
+| the remaining 8 | 0 | raw numbers whose `*Text` variants this head already draws |
+
+**The payload was the first two.** `TerrainStatus.qml` draws a numbered, clickable tick per item
+along the profile. This panel drew ground, route and collision runs with nothing to relate them
+to — so it said "below terrain by up to 797 m" and left the operator to find *where* by eye, which
+is the question the panel exists to answer. The earlier UX review asked exactly this and could not
+resolve it. Now drawn, and the collision bar visibly begins at the survey.
+
+**It needed no new field.** The core already stamps every profile sample with its `sequence`, so
+the marks come from the profile itself. QGC positions the same ticks from `distanceFromStart +
+complexDistance` — a second measurement of the same thing, which is the arrangement where two
+numbers drift apart. Worth noting as a case where the ported version is better placed than the
+original, rather than merely equivalent.
+
+**The eight raw numbers are correctly unread and get no action.** `azimuth`, `altitudeChange`,
+`distanceFromStart` as a number, `altitudeAmsl` and friends are the unformatted twins of text this
+head already draws, and reading them would mean formatting in the head — the thing the leg row was
+built to avoid. Being unread is the correct state for them, which is precisely why this direction
+cannot be mechanised.
