@@ -96,6 +96,23 @@ def metres(shown):
     return f"unknown unit: {shown!r}"
 
 
+# Not every item has an altitude of its own. The plan's settings entry carries a planned home
+# position altitude instead, and the head falls back to the coordinate's, so comparing its 585 m
+# against a core answering null was this tool reporting a disagreement that was not one. Which
+# source was used is in the label, so the fallback cannot quietly stand in for the real thing.
+def altitude_check(seq, mine, theirs):
+    # Rounded through float on both sides: the core answers a whole number as an int and the head
+    # formats one decimal, and comparing them as text called 585 and 585.0 a disagreement.
+    def same_shape(value):
+        return None if value is None else round(float(value), 1)
+
+    shown = metres(mine["altitude"])
+    if theirs["altitude"] is not None:
+        return (f"item {seq} altitude in metres", shown, same_shape(theirs["altitude"]))
+    return (f"item {seq} altitude, which it takes from its coordinate",
+            shown, same_shape((theirs.get("coordinate") or {}).get("altitude")))
+
+
 # Per item, and by sequence rather than by position, so a list that gained or lost one reports
 # that rather than reporting every row after it as wrong.
 def item_comparisons(head_items, core_items):
@@ -119,8 +136,7 @@ def item_comparisons(head_items, core_items):
             (f"item {seq} name", mine[seq]["command"], theirs[seq]["name"]),
             (f"item {seq} has a position", mine[seq]["position"] != "\u2014",
              theirs[seq]["coordinate"] is not None),
-            (f"item {seq} altitude in metres", metres(mine[seq]["altitude"]),
-             None if theirs[seq]["altitude"] is None else round(theirs[seq]["altitude"], 1)),
+            altitude_check(seq, mine[seq], theirs[seq]),
         )
     ]
 
