@@ -38,6 +38,11 @@ import one.aircast.android.bridge.qgcStrings
 private const val CONSOLE_ROOT = "mavlinkConsole"
 private const val CONSOLE_LINES = "mavlinkConsole.lines"
 
+internal fun consoleEmptyText(sent: Boolean): String = when (sent) {
+    true -> "Sent. Nothing back from the vehicle yet."
+    false -> "No output yet. Send a command, for example help."
+}
+
 internal fun visibleConsoleLines(lines: List<String>): List<String> =
     lines.dropLastWhile { it.isBlank() }
 
@@ -70,6 +75,7 @@ fun ConsoleScreen(modifier: Modifier = Modifier) {
     val isPx4 by qgcBool("vehicle.px4Firmware")
     val rawLines by qgcStrings(CONSOLE_LINES)
     var command by remember { mutableStateOf("") }
+    var sentAnything by remember { mutableStateOf(false) }
     val scope = rememberCoroutineScope()
     val listState = rememberLazyListState()
     val lines = visibleConsoleLines(rawLines)
@@ -78,6 +84,7 @@ fun ConsoleScreen(modifier: Modifier = Modifier) {
         val toSend = command
         if (toSend.isNotBlank()) {
             command = ""
+            sentAnything = true
             scope.offMain { Qgc.invoke("$CONSOLE_ROOT.sendCommand", toSend) }
         }
     }
@@ -120,7 +127,7 @@ fun ConsoleScreen(modifier: Modifier = Modifier) {
 
         if (lines.isEmpty()) {
             Text(
-                text = "No output yet. Send a command, for example help.",
+                text = consoleEmptyText(sentAnything),
                 style = MaterialTheme.typography.bodyMedium,
                 modifier = Modifier
                     .fillMaxWidth()

@@ -29,6 +29,19 @@ class ConsoleScreenTest {
         assertEquals(emptyList<String>(), visibleConsoleLines(listOf("", " ")))
         assertEquals(emptyList<String>(), visibleConsoleLines(emptyList()))
     }
+
+    @Test
+    fun `before anything is sent the empty console says what to try`() {
+        assertEquals(
+            "No output yet. Send a command, for example help.",
+            consoleEmptyText(sent = false),
+        )
+    }
+
+    @Test
+    fun `after a command goes out the silence is the vehicle's, not the operator's`() {
+        assertEquals("Sent. Nothing back from the vehicle yet.", consoleEmptyText(sent = true))
+    }
 }
 
 class ConsoleShellHintTest {
