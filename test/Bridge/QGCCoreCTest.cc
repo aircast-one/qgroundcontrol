@@ -3436,8 +3436,28 @@ void QGCCoreCTest::_theTerrainProfileIsSampledThroughASurveyRatherThanAtItsCorne
     for (const QJsonValue &point : points) {
         distances.append(point.toObject().value(QStringLiteral("distance")).toDouble());
     }
-    QVERIFY2(std::is_sorted(distances.cbegin(), distances.cend()),
-             "the profile is drawn left to right, so its points have to arrive in the order they are flown");
+
+    // The core sorts the profile before serving it, so asserting the result is sorted asserts
+    // nothing. What the sampling can actually get wrong is stacking every sample of a pattern on
+    // one x, which is what reading a sample spacing as a segment length did - the points were all
+    // present, in order, and on top of each other.
+    QHash<double, int> atDistance;
+    for (const double distance : distances) {
+        atDistance[distance]++;
+    }
+    // Consecutive segments share an endpoint, so two points on one x is the boundary between them.
+    // More than two is samples piling up somewhere they were never flown.
+    int worst = 0;
+    double crowded = 0.0;
+    for (auto entry = atDistance.cbegin(); entry != atDistance.cend(); ++entry) {
+        if (entry.value() > worst) {
+            worst = entry.value();
+            crowded = entry.key();
+        }
+    }
+    QVERIFY2(worst <= 2,
+             qPrintable(QStringLiteral("%1 of the %2 profile points sit at %3 m, so a stretch of the pattern is stacked on one distance rather than walked")
+                            .arg(worst).arg(distances.count()).arg(crowded)));
 
     // The x-axis has to span the mission the summary is describing. A profile that samples inside
     // the pattern but stops the axis at the pattern's entry squashes the whole chart into the
