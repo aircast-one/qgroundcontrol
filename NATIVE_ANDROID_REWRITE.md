@@ -1203,6 +1203,37 @@ gated nothing. A null result byte-identical to a healthy one. Same shape as the 
 bridge `set` that answered `ok` and changed nothing, and a takeoff that read back with no coordinate
 because the metadata says it has none. Three ways to get an answer that looks like success and is not,
 in one day, in three different layers.
+### The plan list spelled every altitude in metres, and the core already knew better
+
+`3cbec30`. The list and the selection line formatted the altitude themselves —
+`"${it.roundToInt()} m"` — so an operator working in feet read a metric number with an "m" after it.
+Wrong number, wrong unit, nothing on screen to reveal it. The core has served `altitudeText` since the
+view shipped, in the **vertical** unit, which QGC keeps separate from the horizontal one.
+
+Verified by switching Settings → Units → Vertical Distance to Feet: `1 Takeoff · 50.0 m` becomes
+`1 Takeoff · 164 ft`, and back.
+
+**Found sideways.** The core session flagged that the item list watched neither unit setting, so rows
+would keep a stale spelling until something unrelated refreshed them. That was half of it; the other
+half was that my rows were never going to change spelling whatever the watch did. The tests that broke
+were pinning my own formatting, which is what was being removed.
+
+`3818bed` then narrowed "no position" with `specifiesCoordinate`, which the core added on request. A
+Change Speed or a camera trigger has no place by design, and the list was reporting that as a gap —
+the same wrong note the takeoff got before `7416fa2`, from the same cause: the head could see an
+absence and not what the absence meant. It is not verified on hardware, because this head cannot add
+an item that specifies neither a coordinate nor an altitude; the toolbar offers only kinds that
+specify one or the other. A plan file with a `DO_` item is the check it waits for.
+
+**The rule both of these came from is the one worth keeping**: do not re-derive in the head what QGC
+states in metadata. Formatting a unit, deciding whether a command has a position, matching a command
+by name — each was the head answering a question the core already answers, and each was wrong in a way
+that looked right.
+
+Three fields arrived unused in the same commits and are worth a look before the row grows further:
+`azimuthText`, `distanceText`, `altitudeChangeText`, all per item and null when the controller has not
+worked the value out. A row reading `2 · Waypoint · 50.0 m · 449 m · 47°` tells an operator about a
+leg; it also crowds a row that gained two things today.
 ### A guard that failed open for six hours
 
 `ui.sh tap` refuses a tap that lands on Arm, Land, RTL or any other flight control unless
