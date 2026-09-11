@@ -5205,3 +5205,27 @@ Phases 0 and 1 are done, the library target was free, and the thread separation 
 - **iOS, Linux, Windows.** They stay on Qt. This is an Android frontend, not a migration of the
   project.
 - **De-Qt of the core.** Stripping QObject ends the upstream merge stream permanently. Don't.
+
+### The leg gained its third fact, 2026-09-12
+
+`altitudeChangeText` had been in the core's mission-item view unread. QGC
+documents `altDifference` as "change in altitude from previous waypoint" —
+the same from-previous framing as `distance` and `azimuth` — so it belongs on
+the leg line under a selected item, not on the item itself. Selected waypoint
+now reads `432 m · 56° · +10.0 m`, verified on the OnePlus 6 by raising one
+waypoint with the `+10` button and watching that item's own incoming leg
+change.
+
+Two gates, not one. A level leg has a real distance and a zero change, and
+`+0.0 m` under every waypoint of a flat mission is noise. And the first
+attempt gated the whole line on distance, which was wrong in the other
+direction: `MissionController::_recalcMissionFlightStatus` skips
+`setDistance` when the previous item is a land command, and a waypoint
+stacked over its predecessor has no ground distance either — both still carry
+an `altDifference`, and suppressing the line threw away the only fact those
+legs have. The first item is safe either way; QGC sets all four to zero there
+under the comment "No values for first item".
+
+The pattern that found the second bug is the one worth keeping: the feature
+was already committed and verified on hardware before I asked what the gate
+does when its input is zero for a reason other than the one I had in mind.
