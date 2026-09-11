@@ -383,12 +383,18 @@ mod tests {
         let view = items_view(&Plan(vec![settings(), pattern], 1), &[]);
         assert_eq!(view["items"][1]["kind"], "complex", "an item type the core has no entry for still has to draw as something rather than as a waypoint");
         // The class the bridge reports is the same in every locale; commandName is tr() on every
-        // complex item, so a German build named none of them and each fell through to "complex",
-        // losing its geometry, its title and its placement hint with it.
-        let corridor = items_view(&Plan(vec![settings(), json!({ "kind": "object", "sequenceNumber": 1, "isSimpleItem": false, "class": "CorridorScanComplexItem", "commandName": "Korridor-Scan" })], 1), &[]);
+        // complex item, so where it is translated each fell through to "complex", losing its
+        // geometry, its title and its placement hint with it.
+        //
+        // These are the strings a running build actually emits, read out of
+        // translations/qgc_source_ja_JP.ts. Only five of twenty-one locales translate these names
+        // at all - az_AZ, ja_JP, ko_KR, pt_PT, zh_CN - and German is not one of them, so a German
+        // build draws everything correctly and inventing a plausible German word here would have
+        // tested the fix against a string nothing produces.
+        let corridor = items_view(&Plan(vec![settings(), json!({ "kind": "object", "sequenceNumber": 1, "isSimpleItem": false, "class": "CorridorScanComplexItem", "commandName": "\u{56de}\u{5eca}\u{30b9}\u{30ad}\u{30e3}\u{30f3}" })], 1), &[]);
         assert_eq!(corridor["items"][1]["kind"], "corridor", "a complex item is identified by what it is, not by what the interface happens to call it here");
 
-        let structure = items_view(&Plan(vec![settings(), json!({ "kind": "object", "sequenceNumber": 1, "isSimpleItem": false, "class": "StructureScanComplexItem", "commandName": "Strukturscan" })], 1), &[]);
+        let structure = items_view(&Plan(vec![settings(), json!({ "kind": "object", "sequenceNumber": 1, "isSimpleItem": false, "class": "StructureScanComplexItem", "commandName": "\u{69cb}\u{9020}\u{30b9}\u{30ad}\u{30e3}\u{30f3}" })], 1), &[]);
         assert_eq!(structure["items"][1]["kind"], "structure");
         assert_eq!(view["items"][1]["name"], "Fixed Wing Landing");
     }
