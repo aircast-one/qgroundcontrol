@@ -864,9 +864,64 @@ plan on the phone draws the survey polygon with its vertex handles **and still n
 only Corridor Scan**. That is the over-firing mode that sank the previous three
 attempts, now disproved on hardware rather than argued.
 
-Still to do: actually draw corridor scans, structure scans and landing patterns.
-**Android needs an AAR rebuild before it sees the `class` field.** The gate above is
-unaffected for surveys but cannot be claimed for a mixed plan.
+~~Still to do: actually draw corridor scans, structure scans and landing patterns.~~
+**Corridor and structure scans are drawn** (`aircast-android 66bec7f`); a landing pattern
+is not, and is now the only thing the banner names.
+
+Nothing had to be built for the geometry. `geometry_of` has carried `shape` and `property`
+for every catalogued pattern since `9cadb96c8` — `"area"` with `surveyAreaPolygon` or
+`structurePolygon`, `"line"` with `corridorPolyline` — and `surveysFrom` threw it away by
+filtering on `kind == "survey"` **before** looking at what the core had sent. A corridor
+arrived complete, with its vertices, and was dropped one line too early. The work was
+deleting a filter, not writing a renderer.
+
+What did need care is that an `"area"` closes and a `"line"` does not: **a corridor's path
+is a route, not a boundary**, and closing the ring would draw a leg the aircraft never
+flies. Vertex drags now go through the item's own property rather than a hardcoded
+`surveyAreaPolygon`, and Rotate is gated on the item being a survey, `gridAngle` being a
+survey fact — it had been offered on all three and did nothing on two.
+
+**Verified on the OnePlus 6 with a real shape, not an empty one** — the trap this document
+records two sections above. A KML polyline imported as a Corridor Scan takes the plan from
+1.15 to 3.50 km; the map draws the corridor path in purple between its two magenta
+transects; the summary reads `4 items (takeoff) · 10 scan pts · 3.50 km · 11:57`; no banner.
+
+`"survey pts"` became `"scan pts"` in the same change, because the count is every pattern's
+transects and a corridor is not a survey.
+
+**Identification is locale-safe as of the core's `24c5de566`; insertion is not.**
+`mission.insert` compares against `CorridorScanComplexItem::name`, a `tr()` static, so a
+non-English build can draw a corridor it cannot add. Found while sweeping for the defect in
+this document's previous section and reported; the core is holding it rather than guessing
+on a write path.
+
+### A guard that failed open for six hours
+
+`ui.sh tap` refuses a tap that lands on Arm, Land, RTL or any other flight control unless
+`ALLOW_FLIGHT_COMMAND=1`. It had not refused anything since `a8d19fa` this morning — the
+commit that taught `whatsunder.py` to read single-quoted attributes left the pattern as a
+raw string ending in a quote, which is a **syntax error**. Every tap since ran
+
+    under=$(... | python3 whatsunder.py X Y)
+
+took the empty string from a process that died on import, and tapped anyway. The traceback
+went to stderr, where it reads like noise from `adb` rather than a dead safety check.
+
+Fixed in `f9608af`, and the second half is the one that matters: **`ui.sh` now refuses when
+the guard cannot answer.** An empty dump or a non-zero exit is a refusal. A guard whose
+failure mode is "allow" is worse than no guard, because it reads as checked — and this one
+had been reporting every target clear while I was tapping around a connected vehicle.
+
+The pattern was broken twice over, which is worth stating separately: with two alternatives
+for the label, `findall` returned six fields where `labels_under` unpacked five, so even a
+parseable version would have raised. `whatsunder_test.py` now pins both quote styles, the
+plan-screen exemption, and that unreadable input exits non-zero. Verified live: tapping Land
+on the Fly view is refused; before this it would have landed the aircraft.
+
+Same family as everything else found today — [[uiautomator-quotes-and-flat-reads]], the two
+translated-name defects above — a reader that cannot see the thing, and absence reading as
+fact. This one is the worst of them, because the thing it could not see was a safety
+interlock and the silence was indistinguishable from a clear screen.
 
 **Unexplained, recorded so it is not rediscovered from scratch:** a temporary probe
 that called `plan.loadFromFile` inside the bridge test, read the items back, then
