@@ -1966,3 +1966,33 @@ Checked two levels into QGC rather than stopping at the Q_PROPERTY, because the 
 exactly two same-looking sources that turn out to differ. Noted in passing: `gotoFlightMode` is
 declared `CONSTANT`, so it has no notify signal — harmless here because this head reads it per
 reload and never watches it, but it belongs on the list of properties a watch cannot bind to.
+
+### The first real parity gap: the per-item leg figures (2026-09-11)
+
+Widening the action comparison from one QML file to all ten `Plan*.qml` — 85 distinct labelled
+strings rather than the couple of dozen in `PlanView.qml` alone — found what the narrower pass
+could not. The QML item row shows, for each waypoint, the leg that reaches it: **Azimuth,
+Gradient, Alt diff, Prev WP, Distance.** This window shows altitude and Hold.
+
+The data is already served. A waypoint carries `azimuth` 60.27, `distance` 14108.57,
+`distanceFromStart`, and `altitudeChange` 75.0 — and this head reads none of the four. That is a
+real affordance for a planner, who sanity-checks a mission by the heading and length of each leg,
+and it is the first genuine feature gap this stream has found rather than explained away.
+
+**It is an ask rather than a local build, and the reason is unit formatting.** Those four arrive
+as raw numbers with no text beside them, unlike `altitudeText`/`altitudeUnits` on the same item
+and unlike every row of the summary strip. Spelling a distance here means reimplementing
+`distance_text(value, imperial)` — the metres-to-kilometres threshold and the operator's unit
+preference — in a second place, and drawing the result immediately below a summary strip that
+used the core's version. Two implementations of one format, side by side on the same panel, is
+the failure this stream has spent the day removing.
+
+`azimuth` is unit-free and could be drawn today; `altitudeChange` could borrow the item's own
+`altitudeUnits`. Half the row is not worth shipping ahead of the other half, so the whole row
+waits on the core spelling the magnitudes, as it already does for the clearance and for every
+summary figure.
+
+**Also worth noting what the field checker cannot see.** `view-fields.py` catches a key this head
+reads that the core no longer emits. This is the opposite direction — a key the core emits that
+the head never reads — and that direction cannot be checked mechanically, because most served
+fields are legitimately unused by any given head. It took reading the QML to notice.
