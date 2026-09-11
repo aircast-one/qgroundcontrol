@@ -304,6 +304,9 @@ fun VehicleMap(
             CameraUpdateFactory.newLatLngBounds(
                 LatLngBounds.from(bounds.north, bounds.east, bounds.south, bounds.west),
                 FIT_PADDING_PIXELS,
+                FIT_PADDING_PIXELS,
+                FIT_PADDING_PIXELS,
+                FIT_PADDING_PIXELS + bottomInsetPx,
             ),
         )
     }
