@@ -1621,3 +1621,39 @@ The writer is the test's own map engine, on its own thread, in its own process.
 whether the fault is constant and only its visibility varies, because a green run of a test that
 swallows its own failures proves less than it appears to, and counting green runs multiplies that
 by nothing.
+
+### FlightMapTest's flick assertion, for whoever owns FlightDisplay (2026-09-11)
+
+Left here rather than in a chat message, because the owner is not this stream and a finding in a
+message is lost. **The proposed mechanism below is refuted; the suggested change is not, and it
+stands on different grounds.**
+
+`FlightMapTest::_mouseDragFlicksWithInertia` failed once in a full 89-suite run on this line:
+
+    QVERIFY(map->property("flicking").toBool());
+
+The drag itself landed — the position assertion immediately above it passed in the same run. The
+two lines that close the test already assert the behaviour it is named for: that the map keeps
+moving after release and ends more than 50 px further on. So `flicking` is a transient
+intermediate, asserted between a cause and an effect that are both already checked.
+
+**What was proposed and what happened to it.** `flickMouse` is two `QTest::mouseMove` calls with a
+20 ms delay, and that delay is a minimum — `QTest::qWait` returns when the event loop gets round
+to it. Qt's Flickable derives flick velocity from the wall-clock gap between events, so a slow
+enough machine should produce a drag that never qualifies as a flick. That predicts the exact
+observed failure, and it is wrong, or at least not sufficient: the test was run alone on an idle
+machine (12/0) and alone at a sustained load average of **62 on 14 cores** (12/0). Saturating the
+host does not reproduce it. Whatever the full suite does to this test, it is not simply
+contention.
+
+**What is still worth doing, independent of the trigger.** The assertion checks a flag that exists
+only during the inertia, between two assertions that already bracket it. Removing it, or replacing
+it with a `QTRY` on the outcome, would leave the test asserting inertia without asserting a
+transient that depends on how the gesture was synthesised. That argument is about what the test
+measures, not about why it failed, so it survives the refutation above.
+
+**Recorded as an unfinished diagnosis on purpose.** The failure is real, seen once, in a full run;
+the mechanism offered for it did not survive two attempts to reproduce it. Saying so is cheaper
+than leaving a confident story for someone else to act on — this stream published a
+0.64 ms-per-item figure and a 44% duty cycle earlier today on exactly that kind of reasoning, and
+had to retract both after measuring.
