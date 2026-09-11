@@ -29,6 +29,7 @@ LAUNCH = (-35.363, 149.165)
 DISTANT = (-35.30, 149.30)
 SURVEY = (-35.28, 149.34)
 TERRAIN_SETTLE_SECONDS = 4
+NO_ALTITUDE = "\u2014"
 
 
 def ask(path):
@@ -68,49 +69,15 @@ def selected_survey(core_items):
                  if item.get("kind") == "survey" and item.get("current")), None)
 
 
-# The head formats an altitude for the operator ("75.0 m"); the core answers the number. A
-# comparison that skipped every formatted value would skip most of what the window shows.
-#
-# Feet are converted rather than skipped. Returning None for them would have made the head look
-# like it had no altitude and reported a disagreement against every item, on nothing worse than
-# the operator's units setting.
-# An unreadable value returns something that equals nothing, never the None that means the item
-# has no altitude. Collapsing those two makes a value this cannot parse agree with a core that
-# answers null, which is a comparison reporting success about a number it never read.
-FEET_PER_METRE = 3.2808399
-ABSENT = None
-
-
-def metres(shown):
-    figure, _, unit = str(shown or "").partition(" ")
-    if not figure or figure == "\u2014":
-        return ABSENT
-    try:
-        value = float(figure)
-    except ValueError:
-        return f"unreadable: {shown!r}"
-    if unit.startswith("m"):
-        return round(value, 1)
-    if unit.startswith("ft"):
-        return round(value / FEET_PER_METRE, 1)
-    return f"unknown unit: {shown!r}"
-
-
 # Not every item has an altitude of its own. The plan's settings entry carries a planned home
 # position altitude instead, and the head falls back to the coordinate's, so comparing its 585 m
 # against a core answering null was this tool reporting a disagreement that was not one. Which
 # source was used is in the label, so the fallback cannot quietly stand in for the real thing.
 def altitude_check(seq, mine, theirs):
-    # Rounded through float on both sides: the core answers a whole number as an int and the head
-    # formats one decimal, and comparing them as text called 585 and 585.0 a disagreement.
-    def same_shape(value):
-        return None if value is None else round(float(value), 1)
-
-    shown = metres(mine["altitude"])
-    if theirs["altitude"] is not None:
-        return (f"item {seq} altitude in metres", shown, same_shape(theirs["altitude"]))
-    return (f"item {seq} altitude, which it takes from its coordinate",
-            shown, same_shape((theirs.get("coordinate") or {}).get("altitude")))
+    # Both sides are compared as the operator sees them, now that the core formats the altitude
+    # itself. That catches a divergence in the formatting as well as in the number, and it means
+    # neither side has to parse the other's string back into metres to disagree with it.
+    return (f"item {seq} altitude as shown", mine["altitude"], theirs["altitudeText"] or NO_ALTITUDE)
 
 
 # Per item, and by sequence rather than by position, so a list that gained or lost one reports
