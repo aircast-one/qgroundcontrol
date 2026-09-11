@@ -108,6 +108,8 @@
         "view.settings(General).sections.2.subsections.0.controls.0.minimum",
         "view.settings(General).sections.2.subsections.0.controls.1.maximum",
         "view.settings(General).sections.2.subsections.0.controls.1.minimum",
+        "view.terrainProfile.clearanceText",
+        "view.terrainProfile.minClearanceMetres",
         "view.video.sourceSize"
     ],
     "_neverVaried": [
@@ -2055,9 +2057,11 @@
         "view.surveyStats(0).tooFast",
         "view.surveyStats(0).warning",
         "view.terrainProfile.class",
+        "view.terrainProfile.clearanceText",
         "view.terrainProfile.groundKnown",
         "view.terrainProfile.hasCollision",
         "view.terrainProfile.kind",
+        "view.terrainProfile.minClearanceMetres",
         "view.track.class",
         "view.track.count",
         "view.track.dropped",
@@ -5311,6 +5315,7 @@
         "view.surveyStats(0).tooFast",
         "view.surveyStats(0).warning",
         "view.terrainProfile.class",
+        "view.terrainProfile.clearanceText",
         "view.terrainProfile.distanceText",
         "view.terrainProfile.groundKnown",
         "view.terrainProfile.hasCollision",
@@ -5319,6 +5324,7 @@
         "view.terrainProfile.lowestText",
         "view.terrainProfile.maxAltitudeMeters",
         "view.terrainProfile.minAltitudeMeters",
+        "view.terrainProfile.minClearanceMetres",
         "view.terrainProfile.points.#",
         "view.terrainProfile.points.0.collision",
         "view.terrainProfile.points.0.distance",
@@ -6641,6 +6647,7 @@
     },
     "view.terrainProfile": {
         "class": "string",
+        "clearanceText": "null",
         "distanceText": "string",
         "groundKnown": "bool",
         "hasCollision": "bool",
@@ -6649,6 +6656,7 @@
         "lowestText": "string",
         "maxAltitudeMeters": "number",
         "minAltitudeMeters": "number",
+        "minClearanceMetres": "null",
         "points": [
             {
                 "collision": "bool",

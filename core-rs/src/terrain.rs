@@ -23,6 +23,7 @@ pub struct Profile {
     pub max_altitude: f64,
     pub total_distance: f64,
     pub unknown_terrain: usize,
+    pub min_clearance: Option<f64>,
 }
 
 pub fn profile(points: Vec<Point>) -> Profile {
@@ -33,7 +34,11 @@ pub fn profile(points: Vec<Point>) -> Profile {
     let high = altitudes.iter().copied().fold(f64::NEG_INFINITY, f64::max);
     let (low, high) = if altitudes.is_empty() { (0.0, 0.0) } else { (low, high) };
     let padding = ((high - low) * 0.2).max(5.0);
-    Profile { points, min_altitude: low - padding, max_altitude: high + padding, total_distance, unknown_terrain }
+    let min_clearance = points
+        .iter()
+        .filter_map(|p| p.terrain_altitude.map(|ground| p.mission_altitude - ground))
+        .fold(None, |worst: Option<f64>, clearance| Some(worst.map_or(clearance, |worst| worst.min(clearance))));
+    Profile { points, min_altitude: low - padding, max_altitude: high + padding, total_distance, unknown_terrain, min_clearance }
 }
 
 pub fn points(model: &Value) -> Vec<Point> {
@@ -150,6 +155,8 @@ pub fn terrain_view(backend: &dyn Backend, _args: &[String]) -> Value {
         "usable": usable,
         "groundKnown": profile.unknown_terrain == 0 && profile.points.len() > 1,
         "hasCollision": profile.points.iter().any(|p| p.collision),
+        "minClearanceMetres": profile.min_clearance,
+        "clearanceText": profile.min_clearance.map(|clearance| crate::read::format_measure(vertical.show(clearance.abs()), &vertical.name)),
         "unknownTerrain": profile.unknown_terrain,
         "totalDistanceMeters": profile.total_distance,
         "minAltitudeMeters": profile.min_altitude,
@@ -174,6 +181,21 @@ mod tests {
 
     fn point(distance: f64, mission: f64, terrain: Option<f64>) -> Point {
         Point { sequence: 1, distance, mission_altitude: mission, terrain_altitude: terrain, collision: false }
+    }
+
+    #[test]
+    fn the_profile_says_how_far_below_the_ground_it_runs_and_not_only_that_it_does() {
+        let below = profile(vec![point(0.0, 700.0, Some(600.0)), point(100.0, 500.0, Some(668.0)), point(200.0, 700.0, Some(650.0))]);
+        assert_eq!(below.min_clearance, Some(-168.0), "having been told the mission is below terrain the operator has to pick a new altitude, and the worst deficit is the number that choice is made from");
+
+        let clear = profile(vec![point(0.0, 700.0, Some(600.0)), point(100.0, 700.0, Some(690.0))]);
+        assert_eq!(clear.min_clearance, Some(10.0), "the same field answers how much room is left when there is room, so a head draws one number rather than two");
+
+        let unknown = profile(vec![point(0.0, 700.0, None), point(100.0, 700.0, None)]);
+        assert_eq!(unknown.min_clearance, None, "no ground under any sample is not a clearance of zero, which would read as touching");
+
+        let partial = profile(vec![point(0.0, 700.0, None), point(100.0, 700.0, Some(720.0))]);
+        assert_eq!(partial.min_clearance, Some(-20.0), "one sample with ground under it is enough to know the mission is below it somewhere");
     }
 
     #[test]

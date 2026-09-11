@@ -3,6 +3,12 @@ find_program(QGC_CARGO cargo)
 list(LENGTH CMAKE_OSX_ARCHITECTURES QGC_RUST_ARCH_COUNT)
 
 set(QGC_RUST_TARGET_DIR ${CMAKE_BINARY_DIR}/core-rs)
+
+file(GLOB_RECURSE QGC_RUST_SOURCES CONFIGURE_DEPENDS ${CMAKE_CURRENT_SOURCE_DIR}/src/*.rs)
+list(APPEND QGC_RUST_SOURCES ${CMAKE_CURRENT_SOURCE_DIR}/Cargo.toml)
+if(EXISTS ${CMAKE_CURRENT_SOURCE_DIR}/Cargo.lock)
+    list(APPEND QGC_RUST_SOURCES ${CMAKE_CURRENT_SOURCE_DIR}/Cargo.lock)
+endif()
 if(CMAKE_BUILD_TYPE STREQUAL "Debug")
     set(QGC_RUST_PROFILE debug)
     set(QGC_RUST_PROFILE_FLAG)
@@ -31,32 +37,36 @@ if(ANDROID)
         string(REGEX REPLACE "^android-" "" ANDROID_PLATFORM_LEVEL "${ANDROID_PLATFORM}")
     endif()
     set(QGC_RUST_LIB ${QGC_RUST_TARGET_DIR}/${QGC_RUST_TRIPLE}/${QGC_RUST_PROFILE}/libqgc_core.a)
-    add_custom_target(qgc_core_cargo
+    add_custom_command(
+        OUTPUT ${QGC_RUST_LIB}
         COMMAND ${CMAKE_COMMAND} -E env ANDROID_NDK_HOME=${ANDROID_NDK_ROOT}
             ${QGC_CARGO} ndk --target ${ANDROID_ABI} --platform ${ANDROID_PLATFORM_LEVEL}
             build ${QGC_RUST_PROFILE_FLAG}
             --manifest-path ${CMAKE_CURRENT_SOURCE_DIR}/Cargo.toml
             --target-dir ${QGC_RUST_TARGET_DIR}
-        BYPRODUCTS ${QGC_RUST_LIB}
+        DEPENDS ${QGC_RUST_SOURCES}
         WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
         COMMENT "cargo ndk build qgc-core (${ANDROID_ABI}, ${QGC_RUST_PROFILE})"
         VERBATIM
     )
+    add_custom_target(qgc_core_cargo DEPENDS ${QGC_RUST_LIB})
 else()
     if(NOT MACOS OR QGC_RUST_ARCH_COUNT GREATER 1 OR NOT QGC_RUST_CORE OR NOT QGC_CARGO)
         message(STATUS "core-rs/: Rust core off (QGC_RUST_CORE=${QGC_RUST_CORE}, cargo=${QGC_CARGO}, archs=${CMAKE_OSX_ARCHITECTURES}); the bridge routes straight to Qt")
         return()
     endif()
     set(QGC_RUST_LIB ${QGC_RUST_TARGET_DIR}/${QGC_RUST_PROFILE}/libqgc_core.a)
-    add_custom_target(qgc_core_cargo
+    add_custom_command(
+        OUTPUT ${QGC_RUST_LIB}
         COMMAND ${QGC_CARGO} build ${QGC_RUST_PROFILE_FLAG}
             --manifest-path ${CMAKE_CURRENT_SOURCE_DIR}/Cargo.toml
             --target-dir ${QGC_RUST_TARGET_DIR}
-        BYPRODUCTS ${QGC_RUST_LIB}
+        DEPENDS ${QGC_RUST_SOURCES}
         WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
         COMMENT "cargo build qgc-core (${QGC_RUST_PROFILE})"
         VERBATIM
     )
+    add_custom_target(qgc_core_cargo DEPENDS ${QGC_RUST_LIB})
 endif()
 
 add_library(qgc_core STATIC IMPORTED GLOBAL)
