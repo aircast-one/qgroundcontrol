@@ -4750,10 +4750,20 @@ their member defaults. Same device, same sim, one plan built up from empty:
     Survey, middle item selected                    inserted with a real area; "5 items (takeoff, RTL)
                                                     · 52 scan pts · 5.28 km"
 
-So all three are now correct, and **the reverted `view.missionKinds` wiring is worth revisiting** — it
-was reverted because the flags it rests on were constant, and they are not any more. Whoever picks that
-up should re-measure rather than trust either version of this table: the first one was true when it was
-taken.
+So all three are now correct. The reverted `view.missionKinds` wiring rests on exactly these flags, and
+its original reason for being reverted is gone — but **it should stay reverted, for a different reason**.
+
+The view is well built: `enabled` is null when nothing is selected, so a head can tell "no answer" from
+"refused", and `atSequence` lets a head notice an answer that is about some other selection. The
+problem is what a head would do with it. Greying the Land button tells an operator it is unavailable
+and cannot tell them why — there is no room beside a row of small text buttons on a phone for a
+sentence per button. Leaving it live costs one tap and produces "A landing goes after the takeoff and
+after every place the vehicle flies through.", which is the sentence the gate exists to convey.
+
+A refusal that explains beats a control that is merely absent, so the tap is the better interface here
+and the gate would make it worse. Recorded as a decision rather than left as an open invitation; the
+view's `enabled` remains the right thing for a head with room to show the reason, which this one does
+not have.
 
 Worth noting in passing, because it confirms something the core session reported: asking for a "land"
 produced an **RTL**, which is what ArduCopter maps it to. What "land" gives you depends on the vehicle. The ungated buttons are
