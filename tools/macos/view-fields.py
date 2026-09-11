@@ -40,6 +40,19 @@ MODELS = {
     "TerrainProfile": "view.terrainProfile",
     "FenceShape": "view.fences",
     "SurveyStats": "view.surveyStats",
+    "AltitudeModeOffer": "view.altitudeModes",
+    "CalibrationState": "view.calibration",
+    "CameraControl": "view.camera",
+    "FlightModeChoice": "view.flightModes",
+    "LinkConfig": "view.links",
+    "LogEntry": "view.logs",
+    "MavlinkMessage": "view.inspector",
+    "PreflightCheck": "view.preflight",
+    "RadioState": "view.radio",
+    "SensorHealth": "view.sensors",
+    "VehicleComponentInfo": "view.setup",
+    "VibrationReading": "view.vibration",
+    "VideoStatus": "view.video",
 }
 
 # A subscript on the decoded dictionary, or a literal handed to a helper closing over it.
@@ -61,6 +74,12 @@ LOOKUP = re.compile(r'\w+\??\[\s*"([^"]+)"\s*\]|\b\w+\(\s*"([^"]+)"\s*\)')
 # key, arriving a second time in a different disguise. It reported 25 live fields as gone.
 LITERAL = re.compile(r'"((?:[^"\\]|\\.)*)"')
 COMMENT = re.compile(r"//[^\n]*")
+
+# Not every key is written as a string. A serde-derived struct serialises its FIELD NAMES, so
+# preflight.rs never spells "prompt", "verdict" or "reason" and all three reach the head --
+# reported as gone until this was added. Fourth blindness in this reference set, each one a
+# different way the core can name a key without quoting it.
+FIELD = re.compile(r"\bpub\s+(\w+)\s*:")
 
 
 def balanced(text, start):
@@ -117,7 +136,8 @@ for model, view in sorted(MODELS.items()):
     if not read:
         unchecked.append(f"{model}: no initialiser keys found, which is a broken reader not a clean result")
         continue
-    emitted = set(LITERAL.findall(COMMENT.sub("", source.read_text())))
+    stripped = COMMENT.sub("", source.read_text())
+    emitted = set(LITERAL.findall(stripped)) | set(FIELD.findall(stripped))
     for key in sorted(read - emitted):
         gone.append((model, key, view, module))
 
