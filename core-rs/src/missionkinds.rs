@@ -99,6 +99,10 @@ fn kind_json(kind: &Kind) -> Value {
         "title": kind.title,
         "invokable": kind.invokable,
         "complexName": kind.complex_name,
+        // The class QGC gives this item, which is the same in every locale and the only stable way
+        // a head can tie an item it is looking at back to this catalogue. complexName above is an
+        // English literal and matches the running build only when that build is English.
+        "className": kind.class_name,
         "geometry": kind.geometry.map(|(shape, _)| shape),
         "geometryProperty": kind.geometry.map(|(_, property)| property),
         "shapeNoun": match kind.geometry { Some(("line", _)) => "path", Some(("area", _)) => "area", _ => "shape" },
