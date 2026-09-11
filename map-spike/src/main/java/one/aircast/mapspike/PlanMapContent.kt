@@ -632,7 +632,7 @@ internal fun MapSpikeScreen(
                             if (item.index > HOME_ITEM) {
                                 TextButton(onClick = {
                                     scope.launch {
-                                        busy = "Removing #${item.index}"
+                                        busy = "Removing #${item.sequence}"
                                         val outcome = withContext(Dispatchers.Default) {
                                             removeMissionItem(item.index)
                                         }
