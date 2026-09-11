@@ -68,7 +68,7 @@ void QGCHostNotices::post(Kind kind, const QString &title, const QString &text)
             if (same) {
                 QVariantMap repeated = newest;
                 repeated.insert(QStringLiteral("repeated"), newest.value(QStringLiteral("repeated")).toInt() + 1);
-                repeated.insert(QStringLiteral("at"), QDateTime::currentMSecsSinceEpoch());
+                repeated.insert(QStringLiteral("lastAt"), QDateTime::currentMSecsSinceEpoch());
                 _notices.replace(_notices.count() - 1, repeated);
                 locked.unlock();
                 emit noticesChanged();
@@ -88,6 +88,7 @@ void QGCHostNotices::post(Kind kind, const QString &title, const QString &text)
             { QStringLiteral("title"), title },
             { QStringLiteral("text"), text },
             { QStringLiteral("at"), QDateTime::currentMSecsSinceEpoch() },
+            { QStringLiteral("lastAt"), QDateTime::currentMSecsSinceEpoch() },
         });
     }
     emit noticesChanged();

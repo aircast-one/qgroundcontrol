@@ -2401,12 +2401,21 @@ void QGCCoreCTest::_operatorNoticesReachAHeadWithNoQmlRoot()
     const auto repeat = []() { qgcApp()->showAppMessage(QStringLiteral("Parameters are missing from firmware"), QStringLiteral("Parameters")); };
     repeat();
     const qint64 first = notices().last().toObject().value(QStringLiteral("id")).toInteger();
+    const qint64 firstSeen = notices().last().toObject().value(QStringLiteral("at")).toInteger();
     repeat();
     repeat();
     QCOMPARE(notices().count(), 1);
     QCOMPARE(notices().last().toObject().value(QStringLiteral("repeated")).toInt(), 2);
     QVERIFY2(notices().last().toObject().value(QStringLiteral("id")).toInteger() == first,
              "a repeat is the same news, so it keeps the id a head has already drawn rather than arriving as a new banner");
+
+    // The list is served oldestFirst by insertion, so at has to stay the first sighting or a
+    // repeated notice in the middle carries a newer timestamp than the ones after it, and a head
+    // that sorts by at draws them out of order. When it was last seen is a separate question.
+    const QJsonObject folded = notices().last().toObject();
+    QVERIFY2(folded.value(QStringLiteral("lastAt")).toInteger() >= folded.value(QStringLiteral("at")).toInteger(),
+             "the last sighting cannot precede the first");
+    QCOMPARE(folded.value(QStringLiteral("at")).toInteger(), firstSeen);
 
     qgcApp()->showCriticalVehicleMessage(QStringLiteral("Compass calibration required"));
     repeat();
