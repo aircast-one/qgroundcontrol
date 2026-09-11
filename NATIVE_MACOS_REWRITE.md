@@ -1332,3 +1332,37 @@ not do.
 One consequence is accepted rather than fixed: the Fly window's instance now also carries the
 vehicle-presence watch, which is redundant against its own 2 Hz poll. It is one extra reload
 on a rare event, and scoping the watch per-instance would cost more than it saves.
+
+### What the head costs at Phase 4's gate scale, measured (2026-09-11)
+
+Phase 4's gate is a **200+ waypoint survey**. Nothing had ever measured the head at that
+size; every reading below is from a running app with a scratch plan grown to 227 items,
+timed through `/bridge/get` with a 1.6 ms HTTP floor subtracted where it matters.
+
+| read | 1 item | 41 items | 227 items |
+|---|---|---|---|
+| `view.missionItems` | 2.0 ms | 21.3 ms | **146.5 ms** |
+| `view.terrainProfile` | 0.9 ms | 8.9 ms | 73.9 ms |
+| `view.plan`, `view.missionSummary`, `view.missionKinds`, `view.fences`, `view.surveyStats`, `view.mapScale` | ~0 | ~0 | ~0 |
+
+Linear at **0.64 ms per item** for `view.missionItems`, about half that for the terrain
+profile. Every other view this window reads is free at any size — the cost is two reads.
+
+**The consequence is not in the Plan window.** It reloads on an edit, so it pays this once
+per edit. The Fly window's instance of `MissionStore` calls `startWatching()`, which reloads
+on a **0.5 s repeating timer on the main thread**. At the gate's own scale that is ~220 ms of
+bridge work every 500 ms — a 44% main-thread duty cycle, while flying, which is also when
+Phase 5's gate asks for a 30-minute flight. Extrapolating the measured slope, a survey around
+600 items saturates the timer entirely.
+
+**Why the poll cannot simply become a watch.** The comment on `startWatching()` gives the
+real reason it exists: the Fly view does not edit this plan, and a plan can arrive from the
+vehicle or from a file. `view.missionItems` declares its deps as `visualItems.count`,
+`currentPlanViewVIIndex` and `containsItems` — all of which a *replacement* plan of the same
+length leaves unchanged. So a watch built on today's deps would cover editing and miss
+exactly the case the poll was written for. Converting it needs a dep the core does not yet
+declare, something that fires when the plan is replaced rather than resized. That is a core
+change, and the Fly window is another stream's file; both have been told.
+
+Recorded rather than fixed: no head-side change here is both safe and worth 220 ms, and the
+two candidate shortcuts are the staleness class this window just spent four commits removing.
