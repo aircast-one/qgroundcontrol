@@ -269,11 +269,17 @@ class AddingAfterTextTest {
 }
 
 class LegTextTest {
-    private fun item(distance: Double, distanceText: String = "449 m", azimuthText: String = "47°") =
-        MissionItem(
-            2, 2, 41.0, 44.0, "Waypoint", false, 50.0, kind = "waypoint", commandId = 16,
-            distance = distance, distanceText = distanceText, azimuthText = azimuthText,
-        )
+    private fun item(
+        distance: Double,
+        distanceText: String = "449 m",
+        azimuthText: String = "47°",
+        altitudeChange: Double = 0.0,
+        altitudeChangeText: String = "",
+    ) = MissionItem(
+        2, 2, 41.0, 44.0, "Waypoint", false, 50.0, kind = "waypoint", commandId = 16,
+        distance = distance, distanceText = distanceText, azimuthText = azimuthText,
+        altitudeChange = altitudeChange, altitudeChangeText = altitudeChangeText,
+    )
 
     @Test
     fun `a leg reads as its length and its bearing, both spelled by the core`() {
@@ -293,6 +299,22 @@ class LegTextTest {
     @Test
     fun `a bearing without a distance is not a leg`() {
         assertNull(legText(item(0.0, distanceText = "", azimuthText = "47°")))
+    }
+
+    @Test
+    fun `a climbing leg says how much it climbs, signed and in the vertical unit`() {
+        assertEquals(
+            "449 m · 47° · +12.0 m",
+            legText(item(449.0, altitudeChange = 12.0, altitudeChangeText = "+12.0 m")),
+        )
+    }
+
+    @Test
+    fun `a level leg says nothing about climbing rather than plus zero`() {
+        assertEquals(
+            "449 m · 47°",
+            legText(item(449.0, altitudeChange = 0.0, altitudeChangeText = "+0.0 m")),
+        )
     }
 
     @Test
