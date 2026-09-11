@@ -41,6 +41,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.layout.onGloballyPositioned
+import androidx.compose.ui.layout.positionInParent
 import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.repeatOnLifecycle
@@ -116,6 +117,7 @@ internal fun MapSpikeScreen(
     var centre by remember { mutableStateOf<TrackPoint?>(null) }
     var zoom by remember { mutableDoubleStateOf(0.0) }
     var controlsHeightPx by remember { mutableIntStateOf(0) }
+    var topOverlayPx by remember { mutableIntStateOf(0) }
 
     fun say(message: String) {
         busy = message
@@ -281,6 +283,7 @@ internal fun MapSpikeScreen(
                 onCentre?.invoke(at.latitude, at.longitude)
             },
             bottomInsetPx = controlsHeightPx,
+            topInsetPx = topOverlayPx,
             fitRequest = fitRequest,
             onFitFailed = { onBridge("Fitting the plan") { false } },
         )
@@ -289,7 +292,10 @@ internal fun MapSpikeScreen(
             selected = follow,
             onClick = { follow = !follow },
             label = { Text("Follow", style = MaterialTheme.typography.labelSmall) },
-            modifier = Modifier.align(Alignment.TopEnd).padding(8.dp),
+            modifier = Modifier
+                .align(Alignment.TopEnd)
+                .padding(8.dp)
+                .onGloballyPositioned { topOverlayPx = it.size.height + it.positionInParent().y.toInt() },
             colors = FilterChipDefaults.filterChipColors(
                 containerColor = MaterialTheme.colorScheme.surface.copy(alpha = 0.88f),
                 selectedContainerColor =

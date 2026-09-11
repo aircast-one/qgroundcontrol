@@ -161,6 +161,7 @@ fun VehicleMap(
     onWaypointSelected: (MapHit?) -> Unit = {},
     onCentreChanged: (TrackPoint, Double) -> Unit = { _, _ -> },
     bottomInsetPx: Int = 0,
+    topInsetPx: Int = 0,
     cameraBottomPx: Int = 0,
     fitRequest: Int = 0,
     onFitFailed: () -> Unit = {},
@@ -304,7 +305,7 @@ fun VehicleMap(
             CameraUpdateFactory.newLatLngBounds(
                 LatLngBounds.from(bounds.north, bounds.east, bounds.south, bounds.west),
                 FIT_PADDING_PIXELS,
-                FIT_PADDING_PIXELS,
+                FIT_PADDING_PIXELS + topInsetPx,
                 FIT_PADDING_PIXELS,
                 FIT_PADDING_PIXELS + bottomInsetPx,
             ),
