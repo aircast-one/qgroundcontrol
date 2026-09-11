@@ -10,7 +10,7 @@ import org.maplibre.android.maps.Style
 
 private const val HIT_RADIUS_PX = 44f
 private const val DRAG_WRITE_INTERVAL_MS = 120L
-private const val TAP_SLOP_PX = 20f
+internal const val TAP_SLOP_PX = 20f
 
 sealed interface MapHit {
     data class Waypoint(val index: Int) : MapHit
@@ -85,6 +85,9 @@ fun hitTest(map: MapLibreMap, x: Float, y: Float): MapHit? {
         ?.let { MapHit.Waypoint(it) }
 }
 
+internal fun withinTap(dx: Float, dy: Float): Boolean =
+    kotlin.math.abs(dx) <= TAP_SLOP_PX && kotlin.math.abs(dy) <= TAP_SLOP_PX
+
 @SuppressLint("ClickableViewAccessibility")
 fun attachMissionEditing(
     mapView: MapView,
@@ -109,14 +112,14 @@ fun attachMissionEditing(
         when (event.actionMasked) {
             MotionEvent.ACTION_DOWN -> {
                 val hit = hitTest(map, event.x, event.y)
+                downX = event.x
+                downY = event.y
+                moved = false
                 if (hit == null) {
                     map.uiSettings.setAllGesturesEnabled(true)
                     false
                 } else {
                     dragging = hit
-                    downX = event.x
-                    downY = event.y
-                    moved = false
                     map.uiSettings.setAllGesturesEnabled(false)
                     true
                 }
@@ -124,9 +127,7 @@ fun attachMissionEditing(
 
             MotionEvent.ACTION_MOVE -> {
                 val hit = dragging ?: return@setOnTouchListener false
-                if (!moved && (kotlin.math.abs(event.x - downX) > TAP_SLOP_PX ||
-                        kotlin.math.abs(event.y - downY) > TAP_SLOP_PX)
-                ) {
+                if (!moved && !withinTap(event.x - downX, event.y - downY)) {
                     moved = true
                 }
                 val now = event.eventTime
@@ -143,6 +144,9 @@ fun attachMissionEditing(
                 dragging = null
                 map.uiSettings.setAllGesturesEnabled(true)
                 if (hit == null) {
+                    if (event.actionMasked == MotionEvent.ACTION_UP && withinTap(event.x - downX, event.y - downY)) {
+                        onSelected(null)
+                    }
                     false
                 } else {
                     if (moved) {
