@@ -110,10 +110,10 @@ pub fn along_segments(backend: &dyn Backend, index: usize, sequence: i64, start:
         .collect()
 }
 
-// Qt walks a segment's terrain samples at distanceBetween apart and closes the last gap with
-// finalDistanceBetween, so the samples are evenly spaced except the final one. Spreading them
-// evenly across the segment instead shears every reading towards the end, which is where a
-// landing approach reads its clearance.
+// TerrainTileManager::_pathQueryToCoords interpolates evenly spaced coordinates along the segment
+// and then overwrites the last one with the endpoint, so the samples sit at i * distanceBetween
+// and the final one at the segment's full length. Spreading them evenly across the length instead
+// shears every reading towards the end, which is where a landing approach reads its clearance.
 fn sample_at(step: usize, steps: usize, length: f64, spacing: f64) -> f64 {
     match (step + 1 == steps, spacing > 0.0) {
         (true, _) => length,
