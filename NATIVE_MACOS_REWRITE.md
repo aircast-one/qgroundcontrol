@@ -2314,3 +2314,47 @@ pixels. Replacing both fallbacks with `"ZZ"` and rebuilding: the panel still rea
 The imperial path itself cannot be exercised: proving it renders feet needs a settings fact
 written, which is forbidden here. What is proven is the source of the string, not its behaviour
 under a setting this session may not change.
+
+### Absence has six causes, and four of them were drawn as values in one night (2026-09-12)
+
+The organising idea of the night, reached from three sessions independently. A reader given a
+value cannot tell which of these produced it unless the producer distinguishes them:
+
+1. **A measured value.**
+2. **A figure the producer could not work out** — mission time on a VTOL, where `vtolMode` flips
+   at a transition item so a single-speed answer is right before it and wrong after.
+3. **A regime that does not apply** — Cruise on a multirotor, an altitude mode on a mission start
+   entry. Absent, not zero.
+4. **A verdict the producer declined to give** — `enabled: null` on a kind with no insertion
+   point. Reading it as `false` would refuse everything.
+5. **A member the producer filtered out** — Terrain Frame on a vehicle that cannot hold one. The
+   absence carries no evidence at all unless the producer publishes why.
+6. **A value that resolved to something meaningless** — and this one has *no tell*. The others can
+   at least be detected.
+
+The sixth is the core session's phrasing and the sharpest thing said here: *"my fix was checked
+against command metadata and a unit test, both of which said it was correct, and it was correct
+about the thing they tested. What neither could see was that the value it admitted was not the
+quantity it claimed to be."* Four instances in one night — `amslEntryAlt` returning a relative
+height on an AMSL axis, a `DO_` command's unused `param7` read as an altitude, the leg figures
+served as zeros before the walk ran, and a refused mode dropped without its reason. **A leg of 0 m
+and an altitude of 0.0 m are both real possible values.**
+
+**A seventh shape, hit by two sessions in the same hour: a flag absent from a type reads exactly
+like a flag set false on it.** The core nearly blanked the launch row and every survey by gating on
+bare `specifiesAltitude`, which `SimpleMissionItem` declares and the other item types do not. This
+window nearly blanked `Mission Start` the same way — it reports `specifiesAltitude: false` and its
+585 m is a real planned home altitude. Same shape as `groundKnown` meaning *every* sample rather
+than *any*.
+
+**The audit that followed.** Every list this head filters, twelve of them. One was wrong:
+`AltitudeMode.choosable` dropped a refused mode and kept its reason for an attempted write.
+Eleven were right, and what makes them right is uniform — the producer's reason travels with the
+member. The Add menu and the pattern menu draw a refused kind disabled with the core's sentence as
+its help; the import list intersects two lists from the same producer; `extraRows` drops only
+figures already on the strip; the geometry filters require a polygon to have three points.
+
+**What this changes about method.** Every one of these was found by rendering the panel and
+reading it, or by a peer saying "if your head does X, check it" — none by a test either side owns.
+A test asserts that a value equals what the code produces; it cannot ask whether the quantity means
+anything. That question is only answerable by looking, or by the producer publishing what it knew.
