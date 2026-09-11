@@ -1732,3 +1732,36 @@ checked which of two names a given path reads. The reasoning was sound and appli
 half of a pair — the same failure as the duty-cycle figure and the flick mechanism, in a
 different costume. A single run in a locale that actually translates these strings settled all
 three in under a minute.
+
+### A second instance of the same class, in the setup window, needing a core field (2026-09-11)
+
+Applying the question that settled the survey outline — *which of two names does this path read,
+and is it frozen or live?* — to the rest of the head found one more:
+
+    VehicleSetupWindow.swift:738  component.name == "Sensors" && !sensors.failing.isEmpty
+    VehicleSetupWindow.swift:856  page.name == "Sensors" && !sensors.failing.isEmpty
+
+The name comes from `view.setup`'s components, which the core reads from QGC's
+`VehicleComponent`. `SensorsComponent.cc:16` initialises it as `_name(tr("Sensors"))` — a
+**constructor member initialiser, not a file-scope static**. The component is constructed when a
+vehicle connects, long after `QGCApplication` installs the translators, so unlike
+`SurveyComplexItem::name` this one really does move with the locale. The distinction is the whole
+lesson from `1434acb9c`, and it cuts the other way here.
+
+"Sensors" is translated in the same five locales as the mission item names — az_AZ センサ-style,
+ja_JP, ko_KR, pt_PT, zh_CN — so in those builds the comparison is false and **the sensor-fault
+badge silently never appears**. German is untranslated again, so the obvious test would pass.
+
+**This one cannot be fixed in the head.** The component object carries `name`, `needsAttention`,
+`openable` and `blockedReason`, and no invariant identity. `needsAttention` is
+`requiresSetup && !setupComplete` — whether the component still needs configuring — which is a
+different question from whether its sensors are currently failing, so it is not a substitute.
+The fix is the same one the core has already made once: `view.missionKinds` gained `className`
+because it is the half that survives translation, and `view.setup`'s components need the same.
+Raised with the core rather than worked around.
+
+**Not verified live, and it cannot be from here**: with no vehicle connected `view.setup` reports
+no components at all, so the comparison never runs. The defect is established from the
+initialisation site and the translation files, not from a running instance — which is exactly the
+kind of claim that has been wrong three times today, so it is recorded as reasoning and labelled
+as such rather than asserted.
