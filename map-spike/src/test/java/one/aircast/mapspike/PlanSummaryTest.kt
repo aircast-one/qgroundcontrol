@@ -70,11 +70,18 @@ class PlanSummaryTest {
     }
 
     @Test
-    fun `a selected circle shows its radius from either handle`() {
-        val circles = listOf(FenceCircle(1, true, TrackPoint(41.0, 44.0), 136.0))
+    fun `a selected circle shows its radius from either handle, spelled by the core`() {
+        val circles = listOf(FenceCircle(1, true, TrackPoint(41.0, 44.0), 136.0, "446 ft radius"))
 
-        assertTrue(summary(circles = circles, selected = MapHit.Circle(1)).endsWith("circle 136 m"))
-        assertTrue(summary(circles = circles, selected = MapHit.CircleCentre(1)).endsWith("circle 136 m"))
+        assertTrue(summary(circles = circles, selected = MapHit.Circle(1)).endsWith("446 ft radius"))
+        assertTrue(summary(circles = circles, selected = MapHit.CircleCentre(1)).endsWith("446 ft radius"))
+    }
+
+    @Test
+    fun `a core that does not spell the radius leaves metres rather than a blank`() {
+        val circle = FenceCircle(1, true, TrackPoint(41.0, 44.0), 136.0)
+
+        assertEquals("136 m radius", circleText(circle))
     }
 
     @Test

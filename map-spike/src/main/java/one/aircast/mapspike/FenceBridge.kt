@@ -13,7 +13,13 @@ const val RALLY_POINTS = "$RALLY_ROOT.points"
 const val FENCES_VIEW = "view.fences"
 
 data class FencePolygon(val index: Int, val inclusion: Boolean, val vertices: List<TrackPoint>)
-data class FenceCircle(val index: Int, val inclusion: Boolean, val centre: TrackPoint, val radius: Double)
+data class FenceCircle(
+    val index: Int,
+    val inclusion: Boolean,
+    val centre: TrackPoint,
+    val radius: Double,
+    val detailText: String = "",
+)
 data class RallyPoint(val index: Int, val latitude: Double, val longitude: Double)
 
 private fun coordinate(json: JSONObject?): TrackPoint? {
@@ -48,7 +54,13 @@ fun fenceCircles(json: JSONObject?): List<FenceCircle> {
         val centre = coordinate(element.optJSONObject("centre")) ?: return@mapNotNull null
         val radius = element.optDouble("radius", Double.NaN)
         if (radius.isNaN() || radius <= 0.0) return@mapNotNull null
-        FenceCircle(element.optInt("index", index), element.optBoolean("inclusion", true), centre, radius)
+        FenceCircle(
+            element.optInt("index", index),
+            element.optBoolean("inclusion", true),
+            centre,
+            radius,
+            element.optString("detailText"),
+        )
     }
 }
 

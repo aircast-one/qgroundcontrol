@@ -31,6 +31,9 @@ fun planSummary(
     )).joinToString(" · ")
 }
 
+internal fun circleText(circle: FenceCircle): String =
+    circle.detailText.ifBlank { "${circle.radius.toInt()} m radius" }
+
 private fun selectionText(
     selected: MapHit?,
     items: List<MissionItem>,
@@ -41,10 +44,8 @@ private fun selectionText(
         items.firstOrNull { it.index == selected.index }
             ?.altitudeText?.ifBlank { null }
             ?.let { "#${selected.index} at $it" }
-    is MapHit.Circle -> circles.firstOrNull { it.index == selected.index }
-        ?.let { "circle ${it.radius.toInt()} m" }
-    is MapHit.CircleCentre -> circles.firstOrNull { it.index == selected.index }
-        ?.let { "circle ${it.radius.toInt()} m" }
+    is MapHit.Circle -> circles.firstOrNull { it.index == selected.index }?.let(::circleText)
+    is MapHit.CircleCentre -> circles.firstOrNull { it.index == selected.index }?.let(::circleText)
     is MapHit.FenceVertex -> polygons.firstOrNull { it.index == selected.polygon }
         ?.let { "corner ${selected.vertex + 1} of ${it.vertices.size}" }
     is MapHit.SurveyVertex -> null
