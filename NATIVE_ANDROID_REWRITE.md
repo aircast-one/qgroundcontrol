@@ -3738,6 +3738,29 @@ worth building before this gate can be closed, not worth improvising blind taps 
 The regression's own screens still pass and the vehicle round trip from the previous section is
 unaffected; this is a hole in coverage, not a regression.
 
+**Closed on 2026-09-11. The capability that was missing now exists.** Selecting by text rather than
+by resource id is exactly what the rig does after `a8d19fa` taught its readers to see single-quoted
+attributes, and the picker's own nodes turned out to be reachable without ids at all: the filename
+is the only `android.widget.EditText` in the hierarchy and the button is the only node labelled
+`SAVE`. No resource id is involved and no coordinate is guessed.
+
+The walk, each line read off the handset:
+
+| step | what was done | what the screen said |
+|---|---|---|
+| plan built | takeoff plus two waypoints | `3 items (takeoff) · 1.15 km · 4:06` |
+| `Save as…` | typed `roundtrip.plan`, tapped SAVE | 2218 bytes at `/sdcard/Download/roundtrip.plan` |
+| `New plan` | discarded | `Empty plan · long press to add` |
+| `Open…` | searched `roundtrip`, tapped the result | `3 items (takeoff) · 1.15 km · 4:06` |
+
+One detail worth keeping for whoever drives the picker next: **the file list did not show the newly
+written `.plan` without scrolling or searching**, while the import picker had shown a file placed by
+`adb push` immediately. Tapping the picker's own Search and typing part of the name is reliable
+where reading the visible list is not.
+
+The vehicle round trip was re-walked in the same pass — upload, clear locally, download — and returns
+the identical summary, so both round trips are now covered rather than one.
+
 **Closed. The round trip works, and the rig gap was smaller than it looked** (`971d82c`).
 
 Two things were wrong, neither of them resource ids. First, `ui.sh` allowed *reading* the picker —
