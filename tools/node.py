@@ -4,9 +4,13 @@ import sys
 NODE = re.compile(r'<node[^>]*>')
 
 
+# uiautomator quotes an attribute with ' when its value contains a ", so a
+# pattern that only accepts " silently cannot see any label holding a quote.
 def attribute(node, name):
-    found = re.search(r'%s="([^"]*)"' % name, node)
-    return found.group(1) if found else ""
+    found = re.search(r"""%s=(?:"([^"]*)"|'([^']*)')""" % name, node)
+    if not found:
+        return ""
+    return found.group(1) if found.group(1) is not None else found.group(2)
 
 
 def centre(node):
@@ -78,6 +82,9 @@ def selftest():
     assert count(two, [("text", "Sensors")]) == 2, "a label that appears twice is ambiguous, not a single answer"
     assert find(two, [("text", "Sensors")], 1) == (50, 890)
     assert clickable_state('<node clickable="true" enabled="false" text=""/><node text="Erase" enabled="true"/>', "Erase") is False
+    quoted = '<node text=\'Says "yes" here\' resource-id="" class="x" bounds="[0,0][10,10]" />'
+    assert attribute(quoted, "text") == 'Says "yes" here', attribute(quoted, "text")
+    assert find(quoted, [("text", 'Says "yes" here')], 0) == (5, 5)
     print("node.py ok")
 
 

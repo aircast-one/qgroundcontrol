@@ -108,10 +108,16 @@ text)
 import re, sys, html
 # Every value, in screen order. Collapsing repeats hid a rate that two rows
 # shared and read as a missing one, four separate times.
+# uiautomator switches the whole attribute to single quotes when the value
+# holds a double quote, so a double-quote-only pattern cannot see any label
+# containing one - an empty state reading No message matches "X" was invisible.
 found = [
-    html.unescape(m)
-    for m in re.findall(r"(?:text|content-desc)=\"([^\"]*)\"", sys.stdin.read())
-    if m.strip()
+    html.unescape(a or b)
+    for a, b in re.findall(
+        r"""(?:text|content-desc)=(?:\"([^\"]*)\"|'"'"'([^'"'"']*)'"'"')""",
+        sys.stdin.read(),
+    )
+    if (a or b).strip()
 ]
 print(" | ".join(found))
 '

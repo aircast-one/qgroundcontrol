@@ -7,7 +7,8 @@ FLIGHT_CONTROLS = {
     "abort landing", "grab", "release",
 }
 
-NODE = re.compile(r'(?:text|content-desc)="([^"]*)"[^>]*bounds="\[(\d+),(\d+)\]\[(\d+),(\d+)\]"')
+NODE = re.compile(
+    r"""(?:text|content-desc)=(?:"([^"]*)"|'([^']*)')[^>]*bounds="\[(\d+),(\d+)\]\[(\d+),(\d+)\]"""")
 
 PLANNING_MARKERS = {"Upload", "Download"}
 
