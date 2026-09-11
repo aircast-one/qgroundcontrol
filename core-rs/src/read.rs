@@ -115,6 +115,15 @@ impl Unit {
 
 pub const WHOLE_NUMBER_FROM: f64 = 100.0;
 
+pub fn altitude_text(metres: f64, vertical: &Unit, signed: bool) -> String {
+    let sign = match (metres < 0.0, signed) {
+        (true, _) => "-",
+        (false, true) => "+",
+        (false, false) => "",
+    };
+    format!("{sign}{}", format_measure(vertical.show(metres.abs()), &vertical.name))
+}
+
 pub fn format_measure(value: f64, units: &str) -> String {
     let number = if value >= WHOLE_NUMBER_FROM { format!("{value:.0}") } else { format!("{value:.1}") };
     format!("{number} {}", units.replace("^2", "\u{b2}"))

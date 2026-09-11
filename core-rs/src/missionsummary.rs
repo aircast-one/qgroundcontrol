@@ -297,18 +297,13 @@ fn row(label: &str, value: Option<String>) -> Value {
     json!({ "label": label, "value": value })
 }
 
-fn altitude_text(metres: f64, vertical: &Unit) -> String {
-    let sign = if metres < 0.0 { "-" } else { "" };
-    format!("{sign}{}", crate::read::format_measure(vertical.show(metres.abs()), &vertical.name))
-}
-
 fn altitude_range(mission: &Value, vertical: &Unit) -> Value {
     let read = |key: &str| mission.get(key).and_then(Value::as_f64).filter(|value| value.is_finite());
     match (read("minAMSLAltitude"), read("maxAMSLAltitude")) {
         (Some(low), Some(high)) if high >= low => json!({
             "lowest": low,
             "highest": high,
-            "text": format!("{} to {}", altitude_text(low, vertical), altitude_text(high, vertical)),
+            "text": format!("{} to {}", crate::read::altitude_text(low, vertical, false), crate::read::altitude_text(high, vertical, false)),
         }),
         _ => Value::Null,
     }

@@ -98,11 +98,6 @@ fn at_key(read: &Value, key: &str) -> Option<Value> {
     (at.get("valid").and_then(Value::as_bool) == Some(true) && !unset).then(|| at.clone())
 }
 
-fn signed_altitude_text(change: f64, vertical: &Unit) -> String {
-    let sign = if change < 0.0 { "-" } else { "+" };
-    format!("{sign}{}", crate::read::format_measure(vertical.show(change.abs()), &vertical.name))
-}
-
 fn item(read: &Value, index: i64, vertical: &Unit, imperial: bool) -> Value {
     let coordinate = placed(read);
     let exit = match flag(read, "exitCoordinateSameAsEntry") {
@@ -145,12 +140,13 @@ fn item(read: &Value, index: i64, vertical: &Unit, imperial: bool) -> Value {
         "extraSeconds": number(read, "additionalTimeDelay"),
         "altitudeAmslLowest": number(read, "minAMSLAltitude"),
         "altitudeAmslHighest": number(read, "maxAMSLAltitude"),
+        "specifiesCoordinate": flag(read, "specifiesCoordinate"),
         "altitudeChange": number(read, "altDifference"),
-        "altitudeChangeText": number(read, "altDifference").filter(|change| change.is_finite()).map(|change| signed_altitude_text(change, vertical)),
+        "altitudeChangeText": number(read, "altDifference").map(|change| crate::read::altitude_text(change, vertical, true)),
         "azimuth": number(read, "azimuth"),
         "azimuthText": number(read, "azimuth").map(|bearing| format!("{}\u{b0}", (bearing.round() as i64).rem_euclid(360))),
         "distance": number(read, "distance"),
-        "distanceText": number(read, "distance").filter(|metres| metres.is_finite()).map(|metres| crate::missionsummary::distance_text(metres, imperial)),
+        "distanceText": number(read, "distance").map(|metres| crate::missionsummary::distance_text(metres, imperial)),
         "distanceFromStart": number(read, "distanceFromStart"),
         "edited": flag(read, "dirty"),
         "incomplete": flag(read, "isIncomplete"),
@@ -576,7 +572,7 @@ mod reported {
             }
             fn watch(&self, _p: &[String]) {}
         }
-        let leg = |metres: f64| json!({ "kind": "object", "sequenceNumber": 1, "isSimpleItem": true, "distance": metres, "azimuth": 47.4, "altDifference": -12.0 });
+        let leg = |metres: f64| json!({ "kind": "object", "sequenceNumber": 1, "isSimpleItem": true, "specifiesCoordinate": true, "distance": metres, "azimuth": 47.4, "altDifference": -12.0 });
         let row = |item: Value, raw: f64| items_view(&Units(item, raw), &[])["items"][1].clone();
 
         let short = row(leg(449.36), 1.0);
@@ -596,6 +592,14 @@ mod reported {
 
         let climb = row(json!({ "kind": "object", "sequenceNumber": 1, "isSimpleItem": true, "altDifference": 12.0 }), 1.0);
         assert_eq!(climb["altitudeChangeText"], "+12.0 m");
+        let unknown = row(json!({ "kind": "object", "sequenceNumber": 1, "isSimpleItem": true }), 1.0);
+        assert_eq!(unknown["azimuthText"], Value::Null, "a bearing the controller has not worked out is absent, not a plausible one");
+        assert_eq!(unknown["altitudeChangeText"], Value::Null);
+
+        let command = row(json!({ "kind": "object", "sequenceNumber": 1, "isSimpleItem": true, "specifiesCoordinate": false }), 1.0);
+        assert_eq!(command["specifiesCoordinate"], false, "a change-speed or camera-trigger command has no place by design, and a list that says \"no position\" about it reports the nature of the command as a defect in the plan");
+        assert_eq!(command["altitudeOnly"], false, "which is not the same as a takeoff, whose place is withheld by the display and not by the command");
+        assert_eq!(short["specifiesCoordinate"], true);
         assert_eq!(climb["distanceText"], Value::Null, "a leg with no distance has no text, rather than a plausible zero");
     }
 
