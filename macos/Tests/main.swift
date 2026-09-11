@@ -1270,6 +1270,7 @@ func checkMissionItemKinds() {
     checkCollisionRuns()
     checkClearanceSentence()
     checkShapeAbsence()
+    checkBatteryReading()
     checkFlownLeg()
     checkVehicleMessageOrder()
     checkBlockedBanner()
@@ -3657,6 +3658,12 @@ func checkGuidedOffers() {
 
     let arm = list[0]
     expect(arm.blocked, "a blocked action is disabled")
+    // Every other assertion about blocked says it is true. Pinning it to a constant true fired
+    // none of them: nothing showed a guided action that can be commanded, so a head where arm,
+    // takeoff and return were permanently disabled passed the suite. A guard that never opens
+    // looks exactly like a careful guard, and every assertion about it passes.
+    expect(!list[1].blocked,
+           "and one the core says is ready is not, or nothing could ever be commanded at all")
     expect(arm.explanation, "The vehicle's arming checks are failing.",
            "and explains itself with the core's reason rather than the generic prompt")
     expect(list[1].explanation, "P is the prompt",
@@ -4161,6 +4168,29 @@ func checkFlownLeg() {
            + "somebody really put in the Gulf of Guinea")
 }
 
+func checkBatteryReading() {
+    // Nothing reached any of these. Mutating each to an empty string fired no assertion, which
+    // for the three numbers an operator checks before flying is the wrong kind of quiet.
+    let live = BatteryReading(voltage: 15.812, current: 3.407, percent: 76.4)
+    expect(live.voltageText, "15.81 V", "voltage to two places, because the last one is the one "
+           + "that moves as a pack sags")
+    expect(live.currentText, "3.41 A", "current the same")
+    expect(live.percentText, "76%", "and a whole percent, because a tenth of a percent of charge "
+           + "is precision the number does not have")
+    expect(live.available, "a pack reporting a voltage is a pack there is a reading for")
+
+    expect(BatteryReading.unavailable.available == false,
+           "and no reading at all is not a reading of zero, which would draw a flat pack")
+    expect(BatteryReading.unavailable.voltageText, "\u{2014}", "it shows a dash")
+
+    // MAVLink sends NaN for a value the vehicle does not have, and a format string will happily
+    // print it as "nan V" beside two real numbers.
+    let partial = BatteryReading(voltage: 15.0, current: .nan, percent: nil)
+    expect(partial.available, "a pack with a voltage and no current still has a voltage")
+    expect(partial.currentText, "\u{2014}", "but its current reads as absent rather than as nan")
+    expect(partial.percentText, "\u{2014}", "and so does a percentage it never sent")
+}
+
 func checkShapeAbsence() {
     expect(PlanShapeAbsence.fence(connected: false, supported: false),
            PlanShapeAbsence.noFence,
@@ -4377,6 +4407,10 @@ func checkBlockedItems() {
     let terrain = MissionItem(view: ["index": 3, "sequence": 3, "name": "Waypoint",
                                      "blocked": false, "awaitingTerrain": true,
                                      "blockedReason": "Waiting for terrain"])
+    expect(!ok.stopsSave,
+           "an item the controller calls ready does not stop the save -- pinning stopsSave to a "
+           + "constant true fired nothing, so a plan where every row wore the amber seal and the "
+           + "banner never cleared would have passed")
     expect(!terrain.blocked && terrain.awaitingTerrain && terrain.stopsSave,
            "an item waiting on terrain heights stops the save too, but it is a wait on a server "
            + "and not a task for the operator. QGC keeps the two apart -- NotReadyForSaveData "
