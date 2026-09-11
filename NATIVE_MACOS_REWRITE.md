@@ -2024,3 +2024,39 @@ summary figure.
 reads that the core no longer emits. This is the opposite direction — a key the core emits that
 the head never reads — and that direction cannot be checked mechanically, because most served
 fields are legitimately unused by any given head. It took reading the QML to notice.
+
+### The fourth walk, and the first one with its margin measured (2026-09-11)
+
+Standing job (A) on the current plan — mission start, takeoff, waypoint, ROI, survey, return to
+launch, **and a waypoint after the return to launch**, which is the shape that broke the first
+three walks. All three of the core's computed fields now agree with the controller exactly:
+
+| field | controller | computed |
+|---|---|---|
+| `distanceMetres` | 25383.780544817 | 25383.780544817 |
+| `maxTelemetryMetres` | 18327.27166878032 | 18327.27166878032 |
+| `altitudeBandMetres` | [585.0, 660.0] | [585.0, 660.0] |
+
+They are null on a plain `view.missionSummary` read and only computed under
+`view.missionSummary(verify)`, which is worth knowing before reading a null as a regression.
+
+**What is new is not the agreement but the margin.** Every previous walk asserted that the plan
+contained the discriminating case and left it there. Measured this time: the only positioned item
+after the route end sits 6424.96 m from the survey's exit, so a walk missing the `endsRoute` guard
+would report **31808.74 m against 25383.78 m** — a 25% error, not a rounding difference. The
+agreement is therefore evidence rather than a coincidence of a plan that could not have told the
+two apart.
+
+**The non-vacuity check was itself vacuous on its first run**, which is the lesson worth keeping.
+Measuring the tail from the item *at* the route end took the coordinate of the Return To Launch,
+which has none — the haversine returned nothing, the sum filtered it out, and the answer was
+**0.00 m**. That reads exactly like "this plan has no discriminating case" and would have retired
+a genuine check as uninformative. The fix is to measure from the last item that *has* a position
+at or before the route end, the survey's exit. An instrument built to catch a comparison where
+both sides answer 0 produced that very answer itself, from an absent coordinate rather than an
+absent defect.
+
+Also recorded so the next read does not chase it: the mission probe's `items` are a compact
+display form carrying `seq`, `command`, `position`, `altitude` and `selected` — not `sequence`,
+`kind`, `endsRoute` or `flownLeg`. Reading it with the view's field names returns `None` for every
+one of them and looks like a stripped payload. Those fields are on `view.missionItems`.
