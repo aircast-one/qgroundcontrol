@@ -3,10 +3,6 @@ use serde_json::{Value, json};
 use crate::read::{Unit, flag, format_measure, integer, object, text};
 use crate::router::Backend;
 
-// The three property deps all read the same when a plan is replaced by one of the same length,
-// which is the case a fly view cares about most: it never edits this plan, it receives one from
-// the vehicle or from a file. visualItemsChanged is emitted where the list is rebuilt, so it fires
-// on a replacement that no count or index can see.
 pub const DEPS: &[&str] = &[
     "plan.missionController.visualItems.count",
     "plan.missionController.currentPlanViewVIIndex",
@@ -68,10 +64,6 @@ pub fn items_view(backend: &dyn Backend, args: &[String]) -> Value {
         "class": "MissionItems",
         "available": has_items,
         "editing": editable(backend, current),
-        // The plan editor's selection, which is what currentPlanViewVIIndex holds. Not the item
-        // the vehicle is executing: MissionController assigns isCurrentItem from MISSION_CURRENT
-        // only when _flyView is set, and this is the plan controller. Named for what it is,
-        // because "current" invites a head to draw a marker meaning "the aircraft is here".
         "selected": current,
         "items": items,
         "reason": match has_items {
@@ -120,10 +112,6 @@ fn item(read: &Value, index: i64, vertical: &Unit, imperial: bool) -> Value {
         "altitudeUnits": height(read).map(|_| vertical.name.clone()),
         "altitudeFactUnits": fact_units(read, "altitude").or_else(|| fact_units(read, "plannedHomePositionAltitude")),
         "specifiesAltitude": flag(read, "specifiesAltitude"),
-        // Whether the command carries a height and no place. An ArduPilot takeoff is exactly that
-        // - MAV_CMD_NAV_TAKEOFF is declared specifiesCoordinate false, specifiesAltitudeOnly true
-        // - so a head that infers it from the kind gets a fixed wing wrong, where a takeoff does
-        // specify a place. The core already asked for this field and then dropped it.
         "altitudeOnly": flag(read, "specifiesAltitudeOnly"),
         "category": Some(text(read, "category")).filter(|category| !category.is_empty()),
         "cameraShots": number(read, "cameraShots").map(|shots| shots as i64).filter(|shots| *shots > 0),
@@ -131,12 +119,6 @@ fn item(read: &Value, index: i64, vertical: &Unit, imperial: bool) -> Value {
         "simple": read.get("isSimpleItem").and_then(Value::as_bool),
         "altitudeMode": number(read, "altitudeMode").map(|mode| mode as i64),
         "altitudeAmsl": number(read, "amslEntryAlt"),
-        // A pattern covers a range of heights rather than one, and the controller takes the
-        // mission's altitude band from these rather than from the entry altitude. Both are
-        // Q_PROPERTY with a notify, so they are watchable as well as readable.
-        // A delay an item adds to the mission beyond the time spent flying to it - a loiter, a
-        // camera pause. Nothing else accounts for it, so a time computed without it is short by
-        // however long the vehicle sits still.
         "extraSeconds": number(read, "additionalTimeDelay"),
         "altitudeAmslLowest": number(read, "minAMSLAltitude"),
         "altitudeAmslHighest": number(read, "maxAMSLAltitude"),
@@ -153,12 +135,6 @@ fn item(read: &Value, index: i64, vertical: &Unit, imperial: bool) -> Value {
         "endsRoute": flag(read, "isLandCommand") || integer(read, "command") == Some(RETURN_TO_LAUNCH),
         "command": integer(read, "command"),
         "flownLeg": flag(read, "specifiesCoordinate") && !flag(read, "isStandaloneCoordinate") && !flag(read, "isIncomplete"),
-        // Whether this item has a position that can be dragged. An unplaced takeoff is the case
-        // that matters: it reads as a mission item and has no location, and writing a coordinate
-        // to one moves the launch point instead through TakeoffMissionItem::setCoordinate. The
-        // plan's own settings entry is not an item on the map at all. Served because it is a fact
-        // about the item, and because two heads deciding it separately is how one of them gets it
-        // wrong - which is exactly what happened.
         "movable": coordinate.is_some() && kind(read) != "settings",
         "blocked": ready.is_some_and(|state| state != READY_TO_SAVE && state != AWAITING_TERRAIN),
         "awaitingTerrain": ready == Some(AWAITING_TERRAIN),
@@ -179,9 +155,6 @@ fn editable(backend: &dyn Backend, current: i64) -> Value {
     }
 }
 
-// The plan's own entry keeps its height under a different name, because it is where the vehicle
-// launches from rather than a height the operator set for a waypoint. A head reading only the
-// waypoint name draws that row blank.
 fn fact_units(read: &Value, name: &str) -> Option<String> {
     read.get("facts")
         .and_then(Value::as_array)
@@ -409,10 +382,6 @@ mod tests {
         assert_eq!(none["selected"], -1);
     }
 
-    // get_fields answers only the fields it was asked for, plus four the bridge inserts on every
-    // object read: kind, class, facts and children (QGCBridgeCore::objectJson). So reading a key
-    // that is neither requested nor one of those four silently yields a default - a plausible
-    // value that answers nothing, which is the shape of half this week's defects.
     const ALWAYS_PRESENT: [&str; 4] = ["kind", "class", "facts", "children"];
 
     #[test]
@@ -439,15 +408,7 @@ mod tests {
 
     #[test]
     fn an_item_with_no_position_is_not_one_a_head_can_drag() {
-        // An unplaced takeoff is the case this exists for. It reads as an ordinary item, has no
-        // location, and writing a coordinate to it moves the launch point instead of the item -
-        // so a head that offers a drag on "anything removable" moves the wrong thing and reports
-        // success. The macOS head had exactly that, from two guards that happened to agree.
         let unplaced = items_view(&Plan(vec![settings(), json!({ "kind": "object", "sequenceNumber": 1, "isSimpleItem": true, "specifiesCoordinate": true, "coordinate": at(0.0, 0.0) })], 1), &[]);
-        // Built by at(), not by hand. This test originally wrote the coordinate inline and left
-        // out "valid", so the view discarded it, every item read unplaced, and the assertion
-        // passed for the wrong reason. One helper that knows the shape removes the chance to get
-        // it wrong, rather than a check that notices afterwards.
         assert_eq!(unplaced["items"][1]["coordinate"], Value::Null, "nought by nought is the unset coordinate, not a place off Africa");
         assert_eq!(unplaced["items"][1]["movable"], false);
 
@@ -463,15 +424,6 @@ mod tests {
         let pattern = json!({ "kind": "object", "sequenceNumber": 5, "abbreviation": "FWL", "commandName": "Fixed Wing Landing", "isSimpleItem": false });
         let view = items_view(&Plan(vec![settings(), pattern], 1), &[]);
         assert_eq!(view["items"][1]["kind"], "complex", "an item type the core has no entry for still has to draw as something rather than as a waypoint");
-        // The class the bridge reports is the same in every locale; commandName is tr() on every
-        // complex item, so where it is translated each fell through to "complex", losing its
-        // geometry, its title and its placement hint with it.
-        //
-        // These are the strings a running build actually emits, read out of
-        // translations/qgc_source_ja_JP.ts. Only five of twenty-one locales translate these names
-        // at all - az_AZ, ja_JP, ko_KR, pt_PT, zh_CN - and German is not one of them, so a German
-        // build draws everything correctly and inventing a plausible German word here would have
-        // tested the fix against a string nothing produces.
         let corridor = items_view(&Plan(vec![settings(), json!({ "kind": "object", "sequenceNumber": 1, "isSimpleItem": false, "class": "CorridorScanComplexItem", "commandName": "\u{56de}\u{5eca}\u{30b9}\u{30ad}\u{30e3}\u{30f3}" })], 1), &[]);
         assert_eq!(corridor["items"][1]["kind"], "corridor", "a complex item is identified by what it is, not by what the interface happens to call it here");
 
@@ -652,10 +604,6 @@ mod reported {
         assert_eq!(item["altitudeMode"], 1, "altitudeMode is a plain property on the item and not a fact, so searching the facts for it finds nothing");
     }
 
-
-
-
-
     #[test]
     fn the_plans_own_entry_reports_the_height_it_keeps_under_its_own_name() {
         let settings = items_view(&One(json!({ "kind": "object", "sequenceNumber": 1 })), &[])["items"][0].clone();
@@ -668,9 +616,6 @@ mod reported {
         assert_eq!(launch["altitude"], 585.0, "the launch elevation is a height and the row that shows it goes blank if only the waypoint name is looked for");
         assert_eq!(launch["altitudeText"], "585 m", "every measure the core serves rounds the same way, and a row that kept a tenth here read 585.0 m beside a summary saying 585 m to 660 m");
 
-        // The launch entry has no fact called altitude, so the units an editor needs for its field
-        // come only from the fallback. Dropping it left the row with a number and nothing to label
-        // it, and no test noticed.
         let labelled = listed(json!({
             "kind": "object", "sequenceNumber": 0, "homePosition": true, "isSimpleItem": false,
             "facts": [ { "name": "Altitude", "property": "plannedHomePositionAltitude", "value": 585.0, "units": "m" } ],

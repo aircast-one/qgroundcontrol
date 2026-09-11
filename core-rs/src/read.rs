@@ -14,11 +14,6 @@ pub fn integer(object: &Value, key: &str) -> Option<i64> {
     object.get(key).and_then(Value::as_i64)
 }
 
-/// A yes-or-no the C++ may declare either way. RadioComponentController declares
-/// `Q_PROPERTY(int rollChannelReversed)` over a getter returning bool, so the bridge sends a
-/// number; the sibling properties beside it declare bool and send one. Reading with `flag` or
-/// `integer` couples the answer to which was written, and correcting that obvious typo upstream
-/// would silently turn every reversed channel into a normal one.
 pub fn truthy(object: &Value, key: &str) -> bool {
     match object.get(key) {
         Some(Value::Bool(set)) => *set,

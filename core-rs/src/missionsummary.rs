@@ -1,11 +1,8 @@
 use serde_json::{Value, json};
 
-use crate::read::{Unit, integer, object, value_number};
+use crate::read::{Unit, object, value_number};
 use crate::router::Backend;
 
-// "plan.missionController" names an object rather than a property, so the watcher has nothing to
-// bind to and every change reached this view through the re-read that only runs while the event
-// loop is idle. The fields it actually reads each carry a notify signal.
 pub const DEPS: &[&str] = &[
     "plan.missionController.containsItems",
     "plan.missionController.missionTotalDistance",
@@ -19,9 +16,6 @@ pub const DEPS: &[&str] = &[
     "plan.missionController.minAMSLAltitude",
     "plan.missionController.maxAMSLAltitude",
     "settings.unitsSettings.horizontalDistanceUnits",
-    // The duration depends on the vehicle class and on the two speeds it is flown at, and all four
-    // change without the plan changing: a different airframe connects, or the operator edits the
-    // offline editing speeds in settings.
     "plan.controllerVehicle.multiRotor",
     "plan.controllerVehicle.vtol",
     "settings.appSettings.offlineEditingHoverSpeed",
@@ -83,12 +77,6 @@ fn flag_of(item: &Value, key: &str) -> bool {
     item.get(key).and_then(Value::as_bool) == Some(true)
 }
 
-// One walk, used by both figures. The two guards it carries are the two that have gone missing
-// separately: flownLeg lives inside a filter and survives being copied, endsRoute truncates the
-// collection before iteration and does not. Sharing the walk is what stops the next figure written
-// beside these from carrying one and leaving the other - the fix the macOS head reached from
-// "two places that must agree will eventually disagree" and this one reached from "the guard
-// outside the expression's shape is the one that gets dropped".
 fn flown(items: &[Value]) -> impl Iterator<Item = &Value> {
     let ends = items.iter().position(|item| flag_of(item, "endsRoute"));
     let reached = match ends {
@@ -98,12 +86,6 @@ fn flown(items: &[Value]) -> impl Iterator<Item = &Value> {
     reached.iter().filter(|item| flag_of(item, "flownLeg"))
 }
 
-// MissionController measures each leg from the previous item's exit to this one's entry and adds a
-// pattern's own path on top. Two things it does not do: it does not fly to an item that only
-// carries a position, and it does not continue past the item that ends the route - anything after
-// a landing or a return is uploaded and never reached. Both questions are already answered on
-// every item, by flownLeg and endsRoute, and they are separate questions: a return to launch ends
-// the route while being no leg at all.
 pub fn flown_distance(items: &[Value]) -> f64 {
     flown(items).fold((0.0, None), |(total, previous), item| {
             let pattern = item.get("patternDistance").and_then(Value::as_f64).unwrap_or(0.0);
@@ -117,18 +99,6 @@ pub fn flown_distance(items: &[Value]) -> f64 {
         .0
 }
 
-// What the controller calls the mission's maximum telemetry distance. Two terms, and the second
-// is not what its name suggests: for every flown item it takes the distance from the launch point
-// to that item, and for a pattern it also folds in greatestDistanceTo(exitCoordinate) - the
-// pattern's own greatest internal span, measured from its exit rather than from home.
-//
-// That second term is a category error in the original: it mixes a span with a set of distances
-// from a fixed point, so a large survey near home can raise a figure that means "furthest from
-// launch". Reproduced exactly anyway, because a port that quietly improves its source can never be
-// checked against it. Recorded in the plan as a question to settle deliberately.
-//
-// The walk stops where the route ends, for the same reason the distance walk does: an item after a
-// return to launch is uploaded and never reached, so it is nowhere the vehicle gets to.
 pub fn telemetry_terms(items: &[Value]) -> Vec<(i64, f64, f64)> {
     let Some(home) = items.first().and_then(|item| item.get("coordinate")).and_then(point_of) else {
         return Vec::new();
@@ -154,14 +124,6 @@ pub fn max_telemetry_distance(items: &[Value]) -> f64 {
     telemetry_terms(items).iter().map(|(_, from_home, span)| from_home.max(*span)).fold(0.0, f64::max)
 }
 
-// How long the mission takes. Every leg is flown at one of two speeds and the vehicle class picks
-// which: a multirotor hovers the whole way, anything else cruises. Each item can also add a delay
-// of its own - a loiter, a camera pause - which is time nothing else accounts for.
-//
-// A VTOL is not attempted and answers None rather than a plausible number. MissionController flips
-// vtolMode between multirotor and fixed wing as the walk passes a transition item, so the speed
-// changes partway through a mission; a single-speed answer would be right for the legs before the
-// transition and quietly wrong after it. That is the shape refused twice already today.
 pub fn flown_seconds(items: &[Value], hover: f64, cruise: f64, ascent: f64, multirotor: bool, vtol: bool) -> Option<f64> {
     if vtol {
         return None;
@@ -177,10 +139,6 @@ pub fn flown_seconds(items: &[Value], hover: f64, cruise: f64, ascent: f64, mult
     Some(flown_distance(items) / speed + delays + climb(items, ascent, multirotor))
 }
 
-// A rotor takes off straight up, so the height it climbs to is time the horizontal walk does not
-// account for - MissionController special-cases it at the ascent speed rather than the hover
-// speed. Absent from the first version of this and worth exactly 16.667 s on the default plan:
-// fifty metres at three metres a second, which is what the disagreement turned out to be.
 fn climb(items: &[Value], ascent: f64, multirotor: bool) -> f64 {
     if !multirotor || !ascent.is_finite() || ascent <= 0.0 {
         return 0.0;
@@ -245,11 +203,6 @@ pub fn summary_view(backend: &dyn Backend, args: &[String]) -> Value {
         "imperial": imperial,
         "rows": rows.into_iter().filter(|row| row["value"] != Value::Null).collect::<Vec<_>>(),
         "distanceMetres": total,
-        // The same figure worked out by the core rather than read from the controller. Served
-        // beside it so the two can be compared on every run against every plan a test builds,
-        // which is the only way a port of this arithmetic can be trusted before it replaces it.
-        // Opt-in, because working it out costs a whole view.missionItems and every head reading
-        // the summary would pay for a figure only a test compares. view.missionSummary(verify).
         "durationComputedSeconds": walked
             .as_ref()
             .and_then(|items| {
@@ -317,10 +270,6 @@ mod tests {
         let plain = flown_distance(&straight);
         assert!(plain > 400.0 && plain < 500.0, "two points about four hundred metres apart measured {plain}");
 
-        // A return to launch carries no coordinate and ends the route. Anything after it is
-        // uploaded and never reached, and the plan editor will not let one be built by appending -
-        // it refuses to add after a landing - so the shape only arises from a return, and only a
-        // list built by hand can put it in front of this function.
         let past_the_end = vec![
             leg(47.3960, 8.5440),
             leg(47.3990, 8.5480),
@@ -329,7 +278,6 @@ mod tests {
         ];
         assert_eq!(flown_distance(&past_the_end), plain, "an item beyond the end of the route cannot lengthen the mission");
 
-        // And a region of interest is a place with no leg to it, wherever it sits.
         let with_roi = vec![
             leg(47.3960, 8.5440),
             json!({ "flownLeg": false, "endsRoute": false, "coordinate": { "latitude": 47.4200, "longitude": 8.5700 } }),
