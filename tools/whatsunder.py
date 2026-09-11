@@ -8,13 +8,18 @@ FLIGHT_CONTROLS = {
 }
 
 NODE = re.compile(
-    r"""(?:text|content-desc)=(?:"([^"]*)"|'([^']*)')[^>]*bounds="\[(\d+),(\d+)\]\[(\d+),(\d+)\]"""")
+    r'(?:text|content-desc)=(["\'])(.*?)\1[^>]*bounds="\[(\d+),(\d+)\]\[(\d+),(\d+)\]"'
+)
+
+
+def nodes(xml):
+    return [(label, left, top, right, bottom) for _, label, left, top, right, bottom in NODE.findall(xml)]
 
 PLANNING_MARKERS = {"Upload", "Download"}
 
 
 def is_planning(xml):
-    labels = {label.strip() for label, *_ in NODE.findall(xml)}
+    labels = {label.strip() for label, *_ in nodes(xml)}
     return PLANNING_MARKERS <= labels
 
 
@@ -23,7 +28,7 @@ def labels_under(xml, x, y):
         return []
     return [
         label
-        for label, left, top, right, bottom in NODE.findall(xml)
+        for label, left, top, right, bottom in nodes(xml)
         if label.strip().lower() in FLIGHT_CONTROLS
         and int(left) <= x <= int(right)
         and int(top) <= y <= int(bottom)

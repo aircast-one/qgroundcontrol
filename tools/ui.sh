@@ -65,10 +65,17 @@ require_front() {
 
 refuse_flight_control() {
     [ "${ALLOW_FLIGHT_COMMAND:-0}" = "1" ] && return 0
-    local under
-    under=$(adb shell uiautomator dump /sdcard/ui-guard.xml >/dev/null 2>&1 &&
-        adb shell cat /sdcard/ui-guard.xml 2>/dev/null |
-        python3 "$(dirname "$0")/whatsunder.py" "$1" "$2")
+    local under dump
+    dump=$(adb shell uiautomator dump /sdcard/ui-guard.xml >/dev/null 2>&1 &&
+        adb shell cat /sdcard/ui-guard.xml 2>/dev/null)
+    if [ -z "$dump" ]; then
+        echo "REFUSED: the screen could not be read, so ($1,$2) cannot be cleared." >&2
+        exit 1
+    fi
+    if ! under=$(printf '%s' "$dump" | python3 "$(dirname "$0")/whatsunder.py" "$1" "$2"); then
+        echo "REFUSED: the flight-control guard failed, so ($1,$2) cannot be cleared." >&2
+        exit 1
+    fi
     if [ -n "$under" ]; then
         echo "REFUSED: ($1,$2) is inside \"$under\" - a flight control." >&2
         echo "         Set ALLOW_FLIGHT_COMMAND=1 to command the vehicle deliberately." >&2
