@@ -113,6 +113,8 @@ struct VideoStatus: Equatable {
 
     var configuredCameras: [VideoCamera] { cameras.filter(\.configured) }
 
+    var listedCameras: [VideoCamera] { cameras.filter { $0.configured || $0.enabled } }
+
     var activeCamera: VideoCamera? { cameras.first { $0.slot == activeSource } }
 
     // QGC labels the switch with cameraName(activeVideoSource), which falls back to "Camera N".

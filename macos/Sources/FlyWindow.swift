@@ -361,7 +361,7 @@ struct FlyPanel: View {
                                  .frame(width: 7, height: 7)
                          },
                          trailing: { EmptyView() })
-                ForEach(video.status.configuredCameras) { camera in
+                ForEach(video.status.listedCameras) { camera in
                     GroupRow(title: camera.title,
                              description: camera.recording ? "Recording" : "",
                              value: camera.status)

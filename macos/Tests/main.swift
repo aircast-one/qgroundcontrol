@@ -1275,6 +1275,7 @@ func checkMissionItemKinds() {
     checkLegsSpelled()
     checkWithheldLegFigures()
     checkTerrainMarkers()
+    checkCamerasTheOperatorTurnedOn()
     checkRefusedModesSayWhy()
     checkAltitudeReading()
     checkAltitudeModePickerIsOffered()
@@ -4456,6 +4457,33 @@ func checkRefusedModesSayWhy() {
                                                           enabled: true, reason: "")]])
     expect(AltitudeMode.refusalNote(allOffered) == nil,
            "nothing refused says nothing at all")
+}
+
+func checkCamerasTheOperatorTurnedOn() {
+    func camera(_ slot: Int, _ title: String, enabled: Bool,
+                configured: Bool, status: String) -> [String: Any] {
+        ["slot": slot as NSNumber, "title": title, "status": status,
+         "enabled": enabled as NSNumber, "configured": configured as NSNumber]
+    }
+    let read = VideoStatus(["available": true as NSNumber, "cameras": [
+        camera(0, "Camera 1", enabled: true, configured: true, status: "Reconnecting\u{2026}"),
+        camera(1, "Camera 2", enabled: true, configured: false, status: "No stream URL"),
+        camera(2, "Camera 3", enabled: true, configured: true, status: "Reconnecting\u{2026}"),
+        camera(3, "Camera 4", enabled: false, configured: false, status: "No stream URL")]])
+
+    expect(read.cameras.count == 4,
+           "the fixture carries all four, without which the assertions below pass because the "
+           + "list is empty rather than because the rule works")
+    expect(read.listedCameras.map(\.title).joined(separator: ","), "Camera 1,Camera 2,Camera 3",
+           "a camera the operator switched on is listed even with no stream URL, because the "
+           + "core serves the reason and dropping it left the panel skipping from 1 to 3 with "
+           + "nothing to say where 2 had gone")
+    expect(read.listedCameras.first { $0.title == "Camera 2" }?.status ?? "", "No stream URL",
+           "and it carries the core's own sentence, which is the whole point of listing it")
+    expect(!read.listedCameras.contains { $0.title == "Camera 4" },
+           "a camera the operator never switched on stays absent: the core says enabled false, "
+           + "which is a different answer from configured false and the only one that means "
+           + "nothing was asked for")
 }
 
 func checkTerrainMarkers() {
