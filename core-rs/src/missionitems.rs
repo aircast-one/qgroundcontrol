@@ -35,6 +35,7 @@ pub fn items_view(backend: &dyn Backend, _args: &[String]) -> Value {
         "kind": "object",
         "class": "MissionItems",
         "available": has_items,
+        "editing": editable(backend, current),
         "current": current,
         "items": items,
         "reason": match has_items {
@@ -93,6 +94,42 @@ fn item(read: &Value, index: i64) -> Value {
             _ => None,
         },
     })
+}
+
+// A head editing an item writes to a path it builds from a name, and a name it spells itself that
+// does not resolve is a write that silently does not happen. The core names the paths for the item
+// being edited, read without a field filter because which facts an item has depends on what it is.
+fn editable(backend: &dyn Backend, current: i64) -> Value {
+    if current <= 0 {
+        return Value::Null;
+    }
+    let path = format!("plan.missionController.visualItems.{current}");
+    let item = object(&backend.get(&path));
+    let Some(facts) = item.get("facts").and_then(Value::as_array) else {
+        return Value::Null;
+    };
+    let fields: Vec<Value> = facts
+        .iter()
+        .filter_map(|fact| {
+            // property is the name the path is built from. name is what the fact calls itself for
+            // an operator to read, and it has spaces in it.
+            let property = fact.get("property").and_then(Value::as_str).filter(|property| !property.is_empty())?;
+            let name = fact.get("name").and_then(Value::as_str).filter(|name| !name.is_empty()).unwrap_or(property);
+            Some(json!({
+                "name": property,
+                "label": name,
+                "units": fact.get("units").and_then(Value::as_str).filter(|units| !units.is_empty()),
+                "value": fact.get("value"),
+                "text": fact.get("enumOrValueString").and_then(Value::as_str),
+                "choices": fact.get("enumStrings"),
+                "path": format!("{path}.{property}"),
+            }))
+        })
+        .collect();
+    match fields.is_empty() {
+        true => Value::Null,
+        false => json!({ "index": current, "fields": fields }),
+    }
 }
 
 fn fact_number(read: &Value, name: &str) -> Option<f64> {

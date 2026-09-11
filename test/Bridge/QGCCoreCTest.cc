@@ -3174,3 +3174,53 @@ void QGCCoreCTest::_theModeSlotsReadTheChannelTheVehicleNames()
     QSKIP("the Rust core is not linked into this build");
 #endif
 }
+
+void QGCCoreCTest::_everyEditablePathTheCoreNamesAcceptsAWrite()
+{
+#ifdef QGC_RUST_CORE
+    (void) take(qgc_bridge_invoke("plan.start", "[]"));
+    const auto restore = []() { (void) take(qgc_bridge_invoke("plan.removeAll", "[]")); };
+    const auto leaveNoPlanBehind = qScopeGuard(restore);
+    restore();
+
+    QStringList checked;
+    QStringList unwritable;
+    for (const QString &kind : { QStringLiteral("takeoff"), QStringLiteral("waypoint"), QStringLiteral("survey"), QStringLiteral("corridor") }) {
+        const QJsonObject added = take(qgc_core_invoke("mission.insert", QStringLiteral("[\"%1\", 47.3975, 8.5460, -1]").arg(kind).toUtf8().constData()));
+        QVERIFY2(added.value(QStringLiteral("ok")).toBool(false), qPrintable(QStringLiteral("%1: %2").arg(kind, added.value(QStringLiteral("reason")).toString())));
+
+        QJsonObject editing;
+        QTRY_VERIFY_WITH_TIMEOUT(!(editing = take(qgc_core_get("view.missionItems")).value(QStringLiteral("editing")).toObject()).isEmpty(), 10000);
+        const QJsonArray fields = editing.value(QStringLiteral("fields")).toArray();
+        QVERIFY2(!fields.isEmpty(), qPrintable(QStringLiteral("%1 offers nothing to edit, which is what naming no paths looks like").arg(kind)));
+
+        for (const QJsonValue &entry : fields) {
+            const QJsonObject field = entry.toObject();
+            const QString path = field.value(QStringLiteral("path")).toString();
+            checked.append(path);
+
+            const QJsonObject read = take(qgc_bridge_get(path.toUtf8().constData()));
+            if (read.contains(QStringLiteral("found"))) {
+                unwritable.append(QStringLiteral("%1 names nothing").arg(path));
+                continue;
+            }
+            const QJsonObject written = take(qgc_bridge_set(path.toUtf8().constData(),
+                                                            QJsonDocument(QJsonObject { { QStringLiteral("value"), field.value(QStringLiteral("value")) } })
+                                                                .toJson(QJsonDocument::Compact)
+                                                                .constData()));
+            if (!written.value(QStringLiteral("ok")).toBool(false)) {
+                unwritable.append(QStringLiteral("%1 refused a write of its own value: %2").arg(path, written.value(QStringLiteral("reason")).toString()));
+            }
+        }
+    }
+    restore();
+
+    QVERIFY2(checked.count() > 8, qPrintable(QStringLiteral("only %1 paths were checked, so this proves very little").arg(checked.count())));
+    QVERIFY2(unwritable.isEmpty(),
+             qPrintable(QStringLiteral("the core named %1 paths a head cannot write, and a write that does not resolve does not happen and says nothing:\n%2")
+                            .arg(unwritable.count())
+                            .arg(unwritable.join(QStringLiteral("\n")))));
+#else
+    QSKIP("the Rust core is not linked into this build");
+#endif
+}

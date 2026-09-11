@@ -58,6 +58,7 @@ private slots:
     void _theMissionSummaryArrivesOnItsOwnAfterAnEdit();
     void _theItemListNamesWhatTheControllerHolds();
     void _theModeSlotsReadTheChannelTheVehicleNames();
+    void _everyEditablePathTheCoreNamesAcceptsAWrite();
     void _structureScanItemsMatchTheRecordedUpload();
     void _aLargeSurveyMakesTheRoundTripUnchanged();
     void _surveyTransectsMatchTheRecordedOracle();

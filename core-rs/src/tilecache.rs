@@ -98,6 +98,10 @@ const SCHEMA: [&str; 5] = [
     "CREATE TABLE IF NOT EXISTS TilesDownload (setID INTEGER, hash TEXT NOT NULL UNIQUE, type INTEGER, x INTEGER, y INTEGER, z INTEGER, state INTEGER DEFAULT 0)",
 ];
 
+fn uri_escaped(path: &Path) -> String {
+    path.to_string_lossy().chars().map(|c| if c == '?' || c == '#' { format!("%{:02X}", c as u8) } else { c.to_string() }).collect()
+}
+
 fn now_secs() -> i64 {
     std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map(|since| since.as_secs() as i64).unwrap_or(0)
 }
@@ -114,7 +118,14 @@ impl Cache {
     /// Opens a database another writer owns. No schema is created and nothing is written, so this
     /// takes no write lock and cannot collide with the Qt worker holding the same file.
     pub fn serve(path: &Path) -> rusqlite::Result<Cache> {
-        let connection = Connection::open_with_flags(path, rusqlite::OpenFlags::SQLITE_OPEN_READ_ONLY | rusqlite::OpenFlags::SQLITE_OPEN_URI)?;
+        // Private cache, explicitly. The Qt worker opens this file with QSQLITE_ENABLE_SHARED_CACHE,
+        // and a second connection that joins that cache sees its table locks and its uncommitted
+        // state: reads intermittently answered a disk I/O error, and a row that had just been read
+        // successfully came back missing on the next identical query.
+        let connection = Connection::open_with_flags(
+            &format!("file:{}?mode=ro&cache=private", uri_escaped(path)),
+            rusqlite::OpenFlags::SQLITE_OPEN_READ_ONLY | rusqlite::OpenFlags::SQLITE_OPEN_URI,
+        )?;
         connection.busy_timeout(std::time::Duration::from_secs(5))?;
         Ok(Cache { connection })
     }
@@ -363,6 +374,11 @@ mod tests {
         assert_eq!(reader.tile(&hash).unwrap().image.len(), 512);
         assert!(reader.save(&tile(&hash_for(1), 10), None).is_err(), "a reader must not be able to write into a database it does not own");
         assert!(Cache::serve(&std::env::temp_dir().join("qgc-core-not-here.db")).is_err(), "and it must not create one that is not there");
+        let odd = std::env::temp_dir().join(format!("qgc core serve?{}.db", std::process::id()));
+        let _ = std::fs::remove_file(&odd);
+        Cache::open(&odd).unwrap().save(&tile(&hash, 8), None).unwrap();
+        assert_eq!(Cache::serve(&odd).unwrap().tile(&hash).unwrap().image.len(), 8, "a path with a question mark in it is a path, not the start of a query string");
+        let _ = std::fs::remove_file(&odd);
         let _ = std::fs::remove_file(&scratch);
     }
 
