@@ -4272,7 +4272,12 @@ func checkUnreachedItems() {
         MissionItem(view: ["index": index as NSNumber, "sequence": index as NSNumber,
                            "name": kind, "kind": kind,
                            "endsRoute": ends as NSNumber, "flownLeg": true as NSNumber,
-                           "latitude": -35.0 as NSNumber, "longitude": 149.0 as NSNumber])
+                           // Nested, because that is the shape the core emits and the only one
+                           // MissionItem reads. Flat keys here left every fixture item without a
+                           // position, so route() filtered them all out and the assertion below
+                           // compared 0 against 0.
+                           "coordinate": ["latitude": -35.0 as NSNumber,
+                                          "longitude": 149.0 as NSNumber]])
     }
     let plain = [item(0, "waypoint", ends: false), item(1, "waypoint", ends: false)]
     expect(MissionItem.unreached(plain).isEmpty,
@@ -4288,6 +4293,9 @@ func checkUnreachedItems() {
            "the vehicle turns for home at the return to launch, so both items after it are "
            + "uploaded and neither is reached -- the map already drew no leg to them while the "
            + "list presented them as ordinary waypoints")
+    expect(!MissionItem.route(endsLast).isEmpty,
+           "the fixture carries real positions, without which route() filters everything out and "
+           + "the comparison below compares nothing to nothing")
     expect(MissionItem.route(past).count == MissionItem.route(endsLast).count,
            "and the legs drawn are unchanged by appending past the end, because both answers "
            + "come from one routeEnd rather than two copies of the same rule")
