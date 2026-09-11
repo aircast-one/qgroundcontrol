@@ -41,6 +41,12 @@ pub fn profile(points: Vec<Point>) -> Profile {
     Profile { points, min_altitude: low - padding, max_altitude: high + padding, total_distance, unknown_terrain, min_clearance }
 }
 
+// Counting unknown points is not the same rule: an empty profile has none, so it reads complete
+// while carrying no figure at all. Completeness is a claim about a number, so there has to be one.
+pub fn clearance_complete(profile: &Profile) -> bool {
+    profile.min_clearance.is_some() && profile.unknown_terrain == 0
+}
+
 pub fn points(model: &Value) -> Vec<Point> {
     model
         .get("elements")
@@ -156,7 +162,7 @@ pub fn terrain_view(backend: &dyn Backend, _args: &[String]) -> Value {
         "groundKnown": profile.unknown_terrain == 0 && profile.points.len() > 1,
         "hasCollision": profile.points.iter().any(|p| p.collision),
         "minClearanceMetres": profile.min_clearance,
-        "clearanceComplete": profile.min_clearance.is_some() && profile.unknown_terrain == 0,
+        "clearanceComplete": clearance_complete(&profile),
         "clearanceText": profile.min_clearance.map(|clearance| crate::read::format_measure(vertical.show(clearance.abs()), &vertical.name)),
         "unknownTerrain": profile.unknown_terrain,
         "totalDistanceMeters": profile.total_distance,
@@ -211,6 +217,22 @@ mod tests {
         let partial = profile(vec![point(0.0, 700.0, Some(600.0)), point(100.0, 700.0, None), point(200.0, 700.0, Some(690.0))]);
         assert_eq!(partial.min_clearance, Some(10.0), "the samples that do have ground still measure, so the number is a bound rather than nothing");
         assert_eq!(partial.unknown_terrain, 1);
+
+        // Counting unknown points calls an empty profile complete, because there are no points to
+        // be unknown about. There is no figure, so there is nothing for completeness to be true of,
+        // and a head that reads "complete" and finds no number renders whatever its empty branch
+        // does - which for the macOS panel was the wording for a collision.
+        assert_eq!(clearance_complete(&complete), true);
+        assert_eq!(clearance_complete(&partial), false);
+
+        let nothing = profile(Vec::new());
+        assert_eq!(nothing.unknown_terrain, 0, "an empty profile has no unknown points, which is why the count is the wrong instrument");
+        assert_eq!(nothing.min_clearance, None);
+        assert_eq!(clearance_complete(&nothing), false, "there is no figure, so there is nothing for completeness to be true of");
+
+        let no_ground = profile(vec![point(0.0, 700.0, None), point(100.0, 700.0, None)]);
+        assert_eq!(no_ground.min_clearance, None, "ground under nothing is not a clearance of zero");
+        assert_eq!(clearance_complete(&no_ground), false);
     }
 
     #[test]
