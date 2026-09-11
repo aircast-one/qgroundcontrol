@@ -477,6 +477,7 @@
         "view.mapScale(120).text",
         "view.messages.class",
         "view.messages.kind",
+        "view.messages.order",
         "view.missionItems.class",
         "view.missionItems.items.0.abbreviation",
         "view.missionItems.items.0.altitude",
@@ -1938,6 +1939,7 @@
         "view.track.dropped",
         "view.track.generation",
         "view.track.kind",
+        "view.track.order",
         "view.track.points.#",
         "view.track.recording",
         "view.vibration.axes.#",
@@ -3081,6 +3083,7 @@
         "view.messages.items.9.text",
         "view.messages.items.9.time",
         "view.messages.kind",
+        "view.messages.order",
         "view.missionItems.available",
         "view.missionItems.class",
         "view.missionItems.current",
@@ -5148,6 +5151,7 @@
         "view.track.dropped",
         "view.track.generation",
         "view.track.kind",
+        "view.track.order",
         "view.track.points.#",
         "view.track.recording",
         "view.track.vehicleId",
@@ -6038,7 +6042,8 @@
                 "time": "string"
             }
         ],
-        "kind": "string"
+        "kind": "string",
+        "order": "string"
     },
     "view.missionItems": {
         "available": "bool",
@@ -6433,6 +6438,7 @@
         "dropped": "number",
         "generation": "number",
         "kind": "string",
+        "order": "string",
         "points": [
             "empty"
         ],

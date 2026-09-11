@@ -86,6 +86,7 @@ impl Track {
         json!({
             "kind": "object",
             "class": "Track",
+            "order": crate::view::ORDER,
             "available": vehicle.is_some(),
             "vehicleId": vehicle,
             "recording": self.armed,

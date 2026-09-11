@@ -209,8 +209,10 @@ impl View {
     }
 }
 
+pub const ORDER: &str = "oldestFirst";
+
 fn messages_view(backend: &dyn Backend, _args: &[String]) -> Value {
     let items = messages::parse(&value_string(&backend.get("vehicle.formattedMessages")));
-    json!({ "kind": "object", "class": "VehicleMessages", "count": items.len(), "items": items })
+    json!({ "kind": "object", "class": "VehicleMessages", "order": ORDER, "count": items.len(), "items": items })
 }
 
