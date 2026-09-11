@@ -2060,3 +2060,35 @@ Also recorded so the next read does not chase it: the mission probe's `items` ar
 display form carrying `seq`, `command`, `position`, `altitude` and `selected` — not `sequence`,
 `kind`, `endsRoute` or `flownLeg`. Reading it with the view's field names returns `None` for every
 one of them and looks like a stripped payload. Those fields are on `view.missionItems`.
+
+### The terrain profile cannot see a vertical leg (2026-09-11)
+
+The core session ported mission time and found the term they were missing: `MissionController`
+special-cases a rotor taking off straight up, climbing at the *ascent* speed rather than the
+hover speed, and nothing in a horizontal walk accounts for it. Their first version was 16.667 s
+short on every plan.
+
+**The same blind spot exists in this window's terrain profile, for the same structural reason.**
+Every point in `view.terrainProfile` is placed by a horizontal `x` fraction, and
+`TerrainProfileModel.x(_:width:)` uses that fraction directly. A vertical climb has no horizontal
+extent, so it occupies zero width: the takeoff draws as a single point at x=0 rather than as the
+climb it actually is. The profile shows where the mission goes, not everywhere the aircraft does.
+
+Not fixed, and the honest reason is that it is the least dangerous leg to omit — the climb is
+where the aircraft is furthest above terrain, so the one segment the profile cannot draw is also
+the one least likely to collide. That is a reason to rank it low, not a reason to call it correct.
+Drawing it needs the core to serve the climb as a segment the way it now serves a survey's
+transects; raised with them rather than worked around here.
+
+**What is worth taking is their method, not their fix.** They found the missing term by serving
+the inputs — the speeds, the vehicle class and the distance — beside the answer under `verify`,
+after guessing twice from the difference between two totals and being wrong both times. That is
+the structural form of the rule this stream reached from five retractions: reasoning that predicts
+the observation is not evidence. Comparing two totals leaves you inferring the gap; serving the
+inputs lets you read it. The walks on this side compare totals and quantify the discriminating
+margin by hand afterwards, which is the weaker arrangement.
+
+Also carried across: a VTOL answers null for mission time, because `vtolMode` flips between
+multirotor and fixed wing as the walk passes a transition item, so a single-speed answer is right
+before it and wrong after. This window draws mission time from the core's text, so a null has to
+read as *not known for this aircraft* rather than as a blank.
