@@ -21,6 +21,14 @@ struct MissionItem: Identifiable, Equatable {
     // altitude formatting went through the same format_measure as every other measure it serves.
     let altitudeText: String
 
+    // The leg that reaches this item, spelled by the core in the unit that leg is measured in.
+    // Distance is horizontal and the altitude change is vertical, and an operator can set those
+    // units differently; formatting either here would be a second copy of that choice drawn
+    // directly under a summary strip that used the core's.
+    let azimuthText: String
+    let distanceText: String
+    let altitudeChangeText: String
+
     let blocked: Bool
     let blockedReason: String?
     let awaitingTerrain: Bool
@@ -90,6 +98,15 @@ struct MissionItem: Identifiable, Equatable {
     // still being in the list.
     static let afterRoute = "Never flown to"
 
+    // Which items were reached by a leg worth spelling. The core serves 0 degrees over 0 m for
+    // every item that is not, so this cannot be derived from the figures themselves: due north is
+    // a real bearing of exactly 0, and reading the zero as "no leg" would hide a leg flown due
+    // north. It is the route's own rule instead -- flown to, placed, before the mission ends --
+    // with its first point dropped, because nothing flies a leg to where the route begins.
+    static func legs(_ items: [MissionItem]) -> Set<Int> {
+        Set(route(items).dropFirst().map(\.index))
+    }
+
     static func blockedItem(_ items: [MissionItem]) -> MissionItem? {
         let blocked = items.filter(\.blocked)
         guard blocked.count == 1, let only = blocked.first,
@@ -134,6 +151,10 @@ struct MissionItem: Identifiable, Equatable {
         altitude = (json["altitude"] as? NSNumber)?.doubleValue
         altitudeUnits = (json["altitudeUnits"] as? String) ?? Measure.metres.units
         altitudeText = (json["altitudeText"] as? String) ?? MissionItem.noAltitude
+
+        azimuthText = (json["azimuthText"] as? String) ?? ""
+        distanceText = (json["distanceText"] as? String) ?? ""
+        altitudeChangeText = (json["altitudeChangeText"] as? String) ?? ""
     }
 
     var positionText: String {

@@ -550,6 +550,10 @@ struct PlanInspector: View {
             surveyCard
         }
 
+        if let leg = selectedLeg {
+            legCard(leg)
+        }
+
         if mission.selectedSpeed.shown(missionStart: showsMissionSettings, vehicle: mission.vehicle) {
             speedCard
         }
@@ -652,6 +656,23 @@ struct PlanInspector: View {
                 .foregroundColor(.secondary)
                 .fixedSize(horizontal: false, vertical: true)
                 .padding(.horizontal, Overlay.horizontalPadding)
+        }
+    }
+
+    private var selectedLeg: MissionItem? {
+        guard let item = mission.items.first(where: \.isCurrent),
+              MissionItem.legs(mission.items).contains(item.index) else { return nil }
+        return item
+    }
+
+    private func legCard(_ item: MissionItem) -> some View {
+        VStack(alignment: .leading, spacing: Overlay.unit * 0.35) {
+            SectionLabel(text: "Leg To Here")
+            GroupCard {
+                GroupRow(title: "Distance", value: item.distanceText, showSeparator: false)
+                GroupRow(title: "Heading", value: item.azimuthText)
+                GroupRow(title: "Altitude change", value: item.altitudeChangeText)
+            }
         }
     }
 

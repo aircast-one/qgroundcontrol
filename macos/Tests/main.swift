@@ -1272,6 +1272,7 @@ func checkMissionItemKinds() {
     checkCollisionRuns()
     checkClearanceSentence()
     checkUnreachedItems()
+    checkLegsSpelled()
     checkOnlyAPlacedItemMoves()
     checkComplexGeometryInAnyLocale()
     checkSensorsComponentIsFoundByClass()
@@ -4330,6 +4331,42 @@ func checkUnreachedItems() {
     expect(MissionItem.route(past).count == MissionItem.route(endsLast).count,
            "and the legs drawn are unchanged by appending past the end, because both answers "
            + "come from one routeEnd rather than two copies of the same rule")
+}
+
+func checkLegsSpelled() {
+    func item(_ index: Int, _ kind: String, flown: Bool = true, ends: Bool = false,
+              azimuth: String = "0\u{00B0}", distance: String = "0 m") -> MissionItem {
+        MissionItem(view: ["index": index as NSNumber, "sequence": index as NSNumber,
+                           "name": kind, "kind": kind,
+                           "endsRoute": ends as NSNumber, "flownLeg": flown as NSNumber,
+                           "azimuthText": azimuth, "distanceText": distance,
+                           "altitudeChangeText": "+0.0 m",
+                           "coordinate": ["latitude": -35.0 as NSNumber,
+                                          "longitude": 149.0 as NSNumber]], selected: -1)
+    }
+
+    let start = item(0, "settings")
+    let takeoff = item(1, "takeoff", flown: false)
+    let reached = item(2, "waypoint", azimuth: "60\u{00B0}", distance: "14.11 km")
+    let plan = [start, takeoff, reached]
+
+    expect(MissionItem.legs(plan) == [2],
+           "only the waypoint was reached by a leg: nothing flies to where the route begins, and "
+           + "a takeoff the vehicle does not fly a leg to earns no figures either")
+
+    let ended = plan + [item(3, "command", flown: false, ends: true),
+                        item(4, "waypoint")]
+    expect(MissionItem.legs(ended) == [2],
+           "a waypoint after the return to launch is uploaded and never reached, so it has no leg "
+           + "-- the same routeEnd rule the list and the map already share")
+
+    let dueNorth = [start, item(1, "waypoint", azimuth: "0\u{00B0}", distance: "250 m")]
+    expect(MissionItem.legs(dueNorth) == [1],
+           "a leg flown due north reads 0 degrees, which is why the rule is the route's and not "
+           + "the figures': reading the core's zero as absence would hide this leg entirely")
+
+    expect(reached.distanceText, "14.11 km",
+           "and the core's own sentence is carried through, not reformatted here")
 }
 
 func checkClearanceSentence() {
