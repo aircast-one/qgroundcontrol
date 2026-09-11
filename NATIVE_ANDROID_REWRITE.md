@@ -4315,65 +4315,43 @@ same shape as the phase: with nothing in QML initialising video, the handset sti
 receivers, binds nine native sinks and reaches `startVideo()` at 3.5 s, with no init refusal. Every
 edit to `init()` is a null guard, so the desktop path is unchanged.
 
-**What the host still carries, surveyed before deleting it.** `AndroidHost.qml` is 172 lines and is
-not app UI — it is a shim supplying the `mainWindow` interface QGC's own QML and C++ expect
-(`contentItem`, `header`, `panelRadius`, the `show*` navigation functions, the arm/disarm signals).
-The head keeps it in the view hierarchy with `renderViews: false`, feeds it the current `page`, and
-listens for `navigateRequest`. So deleting it means answering, for each thing that reaches into
-`mainWindow`, where that goes instead.
+**What the host still carries — re-read on 2026-09-11, because all of it had changed.** This section
+described a 172-line shim with 17 functions and a live defect dropping 140 call sites' messages. None
+of that is still true, and leaving it standing would send the next person after a bug that is fixed.
 
-**One of those answers is already wrong, and not because of Phase 6.** `QGCApplication` sends operator
-messages by name into the root QML object:
+`AndroidHost.qml` is now **9 lines**: a bare `Item { id: mainWindow }` and a comment saying why it
+cannot go to zero — Qt 6.8.3 has no public way to start Qt embedded without a `QtQuickView`, since
+`QtView`, `QtEmbeddedLoader` and `QtEmbeddedDelegate` are all package private and `QtActivityBase` is
+the model where Qt owns the Activity. It defines **no functions at all**.
 
-    QMetaObject::invokeMethod(rootQmlObject, "_showMessageDialog", ...)   // showAppMessage
-    QMetaObject::invokeMethod(rootQmlObject, "showCriticalVehicleMessage", ...)
+**The message defect is fixed, and not by adding QML.** `showAppMessage`, `showCriticalVehicleMessage`
+and `showVehicleConfig` each call `QGCHostNotices::instance()->post(...)` **before** reaching for the
+root object, so the invoke that used to drop the message is now belt-and-braces after delivery has
+already happened. `showAppMessage` additionally skips its 200 ms retry queue when `_embeddedHost` is
+set, with a comment naming the reason: an embedded host has no QML root and never will, so queueing
+would grow a list nothing drains behind a timer that never stops re-arming. That is the bridge
+channel this section said navigation and messages needed before the host could go.
 
-`MainWindow.qml` defines both (lines 179 and 505). **`AndroidHost.qml` defines neither** — it has 17
-functions and neither name is among them. `invokeMethod` on a missing method fails and returns false,
-and neither call site checks the return, so the message is dropped without a trace. The fallback
-branches do not help: they test `runningUnitTests()`, and the root object is non-null, so the failing
-invoke is the branch taken.
+So the four `_rootQmlObject()` call sites now read: two messages and one navigation that all post a
+notice first and no longer depend on QML, plus `attemptWindowClose`, which is still missing and still
+has no caller outside `QGCApplication` — it is desktop window-close.
 
-`showAppMessage` has **140 call sites** outside `QGCApplication.cc`, including `ParameterManager`
-reporting a failed parameter write. On this head none of them reach the operator.
+**Verified on the handset rather than from source.** The rig's `apmvehicle.py` sends a severity-3
+`EKF variance` status text every 60 s. The Fly view banner reads **`EKF variance · 216 messages from
+the vehicle`** — worst severity first, count behind it. The operator gets the message. Note that
+logcat is not the instrument here: of the sim's four status texts only the severity-4 one appeared,
+as a `QtTextToSpeech` line, and the severity-3 one logged nothing at all on any tag. Reading silence
+in logcat as "the message was dropped" would have reproduced exactly the wrong conclusion this
+section originally recorded.
 
-Traced from source, **not yet confirmed on the handset**: no app message was attempted during the
-session I checked, so the logs show nothing either way. Confirming it needs a triggered message —
-a parameter write failure is the reachable one — and then looking for Qt's failed-invoke warning.
+What remains before the host can be deleted is therefore not navigation or messages. It is the Qt
+embedding API itself, which is the one thing here that no amount of head-side work removes.
 
-The fix should not be another QML function, since the shim is what Phase 6 deletes. These belong on
-the bridge event stream as a view the head renders, which is a new channel and a shared decision
-rather than something to invent here.
-
-**The headline case, which is worse than the count suggests.** `AutoPilotPlugin.cc:70` runs this pair
-when a vehicle connects with setup incomplete:
-
-    qgcApp()->showVehicleConfig();   // -> navigateRequest("setup") -> the head switches tab. Works.
-    qgcApp()->showAppMessage(tr("One or more vehicle components require setup prior to flight."));
-
-The first reaches the head. The second does not. So the app **jumps the operator to the Setup tab and
-never says why** — which reads as the app losing its place rather than as a warning. Not reproducible
-on this rig, and for a related reason: the sim reports no setup components at all, and
-`AutoPilotPlugin::setupComplete` returns true for an empty list, so `!_setupComplete` is false and
-neither call fires. That is the same quirk behind the Setup verdict fix above.
-
-It also answers what still holds the `QtQuickView` host. Not rendering — nothing is drawn since the
-views went. It is C++ reaching into QML for **navigation** as well as messages: `showVehicleConfig`
-has one live C++ caller, and QML is what turns it into `navigateRequest`. So the host can go once
-navigation and messages both have a bridge channel, and not before. `setupEmbeddedEngine` needs no
-replacement — it only adds a QML import path and context properties, which are meaningless without
-QML.
-
-Completing the C++ side of the survey: `QGCApplication` reaches the root object by name in four
-places. `showVehicleConfig` and `showVehicleConfigParametersPage` are defined by the shim and work.
-`attemptWindowClose` is missing but has no caller outside `QGCApplication` — it is desktop
-window-close. The two that are both missing and live are the message calls above.
-
-**And the shim is not only a shim.** It instantiates the whole QML `FlyView` and `PlanView`, filling
-the parent, with `planView.map: flyView.mapControl` — invisible, because the head sets
-`renderViews: false`, but constructed and bound. That is what still pulls QtQuick, QtLocation,
-QtCharts, QtMultimedia and QtPositioning into the AAR, and it is the substance behind "expect the
-82 MB AAR to roughly halve".
+**And the shim had not only been a shim.** It instantiated the whole QML `FlyView` and `PlanView`,
+filling the parent, with `planView.map: flyView.mapControl` — invisible, because the head sets
+`renderViews: false`, but constructed and bound. That was what pulled QtQuick, QtLocation, QtCharts,
+QtMultimedia and QtPositioning into the AAR, and it was the substance behind "expect the 82 MB AAR to
+roughly halve".
 
 **Both are now gone** (`86359dffe`). Nothing native needed them: the bridge owns its own
 `PlanMasterController`, created — as the comment at `QGCBridgeCore.cc:67` says — because native
