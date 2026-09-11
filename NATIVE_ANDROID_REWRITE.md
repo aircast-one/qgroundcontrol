@@ -734,6 +734,35 @@ Hardest phase. `MissionManager` (20.7k C++) survives entirely; the map-editing U
 
 **Gate (HW):** a 200+ waypoint survey planned, uploaded, flown and downloaded byte-identical.
 
+### Where the tab stands, 2026-09-12
+
+The entries below are incremental and there are a lot of them. This is the state they add up to, with
+what each claim rests on.
+
+**Drawn on the map**, all seen on the OnePlus 6: waypoints with per-kind colours, the dashed route,
+fence polygons and circles with vertex handles, rally points, survey areas with transects and handles,
+and corridor and structure scans. **Landing patterns are not drawn** and are the only plan item that
+is not — the banner names them, and drawing them needs a `KINDS` entry in the core.
+
+**Editing**: drag a waypoint or any vertex, add by long press or toolbar, insert after the selected
+item, delete, edit an altitude, rotate a survey grid, import a KML or SHP boundary as any of the three
+patterns. Selection drives QGC's own plan view, so the insert-validity refusals describe the operator's
+actual insertion point.
+
+**Reading**: every item is reachable from the list, including ones the map cannot draw, and every
+measurement on the tab is spelled by the core in the operator's units — list altitudes, the leg
+distance and bearing, the terrain band, the fence radius.
+
+**Round trip**: build, upload, clear, download gives back an identical plan, with the wire content read
+off the sim rather than the screen. That is not the gate, which wants 200+ waypoints and a flight.
+
+**What the gate still needs**: hardware. Nothing in the list above is blocked on code.
+
+**Known gaps, each recorded in full below**: landing patterns undrawn; the Fly view's obstacle distance
+is metres-only because no core view serves it; the "no position" branch for a `DO_` item is unit-tested
+and never seen on a device, because this head cannot add such an item; the Add Item gate is
+deliberately not wired, because a greyed button on a phone cannot carry the sentence that explains it.
+
 **Task-level UX review of the finished tab (2026-09-08).** Every command from
 `PlanView.qml` is now present, and that is the problem: twelve controls of
 identical weight, so the action that completes the job — Upload — is styled
