@@ -1149,6 +1149,15 @@ QString sharedTileCache()
     if (!started) {
         started = true;
         QFile::remove(path);
+        // The name carries this process's pid, so removing it only ever removed this run's own
+        // file and every previous run's stayed. The Mac session found 270 of them, 22 MB. Anything
+        // older than an hour cannot belong to a suite that is still running.
+        const QDateTime stale = QDateTime::currentDateTime().addSecs(-3600);
+        for (const QFileInfo &left : QDir::temp().entryInfoList({ QStringLiteral("qgc-core-tilecache-*.db") }, QDir::Files)) {
+            if (left.lastModified() < stale) {
+                QFile::remove(left.absoluteFilePath());
+            }
+        }
         QGCMapEngine::instance()->init(path);
     }
     return path;

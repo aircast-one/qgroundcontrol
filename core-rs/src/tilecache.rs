@@ -83,6 +83,21 @@ pub fn provider_of(hash: &str) -> Option<i32> {
     hash.len().checked_sub(TILE_DIGITS).and_then(|head| hash.get(..head)).and_then(|head| head.parse::<i32>().ok())
 }
 
+// The database uses a rollback journal, not WAL. When a read-only connection meets a journal the
+// Qt worker has open mid-transaction, SQLite has to roll it back before it can present a
+// consistent database - and rolling back is a write, which a read-only connection cannot do. It
+// answers SQLITE_READONLY, "attempt to write a readonly database", for a plain SELECT.
+//
+// busy_timeout does not cover this: it waits on a lock, and this is not a lock. The window is one
+// write transaction wide, so a bounded retry closes it without giving up read-only, which is the
+// property that keeps this connection unable to disturb the worker.
+const READONLY_RETRIES: u64 = 5;
+const RETRY_PAUSE_MS: u64 = 20;
+
+fn recovering_a_journal(error: &rusqlite::Error) -> bool {
+    matches!(error.sqlite_error_code(), Some(rusqlite::ErrorCode::ReadOnly))
+}
+
 pub struct Cache {
     connection: Connection,
 }
@@ -149,6 +164,17 @@ impl Cache {
     }
 
     pub fn tile(&self, hash: &str) -> rusqlite::Result<Option<Tile>> {
+        (0..READONLY_RETRIES).find_map(|attempt| match self.read_tile(hash) {
+            Err(error) if recovering_a_journal(&error) => {
+                std::thread::sleep(std::time::Duration::from_millis(RETRY_PAUSE_MS * (attempt + 1)));
+                None
+            }
+            answer => Some(answer),
+        })
+        .unwrap_or_else(|| self.read_tile(hash))
+    }
+
+    fn read_tile(&self, hash: &str) -> rusqlite::Result<Option<Tile>> {
         self.connection
             .query_row("SELECT tile, format, type FROM Tiles WHERE hash = ?1", params![hash], |row| {
                 Ok(Tile { hash: hash.to_string(), image: row.get(0)?, format: row.get(1)?, kind: row.get::<_, Option<String>>(2)?.unwrap_or_default() })
