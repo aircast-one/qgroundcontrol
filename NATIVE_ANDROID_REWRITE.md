@@ -1238,6 +1238,13 @@ itself while the core served `detailText`. `grep -rn '" m"\|" km"\|" ft"'` over 
 is what found both; reading the screens did not, because every one of them was right in the units I was
 testing in. Four instances in one evening, one root.
 
+**One place the sweep found that the core cannot fix yet.** `ObstacleDistance.kt` formats
+`"%.1f m %s"` on the Fly view, so a proximity reading is in metres whatever the operator chose. It is
+not re-derivation: there is no obstacle view in the core, the head computes the nearest distance and
+bearing from the raw sensor array itself. Fixing it properly means the core serving it — both heads
+would want it and neither should convert units on its own — which is a request rather than a patch.
+Recorded, not raised, because it is a new view rather than a field.
+
 The tell worth keeping: **the tests that broke were pinning the head's own formatting.** A test that
 asserts a string the head built is a test that the head is answering a question it should be asking.
 
