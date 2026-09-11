@@ -67,13 +67,14 @@ pub fn points(model: &Value) -> Vec<Point> {
 // samples along it, and it is zero until a terrain query answers - reading it as the length
 // collapses the whole pattern onto its entry point wherever terrain is unknown.
 pub fn along_segments(backend: &dyn Backend, index: usize, sequence: i64, start: f64) -> Vec<Point> {
-    let segments = object(&backend.get_fields(&format!("plan.missionController.visualItems.{index}.flightPathSegments"), "coord1AMSLAlt,coord2AMSLAlt,amslTerrainHeights,totalDistance,terrainCollision"));
+    let segments = object(&backend.get_fields(&format!("plan.missionController.visualItems.{index}.flightPathSegments"), "coord1AMSLAlt,coord2AMSLAlt,amslTerrainHeights,totalDistance,distanceBetween,terrainCollision"));
     let Some(listed) = segments.get("elements").and_then(Value::as_array) else { return Vec::new() };
     listed
         .iter()
         .scan(start, |walked, segment| {
             let number = |key: &str| segment.get(key).and_then(Value::as_f64).filter(|value| value.is_finite());
             let length = number("totalDistance").unwrap_or(0.0);
+            let spacing = number("distanceBetween").unwrap_or(0.0);
             let from = *walked;
             *walked += length;
             let (low, high) = (number("coord1AMSLAlt"), number("coord2AMSLAlt"));
@@ -83,18 +84,18 @@ pub fn along_segments(backend: &dyn Backend, index: usize, sequence: i64, start:
                 .and_then(Value::as_array)
                 .map(|heights| heights.iter().map(|h| h.as_f64().filter(|v| v.is_finite())).collect())
                 .unwrap_or_default();
-            Some((from, length, low, high, collision, heights))
+            Some((from, length, spacing, low, high, collision, heights))
         })
-        .flat_map(|(from, length, low, high, collision, heights)| {
+        .flat_map(|(from, length, spacing, low, high, collision, heights)| {
             let (Some(low), Some(high)) = (low, high) else { return Vec::new() };
             let steps = heights.len().max(2);
             (0..steps)
                 .map(|step| {
-                    let fraction = step as f64 / (steps - 1) as f64;
+                    let along = sample_at(step, steps, length, spacing);
                     Point {
                         sequence,
-                        distance: from + length * fraction,
-                        mission_altitude: low + (high - low) * fraction,
+                        distance: from + along,
+                        mission_altitude: low + (high - low) * if length > 0.0 { along / length } else { 0.0 },
                         terrain_altitude: heights.get(step).copied().flatten(),
                         collision,
                     }
@@ -102,6 +103,18 @@ pub fn along_segments(backend: &dyn Backend, index: usize, sequence: i64, start:
                 .collect()
         })
         .collect()
+}
+
+// Qt walks a segment's terrain samples at distanceBetween apart and closes the last gap with
+// finalDistanceBetween, so the samples are evenly spaced except the final one. Spreading them
+// evenly across the segment instead shears every reading towards the end, which is where a
+// landing approach reads its clearance.
+fn sample_at(step: usize, steps: usize, length: f64, spacing: f64) -> f64 {
+    match (step + 1 == steps, spacing > 0.0) {
+        (true, _) => length,
+        (false, true) => (step as f64 * spacing).min(length),
+        (false, false) => length * step as f64 / (steps as f64 - 1.0),
+    }
 }
 
 fn walked(backend: &dyn Backend, model: &Value) -> Vec<Point> {
@@ -216,6 +229,18 @@ mod walking {
 
     fn segment(low: f64, high: f64, length: f64, heights: Vec<f64>, collision: bool) -> Value {
         json!({ "coord1AMSLAlt": low, "coord2AMSLAlt": high, "totalDistance": length, "distanceBetween": 0.0, "amslTerrainHeights": heights, "terrainCollision": collision })
+    }
+
+    #[test]
+    fn terrain_samples_sit_where_qt_put_them_rather_than_spread_evenly() {
+        let spaced = json!({ "kind": "object", "elements": [json!({
+            "coord1AMSLAlt": 100.0, "coord2AMSLAlt": 200.0, "totalDistance": 100.0, "distanceBetween": 30.0,
+            "amslTerrainHeights": [10.0, 20.0, 30.0], "terrainCollision": false,
+        })] });
+        let walked = along_segments(&Pattern(spaced), 1, 3, 0.0);
+        let along: Vec<f64> = walked.iter().map(|point| point.distance).collect();
+        assert_eq!(along, vec![0.0, 30.0, 100.0], "Qt steps the samples by distanceBetween and closes the last gap, so spreading them evenly moves every one of them");
+        assert_eq!(walked[1].mission_altitude, 130.0, "the flown altitude at a sample follows where the sample actually is");
     }
 
     #[test]
