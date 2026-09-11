@@ -305,6 +305,30 @@ mod walking {
         assert_eq!(clears["usable"], true, "a profile a head can draw, which is what makes the false meaningful rather than empty");
     }
 
+    #[test]
+    fn a_complete_clearance_always_carries_a_figure_to_state() {
+        // A head asked whether clearanceComplete can ever be true with clearanceText empty,
+        // because its sentence falls back to the collision wording when there is no magnitude -
+        // so a complete clearance with no figure would call a mission that clears it underground.
+        // It cannot: completeness requires a measured clearance, and every measured clearance
+        // formats to a number and a unit. Pinned so it stays a contract rather than a coincidence.
+        let cases = vec![
+            vec![leg(0.0, 700.0, 600.0, false), leg(100.0, 700.0, 690.0, false)],
+            vec![leg(0.0, 700.0, 700.04, false), leg(100.0, 700.0, 700.0, false)],
+            vec![leg(0.0, 500.0, 650.0, true), leg(100.0, 500.0, 668.0, true)],
+            vec![leg(0.0, 700.0, 600.0, false)],
+        ];
+        for points in cases {
+            let view = terrain_view(&Route(json!({ "kind": "object", "elements": points })), &[]);
+            if view["clearanceComplete"] == true {
+                let text = view["clearanceText"].as_str().unwrap_or("");
+                assert!(!text.is_empty(), "clearanceComplete was true with no figure to state: {view}");
+                assert!(text.chars().any(|c| c.is_ascii_digit()), "the figure has to be a number a head can put in a sentence, not {text:?}");
+                assert!(view["minClearanceMetres"].is_number(), "and the signed metres travel with it, or a head cannot tell headroom from depth");
+            }
+        }
+    }
+
     struct Pattern(Value);
 
     impl Backend for Pattern {

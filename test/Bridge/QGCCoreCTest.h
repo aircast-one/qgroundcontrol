@@ -85,6 +85,7 @@ private slots:
     void _everyDependencyAViewDeclaresActuallyBindsToASignal();
     void _changingAModeSlotWakesThePanelThatShowsIt();
     void _replacingAPlanWithOneTheSameLengthStillWakesTheItemList();
+    void _theCoreWorksOutTheSameFlownDistanceTheControllerDoes();
 
 private:
     static bool _unavailable(const char *path);

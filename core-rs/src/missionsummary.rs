@@ -63,6 +63,39 @@ pub fn duration_text(seconds: f64) -> String {
     }
 }
 
+const LAND_COMMANDS: [i64; 2] = [21, 85];
+
+fn point_of(value: &Value) -> Option<(f64, f64)> {
+    let at = value.as_object()?;
+    Some((at.get("latitude")?.as_f64()?, at.get("longitude")?.as_f64()?))
+}
+
+// MissionController walks the fly-through items and measures each leg from the previous item's
+// exit to this one's entry, adds a pattern's own path where there is one, and drops the leg that
+// follows a landing because the route restarts there. The first leg is not counted either: the
+// walk begins at the plan's settings entry, which is not a place the aircraft flies from.
+pub fn flown_distance(items: &[Value]) -> f64 {
+    items
+        .iter()
+        .fold((0.0, None, false), |(total, previous, after_landing), item| {
+            let pattern = item.get("patternDistance").and_then(Value::as_f64).unwrap_or(0.0);
+            if item.get("flownLeg").and_then(Value::as_bool) != Some(true) {
+                return (total, previous, after_landing);
+            }
+            let Some(entry) = item.get("coordinate").and_then(point_of) else {
+                return (total, previous, after_landing);
+            };
+            let leg = match (previous, after_landing) {
+                (Some(from), false) => crate::surveygrid::distance_between(from, entry),
+                _ => 0.0,
+            };
+            let exit = item.get("exitCoordinate").and_then(point_of).unwrap_or(entry);
+            let lands = item.get("command").and_then(Value::as_i64).is_some_and(|command| LAND_COMMANDS.contains(&command));
+            (total + leg + pattern, Some(exit), lands)
+        })
+        .0
+}
+
 pub fn summary_view(backend: &dyn Backend, _args: &[String]) -> Value {
     let imperial = value_number(&backend.get("settings.unitsSettings.horizontalDistanceUnits.rawValue")) == Some(HORIZONTAL_UNITS_FEET);
     let mission = object(&backend.get_fields(
@@ -92,6 +125,10 @@ pub fn summary_view(backend: &dyn Backend, _args: &[String]) -> Value {
         "imperial": imperial,
         "rows": rows.into_iter().filter(|row| row["value"] != Value::Null).collect::<Vec<_>>(),
         "distanceMetres": total,
+        // The same figure worked out by the core rather than read from the controller. Served
+        // beside it so the two can be compared on every run against every plan a test builds,
+        // which is the only way a port of this arithmetic can be trusted before it replaces it.
+        "distanceComputedMetres": crate::missionitems::items_view(backend, &[]).get("items").and_then(Value::as_array).map(|items| flown_distance(items)),
         "timeSeconds": seconds("missionTime"),
         "batteriesRequired": batteries,
         "altitudeRange": altitude_range(&mission, imperial),

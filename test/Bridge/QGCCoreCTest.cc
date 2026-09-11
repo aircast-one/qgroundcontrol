@@ -3458,6 +3458,53 @@ void QGCCoreCTest::_everyDependencyAViewDeclaresActuallyBindsToASignal()
 #endif
 }
 
+void QGCCoreCTest::_theCoreWorksOutTheSameFlownDistanceTheControllerDoes()
+{
+#ifdef QGC_RUST_CORE
+    (void) take(qgc_bridge_invoke("plan.start", "[]"));
+    const auto restore = []() { (void) take(qgc_bridge_invoke("plan.removeAll", "[]")); };
+    const auto leaveNoPlanBehind = qScopeGuard(restore);
+    restore();
+
+    const auto agree = [](const char *shape) {
+        const QJsonObject summary = take(qgc_core_get("view.missionSummary"));
+        const double controller = summary.value(QStringLiteral("distanceMetres")).toDouble(-1.0);
+        const double core = summary.value(QStringLiteral("distanceComputedMetres")).toDouble(-1.0);
+        QVERIFY2(controller > 0.0, qPrintable(QStringLiteral("%1: the controller reported no distance, so there is nothing to agree with").arg(shape)));
+        QVERIFY2(qAbs(core - controller) < qMax(1.0, controller * 0.001),
+                 qPrintable(QStringLiteral("%1: the core makes it %2 m and the controller %3 m").arg(shape).arg(core).arg(controller)));
+    };
+
+    const auto insert = [](const char *args) {
+        QVERIFY2(take(qgc_core_invoke("mission.insert", args)).value(QStringLiteral("ok")).toBool(false), "an insert was refused");
+    };
+
+    // The arithmetic has rules that are invisible from the answer: the leg is measured from the
+    // previous item's exit rather than its entry, a pattern contributes its own path on top of the
+    // leg into it, the walk does not count a first leg out of the plan's settings entry, and a
+    // landing ends the route so the leg after it is not counted at all.
+    insert("[\"takeoff\", 47.3960, 8.5440, -1]");
+    insert("[\"waypoint\", 47.3990, 8.5480, -1]");
+    QTRY_VERIFY_WITH_TIMEOUT(take(qgc_core_get("view.missionSummary")).value(QStringLiteral("distanceMetres")).toDouble(0.0) > 0.0, 10000);
+    agree("two waypoints");
+
+    insert("[\"waypoint\", 47.4020, 8.5440, -1]");
+    QTRY_VERIFY_WITH_TIMEOUT(take(qgc_core_get("view.missionSummary")).value(QStringLiteral("distanceMetres")).toDouble(0.0) > 500.0, 10000);
+    agree("three waypoints");
+
+    insert("[\"survey\", 47.3975, 8.5460, -1]");
+    QTRY_VERIFY_WITH_TIMEOUT(take(qgc_core_get("view.missionItems")).value(QStringLiteral("items")).toArray().count() >= 5, 20000);
+    QTRY_VERIFY_WITH_TIMEOUT(take(qgc_core_get("view.missionSummary")).value(QStringLiteral("distanceMetres")).toDouble(0.0) > 1000.0, 20000);
+    agree("with a survey in the middle");
+
+    insert("[\"land\", 47.3960, 8.5440, -1]");
+    QTRY_VERIFY_WITH_TIMEOUT(take(qgc_core_get("view.missionItems")).value(QStringLiteral("items")).toArray().count() >= 6, 20000);
+    agree("ending in a landing");
+#else
+    QSKIP("the Rust core is not linked into this build");
+#endif
+}
+
 void QGCCoreCTest::_theItemListNamesWhatTheControllerHolds()
 {
 #ifdef QGC_RUST_CORE
