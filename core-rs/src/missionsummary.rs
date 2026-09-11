@@ -250,7 +250,7 @@ fn altitude_range(mission: &Value, vertical: &Unit) -> Value {
         (Some(low), Some(high)) if high >= low => json!({
             "lowest": low,
             "highest": high,
-            "text": format!("{} to {}", crate::read::altitude_text(low, vertical, false), crate::read::altitude_text(high, vertical, false)),
+            "text": crate::read::range_text(low, high, vertical),
         }),
         _ => Value::Null,
     }
@@ -459,6 +459,15 @@ mod tests {
         low["maxAMSLAltitude"] = json!(-340.0);
         let view = summary_view(&Plan(low, 1.0, quad()), &[]);
         assert_eq!(view["altitudeRange"]["text"], "-390 m to -340 m", "the Dead Sea is four hundred metres down and a plan flown over it still has altitudes");
+
+        let shallow = { let mut plan = flown(); plan["minAMSLAltitude"] = json!(-10.0); plan["maxAMSLAltitude"] = json!(60.0); plan };
+        assert_eq!(summary_view(&Plan(shallow, 1.0, quad()), &[])["altitudeRange"]["text"], "-10.0 m to 60.0 m", "both ends of one range are spelled at one precision - a tenth on one end and none on the other reads as a mistake even though each is individually right");
+
+        let mixed = { let mut plan = flown(); plan["minAMSLAltitude"] = json!(-10.0); plan["maxAMSLAltitude"] = json!(600.0); plan };
+        assert_eq!(summary_view(&Plan(mixed, 1.0, quad()), &[])["altitudeRange"]["text"], "-10 m to 600 m", "and the precision follows the wider end, which is the scale the operator is reading");
+
+        let below = { let mut plan = flown(); plan["minAMSLAltitude"] = json!(-150.0); plan["maxAMSLAltitude"] = json!(-20.0); plan };
+        assert_eq!(summary_view(&Plan(below, 1.0, quad()), &[])["altitudeRange"]["text"], "-150 m to -20 m", "the wider end is the deeper one here, so reading the precision off the high end alone would spell a valley in tenths");
         assert_eq!(view["altitudeRange"]["lowest"], -390.0);
     }
 

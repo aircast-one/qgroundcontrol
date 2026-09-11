@@ -168,9 +168,10 @@ pub fn terrain_view(backend: &dyn Backend, _args: &[String]) -> Value {
         "totalDistanceMeters": profile.total_distance,
         "minAltitudeMeters": profile.min_altitude,
         "maxAltitudeMeters": profile.max_altitude,
-        "distanceText": crate::read::format_measure(horizontal.show(profile.total_distance), &horizontal.name),
+        "distanceText": crate::missionsummary::distance_text(profile.total_distance, crate::missionsummary::imperial(backend)),
         "lowestText": crate::read::format_measure(vertical.show(profile.min_altitude), &vertical.name),
         "highestText": crate::read::format_measure(vertical.show(profile.max_altitude), &vertical.name),
+        "bandText": crate::read::range_text(profile.min_altitude, profile.max_altitude, &vertical),
         "points": profile.points.iter().map(|p| json!({
             "sequence": p.sequence,
             "distance": p.distance,

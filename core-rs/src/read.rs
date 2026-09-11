@@ -119,6 +119,16 @@ pub fn altitude_text(metres: f64, vertical: &Unit, signed: bool) -> String {
     format!("{sign}{}", format_measure(vertical.show(metres.abs()), &vertical.name))
 }
 
+pub fn range_text(low: f64, high: f64, unit: &Unit) -> String {
+    let (shown_low, shown_high) = (unit.show(low), unit.show(high));
+    let whole = shown_low.abs().max(shown_high.abs()) >= WHOLE_NUMBER_FROM;
+    let spell = |value: f64| match whole {
+        true => format!("{value:.0}"),
+        false => format!("{value:.1}"),
+    };
+    format!("{} {} to {} {}", spell(shown_low), unit.name, spell(shown_high), unit.name)
+}
+
 pub fn format_measure(value: f64, units: &str) -> String {
     let number = if value >= WHOLE_NUMBER_FROM { format!("{value:.0}") } else { format!("{value:.1}") };
     format!("{number} {}", units.replace("^2", "\u{b2}"))

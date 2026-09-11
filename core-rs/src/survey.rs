@@ -48,7 +48,7 @@ pub fn survey_stats_view(backend: &dyn Backend, args: &[String]) -> Value {
         "areaSquareMetres": area_m2,
         "areaText": if area_m2 > 0.0 { crate::read::format_measure(area.show(area_m2), &area.name) } else { ABSENT.to_string() },
         "distanceMetres": distance_m,
-        "distanceText": if distance_m > 0.0 { crate::read::format_measure(distance.show(distance_m), &distance.name) } else { ABSENT.to_string() },
+        "distanceText": if distance_m > 0.0 { crate::missionsummary::distance_text(distance_m, crate::missionsummary::imperial(backend)) } else { ABSENT.to_string() },
         "footprintSide": side,
         "footprintFrontal": frontal,
         "footprintUnits": footprint_units,
@@ -103,6 +103,7 @@ mod tests {
         assert_eq!(view["shotsText"], "40");
         assert_eq!(view["areaText"], "20000 m²");
         assert_eq!(view["distanceText"], "900 m");
+        assert_eq!(survey_stats_view(&Fake, &["3".to_string()])["distanceText"], crate::missionsummary::distance_text(900.0, false), "a survey's own length is a ground distance and is spelled the way every other ground distance is");
         assert_eq!(view["footprintText"], "12.5 \u{d7} 8.0 m");
         assert_eq!(view["tooFast"], true);
         assert_eq!(survey_stats_view(&Fake, &[])["kind"], "null");

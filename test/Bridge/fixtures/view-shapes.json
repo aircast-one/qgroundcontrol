@@ -5423,6 +5423,7 @@
         "view.surveyStats(0).shotsText",
         "view.surveyStats(0).tooFast",
         "view.surveyStats(0).warning",
+        "view.terrainProfile.bandText",
         "view.terrainProfile.class",
         "view.terrainProfile.clearanceComplete",
         "view.terrainProfile.clearanceText",
@@ -6779,6 +6780,7 @@
         "warning": "string"
     },
     "view.terrainProfile": {
+        "bandText": "string",
         "class": "string",
         "clearanceComplete": "bool",
         "clearanceText": "null",
