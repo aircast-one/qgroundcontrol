@@ -82,11 +82,16 @@ for path, where in sorted(reads.items()):
 
 print(f"checked {len(reads)} literal read paths: "
       f"{len(reads) - len(bad)} resolved, {len(bad)} BROKEN")
-# A watch whose paths are built by a helper rather than an array literal cannot be pinned
-# from here. Saying so is the point: a pinner that covers four of five call sites silently
-# is worse than one that covers four and names the fifth.
+# A watch whose paths are built by a helper rather than an array literal cannot be read from
+# here. Saying so is the point: a pinner that covers four of five call sites silently is worse
+# than one that covers four and names the fifth. But say it accurately -- the one call site
+# this misses builds plan.missionController.visualItems.<n>.<property>, and those property
+# names ARE pinned, by interpolated-names.py against the two headers that declare them. Only
+# the path prefix is unchecked. Reporting that as flatly "not pinned" sends the next reader
+# looking for a hole that is mostly already plugged.
 for w in unparsed:
-    print(f"  NOT PINNED {w} - watch paths are not an array literal")
+    print(f"  PARTLY PINNED {w} - built by a helper; leaf names pinned by "
+          f"interpolated-names.py, the path prefix by nothing")
 
 
 # The core reports whether each resolved dep bound. It does not report WHY one did not, and
