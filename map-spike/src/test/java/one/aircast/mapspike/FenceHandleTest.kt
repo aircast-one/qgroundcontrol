@@ -1,5 +1,6 @@
 package one.aircast.mapspike
 
+import org.maplibre.geojson.Point
 import org.junit.Assert.assertEquals
 import org.junit.Test
 
@@ -21,6 +22,35 @@ class FenceHandleTest {
         )
 
         assertEquals(7, features.features()?.size)
+    }
+
+    @Test
+    fun `a handle sits on the vertex it edits, longitude not swapped for latitude`() {
+        val features = vertexHandleFeatures(
+            listOf(polygon(0, 41.0 to 44.0, 41.2 to 44.3)),
+            emptyList(),
+        )
+
+        val placed = features.features().orEmpty().map {
+            (it.geometry() as Point).let { at -> at.latitude() to at.longitude() }
+        }
+
+        assertEquals(listOf(41.0 to 44.0, 41.2 to 44.3), placed)
+    }
+
+    @Test
+    fun `survey and circle handles are placed on their own points too`() {
+        val features = vertexHandleFeatures(
+            listOf(polygon(0, 41.0 to 44.0)),
+            listOf(survey(1, 42.0 to 45.0)),
+            listOf(FenceCircle(2, true, TrackPoint(43.0, 46.0), 150.0)),
+        )
+
+        val placed = features.features().orEmpty().map {
+            (it.geometry() as Point).let { at -> at.latitude() to at.longitude() }
+        }
+
+        assertEquals(listOf(41.0 to 44.0, 42.0 to 45.0, 43.0 to 46.0), placed)
     }
 
     @Test
