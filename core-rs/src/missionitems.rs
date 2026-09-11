@@ -28,7 +28,7 @@ pub fn items_view(backend: &dyn Backend, args: &[String]) -> Value {
     let count = integer(&object(&backend.get("plan.missionController.visualItems.count")), "value").unwrap_or(0);
     let has_items = flag(&object(&backend.get_fields("plan.missionController", "containsItems")), "containsItems");
     if count <= 0 {
-        return json!({ "kind": "object", "class": "MissionItems", "available": false, "items": [], "current": -1, "reason": "This plan has no items yet." });
+        return json!({ "kind": "object", "class": "MissionItems", "available": false, "items": [], "selected": -1, "reason": "This plan has no items yet." });
     }
     let current = integer(&object(&backend.get("plan.missionController.currentPlanViewVIIndex")), "value").unwrap_or(-1);
     let listed = object(&backend.get_fields("plan.missionController.visualItems", FIELDS));
@@ -65,7 +65,11 @@ pub fn items_view(backend: &dyn Backend, args: &[String]) -> Value {
         "class": "MissionItems",
         "available": has_items,
         "editing": editable(backend, current),
-        "current": current,
+        // The plan editor's selection, which is what currentPlanViewVIIndex holds. Not the item
+        // the vehicle is executing: MissionController assigns isCurrentItem from MISSION_CURRENT
+        // only when _flyView is set, and this is the plan controller. Named for what it is,
+        // because "current" invites a head to draw a marker meaning "the aircraft is here".
+        "selected": current,
         "items": items,
         "reason": match has_items {
             true => "",
@@ -105,7 +109,7 @@ fn item(read: &Value, index: i64, vertical: &Unit) -> Value {
         "name": text(read, "commandName"),
         "description": text(read, "commandDescription"),
         "kind": kind(read),
-        "current": flag(read, "isCurrentItem"),
+        "selected": flag(read, "isCurrentItem"),
         "coordinate": coordinate,
         "exitCoordinate": exit,
         "altitude": height(read),
@@ -357,7 +361,7 @@ mod tests {
         assert_eq!(items[2]["distance"], 400.0);
         assert_eq!(items[2]["azimuth"], 45.0);
         assert_eq!(items[1]["coordinate"]["latitude"], 47.0);
-        assert_eq!(view["current"], 1);
+        assert_eq!(view["selected"], 1);
     }
 
     #[test]
@@ -391,7 +395,7 @@ mod tests {
         let none = items_view(&Plan(Vec::new(), -1), &[]);
         assert_eq!(none["available"], false);
         assert_eq!(none["items"].as_array().unwrap().len(), 0);
-        assert_eq!(none["current"], -1);
+        assert_eq!(none["selected"], -1);
     }
 
     // get_fields answers only the fields it was asked for, plus four the bridge inserts on every

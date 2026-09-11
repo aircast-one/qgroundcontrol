@@ -72,6 +72,21 @@ fn flag_of(item: &Value, key: &str) -> bool {
     item.get(key).and_then(Value::as_bool) == Some(true)
 }
 
+// One walk, used by both figures. The two guards it carries are the two that have gone missing
+// separately: flownLeg lives inside a filter and survives being copied, endsRoute truncates the
+// collection before iteration and does not. Sharing the walk is what stops the next figure written
+// beside these from carrying one and leaving the other - the fix the macOS head reached from
+// "two places that must agree will eventually disagree" and this one reached from "the guard
+// outside the expression's shape is the one that gets dropped".
+fn flown(items: &[Value]) -> impl Iterator<Item = &Value> {
+    let ends = items.iter().position(|item| flag_of(item, "endsRoute"));
+    let reached = match ends {
+        Some(at) => &items[..=at],
+        None => items,
+    };
+    reached.iter().filter(|item| flag_of(item, "flownLeg"))
+}
+
 // MissionController measures each leg from the previous item's exit to this one's entry and adds a
 // pattern's own path on top. Two things it does not do: it does not fly to an item that only
 // carries a position, and it does not continue past the item that ends the route - anything after
@@ -79,15 +94,7 @@ fn flag_of(item: &Value, key: &str) -> bool {
 // every item, by flownLeg and endsRoute, and they are separate questions: a return to launch ends
 // the route while being no leg at all.
 pub fn flown_distance(items: &[Value]) -> f64 {
-    let ends = items.iter().position(|item| flag_of(item, "endsRoute"));
-    let flown = match ends {
-        Some(at) => &items[..=at],
-        None => items,
-    };
-    flown
-        .iter()
-        .filter(|item| flag_of(item, "flownLeg"))
-        .fold((0.0, None), |(total, previous), item| {
+    flown(items).fold((0.0, None), |(total, previous), item| {
             let pattern = item.get("patternDistance").and_then(Value::as_f64).unwrap_or(0.0);
             let Some(entry) = item.get("coordinate").and_then(point_of) else {
                 return (total, previous);
@@ -115,15 +122,11 @@ pub fn max_telemetry_distance(items: &[Value]) -> f64 {
     let Some(home) = items.first().and_then(|item| item.get("coordinate")).and_then(point_of) else {
         return 0.0;
     };
-    let ends = items.iter().position(|item| flag_of(item, "endsRoute"));
-    let flown = match ends {
-        Some(at) => &items[..=at],
-        None => items,
-    };
-    flown
-        .iter()
-        .skip(1)
-        .filter(|item| flag_of(item, "flownLeg"))
+    flown(items)
+        // The plan's own entry is where the walk starts and is not somewhere the vehicle goes to,
+        // so it is excluded by name rather than by position - a skip would silently drop the first
+        // real item the day the settings entry stops passing the walk's own filter.
+        .filter(|item| item.get("kind").and_then(Value::as_str) != Some("settings"))
         .map(|item| {
             let Some(entry) = item.get("coordinate").and_then(point_of) else { return 0.0 };
             let from_home = crate::surveygrid::distance_between(home, entry);
