@@ -1,6 +1,7 @@
 package one.aircast.android.ui
 
 import org.json.JSONObject
+import one.aircast.mapspike.optText
 
 internal const val GUIDED_ALTITUDE = "view.guidedAltitude"
 
@@ -26,12 +27,12 @@ internal fun guidedAltitude(view: JSONObject?): GuidedAltitude? {
     if (view == null || !view.optBoolean("available")) return null
     return GuidedAltitude(
         available = true,
-        label = view.optString("label"),
-        unit = view.optString("unit"),
+        label = view.optText("label"),
+        unit = view.optText("unit"),
         current = view.numberOrNull("current"),
         minimum = view.numberOrNull("minimum"),
         maximum = view.numberOrNull("maximum"),
-        sentence = if (view.isNull("sentence")) "" else view.optString("sentence"),
+        sentence = if (view.isNull("sentence")) "" else view.optText("sentence"),
         deltaMeters = view.optDouble("deltaMeters", 0.0),
         sends = view.optBoolean("sends"),
     )

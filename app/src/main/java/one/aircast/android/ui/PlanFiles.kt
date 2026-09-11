@@ -16,6 +16,7 @@ import kotlinx.coroutines.withContext
 import one.aircast.android.bridge.Qgc
 import org.json.JSONArray
 import java.io.File
+import one.aircast.mapspike.optText
 
 private const val PLAN_ROOT = "plan"
 private const val OPEN_CACHE = "opened.plan"
@@ -82,7 +83,7 @@ private fun copyOut(context: Context, from: File, uri: Uri): Boolean = runCatchi
 private fun patternNames(): List<String> {
     val value = Qgc.get("$MISSION_ROOT.complexMissionItemNames").opt("value")
     val array = value as? JSONArray ?: return emptyList()
-    return (0 until array.length()).map { array.optString(it) }.filter { it.isNotBlank() }
+    return (0 until array.length()).map { array.optText(it) }.filter { it.isNotBlank() }
 }
 
 internal fun visualItems(): JSONArray =

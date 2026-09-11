@@ -24,7 +24,7 @@ object VehicleBridge {
     fun askFor(id: Int): Boolean =
         runCatching {
             val answer = JSONObject(QGCBridge.invoke("vehicles.setActive", "[$id]"))
-            lastRefusal = answer.optString("reason").takeIf { it.isNotBlank() }
+            lastRefusal = answer.optText("reason").takeIf { it.isNotBlank() }
             answer.optBoolean("ok")
         }.onFailure { lastRefusal = "bridge threw: ${it.message}" }.getOrDefault(false)
 

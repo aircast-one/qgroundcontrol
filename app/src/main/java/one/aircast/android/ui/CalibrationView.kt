@@ -1,6 +1,7 @@
 package one.aircast.android.ui
 
 import org.json.JSONObject
+import one.aircast.mapspike.optText
 
 internal const val CALIBRATION = "view.calibration"
 
@@ -45,7 +46,7 @@ private fun <T> JSONObject.list(key: String, item: (JSONObject) -> T): List<T> =
     } ?: emptyList()
 
 internal fun calibrationState(view: JSONObject?): CalibrationState? {
-    if (view == null || view.optString("class") != "Calibration") return null
+    if (view == null || view.optText("class") != "Calibration") return null
     return CalibrationState(
         connected = view.optBoolean("connected"),
         inProgress = view.optBoolean("inProgress"),
@@ -53,32 +54,32 @@ internal fun calibrationState(view: JSONObject?): CalibrationState? {
         nextEnabled = view.optBoolean("nextEnabled"),
         cancelEnabled = view.optBoolean("cancelEnabled"),
         progress = view.optDouble("progress", 0.0),
-        helpText = view.optString("helpText"),
-        statusText = view.optString("statusText"),
+        helpText = view.optText("helpText"),
+        statusText = view.optText("statusText"),
         accelNeeded = view.optBoolean("accelNeeded"),
         compassNeeded = view.optBoolean("compassNeeded"),
-        needsAttention = view.optString("needsAttention"),
+        needsAttention = view.optText("needsAttention"),
         sides = view.list("sides") {
             CalibrationSide(
-                key = it.optString("key"),
-                title = it.optString("title"),
+                key = it.optText("key"),
+                title = it.optText("title"),
                 visible = it.optBoolean("visible"),
-                stage = it.optString("stage"),
+                stage = it.optText("stage"),
                 rotate = it.optBoolean("rotate"),
             )
         },
         routines = view.list("routines") {
             CalibrationRoutine(
-                id = it.optString("id"),
-                title = it.optString("title"),
-                invocation = it.optString("invocation"),
+                id = it.optText("id"),
+                title = it.optText("title"),
+                invocation = it.optText("invocation"),
                 arguments = it.optJSONArray("arguments")?.let { args ->
                     (0 until args.length()).map { index -> args.optBoolean(index) }
                 } ?: emptyList(),
                 blocked = it.optBoolean("blocked"),
                 enabled = it.optBoolean("enabled"),
-                description = it.optString("description"),
-                warning = it.optString("warning"),
+                description = it.optText("description"),
+                warning = it.optText("warning"),
             )
         },
     )

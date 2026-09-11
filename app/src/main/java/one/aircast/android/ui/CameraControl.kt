@@ -1,6 +1,7 @@
 package one.aircast.android.ui
 
 import org.json.JSONObject
+import one.aircast.mapspike.optText
 
 internal const val CAM_MODE_UNDEFINED = -1
 internal const val CAM_MODE_PHOTO = 0
@@ -39,7 +40,7 @@ internal fun cameraReading(view: JSONObject?): CameraReading? {
         present = true,
         hasModes = view.optBoolean("hasModes"),
         canChangeMode = view.optBoolean("canChangeMode"),
-        modeText = view.optString("modeText"),
+        modeText = view.optText("modeText"),
         isRecording = view.optBoolean("isRecording"),
         canPhoto = view.optBoolean("canPhoto"),
         canRecord = view.optBoolean("canRecord"),

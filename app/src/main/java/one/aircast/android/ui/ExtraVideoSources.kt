@@ -2,6 +2,7 @@ package one.aircast.android.ui
 
 import org.json.JSONArray
 import org.json.JSONObject
+import one.aircast.mapspike.optText
 
 internal const val EXTRA_SOURCES_FACT = "settings.videoSettings.extraVideoSources"
 internal const val VIDEO_SOURCE_FACT = "settings.videoSettings.videoSource"
@@ -35,9 +36,9 @@ private fun patch(entry: JSONObject, name: String, source: String, url: String):
 
 internal fun extraSources(json: String?): List<ExtraVideoSource> = objects(json).map { entry ->
     ExtraVideoSource(
-        name = entry.optString("name"),
-        source = entry.optString("source"),
-        url = entry.optString("url"),
+        name = entry.optText("name"),
+        source = entry.optText("source"),
+        url = entry.optText("url"),
     )
 }
 

@@ -16,7 +16,7 @@ internal fun insertOutcome(view: JSONObject?): InsertOutcome {
     if (view.optBoolean("ok")) {
         return InsertOutcome(true, "", view.opt("index").let { it as? Number }?.toInt())
     }
-    return InsertOutcome(false, view.optString("reason").ifBlank { NO_ANSWER })
+    return InsertOutcome(false, view.optText("reason").ifBlank { NO_ANSWER })
 }
 
 fun insertMissionItem(kind: String, latitude: Double, longitude: Double, index: Int): InsertOutcome =

@@ -42,6 +42,7 @@ import one.aircast.android.bridge.offMain
 import one.aircast.android.bridge.qgcBool
 import one.aircast.android.bridge.qgcPath
 import one.aircast.android.bridge.qgcString
+import one.aircast.mapspike.optText
 
 private const val LOG_ROOT = "logDownload"
 private const val LOG_MODEL = "logDownload.model"
@@ -98,18 +99,18 @@ internal fun logsView(view: JSONObject?): LogsView? {
                     index = entry.optInt("index", index),
                     id = entry.optInt("id"),
                     time = logTimeText(
-                        entry.optString("time"),
-                        entry.optString("timeState"),
+                        entry.optText("time"),
+                        entry.optText("timeState"),
                     ) { LOCAL_TIME.format(it) },
-                    sizeStr = entry.optString("sizeText"),
+                    sizeStr = entry.optText("sizeText"),
                     received = entry.optBoolean("received"),
                     selected = entry.optBoolean("selected"),
-                    status = entry.optString("status"),
+                    status = entry.optText("status"),
                 )
             }
         },
-        emptyText = view.optString("emptyText"),
-        eraseWarning = view.optString("eraseWarning"),
+        emptyText = view.optText("emptyText"),
+        eraseWarning = view.optText("eraseWarning"),
         canRefresh = view.optBoolean("canRefresh"),
         canDownload = view.optBoolean("canDownload"),
         canCancel = view.optBoolean("canCancel"),

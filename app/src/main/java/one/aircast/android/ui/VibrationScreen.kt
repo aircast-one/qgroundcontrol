@@ -29,6 +29,7 @@ import one.aircast.android.bridge.qgcBool
 import one.aircast.android.bridge.qgcPath
 import org.json.JSONObject
 import one.aircast.android.bridge.qgcDouble
+import one.aircast.mapspike.optText
 
 private val VIBE_HIGH_COLOR = Color(0xFFFF5252)
 private val VIBE_WARN_COLOR = Color(0xFFFFA000)
@@ -66,14 +67,14 @@ internal fun vibrationReading(view: JSONObject?): VibrationReading? {
     val axes = view.optJSONArray("axes") ?: return null
     val clips = view.optJSONArray("clipCounts")
     return VibrationReading(
-        units = view.optString("units"),
+        units = view.optText("units"),
         scaleMaximum = view.optDouble("scaleMaximum", 0.0),
         warningLevel = view.optDouble("warningLevel", 0.0),
         dangerLevel = view.optDouble("dangerLevel", 0.0),
         axes = (0 until axes.length()).mapNotNull { index ->
             axes.optJSONObject(index)?.let { axis ->
                 VibrationAxis(
-                    axis = axis.stringOrNull("label") ?: axis.optString("axis").uppercase(Locale.US),
+                    axis = axis.stringOrNull("label") ?: axis.optText("axis").uppercase(Locale.US),
                     value = axis.doubleOrNull("value"),
                     fraction = axis.doubleOrNull("fraction")?.toFloat() ?: 0f,
                     severity = axis.stringOrNull("severity"),

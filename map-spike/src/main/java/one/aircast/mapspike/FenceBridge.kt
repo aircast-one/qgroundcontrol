@@ -59,7 +59,7 @@ fun fenceCircles(json: JSONObject?): List<FenceCircle> {
             element.optBoolean("inclusion", true),
             centre,
             radius,
-            element.optString("detailText"),
+            element.optText("detailText"),
         )
     }
 }

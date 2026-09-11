@@ -8,6 +8,7 @@ import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
 import org.json.JSONObject
+import one.aircast.mapspike.optText
 
 @Composable
 fun qgcPath(path: String): State<JSONObject?> {
@@ -72,7 +73,7 @@ fun qgcStrings(path: String): State<List<String>> {
         derivedStateOf {
             when (value) {
                 is org.json.JSONArray -> (0 until (value as org.json.JSONArray).length())
-                    .map { (value as org.json.JSONArray).optString(it) }
+                    .map { (value as org.json.JSONArray).optText(it) }
                 else -> emptyList()
             }
         }

@@ -19,7 +19,7 @@ fun planItemCount(json: JSONObject?): Int =
     ((planItems(json)?.length() ?: 0) - 1).coerceAtLeast(0)
 
 fun linksStartToHome(json: JSONObject?): Boolean =
-    planItems(json)?.optJSONObject(1)?.optString("kind") == KIND_TAKEOFF
+    planItems(json)?.optJSONObject(1)?.optText("kind") == KIND_TAKEOFF
 
 fun planShape(json: JSONObject?): List<String> {
     val items = planItems(json) ?: return emptyList()
@@ -29,7 +29,7 @@ fun planShape(json: JSONObject?): List<String> {
         .mapNotNull { index -> items.optJSONObject(index) }
         .mapNotNull { element ->
             when {
-                element.optString("kind") == KIND_TAKEOFF -> "takeoff"
+                element.optText("kind") == KIND_TAKEOFF -> "takeoff"
                 element.optInt("command") == MAV_CMD_NAV_RETURN_TO_LAUNCH -> "RTL"
                 else -> null
             }
@@ -90,18 +90,18 @@ fun allMissionItems(json: JSONObject?): List<MissionItem> {
             sequence = element.optInt("sequence", index),
             latitude = at?.latitude ?: Double.NaN,
             longitude = at?.longitude ?: Double.NaN,
-            command = element.optString("name"),
-            kind = element.optString("kind"),
+            command = element.optText("name"),
+            kind = element.optText("kind"),
             commandId = element.optInt("command"),
             selected = element.optBoolean("selected"),
             altitude = element.optDouble("altitude", Double.NaN),
-            altitudeText = element.optString("altitudeText"),
+            altitudeText = element.optText("altitudeText"),
             specifiesCoordinate = element.optBoolean("specifiesCoordinate"),
             distance = element.optDouble("distance", Double.NaN),
-            distanceText = element.optString("distanceText"),
-            azimuthText = element.optString("azimuthText"),
+            distanceText = element.optText("distanceText"),
+            azimuthText = element.optText("azimuthText"),
             altitudeChange = element.optDouble("altitudeChange", Double.NaN),
-            altitudeChangeText = element.optString("altitudeChangeText"),
+            altitudeChangeText = element.optText("altitudeChangeText"),
             routed = element.optBoolean("flownLeg") && index <= endsAfter,
             afterRouteEnds = index > endsAfter,
             placed = at != null,

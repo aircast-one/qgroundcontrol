@@ -1,6 +1,7 @@
 package one.aircast.android.ui
 
 import org.json.JSONObject
+import one.aircast.mapspike.optText
 
 internal const val PREFLIGHT = "view.preflight"
 
@@ -25,21 +26,21 @@ internal fun preflight(view: JSONObject?): Preflight? {
     val groups = view?.optJSONArray("groups") ?: return null
     val blocked = view.optJSONArray("blocked")
     return Preflight(
-        airframe = view.optString("airframe"),
+        airframe = view.optText("airframe"),
         total = view.optInt("total"),
-        blocked = (0 until (blocked?.length() ?: 0)).map { blocked!!.optString(it) },
+        blocked = (0 until (blocked?.length() ?: 0)).map { blocked!!.optText(it) },
         groups = (0 until groups.length()).mapNotNull { index ->
             groups.optJSONObject(index)?.let { group ->
                 val checks = group.optJSONArray("checks")
                 PreflightGroup(
-                    name = group.optString("name"),
+                    name = group.optText("name"),
                     checks = (0 until (checks?.length() ?: 0)).mapNotNull { check ->
                         checks!!.optJSONObject(check)?.let {
                             PreflightCheck(
-                                name = it.optString("name"),
-                                prompt = it.optString("prompt"),
-                                verdict = it.optString("verdict"),
-                                reason = it.optString("reason"),
+                                name = it.optText("name"),
+                                prompt = it.optText("prompt"),
+                                verdict = it.optText("verdict"),
+                                reason = it.optText("reason"),
                                 blocked = it.optBoolean("blocked"),
                             )
                         }

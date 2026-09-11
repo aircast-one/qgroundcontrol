@@ -1,6 +1,7 @@
 package one.aircast.android.ui
 
 import org.json.JSONObject
+import one.aircast.mapspike.optText
 
 internal const val VIDEO_VIEW = "view.video"
 
@@ -26,7 +27,7 @@ internal data class VideoReading(
 )
 
 internal fun videoReading(view: JSONObject?): VideoReading? {
-    if (view == null || view.optString("class") != "Video") return null
+    if (view == null || view.optText("class") != "Video") return null
     val cameras = view.optJSONArray("cameras")
     return VideoReading(
         available = view.optBoolean("available"),
@@ -36,15 +37,15 @@ internal fun videoReading(view: JSONObject?): VideoReading? {
             val height = size.optInt("height")
             if (width > 0 && height > 0) SourceSize(width, height) else null
         },
-        summary = view.optString("summary"),
+        summary = view.optText("summary"),
         activeSource = view.optInt("activeSource"),
         multipleSources = view.optBoolean("multipleSources"),
         cameras = (0 until (cameras?.length() ?: 0)).mapNotNull { index ->
             cameras?.optJSONObject(index)?.let { camera ->
                 VideoCamera(
                     slot = camera.optInt("slot"),
-                    title = camera.optString("title"),
-                    status = camera.optString("status"),
+                    title = camera.optText("title"),
+                    status = camera.optText("status"),
                     connecting = camera.optBoolean("connecting"),
                     recording = camera.optBoolean("recording"),
                     configured = camera.optBoolean("configured"),

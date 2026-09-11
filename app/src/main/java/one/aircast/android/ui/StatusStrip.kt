@@ -23,6 +23,7 @@ import one.aircast.android.bridge.qgcString
 import one.aircast.android.bridge.qgcPath
 import one.aircast.android.bridge.Qgc
 import org.json.JSONObject
+import one.aircast.mapspike.optText
 
 private const val BATTERY = "view.battery"
 private const val GPS = "vehicle.gps"
@@ -42,15 +43,15 @@ internal fun batteryLevelOf(name: String?): BatteryLevel = when (name) {
 
 internal fun batteryReading(view: JSONObject?): BatteryReading? {
     if (view == null || !view.optBoolean("available")) return null
-    val primary = view.optString("text")
+    val primary = view.optText("text")
     if (primary.isBlank()) return null
     val secondary = view.optJSONArray("packs")
         ?.optJSONObject(0)
-        ?.optString("secondaryText")
+        ?.optText("secondaryText")
         ?.takeIf { it.isNotBlank() && it != primary }
     return BatteryReading(
         text = listOfNotNull(primary, secondary).joinToString(" · "),
-        level = batteryLevelOf(view.optString("level")),
+        level = batteryLevelOf(view.optText("level")),
     )
 }
 

@@ -1,6 +1,7 @@
 package one.aircast.android.ui
 
 import org.json.JSONObject
+import one.aircast.mapspike.optText
 
 internal const val FLY_STATE = "view.flyState"
 
@@ -14,14 +15,14 @@ internal data class FlyState(
 )
 
 internal fun flyState(view: JSONObject?): FlyState? {
-    if (view == null || view.optString("class") != "FlyState") return null
+    if (view == null || view.optText("class") != "FlyState") return null
     return FlyState(
         connected = view.optBoolean("connected"),
         contactLost = view.optBoolean("contactLost"),
-        state = view.optString("state"),
-        stateText = view.optString("stateText"),
-        staleNotice = view.optString("staleNotice"),
-        mode = view.optString("mode"),
+        state = view.optText("state"),
+        stateText = view.optText("stateText"),
+        staleNotice = view.optText("staleNotice"),
+        mode = view.optText("mode"),
     )
 }
 

@@ -9,6 +9,7 @@ import kotlinx.coroutines.flow.asStateFlow
 import org.json.JSONArray
 import org.json.JSONObject
 import org.mavlink.qgroundcontrol.QGCBridge
+import one.aircast.mapspike.optText
 
 data class Fact(
     val path: String,
@@ -143,7 +144,7 @@ object Qgc {
             JSONObject(timed("set $path") { QGCBridge.set(path, JSONObject().put("value", value).toString()) })
         }.getOrNull()
         if (reply?.optBoolean("ok") == true) return true
-        val reason = reply?.optString("reason").orEmpty().ifBlank { "the bridge rejected the write" }
+        val reason = reply?.optText("reason").orEmpty().ifBlank { "the bridge rejected the write" }
         Log.w(TAG, "set $path failed: $reason")
         return false
     }
@@ -184,13 +185,13 @@ object Qgc {
             units = json.text("units"),
             valueString = json.text("valueString"),
             value = json.opt("value"),
-            enumStrings = (0 until (enums?.length() ?: 0)).map { enums!!.optString(it) },
+            enumStrings = (0 until (enums?.length() ?: 0)).map { enums!!.optText(it) },
             enumValues = json.optJSONArray("enumValues")?.let { raw ->
-                (0 until raw.length()).map { raw.optString(it) }
+                (0 until raw.length()).map { raw.optText(it) }
             } ?: emptyList(),
             enumIndex = json.optInt("enumIndex", -1),
             bitmaskStrings = json.optJSONArray("bitmaskStrings")?.let { bits ->
-                (0 until bits.length()).map { bits.optString(it) }
+                (0 until bits.length()).map { bits.optText(it) }
             } ?: emptyList(),
             bitmaskValues = json.optJSONArray("bitmaskValues")?.let { bits ->
                 (0 until bits.length()).map { bits.optLong(it) }

@@ -2,6 +2,7 @@ package one.aircast.android.ui
 
 import java.util.Locale
 import org.json.JSONObject
+import one.aircast.mapspike.optText
 
 internal const val GUIDED_SPEED = "view.guidedSpeed"
 
@@ -29,12 +30,12 @@ internal fun guidedSpeed(view: JSONObject?): GuidedSpeed? {
     if (view == null || !view.optBoolean("available")) return null
     return GuidedSpeed(
         label = view.textOrNull("label") ?: "Speed",
-        unit = view.optString("unit"),
+        unit = view.optText("unit"),
         command = view.textOrNull("command"),
         initial = view.numberOrNull("initial"),
         minimum = view.numberOrNull("minimum"),
         maximum = view.numberOrNull("maximum"),
-        sentence = if (view.isNull("sentence")) "" else view.optString("sentence"),
+        sentence = if (view.isNull("sentence")) "" else view.optText("sentence"),
         targetMetersSecond = view.optDouble("targetMetersSecond", 0.0),
     )
 }

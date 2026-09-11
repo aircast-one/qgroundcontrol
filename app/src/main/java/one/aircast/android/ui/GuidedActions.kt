@@ -1,6 +1,7 @@
 package one.aircast.android.ui
 
 import org.json.JSONObject
+import one.aircast.mapspike.optText
 
 internal const val GUIDED_ACTIONS = "view.guidedActions"
 
@@ -22,16 +23,16 @@ internal fun guidedOffers(view: JSONObject?): Map<String, GuidedOffer> {
     val actions = view?.optJSONArray("actions") ?: return emptyMap()
     return (0 until actions.length()).mapNotNull { index ->
         actions.optJSONObject(index)?.let { action ->
-            val id = action.optString("id")
+            val id = action.optText("id")
             if (id.isBlank()) {
                 null
             } else {
                 id to GuidedOffer(
                     id = id,
-                    title = action.optString("title"),
-                    offer = action.optString("offer"),
-                    reason = action.optString("reason"),
-                    prompt = action.optString("prompt"),
+                    title = action.optText("title"),
+                    offer = action.optText("offer"),
+                    reason = action.optText("reason"),
+                    prompt = action.optText("prompt"),
                     destructive = action.optBoolean("destructive"),
                     carriesValue = action.optBoolean("carriesValue"),
                 )

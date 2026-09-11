@@ -1,6 +1,7 @@
 package one.aircast.android.ui
 
 import org.json.JSONObject
+import one.aircast.mapspike.optText
 
 internal const val DETECTIONS = "view.detections"
 
@@ -22,7 +23,7 @@ internal data class Detections(
 )
 
 internal fun detections(view: JSONObject?): Detections? {
-    if (view == null || view.optString("class") != "Detections") return null
+    if (view == null || view.optText("class") != "Detections") return null
     val boxes = view.optJSONArray("boxes")
     return Detections(
         available = view.optBoolean("available"),
@@ -34,13 +35,13 @@ internal fun detections(view: JSONObject?): Detections? {
                     y = box.optDouble("y", 0.0),
                     w = box.optDouble("w", 0.0),
                     h = box.optDouble("h", 0.0),
-                    label = box.optString("label"),
+                    label = box.optText("label"),
                     confidence = box.optDouble("confidence", 0.0),
                     target = box.optBoolean("target"),
                 )
             }
         },
-        error = view.takeIf { !it.isNull("error") }?.optString("error")?.ifBlank { null },
+        error = view.takeIf { !it.isNull("error") }?.optText("error")?.ifBlank { null },
     )
 }
 

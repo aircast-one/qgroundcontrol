@@ -21,6 +21,7 @@ import kotlinx.coroutines.withContext
 import org.json.JSONObject
 import one.aircast.android.bridge.Fact
 import one.aircast.android.bridge.Qgc
+import one.aircast.mapspike.optText
 
 internal data class ParameterSection(
     val title: String,
@@ -35,7 +36,7 @@ internal data class ParameterRows(
 )
 
 internal fun factFromParameter(name: String, json: JSONObject): Fact? =
-    if (json.optString("kind") == "fact") {
+    if (json.optText("kind") == "fact") {
         Qgc.factAt(parameterPath(name), json).copy(name = name)
     } else {
         null
@@ -54,31 +55,31 @@ internal fun readOnlyNote(facts: List<Fact>): String? {
 }
 
 internal fun factFromControl(control: JSONObject): Fact? {
-    val label = control.optString("label")
-    val name = control.optString("name")
+    val label = control.optText("label")
+    val name = control.optText("name")
     if (label.isBlank() && name.isBlank()) return null
     val options = control.optJSONArray("options")
-    val labels = (0 until (options?.length() ?: 0)).map { options!!.optJSONObject(it).optString("label") }
-    val bits = control.optJSONArray("bits").takeIf { control.optString("control") == "bitmask" }
+    val labels = (0 until (options?.length() ?: 0)).map { options!!.optJSONObject(it).optText("label") }
+    val bits = control.optJSONArray("bits").takeIf { control.optText("control") == "bitmask" }
     val bitEntries = (0 until (bits?.length() ?: 0)).mapNotNull { index ->
         bits!!.optJSONObject(index)?.let { bit ->
-            bit.optString("raw").toLongOrNull()?.let { raw -> bit.optString("label") to raw }
+            bit.optText("raw").toLongOrNull()?.let { raw -> bit.optText("label") to raw }
         }
     }
     return Fact(
-        path = control.optString("path"),
+        path = control.optText("path"),
         name = name,
         description = label,
-        units = control.optString("units"),
-        valueString = control.optString("valueString"),
+        units = control.optText("units"),
+        valueString = control.optText("valueString"),
         value = control.opt("value"),
         enumStrings = labels,
-        enumIndex = labels.indexOf(control.optString("display")),
+        enumIndex = labels.indexOf(control.optText("display")),
         bitmaskStrings = bitEntries.map { it.first },
         bitmaskValues = bitEntries.map { it.second },
-        controlKind = control.optString("control"),
-        isBool = control.optString("control") == "toggle",
-        isString = control.optString("control") == "text",
+        controlKind = control.optText("control"),
+        isBool = control.optText("control") == "toggle",
+        isString = control.optText("control") == "text",
         readOnly = control.optBoolean("readOnly"),
         vehicleRebootRequired = control.optBoolean("rebootRequired"),
     )
@@ -96,10 +97,10 @@ private fun readPage(page: String): List<ParameterRows> {
                 null
             } else {
                 val note = listOfNotNull(
-                    section.optString("note").ifBlank { null },
+                    section.optText("note").ifBlank { null },
                     readOnlyNote(facts),
                 )
-                ParameterRows(section.optString("title"), facts, note.joinToString(" "))
+                ParameterRows(section.optText("title"), facts, note.joinToString(" "))
             }
         }
     }

@@ -26,6 +26,7 @@ import one.aircast.android.bridge.Fact
 import one.aircast.android.bridge.Qgc
 import one.aircast.android.bridge.qgcBool
 import org.json.JSONArray
+import one.aircast.mapspike.optText
 
 private const val PARAMETER_MANAGER = "vehicle.parameterManager"
 private const val DEFAULT_COMPONENT = -1
@@ -115,7 +116,7 @@ internal fun parameterSubtitle(description: String, units: String): String =
 private fun parameterNames(): List<String> {
     val result = Qgc.invokeResult("$PARAMETER_MANAGER.parameterNames", DEFAULT_COMPONENT) as? JSONArray
         ?: return emptyList()
-    return (0 until result.length()).map { result.optString(it) }.sorted()
+    return (0 until result.length()).map { result.optText(it) }.sorted()
 }
 
 private fun parameterDescriptions(names: List<String>): Map<String, String> =

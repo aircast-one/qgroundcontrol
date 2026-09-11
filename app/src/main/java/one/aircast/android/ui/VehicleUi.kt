@@ -52,6 +52,7 @@ import one.aircast.android.bridge.qgcFacts
 import one.aircast.android.bridge.qgcDouble
 import one.aircast.android.bridge.qgcString
 import one.aircast.android.bridge.qgcStrings
+import one.aircast.mapspike.optText
 
 private const val INSTRUMENTS =
     "view.instruments(altitudeRelative,groundSpeed,distanceToHome,heading)"
@@ -70,10 +71,10 @@ internal fun instruments(view: JSONObject?): List<Instrument> {
     val items = view?.optJSONArray("items") ?: return emptyList()
     return (0 until items.length()).mapNotNull { index ->
         items.optJSONObject(index)?.takeIf { !it.optBoolean("missing") }?.let { item ->
-            val units = item.optString("units")
-            val value = item.optString("value")
+            val units = item.optText("units")
+            val value = item.optText("value")
             Instrument(
-                label = item.optString("label"),
+                label = item.optText("label"),
                 reading = if (units.isBlank()) value else "$value $units",
             )
         }

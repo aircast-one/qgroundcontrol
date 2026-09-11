@@ -30,6 +30,7 @@ import one.aircast.android.bridge.Qgc
 import one.aircast.android.bridge.offMainDetached
 import org.json.JSONObject
 import one.aircast.android.bridge.qgcPath
+import one.aircast.mapspike.optText
 
 internal const val MESSAGES = "view.messages"
 
@@ -64,21 +65,21 @@ internal fun vehicleMessages(view: JSONObject?): List<VehicleMessage> {
     val items = view?.optJSONArray("items") ?: return emptyList()
     val read = (0 until items.length()).mapNotNull { at ->
         items.optJSONObject(at)?.let { item ->
-            val text = item.optString("text")
+            val text = item.optText("text")
             if (text.isBlank()) {
                 null
             } else {
                 VehicleMessage(
                     index = item.optInt("index", at),
-                    time = item.optString("time"),
-                    severity = item.optString("severity"),
-                    level = levelOf(item.optString("level")),
+                    time = item.optText("time"),
+                    severity = item.optText("severity"),
+                    level = levelOf(item.optText("level")),
                     text = text,
                 )
             }
         }
     }
-    return if (view.optString("order") == OLDEST_FIRST) read else read.asReversed()
+    return if (view.optText("order") == OLDEST_FIRST) read else read.asReversed()
 }
 
 
@@ -86,7 +87,7 @@ private const val WARNINGS = "view.warnings"
 
 internal fun armingBlocker(view: JSONObject?): String? =
     view?.takeIf { !it.isNull("armingBlocker") }
-        ?.optString("armingBlocker")
+        ?.optText("armingBlocker")
         ?.ifBlank { null }
 
 @Composable

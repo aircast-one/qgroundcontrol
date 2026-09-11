@@ -41,8 +41,8 @@ object SurveyBridge {
         return (0 until items.length()).mapNotNull { index ->
             val element = items.optJSONObject(index) ?: return@mapNotNull null
             val geometry = element.optJSONObject("geometry") ?: return@mapNotNull null
-            val shape = geometry.optString("shape")
-            val property = geometry.optString("property")
+            val shape = geometry.optText("shape")
+            val property = geometry.optText("property")
             if (shape.isBlank() || property.isBlank()) return@mapNotNull null
 
             val area = points(geometry.optJSONArray("vertices"))
@@ -54,7 +54,7 @@ object SurveyBridge {
                 area = area,
                 transects = transects,
                 cameraShots = element.optInt("cameraShots"),
-                kind = element.optString("kind"),
+                kind = element.optText("kind"),
                 shape = shape,
                 property = property,
             )

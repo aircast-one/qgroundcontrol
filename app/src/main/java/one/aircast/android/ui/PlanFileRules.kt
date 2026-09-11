@@ -2,6 +2,7 @@ package one.aircast.android.ui
 
 import org.json.JSONArray
 import org.json.JSONObject
+import one.aircast.mapspike.optText
 
 internal const val DEFAULT_PLAN_NAME = "mission.plan"
 internal const val DEFAULT_KML_NAME = "mission.kml"
@@ -96,8 +97,8 @@ private fun JSONArray.itemsAfterMissionSettings(): List<JSONObject> =
 internal fun undrawnItemNames(items: JSONArray): List<String> =
     (0 until items.length())
         .mapNotNull { items.optJSONObject(it) }
-        .filterNot { it.optString("kind") in DRAWN_KINDS }
-        .map { it.optString("name") }
+        .filterNot { it.optText("kind") in DRAWN_KINDS }
+        .map { it.optText("name") }
         .filter { it.isNotBlank() }
         .distinct()
 

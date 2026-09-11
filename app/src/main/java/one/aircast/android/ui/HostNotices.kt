@@ -1,6 +1,7 @@
 package one.aircast.android.ui
 
 import org.json.JSONObject
+import one.aircast.mapspike.optText
 
 internal const val NOTICE_MESSAGE = "message"
 internal const val NOTICE_VEHICLE_ERROR = "vehicleError"
@@ -20,9 +21,9 @@ internal fun hostNotices(view: JSONObject?): List<HostNotice> {
         items.optJSONObject(index)?.let {
             HostNotice(
                 id = it.optLong("id", -1L),
-                kind = it.optString("kind"),
-                title = it.optString("title"),
-                text = it.optString("text"),
+                kind = it.optText("kind"),
+                title = it.optText("title"),
+                text = it.optText("text"),
             )
         }
     }.filter { it.id >= 0 }.onEach {

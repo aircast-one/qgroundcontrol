@@ -29,9 +29,9 @@ fun uploadGate(view: org.json.JSONObject?): UploadGate? =
             canSend = it.optBoolean("canSend"),
             canProceed = it.optBoolean("canProceed"),
             pausesFirst = it.optBoolean("pausesFirst"),
-            heading = it.optString("heading"),
-            refusal = it.optString("refusal"),
-            proceedTitle = it.optString("proceedTitle"),
+            heading = it.optText("heading"),
+            refusal = it.optText("refusal"),
+            proceedTitle = it.optText("proceedTitle"),
         )
     }
 

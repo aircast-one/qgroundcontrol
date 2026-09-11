@@ -2,6 +2,7 @@ package one.aircast.android.ui
 
 import org.json.JSONArray
 import org.json.JSONObject
+import one.aircast.mapspike.optText
 
 internal const val PWM_MIN = 1000
 internal const val PWM_CENTER = 1500
@@ -29,12 +30,12 @@ internal fun parseRcControls(json: String?): List<RcControl> {
         .mapNotNull { array.optJSONObject(it) }
         .mapNotNull { entry ->
             val channel = entry.optInt("channel", 0)
-            val type = typeOf(entry.optString("type"))
+            val type = typeOf(entry.optText("type"))
             if (channel <= 0 || type == null) {
                 null
             } else {
                 RcControl(
-                    label = entry.optString("label").ifBlank { "CH$channel" },
+                    label = entry.optText("label").ifBlank { "CH$channel" },
                     channel = channel,
                     type = type,
                 )
@@ -100,7 +101,7 @@ internal fun channelOwner(json: String?, channel: Int, ignoring: Int, reserved: 
     return entries(json)
         .mapIndexed { at, entry -> at to entry }
         .firstOrNull { (at, entry) -> at != ignoring && entry.optInt("channel", 0) == channel }
-        ?.let { (at, entry) -> entry.optString("label").ifBlank { "control ${at + 1}" } }
+        ?.let { (at, entry) -> entry.optText("label").ifBlank { "control ${at + 1}" } }
 }
 
 internal fun firstFreeChannel(json: String?, reserved: Map<Int, String>): Int =

@@ -34,6 +34,7 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.foundation.layout.Row
 import androidx.compose.ui.Alignment
+import one.aircast.mapspike.optText
 
 private const val PLUGIN = "vehicle.autopilotPlugin"
 
@@ -67,12 +68,12 @@ internal fun setupComponents(view: JSONObject?): List<SetupComponent> {
     val listed = view?.optJSONArray("components") ?: return emptyList()
     return (0 until listed.length()).mapNotNull { index ->
         val element = listed.optJSONObject(index) ?: return@mapNotNull null
-        val name = element.optString("name").takeIf { it.isNotBlank() } ?: return@mapNotNull null
+        val name = element.optText("name").takeIf { it.isNotBlank() } ?: return@mapNotNull null
         SetupComponent(
             index = index,
             name = name,
             needsAttention = element.optBoolean("needsAttention"),
-            blockedReason = element.optString("blockedReason")
+            blockedReason = element.optText("blockedReason")
                 .takeIf { !element.isNull("blockedReason") && it.isNotBlank() },
         )
     }

@@ -36,6 +36,7 @@ import one.aircast.android.bridge.Qgc
 import one.aircast.android.bridge.offMainDetached
 import one.aircast.android.bridge.qgcBool
 import one.aircast.android.bridge.qgcPath
+import one.aircast.mapspike.optText
 
 private const val INSPECTOR_MESSAGES = "mavlinkInspector.activeSystem.messages"
 private const val INSPECTOR_VIEW = "view.inspector"
@@ -57,7 +58,7 @@ internal data class InspectorRate(val rate: Int, val title: String)
 internal fun inspectorRateChoices(view: JSONObject?): List<InspectorRate> {
     val items = view?.optJSONArray("rateChoices") ?: return emptyList()
     return (0 until items.length()).mapNotNull { index ->
-        items.optJSONObject(index)?.let { InspectorRate(it.optInt("rate"), it.optString("title")) }
+        items.optJSONObject(index)?.let { InspectorRate(it.optInt("rate"), it.optText("title")) }
     }.filter { it.title.isNotBlank() }
 }
 
@@ -74,13 +75,13 @@ internal fun inspectorMessages(view: JSONObject?): List<InspectorMessage> {
             InspectorMessage(
                 index = message.optInt("index", index),
                 id = message.optInt("id"),
-                name = message.optString("name"),
-                rateText = message.optString("rateText"),
+                name = message.optText("name"),
+                rateText = message.optText("rateText"),
                 count = message.optLong("count"),
-                path = message.optString("path"),
+                path = message.optText("path"),
                 compId = message.optInt("compId"),
-                title = message.optString("title").ifBlank { message.optString("name") },
-                targetRateTitle = message.optString("targetRateTitle"),
+                title = message.optText("title").ifBlank { message.optText("name") },
+                targetRateTitle = message.optText("targetRateTitle"),
             )
         }
     }.sortedBy { it.name }
@@ -91,9 +92,9 @@ internal fun parseInspectorFields(model: JSONObject?): List<InspectorField> {
     return (0 until elements.length()).mapNotNull { index ->
         elements.optJSONObject(index)?.let { field ->
             InspectorField(
-                name = field.optString("name"),
-                type = field.optString("type"),
-                value = field.optString("value"),
+                name = field.optText("name"),
+                type = field.optText("type"),
+                value = field.optText("value"),
             )
         }
     }

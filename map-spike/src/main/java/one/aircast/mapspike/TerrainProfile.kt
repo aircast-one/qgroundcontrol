@@ -74,7 +74,7 @@ internal fun clearanceOf(view: JSONObject?): Clearance? {
     return Clearance(
         collides = view.optBoolean("hasCollision"),
         metres = view.optDouble("minClearanceMetres", Double.NaN).takeIf { !it.isNaN() },
-        text = view.optString("clearanceText").takeIf { !view.isNull("clearanceText") }.orEmpty(),
+        text = view.optText("clearanceText").takeIf { !view.isNull("clearanceText") }.orEmpty(),
         complete = view.optBoolean("clearanceComplete"),
     )
 }
@@ -109,9 +109,9 @@ fun terrainProfile(view: JSONObject?): TerrainProfile {
             )
         },
         clearance = clearanceOf(view),
-        lowestText = view.optString("lowestText"),
-        highestText = view.optString("highestText"),
-        distanceText = view.optString("distanceText"),
-        bandText = view.optString("bandText"),
+        lowestText = view.optText("lowestText"),
+        highestText = view.optText("highestText"),
+        distanceText = view.optText("distanceText"),
+        bandText = view.optText("bandText"),
     )
 }

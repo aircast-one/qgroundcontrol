@@ -6,8 +6,8 @@ internal fun summaryRow(view: JSONObject?, label: String): String? {
     val rows = view?.optJSONArray("rows") ?: return null
     return (0 until rows.length())
         .mapNotNull { rows.optJSONObject(it) }
-        .firstOrNull { it.optString("label") == label }
-        ?.optString("value")
+        .firstOrNull { it.optText("label") == label }
+        ?.optText("value")
         ?.takeIf { it.isNotBlank() }
 }
 

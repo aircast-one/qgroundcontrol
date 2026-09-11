@@ -2,6 +2,7 @@ package one.aircast.android.ui
 
 import java.util.Locale
 import org.json.JSONObject
+import one.aircast.mapspike.optText
 
 internal const val GUIDED_TAKEOFF = "view.guidedTakeoff"
 
@@ -24,12 +25,12 @@ private fun JSONObject.numberOrNull(key: String): Double? =
 internal fun guidedTakeoff(view: JSONObject?): GuidedTakeoff? {
     if (view == null || !view.optBoolean("available")) return null
     return GuidedTakeoff(
-        label = view.optString("label"),
-        unit = view.optString("unit"),
+        label = view.optText("label"),
+        unit = view.optText("unit"),
         initial = view.numberOrNull("initial"),
         minimum = view.numberOrNull("minimum"),
         maximum = view.numberOrNull("maximum"),
-        sentence = if (view.isNull("sentence")) "" else view.optString("sentence"),
+        sentence = if (view.isNull("sentence")) "" else view.optText("sentence"),
         targetMeters = view.optDouble("targetMeters", 0.0),
     )
 }

@@ -50,6 +50,7 @@ import one.aircast.android.bridge.Qgc
 import one.aircast.android.bridge.qgcBool
 import one.aircast.android.bridge.qgcPath
 import one.aircast.android.bridge.qgcStrings
+import one.aircast.mapspike.optText
 
 private const val LINKS_VIEW = "view.links"
 private const val LINKS_PATH = "links.linkConfigurations"
@@ -75,15 +76,15 @@ internal fun linkRows(view: JSONObject?): List<LinkRow> {
         links.optJSONObject(position)?.let { link ->
             LinkRow(
                 index = link.optInt("index"),
-                name = link.optString("name"),
-                statusLine = link.optString("statusLine"),
+                name = link.optText("name"),
+                statusLine = link.optText("statusLine"),
                 connected = link.optBoolean("connected"),
                 heard = link.optBoolean("heardVehicle"),
-                lastError = link.optString("lastError"),
-                editing = link.optString("editing"),
-                host = link.optString("host"),
+                lastError = link.optText("lastError"),
+                editing = link.optText("editing"),
+                host = link.optText("host"),
                 port = link.optInt("port"),
-                portName = link.optString("portName"),
+                portName = link.optText("portName"),
                 baud = link.optInt("baud"),
             )
         }

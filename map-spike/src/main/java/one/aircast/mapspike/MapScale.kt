@@ -28,7 +28,7 @@ internal fun mapScaleBar(view: JSONObject?, maxPixels: Double): MapScale? {
     if (!fraction.isFinite() || fraction <= 0.0) {
         return null
     }
-    val text = view.optString("text")
+    val text = view.optText("text")
     if (text.isBlank()) {
         return null
     }
