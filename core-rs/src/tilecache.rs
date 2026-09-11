@@ -261,6 +261,29 @@ impl Cache {
 
 #[cfg(test)]
 mod tests {
+    use super::recovering_a_journal;
+
+    #[test]
+    fn only_a_readonly_refusal_is_worth_retrying() {
+        let readonly = rusqlite::Error::SqliteFailure(
+            rusqlite::ffi::Error { code: rusqlite::ErrorCode::ReadOnly, extended_code: 8 },
+            Some("attempt to write a readonly database".to_string()),
+        );
+        assert!(recovering_a_journal(&readonly), "this is the error a hot journal produces, and the whole retry hangs off recognising it");
+
+        let busy = rusqlite::Error::SqliteFailure(
+            rusqlite::ffi::Error { code: rusqlite::ErrorCode::DatabaseBusy, extended_code: 5 },
+            Some("database is locked".to_string()),
+        );
+        assert!(!recovering_a_journal(&busy), "busy_timeout already waits on a lock, and retrying it here would double the wait");
+
+        let corrupt = rusqlite::Error::SqliteFailure(
+            rusqlite::ffi::Error { code: rusqlite::ErrorCode::DatabaseCorrupt, extended_code: 11 },
+            Some("database disk image is malformed".to_string()),
+        );
+        assert!(!recovering_a_journal(&corrupt), "a broken database does not get better by asking again");
+    }
+
     use super::*;
     use serde_json::Value;
 
