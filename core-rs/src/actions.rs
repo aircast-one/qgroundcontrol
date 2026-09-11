@@ -196,14 +196,18 @@ fn shape(backend: &dyn Backend, kind: &crate::missionkinds::Kind, index: i64, la
         if written.get("ok").and_then(Value::as_bool) != Some(true) {
             return Err("the takeoff would not take a launch position, and a takeoff without one cannot be flown".to_string());
         }
-        // ok means setProperty accepted a value, not that the item ended up anywhere. The Android
-        // head saw a takeoff reported inserted with no position on it and none on the plan's own
-        // entry either - a write that answered ok and left nothing behind. Read it back rather
-        // than believe the answer; the caller removes the item when this fails.
-        let landed = object(&backend.get_fields(&format!("plan.missionController.visualItems.{index}"), "coordinate"));
-        return match landed.get("coordinate").and_then(|at| at.get("valid")).and_then(Value::as_bool) {
+        // ok means setProperty accepted a value, not that anything landed. Read back what was
+        // actually written: setLaunchCoordinate places the plan's own entry, so that is where a
+        // launch position that took effect shows up.
+        //
+        // Not the takeoff's own coordinate, which was the first thing I checked and is the wrong
+        // question. SimpleMissionItem::coordinate returns param5 and param6 whatever the command
+        // metadata says, so it reads valid even for an ArduPilot takeoff, which specifies an
+        // altitude and no place at all. That check passed for an item with nowhere to be.
+        let home = object(&backend.get_fields("plan.missionController.visualItems.0", "coordinate"));
+        return match home.get("coordinate").and_then(|at| at.get("valid")).and_then(Value::as_bool) {
             Some(true) => Ok(()),
-            _ => Err("the launch position was accepted and the takeoff still has no place on the map, so the plan would carry an item nothing can draw".to_string()),
+            _ => Err("the launch position was accepted and the plan still has no launch point, so nothing the takeoff is measured from exists".to_string()),
         };
     }
     let Some((geometry, property)) = kind.geometry else { return Ok(()) };

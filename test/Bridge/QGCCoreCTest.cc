@@ -3633,11 +3633,18 @@ void QGCCoreCTest::_aTakeoffReportedInsertedHasAPlaceOnTheMap()
     QCOMPARE(takeoff.value(QStringLiteral("kind")).toString(), QStringLiteral("takeoff"));
 
     QVERIFY2(!settings.value(QStringLiteral("coordinate")).isNull(),
-             "setLaunchCoordinate places the plan's own entry, so a launch position that landed shows there first");
-    QVERIFY2(!takeoff.value(QStringLiteral("coordinate")).isNull(),
-             "a takeoff reported inserted and carrying no position is an insert that claimed a success it did not have");
-    QVERIFY2(takeoff.value(QStringLiteral("movable")).toBool(false),
-             "and a head cannot draw a pin for it either, which is how this is seen rather than read");
+             "setLaunchCoordinate places the plan's own entry, so a launch position that landed shows there first, whatever the firmware");
+
+    // Whether the takeoff itself has a place is the firmware's business, not the insert's. This
+    // plan has no vehicle so it uses the PX4 default, where MAV_CMD_NAV_TAKEOFF specifies a
+    // coordinate. On ArduPilot the same command is declared specifiesCoordinate false and
+    // specifiesAltitudeOnly true, and an item with no place is then the correct answer - QGC's own
+    // plan view draws no takeoff pin there either. So the view is asked to agree with itself
+    // rather than to produce a position.
+    const bool hasPlace = !takeoff.value(QStringLiteral("coordinate")).isNull();
+    QCOMPARE(takeoff.value(QStringLiteral("movable")).toBool(!hasPlace), hasPlace);
+    QVERIFY2(hasPlace != takeoff.value(QStringLiteral("altitudeOnly")).toBool(false),
+             "a command either names a place or only a height, and a head drawing pins needs those to be the same answer");
 #else
     QSKIP("the Rust core is not linked into this build");
 #endif

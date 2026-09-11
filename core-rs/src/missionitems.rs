@@ -113,6 +113,11 @@ fn item(read: &Value, index: i64, vertical: &Unit) -> Value {
         "altitudeUnits": height(read).map(|_| vertical.name.clone()),
         "altitudeFactUnits": fact_units(read, "altitude").or_else(|| fact_units(read, "plannedHomePositionAltitude")),
         "specifiesAltitude": flag(read, "specifiesAltitude"),
+        // Whether the command carries a height and no place. An ArduPilot takeoff is exactly that
+        // - MAV_CMD_NAV_TAKEOFF is declared specifiesCoordinate false, specifiesAltitudeOnly true
+        // - so a head that infers it from the kind gets a fixed wing wrong, where a takeoff does
+        // specify a place. The core already asked for this field and then dropped it.
+        "altitudeOnly": flag(read, "specifiesAltitudeOnly"),
         "category": Some(text(read, "category")).filter(|category| !category.is_empty()),
         "cameraShots": number(read, "cameraShots").map(|shots| shots as i64).filter(|shots| *shots > 0),
         "patternDistance": number(read, "complexDistance").filter(|metres| *metres > 0.0),
