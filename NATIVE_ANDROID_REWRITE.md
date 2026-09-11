@@ -895,6 +895,43 @@ non-English build can draw a corridor it cannot add. Found while sweeping for th
 this document's previous section and reported; the core is holding it rather than guessing
 on a write path.
 
+### The plan can be read as a list, and building it found an item nothing could show
+
+Every edit used to start by hitting a marker on a canvas — the smallest, most distant target on the
+screen and the only entry point, on a head where markers are not accessibility nodes. Tapping the
+summary chip now opens the plan as rows: number, name, altitude, and the marker's own colour so a row
+and its pin are obviously the same object (`aircast-android 3d01a6b`, `1fd4918`).
+
+**The bench plan reads "3 items (takeoff)" and the map draws 0, 2 and 3.** There is no 1. `missionItems`
+drops any item without a plottable coordinate — right for a map, which cannot draw a point that has no
+position, and wrong for a list, whose whole job is to reach what the map cannot show. The takeoff in
+that plan has no position, so it was invisible on the only screen that edits plans, and a list built on
+the map's data would have inherited the blind spot while looking complete.
+
+So the parse and the filter are separate now: `allMissionItems` keeps every item and records whether it
+is `placed`; `missionItems` is that filtered. One read, two consumers, each asking its own question —
+the same shape as the corridor geometry above, and the third time today that a list was answering two
+questions at once.
+
+**The filter had leaked into two more places that were not about drawing**, and only the device showed
+it. The selection panel looked an item up in the filtered list, so selecting the unplaced takeoff
+produced no controls; and `selectionSurvives` was given the filtered list, so a selection that did land
+was discarded by the next one-second refresh. Reading the code found neither — tapping the row and
+watching nothing happen, twice, is what found them. Selecting it now offers "Delete #1", which is the
+only sensible thing to do with an unplaced takeoff.
+
+**The rig refused that tap, correctly, and the fix was to give it more to see.** `whatsunder.py`
+recognises a planning screen by Upload and Download being present; the sheet covers both, so a row
+labelled "Takeoff" read as the Fly view's takeoff button. The guard was right to stop — it had no way
+to tell them apart. The sheet now names itself "Plan items" and that is a second marker the guard
+accepts, which is also better on its own terms: a bottom sheet that opens with no title is a bare list.
+The coupling this buys is invisible and worth knowing: `PLAN_ITEMS_HEADING` in Kotlin and the literal
+in `whatsunder.py` must stay in step and nothing enforces it.
+
+**One finding from the same review is not fixed.** The Plan tab spends 21% of a portrait screen on
+Battery, Sats, HDOP and RC — telemetry the planning task does not use — above a map that gets 44%. That
+is a change to the shell's header, shared by all six tabs, not to the map module.
+
 ### A guard that failed open for six hours
 
 `ui.sh tap` refuses a tap that lands on Arm, Land, RTL or any other flight control unless
