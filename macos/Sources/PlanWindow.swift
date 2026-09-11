@@ -483,6 +483,8 @@ struct PlanInspector: View {
         }
     }
 
+    private var unreachedItems: Set<Int> { MissionItem.unreached(mission.items) }
+
     private var missionItems: some View {
         GroupCard {
             if mission.items.isEmpty {
@@ -491,7 +493,8 @@ struct PlanInspector: View {
                 ForEach(mission.items) { item in
                     GroupRow(
                         title: item.command,
-                        description: item.blockedReason ?? "",
+                        description: item.blockedReason
+                            ?? (unreachedItems.contains(item.index) ? MissionItem.afterRoute : ""),
                         showSeparator: item.index > 0,
                         current: item.isCurrent,
                         leading: {

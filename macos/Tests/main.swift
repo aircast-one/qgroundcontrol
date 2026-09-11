@@ -1269,6 +1269,7 @@ func checkMissionItemKinds() {
     checkSurveyWatch()
     checkCollisionRuns()
     checkClearanceSentence()
+    checkUnreachedItems()
     checkShapeAbsence()
     checkBatteryReading()
     checkFlownLeg()
@@ -4216,6 +4217,32 @@ func checkShapeAbsence() {
     expect(PlanShapeAbsence.rally(connected: true, supported: false),
            "This vehicle's firmware does not support rally points.",
            "and does not invite an operator to add what cannot be taken")
+}
+
+func checkUnreachedItems() {
+    func item(_ index: Int, _ kind: String, ends: Bool) -> MissionItem {
+        MissionItem(view: ["index": index as NSNumber, "sequence": index as NSNumber,
+                           "name": kind, "kind": kind,
+                           "endsRoute": ends as NSNumber, "flownLeg": true as NSNumber,
+                           "latitude": -35.0 as NSNumber, "longitude": 149.0 as NSNumber])
+    }
+    let plain = [item(0, "waypoint", ends: false), item(1, "waypoint", ends: false)]
+    expect(MissionItem.unreached(plain).isEmpty,
+           "a plan that never ends its route leaves every item reachable")
+
+    let endsLast = plain + [item(2, "command", ends: true)]
+    expect(MissionItem.unreached(endsLast).isEmpty,
+           "a return to launch that is last leaves nothing after it, which is why every plan "
+           + "shape built through the editor agreed before this case was tried")
+
+    let past = endsLast + [item(3, "waypoint", ends: false), item(4, "roi", ends: false)]
+    expect(MissionItem.unreached(past) == [3, 4],
+           "the vehicle turns for home at the return to launch, so both items after it are "
+           + "uploaded and neither is reached -- the map already drew no leg to them while the "
+           + "list presented them as ordinary waypoints")
+    expect(MissionItem.route(past).count == MissionItem.route(endsLast).count,
+           "and the legs drawn are unchanged by appending past the end, because both answers "
+           + "come from one routeEnd rather than two copies of the same rule")
 }
 
 func checkClearanceSentence() {

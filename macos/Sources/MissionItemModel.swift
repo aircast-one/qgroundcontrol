@@ -54,12 +54,31 @@ struct MissionItem: Identifiable, Equatable {
     static let takeoffKind = "takeoff"
     static let surveyKind = "survey"
 
+    // Where the route stops. Shared by the legs drawn on the map and the rows marked in the
+    // list so the two cannot answer differently: the map already declined to draw a leg past a
+    // return to launch while the list went on presenting those items as ordinary waypoints.
+    static func routeEnd(_ items: [MissionItem]) -> Int {
+        items.firstIndex(where: \.endsRoute) ?? items.count
+    }
+
     // The legs the vehicle actually flies: the placed ones it visits, up to wherever the mission
     // ends. Not the same list as the markers -- a region of interest earns a pin and no leg.
     static func route(_ items: [MissionItem]) -> [MissionItem] {
-        let ends = items.firstIndex(where: \.endsRoute) ?? items.count
-        return items.prefix(ends).filter { $0.flownLeg && $0.hasPosition }
+        items.prefix(routeEnd(items)).filter { $0.flownLeg && $0.hasPosition }
     }
+
+    // QGC lets an operator add items after a return to launch and uploads every one of them, so
+    // this is not an error to block on -- it is a fact the row has to carry, because the vehicle
+    // turns for home at the item above and never arrives at any of these.
+    static func unreached(_ items: [MissionItem]) -> Set<Int> {
+        Set(items.dropFirst(routeEnd(items) + 1).map(\.index))
+    }
+
+    // Short because the row truncates: "Uploaded but never flown to" rendered as "Uploaded but
+    // never..." and lost the only two words that mattered. The caption answers the operator's
+    // question -- will the aircraft go there -- and being uploaded anyway is implied by the item
+    // still being in the list.
+    static let afterRoute = "Never flown to"
 
     static func blockedItem(_ items: [MissionItem]) -> MissionItem? {
         let blocked = items.filter(\.blocked)
