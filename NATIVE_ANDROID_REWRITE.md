@@ -1248,6 +1248,20 @@ Recorded, not raised, because it is a new view rather than a field.
 The tell worth keeping: **the tests that broke were pinning the head's own formatting.** A test that
 asserts a string the head built is a test that the head is answering a question it should be asking.
 
+**A correction to `e395c3c`'s commit message.** That commit draws the core's `bandText` for the height
+range, and its message reports that the Android AAR "produces a core older than its own sources",
+with timestamps. The timestamps were real and the conclusion was wrong: the core session was editing
+`core-rs/src/terrain.rs` repeatedly while I built from it, so every build raced an edit. A later build
+printed `Compiling qgc-core v0.1.0` and was healthy. I had captured only the *tail* of the build
+output, so I never saw whether cargo compiled, and reasoned from the absence of a line I had filtered
+away — and sent a peer after a defect that was not there.
+
+The habit that produced it is still right: grep the built library for a string from the change before
+trusting a test of it. What was missing is the other half — **in a shared checkout, `stat` the source
+again after the build finishes.** If it is newer than the artefact, the comparison means nothing. The
+band on the handset is drawing the composed-pair fallback tonight, which is correct in the operator's
+units and is what the tests pin.
+
 Three fields arrived unused in the same commits and are worth a look before the row grows further:
 `azimuthText`, `distanceText`, `altitudeChangeText`, all per item and null when the controller has not
 worked the value out. A row reading `2 · Waypoint · 50.0 m · 449 m · 47°` tells an operator about a
