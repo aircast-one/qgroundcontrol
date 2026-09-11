@@ -5,7 +5,7 @@ use crate::router::Backend;
 
 pub const DEPS: &[&str] = &["plan.missionController.visualItems.count", "plan.missionController.currentPlanViewVIIndex", "plan.missionController.containsItems"];
 
-const FIELDS: &str = "sequenceNumber,abbreviation,commandName,commandDescription,isCurrentItem,specifiesCoordinate,isStandaloneCoordinate,specifiesAltitudeOnly,isSimpleItem,isTakeoffItem,isLandCommand,isSurveyItem,homePosition,coordinate,amslEntryAlt,altDifference,azimuth,distance,distanceFromStart,readyForSaveState,readyForSaveMessage,dirty,altitude,altitudeMode,isIncomplete,exitCoordinate,exitCoordinateSameAsEntry,commandName,command,category,specifiesAltitude";
+const FIELDS: &str = "sequenceNumber,abbreviation,commandName,commandDescription,isCurrentItem,specifiesCoordinate,isStandaloneCoordinate,specifiesAltitudeOnly,isSimpleItem,isTakeoffItem,isLandCommand,isSurveyItem,homePosition,coordinate,amslEntryAlt,altDifference,azimuth,distance,distanceFromStart,readyForSaveState,readyForSaveMessage,dirty,altitude,altitudeMode,isIncomplete,exitCoordinate,exitCoordinateSameAsEntry,commandName,command,category,specifiesAltitude,cameraShots,complexDistance";
 
 const READY_TO_SAVE: i64 = 0;
 const AWAITING_TERRAIN: i64 = 1;
@@ -103,6 +103,8 @@ fn item(read: &Value, index: i64, feet: bool) -> Value {
         "altitudeText": fact_number(read, "altitude").map(|metres| altitude_text(metres, feet)),
         "specifiesAltitude": flag(read, "specifiesAltitude"),
         "category": Some(text(read, "category")).filter(|category| !category.is_empty()),
+        "cameraShots": number(read, "cameraShots").map(|shots| shots as i64).filter(|shots| *shots > 0),
+        "patternDistance": number(read, "complexDistance").filter(|metres| *metres > 0.0),
         "simple": read.get("isSimpleItem").and_then(Value::as_bool),
         "altitudeMode": number(read, "altitudeMode").map(|mode| mode as i64),
         "altitudeAmsl": number(read, "amslEntryAlt"),
@@ -156,9 +158,19 @@ fn geometry_of(backend: &dyn Backend, index: i64, kind: &str) -> Value {
                 .collect()
         })
         .unwrap_or_default();
+    let transects: Vec<Value> = object(&backend.get(&format!("plan.missionController.visualItems.{index}.visualTransectPoints")))
+        .get("value")
+        .and_then(Value::as_array)
+        .map(|points| {
+            points
+                .iter()
+                .filter_map(|at| Some(json!({ "latitude": at.get("latitude")?.as_f64()?, "longitude": at.get("longitude")?.as_f64()? })))
+                .collect()
+        })
+        .unwrap_or_default();
     match listed.is_empty() {
         true => Value::Null,
-        false => json!({ "shape": shape.0, "property": shape.1, "vertices": listed }),
+        false => json!({ "shape": shape.0, "property": shape.1, "vertices": listed, "transects": transects }),
     }
 }
 

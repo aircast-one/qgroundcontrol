@@ -3230,12 +3230,24 @@ void QGCCoreCTest::_everyEditablePathTheCoreNamesAcceptsAWrite()
         const QJsonArray fields = editing.value(QStringLiteral("fields")).toArray();
         const QJsonArray everyItem = take(qgc_core_get("view.missionItems(fields)")).value(QStringLiteral("items")).toArray();
         if (kind == QStringLiteral("survey") || kind == QStringLiteral("corridor")) {
-            const QJsonArray shaped = take(qgc_core_get("view.missionItems(geometry)")).value(QStringLiteral("items")).toArray();
-            const QJsonObject geometry = shaped.last().toObject().value(QStringLiteral("geometry")).toObject();
+            // A pattern's transects are computed after the insert returns, so they are empty on the
+            // read that follows it. Same late arrival as the terrain heights and the shot count: a
+            // head that reads once draws a boundary with nothing inside it.
+            const auto lastShaped = []() {
+                const QJsonArray shaped = take(qgc_core_get("view.missionItems(geometry)")).value(QStringLiteral("items")).toArray();
+                return shaped.isEmpty() ? QJsonObject() : shaped.last().toObject();
+            };
+            QTRY_VERIFY_WITH_TIMEOUT(lastShaped().value(QStringLiteral("geometry")).toObject().value(QStringLiteral("transects")).toArray().count() >= 2, 20000);
+            const QJsonObject last = lastShaped();
+            const QJsonObject geometry = last.value(QStringLiteral("geometry")).toObject();
+            QCOMPARE(geometry.value(QStringLiteral("shape")).toString(), kind == QStringLiteral("survey") ? QStringLiteral("area") : QStringLiteral("line"));
             QVERIFY2(geometry.value(QStringLiteral("vertices")).toArray().count() >= 2,
                      qPrintable(QStringLiteral("a %1 draws as its own shape, and asking for geometry gave %2 vertices")
                                     .arg(kind).arg(geometry.value(QStringLiteral("vertices")).toArray().count())));
-            QCOMPARE(geometry.value(QStringLiteral("shape")).toString(), kind == QStringLiteral("survey") ? QStringLiteral("area") : QStringLiteral("line"));
+            if (kind == QStringLiteral("survey")) {
+                QVERIFY2(last.value(QStringLiteral("cameraShots")).toInt(0) > 0,
+                         "a survey with transects takes pictures, and the count is what an operator sizes a card by");
+            }
         }
         QVERIFY2(everyItem.last().toObject().value(QStringLiteral("fields")).toArray().count() == fields.count(),
                  "asking for fields has to answer for every item, not only the one being edited");
