@@ -583,6 +583,10 @@ internal fun MapSpikeScreen(
                             }) { Text("Rotate") }
                         }
 
+                        waypoint?.let { legText(it) }?.let {
+                            Text(it, style = MaterialTheme.typography.labelSmall)
+                        }
+
                         waypoint?.let { item ->
                             if (!item.altitude.isNaN()) {
                                 var typed by remember(item.index, item.altitude) {

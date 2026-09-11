@@ -59,6 +59,9 @@ data class MissionItem(
     val afterRouteEnds: Boolean = false,
     val altitudeText: String = "",
     val specifiesCoordinate: Boolean = false,
+    val distance: Double = Double.NaN,
+    val distanceText: String = "",
+    val azimuthText: String = "",
 )
 
 fun routeEndsAfter(items: JSONArray?): Int =
@@ -92,6 +95,9 @@ fun allMissionItems(json: JSONObject?): List<MissionItem> {
             altitude = element.optDouble("altitude", Double.NaN),
             altitudeText = element.optString("altitudeText"),
             specifiesCoordinate = element.optBoolean("specifiesCoordinate"),
+            distance = element.optDouble("distance", Double.NaN),
+            distanceText = element.optString("distanceText"),
+            azimuthText = element.optString("azimuthText"),
             routed = element.optBoolean("flownLeg") && index <= endsAfter,
             afterRouteEnds = index > endsAfter,
             placed = at != null,

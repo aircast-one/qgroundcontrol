@@ -267,3 +267,36 @@ class AddingAfterTextTest {
         assertNull(addingAfterText(MapHit.Waypoint(9), plan))
     }
 }
+
+class LegTextTest {
+    private fun item(distance: Double, distanceText: String = "449 m", azimuthText: String = "47°") =
+        MissionItem(
+            2, 2, 41.0, 44.0, "Waypoint", false, 50.0, kind = "waypoint", commandId = 16,
+            distance = distance, distanceText = distanceText, azimuthText = azimuthText,
+        )
+
+    @Test
+    fun `a leg reads as its length and its bearing, both spelled by the core`() {
+        assertEquals("449 m · 47°", legText(item(449.0)))
+    }
+
+    @Test
+    fun `the first item has no leg into it, and QGC says so with a zero rather than a null`() {
+        assertNull(legText(item(0.0)))
+    }
+
+    @Test
+    fun `an item the controller has not measured says nothing`() {
+        assertNull(legText(item(Double.NaN)))
+    }
+
+    @Test
+    fun `a bearing without a distance is not a leg`() {
+        assertNull(legText(item(0.0, distanceText = "", azimuthText = "47°")))
+    }
+
+    @Test
+    fun `a measured leg with only one of the two still says what it has`() {
+        assertEquals("449 m", legText(item(449.0, azimuthText = "")))
+    }
+}

@@ -52,3 +52,11 @@ fun addingAfterText(selected: MapHit?, items: List<MissionItem>): String? {
     return "Adding after #${item.sequence}"
 }
 
+fun legText(item: MissionItem): String? {
+    if (item.distance.isNaN() || item.distance <= 0.0) return null
+    return listOf(item.distanceText, item.azimuthText)
+        .filter { it.isNotBlank() }
+        .takeIf { it.isNotEmpty() }
+        ?.joinToString(" \u00b7 ")
+}
+
