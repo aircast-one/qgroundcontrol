@@ -6,11 +6,17 @@ import org.mavlink.qgroundcontrol.QGCBridge
 
 const val MISSION_CONTROLLER = "$PLAN_ROOT.missionController"
 
+const val SHAPE_AREA = "area"
+const val SHAPE_LINE = "line"
+
 data class Survey(
     val index: Int,
     val area: List<TrackPoint>,
     val transects: List<TrackPoint>,
     val cameraShots: Int,
+    val kind: String,
+    val shape: String,
+    val property: String,
 )
 
 private fun points(array: JSONArray?): List<TrackPoint> {
@@ -34,8 +40,10 @@ object SurveyBridge {
 
         return (0 until items.length()).mapNotNull { index ->
             val element = items.optJSONObject(index) ?: return@mapNotNull null
-            if (element.optString("kind") != KIND_SURVEY) return@mapNotNull null
             val geometry = element.optJSONObject("geometry") ?: return@mapNotNull null
+            val shape = geometry.optString("shape")
+            val property = geometry.optString("property")
+            if (shape.isBlank() || property.isBlank()) return@mapNotNull null
 
             val area = points(geometry.optJSONArray("vertices"))
             val transects = points(geometry.optJSONArray("transects"))
@@ -46,6 +54,9 @@ object SurveyBridge {
                 area = area,
                 transects = transects,
                 cameraShots = element.optInt("cameraShots"),
+                kind = element.optString("kind"),
+                shape = shape,
+                property = property,
             )
         }
     }
@@ -78,9 +89,9 @@ object SurveyBridge {
             ).optBoolean("ok")
         }.getOrDefault(false)
 
-    fun adjustAreaVertex(itemIndex: Int, vertex: Int, latitude: Double, longitude: Double): Boolean =
+    fun adjustAreaVertex(survey: Survey, vertex: Int, latitude: Double, longitude: Double): Boolean =
         invoke(
-            "$PLAN_ITEMS.$itemIndex.surveyAreaPolygon.adjustVertex",
+            "$PLAN_ITEMS.${survey.index}.${survey.property}.adjustVertex",
             "[$vertex, ${coordinate(latitude, longitude)}]",
         )
 

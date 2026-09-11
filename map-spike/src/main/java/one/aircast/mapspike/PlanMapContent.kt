@@ -269,7 +269,8 @@ internal fun MapSpikeScreen(
                     when (hit) {
                         is MapHit.Waypoint -> PlanBridge.moveItem(hit.index, lat, lon)
                         is MapHit.FenceVertex -> FenceBridge.adjustVertex(hit.polygon, hit.vertex, lat, lon)
-                        is MapHit.SurveyVertex -> SurveyBridge.adjustAreaVertex(hit.item, hit.vertex, lat, lon)
+                        is MapHit.SurveyVertex -> surveyList.firstOrNull { it.index == hit.item }
+                            ?.let { SurveyBridge.adjustAreaVertex(it, hit.vertex, lat, lon) } == true
                         is MapHit.Rally -> FenceBridge.moveRallyPoint(hit.index, lat, lon)
                         is MapHit.CircleCentre -> FenceBridge.moveCircle(hit.index, lat, lon)
                         is MapHit.Circle -> true
@@ -525,7 +526,7 @@ internal fun MapSpikeScreen(
                         Modifier.fillMaxWidth(),
                         horizontalArrangement = Arrangement.spacedBy(4.dp),
                     ) {
-                        survey?.let {
+                        survey?.takeIf { it.kind == KIND_SURVEY }?.let {
                             TextButton(onClick = {
                                 onBridge("Rotating grid") {
                                     SurveyBridge.rotateGrid(it.index)

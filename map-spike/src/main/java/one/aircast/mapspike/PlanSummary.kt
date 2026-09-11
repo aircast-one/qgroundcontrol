@@ -19,7 +19,7 @@ fun planSummary(
         },
         (polygons.size + circles.size).takeIf { it > 0 }?.let { "$it fence${if (it == 1) "" else "s"}" },
         rally.size.takeIf { it > 0 }?.let { "$it rally" },
-        surveys.sumOf { it.transects.size }.takeIf { it > 0 }?.let { "$it survey pts" },
+        surveys.sumOf { it.transects.size }.takeIf { it > 0 }?.let { "$it scan pts" },
     )
     if (counts.isEmpty()) {
         return "Empty plan · long press to add"

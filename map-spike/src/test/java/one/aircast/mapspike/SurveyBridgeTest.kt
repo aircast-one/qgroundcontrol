@@ -14,7 +14,11 @@ class SurveyBridgeTest {
         corners: List<String> = threeCorners,
         transects: List<String> = listOf(point(41.0, 44.0), point(41.0, 44.1)),
         shots: Int = 12,
-    ) = """{"kind":"survey","cameraShots":$shots,"geometry":{"shape":"area",""" +
+        kind: String = "survey",
+        shape: String = "area",
+        property: String = "surveyAreaPolygon",
+    ) = """{"kind":"$kind","cameraShots":$shots,""" +
+        """"geometry":{"shape":"$shape","property":"$property",""" +
         """"vertices":[${corners.joinToString(",")}],""" +
         """"transects":[${transects.joinToString(",")}]}}"""
 
@@ -37,6 +41,37 @@ class SurveyBridgeTest {
     @Test
     fun `items that are not surveys are ignored`() {
         assertEquals(0, found(plan("""{"kind":"waypoint"}""", """{"kind":"takeoff"}""")).size)
+    }
+
+    @Test
+    fun `a corridor scan is a line, not an area, and says which property holds it`() {
+        val found = found(
+            plan(
+                """{"kind":"settings"}""",
+                survey(kind = "corridor", shape = "line", property = "corridorPolyline"),
+            ),
+        )
+
+        assertEquals(1, found.size)
+        assertEquals(SHAPE_LINE, found.single().shape)
+        assertEquals("corridorPolyline", found.single().property)
+        assertEquals("corridor", found.single().kind)
+    }
+
+    @Test
+    fun `a structure scan is an area drawn from its own property`() {
+        val found = found(plan(survey(kind = "structure", property = "structurePolygon")))
+
+        assertEquals(SHAPE_AREA, found.single().shape)
+        assertEquals("structurePolygon", found.single().property)
+    }
+
+    @Test
+    fun `geometry without a property cannot be dragged, so it is not shown`() {
+        val noProperty = """{"kind":"corridor","geometry":{"shape":"line",""" +
+            """"vertices":[${threeCorners.joinToString(",")}],"transects":[]}}"""
+
+        assertEquals(0, found(plan(noProperty)).size)
     }
 
     @Test

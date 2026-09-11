@@ -9,7 +9,7 @@ class FenceHandleTest {
         FencePolygon(index, true, vertices.map { TrackPoint(it.first, it.second) })
 
     private fun survey(index: Int, vararg vertices: Pair<Double, Double>) =
-        Survey(index, vertices.map { TrackPoint(it.first, it.second) }, emptyList(), 0)
+        Survey(index, vertices.map { TrackPoint(it.first, it.second) }, emptyList(), 0, KIND_SURVEY, SHAPE_AREA, "surveyAreaPolygon")
 
     @Test
     fun `every vertex of every polygon gets a handle`() {

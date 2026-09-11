@@ -86,7 +86,8 @@ internal fun planStatusText(name: String?, dirty: Boolean, offline: Boolean): St
 }
 
 internal val DRAWN_KINDS = setOf(
-    "settings", "takeoff", "land", "waypoint", "command", "altitude", "roi", "survey",
+    "settings", "takeoff", "land", "waypoint", "command", "altitude", "roi",
+    "survey", "corridor", "structure",
 )
 
 private fun JSONArray.itemsAfterMissionSettings(): List<JSONObject> =

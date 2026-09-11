@@ -58,7 +58,7 @@ class SelectionValidityTest {
 
 class SelectedSurveyTest {
     private fun survey(index: Int) =
-        Survey(index, listOf(TrackPoint(41.0, 44.0)), emptyList(), 0)
+        Survey(index, listOf(TrackPoint(41.0, 44.0)), emptyList(), 0, KIND_SURVEY, SHAPE_AREA, "surveyAreaPolygon")
 
     private val surveys = listOf(survey(1), survey(4))
 

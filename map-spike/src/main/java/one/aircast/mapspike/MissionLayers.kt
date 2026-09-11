@@ -278,6 +278,8 @@ const val SURVEY_AREA_SOURCE = "aircast-survey-area"
 const val SURVEY_AREA_LAYER = "aircast-survey-area-layer"
 const val SURVEY_TRANSECT_SOURCE = "aircast-survey-transects"
 const val SURVEY_TRANSECT_LAYER = "aircast-survey-transect-layer"
+const val SURVEY_LINE_SOURCE = "aircast-survey-line"
+const val SURVEY_LINE_LAYER = "aircast-survey-line-layer"
 
 fun installSurveyLayers(style: Style) {
     if (style.getSource(SURVEY_AREA_SOURCE) == null) {
@@ -287,6 +289,16 @@ fun installSurveyLayers(style: Style) {
                 PropertyFactory.fillColor("#AB47BC"),
                 PropertyFactory.fillOpacity(0.18f),
                 PropertyFactory.fillOutlineColor("#7B1FA2"),
+            ),
+        )
+    }
+
+    if (style.getSource(SURVEY_LINE_SOURCE) == null) {
+        style.addSource(GeoJsonSource(SURVEY_LINE_SOURCE))
+        style.addLayer(
+            LineLayer(SURVEY_LINE_LAYER, SURVEY_LINE_SOURCE).withProperties(
+                PropertyFactory.lineColor("#7B1FA2"),
+                PropertyFactory.lineWidth(3f),
             ),
         )
     }
@@ -303,11 +315,21 @@ fun installSurveyLayers(style: Style) {
 }
 
 fun surveyAreaFeatures(surveys: List<Survey>): FeatureCollection {
-    val features = surveys.mapNotNull { survey ->
+    val features = surveys.filter { it.shape == SHAPE_AREA }.mapNotNull { survey ->
         if (survey.area.size < 3) return@mapNotNull null
         val ring = survey.area.map { Point.fromLngLat(it.longitude, it.latitude) }
         val closed = if (ring.first() == ring.last()) ring else ring + ring.first()
         Feature.fromGeometry(Polygon.fromLngLats(listOf(closed)))
+    }
+    return FeatureCollection.fromFeatures(features)
+}
+
+fun surveyLineFeatures(surveys: List<Survey>): FeatureCollection {
+    val features = surveys.filter { it.shape == SHAPE_LINE }.mapNotNull { survey ->
+        if (survey.area.size < 2) return@mapNotNull null
+        Feature.fromGeometry(
+            LineString.fromLngLats(survey.area.map { Point.fromLngLat(it.longitude, it.latitude) }),
+        )
     }
     return FeatureCollection.fromFeatures(features)
 }
@@ -323,6 +345,7 @@ fun surveyTransectFeatures(surveys: List<Survey>): FeatureCollection {
 
 fun renderSurveys(style: Style, surveys: List<Survey>) {
     (style.getSource(SURVEY_AREA_SOURCE) as? GeoJsonSource)?.setGeoJson(surveyAreaFeatures(surveys))
+    (style.getSource(SURVEY_LINE_SOURCE) as? GeoJsonSource)?.setGeoJson(surveyLineFeatures(surveys))
     (style.getSource(SURVEY_TRANSECT_SOURCE) as? GeoJsonSource)
         ?.setGeoJson(surveyTransectFeatures(surveys))
 }

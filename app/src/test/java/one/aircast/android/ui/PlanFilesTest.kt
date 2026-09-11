@@ -306,12 +306,24 @@ class UndrawnItemsTest {
     }
 
     @Test
-    fun `a corridor scan is named in the warning`() {
-        val mixed = plan(item("settings"), item("waypoint"), item("corridor", "Corridor Scan"))
+    fun `corridor and structure scans are drawn now, so they raise no warning`() {
+        val scans = plan(
+            item("settings"),
+            item("waypoint"),
+            item("corridor", "Corridor Scan"),
+            item("structure", "Structure Scan"),
+        )
 
-        assertEquals(listOf("Corridor Scan"), undrawnItemNames(mixed))
+        assertEquals(emptyList<String>(), undrawnItemNames(scans))
+    }
+
+    @Test
+    fun `a landing pattern is named in the warning`() {
+        val mixed = plan(item("settings"), item("waypoint"), item("complex", "Landing Pattern"))
+
+        assertEquals(listOf("Landing Pattern"), undrawnItemNames(mixed))
         assertEquals(
-            "The map cannot draw Corridor Scan. Those items are still in the plan and will still be flown.",
+            "The map cannot draw Landing Pattern. Those items are still in the plan and will still be flown.",
             undrawnItemsWarning(undrawnItemNames(mixed)),
         )
     }
@@ -320,12 +332,12 @@ class UndrawnItemsTest {
     fun `each undrawn kind is named once however many the plan holds`() {
         val many = plan(
             item("settings"),
-            item("corridor", "Corridor Scan"),
-            item("corridor", "Corridor Scan"),
-            item("structure", "Structure Scan"),
+            item("complex", "Landing Pattern"),
+            item("complex", "Landing Pattern"),
+            item("spiral", "Spiral Scan"),
         )
 
-        assertEquals(listOf("Corridor Scan", "Structure Scan"), undrawnItemNames(many))
+        assertEquals(listOf("Landing Pattern", "Spiral Scan"), undrawnItemNames(many))
     }
 
     @Test

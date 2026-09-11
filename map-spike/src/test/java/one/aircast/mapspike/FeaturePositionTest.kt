@@ -59,7 +59,7 @@ class FeaturePositionTest {
 
     @Test
     fun `a survey area runs through its corners and closes`() {
-        val survey = Survey(0, listOf(at(42.0, 45.0), at(42.0, 45.1), at(42.1, 45.1)), emptyList(), 0)
+        val survey = Survey(0, listOf(at(42.0, 45.0), at(42.0, 45.1), at(42.1, 45.1)), emptyList(), 0, KIND_SURVEY, SHAPE_AREA, "surveyAreaPolygon")
 
         assertEquals(
             listOf(42.0 to 45.0, 42.0 to 45.1, 42.1 to 45.1, 42.0 to 45.0),
@@ -68,8 +68,33 @@ class FeaturePositionTest {
     }
 
     @Test
+    fun `a corridor is drawn open, because its path is not a boundary`() {
+        val corridor = Survey(
+            0, listOf(at(42.0, 45.0), at(42.0, 45.1), at(42.1, 45.1)), emptyList(), 0,
+            "corridor", SHAPE_LINE, "corridorPolyline",
+        )
+
+        assertEquals(listOf(42.0 to 45.0, 42.0 to 45.1, 42.1 to 45.1), line(surveyLineFeatures(listOf(corridor))))
+        assertEquals(0, surveyAreaFeatures(listOf(corridor)).features()!!.size)
+    }
+
+    @Test
+    fun `a structure scan is drawn closed, like a survey`() {
+        val structure = Survey(
+            0, listOf(at(42.0, 45.0), at(42.0, 45.1), at(42.1, 45.1)), emptyList(), 0,
+            "structure", SHAPE_AREA, "structurePolygon",
+        )
+
+        assertEquals(
+            listOf(42.0 to 45.0, 42.0 to 45.1, 42.1 to 45.1, 42.0 to 45.0),
+            ring(surveyAreaFeatures(listOf(structure))),
+        )
+        assertEquals(0, surveyLineFeatures(listOf(structure)).features()!!.size)
+    }
+
+    @Test
     fun `survey transects run through their points in order`() {
-        val survey = Survey(0, emptyList(), listOf(at(43.0, 46.0), at(43.1, 46.1)), 0)
+        val survey = Survey(0, emptyList(), listOf(at(43.0, 46.0), at(43.1, 46.1)), 0, KIND_SURVEY, SHAPE_AREA, "surveyAreaPolygon")
 
         assertEquals(listOf(43.0 to 46.0, 43.1 to 46.1), line(surveyTransectFeatures(listOf(survey))))
     }

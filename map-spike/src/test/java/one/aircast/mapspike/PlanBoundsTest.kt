@@ -40,7 +40,7 @@ class PlanBoundsTest {
         val points = planPoints(
             polygons = listOf(FencePolygon(0, true, listOf(TrackPoint(40.0, 43.0)))),
             rally = listOf(RallyPoint(0, 42.0, 45.0)),
-            surveys = listOf(Survey(0, listOf(TrackPoint(41.0, 44.0)), listOf(TrackPoint(41.9, 44.9)), 0)),
+            surveys = listOf(Survey(0, listOf(TrackPoint(41.0, 44.0)), listOf(TrackPoint(41.9, 44.9)), 0, KIND_SURVEY, SHAPE_AREA, "surveyAreaPolygon")),
         )
 
         val bounds = planBounds(points)!!
