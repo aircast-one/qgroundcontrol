@@ -1009,6 +1009,34 @@ empty plan read "Empty plan · long press to add" with an icon beside it opening
 row the operator never added. `worthListing` asks the question the icon is about. Found only by opening
 the tab against an empty plan, which no run before today did.
 
+### The Plan tab draws no mission, and the Fly tab draws the same plan fine
+
+Reproduced on a fresh process on the OnePlus 6, sim connected with a fix. Build a plan on the Plan tab
+— tap Takeoff, long press for a waypoint — and:
+
+    Plan tab   "2 items (takeoff) · 248 m · 1:06", list shows all three rows with positions,
+               map draws the vehicle and its track and **no pin, no route line, nothing**
+    Fly tab    same moment, same build: waypoint 2 in amber, Mission Start 0 in purple,
+               the dashed amber route drawn between them
+
+So the data is present, the mission layers work, and the map component works — `VehicleMap` is the
+same composable on both tabs, and on Plan its *vehicle* effect is clearly running, because the red
+icon and the blue trail are drawn from it with the same non-null `style` the mission effect needs.
+Only the mission render is missing, and only on the tab whose job it is.
+
+The Plan tab differs from Fly in exactly one argument, `editable = true`, which is what runs
+`attachMissionEditing` between `installMissionLayers` and `style = loadedStyle`.
+
+**Not diagnosed. Four rounds of static reasoning through the diff produced four hypotheses and
+disproved all of them** — a throwing `addLayer` (ruled out: the vehicle layer installs after the one I
+added and draws), an empty `items` (ruled out: the list reads positions off the same parse), a null
+`style` (ruled out: the vehicle effect shares it), and a stale `LaunchedEffect` key (the list is rebuilt
+each refresh). Reading the diff is not going to find this one; the next attempt should instrument the
+render path rather than argue about it.
+
+Last verified drawing correctly at `aircast-android 66bec7f`, which is where the corridor scan was
+photographed on the map. Everything after that is the item-list work.
+
 ### A guard that failed open for six hours
 
 `ui.sh tap` refuses a tap that lands on Arm, Land, RTL or any other flight control unless
