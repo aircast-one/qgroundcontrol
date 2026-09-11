@@ -1,0 +1,133 @@
+#!/usr/bin/env python3
+"""Every key this head reads out of a view must be one the core still emits.
+
+bridge-paths.py pins PATHS. A field renamed or removed INSIDE a served view is
+invisible to it: the path still resolves, the key is simply absent, and the head's
+decoder turns that into a default. The failure is silent in both directions --
+`json["gone"] as? NSNumber ?? false` reads false forever, and a fixture that sets
+"gone" agrees with the misreading rather than with the producer.
+
+That is not hypothetical. df4cffb57 replaced a per-item "current" flag with a
+"selected" index; this head went on reading "current", every item came back
+unselected, and the item facts panel, the altitude mode, the per-item speed, the
+survey statistics and the map's .required row were all dead at once. No test
+noticed, because the fixtures set "current" themselves.
+
+It compares DECLARATIONS on both sides and needs no running app, which matters:
+the alternative -- diffing against a live payload -- cries wolf on every field the
+core emits only in a state the current plan is not in, blockedReason being one.
+
+The view-to-module half is parsed out of core-rs/src/view.rs rather than written
+here, so it cannot drift. The model-to-view half is written here and each entry is
+checked against that table; a view path this file invents is reported, not ignored.
+
+Usage: python3 tools/macos/view-fields.py
+"""
+import pathlib
+import re
+import sys
+
+ROOT = pathlib.Path(__file__).resolve().parents[2]
+SOURCES = ROOT / "macos/Sources"
+CORE = ROOT / "core-rs/src"
+
+# Which Swift model decodes which view. The head builds these from a view payload and
+# nothing else, so every key their initialisers look up has to be a key that view emits.
+MODELS = {
+    "MissionItem": "view.missionItems",
+    "MissionSummary": "view.missionSummary",
+    "MissionItemKind": "view.missionKinds",
+    "TerrainProfile": "view.terrainProfile",
+    "FenceShape": "view.fences",
+    "SurveyStats": "view.surveyStats",
+}
+
+# A subscript on the decoded dictionary, or a literal handed to a helper closing over it.
+# Not a bare quoted run: pairing the closing quote of one literal with the opening quote of
+# the next reports the code between keys as a key, which is how an earlier attempt at this
+# declared 247 fixtures broken on its first run.
+LOOKUP = re.compile(r'\w+\??\[\s*"([^"]+)"\s*\]|\b\w+\(\s*"([^"]+)"\s*\)')
+
+# Every quoted literal the module mentions, not just the ones written "key": inside a json!
+# literal -- the core also assigns keys as json["enabled"] = ..., and matching only the first
+# form reported two live fields as gone on this checker's first run.
+#
+# Comments are stripped first, and that is load-bearing rather than tidiness: missionitems.rs
+# explains the rename in prose that contains the word "current" in quotes, so collecting
+# comments would find the very key whose removal this exists to catch.
+# Escape-aware. A pattern like "([^"\\]*)" cannot match a Rust string containing \n or \",
+# so it skips that literal and pairs the NEXT closing quote with the following opening one --
+# the same mis-pairing that made the first version of this report the code between keys as a
+# key, arriving a second time in a different disguise. It reported 25 live fields as gone.
+LITERAL = re.compile(r'"((?:[^"\\]|\\.)*)"')
+COMMENT = re.compile(r"//[^\n]*")
+
+
+def balanced(text, start):
+    depth = 0
+    for end in range(start, len(text)):
+        depth += text[end] == "{"
+        depth -= text[end] == "}"
+        if not depth:
+            return end
+    return len(text) - 1
+
+
+def views_to_modules():
+    """view path -> core module, read from the registry rather than written here."""
+    registry = (CORE / "view.rs").read_text()
+    return {m.group(1): m.group(2)
+            for m in re.finditer(r'View\s*\{\s*path:\s*"([^"]+)".*?compute:\s*(\w+)::',
+                                 registry, re.S)}
+
+
+def keys_a_model_reads(name):
+    for path in sorted(SOURCES.glob("*.swift")):
+        text = path.read_text()
+        declaration = re.search(rf"\n(?:final )?(?:struct|class|enum) {name}\b", text)
+        if not declaration:
+            continue
+        following = text[declaration.end():]
+        stop = re.search(r"\n(?:final )?(?:struct|class|enum) \w+", following)
+        body = following[: stop.start()] if stop else following
+        keys = set()
+        for init in re.finditer(r"\n    (?:public )?init\??\(", body):
+            open_brace = body.find("{", init.end())
+            if open_brace < 0:
+                continue
+            end = balanced(body, open_brace)
+            keys |= {found for match in LOOKUP.finditer(body[open_brace:end])
+                     for found in match.groups() if found}
+        return keys
+    return None
+
+
+registry = views_to_modules()
+gone, unchecked = [], []
+for model, view in sorted(MODELS.items()):
+    module = registry.get(view)
+    if module is None:
+        unchecked.append(f"{model}: this file names {view}, which core-rs/src/view.rs does not serve")
+        continue
+    source = CORE / f"{module}.rs"
+    if not source.exists():
+        unchecked.append(f"{model}: {view} is built by {module}, and {module}.rs does not exist")
+        continue
+    read = keys_a_model_reads(model)
+    if not read:
+        unchecked.append(f"{model}: no initialiser keys found, which is a broken reader not a clean result")
+        continue
+    emitted = set(LITERAL.findall(COMMENT.sub("", source.read_text())))
+    for key in sorted(read - emitted):
+        gone.append((model, key, view, module))
+
+for line in unchecked:
+    print(f"  NOT CHECKED {line}", file=sys.stderr)
+for model, key, view, module in gone:
+    print(f"  GONE {model} reads {key!r}, which {module}.rs no longer emits for {view}",
+          file=sys.stderr)
+
+checked = len(MODELS) - len(unchecked)
+print(f"checked {checked} of {len(MODELS)} models against the views they decode: "
+      f"{len(gone)} read a key the core no longer emits")
+sys.exit(1 if gone or unchecked else 0)
