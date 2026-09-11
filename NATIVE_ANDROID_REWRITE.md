@@ -5336,3 +5336,42 @@ to fix: it is displaying `altitudeText` as served.
 Once it lands the row will carry no detail at all, which is correct but thin — a
 change-speed command could say its speed, and `specifiedFlightSpeed` is already
 the first entry in the core's `FIELDS`. That is core work too.
+
+### The plan half of the Phase 4 gate, at scale, 2026-09-12
+
+The gate wants a 200+ waypoint survey planned, uploaded, flown and downloaded
+identical. Only the flight needs hardware — the rest is reachable now that this
+head can be fed a generated `.plan`, so it was worth doing rather than waiting.
+
+212 items (210 waypoints in a 14-row boustrophedon, plus takeoff and land),
+generated, pushed, and opened through File → Open. The head took it without
+complaint: summary `212 items (takeoff) · 9.87 km · 33:14`, terrain band drawn,
+Fit framed the whole grid, every marker rendered.
+
+Then upload → the header dropped "· not uploaded" → File → New plan, which
+emptied the tab, so anything that came back had to come from the vehicle →
+Download → `212 items (takeoff) · 9.87 km · 33:14` again → Save as → pulled off
+the handset and compared against the file that was sent.
+
+**212 of 212 items match.** `command`, `frame`, `autoContinue`, `Altitude`,
+`AltitudeMode` and all seven params, to 1e-6, plus `plannedHomePosition`. Item
+key sets are identical.
+
+**One field outside the items does not survive**: `mission.globalPlanAltitudeMode`
+goes 1 → 0, Relative → Mixed. That is QGC's own download path rather than
+anything here: `MissionController.cc:799` calls `setGlobalAltitudeMode` when
+loading a *file*, and the vehicle-download path has no equivalent, so the
+plan-level default falls back to Mixed. All 212 items still come back frame 3 /
+`AltitudeMode` 1, so the claim is wrong about a plan that is uniformly Relative,
+and a save-after-download writes that wrong default into the file. Every item
+carries its own mode, so nothing is lost about the mission itself.
+
+The gate now needs only the flight.
+
+**One thing the screenshot shows that the numbers do not.** At Fit zoom the 212
+markers overlap into a solid block and the dashed route is completely hidden —
+the operator can see that items exist but not the path through them. Not
+overstating it: a real 200+ waypoint survey is normally one Survey complex item,
+drawn as an area with transects, and this shape only arises for a plan built
+from individual waypoints or imported from another tool. Worth a zoom-interpolated
+marker size if that case turns out to matter.
