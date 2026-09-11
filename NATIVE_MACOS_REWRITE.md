@@ -1363,8 +1363,27 @@ Within noise. The read the table called the dominant cost is not measurable at t
 level, and the optimisation built on it was reverted rather than kept as a change that looks
 principled and does nothing.
 
-What the ~50% is remains open. It is not the tick's reads, and the map is drawing 121
-annotations, a route polyline and a tile overlay, so that is where to look next.
+**What the ~50% is, answered.** It is not the tick, not the map and not the plan. Decomposed
+by opening one thing at a time, all with an empty plan and no vehicle:
+
+| state | CPU |
+|---|---|
+| no native window open at all (Qt host only) | **21.1%** |
+| Plan window open | 26.9% |
+| Plan and Fly open | 23.6% |
+| Plan and Fly open, 121-item plan | 39.4% |
+
+The floor is ~21% before a single SwiftUI window exists, and adding 121 items moves it by
+about two points. `sample` on the idle process shows ten `GstVideoWorker` threads plus
+`rtpjitterbuffer`, `queue*:src` and `source:src` threads, and `settings.videoSettings.videoSource`
+reads **UDP h.264 Video Stream**, not Disabled. So the floor is a running GStreamer pipeline
+receiving nothing.
+
+Stated as inference, not proof: the decisive experiment is to disable the video source and
+re-measure, and this stream is forbidden from writing a video setting. What is established is
+that the cost is independent of plan size, of item count and of whether any native window is
+open — which is on its own enough to rule out everything this stream owns, and is why the
+`readItems()` cache could not have helped whatever else was true.
 
 `ps -o %cpu` on macOS is a decaying one-minute average and reads high straight after a plan
 build; the settled `top` samples above are the ones to trust.
