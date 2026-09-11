@@ -9,9 +9,7 @@
         "view.detections.error",
         "view.detections.host",
         "view.detections.track",
-        "view.missionItems.items.0.altitude",
         "view.missionItems.items.0.altitudeMode",
-        "view.missionItems.items.0.altitudeText",
         "view.missionItems.items.0.blockedReason",
         "view.missionItems.items.0.cameraShots",
         "view.missionItems.items.0.category",
@@ -6262,11 +6260,11 @@
         "items": [
             {
                 "abbreviation": "string",
-                "altitude": "null|number",
+                "altitude": "number",
                 "altitudeAmsl": "null|number",
                 "altitudeChange": "null|number",
                 "altitudeMode": "null|number",
-                "altitudeText": "null|string",
+                "altitudeText": "string",
                 "awaitingTerrain": "bool",
                 "azimuth": "number",
                 "blocked": "bool",

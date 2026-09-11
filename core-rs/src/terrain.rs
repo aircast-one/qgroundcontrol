@@ -5,7 +5,7 @@ use crate::router::Backend;
 
 pub const DEPS: &[&str] = &["plan.missionController.missionItemCount", "plan.missionController.containsItems", "plan.dirty", "vehicles.activeVehicleAvailable"];
 
-const FIELDS: &str = "specifiesCoordinate,distanceFromStart,amslEntryAlt,terrainAltitude,terrainCollision,sequenceNumber";
+const FIELDS: &str = "specifiesCoordinate,distanceFromStart,amslEntryAlt,terrainAltitude,terrainCollision,sequenceNumber,complexDistance";
 
 #[derive(Debug, PartialEq, Clone)]
 pub struct Point {
@@ -59,9 +59,71 @@ pub fn points(model: &Value) -> Vec<Point> {
         .unwrap_or_default()
 }
 
+// A pattern is one point on the profile unless its own path is walked. A survey covering a
+// kilometre of ground between its entry and its exit draws as a flat line across the hill it is
+// flying over, and the operator reads no collision because nothing sampled the middle.
+pub fn along_segments(backend: &dyn Backend, index: usize, sequence: i64, start: f64) -> Vec<Point> {
+    let segments = object(&backend.get_fields(&format!("plan.missionController.visualItems.{index}.flightPathSegments"), "coord1AMSLAlt,coord2AMSLAlt,amslTerrainHeights,distanceBetween,terrainCollision"));
+    let Some(listed) = segments.get("elements").and_then(Value::as_array) else { return Vec::new() };
+    listed
+        .iter()
+        .scan(start, |walked, segment| {
+            let number = |key: &str| segment.get(key).and_then(Value::as_f64).filter(|value| value.is_finite());
+            let length = number("distanceBetween").unwrap_or(0.0);
+            let from = *walked;
+            *walked += length;
+            let (low, high) = (number("coord1AMSLAlt"), number("coord2AMSLAlt"));
+            let collision = segment.get("terrainCollision").and_then(Value::as_bool).unwrap_or(false);
+            let heights: Vec<Option<f64>> = segment
+                .get("amslTerrainHeights")
+                .and_then(Value::as_array)
+                .map(|heights| heights.iter().map(|h| h.as_f64().filter(|v| v.is_finite())).collect())
+                .unwrap_or_default();
+            Some((from, length, low, high, collision, heights))
+        })
+        .flat_map(|(from, length, low, high, collision, heights)| {
+            let (Some(low), Some(high)) = (low, high) else { return Vec::new() };
+            let steps = heights.len().max(2);
+            (0..steps)
+                .map(|step| {
+                    let fraction = step as f64 / (steps - 1) as f64;
+                    Point {
+                        sequence,
+                        distance: from + length * fraction,
+                        mission_altitude: low + (high - low) * fraction,
+                        terrain_altitude: heights.get(step).copied().flatten(),
+                        collision,
+                    }
+                })
+                .collect()
+        })
+        .collect()
+}
+
+fn walked(backend: &dyn Backend, model: &Value) -> Vec<Point> {
+    let Some(elements) = model.get("elements").and_then(Value::as_array) else { return Vec::new() };
+    elements
+        .iter()
+        .enumerate()
+        .flat_map(|(index, element)| {
+            let number = |key: &str| element.get(key).and_then(Value::as_f64).filter(|value| value.is_finite());
+            let sequence = element.get("sequenceNumber").and_then(Value::as_i64).unwrap_or(-1);
+            let start = number("distanceFromStart").unwrap_or(0.0);
+            match number("complexDistance").filter(|metres| *metres > 0.0) {
+                Some(_) => along_segments(backend, index, sequence, start),
+                None => Vec::new(),
+            }
+        })
+        .collect()
+}
+
 pub fn terrain_view(backend: &dyn Backend, _args: &[String]) -> Value {
     let model = object(&backend.get_fields("plan.missionController.visualItems", FIELDS));
-    let profile = profile(points(&model));
+    let entries = points(&model);
+    let inside = walked(backend, &model);
+    let mut all: Vec<Point> = entries.into_iter().chain(inside).collect();
+    all.sort_by(|a, b| a.distance.partial_cmp(&b.distance).unwrap_or(std::cmp::Ordering::Equal));
+    let profile = profile(all);
     let horizontal = Unit::horizontal(backend);
     let vertical = Unit::vertical(backend);
     let usable = profile.points.len() > 1 && profile.max_altitude > profile.min_altitude;
@@ -126,5 +188,72 @@ mod tests {
         assert_eq!(listed.len(), 2);
         assert_eq!(listed[1].sequence, 3);
         assert!(listed[1].collision);
+    }
+}
+
+#[cfg(test)]
+mod walking {
+    use super::*;
+
+    struct Pattern(Value);
+
+    impl Backend for Pattern {
+        fn get(&self, _p: &str) -> String { String::new() }
+        fn get_fields(&self, path: &str, _fields: &str) -> String {
+            match path {
+                "plan.missionController.visualItems.1.flightPathSegments" => self.0.to_string(),
+                _ => json!({ "kind": "null" }).to_string(),
+            }
+        }
+        fn set(&self, _p: &str, _v: &str) -> String { String::new() }
+        fn invoke(&self, _p: &str, _a: &str) -> String { String::new() }
+        fn watch(&self, _p: &[String]) {}
+    }
+
+    fn segment(low: f64, high: f64, length: f64, heights: Vec<f64>, collision: bool) -> Value {
+        json!({ "coord1AMSLAlt": low, "coord2AMSLAlt": high, "distanceBetween": length, "amslTerrainHeights": heights, "terrainCollision": collision })
+    }
+
+    #[test]
+    fn a_pattern_is_sampled_along_its_own_path_rather_than_at_its_entry() {
+        let segments = json!({ "kind": "object", "elements": [segment(600.0, 620.0, 400.0, vec![500.0, 540.0, 580.0], false)] });
+        let walked = along_segments(&Pattern(segments), 1, 3, 1000.0);
+        assert_eq!(walked.len(), 3, "a survey covering four hundred metres of ground is three samples of it, not one point at the corner it started from");
+        assert_eq!(walked[0].distance, 1000.0, "the first sample sits where the pattern begins");
+        assert_eq!(walked[2].distance, 1400.0, "and the last where it ends, which is the entry plus the distance flown");
+        assert_eq!(walked[1].mission_altitude, 610.0, "the flown altitude runs between the ends of the segment");
+        assert_eq!(walked[1].terrain_altitude, Some(540.0), "the ground under the middle of the pattern is what a single entry point cannot show");
+        assert!(walked.iter().all(|point| point.sequence == 3), "every sample belongs to the item it came from");
+    }
+
+    #[test]
+    fn a_collision_inside_a_pattern_is_carried_by_the_samples_that_are_in_it() {
+        let segments = json!({ "kind": "object", "elements": [segment(600.0, 600.0, 100.0, vec![700.0, 700.0], true), segment(600.0, 600.0, 100.0, vec![500.0, 500.0], false)] });
+        let walked = along_segments(&Pattern(segments), 1, 3, 0.0);
+        assert_eq!(walked.len(), 4);
+        assert!(walked[0].collision && walked[1].collision, "the leg that flies into the hill says so");
+        assert!(!walked[2].collision && !walked[3].collision);
+        assert_eq!(walked[2].distance, 100.0, "the second segment starts where the first one ended");
+        assert!(profile(walked).points.iter().any(|point| point.collision));
+    }
+
+    #[test]
+    fn a_segment_with_no_terrain_yet_is_sampled_with_none_rather_than_skipped() {
+        let segments = json!({ "kind": "object", "elements": [segment(600.0, 620.0, 200.0, Vec::new(), false)] });
+        let walked = along_segments(&Pattern(segments), 1, 3, 0.0);
+        assert_eq!(walked.len(), 2, "the two ends are known even when the ground between them has not arrived");
+        assert!(walked.iter().all(|point| point.terrain_altitude.is_none()));
+        assert_eq!(profile(walked).unknown_terrain, 2, "and the profile counts them as unknown rather than as ground at zero");
+    }
+
+    #[test]
+    fn a_segment_that_has_not_said_how_high_it_flies_contributes_nothing() {
+        let segments = json!({ "kind": "object", "elements": [json!({ "distanceBetween": 100.0, "amslTerrainHeights": [500.0] })] });
+        assert!(along_segments(&Pattern(segments), 1, 3, 0.0).is_empty(), "a sample with no flown altitude cannot be drawn against the ground, and drawing it at zero puts the mission underground");
+    }
+
+    #[test]
+    fn an_item_with_no_segments_is_left_to_its_entry_point() {
+        assert!(along_segments(&Pattern(json!({ "kind": "null" })), 1, 3, 0.0).is_empty());
     }
 }

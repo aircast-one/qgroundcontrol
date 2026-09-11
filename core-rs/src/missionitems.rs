@@ -5,7 +5,7 @@ use crate::router::Backend;
 
 pub const DEPS: &[&str] = &["plan.missionController.visualItems.count", "plan.missionController.currentPlanViewVIIndex", "plan.missionController.containsItems"];
 
-const FIELDS: &str = "sequenceNumber,abbreviation,commandName,commandDescription,isCurrentItem,specifiesCoordinate,isStandaloneCoordinate,specifiesAltitudeOnly,isSimpleItem,isTakeoffItem,isLandCommand,isSurveyItem,homePosition,coordinate,amslEntryAlt,altDifference,azimuth,distance,distanceFromStart,readyForSaveState,readyForSaveMessage,dirty,altitude,altitudeMode,isIncomplete,exitCoordinate,exitCoordinateSameAsEntry,commandName,command,category,specifiesAltitude,cameraShots,complexDistance";
+const FIELDS: &str = "sequenceNumber,abbreviation,commandName,commandDescription,isCurrentItem,specifiesCoordinate,isStandaloneCoordinate,specifiesAltitudeOnly,isSimpleItem,isTakeoffItem,isLandCommand,isSurveyItem,homePosition,coordinate,amslEntryAlt,altDifference,azimuth,distance,distanceFromStart,readyForSaveState,readyForSaveMessage,dirty,altitude,altitudeMode,isIncomplete,exitCoordinate,exitCoordinateSameAsEntry,commandName,command,category,specifiesAltitude,cameraShots,complexDistance,plannedHomePositionAltitude";
 
 const READY_TO_SAVE: i64 = 0;
 const AWAITING_TERRAIN: i64 = 1;
@@ -99,8 +99,8 @@ fn item(read: &Value, index: i64, feet: bool) -> Value {
         "current": flag(read, "isCurrentItem"),
         "coordinate": coordinate,
         "exitCoordinate": exit,
-        "altitude": fact_number(read, "altitude"),
-        "altitudeText": fact_number(read, "altitude").map(|metres| altitude_text(metres, feet)),
+        "altitude": height(read),
+        "altitudeText": height(read).map(|metres| altitude_text(metres, feet)),
         "specifiesAltitude": flag(read, "specifiesAltitude"),
         "category": Some(text(read, "category")).filter(|category| !category.is_empty()),
         "cameraShots": number(read, "cameraShots").map(|shots| shots as i64).filter(|shots| *shots > 0),
@@ -134,6 +134,13 @@ fn editable(backend: &dyn Backend, current: i64) -> Value {
         Value::Null => Value::Null,
         fields => json!({ "index": current, "fields": fields }),
     }
+}
+
+// The plan's own entry keeps its height under a different name, because it is where the vehicle
+// launches from rather than a height the operator set for a waypoint. A head reading only the
+// waypoint name draws that row blank.
+fn height(read: &Value) -> Option<f64> {
+    fact_number(read, "altitude").or_else(|| fact_number(read, "plannedHomePositionAltitude"))
 }
 
 fn altitude_text(metres: f64, feet: bool) -> String {
@@ -477,6 +484,20 @@ mod reported {
 
 
 
+
+
+    #[test]
+    fn the_plans_own_entry_reports_the_height_it_keeps_under_its_own_name() {
+        let settings = items_view(&One(json!({ "kind": "object", "sequenceNumber": 1 })), &[])["items"][0].clone();
+        assert_eq!(settings["kind"], "settings");
+
+        let launch = listed(json!({
+            "kind": "object", "sequenceNumber": 0, "homePosition": true, "isSimpleItem": false,
+            "facts": [ { "name": "Altitude", "property": "plannedHomePositionAltitude", "value": 585.0 } ],
+        }));
+        assert_eq!(launch["altitude"], 585.0, "the launch elevation is a height and the row that shows it goes blank if only the waypoint name is looked for");
+        assert_eq!(launch["altitudeText"], "585.0 m");
+    }
 
     #[test]
     fn a_route_stops_at_a_command_number_rather_than_at_a_word() {

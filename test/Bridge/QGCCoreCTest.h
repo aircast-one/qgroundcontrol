@@ -60,7 +60,7 @@ private slots:
     void _theModeSlotsReadTheChannelTheVehicleNames();
     void _everyEditablePathTheCoreNamesAcceptsAWrite();
     void _theFleetIsNamedAndTheCommandedOneCanBeChosen();
-    void _twoVehiclesAreToldApartAndEitherCanBeCommanded();
+    void _theTerrainProfileIsSampledThroughASurveyRatherThanAtItsCorner();
     void _structureScanItemsMatchTheRecordedUpload();
     void _aLargeSurveyMakesTheRoundTripUnchanged();
     void _surveyTransectsMatchTheRecordedOracle();
