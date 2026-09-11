@@ -120,6 +120,7 @@ pub const VIEWS: &[View] = &[
     View { path: "view.geoToUtm", deps: geo::DEPS, compute: geo::geo_to_utm_view },
     View { path: "view.utmToGeo", deps: geo::DEPS, compute: geo::utm_to_geo_view },
     View { path: "view.terrainTile", deps: terraintile::DEPS, compute: terraintile::terrain_tile_view },
+    View { path: "view.dependencies", deps: &[], compute: dependencies_view },
 ];
 
 pub fn owns(path: &str) -> bool {
@@ -212,6 +213,18 @@ impl View {
 }
 
 pub const ORDER: &str = "oldestFirst";
+
+// A dep that names no property binds to nothing and falls back to a poll that only runs when the
+// event loop is idle, so a misspelling makes a view quietly stop updating rather than fail. Serving
+// the list is what lets a test resolve every one of them against the real bridge.
+fn dependencies_view(_backend: &dyn Backend, _args: &[String]) -> Value {
+    json!({
+        "kind": "object",
+        "class": "ViewDependencies",
+        "count": VIEWS.len(),
+        "views": VIEWS.iter().map(|view| json!({ "path": view.path, "deps": view.deps })).collect::<Vec<_>>(),
+    })
+}
 
 fn messages_view(backend: &dyn Backend, _args: &[String]) -> Value {
     let items = messages::parse(&value_string(&backend.get("vehicle.formattedMessages")));

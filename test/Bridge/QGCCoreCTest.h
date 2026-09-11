@@ -81,6 +81,7 @@ private slots:
     void _geoConversionsMatchGeoTest();
     void _terrainTileNeedsAFile();
     void _aSignalWithNoPropertyBehindItStillWakesAView();
+    void _everyDependencyAViewDeclaresNamesSomethingTheBridgeHas();
 
 private:
     static bool _unavailable(const char *path);

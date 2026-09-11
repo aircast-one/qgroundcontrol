@@ -3226,6 +3226,47 @@ void QGCCoreCTest::_aSignalWithNoPropertyBehindItStillWakesAView()
 #endif
 }
 
+void QGCCoreCTest::_everyDependencyAViewDeclaresNamesSomethingTheBridgeHas()
+{
+#ifdef QGC_RUST_CORE
+    // Without a vehicle, every chain through vehicle or the inspector's active system breaks at an
+    // absent object and answers found:false, which is indistinguishable from a misspelling. The
+    // check is only meaningful against a connected vehicle.
+    _connectMockLink(MAV_AUTOPILOT_PX4);
+    QTRY_VERIFY_WITH_TIMEOUT(MultiVehicleManager::instance()->activeVehicle() != nullptr, 10000);
+
+    const QJsonArray views = take(qgc_core_get("view.dependencies")).value(QStringLiteral("views")).toArray();
+    QVERIFY2(views.count() > 40, "the core served no dependency list, so this test would pass by finding nothing");
+
+    // A dep that names no property binds to no signal. The watcher then falls back to a re-read
+    // that only runs while the event loop is idle, and the value dedup silences it after the first
+    // miss - so a misspelled dep makes its view quietly stop updating rather than fail anywhere.
+    // found:false is the only thing that separates a name the bridge does not have from a value
+    // that is legitimately absent because nothing is connected.
+    QStringList unknown;
+    int checked = 0;
+    for (const QJsonValue &view : views) {
+        const QString path = view.toObject().value(QStringLiteral("path")).toString();
+        for (const QJsonValue &dep : view.toObject().value(QStringLiteral("deps")).toArray()) {
+            const QString named = dep.toString();
+            if (named.contains(QLatin1Char('@'))) {
+                continue;
+            }
+            checked++;
+            const QByteArray utf8 = named.toUtf8();
+            const QJsonObject read = take(qgc_bridge_get(utf8.constData()));
+            if (read.value(QStringLiteral("found")).toBool(true) == false) {
+                unknown.append(QStringLiteral("%1 declares %2").arg(path, named));
+            }
+        }
+    }
+    QVERIFY2(checked > 100, qPrintable(QStringLiteral("only %1 deps were resolved, which is too few to be the whole set").arg(checked)));
+    QVERIFY2(unknown.isEmpty(), qPrintable(QStringLiteral("these deps name nothing the bridge has, so their views never recompute: %1").arg(unknown.join(QStringLiteral(", ")))));
+#else
+    QSKIP("the Rust core is not linked into this build");
+#endif
+}
+
 void QGCCoreCTest::_theItemListNamesWhatTheControllerHolds()
 {
 #ifdef QGC_RUST_CORE
