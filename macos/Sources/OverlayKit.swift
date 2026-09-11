@@ -25,8 +25,6 @@ enum Overlay {
     static let fence = Color.orange
     static let blocked = Color.orange
 
-    // A single-sample collision still has to be visible, so a run narrower than this is drawn
-    // at this width rather than as a hairline.
     static let collisionMark: CGFloat = 5
     static let markerType: Double = 8
     static let vehicle = Color.red
@@ -254,8 +252,6 @@ struct ContentSizeKey: PreferenceKey {
 }
 
 extension View {
-    // Row heights vary once a label wraps, so an estimate of rows times row height
-    // clipped the last one. Measure instead.
     func measuringHeight(into height: Binding<CGFloat>) -> some View {
         background(GeometryReader { proxy in
             Color.clear.preference(key: ContentHeightKey.self, value: proxy.size.height)

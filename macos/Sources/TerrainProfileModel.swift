@@ -77,10 +77,6 @@ struct TerrainProfile: Equatable {
         highestText = text("highestText")
     }
 
-    // Saying a mission is below terrain and not by how much leaves the operator to pick a new
-    // altitude by eye off a plot 90 points tall spanning three hundred metres. The core signs the
-    // clearance -- headroom above, intrusion below -- and spells the magnitude, so this is one
-    // sentence rather than a branch on two numbers.
     static let below = "Mission is below terrain"
     static let clears = "Clears terrain"
 
@@ -91,29 +87,10 @@ struct TerrainProfile: Equatable {
             : "\(TerrainProfile.clears) by \(clearanceText)"
     }
 
-    // A margin is worth stating only when it is the whole story, and whether it is belongs to
-    // whoever measured it: the head worked that out from the unknown count until the core began
-    // answering it, which meant the second head had to rediscover it or reassure wrongly.
-    //
-    // A collision needs no such qualification. Being below the ground somewhere is not made
-    // uncertain by not knowing the rest.
     var showsClearance: Bool { hasCollision || (clearanceComplete && !clearanceText.isEmpty) }
 
     func x(_ point: TerrainPoint, width: Double) -> Double { point.x * width }
 
-    // Which item each stretch of the profile belongs to. Without these the plot answers "the
-    // mission is below terrain somewhere" and leaves the operator to find where by eye, which is
-    // the one question the panel exists to answer. QGC draws the same ticks and positions them
-    // from distanceFromStart; the core already stamps every sample with its sequence, so the
-    // marks come from the profile itself rather than from a second measurement that could
-    // disagree with it.
-    //
-    // First sample per item, not every sample: a survey collapses to one sequence carrying four
-    // hundred of them, so marking each would redraw the whole strip as a solid rule.
-    // The tick sits exactly where the item begins; its number cannot, because a label centred on
-    // x=0 renders half outside the plot and item 0 -- always at the very start -- lost its left
-    // half every time. Pulled inside by half its own width at both ends, so the first and last
-    // marks read as numbers rather than as fragments.
     func labelX(_ marker: TerrainMarker, width: Double, inset: Double) -> Double {
         guard width > inset * 2 else { return width / 2 }
         return min(max(marker.x * width, inset), width - inset)
@@ -127,14 +104,6 @@ struct TerrainProfile: Equatable {
         }
     }
 
-    // Where the mission is under the ground, as unbroken stretches rather than a mark per sample.
-    // A survey samples its whole flown path, so a collision that is one continuous run arrived as
-    // four hundred overlapping dots -- each covering six of its neighbours, rebuilt on every
-    // terrain event, and smeared into a bar that could not be told from two separate stretches.
-    //
-    // Adjacency is by position in the list, not by comparing x values: the first version looked
-    // up each point's predecessor by scanning for it, which is a quadratic walk of four hundred
-    // samples on every redraw.
     var collisionRuns: [ClosedRange<Double>] {
         points.reduce(into: (runs: [ClosedRange<Double>](), continuing: false)) { state, point in
             guard point.collision else { return state.continuing = false }
