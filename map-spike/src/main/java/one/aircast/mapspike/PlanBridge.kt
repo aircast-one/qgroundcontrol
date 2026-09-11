@@ -115,6 +115,12 @@ object PlanBridge {
 
     fun removeItem(index: Int): Boolean = removeMissionItem(index).ok
 
+    fun setLaunchCoordinate(index: Int, latitude: Double, longitude: Double): Boolean =
+        runCatching {
+            val value = "{\"value\":{\"latitude\":$latitude,\"longitude\":$longitude,\"altitude\":0}}"
+            JSONObject(QGCBridge.set("$PLAN_ITEMS.$index.launchCoordinate", value)).optBoolean("ok")
+        }.getOrDefault(false)
+
     fun moveItem(index: Int, latitude: Double, longitude: Double): Boolean =
         runCatching {
             val value = "{\"value\":{\"latitude\":$latitude,\"longitude\":$longitude,\"altitude\":0}}"
