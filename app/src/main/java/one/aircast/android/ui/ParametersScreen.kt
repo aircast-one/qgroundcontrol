@@ -68,7 +68,7 @@ fun ParametersScreen(modifier: Modifier = Modifier) {
         }
 
         Text(
-            "${matches.size} parameters",
+            "${matches.size} parameter${if (matches.size == 1) "" else "s"}",
             style = MaterialTheme.typography.labelMedium,
             modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp),
         )

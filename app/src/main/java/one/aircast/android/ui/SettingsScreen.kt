@@ -27,6 +27,7 @@ import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
@@ -40,6 +41,9 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.text.input.KeyboardType
+import kotlin.math.abs
+import kotlin.math.floor
 import androidx.compose.ui.unit.dp
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
@@ -319,11 +323,26 @@ private fun EnumPicker(fact: Fact, write: (() -> Boolean) -> Unit) {
     }
 }
 
+internal fun factKeyboard(fact: Fact): KeyboardType = when {
+    fact.isString || fact.isBool -> KeyboardType.Text
+    fact.minString.toDoubleOrNull()?.let { it < 0.0 } != false -> KeyboardType.Text
+    else -> KeyboardType.Decimal
+}
+
+internal fun plainNumber(text: String): String {
+    val parsed = text.toDoubleOrNull() ?: return text
+    if (!parsed.isFinite() || abs(parsed) >= 1e15) return text
+    return when (parsed == floor(parsed)) {
+        true -> parsed.toLong().toString()
+        false -> parsed.toBigDecimal().stripTrailingZeros().toPlainString()
+    }
+}
+
 internal fun factConstraintNote(fact: Fact): String? {
     val parts = listOfNotNull(
-        fact.minString.takeIf { it.isNotBlank() && !fact.minIsDefaultForType }?.let { "Min $it" },
-        fact.maxString.takeIf { it.isNotBlank() && !fact.maxIsDefaultForType }?.let { "Max $it" },
-        fact.defaultValueString.takeIf { it.isNotBlank() }?.let { "Default $it" },
+        fact.minString.takeIf { it.isNotBlank() && !fact.minIsDefaultForType }?.let { "Min ${plainNumber(it)}" },
+        fact.maxString.takeIf { it.isNotBlank() && !fact.maxIsDefaultForType }?.let { "Max ${plainNumber(it)}" },
+        fact.defaultValueString.takeIf { it.isNotBlank() }?.let { "Default ${plainNumber(it)}" },
     )
     return parts.takeIf { it.isNotEmpty() }?.joinToString(" · ")
 }
@@ -364,6 +383,7 @@ private fun FactTextField(fact: Fact, onWrite: () -> Unit) {
             },
             singleLine = true,
             isError = rejection != null,
+            keyboardOptions = KeyboardOptions(keyboardType = factKeyboard(fact)),
             modifier = Modifier.fillMaxWidth(),
             trailingIcon = {
                 val committed = editing
