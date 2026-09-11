@@ -2231,3 +2231,42 @@ original, rather than merely equivalent.
 head already draws, and reading them would mean formatting in the head — the thing the leg row was
 built to avoid. Being unread is the correct state for them, which is precisely why this direction
 cannot be mechanised.
+
+### The served-but-unread sweep across every view, and it is clean (2026-09-12)
+
+Ran the `view.missionItems` method over all eighteen served views: enumerate what the core emits,
+subtract every name appearing anywhere in `macos/Sources`, then grep all QML for what remains.
+Control in the same run — 1021 names found in the head, where a broken read gives 0.
+
+**The plan views are clean.** Nothing survived that this window should draw:
+
+| view | served | unread | verdict |
+|---|---|---|---|
+| `missionSummary` | 22 | 15 | the `*Computed*` / `*Inputs*` verify scaffolding, plus raw metres whose text this head draws |
+| `terrainProfile` | 20 | 1 | `totalDistanceMeters`, the raw twin of `distanceText` |
+| `surveyStats` | 18 | 8 | every one a raw twin (`areaSquareMetres`/`areaText`) or an input beside an answer |
+| `fences`, `camera`, `inspector`, `sensors`, `setup`, `vibration`, `video` | — | **0** | nothing unread at all |
+| `missionKinds` | 14 | 1 | `atSequence` — where an insert would land |
+| `altitudeModes` | 9 | 2 | `context`, `supportsTerrainFrame` |
+
+**The one that looked like a defect and was not.** QGC removes the Terrain Frame altitude mode
+from the picker when the vehicle cannot hold one — `MissionSettingsEditor.qml:105` and
+`SimpleItemEditor.qml:134` both do it — and this head does no such filtering. But the core already
+does: `altitudemodes.rs:37` hides that mode and `:51` supplies the reason, so the served list
+arrives filtered and `supportsTerrainFrame` rides along as evidence. Confirmed by reading the crate
+rather than inferring from the payload, because a mode absent from one plan's list and a mode the
+producer removes look identical from outside.
+
+**The QML-reference count is a weak signal and was treated as one.** `highest`, `total`,
+`context`, `dynamic` all matched QML lines about entirely different objects. Every flagged field
+was read at its hit before being believed; the count only decided what to look at.
+
+**A sweep finding nothing is a result here, because the same method found the terrain markers an
+hour earlier** on the first view it was run against. What remains unread is unread for two good
+reasons — a raw number whose formatted twin is already drawn, and an input served beside its answer
+so a disagreement can be read instead of inferred. Both are states this stream deliberately wants.
+
+The remaining unread fields sit in views belonging to other windows and mostly need a vehicle:
+`enoughChannels` / `liveChannels` / `minimumChannels` on `radio`, `waitingForCancel` and the two
+`*Needed` flags on `calibration`, `everyday` / `folded` / `currentSummary` on `flightModes`,
+`dynamic` on `links`, `anyDownloaded` on `logs`. Recorded, not chased.
