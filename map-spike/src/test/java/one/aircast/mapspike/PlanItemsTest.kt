@@ -123,55 +123,6 @@ class UnplacedSelectionTest {
     }
 }
 
-class LongPressActionTest {
-    private val unplacedTakeoff = MissionItem(
-        1, 1, Double.NaN, Double.NaN, "Takeoff", false, Double.NaN,
-        kind = KIND_TAKEOFF, commandId = 22, placed = false,
-    )
-    private val unplacedOther = MissionItem(
-        4, 4, Double.NaN, Double.NaN, "Change Speed", false, Double.NaN,
-        kind = "command", commandId = 178, placed = false,
-    )
-    private val placed = MissionItem(2, 2, 41.0, 44.0, "Waypoint", false, 50.0, kind = "waypoint")
-
-    @Test
-    fun `a long press gives an unfinished takeoff its launch location`() {
-        assertEquals(
-            LongPress.SetLaunch(1),
-            longPressAction(MapHit.Waypoint(1), listOf(unplacedTakeoff, placed)),
-        )
-    }
-
-    @Test
-    fun `an unplaced item that is not a takeoff has no launch to set`() {
-        assertEquals(
-            LongPress.AddWaypoint,
-            longPressAction(MapHit.Waypoint(4), listOf(unplacedOther, placed)),
-        )
-    }
-
-    @Test
-    fun `a long press with a placed item selected still adds a waypoint`() {
-        assertEquals(
-            LongPress.AddWaypoint,
-            longPressAction(MapHit.Waypoint(2), listOf(unplacedTakeoff, placed)),
-        )
-    }
-
-    @Test
-    fun `a long press with nothing selected adds a waypoint`() {
-        assertEquals(LongPress.AddWaypoint, longPressAction(null, listOf(unplacedTakeoff)))
-    }
-
-    @Test
-    fun `a selection that is not a waypoint does not hijack the long press`() {
-        assertEquals(
-            LongPress.AddWaypoint,
-            longPressAction(MapHit.SurveyVertex(1, 0), listOf(unplacedTakeoff)),
-        )
-    }
-}
-
 class WorthListingTest {
     private fun item(index: Int) =
         MissionItem(index, index, 41.0, 44.0, "Waypoint", false, 50.0, kind = "waypoint")

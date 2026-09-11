@@ -5,7 +5,6 @@ import kotlin.math.roundToInt
 const val NO_POSITION = "no position"
 const val AFTER_THE_ROUTE_ENDS = "after the route ends"
 const val PLAN_ITEMS_HEADING = "Plan items"
-const val TAKEOFF_NEEDS_A_PLACE = "Long press the map to set the takeoff location"
 
 data class ItemRow(
     val index: Int,
@@ -38,15 +37,3 @@ internal fun itemDetail(item: MissionItem): String = listOfNotNull(
 fun worthListing(items: List<MissionItem>): Boolean = items.any { it.index != HOME_ITEM }
 
 fun rowAt(rows: List<ItemRow>, index: Int): ItemRow? = rows.firstOrNull { it.index == index }
-
-sealed interface LongPress {
-    data class SetLaunch(val index: Int) : LongPress
-    data object AddWaypoint : LongPress
-}
-
-fun longPressAction(selected: MapHit?, items: List<MissionItem>): LongPress =
-    (selected as? MapHit.Waypoint)
-        ?.let { hit -> items.firstOrNull { it.index == hit.index } }
-        ?.takeIf { !it.placed && it.kind == KIND_TAKEOFF }
-        ?.let { LongPress.SetLaunch(it.index) }
-        ?: LongPress.AddWaypoint

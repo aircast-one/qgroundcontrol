@@ -274,13 +274,7 @@ internal fun MapSpikeScreen(
             surveys = surveyList,
             editable = true,
             onAdd = { lat, lon ->
-                when (val action = longPressAction(selected, allItems)) {
-                    is LongPress.SetLaunch -> onBridge("Setting the takeoff location") {
-                        PlanBridge.setLaunchCoordinate(action.index, lat, lon)
-                    }
-                    LongPress.AddWaypoint ->
-                        addMissionItem("waypoint", "Adding a waypoint", TrackPoint(lat, lon))
-                }
+                addMissionItem("waypoint", "Adding a waypoint", TrackPoint(lat, lon))
             },
             onMove = { hit, lat, lon ->
                 onBridge {
@@ -566,13 +560,6 @@ internal fun MapSpikeScreen(
                                     SurveyBridge.rotateGrid(it.index)
                                 }
                             }) { Text("Rotate") }
-                        }
-
-                        waypoint?.takeIf { !it.placed && it.kind == KIND_TAKEOFF }?.let {
-                            Text(
-                                TAKEOFF_NEEDS_A_PLACE,
-                                style = MaterialTheme.typography.labelSmall,
-                            )
                         }
 
                         waypoint?.let { item ->
