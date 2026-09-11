@@ -10,10 +10,9 @@ struct MissionItem: Identifiable, Equatable {
     let altitude: Double?
     let isCurrent: Bool
     let specifiesAltitude: Bool
-    let isLaunch: Bool
     let commandId: Int
     let isSimpleItem: Bool
-    let isSurveyItem: Bool
+    let kind: String
     let category: String
     let altitudeUnits: String
 
@@ -47,6 +46,9 @@ struct MissionItem: Identifiable, Equatable {
     var stopsSave: Bool { blocked || awaitingTerrain }
 
     var canRemove: Bool { sequence > 0 }
+
+    var isLaunch: Bool { kind == MissionItem.takeoffKind || kind == MissionItem.settingsKind }
+    var isSurveyItem: Bool { kind == MissionItem.surveyKind }
 
     var canChangeCommand: Bool { isSimpleItem && sequence > 0 && !isLaunch }
 
@@ -108,9 +110,7 @@ struct MissionItem: Identifiable, Equatable {
         flownLeg = (json["flownLeg"] as? NSNumber)?.boolValue ?? false
         endsRoute = (json["endsRoute"] as? NSNumber)?.boolValue ?? false
 
-        let kind = (json["kind"] as? String) ?? ""
-        isLaunch = kind == MissionItem.takeoffKind || kind == MissionItem.settingsKind
-        isSurveyItem = kind == MissionItem.surveyKind
+        kind = (json["kind"] as? String) ?? ""
 
         let coordinate = json["coordinate"] as? [String: Any]
         latitude = (coordinate?["latitude"] as? NSNumber)?.doubleValue

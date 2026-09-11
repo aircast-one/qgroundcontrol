@@ -83,12 +83,21 @@ struct MissionKinds: Equatable {
             ?? "Click the map to place a \(name.lowercased())."
     }
 
-    func areaProperty(forCommand command: String) -> String? {
-        byComplexName(command).flatMap { $0.geometry == "area" ? $0.geometryProperty : nil }
+    // Keyed on the item's kind, never on its name. Every complex item's commandName is tr(),
+    // so matching it against the catalogue's complexName -- a fixed English string -- found
+    // nothing in any other locale and the survey area and corridor line were simply not drawn.
+    // The item is passed rather than a string so the choice of field is pinned by a test; the
+    // call site that made it lives in a window file, which the checks do not compile.
+    func areaProperty(of item: MissionItem) -> String? {
+        geometryProperty(of: item, shaped: "area")
     }
 
-    func lineProperty(forCommand command: String) -> String? {
-        byComplexName(command).flatMap { $0.geometry == "line" ? $0.geometryProperty : nil }
+    func lineProperty(of item: MissionItem) -> String? {
+        geometryProperty(of: item, shaped: "line")
+    }
+
+    private func geometryProperty(of item: MissionItem, shaped: String) -> String? {
+        byId(item.kind).flatMap { $0.geometry == shaped ? $0.geometryProperty : nil }
     }
 
     // A pattern the catalogue does not name is not one the core refused, so it stays offered.

@@ -385,14 +385,14 @@ final class MissionStore: ObservableObject, Probeable, WriteReporting {
     }
 
     private func surveyPolygon(of item: MissionItem) -> [GeoPoint] {
-        guard let property = kinds.areaProperty(forCommand: item.command)
+        guard let property = kinds.areaProperty(of: item)
         else { return [] }
         let polygon = Bridge.group("plan.missionController.visualItems.\(item.index).\(property)")
         return ((polygon["path"] as? [Any]) ?? []).compactMap(GeoPoint.init(json:))
     }
 
     private func corridorPath(of item: MissionItem) -> [GeoPoint] {
-        guard let property = kinds.lineProperty(forCommand: item.command)
+        guard let property = kinds.lineProperty(of: item)
         else { return [] }
         let line = Bridge.group("plan.missionController.visualItems.\(item.index).\(property)")
         return ((line["path"] as? [Any]) ?? []).compactMap(GeoPoint.init(json:))
@@ -412,14 +412,14 @@ final class MissionStore: ObservableObject, Probeable, WriteReporting {
 
     var editablePolygons: [EditablePolygon] {
         let areas = items.compactMap { item -> EditablePolygon? in
-            guard let property = kinds.areaProperty(forCommand: item.command) else {
+            guard let property = kinds.areaProperty(of: item) else {
                 return nil
             }
             return polygon(at: "plan.missionController.visualItems.\(item.index).\(property)",
                            ring: true)
         }
         let lines = items.compactMap { item -> EditablePolygon? in
-            guard let property = kinds.lineProperty(forCommand: item.command) else {
+            guard let property = kinds.lineProperty(of: item) else {
                 return nil
             }
             return polygon(at: "plan.missionController.visualItems.\(item.index).\(property)",

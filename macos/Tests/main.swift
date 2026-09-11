@@ -1185,13 +1185,10 @@ func checkMissionItemKinds() {
 
     expect(catalogue.byComplexName("Corridor Scan")?.id ?? "", "corridor",
            "a pattern the core knows is matched by the name the controller uses")
-    expect(catalogue.areaProperty(forCommand: "Survey") ?? "", "surveyAreaPolygon",
-           "an area pattern reports the polygon it draws from")
-    expect(catalogue.lineProperty(forCommand: "Corridor Scan") ?? "", "corridorPolyline",
-           "and a line pattern its polyline")
-    expect(catalogue.lineProperty(forCommand: "Survey") == nil,
-           "an area is not offered as a line, which would append vertices to the wrong property")
-    expect(catalogue.areaProperty(forCommand: "Corridor Scan") == nil, "nor the reverse")
+    // The four assertions that stood here keyed the geometry lookup on the command name and
+    // used English ones, so they agreed with a rule that only worked in English and pinned the
+    // defect rather than the requirement. checkComplexGeometryInAnyLocale covers both
+    // directions and a translated name.
 
     expect(catalogue.byComplexName("Fixed Wing Landing Pattern") == nil,
            "a Landing Pattern is a real QGC complex item the catalogue does not name, so it is "
@@ -1270,6 +1267,7 @@ func checkMissionItemKinds() {
     checkCollisionRuns()
     checkClearanceSentence()
     checkUnreachedItems()
+    checkComplexGeometryInAnyLocale()
     checkShapeAbsence()
     checkBatteryReading()
     checkFlownLeg()
@@ -4217,6 +4215,33 @@ func checkShapeAbsence() {
     expect(PlanShapeAbsence.rally(connected: true, supported: false),
            "This vehicle's firmware does not support rally points.",
            "and does not invite an operator to add what cannot be taken")
+}
+
+func checkComplexGeometryInAnyLocale() {
+    let catalogue = MissionKinds(["kinds": [
+        ["id": "survey", "title": "Survey", "complexName": "Survey", "geometry": "area",
+         "geometryProperty": "surveyAreaPolygon", "simple": false as NSNumber, "enabled": true as NSNumber],
+        ["id": "corridor", "title": "Corridor Scan", "complexName": "Corridor Scan", "geometry": "line",
+         "geometryProperty": "corridorPolyline", "simple": false as NSNumber, "enabled": true as NSNumber],
+    ]])
+    func item(_ kind: String, named: String) -> MissionItem {
+        MissionItem(view: ["index": 1 as NSNumber, "sequence": 1 as NSNumber,
+                           "name": named, "kind": kind])
+    }
+    // Every complex item's commandName is tr(), so these are what a German build reports while
+    // the catalogue's complexName stays the English string it is compared against.
+    expect(catalogue.areaProperty(of: item("survey", named: "Vermessung")) ?? "", "surveyAreaPolygon",
+           "a survey draws its area from the item's kind, not from a name that is translated -- "
+           + "matching the name found nothing outside an English build and the polygon that "
+           + "tells the operator what ground is covered was simply absent")
+    expect(catalogue.lineProperty(of: item("corridor", named: "Korridor-Scan")) ?? "", "corridorPolyline",
+           "and a corridor draws its path the same way")
+    expect(catalogue.areaProperty(of: item("corridor", named: "Corridor Scan")) == nil,
+           "a line is never offered as an area, whatever it is called")
+    expect(catalogue.lineProperty(of: item("survey", named: "Vermessung")) == nil,
+           "an area is not offered as a line, which would append vertices to the wrong property")
+    expect(catalogue.areaProperty(of: item("waypoint", named: "Waypoint")) == nil,
+           "and a kind the catalogue does not shape has no geometry to read")
 }
 
 func checkUnreachedItems() {
