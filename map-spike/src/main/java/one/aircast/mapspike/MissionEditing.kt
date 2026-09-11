@@ -102,8 +102,10 @@ fun attachMissionEditing(
     var downY = 0f
     var moved = false
     var lastWriteAt = 0L
+    var addedInGesture = false
 
     map.addOnMapLongClickListener { latLng ->
+        addedInGesture = true
         onAdd(latLng.latitude, latLng.longitude)
         true
     }
@@ -115,6 +117,7 @@ fun attachMissionEditing(
                 downX = event.x
                 downY = event.y
                 moved = false
+                addedInGesture = false
                 if (hit == null) {
                     map.uiSettings.setAllGesturesEnabled(true)
                     false
@@ -144,7 +147,10 @@ fun attachMissionEditing(
                 dragging = null
                 map.uiSettings.setAllGesturesEnabled(true)
                 if (hit == null) {
-                    if (event.actionMasked == MotionEvent.ACTION_UP && withinTap(event.x - downX, event.y - downY)) {
+                    if (!addedInGesture &&
+                        event.actionMasked == MotionEvent.ACTION_UP &&
+                        withinTap(event.x - downX, event.y - downY)
+                    ) {
                         onSelected(null)
                     }
                     false

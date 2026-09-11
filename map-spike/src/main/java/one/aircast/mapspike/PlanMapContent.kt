@@ -152,6 +152,7 @@ internal fun MapSpikeScreen(
             }
             if (outcome.ok) {
                 busy = null
+                outcome.index?.let { selected = MapHit.Waypoint(it) }
             } else {
                 busy = outcome.reason
                 delay(FAILURE_MESSAGE_MS)

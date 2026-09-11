@@ -3,6 +3,7 @@ package one.aircast.mapspike
 import org.json.JSONObject
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
+import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
@@ -36,5 +37,24 @@ class MissionKindsTest {
     fun `a refusal with no reason still says something`() {
         assertEquals("The plan did not answer.", insertOutcome(JSONObject("""{"ok":false}""")).reason)
         assertEquals("The plan did not answer.", insertOutcome(null).reason)
+    }
+}
+
+class InsertedIndexTest {
+    @Test
+    fun `a successful insert says where the item landed, so the next one can follow it`() {
+        val answered = JSONObject("""{"ok":true,"inserted":"waypoint","index":3}""")
+
+        assertEquals(3, insertOutcome(answered).index)
+    }
+
+    @Test
+    fun `an answer without an index does not invent one`() {
+        assertNull(insertOutcome(JSONObject("""{"ok":true}""")).index)
+    }
+
+    @Test
+    fun `a refusal carries no index`() {
+        assertNull(insertOutcome(JSONObject("""{"ok":false,"reason":"no"}""")).index)
     }
 }

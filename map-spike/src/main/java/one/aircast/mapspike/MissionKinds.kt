@@ -7,13 +7,15 @@ const val AT_END = -1
 const val HOME_ITEM = 0
 const val BEFORE_THE_REST = 1
 
-data class InsertOutcome(val ok: Boolean, val reason: String)
+data class InsertOutcome(val ok: Boolean, val reason: String, val index: Int? = null)
 
 private const val NO_ANSWER = "The plan did not answer."
 
 internal fun insertOutcome(view: JSONObject?): InsertOutcome {
     if (view == null) return InsertOutcome(false, NO_ANSWER)
-    if (view.optBoolean("ok")) return InsertOutcome(true, "")
+    if (view.optBoolean("ok")) {
+        return InsertOutcome(true, "", view.opt("index").let { it as? Number }?.toInt())
+    }
     return InsertOutcome(false, view.optString("reason").ifBlank { NO_ANSWER })
 }
 
