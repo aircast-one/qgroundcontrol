@@ -1083,6 +1083,36 @@ after the `strings` ASCII read, the `^\d+\.\d+ m$` altitude sample, the fixed la
 `items \(` against "1 item (takeoff)". Four of the five cost a wrong conclusion. Print the whole
 channel first, filter second.
 
+### "Which item is the vehicle flying to" is not in the plan, and `current` does not mean it
+
+The obvious next thing for the item list is to mark the item the aircraft is executing — the single
+most useful line in a list during a mission, and `MissionItem.current` is already parsed from
+`view.missionItems`. **Checked before building, and it is the wrong field.**
+
+`isCurrentItem` is assigned in two places with two meanings:
+
+    MissionController::_currentMissionIndexChanged   guarded by if (_flyView)
+        -> the item the vehicle is executing, from MISSION_CURRENT
+
+    MissionController::setCurrentPlanViewSeqNum
+        -> the item the operator has selected in the plan editor
+
+The bridge's `plan.missionController` is the **plan** controller, created because a native head has no
+QML view to own one, so `_flyView` is false and the first branch never runs for it. The second does —
+the core's own `point_at()` calls `setCurrentPlanViewSeqNum` on every insert. So `current` on this path
+is the editor's selection, and a row marked "now" from it would point at whatever was last inserted.
+
+`view.missionItems.current` has the same origin: `currentPlanViewVIIndex`.
+
+**And the vehicle's own answer is not reachable.** `MissionManager::currentIndex()` is a plain method
+returning an int, and `Vehicle::missionManager()` is a plain getter — neither is a `Q_PROPERTY`, so the
+reflection bridge cannot traverse to one or read the other. This needs a property on the Qt side before
+any head can show it. Raised with the core.
+
+No defect shipped: `MissionItem.current` is parsed and never rendered. It is an orphaned field that
+would have misled the next person to reach for it, which is the tell described in
+`orphaned-mechanism-sweep`. Cost: one check. Every other version of this mistake today cost a build, a
+device run, and a revert.
 ### A guard that failed open for six hours
 
 `ui.sh tap` refuses a tap that lands on Arm, Land, RTL or any other flight control unless
