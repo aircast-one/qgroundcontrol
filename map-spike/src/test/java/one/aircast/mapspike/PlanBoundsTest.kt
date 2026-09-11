@@ -182,3 +182,31 @@ class TakeoffMissingTest {
         assertFalse(takeoffMissing(listOf(item("command", "Return To Launch", 0.0, 0.0))))
     }
 }
+
+class FitsPlanOnEntryTest {
+    @Test
+    fun `a plan that was already there is what the tab opens on`() {
+        assertTrue(fitsPlanOnEntry(firstRead = true, planIsDrawn = true))
+    }
+
+    @Test
+    fun `an empty plan leaves the camera on the vehicle`() {
+        assertFalse(fitsPlanOnEntry(firstRead = true, planIsDrawn = false))
+    }
+
+    @Test
+    fun `the first item added later does not yank the camera`() {
+        assertFalse(fitsPlanOnEntry(firstRead = false, planIsDrawn = true))
+    }
+
+    @Test
+    fun `a plan is drawn if anything at all is on the map`() {
+        val nothing = planIsDrawn(emptyList(), emptyList(), emptyList(), emptyList(), emptyList())
+        val onlyRally = planIsDrawn(
+            emptyList(), emptyList(), emptyList(), emptyList(), listOf(RallyPoint(0, 41.0, 44.0)),
+        )
+
+        assertFalse(nothing)
+        assertTrue(onlyRally)
+    }
+}

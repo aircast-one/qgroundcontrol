@@ -61,3 +61,13 @@ fun planBounds(points: List<TrackPoint>): PlanBounds? {
         east = east,
     )
 }
+
+fun planIsDrawn(
+    items: List<MissionItem>,
+    surveys: List<Survey>,
+    polygons: List<FencePolygon>,
+    circles: List<FenceCircle>,
+    rally: List<RallyPoint>,
+): Boolean = listOf(items, surveys, polygons, circles, rally).any { it.isNotEmpty() }
+
+fun fitsPlanOnEntry(firstRead: Boolean, planIsDrawn: Boolean): Boolean = firstRead && planIsDrawn

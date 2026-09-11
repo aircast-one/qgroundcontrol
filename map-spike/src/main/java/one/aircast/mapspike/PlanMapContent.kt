@@ -181,18 +181,7 @@ internal fun MapSpikeScreen(
         else -> centre?.takeIf { isPlottable(it.latitude, it.longitude) }
     }
 
-    var fittedToPlan by remember { mutableStateOf(false) }
-    val planIsDrawn = items.isNotEmpty() || surveyList.isNotEmpty() ||
-        fences.isNotEmpty() || circles.isNotEmpty() || rally.isNotEmpty()
-
-    LaunchedEffect(planIsDrawn, isPlottable(latitude, longitude)) {
-        if (isPlottable(latitude, longitude)) {
-            fittedToPlan = true
-        } else if (planIsDrawn && !fittedToPlan) {
-            fittedToPlan = true
-            fitRequest += 1
-        }
-    }
+    var firstRead by remember { mutableStateOf(true) }
 
     suspend fun refresh() {
         withContext(Dispatchers.Default) {
@@ -209,7 +198,13 @@ internal fun MapSpikeScreen(
             val nextRally = rallyPoints(fenceView)
             val nextCircles = fenceCircles(fenceView)
             val nextSurveys = SurveyBridge.surveysFrom(plan)
+            val drawn = planIsDrawn(nextItems, nextSurveys, nextFences, nextCircles, nextRally)
             withContext(Dispatchers.Main) {
+                if (fitsPlanOnEntry(firstRead, drawn)) {
+                    follow = false
+                    fitRequest += 1
+                }
+                firstRead = false
                 items = nextItems
                 itemCount = nextItemCount
                 shape = nextShape

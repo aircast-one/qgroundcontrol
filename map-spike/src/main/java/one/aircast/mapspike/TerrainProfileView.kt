@@ -83,7 +83,7 @@ fun TerrainProfileView(profile: TerrainProfile, modifier: Modifier = Modifier) {
         return
     }
 
-    if (profile.flat) {
+    if (profile.flat || !profile.hasTerrain) {
         Text(
             profileLabel(profile),
             modifier.fillMaxWidth().padding(vertical = 4.dp),
