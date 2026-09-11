@@ -69,6 +69,7 @@ final class MissionStore: ObservableObject, Probeable, WriteReporting {
     private let summaryClient = "missionSummary.\(MissionStore.nextClient())"
     private let terrainClient = "terrainProfile.\(MissionStore.nextClient())"
     private let planClient = "plan.\(MissionStore.nextClient())"
+    private let vehicleClient = "planVehicle.\(MissionStore.nextClient())"
     private let surveyClient = "surveyStats.\(MissionStore.nextClient())"
 
 
@@ -111,11 +112,6 @@ final class MissionStore: ObservableObject, Probeable, WriteReporting {
             let read = MissionSummary(view)
             if read != self.summary { self.summary = read }
         }
-        // The core watches a signal for this one -- recalcTerrainProfile, which the controller
-        // already emits when heights arrive and which carries no value for a property watch to
-        // bind to. The head watched each item's terrainAltitude and terrainCollision to get at
-        // the same moment; it does not have to any more, and the event carries the rendered
-        // profile so there is nothing to read back.
         // Readiness and the upload verdict turn on vehicle state -- whether one is connected, armed
         // or flying -- which changes with no edit to the plan. This window never polls, so without
         // this a vehicle could connect and the Upload button would go on saying there is nowhere to
@@ -123,6 +119,18 @@ final class MissionStore: ObservableObject, Probeable, WriteReporting {
         BridgeWatch.watch(planClient, ["view.plan"]) { [weak self] view in
             self?.readPlanVerdicts(view)
         }
+        // A vehicle arriving changes several reads at once -- the altitude modes it may offer,
+        // the badge -- so this takes one coarse signal and re-reads, rather than watching each.
+        // Calling reload() from a handler is only safe because watchingViews is a one-shot guard:
+        // reload() calls watchViews(), so if that guard is ever reset this becomes a loop.
+        BridgeWatch.watch(vehicleClient, ["vehicles.activeVehicleAvailable"]) { [weak self] _ in
+            self?.reload()
+        }
+        // The core watches a signal for this one -- recalcTerrainProfile, which the controller
+        // already emits when heights arrive and which carries no value for a property watch to
+        // bind to. The head watched each item's terrainAltitude and terrainCollision to get at
+        // the same moment; it does not have to any more, and the event carries the rendered
+        // profile so there is nothing to read back.
         BridgeWatch.watch(terrainClient, ["view.terrainProfile"]) { [weak self] view in
             guard let self else { return }
             let profile = TerrainProfile(view)
@@ -134,6 +142,7 @@ final class MissionStore: ObservableObject, Probeable, WriteReporting {
         BridgeWatch.stop(summaryClient)
         BridgeWatch.stop(terrainClient)
         BridgeWatch.stop(planClient)
+        BridgeWatch.stop(vehicleClient)
         BridgeWatch.stop(surveyClient)
     }
 
