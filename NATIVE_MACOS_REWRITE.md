@@ -2358,3 +2358,62 @@ figures already on the strip; the geometry filters require a polygon to have thr
 reading it, or by a peer saying "if your head does X, check it" — none by a test either side owns.
 A test asserts that a value equals what the code produces; it cannot ask whether the quantity means
 anything. That question is only answerable by looking, or by the producer publishing what it knew.
+
+### The setup page list is firmware-independent and the pages are not (2026-09-12)
+
+Turning the plan window's methods on the Setup window. Its sidebar drops a page the head cannot
+draw — `SetupPage.draws` is `bespoke.contains(name) || page.parameterSections` — and on this
+ArduPilot vehicle exactly one of the fourteen served pages is dropped: **Flight Behavior**.
+
+**That is correct, and it is correct by accident.** `PX4FlightBehavior` lives entirely under
+`src/AutoPilotPlugins/PX4/` and is constructed only by `PX4AutoPilotPlugin`; QGC has no ArduPilot
+equivalent, and `sections_for` in the core already knows this — `("Flight Behavior", true)` is the
+only arm that matches it. But `PAGES`, the list the core publishes, is firmware-independent. So on
+ArduPilot the core offers a page QGC itself does not have, and every head must silently drop it.
+Two decisions cancelling rather than one decision made.
+
+**The mirror is the part that matters, and it is this head's.** The same check the other way:
+
+| page | PX4 files in QGC | APM files in QGC |
+|---|---|---|
+| Flight Behavior | 3 | **0** |
+| Frame | **0** | 5 |
+| Lights | **0** | 5 |
+
+`SetupPage.bespoke` lists Frame and Lights unconditionally, so on a PX4 vehicle this window would
+draw two pages QGC offers only on ArduPilot — and unlike Flight Behavior nothing would drop them,
+because a bespoke name passes `draws` without asking the core anything. The accident that protects
+the first case does not protect this one.
+
+**Unverifiable here, and that is the whole reason it is recorded rather than fixed.** The SITL is
+ArduPilot, there is no PX4 vehicle, and guessing which of the two bespoke views degrades gracefully
+is exactly the reasoning that has been refuted twice tonight. The core's `PAGES` being
+firmware-dependent — as `sections_for` already is — fixes both directions at the source and needs
+no head to know which pages belong to which firmware. Raised with them.
+
+Worth noting what this method found and what it could not. Counting served pages against drawn ones
+is cheap and gave a precise answer for the firmware in front of me; it says nothing at all about the
+firmware that is not.
+
+### Android's "null" trap has no Swift twin, checked with a control (2026-09-12)
+
+Android found their head drawing `Change speed · null` the moment the core began withholding a
+figure, because `org.json`'s `optString` returns the string `"null"` for a JSON null (`a0b7caa`).
+Standing job (B): the same question here.
+
+**It does not happen.** Every decoder in this head reads through `as? String`, which rejects
+`NSNull` and falls to its own default. Checked twice rather than by an empty grep:
+
+- Every interpolation of a raw payload value — fifteen of them — is a probe error string with
+  `?? ""`, and none reaches a drawn surface. Control: 245 interpolations found in total, so the
+  search works.
+- Zero compiler warnings of the class `string interpolation produces a debug description for an
+  optional value`. **Control: adding one deliberately produced the warning at the expected line,
+  and removing it returned the count to zero** — without which "no warnings" would have been
+  indistinguishable from warnings never being reported, which is what the first run actually
+  looked like, since the only warnings in that build came from `install_name_tool`.
+
+Their note that this is uncatchable in their unit tests — the JVM `org.json` returns `""` for the
+same call, so a test asserting the device behaviour fails on the JVM — has no analogue here, but
+the general shape does: **a decoder's behaviour on a value the producer has only just started
+sending is not something either side's tests were written against.**
