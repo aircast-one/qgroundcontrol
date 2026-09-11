@@ -27,6 +27,7 @@ HEADERS = {"X-QGC-Debug-Api": "1"}
 # Canberra, where terrain tiles are cached and the ground rises ~300 m across the leg.
 LAUNCH = (-35.363, 149.165)
 DISTANT = (-35.30, 149.30)
+SURVEY = (-35.28, 149.34)
 TERRAIN_SETTLE_SECONDS = 4
 
 
@@ -47,17 +48,24 @@ def rows(listed):
     return {row["label"]: row["value"] for row in listed}
 
 
+# A survey is in the plan because its shot count and flown distance are computed after the read
+# that draws them, which is the third thing this tool has had to be taught to look at.
 def build_plan():
     ask("/native/menu/invoke?path=Window/Plan")
     time.sleep(2.5)
     probe("&action=createPlan")
     time.sleep(1.0)
-    for kind, (latitude, longitude) in (("takeoff", LAUNCH), ("waypoint", DISTANT)):
+    for kind, (latitude, longitude) in (("takeoff", LAUNCH), ("waypoint", DISTANT), ("survey", SURVEY)):
         probe(f"&action=arm&kind={kind}")
-        time.sleep(0.3)
+        time.sleep(0.5)
         probe(f"&action=addWaypoint&latitude={latitude}&longitude={longitude}")
-        time.sleep(0.3)
+        time.sleep(0.5)
     time.sleep(TERRAIN_SETTLE_SECONDS)
+
+
+def selected_survey(core_items):
+    return next((item["index"] for item in core_items
+                 if item.get("kind") == "survey" and item.get("current")), None)
 
 
 # The head formats an altitude for the operator ("75.0 m"); the core answers the number. A
@@ -117,12 +125,29 @@ def item_comparisons(head_items, core_items):
     ]
 
 
+# Only the selected survey has stats in the head, so the comparison follows the selection rather
+# than assuming an index.
+def survey_comparisons(head, core_items):
+    index = selected_survey(core_items)
+    if index is None:
+        return [], None
+    mine, theirs = head["surveyStats"], view(f"surveyStats({index})")
+    return [
+        (f"survey {index} photo count", mine["shots"], theirs["shotsText"]),
+        (f"survey {index} distance flown", mine["distance"], theirs["distanceText"]),
+        (f"survey {index} area covered", mine["area"], theirs["areaText"]),
+        (f"survey {index} between shots", mine["interval"], theirs["intervalText"]),
+        (f"survey {index} each photo covers", mine["footprint"], theirs["footprintText"]),
+    ], theirs
+
+
 def comparisons():
     head = probe()["state"]
     core = {name: view(name) for name in ("plan", "missionSummary", "terrainProfile", "missionItems")}
     plan, summary, terrain, items = (core[name] for name in
                                      ("plan", "missionSummary", "terrainProfile", "missionItems"))
-    return core, item_comparisons(head["items"], items["items"]) + [
+    survey_checks, core["surveyStats"] = survey_comparisons(head, items["items"])
+    return core, survey_checks + item_comparisons(head["items"], items["items"]) + [
         ("plan is ready to save", head["readyToSave"], plan["readiness"]["ready"]),
         ("why it is not ready", head["notReadyReason"], plan["readiness"]["reason"]),
         ("plan is dirty", head["dirty"], plan["dirty"]),
@@ -152,6 +177,11 @@ def worth_comparing(core):
         missing.append("the core computes zero distance, so a stale summary would look correct")
     if not terrain["usable"]:
         missing.append("no terrain data arrived, so the terrain verdict cannot be wrong yet")
+    survey = core.get("surveyStats")
+    if survey is None:
+        missing.append("no survey is selected, so its late-arriving numbers cannot be wrong yet")
+    elif not survey.get("shotsText"):
+        missing.append("the core computed no shot count, which is what the stale panel also showed")
     return missing
 
 

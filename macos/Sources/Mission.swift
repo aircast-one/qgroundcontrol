@@ -140,13 +140,7 @@ final class MissionStore: ObservableObject, Probeable, WriteReporting {
         let offered = (controller["complexMissionItemNames"] as? [String]) ?? []
         if offered != patterns { patterns = offered }
 
-        let model = Bridge.group("plan.missionController.visualItems")
-        let listed = ((model["elements"] as? [[String: Any]]) ?? [])
-            .enumerated().map {
-                MissionItem(json: $0.element, index: $0.offset,
-                            verticalMeasure: AppUnits.measure(AppUnits.vertical))
-            }
-        if listed != items { items = listed }
+        let elements = readItems()
         let plan = Bridge.group("plan")
         let busy = (plan["syncInProgress"] as? NSNumber)?.boolValue ?? false
         if busy != syncing { syncing = busy }
@@ -183,7 +177,7 @@ final class MissionStore: ObservableObject, Probeable, WriteReporting {
         hoverSpeed = (Bridge.group("settings.appSettings.offlineEditingHoverSpeed")["valueString"] as? String) ?? ""
         launch = LaunchPosition(
             home: (controllerVehicle["homePosition"] as? [String: Any]) ?? [:],
-            item: (model["elements"] as? [[String: Any]])?.first ?? [:],
+            item: elements.first ?? [:],
             altitude: Bridge.group("plan.missionController.visualItems.0.plannedHomePositionAltitude"))
         canUndo = (plan["canUndo"] as? NSNumber)?.boolValue ?? false
         canRedo = (plan["canRedo"] as? NSNumber)?.boolValue ?? false
@@ -330,6 +324,18 @@ final class MissionStore: ObservableObject, Probeable, WriteReporting {
         readSurveyStats(item.index)
     }
 
+    @discardableResult
+    private func readItems() -> [[String: Any]] {
+        let elements = (Bridge.group("plan.missionController.visualItems")["elements"]
+            as? [[String: Any]]) ?? []
+        let listed = elements.enumerated().map {
+            MissionItem(json: $0.element, index: $0.offset,
+                        verticalMeasure: AppUnits.measure(AppUnits.vertical))
+        }
+        if listed != items { items = listed }
+        return elements
+    }
+
     private func readSurveyStats(_ index: Int) {
         let read = SurveyStats(Bridge.group("view.surveyStats(\(index))"))
         if read != surveyStats { surveyStats = read }
@@ -352,6 +358,11 @@ final class MissionStore: ObservableObject, Probeable, WriteReporting {
         DispatchQueue.main.async { [weak self] in
             guard let self else { return }
             self.surveyPending = false
+            // The rows are re-read too, not only the panel. A survey's own entry coordinate is
+            // computed with its transects, so the row drew an em-dash for an item that had a
+            // position -- measured, the core answered -35.278589, 149.338502 while the row showed
+            // a dash until something forced a reload.
+            self.readItems()
             guard let current = self.items.first(where: \.isCurrent), current.isSurveyItem else { return }
             self.readSurveyStats(current.index)
         }
