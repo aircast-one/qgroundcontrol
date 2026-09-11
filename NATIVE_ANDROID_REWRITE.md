@@ -5298,3 +5298,41 @@ separating them" is also false**: dividers separate the three groups, visible in
 the screenshot. Both were fixed at some point without the note being updated,
 which is the same failure as the withdrawn claim corrected in `118d14097` — a
 finding left standing reads as current work outstanding.
+
+### The DO_ item branch, finally seen on a device, 2026-09-12
+
+The gap list said the `specifiesCoordinate`/"no position" branch was unit-tested
+and never seen running, because this head cannot add a command that has no
+coordinate, and that a plan file containing one was the check. Built one — four
+items, the third `MAV_CMD_DO_CHANGE_SPEED` (178) — pushed it to the handset and
+opened it through File → Open.
+
+**"no position" correctly does not appear.** It is gated on
+`!placed && specifiesCoordinate`, and `MavCmdInfoCommon.json` gives 178 neither
+`specifiesCoordinate` nor `specifiesAltitudeOnly`, so the branch is right to stay
+quiet. Worth being precise about what that means: the branch is for a *coordinate*
+item not yet placed, so a `DO_` item was never going to exercise it. What a `DO_`
+item exercises is the empty-detail path.
+
+**And that path is wrong, in the core.** The row reads `Change speed · 0.0 m`,
+and 0.0 m is the plan file's `plannedHomePosition` altitude rather than anything
+about the command:
+
+- `SimpleMissionItem.cc:97` sets the altitude fact to `qQNaN()` when
+  `specifiesAltitude()` is false, so a `DO_` item's altitude is NaN by design
+- `missionitems.rs:235` `fact_number` filters `!is_finite`, so it returns `None` —
+  correctly
+- `missionitems.rs:169` `height()` then falls through `.or_else(|| fact_number(read,
+  "plannedHomePositionAltitude"))`, which succeeds
+- `missionitems.rs:111` formats that into `altitudeText`
+
+The `or_else` is right for the Mission Start row, which is where that altitude
+legitimately belongs; it simply is not scoped to that row, so it fires for every
+item whose own altitude is NaN — exactly the commands that have no altitude.
+Reported to the core session with the trace rather than edited, since they were
+mid-edit in `terrain.rs` and `missionsummary.rs` at the time. The head has nothing
+to fix: it is displaying `altitudeText` as served.
+
+Once it lands the row will carry no detail at all, which is correct but thin — a
+change-speed command could say its speed, and `specifiedFlightSpeed` is already
+the first entry in the core's `FIELDS`. That is core work too.
