@@ -1268,6 +1268,7 @@ func checkMissionItemKinds() {
     checkRemoveOutcome()
     checkSurveyWatch()
     checkCollisionRuns()
+    checkClearanceSentence()
     checkFlownLeg()
     checkVehicleMessageOrder()
     checkBlockedBanner()
@@ -4127,6 +4128,38 @@ func checkFlownLeg() {
            + "to throw those away itself because an unplaced command reported one; the core sends "
            + "no coordinate for those now, so re-adding the guard here would only lose a waypoint "
            + "somebody really put in the Gulf of Guinea")
+}
+
+func checkClearanceSentence() {
+    func profile(_ extra: [String: Any]) -> TerrainProfile {
+        TerrainProfile(["usable": true as NSNumber, "groundKnown": true as NSNumber,
+                        "points": []].merging(extra) { _, new in new })
+    }
+    let intruding = profile(["hasCollision": true as NSNumber,
+                             "minClearanceMetres": -168.0 as NSNumber, "clearanceText": "168 m"])
+    expect(intruding.clearanceSentence, "Mission is below terrain by up to 168 m",
+           "the operator's next move after a collision is to pick a new altitude, and the only "
+           + "instrument was eyeballing a line against a fill on a plot 90 points tall spanning "
+           + "305 m -- 3.4 m per point. Measured on the running app, that mission ran 168 m under")
+    expect(intruding.showsClearance, "and a collision always says its depth")
+
+    let clearing = profile(["hasCollision": false as NSNumber,
+                            "minClearanceMetres": 42.0 as NSNumber, "clearanceText": "42 m"])
+    expect(clearing.clearanceSentence, "Clears terrain by 42 m",
+           "the core signs it -- headroom above, intrusion below -- so one sentence serves both "
+           + "and neither head decides which way round the subtraction goes")
+    expect(clearing.showsClearance, "and a margin is worth knowing before flying, not only a fault")
+
+    let partial = profile(["hasCollision": false as NSNumber, "unknownTerrain": 3 as NSNumber,
+                           "minClearanceMetres": 42.0 as NSNumber, "clearanceText": "42 m"])
+    expect(!partial.showsClearance,
+           "but not with ground missing under part of the route: the smallest clearance measured "
+           + "is not the smallest there is, and a reassuring number is worse than none")
+
+    let silent = profile(["hasCollision": true as NSNumber])
+    expect(silent.clearanceSentence, "Mission is below terrain",
+           "a collision the core could not put a depth on still says it collides, rather than "
+           + "reading as a sentence with its number dropped out")
 }
 
 func checkCollisionRuns() {

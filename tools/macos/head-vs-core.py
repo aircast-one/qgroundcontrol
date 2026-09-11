@@ -197,6 +197,11 @@ def comparisons():
         ("item count", head["count"], len(items["items"])),
         ("mission collides with terrain", head["terrain"]["collision"], terrain["hasCollision"]),
         ("points without terrain", head["terrain"]["unknown"], terrain["unknownTerrain"]),
+        # The head writes this sentence and the core supplies its number, so the check is that the
+        # figure an operator reads is the core's and not one the head worked out from the plot.
+        ("clearance the panel states", head["terrain"]["clearance"],
+         f"Mission is below terrain by up to {terrain['clearanceText']}" if terrain["hasCollision"]
+         else f"Clears terrain by {terrain['clearanceText']}"),
         ("distance flown", rows(head["summary"]["rows"]).get("Distance"), rows(summary["rows"]).get("Distance")),
         ("how long it takes", rows(head["summary"]["rows"]).get("Time"), rows(summary["rows"]).get("Time")),
         ("altitude range", head["summary"]["altitudeRange"], summary["altitudeRange"]["text"]),
@@ -220,6 +225,8 @@ def worth_comparing(core):
         missing.append("the core computes zero distance, so a stale summary would look correct")
     if not terrain["usable"]:
         missing.append("no terrain data arrived, so the terrain verdict cannot be wrong yet")
+    if not terrain.get("clearanceText"):
+        missing.append("the core measured no clearance, so the depth the panel states cannot be wrong")
     survey = core.get("surveyStats")
     if survey is None:
         missing.append("no survey is selected, so its late-arriving numbers cannot be wrong yet")

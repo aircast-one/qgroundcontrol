@@ -922,7 +922,7 @@ final class MissionStore: ObservableObject, Probeable, WriteReporting {
               "group": $0.group, "path": $0.pathSuffix]
          },
          "terrain": ["points": terrain.points.count, "usable": terrain.usable,
-                     "collision": terrain.hasCollision,
+                     "collision": terrain.hasCollision, "clearance": terrain.clearanceSentence,
                      "unknown": terrain.unknownTerrain,
                      "distance": terrain.distanceText,
                      "min": terrain.minAltitude, "max": terrain.maxAltitude],

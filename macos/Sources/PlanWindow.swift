@@ -138,9 +138,13 @@ struct TerrainProfileSheet: View {
                 HStack {
                     Text("Terrain").font(.callout.weight(.semibold))
                     if profile.hasCollision {
-                        Text("Mission is below terrain")
+                        Text(profile.clearanceSentence)
                             .font(.caption.weight(.semibold))
                             .foregroundColor(Overlay.vehicle)
+                    } else if profile.showsClearance {
+                        Text(profile.clearanceSentence)
+                            .font(.caption)
+                            .foregroundColor(.secondary)
                     } else if profile.unknownTerrain > 0 {
                         Text("\(profile.unknownTerrain) point\(profile.unknownTerrain == 1 ? "" : "s") without terrain data")
                             .font(.caption)

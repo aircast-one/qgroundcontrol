@@ -28,6 +28,8 @@ struct TerrainProfile: Equatable {
     let distanceText: String
     let lowestText: String
     let highestText: String
+    let clearanceText: String
+    let minClearance: Double?
 
     static let empty = TerrainProfile()
 
@@ -42,6 +44,8 @@ struct TerrainProfile: Equatable {
         distanceText = ""
         lowestText = ""
         highestText = ""
+        clearanceText = ""
+        minClearance = nil
     }
 
     init(_ json: [String: Any]) {
@@ -55,9 +59,29 @@ struct TerrainProfile: Equatable {
         groundKnown = flag("groundKnown")
         hasCollision = flag("hasCollision")
         distanceText = text("distanceText")
+        clearanceText = text("clearanceText")
+        minClearance = (json["minClearanceMetres"] as? NSNumber)?.doubleValue
         lowestText = text("lowestText")
         highestText = text("highestText")
     }
+
+    // Saying a mission is below terrain and not by how much leaves the operator to pick a new
+    // altitude by eye off a plot 90 points tall spanning three hundred metres. The core signs the
+    // clearance -- headroom above, intrusion below -- and spells the magnitude, so this is one
+    // sentence rather than a branch on two numbers.
+    static let below = "Mission is below terrain"
+    static let clears = "Clears terrain"
+
+    var clearanceSentence: String {
+        guard !clearanceText.isEmpty else { return TerrainProfile.below }
+        return hasCollision
+            ? "\(TerrainProfile.below) by up to \(clearanceText)"
+            : "\(TerrainProfile.clears) by \(clearanceText)"
+    }
+
+    // Worth telling an operator their margin only when it is the whole story: with ground missing
+    // under part of the route, the smallest clearance measured is not the smallest there is.
+    var showsClearance: Bool { hasCollision || (!clearanceText.isEmpty && unknownTerrain == 0) }
 
     func x(_ point: TerrainPoint, width: Double) -> Double { point.x * width }
 
