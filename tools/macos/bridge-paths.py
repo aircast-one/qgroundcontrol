@@ -25,6 +25,12 @@ import json, os, pathlib, re, sys, urllib.request
 PORT = os.environ.get("QGC_PORT", "8777")
 ROOT = pathlib.Path(__file__).resolve().parents[2]
 CALL = re.compile(r'Bridge\.(group|json)\(\s*"([^"]+)"')
+# A watched path is looked up the same way a read is, so a typo in one dies the same
+# silent death -- except a watch cannot be caught by eye afterwards: it simply never
+# fires, which is indistinguishable from a value that never changed.
+WATCH = re.compile(r'BridgeWatch\.watch\([^,]+,\s*\[([^\]]*)\]')
+WATCH_CALL = re.compile(r'BridgeWatch\.watch\(')
+LITERAL = re.compile(r'"([^"]+)"')
 RESOLVES = {"object", "fact", "coordinate", "list"}
 
 def answer(path):
@@ -37,13 +43,24 @@ def answer(path):
     return "value" if k == "value" else k
 
 reads = {}
+unparsed = []
 for p in sorted((ROOT / "macos/Sources").glob("*.swift")):
     for i, line in enumerate(p.read_text().splitlines(), 1):
         for m in CALL.finditer(line):
             path = m.group(2)
-            if path.startswith("view.") or "\\(" in path or path.startswith("vehicle"):
+            if path.startswith("view.") or "\\(" in path or path == "vehicle" or path.startswith("vehicle."):
                 continue
             reads.setdefault(path, f"{p.name}:{i}")
+        if WATCH_CALL.search(line) and not WATCH.search(line):
+            unparsed.append(f"{p.name}:{i}")
+        for m in WATCH.finditer(line):
+            for path in LITERAL.findall(m.group(1)):
+                # A watch path may name a Qt signal as root.path@signalName; the signal
+                # half is not a property and only the object half can be resolved here.
+                path = path.split("@")[0]
+                if "\\(" in path or path.startswith("vehicle."):
+                    continue
+                reads.setdefault(path, f"{p.name}:{i}")
 
 try:
     answer("plan")
@@ -59,6 +76,11 @@ for path, where in sorted(reads.items()):
 
 print(f"checked {len(reads)} literal read paths: "
       f"{len(reads) - len(bad)} resolved, {len(bad)} BROKEN")
+# A watch whose paths are built by a helper rather than an array literal cannot be pinned
+# from here. Saying so is the point: a pinner that covers four of five call sites silently
+# is worse than one that covers four and names the fifth.
+for w in unparsed:
+    print(f"  NOT PINNED {w} - watch paths are not an array literal")
 for k, p, w in bad:
     why = "no such root" if k == "null" else k
     print(f"  BROKEN {p}  ({w}) - {why}")
