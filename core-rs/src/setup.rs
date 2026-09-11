@@ -7,6 +7,24 @@ use crate::sensors;
 
 pub const DEPS: &[&str] = &["vehicles.activeVehicleAvailable", "vehicle.autopilotPlugin.vehicleComponents", "vehicle.sysStatusSensorInfo.sensorNames", "vehicle.sysStatusSensorInfo.sensorStatus", "vehicle.armed", "vehicle.flying", "vehicle.rover", "vehicle.px4Firmware", "vehicle.apmFirmware"];
 
+const PX4_ONLY: &[&str] = &["Flight Behavior"];
+const APM_ONLY: &[&str] = &["Camera", "Lights", "Remote Support"];
+
+pub fn page_exists(page: &str, px4: bool) -> bool {
+    match (PX4_ONLY.contains(&page), APM_ONLY.contains(&page)) {
+        (true, _) => px4,
+        (_, true) => !px4,
+        _ => true,
+    }
+}
+
+pub fn page_absence(px4: bool) -> &'static str {
+    match px4 {
+        true => "This is an ArduPilot setup screen. PX4 firmware has no equivalent.",
+        false => "This is a PX4 setup screen. ArduPilot firmware has no equivalent.",
+    }
+}
+
 pub const PAGES: &[(&str, &[&str])] = &[
     ("Vehicle", &["Summary"]),
     ("Setup", &["Sensors", "Radio", "Frame", "Flight Modes", "Safety", "Power", "Motors", "Tuning", "Camera", "Lights", "Flight Behavior"]),
@@ -205,7 +223,8 @@ fn overview(backend: &dyn Backend, connected: bool, px4: bool) -> Value {
         })).collect::<Vec<_>>(),
         "groups": PAGES.iter().map(|(title, pages)| json!({
             "title": title,
-            "pages": pages.iter().map(|p| json!({ "name": p, "parameterSections": sections_for(p, px4).is_some() })).collect::<Vec<_>>(),
+            "pages": pages.iter().filter(|p| page_exists(p, px4)).map(|p| json!({ "name": p, "parameterSections": sections_for(p, px4).is_some() })).collect::<Vec<_>>(),
+            "omitted": pages.iter().filter(|p| !page_exists(p, px4)).map(|p| json!({ "name": p, "reason": page_absence(px4) })).collect::<Vec<_>>(),
         })).collect::<Vec<_>>(),
     })
 }
@@ -229,6 +248,25 @@ fn page_json(backend: &dyn Backend, page: &str, px4: bool) -> Value {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_page_only_one_firmware_has_is_offered_only_to_that_firmware() {
+        assert!(page_exists("Flight Behavior", true), "PX4AutoPilotPlugin constructs PX4FlightBehavior and nothing under APM does");
+        assert!(!page_exists("Flight Behavior", false));
+        ["Camera", "Lights", "Remote Support"].iter().for_each(|page| {
+            assert!(page_exists(page, false), "{page} is registered by APMAutoPilotPlugin");
+            assert!(!page_exists(page, true), "{page} has no component in PX4AutoPilotPlugin, so offering it made every head drop it silently");
+        });
+        ["Sensors", "Radio", "Flight Modes", "Safety", "Power", "Motors", "Tuning", "Frame", "Parameters"].iter().for_each(|page| {
+            assert!(page_exists(page, true), "{page} is registered by both plugins");
+            assert!(page_exists(page, false));
+        });
+        [("Tuning", "PX4TuningComponent"), ("Frame", "AirframeComponent")].iter().for_each(|(page, component)| {
+            assert!(sections_for(page, true).is_none(), "the core describes no PX4 parameters for {page}");
+            assert!(page_exists(page, true), "but PX4AutoPilotPlugin constructs {component}, so the page is real on the desktop - which is why whether a page exists cannot be read off sections_for, and why searching filenames for \"Frame\" misses it");
+        });
+        assert_ne!(page_absence(true), page_absence(false), "the reason names the firmware that does have it, so a head can say which");
+    }
 
     #[test]
     fn readiness_reads_like_the_summary_page() {
