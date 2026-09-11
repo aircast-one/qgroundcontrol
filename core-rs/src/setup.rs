@@ -331,6 +331,55 @@ mod components {
         fn watch(&self, _p: &[String]) {}
     }
 
+    struct Flying {
+        components: Vec<Value>,
+        armed: bool,
+        flying: bool,
+        rover: bool,
+    }
+
+    impl Backend for Flying {
+        fn get(&self, path: &str) -> String {
+            match path {
+                COMPONENTS => json!({ "kind": "value", "value": self.components.iter().map(|_| json!("QVariant(VehicleComponent*)")).collect::<Vec<_>>() }).to_string(),
+                _ => json!({ "kind": "null" }).to_string(),
+            }
+        }
+        fn get_fields(&self, path: &str, _fields: &str) -> String {
+            match path.strip_prefix(&format!("{COMPONENTS}.")).and_then(|index| index.parse::<usize>().ok()).and_then(|index| self.components.get(index)) {
+                Some(component) => component.to_string(),
+                None => match path {
+                    "vehicle" => json!({ "kind": "object", "px4Firmware": true, "armed": self.armed, "flying": self.flying, "rover": self.rover }).to_string(),
+                    _ => json!({ "kind": "null" }).to_string(),
+                },
+            }
+        }
+        fn set(&self, _p: &str, _v: &str) -> String { String::new() }
+        fn invoke(&self, _p: &str, _a: &str) -> String { String::new() }
+        fn watch(&self, _p: &[String]) {}
+    }
+
+    #[test]
+    fn the_openable_field_carries_the_gate_and_not_only_the_rule_behind_it() {
+        let gated = json!({ "kind": "object", "name": "Sensors", "requiresSetup": true, "allowSetupWhileArmed": false, "allowSetupWhileFlying": false });
+        let permitted = json!({ "kind": "object", "name": "Safety", "requiresSetup": false, "allowSetupWhileArmed": true, "allowSetupWhileFlying": true });
+
+        // blocked_by was tested directly and openable was not, so pinning the field to true and to
+        // false both passed - the rule was right and nothing checked it reached the head.
+        let parked = setup_view(&Flying { components: vec![gated.clone(), permitted.clone()], armed: false, flying: false, rover: false }, &[]);
+        let resting = parked["components"].as_array().unwrap().clone();
+        assert_eq!(resting[0]["openable"], true);
+        assert_eq!(resting[0]["blockedReason"], Value::Null);
+
+        let armed = setup_view(&Flying { components: vec![gated, permitted], armed: true, flying: false, rover: false }, &[]);
+        let held = armed["components"].as_array().unwrap().clone();
+        assert_eq!(held[0]["openable"], false, "a component that forbids setup while armed is not openable on an armed vehicle");
+        assert_eq!(held[0]["blockedReason"], "armed");
+        assert_eq!(held[1]["openable"], true, "the one beside it permits it, so the gate is per component rather than per vehicle");
+        assert_eq!(held[1]["blockedReason"], Value::Null, "a reason and an openable that disagree would be worse than either alone");
+        assert_eq!(held[0]["needsAttention"], true, "being blocked does not stop a component still needing setup, and a head shows both");
+    }
+
     fn component(name: &str, requires: bool, complete: bool) -> Value {
         json!({ "kind": "object", "name": name, "requiresSetup": requires, "setupComplete": complete })
     }

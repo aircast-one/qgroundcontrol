@@ -134,6 +134,36 @@ mod tests {
     }
 
     #[test]
+    fn the_actions_a_plan_offers_are_shown_open_as_well_as_shut() {
+        // Every assertion on these said they were unavailable. Pinning save and clearMission to
+        // false passed the crate, so a plan editor whose Save was never offered was a passing
+        // build - the guards had been shown to refuse and never shown to let anything through.
+        let ready = fake(
+            json!({ "kind": "object", "syncInProgress": false, "offline": false, "dirty": true, "containsItems": true, "currentPlanFile": "/plans/ridge.plan" }),
+            true,
+            json!({ "ok": true, "result": 0 }),
+            json!({ "ok": true, "result": 0 }),
+        );
+        let view = plan_view(&ready, &[]);
+        assert_eq!(view["actions"]["save"], true, "a connected plan holding items is exactly when saving is the thing the operator wants");
+        assert_eq!(view["actions"]["clearMission"], true, "clearing needs a vehicle to clear it from, and there is one");
+        assert_eq!(view["actions"]["exportKml"], true);
+        assert_eq!(view["actions"]["open"], true);
+        assert_eq!(view["file"], "ridge.plan", "the name is the last segment, so a head does not have to split a path it was given whole");
+
+        let syncing = fake(
+            json!({ "kind": "object", "syncInProgress": true, "offline": false, "dirty": true, "containsItems": true, "currentPlanFile": "/plans/ridge.plan" }),
+            true,
+            json!({ "ok": true, "result": 0 }),
+            json!({ "ok": true, "result": 0 }),
+        );
+        let mid = plan_view(&syncing, &[]);
+        assert_eq!(mid["actions"]["save"], false, "a plan being written to the vehicle is not a plan to save over");
+        assert_eq!(mid["actions"]["clearMission"], false);
+        assert_eq!(mid["actions"]["exportKml"], false);
+    }
+
+    #[test]
     fn a_fresh_offline_plan_is_ready_and_cannot_upload() {
         let backend = fake(
             json!({ "kind": "object", "syncInProgress": false, "offline": true, "dirty": false, "containsItems": false, "currentPlanFile": "" }),

@@ -146,6 +146,35 @@ mod tests {
         assert_eq!(view["everyday"].as_array().unwrap().len(), 3);
         assert_eq!(view["folded"].as_array().unwrap().len(), 1);
         assert_eq!(view["folded"][0]["name"], "Offboard");
+
+        // available and canSet were only ever asserted true, so pinning them true passed the
+        // crate: a picker that offered every mode with no vehicle, and offered to set one, would
+        // have shipped. They are the gate on a control that changes what the aircraft is doing.
+        struct NoVehicle;
+        impl Backend for NoVehicle {
+            fn get(&self, _p: &str) -> String { String::new() }
+            fn get_fields(&self, _p: &str, _f: &str) -> String { json!({ "kind": "null" }).to_string() }
+            fn set(&self, _p: &str, _v: &str) -> String { String::new() }
+            fn invoke(&self, _p: &str, _a: &str) -> String { String::new() }
+            fn watch(&self, _p: &[String]) {}
+        }
+        let none = flight_modes_view(&NoVehicle, &[]);
+        assert_eq!(none["available"], false, "there is nothing to pick a mode on");
+        assert_eq!(none["canSet"], false);
+
+        struct Watching;
+        impl Backend for Watching {
+            fn get(&self, _p: &str) -> String { String::new() }
+            fn get_fields(&self, _p: &str, _f: &str) -> String {
+                json!({ "kind": "object", "flightMode": "Hold", "flightModes": ["Hold", "Position"], "advancedFlightModes": [], "flying": true, "rtlFlightMode": "Return", "landFlightMode": "Land", "flightModeSetAvailable": false }).to_string()
+            }
+            fn set(&self, _p: &str, _v: &str) -> String { String::new() }
+            fn invoke(&self, _p: &str, _a: &str) -> String { String::new() }
+            fn watch(&self, _p: &[String]) {}
+        }
+        let listed = flight_modes_view(&Watching, &[]);
+        assert_eq!(listed["available"], true, "the modes are worth showing even when this link may not set one");
+        assert_eq!(listed["canSet"], false, "the vehicle says the set is unavailable, and offering it anyway is a command that silently does nothing");
         assert_eq!(view["currentSummary"], "Sticks set rotation rate, no self-levelling");
     }
 }

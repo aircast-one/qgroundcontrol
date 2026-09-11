@@ -583,10 +583,14 @@ mod tests {
         assert!(cal.sides[2].rotate);
         assert_eq!(cal.snapshot()["help"], HELP_ROTATE);
         assert!(cal.snapshot()["cancelEnabled"].as_bool().unwrap());
+        // busy was only ever asserted false, so pinning it to false passed: a panel that never
+        // showed a calibration in progress, on the one screen whose whole job is to show that.
+        assert!(cal.snapshot()["busy"].as_bool().unwrap(), "a calibration mid-routine is the definition of busy");
         let cancel = cal.cancel().unwrap();
         assert_eq!(cancel, vec![Action::Command { command: CMD_PREFLIGHT_CALIBRATION, params: [0.0; 7], show_error: true }]);
         assert!(cal.waiting_for_cancel);
         assert!(!cal.snapshot()["cancelEnabled"].as_bool().unwrap());
+        assert!(cal.snapshot()["busy"].as_bool().unwrap(), "a cancel the vehicle has not acknowledged is still a routine in progress, which is the second half of the rule");
         cal.on_text("[cal] calibration cancelled", 0);
         assert_eq!(cal.outcome, Some(Outcome::Cancelled));
         assert!(!cal.snapshot()["busy"].as_bool().unwrap());

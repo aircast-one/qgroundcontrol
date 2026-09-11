@@ -271,6 +271,40 @@ mod tests {
 mod walking {
     use super::*;
 
+    struct Route(Value);
+
+    impl Backend for Route {
+        fn get(&self, _p: &str) -> String { String::new() }
+        fn get_fields(&self, path: &str, _fields: &str) -> String {
+            match path {
+                "plan.missionController.visualItems" => self.0.to_string(),
+                _ => json!({ "kind": "object", "appSettingsVerticalDistanceUnitsString": "m", "appSettingsHorizontalDistanceUnitsString": "m" }).to_string(),
+            }
+        }
+        fn set(&self, _p: &str, _v: &str) -> String { String::new() }
+        fn invoke(&self, _p: &str, _a: &str) -> String { json!({ "ok": true, "result": 1.0 }).to_string() }
+        fn watch(&self, _p: &[String]) {}
+    }
+
+    fn leg(distance: f64, mission: f64, ground: f64, collision: bool) -> Value {
+        json!({ "specifiesCoordinate": true, "distanceFromStart": distance, "amslEntryAlt": mission, "terrainAltitude": ground, "terrainCollision": collision, "sequenceNumber": 1 })
+    }
+
+    #[test]
+    fn a_route_that_flies_into_the_ground_says_so_and_one_that_does_not_says_that() {
+        // hasCollision is the one field on this view an operator is expected to act on, and
+        // nothing asserted it in either direction: pinning it to true and to false both passed.
+        let hits = terrain_view(&Route(json!({ "kind": "object", "elements": [leg(0.0, 700.0, 600.0, false), leg(100.0, 500.0, 650.0, true)] })), &[]);
+        assert_eq!(hits["hasCollision"], true);
+        assert_eq!(hits["minClearanceMetres"], -150.0, "the depth comes from the samples, not from the flag, so the two can disagree and this says they do not");
+        assert_eq!(hits["clearanceComplete"], true);
+
+        let clears = terrain_view(&Route(json!({ "kind": "object", "elements": [leg(0.0, 700.0, 600.0, false), leg(100.0, 700.0, 650.0, false)] })), &[]);
+        assert_eq!(clears["hasCollision"], false);
+        assert_eq!(clears["minClearanceMetres"], 50.0);
+        assert_eq!(clears["usable"], true, "a profile a head can draw, which is what makes the false meaningful rather than empty");
+    }
+
     struct Pattern(Value);
 
     impl Backend for Pattern {
