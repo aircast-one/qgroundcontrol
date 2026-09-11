@@ -1512,3 +1512,45 @@ its label; a GPS fix without a satellite count draws the fix). None of them clai
 data does not support.
 
 So this was a one-off, not a habit, and the sweep does not need running again.
+
+### The route that does not stop at the landing, for the third time (2026-09-11)
+
+The core has begun porting `MissionController`'s arithmetic, and serves its own flown distance
+beside the controller's (`distanceComputedMetres` next to `distanceMetres`) so the two can be
+compared before one replaces the other. Walking that on this stream's own plan shapes, through
+the debug probe on a running app:
+
+| plan | controller | computed |
+|---|---|---|
+| takeoff + 1 waypoint | 0.00 | 0.00 |
+| takeoff + 2 waypoints | 492.80 | 492.80 |
+| with a survey in the middle | 7981.43 | 7981.43 |
+| ending in a return to launch | 7981.43 | 7981.43 |
+| **a waypoint after the landing** | **7981.43** | **8674.60** |
+
+Stable over four reads. The first four are exactly the shapes the core's unit tests build; the
+fifth is the one they do not, and it is the only disagreement.
+
+**It is the same defect this head already had.** `a14f1a2f8` stopped the route polyline at
+`endsRoute` and skipped items whose `flownLeg` is false, because one list was answering two
+questions: the items to upload, and the legs actually flown. Those two fields exist on every
+item for that reason, they are served by the very view the new arithmetic reads, and the tail
+of a plan like this shows them already correct:
+
+    seq=145  Return To Launch  endsRoute=True   flownLeg=False
+    seq=146  Waypoint          endsRoute=False  flownLeg=True
+
+A rule phrased as "a landing ends the route" covers a landing that is *last*, where dropping
+the following leg and there being no following leg cannot be told apart. Reported; the
+arithmetic is the core's to fix.
+
+**The method is the durable part.** A unit test builds the shapes its author thought of. This
+stream already owns a tool that builds a plan with a takeoff, a waypoint over real terrain, an
+ROI, a survey, a landing and a waypoint after the landing — assembled for a different purpose
+entirely, and the ROI and the after-landing waypoint are in it precisely because both once
+broke this head. So whenever the core ports an arithmetic and serves both answers, walking it
+on those shapes is close to free and starts from a set of cases chosen by past defects rather
+than by imagination. Worth repeating for each port rather than waiting to be asked.
+
+No permanent check was added for `distanceComputedMetres`: it is scaffolding due for deletion
+once the port is trusted, and pinning a temporary field would break its removal.
