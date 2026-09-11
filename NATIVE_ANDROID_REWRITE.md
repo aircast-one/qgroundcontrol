@@ -1277,19 +1277,31 @@ Recorded, not raised, because it is a new view rather than a field.
 The tell worth keeping: **the tests that broke were pinning the head's own formatting.** A test that
 asserts a string the head built is a test that the head is answering a question it should be asking.
 
-**A correction to `e395c3c`'s commit message.** That commit draws the core's `bandText` for the height
-range, and its message reports that the Android AAR "produces a core older than its own sources",
-with timestamps. The timestamps were real and the conclusion was wrong: the core session was editing
-`core-rs/src/terrain.rs` repeatedly while I built from it, so every build raced an edit. A later build
-printed `Compiling qgc-core v0.1.0` and was healthy. I had captured only the *tail* of the build
-output, so I never saw whether cargo compiled, and reasoned from the absence of a line I had filtered
-away — and sent a peer after a defect that was not there.
+**`e395c3c`'s commit message contains a claim that is wrong twice over, and the way it went wrong is
+the useful part.** It reports that the Android AAR "produces a core older than its own sources",
+because `strings` on the built library could not find `bandText` while finding its neighbours.
 
-The habit that produced it is still right: grep the built library for a string from the change before
-trusting a test of it. What was missing is the other half — **in a shared checkout, `stat` the source
-again after the build finishes.** If it is newer than the artefact, the comparison means nothing. The
-band on the handset is drawing the composed-pair fallback tonight, which is correct in the operator's
-units and is what the tests pin.
+Round one: the core session was editing `core-rs/src/terrain.rs` while I built from it, so every build
+raced an edit. I withdrew — correctly for those runs, and wrongly as a general conclusion, because one
+mechanism explaining some of the evidence does not account for the rest.
+
+Round two: I held the source still for twelve minutes, rebuilt, confirmed cargo printed
+`Compiling qgc-core`, and added a control — `lowestText` and `highestText` from **lines 172 and 173 of
+the same `json!`** were in the archive, and line 174 was not. Re-raised.
+
+Round three, from the core session, settles it: a marker inserted on the line *immediately above*
+`bandText` survives into the archive, `bandText` does not, and `cargo test --release` calling the view
+emits the key regardless. **`strings` on a release static archive gives false negatives.** `nm -g` is
+no better — release inlining leaves no `terrain` symbols there at all. A forced `touch`-and-rebuild,
+which I ran, produces the same absence and distinguishes nothing.
+
+So on a release build a **negative** byte probe means "learn nothing", not "stale"; a positive one is
+still trustworthy. Confirmed by running it: the band now reads
+`-10.0 m to 60.0 m AMSL · 1.08 km`, which is `bandText` with matched precision, out of a library whose
+bytes `strings` says does not contain it. The core asserts that key by calling the view now
+(`20bad6364`) rather than looking for it in bytes.
+
+The composed-pair fallback stays: it cost nothing and it is what the handset drew for two hours.
 
 Three fields arrived unused in the same commits and are worth a look before the row grows further:
 `azimuthText`, `distanceText`, `altitudeChangeText`, all per item and null when the controller has not
