@@ -1,10 +1,14 @@
 #!/bin/zsh
 # Build, then (re)start the Debug app with the debug API on $QGC_PORT.
 #
-# Two traps this guards against, both of which silently leave you testing a stale
-# binary: piping ninja into head sends SIGPIPE and kills the build mid-link, and a
+# Three traps this guards against, all of which silently leave you testing a stale
+# binary: piping ninja into head sends SIGPIPE and kills the build mid-link; a
 # SIGTERM'd Qt app can outlive a short sleep and keep the debug port, so the new
-# instance fails to bind and every request answers from the old one.
+# instance fails to bind and every request answers from the old one; and a build can
+# succeed without relinking the Rust archive into the dylib at all -- core-rs declared
+# no output for a while, so ninja had no edge to rebuild across and a core-only change
+# never reached the app. A green build was not evidence, which is why the check below
+# compares the artefacts rather than the exit status.
 set -euo pipefail
 port="${QGC_PORT:-8779}"
 root="$(cd "$(dirname "$0")/../.." && pwd)"
@@ -27,6 +31,17 @@ fi
 
 cmake --build "$root/build-test" > "$log" 2>&1 || { grep -E 'error:|FAILED' "$log" | tail -20; exit 1; }
 if grep -qE 'error:|FAILED' "$log"; then grep -E 'error:|FAILED' "$log" | tail -20; exit 1; fi
+
+# The dylib has to be at least as new as the Rust archive linked into it. Nothing else
+# here notices a core change that built but never got linked, and the comparison tool
+# cannot either: it reads the head and the core through the same process, so a stale
+# core makes both sides agree on the same stale answer.
+dylib="$root/build-test/Debug/AircastQGC.app/Contents/Frameworks/libAircastQGC.dylib"
+archive=$(ls -t "$root"/build-test/core-rs/*/libqgc_core.a 2>/dev/null | head -1)
+if [[ -n "$archive" && -f "$dylib" && "$archive" -nt "$dylib" ]]; then
+    echo "libqgc_core.a is newer than the dylib it should be inside: the Rust change did not reach the app" >&2
+    exit 1
+fi
 
 QGC_DEBUG_API_PORT="$port" nohup "$app" --allow-multiple --native-window > /tmp/qgc-app.log 2>&1 &
 pid=$!
