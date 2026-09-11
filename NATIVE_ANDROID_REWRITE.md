@@ -1113,6 +1113,43 @@ No defect shipped: `MissionItem.current` is parsed and never rendered. It is an 
 would have misled the next person to reach for it, which is the tell described in
 `orphaned-mechanism-sweep`. Cost: one check. Every other version of this mistake today cost a build, a
 device run, and a revert.
+### Selection became a real thing, in three corrections that should have been one design
+
+`c707803` is the root fix under a family this document records. QGC keeps three insert-validity flags
+and assigns them in exactly one place, inside `setCurrentPlanViewSeqNum`, which its own PlanView calls
+continuously. This head never called it, so the flags held whatever the last caller left behind — which
+is why they were written up as constant and why the Add Item gate built on them was reverted. The
+head's selection drives it now, sending the item's **sequence number**, not its index, which is a
+different number the moment a plan holds anything the map cannot draw.
+
+Measured on the OnePlus 6 with nothing between the two runs but which row was tapped:
+
+    middle waypoint selected, tap Land   REFUSED, "A landing goes after the takeoff and after
+                                         every place the vehicle flies through." Plan unchanged.
+    last waypoint selected, tap Land     inserted, "4 items (takeoff, RTL)"
+
+**Then three commits in a row fixed the commit before them, and that is the part worth recording.**
+
+`d760e46` made a new item land after the selected one, which is what QGC does and what the item list
+made reachable. It also made selection silently decide where things go, with nothing on screen saying
+so — an invisible mode. `380e31f` put "Adding after #3" in the add row. That exposed the next hole:
+there was no way to *clear* a selection at all, because `onSelected` was only ever called with a hit,
+so an operator could be stuck adding after #2 forever. `563a870` made a tap on empty map clear it —
+and broke the first feature, because a long press also ends in a tap-shaped up, so every add cleared
+the insertion point it had just used. `5e985d5` fixed that two ways: a gesture that added something no
+longer deselects, and a successful insert selects the item it created, which the core's answer already
+carried as `index` and the head was throwing away.
+
+The end state is coherent and matches QGC — `insertSimpleMissionItem` is called with
+`makeCurrent = true`, so selecting the new item is what the desktop does, and it is what makes a chain
+work: long press twice and the plan reads "Adding after #2" then "Adding after #3".
+
+But four commits to land one behaviour, each found by reviewing the one before, is not four good
+catches. It is one design decision — *what does selection mean on this screen* — taken incrementally
+instead of up front. Every consequence was discoverable by asking that question once: if selection
+decides the insertion point, it must be visible, it must be clearable, and it must survive the
+operation it exists to aim. The review step caught them, which is the system working; asking first
+would have been cheaper than being caught three times.
 ### A guard that failed open for six hours
 
 `ui.sh tap` refuses a tap that lands on Arm, Land, RTL or any other flight control unless
