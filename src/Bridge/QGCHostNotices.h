@@ -11,6 +11,7 @@ class QGCHostNotices : public QObject
     Q_PROPERTY(QVariantList notices READ notices NOTIFY noticesChanged)
     Q_PROPERTY(int count READ count NOTIFY noticesChanged)
     Q_PROPERTY(int dropped READ dropped NOTIFY noticesChanged)
+    Q_PROPERTY(QString order READ order CONSTANT)
 
 public:
     enum Kind {
@@ -25,6 +26,7 @@ public:
     QVariantList notices() const;
     int count() const;
     int dropped() const;
+    QString order() const { return QStringLiteral("oldestFirst"); }
 
     static QString token(Kind kind);
 

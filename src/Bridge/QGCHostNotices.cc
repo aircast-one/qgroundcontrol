@@ -10,14 +10,17 @@ namespace
 {
 constexpr int kMaxNotices = 64;
 
-// Under a flood the first notice is usually the one that explains the rest, so it is not the one
-// to lose. The oldest few are kept and the drop is taken from behind them.
 constexpr int kKeepOldest = 8;
 }
 
 QGCHostNotices *QGCHostNotices::instance()
 {
-    static QGCHostNotices *const notices = new QGCHostNotices(QCoreApplication::instance());
+    static QGCHostNotices *const notices = []() {
+        QGCHostNotices *const created = new QGCHostNotices();
+        created->moveToThread(QCoreApplication::instance()->thread());
+        created->setParent(QCoreApplication::instance());
+        return created;
+    }();
     return notices;
 }
 
