@@ -25,7 +25,7 @@ QGC = Path(__file__).resolve().parents[2] / "qgroundcontrol"
 HEAD = Path(__file__).resolve().parents[1]
 
 READINESS = re.compile(r"^(can[A-Z]|ready$|ready[A-Z]|is[A-Z].*(Valid|Allowed|Permitted)$|allowed|permitted)")
-KNOWN = {"canRemoveVertex": "fences reimplement it for polygons, where the constant is right",
+KNOWN = {"canRemoveVertex": "fences: head's minimum of 3 matches on the handset - offered at 4 corners, withheld at 3",
          "canBeSet": "hub family - empty unless the core owns the link, no head consumes it"}
 
 
