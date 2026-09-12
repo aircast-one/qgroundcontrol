@@ -252,7 +252,8 @@ expect(VibrationReading.Severity("molten") == nil,
 
 let outsideEnum = Parameter(name: "ACRO_RP_RATE_TC", componentId: 1, json: [
     "enumIndex": 5, "valueString": "0.00", "units": "s",
-    "enumStrings": ["Very Soft", "Soft", "Medium", "Crisp", "Very Crisp", "Unknown: 0"]])
+    "enumStrings": ["Very Soft", "Soft", "Medium", "Crisp", "Very Crisp", "Unknown: 0"],
+    "unknownEnumLabel": "Unknown: 0"])
 expect(outsideEnum.value, "0.00", "a value outside its enum shows the number")
 
 let insideEnum = Parameter(name: "ACRO_RP_EXPO", componentId: 1, json: [
@@ -830,9 +831,31 @@ func checkParameterOptions() {
     let unknown = Parameter(name: "FLTMODE2", componentId: 1, json: [
         "enumIndex": 3, "enumStrings": ["Stabilize", "Acro", "AltHold", "Unknown: 9"],
         "enumValues": [0, 1, 2, 9], "valueString": "9",
+        "unknownEnumLabel": "Unknown: 9",
     ])
     expect(unknown.value, "9", "a value outside the enum shows the number, not Unknown")
     expect(unknown.options.count == 3, "the synthetic Unknown entry is not offered as a choice")
+
+    let german = Parameter(name: "FLTMODE2", componentId: 1, json: [
+        "enumIndex": 3, "enumStrings": ["Stabilize", "Acro", "AltHold", "Unbekannt: 9"],
+        "enumValues": [0, 1, 2, 9], "valueString": "9",
+        "unknownEnumLabel": "Unbekannt: 9",
+    ])
+    expect(german.options.count == 3,
+           "THE FIXTURE THAT MATTERS: the filter used to key on the English prefix \"Unknown: \", "
+           + "so outside English the synthetic entry was offered as a real choice and the value "
+           + "read \"Unbekannt: 9\" where English read \"9\". Fact::unknownEnumLabel now returns "
+           + "the same tr() expression that BUILDS the entry, so the two are equal by "
+           + "construction in every locale rather than agreeing by luck in one")
+    expect(german.value, "9", "and the value shows the number rather than the translated word")
+
+    let unlabelled = Parameter(name: "FLTMODE3", componentId: 1, json: [
+        "enumIndex": 1, "enumStrings": ["Stabilize", "Acro"],
+        "enumValues": [0, 1], "valueString": "1",
+    ])
+    expect(unlabelled.options.count == 2 && unlabelled.value == "Acro",
+           "a fact serving no unknownEnumLabel filters nothing: an empty label must not match an "
+           + "ordinary entry, or every parameter would lose whichever option happened to be blank")
 
     let plain = Parameter(name: "WPNAV_SPEED", componentId: 1, json: [
         "units": "cm/s", "valueString": "500", "enumIndex": -1,

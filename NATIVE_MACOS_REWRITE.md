@@ -5039,7 +5039,7 @@ QGC is wrapped in `tr()`, so a join on anything an operator reads is a defect wa
 non-English build — and the third instance was written an hour after I fixed the first.** Knowing
 the rule is not the same as applying it to code being written now.
 
-### The synthetic "Unknown" enum entry is filtered only in English
+### RESOLVED: the synthetic "Unknown" enum entry is recognised in every language
 
 `Fact::enumIndex()` (`src/FactSystem/Fact.cc:225`) appends `tr("Unknown: %1").arg(rawValue())` to a
 parameter's enum list when the current raw value is not among the declared values, and returns the
@@ -5062,4 +5062,6 @@ translation keeps `%1` last, which is not guaranteed.
 describes. Then head and core compare strings that are equal by construction in every locale
 instead of guessing. `core-rs` cannot do this itself: it is Rust and has no `tr()`.
 
-Recorded rather than papered over. A head-side heuristic here would be a fallback dressed as a fix.
+**Resolved in `2d680fdf0`, exactly as asked.** `Fact::unknownEnumLabel` returns the `tr("Unknown: %1").arg(rawValue())` expression, and `enumIndex()` now BUILDS the synthetic entry from that same function rather than from a second copy of it - so the label a consumer compares against and the label that was added are one expression, not two that agree today. `ParameterModel` keys on it and the English prefix is gone.
+
+Recorded rather than papered over while it was open. A head-side heuristic would have been a fallback dressed as a fix, and the reason it could not work is the reason the C++ side was the right place.

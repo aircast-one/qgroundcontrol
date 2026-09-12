@@ -8,7 +8,15 @@ struct ParameterOption: Identifiable, Equatable {
 }
 
 struct Parameter: Identifiable {
-    static let unknownEnumPrefix = "Unknown: "
+    // Fact::enumIndex appends tr("Unknown: %1").arg(rawValue()) when the current value is not
+    // among the declared ones, and Fact::unknownEnumLabel now returns that SAME expression, so
+    // the two are equal by construction in every locale. Filtering on the English prefix offered
+    // the bogus entry in the picker outside English and showed "Unbekannt: 9" where English
+    // showed "9"; no head-side test could tell the synthetic entry apart, because addEnumInfo
+    // mutates the metadata permanently and it becomes structurally identical to a real last entry.
+    static func synthetic(_ label: String, unknownEnumLabel: String) -> Bool {
+        !unknownEnumLabel.isEmpty && label == unknownEnumLabel
+    }
 
     let name: String
     let componentId: Int
@@ -34,13 +42,15 @@ struct Parameter: Identifiable {
         let enumIndex = (json["enumIndex"] as? NSNumber)?.intValue ?? -1
         let enums = (json["enumStrings"] as? [String]) ?? []
         let raws = (json["enumValues"] as? [Any]) ?? []
+        let unknownLabel = (json["unknownEnumLabel"] as? String) ?? ""
         options = enums.count == raws.count
             ? zip(enums, raws)
-                .filter { !$0.0.hasPrefix(Parameter.unknownEnumPrefix) }
+                .filter { !Parameter.synthetic($0.0, unknownEnumLabel: unknownLabel) }
                 .map { ParameterOption(label: $0.0, raw: Parameter.rawText($0.1)) }
             : []
         let plain = (json["valueString"] as? String) ?? ""
-        if enumIndex >= 0, enumIndex < enums.count, !enums[enumIndex].hasPrefix(Parameter.unknownEnumPrefix) {
+        if enumIndex >= 0, enumIndex < enums.count,
+           !Parameter.synthetic(enums[enumIndex], unknownEnumLabel: unknownLabel) {
             value = enums[enumIndex]
         } else {
             value = plain
