@@ -88,7 +88,7 @@ pub fn link_json(index: usize, element: &Value) -> Value {
 
 pub fn links_view(backend: &dyn Backend, _args: &[String]) -> Value {
     let model = object(&backend.get("links.linkConfigurations"));
-    let root = object(&backend.get_fields("links", "linkTypeStrings,serialBaudRates"));
+    let root = object(&backend.get_fields("links", "linkTypeStrings,linkTypeIds,serialBaudRates"));
     let links: Vec<Value> = model.get("elements").and_then(Value::as_array).map(|e| e.iter().enumerate().map(|(i, el)| link_json(i, el)).collect()).unwrap_or_default();
     let configured: Vec<Value> = links.iter().filter(|l| l["dynamic"] == false).cloned().collect();
     json!({
@@ -98,6 +98,7 @@ pub fn links_view(backend: &dyn Backend, _args: &[String]) -> Value {
         "links": links,
         "configured": configured,
         "linkTypes": root.get("linkTypeStrings").cloned().unwrap_or(json!([])),
+        "linkTypeIds": root.get("linkTypeIds").cloned().unwrap_or(json!([])),
         "baudRates": root.get("serialBaudRates").and_then(Value::as_array).map(|a| a.iter().filter_map(|v| v.as_str().and_then(|s| s.parse::<i64>().ok())).collect::<Vec<_>>()).unwrap_or_default(),
     })
 }
@@ -152,6 +153,28 @@ mod tests {
         let serial = link_json(4, &json!({ "name": "Pixhawk", "settingsURL": "SerialSettings.qml", "summary": "", "portName": "/dev/cu.usbmodem1", "baud": 57600, "children": [] }));
         assert_eq!(serial["baud"], 57600);
         assert_eq!(serial["port"], Value::Null, "and a serial link has no network port at all");
+    }
+
+    #[test]
+    fn the_type_list_carries_an_id_beside_the_word_an_operator_reads() {
+        struct Types;
+        impl Backend for Types {
+            fn get(&self, p: &str) -> String { self.get_fields(p, "") }
+            fn get_fields(&self, path: &str, _f: &str) -> String {
+                match path {
+                    "links" => json!({ "kind": "object", "linkTypeStrings": ["Seriell", "UDP", "TCP"], "linkTypeIds": ["serial", "udp", "tcp"], "serialBaudRates": ["57600"] }),
+                    _ => json!({ "kind": "null" }),
+                }
+                .to_string()
+            }
+            fn set(&self, _p: &str, _v: &str) -> String { String::new() }
+            fn invoke(&self, _p: &str, _a: &str) -> String { String::new() }
+            fn watch(&self, _p: &[String]) {}
+        }
+        let view = links_view(&Types, &[]);
+        assert_eq!(view["linkTypeIds"][0], "serial", "LinkManager::linkTypeStrings is a list of tr() calls filled on first call, after the translator is installed - so a head deciding whether to offer Port and Baud by comparing the picked type against \"Serial\" could not configure a serial link at all in any other locale");
+        assert_eq!(view["linkTypes"][0], "Seriell", "the word an operator reads still travels, and the index still means what createConfiguration expects");
+        assert_eq!(view["linkTypeIds"].as_array().unwrap().len(), view["linkTypes"].as_array().unwrap().len(), "both come from one table in LinkManager, so they cannot fall out of step or out of order");
     }
 
     #[test]

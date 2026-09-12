@@ -629,35 +629,61 @@ void LinkManager::shutdown()
     }
 }
 
-QStringList LinkManager::linkTypeStrings() const
+namespace {
+
+// One list, two readings: the id is what code compares against and the label is what an
+// operator reads. Keeping them as separate lists is how they drift apart.
+const QList<QPair<QString, QString>> &linkTypeTable()
 {
-    //-- Must follow same order as enum LinkType in LinkConfiguration.h
-    static QStringList list;
-    if (!list.isEmpty()) {
-        return list;
+    static QList<QPair<QString, QString>> table;
+    if (!table.isEmpty()) {
+        return table;
     }
 
 #ifndef QGC_NO_SERIAL_LINK
-    list += tr("Serial");
+    table += qMakePair(QStringLiteral("serial"), LinkManager::tr("Serial"));
 #endif
-    list += tr("UDP");
-    list += tr("TCP");
+    table += qMakePair(QStringLiteral("udp"), LinkManager::tr("UDP"));
+    table += qMakePair(QStringLiteral("tcp"), LinkManager::tr("TCP"));
 #ifdef QGC_ENABLE_BLUETOOTH
-    list += tr("Bluetooth");
+    table += qMakePair(QStringLiteral("bluetooth"), LinkManager::tr("Bluetooth"));
 #endif
 #ifdef QT_DEBUG
-    list += tr("Mock Link");
+    table += qMakePair(QStringLiteral("mock"), LinkManager::tr("Mock Link"));
 #endif
 #ifndef QGC_AIRLINK_DISABLED
-    list += tr("AirLink");
+    table += qMakePair(QStringLiteral("airlink"), LinkManager::tr("AirLink"));
 #endif
-    list += tr("Log Replay");
+    table += qMakePair(QStringLiteral("logReplay"), LinkManager::tr("Log Replay"));
+
+    return table;
+}
+
+} // namespace
+
+QStringList LinkManager::linkTypeStrings() const
+{
+    //-- Must follow same order as enum LinkType in LinkConfiguration.h
+    QStringList list;
+    for (const auto &entry: linkTypeTable()) {
+        list += entry.second;
+    }
 
     if (list.size() != static_cast<int>(LinkConfiguration::TypeLast)) {
         qCWarning(LinkManagerLog) << "Internal error";
     }
 
     return list;
+}
+
+QStringList LinkManager::linkTypeIds() const
+{
+    QStringList ids;
+    for (const auto &entry: linkTypeTable()) {
+        ids += entry.first;
+    }
+
+    return ids;
 }
 
 void LinkManager::endConfigurationEditing(LinkConfiguration *config, LinkConfiguration *editedConfig)

@@ -45,6 +45,7 @@ class LinkManager : public QObject
     Q_PROPERTY(bool isBluetoothAvailable READ isBluetoothAvailable NOTIFY isBluetoothAvailableChanged)
     Q_PROPERTY(QmlObjectListModel *linkConfigurations READ _qmlLinkConfigurations CONSTANT)
     Q_PROPERTY(QStringList linkTypeStrings READ linkTypeStrings CONSTANT)
+    Q_PROPERTY(QStringList linkTypeIds     READ linkTypeIds     CONSTANT)
     Q_PROPERTY(bool mavlinkSupportForwardingEnabled READ mavlinkSupportForwardingEnabled NOTIFY mavlinkSupportForwardingEnabledChanged)
     Q_PROPERTY(QString connectingLinkName READ connectingLinkName NOTIFY connectingLinkNameChanged)
     Q_PROPERTY(LinkConfiguration *failedLink READ failedLink NOTIFY failedLinkChanged)
@@ -88,6 +89,7 @@ public:
     QList<SharedLinkInterfacePtr> links() { return _rgLinks; }
     QmlObjectListModel *linkConfigurations() { return _qmlLinkConfigurations(); }
     QStringList linkTypeStrings() const;
+    QStringList linkTypeIds() const;
     bool mavlinkSupportForwardingEnabled() { return mavlinkForwardingSupportLink() != nullptr; }
     QString connectingLinkName() const;
     LinkConfiguration *failedLink() const { return _failedLink.data(); }
