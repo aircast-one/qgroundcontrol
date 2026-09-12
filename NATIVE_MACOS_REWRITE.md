@@ -3311,3 +3311,38 @@ rather than claiming to be safe.
 Suite 707/0/89. **Limit: the Save gate lives inside a menu a screenshot cannot open**, so
 the measured `actions.save` and the one-line binding are the evidence, not a look at the
 greyed item.
+
+### Checking the gate I had just shipped, 2026-09-12
+
+Android retracted their fence gate an hour after shipping it: they had been reading
+`enabled=` from the **Text node inside** the button, which a disabled Compose
+TextButton still renders as true. Four vehicle configurations rested on an attribute
+structurally incapable of being false, and the gate they shipped on that evidence
+**removed a working capability**.
+
+Their own summing-up is the part worth keeping: *"my tally of nine instances of a
+two-valued type where three states exist was nine plus one I was living inside."*
+
+**So I went back to the four gates I had wired in `ce67911a1` the same turn.** Three
+were fixes with both states measured — `save` (was asking readiness, the wrong
+question), `exportKml` (was a count this head invented). **`open` was the one with
+Android's shape: previously ungated and working, replaced by a gate whose false branch
+this rig cannot produce**, because `!syncing` needs a vehicle.
+
+The question that settles it is the standing one — **what clears the flag.**
+`PlanMasterController::syncInProgress` is `_missionController.syncInProgress() || ...`,
+and `MissionController::syncInProgress` is `_missionManager->inProgress()`: **a computed
+getter, recomputed per call, with nothing to latch.** Not the `_flying` family. So the
+gate is inert here and correct while a sync runs, and it is backed by a property I read
+rather than assumed. **Kept — a different answer from Android's, and for a measured
+reason rather than a matching instinct.**
+
+**I nearly manufactured a finding on the way.** Four reads of `syncInProgress` came back
+empty and I was a moment from recording that the property does not exist. The app was
+stopped — I had killed it for the suite. **An absent app reads exactly like an absent
+property**, which is this session's whole taxonomy pointed at my own keyboard.
+
+**The gate I still cannot exercise is `open`'s false branch**, and no instrument here
+reads whether a menu item is greyed. That is the same blind spot Android's `enabled=`
+was hiding in, minus the false confidence: I know I cannot see it and have said so in
+the commit rather than inferred it from the value.
