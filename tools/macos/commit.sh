@@ -54,6 +54,18 @@ if print -rl -- "$@" | grep -q '^macos/'; then
     fi
 fi
 
+# A comparison against a tr()'d string is never true outside English, and this head wrote three
+# of them in one session. The check is cheap and about half precise, so it gates only comparisons
+# it has no reason for; the two it knows are real and unfixable here are printed, not blocking.
+if print -rl -- "$@" | grep -q '^macos/'; then
+    if ! python3 "$root/tools/macos/translated-join.py" > /dev/null; then
+        print -u2 ""
+        print -u2 "refusing to commit: a string this head compares against is one QGC translates."
+        print -u2 "Key on an id, a class or a number. If it is a coincidence, say why in the table."
+        exit 1
+    fi
+fi
+
 message="$(cat)"
 if [[ -z "${message// }" ]]; then
     print -u2 "refusing to commit with an empty message"
