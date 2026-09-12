@@ -109,6 +109,27 @@ UNDRAWN = [
                             "arm(land) places a plain Return To Launch, so every simple item gets "
                             "the view's refusal. Changing the offline vehicle type is a settings "
                             "write. PARITY GAP against six QML files, recorded not built"),
+    ("view.cameraProtocol", "MEASURED: a PROTOCOL VOCABULARY, not live state -- action names, "
+                            "capabilities, retry attempts and delays, level types, refusal and "
+                            "result strings, storage and video status enumerations, staleMs. It "
+                            "describes what a camera command IS and what can come back, for a "
+                            "head that dispatches them. This head draws live camera state from "
+                            "view.camera, which it reads, and has no surface built on the "
+                            "vocabulary. Every action it names -- takePhoto, startRecording, "
+                            "setMode, zoom, formatStorage -- is one this session must not send, "
+                            "so even the gating could not be exercised"),
+    ("view.cameraDefinition", "a file parser: it refuses with 'this needs the path of a camera "
+                              "definition file, and optionally a locale'. Same class as "
+                              "view.kmlFile and view.shapeFile, which a store reaches through "
+                              "its own action rather than drawing"),
+    ("view.joystickMapping", "MEASURED: an axis and button MAPPING SCHEMA -- four required "
+                             "functions, six additional axes with their extension bits and RC "
+                             "channels, four transmitter modes, the RC-override channel layout, "
+                             "and nineteen setting definitions with types and ranges. It is "
+                             "reference data for a head that CONFIGURES a joystick. This head "
+                             "has no joystick surface at all: zero files in macos/Sources "
+                             "mention one. PARITY GAP against QGC's joystick setup page, "
+                             "recorded not built"),
     ("view.gimbal", "MEASURED with no vehicle: available false, count 0, gimbals empty, "
                     "discovery idle, ready false. A gimbal is discovered from a connected "
                     "vehicle that has one, and this SITL is a bare quadrotor -- so every field "
