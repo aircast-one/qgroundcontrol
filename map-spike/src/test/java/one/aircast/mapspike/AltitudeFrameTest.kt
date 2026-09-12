@@ -59,6 +59,7 @@ class AltitudeFrameTest {
         assertEquals("Alt m AMSL", altitudeFieldLabel(item("amsl")))
         assertEquals("Alt m above ground", altitudeFieldLabel(item("terrain")))
         assertEquals("Alt m", altitudeFieldLabel(item("")))
+        assertEquals("Alt m SEABED", altitudeFieldLabel(item("seabed")))
     }
 
     @Test

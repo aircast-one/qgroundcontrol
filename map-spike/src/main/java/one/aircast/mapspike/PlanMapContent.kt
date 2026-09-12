@@ -810,8 +810,10 @@ internal fun MapSpikeScreen(
 
 private const val SURVEY_FIT_INSET = 0.8
 
+private const val SHORT_ALTITUDE_LABEL = 10
+
 private fun altitudeFieldWidth(item: MissionItem) =
-    if (item.altitudeFrame == FRAME_TERRAIN) 180.dp else 120.dp
+    if (altitudeFieldLabel(item).length > SHORT_ALTITUDE_LABEL) 180.dp else 120.dp
 
 private val ITEM_NUMBER_WIDTH = 48.dp
 
