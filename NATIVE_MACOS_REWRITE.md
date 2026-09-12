@@ -4928,3 +4928,38 @@ motivated it. **A change to an instrument is worth shipping only if it would hav
 defect that prompted it** — the same bar that killed the consumer-gate and unconsumed-field
 sweeps earlier tonight. **Three instrument ideas tried, three discarded, and each one measured
 against a known answer rather than argued about.**
+
+### Two core defects found by re-measuring sweep candidates that were both mislocated
+
+**The sweep said `LinkConfig.displaySummary` was decoded and never drawn, implying a head fix.**
+Measured instead: the core computes `display_summary` — **"No host set"** for a TCP link with no
+host — and then **builds `statusLine` from the RAW `summary`** (`links.rs:62`,
+`let detail = summary.trim()`). Three configured links serve `summary: ":5760"` and
+`displaySummary: "No host set"`, and the head draws `typeLabel · statusLine`, so the operator
+reads **"TCP · Not connected · :5760"** — a colon and a port with nothing in front of it.
+**The core spelled the right words and then did not use them.** The head is drawing the line the
+core spells, which is correct; the fix is one word in `links.rs`. **Reported, not edited.**
+
+**The sweep said the terrain clearance sentence takes its DIRECTION from `hasCollision` and its
+DIGITS from `abs(min_clearance)` — two different questions.** Structurally true and worth knowing:
+**`collision` is QGC's own upstream `terrainCollision` flag while `min_clearance` is the core's
+arithmetic** (`mission_altitude - ground`), and the core `abs()`s the number so the head cannot see
+its sign. **But I could not produce a state where they disagree** — measured across 469 profile
+points, zero flagged and zero negative. **Not reproduced is not refuted, and it is not a finding
+either.**
+
+**What the measurement DID find is a different defect in the same field.** `minClearanceMetres` is
+**0.0**, and the point it comes from is **index 0 — the launch**, where mission altitude 491 equals
+terrain altitude 491 because the aircraft is on the ground. Every other point clears by **at least
+52 m**. So the sentence computes to **"Clears terrain by 0.0 m"**: a reassuring word attached to a
+structural zero, understating a 52-metre margin by reporting the moment before takeoff.
+
+**It is not drawn today, and the reason is a gate worth keeping.** `showsClearance` requires
+`clearanceComplete`, one point currently has no terrain data, so the panel falls through to
+"1 point without terrain data" instead. **The defect is latent behind an incomplete terrain read**
+— complete data would draw it. **The head's gate is doing real work and must not be simplified
+away.**
+
+**Both are the core's arithmetic, both reported rather than edited.** Three cycles running, the
+sweep's leads have been right that something is wrong and wrong about where — **a finding names a
+symptom; only the re-measurement names the cause.**
