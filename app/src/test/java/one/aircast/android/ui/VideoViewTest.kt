@@ -79,3 +79,31 @@ class VideoViewTest {
         )
     }
 }
+
+class VideoPanelVisibilityTest {
+    @Test
+    fun `a build that cannot show video should not hold map space explaining that`() {
+        val off = videoReading(
+            org.json.JSONObject(
+                """{"class":"Video","available":false,"decoding":false,
+                    "summary":"This build cannot show video.","activeSource":0,
+                    "multipleSources":false}""",
+            ),
+        )
+
+        org.junit.Assert.assertEquals(false, off?.available)
+    }
+
+    @Test
+    fun `a configured source that is not decoding yet still earns its panel`() {
+        val waiting = videoReading(
+            org.json.JSONObject(
+                """{"class":"Video","available":true,"decoding":false,
+                    "summary":"Waiting for a stream.","activeSource":0,
+                    "multipleSources":false}""",
+            ),
+        )
+
+        org.junit.Assert.assertEquals(true, waiting?.available)
+    }
+}

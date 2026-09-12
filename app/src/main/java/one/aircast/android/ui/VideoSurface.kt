@@ -26,6 +26,10 @@ fun VideoSurface(
     val videoJson by qgcPath(VIDEO_VIEW)
     val video = remember(videoJson) { videoReading(videoJson) }
 
+    if (video?.available == false) {
+        return
+    }
+
     Box(if (expanded) modifier else modifier.clickable { onClick() }) {
         AndroidView(
             modifier = Modifier.fillMaxSize(),
