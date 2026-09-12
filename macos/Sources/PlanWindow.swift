@@ -1168,6 +1168,7 @@ struct PlanView: View {
                        move: mission.move(sequence:latitude:longitude:),
                        surveys: mission.surveyAreas,
                        corridors: mission.corridorPaths,
+                       transects: mission.patternTransects,
                        focus: mission.focus,
                        polygons: mission.editablePolygons,
                        moveVertex: { polygon, index, latitude, longitude in

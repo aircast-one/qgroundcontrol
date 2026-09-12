@@ -2933,3 +2933,39 @@ column gives 491, 75, 75, 541 with nothing saying which is measured from where. 
 head draws the core's text in every case and is not re-deriving anything, so
 labelling the frame is a contract question for both heads and the core rather than a
 unilateral head change. Raised, not invented.
+
+### A pattern draws the path it actually flies, 2026-09-12
+
+**Found through the blind spot I had just written down.** `ebd931201` added
+`view.missionItems(geometry)` to the recorded contract, describing it as "the map
+geometry both heads draw". It is an **argument mode of the view this head reads most**
+— and nothing checks argument modes. `view-fields.py` reports 0 of 62 views unread and
+is right, because `(geometry)` is not a separate view; the sweep asks for bare paths.
+Two cycles running, the newest thing has been behind an argument.
+
+Measured on a real plan: a survey carries **112 transect points**, a corridor **8**,
+a structure scan **none** — it circles a shape rather than mowing it, the third member
+of the class behaving differently again. `grep transect macos/Sources` found two
+comments and no code (control: `vertices` matches in three files). **The map drew a
+survey's boundary and a straight line from entry to exit, and never the serpentine the
+vehicle actually flies.** The terrain profile has been walking those legs all along —
+the information was in the app and not on the map.
+
+`PatternGeometry` parses the core's `shape`/`vertices`/`transects`; a geometry with no
+shape is refused, and a single point is not a line. Five assertions, two mutations in
+place. **`native_screenshot` cannot see MapKit**, so the probe projects the counts and
+they were measured in both states in the same binary: plain waypoints give
+`transects []`, and survey + corridor + structure gives **`[112, 8]`** — the structure
+contributing nothing, exactly as asserted.
+
+**`swift-checks.sh` caught my new model file before the compiler did**, refusing to
+stay silent about a `*Model*.swift` it was not compiling. That is rule 7 built into the
+tool rather than remembered, and it is the check I would most want to have written.
+
+**The suite is 706/1/89 and the one failure is not mine.** The core added
+`altitudeFrame` to `view.missionItems` — **the field I asked for when I reported the
+mixed-frame column** — and the recorded contract has not caught up; both
+`core-rs/src/missionitems.rs` and `test/Bridge/fixtures/view-shapes.json` are modified
+in their working tree right now. My change touches no view shape. Their values are
+`"launch"` and `"amsl"`: **a key rather than a phrase**, which is what Android asked
+for so neither head matches on a translated string. Reading it is the next cycle's work.

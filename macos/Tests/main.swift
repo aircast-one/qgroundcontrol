@@ -1326,6 +1326,7 @@ func checkMissionItemKinds() {
     checkARouteLeavesAPatternWhereItEnds()
     checkAnItemSaysHowManyCommandsItFolds()
     checkAPatternSaysHowHighAboveTheGroundItFlies()
+    checkAPatternDrawsThePathItActuallyFlies()
     checkSensorsComponentIsFoundByClass()
     checkShapeAbsence()
     checkBatteryReading()
@@ -4301,6 +4302,43 @@ func checkSpeedChangeIsListedNotOnlySelected() {
     expect(item(speed: "12.0 m/s").subtitle(unreached: true), "Never flown to",
            "and so does never being flown to, which says the item is not on the route at all -- "
            + "the speed it would have commanded there is not the point")
+}
+
+func checkAPatternDrawsThePathItActuallyFlies() {
+    func at(_ latitude: Double, _ longitude: Double) -> [String: Any] {
+        ["latitude": latitude as NSNumber, "longitude": longitude as NSNumber]
+    }
+    let view: [String: Any] = ["items": [
+        ["sequence": 2 as NSNumber, "kind": "waypoint", "geometry": NSNull()],
+        ["sequence": 3 as NSNumber, "kind": "survey",
+         "geometry": ["shape": "area", "property": "surveyAreaPolygon",
+                      "vertices": [at(47.0, 8.0), at(47.1, 8.0), at(47.1, 8.1)],
+                      "transects": [at(47.01, 8.01), at(47.09, 8.01), at(47.09, 8.02)]]],
+        ["sequence": 4 as NSNumber, "kind": "structure",
+         "geometry": ["shape": "area", "property": "structurePolygon",
+                      "vertices": [at(47.2, 8.2), at(47.3, 8.2), at(47.3, 8.3)],
+                      "transects": []]],
+    ]]
+    let found = PatternGeometry.all(view)
+    expect(found.count == 2,
+           "a waypoint carries no geometry at all and the core sends null for it, so two of the "
+           + "three items answer -- the head does not invent an empty shape for an item that has "
+           + "none")
+    expect(PatternGeometry.flownLines(found).count == 1,
+           "and only the survey contributes a flown line. Measured on a real plan: a survey "
+           + "carries 112 transect points and a corridor 8, while a structure scan carries NONE "
+           + "-- it circles a shape rather than mowing it. The third member of the class again, "
+           + "and a head assuming every pattern has transects would draw a line through nothing")
+    expect(PatternGeometry.flownLines(found).first?.count == 3,
+           "the points come through in the order the core walked them, which is the order the "
+           + "vehicle flies them -- a set or a re-sort would draw the serpentine inside out")
+    expect(PatternGeometry(["shape": "", "transects": [at(47.0, 8.0), at(47.1, 8.1)]]) == nil,
+           "a geometry with no shape is refused rather than drawn as an unnamed line: shape is "
+           + "what says whether the vertices close into an area or run as a path")
+    expect(PatternGeometry.flownLines([PatternGeometry(
+        ["shape": "area", "transects": [at(47.0, 8.0)]])!]).isEmpty,
+           "and a single point is not a line. One transect point cannot be flown between, and "
+           + "MKPolyline with one coordinate draws nothing while still costing an overlay")
 }
 
 func checkAPatternSaysHowHighAboveTheGroundItFlies() {

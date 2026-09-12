@@ -42,6 +42,7 @@ final class FencePolygon: MKPolygon {
 final class SurveyPolygon: MKPolygon {}
 
 final class CorridorPolyline: MKPolyline {}
+final class TransectPolyline: MKPolyline {}
 final class TrackPolyline: MKPolyline {}
 
 final class FenceCircle: MKCircle {
@@ -125,6 +126,7 @@ struct MissionMap: NSViewRepresentable {
     var secondary: ((Double, Double, CGPoint) -> Void)?
     var surveys: [[GeoPoint]] = []
     var corridors: [[GeoPoint]] = []
+    var transects: [[GeoPoint]] = []
     var focus: MapFrame?
     var polygons: [EditablePolygon] = []
     var moveVertex: (Int, Int, Double, Double) -> Void = { _, _, _, _ in }
@@ -224,6 +226,12 @@ struct MissionMap: NSViewRepresentable {
         corridors.filter { $0.count >= 2 }.forEach { path in
             var points = path.map { CLLocationCoordinate2D(latitude: $0.latitude, longitude: $0.longitude) }
             map.addOverlay(CorridorPolyline(coordinates: &points, count: points.count),
+                           level: .aboveLabels)
+        }
+
+        transects.forEach { line in
+            var points = line.map { CLLocationCoordinate2D(latitude: $0.latitude, longitude: $0.longitude) }
+            map.addOverlay(TransectPolyline(coordinates: &points, count: points.count),
                            level: .aboveLabels)
         }
 
@@ -570,6 +578,12 @@ struct MissionMap: NSViewRepresentable {
                 renderer.strokeColor = .systemOrange
                 renderer.fillColor = NSColor.systemOrange.withAlphaComponent(0.12)
                 renderer.lineWidth = 2
+                return renderer
+            }
+            if let transect = overlay as? TransectPolyline {
+                let renderer = MKPolylineRenderer(polyline: transect)
+                renderer.strokeColor = NSColor.controlAccentColor.withAlphaComponent(0.55)
+                renderer.lineWidth = 1.5
                 return renderer
             }
             if let corridor = overlay as? CorridorPolyline {

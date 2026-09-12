@@ -23,6 +23,7 @@ final class MissionStore: ObservableObject, Probeable, WriteReporting {
     @Published private(set) var pickerCategory = ""
     @Published private(set) var selectedFacts: [ItemFact] = []
     @Published private(set) var selectedSpeed = ItemSpeed.unavailable
+    @Published private(set) var patternTransects: [[GeoPoint]] = []
     @Published private(set) var launch = LaunchPosition.unknown
     @Published private(set) var surveyStats = SurveyStats.none
     @Published private(set) var camera = CameraChoice.empty
@@ -356,6 +357,12 @@ final class MissionStore: ObservableObject, Probeable, WriteReporting {
         applyItems(Bridge.group("view.missionItems"))
     }
 
+    private func readPatternGeometry() {
+        let lines = PatternGeometry.flownLines(
+            PatternGeometry.all(Bridge.group(PatternGeometry.view)))
+        if lines != patternTransects { patternTransects = lines }
+    }
+
     @discardableResult
     private func applyItems(_ read: [String: Any]) -> [[String: Any]] {
         let elements = (read["items"] as? [[String: Any]]) ?? []
@@ -364,6 +371,7 @@ final class MissionStore: ObservableObject, Probeable, WriteReporting {
             MissionItem(view: $0, selected: chosen)
         }
         if listed != items { items = listed }
+        readPatternGeometry()
         return elements
     }
 
@@ -940,6 +948,7 @@ final class MissionStore: ObservableObject, Probeable, WriteReporting {
          "commands": commands.map(\.name),
          "surveys": surveyAreas.map(\.count),
          "corridors": corridorPaths.map(\.count),
+         "transects": patternTransects.map(\.count),
          "surveyStats": ["shots": surveyStats.shotsText, "distance": surveyStats.distanceText, "interval": surveyStats.intervalText,
                          "area": surveyStats.areaText, "footprint": surveyStats.footprintText,
                          "warning": surveyStats.warning],
