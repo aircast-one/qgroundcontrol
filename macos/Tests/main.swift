@@ -2847,6 +2847,11 @@ func checkMotorTest() {
     expect(unknown.motors == MotorTest.fallbackMotors,
            "a vehicle that never said how many motors it has gets eight buttons, as QGC does")
     expect(!unknown.countWarning.isEmpty, "and is told why there are eight")
+    expect(MotorTest.disconnected.countWarning, "",
+           "but with nothing connected there is no vehicle that has not said. The page is gated "
+           + "by SetupPageBody so the screen never drew this, and Motors.swift put it in the "
+           + "probe anyway -- an instrument reporting a sentence the window cannot show is the "
+           + "reason a defect was nearly filed against it")
 
     expect(!apm.canTest(safetyOff: false), "nothing spins until the safety switch is on")
     expect(apm.canTest(safetyOff: true), "with it on and the vehicle disarmed a motor can be tested")

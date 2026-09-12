@@ -20,7 +20,9 @@ struct MotorTest: Equatable {
     var motors: Int { countKnown ? reportedCount : MotorTest.fallbackMotors }
 
     var countWarning: String {
-        countKnown ? "" : "The vehicle has not said how many motors it has, so eight are offered."
+        connected && !countKnown
+            ? "The vehicle has not said how many motors it has, so eight are offered."
+            : ""
     }
 
     func name(_ index: Int) -> String {
