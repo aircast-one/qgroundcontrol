@@ -4993,3 +4993,30 @@ gate at all — but it is an INCOMPLETE fix, and a safety gate that works in one
 saying out loud rather than leaving as a green commit message. **A test pinning the current
 behaviour would pin the defect**, so there is none; this entry is the record until the core serves
 the join.
+
+### The translated-join class, fifth and sixth instances — and one of them is the core's
+
+**`LogDownloadController.cc` wraps every log status in `tr()`** — `tr("Available")`,
+`tr("Downloaded")`, `tr("Waiting")`, `tr("Error")`, `tr("Canceled")`. Two consumers compare it as
+a literal.
+
+**Mine (`AnalyzeWindow.swift:176`)** suppresses the status when it equals `"Available"`, so the
+ordinary row reads "4.0 MB" and a noteworthy one reads "4.0 MB · Error". **Outside English the
+comparison never matches and EVERY row appends its status.** That is cosmetic noise rather than a
+wrong fact, which is why it is recorded here rather than churned: **the head cannot separate
+"Available" from "Error" without either the translated string or a stable id, and the core serves
+neither.** `received` does not divide them — it is false for Available, Waiting and Error alike.
+**Asked the core for a stable status id; a page of noisier rows for every English operator is not
+a trade worth making to fix noise for a non-English one.**
+
+**Theirs (`logs.rs:89`) is functional, not cosmetic:** `anyDownloaded` is
+`entries.iter().any(|e| e["status"] == "Downloaded")`, so **outside English it is always false**
+and whatever it gates never appears. This head does not read it — the log list is forbidden here —
+so the consumer that suffers is Android or a future reader. **Reported.**
+
+**Six instances now, and the tally is the point.** The survey-geometry lookup on `commandName`;
+Android's "Delete survey"; **my own armed gate on a `tr()`'d component name**; `createPlan` and
+`importShape` on `complexName`; this row; and the core's `anyDownloaded`. **Every display name in
+QGC is wrapped in `tr()`, so a join on anything an operator reads is a defect waiting for a
+non-English build — and the third instance was written an hour after I fixed the first.** Knowing
+the rule is not the same as applying it to code being written now.
