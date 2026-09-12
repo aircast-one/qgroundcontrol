@@ -14,7 +14,7 @@ TARGET = (sys.argv[1], 14550)
 INT_PARAMS = frozenset(
     ["ARMING_CHECK", "FS_OPTIONS", "SIMPLE", "SUPER_SIMPLE", "FS_THR_ENABLE",
      "FLTMODE_CH", "INITIAL_MODE", "FRAME_CLASS", "FRAME_TYPE", "GRIP_ENABLE",
-     "BATT_MONITOR", "RTL_ALT"]
+     "BATT_MONITOR", "RTL_ALT", "FENCE_ENABLE", "FENCE_TYPE"]
     + ["FLTMODE%d" % slot for slot in range(1, 7)]
     + ["RCMAP_ROLL", "RCMAP_PITCH", "RCMAP_THROTTLE", "RCMAP_YAW"]
     + ["RC%d_MIN" % ch for ch in range(1, 9)]
@@ -122,7 +122,12 @@ def main():
     params = {}
     for i in range(200):
         params["SIM_VALUE_%03d" % i] = float(i)
-    for name, value in (("RTL_ALT", 1500.0), ("WPNAV_SPEED", 500.0), ("FS_THR_ENABLE", 1.0),
+    # QGC reads all three before it will report a circular geofence radius:
+    # GeoFenceController.cc requires FENCE_ENABLE true and bit 1 of FENCE_TYPE.
+    for name, value in (("FENCE_RADIUS", float(os.environ.get("FENCE_RADIUS", "0"))),
+                        ("FENCE_ENABLE", 1.0 if os.environ.get("FENCE_RADIUS") else 0.0),
+                        ("FENCE_TYPE", 2.0),
+                        ("RTL_ALT", 1500.0), ("WPNAV_SPEED", 500.0), ("FS_THR_ENABLE", 1.0),
                         ("ARMING_CHECK", float(os.environ.get("ARMING_CHECK", "82"))),
                         ("FS_OPTIONS", 4.0),
                         ("FRAME_CLASS", 1.0), ("FRAME_TYPE", 1.0),
