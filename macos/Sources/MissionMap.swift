@@ -383,7 +383,7 @@ struct MissionMap: NSViewRepresentable {
 
     static func overlay(for shape: FenceShape) -> MKOverlay? {
         if shape.isCircle {
-            guard let centre = shape.centre, let radius = shape.radius else { return nil }
+            guard let centre = shape.centre, let radius = shape.drawnRadius else { return nil }
             let circle = FenceCircle(
                 center: CLLocationCoordinate2D(latitude: centre.latitude,
                                                longitude: centre.longitude),

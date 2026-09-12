@@ -2593,6 +2593,28 @@ func checkVehicleMessages() {
 
 checkVehicleMessages()
 
+func checkAFenceCircleIsDrawnInMetres() {
+    let imperial = FenceShape(["index": 0 as NSNumber, "path": "plan.geoFenceController.circles.0",
+                               "shape": "circle", "inclusion": false as NSNumber,
+                               "kindText": "Keep-out circle",
+                               "detailText": "328 ft radius",
+                               "centre": ["latitude": 47.4 as NSNumber,
+                                          "longitude": 8.5 as NSNumber],
+                               "radius": 328.084 as NSNumber, "radiusUnits": "ft",
+                               "radiusMetres": 100.0 as NSNumber])
+    expect(imperial?.drawnRadius == 100.0,
+           "a fence circle is DRAWN from radiusMetres, not from the cooked radius. MKCircle takes "
+           + "metres, and the core serves radius as the operator's units -- 328.084 with feet "
+           + "chosen -- so handing the map the cooked number drew a 100 m keep-out boundary as a "
+           + "328 m one. An operator planning a route to skirt that circle had a third of the "
+           + "clearance the map showed. The cooked pair is still what the row READS and what the "
+           + "field is TYPED into; only the drawing changed")
+    expect(imperial?.radius == 328.084,
+           "and the cooked radius is kept, because the list row and the editable field both want "
+           + "the number the operator is working in -- the same split as the altitude field, where "
+           + "the edited value keeps its own unit and the drawn value is unambiguous")
+}
+
 func checkAClickPlacesWhatThePageArms() {
     expect(PlanPlacement.decided(page: "Mission", missionArmed: true, rallyArmed: false) == .mission,
            "a waypoint armed on the Mission page is what a click there places")
@@ -2893,6 +2915,7 @@ checkCameraModeRow()
 checkAddMenuNeedsNoVehicle()
 checkAWarnedRoutineIsNotTruncated()
 checkAClickPlacesWhatThePageArms()
+checkAFenceCircleIsDrawnInMetres()
 
 final class ProbeStub: Probeable {
     static let probeID = "stub"

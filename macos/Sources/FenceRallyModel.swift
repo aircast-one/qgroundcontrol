@@ -81,8 +81,15 @@ struct FenceShape: Identifiable, Equatable {
     let centreText: String
     let radius: Double?
     let radiusUnits: String
+    let radiusMetres: Double?
 
     var id: String { path }
+
+    // MKCircle takes METRES. The cooked radius is the operator's units, so a map handed it drew a
+    // 100 m keep-out as a 328 m one with feet chosen. Naming the choice here rather than at the
+    // drawing site is deliberate: MissionMap.swift is not among the files swift-checks compiles,
+    // so a rule written there cannot be pinned by a test.
+    var drawnRadius: Double? { radiusMetres }
 
     var isCircle: Bool { shape == "circle" }
 
@@ -114,6 +121,7 @@ struct FenceShape: Identifiable, Equatable {
         centre = GeoPoint(json: json["centre"])
         centreText = (json["centreText"] as? String) ?? "\u{2014}"
         radius = (json["radius"] as? NSNumber)?.doubleValue
+        radiusMetres = (json["radiusMetres"] as? NSNumber)?.doubleValue
         radiusUnits = (json["radiusUnits"] as? String) ?? "m"
     }
 
