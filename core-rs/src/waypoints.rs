@@ -103,7 +103,7 @@ fn row_json(r: &Row) -> Value {
 }
 
 pub fn waypoints_view(_backend: &dyn Backend, args: &[String]) -> Value {
-    let Some(path) = args.first().filter(|p| !p.is_empty()) else { return json!({ "kind": "null" }) };
+    let Some(path) = args.first().filter(|p| !p.is_empty()) else { return crate::read::refused("this needs the path of a waypoints file to read, and none was given") };
     let text = match std::fs::read_to_string(path) {
         Ok(t) => t,
         Err(e) => return json!({ "kind": "object", "class": "WaypointsFile", "path": path, "readable": false, "error": e.to_string() }),

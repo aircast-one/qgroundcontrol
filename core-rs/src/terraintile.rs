@@ -109,7 +109,7 @@ impl Tile {
 }
 
 pub fn terrain_tile_view(_backend: &dyn Backend, args: &[String]) -> Value {
-    let Some(path) = args.first().filter(|p| !p.is_empty()) else { return json!({ "kind": "null" }) };
+    let Some(path) = args.first().filter(|p| !p.is_empty()) else { return crate::read::refused("this needs the path of a terrain tile, then a latitude and a longitude") };
     let Ok(bytes) = std::fs::read(path) else { return json!({ "kind": "object", "class": "TerrainTile", "path": path, "readable": false }) };
     let Some(tile) = decode(&bytes) else { return json!({ "kind": "object", "class": "TerrainTile", "path": path, "readable": true, "valid": false }) };
     let probe = match (args.get(1).and_then(|a| a.parse::<f64>().ok()), args.get(2).and_then(|a| a.parse::<f64>().ok())) {

@@ -213,7 +213,7 @@ fn overview(backend: &dyn Backend, connected: bool, px4: bool) -> Value {
 }
 
 fn page_json(backend: &dyn Backend, page: &str, px4: bool) -> Value {
-    let Some(sections) = sections_for(page, px4) else { return json!({ "kind": "null" }) };
+    let Some(sections) = sections_for(page, px4) else { return crate::read::refused(&format!("no setup page is called {page} for this firmware; the pages a vehicle offers depend on which plugin built them")) };
     let read = |name: &str| {
         let path = format!("vehicle.parameterManager.getParameter(-1,{name})");
         let fact = object(&backend.get(&path));

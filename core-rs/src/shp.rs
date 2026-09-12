@@ -100,7 +100,7 @@ pub fn parse(shp_path: &str) -> Result<(String, usize, Vec<(f64, f64)>), String>
 }
 
 pub fn shp_view(_backend: &dyn Backend, args: &[String]) -> Value {
-    let Some(path) = args.first().filter(|p| !p.is_empty()) else { return json!({ "kind": "null" }) };
+    let Some(path) = args.first().filter(|p| !p.is_empty()) else { return crate::read::refused("this needs the path of a shapefile to read, and none was given") };
     match parse(path) {
         Err(error) => json!({ "kind": "object", "class": "ShapeFile", "path": path, "valid": false, "error": error }),
         Ok((shape, entities, points)) => json!({

@@ -98,7 +98,7 @@ pub fn parse(bytes: &[u8]) -> Summary {
 }
 
 pub fn tlog_view(_backend: &dyn Backend, args: &[String]) -> Value {
-    let Some(path) = args.first().filter(|p| !p.is_empty()) else { return json!({ "kind": "null" }) };
+    let Some(path) = args.first().filter(|p| !p.is_empty()) else { return crate::read::refused("this needs the path of a telemetry log to read, and none was given") };
     let Ok(bytes) = std::fs::read(path) else { return json!({ "kind": "object", "class": "Tlog", "path": path, "readable": false }) };
     let summary = parse(&bytes);
     let span = match (summary.first_timestamp_us, summary.last_timestamp_us) {

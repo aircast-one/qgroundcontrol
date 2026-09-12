@@ -409,6 +409,20 @@ mod argument_modes {
     }
 
     #[test]
+    fn a_view_that_refuses_its_arguments_says_what_it_wanted() {
+        let modules: std::collections::BTreeSet<String> = source("view")
+            .lines()
+            .filter_map(|line| Some(line.split("compute: ").nth(1)?.split("::").next()?.to_string()))
+            .collect();
+        assert!(modules.len() > 20, "the registry parsed, so an empty answer below would mean nothing");
+        let silent: Vec<&String> = modules
+            .iter()
+            .filter(|module| source(module).lines().any(|line| line.contains("return json!({ \"kind\": \"null\" })") && !line.contains(".to_string()")))
+            .collect();
+        assert!(silent.is_empty(), "these refuse an argument they cannot use and say nothing about what they wanted, which is the case where a caller most needs telling: {silent:?}");
+    }
+
+    #[test]
     fn every_view_that_reads_its_arguments_declares_what_they_are() {
         let registry = source("view");
         let wired: Vec<(String, String)> = registry

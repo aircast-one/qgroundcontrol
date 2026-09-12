@@ -166,7 +166,7 @@ pub fn from_waypoints(file: &Waypoints, firmware_type: i64, vehicle_type: i64) -
 }
 
 pub fn plan_from_waypoints_view(_backend: &dyn Backend, args: &[String]) -> Value {
-    let Some(path) = args.first().filter(|p| !p.is_empty()) else { return json!({ "kind": "null" }) };
+    let Some(path) = args.first().filter(|p| !p.is_empty()) else { return crate::read::refused("this needs the path of a waypoints file to build a plan from, and none was given") };
     let text = match std::fs::read_to_string(path) {
         Ok(t) => t,
         Err(e) => return json!({ "kind": "planFromWaypoints", "readable": false, "valid": false, "error": e.to_string() }),
@@ -182,7 +182,7 @@ pub fn plan_from_waypoints_view(_backend: &dyn Backend, args: &[String]) -> Valu
 }
 
 pub fn plan_file_view(_backend: &dyn Backend, args: &[String]) -> Value {
-    let Some(path) = args.first().filter(|p| !p.is_empty()) else { return json!({ "kind": "null" }) };
+    let Some(path) = args.first().filter(|p| !p.is_empty()) else { return crate::read::refused("this needs the path of a plan file to read, and none was given") };
     let text = match std::fs::read_to_string(path) {
         Ok(t) => t,
         Err(e) => return json!({ "kind": "object", "class": "PlanFile", "path": path, "readable": false, "error": e.to_string() }),

@@ -65,25 +65,25 @@ fn numbers(args: &[String], count: usize) -> Option<Vec<f64>> {
 }
 
 pub fn geo_to_ned_view(_backend: &dyn Backend, args: &[String]) -> Value {
-    let Some(v) = numbers(args, 6) else { return json!({ "kind": "null" }) };
+    let Some(v) = numbers(args, 6) else { return crate::read::refused("this needs six numbers: latitude, longitude, altitude, then the origin latitude, longitude and altitude") };
     let (x, y, z) = geo_to_ned(v[0], v[1], v[2], (v[3], v[4], v[5]));
     json!({ "kind": "object", "class": "Ned", "x": x, "y": y, "z": z })
 }
 
 pub fn ned_to_geo_view(_backend: &dyn Backend, args: &[String]) -> Value {
-    let Some(v) = numbers(args, 6) else { return json!({ "kind": "null" }) };
+    let Some(v) = numbers(args, 6) else { return crate::read::refused("this needs six numbers: north, east, down, then the origin latitude, longitude and altitude") };
     let (lat, lon, alt) = ned_to_geo(v[0], v[1], v[2], (v[3], v[4], v[5]));
     json!({ "kind": "coordinate", "valid": true, "latitude": lat, "longitude": lon, "altitude": alt })
 }
 
 pub fn geo_to_utm_view(_backend: &dyn Backend, args: &[String]) -> Value {
-    let Some(v) = numbers(args, 2) else { return json!({ "kind": "null" }) };
+    let Some(v) = numbers(args, 2) else { return crate::read::refused("this needs two numbers: latitude and longitude") };
     let (zone, easting, northing) = geo_to_utm(v[0], v[1]);
     json!({ "kind": "object", "class": "Utm", "zone": zone, "southern": v[0] < 0.0, "easting": easting, "northing": northing })
 }
 
 pub fn utm_to_geo_view(_backend: &dyn Backend, args: &[String]) -> Value {
-    let Some(v) = numbers(args, 3) else { return json!({ "kind": "null" }) };
+    let Some(v) = numbers(args, 3) else { return crate::read::refused("this needs three numbers: easting, northing and zone") };
     let southern = args.get(3).map(|s| s == "true" || s == "1" || s == "S").unwrap_or(false);
     match utm_to_geo(v[0], v[1], v[2] as u8, southern) {
         Some((lat, lon)) => json!({ "kind": "coordinate", "valid": true, "latitude": lat, "longitude": lon, "altitude": 0.0 }),
