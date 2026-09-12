@@ -3098,3 +3098,39 @@ Suite: the full run gave 706/1/89 on
 seventh sighting of that known flake, under the documented condition, with
 `core-rs/src/fences.rs` modified in the core's tree so a concurrent Rust rebuild was
 live during the full run.
+
+### The rig had a step that had never once succeeded, 2026-09-12
+
+**My every-kind plan recipe has been claiming two fences it never created.** `addFence`
+and `addFence&circle=1` were in the standing procedure, run on every cycle, and
+**refused every single time** — `"This vehicle does not accept a geofence."` I never
+saw it because the recipe was a row of `curl` calls with their output piped to
+`/dev/null`.
+
+Measured properly: the fenceRally probe answers **`fenceSupported: false`,
+`rallySupported: false`, `connected: false`.** Selecting the Fence page changes
+nothing. With no vehicle attached neither a fence nor a rally point can be created
+here, and **a standing note in my own procedure said "fence and rally creation
+proven"** — a claim that must have been true when a vehicle was connected in an
+earlier session and has been carried forward untested since. **The stale-refusal error
+I made this morning, run backwards: a stale PERMISSION.**
+
+**The plan file I saved for the Android head is unaffected and was described
+correctly** — seven mission items, zero fences, and I told them seven items. Checked
+rather than assumed, because I had made an assertion to a peer about an artefact.
+
+`tools/macos/build-plan.sh` replaces the recipe. Every step reads the answer: a
+REQUIRED step that is refused prints why and exits 1; a vehicle-gated step prints
+`REFUSED` and does not, because a refusal with no vehicle attached is the correct
+answer rather than a broken rig. **Control: a REQUIRED step pointed at a known failure
+— `setFact` on a fact that does not exist — exits 1 and names it.** It also states
+that it ADDS to the open plan, which is why a second run on one launch reports
+fourteen items.
+
+**This is the same family as the six instruments that could not fail, and the plainest
+member: an instrument whose output nobody reads.** Not a checker too coarse, not a
+mutant that cannot reach the code — a rig running `> /dev/null` for a fortnight. It
+cost nothing this time only because the fences were never load-bearing for anything I
+measured.
+
+Tool-only: no Swift changed, so no ctest run.
