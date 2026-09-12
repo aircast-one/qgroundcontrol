@@ -6243,3 +6243,39 @@ complex item with `landingApproachCoordinate`, `landCoordinate`, `loiterRadius`,
 `loiterClockwise`, version 2. Now that the places render, the button's pattern
 can be dragged into position like any other — which is what closes the loop that
 started with "Land on a fixed wing produces something nobody can place".
+
+### The Land button on a fixed wing, closed end to end, 2026-09-12
+
+Four rounds, each one started by checking a claim rather than repeating it.
+
+**It was invisible.** `view.landingPattern` plus a path and a ring fixed that.
+
+**It could not be placed.** I had written that a drawn pattern "can be dragged
+like any other" without testing it — measured, zero handle pixels, because a
+pattern from the button has no coordinates and therefore no handles. The
+operator already indicates a place (the Land button passes `placeAt()`, which
+QGC uses as the wizard's map centre rather than the landing point), so the head
+now applies it. 677 m became 1.47 km and the handles appeared.
+
+**It still would not save.** `LandingComplexItem::readyForSaveState` is
+`_landingCoordSet && !_wizardMode`. Placing it cleared the first — visible as
+the row's reason changing from "Set the landing point" to "Finish the landing
+setup" — and nothing cleared the second, because QGC's QML editor does that when
+its dialog closes and this head has no dialog. `wizardMode` is READ/WRITE on
+`VisualMissionItem`, so the head leaves it after placing. Everything else has a
+default and real geometry; the operator adjusts by dragging two handles rather
+than filling a form.
+
+**And the refusal could not say why.** The core has served per-item `blocked`
+and `blockedReason` all along and the head read neither, so the File menu said
+"Some items still need a position or a value" while the data named the item and
+the reason. The list row now carries QGC's own words.
+
+Verified on the handset with `VEHICLE=plane`: pressing Land gives
+`Landing Pattern · 0.0 m to 40.0 m` with no blocked reason, and Save as opens
+the picker where it refused before.
+
+**The pattern across all four**: each was found by testing a sentence I had
+already written. The drawing claim, the dragging claim, the "can now be saved"
+claim. Three of them were wrong. Writing a consequence down and then checking it
+turned out to be a more productive loop than looking for defects directly.
