@@ -7,6 +7,17 @@ need the same map, and a map written twice is one a new model gets added to once
 
 MODELS = {
     "AltitudeModeOffer": "view.altitudeModes",
+    "Detections": "view.detections",
+    "EditablePolygon": "view.polygon(plan.missionController.visualItems.4.surveyAreaPolygon)",
+    "GuidedRange": ["view.guidedAltitude(30)", "view.guidedTakeoff(10)",
+                    "view.guidedSpeed(3)"],
+    "InstrumentValue": "view.instruments(Altitude)",
+    "MissionSeed": "view.missionSeed(survey,47.397,8.545)",
+    "SettingsPage": "view.settings",
+    "SettingsSection": "view.settings(General)",
+    "VehicleMessages": "view.messages",
+    "VehicleTrack": "view.track",
+    "VehicleWarning": "view.warnings",
     "CalibrationState": "view.calibration",
     "CameraControl": "view.camera",
     "FenceShape": "view.fences",
@@ -31,3 +42,7 @@ MODELS = {
     "VibrationReading": "view.vibration",
     "VideoStatus": "view.video",
 }
+
+
+def views(declared):
+    return list(declared) if isinstance(declared, (list, tuple)) else [declared]

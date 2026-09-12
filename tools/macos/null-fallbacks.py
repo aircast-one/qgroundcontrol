@@ -31,7 +31,7 @@ import sys
 import urllib.request
 
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent))
-from head_models import MODELS
+from head_models import MODELS, views
 
 ROOT = pathlib.Path(__file__).resolve().parents[2]
 SOURCES = pathlib.Path(sys.argv[1]) if len(sys.argv) > 1 else ROOT / "macos/Sources"
@@ -42,6 +42,20 @@ PORT = 8777
 # and a gate that moves has to move this line with it. Without this table the steady
 # state is four hits nobody reads, which is how an instrument stops being believed.
 ACCEPTED = {
+    ("Detections", "error"): "MEASURED: the core sends null when there is no error and a "
+        "sentence when there is -- detections.rs carries self.error straight through, and its "
+        "own test pins \"connection refused\" against a null in the quiet case. Null and the "
+        "empty string mean the SAME THING to every consumer here, so the fallback merges two "
+        "spellings of one fact rather than inventing a value. The head exposes it only through "
+        "the video probe's state; nothing draws it",
+    ("GuidedRange", "label"): "UNREACHABLE BY CONSTRUCTION, and measured on all three views "
+        "this struct decodes. speed.rs builds the label as range.as_ref().map(|r| r.label), so "
+        "it is null exactly when there is no range -- which is exactly when available is false. "
+        "altitude.rs and takeoff.rs emit the literal unconditionally and were measured sending "
+        "\"Height above launch\" while unavailable, so guidedSpeed is the only one that answers "
+        "null at all. GuidedValueModel's init is failable and returns nil unless available is "
+        "true, so the fallback cannot be reached: a null label and a constructed range are "
+        "mutually exclusive states",
     ("MissionItem", "command"): "MEASURED, and the reason I first wrote was wrong twice. It "
         "said ONLY the launch row sends null; the rule is a CLASS -- no COMPLEX item carries a "
         "command, so the settings row, the survey, the corridor and the structure scan all send "
@@ -136,16 +150,23 @@ def fallbacks(body):
 
 reached, hits, unchecked = 0, [], []
 for model, view in sorted(MODELS.items()):
-    try:
-        payload = get(view)
-    except Exception as problem:
-        unchecked.append(f"{model}: {view} could not be read -- {problem}")
+    payloads = []
+    for one in views(view):
+        try:
+            payloads.append(get(one))
+        except Exception as problem:
+            unchecked.append(f"{model}: {one} could not be read -- {problem}")
+            payloads = None
+            break
+    if payloads is None:
         continue
-    if isinstance(payload, dict) and payload.get("kind") == "refused":
-        unchecked.append(f"{model}: {view} refused in this state, so it sent no values to check")
+    refused = [one for one, payload in zip(views(view), payloads)
+               if isinstance(payload, dict) and payload.get("kind") == "refused"]
+    if refused:
+        unchecked.append(f"{model}: {refused} refused in this state, so it sent no values to check")
         continue
     reached += 1
-    sent = nulls(payload)
+    sent = set().union(*map(nulls, payloads))
     name, body = body_of(model)
     if body is None:
         unchecked.append(f"{model}: no declaration in {SOURCES}, which is a broken reader")

@@ -28,7 +28,7 @@ import re
 import sys
 
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent))
-from head_models import MODELS
+from head_models import MODELS, views
 
 ROOT = pathlib.Path(__file__).resolve().parents[2]
 SOURCES = ROOT / "macos/Sources"
@@ -131,9 +131,16 @@ def balanced(text, start):
 def views_to_modules():
     """view path -> core module, read from the registry rather than written here."""
     registry = (CORE / "view.rs").read_text()
-    return {m.group(1): m.group(2)
-            for m in re.finditer(r'View\s*\{\s*path:\s*"([^"]+)".*?compute:\s*(\w+)::',
-                                 registry, re.S)}
+    defines = {match.group(1): source.stem
+               for source in sorted(CORE.glob("*.rs"))
+               for match in re.finditer(r"\bfn (\w+_view)\b", source.read_text())}
+    found = {}
+    for entry in re.finditer(
+            r'View\s*\{\s*path:\s*"([^"]+)"[^}]*?compute:\s*([A-Za-z_]+)(?:::(\w+))?',
+            registry, re.S):
+        path, first, second = entry.groups()
+        found[path] = first if second else defines.get(first, first)
+    return found
 
 
 def keys_a_model_reads(name):
@@ -160,22 +167,24 @@ def keys_a_model_reads(name):
 registry = views_to_modules()
 gone, unchecked = [], []
 for model, view in sorted(MODELS.items()):
-    module = registry.get(view) or registry.get(view.split("(")[0])
-    if module is None:
+    modules = [registry.get(one) or registry.get(one.split("(")[0]) for one in views(view)]
+    if any(module is None for module in modules):
         unchecked.append(f"{model}: this file names {view}, which core-rs/src/view.rs does not serve")
         continue
-    source = CORE / f"{module}.rs"
-    if not source.exists():
-        unchecked.append(f"{model}: {view} is built by {module}, and {module}.rs does not exist")
+    sources = [CORE / f"{module}.rs" for module in modules]
+    if any(not source.exists() for source in sources):
+        unchecked.append(f"{model}: {view} is built by {modules}, and one of those .rs files does not exist")
         continue
     read = keys_a_model_reads(model)
     if not read:
         unchecked.append(f"{model}: no initialiser keys found, which is a broken reader not a clean result")
         continue
-    stripped = COMMENT.sub("", source.read_text())
-    emitted = set(LITERAL.findall(stripped)) | set(FIELD.findall(stripped))
+    emitted = set()
+    for source in sources:
+        stripped = COMMENT.sub("", source.read_text())
+        emitted |= set(LITERAL.findall(stripped)) | set(FIELD.findall(stripped))
     for key in sorted(read - emitted):
-        gone.append((model, key, view, module))
+        gone.append((model, key, view, "/".join(modules)))
 
 for line in unchecked:
     print(f"  NOT CHECKED {line}", file=sys.stderr)
