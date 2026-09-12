@@ -229,9 +229,8 @@ struct MissionMap: NSViewRepresentable {
 
         // The legs, not the markers. A region of interest earns a pin and no leg, and an item
         // after a return to launch is uploaded and never reached.
-        let route = MissionItem.route(items).compactMap { item -> CLLocationCoordinate2D? in
-            guard let latitude = item.latitude, let longitude = item.longitude else { return nil }
-            return CLLocationCoordinate2D(latitude: latitude, longitude: longitude)
+        let route = MissionItem.routePoints(items).map {
+            CLLocationCoordinate2D(latitude: $0.latitude, longitude: $0.longitude)
         }
         if route.count > 1 {
             var coordinates = route

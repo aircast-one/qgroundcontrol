@@ -898,6 +898,7 @@ final class MissionStore: ObservableObject, Probeable, WriteReporting {
          "dirty": dirty, "connected": connected,
          "renderers": ["calls": MissionMap.rendererCalls,
                        "kinds": MissionMap.rendererKinds.sorted()],
+         "routePoints": MissionItem.routePoints(items).count,
          "tiles": ["requested": CachedTileOverlay.requested,
                    "secondsSinceRequest": CachedTileOverlay.lastRequest
                        .map { Int(Date().timeIntervalSince($0)) } ?? -1,

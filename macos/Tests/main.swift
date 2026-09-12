@@ -1323,6 +1323,7 @@ func checkMissionItemKinds() {
     checkComplexGeometryInAnyLocale()
     checkSpeedChangeIsListedNotOnlySelected()
     checkAnItemSaysEverythingItDoes()
+    checkARouteLeavesAPatternWhereItEnds()
     checkSensorsComponentIsFoundByClass()
     checkShapeAbsence()
     checkBatteryReading()
@@ -4298,6 +4299,46 @@ func checkSpeedChangeIsListedNotOnlySelected() {
     expect(item(speed: "12.0 m/s").subtitle(unreached: true), "Never flown to",
            "and so does never being flown to, which says the item is not on the route at all -- "
            + "the speed it would have commanded there is not the point")
+}
+
+func checkARouteLeavesAPatternWhereItEnds() {
+    func place(_ sequence: Int, _ kind: String, _ latitude: Double, _ longitude: Double,
+               exit: (Double, Double)? = nil) -> MissionItem {
+        var view: [String: Any] = [
+            "index": sequence as NSNumber, "sequence": sequence as NSNumber,
+            "name": kind, "kind": kind, "flownLeg": true as NSNumber,
+            "coordinate": ["latitude": latitude as NSNumber, "longitude": longitude as NSNumber]]
+        if let exit {
+            view["exitCoordinate"] = ["latitude": exit.0 as NSNumber,
+                                      "longitude": exit.1 as NSNumber]
+        }
+        return MissionItem(view: view, selected: -1)
+    }
+    func drawn(_ items: [MissionItem]) -> String {
+        MissionItem.routePoints(items)
+            .map { String(format: "%.4f,%.4f", $0.latitude, $0.longitude) }
+            .joined(separator: " -> ")
+    }
+    let survey = place(2, "survey", 47.4024, 8.5482, exit: (47.3998, 8.5521))
+    expect(drawn([place(1, "waypoint", 47.3995, 8.5480), survey,
+                  place(3, "waypoint", 47.4030, 8.5560)]),
+           "47.3995,8.5480 -> 47.4024,8.5482 -> 47.3998,8.5521 -> 47.4030,8.5560",
+           "a survey is entered at one corner and left at another -- measured 411 m apart on a "
+           + "real one -- so the leg to the next item starts where the pattern ENDS. Drawing it "
+           + "from the entry doubles the route back across the ground the survey just covered, "
+           + "which is the core's own words for why exitCoordinate exists")
+    expect(drawn([place(1, "waypoint", 47.3995, 8.5480), place(2, "waypoint", 47.4024, 8.5482)]),
+           "47.3995,8.5480 -> 47.4024,8.5482",
+           "a waypoint is left where it was entered, so it contributes ONE point. The core sends "
+           + "no exitCoordinate at all in that case -- it filters an exit equal to the entry "
+           + "rather than making every head dedupe a point drawn on top of a point")
+    expect(MissionItem.routePoints([survey]).count == 2,
+           "the pattern alone is still two points: entering and leaving are both real positions "
+           + "even with nothing after it to fly to")
+    expect(drawn([survey, place(1, "waypoint", 47.3995, 8.5480)])
+            != drawn([place(1, "waypoint", 47.3995, 8.5480), survey]),
+           "and the two points are ordered entry then exit rather than collected as a set -- "
+           + "a reversed pair draws the leg backwards through the pattern")
 }
 
 func checkAnItemSaysEverythingItDoes() {

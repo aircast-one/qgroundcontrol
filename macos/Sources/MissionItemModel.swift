@@ -1,5 +1,10 @@
 import Foundation
 
+struct MissionPoint: Equatable {
+    let latitude: Double
+    let longitude: Double
+}
+
 struct MissionItem: Identifiable, Equatable {
     let index: Int
     let sequence: Int
@@ -7,6 +12,8 @@ struct MissionItem: Identifiable, Equatable {
     let description: String
     let latitude: Double?
     let longitude: Double?
+    let exitLatitude: Double?
+    let exitLongitude: Double?
     let altitude: Double?
     let isCurrent: Bool
     let specifiesAltitude: Bool
@@ -79,6 +86,17 @@ struct MissionItem: Identifiable, Equatable {
         items.firstIndex(where: \.endsRoute) ?? items.count
     }
 
+    var legPoints: [MissionPoint] {
+        guard let latitude, let longitude else { return [] }
+        let entry = MissionPoint(latitude: latitude, longitude: longitude)
+        guard let exitLatitude, let exitLongitude else { return [entry] }
+        return [entry, MissionPoint(latitude: exitLatitude, longitude: exitLongitude)]
+    }
+
+    static func routePoints(_ items: [MissionItem]) -> [MissionPoint] {
+        route(items).flatMap(\.legPoints)
+    }
+
     static func route(_ items: [MissionItem]) -> [MissionItem] {
         items.prefix(routeEnd(items)).filter { $0.flownLeg && $0.hasPosition }
     }
@@ -129,6 +147,9 @@ struct MissionItem: Identifiable, Equatable {
         let coordinate = json["coordinate"] as? [String: Any]
         latitude = (coordinate?["latitude"] as? NSNumber)?.doubleValue
         longitude = (coordinate?["longitude"] as? NSNumber)?.doubleValue
+        let leaves = json["exitCoordinate"] as? [String: Any]
+        exitLatitude = (leaves?["latitude"] as? NSNumber)?.doubleValue
+        exitLongitude = (leaves?["longitude"] as? NSNumber)?.doubleValue
 
         altitude = (json["altitude"] as? NSNumber)?.doubleValue
         altitudeUnits = (json["altitudeUnits"] as? String) ?? Measure.metres.units

@@ -2798,3 +2798,46 @@ same sweep, run independently against two heads, found the same pair.**
 `splitPolygonSegment`/`splitSegment` and takes the name from the core's
 `splitInvokable`. Mine already does — `Bridge.invoke("\(path).\(splitInvokable)")`;
 the local `splitSegment` is a Swift function name, not a bridge string.
+
+### A route leaves a pattern where the pattern ends, 2026-09-12
+
+The third field the unread sweep found, and the first that was wrong on the **map**
+rather than missing from a list. `exitCoordinate` was served and named nowhere.
+
+A survey is entered at one corner and left at another. On a real one built here the
+two are **411 m apart**. The head drew the route polyline from each item's entry
+coordinate only, so the leg from the survey to the next waypoint started at the
+corner the vehicle went *in* by — **the drawn route doubles back across the ground
+the survey has just covered.** That is the core's own phrasing, in the test that
+accompanies the field: they built it for exactly this defect and no head was using it.
+
+The core filters the field rather than making each head dedupe: `exitCoordinate` is
+null when it equals the entry, because "drawing a second point there is a point on
+top of a point". The head appends what arrives and trusts that filter.
+
+`MissionItem.routePoints` now yields entry, then exit where one exists.
+`MissionMap` maps the pair; the rule lives in a `*Model*.swift` so `swift-checks.sh`
+compiles it. Four assertions including the ORDER — a reversed pair draws the leg
+backwards through the pattern — and the mutation that reverts to entry-only fails
+exactly the two that are about the exit.
+
+**`native_screenshot` cannot see MapKit (control 4), so the line itself was not
+looked at.** Instead the probe now projects `routePoints`, and it was measured in
+both states in the same binary: three items with no pattern give **2** points;
+adding a survey gives **5**, so the survey contributes two. That is the coordinate
+list the map consumes, one step short of the drawn line, and the limit is stated
+rather than papered over.
+
+**The sweep taught me something about itself.** Its first run saw 52 fields on the
+item view; with a survey in the plan it sees 60. `exitCoordinate`, `patternDistance`
+and `foldedCommands` are only present on a complex item, so **a plan of plain
+waypoints cannot show the fields only a pattern carries.** Rule 38 applied to my own
+instrument: the corpus depends on the plan I happened to build.
+
+**Reasons measured this cycle, for the table:** `azimuth` → `azimuthText` drawn;
+`altitudeChange` → `altitudeChangeText` drawn; `altitudeAmslLowest`/`Highest` → feed
+`altitudeBandText`, drawn — all raw numbers behind a text the head already shows.
+`patternDistance` is `complexDistance`, which the survey card draws through
+`view.surveyStats`. `altitudeMode` IS used, but read from the controller path rather
+than from the view. `distanceFromStart` has no text sibling at all: it is an input to
+the core's own terrain walk, not a figure built for a screen.
