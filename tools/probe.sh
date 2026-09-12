@@ -3,11 +3,15 @@
 #
 #   probe.sh on                  enable the debug API and forward the port
 #   probe.sh get <path>          read a bridge path or a view
+#   probe.sh set <path> <json>   write a bridge path
 #   probe.sh raw <route> [args]  any debug-api route, e.g. raw /status
 #
 # The deep link MUST name the activity: two installed apps claim aircast-qgc://
 # (this head and the QML QGCActivity), so an untargeted intent opens a chooser
 # and the link never arrives.
+#
+# A reinstall drops the server - it starts from a deep link, not a setting - and
+# an empty response reads exactly like a refusal, so get/set re-enable first.
 export PATH="$PATH:$HOME/Library/Android/sdk/platform-tools"
 PORT="${QGC_DEBUG_PORT:-8790}"
 APP="one.aircast.android"
@@ -28,7 +32,14 @@ on)
     ;;
 get)
     [ -n "${2:-}" ] || { echo "usage: probe.sh get <path>" >&2; exit 2; }
+    curl -s --max-time 3 -H "$HEADER" "http://127.0.0.1:$PORT/status" > /dev/null || "$0" on > /dev/null
     curl -s --max-time 8 -H "$HEADER" "http://127.0.0.1:$PORT/bridge/get?path=$2"
+    echo ""
+    ;;
+set)
+    [ -n "${3:-}" ] || { echo "usage: probe.sh set <path> <json-value>" >&2; exit 2; }
+    curl -s --max-time 8 -H "$HEADER" -G "http://127.0.0.1:$PORT/bridge/set" \
+        --data-urlencode "path=$2" --data-urlencode "value=$3"
     echo ""
     ;;
 raw)
