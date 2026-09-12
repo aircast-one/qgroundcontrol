@@ -4188,3 +4188,34 @@ is not matching subjects*, and the fold bought one more name at the cost of a fa
 defect again — but the raw read takes each Fact's **`valueString`**, the same locale-aware
 string the core builds `voltage_text` from. **A duplicated SOURCE, not a duplicated
 derivation.**
+
+### (g) `isCurrent` meant selected, and `currentIndex` means something else entirely
+
+**The core serves the editor's selection as `selected`** — both the per-item flag and the
+index. This head decoded it, stored it as **`isCurrent`**, and then handed it back out of
+its own probe as `"selected"`. Every consumer means the selected row: **`loadSelectedFacts`
+says so in its own name**, `setCamera` writes to it, `readSurveyStats` reads stats for it.
+**The word `isCurrent` existed nowhere but in the head's field.**
+
+**`MissionManager::currentIndex` is a different thing — the item the aircraft is flying to —
+and is still not adopted.** That is what makes the name worth fixing rather than tolerating:
+**the name would already be taken by something that is not it, and the mistake would read as
+correct.** 26 occurrences, five files, no behaviour changed.
+
+**Two things went wrong doing it.**
+
+**The first rename silently did nothing.** `sed -i '' 's/\bisCurrent\b/isSelected/g'` matched
+**nothing at all** — BSD sed has no `\b` — and `swift-checks` then passed **because the tree
+was unchanged**. **A green run after a no-op edit reads exactly like a green run after a
+correct one.** Redone in python with an assertion that the count was non-zero.
+
+**Then I pinned it with ceremony.** A `static let selectionWord = "selected"` on the model
+and a test asserting that constant equals `"selected"` — **production code added so a test
+can assert a thing equals itself**, and it cannot fail for any reason that matters. Removed.
+The rename was already covered by the decode assertions that existed, and the reasoning now
+lives in that assertion's label where it costs nothing.
+
+**(tt) NOT adopted.** `currentText` and `percentText` exist only in the core's **uncommitted**
+working copy — HEAD's `battery.rs` has neither — so the running binary serves them for
+nobody. **Building against a peer's working tree is the mistake the four new views already
+taught.** The ask stands.
