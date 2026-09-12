@@ -4758,3 +4758,37 @@ hypothetical any more: `core-rs` turned out to have a third author tonight.**
 **Recorded rather than changed.** Making the clone name vary with the build directory would
 close it, but the runner is shared tooling that works, and **the two runners in existence today
 use different names.** Offered to the peers rather than done unilaterally.
+
+### Twenty formatting sites, triaged by what the string is FOR
+
+**Android's method, run on this head for the first time.** They swept their tree for local number
+formatting and then triaged the hits by **what each string is for** — a reading the operator
+judges, or an argument to a command. **That second step is the whole method**, and no grep can do
+it: three of their five hits formatted into an invoke argument and were correct, because the
+vehicle does not care about a minus sign in front of a zero.
+
+**Twenty sites here. One was a reading and was wrong.** `holdReading` spelled a non-whole delay
+with `String(extraSeconds)` — **Swift's `Double` description, a debugging spelling that prints
+every digit the value has.** `extraSeconds` is `additionalTimeDelay`, which is
+`missionItem().param1()`, and **a mission item's param1 is a float32 on the wire**. A plan
+downloaded from a vehicle widens 2.7 to 2.700000047683716 and the row reads **"Holds for
+2.700000047683716 s"**.
+
+**Why it survived: the state that produces it is one this rig cannot reach.** Setting Hold to 2.7
+through the probe makes the core serve a clean 2.7 — measured on the running app, not assumed.
+**The defect needs a vehicle; the formatter does not.** The test uses `Double(Float(2.7))` and
+needs nothing connected, which is the general move for a vehicle-gated defect: **you cannot
+observe it, but you can still prove the code wrong and pin the fix.**
+
+**The negatives are the other half, and each could have failed.** The guided slider's ends were
+the same class and were already safe — but **only because the guard sits inside `text()`, which
+all three drawing sites call**; at the value's call site, which is where the defect I was chasing
+pointed, the ends would have escaped exactly as Android's did. **That was luck until this cycle
+pinned it.** The vibration bar spells its own `%.1f` with no unit — **but the QML original draws
+no unit either**, so it is upstream behaviour, not a regression, and not mine to invent a fix for.
+`PlanWindow`'s formatter and the settings value are **editable fields, not readings** — Android's
+command-argument case in a different costume. The percentages are all built from fractions that
+cannot go negative.
+
+**A sweep that comes back mostly negative is a result only if it could have failed.** This one
+could: the same sweep on the same class of code found a real defect on the other head.
