@@ -21,5 +21,20 @@ struct PatternGeometry: Equatable {
         geometries.map(\.transects).filter { $0.count >= 2 }
     }
 
+    private static func shaped(_ geometries: [PatternGeometry], _ shape: String) -> [[GeoPoint]] {
+        geometries.filter { $0.shape == shape }.map(\.vertices)
+    }
+
+    static func areas(_ geometries: [PatternGeometry]) -> [[GeoPoint]] {
+        shaped(geometries, areaShape).filter { $0.count >= 3 }
+    }
+
+    static func lines(_ geometries: [PatternGeometry]) -> [[GeoPoint]] {
+        shaped(geometries, lineShape).filter { $0.count >= 2 }
+    }
+
+    static let areaShape = "area"
+    static let lineShape = "line"
+
     static let view = "view.missionItems(geometry)"
 }

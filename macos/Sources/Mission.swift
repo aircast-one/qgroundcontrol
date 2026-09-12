@@ -24,6 +24,7 @@ final class MissionStore: ObservableObject, Probeable, WriteReporting {
     @Published private(set) var selectedFacts: [ItemFact] = []
     @Published private(set) var selectedSpeed = ItemSpeed.unavailable
     @Published private(set) var patternTransects: [[GeoPoint]] = []
+    @Published private(set) var patternGeometries: [PatternGeometry] = []
     @Published private(set) var launch = LaunchPosition.unknown
     @Published private(set) var surveyStats = SurveyStats.none
     @Published private(set) var camera = CameraChoice.empty
@@ -361,8 +362,9 @@ final class MissionStore: ObservableObject, Probeable, WriteReporting {
     }
 
     private func readPatternGeometry() {
-        let lines = PatternGeometry.flownLines(
-            PatternGeometry.all(Bridge.group(PatternGeometry.view)))
+        let geometries = PatternGeometry.all(Bridge.group(PatternGeometry.view))
+        if geometries != patternGeometries { patternGeometries = geometries }
+        let lines = PatternGeometry.flownLines(geometries)
         if lines != patternTransects { patternTransects = lines }
     }
 
@@ -424,13 +426,9 @@ final class MissionStore: ObservableObject, Probeable, WriteReporting {
         return ((line["path"] as? [Any]) ?? []).compactMap(GeoPoint.init(json:))
     }
 
-    var corridorPaths: [[GeoPoint]] {
-        items.map(corridorPath).filter { $0.count >= 2 }
-    }
+    var corridorPaths: [[GeoPoint]] { PatternGeometry.lines(patternGeometries) }
 
-    var surveyAreas: [[GeoPoint]] {
-        items.map(surveyPolygon).filter { $0.count >= 3 }
-    }
+    var surveyAreas: [[GeoPoint]] { PatternGeometry.areas(patternGeometries) }
 
     private func polygon(at path: String, ring: Bool) -> EditablePolygon? {
         EditablePolygon(Bridge.group("view.polygon(\(path)\(ring ? "" : ",line"))"))

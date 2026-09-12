@@ -4480,6 +4480,28 @@ func checkAPatternDrawsThePathItActuallyFlies() {
         ["shape": "area", "transects": [at(47.0, 8.0)]])!]).isEmpty,
            "and a single point is not a line. One transect point cannot be flown between, and "
            + "MKPolyline with one coordinate draws nothing while still costing an overlay")
+
+    expect(PatternGeometry.areas(found).count == 2,
+           "BOTH the survey and the structure scan are areas, though only one of them is flown "
+           + "as transects. The outline a structure scan encloses is the thing the operator drew "
+           + "and has to see; gating the outline on having transects would erase it from the map "
+           + "and leave a survey-shaped hole where a building is")
+    expect(PatternGeometry.lines(found).isEmpty,
+           "and neither of them is a line -- the shape says which, not the presence of transects")
+
+    let corridor = PatternGeometry(["shape": "line", "property": "corridorPolyline",
+                                    "vertices": [at(47.0, 8.0), at(47.2, 8.2)],
+                                    "transects": []])!
+    expect(PatternGeometry.lines([corridor]).count == 1 && PatternGeometry.areas([corridor]).isEmpty,
+           "a corridor's two vertices are a path and never an area: three points is the floor "
+           + "for something that encloses ground, two for something that merely runs across it")
+    expect(PatternGeometry.areas([PatternGeometry(
+        ["shape": "area", "vertices": [at(47.0, 8.0), at(47.1, 8.1)]])!]).isEmpty
+           && PatternGeometry.lines([PatternGeometry(
+        ["shape": "line", "vertices": [at(47.0, 8.0)]])!]).isEmpty,
+           "and each threshold refuses the degenerate case one short of it -- two corners "
+           + "enclose no ground and one point crosses none, both of which MapKit renders as "
+           + "nothing while still costing an overlay")
 }
 
 func checkAPatternSaysHowHighAboveTheGroundItFlies() {

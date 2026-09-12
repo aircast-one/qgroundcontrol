@@ -3382,3 +3382,48 @@ item that is `blocked` or `awaitingTerrain` leaves the plan *unready*, which is 
 different claim. Renamed `unready`, and three test sentences that said "stops the save"
 were corrected with it. **A name is an assertion, and this one had been falsified by my
 own commit an hour earlier without my going back to look at what it said.**
+
+### (w) The pattern outlines come from the one read that already has them
+
+`surveyAreas` and `corridorPaths` each did **one `Bridge.group` per pattern, per
+ACCESS** — and `PlanWindow` reads both on every render pass. `view.missionItems(geometry)`
+already answers all of it in a single read, and `readPatternGeometry()` was already
+making that read to cache `patternTransects`; it simply threw the vertices away.
+
+**Measured, same plan, same probe call, both binaries built from this tree: 24 bridge
+calls before, 20 after.** The first figure I took was 39 — on a **different plan**,
+because two items from an earlier manual probe were still in it. A count compared
+across two corpora is not a measurement, so I rebuilt and measured both sides on the
+identical 8-item plan.
+
+**The output is identical on both**: `surveys [4, 4]`, `corridors [2]`, and the core's
+own geometry read agrees — areas `[4, 4]`, lines `[2]`.
+
+The rules live in `PatternGeometryModel.swift`, which swift-checks compiles. **Both the
+survey and the structure scan are areas**, though only the survey is flown as transects:
+gating the outline on having transects would erase the building a structure scan
+encloses and leave a hole where the operator drew one. The thresholds — three points to
+enclose ground, two to cross it — each have an assertion one short of them.
+
+`surveyPolygon`/`corridorPath` are **kept**, not dead: the KML/SHP import path calls them
+once on the item just inserted, before any reload has refreshed the cache.
+
+### head-vs-core has been stale for several commits, and I carried its green forward
+
+It reports **3 of 50 differing**, and two of them are the instrument, not the head. It
+compares my composed string against the core's bare `altitudeText`:
+
+- the launch row — core `585 m`, head `585 m AMSL`, which is the frame suffix
+  `261b2e8c8`/`85bec37ec`/`80522b2a0` deliberately added;
+- a survey — core `altitudeText` is **null** so the check expects an em dash, while
+  `altitudeBandText` holds `635 m` and the head correctly draws the band.
+
+**I wrote "adding a qualifier means finding every place the value is spelled — including
+your own instrument", applied it to the probe projection, and never applied it here.**
+Worse, I carried "50/50" forward in my own working notes across several cycles without
+re-running it. **A remembered green is not a measurement**, and this one had been false
+since the first frame-suffix commit.
+
+**The third difference — legs 4 against 3 — is NOT diagnosed.** `head-vs-core.py` builds
+its own plan, so the item list I inspected afterwards was not the one it judged. Naming
+it as open rather than guessing.
