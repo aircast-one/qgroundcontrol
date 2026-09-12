@@ -66,9 +66,10 @@ pub fn obstacle_view(backend: &dyn Backend, _args: &[String]) -> Value {
         false => None,
     };
     let imperial = crate::missionsummary::imperial(backend);
-    let reading = found.map(|(at, cm)| {
+    let spacing = real("increment").filter(|degrees| *degrees > 0.0);
+    let reading = found.zip(spacing).map(|((at, cm), increment)| {
         let metres = cm as f64 / CENTIMETRES_PER_METRE;
-        let heading = bearing(at, real("increment").unwrap_or(0.0), real("angleOffset").unwrap_or(0.0));
+        let heading = bearing(at, increment, real("angleOffset").unwrap_or(0.0));
         let (id, text) = sector(heading);
         json!({
             "distanceMetres": metres,
@@ -150,6 +151,10 @@ mod tests {
 
         let near = obstacle_view(&Ring(ring(vec![150, NO_READING])), &[]);
         assert_eq!(near["nearest"]["close"], true, "inside twice the sensor's minimum is the band the operator is warned about");
+
+        let mut spaceless = ring(vec![NO_READING, 320]);
+        spaceless["increment"] = json!(0.0);
+        assert_eq!(obstacle_view(&Ring(spaceless), &[])["nearest"], Value::Null, "without the angle between sectors an index names no direction, and defaulting it to zero would point every reading dead ahead - a bearing that looks like a measurement");
 
         let empty = obstacle_view(&Ring(ring(vec![NO_READING, NO_READING])), &[]);
         assert_eq!(empty["nearest"], Value::Null, "no reading at all is absent rather than a distance of zero, which would read as a collision");
