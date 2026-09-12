@@ -49,6 +49,16 @@ ACCEPTED = {
     "bandText": "the terrain panel draws lowestText and highestText at the plot's two ends "
                 "rather than one sentence between them, so the joined spelling is a display "
                 "choice this head makes and not a figure it fails to show",
+    "rangeText": "DECLINED, and the core agreed and declined to replace it. The guided slider draws "
+                 "its two ends as SEPARATE labels at opposite ends of the track, so a combined "
+                 "\"2 m to 150 m\" has nowhere to go without splitting a sentence the core "
+                 "assembled. The deeper reason is that the value above the slider is DRAGGED -- it "
+                 "never reaches the core and can only be spelled here -- so any rule the core owns "
+                 "on the ends is a SECOND precision rule on one control, visible at the same "
+                 "moment: \"2.0 m\" in the header above \"2 m\" at the end label. I asked for "
+                 "minimumText/maximumText instead and the core refused with my own argument, which "
+                 "was right: three labels agree only if one rule spells all three, and only the "
+                 "head can spell the dragged one. GuidedRange.text() is that rule",
 }
 
 
