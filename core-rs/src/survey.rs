@@ -39,7 +39,7 @@ pub fn survey_stats_view(backend: &dyn Backend, args: &[String]) -> Value {
         "class": "SurveyStats",
         "index": index,
         "isSurvey": is_survey,
-        "available": is_survey && (shots > 0 || area_m2 > 0.0),
+        "available": shots > 0 || area_m2 > 0.0,
         "shots": shots,
         "shotsText": if shots > 0 { shots.to_string() } else { ABSENT.to_string() },
         "secondsBetweenShots": seconds,
@@ -108,6 +108,38 @@ mod tests {
         let refusal = survey_stats_view(&Fake, &[]);
         assert_eq!(refusal["kind"], "null", "the kind stays null so a head that already treats this as absent is unaffected");
         assert!(refusal["reason"].as_str().unwrap().contains("index"), "and the reason says which argument is missing, because a bare null is indistinguishable from a survey that has nothing to report");
+    }
+
+    #[test]
+    fn a_corridor_scan_reports_its_camera_work_too() {
+        struct Corridor;
+        impl Backend for Corridor {
+            fn get(&self, path: &str) -> String {
+                match path.ends_with("cameraCalc") {
+                    true => json!({ "kind": "object", "facts": [
+                        { "property": "adjustedFootprintSide", "value": 9.0, "units": "m" },
+                        { "property": "adjustedFootprintFrontal", "value": 6.0, "units": "m" },
+                    ] }),
+                    false => json!({ "kind": "null" }),
+                }
+                .to_string()
+            }
+            fn get_fields(&self, path: &str, _f: &str) -> String {
+                match path {
+                    "plan.missionController.visualItems.3" => json!({ "kind": "object", "isSurveyItem": false, "cameraShots": 18, "timeBetweenShots": 2.0, "coveredArea": 4000.0, "complexDistance": 600.0 }),
+                    _ => json!({ "kind": "object", "appSettingsAreaUnitsString": "m\u{b2}", "appSettingsHorizontalDistanceUnitsString": "m" }),
+                }
+                .to_string()
+            }
+            fn set(&self, _p: &str, _v: &str) -> String { String::new() }
+            fn invoke(&self, _p: &str, _a: &str) -> String { json!({ "ok": true, "result": 1.0 }).to_string() }
+            fn watch(&self, _p: &[String]) {}
+        }
+        let view = survey_stats_view(&Corridor, &["3".to_string()]);
+        assert_eq!(view["available"], true, "isSurveyItem is final true on SurveyComplexItem alone, but cameraShots and cameraCalc live on TransectStyleComplexItem, which a corridor scan also inherits - gating on the type hid camera work the item really did");
+        assert_eq!(view["shotsText"], "18");
+        assert_eq!(view["footprintText"], "9.0 \u{d7} 6.0 m");
+        assert_eq!(view["isSurvey"], false, "and the type still travels, so a head that wants to word it differently can");
     }
 
     #[test]
