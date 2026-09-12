@@ -3777,6 +3777,7 @@
         "view.fences.circles.0.kindText",
         "view.fences.circles.0.path",
         "view.fences.circles.0.radius",
+        "view.fences.circles.0.radiusMetres",
         "view.fences.circles.0.radiusUnits",
         "view.fences.circles.0.shape",
         "view.fences.circles.0.usable",
@@ -10082,6 +10083,7 @@
                 "kindText": "string",
                 "path": "string",
                 "radius": "number",
+                "radiusMetres": "number",
                 "radiusUnits": "string",
                 "shape": "string",
                 "usable": "bool"

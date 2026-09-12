@@ -34,12 +34,16 @@ fn elements(backend: &dyn Backend, path: &str) -> Vec<Value> {
     object(&backend.get(path)).get("elements").and_then(Value::as_array).cloned().unwrap_or_default()
 }
 
-fn radius_fact(json: &Value) -> (f64, String) {
+fn radius_fact(json: &Value) -> (f64, f64, String) {
     json.get("facts")
         .and_then(Value::as_array)
         .and_then(|f| f.iter().find(|x| x.get("name").and_then(Value::as_str) == Some("Radius")))
-        .map(|f| (f.get("value").and_then(Value::as_f64).unwrap_or(0.0), f.get("units").and_then(Value::as_str).unwrap_or("m").to_string()))
-        .unwrap_or((0.0, "m".to_string()))
+        .map(|f| {
+            let shown = f.get("value").and_then(Value::as_f64).unwrap_or(0.0);
+            let metres = f.get("rawValue").and_then(Value::as_f64).unwrap_or(shown);
+            (metres, shown, f.get("units").and_then(Value::as_str).unwrap_or("m").to_string())
+        })
+        .unwrap_or((0.0, 0.0, "m".to_string()))
 }
 
 fn polygon_json(index: usize, json: &Value, area_unit: &Unit) -> Value {
@@ -64,11 +68,11 @@ fn polygon_json(index: usize, json: &Value, area_unit: &Unit) -> Value {
 fn circle_json(index: usize, json: &Value) -> Value {
     let inclusion = json.get("inclusion").and_then(Value::as_bool).unwrap_or(false);
     let centre = json.get("center").and_then(point);
-    let (radius, units) = radius_fact(json);
+    let (metres, radius, units) = radius_fact(json);
     let framing: Vec<Value> = centre
         .map(|(lat, lon)| {
-            let lat_span = radius / METRES_PER_DEGREE;
-            let lon_span = radius / (METRES_PER_DEGREE * lat.to_radians().cos().max(0.01));
+            let lat_span = metres / METRES_PER_DEGREE;
+            let lon_span = metres / (METRES_PER_DEGREE * lat.to_radians().cos().max(0.01));
             [(lat - lat_span, lon - lon_span), (lat + lat_span, lon + lon_span)]
                 .map(|(lat, lon)| crate::geo::wrap(lat, lon))
                 .map(|(latitude, longitude)| json!({ "latitude": latitude, "longitude": longitude }))
@@ -86,6 +90,7 @@ fn circle_json(index: usize, json: &Value) -> Value {
         "centreText": centre.map(|(lat, lon)| format!("{lat:.6}, {lon:.6}")).unwrap_or("\u{2014}".to_string()),
         "radius": radius,
         "radiusUnits": units,
+        "radiusMetres": metres,
         "usable": centre.is_some(),
         "framing": framing,
     })
@@ -274,6 +279,28 @@ mod tests {
         assert_eq!(view["circles"][0]["detailText"], "150 m radius");
         assert_eq!(view["circles"][0]["centreText"], "47.000000, 8.000000");
         assert_eq!(view["circles"][0]["framing"].as_array().unwrap().len(), 2);
+
+        let feet_circle = json!({ "kind": "object", "elements": [ { "inclusion": false, "center": {"latitude": 47.0, "longitude": 8.0},
+            "facts": [ { "name": "Radius", "value": 328.084, "rawValue": 100.0, "units": "ft" } ] } ] });
+        struct Imperial(Value);
+        impl Backend for Imperial {
+            fn get(&self, path: &str) -> String {
+                match path {
+                    "plan.geoFenceController.circles" => self.0.to_string(),
+                    _ => json!({ "kind": "null" }).to_string(),
+                }
+            }
+            fn get_fields(&self, p: &str, _f: &str) -> String { self.get(p) }
+            fn set(&self, _p: &str, _v: &str) -> String { String::new() }
+            fn invoke(&self, _p: &str, _a: &str) -> String { String::new() }
+            fn watch(&self, _p: &[String]) {}
+        }
+        let imperial = fences_view(&Imperial(feet_circle), &[]);
+        let circle = &imperial["circles"][0];
+        assert_eq!(circle["radius"], 328.084, "the cooked number is what the operator reads and types");
+        assert_eq!(circle["radiusMetres"], 100.0, "and this is what a map draws with - MKCircle takes metres, so handing it the cooked 328 drew a 100 m keep-out as a 328 m one and an operator planned round a boundary three times the size of the fence");
+        let north = circle["framing"][1]["latitude"].as_f64().unwrap();
+        assert!((north - 47.0009).abs() < 0.0002, "the framing box divides by metres per degree, so feet went in as metres and zoom-to-shape overshot by the same factor: {north}");
         assert_eq!(view["rallyPoints"][0]["path"], "plan.rallyPointController.points.0");
         assert_eq!((view["rallyPoints"][0]["altitude"].clone(), view["rallyPoints"][0]["altitudeUnits"].clone()), (json!(50.0), json!("m")));
         assert_eq!(view["rallyPoints"][0]["altitudeText"], "50.0 m", "the number and the unit stay beside it because a rally altitude is typed into, and a spelled string cannot be edited - but the head was spelling this itself from a copy of format_measure that had already drifted once by missing settled()");
