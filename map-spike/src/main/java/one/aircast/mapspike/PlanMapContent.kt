@@ -121,6 +121,7 @@ internal fun MapSpikeScreen(
     var circles by remember { mutableStateOf<List<FenceCircle>>(emptyList()) }
     var surveyList by remember { mutableStateOf<List<Survey>>(emptyList()) }
     var landingList by remember { mutableStateOf<List<LandingPattern>>(emptyList()) }
+    var surveyStatsMap by remember { mutableStateOf<Map<Int, SurveyStats>>(emptyMap()) }
     var selected by remember { mutableStateOf<MapHit?>(null) }
 
     BackHandler(enabled = selected != null) { selected = null }
@@ -235,6 +236,7 @@ internal fun MapSpikeScreen(
             val nextCircles = fenceCircles(fenceView)
             val nextSurveys = SurveyBridge.surveysFrom(plan)
             val nextLandings = landingPatterns(nextAll)
+            val nextStats = surveyStatsFor(nextAll)
             val drawn = planIsDrawn(nextItems, nextSurveys, nextFences, nextCircles, nextRally)
             withContext(Dispatchers.Main) {
                 if (fitsPlanOnEntry(firstRead, plan != null, drawn)) {
@@ -258,6 +260,7 @@ internal fun MapSpikeScreen(
                 circles = nextCircles
                 surveyList = nextSurveys
                 landingList = nextLandings
+                surveyStatsMap = nextStats
             }
         }
     }
@@ -752,7 +755,7 @@ internal fun MapSpikeScreen(
                     style = MaterialTheme.typography.titleSmall,
                 )
                 LazyColumn(Modifier.fillMaxWidth().padding(bottom = 24.dp)) {
-                    items(itemRows(allItems), key = { it.index }) { row ->
+                    items(itemRows(allItems, surveyStatsMap), key = { it.index }) { row ->
                         ItemRowView(row, selected = (selected as? MapHit.Waypoint)?.index == row.index) {
                             selected = MapHit.Waypoint(row.index)
                             items.firstOrNull { it.index == row.index }?.let { placed ->

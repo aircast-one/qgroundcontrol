@@ -88,3 +88,26 @@ object SurveyBridge {
             "[$vertex, ${coordinateJson(latitude, longitude)}]",
         )
 }
+
+data class SurveyStats(val areaText: String, val warning: String)
+
+fun surveyStats(view: org.json.JSONObject?): SurveyStats? {
+    if (view == null || !view.optBoolean("available")) {
+        return null
+    }
+    return SurveyStats(
+        areaText = view.optText("areaText").takeIf { it != "\u2014" }.orEmpty(),
+        warning = view.optText("warning"),
+    )
+}
+
+fun surveyStatsFor(items: List<MissionItem>): Map<Int, SurveyStats> =
+    items.filter { it.kind == KIND_SURVEY }
+        .mapNotNull { item ->
+            surveyStats(
+                runCatching {
+                    org.json.JSONObject(QGCBridge.get("view.surveyStats(${item.index})"))
+                }.getOrNull(),
+            )?.let { item.index to it }
+        }
+        .toMap()

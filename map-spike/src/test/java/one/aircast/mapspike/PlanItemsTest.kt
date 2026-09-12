@@ -1,6 +1,7 @@
 package one.aircast.mapspike
 
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertTrue
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Assert.assertNull
@@ -431,5 +432,38 @@ class HoldTextTest {
         assertEquals(null, holdText(0.0))
         assertEquals(null, holdText(Double.NaN))
         assertEquals(null, holdText(-1.0))
+    }
+}
+
+class SurveyStatsRowTest {
+
+    private val survey = MissionItem(
+        5, 5, 41.0, 44.0, "Survey", false, Double.NaN, kind = "survey",
+        altitudeBandText = "0.0 m to 40.0 m", cameraShots = 171,
+    )
+
+    @Test
+    fun `a survey carries its area beside its photo count`() {
+        val stats = SurveyStats(areaText = "0.03 km²", warning = "")
+
+        assertEquals("0.0 m to 40.0 m · 0.03 km² · 171 photos", itemDetail(survey, stats))
+    }
+
+    @Test
+    fun `a camera that cannot keep up says so, last, where it is read`() {
+        val stats = SurveyStats(
+            areaText = "0.03 km²",
+            warning = "The camera needs 2.00 s between shots but the survey asks for 1.50 s.",
+        )
+
+        assertTrue(
+            itemDetail(survey, stats)
+                .endsWith("The camera needs 2.00 s between shots but the survey asks for 1.50 s."),
+        )
+    }
+
+    @Test
+    fun `an item with no survey stats is unchanged`() {
+        assertEquals("0.0 m to 40.0 m · 171 photos", itemDetail(survey, null))
     }
 }

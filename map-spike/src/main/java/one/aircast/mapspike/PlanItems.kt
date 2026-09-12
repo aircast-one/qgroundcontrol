@@ -14,25 +14,30 @@ data class ItemRow(
     val placed: Boolean,
 )
 
-fun itemRows(items: List<MissionItem>): List<ItemRow> = items.map { item ->
+fun itemRows(
+    items: List<MissionItem>,
+    stats: Map<Int, SurveyStats> = emptyMap(),
+): List<ItemRow> = items.map { item ->
     ItemRow(
         index = item.index,
         number = item.sequence.toString(),
         name = item.command.ifBlank { "Item ${item.sequence}" },
-        detail = itemDetail(item),
+        detail = itemDetail(item, stats[item.index]),
         colour = waypointColour(item.kind, item.commandId),
         placed = item.placed,
     )
 }
 
-internal fun itemDetail(item: MissionItem): String = listOfNotNull(
+internal fun itemDetail(item: MissionItem, stats: SurveyStats? = null): String = listOfNotNull(
     item.altitudeText.ifBlank { null }
         ?: item.altitudeBandText.ifBlank { null }
         ?: NO_POSITION.takeIf { !item.placed && item.specifiesCoordinate },
     AFTER_THE_ROUTE_ENDS.takeIf { item.afterRouteEnds },
+    stats?.areaText?.ifBlank { null },
     photosText(item.cameraShots),
     holdText(item.extraSeconds),
     item.blockedReason.ifBlank { null },
+    stats?.warning?.ifBlank { null },
 ).joinToString(" \u00b7 ")
 
 fun worthListing(items: List<MissionItem>): Boolean = items.any { it.index != HOME_ITEM }
