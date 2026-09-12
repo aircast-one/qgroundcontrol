@@ -144,6 +144,10 @@ struct SettingsSubsection: Identifiable, Equatable {
 }
 
 struct SettingsSection: Identifiable, Equatable {
+    static func worthRemembering(_ sections: [SettingsSection]) -> Bool {
+        !sections.isEmpty
+    }
+
     let title: String
     let group: String
     let path: String

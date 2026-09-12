@@ -56,7 +56,7 @@ final class ParametersStore: ObservableObject, Probeable, WriteReporting {
         if let cached = setupCache[page] { return cached }
         let read = SettingsSection.list(Bridge.group("view.setup(\(page))")["sections"])
             .filter { !$0.controls.isEmpty }
-        setupCache[page] = read
+        if SettingsSection.worthRemembering(read) { setupCache[page] = read }
         return read
     }
 

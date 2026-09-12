@@ -2581,6 +2581,20 @@ func checkVehicleMessages() {
 
 checkVehicleMessages()
 
+func checkSetupCache() {
+    expect(SettingsSection.worthRemembering([]) == false,
+           "an EMPTY setup page is never remembered. view.setup(<page>) answers sections:0 until a "
+           + "vehicle's parameters have loaded -- measured at 0 on this rig with nothing connected "
+           + "-- and the store memoised that empty answer per page. The only line that clears the "
+           + "cache runs after writing a CONTROL, so an empty page could never be refilled: there "
+           + "is no control on it to write. Opening Vehicle Setup before the vehicle answered left "
+           + "that page blank for the rest of the app's life")
+    expect(SettingsSection.worthRemembering(
+        [SettingsSection(title: "Safety", group: "", path: "", note: "", subsections: [])]) == true,
+           "and a page that came back with real sections IS remembered, so the cache still does "
+           + "the job it was added for")
+}
+
 func checkEditableFields() {
     expect(Measure.committed("75", showing: 75.4, decimals: 0) == nil,
            "an altitude field the operator FOCUSED AND LEFT WITHOUT TYPING must not write. The "
@@ -2698,6 +2712,7 @@ func checkDetections() {
 
 checkDetections()
 checkEditableFields()
+checkSetupCache()
 
 final class ProbeStub: Probeable {
     static let probeID = "stub"
