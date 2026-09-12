@@ -6693,3 +6693,23 @@ bare `altitudeText`, so `585 m AMSL` reads as a mismatch and a survey whose
 check is wrong. **Any differ encodes today's rendering rules, and the rendering
 rules are what keep changing** — so this stays a two-command comparison run when
 it matters, rather than a checker that will quietly assert the old world.
+
+### Paid: the area formatters agree, and 89999 is a real number
+
+Owed since the survey row was first read and twice attempted without success —
+the rig would not cooperate and I said so rather than claiming it. With the
+probe it is two reads:
+
+    view.surveyStats(4).areaText     '89999 m²'   raw 89999.17660452
+    view.fences.polygons[0].detail   '4 vertices · 83250 m²'
+
+Both in the operator's area unit. The earlier disagreement — a fence reading
+`0.08 km²` beside a survey reading `89999 m²` — is closed by the core's
+`958bfed23`, and this is the measurement rather than the assumption.
+
+**And 89999 is a computed area, not a rounded 90000.** The raw figure is
+89999.17660452, so a default survey's polygon is very slightly under a 300 m
+square. I had labelled that an inference when I could not measure it; it is now
+a measurement, and it agrees with the inference — which is worth noting because
+it is the first time today one of my guesses survived contact with an
+instrument.
