@@ -6290,6 +6290,42 @@ as the core session said; what clears the warning is the bridge re-reading a
 time-dependent property on a timer. That is a weaker guarantee than a signal and
 worth knowing, rather than either "it expires by itself" or "a head must poll".
 
+### A metric rig cannot tell a conversion from an identity, 2026-09-13
+
+Two commits went green tonight on a rig where the fix and the bug produce the
+same string. `altitudeFieldLabel` hardcoded "m" and now reads the core's
+`altitudeEditUnits`; the pattern field's "Above surface m" now reads the units
+off the fact it writes. Both correct, both unverifiable in metric, and both
+verified only after switching the handset to Imperial — which took two minutes
+and immediately produced a finding no amount of re-reading would have.
+
+**What Imperial showed.** Mid-session, after switching units without
+restarting, the plan row read `164 ft` while the edit field held `50` under a
+label saying `m`. After a restart under Imperial the same field reads `164`
+labelled `Alt ft`, and the whole tab agrees: `721 ft`, `500 ft`,
+`-33 ft to 197 ft AMSL`.
+
+**The mechanism, from the core.** `FactMetaData::setRawUnits` installs a
+translator once, reading the unit preference at the moment the metadata is
+built, and nothing re-binds it. So a fact built under metric keeps
+`cookedUnits` "m" after the operator switches, while the core's own `*Text`
+fields convert live. Same code, two histories, and QGC's own editor behaves the
+same way.
+
+**So `altitudeEditUnits` is not the operator's preference.** It is the unit this
+fact's cooked value is in, which is also the unit a write must be in, because
+the bridge writes through `setCookedValue`. A head labelling the edit field with
+it is always right about the write, and disagrees with the rest of the screen
+only until the next restart. That is why the label follows the fact rather than
+a literal or a preference.
+
+**The alternative, not taken.** `rawValue` is writable, so a head could read raw
+metres, convert with the live preference and write back raw — removing the
+staleness instead of labelling it, at the cost of the head doing unit maths.
+The core serves `altitudeMetres` for whoever wants that. This head does not: one
+head converting on its own is the divergence three sessions spent 2026-09-12
+removing, and the stale window closes on its own.
+
 ### Structure scans draw the loop they fly, 2026-09-12
 
 `geometry_of` had been reading `visualTransectPoints` for every complex kind,
