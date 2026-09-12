@@ -2,6 +2,7 @@
 #[cfg(not(test))]
 mod abi;
 pub mod actions;
+pub mod adsb;
 pub mod altitude;
 pub mod altitudemodes;
 pub mod autoconnect;
@@ -24,7 +25,10 @@ pub mod control;
 pub mod fences;
 pub mod flightmodes;
 pub mod flystate;
+pub mod followme;
 pub mod ftp;
+pub mod gcsposition;
+pub mod gimbal;
 pub mod geo;
 pub mod gpsfacts;
 pub mod guided;

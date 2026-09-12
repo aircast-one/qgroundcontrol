@@ -27,12 +27,12 @@ fn offset(from: (f64, f64), to: (f64, f64)) -> (f64, f64) {
     (north, east)
 }
 
-fn distance_m(from: (f64, f64), to: (f64, f64)) -> f64 {
+pub fn distance_m(from: (f64, f64), to: (f64, f64)) -> f64 {
     let (north, east) = offset(from, to);
     north.hypot(east)
 }
 
-fn azimuth_deg(from: (f64, f64), to: (f64, f64)) -> f64 {
+pub fn azimuth_deg(from: (f64, f64), to: (f64, f64)) -> f64 {
     let (north, east) = offset(from, to);
     east.atan2(north).to_degrees().rem_euclid(360.0)
 }

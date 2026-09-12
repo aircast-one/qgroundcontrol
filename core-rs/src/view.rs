@@ -16,7 +16,11 @@ use crate::missionsummary;
 use crate::modeslots;
 use crate::flystate;
 use crate::geo;
+use crate::adsb;
 use crate::detections;
+use crate::followme;
+use crate::gcsposition;
+use crate::gimbal;
 use crate::guided;
 use crate::inspector;
 use crate::instruments;
@@ -157,6 +161,10 @@ pub const VIEWS: &[View] = &[
     View { path: "view.coreRemoteId", deps: &[], compute: hub::core_remote_id_view },
     View { path: "view.coreCalibration", deps: &[], compute: hub::core_calibration_view },
     View { path: "view.detections", deps: detections::DEPS, compute: detections::detections_view },
+    View { path: "view.adsbTraffic", deps: adsb::DEPS, compute: adsb::adsb_traffic_view },
+    View { path: "view.followMe", deps: followme::DEPS, compute: followme::follow_me_view },
+    View { path: "view.gcsPosition", deps: &[], compute: gcsposition::gcs_position_view },
+    View { path: "view.gimbal", deps: &[], compute: gimbal::gimbal_view },
     View { path: "view.kmlFile", deps: kml::DEPS, compute: kml::kml_view },
     View { path: "view.shapeFile", deps: shp::DEPS, compute: shp::shp_view },
     View { path: "view.geoToNed", deps: geo::DEPS, compute: geo::geo_to_ned_view },
