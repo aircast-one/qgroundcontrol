@@ -4740,6 +4740,29 @@ func checkAPatternDrawsThePathItActuallyFlies() {
            "and a single point is not a line. One transect point cannot be flown between, and "
            + "MKPolyline with one coordinate draws nothing while still costing an overlay")
 
+    let scan = PatternGeometry(["shape": "area", "property": "structurePolygon",
+                                "vertices": [at(47.0, 8.0), at(47.0, 8.1), at(47.1, 8.1)],
+                                "transects": [],
+                                "flightLoop": [at(47.0, 8.0), at(47.0, 8.1), at(47.1, 8.1)]])!
+    expect(PatternGeometry.flownLines([scan]).first?.count == 4,
+           "a structure scan draws the loop it FLIES, and this head drew no route at all for one. "
+           + "Measured on the running app: the core serves transects as an EMPTY list for a "
+           + "structure scan -- it has no visualTransectPoints -- and flownLines filtered the "
+           + "empty list out, so the map drew the outline the operator dragged round the building "
+           + "and nothing through it. Three corners become FOUR points because a loop is CLOSED: "
+           + "the core serves the corners only, first != last, and drawing them open leaves one "
+           + "side of the building with no route over it, which reads as a side the aircraft "
+           + "does not fly")
+    expect(PatternGeometry.flownLines([scan]).first?.last == PatternGeometry.flownLines([scan]).first?.first,
+           "and the closing point is the starting one, not a copy of the last corner")
+
+    let survey = PatternGeometry(["shape": "area", "transects": [at(47.0, 8.0), at(47.1, 8.1)],
+                                  "flightLoop": [at(1.0, 1.0), at(2.0, 2.0), at(3.0, 3.0)]])!
+    expect(PatternGeometry.flownLines([survey]).first?.count == 2,
+           "and transects still win where an item has both. A survey is flown as open sweeps, "
+           + "not a ring, so closing it would draw a leg from the last transect back to the "
+           + "first that the aircraft never flies")
+
     expect(PatternGeometry.areas(found).count == 2,
            "BOTH the survey and the structure scan are areas, though only one of them is flown "
            + "as transects. The outline a structure scan encloses is the thing the operator drew "
