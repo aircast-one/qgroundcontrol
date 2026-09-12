@@ -6364,3 +6364,49 @@ such property. So the view and the write disagree about what sits at index 4 at
 the same instant. Best guess is that the insert has not settled in `visualItems`
 when the view reads it; that is a guess, labelled as one, and sent to the core
 with the payload.
+
+## A survey takes a corner, and the head stops naming invokables, 2026-09-12
+
+The midpoint layer read fence polygons only, so a survey's edges had nowhere
+to add a corner — four default corners, draggable, and no fifth. `view.polygon`
+answers for any shape's path and a survey carries one, so one reader now serves
+both. Verified on the handset: a survey drew four midpoint dots, the top one
+became a corner exactly where it sat, with fresh dots either side.
+
+The part worth keeping is what came off the head. It was naming the invokable
+itself — `splitPolygonSegment` for a ring, `splitSegment` for a corridor's
+polyline — which is the same species as the unit literals: a derivation the
+core already answers, sitting in the head where it can only ever diverge. The
+core sends `splitInvokable` alongside the midpoints it computed, so the hit now
+carries the core's path and the core's invokable and the tap just calls it.
+A shape the head has never met gets its corner for free.
+
+`cornerRemovable` still re-derives `canRemoveVertex` from the same view. Left
+alone deliberately — it belongs with the delete path — but it is the next one.
+
+## speedChangeText, and a stale library that answered without it
+
+`grep speedChange` over the whole head returned nothing. A DO_CHANGE_SPEED row
+read "Change speed" and no speed, so reviewing a plan for speed changes meant
+selecting every item in turn. The core has served it since `54aa8601b`, in the
+operator's speed unit, withheld at zero because "0.0 m/s" reads as an
+instruction to stop. Now in `itemDetail`; the handset reads
+"50.0 m · 12.0 m/s" on the item that commands one.
+
+**The first device run showed a blank speed with correct code.** The library on
+the phone predated the core commit. What made that legible in two minutes
+rather than two hours was counting three keys, not one:
+
+    speedChangeText 0      splitInvokable 1      altitudeBandText 1
+
+A single key reading 0 proves nothing on a release build — that false negative
+is already written up under the terrain band. Two controls from the *same*
+library that are found is what turns the absence into evidence. The rule that
+falls out: **when a byte probe is the instrument, it needs a positive control
+from the same artefact, or its negative result is unreadable.**
+
+The list numbers 0, 1, 2, 4. Sequence 3 is the speed change, folded into the
+item it precedes. Nothing on screen accounts for the gap. Not fixed: an
+operator who never authored a speed change does not need telling about a row
+that does not exist, and if it is worth saying at all the core should say
+"this item carries a folded command" once for both heads.
