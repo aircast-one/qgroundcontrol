@@ -22,11 +22,10 @@ struct DetectionBox: Equatable {
         self.y = y
         self.width = width
         self.height = height
-        let reported = (json["conf"] as? NSNumber)?.doubleValue
+        let reported = (json["confidence"] as? NSNumber)?.doubleValue
         confidence = (reported?.isFinite ?? false) ? reported : nil
     }
 
-    // The QML overlay wrote "car NaN%" for a box that carried no confidence.
     var caption: String {
         guard let confidence else { return label }
         return "\(label) \(Int((confidence * 100).rounded()))%"

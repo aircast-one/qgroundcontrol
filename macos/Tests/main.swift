@@ -2586,7 +2586,7 @@ func checkDetections() {
              conf: Double? = 0.91) -> [String: Any] {
         var made: [String: Any] = ["label": label, "x": x as NSNumber, "y": y as NSNumber,
                                    "w": w as NSNumber, "h": h as NSNumber]
-        if let conf { made["conf"] = conf as NSNumber }
+        if let conf { made["confidence"] = conf as NSNumber }
         return made
     }
     func placed(_ picture: PaintedPicture?, _ json: [String: Any]) -> String {
@@ -2608,6 +2608,26 @@ func checkDetections() {
     expect(read.boxes[1].caption, "person",
            "and one with no confidence says only what it is; the QML wrote \"person NaN%\"")
     expect(read.draws, "a fresh frame with boxes is drawn")
+
+    let asCoreServes: [String: Any] = ["x": 0.1 as NSNumber, "y": 0.2 as NSNumber,
+                                       "w": 0.3 as NSNumber, "h": 0.4 as NSNumber,
+                                       "label": "car", "confidence": 0.91 as NSNumber,
+                                       "target": true as NSNumber]
+    expect(DetectionBox(asCoreServes)?.caption ?? "", "car 91%",
+           "and the key is the one the CORE spells, copied from the shape detections.rs pins in "
+           + "its own test. The core RENAMES the upstream \"conf\" to \"confidence\" on the way "
+           + "out and this head went on reading the pre-rename name, so confidence was nil on "
+           + "EVERY box and every detection drawn over the video was captioned \"car\" with no "
+           + "percentage -- the number an operator uses to judge whether to trust the box. The "
+           + "QML original drew it, so this was a regression, and the old test passed throughout "
+           + "because its own fixture spelled the key the same wrong way the decoder did. A "
+           + "hand-written fixture can only ever agree with the decoder; this one is copied from "
+           + "the producer instead")
+    expect(DetectionBox(["label": "car", "x": 0.1 as NSNumber, "y": 0.2 as NSNumber,
+                         "w": 0.3 as NSNumber, "h": 0.4 as NSNumber,
+                         "conf": 0.91 as NSNumber])?.caption ?? "", "car",
+           "and the pre-rename spelling is pinned as NOT the key, so pointing the decoder back at "
+           + "\"conf\" goes red here rather than silently dropping every percentage again")
 
     expect(Detections(["available": true as NSNumber, "stale": true as NSNumber,
                        "boxes": [box("car", 0, 0, 1, 1)]]).draws == false,
