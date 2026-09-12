@@ -3986,3 +3986,40 @@ that file to `now`**, so the test read "not compiled in the last few seconds" an
 123 objects stale. **The reference point was something I had moved myself**, one cycle
 after `ps aux | grep` counted its own shell. **Both instruments answered honestly about
 the wrong population.**
+
+### (ll) Five models the checkers had never read, and a citation that did not cover what it named
+
+**The sweep I set out to run came back empty, and the finding was one branch over.** All 95
+entries in `checkViewContract`'s two lists resolve to a recorded shape — and a
+non-resolving entry **fails loudly** rather than passing quietly, which is how
+`view.surveyStats(0)` was caught in the first place. **The silent class I was looking for
+does not exist on that path**, so the sweep is not shipped: it duplicates a guard that
+already works.
+
+**The silent branch is the other one.** An entry whose recording is `"empty"` **passes
+without comparing anything**, and there is exactly one: `view.modeSlots.slots`, empty
+because no vehicle is connected when the recorder runs. That branch's message names
+`QGCCoreCTest::_listsRecordedAsEmptyAreCheckedAgainstAVehicle` as the backstop. **I read
+the test. It checks `view.radio`'s channels and `view.sensors`. It does not touch mode
+slots.**
+
+So `slot`, `mode` and `live` were pinned **by nothing**: not the contract, not that test,
+and not `view-fields.py` — because **`head_models.py` is written by hand and nothing
+noticed that five model files were missing from it.** `FlyState`, `GuidedOffer`,
+`ModeSlot`, `ModeSlots`, `MapScaleBar`. Coverage 19 → 24.
+
+**The fifth comment today asserting something untrue** — after `stopsSave`,
+`supportsTerrainFrame`, `closed` and `build-run.sh`'s claim about other sessions. **This
+one is the most dangerous of the five because it cites a specific test**, and a named
+citation is exactly where a reader stops checking.
+
+**The guard is the deliverable, not the five entries**, and it caught one my own sweep had
+missed **by the mechanism it was written to find**. I derived candidate view names from the
+recorded contract, where the map scale is keyed `view.mapScale(120)` **with its argument**,
+so a lookup for `view.mapScale` matched nothing and `MapScaleModel.swift` read as clean.
+**Argument-versus-base-name blindness, inside the tool written to catch
+argument-versus-base-name blindness.**
+
+**Proven both directions:** renaming the key `ModeSlot` reads for `live` now reports GONE
+against `modeslots.rs`, so the new entries are exercised; dropping `ModeSlot` back out of
+`MODELS` makes the guard report it again.
