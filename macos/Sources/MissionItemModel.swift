@@ -27,6 +27,7 @@ struct MissionItem: Identifiable, Equatable {
     let altitudeText: String
     let altitudeBandText: String
     let altitudeFrame: String
+    let frameWord: String?
 
     let azimuthText: String
     let distanceText: String
@@ -54,12 +55,9 @@ struct MissionItem: Identifiable, Equatable {
     var canMove: Bool { movable }
 
     var frameSuffix: String {
-        switch altitudeFrame {
-        case "", MissionItem.launchFrame: return ""
-        case "amsl": return " AMSL"
-        case "terrain": return " AGL"
-        default: return " " + altitudeFrame.uppercased()
-        }
+        if let spelled = frameWord, !spelled.isEmpty { return " " + spelled }
+        guard !altitudeFrame.isEmpty, altitudeFrame != MissionItem.launchFrame else { return "" }
+        return " " + altitudeFrame.uppercased()
     }
 
     var altitudeFieldUnits: String { altitudeUnits + frameSuffix }
@@ -183,6 +181,7 @@ struct MissionItem: Identifiable, Equatable {
         altitudeText = (json["altitudeText"] as? String) ?? MissionItem.noAltitude
         altitudeBandText = (json["altitudeBandText"] as? String) ?? ""
         altitudeFrame = (json["altitudeFrame"] as? String) ?? ""
+        frameWord = json["altitudeFrameText"] as? String
 
         azimuthText = (json["azimuthText"] as? String) ?? MissionItem.noAltitude
         distanceText = (json["distanceText"] as? String) ?? MissionItem.noAltitude

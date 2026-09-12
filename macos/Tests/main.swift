@@ -4553,33 +4553,41 @@ func checkSpeedChangeIsListedNotOnlySelected() {
 }
 
 func checkAnAltitudeSaysWhatItIsMeasuredFrom() {
-    func item(_ frame: Any, text: String = "541 m", kind: String = "survey") -> MissionItem {
-        MissionItem(view: ["index": 3 as NSNumber, "sequence": 3 as NSNumber,
-                           "name": kind, "kind": kind, "altitudeBandText": text,
-                           "altitudeFrame": frame], selected: -1)
+    func item(_ frame: Any, text: String = "541 m", kind: String = "survey",
+              word: String? = nil) -> MissionItem {
+        var view: [String: Any] = ["index": 3 as NSNumber, "sequence": 3 as NSNumber,
+                                   "name": kind, "kind": kind, "altitudeBandText": text,
+                                   "altitudeFrame": frame]
+        if let word { view["altitudeFrameText"] = word }
+        return MissionItem(view: view, selected: -1)
     }
-    expect(item("amsl").altitudeReading, "541 m AMSL",
+    expect(item("amsl", word: "AMSL").altitudeReading, "541 m AMSL",
            "the column was showing 491 m, 75.0 m and 541 m together with nothing saying which "
            + "was measured from where -- a launch height above the sea, a waypoint above the "
            + "launch pad, and a survey band above the sea, with 75 four pixels from 541. The "
            + "core now names the frame and the two that are not the operator's default say so")
-    expect(item(MissionItem.launchFrame, text: "75.0 m", kind: "waypoint").altitudeReading,
+    expect(item(MissionItem.launchFrame, text: "75.0 m", kind: "waypoint", word: "")
+        .altitudeReading,
            "75.0 m",
            "and the common case stays bare: a number with no frame reads as relative to launch, "
            + "which is what QGC has always meant by it. Labelling all three would put a word "
            + "under every row to disambiguate the two that need it")
-    expect(item("terrain").altitudeReading, "541 m AGL",
+    expect(item("terrain", word: "AGL").altitudeReading, "541 m AGL",
            "a terrain-following item is the THIRD frame, not a second one -- altitude_frame "
            + "returns amsl, launch or terrain, and a head treating this as a boolean would leave "
            + "the terrain case wearing the label of whichever branch it fell into")
-    expect(item("gundeck").altitudeReading, "541 m GUNDECK",
-           "and a frame this head has never heard of is SHOWN, not swallowed. Falling through to "
-           + "bare would spell a frame nobody can read as the default one, which is the exact "
-           + "failure the field was added to end")
+    expect(item("gundeck", word: "").altitudeReading, "541 m GUNDECK",
+           "and a frame NEITHER side has heard of is SHOWN, not swallowed -- even when the core "
+           + "spells it as the empty string. frame_word maps every token it does not know to "
+           + "\"\", the same answer it gives launch-relative, so drawing the core's word alone "
+           + "would promote an unseen frame to THE DEFAULT ONE silently. The head keeps its "
+           + "uppercase fallback for exactly the tokens the core declined to name, and Android "
+           + "has the identical test under the name SEABED")
     let terrainWaypoint = MissionItem(
         view: ["index": 2 as NSNumber, "sequence": 2 as NSNumber, "name": "Waypoint",
                "kind": "waypoint", "specifiesAltitude": true as NSNumber,
-               "altitudeText": "75.0 m", "altitudeUnits": "m", "altitudeFrame": "terrain"],
+               "altitudeText": "75.0 m", "altitudeUnits": "m", "altitudeFrame": "terrain",
+               "altitudeFrameText": "AGL"],
         selected: -1)
     expect(terrainWaypoint.altitudeFieldUnits, "m AGL",
            "an EDITABLE item carries a frame too, and this is the case that nearly got away. A "
@@ -4590,7 +4598,8 @@ func checkAnAltitudeSaysWhatItIsMeasuredFrom() {
     expect(MissionItem(view: ["index": 1 as NSNumber, "sequence": 1 as NSNumber,
                               "name": "Takeoff", "kind": "takeoff",
                               "specifiesAltitude": true as NSNumber, "altitudeUnits": "m",
-                              "altitudeFrame": MissionItem.launchFrame], selected: -1)
+                              "altitudeFrame": MissionItem.launchFrame,
+                              "altitudeFrameText": ""], selected: -1)
         .altitudeFieldUnits, "m",
            "and the default frame adds nothing to the unit, so the common editable row is "
            + "unchanged -- the whole point of labelling only the exceptions")
