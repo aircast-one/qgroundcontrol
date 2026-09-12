@@ -240,7 +240,8 @@
         "view.settings(General).sections.2.subsections.0.controls.1.minimum",
         "view.terrainProfile.clearanceText",
         "view.terrainProfile.minClearanceMetres",
-        "view.video.sourceSize"
+        "view.video.sourceSize",
+        "view.warnings.armingChecks"
     ],
     "_neverVaried": [
         "view.adsbTraffic.alertUnknown",
@@ -3126,6 +3127,7 @@
         "view.video.streamSource",
         "view.video.streaming",
         "view.video.summary",
+        "view.warnings.armingChecks",
         "view.warnings.class",
         "view.warnings.kind"
     ],
@@ -9109,6 +9111,7 @@
         "view.video.streaming",
         "view.video.summary",
         "view.warnings.armingBlocker",
+        "view.warnings.armingChecks",
         "view.warnings.class",
         "view.warnings.kind",
         "view.warnings.warnings.#",
@@ -11158,6 +11161,7 @@
     },
     "view.warnings": {
         "armingBlocker": "null|string",
+        "armingChecks": "null",
         "class": "string",
         "kind": "string",
         "warnings": [

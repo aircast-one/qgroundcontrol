@@ -54,14 +54,53 @@ pub fn arming_blocker(s: &State) -> Option<String> {
     }
 }
 
+fn severity_word(raw: &str) -> &'static str {
+    match raw {
+        "error" => "error",
+        "warning" => "warning",
+        _ => "info",
+    }
+}
+
+fn arming_problems(backend: &dyn Backend, supported: bool) -> Option<Vec<Value>> {
+    if !supported {
+        return None;
+    }
+    let model = object(&backend.get("vehicle.healthAndArmingCheckReport.problemsForCurrentMode"));
+    Some(
+        model
+            .get("elements")
+            .and_then(Value::as_array)
+            .map(|listed| {
+                listed
+                    .iter()
+                    .map(|problem| {
+                        json!({
+                            "message": text(problem, "message"),
+                            "description": text(problem, "description"),
+                            "severity": severity_word(&text(problem, "severity")),
+                        })
+                    })
+                    .collect()
+            })
+            .unwrap_or_default(),
+    )
+}
+
 pub fn warnings_view(backend: &dyn Backend, _args: &[String]) -> Value {
     let state = read_state(backend);
     let listed = warnings(&state);
+    let problems = arming_problems(backend, state.report_supported);
+    let refusal = problems
+        .as_ref()
+        .and_then(|found| found.iter().find(|p| p["severity"] == "error"))
+        .and_then(|p| p["message"].as_str().map(str::to_string));
     json!({
         "kind": "object",
         "class": "VehicleWarnings",
         "warnings": listed,
-        "armingBlocker": arming_blocker(&state),
+        "armingBlocker": refusal.or_else(|| arming_blocker(&state)),
+        "armingChecks": problems,
     })
 }
 
@@ -90,6 +129,46 @@ mod tests {
 
     fn healthy() -> State {
         State { connected: true, has_position: true, all_sensors_healthy: true, ready_to_fly_available: true, ready_to_fly: true, ..State::default() }
+    }
+
+    #[test]
+    fn the_reason_the_vehicle_will_not_arm_is_the_reason_the_vehicle_gave() {
+        struct Report(bool, Value);
+        impl Backend for Report {
+            fn get(&self, path: &str) -> String {
+                match path {
+                    "vehicle.healthAndArmingCheckReport.problemsForCurrentMode" => self.1.to_string(),
+                    _ => json!({ "kind": "null" }).to_string(),
+                }
+            }
+            fn get_fields(&self, path: &str, _f: &str) -> String {
+                match path {
+                    "vehicles" => json!({ "kind": "object", "activeVehicleAvailable": true }).to_string(),
+                    "vehicle" => json!({ "kind": "object", "armed": false, "requiresGpsFix": true, "coordinate": { "valid": true }, "allSensorsHealthy": true, "readyToFlyAvailable": true, "readyToFly": true }).to_string(),
+                    "vehicle.healthAndArmingCheckReport" => json!({ "kind": "object", "supported": self.0 }).to_string(),
+                    _ => json!({ "kind": "null" }).to_string(),
+                }
+            }
+            fn set(&self, _p: &str, _v: &str) -> String { String::new() }
+            fn invoke(&self, _p: &str, _a: &str) -> String { String::new() }
+            fn watch(&self, _p: &[String]) {}
+        }
+        let listed = json!({ "kind": "object", "elements": [
+            { "message": "Compass not calibrated", "description": "Calibrate the compass<br/>then reboot", "severity": "error" },
+            { "message": "Low wind estimate confidence", "description": "", "severity": "warning" },
+            { "message": "Logging enabled", "description": "", "severity": "" },
+        ] });
+
+        let reported = warnings_view(&Report(true, listed.clone()), &[]);
+        assert_eq!(reported["armingBlocker"], "Compass not calibrated", "the core answered a generic sentence of its own while the vehicle was naming the actual check, because arming_blocker skips the prearm arm once the report is supported and falls through to the sensor rules");
+        let checks = reported["armingChecks"].as_array().unwrap();
+        assert_eq!(checks.len(), 3);
+        assert_eq!(checks[2]["severity"], "info", "severity is error, warning, or an EMPTY string for the informational ones - a bool loses the third bucket and an empty severity is a real problem to show, not a parse failure");
+        assert_eq!(checks[0]["description"], "Calibrate the compass<br/>then reboot", "the description carries markup QGC renders as live links, including param:// links that open the parameter editor, so flattening it drops the actionable half");
+
+        let quiet = warnings_view(&Report(false, listed), &[]);
+        assert_eq!(quiet["armingChecks"], Value::Null, "canArm initialises TRUE and supported FALSE, so a firmware that has never sent a report reads exactly like one that passed every check - null says nobody asked rather than nothing is wrong");
+        assert_eq!(quiet["armingBlocker"], Value::Null);
     }
 
     #[test]
