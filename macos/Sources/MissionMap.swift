@@ -7,7 +7,7 @@ final class MissionAnnotation: NSObject, MKAnnotation {
     let title: String?
     let subtitle: String?
     let sequence: Int
-    let isCurrent: Bool
+    let isSelected: Bool
     let isLaunch: Bool
     let canMove: Bool
 
@@ -16,7 +16,7 @@ final class MissionAnnotation: NSObject, MKAnnotation {
         title = "\(item.sequence). \(item.command)"
         subtitle = item.mapSubtitle
         sequence = item.sequence
-        isCurrent = item.isCurrent
+        isSelected = item.isSelected
         isLaunch = item.isLaunch
         canMove = item.canMove
     }
@@ -723,8 +723,8 @@ struct MissionMap: NSViewRepresentable {
             view.isDraggable = item.canMove
             view.glyphText = String(item.sequence)
             view.markerTintColor = item.isLaunch ? .systemGreen : .controlAccentColor
-            view.displayPriority = item.isCurrent ? .required : .defaultHigh
-            view.zPriority = item.isCurrent ? .max : .defaultUnselected
+            view.displayPriority = item.isSelected ? .required : .defaultHigh
+            view.zPriority = item.isSelected ? .max : .defaultUnselected
             return view
         }
 

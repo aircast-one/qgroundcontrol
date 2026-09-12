@@ -359,12 +359,19 @@ let startInFeet = MissionItem(view: [
     "index": 0, "sequence": 0, "name": "Mission Start", "altitude": 1916.3,
     "altitudeUnits": "ft", "altitudeText": "1916 ft"], selected: -1)
 expect(startInFeet.altitudeText, "1916 ft", "and an operator on feet is told feet")
-expect(start.isCurrent,
-       "the editor's selection is one index on the view, not a flag on each item -- the core "
+expect(start.isSelected,
+       "the field is named for what it IS: it decodes the core's \"selected\" and every "
+       + "consumer means the selected row, so it was called isCurrent for no reason the code "
+       + "supports -- loadSelectedFacts says so in its own name and the probe hands it back "
+       + "out as \"selected\". MissionManager's currentIndex is a DIFFERENT thing, the item "
+       + "the aircraft is flying to, and a field called isCurrent that means selection is what "
+       + "would make adopting the real one dangerous. "
+       + "The editor's selection is one index on the view, not a flag on each item -- the core "
        + "stopped serving a per-item \"current\" because it invited a head to draw a marker "
        + "meaning the aircraft is there, and this head went on reading the absent key and "
        + "selected nothing at all")
-expect(!startInFeet.isCurrent, "and an item whose index is not the selected one is not selected")
+expect(!startInFeet.isSelected, "and an item whose index is not the selected one is not selected")
+
 expect(waypoint.index == 1, "an item remembers the list position its bridge path needs")
 expect(waypoint.specifiesAltitude, "a waypoint's altitude is editable")
 expect(!start.specifiesAltitude, "an item that does not specify altitude is not editable")

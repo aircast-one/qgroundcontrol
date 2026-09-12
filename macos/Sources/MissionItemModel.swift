@@ -15,7 +15,7 @@ struct MissionItem: Identifiable, Equatable {
     let exitLatitude: Double?
     let exitLongitude: Double?
     let altitude: Double?
-    let isCurrent: Bool
+    let isSelected: Bool
     let specifiesAltitude: Bool
     let commandId: Int
     let isSimpleItem: Bool
@@ -154,7 +154,7 @@ struct MissionItem: Identifiable, Equatable {
         sequence = (json["sequence"] as? NSNumber)?.intValue ?? 0
         command = (json["name"] as? String) ?? ""
         description = (json["description"] as? String) ?? ""
-        isCurrent = index == selected
+        isSelected = index == selected
         specifiesAltitude = (json["specifiesAltitude"] as? NSNumber)?.boolValue ?? false
         commandId = (json["command"] as? NSNumber)?.intValue ?? 0
         isSimpleItem = (json["simple"] as? NSNumber)?.boolValue ?? false

@@ -499,7 +499,7 @@ struct PlanInspector: View {
                         description: item.subtitle(
                             unreached: unreachedItems.contains(item.index)),
                         showSeparator: item.index > 0,
-                        current: item.isCurrent,
+                        current: item.isSelected,
                         descriptionLines: 3,
                         leading: {
                             Seal(label: "\(item.sequence)",
@@ -517,7 +517,7 @@ struct PlanInspector: View {
                                         .font(.body.monospacedDigit())
                                         .foregroundColor(Overlay.value)
                                 }
-                                if item.isCurrent && item.canChangeCommand {
+                                if item.isSelected && item.canChangeCommand {
                                     Button {
                                         mission.pickCommand(for: item)
                                     } label: {
@@ -527,7 +527,7 @@ struct PlanInspector: View {
                                     .frame(width: 22)
                                     .help("Change what this item does")
                                 }
-                                if item.isCurrent && item.canRemove {
+                                if item.isSelected && item.canRemove {
                                     Button {
                                         mission.remove(item)
                                     } label: {
@@ -585,7 +585,7 @@ struct PlanInspector: View {
     }
 
     private var showsMissionSettings: Bool {
-        mission.items.first(where: \.isCurrent)?.sequence == 0
+        mission.items.first(where: \.isSelected)?.sequence == 0
             && !mission.missionModes.isEmpty
     }
 
@@ -673,7 +673,7 @@ struct PlanInspector: View {
     }
 
     private var selectedLeg: MissionItem? {
-        guard let item = mission.items.first(where: \.isCurrent),
+        guard let item = mission.items.first(where: \.isSelected),
               MissionItem.legs(mission.items).contains(item.index) else { return nil }
         return item
     }
@@ -691,7 +691,7 @@ struct PlanInspector: View {
 
     private var surveyCard: some View {
         VStack(alignment: .leading, spacing: Overlay.unit * 0.35) {
-            SectionLabel(text: mission.items.first(where: \.isCurrent)?.command ?? "Survey")
+            SectionLabel(text: mission.items.first(where: \.isSelected)?.command ?? "Survey")
             if !mission.surveyStats.warning.isEmpty {
                 Label(mission.surveyStats.warning, systemImage: "exclamationmark.triangle.fill")
                     .font(.caption)

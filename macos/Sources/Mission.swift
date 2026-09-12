@@ -407,7 +407,7 @@ final class MissionStore: ObservableObject, Probeable, WriteReporting {
             // position -- measured, the core answered -35.278589, 149.338502 while the row showed
             // a dash until something forced a reload.
             self.readItems()
-            guard let current = self.items.first(where: \.isCurrent) else { return }
+            guard let current = self.items.first(where: \.isSelected) else { return }
             self.readSurveyStats(current.index)
         }
     }
@@ -483,7 +483,7 @@ final class MissionStore: ObservableObject, Probeable, WriteReporting {
     }
 
     private func loadSelectedFacts() {
-        guard let item = items.first(where: \.isCurrent) else {
+        guard let item = items.first(where: \.isSelected) else {
             selectedFacts = []
             if selectedSpeed != .unavailable { selectedSpeed = .unavailable }
             if surveyStats != .none { surveyStats = .none }
@@ -527,7 +527,7 @@ final class MissionStore: ObservableObject, Probeable, WriteReporting {
     }
 
     func setCamera(brand: String? = nil, model: String? = nil) {
-        guard let item = items.first(where: \.isCurrent) else { return }
+        guard let item = items.first(where: \.isSelected) else { return }
         let path = "plan.missionController.visualItems.\(item.index).cameraCalc"
         if let brand { write("\(path).cameraBrand", brand, "the camera") }
         if let model { write("\(path).cameraModel", model, "the camera model") }
@@ -592,7 +592,7 @@ final class MissionStore: ObservableObject, Probeable, WriteReporting {
             writeFailure = refused
             return
         }
-        guard let item = items.first(where: \.isCurrent) else { return }
+        guard let item = items.first(where: \.isSelected) else { return }
         write("plan.missionController.visualItems.\(item.index).altitudeMode", raw,
               "this item's altitude mode")
         reload()
@@ -603,7 +603,7 @@ final class MissionStore: ObservableObject, Probeable, WriteReporting {
             writeFailure = refused
             return
         }
-        guard let item = items.first(where: \.isCurrent) else { return }
+        guard let item = items.first(where: \.isSelected) else { return }
         write("plan.missionController.visualItems.\(item.index).cameraCalc.distanceMode", raw,
               "the camera distance mode")
         reload()
@@ -614,7 +614,7 @@ final class MissionStore: ObservableObject, Probeable, WriteReporting {
             writeFailure = FactWrite.readOnly
             return
         }
-        guard let item = items.first(where: \.isCurrent) else { return }
+        guard let item = items.first(where: \.isSelected) else { return }
         write("plan.missionController.visualItems.\(item.index).\(fact.pathSuffix)",
               Double(value) ?? value, fact.name)
         reload()
@@ -815,7 +815,7 @@ final class MissionStore: ObservableObject, Probeable, WriteReporting {
     }
 
     func select(_ item: MissionItem) {
-        guard !item.isCurrent else { return }
+        guard !item.isSelected else { return }
         Bridge.invoke("plan.missionController.setCurrentPlanViewSeqNum", [item.sequence, true])
         reload()
     }
@@ -834,14 +834,14 @@ final class MissionStore: ObservableObject, Probeable, WriteReporting {
     }
 
     func setItemSpeedSpecified(_ specified: Bool) {
-        guard let item = items.first(where: \.isCurrent) else { return }
+        guard let item = items.first(where: \.isSelected) else { return }
         write("plan.missionController.visualItems.\(item.index).speedSection.specifyFlightSpeed",
               specified, "whether this item sets its own speed")
         reload()
     }
 
     func setItemSpeed(_ value: Double) {
-        guard let item = items.first(where: \.isCurrent) else { return }
+        guard let item = items.first(where: \.isSelected) else { return }
         write("plan.missionController.visualItems.\(item.index).speedSection.\(ItemSpeed.property)",
               value, "this item's speed")
         reload()
@@ -929,7 +929,7 @@ final class MissionStore: ObservableObject, Probeable, WriteReporting {
          "pickingCommandFor": pickingCommandFor ?? -1,
          "commandNames": commands.map(\.name),
          "commandsWithSummary": commands.filter { !$0.summary.isEmpty }.count,
-         "selected": items.first(where: \.isCurrent)?.sequence ?? -1,
+         "selected": items.first(where: \.isSelected)?.sequence ?? -1,
          "itemSpeed": ["available": selectedSpeed.available,
                        "specified": selectedSpeed.specified,
                        "value": selectedSpeed.value ?? -1,
@@ -991,7 +991,7 @@ final class MissionStore: ObservableObject, Probeable, WriteReporting {
                      "distance": terrain.distanceText,
                      "min": terrain.minAltitude, "max": terrain.maxAltitude],
          "items": items.prefix(8).map {
-             ["seq": $0.sequence, "command": $0.command, "selected": $0.isCurrent,
+             ["seq": $0.sequence, "command": $0.command, "selected": $0.isSelected,
               "position": $0.positionText, "altitude": $0.altitudeReading]
          }]
     }
