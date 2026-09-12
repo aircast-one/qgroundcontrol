@@ -112,6 +112,10 @@ final class GuidedStore: ObservableObject, Probeable, WriteReporting {
                   let metres = answer["targetMetersSecond"] as? NSNumber else { return }
             Bridge.invoke("vehicle.\(command)", [metres.doubleValue])
         case .startMission, .continueMission: Bridge.invoke("vehicle.startMission")
+        case .resumeMission:
+            let index = Bridge.group("planFly.missionController.resumeMissionIndex")["value"]
+            guard let sequence = (index as? NSNumber)?.intValue, sequence > 0 else { return }
+            Bridge.invoke("planFly.missionController.resumeMission", [sequence])
         case .landAbort: Bridge.invoke("vehicle.abortLanding", [GuidedStore.climbOutAltitude])
         case .emergencyStop: Bridge.invoke("vehicle.emergencyStop")
         case .grab: Bridge.invoke("vehicle.sendGripperAction", [GuidedStore.gripperGrab])

@@ -5,6 +5,7 @@ enum GuidedAction: String, CaseIterable, Identifiable {
     case takeoff
     case startMission
     case continueMission
+    case resumeMission
     case pause
     case changeAltitude
     case changeSpeed
@@ -27,6 +28,7 @@ enum GuidedAction: String, CaseIterable, Identifiable {
         case .takeoff: return "arrow.up.circle"
         case .startMission: return "play.circle"
         case .continueMission: return "forward.circle"
+        case .resumeMission: return "arrow.trianglehead.clockwise"
         case .pause: return "pause.circle"
         case .changeAltitude: return "arrow.up.arrow.down.circle"
         case .changeSpeed: return "speedometer"

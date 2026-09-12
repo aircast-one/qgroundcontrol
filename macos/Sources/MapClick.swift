@@ -82,8 +82,7 @@ final class MapClickStore: ObservableObject, Probeable {
         }
         var drawn = FlyOverlays.read(
             orbitCircle: vehicle["orbitMapCircle"] as? [String: Any],
-            radius: (Bridge.group("vehicle.orbitMapCircle.radius")["value"] as? NSNumber)?
-                .doubleValue ?? 0,
+            radius: (Bridge.group("view.orbit")["radiusMetres"] as? NSNumber)?.doubleValue ?? 0,
             orbitActive: flag("orbitActive"),
             roiActive: read.roiActive,
             roi: Bridge.group("vehicle.roiCoord"))
