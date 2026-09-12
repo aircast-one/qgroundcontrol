@@ -2657,3 +2657,52 @@ closes a window.
 machine over six and a half minutes, which is the first half of the gate and was previously
 unmeasured. It does not establish anything about memory under a connected vehicle, over thirty
 minutes, or on any other machine.
+
+### A core null that reaches the screen as a zero, 2026-09-12
+
+`view-fields.py` catches a key the core stopped emitting. Its opposite is quieter:
+the key is still there, its **value** is null, and the head's `?? 0` turns an
+absence into a figure. `a9b4e2a53` made a link's port and baud nullable because
+`port` is a Q_PROPERTY on `TCPLink` and `baud` on `SerialLink` alone; this head
+went on drawing a baud rate of 0 for a UDP link until `8edb642a7`. Nothing would
+have found the next one.
+
+`tools/macos/null-fallbacks.py` reads the nineteen mapped views **live** and asks
+what each model does with the keys that came back null. Reading the payload rather
+than the core's source settles the question the source cannot answer — whether an
+`Option` is actually `None` in a state this machine reaches — and costs the other:
+**a field null only in an unreachable state is invisible. It under-reports and
+never invents.**
+
+**Control: the pre-fix `LinkConfigModel.swift` from `8edb642a7^` is reported.**
+`baud` fires; `port` does not, because the live links are UDP and it reads
+`localPort` — one of the pair is enough, and saying which is the point.
+
+**Today: four hits, all the launch row, all benign.** `command`, `category`,
+`specifiesAltitude` and `altitudeBandText` are null on the settings item alone.
+Every consumer is gated to exclude it: `canChangeCommand` is
+`isSimpleItem && sequence > 0 && !isLaunch`, and `altitudeReading` names
+`settingsKind` outright rather than leaning on the flag. Rendered, the selected
+launch row draws `491 m` as plain text with no chevron and no trash — the gates
+are what the screen shows, not only what the source says.
+
+The four are an `ACCEPTED` table with the reason each is safe, so the steady state
+is **zero**, not four hits nobody reads. **An accept-list is the failure mode of an
+accept-list**, so a stale entry is reported: three mutations fire — dropping an
+acceptance surfaces the hit, naming a model the file does not check is caught, and
+an acceptance the head no longer falls back on is caught.
+
+**One mutation was vacuous and nearly passed.** Run from the scratchpad, the copied
+script's `parents[2]` resolved outside the repo, it found no models at all, and
+reported nothing — which reads exactly like a table that is not load-bearing. Redone
+in place it fires. **A mutant that cannot reach the code proves the same thing as a
+mutant that is not needed: nothing.**
+
+`MODELS` now lives in `tools/macos/head_models.py` and both checkers import it. It
+was written out twice, which is the drift these two exist to catch.
+
+**Refuted, not a defect.** `writeFailure` looked stale — the probe showed a refusal
+message while the plan behind it had grown by the item the message refused. It
+drives a modal alert that clears on dismissal; only the probe, which bypasses the
+UI, can reach a stale one. **An instrument faithful to the model, reporting
+something no operator can experience.**

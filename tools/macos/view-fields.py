@@ -27,33 +27,13 @@ import pathlib
 import re
 import sys
 
+sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent))
+from head_models import MODELS
+
 ROOT = pathlib.Path(__file__).resolve().parents[2]
 SOURCES = ROOT / "macos/Sources"
 CORE = ROOT / "core-rs/src"
 
-# Which Swift model decodes which view. The head builds these from a view payload and
-# nothing else, so every key their initialisers look up has to be a key that view emits.
-MODELS = {
-    "MissionItem": "view.missionItems",
-    "MissionSummary": "view.missionSummary",
-    "MissionItemKind": "view.missionKinds",
-    "TerrainProfile": "view.terrainProfile",
-    "FenceShape": "view.fences",
-    "SurveyStats": "view.surveyStats",
-    "AltitudeModeOffer": "view.altitudeModes",
-    "CalibrationState": "view.calibration",
-    "CameraControl": "view.camera",
-    "FlightModeChoice": "view.flightModes",
-    "LinkConfig": "view.links",
-    "LogEntry": "view.logs",
-    "MavlinkMessage": "view.inspector",
-    "PreflightCheck": "view.preflight",
-    "RadioState": "view.radio",
-    "SensorHealth": "view.sensors",
-    "VehicleComponentInfo": "view.setup",
-    "VibrationReading": "view.vibration",
-    "VideoStatus": "view.video",
-}
 
 # A subscript on the decoded dictionary, or a literal handed to a helper closing over it.
 # Not a bare quoted run: pairing the closing quote of one literal with the opening quote of
