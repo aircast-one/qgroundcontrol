@@ -87,6 +87,15 @@ MAVLinkInspectorController::MAVLinkInspectorController(QObject *parent)
     _rangeSt.append(new Range_st(tr("0.001"),   0.001));
     _rangeSt.append(new Range_st(tr("0.0001"),  0.0001));
     emit rangeListChanged();
+
+    QmlObjectListModel *const vehicles = multiVehicleManager->vehicles();
+    for (int i = 0; i < vehicles->count(); i++) {
+        Vehicle *const vehicle = qobject_cast<Vehicle*>(vehicles->get(i));
+        if (vehicle) {
+            _vehicleAdded(vehicle);
+        }
+    }
+    _setActiveVehicle(multiVehicleManager->activeVehicle());
 }
 
 MAVLinkInspectorController::~MAVLinkInspectorController()
