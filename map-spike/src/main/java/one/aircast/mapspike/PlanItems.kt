@@ -30,11 +30,14 @@ internal fun altitudeWithFrame(item: MissionItem): String? {
     }
 }
 
-internal fun altitudeFieldLabel(item: MissionItem): String = when (item.altitudeFrame) {
-    "", FRAME_LAUNCH -> "Alt m"
-    FRAME_AMSL -> "Alt m AMSL"
-    FRAME_TERRAIN -> "Alt m above ground"
-    else -> "Alt m ${item.altitudeFrame.uppercase()}"
+internal fun altitudeFieldLabel(item: MissionItem): String {
+    val unit = item.altitudeEditUnits.ifBlank { "m" }
+    return when (item.altitudeFrame) {
+        "", FRAME_LAUNCH -> "Alt $unit"
+        FRAME_AMSL -> "Alt $unit AMSL"
+        FRAME_TERRAIN -> "Alt $unit above ground"
+        else -> "Alt $unit ${item.altitudeFrame.uppercase()}"
+    }
 }
 
 internal fun sequenceLabel(item: MissionItem): String = when {

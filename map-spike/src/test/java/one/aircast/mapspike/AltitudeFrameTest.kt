@@ -6,9 +6,15 @@ import org.junit.Test
 
 class AltitudeFrameTest {
 
-    private fun item(frame: String, text: String = "50.0 m", band: String = "") = MissionItem(
+    private fun item(
+        frame: String,
+        text: String = "50.0 m",
+        band: String = "",
+        editUnits: String = "",
+    ) = MissionItem(
         2, 2, 41.0, 44.0, "Waypoint", false, 50.0, kind = "waypoint",
         altitudeText = text, altitudeBandText = band, altitudeFrame = frame,
+        altitudeEditUnits = editUnits,
     )
 
     @Test
@@ -65,5 +71,16 @@ class AltitudeFrameTest {
     @Test
     fun `a frame neither head has heard of is shown, not swallowed into the default`() {
         assertEquals("50.0 m SEABED", altitudeWithFrame(item("seabed")))
+    }
+
+    @Test
+    fun `the field being typed into names the unit QGC cooked the number into`() {
+        assertEquals("Alt ft", altitudeFieldLabel(item("launch", editUnits = "ft")))
+        assertEquals("Alt ft AMSL", altitudeFieldLabel(item("amsl", editUnits = "ft")))
+    }
+
+    @Test
+    fun `a core that says nothing leaves metres, which is what the bridge takes`() {
+        assertEquals("Alt m", altitudeFieldLabel(item("launch")))
     }
 }
