@@ -13,7 +13,7 @@ pub const DEPS: &[&str] = &[
     "settings.unitsSettings.verticalDistanceUnits",
 ];
 
-const FIELDS: &str = "specifiedFlightSpeed,additionalTimeDelay,minAMSLAltitude,maxAMSLAltitude,sequenceNumber,abbreviation,commandName,commandDescription,isCurrentItem,specifiesCoordinate,isStandaloneCoordinate,specifiesAltitudeOnly,isSimpleItem,isTakeoffItem,isLandCommand,isSurveyItem,homePosition,coordinate,amslEntryAlt,altDifference,azimuth,distance,distanceFromStart,readyForSaveState,readyForSaveMessage,dirty,altitude,altitudeMode,isIncomplete,exitCoordinate,exitCoordinateSameAsEntry,commandName,command,category,specifiesAltitude,cameraShots,complexDistance,plannedHomePositionAltitude";
+const FIELDS: &str = "lastSequenceNumber,specifiedFlightSpeed,additionalTimeDelay,minAMSLAltitude,maxAMSLAltitude,sequenceNumber,abbreviation,commandName,commandDescription,isCurrentItem,specifiesCoordinate,isStandaloneCoordinate,specifiesAltitudeOnly,isSimpleItem,isTakeoffItem,isLandCommand,isSurveyItem,homePosition,coordinate,amslEntryAlt,altDifference,azimuth,distance,distanceFromStart,readyForSaveState,readyForSaveMessage,dirty,altitude,altitudeMode,isIncomplete,exitCoordinate,exitCoordinateSameAsEntry,commandName,command,category,specifiesAltitude,cameraShots,complexDistance,plannedHomePositionAltitude";
 
 const READY_TO_SAVE: i64 = 0;
 const AWAITING_TERRAIN: i64 = 1;
@@ -105,6 +105,9 @@ fn item(read: &Value, index: i64, vertical: &Unit, speed: &Unit, imperial: bool)
     json!({
         "index": index,
         "sequence": integer(read, "sequenceNumber"),
+        "foldedCommands": integer(read, "lastSequenceNumber")
+            .zip(integer(read, "sequenceNumber"))
+            .map(|(last, first)| (last - first).max(0)),
         "abbreviation": text(read, "abbreviation"),
         "name": text(read, "commandName"),
         "description": text(read, "commandDescription"),
@@ -657,6 +660,21 @@ mod reported {
         let done = items_view(&Plan(walked_plan), &[]);
         assert_eq!(done["items"][1]["distanceText"], "120 m", "one item reporting a distance from the start is the tell that the walk has run, and then every figure it produced is trusted - including the zeros, which are real once something moved");
         assert_eq!(done["items"][2]["distance"], 0.0);
+    }
+
+    #[test]
+    fn an_item_says_how_many_commands_it_folds_in_behind_itself() {
+        let plain = listed(json!({ "kind": "object", "sequenceNumber": 2, "lastSequenceNumber": 2, "isSimpleItem": true, "specifiesAltitude": true, "specifiesCoordinate": true, "facts": [] }));
+        assert_eq!(plain["foldedCommands"], 0, "a waypoint that emits one command folds nothing");
+
+        let with_speed = listed(json!({ "kind": "object", "sequenceNumber": 2, "lastSequenceNumber": 3, "isSimpleItem": true, "specifiesAltitude": true, "specifiesCoordinate": true, "specifiedFlightSpeed": 12.0, "facts": [] }));
+        assert_eq!(with_speed["foldedCommands"], 1, "a per-item speed emits its own DO_CHANGE_SPEED, so the next row's sequence jumps and both heads showed an unexplained hole in the numbering");
+
+        let survey = listed(json!({ "kind": "object", "sequenceNumber": 4, "lastSequenceNumber": 216, "isSimpleItem": false, "isSurveyItem": true, "facts": [] }));
+        assert_eq!(survey["foldedCommands"], 212, "and a pattern occupies the whole span it generates, which is the same phenomenon at a different scale");
+
+        let unknown = listed(json!({ "kind": "object", "sequenceNumber": 2, "isSimpleItem": true, "specifiesAltitude": true, "specifiesCoordinate": true, "facts": [] }));
+        assert_eq!(unknown["foldedCommands"], Value::Null, "an item that did not report its last sequence says nothing rather than claiming it folds none");
     }
 
     #[test]
