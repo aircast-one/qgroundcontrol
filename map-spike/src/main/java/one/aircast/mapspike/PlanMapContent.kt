@@ -596,6 +596,11 @@ internal fun MapSpikeScreen(
                         horizontalArrangement = Arrangement.spacedBy(4.dp),
                         verticalArrangement = Arrangement.spacedBy(4.dp),
                     ) {
+                        fenceDetail(selected, fences, circles)?.let {
+                            Text(it, style = MaterialTheme.typography.labelSmall)
+                            GroupBreak()
+                        }
+
                         landingText(selectedLanding(selected, landingList))?.let {
                             Text(it, style = MaterialTheme.typography.labelSmall)
                             GroupBreak()

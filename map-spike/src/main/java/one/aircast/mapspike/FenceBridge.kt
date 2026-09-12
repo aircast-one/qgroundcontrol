@@ -17,6 +17,8 @@ data class FencePolygon(
     val inclusion: Boolean,
     val vertices: List<TrackPoint>,
     val editable: EditableShape? = null,
+    val kindText: String = "",
+    val detailText: String = "",
 )
 data class FenceCircle(
     val index: Int,
@@ -24,6 +26,7 @@ data class FenceCircle(
     val centre: TrackPoint,
     val radius: Double,
     val detailText: String = "",
+    val kindText: String = "",
 )
 data class RallyPoint(val index: Int, val latitude: Double, val longitude: Double)
 
@@ -49,7 +52,14 @@ fun fencePolygons(json: JSONObject?): List<FencePolygon> {
         val vertices = (0 until corners.length()).mapNotNull { coordinate(corners.optJSONObject(it)) }
         if (vertices.size < FENCE_POLYGON_MINIMUM) return@mapNotNull null
         val at = element.optInt("index", index)
-        FencePolygon(at, element.optBoolean("inclusion", true), vertices, editableShape("$FENCE_POLYGONS.$at"))
+        FencePolygon(
+            at,
+            element.optBoolean("inclusion", true),
+            vertices,
+            editableShape("$FENCE_POLYGONS.$at"),
+            element.optText("kindText"),
+            element.optText("detailText"),
+        )
     }
 }
 
@@ -66,6 +76,7 @@ fun fenceCircles(json: JSONObject?): List<FenceCircle> {
             centre,
             radius,
             element.optText("detailText"),
+            element.optText("kindText"),
         )
     }
 }
@@ -154,5 +165,9 @@ fun circleRing(
 fun circlesAsPolygons(circles: List<FenceCircle>): List<FencePolygon> =
     circles.mapNotNull { circle ->
         val ring = circleRing(circle.centre, circle.radius)
-        if (ring.size < 3) null else FencePolygon(circle.index, circle.inclusion, ring)
+        if (ring.size < 3) {
+            null
+        } else {
+            FencePolygon(circle.index, circle.inclusion, ring, kindText = circle.kindText)
+        }
     }

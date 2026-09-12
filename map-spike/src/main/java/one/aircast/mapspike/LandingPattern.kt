@@ -51,12 +51,6 @@ internal fun landingText(pattern: LandingPattern?): String? {
     return "circles $radius $turn"
 }
 
-internal fun selectedLanding(selected: MapHit?, landings: List<LandingPattern>): LandingPattern? = when (selected) {
-    is MapHit.LandingPlace -> landings.firstOrNull { it.index == selected.index }
-    is MapHit.Waypoint -> landings.firstOrNull { it.index == selected.index }
-    else -> null
-}
-
 internal fun approachPath(pattern: LandingPattern): List<TrackPoint> =
     listOfNotNull(pattern.finalApproach, pattern.slopeStart, pattern.landing)
 
