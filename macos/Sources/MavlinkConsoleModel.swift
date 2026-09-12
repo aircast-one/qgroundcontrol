@@ -28,7 +28,7 @@ struct MavlinkConsole: Equatable {
     var emptyText: String {
         connected
             ? "Nothing yet. The shell answers commands, and those are sent from the Qt build."
-            : "Connect a vehicle to see its console output."
+            : VehicleSetupText.connectPrompt(for: "console output")
     }
 
     var copyable: String { lines.joined(separator: "\n") }

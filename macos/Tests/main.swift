@@ -212,6 +212,14 @@ expect(vibration.axes[1].severity == .danger, "each bar takes its own colour fro
 expect(vibration.dangerLevel == 60 && vibration.warningLevel == 30 && vibration.scaleMaximum == 90,
        "the thresholds the bars and the scale are drawn against come from the core, which is "
        + "where ArduPilot and PX4's flight guidance now lives rather than in two heads")
+expect(VehicleSetupText.connectPrompt(for: "vibration"),
+       "Connect a vehicle to see its vibration.",
+       "one place spells the sentence a page shows when there is nothing to read from. Four "
+       + "sites wrote it separately and a fifth would have drifted; waiting(), filtered(), the "
+       + "console and vibration all take it from here now")
+expect(VehicleSetupText.waiting(connected: false, for: "console output")
+           == MavlinkConsole.none.emptyText,
+       "so the console's disconnected line and the helper's cannot say different things")
 expect(VibrationReading([:], connected: false).emptyText,
        "Connect a vehicle to see its vibration.",
        "with nothing connected there is no vehicle to be silent, and the page said \u{201C}This "

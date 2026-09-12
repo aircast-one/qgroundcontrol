@@ -1,10 +1,14 @@
 import Foundation
 
 enum VehicleSetupText {
+    static func connectPrompt(for subject: String) -> String {
+        "Connect a vehicle to see its \(subject)."
+    }
+
     static func waiting(connected: Bool, for subject: String) -> String {
         connected
             ? "Reading \(subject) from the vehicle\u{2026}"
-            : "Connect a vehicle to see its \(subject)."
+            : connectPrompt(for: subject)
     }
 
     static func absent(connected: Bool, _ whatTheVehicleLacks: String) -> String {
@@ -16,6 +20,6 @@ enum VehicleSetupText {
     static func filtered(connected: Bool) -> String {
         connected
             ? "No parameter matches this filter."
-            : "Connect a vehicle to see its parameters."
+            : connectPrompt(for: "parameters")
     }
 }

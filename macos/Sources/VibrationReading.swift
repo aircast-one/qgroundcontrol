@@ -52,7 +52,7 @@ struct VibrationReading: Equatable {
     var emptyText: String {
         connected
             ? "This vehicle is not reporting vibration."
-            : "Connect a vehicle to see its vibration."
+            : VehicleSetupText.connectPrompt(for: "vibration")
     }
 
     private init() {
