@@ -165,11 +165,8 @@ fun moveLandingPlace(index: Int, place: Int, latitude: Double, longitude: Double
 }
 
 fun placeLandingIfUnplaced(index: Int, latitude: Double, longitude: Double): Boolean {
-    val pattern = landingPattern(
-        index,
-        runCatching { JSONObject(QGCBridge.get("view.landingPattern($index)")) }.getOrNull(),
-    )
-    if (pattern != null && pattern.landing != null) {
+    val view = runCatching { JSONObject(QGCBridge.get("view.landingPattern($index)")) }.getOrNull()
+    if (landingPattern(index, view)?.landing != null) {
         return false
     }
     if (!moveLandingPlace(index, LANDING_PLACE_TOUCHDOWN, latitude, longitude)) {

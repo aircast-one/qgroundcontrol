@@ -138,3 +138,23 @@ class LandingHandleTest {
         )
     }
 }
+
+class IsLandingPatternTest {
+
+    @Test
+    fun `a refusal is not a pattern, and neither is an absent view`() {
+        assertTrue(!isLandingPattern(null))
+        assertTrue(!isLandingPattern(JSONObject("""{"kind":"null"}""")))
+        assertTrue(
+            !isLandingPattern(JSONObject("""{"reason":"only a fixed wing or a VTOL gets one"}""")),
+        )
+    }
+
+    @Test
+    fun `a pattern with no places is still a pattern, which is the whole distinction`() {
+        val unplaced = JSONObject("""{"landing":null,"slopeStart":null,"finalApproach":null}""")
+
+        assertTrue(isLandingPattern(unplaced))
+        assertNull(landingPattern(4, unplaced))
+    }
+}

@@ -25,8 +25,11 @@ private fun place(view: JSONObject?, key: String): TrackPoint? =
         }
     }
 
+fun isLandingPattern(view: JSONObject?): Boolean =
+    view != null && view.optString("kind") != "null" && !view.has("reason")
+
 fun landingPattern(index: Int, view: JSONObject?): LandingPattern? {
-    if (view == null || view.optString("kind") == "null" || view.has("reason")) {
+    if (view == null || !isLandingPattern(view)) {
         return null
     }
     val pattern = LandingPattern(
