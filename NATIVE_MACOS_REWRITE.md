@@ -3793,3 +3793,33 @@ once — six corrections between them, **and not one changed what the tool repor
 entry was right about whether to suppress and wrong about why. **That is the failure mode of
 a justification written once and never re-read: it cannot fail a test, because nothing tests
 prose.**
+
+### (t) CLOSED — `atSequence` measured, and the contract lies about how to ask for it
+
+**`atSequence` echoes the CURRENT SELECTION into every kind.** With the head-vs-core plan
+loaded and `selected: 4`, all seven kinds carry `atSequence: 4` — the view answering *where
+this offer applies*. My head does not read it and does not need to: its insert path passes
+its own position and gets `atSequence` back in the result. **Accepted with that as the
+reason, and the unread-field table is now EXHAUSTED** — every remaining entry is a coverage
+limit with a measured cause.
+
+**Two defects found in the core on the way, both in the argument.**
+
+`view.rs:73` declares **`("view.missionKinds", "<index>")`**. The code does not read an
+index: `kinds_view` calls `lookup(wanted)`, and `lookup` matches
+`k.id == id_or_name || k.complex_name == Some(id_or_name)` — **a kind id or a complex
+name**. Measured: `view.missionKinds(2)`, `(0)` and `(9)` all answer `{"kind":"null"}`,
+while `view.missionKinds(survey)` returns the full kind. **A head following the published
+contract passes an index and gets nothing.**
+
+And that nothing is **bare**: `{"kind":"null"}` with **no reason**, where the core's own
+standing rule is that a refusal keeps its reason. Every other refusal in the crate carries
+one. **An unrecognised argument is exactly the case where the caller most needs to be told
+what the view wanted.**
+
+**My own two errors in the same measurement, both caught by dumping the object whole.**
+I filtered the kinds on `insertable` — **a key that does not exist** — and reported
+"insertable ids: []", which reads as *nothing can be inserted* when the real keys are
+`enabled: true` and `disabledReason: null` for all seven. Then I read the no-argument call
+as "an answer with no where", when it defaults to the selection. **Both would have been
+findings if I had trusted my first projection instead of printing one kind in full.**
