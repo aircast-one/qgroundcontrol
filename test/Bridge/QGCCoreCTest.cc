@@ -1247,6 +1247,28 @@ const char *const kViewPaths[] = {
 
 } // namespace
 
+static QString _shapeDifference(const QJsonObject &was, const QJsonObject &now)
+{
+    QStringList moved;
+    for (const QString &field : was.keys()) {
+        if (!now.contains(field)) {
+            moved.append(QStringLiteral("%1 gone").arg(field));
+        } else if (was.value(field) != now.value(field)) {
+            const auto spell = [](const QJsonValue &value) {
+                return value.isString() ? value.toString()
+                                        : QString::fromUtf8(QJsonDocument::fromVariant(value.toVariant()).toJson(QJsonDocument::Compact)).trimmed();
+            };
+            moved.append(QStringLiteral("%1 was %2 now %3").arg(field, spell(was.value(field)), spell(now.value(field))));
+        }
+    }
+    for (const QString &field : now.keys()) {
+        if (!was.contains(field)) {
+            moved.append(QStringLiteral("%1 added").arg(field));
+        }
+    }
+    return moved.isEmpty() ? QStringLiteral("nested or ordering only") : moved.join(QStringLiteral(", "));
+}
+
 void QGCCoreCTest::_viewShapesMatchTheRecordedContract()
 {
     QJsonObject offline;
@@ -1367,7 +1389,9 @@ void QGCCoreCTest::_viewShapesMatchTheRecordedContract()
     for (const QString &key : keys) {
         const QByteArray was = QJsonDocument(expected.value(key).toObject()).toJson(QJsonDocument::Compact);
         const QByteArray now = QJsonDocument(recorded.value(key).toObject()).toJson(QJsonDocument::Compact);
-        QVERIFY2(was == now, qPrintable(QStringLiteral("%1 changed shape\n was: %2\n now: %3").arg(key, QString::fromUtf8(was), QString::fromUtf8(now))));
+        QVERIFY2(was == now, qPrintable(QStringLiteral("%1 changed shape: %2\n was: %3\n now: %4")
+                                            .arg(key, _shapeDifference(expected.value(key).toObject(), recorded.value(key).toObject()),
+                                                 QString::fromUtf8(was), QString::fromUtf8(now))));
     }
 }
 
