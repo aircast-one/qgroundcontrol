@@ -51,6 +51,8 @@ import androidx.compose.ui.Alignment
 import androidx.compose.foundation.layout.Row
 import one.aircast.android.ui.VehicleStateText
 import one.aircast.android.ui.StatusReadingsInline
+import androidx.compose.material.icons.filled.KeyboardArrowDown
+import androidx.compose.material.icons.filled.KeyboardArrowUp
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.zIndex
@@ -263,9 +265,6 @@ fun AircastShell(quickView: QtQuickView) {
                     VehicleStateText()
                     if (tab == Tab.Fly) {
                         StatusReadingsInline(Modifier.weight(1f))
-                        IconButton(onClick = { controlsExpanded = !controlsExpanded }) {
-                            Icon(Icons.Default.Build, "Toggle flight controls")
-                        }
                     }
                 }
             },
@@ -351,14 +350,31 @@ fun AircastShell(quickView: QtQuickView) {
                     }
                 }
 
-                AnimatedVisibility(
-                    visible = tab == Tab.Fly && controlsExpanded,
-                    modifier = Modifier.align(Alignment.BottomCenter),
-                ) {
-                    Surface(
-                        Modifier.fillMaxWidth().onSizeChanged { actionsHeightPx = it.height },
-                        color = MaterialTheme.colorScheme.surface.copy(alpha = 0.92f),
-                    ) { FlightActions() }
+                if (tab == Tab.Fly) {
+                    Column(Modifier.align(Alignment.BottomCenter)) {
+                        Surface(
+                            Modifier.align(Alignment.CenterHorizontally),
+                            color = MaterialTheme.colorScheme.surface.copy(alpha = 0.92f),
+                            shape = MaterialTheme.shapes.small,
+                        ) {
+                            IconButton(onClick = { controlsExpanded = !controlsExpanded }) {
+                                Icon(
+                                    if (controlsExpanded) {
+                                        Icons.Default.KeyboardArrowDown
+                                    } else {
+                                        Icons.Default.KeyboardArrowUp
+                                    },
+                                    if (controlsExpanded) "Hide flight controls" else "Show flight controls",
+                                )
+                            }
+                        }
+                        AnimatedVisibility(visible = controlsExpanded) {
+                            Surface(
+                                Modifier.fillMaxWidth().onSizeChanged { actionsHeightPx = it.height },
+                                color = MaterialTheme.colorScheme.surface.copy(alpha = 0.92f),
+                            ) { FlightActions() }
+                        }
+                    }
                 }
             }
         }
