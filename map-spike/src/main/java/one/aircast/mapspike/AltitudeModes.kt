@@ -55,4 +55,4 @@ fun choosable(view: AltitudeModesView?): List<AltitudeModeOffer> =
 fun refusalFor(view: AltitudeModesView?, raw: Int): String? =
     view?.offers.orEmpty().firstOrNull { it.raw == raw }?.takeIf { !it.enabled }?.reason?.ifBlank { null }
 
-fun altitudeModePath(index: Int): String = "plan.missionController.visualItems.$index.altitudeMode"
+fun altitudeModePath(index: Int): String = "$PLAN_ITEMS.$index.altitudeMode"

@@ -192,7 +192,7 @@ object PlanBridge {
         setOk("$PLAN_ITEMS.$index.altitude", settingJson("$metres"))
 
     fun setAltitudeMode(index: Int, raw: Int): Boolean =
-        setOk("$PLAN_ITEMS.$index.altitudeMode", settingJson("$raw"))
+        setOk(altitudeModePath(index), settingJson("$raw"))
 
     fun removeItem(index: Int): Boolean = removeMissionItem(index).ok
 

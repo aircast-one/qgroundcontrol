@@ -46,7 +46,7 @@ fun AltitudeModePicker(
                     onPick(offer.raw)
                 },
                 trailingIcon = {
-                    val note = offer.reason.ifBlank { offer.help }
+                    val note = refusalFor(view, offer.raw) ?: offer.help
                     if (note.isNotBlank()) {
                         Text(note, style = MaterialTheme.typography.labelSmall)
                     }
