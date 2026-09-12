@@ -4406,3 +4406,39 @@ reason it is a lead generator rather than a proof.** 26 non-view read paths down
 serves it from their **uncommitted** tree — HEAD has none of it — so the running binary offers a
 text this head names nowhere. **Left red; adopting a peer's working copy is the mistake their
 four views already taught.**
+
+### (vv2) The last caller went, and the head's copy of the core's formatter went with it
+
+`cf5ab9407` gave a rally point its own `altitudeText` — **checked at HEAD, not the working
+copy**. The row draws it instead of running the number back through this head's copy of
+`format_measure`, **the copy that was missing `settled()` until this evening and drew
+`"-0.0 m"` for a station at field level.**
+
+**The raw `altitude` and `altitudeUnits` STAY** — a rally altitude is typed, and the row hands
+them to an editor through `altitudePath`. **The core owns what is read; the head needs the
+number for what is edited.**
+
+**That was the last caller.** `Measure.reading`, `Measure.format`, `Measure.pretty` and the
+hundred-metre threshold mirroring `read.rs` now have **no caller anywhere in `macos/Sources`**,
+and are deleted with **three test functions whose only purpose was to prove the copy agreed
+with the core.** **There is nothing left to agree or disagree.** The battery, the launch
+altitude and the rally altitude each took the core's own string this evening, and the algorithm
+went with the last of them.
+
+**What remains is `defaultUnits`, `unreported` and `settled`** — the minus-zero guard, kept
+because **the guided slider is the one place this head still spells a measurement**: that value
+is *dragged* and the core spells no guided reading.
+
+**Fifth dead mechanism found by asking "who calls this?" — and the first that became dead
+through the work rather than having always been so.**
+
+**Android has the same unknown-frame test, written independently:** their `SEABED` to this
+head's `GUNDECK`, pinning the same reasoning. **Neither of us knew.** They argued against their
+own branch in a message, then found their own assertion contradicting them — *"you went to
+delete yours and a test stopped you; nothing stopped me, because I was only writing a
+message."* **The test name did the work**: `a frame neither head has heard of is shown, not
+swallowed into the default` taught them something on re-reading, where `unknownFrameTest()`
+would not have.
+
+**`text-fields.py` stays red on `altitudeFrameText`** — checked at HEAD again: still zero, still
+only in the core's working copy and running binary.
