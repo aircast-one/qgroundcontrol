@@ -29,13 +29,14 @@ pub fn survey_stats_view(backend: &dyn Backend, args: &[String]) -> Value {
     let calc = object(&backend.get(&format!("{item_path}.cameraCalc")));
     let fact = |property: &str| calc.get("facts").and_then(Value::as_array).and_then(|f| f.iter().find(|x| x.get("property").and_then(Value::as_str) == Some(property)));
     let fact_number = |property: &str| fact(property).and_then(|f| f.get("value")).and_then(Value::as_f64).filter(|v| v.is_finite()).unwrap_or(0.0);
-    let (shots, seconds, area_m2, distance_m) = (number("cameraShots") as i64, number("timeBetweenShots"), number("coveredArea"), number("complexDistance"));
-    let (side, frontal) = (fact_number("adjustedFootprintSide"), fact_number("adjustedFootprintFrontal"));
-    let footprint_units = fact("adjustedFootprintSide").and_then(|f| f.get("units")).and_then(Value::as_str).unwrap_or("m").to_string();
-    let minimum_interval = fact_number("minTriggerInterval");
-    let surface = fact("distanceToSurface").and_then(|f| f.get("value")).and_then(Value::as_f64).filter(|metres| metres.is_finite() && *metres > 0.0);
-    let area = Unit::area(backend);
     let distance_unit = Unit::horizontal(backend);
+    let fact_metres = |property: &str| fact(property).and_then(|f| f.get("rawValue")).and_then(Value::as_f64).filter(|v| v.is_finite());
+    let (shots, seconds, area_m2, distance_m) = (number("cameraShots") as i64, number("timeBetweenShots"), number("coveredArea"), number("complexDistance"));
+    let (side, frontal) = (fact_metres("adjustedFootprintSide").unwrap_or(0.0), fact_metres("adjustedFootprintFrontal").unwrap_or(0.0));
+    let footprint_units = distance_unit.name.clone();
+    let minimum_interval = fact_number("minTriggerInterval");
+    let surface = fact_metres("distanceToSurface").filter(|metres| *metres > 0.0);
+    let area = Unit::area(backend);
     json!({
         "kind": "object",
         "class": "SurveyStats",
@@ -53,7 +54,7 @@ pub fn survey_stats_view(backend: &dyn Backend, args: &[String]) -> Value {
         "footprintSide": side,
         "footprintFrontal": frontal,
         "footprintUnits": footprint_units,
-        "footprintText": if side > 0.0 && frontal > 0.0 { format!("{side:.1} \u{d7} {frontal:.1} {footprint_units}") } else { ABSENT.to_string() },
+        "footprintText": if side > 0.0 && frontal > 0.0 { format!("{:.1} \u{d7} {:.1} {footprint_units}", distance_unit.show(side), distance_unit.show(frontal)) } else { ABSENT.to_string() },
         "surfaceDistanceMetres": surface,
         "surfaceDistanceText": surface.map(|metres| crate::read::format_measure(distance_unit.show(metres), &distance_unit.name)),
         "minimumInterval": minimum_interval,
@@ -82,9 +83,9 @@ mod tests {
             fn get(&self, path: &str) -> String {
                 match path.ends_with("cameraCalc") {
                     true => json!({ "kind": "object", "facts": [
-                        { "property": "adjustedFootprintSide", "value": 12.5, "units": "m" },
-                        { "property": "adjustedFootprintFrontal", "value": 8.0, "units": "m" },
-                        { "property": "minTriggerInterval", "value": 2.0 },
+                        { "property": "adjustedFootprintSide", "value": 12.5, "rawValue": 12.5, "units": "m" },
+                        { "property": "adjustedFootprintFrontal", "value": 8.0, "rawValue": 8.0, "units": "m" },
+                        { "property": "minTriggerInterval", "value": 2.0, "rawValue": 2.0 },
                     ] }),
                     false => json!({ "kind": "null" }),
                 }
@@ -119,9 +120,9 @@ mod tests {
         struct Camera(Option<f64>);
         impl Backend for Camera {
             fn get(&self, path: &str) -> String {
-                let mut facts = vec![json!({ "property": "adjustedFootprintSide", "value": 10.0, "units": "m" })];
+                let mut facts = vec![json!({ "property": "adjustedFootprintSide", "value": 10.0, "rawValue": 10.0, "units": "m" })];
                 if let Some(metres) = self.0 {
-                    facts.push(json!({ "property": "distanceToSurface", "value": metres }));
+                    facts.push(json!({ "property": "distanceToSurface", "value": metres, "rawValue": metres }));
                 }
                 match path.ends_with("cameraCalc") {
                     true => json!({ "kind": "object", "facts": facts }),
@@ -144,6 +145,37 @@ mod tests {
         assert_eq!(flying["surfaceDistanceMetres"], 60.0, "a TransectStyleComplexItem has no altitude fact at all - the camera's distanceToSurface is what a survey flies at, and it is a height above the ground rather than the item altitude a waypoint shows in the same column");
         assert_eq!(flying["surfaceDistanceText"], "60.0 m");
 
+        struct Feet(f64);
+        impl Backend for Feet {
+            fn get(&self, path: &str) -> String {
+                match path.ends_with("cameraCalc") {
+                    true => json!({ "kind": "object", "facts": [
+                        { "property": "adjustedFootprintSide", "value": 10.0 * 3.2808399, "rawValue": 10.0 },
+                        { "property": "distanceToSurface", "value": self.0 * 3.2808399, "rawValue": self.0 },
+                    ] }),
+                    false => json!({ "kind": "null" }),
+                }
+                .to_string()
+            }
+            fn get_fields(&self, path: &str, f: &str) -> String {
+                match path {
+                    "units" => json!({ "kind": "object", "appSettingsHorizontalDistanceUnitsString": "ft", "appSettingsAreaUnitsString": "ft\u{b2}" }).to_string(),
+                    _ => Camera(Some(self.0)).get_fields(path, f),
+                }
+            }
+            fn set(&self, _p: &str, _v: &str) -> String { String::new() }
+            fn invoke(&self, path: &str, args: &str) -> String {
+                match path {
+                    "units.metersToAppSettingsHorizontalDistanceUnits" => json!({ "ok": true, "result": serde_json::from_str::<Vec<f64>>(args).unwrap()[0] * 3.2808399 }).to_string(),
+                    _ => json!({ "ok": true, "result": 1.0 }).to_string(),
+                }
+            }
+            fn watch(&self, _p: &[String]) {}
+        }
+        let feet = survey_stats_view(&Feet(60.0), &["3".to_string()]);
+        assert_eq!(feet["surfaceDistanceText"], "197 ft", "the fact's cooked value is already in the operator's unit, so converting it again squares the factor - 60 m must read 197 ft and not 646");
+        assert_eq!(feet["surfaceDistanceMetres"], 60.0, "and the raw metres travel unconverted");
+
         let bare = survey_stats_view(&Camera(None), &["3".to_string()]);
         assert_eq!(bare["surfaceDistanceMetres"], Value::Null, "a camera that carries no such fact says nothing");
         assert_eq!(bare["surfaceDistanceText"], Value::Null);
@@ -160,8 +192,8 @@ mod tests {
             fn get(&self, path: &str) -> String {
                 match path.ends_with("cameraCalc") {
                     true => json!({ "kind": "object", "facts": [
-                        { "property": "adjustedFootprintSide", "value": 9.0, "units": "m" },
-                        { "property": "adjustedFootprintFrontal", "value": 6.0, "units": "m" },
+                        { "property": "adjustedFootprintSide", "value": 9.0, "rawValue": 9.0, "units": "m" },
+                        { "property": "adjustedFootprintFrontal", "value": 6.0, "rawValue": 6.0, "units": "m" },
                     ] }),
                     false => json!({ "kind": "null" }),
                 }
@@ -192,8 +224,8 @@ mod tests {
             fn get(&self, path: &str) -> String {
                 match path.ends_with("cameraCalc") {
                     true => json!({ "kind": "object", "facts": [
-                        { "property": "adjustedFootprintSide", "value": 0.0, "units": "m" },
-                        { "property": "adjustedFootprintFrontal", "value": 0.0, "units": "m" },
+                        { "property": "adjustedFootprintSide", "value": 0.0, "rawValue": 0.0, "units": "m" },
+                        { "property": "adjustedFootprintFrontal", "value": 0.0, "rawValue": 0.0, "units": "m" },
                     ] }),
                     false => json!({ "kind": "null" }),
                 }
