@@ -417,8 +417,6 @@ internal fun MapSpikeScreen(
                     .heightIn(max = CONTROLS_MAX_HEIGHT)
                     .verticalScroll(rememberScrollState()),
             ) {
-                TerrainProfileView(profile)
-
                 FlowRow(
                     Modifier.fillMaxWidth(),
                     horizontalArrangement = Arrangement.spacedBy(4.dp),
@@ -868,6 +866,8 @@ internal fun MapSpikeScreen(
 
                     }
                 }
+
+                TerrainProfileView(profile)
             }
         }
 
