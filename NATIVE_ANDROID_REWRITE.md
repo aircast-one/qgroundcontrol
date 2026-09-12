@@ -6175,3 +6175,36 @@ both were wrong. The pattern in both: a statement adopted because it came from a
 credible source or a plausible mechanism, rather than because it had been seen.
 Reviewing the record for claims that were never observed is worth doing
 deliberately, not just when something else leads there.
+
+### Correcting the correction: the warning clears, but not for the reason I gave
+
+The entry above measured the proximity warning expiring when the ring stops, and
+then explained it with "`view.obstacle` shares dependencies with vehicle state
+that changes several times a second". **The measurement stands; the explanation
+was invented.** The core session read their own DEPS back to me:
+`vehicles.activeVehicleAvailable`, four `vehicle.objectAvoidance.*` paths and the
+horizontal units setting. None of them is fast-changing telemetry. That is
+`view.instruments`, not this view.
+
+Which is the same failure as the two entries it was written to correct — a
+plausible mechanism asserted instead of read — committed in the act of writing
+about that failure.
+
+**The actual mechanism, from three declarations rather than from reasoning:**
+
+- `VehicleObjectAvoidance.h:35` — `Q_PROPERTY(qint64 msSinceUpdate READ
+  msSinceUpdate NOTIFY objectAvoidanceChanged)`, and the reader is
+  `_lastUpdate.elapsed()`. **A value that advances with the wall clock behind a
+  signal that only fires on message arrival.**
+- `QGCBridgeCore.cc:810` — the watcher's poll re-emits every bound, non-Fact,
+  non-signal-only path every `kBoundPropertyRereadTicks` ticks.
+- `:47-48` — 200 ms per tick, every fifth tick, so about once a second.
+
+`msSinceUpdate` is a bound property, so it is re-emitted roughly every second,
+the router recomputes `view.obstacle`, `stale` flips at `STALE_AFTER_MS` and the
+label clears. No head-side poll is needed.
+
+**So the limitation is real but differently shaped.** Nothing *signals* the stop,
+as the core session said; what clears the warning is the bridge re-reading a
+time-dependent property on a timer. That is a weaker guarantee than a signal and
+worth knowing, rather than either "it expires by itself" or "a head must poll".
