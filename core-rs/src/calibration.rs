@@ -3,10 +3,17 @@ use serde_json::{Value, json};
 use crate::read::{flag, object, text};
 use crate::router::Backend;
 
-pub const DEPS: &[&str] = &["sensorsCal", "vehicles.activeVehicleAvailable"];
+pub const DEPS: &[&str] = &["sensorsCal", "vehicles.activeVehicleAvailable", "vehicle.multiRotor", "vehicle.rover", "vehicle.sub", "vehicle.fixedWing"];
 
 const SIDES: &[(&str, &str)] = &[("Down", "Level"), ("UpsideDown", "Upside down"), ("Left", "Left side"), ("Right", "Right side"), ("NoseDown", "Nose down"), ("TailDown", "Tail down")];
 const ACCEL_FIRST: &str = "Calibrate the accelerometer first.";
+
+pub struct Classes {
+    pub multi_rotor: bool,
+    pub rover: bool,
+    pub sub: bool,
+    pub fixed_wing: bool,
+}
 
 struct Routine {
     id: &'static str,
@@ -17,15 +24,20 @@ struct Routine {
     explanation: &'static str,
     warning: &'static str,
     spins_propeller: bool,
+    visible: fn(&Classes) -> bool,
+    on_fixed_wing: Option<(&'static str, &'static str)>,
 }
 
+const ANY_VEHICLE: fn(&Classes) -> bool = |_| true;
+const ROTOR_OR_GROUND: fn(&Classes) -> bool = |c| c.multi_rotor || c.rover || c.sub;
+
 const ROUTINES: &[Routine] = &[
-    Routine { id: "accelerometer", title: "Accelerometer", method: "calibrateAccel", arguments: &[false], needs_accel_first: false, explanation: "Hold the vehicle in each orientation it asks for.", warning: "", spins_propeller: false },
-    Routine { id: "compass", title: "Compass", method: "calibrateCompass", arguments: &[], needs_accel_first: true, explanation: "Rotate the vehicle about every axis until each side is done.", warning: "", spins_propeller: false },
-    Routine { id: "levelHorizon", title: "Level Horizon", method: "levelHorizon", arguments: &[], needs_accel_first: true, explanation: "Place the vehicle in its level flight position", warning: "", spins_propeller: false },
-    Routine { id: "gyro", title: "Gyro", method: "calibrateGyro", arguments: &[], needs_accel_first: false, explanation: "Leave the vehicle still while the gyros settle.", warning: "", spins_propeller: false },
-    Routine { id: "pressure", title: "Pressure", method: "calibratePressure", arguments: &[], needs_accel_first: false, explanation: "Zero the barometer at the current altitude.", warning: "", spins_propeller: false },
-    Routine { id: "compassMot", title: "CompassMot", method: "calibrateMotorInterference", arguments: &[], needs_accel_first: false, explanation: "Disconnect your props, flip them over and rotate them one position around the frame. In this configuration they should push the copter down into the ground when the throttle is raised. Secure the copter so that it does not move, turn on your transmitter and keep throttle at zero.", warning: "This spins the motors. CompassMot only works well if you have a battery current monitor, because the magnetic interference is linear with current drawn.", spins_propeller: true },
+    Routine { id: "accelerometer", title: "Accelerometer", method: "calibrateAccel", arguments: &[false], needs_accel_first: false, explanation: "Hold the vehicle in each orientation it asks for.", warning: "", spins_propeller: false, visible: ANY_VEHICLE, on_fixed_wing: None },
+    Routine { id: "compass", title: "Compass", method: "calibrateCompass", arguments: &[], needs_accel_first: true, explanation: "Rotate the vehicle about every axis until each side is done.", warning: "", spins_propeller: false, visible: ANY_VEHICLE, on_fixed_wing: None },
+    Routine { id: "levelHorizon", title: "Level Horizon", method: "levelHorizon", arguments: &[], needs_accel_first: true, explanation: "Place the vehicle in its level flight position", warning: "", spins_propeller: false, visible: ANY_VEHICLE, on_fixed_wing: None },
+    Routine { id: "gyro", title: "Gyro", method: "calibrateGyro", arguments: &[], needs_accel_first: false, explanation: "Leave the vehicle still while the gyros settle.", warning: "", spins_propeller: false, visible: ROTOR_OR_GROUND, on_fixed_wing: None },
+    Routine { id: "pressure", title: "Pressure", method: "calibratePressure", arguments: &[], needs_accel_first: false, explanation: "Zero the barometer at the current altitude.", warning: "", spins_propeller: false, visible: ANY_VEHICLE, on_fixed_wing: Some(("Baro/Airspeed", "Shield the airspeed sensor from the wind and leave the holes clear.")) },
+    Routine { id: "compassMot", title: "CompassMot", method: "calibrateMotorInterference", arguments: &[], needs_accel_first: false, explanation: "Disconnect your props, flip them over and rotate them one position around the frame. In this configuration they should push the copter down into the ground when the throttle is raised. Secure the copter so that it does not move, turn on your transmitter and keep throttle at zero.", warning: "This spins the motors. CompassMot only works well if you have a battery current monitor, because the magnetic interference is linear with current drawn.", spins_propeller: true, visible: ANY_VEHICLE, on_fixed_wing: None },
 ];
 
 pub fn needs_attention(accel: bool, compass: bool) -> &'static str {
@@ -52,19 +64,24 @@ fn sides(cal: &Value) -> Vec<Value> {
         .collect()
 }
 
-fn routines(connected: bool, busy: bool, accel_needed: bool) -> Vec<Value> {
+fn routines(connected: bool, busy: bool, accel_needed: bool, classes: Option<&Classes>) -> Vec<Value> {
     ROUTINES
         .iter()
+        .filter(|r| classes.is_none_or(|c| (r.visible)(c)))
         .map(|r| {
             let blocked = r.needs_accel_first && accel_needed;
+            let (title, explanation) = match (classes.is_some_and(|c| c.fixed_wing), r.on_fixed_wing) {
+                (true, Some(named)) => named,
+                _ => (r.title, r.explanation),
+            };
             json!({
                 "id": r.id,
-                "title": r.title,
+                "title": title,
                 "invocation": format!("sensorsCal.{}", r.method),
                 "arguments": r.arguments,
                 "blocked": blocked,
                 "enabled": connected && !busy && !blocked,
-                "description": if blocked { ACCEL_FIRST } else { r.explanation },
+                "description": if blocked { ACCEL_FIRST } else { explanation },
                 "warning": r.warning,
                 "spinsPropeller": r.spins_propeller,
             })
@@ -74,6 +91,13 @@ fn routines(connected: bool, busy: bool, accel_needed: bool) -> Vec<Value> {
 
 pub fn calibration_view(backend: &dyn Backend, _args: &[String]) -> Value {
     let cal = object(&backend.get("sensorsCal"));
+    let vehicle = object(&backend.get_fields("vehicle", "multiRotor,rover,sub,fixedWing"));
+    let classes = vehicle.get("multiRotor").map(|_| Classes {
+        multi_rotor: flag(&vehicle, "multiRotor"),
+        rover: flag(&vehicle, "rover"),
+        sub: flag(&vehicle, "sub"),
+        fixed_wing: flag(&vehicle, "fixedWing"),
+    });
     let connected = cal.get("kind").and_then(Value::as_str) == Some("object");
     let in_progress = flag(&cal, "calibrationInProgress");
     let waiting_for_cancel = flag(&cal, "waitingForCancel");
@@ -101,7 +125,7 @@ pub fn calibration_view(backend: &dyn Backend, _args: &[String]) -> Value {
         "needsAttention": needs_attention(accel_needed, compass_needed),
         "visibleSides": listed.iter().filter(|s| s["visible"] == true).cloned().collect::<Vec<_>>(),
         "sides": listed,
-        "routines": routines(connected, busy, accel_needed),
+        "routines": routines(connected, busy, accel_needed, classes.as_ref()),
     })
 }
 
@@ -116,6 +140,51 @@ mod tests {
         fn set(&self, _p: &str, _v: &str) -> String { String::new() }
         fn invoke(&self, _p: &str, _a: &str) -> String { String::new() }
         fn watch(&self, _p: &[String]) {}
+    }
+
+    struct Airframe(Value, Value);
+    impl Backend for Airframe {
+        fn get(&self, _p: &str) -> String { self.0.to_string() }
+        fn get_fields(&self, p: &str, _f: &str) -> String {
+            match p {
+                "vehicle" => self.1.to_string(),
+                _ => self.0.to_string(),
+            }
+        }
+        fn set(&self, _p: &str, _v: &str) -> String { String::new() }
+        fn invoke(&self, _p: &str, _a: &str) -> String { String::new() }
+        fn watch(&self, _p: &[String]) {}
+    }
+
+    fn listed(vehicle: Value) -> Vec<(String, String)> {
+        let cal = json!({ "kind": "object", "calibrationInProgress": false, "accelSetupNeeded": false });
+        calibration_view(&Airframe(cal, vehicle), &[])["routines"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|r| (r["id"].as_str().unwrap().to_string(), r["title"].as_str().unwrap().to_string()))
+            .collect()
+    }
+
+    #[test]
+    fn a_fixed_wing_is_offered_the_airspeed_calibration_and_not_the_gyro() {
+        let plane = listed(json!({ "kind": "object", "multiRotor": false, "rover": false, "sub": false, "fixedWing": true }));
+        assert!(!plane.iter().any(|(id, _)| id == "gyro"), "QGC shows the gyro row only to a multirotor, a rover or a sub");
+        let pressure = plane.iter().find(|(id, _)| id == "pressure").expect("a fixed wing still calibrates its barometer");
+        assert_eq!(pressure.1, "Baro/Airspeed", "on a plane the same routine zeroes the airspeed sensor too, and the name is what tells the operator to shield it");
+    }
+
+    #[test]
+    fn a_multirotor_keeps_the_gyro_and_the_plain_pressure_name() {
+        let copter = listed(json!({ "kind": "object", "multiRotor": true, "rover": false, "sub": false, "fixedWing": false }));
+        assert!(copter.iter().any(|(id, _)| id == "gyro"));
+        assert_eq!(copter.iter().find(|(id, _)| id == "pressure").unwrap().1, "Pressure");
+    }
+
+    #[test]
+    fn a_vehicle_that_never_said_what_it_is_keeps_every_routine() {
+        let unknown = listed(json!({ "kind": "null" }));
+        assert!(unknown.iter().any(|(id, _)| id == "gyro"), "a read that did not answer is not a vehicle without a gyro");
     }
 
     #[test]
