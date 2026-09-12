@@ -218,7 +218,8 @@ def main():
                             mavlink.MAV_AUTOPILOT_ARDUPILOTMEGA,
                             base_mode, mode, mavlink.MAV_STATE_ACTIVE)
         nofix = os.environ.get("NOFIX") == "1" and elapsed < float(os.environ.get("NOFIX_SECONDS", "1e9"))
-        link.sys_status_send(GPS_SENSOR, GPS_SENSOR, GPS_SENSOR, 250, 12100, 3200, 78, 0, 0, 0, 0, 0, 0)
+        health = 0 if os.environ.get("SENSOR_FAULT") == "1" else GPS_SENSOR
+        link.sys_status_send(GPS_SENSOR, GPS_SENSOR, health, 250, 12100, 3200, 78, 0, 0, 0, 0, 0, 0)
         status_at = float(os.environ.get("STATUS_AT", "45"))
         status_every = float(os.environ.get("STATUS_EVERY", "60"))
         if elapsed >= status_at + sent_status[0] * status_every:
