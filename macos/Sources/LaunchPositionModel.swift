@@ -4,32 +4,31 @@ struct LaunchPosition: Equatable {
     let vehicleHasHome: Bool
     let altitude: Double?
     let units: String
+    let altitudeText: String
     let coordinate: GeoPoint?
 
     static let unknown = LaunchPosition(vehicleHasHome: false, altitude: nil,
-                                        units: "m", coordinate: nil)
+                                        units: Measure.defaultUnits, altitudeText: "",
+                                        coordinate: nil)
 
-    init(vehicleHasHome: Bool, altitude: Double?, units: String, coordinate: GeoPoint?) {
+    init(vehicleHasHome: Bool, altitude: Double?, units: String, altitudeText: String,
+         coordinate: GeoPoint?) {
         self.vehicleHasHome = vehicleHasHome
         self.altitude = altitude
         self.units = units
+        self.altitudeText = altitudeText.isEmpty ? Measure.unreported : altitudeText
         self.coordinate = coordinate
     }
 
-    // The plan's first item carries the launch place and its height together. Both used to come
-    // from separate reads because the raw element held the height only as a fact to be dug out.
     init(home: [String: Any], item: [String: Any]) {
-        vehicleHasHome = (home["valid"] as? NSNumber)?.boolValue ?? false
-        altitude = (item["altitude"] as? NSNumber)?.doubleValue
-        units = (item["altitudeUnits"] as? String) ?? "m"
-        coordinate = GeoPoint(json: item["coordinate"])
+        self.init(vehicleHasHome: (home["valid"] as? NSNumber)?.boolValue ?? false,
+                  altitude: (item["altitude"] as? NSNumber)?.doubleValue,
+                  units: (item["altitudeUnits"] as? String) ?? Measure.defaultUnits,
+                  altitudeText: (item["altitudeText"] as? String) ?? "",
+                  coordinate: GeoPoint(json: item["coordinate"]))
     }
 
     var editable: Bool { !vehicleHasHome }
-
-    var altitudeText: String {
-        Measure.reading(altitude, units)
-    }
 
     var positionText: String {
         guard let coordinate else { return "Not set" }

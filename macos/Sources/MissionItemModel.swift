@@ -179,7 +179,7 @@ struct MissionItem: Identifiable, Equatable {
         exitLongitude = (leaves?["longitude"] as? NSNumber)?.doubleValue
 
         altitude = (json["altitude"] as? NSNumber)?.doubleValue
-        altitudeUnits = (json["altitudeUnits"] as? String) ?? Measure.metres.units
+        altitudeUnits = (json["altitudeUnits"] as? String) ?? Measure.defaultUnits
         altitudeText = (json["altitudeText"] as? String) ?? MissionItem.noAltitude
         altitudeBandText = (json["altitudeBandText"] as? String) ?? ""
         altitudeFrame = (json["altitudeFrame"] as? String) ?? ""

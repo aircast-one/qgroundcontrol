@@ -1975,14 +1975,12 @@ func checkMeasure() {
     expect(Measure.format(89999.17, "m^2"), "89999 m\u{00B2}", "and squares render as a superscript")
     expect(Measure.format(.nan, "m"), "\u{2014}", "a measure that is not a number is not shown as one")
 
-    let feet = Measure(units: "ft", factor: 3.28084)
-    expect(feet.text(100), "328 ft", "a metric value crosses into the operator's units before it is shown")
-    expect(feet.convert(1) == 3.28084, "the factor is the one the app settings table gives, not one I typed")
-
-    expect(Measure(units: "ft", factor: 0).factor == 1,
-           "a factor the bridge could not give falls back to metric rather than collapsing the value")
-    expect(Measure(units: "ft", factor: .nan).factor == 1, "so does one that is not a number")
-    expect(Measure.metres.text(42), "42.0 m", "and the metric measure is the identity")
+    expect(Measure.defaultUnits, "m",
+           "the unit an item falls back to when the core names none. Measure used to be a STRUCT "
+           + "with a factor and a convert() that crossed a metric value into the operator's "
+           + "units -- and nothing in macos/Sources ever built one. The core converts; five "
+           + "assertions were the only thing keeping the machinery alive, the same shape as "
+           + "FlyTelemetry.measure one file over")
 }
 
 checkMeasure()
@@ -3029,18 +3027,29 @@ func checkLaunchPosition() {
     let onVehicle = LaunchPosition(home: ["valid": true],
                                    item: ["coordinate": ["latitude": -35.36 as NSNumber,
                                                          "longitude": 149.16 as NSNumber],
-                                          "altitude": 583.0 as NSNumber, "altitudeUnits": "m"])
+                                          "altitude": 583.0 as NSNumber,
+                                          "altitudeUnits": "m", "altitudeText": "583 m"])
     expect(!onVehicle.editable, "the vehicle's own home position wins over the plan's")
-    expect(onVehicle.altitude == 583.0,
-           "the launch height rides on the plan's first item, which is where its place already "
-           + "came from -- it used to take a bridge read of its own for the same number")
-    expect(onVehicle.altitudeText, "583 m", "and reads out with the unit the core wrote it in")
+    expect(onVehicle.altitudeText, "583 m",
+           "the launch height is the string the CORE spelled on the plan's first item, which is "
+           + "where its place already came from. This head took the item's raw altitude and "
+           + "units and re-spelled them through its own copy of the core's formatter -- the copy "
+           + "that was missing settled() and drew \"-0.0 m\" for a vehicle on the ground")
     expect(onVehicle.positionText == "-35.360000, 149.160000", "a placed launch position reads out")
 
     let feet = LaunchPosition(home: ["valid": false],
-                              item: ["altitude": 100.0 as NSNumber, "altitudeUnits": "ft"])
-    expect(feet.units == "ft", "the launch altitude takes the units the core wrote it in")
-    expect(feet.altitudeText, "100 ft", "so an operator on feet is not told metres")
+                              item: ["altitude": 100.0 as NSNumber, "altitudeUnits": "ft",
+                                     "altitudeText": "100 ft"])
+    expect(feet.units, "ft",
+           "the RAW number and its unit are kept as well, because this altitude is EDITED rather "
+           + "than read: PlanWindow hands them to an AltitudeField with a commit. A spelled "
+           + "string cannot be typed into. cmake caught that when swift-checks did not, because "
+           + "PlanWindow.swift is not in the checks' compile list")
+    expect(feet.altitudeText, "100 ft",
+           "so an operator on feet is not told metres, and the head no longer needs to know "
+           + "which unit the core chose")
+    expect(LaunchPosition(home: ["valid": false], item: [:]).altitudeText, Measure.unreported,
+           "an item the core spelled no altitude for reads as absent rather than as a zero")
     expect(feet.note.contains("ground height"),
            "and the note says the terrain fills that altitude in, which QGC does two seconds later")
 }

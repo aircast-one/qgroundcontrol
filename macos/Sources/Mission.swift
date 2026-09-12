@@ -35,7 +35,7 @@ final class MissionStore: ObservableObject, Probeable, WriteReporting {
     @Published private(set) var itemModes: [AltitudeModeOffer] = []
     @Published private(set) var distanceModes: [AltitudeModeOffer] = []
     @Published private(set) var defaultAltitude = ""
-    @Published private(set) var defaultAltitudeUnits = Measure.metres.units
+    @Published private(set) var defaultAltitudeUnits = Measure.defaultUnits
     @Published private(set) var speedUnits = ItemSpeed.metresPerSecond
     @Published private(set) var summary = MissionSummary.empty
     @Published private(set) var vehicle = MissionVehicle.unknown
@@ -197,7 +197,7 @@ final class MissionStore: ObservableObject, Probeable, WriteReporting {
         if read != summary { summary = read }
         let altitudeFact = Bridge.group("settings.appSettings.defaultMissionItemAltitude")
         defaultAltitude = (altitudeFact["valueString"] as? String) ?? ""
-        defaultAltitudeUnits = (altitudeFact["units"] as? String) ?? Measure.metres.units
+        defaultAltitudeUnits = (altitudeFact["units"] as? String) ?? Measure.defaultUnits
 
         let controllerVehicle = Bridge.group("plan.controllerVehicle")
         vehicle = MissionVehicle(
