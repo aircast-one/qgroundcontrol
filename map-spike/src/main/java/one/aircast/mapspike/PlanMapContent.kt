@@ -201,7 +201,7 @@ internal fun MapSpikeScreen(
     val planStatus by mapPath("view.plan")
     val support = planSupport(planStatus)
     var uploadAsk by remember { mutableStateOf<UploadGate?>(null) }
-    var patternWanted by remember { mutableStateOf(false) }
+    var patternWanted by remember { mutableStateOf<List<MissionKind>>(emptyList()) }
     val missionSummaryView by mapPath("view.missionSummary")
     val terrainView by mapPath(TERRAIN_VIEW)
     val profile = remember(terrainView) { terrainProfile(terrainView) }
@@ -523,30 +523,39 @@ internal fun MapSpikeScreen(
                         GroupBreak()
                     }
 
-                    TextButton(onClick = { patternWanted = true }) { Text("Pattern") }
+                    TextButton(onClick = { patternWanted = scanPatterns(missionKindsView()) }) { Text("Pattern") }
 
-                    if (patternWanted) {
+                    if (patternWanted.isNotEmpty()) {
                         AlertDialog(
-                            onDismissRequest = { patternWanted = false },
+                            onDismissRequest = { patternWanted = emptyList() },
                             title = { Text("Which pattern?") },
-                            text = { Text("A pattern covers an area or a line with a camera run.") },
+                            text = {
+                                Text(
+                                    patternWanted.firstOrNull { !it.enabled && it.disabledReason.isNotBlank() }
+                                        ?.disabledReason
+                                        ?: "A pattern covers an area or a line with a camera run.",
+                                )
+                            },
                             confirmButton = {
                                 Column {
-                                    SCAN_PATTERNS.forEach { (kind, label) ->
-                                        TextButton(onClick = {
-                                            patternWanted = false
-                                            addMissionItem(
-                                                kind,
-                                                "Adding ${label.lowercase()}",
-                                                placeAt(),
-                                                insertAfter(selected, allItems),
-                                            )
-                                        }) { Text(label) }
+                                    patternWanted.forEach { kind ->
+                                        TextButton(
+                                            enabled = kind.enabled,
+                                            onClick = {
+                                                patternWanted = emptyList()
+                                                addMissionItem(
+                                                    kind.id,
+                                                    "Adding ${kind.label.lowercase()}",
+                                                    placeAt(),
+                                                    insertAfter(selected, allItems),
+                                                )
+                                            },
+                                        ) { Text(kind.label) }
                                     }
                                 }
                             },
                             dismissButton = {
-                                TextButton(onClick = { patternWanted = false }) { Text("Cancel") }
+                                TextButton(onClick = { patternWanted = emptyList() }) { Text("Cancel") }
                             },
                         )
                     }

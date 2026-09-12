@@ -15,13 +15,34 @@ const val KIND_CORRIDOR = "corridor"
 const val KIND_STRUCTURE = "structure"
 const val KIND_ROI = "roi"
 
-// The core can insert all seven; a head offering fewer is a head that can draw
-// an item its operator cannot create.
-val SCAN_PATTERNS = listOf(
-    KIND_SURVEY to "Survey",
-    KIND_CORRIDOR to "Corridor scan",
-    KIND_STRUCTURE to "Structure scan",
+data class MissionKind(
+    val id: String,
+    val label: String,
+    val enabled: Boolean,
+    val disabledReason: String,
 )
+
+// view.missionKinds names every kind, says which are patterns, and says whether
+// the plan will take one right now and why not. Spelling any of that here would
+// be a second opinion that goes stale the day the core adds a fourth pattern.
+fun scanPatterns(view: JSONObject?): List<MissionKind> {
+    val kinds = view?.optJSONArray("kinds") ?: return emptyList()
+    return (0 until kinds.length())
+        .mapNotNull { kinds.optJSONObject(it) }
+        .filterNot { it.optBoolean("simple", true) }
+        .mapNotNull { kind ->
+            val label = kind.optText("complexName").ifBlank { return@mapNotNull null }
+            MissionKind(
+                id = kind.optText("id"),
+                label = label,
+                enabled = kind.optBoolean("enabled", true),
+                disabledReason = kind.optText("disabledReason"),
+            )
+        }
+}
+
+fun missionKindsView(): JSONObject? =
+    runCatching { JSONObject(QGCBridge.get("view.missionKinds")) }.getOrNull()
 
 const val MAV_CMD_NAV_RETURN_TO_LAUNCH = 20
 
