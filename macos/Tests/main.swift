@@ -5147,17 +5147,43 @@ func checkBlockedItems() {
     let terrain = MissionItem(view: ["index": 3, "sequence": 3, "name": "Waypoint",
                                      "blocked": false, "awaitingTerrain": true,
                                      "blockedReason": "Waiting for terrain"], selected: -1)
-    expect(!ok.stopsSave,
-           "an item the controller calls ready does not stop the save -- pinning stopsSave to a "
-           + "constant true fired nothing, so a plan where every row wore the amber seal and the "
+    expect(!ok.unready,
+           "an item the controller calls ready wears no amber seal -- pinning unready to a "
+           + "constant true fired nothing, so a plan where every row wore the seal and the "
            + "banner never cleared would have passed")
-    expect(!terrain.blocked && terrain.awaitingTerrain && terrain.stopsSave,
-           "an item waiting on terrain heights stops the save too, but it is a wait on a server "
+    expect(!terrain.blocked && terrain.awaitingTerrain && terrain.unready,
+           "an item waiting on terrain heights is unready too, but it is a wait on a server "
            + "and not a task for the operator. QGC keeps the two apart -- NotReadyForSaveData "
            + "lists the incomplete items and selects the next one, NotReadyForSaveTerrain shows "
            + "a different message with no item list because there is nothing to select")
-    expect(!unset.awaitingTerrain && unset.blocked && unset.stopsSave,
-           "and an item the operator has to finish is not a terrain wait, though both stop the save")
+    expect(!unset.awaitingTerrain && unset.blocked && unset.unready,
+           "and an item the operator has to finish is not a terrain wait, though both leave the "
+           + "plan unready. Neither stops a SAVE: ce67911a1 measured an eight-item plan with a "
+           + "half-drawn takeoff writing 92943 bytes while the menu called it unsaveable, which "
+           + "is why this property is no longer called stopsSave -- it stops nothing, it colours "
+           + "a seal, and the name asserted a behaviour the fix had already disproved")
+
+    let far = MissionItem(view: ["index": 7, "sequence": 210, "name": "Corridor Scan",
+                                 "simple": false, "kind": "corridor"], selected: -1)
+    expect(far.canRemove,
+           "MissionController::removeVisualItem guards on viIndex <= 0 -- the INDEX, which is "
+           + "also what mission.remove is passed. In the every-kind plan seven of ten items "
+           + "carry a sequence different from their index, the corridor sitting at index 7 with "
+           + "sequence 210. THIS ASSERTION DOES NOT SEPARATE THE TWO RULES and is not claimed "
+           + "to: 210 > 0 as surely as 7 > 0, and reverting to sequence > 0 passes every check "
+           + "in this file. No reachable state separates them, because exactly one item carries "
+           + "sequence 0 and it is also index 0. The change aligns the gate with the key the "
+           + "operation uses; it fixes no behaviour and the mutation says so")
+    let launchRow = MissionItem(view: ["index": 0, "sequence": 0, "name": "Launch",
+                                       "simple": false, "kind": "settings"], selected: -1)
+    expect(!launchRow.canRemove && !launchRow.canChangeCommand,
+           "and the one row the controller refuses to remove is still refused by both gates")
+    let takeoff = MissionItem(view: ["index": 1, "sequence": 1, "name": "Takeoff",
+                                     "simple": true, "kind": "takeoff"], selected: -1)
+    expect(takeoff.canRemove && !takeoff.canChangeCommand,
+           "the takeoff is removable and NOT re-commandable, which is why canRemove and "
+           + "canChangeCommand cannot share a rule: removeVisualItem permits index 1, while "
+           + "changing a takeoff's command would leave a plan whose launch is a plain waypoint")
 
     let absent = MissionItem(view: ["index": 1, "sequence": 1], selected: -1)
     expect(!absent.blocked,

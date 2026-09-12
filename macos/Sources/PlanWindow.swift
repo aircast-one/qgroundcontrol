@@ -503,7 +503,7 @@ struct PlanInspector: View {
                         descriptionLines: 3,
                         leading: {
                             Seal(label: "\(item.sequence)",
-                                 colour: item.stopsSave ? Overlay.blocked
+                                 colour: item.unready ? Overlay.blocked
                                      : (item.isLaunch ? Overlay.launch : Overlay.mission))
                         },
                         trailing: {

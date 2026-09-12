@@ -47,9 +47,9 @@ struct MissionItem: Identifiable, Equatable {
 
     var hasPosition: Bool { latitude != nil && longitude != nil }
 
-    var stopsSave: Bool { blocked || awaitingTerrain }
+    var unready: Bool { blocked || awaitingTerrain }
 
-    var canRemove: Bool { sequence > 0 }
+    var canRemove: Bool { index > 0 }
 
     var canMove: Bool { movable }
 
@@ -103,7 +103,7 @@ struct MissionItem: Identifiable, Equatable {
     static let between = " \u{00B7} "
 
     var isLaunch: Bool { kind == MissionItem.takeoffKind || kind == MissionItem.settingsKind }
-    var canChangeCommand: Bool { isSimpleItem && sequence > 0 && !isLaunch }
+    var canChangeCommand: Bool { isSimpleItem && !isLaunch }
 
     static let settingsKind = "settings"
     static let takeoffKind = "takeoff"

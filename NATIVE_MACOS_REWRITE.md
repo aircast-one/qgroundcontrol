@@ -3346,3 +3346,39 @@ property**, which is this session's whole taxonomy pointed at my own keyboard.
 reads whether a menu item is greyed. That is the same blind spot Android's `enabled=`
 was hiding in, minus the false confidence: I know I cannot see it and have said so in
 the commit rather than inferred it from the value.
+
+### The remaining head-side derivations, and a name my own fix had made false
+
+`ce67911a1` left a list of gates this head derives itself. Swept, and the useful
+result is mostly negative.
+
+**`canMove` is a pure alias** for the core's `movable` — no second derivation.
+**`offersUndo`/`offersDownload` compose served fields** (`canUndo`, `connected`,
+`syncing`) the core does not combine for anyone; nothing duplicated.
+**Selection and removal are correctly keyed**: `setCurrentPlanViewSeqNum` is passed
+`sequence`, `mission.remove` is passed `index`, and those are the two different
+things each name says. **No operational defect anywhere in the set.**
+
+**`canRemove` asked `sequence > 0` while the operation it guards is keyed on index.**
+`MissionController::removeVisualItem` guards on `viIndex <= 0`. In the every-kind plan
+**seven of ten items carry a sequence different from their index** — the corridor sits
+at index 7 with sequence 210, because a complex item consumes one index and many
+sequence numbers. **The mutation says plainly that this fixes nothing**: reverting to
+`sequence > 0` passes every check, because exactly one item carries sequence 0 and it
+is also index 0. The rules cannot disagree on any state this rig reaches. Changed for
+the alignment, recorded as non-behavioural rather than dressed as a catch.
+
+**`canChangeCommand` carried three terms where two suffice.** `isSimpleItem` already
+excludes the settings row and `!isLaunch` excludes it again along with the takeoff, so
+`sequence > 0` was pure redundancy. The two gates must stay distinct: **the takeoff is
+removable and not re-commandable**, since `removeVisualItem` permits index 1 while
+re-commanding a takeoff leaves a plan whose launch is a plain waypoint. That assertion
+is the one in this cycle that a mutation does fail.
+
+**`stopsSave` stops no save, and I am the one who made that false.** It is read in a
+single place, to colour a seal. `ce67911a1` measured an eight-item plan with a
+half-drawn takeoff **writing 92943 bytes** while the menu called it unsaveable — so an
+item that is `blocked` or `awaitingTerrain` leaves the plan *unready*, which is a
+different claim. Renamed `unready`, and three test sentences that said "stops the save"
+were corrected with it. **A name is an assertion, and this one had been falsified by my
+own commit an hour earlier without my going back to look at what it said.**
