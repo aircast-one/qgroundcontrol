@@ -11,6 +11,17 @@ const val PLAN_VIEW = "view.missionItems(geometry)"
 const val KIND_LAND = "land"
 const val KIND_TAKEOFF = "takeoff"
 const val KIND_SURVEY = "survey"
+const val KIND_CORRIDOR = "corridor"
+const val KIND_STRUCTURE = "structure"
+const val KIND_ROI = "roi"
+
+// The core can insert all seven; a head offering fewer is a head that can draw
+// an item its operator cannot create.
+val SCAN_PATTERNS = listOf(
+    KIND_SURVEY to "Survey",
+    KIND_CORRIDOR to "Corridor scan",
+    KIND_STRUCTURE to "Structure scan",
+)
 
 const val MAV_CMD_NAV_RETURN_TO_LAUNCH = 20
 
