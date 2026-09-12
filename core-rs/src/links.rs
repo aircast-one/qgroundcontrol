@@ -78,9 +78,9 @@ pub fn link_json(index: usize, element: &Value) -> Value {
         "autoConnect": flag("autoConnect"),
         "dynamic": flag("dynamic"),
         "host": host,
-        "port": number("port").or_else(|| number("localPort")).unwrap_or(0),
+        "port": number("port").or_else(|| number("localPort")),
         "portName": text("portName"),
-        "baud": number("baud").unwrap_or(0),
+        "baud": number("baud"),
         "filename": filename,
         "logFileName": filename.rsplit('/').next().unwrap_or("").to_string(),
         "lastError": last_error,
@@ -145,6 +145,14 @@ mod tests {
         assert_eq!(other["statusLine"], "Not connected \u{b7} 2.4 GHz");
         let replay = link_json(3, &json!({ "name": "Replay", "settingsURL": "LogReplaySettings.qml", "filename": "/tmp/flight.tlog", "children": [] }));
         assert_eq!(replay["logFileName"], "flight.tlog");
+
+        assert_eq!(udp["baud"], Value::Null, "baud is a Q_PROPERTY on SerialLink alone, so a UDP link has none - and a head drawing zero shows a rate rather than an absence");
+        assert_eq!(replay["port"], Value::Null, "port is on TCPLink and localPort on UDPLink, so a log replay has neither");
+        assert_eq!(replay["baud"], Value::Null);
+        assert_eq!(tcp["port"], 5760, "where the property exists the number still travels");
+        let serial = link_json(4, &json!({ "name": "Pixhawk", "settingsURL": "SerialSettings.qml", "summary": "", "portName": "/dev/cu.usbmodem1", "baud": 57600, "children": [] }));
+        assert_eq!(serial["baud"], 57600);
+        assert_eq!(serial["port"], Value::Null, "and a serial link has no network port at all");
     }
 
     #[test]

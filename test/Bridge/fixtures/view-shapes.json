@@ -6331,7 +6331,7 @@
         "configured": [
             {
                 "autoConnect": "bool",
-                "baud": "number",
+                "baud": "null",
                 "connected": "bool",
                 "displaySummary": "string",
                 "dynamic": "bool",
@@ -6359,7 +6359,7 @@
         "links": [
             {
                 "autoConnect": "bool",
-                "baud": "number",
+                "baud": "null",
                 "connected": "bool",
                 "displaySummary": "string",
                 "dynamic": "bool",
@@ -6372,7 +6372,7 @@
                 "logFileName": "string",
                 "name": "string",
                 "path": "string",
-                "port": "number",
+                "port": "null|number",
                 "portName": "string",
                 "statusLine": "string",
                 "summary": "string",
