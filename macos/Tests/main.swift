@@ -1181,20 +1181,7 @@ checkMissionStartSpeed()
 checkLaunchPosition()
 checkLaunchAltitudeIsNotListedTwice()
 
-func checkTelemetryUnits() {
-    expect(FlyTelemetry.measure(1916.2, "ft"), "1916.2 ft",
-           "a height the vehicle reported in feet is labelled feet, not metres. The units ride on "
-           + "the core's fact; this head no longer keeps a second copy of them")
-    expect(FlyTelemetry.measure(12.5, "ft/s"), "12.5 ft/s", "and a speed carries the units it came with")
-    expect(FlyTelemetry.measure(584.0, "m"), "584.0 m", "metric reads the same way")
-    expect(FlyTelemetry.measure(nil, "m"), "—", "a height the vehicle has not reported shows nothing")
-    expect(FlyTelemetry.measure(1.0, ""), "1.0",
-           "a fact with no units at all is printed bare rather than with a guessed suffix")
-    expect(FlyTelemetry.measure(-0.04, "m"), "0.0 m",
-           "a hair below zero reads as zero, not as minus zero")
-}
 
-checkTelemetryUnits()
 
 func checkVehicleSetupText() {
     expect(VehicleSetupText.waiting(connected: true, for: "parameters"),
@@ -1552,13 +1539,6 @@ func checkFlyTelemetry() {
     expect(reading.gpsLevel == .critical, "no fix is critical")
     expect(reading.gpsText, "No fix \u{00B7} 10 sats", "and says so plainly")
 
-    expect(FlyTelemetry.measure(nil, "m"), "\u{2014}", "a missing altitude shows nothing")
-    expect(FlyTelemetry.measure(Double.nan, "m"), "\u{2014}", "and so does a NaN")
-    expect(FlyTelemetry.measure(3.26, "m/s"), "3.3 m/s", "speed reads to one decimal")
-    expect(FlyTelemetry.measure(-0.0, "m"), "0.0 m", "a vehicle on the ground does not report minus zero")
-    expect(FlyTelemetry.measure(-0.04, "m"), "0.0 m", "nor does one a few centimetres below its launch point")
-    expect(FlyTelemetry.measure(-0.02, "m/s"), "0.0 m/s", "nor does a stationary one")
-    expect(FlyTelemetry.measure(-12.5, "m"), "-12.5 m", "a real negative altitude keeps its sign")
 }
 
 checkFlyTelemetry()

@@ -57,20 +57,6 @@ struct FlyTelemetry: Equatable {
         return "\(main) · \(secondary)"
     }
 
-    // A vehicle sitting on the ground reports a relative altitude a hair below zero,
-    // like -0.04, which rounds to -0.0 m at one decimal place.
-    private static func zeroed(_ value: Double) -> Double {
-        let rounded = (value * 10).rounded() / 10
-        return rounded == 0 ? 0 : rounded
-    }
-
-    static func measure(_ value: Double?, _ units: String) -> String {
-        guard let value, value.isFinite else { return "—" }
-        let rounded = zeroed(value)
-        return units.isEmpty
-            ? String(format: "%.1f", rounded)
-            : String(format: "%.1f %@", rounded, units)
-    }
 
 
 }
