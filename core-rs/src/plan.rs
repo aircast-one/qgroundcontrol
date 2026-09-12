@@ -13,6 +13,8 @@ pub const DEPS: &[&str] = &[
     "vehicles.activeVehicleAvailable",
     "vehicle.armed",
     "vehicle.flightMode",
+    "plan.geoFenceController.supported",
+    "plan.rallyPointController.supported",
 ];
 
 pub fn plan_view(backend: &dyn Backend, _args: &[String]) -> Value {
@@ -25,6 +27,8 @@ pub fn plan_view(backend: &dyn Backend, _args: &[String]) -> Value {
     let has_mission_items = flag(&mission, "containsItems");
     let file = plan.get("currentPlanFile").and_then(Value::as_str).unwrap_or("");
     let name = file.rsplit('/').next().filter(|n| !n.is_empty());
+    let supports = |controller: &str| flag(&object(&backend.get_fields(&format!("plan.{controller}"), "supported")), "supported");
+    let (fences, rally) = (supports("geoFenceController"), supports("rallyPointController"));
     let readiness = result_integer(&backend.invoke("plan.readyForSaveState", "[]"));
     let upload = result_integer(&backend.invoke("plan.missionController.sendToVehiclePreCheck", "[]"));
     json!({
@@ -38,6 +42,16 @@ pub fn plan_view(backend: &dyn Backend, _args: &[String]) -> Value {
             "exportKml": !syncing && has_mission_items,
             "newPlan": !syncing,
             "clearMission": !offline && !syncing,
+            "addFence": fences && !syncing,
+            "addRally": rally && !syncing,
+        },
+        "fenceSupported": fences,
+        "rallySupported": rally,
+        "unsupportedReason": match (fences, rally) {
+            (false, false) => "This vehicle accepts neither a geofence nor rally points.",
+            (false, true) => "This vehicle does not accept a geofence.",
+            (true, false) => "This vehicle does not accept rally points.",
+            (true, true) => "",
         },
         "sync": sync_json(offline, syncing),
         "status": status_text(name, dirty, offline),
@@ -123,6 +137,39 @@ mod tests {
             }
         }
         fn watch(&self, _paths: &[String]) {}
+    }
+
+    fn supporting(plan: Value, fences: bool, rally: bool) -> Fake {
+        Fake {
+            fields: BTreeMap::from([
+                ("plan", plan),
+                ("plan.missionController", json!({ "kind": "object", "containsItems": true })),
+                ("plan.geoFenceController", json!({ "kind": "object", "supported": fences })),
+                ("plan.rallyPointController", json!({ "kind": "object", "supported": rally })),
+            ]),
+            readiness: json!({ "ok": true, "result": 0 }),
+            upload: json!({ "ok": true, "result": 0 }),
+        }
+    }
+
+    #[test]
+    fn a_vehicle_that_refuses_a_geofence_says_so_before_the_button_is_pressed() {
+        let connected = json!({ "kind": "object", "syncInProgress": false, "offline": false, "dirty": false, "containsItems": true, "currentPlanFile": "" });
+
+        let takes_both = plan_view(&supporting(connected.clone(), true, true), &[]);
+        assert_eq!(takes_both["actions"]["addFence"], true);
+        assert_eq!(takes_both["unsupportedReason"], "", "nothing to explain when the vehicle accepts both");
+
+        let neither = plan_view(&supporting(connected.clone(), false, false), &[]);
+        assert_eq!(neither["actions"]["addFence"], false, "PlanElementController::supported is a vehicle capability, and both heads were offering a button for something the vehicle refuses when pressed");
+        assert_eq!(neither["actions"]["addRally"], false);
+        assert_eq!(neither["fenceSupported"], false);
+        assert!(neither["unsupportedReason"].as_str().unwrap().contains("neither"));
+
+        let fence_only = plan_view(&supporting(connected, true, false), &[]);
+        assert_eq!(fence_only["actions"]["addFence"], true, "the two are separate capabilities and a vehicle can accept one and not the other");
+        assert_eq!(fence_only["actions"]["addRally"], false);
+        assert!(fence_only["unsupportedReason"].as_str().unwrap().contains("rally points"));
     }
 
     fn fake(plan: Value, mission_items: bool, readiness: Value, upload: Value) -> Fake {
