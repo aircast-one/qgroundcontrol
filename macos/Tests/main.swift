@@ -2593,6 +2593,31 @@ func checkVehicleMessages() {
 
 checkVehicleMessages()
 
+func checkAddMenuNeedsNoVehicle() {
+    func kind(_ id: String, enabled: Bool) -> [String: Any] {
+        ["id": id, "title": id.capitalized, "enabled": enabled as NSNumber, "reason": ""]
+    }
+    let offline = MissionKinds(["kinds": [kind("waypoint", enabled: true),
+                                          kind("takeoff", enabled: false),
+                                          kind("survey", enabled: true)]])
+    expect(offline.offersAny,
+           "the Add menu opens with NO VEHICLE CONNECTED. It was disabled on a head-derived "
+           + "`Bridge.group(\"vehicle\")[\"kind\"] == \"object\"`, so an operator planning a "
+           + "mission at a desk could not add a single item -- and planning before going to the "
+           + "field is the whole point of the Plan window. The core already answers the real "
+           + "question per kind: with nothing connected it returns waypoint, land, roi, survey, "
+           + "corridor and structure all enabled:true, and disables only takeoff, with the reason "
+           + "\"The mission already takes off before this point.\" The gate now reads that answer")
+    let nothing = MissionKinds(["kinds": [kind("waypoint", enabled: false),
+                                          kind("takeoff", enabled: false)]])
+    expect(nothing.offersAny == false,
+           "and when the core disables every kind there is nothing to open a menu for, so the "
+           + "button is still gated -- on the core's answer rather than on a connection")
+    expect(MissionKinds.empty.offersAny == false,
+           "and an unread catalogue offers nothing, which is the state before the first reload "
+           + "rather than a claim about the vehicle")
+}
+
 func checkCameraModeRow() {
     func camera(mode: Int, text: String) -> CameraControl {
         CameraControl(["present": true as NSNumber, "hasModes": true as NSNumber,
@@ -2822,6 +2847,7 @@ checkChecklistReset()
 checkModeRequest()
 checkSetupBlocked()
 checkCameraModeRow()
+checkAddMenuNeedsNoVehicle()
 
 final class ProbeStub: Probeable {
     static let probeID = "stub"

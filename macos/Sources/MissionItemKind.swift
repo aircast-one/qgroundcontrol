@@ -50,6 +50,8 @@ struct MissionKinds: Equatable {
     let all: [MissionItemKind]
 
     static let empty = MissionKinds(all: [])
+
+    var offersAny: Bool { all.contains { $0.enabled } }
     static let unknownSymbol = "square.on.square.dashed"
 
     init(all: [MissionItemKind]) { self.all = all }

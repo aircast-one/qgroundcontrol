@@ -1057,7 +1057,7 @@ struct PlanInspector: View {
                 .menuIndicator(.hidden)
                 .frame(width: 26)
                 .help(addHelp)
-                .disabled(mission.syncing || !mission.connected)
+                .disabled(mission.syncing || !mission.kinds.offersAny)
             }
 
             Button {
