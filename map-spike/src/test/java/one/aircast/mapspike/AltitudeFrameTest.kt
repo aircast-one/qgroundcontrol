@@ -46,6 +46,14 @@ class AltitudeFrameTest {
     }
 
     @Test
+    fun `the summary chip carries the frame too, being the other place a height is spelled`() {
+        val amsl = item("amsl", "541 m")
+
+        assertEquals("#2 at 541 m AMSL", selectionText(MapHit.Waypoint(2), listOf(amsl), emptyList(), emptyList()))
+        assertEquals("#2 at 50.0 m", selectionText(MapHit.Waypoint(2), listOf(item("launch")), emptyList(), emptyList()))
+    }
+
+    @Test
     fun `a frame neither head has heard of is shown, not swallowed into the default`() {
         assertEquals("50.0 m SEABED", altitudeWithFrame(item("seabed")))
     }

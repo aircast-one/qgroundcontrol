@@ -34,7 +34,7 @@ fun planSummary(
 internal fun circleText(circle: FenceCircle): String =
     circle.detailText
 
-private fun selectionText(
+internal fun selectionText(
     selected: MapHit?,
     items: List<MissionItem>,
     circles: List<FenceCircle>,
@@ -42,7 +42,7 @@ private fun selectionText(
 ): String? = when (selected) {
     is MapHit.Waypoint ->
         items.firstOrNull { it.index == selected.index }
-            ?.let { item -> item.altitudeText.ifBlank { null }?.let { "#${item.sequence} at $it" } }
+            ?.let { item -> altitudeWithFrame(item)?.let { "#${item.sequence} at $it" } }
     is MapHit.Circle -> circles.firstOrNull { it.index == selected.index }?.let(::circleText)
     is MapHit.CircleCentre -> circles.firstOrNull { it.index == selected.index }?.let(::circleText)
     is MapHit.FenceVertex -> polygons.firstOrNull { it.index == selected.polygon }
