@@ -4281,3 +4281,35 @@ is not an inconsistency to tidy away.** Two precision rules, one shared guard.
 **Still not closed:** whether a stationary vehicle reads `-0.0` through `view.instruments`.
 That value is Qt's `valueString` — **neither side formats it, so `settled()` never touches
 it** — and only a connected vehicle can tell.
+
+### (vv) The rule has an edge: read versus edit
+
+**The launch position needed no ask — the core already spells it.** `LaunchPosition` is built
+from the plan's first item, and that item carries `altitudeText`: **`"585 m"` measured,
+byte-identical to what the head's formatter produced.** The head was **re-deriving a string it
+had already been handed, in the same object** — through the copy of the core's algorithm that
+had just been caught missing `settled()`.
+
+**And taking it exposed a design error of mine that only `cmake` caught.** My first version
+*replaced* the raw altitude and units with the text. **`swift-checks` passed. `cmake` failed on
+`PlanWindow.swift`: the launch altitude is an EDITABLE FIELD** — an `AltitudeField` with a
+commit — **not a read-only row. A spelled string cannot be typed into.**
+
+> **THE CORE OWNS THE SPELLING OF A VALUE THE OPERATOR READS. THE HEAD STILL NEEDS THE NUMBER
+> FOR A VALUE THE OPERATOR EDITS. BOTH, NOT EITHER.**
+
+`voltageText` had no such constraint — **nobody types a voltage.** A launch altitude and a
+rally altitude are typed, so a spelled text has to arrive *beside* the number, not instead of
+it. **Passed to the core with the rally ask, so the same mistake is not made one layer down.**
+
+**`PlanWindow.swift` is not in `swift-checks`' compile list, so only the full build could see
+it. That is the first time in many cycles the second build earned its place rather than
+agreeing with the first** — and a standing argument against treating the fast check as
+sufficient.
+
+**A third dead mechanism, one file from the second.** `Measure` was a struct with a `factor`, a
+`convert()` crossing a metric value into the operator's units, a `text()` and a `suffix` — and
+**nothing in `macos/Sources` ever built one.** Production used the statics and
+`Measure.metres.units`, the string `"m"`. **Five assertions were the only thing keeping it
+alive**, an hour after `FlyTelemetry.measure` and one file over. **The core converts; this head
+never did.**
