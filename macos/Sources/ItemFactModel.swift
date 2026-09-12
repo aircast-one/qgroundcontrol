@@ -1,5 +1,17 @@
 import Foundation
 
+struct FactBound: Equatable {
+    let limit: Double
+    let text: String
+
+    init?(_ limit: Any?, text: Any?, filledIn: Any?) {
+        guard (filledIn as? NSNumber)?.boolValue == false,
+              let value = (limit as? NSNumber)?.doubleValue, value.isFinite else { return nil }
+        self.limit = value
+        self.text = (text as? String) ?? ""
+    }
+}
+
 struct ItemFact: Identifiable, Equatable {
     let pathSuffix: String
     let name: String
@@ -9,6 +21,8 @@ struct ItemFact: Identifiable, Equatable {
     let units: String
     let options: [String]
     let readOnly: Bool
+    let lowest: FactBound?
+    let highest: FactBound?
     var group = ItemFact.itemGroup
 
     var id: String { pathSuffix }
@@ -43,6 +57,23 @@ struct ItemFact: Identifiable, Equatable {
         units = (object["units"] as? String) ?? ""
         options = (object["enumStrings"] as? [String]) ?? []
         readOnly = (object["readOnly"] as? NSNumber)?.boolValue ?? false
+        lowest = FactBound(object["min"], text: object["minString"],
+                           filledIn: object["minIsDefaultForType"])
+        highest = FactBound(object["max"], text: object["maxString"],
+                            filledIn: object["maxIsDefaultForType"])
+    }
+
+    func refusal(_ entry: String) -> String? {
+        guard let typed = Double(entry) else { return nil }
+        let under = lowest.map { typed < $0.limit } ?? false
+        let over = highest.map { typed > $0.limit } ?? false
+        guard under || over else { return nil }
+        switch (lowest, highest) {
+        case let (low?, high?): return "\(title) must be within \(low.text) and \(high.text)."
+        case let (low?, nil): return "\(title) must be at least \(low.text)."
+        case let (nil, high?): return "\(title) must be at most \(high.text)."
+        default: return nil
+        }
     }
 
     // A fact in one of the item's fact lists is addressed by its position; a fact that

@@ -614,6 +614,10 @@ final class MissionStore: ObservableObject, Probeable, WriteReporting {
             writeFailure = FactWrite.readOnly
             return
         }
+        if let refused = fact.refusal(value) {
+            writeFailure = refused
+            return
+        }
         guard let item = items.first(where: \.isSelected) else { return }
         write("plan.missionController.visualItems.\(item.index).\(fact.pathSuffix)",
               Double(value) ?? value, fact.name)

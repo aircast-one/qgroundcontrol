@@ -1106,6 +1106,68 @@ func checkItemFacts() {
 
 checkItemFacts()
 
+func checkFactRangesRefuseTheWriteQGCWouldRefuse() {
+    let ranged = ItemFact.owned([
+        ["name": "FrontalOverlap", "property": "cameraCalc.frontalOverlap", "valueString": "80",
+         "units": "%", "min": 0, "max": 85, "minString": "0", "maxString": "85",
+         "minIsDefaultForType": false, "maxIsDefaultForType": false],
+        ["name": "TurnAroundDistanceMultiRotor", "property": "turnAroundDistance",
+         "valueString": "10", "min": 0, "max": 1.7976931348623157e+308,
+         "minString": "0.00", "maxString": "17976931348623157081452742373170435679807056752584.00",
+         "minIsDefaultForType": false, "maxIsDefaultForType": true],
+        ["name": "GridAngle", "property": "gridAngle", "valueString": "0", "units": "deg",
+         "min": -360, "max": 360, "minString": "-360", "maxString": "360",
+         "minIsDefaultForType": false, "maxIsDefaultForType": false],
+        ["name": "Unbounded", "property": "loose", "valueString": "3",
+         "min": -1.7976931348623157e+308, "max": 1.7976931348623157e+308,
+         "minString": "-1797693134862315708.00", "maxString": "1797693134862315708.00",
+         "minIsDefaultForType": true, "maxIsDefaultForType": true],
+    ], label: { $0 })
+
+    let overlap = ranged[0], turnaround = ranged[1], angle = ranged[2], loose = ranged[3]
+
+    expect(overlap.refusal("80") == nil, "a value inside the fact's own range is written")
+    expect(overlap.refusal("85") == nil, "the maximum itself is inside the range, not outside it")
+    expect(overlap.refusal("95") ?? "", "FrontalOverlap must be within 0 and 85.",
+           "QGC's Fact::validate refuses 95 and FactTextField.qml restores the old text, but the "
+           + "bridge's write path calls setCookedValue, which reaches setRawValue with "
+           + "convertOnly and checks no range at all. Measured on the running app: this fact "
+           + "serves min 0 and max 85, and 95 would have landed in the plan silently")
+
+    expect(turnaround.refusal("-1") ?? "", "TurnAroundDistanceMultiRotor must be at least 0.00.",
+           "only the bound the fact DECLARED is named. Upstream always spells \"within %1 and "
+           + "%2\", so with a filled-in maximum it prints the type extreme -- measured as a "
+           + "309-digit maxString on the running app. Naming one end is the deliberate "
+           + "divergence; the numbers are still the fact's own formatting")
+    expect(turnaround.refusal("999999") == nil,
+           "and a filled-in maximum bounds nothing, so a large turnaround distance is written")
+
+    expect(angle.refusal("-360") == nil, "a negative minimum is a real minimum")
+    expect(angle.refusal("-361") ?? "", "GridAngle must be within -360 and 360.",
+           "a fixture whose minimum is below zero: a rule that compared magnitudes rather than "
+           + "signed values would pass every assertion above and fail this one")
+
+    expect(loose.refusal("99999999") == nil,
+           "a fact that declared neither end is refused nothing. minIsDefaultForType is the only "
+           + "thing separating a bound from a filled-in extreme, and a rule that read min/max "
+           + "alone would refuse nothing here by luck -- so the -1 case proves it too")
+    expect(loose.refusal("-99999999") == nil, "at both ends")
+
+    expect(overlap.refusal("") == nil, "an empty entry is not a number and is left to the write")
+    expect(overlap.refusal("Hold") == nil,
+           "nor is an enum or string entry measured against a numeric range")
+
+    let unranged = ItemFact.owned([
+        ["name": "Delay", "property": "delay", "valueString": "45"],
+    ], label: { $0 })
+    expect(unranged[0].lowest == nil && unranged[0].highest == nil,
+           "a fact serving no bounds at all carries none")
+    expect(unranged[0].refusal("-5") == nil, "and refuses nothing")
+}
+
+checkFactRangesRefuseTheWriteQGCWouldRefuse()
+
+
 func checkUnplacedCommands() {
     let delay = MissionItem(view: ["index": 1, "sequence": 1, "name": "Delay", "simple": true], selected: -1)
     expect(!delay.hasPosition, "a command the core gave no place is not placed")
