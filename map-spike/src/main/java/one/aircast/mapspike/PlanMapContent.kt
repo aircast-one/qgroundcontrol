@@ -134,6 +134,9 @@ internal fun MapSpikeScreen(
     var controlsHeightPx by remember { mutableIntStateOf(0) }
     var topOverlayPx by remember { mutableIntStateOf(0) }
 
+    val kindsView by mapPath("view.missionKinds")
+    val insertable = missionKinds(kindsView)
+
     fun say(message: String) {
         busy = message
         scope.launch {
@@ -167,7 +170,7 @@ internal fun MapSpikeScreen(
                     selected = MapHit.Waypoint(added)
                 }
             } else {
-                busy = outcome.reason
+                busy = outcome.reason.takeIf { it != blockedReason(insertable) }
                 delay(FAILURE_MESSAGE_MS)
                 busy = null
             }
@@ -199,8 +202,6 @@ internal fun MapSpikeScreen(
     val planOffline by mapBool("plan.offline")
     val planSyncing by mapBool("plan.syncInProgress")
     val planStatus by mapPath("view.plan")
-    val kindsView by mapPath("view.missionKinds")
-    val insertable = missionKinds(kindsView)
     val support = planSupport(planStatus)
     var uploadAsk by remember { mutableStateOf<UploadGate?>(null) }
     var patternWanted by remember { mutableStateOf<List<MissionKind>>(emptyList()) }
