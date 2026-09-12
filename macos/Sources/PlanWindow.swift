@@ -19,9 +19,9 @@ struct AltitudeField: View {
                 .font(.body.monospacedDigit())
                 .frame(width: 46)
                 .focused($editing)
-                .onAppear { draft = AltitudeField.text(value, decimals) }
+                .onAppear { draft = Measure.fieldText(value, decimals) }
                 .onChange(of: value) { latest in
-                    if !editing { draft = AltitudeField.text(latest, decimals) }
+                    if !editing { draft = Measure.fieldText(latest, decimals) }
                 }
                 .onSubmit(send)
                 .onChange(of: editing) { focused in if !focused { send() } }
@@ -34,17 +34,11 @@ struct AltitudeField: View {
     }
 
     private func send() {
-        guard let typed = Double(draft.trimmingCharacters(in: .whitespaces)), typed.isFinite else {
-            draft = AltitudeField.text(value, decimals)
+        guard let typed = Measure.committed(draft, showing: value, decimals: decimals) else {
+            draft = Measure.fieldText(value, decimals)
             return
         }
-        guard typed != value else { return }
         commit(typed)
-    }
-
-    static func text(_ value: Double?, _ decimals: Int) -> String {
-        guard let value, value.isFinite else { return "" }
-        return String(format: "%.\(decimals)f", value)
     }
 }
 

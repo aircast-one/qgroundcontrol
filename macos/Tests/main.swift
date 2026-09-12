@@ -2581,6 +2581,27 @@ func checkVehicleMessages() {
 
 checkVehicleMessages()
 
+func checkEditableFields() {
+    expect(Measure.committed("75", showing: 75.4, decimals: 0) == nil,
+           "an altitude field the operator FOCUSED AND LEFT WITHOUT TYPING must not write. The "
+           + "field renders 75.4 as \"75\" at zero decimals, and the old guard compared the typed "
+           + "number against the FULL-PRECISION value -- so 75.0 != 75.4 was true and merely "
+           + "clicking into the field and clicking away committed 75, silently truncating the "
+           + "plan's altitude. The guard meant to suppress a no-op write instead GUARANTEED one "
+           + "for every value carrying a fraction")
+    expect(Measure.committed("80", showing: 75.4, decimals: 0) == 80.0,
+           "and a real edit still commits")
+    expect(Measure.committed("75.4", showing: 75.4, decimals: 0) == nil,
+           "and typing the value back in full precision is not a change either, even though the "
+           + "text differs from what was shown")
+    expect(Measure.committed("", showing: 75.4, decimals: 0) == nil,
+           "and an unparseable draft writes nothing rather than zero")
+    expect(Measure.fieldText(nil, 0), "",
+           "a field with no value shows nothing, not a zero the operator could commit")
+    expect(Measure.committed("2.5", showing: nil, decimals: 1) == 2.5,
+           "and a field that had no value accepts the first number typed into it")
+}
+
 func checkDetections() {
     func box(_ label: String, _ x: Double, _ y: Double, _ w: Double, _ h: Double,
              conf: Double? = 0.91) -> [String: Any] {
@@ -2676,6 +2697,7 @@ func checkDetections() {
 }
 
 checkDetections()
+checkEditableFields()
 
 final class ProbeStub: Probeable {
     static let probeID = "stub"
