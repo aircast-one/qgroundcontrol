@@ -1244,7 +1244,7 @@ const char *const kViewPaths[] = {
     "view.setup(Safety)", "view.video", "view.camera", "view.detections", "view.coreCalibration", "view.flyState", "view.track",
     "view.altitudeModes", "view.altitudeModes(item,4)",
     "view.missionItems(geometry)", "view.obstacle", "view.landingPattern(4)",
-    "view.missionSummary(verify)", "view.missionKinds(1)", "view.instruments(vehicle/altitudeRelative)",
+    "view.missionSummary(verify)", "view.missionKinds(survey)", "view.instruments(vehicle/altitudeRelative)",
     "view.geoToNed(47.397,8.546,500,47.396,8.545,490)", "view.nedToGeo(100,50,-10,47.396,8.545,490)",
     "view.geoToUtm(47.397,8.546)", "view.utmToGeo(465000,5248000,32)",
 };
@@ -1365,7 +1365,9 @@ void QGCCoreCTest::_viewShapesMatchTheRecordedContract()
             continue;
         }
         const QJsonObject shape = it.value().toObject();
-        const bool bareRefusal = shape.contains(QStringLiteral("reason")) && shape.size() == 2;
+        const bool refusedWithReason = shape.contains(QStringLiteral("reason")) && shape.size() == 2;
+        const bool refusedSilently = shape.size() == 1 && shape.contains(QStringLiteral("kind"));
+        const bool bareRefusal = refusedWithReason || refusedSilently;
         const QString why = bareRefusal ? take(qgc_bridge_get(it.key().toUtf8().constData())).value(QStringLiteral("reason")).toString() : QString();
         QVERIFY2(!bareRefusal, qPrintable(QStringLiteral("%1 recorded nothing but a refusal, so every field a head reads from it is pinned by this fixture in name only - an argument-taking view called with an argument that does not resolve records a valid-looking shape and nothing appears wrong. It answered: %2").arg(it.key(), why)));
     }
@@ -3483,7 +3485,7 @@ void QGCCoreCTest::_theCoreWorksOutTheSameFlownDistanceTheControllerDoes()
         QVERIFY2(qAbs(reachCore - reachQt) < qMax(1.0, reachQt * 0.001),
                  qPrintable(QStringLiteral("%1: the core reaches %2 m and the controller %3 m").arg(shape).arg(reachCore).arg(reachQt)));
 
-        const double heldSeconds = summary.value(QStringLiteral("durationSeconds")).toDouble(-1.0);
+        const double heldSeconds = summary.value(QStringLiteral("timeSeconds")).toDouble(-1.0);
         const QJsonValue computedSeconds = summary.value(QStringLiteral("durationComputedSeconds"));
         QVERIFY2(heldSeconds > 0.0, qPrintable(QStringLiteral("%1: the controller reported no mission time").arg(shape)));
         QVERIFY2(!computedSeconds.isNull(), qPrintable(QStringLiteral("%1: the core worked out no duration for a vehicle that is not a VTOL").arg(shape)));

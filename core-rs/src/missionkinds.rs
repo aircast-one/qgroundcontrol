@@ -117,7 +117,9 @@ fn offered(kind: &Kind, insertable: &Insertable) -> Value {
 pub fn kinds_view(backend: &dyn Backend, args: &[String]) -> Value {
     let insertable = insertable(backend);
     match args.first() {
-        Some(wanted) => lookup(wanted).map(|kind| offered(kind, &insertable)).unwrap_or(json!({ "kind": "null" })),
+        Some(wanted) => lookup(wanted).map(|kind| offered(kind, &insertable)).unwrap_or_else(|| {
+            crate::read::refused(&format!("no mission kind is called {wanted}; this takes a kind id or a complex item name, one of {}", KINDS.iter().map(|kind| kind.id).collect::<Vec<_>>().join(", ")))
+        }),
         None => json!({ "kind": "object", "class": "MissionKinds", "kinds": KINDS.iter().map(|kind| offered(kind, &insertable)).collect::<Vec<_>>() }),
     }
 }
@@ -163,6 +165,23 @@ pub fn seed_view(_backend: &dyn Backend, args: &[String]) -> Value {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn an_argument_that_names_no_kind_says_what_it_wanted() {
+        struct Nothing;
+        impl Backend for Nothing {
+            fn get(&self, _p: &str) -> String { String::new() }
+            fn get_fields(&self, _p: &str, _f: &str) -> String { String::new() }
+            fn set(&self, _p: &str, _v: &str) -> String { String::new() }
+            fn invoke(&self, _p: &str, _a: &str) -> String { String::new() }
+            fn watch(&self, _p: &[String]) {}
+        }
+        let refused = kinds_view(&Nothing, &["1".to_string()]);
+        assert_eq!(refused["kind"], "null");
+        let reason = refused["reason"].as_str().expect("a refusal without a reason is the one case where the caller most needs to be told what the view wanted, and this one answered a bare null while landingPattern and control both answer a sentence");
+        assert!(reason.contains("survey"), "naming the ids it accepts is what turns the refusal into an answer: {reason}");
+        assert!(kinds_view(&Nothing, &["survey".to_string()])["id"] == "survey", "and a real id still resolves, so the refusal is not swallowing everything");
+    }
 
     #[test]
     fn the_simple_kinds_come_first_and_only_the_complex_ones_carry_a_shape() {

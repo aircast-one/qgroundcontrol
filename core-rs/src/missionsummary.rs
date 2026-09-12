@@ -242,7 +242,6 @@ pub fn summary_view(backend: &dyn Backend, args: &[String]) -> Value {
                 let speed = |name: &str| value_number(&backend.get(&format!("settings.appSettings.{name}.rawValue"))).unwrap_or(0.0);
                 flown_seconds(items, speed("offlineEditingHoverSpeed"), speed("offlineEditingCruiseSpeed"), speed("offlineEditingAscentSpeed"), crate::read::flag(&vehicle, "multiRotor"), crate::read::flag(&vehicle, "vtol"))
             }),
-        "durationSeconds": verify.then(|| metres("missionTime")).flatten(),
         "durationInputs": walked.as_ref().map(|items| json!({
             "hover": value_number(&backend.get("settings.appSettings.offlineEditingHoverSpeed.rawValue")),
             "cruise": value_number(&backend.get("settings.appSettings.offlineEditingCruiseSpeed.rawValue")),
@@ -251,8 +250,8 @@ pub fn summary_view(backend: &dyn Backend, args: &[String]) -> Value {
             "distance": flown_distance(items),
         })),
         "altitudeBandComputed": walked.as_ref().and_then(|items| altitude_band(items)).map(|(low, high)| json!([low, high])),
-        "altitudeBandMetres": verify.then(|| json!([metres("minAMSLAltitude"), metres("maxAMSLAltitude")])),
-        "maxTelemetryMetres": verify.then(|| metres("missionMaxTelemetry")).flatten(),
+        "altitudeBandMetres": json!([metres("minAMSLAltitude"), metres("maxAMSLAltitude")]),
+        "maxTelemetryMetres": metres("missionMaxTelemetry"),
         "maxTelemetryComputedMetres": walked.as_ref().map(|items| max_telemetry_distance(items)),
         "maxTelemetryInputs": walked.as_ref().map(|items| json!({
             "terms": telemetry_terms(items).iter().map(|(sequence, from_home, span)| json!({ "sequence": sequence, "fromHome": from_home, "spanFromExit": span })).collect::<Vec<_>>(),
@@ -516,6 +515,18 @@ mod tests {
         let view = summary_view(&Plan(sparse, 1.0, quad()), &[]);
         assert!(labelled(&view, "Hover").is_none(), "minus one is what this controller answers when it has not worked something out, and drawing it as a distance would be a lie");
         assert!(labelled(&view, "Distance").is_some());
+    }
+
+    #[test]
+    fn the_figures_qgc_reports_do_not_need_the_verification_argument() {
+        let plain = summary_view(&Plan(flown(), 1.0, quad()), &[]);
+        assert!(plain["distanceMetres"].is_number());
+        assert!(plain["timeSeconds"].is_number());
+        assert!(plain["maxTelemetryMetres"].is_number(), "this is the controller's own missionMaxTelemetry, not anything the core walks, and it was reachable only by passing verify - so a head asking how far the vehicle gets from launch was told null and the only other copy was a row keyed by an English label");
+        assert_eq!(plain["altitudeBandMetres"].as_array().unwrap().len(), 2);
+        assert!(plain["distanceComputedMetres"].is_null(), "the walked figures stay behind verify, because those are the ones that cost a second pass over every item");
+        assert!(plain["maxTelemetryComputedMetres"].is_null());
+        assert!(plain.get("durationSeconds").is_none(), "durationSeconds read missionTime and so did timeSeconds - one field, two names, and the gated one answered null all day");
     }
 
     #[test]

@@ -70,7 +70,7 @@ pub const ARGUMENT_MODES: &[(&str, &str)] = &[
     ("view.landingPattern", "<index>"),
     ("view.mapScale", "<pixels>"),
     ("view.missionItems", "geometry | fields"),
-    ("view.missionKinds", "<index>"),
+    ("view.missionKinds", "<kind id>"),
     ("view.missionSummary", "verify"),
     ("view.polygon", "<path>[,line]"),
     ("view.settings", "<page>"),
