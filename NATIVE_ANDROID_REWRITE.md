@@ -593,6 +593,46 @@ convention — and it now takes `int`, the same type everywhere QGC builds. QML 
 same way, so the QML *Set Rate* combo was plausibly broken too; not tested, and worth checking before
 the QML is deleted on the assumption it worked.
 
+### Twelve views macOS reads that this head does not, 2026-09-13
+
+`view.modeSlots` turned up by accident - chasing an empty list in the contract -
+so I ran the comparison properly. The core declares 79 view routes. macOS reads
+42, this head reads 33, and the gap is not a list of missing features.
+
+**macOS reads, this head does not:** `altitudeModes`, `coreGuided`,
+`gcsPosition`, `label`, `missionSeed`, `orbit`, `radio`, `sensors`, `settings`,
+`track`, `transports`, `vehicleLinks`.
+
+**This head reads, macOS does not:** `landingPattern`, `obstacle`, `vehicles`.
+
+Most of the twelve are not absent capabilities. They are places this head
+reaches past the core to raw QGC paths and re-derives what the core already
+cooks:
+
+- `RadioScreen` reads `radioCal.rcValues` and shapes the bars itself.
+  `view.radio` already serves `sticks` with `fraction`, `valueText`, `mapped`
+  and `reversed` per stick.
+- `SettingsScreen` reads `settings.unitsSettings`,
+  `settings.flyViewSettings.rcControls` and `links` directly. macOS reads
+  `view.settings`.
+- `SensorsScreen` reads `sensorsCal` alongside `view.calibration`, where macOS
+  reads `view.sensors`.
+- **`VehicleMap` carries its own `VehicleTrack`** - an `ArrayDeque` with a point
+  cap and an `isJump` heuristic - while `view.track` accumulates the same trail
+  in the core, with its own arming rule and its own jump handling. Two
+  implementations of one trail, each free to drift.
+
+That last one is the rule in [[core-owns-vehicle-not-head]] pointed the other
+way: the core must not encode what a head can do, and a head must not re-derive
+what the core answers. Every one of these is a way the two heads can disagree
+about the same vehicle while both look correct on their own screen.
+
+**Not a defect list.** Nothing here is known to be wrong today; `landingPattern`
+and `obstacle` going the other way are this head being ahead, not macOS being
+behind. It is a map of where the seams are, recorded because the one instance I
+chased by accident - the mode slots - was a real gap an operator would meet in
+the field.
+
 ### The rate label was broken on every head, and the rig was hiding it, 2026-09-13
 
 The paragraph below was half right and its conclusion was wrong. The rig really
