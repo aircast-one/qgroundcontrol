@@ -3693,3 +3693,28 @@ and the Custom Camera brand were both fine, so the refusal was purely the spelli
 read: **neither is named anywhere in `macos/Sources` or `tools/macos`.** No exposure. Their
 warning was the right one to send — a missing key decodes to false, and false was the value
 I was already seeing, so a break would have looked identical to the old reading.
+
+### (ff) The warning-position sweep: the survey card was the only one
+
+`ca7e6a09c` fixed a task-bearing sentence buried under six descriptive rows. **The
+obvious worry is that the same mistake is everywhere, so I swept every site this head
+renders a warning, a reason or a refusal.** Five in total, and **four were already
+right**:
+
+- **FlyWindow's warnings** lead their own card with the triangle first — the warning IS
+  the content, not something appended after figures.
+- **The fence breach refusal** is an `EmptyStateRow` standing exactly where the field
+  would be, so the explanation occupies the place the missing control would have.
+- **The upload refusal** is a modal `.alert` — maximally visible by construction.
+- **The readiness banner** sits above the tabs and the whole list, which is the example
+  the survey card should have followed and the one I cited when fixing it.
+
+**So the defect was singular, not systemic**, and saying so is worth as much as the fix:
+had I left this unswept, the natural assumption from one instance is a pattern, and the
+next reader would have gone looking for four more that are not there.
+
+**What made the survey card different is worth naming.** The other four are places where
+the warning is the *whole* content of its region. The survey card is the only one where a
+warning shares a container with descriptive statistics — and that is precisely the
+situation where position decides whether it is read. **A warning alone is unmissable; a
+warning among figures has to be placed.**
