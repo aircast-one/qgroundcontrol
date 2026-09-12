@@ -8,6 +8,9 @@ pub const DEPS: &[&str] = &[
     "plan.geoFenceController.circles",
     "plan.rallyPointController.points",
     "plan.geoFenceController@loadComplete",
+    "plan.geoFenceController.supported",
+    "plan.rallyPointController.supported",
+    "plan.managerVehicle.capabilitiesKnown",
 ];
 const METRES_PER_DEGREE: f64 = 111_320.0;
 
@@ -114,6 +117,8 @@ pub fn fences_view(backend: &dyn Backend, _args: &[String]) -> Value {
         "circles": circles,
         "rallyPoints": rally,
         "count": polygons.len() + circles.len(),
+        "fenceSupported": crate::plan::capability(backend, "geoFenceController"),
+        "rallySupported": crate::plan::capability(backend, "rallyPointController"),
     })
 }
 
@@ -177,6 +182,32 @@ mod tests {
         fn set(&self, _p: &str, _v: &str) -> String { String::new() }
         fn invoke(&self, _p: &str, _a: &str) -> String { String::new() }
         fn watch(&self, _p: &[String]) {}
+    }
+
+    #[test]
+    fn the_fences_view_answers_the_capability_with_the_same_voice_as_the_plan_view() {
+        struct Vehicle(bool, bool);
+        impl Backend for Vehicle {
+            fn get(&self, _p: &str) -> String { json!({ "kind": "null" }).to_string() }
+            fn get_fields(&self, path: &str, _f: &str) -> String {
+                match path {
+                    "plan.managerVehicle" => json!({ "kind": "object", "capabilitiesKnown": self.0 }),
+                    "plan.geoFenceController" => json!({ "kind": "object", "supported": self.1 }),
+                    "plan.rallyPointController" => json!({ "kind": "object", "supported": self.1 }),
+                    _ => json!({ "kind": "null" }),
+                }
+                .to_string()
+            }
+            fn set(&self, _p: &str, _v: &str) -> String { String::new() }
+            fn invoke(&self, _p: &str, _a: &str) -> String { String::new() }
+            fn watch(&self, _p: &[String]) {}
+        }
+        let asked = |known: bool, yes: bool| fences_view(&Vehicle(known, yes), &[])["fenceSupported"].clone();
+        assert_eq!(asked(true, true), json!(true));
+        assert_eq!(asked(true, false), json!(false));
+        assert_eq!(asked(false, true), Value::Null, "a head that reaches for the capability on the fences view rather than the plan view must meet the same three states, or the view it happened to pick decides whether an unanswered vehicle reads as a refusing one");
+        assert_eq!(fences_view(&Vehicle(false, true), &[])["rallySupported"], Value::Null);
+        assert_eq!(crate::plan::capability(&Vehicle(false, true), "geoFenceController"), None, "both views call one function, so they cannot drift apart the day one of them changes its mind");
     }
 
     #[test]

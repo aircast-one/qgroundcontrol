@@ -18,6 +18,12 @@ pub const DEPS: &[&str] = &[
     "plan.rallyPointController.supported",
 ];
 
+pub fn capability(backend: &dyn Backend, controller: &str) -> Option<bool> {
+    let known = flag(&object(&backend.get_fields("plan.managerVehicle", "capabilitiesKnown")), "capabilitiesKnown");
+    let supported = flag(&object(&backend.get_fields(&format!("plan.{controller}"), "supported")), "supported");
+    known.then_some(supported)
+}
+
 pub fn plan_view(backend: &dyn Backend, _args: &[String]) -> Value {
     let plan = object(&backend.get_fields("plan", "syncInProgress,offline,dirty,containsItems,currentPlanFile"));
     let mission = object(&backend.get_fields("plan.missionController", "containsItems"));
@@ -28,10 +34,8 @@ pub fn plan_view(backend: &dyn Backend, _args: &[String]) -> Value {
     let has_mission_items = flag(&mission, "containsItems");
     let file = plan.get("currentPlanFile").and_then(Value::as_str).unwrap_or("");
     let name = file.rsplit('/').next().filter(|n| !n.is_empty());
-    let supports = |controller: &str| flag(&object(&backend.get_fields(&format!("plan.{controller}"), "supported")), "supported");
-    let known = flag(&object(&backend.get_fields("plan.managerVehicle", "capabilitiesKnown")), "capabilitiesKnown");
-    let (fences, rally) = (supports("geoFenceController"), supports("rallyPointController"));
-    let answered = |yes: bool| known.then_some(yes);
+    let (fences, rally) = (capability(backend, "geoFenceController"), capability(backend, "rallyPointController"));
+    let (offers_fence, offers_rally) = (fences.unwrap_or(true), rally.unwrap_or(true));
     let readiness = result_integer(&backend.invoke("plan.readyForSaveState", "[]"));
     let upload = result_integer(&backend.invoke("plan.missionController.sendToVehiclePreCheck", "[]"));
     json!({
@@ -45,17 +49,17 @@ pub fn plan_view(backend: &dyn Backend, _args: &[String]) -> Value {
             "exportKml": !syncing && has_mission_items,
             "newPlan": !syncing,
             "clearMission": !offline && !syncing,
-            "addFence": fences && !syncing,
-            "addRally": rally && !syncing,
+            "addFence": offers_fence && !syncing,
+            "addRally": offers_rally && !syncing,
         },
-        "fenceSupported": answered(fences),
-        "rallySupported": answered(rally),
-        "unsupportedReason": match (known, fences, rally) {
-            (false, _, _) => "This vehicle has not said what it accepts yet.",
-            (true, false, false) => "This vehicle accepts neither a geofence nor rally points.",
-            (true, false, true) => "This vehicle does not accept a geofence.",
-            (true, true, false) => "This vehicle does not accept rally points.",
-            (true, true, true) => "",
+        "fenceSupported": fences,
+        "rallySupported": rally,
+        "unsupportedReason": match (fences, rally) {
+            (None, _) | (_, None) => "This vehicle has not said what it accepts yet.",
+            (Some(false), Some(false)) => "This vehicle accepts neither a geofence nor rally points.",
+            (Some(false), Some(true)) => "This vehicle does not accept a geofence.",
+            (Some(true), Some(false)) => "This vehicle does not accept rally points.",
+            (Some(true), Some(true)) => "",
         },
         "sync": sync_json(offline, syncing),
         "status": status_text(name, dirty, offline),
