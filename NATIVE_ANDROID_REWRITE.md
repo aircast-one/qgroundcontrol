@@ -696,6 +696,26 @@ the field.
 That leaves `track` as the one confirmed duplication of vehicle state still
 standing, and it needs an armed vehicle to verify.
 
+**The counts above were wrong, corrected 2026-09-13.** My sweep matched
+`view.<name>` anywhere in a file, comments included. `transports` and
+`coreGuided` were in the macOS-only list because `BridgeWatch.swift` *mentions*
+`view.transports` in a comment; neither head reads either. Stripping comments
+first: macOS reads 40 routes, this head 35.
+
+`transports` turns out not to be a Links-screen gap at all. It reports which
+links the Rust core owns against which Qt still owns - `owner`, `state`,
+`openCount` vs `qtOpenCount` - which is telemetry for the migration rather than
+something an operator needs. The Links screen already reads `view.links`, which
+is the richer shape for that job: `connected`, `statusLine`, `lastError`,
+`heardVehicle`, `editing`.
+
+**What tonight closed:** `radio` (defect, fixed), `altitudeModes` (built),
+`modeSlots` (built), `sensors` and `settings` (answered, not gaps), `flyState`
+in the map (single source of truth). Eight macOS-only routes remain:
+`gcsPosition`, `label`, `missionSeed`, `orbit`, `sensors`, `settings`, `track`,
+`vehicleLinks` - and two of those eight are the ones already triaged as
+not-gaps, so six are genuinely unexamined.
+
 ### The rate label was broken on every head, and the rig was hiding it, 2026-09-13
 
 The paragraph below was half right and its conclusion was wrong. The rig really
