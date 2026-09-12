@@ -111,6 +111,7 @@ data class MissionItem(
     val speedChangeText: String = "",
     val foldedCommands: Int = 0,
     val altitudeFrame: String = "",
+    val altitudeFrameText: String = "",
     val altitudeEditUnits: String = "",
     val complexPattern: Boolean = false,
 )
@@ -158,6 +159,7 @@ fun allMissionItems(json: JSONObject?): List<MissionItem> {
             speedChangeText = element.optText("speedChangeText"),
             foldedCommands = element.optInt("foldedCommands"),
             altitudeFrame = element.optText("altitudeFrame"),
+            altitudeFrameText = element.optText("altitudeFrameText"),
             altitudeEditUnits = element.optText("altitudeEditUnits"),
             complexPattern = !element.optBoolean("simple", true),
             routed = element.optBoolean("flownLeg") && index <= endsAfter,

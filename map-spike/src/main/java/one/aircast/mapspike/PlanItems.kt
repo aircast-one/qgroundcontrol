@@ -14,30 +14,19 @@ data class ItemRow(
     val placed: Boolean,
 )
 
-const val FRAME_LAUNCH = "launch"
-const val FRAME_AMSL = "amsl"
-const val FRAME_TERRAIN = "terrain"
 
 internal fun altitudeWithFrame(item: MissionItem): String? {
     val height = item.altitudeText.ifBlank { null }
         ?: item.altitudeBandText.ifBlank { null }
         ?: return null
-    return when (item.altitudeFrame) {
-        "", FRAME_LAUNCH -> height
-        FRAME_AMSL -> "$height AMSL"
-        FRAME_TERRAIN -> "$height above ground"
-        else -> "$height ${item.altitudeFrame.uppercase()}"
-    }
+    val frame = item.altitudeFrameText
+    return if (frame.isBlank()) height else "$height $frame"
 }
 
 internal fun altitudeFieldLabel(item: MissionItem): String {
     val unit = item.altitudeEditUnits.ifBlank { "m" }
-    return when (item.altitudeFrame) {
-        "", FRAME_LAUNCH -> "Alt $unit"
-        FRAME_AMSL -> "Alt $unit AMSL"
-        FRAME_TERRAIN -> "Alt $unit above ground"
-        else -> "Alt $unit ${item.altitudeFrame.uppercase()}"
-    }
+    val frame = item.altitudeFrameText
+    return if (frame.isBlank()) "Alt $unit" else "Alt $unit $frame"
 }
 
 internal fun sequenceLabel(item: MissionItem): String = when {
