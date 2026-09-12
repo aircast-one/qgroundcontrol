@@ -1590,6 +1590,8 @@ func checkMissionItemKinds() {
     checkVehicleLinkRows()
     checkSerialLinkInAnyLocale()
     checkSetupGateInAnyLocale()
+    checkSummaryOpensInAnyLocale()
+    checkModeSlotNaming()
     checkResumeSequence()
     checkOrbitRingNeedsContact()
 
@@ -6233,4 +6235,63 @@ func checkOrbitRingNeedsContact() {
            + "map kept drawing a circle claiming an aircraft nobody can hear is still flying it. "
            + "The core withholds the flag entirely when there is no contact, and unknown draws "
            + "nothing rather than drawing the last thing that was true")
+}
+
+func checkSummaryOpensInAnyLocale() {
+    let pages = ["Summary", "Sensors", "Radio", "Frame", "Flight Modes", "Safety", "Power"]
+    func component(_ name: String, known: String?) -> Any {
+        var json: [String: Any] = ["name": name, "openable": true]
+        if let known { json["known"] = known }
+        return json
+    }
+
+    let german = VehicleComponentInfo.list([
+        component("Sensoren", known: "sensors"),
+        component("Flugmodi", known: "flightModes"),
+    ])
+    expect(VehicleComponentInfo.page(for: german[0], among: pages) ?? "", "Sensors",
+           "the Setup Summary decides whether a component row opens a page, which glyph it wears "
+           + "and where a tap goes. It compared the component's TRANSLATED name against the "
+           + "core's English page ids, so in Japanese, Korean, Chinese or Portuguese every row "
+           + "lost its chevron and did nothing when tapped")
+    expect(VehicleComponentInfo.page(for: german[1], among: pages) ?? "", "Flight Modes",
+           "and a two-word page is reached through the same camel-cased enum id")
+
+    let unidentified = VehicleComponentInfo.list([component("Frame", known: nil)])
+    expect(VehicleComponentInfo.page(for: unidentified[0], among: pages) ?? "", "Frame",
+           "a component with no KnownVehicleComponent enum is still matched by name, which is the "
+           + "same remainder b5b2ba706 recorded: English-only, and the alternative would be to "
+           + "open nothing at all for six real pages")
+    let stray = VehicleComponentInfo.list([component("Nicht vorhanden", known: nil)])
+    expect(VehicleComponentInfo.page(for: stray[0], among: pages) == nil,
+           "and a component matching no page opens nothing rather than navigating to a page that "
+           + "does not exist")
+}
+
+func checkModeSlotNaming() {
+    let rover: Set<String> = ["MODE1", "MODE2", "MODE3", "MODE4", "MODE5", "MODE6", "MODE_CH"]
+    let copter: Set<String> = ["FLTMODE1", "FLTMODE2", "FLTMODE3", "FLTMODE4", "FLTMODE5",
+                               "FLTMODE6", "FLTMODE_CH"]
+
+    expect(FlightModeNaming.chosen(from: rover) == FlightModeNaming.rover,
+           "APMFlightModesComponentController.cc:26 asks whether MODE1 exists, and a rover or "
+           + "boat names these MODE1..6 with MODE_CH")
+    expect(FlightModeNaming.chosen(from: copter) == FlightModeNaming.flying,
+           "everything else names them FLTMODE1..6 with FLTMODE_CH")
+    expect(FlightModeNaming.chosen(from: ["ATC_RAT_RLL_P"]) == nil,
+           "and a vehicle that chooses its modes some other way names neither, so the page says "
+           + "it reports no six-position switch rather than drawing empty rows")
+
+    expect(FlightModePosition.present(in: rover).count == 6,
+           "THE FIXTURE THAT MATTERS: the row list was filtered against the HARDCODED FLTMODE "
+           + "names, so on an ArduRover or a boat it came back empty and the Flight Modes page "
+           + "claimed the vehicle does not report a six-position mode switch when it does. This "
+           + "set contains no FLTMODE parameter at all, so it fails under the old rule")
+    expect(FlightModePosition.present(in: rover).first?.parameter ?? "", "MODE1",
+           "and each row edits the parameter this firmware actually has")
+    expect(FlightModePosition.present(in: copter).first?.parameter ?? "", "FLTMODE1",
+           "while a copter is unchanged")
+    expect(FlightModePosition.present(in: rover).first?.pwmRange ?? "", "up to 1230",
+           "the PWM bands are fixed in firmware and keyed on the POSITION, not the parameter "
+           + "name, so they are identical on both")
 }

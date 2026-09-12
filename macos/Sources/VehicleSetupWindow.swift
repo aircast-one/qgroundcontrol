@@ -637,7 +637,7 @@ struct FlightModesView: View {
                 GroupCard { EmptyStateRow(text: VehicleSetupText.absent(connected: store.connected,
                     "does not report a six-position mode switch.")) }
             } else {
-                if let channel = store.parameter(named: FlightModePosition.channelParameter) {
+                if let naming, let channel = store.parameter(named: naming.channelParameter) {
                     VStack(alignment: .leading, spacing: 0) {
                         SectionLabel(text: "Mode switch")
                         GroupCard {
@@ -692,6 +692,10 @@ struct FlightModesView: View {
         .onDisappear(perform: modes.stopWatching)
     }
 
+    private var naming: FlightModeNaming? {
+        FlightModeNaming.chosen(from: Set(store.parameters.map(\.name)))
+    }
+
     private var positions: [FlightModePosition] {
         FlightModePosition.present(in: Set(store.parameters.map(\.name)))
     }
@@ -732,7 +736,10 @@ struct SetupSummaryView: View {
                                 : "Connect a vehicle to see what it needs.")
                         } else {
                             ForEach(store.components) { component in
-                                let opens = store.pageNames.contains(component.name)
+                                let page = VehicleComponentInfo.page(for: component,
+                                                                     among: store.pageNames)
+                                let opens = page != nil
+                                let glyph = page ?? component.name
                                 let faulted = component.isSensors && !sensors.failing.isEmpty
                                 let good = !component.needsAttention && !faulted
                                 GroupRow(title: component.name,
@@ -740,8 +747,8 @@ struct SetupSummaryView: View {
                                              : faulted ? "Reporting a fault" : "",
                                          showSeparator: component.id != store.components.first?.id,
                                          leading: {
-                                             Tile(symbol: SetupPage.symbol(for: component.name),
-                                                  colour: SetupPage.colour(for: component.name))
+                                             Tile(symbol: SetupPage.symbol(for: glyph),
+                                                  colour: SetupPage.colour(for: glyph))
                                          },
                                          trailing: {
                                              HStack(spacing: 6) {
@@ -756,7 +763,7 @@ struct SetupSummaryView: View {
                                              }
                                          })
                                     .contentShape(Rectangle())
-                                    .onTapGesture { if opens { selection.page = component.name } }
+                                    .onTapGesture { if let page { selection.page = page } }
                             }
                         }
                     }

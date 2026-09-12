@@ -19,11 +19,29 @@ struct FlightModePosition: Identifiable {
         FlightModePosition(index: 6, parameter: "FLTMODE6", pwmRange: "1750 and above"),
     ]
 
-    static let channelParameter = "FLTMODE_CH"
-
-    // Only the positions this vehicle actually reports, so a firmware that names them
-    // differently shows nothing rather than six broken rows.
     static func present(in available: Set<String>) -> [FlightModePosition] {
-        all.filter { available.contains($0.parameter) }
+        guard let naming = FlightModeNaming.chosen(from: available) else { return [] }
+        return all.map { $0.named(by: naming) }.filter { available.contains($0.parameter) }
+    }
+
+    func named(by naming: FlightModeNaming) -> FlightModePosition {
+        FlightModePosition(index: index, parameter: "\(naming.slotPrefix)\(index)", pwmRange: pwmRange)
+    }
+}
+
+// APMFlightModesComponentController.cc:26-28 picks the prefix by asking whether MODE1 exists:
+// a rover or boat names these MODE1..6 and MODE_CH, everything else FLTMODE1..6 and FLTMODE_CH.
+// The head needs the NAMES rather than the core's slot text because each row edits the parameter.
+struct FlightModeNaming: Equatable {
+    let slotPrefix: String
+    let channelParameter: String
+
+    static let rover = FlightModeNaming(slotPrefix: "MODE", channelParameter: "MODE_CH")
+    static let flying = FlightModeNaming(slotPrefix: "FLTMODE", channelParameter: "FLTMODE_CH")
+
+    static func chosen(from available: Set<String>) -> FlightModeNaming? {
+        if available.contains("MODE1") { return rover }
+        if available.contains("FLTMODE1") { return flying }
+        return nil
     }
 }

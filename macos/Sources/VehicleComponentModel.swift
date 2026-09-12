@@ -39,6 +39,12 @@ struct VehicleComponentInfo: Identifiable, Equatable {
         return ([first.lowercased()] + words.dropFirst()).joined()
     }
 
+    static func page(for component: VehicleComponentInfo, among pages: [String]) -> String? {
+        if let known = component.known,
+           let named = pages.first(where: { identity(ofPage: $0) == known }) { return named }
+        return pages.first { $0 == component.name }
+    }
+
     static func blockedSentence(for page: String, in listed: [VehicleComponentInfo]) -> String? {
         let wanted = identity(ofPage: page)
         let matched = listed.first { $0.known == wanted }
