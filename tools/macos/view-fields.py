@@ -160,7 +160,7 @@ def keys_a_model_reads(name):
 registry = views_to_modules()
 gone, unchecked = [], []
 for model, view in sorted(MODELS.items()):
-    module = registry.get(view)
+    module = registry.get(view) or registry.get(view.split("(")[0])
     if module is None:
         unchecked.append(f"{model}: this file names {view}, which core-rs/src/view.rs does not serve")
         continue
@@ -194,9 +194,24 @@ for view in unmodelled:
           f"not in UNDRAWN either. Read it, or add it with the reason it stays undrawn.",
           file=sys.stderr)
 
+unlisted = []
+for source in sorted(SOURCES.glob("*Model*.swift")):
+    stem = source.name.replace("Model.swift", "").replace(".swift", "")
+    served = "view." + stem[0].lower() + stem[1:]
+    declared = set(re.findall(r"struct ([A-Z][A-Za-z]*)", source.read_text()))
+    if served in registry and not declared & set(MODELS):
+        unlisted.append((source.name, served))
+for name, served in unlisted:
+    print(f"  UNLISTED {name} decodes {served}, which the core serves, and no struct in it is in "
+          f"MODELS - so neither this checker nor null-fallbacks.py has ever read it. MODELS is "
+          f"written by hand and nothing else notices an omission: FlyState, GuidedOffer and "
+          f"ModeSlot(s) sat outside it, and ModeSlot's keys were pinned by nothing at all, "
+          f"because view.modeSlots.slots records as empty with no vehicle connected.",
+          file=sys.stderr)
+
 checked = len(MODELS) - len(unchecked)
 print(f"checked {checked} of {len(MODELS)} models against the views they decode: "
       f"{len(gone)} read a key the core no longer emits")
 print(f"every one of the {len(registry)} views the core serves is either read here or listed "
       f"with the reason it is not: {len(unmodelled)} are neither")
-sys.exit(1 if gone or unchecked or unmodelled else 0)
+sys.exit(1 if gone or unchecked or unmodelled or unlisted else 0)
