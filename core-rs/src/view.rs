@@ -60,6 +60,48 @@ pub struct View {
     compute: fn(&dyn Backend, &[String]) -> Value,
 }
 
+pub const ARGUMENT_MODES: &[(&str, &str)] = &[
+    ("view.altitudeModes", "item,<index>"),
+    ("view.control", "<fact path>"),
+    ("view.guidedAltitude", "<metres>"),
+    ("view.guidedSpeed", "<metres per second>"),
+    ("view.guidedTakeoff", "<metres>"),
+    ("view.instruments", "<group/fact>,..."),
+    ("view.landingPattern", "<index>"),
+    ("view.mapScale", "<pixels>"),
+    ("view.missionItems", "geometry | fields"),
+    ("view.missionKinds", "<index>"),
+    ("view.missionSummary", "verify"),
+    ("view.polygon", "<path>[,line]"),
+    ("view.settings", "<page>"),
+    ("view.setup", "<page>"),
+    ("view.surveyStats", "<index>"),
+    ("view.label", "<fact name>"),
+    ("view.links", "<filter>"),
+    ("view.linkForm", "<type>,<host>,<port>"),
+    ("view.missionSeed", "<kind>,<latitude>,<longitude>"),
+    ("view.fences", "<filter>"),
+    ("view.tlog", "<file path>"),
+    ("view.planFile", "<file path>[,<firmware>]"),
+    ("view.waypointsFile", "<file path>"),
+    ("view.planFromWaypoints", "<file path>"),
+    ("view.missionFile", "<file path>"),
+    ("view.kmlFile", "<file path>"),
+    ("view.shapeFile", "<file path>"),
+    ("view.terrainTile", "<file path>,<latitude>,<longitude>"),
+    ("view.geoToNed", "<lat>,<lon>,<alt>,<originLat>,<originLon>,<originAlt>"),
+    ("view.nedToGeo", "<north>,<east>,<down>,<originLat>,<originLon>,<originAlt>"),
+    ("view.geoToUtm", "<latitude>,<longitude>"),
+    ("view.utmToGeo", "<easting>,<northing>,<zone>[,<southern>]"),
+    ("view.coreVehicle", "<vehicle id>"),
+    ("view.coreGuided", "<vehicle id>"),
+    ("view.coreParameter", "<vehicle id>,<name>"),
+    ("view.coreParameters", "<vehicle id>"),
+    ("view.coreMission", "<vehicle id>"),
+    ("view.coreRemoteId", "<vehicle id>"),
+    ("view.coreCalibration", "<vehicle id>"),
+];
+
 pub const VIEWS: &[View] = &[
     View { path: "view.messages", deps: &["vehicle.formattedMessages"], compute: messages_view },
     View { path: "view.plan", deps: plan::DEPS, compute: plan::plan_view },
@@ -224,6 +266,7 @@ fn dependencies_view(_backend: &dyn Backend, _args: &[String]) -> Value {
         "class": "ViewDependencies",
         "count": VIEWS.len(),
         "views": VIEWS.iter().map(|view| json!({ "path": view.path, "deps": view.deps })).collect::<Vec<_>>(),
+        "argumentModes": ARGUMENT_MODES.iter().map(|(path, shape)| json!({ "path": path, "arguments": shape })).collect::<Vec<_>>(),
     })
 }
 
@@ -356,5 +399,37 @@ mod deps_cover_reads {
         assert!(!covered("vehicle", "flying", &deps), "a field named in no dep and on no constant list has to come back uncovered, or the sweep above passes by construction");
         assert!(covered("vehicle", "rtlFlightMode", &deps), "the constant list is the escape hatch, and it has to work");
         assert_eq!(literal_reads(r#"let x = backend.get_fields("vehicle", "armed,flying");"#), vec![("vehicle".to_string(), "armed,flying".to_string())]);
+    }
+}
+
+#[cfg(test)]
+mod argument_modes {
+    use super::*;
+
+    fn source(module: &str) -> String {
+        std::fs::read_to_string(format!("{}/src/{module}.rs", env!("CARGO_MANIFEST_DIR"))).unwrap_or_default()
+    }
+
+    #[test]
+    fn every_view_that_reads_its_arguments_declares_what_they_are() {
+        let registry = source("view");
+        let wired: Vec<(String, String)> = registry
+            .lines()
+            .filter_map(|line| {
+                let path = line.split("View { path: \"").nth(1)?.split('"').next()?;
+                let compute = line.split("compute: ").nth(1)?.split("::").next()?;
+                Some((path.to_string(), compute.to_string()))
+            })
+            .collect();
+        assert!(wired.len() > 40, "the registry parsed, so an empty answer below would mean something");
+
+        let declared: Vec<&str> = ARGUMENT_MODES.iter().map(|(path, _)| *path).collect();
+        let reads_arguments = |module: &str| source(module).contains(", args: &[String]");
+
+        let undeclared: Vec<&String> = wired.iter().filter(|(path, m)| reads_arguments(m) && !declared.contains(&path.as_str())).map(|(p, _)| p).collect();
+        assert!(undeclared.is_empty(), "these views read their arguments and ARGUMENT_MODES does not say so, which is the list both heads' sweeps enumerate from: {undeclared:?}");
+
+        let unread: Vec<&&str> = declared.iter().filter(|path| wired.iter().any(|(p, m)| p == *path && !reads_arguments(m))).collect();
+        assert!(unread.is_empty(), "and these are declared as taking arguments by a compute function that ignores them: {unread:?}");
     }
 }
