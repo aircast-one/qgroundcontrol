@@ -516,7 +516,8 @@ final class MissionStore: ObservableObject, Probeable, WriteReporting {
         if distanceOffers != distanceModes { distanceModes = distanceOffers }
 
         let cameraFacts = item.isSimpleItem ? [] : ItemFact.camera(
-            (calc["facts"] as? [Any]) ?? [], label: Labels.humanise)
+            (calc["facts"] as? [Any]) ?? [], custom: CameraChoice(json: calc).isCustom,
+            label: Labels.humanise)
 
         selectedFacts = cameraFacts + (listed.isEmpty && !item.isSimpleItem
             ? ItemFact.owned((Bridge.group("plan.missionController.visualItems.\(item.index)")["facts"] as? [Any]) ?? [],

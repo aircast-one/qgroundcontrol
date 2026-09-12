@@ -5,14 +5,17 @@ struct CameraChoice: Equatable {
     let model: String
     let brands: [String]
     let models: [String]
+    let isCustom: Bool
 
-    static let empty = CameraChoice(brand: "", model: "", brands: [], models: [])
+    static let empty = CameraChoice(brand: "", model: "", brands: [], models: [],
+                                    isCustom: false)
 
-    init(brand: String, model: String, brands: [String], models: [String]) {
+    init(brand: String, model: String, brands: [String], models: [String], isCustom: Bool) {
         self.brand = brand
         self.model = model
         self.brands = brands
         self.models = models
+        self.isCustom = isCustom
     }
 
     init(json: [String: Any]) {
@@ -20,6 +23,7 @@ struct CameraChoice: Equatable {
         model = (json["cameraModel"] as? String) ?? ""
         brands = (json["cameraBrandList"] as? [String]) ?? []
         models = (json["cameraModelList"] as? [String]) ?? []
+        isCustom = (json["isCustomCamera"] as? NSNumber)?.boolValue ?? false
     }
 
     var canChooseBrand: Bool { brands.count > 1 }

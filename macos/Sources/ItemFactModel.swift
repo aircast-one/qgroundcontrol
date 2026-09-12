@@ -16,10 +16,17 @@ struct ItemFact: Identifiable, Equatable {
     static let itemGroup = "Settings"
     static let cameraGroup = "Camera"
 
-    // A survey is decided by how high it flies, how finely it sees the ground and how
-    // much the images overlap. The rest of cameraCalc describes the camera itself and
-    // belongs with choosing one.
-    static let cameraProperties = ["distanceToSurface", "imageDensity", "frontalOverlap", "sideOverlap"]
+    // A survey is decided by how high it flies, how finely it sees the ground and how much
+    // the images overlap. The rest of cameraCalc describes the camera itself, which choosing
+    // one from the catalogue supplies -- except for Custom Camera, where choosing IS
+    // specifying and the operator has to type the optics in.
+    static let surveyProperties = ["distanceToSurface", "imageDensity", "frontalOverlap", "sideOverlap"]
+    static let opticsProperties = ["sensorWidth", "sensorHeight", "imageWidth", "imageHeight",
+                                   "focalLength", "landscape", "minTriggerInterval"]
+
+    static func cameraProperties(custom: Bool) -> [String] {
+        custom ? opticsProperties + surveyProperties : surveyProperties
+    }
 
     private init?(json: Any?, pathSuffix: String, label: (String) -> String) {
         guard let object = json as? [String: Any],
@@ -58,8 +65,9 @@ struct ItemFact: Identifiable, Equatable {
         }
     }
 
-    static func camera(_ elements: [Any], label: (String) -> String) -> [ItemFact] {
-        cameraProperties.compactMap { wanted in
+    static func camera(_ elements: [Any], custom: Bool,
+                       label: (String) -> String) -> [ItemFact] {
+        cameraProperties(custom: custom).compactMap { wanted in
             elements.compactMap { element -> ItemFact? in
                 guard let object = element as? [String: Any],
                       (object["property"] as? String) == wanted else { return nil }

@@ -803,19 +803,44 @@ func checkItemFacts() {
         ["name": "TurnAroundDistanceMultiRotor", "property": "turnAroundDistance", "valueString": "10"],
         ["name": "HoverAndCapture", "property": "hoverAndCapture", "valueString": "false", "typeIsBool": true],
     ], label: { "<\($0)>" })
-    let cameraFacts = ItemFact.camera([
+    let served: [Any] = [
         ["name": "SensorWidth", "property": "sensorWidth", "valueString": "7.6", "units": "mm"],
+        ["name": "FocalLength", "property": "focalLength", "valueString": "22", "units": "mm"],
         ["name": "FrontalOverlap", "property": "frontalOverlap", "valueString": "70", "units": "%"],
         ["name": "DistanceToSurface", "property": "distanceToSurface", "valueString": "50", "units": "m"],
         ["name": "SideOverlap", "property": "sideOverlap", "valueString": "70", "units": "%"],
         ["name": "ImageDensity", "property": "imageDensity", "valueString": "1.8", "units": "cm/px"],
-    ], label: { "<\($0)>" })
+    ]
+    let cameraFacts = ItemFact.camera(served, custom: false, label: { "<\($0)>" })
     expect(cameraFacts.count == 4, "only the four that decide a survey are offered")
     expect(cameraFacts[0].id, "cameraCalc.distanceToSurface", "a camera fact is addressed through cameraCalc")
     expect(cameraFacts[0].group, ItemFact.cameraGroup, "and is grouped as camera")
     expect(!cameraFacts.contains { $0.name == "SensorWidth" }, "camera hardware specs are not survey settings")
     expect(cameraFacts.map(\.name).joined(separator: ","), ["DistanceToSurface", "ImageDensity", "FrontalOverlap", "SideOverlap"].joined(separator: ","),
            "they read in the order an operator thinks about them")
+
+    let custom = ItemFact.camera(served, custom: true, label: { "<\($0)>" })
+    expect(custom.contains { $0.name == "SensorWidth" },
+           "but Custom Camera is in the brand list this head draws -- second of twelve -- and "
+           + "choosing it IS specifying the camera rather than picking one that is already "
+           + "specified. Measured on the running app: the operator could select it and then had "
+           + "no field for sensor size, image size or focal length anywhere, so the footprint "
+           + "and the shot count computed from whatever the last catalogue camera left behind")
+    expect(custom.contains { $0.name == "FocalLength" },
+           "the optics are the whole definition of a custom camera, so all of them are offered "
+           + "rather than a couple: sensor width and height, image width and height, focal "
+           + "length, orientation and the minimum trigger interval")
+    expect(custom.count == 6,
+           "and the four that decide the survey are still there -- the optics are ADDED for a "
+           + "custom camera, not swapped in. Two optics appear in this fixture, so six")
+    expect(custom.first?.name == "SensorWidth",
+           "the optics come first: an operator specifies the camera before tuning how the "
+           + "survey uses it, and reversing that asks them to tune against a camera they have "
+           + "not described yet")
+    expect(cameraFacts.count == 4,
+           "and a CATALOGUE camera is unchanged. The old rule stays as its own control: picking "
+           + "a Canon supplies the optics, so offering them there would be an editable copy of "
+           + "something the catalogue already answered")
 
     expect(identifiers[0].title != "TurnAroundDistanceMultiRotor",
            "an undescribed fact is not shown as a raw identifier")

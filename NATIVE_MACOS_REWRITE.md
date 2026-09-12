@@ -3134,3 +3134,45 @@ cost nothing this time only because the fences were never load-bearing for anyth
 measured.
 
 Tool-only: no Swift changed, so no ctest run.
+
+### Custom Camera was offerable and uncompletable, 2026-09-12
+
+**Re-measuring reversed my own conclusion, which is why the rule exists.** Last cycle
+I measured `view.missionItems(fields)` — 10 fields labelled with raw property names
+against this head's 14 with Fact descriptions — and deliberately did not adopt it. The
+core read that report and fixed it (`a974dfa0d`). Re-measured: **25 fields, properly
+labelled.** The head is now the short one by eleven, and the conclusion I would have
+restated was a cycle out of date.
+
+**What the eleven turned out to be is the real finding.** `ItemFact.cameraProperties`
+was a hardcoded list of four, with a comment explaining the omission: *"The rest of
+cameraCalc describes the camera itself and belongs with choosing one."* True when
+choosing means picking a catalogue entry, which supplies the optics — **and false for
+Custom Camera, where choosing IS specifying.** `CameraChoice`'s own comment said so
+already: *"the other means the operator types them in."* The head knew, in prose, and
+never offered the fields.
+
+**Measured on the running app: "Custom Camera" is second of the twelve brands this
+head draws.** Select it and there is no field for sensor size, image size or focal
+length anywhere in the window — the footprint and the shot count compute from whatever
+the last catalogue camera left behind. **A picker that offers an option the head
+cannot complete.** That is rule 34 applied to a sentence for the second time today: a
+comment true of the cases in front of its author and false of the class.
+
+`cameraProperties(custom:)` adds the seven optics ahead of the four that decide the
+survey. Measured in both states in the same binary: **Canon gives 4, Custom gives 11.**
+
+**The old assertion stays as its own control.** `"camera hardware specs are not survey
+settings"` still holds for a catalogue camera, and the mutation that offers the optics
+unconditionally fails it — while the mutation that never offers them fails the new
+ones. Two mutations, opposite directions, each caught by the other branch's assertions.
+
+**`swift-checks.sh` caught a call site the cmake build did not.** `macos/Tests/main.swift`
+is compiled by the former and not the latter, so the missing `custom:` argument in an
+existing test was invisible to `cmake --build`. The two checks are complementary and
+this is the case where the Swift one is the only one that fires.
+
+**Limit, stated:** the optics sit below the detail panel's fold, so I measured them in
+the store in both states rather than seeing all eleven drawn. The section that draws
+them is the same `ForEach` that already renders the catalogue four and is unchanged
+here. Suite 707/0/89.
