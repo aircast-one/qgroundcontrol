@@ -4694,3 +4694,35 @@ exactly the one I have twice thanked them for saving me.
 **Standing rule from here: attribute a CAUSE, not an OWNER, unless the owner is evidenced
 separately.** "This failure comes from `view.cameraDefinition` lacking a contract entry" is
 measured. "This is the core session's" was a guess wearing the same sentence.
+
+### (yy) confirmed 707/0/89 — and (g2) is served but deliberately not adopted
+
+**The suite is green on my own run: `PASS=707 FAIL=0 suites=89`**, after the contract entry for
+`view.cameraDefinition` landed. **The first run's single red is closed and was never mine.**
+
+**`59562568c` serves the item the aircraft is flying to** — `view.flyState.flyingToSequence`,
+an `Option<i64>` filtered to `>= 0`, so *"no current item"* is null rather than `-1`. **Raised
+by this session, built by the core within the hour.**
+
+**I am not adopting it yet, and the reason is the firmware fence two hours ago.**
+
+The field is **null with no vehicle**. A row highlight keyed on it would draw **nothing** — and
+**nothing is exactly what a correct implementation looks like here, and exactly what a
+mis-wired one looks like too.** That is the trap I already fell into tonight: I shipped the
+firmware fence decoded off the wrong object, and **the empty probe result read as confirmation
+because an absent key and an absent value are indistinguishable when the field is nullable.**
+**Building a second flight-state feature blind, in the same session, would be the same mistake
+with the lesson already written down.**
+
+**The name carries a real trap and is worth recording before anyone draws it:
+`flyingToSequence` is a SEQUENCE, not an index.** Matching it against `item.index` would be
+wrong for **any plan containing a complex item**, where the two diverge — a survey at index 5
+occupies sequences 5 through 106. **The correct match is `items.first { $0.sequence ==
+flyingToSequence }`.** The core named the field so that the right comparison is the obvious
+one; **adopting it without noticing would have thrown that away.**
+
+**What it needs is a vehicle**, and then: a map marker and a row highlight **distinct from
+selection** — the name freed when `isCurrent` became `isSelected`.
+
+**A decode with no drawing would be worse than nothing.** It would be a mechanism whose only
+callers are its tests — **the shape found five times tonight**, most recently in `Measure`.
