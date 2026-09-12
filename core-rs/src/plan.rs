@@ -62,7 +62,7 @@ pub fn plan_view(backend: &dyn Backend, _args: &[String]) -> Value {
             (Some(true), Some(true)) => "",
         },
         "sync": sync_json(offline, syncing),
-        "status": status_text(name, dirty, offline),
+        "status": status_text(name, dirty, offline, contains_items),
         "file": name,
         "dirty": dirty,
     })
@@ -107,13 +107,15 @@ fn sync_json(offline: bool, syncing: bool) -> Value {
     json!({ "state": state, "refusal": refusal })
 }
 
-fn status_text(name: Option<&str>, dirty: bool, offline: bool) -> String {
-    match (name, dirty, offline) {
-        (None, false, _) => "New plan".to_string(),
-        (None, true, _) => "Unsaved plan".to_string(),
-        (Some(n), false, _) => n.to_string(),
-        (Some(n), true, true) => format!("{n} \u{b7} unsaved changes"),
-        (Some(n), true, false) => format!("{n} \u{b7} not uploaded"),
+fn status_text(name: Option<&str>, dirty: bool, offline: bool, has_items: bool) -> String {
+    match (name, dirty, offline, has_items) {
+        (None, _, _, false) => "New plan".to_string(),
+        (None, _, true, true) => "Unsaved plan".to_string(),
+        (None, true, false, true) => "Not uploaded".to_string(),
+        (None, false, false, true) => "Sent to the vehicle".to_string(),
+        (Some(n), false, _, _) => n.to_string(),
+        (Some(n), true, true, _) => format!("{n} \u{b7} unsaved changes"),
+        (Some(n), true, false, _) => format!("{n} \u{b7} not uploaded"),
     }
 }
 
@@ -249,6 +251,14 @@ mod tests {
         assert_eq!(view["actions"]["clearMission"], false);
         assert_eq!(view["sync"]["state"], "offline");
         assert_eq!(view["status"], "New plan");
+
+        let unnamed = |dirty: bool, offline: bool, items: bool| status_text(None, dirty, offline, items);
+        assert_eq!(unnamed(false, false, true), "Sent to the vehicle", "with a vehicle connected dirty means not synced rather than not saved, so a plan whose items have just gone up read New plan - the operator's finished work described as though they had not started");
+        assert_eq!(unnamed(true, false, true), "Not uploaded");
+        assert_eq!(unnamed(true, false, false), "New plan", "a plan just cleared to nothing is dirty because clearing is a change, and it read Unsaved plan - the blank canvas claiming work was at risk");
+        assert_eq!(unnamed(false, false, false), "New plan");
+        assert_eq!(unnamed(true, true, true), "Unsaved plan", "offline the flag means what the words say, and this is the case the sentence was written for");
+        assert_eq!(unnamed(true, true, false), "New plan");
         assert_eq!(view["file"], Value::Null);
     }
 

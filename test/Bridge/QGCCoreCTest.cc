@@ -3022,6 +3022,11 @@ void QGCCoreCTest::_listsRecordedAsEmptyAreCheckedAgainstAVehicle()
     QVERIFY2(channels.count() == raw.count(),
              qPrintable(QStringLiteral("the vehicle reports %1 radio channels and the view carries %2").arg(raw.count()).arg(channels.count())));
 
+    const QJsonObject px4Slots = take(qgc_core_get("view.modeSlots"));
+    QCOMPARE(px4Slots.value(QStringLiteral("available")).toBool(true), false);
+    QVERIFY2(px4Slots.value(QStringLiteral("reason")).toString().contains(QStringLiteral("transmitter channel")),
+             "a PX4 vehicle holds no FLTMODE parameters, so the empty list is an answer rather than a gap, and it has to say which");
+
     const QJsonObject sensors = take(qgc_core_get("view.sensors"));
     const QJsonArray all = sensors.value(QStringLiteral("sensors")).toArray();
     QVERIFY2(!all.isEmpty(), "the sensors view names no sensors at all for a connected vehicle, which is what a read that finds nothing looks like");
@@ -3311,6 +3316,17 @@ void QGCCoreCTest::_changingAModeSlotWakesThePanelThatShowsIt()
 
     const QJsonObject panel = take(qgc_core_get("view.modeSlots"));
     QVERIFY2(panel.value(QStringLiteral("available")).toBool(false), qPrintable(QStringLiteral("this vehicle does not offer mode slots, so the test proves nothing: %1").arg(panel.value(QStringLiteral("reason")).toString())));
+
+    const QJsonArray offered = panel.value(QStringLiteral("slots")).toArray();
+    QVERIFY2(!offered.isEmpty(), "the contract records this list empty because the recorder runs with no vehicle, so no element shape is pinned from it and these keys are checked nowhere else");
+    for (const QJsonValue &entry : offered) {
+        const QJsonObject entrySlot = entry.toObject();
+        for (const QString &key : { QStringLiteral("slot"), QStringLiteral("mode"), QStringLiteral("live") }) {
+            QVERIFY2(entrySlot.contains(key), qPrintable(QStringLiteral("a mode slot carries no %1, and a head decodes that key").arg(key)));
+        }
+    }
+    const auto liveCount = std::count_if(offered.begin(), offered.end(), [](const QJsonValue &entry) { return entry.toObject().value(QStringLiteral("live")).toBool(); });
+    QVERIFY2(liveCount <= 1, qPrintable(QStringLiteral("%1 slots claim to be the live one, and the panel exists to answer which single mode the transmitter has selected").arg(liveCount)));
 
     paths.clear();
     qgc_bridge_set_event_handler(onEvent);
