@@ -65,6 +65,7 @@ clipping
 clockText
 clockwise
 collision
+commLost
 command
 complexName
 component

@@ -68,6 +68,7 @@ swiftc -Onone -o "$out" \
     "$root/macos/Sources/FlyStateModel.swift" \
     "$root/macos/Sources/FlyTelemetryModel.swift" \
     "$root/macos/Sources/FlyDetailModel.swift" \
+    "$root/macos/Sources/VehicleLinksModel.swift" \
     "$root/macos/Sources/FlightModeModel.swift" \
     "$root/macos/Sources/VehicleTrackModel.swift" \
     "$root/macos/Sources/VehicleMarkerModel.swift" \

@@ -1587,6 +1587,7 @@ func checkMissionItemKinds() {
     checkModeSlots()
     checkVideoFrame()
     checkSetupCacheIdentity()
+    checkVehicleLinkRows()
 
     expect(WriteReport.failure("the fence radius"),
            "Could not change the fence radius. It is unchanged.",
@@ -6071,4 +6072,37 @@ func checkSetupCacheIdentity() {
     expect(SettingsSection.cacheSurvives(vehicle: nil, now: nil) == false,
            "with nothing connected there is no aircraft the cache could be about, so it is never "
            + "kept on identity alone")
+}
+
+func checkVehicleLinkRows() {
+    let radio = VehicleLink(["name": "Telemetry", "primary": true, "commLost": false])
+    let wifi = VehicleLink(["name": "WiFi", "primary": false, "commLost": true])
+    let unwatched = VehicleLink(["name": "Telemetry", "primary": true])
+
+    expect(VehicleLinks.status(wifi), VehicleLinks.silent,
+           "a link the vehicle manager reports as lost says so by name, because the headline only "
+           + "says contact is lost and an operator with two radios needs to know WHICH one died")
+    expect(VehicleLinks.status(radio), VehicleLinks.hearing, "and one still being heard says that")
+    expect(VehicleLinks.status(unwatched), VehicleLinks.unwatched,
+           "commLost is NULL when this vehicle is not being watched for lost contact at all, and "
+           + "that is not the same as a link being heard. Drawing it as Receiving would promise a "
+           + "check nobody is running")
+
+    expect(VehicleLinks.rows([radio, wifi]).count == 2,
+           "with more than one link, each is listed -- that is the case the rows exist for")
+    expect(VehicleLinks.rows([radio]).isEmpty,
+           "a single healthy link adds nothing the RSSI rows above it do not already say, so the "
+           + "expanded card stays short")
+    expect(VehicleLinks.rows([wifi]).count == 1,
+           "but a single link that is NOT being heard is listed even alone, because that is the "
+           + "whole message")
+    expect(VehicleLinks.label(radio, among: [radio, wifi]), "Telemetry (primary)",
+           "the link the vehicle is actually using is marked, so a lost primary reads differently "
+           + "from a lost spare")
+    expect(VehicleLinks.label(radio, among: [radio]), "Telemetry",
+           "with nothing to be primary over, the mark is noise")
+
+    expect(VehicleLinks.list([["name": ""], ["name": "WiFi"]]).count == 1,
+           "a nameless link cannot be told apart from another in a list keyed by label, so it is "
+           + "dropped rather than drawn as a blank row")
 }

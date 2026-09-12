@@ -130,6 +130,7 @@ add_library(QGCNativeUI STATIC
     Sources/FlyStateModel.swift
     Sources/FlyTelemetryModel.swift
     Sources/FlyDetailModel.swift
+    Sources/VehicleLinksModel.swift
     Sources/FlightModeModel.swift
     Sources/Fly.swift
     Sources/FlyWindow.swift
