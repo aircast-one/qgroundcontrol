@@ -1318,7 +1318,8 @@ void QGCCoreCTest::_viewShapesMatchTheRecordedContract()
     (void) take(qgc_bridge_set("settings.appSettings.offlineEditingVehicleClass", plannedVehicleClass.constData()));
     QVERIFY2(take(qgc_bridge_get("settings.appSettings.offlineEditingVehicleClass")).value(QStringLiteral("value")).isDouble(), "the guard restores whatever this read returns, so if the key were absent it would write a null back and the comparison below would still pass");
     QCOMPARE(QJsonDocument(QJsonObject { { QStringLiteral("value"), take(qgc_bridge_get("settings.appSettings.offlineEditingVehicleClass")).value(QStringLiteral("value")) } }).toJson(QJsonDocument::Compact), plannedVehicleClass);
-    (void) take(qgc_bridge_set("settings.appSettings.offlineEditingVehicleClass", "{\"value\":1}"));
+    (void) take(qgc_bridge_set("settings.appSettings.offlineEditingVehicleClass", "{\"value\":20}"));
+    QTRY_VERIFY_WITH_TIMEOUT(take(qgc_bridge_get("plan.missionController.complexMissionItemNames")).value(QStringLiteral("value")).toArray().toVariantList().contains(QStringLiteral("Structure Scan")), 5000);
     const auto corner = [](double latitude, double longitude) { return QJsonObject { { QStringLiteral("latitude"), latitude }, { QStringLiteral("longitude"), longitude }, { QStringLiteral("altitude"), 0.0 } }; };
     const QByteArray box = QJsonDocument(QJsonArray { corner(47.398, 8.545), corner(47.396, 8.548) }).toJson(QJsonDocument::Compact);
     (void) take(qgc_bridge_invoke("plan.rallyPointController.addPoint", QJsonDocument(QJsonArray { corner(47.397, 8.546) }).toJson(QJsonDocument::Compact).constData()));
@@ -1327,7 +1328,7 @@ void QGCCoreCTest::_viewShapesMatchTheRecordedContract()
     (void) take(qgc_bridge_invoke("plan.missionController.insertSimpleMissionItem", QJsonDocument(QJsonArray { corner(47.397, 8.546), 1, true }).toJson(QJsonDocument::Compact).constData()));
     (void) take(qgc_bridge_invoke("plan.missionController.insertSimpleMissionItem", QJsonDocument(QJsonArray { corner(47.3975, 8.5465), 2, true }).toJson(QJsonDocument::Compact).constData()));
     QVERIFY2(take(qgc_core_invoke("mission.insert", "[\"survey\", 47.3979, 8.5468, -1]")).value(QStringLiteral("ok")).toBool(false), "the recorded plan carries no pattern without it, and every survey-only field records as null");
-    QVERIFY2(take(qgc_core_invoke("mission.insert", "[\"structure\", 47.3982, 8.5472, -1]")).value(QStringLiteral("ok")).toBool(false), "a structure scan flies a stack of closed loops rather than transects, so flightLoop and layers record null without one");
+    QVERIFY2(take(qgc_core_invoke("mission.insert", "[\"structure\", 47.3982, 8.5472, -1]")).value(QStringLiteral("ok")).toBool(false), "a structure scan flies a stack of closed loops rather than transects, so flightLoop and layers record null without one. The class above is VTOL because it is the ONLY one that can fly both this and a landing pattern: Structure Scan is offered to a multiRotor or a VTOL, and view.landingPattern answers only for a fixedWing or a VTOL, so planning as a multirotor trades this recording for that one. The wait above it is load-bearing, because the class reaches complexMissionItemNames asynchronously and the core now consults that list before allowing the insert");
     (void) take(qgc_bridge_invoke("plan.missionController.insertLandItem", QJsonDocument(QJsonArray { corner(47.3985, 8.5475), -1, true }).toJson(QJsonDocument::Compact).constData()));
     QTRY_VERIFY_WITH_TIMEOUT(take(qgc_bridge_get("view.fences")).value(QStringLiteral("circles")).toArray().count() == 1, 5000);
     QTRY_VERIFY_WITH_TIMEOUT(take(qgc_bridge_get("view.fences")).value(QStringLiteral("polygons")).toArray().count() == 1, 5000);
