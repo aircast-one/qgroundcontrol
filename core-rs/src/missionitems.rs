@@ -632,6 +632,9 @@ mod reported {
         assert_eq!(fields[0]["label"], "Turn around distance", "the metadata carries a sentence for an operator; the Fact's own name is a Q_PROPERTY spelling and is not one");
         assert_eq!(fields[1]["path"], "plan.missionController.visualItems.1.cameraCalc.distanceToSurface", "a camera field is written through the camera, so the path a head writes to has to say so");
         assert_eq!(fields[2]["label"], "FrontalOverlap", "a fact with no short description falls back to its name rather than to nothing");
+
+        let unique: std::collections::BTreeSet<&str> = names.iter().copied().collect();
+        assert_eq!(unique.len(), names.len(), "the list is two fact sources chained, so a name appearing on both an item and its camera would give a head two entries it cannot tell apart - no property is shared between TransectStyleComplexItem and CameraCalc today, and this is what notices if one ever is");
     }
 
     #[test]
