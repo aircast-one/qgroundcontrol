@@ -134,6 +134,7 @@ fn item(read: &Value, index: i64, vertical: &Unit, speed: &Unit, imperial: bool)
         "altitudeBandText": band(read, vertical),
         "altitudeSource": altitude_source(read, vertical),
         "altitudeFrame": altitude_frame(read, vertical),
+        "altitudeFrameText": altitude_frame(read, vertical).map(frame_word),
         "specifiesCoordinate": flag(read, "specifiesCoordinate"),
         "altitudeChange": number(read, "altDifference"),
         "altitudeChangeText": number(read, "altDifference").map(|change| crate::read::altitude_text(change, vertical, true)),
@@ -191,6 +192,14 @@ const MODE_RELATIVE: f64 = 1.0;
 const MODE_ABSOLUTE: f64 = 2.0;
 const MODE_CALC_ABOVE_TERRAIN: f64 = 3.0;
 const MODE_TERRAIN_FRAME: f64 = 4.0;
+
+pub fn frame_word(frame: &str) -> &'static str {
+    match frame {
+        "terrain" => "AGL",
+        "amsl" => "AMSL",
+        _ => "",
+    }
+}
 
 fn altitude_frame(read: &Value, vertical: &Unit) -> Option<&'static str> {
     if flag(read, "homePosition") {
@@ -650,6 +659,9 @@ mod reported {
             "facts": [ { "property": "altitude", "value": metres } ] });
 
         assert_eq!(listed(simple(1, 75.0))["altitudeFrame"], "launch", "a relative altitude is measured from the launch point");
+        assert_eq!(listed(simple(1, 75.0))["altitudeFrameText"], "", "launch-relative is the default and carries no suffix, so a head draws the number alone rather than inventing a word for the ordinary case");
+        assert_eq!(listed(simple(3, 40.0))["altitudeFrameText"], "AGL", "each head was inventing this word, so the same plan could read AGL on one and above terrain on the other with nothing to notice");
+        assert_eq!(listed(simple(2, 541.0))["altitudeFrameText"], "AMSL");
         assert_eq!(listed(simple(2, 541.0))["altitudeFrame"], "amsl");
         assert_eq!(listed(simple(3, 40.0))["altitudeFrame"], "terrain", "calculated-above-terrain is what the operator typed above the ground, whatever it is converted to on upload");
         assert_eq!(listed(simple(4, 40.0))["altitudeFrame"], "terrain");
