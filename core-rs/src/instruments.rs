@@ -69,7 +69,7 @@ fn converted(backend: &dyn Backend, fact: &Value) -> Option<(String, String)> {
     let unit = dimensioned(backend, raw_units)?;
     let raw = fact.get("rawValue").and_then(Value::as_f64).filter(|value| value.is_finite())?;
     let places = fact.get("decimalPlaces").and_then(Value::as_i64).unwrap_or(1).clamp(0, 6) as usize;
-    Some((format!("{:.places$}", unit.show(raw)), unit.name.clone()))
+    Some((crate::read::settled(format!("{:.places$}", unit.show(raw))), unit.name.clone()))
 }
 
 pub fn instruments_view(backend: &dyn Backend, args: &[String]) -> Value {
@@ -80,7 +80,7 @@ pub fn instruments_view(backend: &dyn Backend, args: &[String]) -> Value {
             let described = fact.get("shortDescription").and_then(Value::as_str).filter(|d| !d.is_empty());
             let fresh = converted(backend, &fact);
             let held = fact.get("valueString").and_then(Value::as_str).filter(|v| !v.is_empty());
-            let value = fresh.as_ref().map(|(shown, _)| shown.as_str()).or(held);
+            let value = fresh.as_ref().map(|(shown, _)| shown.clone()).or_else(|| held.map(|v| crate::read::settled(v.to_string())));
             let units = match &fresh {
                 Some((_, name)) => display_units(name.as_str()),
                 None => fact.get("units").and_then(Value::as_str).map(display_units).unwrap_or(""),
@@ -90,7 +90,7 @@ pub fn instruments_view(backend: &dyn Backend, args: &[String]) -> Value {
                 "group": group,
                 "name": name,
                 "label": described.map(str::to_string).unwrap_or_else(|| humanise(name)),
-                "value": value.unwrap_or(ABSENT),
+                "value": value.clone().unwrap_or_else(|| ABSENT.to_string()),
                 "units": if value.is_some() { units } else { "" },
                 "missing": value.is_none(),
             })
@@ -138,6 +138,26 @@ mod tests {
         assert_eq!(items[1]["missing"], true);
         assert_eq!(items[2]["label"], "Climb Rate");
         assert_eq!(view["available"], true);
+    }
+
+    #[test]
+    fn a_grounded_altimeter_does_not_read_below_the_launch_point() {
+        struct Resting;
+        impl Backend for Resting {
+            fn get(&self, path: &str) -> String {
+                match path {
+                    "vehicle.altitudeRelative" => json!({ "kind": "fact", "name": "altitudeRelative", "shortDescription": "Alt (Rel)", "valueString": "-0.0", "units": "m" }),
+                    _ => json!({ "kind": "null" }),
+                }
+                .to_string()
+            }
+            fn get_fields(&self, p: &str, _f: &str) -> String { self.get(p) }
+            fn set(&self, _p: &str, _v: &str) -> String { String::new() }
+            fn invoke(&self, _p: &str, _a: &str) -> String { String::new() }
+            fn watch(&self, _p: &[String]) {}
+        }
+        let view = instruments_view(&Resting, &["vehicle/altitudeRelative".to_string()]);
+        assert_eq!(view["items"][0]["value"], "0.0", "Qt spells the fact and a vehicle sitting on the ground reports a hair under zero, so valueString arrives as -0.0 - and neither of us formats that string, so nothing stripped the sign before it reached an altimeter reading as below the launch point");
     }
 
     #[test]

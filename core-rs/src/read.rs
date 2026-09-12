@@ -133,14 +133,31 @@ pub fn refused(reason: &str) -> Value {
     json!({ "kind": "null", "reason": reason })
 }
 
+pub fn settled(number: String) -> String {
+    match number.strip_prefix('-').filter(|rest| rest.chars().all(|c| c == '0' || c == '.')) {
+        Some(rest) => rest.to_string(),
+        None => number,
+    }
+}
+
 pub fn format_measure(value: f64, units: &str) -> String {
-    let number = if value >= WHOLE_NUMBER_FROM { format!("{value:.0}") } else { format!("{value:.1}") };
+    let number = settled(if value.abs() >= WHOLE_NUMBER_FROM { format!("{value:.0}") } else { format!("{value:.1}") });
     format!("{number} {}", units.replace("^2", "\u{b2}"))
 }
 
 #[cfg(test)]
 mod measure_tests {
     use super::format_measure;
+
+    #[test]
+    fn a_vehicle_on_the_ground_does_not_read_as_below_its_launch_point() {
+        assert_eq!(super::format_measure(-0.04, "m"), "0.0 m", "a stationary vehicle reports a relative altitude a hair under zero and Rust rounds -0.04 to -0.0, which on an altimeter reads as the aircraft being below where it took off");
+        assert_eq!(super::format_measure(-0.004, "m"), "0.0 m");
+        assert_eq!(super::format_measure(-0.4, "m"), "-0.4 m", "a real descent keeps its sign");
+        assert_eq!(super::format_measure(-0.05, "m"), "-0.1 m", "and so does one that rounds to a tenth");
+        assert_eq!(super::format_measure(-120.0, "m"), "-120 m", "the whole-number threshold compared the signed value, so a depth of 120 metres carried a tenth that the same height above sea level does not");
+        assert_eq!(super::format_measure(0.04, "m"), "0.0 m");
+    }
 
     #[test]
     fn measures_keep_a_tenth_under_a_hundred_and_write_squared_units() {
