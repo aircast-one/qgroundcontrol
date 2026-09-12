@@ -3,6 +3,7 @@ package one.aircast.mapspike
 import org.json.JSONObject
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull
+import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class LandingPatternTest {
@@ -69,5 +70,71 @@ class LandingPatternTest {
         assertNull(landingPattern(4, view("""{"kind":"null"}""")))
         assertNull(landingPattern(4, view("""{"reason":"only a fixed wing or a VTOL gets one"}""")))
         assertNull(landingPattern(4, view("""{"loiterRadiusMetres":75.0}""")))
+    }
+}
+
+class LandingHandleTest {
+
+    private val pattern = LandingPattern(
+        index = 4,
+        landing = TrackPoint(41.70, 44.82),
+        slopeStart = TrackPoint(41.71, 44.83),
+        finalApproach = TrackPoint(41.72, 44.84),
+        loiterRadiusMetres = 75.0,
+        loiterClockwise = true,
+    )
+
+    @Test
+    fun `only the two places QGC lets you set get a handle`() {
+        val handles = vertexHandleFeatures(emptyList(), emptyList(), emptyList(), listOf(pattern))
+            .features()!!
+
+        assertEquals(2, handles.size)
+        assertEquals(
+            listOf(LANDING_PLACE_APPROACH, LANDING_PLACE_TOUCHDOWN),
+            handles.map { it.getNumberProperty(VERTEX_INDEX_PROPERTY).toInt() },
+        )
+        assertEquals(
+            listOf(HANDLE_KIND_LANDING, HANDLE_KIND_LANDING),
+            handles.map { it.getStringProperty(HANDLE_KIND_PROPERTY) },
+        )
+    }
+
+    @Test
+    fun `an unplaced pattern offers nothing to drag`() {
+        val empty = pattern.copy(landing = null, slopeStart = null, finalApproach = null)
+
+        assertEquals(
+            0,
+            vertexHandleFeatures(emptyList(), emptyList(), emptyList(), listOf(empty)).features()!!.size,
+        )
+    }
+
+    @Test
+    fun `a selection on a landing place survives while the pattern does`() {
+        assertTrue(
+            selectionSurvives(
+                MapHit.LandingPlace(4, LANDING_PLACE_APPROACH),
+                emptyList(), emptyList(), emptyList(), emptyList(), emptyList(), listOf(pattern),
+            ),
+        )
+        assertTrue(
+            !selectionSurvives(
+                MapHit.LandingPlace(9, LANDING_PLACE_APPROACH),
+                emptyList(), emptyList(), emptyList(), emptyList(), emptyList(), listOf(pattern),
+            ),
+        )
+    }
+
+    @Test
+    fun `each place says which one moved`() {
+        assertEquals(
+            "Moved the final approach",
+            movedText(MapHit.LandingPlace(4, LANDING_PLACE_APPROACH), emptyList()),
+        )
+        assertEquals(
+            "Moved the touchdown",
+            movedText(MapHit.LandingPlace(4, LANDING_PLACE_TOUCHDOWN), emptyList()),
+        )
     }
 }

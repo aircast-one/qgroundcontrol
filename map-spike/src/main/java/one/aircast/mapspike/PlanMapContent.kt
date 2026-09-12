@@ -242,7 +242,10 @@ internal fun MapSpikeScreen(
                 linkStartToHome = nextLink
                 fences = nextFences
                 rally = nextRally
-                if (!selectionSurvives(selected, nextAll, nextFences, nextCircles, nextRally, nextSurveys)) {
+                if (!selectionSurvives(
+                        selected, nextAll, nextFences, nextCircles, nextRally, nextSurveys, nextLandings,
+                    )
+                ) {
                     selected = null
                 }
                 circles = nextCircles

@@ -334,7 +334,7 @@ fun VehicleMap(
         renderSurveys(currentStyle, surveys)
         renderLandings(currentStyle, landings)
         renderFences(currentStyle, fencePolygons, rallyPoints, circlesAsPolygons(fenceCircles))
-        renderVertexHandles(currentStyle, fencePolygons, surveys, fenceCircles)
+        renderVertexHandles(currentStyle, fencePolygons, surveys, fenceCircles, landings)
         renderMission(currentStyle, missionItems, linkStartToHome, selectedWaypoint)
     }
 

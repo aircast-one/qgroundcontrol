@@ -48,6 +48,10 @@ private fun selectionText(
     is MapHit.FenceVertex -> polygons.firstOrNull { it.index == selected.polygon }
         ?.let { "corner ${selected.vertex + 1} of ${it.vertices.size}" }
     is MapHit.SurveyVertex -> null
+    is MapHit.LandingPlace -> when (selected.place) {
+        LANDING_PLACE_APPROACH -> "final approach"
+        else -> "touchdown"
+    }
     is MapHit.Rally -> null
     null -> null
 }

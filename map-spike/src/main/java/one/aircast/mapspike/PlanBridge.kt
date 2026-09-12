@@ -152,3 +152,12 @@ fun landingPatterns(items: List<MissionItem>): List<LandingPattern> =
                 }.getOrNull(),
             )
         }
+
+fun moveLandingPlace(index: Int, place: Int, latitude: Double, longitude: Double): Boolean {
+    val property = when (place) {
+        LANDING_PLACE_APPROACH -> "finalApproachCoordinate"
+        LANDING_PLACE_TOUCHDOWN -> "landingCoordinate"
+        else -> return false
+    }
+    return setOk("$PLAN_ITEMS.$index.$property", settingJson(coordinateJson(latitude, longitude)))
+}

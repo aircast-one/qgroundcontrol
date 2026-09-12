@@ -24,6 +24,8 @@ sealed interface MapHit {
     data class Circle(val index: Int) : MapHit
 
     data class CircleCentre(val index: Int) : MapHit
+
+    data class LandingPlace(val index: Int, val place: Int) : MapHit
 }
 
 internal fun nearestIndex(x: Float, y: Float, points: List<Pair<Float, Float>?>): Int? =
@@ -56,6 +58,7 @@ internal fun handleHit(kind: String?, owner: Int, vertex: Int): MapHit? = when (
     HANDLE_KIND_FENCE -> MapHit.FenceVertex(owner, vertex)
     HANDLE_KIND_SURVEY -> MapHit.SurveyVertex(owner, vertex)
     HANDLE_KIND_CIRCLE -> MapHit.CircleCentre(owner)
+    HANDLE_KIND_LANDING -> MapHit.LandingPlace(owner, vertex)
     else -> null
 }
 

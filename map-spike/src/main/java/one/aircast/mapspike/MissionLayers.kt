@@ -256,6 +256,10 @@ const val HANDLE_KIND_PROPERTY = "handleKind"
 const val HANDLE_KIND_FENCE = "fence"
 const val HANDLE_KIND_SURVEY = "survey"
 const val HANDLE_KIND_CIRCLE = "circle"
+const val HANDLE_KIND_LANDING = "landing"
+
+const val LANDING_PLACE_APPROACH = 0
+const val LANDING_PLACE_TOUCHDOWN = 1
 
 fun installFenceHandleLayer(style: Style) {
     if (style.getSource(FENCE_HANDLE_SOURCE) != null) {
@@ -285,11 +289,24 @@ fun vertexHandleFeatures(
     polygons: List<FencePolygon>,
     surveys: List<Survey>,
     circles: List<FenceCircle> = emptyList(),
+    landings: List<LandingPattern> = emptyList(),
 ): FeatureCollection {
     val fence = polygons.flatMap { handleFeatures(HANDLE_KIND_FENCE, it.index, it.vertices) }
     val survey = surveys.flatMap { handleFeatures(HANDLE_KIND_SURVEY, it.index, it.area) }
     val centres = circles.flatMap { handleFeatures(HANDLE_KIND_CIRCLE, it.index, listOf(it.centre)) }
-    return FeatureCollection.fromFeatures(fence + survey + centres)
+    val places = landings.flatMap { landingHandleFeatures(it) }
+    return FeatureCollection.fromFeatures(fence + survey + centres + places)
+}
+
+private fun landingHandleFeatures(pattern: LandingPattern) = listOfNotNull(
+    pattern.finalApproach?.let { LANDING_PLACE_APPROACH to it },
+    pattern.landing?.let { LANDING_PLACE_TOUCHDOWN to it },
+).map { (place, at) ->
+    Feature.fromGeometry(Point.fromLngLat(at.longitude, at.latitude)).apply {
+        addStringProperty(HANDLE_KIND_PROPERTY, HANDLE_KIND_LANDING)
+        addNumberProperty(POLYGON_INDEX_PROPERTY, pattern.index)
+        addNumberProperty(VERTEX_INDEX_PROPERTY, place)
+    }
 }
 
 fun renderVertexHandles(
@@ -297,9 +314,10 @@ fun renderVertexHandles(
     polygons: List<FencePolygon>,
     surveys: List<Survey>,
     circles: List<FenceCircle> = emptyList(),
+    landings: List<LandingPattern> = emptyList(),
 ) {
     (style.getSource(FENCE_HANDLE_SOURCE) as? GeoJsonSource)
-        ?.setGeoJson(vertexHandleFeatures(polygons, surveys, circles))
+        ?.setGeoJson(vertexHandleFeatures(polygons, surveys, circles, landings))
 }
 
 const val SURVEY_AREA_SOURCE = "aircast-survey-area"
