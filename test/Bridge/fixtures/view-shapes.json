@@ -5411,6 +5411,7 @@
         "view.missionItems(geometry).items.4.foldedCommands",
         "view.missionItems(geometry).items.4.geometry.flightLoop",
         "view.missionItems(geometry).items.4.geometry.layerAltitudesMetres",
+        "view.missionItems(geometry).items.4.geometry.layerSpanText",
         "view.missionItems(geometry).items.4.geometry.layers",
         "view.missionItems(geometry).items.4.geometry.property",
         "view.missionItems(geometry).items.4.geometry.shape",
@@ -5590,6 +5591,7 @@
         "view.missionItems(geometry).items.5.geometry.layerAltitudesMetres.#",
         "view.missionItems(geometry).items.5.geometry.layerAltitudesMetres.0",
         "view.missionItems(geometry).items.5.geometry.layerAltitudesMetres.1",
+        "view.missionItems(geometry).items.5.geometry.layerSpanText",
         "view.missionItems(geometry).items.5.geometry.layers",
         "view.missionItems(geometry).items.5.geometry.property",
         "view.missionItems(geometry).items.5.geometry.shape",
@@ -10528,6 +10530,7 @@
                     "layerAltitudesMetres": [
                         "number"
                     ],
+                    "layerSpanText": "null|string",
                     "layers": "null|number",
                     "property": "string",
                     "shape": "string",

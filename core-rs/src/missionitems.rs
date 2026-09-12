@@ -48,7 +48,7 @@ pub fn items_view(backend: &dyn Backend, args: &[String]) -> Value {
             .into_iter()
             .enumerate()
             .map(|(index, mut listed)| {
-                listed["geometry"] = geometry_of(backend, index as i64, listed["kind"].as_str().unwrap_or_default());
+                listed["geometry"] = geometry_of(backend, index as i64, listed["kind"].as_str().unwrap_or_default(), &vertical);
                 listed
             })
             .collect(),
@@ -272,7 +272,7 @@ fn path_at(backend: &dyn Backend, path: &str) -> Vec<Value> {
         .unwrap_or_default()
 }
 
-fn geometry_of(backend: &dyn Backend, index: i64, kind: &str) -> Value {
+fn geometry_of(backend: &dyn Backend, index: i64, kind: &str, vertical: &Unit) -> Value {
     let Some(shape) = crate::missionkinds::lookup(kind).and_then(|kind| kind.geometry) else {
         return Value::Null;
     };
@@ -311,7 +311,11 @@ fn geometry_of(backend: &dyn Backend, index: i64, kind: &str) -> Value {
             "transects": transects,
             "flightLoop": (!flown_loop.is_empty()).then_some(flown_loop),
             "layers": layers,
-            "layerAltitudesMetres": stack,
+            "layerAltitudesMetres": stack.clone(),
+            "layerSpanText": stack.as_ref().and_then(|heights| {
+                let (low, high) = (heights.first()?, heights.last()?);
+                Some(crate::read::range_text(*low, *high, vertical))
+            }),
         }),
     }
 }
@@ -1034,18 +1038,23 @@ mod reported {
             fn watch(&self, _p: &[String]) {}
         }
 
-        let survey = geometry_of(&Shapes, 4, "survey");
+        let metric = Unit { factor: 1.0, name: "m".to_string() };
+        let survey = geometry_of(&Shapes, 4, "survey", &metric);
         assert_eq!(survey["transects"].as_array().unwrap().len(), 2);
         assert_eq!(survey["flightLoop"], Value::Null, "a survey mows and its route is the transect list, so there is no loop to draw and an empty one would be a shape rather than an absence");
         assert_eq!(survey["layers"], Value::Null);
 
-        let structure = geometry_of(&Shapes, 5, "structure");
+        let structure = geometry_of(&Shapes, 5, "structure", &metric);
         assert_eq!(structure["vertices"].as_array().unwrap().len(), 3, "the structure outline is what the operator drew");
         assert_eq!(structure["transects"].as_array().unwrap().len(), 0, "StructureScanComplexItem is a plain ComplexMissionItem with no visualTransectPoints, so the route was read from a property it does not have and both heads drew a boundary with nothing through it");
         assert_eq!(structure["flightLoop"].as_array().unwrap().len(), 3, "the flown path is flightPolygon, offset outward from the structure by the camera distance");
         assert_eq!(structure["layers"], 3, "and it is flown once per layer, stacked in altitude - a head drawing one loop draws a third of the mission");
         assert_eq!(structure["layerAltitudesMetres"], json!([12.0, 27.0, 42.0]), "the layer count alone still under-draws the mission, and the spacing is not a head's to invent: QGC puts top at bottom plus (layers - 1) camera footprints in both the start-from-top and start-from-bottom branches, so the layers are evenly spaced between the two ends");
         assert_eq!(survey["layerAltitudesMetres"], Value::Null);
+        assert_eq!(structure["layerSpanText"], "12.0 m to 42.0 m", "the array alone had no consumer: raw metres force a head to hardcode a unit and a precision, in a plan tab where every other measurement arrives already spelled, so a feet rig read metres beside a camera line reading feet");
+        assert_eq!(survey["layerSpanText"], Value::Null);
+        let feet = Unit { factor: 3.2808399, name: "ft".to_string() };
+        assert_eq!(geometry_of(&Shapes, 5, "structure", &feet)["layerSpanText"], "39 ft to 138 ft", "the heights are held in metres and spelled in the operator's unit, and a metric fake alone cannot tell a conversion from an identity");
 
         struct OneLayer;
         impl Backend for OneLayer {
@@ -1062,7 +1071,7 @@ mod reported {
             fn invoke(&self, _p: &str, _a: &str) -> String { String::new() }
             fn watch(&self, _p: &[String]) {}
         }
-        assert_eq!(geometry_of(&OneLayer, 5, "structure")["layerAltitudesMetres"], json!([20.0]), "a single layer divides by no steps at all, and the default Layers value is 1");
+        assert_eq!(geometry_of(&OneLayer, 5, "structure", &metric)["layerAltitudesMetres"], json!([20.0]), "a single layer divides by no steps at all, and the default Layers value is 1");
         assert_eq!(survey["flightLoop"], Value::Null, "the absent cases stay absent rather than becoming an empty shape a head would draw");
     }
 
