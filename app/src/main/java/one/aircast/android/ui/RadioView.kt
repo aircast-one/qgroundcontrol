@@ -1,0 +1,62 @@
+package one.aircast.android.ui
+
+import org.json.JSONObject
+import one.aircast.mapspike.optText
+
+internal const val RADIO_VIEW = "view.radio"
+
+internal data class RadioStick(
+    val title: String,
+    val valueText: String,
+    val fraction: Float,
+    val mapped: Boolean,
+    val reversed: Boolean,
+)
+
+internal data class RadioChannel(
+    val label: String,
+    val valueText: String,
+    val fraction: Float,
+    val live: Boolean,
+)
+
+internal data class RadioView(
+    val connected: Boolean,
+    val channelCount: Int,
+    val summary: String,
+    val shortfall: String,
+    val sticks: List<RadioStick>,
+    val channels: List<RadioChannel>,
+)
+
+private fun <T> each(view: JSONObject?, key: String, make: (JSONObject) -> T): List<T> {
+    val items = view?.optJSONArray(key) ?: return emptyList()
+    return (0 until items.length()).mapNotNull { items.optJSONObject(it)?.let(make) }
+}
+
+internal fun radioView(view: JSONObject?): RadioView? {
+    if (view == null || view.optText("class") != "Radio") return null
+    return RadioView(
+        connected = view.optBoolean("connected"),
+        channelCount = view.optInt("channelCount"),
+        summary = view.optText("summary"),
+        shortfall = view.optText("shortfall"),
+        sticks = each(view, "sticks") {
+            RadioStick(
+                title = it.optText("title"),
+                valueText = it.optText("valueText"),
+                fraction = it.optDouble("fraction", 0.0).toFloat(),
+                mapped = it.optBoolean("mapped"),
+                reversed = it.optBoolean("reversed"),
+            )
+        },
+        channels = each(view, "channels") {
+            RadioChannel(
+                label = it.optText("label"),
+                valueText = it.optText("valueText"),
+                fraction = it.optDouble("fraction", 0.0).toFloat(),
+                live = it.optBoolean("live"),
+            )
+        },
+    )
+}

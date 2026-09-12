@@ -76,7 +76,10 @@ def read_sticks():
     """Eight PWM values the rig wants the transmitter to be sending, or None.
 
     A zero in any slot leaves that channel to whatever it was already doing, so a
-    test can pin one stick without freezing the rest.
+    test can pin one stick without freezing the rest. A negative value reports the
+    channel as zero, which is what a receiver sends for a channel carrying no
+    signal - the case that separates "eight channels" from "eight channels
+    carrying a signal".
     """
     try:
         with open(STICKS_FILE) as handle:
@@ -234,7 +237,7 @@ def main():
         ] if os.environ.get("STILL_STICKS") != "1" else [1500, 1500, 1100, 1500, 1000, 1000, 1000, 1000]
         held = read_sticks()
         if held:
-            sticks = [h if h else moving for h, moving in zip(held, sticks)]
+            sticks = [0 if h < 0 else (h or moving) for h, moving in zip(held, sticks)]
         link.rc_channels_send(
             now_ms, 8, *sticks,
             0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
