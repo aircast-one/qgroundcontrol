@@ -6761,8 +6761,17 @@ vehicle" when connected — both `setDirty(false)` calls are gated on `offline()
 for the case it was written for and is being handed a flag that changed meaning
 underneath it. Raised with the core; the fix is theirs.
 
-**There is also no confirmation that an upload succeeded.** 145 items went to the
-vehicle and the only thing that changed on screen was that status line.
+**Correction, same day: there IS an upload confirmation** — "Upload sent to
+vehicle" for 2500 ms. I sampled the screen once, about two seconds after the
+tap, while a 145-item transfer was still running, and read the gap between
+"Uploading to vehicle" and the confirmation as silence. Sampling repeatedly
+across the upload shows it. The inverted status above is unaffected; both of its
+readings came from the core rather than the screen.
+
+`transient-ui-expires-before-you-look` has been in memory since an earlier
+session and did not stop me measuring a 2.5-second message with one reading at
+an arbitrary moment. **A transient notice sampled once is indistinguishable from
+no notice.** Sample across the window.
 
 **A note I already had did not stop me.** `qgc-plan-dirty-means-two-things` has
 been in memory since an earlier session. I had read it as a caution about
