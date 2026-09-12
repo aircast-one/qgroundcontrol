@@ -97,3 +97,14 @@ heartbeat at connect, so force-stop the app after changing it or it keeps
 reporting the old airframe. And the *plan* carries its own `vehicleType`: a plan
 file saved as a multirotor makes `insertLandItem` add an RTL even when a plane
 is connected, because the plan controller follows the plan rather than the link.
+
+### A scripted sequence can run against the file picker
+
+`ui.sh` refuses taps unless the app is in front, but raw `adb shell input`
+does not. On 2026-09-12 a Save-as picker was left open and an entire
+load-add-upload sequence ran against `documentsui` instead — every step
+"succeeded", the sim saw no upload, and the screen showed no plan.
+
+Check `dumpsys activity activities | grep topResumedActivity` before a
+sequence that mixes `ui.sh` with raw input, and dismiss a picker deliberately
+rather than assuming one BACK did it.
