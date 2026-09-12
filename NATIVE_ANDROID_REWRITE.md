@@ -6333,3 +6333,34 @@ The tidying was driven by an assumption about the view's shape that I had not
 read — the same failure as the rest of tonight, this time inside a refactor
 rather than a report. It cost nothing only because the plane case was run
 immediately afterwards.
+
+### Correcting the gate regression: it was `isSimpleItem`, not `landingCoordinate`
+
+The entry above blamed my placement regression on `landing.rs:37` refusing
+"whenever `landingCoordinate` is not an object, which is exactly the state of a
+freshly added, unplaced pattern". The macOS session noticed that this
+contradicts the core's own `7df5f1335`, which states a fresh pattern *does*
+carry `landingCoordinate` as an object holding `valid: false`. Only this rig can
+settle it, so I logged the raw payload from inside the head at the moment the
+gate runs:
+
+    {"kind":"null","reason":"that item draws no landing pattern; only a fixed
+     wing or a VTOL gets one, and a multirotor land is a plain return"}
+
+**That is the `isSimpleItem` refusal, one line earlier.** My regression never
+reached line 37, so the core's `is_object` premise is untouched by it and my
+attribution was wrong.
+
+**And the stronger claim was never mine to make.** I wrote "the core cannot
+distinguish an unplaced pattern from a non-pattern either, so neither can the
+head". What I had measured was "my gate blocked placement" — compatible with
+several causes, and it turned out to be none of the one I picked. A measurement
+constrains; it does not name a mechanism.
+
+**What is now open, and it is odd.** The view reports `isSimpleItem` for that
+index, and the very next call sets `landingCoordinate` on the *same* index and
+succeeds — the pattern then draws with handles at 1.56 km. A simple item has no
+such property. So the view and the write disagree about what sits at index 4 at
+the same instant. Best guess is that the insert has not settled in `visualItems`
+when the view reads it; that is a guess, labelled as one, and sent to the core
+with the payload.
