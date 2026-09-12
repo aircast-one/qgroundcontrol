@@ -1225,6 +1225,13 @@ QJsonValue mergeShapes(const QJsonValue &a, const QJsonValue &b)
     if (a == b) {
         return a;
     }
+    const auto structured = [](const QJsonValue &value) { return value.isObject() || value.isArray(); };
+    if (a.toString() == QStringLiteral("null") && structured(b)) {
+        return b;
+    }
+    if (b.toString() == QStringLiteral("null") && structured(a)) {
+        return a;
+    }
     QStringList types = (a.toString() + QStringLiteral("|") + b.toString()).split(QLatin1Char('|'));
     types.removeDuplicates();
     types.sort();

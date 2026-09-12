@@ -8220,7 +8220,22 @@
     "view.missionItems": {
         "available": "bool",
         "class": "string",
-        "editing": "|null",
+        "editing": {
+            "fields": [
+                {
+                    "choices": [
+                        "empty"
+                    ],
+                    "label": "string",
+                    "name": "string",
+                    "path": "string",
+                    "text": "string",
+                    "units": "null|string",
+                    "value": "bool|number"
+                }
+            ],
+            "index": "number"
+        },
         "items": [
             {
                 "abbreviation": "string",
@@ -8245,14 +8260,24 @@
                 "cameraShots": "null|number",
                 "category": "null|string",
                 "command": "null|number",
-                "coordinate": "|null",
+                "coordinate": {
+                    "altitude": "null|number",
+                    "latitude": "number",
+                    "longitude": "number",
+                    "valid": "bool"
+                },
                 "description": "string",
                 "distance": "number",
                 "distanceFromStart": "number",
                 "distanceText": "string",
                 "edited": "bool",
                 "endsRoute": "bool",
-                "exitCoordinate": "|null",
+                "exitCoordinate": {
+                    "altitude": "null",
+                    "latitude": "number",
+                    "longitude": "number",
+                    "valid": "bool"
+                },
                 "extraSeconds": "number",
                 "flownLeg": "bool",
                 "foldedCommands": "number",
@@ -8278,7 +8303,22 @@
     "view.missionItems(geometry)": {
         "available": "bool",
         "class": "string",
-        "editing": "|null",
+        "editing": {
+            "fields": [
+                {
+                    "choices": [
+                        "empty"
+                    ],
+                    "label": "string",
+                    "name": "string",
+                    "path": "string",
+                    "text": "string",
+                    "units": "null|string",
+                    "value": "bool|number"
+                }
+            ],
+            "index": "number"
+        },
         "items": [
             {
                 "abbreviation": "string",
@@ -8303,18 +8343,43 @@
                 "cameraShots": "null|number",
                 "category": "null|string",
                 "command": "null|number",
-                "coordinate": "|null",
+                "coordinate": {
+                    "altitude": "null|number",
+                    "latitude": "number",
+                    "longitude": "number",
+                    "valid": "bool"
+                },
                 "description": "string",
                 "distance": "number",
                 "distanceFromStart": "number",
                 "distanceText": "string",
                 "edited": "bool",
                 "endsRoute": "bool",
-                "exitCoordinate": "|null",
+                "exitCoordinate": {
+                    "altitude": "null",
+                    "latitude": "number",
+                    "longitude": "number",
+                    "valid": "bool"
+                },
                 "extraSeconds": "number",
                 "flownLeg": "bool",
                 "foldedCommands": "number",
-                "geometry": "|null",
+                "geometry": {
+                    "property": "string",
+                    "shape": "string",
+                    "transects": [
+                        {
+                            "latitude": "number",
+                            "longitude": "number"
+                        }
+                    ],
+                    "vertices": [
+                        {
+                            "latitude": "number",
+                            "longitude": "number"
+                        }
+                    ]
+                },
                 "incomplete": "bool",
                 "index": "number",
                 "kind": "string",
@@ -8388,7 +8453,11 @@
         "altitudeBandMetres": [
             "null|number"
         ],
-        "altitudeRange": "|null",
+        "altitudeRange": {
+            "highest": "number",
+            "lowest": "number",
+            "text": "string"
+        },
         "available": "bool",
         "class": "string",
         "distanceComputedMetres": "null",
@@ -8411,11 +8480,17 @@
         "timeSeconds": "number"
     },
     "view.missionSummary(verify)": {
-        "altitudeBandComputed": "|null",
+        "altitudeBandComputed": [
+            "number"
+        ],
         "altitudeBandMetres": [
             "null|number"
         ],
-        "altitudeRange": "|null",
+        "altitudeRange": {
+            "highest": "number",
+            "lowest": "number",
+            "text": "string"
+        },
         "available": "bool",
         "class": "string",
         "distanceComputedMetres": "number",
