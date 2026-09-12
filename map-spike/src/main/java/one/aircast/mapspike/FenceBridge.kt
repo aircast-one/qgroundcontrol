@@ -122,6 +122,15 @@ object FenceBridge {
     fun removeRallyPoint(index: Int): Boolean =
         invokeOk("$RALLY_ROOT.removePoint", "[\"@$RALLY_POINTS.$index\"]")
 
+    // QGC offers addInclusionPolygon and addInclusionCircle and no exclusion
+    // counterparts, so a keep-out zone is reached by flipping the property
+    // rather than by a different call.
+    fun setPolygonInclusion(index: Int, inclusion: Boolean): Boolean =
+        setOk("$FENCE_POLYGONS.$index.inclusion", settingJson(inclusion.toString()))
+
+    fun setCircleInclusion(index: Int, inclusion: Boolean): Boolean =
+        setOk("$FENCE_CIRCLES.$index.inclusion", settingJson(inclusion.toString()))
+
     fun removeVertex(polygon: Int, vertex: Int): Boolean =
         invokeOk("$FENCE_POLYGONS.$polygon.removeVertex", "[$vertex]")
 

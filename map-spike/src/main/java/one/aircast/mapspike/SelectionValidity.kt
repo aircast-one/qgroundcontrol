@@ -35,6 +35,22 @@ private fun fenceWording(kindText: String, detailText: String): String? =
     listOf(kindText, detailText).filter { it.isNotBlank() }
         .takeIf { it.isNotEmpty() }?.joinToString(" \u00b7 ")
 
+// The selected fence, whichever handle names it, with the flip that turns a
+// boundary into a no-fly zone.
+internal fun selectedFence(
+    selected: MapHit?,
+    polygons: List<FencePolygon>,
+    circles: List<FenceCircle>,
+): Pair<Boolean, () -> Boolean>? = when (selected) {
+    is MapHit.FenceVertex -> polygons.firstOrNull { it.index == selected.polygon }
+        ?.let { it.inclusion to { FenceBridge.setPolygonInclusion(it.index, !it.inclusion) } }
+    is MapHit.Circle -> circles.firstOrNull { it.index == selected.index }
+        ?.let { it.inclusion to { FenceBridge.setCircleInclusion(it.index, !it.inclusion) } }
+    is MapHit.CircleCentre -> circles.firstOrNull { it.index == selected.index }
+        ?.let { it.inclusion to { FenceBridge.setCircleInclusion(it.index, !it.inclusion) } }
+    else -> null
+}
+
 internal fun fenceDetail(
     selected: MapHit?,
     polygons: List<FencePolygon>,
