@@ -31,6 +31,7 @@ internal fun itemDetail(item: MissionItem): String = listOfNotNull(
         ?: NO_POSITION.takeIf { !item.placed && item.specifiesCoordinate },
     AFTER_THE_ROUTE_ENDS.takeIf { item.afterRouteEnds },
     photosText(item.cameraShots),
+    holdText(item.extraSeconds),
     item.blockedReason.ifBlank { null },
 ).joinToString(" \u00b7 ")
 
@@ -99,4 +100,9 @@ internal fun photosText(shots: Int): String? = when {
     shots <= 0 -> null
     shots == 1 -> "1 photo"
     else -> "$shots photos"
+}
+
+internal fun holdText(seconds: Double): String? = when {
+    seconds.isNaN() || seconds <= 0.0 -> null
+    else -> "holds ${seconds.toInt()} s"
 }

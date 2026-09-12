@@ -413,3 +413,23 @@ class PhotosTextTest {
         assertEquals("50.0 m", itemDetail(waypoint))
     }
 }
+
+class HoldTextTest {
+
+    @Test
+    fun `an item that waits says how long`() {
+        val waypoint = MissionItem(
+            2, 2, 41.0, 44.0, "Waypoint", false, 50.0, kind = "waypoint",
+            altitudeText = "50.0 m", extraSeconds = 30.0,
+        )
+
+        assertEquals("50.0 m · holds 30 s", itemDetail(waypoint))
+    }
+
+    @Test
+    fun `an item that does not wait says nothing about waiting`() {
+        assertEquals(null, holdText(0.0))
+        assertEquals(null, holdText(Double.NaN))
+        assertEquals(null, holdText(-1.0))
+    }
+}
