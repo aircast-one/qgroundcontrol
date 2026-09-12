@@ -2706,3 +2706,47 @@ message while the plan behind it had grown by the item the message refused. It
 drives a modal alert that clears on dismissal; only the probe, which bypasses the
 UI, can reach a stale one. **An instrument faithful to the model, reporting
 something no operator can experience.**
+
+### An item that commands its own speed says so in the list, 2026-09-12
+
+Found by asking the question `view-fields.py` does not: not "does the head read a
+key the core dropped" but **"does the core serve a key the head reads nowhere"**.
+Sixty-nine such fields across the nineteen mapped views. Most are the envelope's
+`class` tag, the raw metric behind a `*Text` the head does draw, or a term
+`head-vs-core.py` diffs. **One was a screen this head never built.**
+
+`speedChangeText` — `specifiedFlightSpeed` through the operator's speed setting, so
+`23.3 kn` where that is the setting, withheld entirely when the commanded speed is
+zero because `"0.0 m/s"` reads as an instruction to stop. The core's own test says
+it exists so that **a head spelling it itself would not rebuild the defect the
+obstacle label was**. `grep speedChange macos/Sources` returned nothing at all.
+
+The figure was not missing from the app — it was in the **detail panel for the
+selected item only**. So reviewing a thirty-item plan for speed changes meant
+selecting all thirty. **A value being right is not the same as a value being
+reachable**, and this is that rule about a whole screen rather than a field.
+
+The subtitle is one line and already a precedence chain, so the third term joins it
+by urgency: **a block is a task, never being flown to is a defect, a speed change is
+information.** That ordering now lives in `MissionItem.subtitle(unreached:)` rather
+than at the call site — `PlanWindow.swift` is not compiled by `swift-checks.sh`, so
+a rule written there is unpinnable however carefully. Five assertions, including
+both losing branches; proven to run by making one deliberately false.
+
+Rendered: row 2 reads **Waypoint / Flies at 12.0 m/s**, row 4 commands none and says
+nothing, the Takeoff keeps **Set its location**. Suite 707/0/89 with no app running,
+load average 8.34 during the run and neither known flake appeared.
+
+**It also explains an artefact that was on screen with no explanation.** The rows
+number 0, 1, 2, **4** — a per-item speed emits its own `DO_CHANGE_SPEED`, which
+takes sequence 3. Before this the operator saw a gap in the numbering with nothing
+on screen accounting for it.
+
+**The predicate has a control and is NOT shipped as an instrument.** Pointed at
+`07d9e8df9^`, where this head did not yet read `altitudeBandText`, it reports that
+field — non-vacuous. But it reports it as **one line among twenty**, and a checker
+whose signal is indistinguishable from its noise is one nobody reads. Shipping it
+needs an accepted table of about twenty reasons, and **I have verified five**
+(`bandText`, `abbreviation`, `positionText`, `incomplete`/`edited`, `altitudeOnly`).
+Writing the other fifteen from belief is the failure this whole file is about, so
+the table is the next cycle's work, not this one's.

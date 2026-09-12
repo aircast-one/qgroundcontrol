@@ -496,8 +496,8 @@ struct PlanInspector: View {
                 ForEach(mission.items) { item in
                     GroupRow(
                         title: item.command,
-                        description: item.blockedReason
-                            ?? (unreachedItems.contains(item.index) ? MissionItem.afterRoute : ""),
+                        description: item.subtitle(
+                            unreached: unreachedItems.contains(item.index)),
                         showSeparator: item.index > 0,
                         current: item.isCurrent,
                         leading: {

@@ -1321,6 +1321,7 @@ func checkMissionItemKinds() {
     checkUnknownMissionTime()
     checkOnlyAPlacedItemMoves()
     checkComplexGeometryInAnyLocale()
+    checkSpeedChangeIsListedNotOnlySelected()
     checkSensorsComponentIsFoundByClass()
     checkShapeAbsence()
     checkBatteryReading()
@@ -4266,6 +4267,36 @@ func checkComplexGeometryInAnyLocale() {
            "an area is not offered as a line, which would append vertices to the wrong property")
     expect(catalogue.areaProperty(of: item("waypoint", named: "Waypoint")) == nil,
            "and a kind the catalogue does not shape has no geometry to read")
+}
+
+func checkSpeedChangeIsListedNotOnlySelected() {
+    func item(speed: String?, blocked: String? = nil) -> MissionItem {
+        var view: [String: Any] = ["index": 2 as NSNumber, "sequence": 2 as NSNumber,
+                                   "name": "Waypoint", "kind": "waypoint"]
+        view["speedChangeText"] = speed
+        view["blockedReason"] = blocked
+        return MissionItem(view: view, selected: -1)
+    }
+    expect(item(speed: "12.0 m/s").subtitle(unreached: false), "Flies at 12.0 m/s",
+           "an item that commands its own speed says so in the list. The core builds the "
+           + "measure -- specifiedFlightSpeed through the operator's speed setting, so 23.3 kn "
+           + "where that is the setting -- and this head only wraps it in a sentence. Before "
+           + "this the figure existed on the selected item alone, so reviewing a thirty-item "
+           + "plan for speed changes meant selecting all thirty")
+    expect(item(speed: nil).subtitle(unreached: false), "",
+           "and an item that commands no speed says nothing, rather than a sentence about the "
+           + "speed it inherits, which would put a line under every row in the plan")
+    expect(item(speed: "").subtitle(unreached: false), "",
+           "an empty string is not a speed either: the core withholds a commanded zero because "
+           + "\"0.0 m/s\" reads as an instruction to stop, and \"Flies at \" reads as a defect")
+    expect(item(speed: "12.0 m/s", blocked: "Set its location").subtitle(unreached: false),
+           "Set its location",
+           "a block outranks it. The subtitle is one line and the reasons are ordered by what "
+           + "the operator must do about them: a block is a task, and burying it under a speed "
+           + "would lose the only thing stopping the plan being saved")
+    expect(item(speed: "12.0 m/s").subtitle(unreached: true), "Never flown to",
+           "and so does never being flown to, which says the item is not on the route at all -- "
+           + "the speed it would have commanded there is not the point")
 }
 
 func checkOnlyAPlacedItemMoves() {

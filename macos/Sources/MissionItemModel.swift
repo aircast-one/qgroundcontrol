@@ -26,6 +26,7 @@ struct MissionItem: Identifiable, Equatable {
 
     let blocked: Bool
     let blockedReason: String?
+    let speedChangeText: String?
     let awaitingTerrain: Bool
 
     let flownLeg: Bool
@@ -45,6 +46,12 @@ struct MissionItem: Identifiable, Equatable {
     var altitudeReading: String {
         if specifiesAltitude || kind == MissionItem.settingsKind { return altitudeText }
         return altitudeBandText.isEmpty ? MissionItem.noAltitude : altitudeBandText
+    }
+
+    var speedReading: String? { speedChangeText.map { "Flies at \($0)" } }
+
+    func subtitle(unreached: Bool) -> String {
+        blockedReason ?? (unreached ? MissionItem.afterRoute : nil) ?? speedReading ?? ""
     }
 
     var isLaunch: Bool { kind == MissionItem.takeoffKind || kind == MissionItem.settingsKind }
@@ -96,6 +103,7 @@ struct MissionItem: Identifiable, Equatable {
         blocked = (json["blocked"] as? NSNumber)?.boolValue ?? false
         awaitingTerrain = (json["awaitingTerrain"] as? NSNumber)?.boolValue ?? false
         blockedReason = (json["blockedReason"] as? String).flatMap { $0.isEmpty ? nil : $0 }
+        speedChangeText = (json["speedChangeText"] as? String).flatMap { $0.isEmpty ? nil : $0 }
         flownLeg = (json["flownLeg"] as? NSNumber)?.boolValue ?? false
         endsRoute = (json["endsRoute"] as? NSNumber)?.boolValue ?? false
 
