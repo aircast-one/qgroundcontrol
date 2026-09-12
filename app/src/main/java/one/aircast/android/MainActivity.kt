@@ -263,7 +263,9 @@ fun AircastShell(quickView: QtQuickView) {
                         }
                     },
                 )
-                StatusStrip()
+                if (tab == Tab.Fly) {
+                    StatusStrip()
+                }
               }
             },
             bottomBar = {
