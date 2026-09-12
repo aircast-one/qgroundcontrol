@@ -25,10 +25,12 @@ struct FenceSupport: Equatable {
 
     var offers: Bool { read && supported }
 
-    var refusal: String? {
+    func refusal(servedReason: String) -> String? {
         guard read else { return FenceSupport.unreadRefusal }
-        return supported ? nil : FenceSupport.unsupportedRefusal }
+        guard !supported else { return nil }
+        return servedReason.isEmpty ? FenceSupport.unsupportedRefusal : servedReason
+    }
 
     static let unreadRefusal = "The plan has not been read yet."
-    static let unsupportedRefusal = "This vehicle does not accept a geofence."
+    static let unsupportedRefusal = "This link does not accept a geofence."
 }

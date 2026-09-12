@@ -6,6 +6,7 @@ final class FenceRallyStore: ObservableObject, Probeable, WriteReporting {
     @Published private(set) var shapes: [FenceShape] = []
     @Published private(set) var rallyPoints: [RallyPointRow] = []
     @Published private(set) var fence = FenceSupport.unread
+    @Published private(set) var unsupportedReason = ""
     var fenceSupported: Bool { fence.offers }
     @Published private(set) var rally = FenceSupport.unread
     var rallySupported: Bool { rally.offers }
@@ -53,6 +54,7 @@ final class FenceRallyStore: ObservableObject, Probeable, WriteReporting {
         set(\.status, "")
 
         let fences = Bridge.group("view.fences")
+        set(\.unsupportedReason, (Bridge.group("view.plan")["unsupportedReason"] as? String) ?? "")
         set(\.connected, Bridge.group("vehicle")["kind"] as? String == "object")
         set(\.fence, FenceSupport(answer: fences["fenceSupported"]))
         set(\.rally, FenceSupport(answer: fences["rallySupported"]))
@@ -94,7 +96,7 @@ final class FenceRallyStore: ObservableObject, Probeable, WriteReporting {
 
     func addFence(circle: Bool) -> String? {
         if !fence.read { reload() }
-        if let refusal = fence.refusal { return refusal }
+        if let refusal = fence.refusal(servedReason: unsupportedReason) { return refusal }
         guard let window = mapWindow else {
             return "The map has not settled yet, so there is nowhere to put a fence."
         }
@@ -136,7 +138,7 @@ final class FenceRallyStore: ObservableObject, Probeable, WriteReporting {
 
     func addBreachReturn() -> String? {
         if !fence.read { reload() }
-        if let refusal = fence.refusal { return refusal }
+        if let refusal = fence.refusal(servedReason: unsupportedReason) { return refusal }
         guard let centre = mapCentre else {
             return "The map has not settled yet, so there is nowhere to put it."
         }

@@ -623,9 +623,21 @@ checkACoordinateIsSpelledOneWay()
 func checkTheCapabilityKeepsItsThirdState() {
     expect(FenceSupport(answer: true as NSNumber).offers,
            "a vehicle the core says accepts a geofence offers one")
-    expect(FenceSupport(answer: false as NSNumber).refusal ?? "",
+    expect(FenceSupport(answer: false as NSNumber).refusal(servedReason: "") ?? "",
            FenceSupport.unsupportedRefusal, "one that refuses says so")
-    expect(FenceSupport(answer: nil).refusal ?? "", FenceSupport.unreadRefusal,
+    expect(FenceSupport(answer: false as NSNumber)
+               .refusal(servedReason: "This link accepts neither a geofence nor rally points.") ?? "",
+           "This link accepts neither a geofence nor rally points.",
+           "and when the core has spelled WHY, that sentence wins over the head's own. plan.rs "
+           + "distinguishes four cases this head cannot -- neither, fence only, rally only, and a "
+           + "vehicle that has not answered -- and its own test says why the wording matters: "
+           + "GeoFenceController::supported is a capability bit AND maxProtoVersion >= 200, so a "
+           + "false can mean the vehicle lacks the feature OR that the link speaks MAVLink 1. "
+           + "This head said \"This vehicle does not accept a geofence\", picking one of the two "
+           + "causes without reading either, and an operator who believes it goes looking at the "
+           + "wrong end. The fallback now says \"link\" too, for the same reason")
+    expect(FenceSupport(answer: nil).refusal(servedReason: "ignored") ?? "",
+           FenceSupport.unreadRefusal,
            "and a vehicle that has NOT YET ANSWERED is a third state, not a refusal. The core "
            + "returns null until capabilitiesKnown is true -- QGC's capabilityBits DEFAULT to "
            + "fence and rally, and its supported() ignores whether they were ever reported, so "
@@ -4809,16 +4821,22 @@ func checkSaveAsksTheCoreRatherThanTheReadiness() {
 }
 
 func checkAnUnreadStoreDoesNotBlameTheVehicle() {
-    expect(FenceSupport.unread.refusal ?? "", FenceSupport.unreadRefusal,
+    expect(FenceSupport.unread.refusal(servedReason: "") ?? "", FenceSupport.unreadRefusal,
            "a store that has never read says so. fenceSupported was a Bool defaulting to false, "
            + "and addFence guarded on it, so before the Plan window appeared the head answered "
            + "\"This vehicle does not accept a geofence\" -- its OWN sentence, about a vehicle "
            + "that had refused nothing. I measured that, believed it, told both peers fences "
            + "were unreachable here, and wrote the refusal into a rig as expected")
-    expect(FenceSupport.answered(false).refusal ?? "", FenceSupport.unsupportedRefusal,
-           "and a store that HAS read and been told no still says the vehicle does not accept "
-           + "one, because then it is true")
-    expect(FenceSupport.answered(true).refusal == nil,
+    expect(FenceSupport.answered(false).refusal(servedReason: "") ?? "",
+           FenceSupport.unsupportedRefusal,
+           "and a store that HAS read and been told no says the LINK does not accept one. This "
+           + "assertion used to say \"the vehicle ... because then it is true\", and that "
+           + "reasoning was wrong: GeoFenceController::supported is a capability bit AND "
+           + "maxProtoVersion >= 200, so a false can mean the vehicle lacks the feature or that "
+           + "the link speaks MAVLink 1. Naming the vehicle picks one cause without reading "
+           + "either. The core spells all four cases and its sentence is preferred whenever it "
+           + "has one; this is only the fallback")
+    expect(FenceSupport.answered(true).refusal(servedReason: "") == nil,
            "a supported fence has nothing to refuse")
     expect(!FenceSupport.unread.offers,
            "unread offers nothing either -- the button is not drawn as available on the strength "

@@ -996,7 +996,8 @@ struct PlanInspector: View {
                                           commit: fenceRally.setBreachAltitude)
                         })
                 } else {
-                    EmptyStateRow(text: fenceRally.fence.refusal
+                    EmptyStateRow(text: fenceRally.fence
+                        .refusal(servedReason: fenceRally.unsupportedReason)
                         ?? "No breach return point. On a fence breach the vehicle follows its firmware default.")
                 }
             }
