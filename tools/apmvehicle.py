@@ -60,12 +60,21 @@ ORBIT_SECONDS = 2 * math.pi * RADIUS_DEG * METRES_PER_DEGREE / GROUND_SPEED
 
 
 class Sender:
+    """Writes every frame to each target, so one vehicle is heard on several links.
+
+    SECOND_PORT adds a second udp port on the same host. QGC treats each port it
+    hears the same system on as its own link, which is the only way this rig can
+    show a vehicle carried by more than one radio.
+    """
+
     def __init__(self, sock, target):
         self.sock = sock
-        self.target = target
+        second = os.environ.get("SECOND_PORT")
+        self.targets = [target] + ([(target[0], int(second))] if second else [])
 
     def write(self, data):
-        self.sock.sendto(data, self.target)
+        for target in self.targets:
+            self.sock.sendto(data, target)
 
 
 STICKS_FILE = os.environ.get("STICKS_FILE", "/tmp/aircast-sticks")
