@@ -176,18 +176,23 @@ const val FENCE_LINE_LAYER = "aircast-fence-line"
 const val RALLY_SOURCE = "aircast-rally"
 const val RALLY_LAYER = "aircast-rally-layer"
 
+private fun fenceColour(): Expression = Expression.switchCase(
+    Expression.get(KEEPS_IN_PROPERTY), Expression.literal(KEEP_IN_COLOUR),
+    Expression.literal(KEEP_OUT_COLOUR),
+)
+
 fun installFenceLayers(style: Style) {
     if (style.getSource(FENCE_SOURCE) == null) {
         style.addSource(GeoJsonSource(FENCE_SOURCE))
         style.addLayer(
             FillLayer(FENCE_FILL_LAYER, FENCE_SOURCE).withProperties(
-                PropertyFactory.fillColor("#42A5F5"),
+                PropertyFactory.fillColor(fenceColour()),
                 PropertyFactory.fillOpacity(0.15f),
             ),
         )
         style.addLayer(
             LineLayer(FENCE_LINE_LAYER, FENCE_SOURCE).withProperties(
-                PropertyFactory.lineColor("#42A5F5"),
+                PropertyFactory.lineColor(fenceColour()),
                 PropertyFactory.lineWidth(2.5f),
             ),
         )
@@ -207,6 +212,9 @@ fun installFenceLayers(style: Style) {
 }
 
 const val CIRCLE_INDEX_PROPERTY = "circleIndex"
+const val KEEPS_IN_PROPERTY = "keepsIn"
+const val KEEP_IN_COLOUR = "#FF9500"
+const val KEEP_OUT_COLOUR = "#FF3B30"
 
 private fun ringFeature(vertices: List<TrackPoint>): Feature {
     val ring = vertices.map { Point.fromLngLat(it.longitude, it.latitude) }
@@ -218,9 +226,14 @@ fun fenceFeatures(
     polygons: List<FencePolygon>,
     circles: List<FencePolygon> = emptyList(),
 ): FeatureCollection {
-    val polygonFeatures = polygons.map { ringFeature(it.vertices) }
+    val polygonFeatures = polygons.map { polygon ->
+        ringFeature(polygon.vertices).apply { addBooleanProperty(KEEPS_IN_PROPERTY, polygon.inclusion) }
+    }
     val circleFeatures = circles.map { circle ->
-        ringFeature(circle.vertices).apply { addNumberProperty(CIRCLE_INDEX_PROPERTY, circle.index) }
+        ringFeature(circle.vertices).apply {
+            addNumberProperty(CIRCLE_INDEX_PROPERTY, circle.index)
+            addBooleanProperty(KEEPS_IN_PROPERTY, circle.inclusion)
+        }
     }
     return FeatureCollection.fromFeatures(polygonFeatures + circleFeatures)
 }

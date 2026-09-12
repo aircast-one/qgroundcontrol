@@ -1,13 +1,14 @@
 package one.aircast.mapspike
 
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertNotEquals
 import org.junit.Assert.assertNull
 import org.junit.Test
 
 class FenceFeatureTest {
-    private fun ring(index: Int) = FencePolygon(
+    private fun ring(index: Int, inclusion: Boolean = true) = FencePolygon(
         index,
-        true,
+        inclusion,
         listOf(TrackPoint(41.0, 44.0), TrackPoint(41.0, 44.1), TrackPoint(41.1, 44.1)),
     )
 
@@ -34,5 +35,21 @@ class FenceFeatureTest {
 
         assertEquals(2, features.features()?.size)
         assertEquals(1, tagged.size)
+    }
+
+    @Test
+    fun `a keep-out fence is drawn in a different colour from a keep-in one`() {
+        val features = fenceFeatures(listOf(ring(0, inclusion = true), ring(1, inclusion = false)), emptyList())
+        val keeps = features.features()!!.map { it.getBooleanProperty(KEEPS_IN_PROPERTY) }
+
+        assertEquals(listOf(true, false), keeps)
+        assertNotEquals(KEEP_IN_COLOUR, KEEP_OUT_COLOUR)
+    }
+
+    @Test
+    fun `a keep-out circle carries its boundary too, not just polygons`() {
+        val features = fenceFeatures(emptyList(), listOf(ring(2, inclusion = false)))
+
+        assertEquals(false, features.features()!!.single().getBooleanProperty(KEEPS_IN_PROPERTY))
     }
 }
