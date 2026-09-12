@@ -1,5 +1,6 @@
 package one.aircast.mapspike
 
+import org.json.JSONObject
 import org.junit.Assert.assertEquals
 import org.junit.Test
 
@@ -33,8 +34,16 @@ class SequenceLabelTest {
     }
 
     @Test
-    fun `an item the core said nothing about is numbered plainly rather than given a range`() {
-        assertEquals("2", sequenceLabel(item(2, 0)))
-        assertEquals("2", sequenceLabel(item(2, -1)))
+    fun `an item the core withheld the span for is numbered plainly rather than given a range`() {
+        val withheld = """{"kind":"object","items":[
+            {"index":0,"sequence":2,"name":"Waypoint","kind":"waypoint","foldedCommands":null}]}"""
+        val absent = """{"kind":"object","items":[
+            {"index":0,"sequence":2,"name":"Waypoint","kind":"waypoint"}]}"""
+        val folded = """{"kind":"object","items":[
+            {"index":0,"sequence":2,"name":"Waypoint","kind":"waypoint","foldedCommands":1}]}"""
+
+        assertEquals("2", sequenceLabel(allMissionItems(JSONObject(withheld)).single()))
+        assertEquals("2", sequenceLabel(allMissionItems(JSONObject(absent)).single()))
+        assertEquals("2\u20133", sequenceLabel(allMissionItems(JSONObject(folded)).single()))
     }
 }

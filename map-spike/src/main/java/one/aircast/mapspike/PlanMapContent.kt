@@ -15,6 +15,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
@@ -780,6 +781,8 @@ internal fun MapSpikeScreen(
     }
 }
 
+private val ITEM_NUMBER_WIDTH = 48.dp
+
 @Composable
 private fun ItemRowView(row: ItemRow, selected: Boolean, onClick: () -> Unit) {
     Surface(
@@ -802,7 +805,11 @@ private fun ItemRowView(row: ItemRow, selected: Boolean, onClick: () -> Unit) {
                     CircleShape,
                 ),
             )
-            Text(row.number, style = MaterialTheme.typography.labelLarge)
+            Text(
+                row.number,
+                Modifier.widthIn(min = ITEM_NUMBER_WIDTH),
+                style = MaterialTheme.typography.labelLarge,
+            )
             Text(row.name, Modifier.weight(1f), style = MaterialTheme.typography.bodyMedium)
             Text(row.detail, style = MaterialTheme.typography.labelSmall)
         }
