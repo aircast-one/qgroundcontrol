@@ -106,7 +106,7 @@ pub fn altitude_modes_view(backend: &dyn Backend, args: &[String]) -> Value {
         "class": "AltitudeModes",
         "context": if inputs.mission { "mission" } else { "item" },
         "current": inputs.current,
-        "supportsTerrainFrame": inputs.supports_terrain_frame,
+        "holdsAltitudeAboveTerrain": inputs.supports_terrain_frame,
         "modes": modes(&inputs),
         "omitted": omitted(&inputs),
     })
@@ -208,7 +208,8 @@ mod tests {
     fn the_view_reads_the_vehicle_and_the_plan() {
         let view = altitude_modes_view(&Fake { terrain: false, items: true }, &["mission".to_string(), "1".to_string()]);
         assert_eq!(view["context"], "mission");
-        assert_eq!(view["supportsTerrainFrame"], false);
+        assert_eq!(view["holdsAltitudeAboveTerrain"], false, "this answers for the terrain frame alone, raw 4, and Calculated Above Terrain at raw 3 stays selectable while it is false - a head reading the old name as a verdict on terrain altitudes would have hidden a mode that works");
+        assert!(view["modes"].as_array().unwrap().iter().any(|m| m["raw"] == 3 && m["enabled"] == true), "the mode this flag does not speak for");
         assert_eq!(view["modes"].as_array().unwrap().len(), 4);
         assert_eq!(view["current"], RELATIVE);
         let absent = altitude_modes_view(&Fake { terrain: true, items: false }, &[]);

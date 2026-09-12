@@ -118,7 +118,6 @@ fn item(read: &Value, index: i64, vertical: &Unit, speed: &Unit, imperial: bool)
         "altitude": height(read),
         "altitudeText": height(read).map(|metres| format_measure(vertical.show(metres), &vertical.name)),
         "altitudeUnits": height(read).map(|_| vertical.name.clone()),
-        "altitudeFactUnits": fact_units(read, "altitude").or_else(|| fact_units(read, "plannedHomePositionAltitude")),
         "specifiesAltitude": flag(read, "isSimpleItem").then(|| flag(read, "specifiesAltitude")),
         "altitudeOnly": flag(read, "specifiesAltitudeOnly"),
         "category": Some(text(read, "category")).filter(|category| !category.is_empty()),
@@ -166,16 +165,6 @@ fn editable(backend: &dyn Backend, current: i64) -> Value {
         Value::Null => Value::Null,
         fields => json!({ "index": current, "fields": fields }),
     }
-}
-
-fn fact_units(read: &Value, name: &str) -> Option<String> {
-    read.get("facts")
-        .and_then(Value::as_array)
-        .and_then(|facts| facts.iter().find(|fact| fact.get("property").and_then(Value::as_str) == Some(name)))
-        .and_then(|fact| fact.get("units"))
-        .and_then(Value::as_str)
-        .filter(|units| !units.is_empty())
-        .map(str::to_string)
 }
 
 const LEG_FIGURES: [&str; 6] = ["distance", "distanceText", "distanceFromStart", "azimuth", "azimuthText", "altitudeChangeText"];
@@ -965,17 +954,10 @@ mod reported {
         assert_eq!(launch["altitude"], 585.0, "the launch elevation is a height and the row that shows it goes blank if only the waypoint name is looked for");
         assert_eq!(launch["altitudeText"], "585 m", "every measure the core serves rounds the same way, and a row that kept a tenth here read 585.0 m beside a summary saying 585 m to 660 m");
 
-        let labelled = listed(json!({
-            "kind": "object", "sequenceNumber": 0, "homePosition": true, "isSimpleItem": false,
-            "facts": [ { "name": "Altitude", "property": "plannedHomePositionAltitude", "value": 585.0, "units": "m" } ],
-        }));
-        assert_eq!(labelled["altitudeFactUnits"], "m");
-
-        let waypoint = listed(json!({
-            "kind": "object", "sequenceNumber": 1, "isSimpleItem": true,
+        assert_eq!(listed(json!({
+            "kind": "object", "sequenceNumber": 1, "isSimpleItem": true, "specifiesAltitude": true,
             "facts": [ { "name": "Altitude", "property": "altitude", "value": 50.0, "units": "ft" } ],
-        }));
-        assert_eq!(waypoint["altitudeFactUnits"], "ft", "a waypoint's own fact still wins, so the fallback is a fallback rather than an override");
+        }))["altitudeUnits"], "m", "the unit a head draws is the operator's display preference, never the unit the fact declares - Fact::units is CONSTANT and binds once at setRawUnits, so a row spelled from it keeps saying metres after the operator chooses feet");
     }
 
     #[test]
