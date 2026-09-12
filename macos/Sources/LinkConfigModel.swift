@@ -85,3 +85,11 @@ struct LinkConfig: Identifiable, Equatable {
         ((json as? [Any]) ?? []).compactMap(LinkConfig.init)
     }
 }
+
+enum LinkTypes {
+    static let serial = "serial"
+
+    static func isSerial(_ ids: [String], at index: Int) -> Bool {
+        ids.indices.contains(index) && ids[index] == serial
+    }
+}

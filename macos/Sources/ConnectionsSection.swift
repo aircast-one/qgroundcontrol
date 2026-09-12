@@ -44,7 +44,7 @@ struct ConnectionsSection: View {
                 }
             }
             LabelledField(label: "Name", value: newName) { newName = $0 }
-            if store.linkTypes.indices.contains(newType), store.linkTypes[newType] == "Serial" {
+            if LinkTypes.isSerial(store.linkTypeIds, at: newType) {
                 LabelledPicker(label: "Port",
                                options: store.serialPorts.map { ($0.label, $0.device) },
                                selection: newHost) { newHost = $0 }

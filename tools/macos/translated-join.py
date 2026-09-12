@@ -40,11 +40,6 @@ COINCIDENCE = {
 }
 
 OUTSTANDING = {
-    ("ConnectionsSection.swift", "Serial"): "REAL. LinkManager::linkTypeStrings() is a list of "
-        "tr() calls, so outside English the new-link form offers Address and Port where it should "
-        "offer Port and Baud, and a serial link cannot be configured. The index cannot stand in "
-        "for the name: LinkType is #ifdef'd, so 0 is serial only in a build that has serial. "
-        "Waiting on the core to serve linkTypeIds beside linkTypes",
     ("VehicleSetupWindow.swift", "Sensors"): "REAL, and the same missing join recorded in "
         "fb0c97a6c -- a setup page's name is tr()'d, so the failing-sensors badge appears on no "
         "row outside English. Waiting on the same core-side page id",

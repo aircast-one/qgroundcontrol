@@ -8,6 +8,7 @@ final class LinksStore: ObservableObject, Probeable, WriteReporting {
 
     @Published private(set) var links: [LinkConfig] = []
     @Published private(set) var linkTypes: [String] = []
+    @Published private(set) var linkTypeIds: [String] = []
     @Published private(set) var baudRates: [Int] = []
     @Published var adding = false
     @Published var editingIndex: Int?
@@ -29,6 +30,8 @@ final class LinksStore: ObservableObject, Probeable, WriteReporting {
         if read != links { links = read }
         let types = ((view["linkTypes"] as? [Any]) ?? []).compactMap { $0 as? String }
         if types != linkTypes { linkTypes = types }
+        let ids = ((view["linkTypeIds"] as? [Any]) ?? []).compactMap { $0 as? String }
+        if ids != linkTypeIds { linkTypeIds = ids }
         let rates = ((view["baudRates"] as? [Any]) ?? []).compactMap { ($0 as? NSNumber)?.intValue }
         if rates != baudRates { baudRates = rates }
     }

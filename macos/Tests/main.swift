@@ -1588,6 +1588,7 @@ func checkMissionItemKinds() {
     checkVideoFrame()
     checkSetupCacheIdentity()
     checkVehicleLinkRows()
+    checkSerialLinkInAnyLocale()
 
     expect(WriteReport.failure("the fence radius"),
            "Could not change the fence radius. It is unchanged.",
@@ -6105,4 +6106,32 @@ func checkVehicleLinkRows() {
     expect(VehicleLinks.list([["name": ""], ["name": "WiFi"]]).count == 1,
            "a nameless link cannot be told apart from another in a list keyed by label, so it is "
            + "dropped rather than drawn as a blank row")
+}
+
+func checkSerialLinkInAnyLocale() {
+    let german = ["serial", "udp", "tcp"]
+    expect(LinkTypes.isSerial(german, at: 0),
+           "the new-link form offers Port and Baud for a serial link and Address and Port for the "
+           + "rest, and it decides from the core's id. LinkManager::linkTypeStrings() is a list of "
+           + "tr() calls, so the name beside this id reads Seriell in German and the old "
+           + "comparison against \"Serial\" was never true -- a serial link could not be "
+           + "configured at all outside English")
+    expect(LinkTypes.isSerial(german, at: 1) == false, "and UDP is not serial in any locale")
+    expect(LinkTypes.isSerial(german, at: 9) == false,
+           "an index past the end is not serial, because the picker and the list are refreshed "
+           + "separately and a selection can outlive the list it indexed")
+    let noSerialBuild = ["udp", "tcp", "logReplay"]
+    expect(LinkTypes.isSerial(noSerialBuild, at: 0) == false,
+           "LinkType is #ifdef'd, so in a build compiled with QGC_NO_SERIAL_LINK index 0 is UDP. "
+           + "This fixture is the one that tells keying on the ID apart from keying on the "
+           + "POSITION -- the German fixture above has serial first and passes under both rules, "
+           + "which is exactly why the four assertions deleted in the survey fix were worthless")
+    let reordered = ["udp", "tcp", "serial"]
+    expect(LinkTypes.isSerial(reordered, at: 2),
+           "and serial is found wherever the table puts it")
+
+    expect(LinkTypes.isSerial([], at: 0) == false,
+           "and with no ids served at all this fails CLOSED. Offering Port and Baud for whatever "
+           + "happens to sit at index 0 would put a baud rate on a UDP link; the older shape, "
+           + "Address and Port, is merely wrong for serial rather than wrong for everything")
 }
