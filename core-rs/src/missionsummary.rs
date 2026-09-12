@@ -220,12 +220,12 @@ pub fn summary_view(backend: &dyn Backend, args: &[String]) -> Value {
 
     let total = metres("missionTotalDistance");
     let rows: Vec<Value> = vec![
-        row("Distance", total.map(|value| distance_text(value, imperial))),
-        row("Planned", metres("missionPlannedDistance").map(|value| distance_text(value, imperial))),
-        row("Time", seconds("missionTime").map(duration_text)),
-        row("Hover", hovers.then(|| metres("missionHoverDistance")).flatten().map(|value| distance_text(value, imperial))),
-        row("Cruise", cruises.then(|| metres("missionCruiseDistance")).flatten().map(|value| distance_text(value, imperial))),
-        row("Furthest from launch", metres("missionMaxTelemetry").map(|value| distance_text(value, imperial))),
+        row("distance", "Distance", total.map(|value| distance_text(value, imperial))),
+        row("planned", "Planned", metres("missionPlannedDistance").map(|value| distance_text(value, imperial))),
+        row("time", "Time", seconds("missionTime").map(duration_text)),
+        row("hover", "Hover", hovers.then(|| metres("missionHoverDistance")).flatten().map(|value| distance_text(value, imperial))),
+        row("cruise", "Cruise", cruises.then(|| metres("missionCruiseDistance")).flatten().map(|value| distance_text(value, imperial))),
+        row("furthest", "Furthest from launch", metres("missionMaxTelemetry").map(|value| distance_text(value, imperial))),
     ];
 
     json!({
@@ -271,8 +271,8 @@ pub fn summary_view(backend: &dyn Backend, args: &[String]) -> Value {
     })
 }
 
-fn row(label: &str, value: Option<String>) -> Value {
-    json!({ "label": label, "value": value })
+fn row(id: &str, label: &str, value: Option<String>) -> Value {
+    json!({ "id": id, "label": label, "value": value })
 }
 
 fn altitude_range(mission: &Value, vertical: &Unit) -> Value {
@@ -492,6 +492,9 @@ mod tests {
         assert_eq!(labelled(&view, "Distance").unwrap(), "1.50 km");
         assert_eq!(labelled(&view, "Time").unwrap(), "3:05");
         assert_eq!(labelled(&view, "Furthest from launch").unwrap(), "640 m");
+        let ids: Vec<&str> = view["rows"].as_array().unwrap().iter().filter_map(|r| r["id"].as_str()).collect();
+        assert!(ids.contains(&"furthest"), "a head picking the rows it wants to emphasise keys on this rather than on the label, because the labels are English display strings and the day they are localised every lookup returns nothing: {ids:?}");
+        assert_eq!(ids.len(), view["rows"].as_array().unwrap().len(), "every row carries one, so a head never has to fall back to the label");
         assert_eq!(view["altitudeRange"]["text"], "480 m to 530 m");
         assert_eq!(view["distanceMetres"], 1500.0, "the raw metres travel too, so a head that wants to draw a bar is not parsing a string back");
     }

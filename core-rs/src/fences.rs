@@ -11,6 +11,8 @@ pub const DEPS: &[&str] = &[
     "plan.geoFenceController.supported",
     "plan.rallyPointController.supported",
     "plan.managerVehicle.capabilitiesKnown",
+    "plan.geoFenceController.paramCircularFence",
+    "vehicle.homePosition",
 ];
 const METRES_PER_DEGREE: f64 = 111_320.0;
 
@@ -89,6 +91,22 @@ fn circle_json(index: usize, json: &Value) -> Value {
     })
 }
 
+fn firmware_fence(backend: &dyn Backend) -> Value {
+    let radius = object(&backend.get_fields("plan.geoFenceController", "paramCircularFence"))
+        .get("paramCircularFence")
+        .and_then(Value::as_f64)
+        .filter(|metres| metres.is_finite() && *metres > 0.0);
+    let Some(metres) = radius else { return Value::Null };
+    let unit = Unit::horizontal(backend);
+    let home = object(&backend.get("vehicle.homePosition"));
+    let centre = point(&home).map(|(latitude, longitude)| json!({ "latitude": latitude, "longitude": longitude }));
+    json!({
+        "radiusMetres": metres,
+        "radiusText": crate::read::format_measure(unit.show(metres), &unit.name),
+        "centre": centre,
+    })
+}
+
 pub fn fences_view(backend: &dyn Backend, _args: &[String]) -> Value {
     let polygons: Vec<Value> = elements(backend, "plan.geoFenceController.polygons").iter().enumerate().map(|(i, p)| polygon_json(i, p, &Unit::area(backend))).collect();
     let circles: Vec<Value> = elements(backend, "plan.geoFenceController.circles").iter().enumerate().map(|(i, c)| circle_json(i, c)).collect();
@@ -119,6 +137,7 @@ pub fn fences_view(backend: &dyn Backend, _args: &[String]) -> Value {
         "count": polygons.len() + circles.len(),
         "fenceSupported": crate::plan::capability(backend, "geoFenceController"),
         "rallySupported": crate::plan::capability(backend, "rallyPointController"),
+        "firmwareFence": firmware_fence(backend),
     })
 }
 
@@ -182,6 +201,36 @@ mod tests {
         fn set(&self, _p: &str, _v: &str) -> String { String::new() }
         fn invoke(&self, _p: &str, _a: &str) -> String { String::new() }
         fn watch(&self, _p: &[String]) {}
+    }
+
+    #[test]
+    fn a_fence_the_firmware_enforces_is_reported_even_though_no_plan_drew_it() {
+        struct Firmware(f64);
+        impl Backend for Firmware {
+            fn get(&self, path: &str) -> String {
+                match path {
+                    "vehicle.homePosition" => json!({ "kind": "object", "latitude": 47.397, "longitude": 8.546, "altitude": 490.0 }),
+                    _ => json!({ "kind": "null" }),
+                }
+                .to_string()
+            }
+            fn get_fields(&self, path: &str, _f: &str) -> String {
+                match path {
+                    "plan.geoFenceController" => json!({ "kind": "object", "paramCircularFence": self.0 }),
+                    _ => json!({ "kind": "null" }),
+                }
+                .to_string()
+            }
+            fn set(&self, _p: &str, _v: &str) -> String { String::new() }
+            fn invoke(&self, _p: &str, _a: &str) -> String { String::new() }
+            fn watch(&self, _p: &[String]) {}
+        }
+        let fence = fences_view(&Firmware(300.0), &[])["firmwareFence"].clone();
+        assert_eq!(fence["radiusMetres"], 300.0);
+        assert_eq!(fence["radiusText"], "300 m");
+        assert_eq!(fence["centre"]["latitude"], 47.397, "a circular fence is centred on home rather than on anything the plan drew, so the centre has to come from the vehicle");
+
+        assert_eq!(fences_view(&Firmware(0.0), &[])["firmwareFence"], Value::Null, "GeoFenceController::paramCircularFence returns 0 for an offline vehicle and 0 when the parameters are absent, so zero is no fence rather than a fence of no size - reporting a radius of 0 would draw a circle round home that the vehicle does not enforce");
     }
 
     #[test]
