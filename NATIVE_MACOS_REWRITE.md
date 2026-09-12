@@ -2536,3 +2536,35 @@ three ArduPilot-only pages. It cannot now: `draws` is only ever applied to pages
 serves, and those three are filtered out upstream before the head sees them. The fix at the
 producer removed the need for the head to know anything — which was the argument for putting it
 there.
+
+### The two reachability predicates, and what each one cost (2026-09-12)
+
+Two questions that no check in this stream had been asking, both of them about whether a value can
+be experienced rather than whether it is right.
+
+**Does any path draw this value in the state that produces it?** Predicate: a computed `String`
+property whose body branches on a state flag. Nine hits, eight explained, one real — and the real
+one was in the instrument, not on the screen. `MotorTest.countWarning` answered *"The vehicle has
+not said how many motors it has"* whenever the count was unknown, which includes having no vehicle;
+`MotorsView` wraps itself in `SetupPageBody(connected:)`, so the page draws *"Connect a vehicle to
+set this up."* and the sentence was unreachable. `Motors.swift` put it in the probe regardless.
+`d9e3b6b6f` gates it, so the probe and the screen now agree. **A projection can be faithful to the
+code and still describe something nobody can experience**, and neither a mutation nor the
+`delivered`-versus-`bindings` distinction reaches that.
+
+**Does a reachable state draw nothing where it should speak?** The first attempt — every draw site
+whose content can be `""` — returned 84 hits and was unreadable, which is the trawl rather than the
+search. One refinement made it triageable: **only the VALUE half of a label/value pair**, because
+an empty `Text` collapses invisibly while a label with nothing beside it is a hole with no
+explanation. 84 to 4.
+
+All four explain. `link.portText` is emptyable on purpose (`8edb642a7`) and sits in an editable
+field, where empty is what an operator types into and a zero would be a rate someone chose.
+`link.name` and `link.host` are the same shape, and measured: of 140 configured links **0 have an
+empty name**, and the 3 with an empty host draw *"No host set"* in the summary the core owns, so
+the blank field is the affordance and not the message. `mode.summary` needs a vehicle.
+
+**The predicates are the artifact; the results are not.** Eight of the nine explanations in the
+first sweep and all four in the second are statements about today's code, and they rot. The queries
+do not. Recorded here for that reason, and because the second one took two attempts — the version
+that returns 84 hits looks like a finished search and is one refinement short of one.
