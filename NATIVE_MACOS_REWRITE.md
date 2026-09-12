@@ -2568,3 +2568,31 @@ the blank field is the affordance and not the message. `mode.summary` needs a ve
 first sweep and all four in the second are statements about today's code, and they rot. The queries
 do not. Recorded here for that reason, and because the second one took two attempts — the version
 that returns 84 hits looks like a finished search and is one refinement short of one.
+
+### instrumentQmlFile2 measured rather than predicted, and it is an enum (2026-09-12)
+
+The entry above calls this "the awkward one" and says Phase 6 would leave a persisted setting
+naming files that no longer exist. Both halves are now measured rather than reasoned, and the
+measurement narrows the work.
+
+**A non-default value is persisted in the shared QSettings space right now.** `rawValue` is
+`VerticalCompassAttitude.qml` and `defaultValueString` is `IntegratedCompassAttitude.qml`, so the
+trap is armed on this machine today rather than hypothetically on someone's later. Anything that
+deletes the three widgets inherits a live dangling path, not a defaulted one.
+
+**But the fact is an enum and carries its own names.** `enumStrings` is
+`["Integrated Compass & Attitude", "Horizontal Compass & Attitude", "Large Vertical"]`,
+`enumValues` holds the three qrc paths, and `enumIndex` is `2`. The earlier entry's prescription --
+*"porting it means offering the choice by name, never by file"* -- needs nothing built to become
+possible: the names are already in the payload beside the index.
+
+**That changes the shape of the migration rather than removing it.** A head that selects by
+`enumIndex` never touches a path, so deleting the widgets leaves `rawValue` naming something gone
+while `enumIndex` stays correct. The open question is no longer "rewrite a persisted string" but
+the narrower "does anything break when the value is dead and the index is live", which is a
+question for whoever deletes the files and can be answered then.
+
+**Nothing to do here today, and that is the point of writing it down.** No Swift in
+`macos/Sources` reads `instrumentQmlFile2` -- zero matches, against a control showing the head
+does read two other `flyViewSettings` facts -- so this head draws no such control and has no
+defect. The item stays open for Phase 6 with a measurement attached instead of a prediction.
