@@ -4313,3 +4313,35 @@ sufficient.
 `Measure.metres.units`, the string `"m"`. **Five assertions were the only thing keeping it
 alive**, an hour after `FlyTelemetry.measure` and one file over. **The core converts; this head
 never did.**
+
+### (x) The frame word is invented by each head, and the core's own picker disagrees with mine
+
+**Measured, and it is not a wording preference — it is an unserved field.** The core sends an
+item's altitude frame as a **token**: `altitudeFrame: "terrain"` / `"amsl"` / `"launch"`.
+**Each head then invents the word it draws.** This one maps `"terrain"` → `" AGL"`, so an item
+reads `"75 m AGL"`.
+
+**The core's own altitude-mode picker disagrees with that.** `view.altitudeModes` serves
+`title: "Calculated Above Terrain"`. **So an operator picks "Calculated Above Terrain" from a
+menu and the item beside it reads "75 m AGL" — two names for the mode they just chose, one
+from the core and one from this head.** The core's title cannot be a suffix
+(`"75 m Calculated Above Terrain"`), and inventing a third word makes it worse.
+
+**Asked for `altitudeFrameText` beside the token** — the shape of the summary row `id`,
+`voltageText` and the fence's `radiusText`. **Then the picker and the item agree by
+construction, and both heads draw the same word rather than happening to choose alike.**
+**Asked Android what they spell it today**: if it is "above terrain", the same plan already
+reads differently on a phone and on a Mac **and neither head would ever have seen it.**
+
+**The read/edit edge does not apply** — a frame word is read, never typed — so unlike the
+rally altitude the text needs no raw form beside it, though the token stays for branching.
+
+**Checked and NOT a third spelling: the survey card's "Above the ground" row.** It shows
+`surfaceDistanceMetres` — **75 m against a flown distance of 664 m** — so it is the height a
+survey flies at, not the frame. The core's own test says so: *"the camera's distanceToSurface
+is what a survey flies at, and it is a height above the ground rather than the item altitude a
+waypoint shows in the same column."* **That sentence is why it took a minute to tell apart,
+and it is the best argument for putting a distinction in the assertion rather than the code.**
+
+**No code changed this cycle, deliberately.** The wording is not this head's to settle alone,
+and choosing one unilaterally would make the two heads diverge faster, not slower.
