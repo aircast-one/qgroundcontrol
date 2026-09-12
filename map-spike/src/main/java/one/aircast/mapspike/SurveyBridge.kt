@@ -85,6 +85,11 @@ object SurveyBridge {
             JSONObject(QGCBridge.get(altitudePath(itemIndex))).optDouble("value", Double.NaN)
         }.getOrDefault(Double.NaN)
 
+    fun altitudeUnits(itemIndex: Int): String =
+        runCatching {
+            JSONObject(QGCBridge.get(altitudePath(itemIndex))).optText("units")
+        }.getOrDefault("")
+
     fun setAltitude(itemIndex: Int, metres: Double): Boolean =
         setOk(altitudePath(itemIndex), settingJson("$metres"))
 

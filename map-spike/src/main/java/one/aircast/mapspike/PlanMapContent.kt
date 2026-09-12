@@ -788,16 +788,21 @@ internal fun MapSpikeScreen(
 
                         surveyHit?.let { hit ->
                             var surveyAlt by remember(hit.item) { mutableStateOf("") }
+                            var surveyUnit by remember(hit.item) { mutableStateOf("m") }
                             LaunchedEffect(hit.item) {
                                 val metres = withContext(Dispatchers.Default) {
                                     SurveyBridge.altitude(hit.item)
                                 }
+                                val unit = withContext(Dispatchers.Default) {
+                                    SurveyBridge.altitudeUnits(hit.item)
+                                }
                                 surveyAlt = altitudeFieldText(metres)
+                                surveyUnit = unit.ifBlank { "m" }
                             }
                             OutlinedTextField(
                                 value = surveyAlt,
                                 onValueChange = { surveyAlt = it },
-                                label = { Text("Above surface m") },
+                                label = { Text("Above surface $surveyUnit") },
                                 singleLine = true,
                                 keyboardOptions = KeyboardOptions(
                                     keyboardType = KeyboardType.Number,
