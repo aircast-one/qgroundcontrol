@@ -1,6 +1,6 @@
 use serde_json::{Value, json};
 
-use crate::read::{integer, object};
+use crate::read::{Unit, format_measure, integer, object};
 use crate::router::Backend;
 
 pub const DEPS: &[&str] = &[
@@ -65,7 +65,7 @@ pub fn obstacle_view(backend: &dyn Backend, _args: &[String]) -> Value {
         true => nearest(&ring, max_distance),
         false => None,
     };
-    let imperial = crate::missionsummary::imperial(backend);
+    let unit = Unit::horizontal(backend);
     let spacing = real("increment").filter(|degrees| *degrees > 0.0);
     let reading = found.zip(spacing).map(|((at, cm), increment)| {
         let metres = cm as f64 / CENTIMETRES_PER_METRE;
@@ -73,7 +73,7 @@ pub fn obstacle_view(backend: &dyn Backend, _args: &[String]) -> Value {
         let (id, text) = sector(heading);
         json!({
             "distanceMetres": metres,
-            "distanceText": crate::missionsummary::distance_text(metres, imperial),
+            "distanceText": format_measure(unit.show(metres), &unit.name),
             "bearing": heading,
             "sector": id,
             "sectorText": text,
@@ -143,11 +143,33 @@ mod tests {
     fn the_view_reports_the_nearest_obstacle_or_says_there_is_none() {
         let seen = obstacle_view(&Ring(ring(vec![NO_READING, 320, 900])), &[]);
         assert_eq!(seen["nearest"]["distanceMetres"], 3.2);
-        assert_eq!(seen["nearest"]["distanceText"], "3 m", "a proximity warning is a ground distance and is spelled the way every other ground distance is, so it follows the operator's unit choice");
+        assert_eq!(seen["nearest"]["distanceText"], "3.2 m", "the sensor resolves centimetres and the operator is judging clearance, so this keeps the tenth that distance_text drops - 3.4 m and 2.6 m both reading \"3 m\" is the wrong trade for a proximity warning");
         assert_eq!(seen["nearest"]["sector"], "aheadRight");
         assert_eq!(seen["nearest"]["close"], false, "3.2 m is more than twice the sensor's 1 m minimum");
         assert_eq!(seen["stale"], false);
         assert_eq!(seen["sectors"], 2);
+
+        struct Feet(Value);
+        impl Backend for Feet {
+            fn get(&self, _p: &str) -> String { String::new() }
+            fn get_fields(&self, path: &str, f: &str) -> String {
+                match path {
+                    "units" => json!({ "kind": "object", "appSettingsHorizontalDistanceUnitsString": "ft" }).to_string(),
+                    _ => Ring(self.0.clone()).get_fields(path, f),
+                }
+            }
+            fn set(&self, _p: &str, _v: &str) -> String { String::new() }
+            fn invoke(&self, path: &str, args: &str) -> String {
+                match path {
+                    "units.metersToAppSettingsHorizontalDistanceUnits" => json!({ "ok": true, "result": serde_json::from_str::<Vec<f64>>(args).unwrap()[0] * 3.2808399 }).to_string(),
+                    _ => String::new(),
+                }
+            }
+            fn watch(&self, _p: &[String]) {}
+        }
+        let feet = obstacle_view(&Feet(ring(vec![NO_READING, 320, 900])), &[]);
+        assert_eq!(feet["nearest"]["distanceText"], "10.5 ft", "the unit follows the operator, which was the whole defect - and the tenth survives the conversion");
+        assert_eq!(feet["nearest"]["distanceMetres"], 3.2, "the metres stay raw beside the text, so nothing downstream parses a spelling back");
 
         let near = obstacle_view(&Ring(ring(vec![150, NO_READING])), &[]);
         assert_eq!(near["nearest"]["close"], true, "inside twice the sensor's minimum is the band the operator is warned about");
