@@ -6556,28 +6556,33 @@ which is the only configuration it has ever been tested in. Nothing here
 establishes what the Plan tab does with no vehicle, and the buttons are not
 gated on `fenceSupported` — the head does not read it.
 
-### Open and unexplained: the Fence button in a plan that already has items
+### Diagnosed: the Fence button in a plan with items was my own gate
 
-2026-09-12, observed three times, not diagnosed.
+2026-09-12. Recorded as open and unexplained, closed an hour later. The cause
+was the capability gate I had shipped at 12:45; the failing taps were at
+13:20-13:31. **The button was disabled the entire time** and
+`tools/enabled.py` did not exist yet, so the instrument I checked with — the
+`enabled=` attribute on the Text node *inside* the button — reported true
+unconditionally and could not have told me.
 
-In a plan holding a takeoff and a survey, tapping **Fence** produces no fence.
-The button reports `enabled=true` in the view tree, so the new capability gate
-is not the cause; a vehicle is connected; and sampling the screen immediately
-after the tap shows **no notice at all** — neither "Adding fence" nor a failure
-reason, which `onBridge` would hold for `FAILURE_MESSAGE_MS`.
+The plan holding items was a coincidence I promoted to a hypothesis because it
+was the only difference I had isolated. The macOS session then measured their
+rig, where the same core with items present accepts a fence and a circle
+(`polygons: 1, circles: 1`), killing "addInclusionPolygon refuses when items
+exist" outright. That measurement is what made me re-read my own timeline
+rather than keep testing.
 
-`planSummary` includes `"N fence"` whenever `polygons + circles` is non-empty,
-independent of item count, so the absence from the chip means no fence exists
-rather than a summary that omits it. Earlier the same button worked in an
-**empty** plan ("1 fence · 0 m · 0:00"), which is the only difference I have
-isolated.
+**Verified after ungating:** `2 items (takeoff) · 1 fence · 112 scan pts`.
 
-**Not diagnosed on purpose.** Three attempts is where I stop and write it down
-rather than keep pulling — the same discipline that turned the capability-gate
-hunt into a real finding only because I stopped and checked one different thing.
-Candidates, none tested: `placeAt()` returning a vehicle position the fence is
-built around off-screen; `addInclusionPolygon` refusing silently when mission
-items exist; `view.fences` not answering in this state.
+Three things this cost and one it earned. It cost four device configurations,
+an env var added to `apmvehicle.py`, and a false report to two sessions. It
+earned `tools/enabled.py`, and the discovery that the gate itself was wrong —
+`supported()` requires `maxProtoVersion() >= 200`, false on this rig for a
+reason unrelated to fences, so gating *creation* on it removed a working
+capability.
 
-The cheapest next probe is a logcat capture across the tap, which reads the
-refusal QGC itself prints rather than inferring from the screen.
+**The stopping rule paid.** Writing the symptom down precisely — enabled state,
+absence of a notice, the summary's independence from what is drawn — is what
+let a peer answer one candidate in a single measurement. A vaguer "fences are
+flaky" would have bought nothing.
+
