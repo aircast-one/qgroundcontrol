@@ -18,6 +18,7 @@ MODELS = {
     "VehicleMessages": "view.messages",
     "VehicleTrack": "view.track",
     "VehicleWarning": "view.warnings",
+    "BatteryReading": "view.battery",
     "CalibrationState": "view.calibration",
     "CameraControl": "view.camera",
     "FenceShape": "view.fences",

@@ -29,16 +29,7 @@ final class PowerStore: ObservableObject, Probeable {
             return
         }
 
-        func value(_ name: String) -> Double? {
-            guard let number = first[name] as? NSNumber, number.doubleValue.isFinite else {
-                return nil
-            }
-            return number.doubleValue
-        }
-
-        let reading = BatteryReading(voltage: value("voltage"),
-                                     current: value("current"),
-                                     percent: value("percent"))
+        let reading = BatteryReading(first) ?? .unavailable
         if reading != battery { battery = reading }
         let read = FlyTelemetry.Level(view["level"] as? String)
         if read != level { level = read }

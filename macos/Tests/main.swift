@@ -555,6 +555,33 @@ func checkTheFenceTheFirmwareEnforces() {
 
 checkTheFenceTheFirmwareEnforces()
 
+func checkTheBatteryIsSpelledOnce() {
+    let pack = BatteryReading(["voltage": 15.8 as NSNumber, "current": 2.5 as NSNumber,
+                               "percent": 87.0 as NSNumber, "voltageText": "15.80V"])
+    expect(pack?.voltageText ?? "", "15.80V",
+           "the core spells the voltage from the vehicle's own Fact, units included, and the "
+           + "Fly view already drew that string through secondaryText. This panel took the raw "
+           + "number and re-spelled it as \"15.80 V\" with String(format:), so ONE battery was "
+           + "written two ways in one app -- and String(format:) is locale-independent, so a "
+           + "build whose Fact says 15,80V would still print a full stop here")
+    expect(pack?.available == true, "a pack with a voltage is a reading")
+
+    let unspelled = BatteryReading(["voltage": 15.8 as NSNumber])
+    expect(unspelled?.voltageText ?? "", "15.80 V",
+           "with no spelling from the core the head still says something rather than nothing: "
+           + "the fallback is the previous behaviour, not an invented value, and it is what a "
+           + "pack sent before the core spelled voltages would still draw")
+    expect(unspelled?.currentText ?? "", "\u{2014}",
+           "and a measure the pack does not carry is an em dash rather than a zero, because a "
+           + "battery drawing no current and a battery not reporting one are different facts")
+
+    expect(BatteryReading(nil) == nil, "no pack at all is no reading")
+    expect(BatteryReading.unavailable.available == false,
+           "and the unavailable reading stays the one the panel shows with no vehicle")
+}
+
+checkTheBatteryIsSpelledOnce()
+
 
 func checkTilePyramid() {
     let tile = TileAddress(x: 59492, y: 37374, z: 16)
