@@ -48,6 +48,9 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
+import androidx.compose.foundation.layout.Row
+import one.aircast.android.ui.VehicleStateText
+import one.aircast.android.ui.StatusReadingsInline
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.zIndex
@@ -250,21 +253,21 @@ fun AircastShell(quickView: QtQuickView) {
         Scaffold(
             snackbarHost = { SnackbarHost(snackbars) },
             topBar = {
-              Column {
-                TopAppBar(
-                    title = { VehicleTitle() },
-                    actions = {
-                        if (tab == Tab.Fly) {
-                            IconButton(onClick = { controlsExpanded = !controlsExpanded }) {
-                                Icon(Icons.Default.Build, "Toggle flight controls")
-                            }
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 12.dp, vertical = 6.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(12.dp),
+                ) {
+                    VehicleStateText()
+                    if (tab == Tab.Fly) {
+                        StatusReadingsInline(Modifier.weight(1f))
+                        IconButton(onClick = { controlsExpanded = !controlsExpanded }) {
+                            Icon(Icons.Default.Build, "Toggle flight controls")
                         }
-                    },
-                )
-                if (tab == Tab.Fly) {
-                    StatusStrip()
+                    }
                 }
-              }
             },
             bottomBar = {
                 NavigationBar {
