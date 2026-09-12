@@ -1322,6 +1322,7 @@ func checkMissionItemKinds() {
     checkOnlyAPlacedItemMoves()
     checkComplexGeometryInAnyLocale()
     checkSpeedChangeIsListedNotOnlySelected()
+    checkAnItemSaysEverythingItDoes()
     checkSensorsComponentIsFoundByClass()
     checkShapeAbsence()
     checkBatteryReading()
@@ -4297,6 +4298,41 @@ func checkSpeedChangeIsListedNotOnlySelected() {
     expect(item(speed: "12.0 m/s").subtitle(unreached: true), "Never flown to",
            "and so does never being flown to, which says the item is not on the route at all -- "
            + "the speed it would have commanded there is not the point")
+}
+
+func checkAnItemSaysEverythingItDoes() {
+    func item(speed: String? = nil, hold: Double? = nil, blocked: String? = nil) -> MissionItem {
+        var view: [String: Any] = ["index": 2 as NSNumber, "sequence": 2 as NSNumber,
+                                   "name": "Waypoint", "kind": "waypoint"]
+        view["speedChangeText"] = speed
+        view["extraSeconds"] = hold.map { $0 as NSNumber }
+        view["blockedReason"] = blocked
+        return MissionItem(view: view, selected: -1)
+    }
+    expect(item(hold: 15).subtitle(unreached: false), "Holds for 15 s",
+           "a waypoint that waits says how long. The core serves additionalTimeDelay as a raw "
+           + "number and not as text, deliberately -- seconds have no unit preference, so unlike "
+           + "a speed there is nothing for it to convert and the spelling is the head's")
+    expect(item(hold: 0).subtitle(unreached: false), "",
+           "every item carries a delay of zero, so a row saying \"Holds for 0 s\" would appear "
+           + "under every waypoint in the plan and mean nothing. Withholding it here is the same "
+           + "judgement the core makes about a commanded speed of zero, made on the other side")
+    expect(item(hold: 2.5).subtitle(unreached: false), "Holds for 2.5 s",
+           "a fraction keeps its fraction, and a whole number loses the .0 a Double would print")
+    expect(item(hold: 1e30).subtitle(unreached: false), "Holds for 1000000000000000019884624838656 s",
+           "and an absurd number is spelled, not crashed on. String(Int(seconds)) would trap here "
+           + "-- the value is past Int.max -- so a payload nobody expects would take down the plan "
+           + "list rather than draw a silly row. A formatter cannot trap")
+    expect(item(speed: "12.0 m/s", hold: 15).subtitle(unreached: false),
+           "Flies at 12.0 m/s \u{00B7} Holds for 15 s",
+           "an item that does BOTH says both. These are not competing claims to one line the way "
+           + "a block and a speed are -- they are two true facts about the same item, and ranking "
+           + "them would drop one. Read in the order they happen: the speed governs the flying, "
+           + "the hold is what it does on arrival")
+    expect(item(speed: "12.0 m/s", hold: 15, blocked: "Set its location").subtitle(unreached: false),
+           "Set its location",
+           "but a block still outranks both together, because it is the only one of the three "
+           + "that is a task rather than a description")
 }
 
 func checkOnlyAPlacedItemMoves() {

@@ -2750,3 +2750,51 @@ needs an accepted table of about twenty reasons, and **I have verified five**
 (`bandText`, `abbreviation`, `positionText`, `incomplete`/`edited`, `altitudeOnly`).
 Writing the other fifteen from belief is the failure this whole file is about, so
 the table is the next cycle's work, not this one's.
+
+### An item says everything it does, not the one thing that ranked highest, 2026-09-12
+
+The second field the unread sweep found. `extraSeconds` is `additionalTimeDelay`
+— how long a waypoint waits on arrival — and `grep extraSeconds macos/Sources`
+returned nothing. Same shape as `speedChangeText`: the value was **editable** in
+the detail panel as a fact named Hold with units `secs`, and **invisible while
+scanning**. Two fields, one pattern: the Plan window could edit things its list
+would not mention.
+
+The core serves this one **raw**, and says why: seconds have no unit preference,
+so there is nothing to convert and the spelling is the head's. A commanded speed
+goes through `Unit::speed` because QGC has a Speed setting; a delay does not.
+
+**Both are true at once, so neither ranks.** A block and a speed compete for one
+line — a block is a task and wins. A hold and a speed do not compete; they are two
+facts about the same item, and choosing between them drops one. The subtitle now
+reads `blockedReason ?? unreached ?? doings ?? ""`, where `doings` joins whatever
+the item actually does.
+
+**The render is what found the real defect.** With both, the row read
+**"Flies at 8.0 m/s · H…"** — truncated, and truncated *only when selected*,
+because the chevron and trash take the width. **The item doing the most was the
+one losing information, in exactly the state an operator is in while editing it.**
+`GroupRow` already had `descriptionLines`, and `fixedSize` keeps a one-line row one
+line tall, so a single argument fixes it: row 3 wraps to two lines, row 2 does not
+grow. Nothing a fixture could have caught — only the screen.
+
+**A robustness fix the tests pin:** `String(Int(seconds))` traps past `Int.max`, so
+a payload nobody expects would take down the plan list rather than draw a silly row.
+`String(format: "%.0f")` cannot trap, and the assertion spells the 31-digit value
+of 1e30 exactly — **a wrong guess would have failed, so its passing is proof it
+ran**, which is stronger than the mutation I ran on the neighbouring assertion.
+
+Suite 707/0/89, no app running. **`cmake --build | grep -c 'error:'` returning 0 is
+NOT the build succeeding** — rule 27, and the core lost a cycle to exactly this:
+their build exited 1, the app copy silently kept the previous binary, and the suite
+came back green. This build's exit status was checked directly and is 0.
+
+**Android had already run this sweep on the item view before me** — 43 keys emitted,
+19 never read, "two of them things an item does that its row never said". The two
+were these two. `speedChangeText` exists at all because they asked for it. **The
+same sweep, run independently against two heads, found the same pair.**
+
+**Checked, and my head was already right:** Android stopped hardcoding
+`splitPolygonSegment`/`splitSegment` and takes the name from the core's
+`splitInvokable`. Mine already does — `Bridge.invoke("\(path).\(splitInvokable)")`;
+the local `splitSegment` is a Swift function name, not a bridge string.

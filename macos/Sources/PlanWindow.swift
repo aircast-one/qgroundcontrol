@@ -500,6 +500,7 @@ struct PlanInspector: View {
                             unreached: unreachedItems.contains(item.index)),
                         showSeparator: item.index > 0,
                         current: item.isCurrent,
+                        descriptionLines: 2,
                         leading: {
                             Seal(label: "\(item.sequence)",
                                  colour: item.stopsSave ? Overlay.blocked
