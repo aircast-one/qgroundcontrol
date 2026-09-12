@@ -4665,3 +4665,32 @@ are what made it attributable.**
 **Not re-run.** This is not one of the three known timing flakes, it is a real failure with a
 known cause and a fix already in the author's tree. **Re-running after their commit lands is
 next cycle's confirmation, not tonight's claim.**
+
+### (zz) My attribution reached the right fix and the wrong owner — `core-rs` has more than two authors
+
+**Correcting `c07491b54`.** I wrote that `view.cameraDefinition` was *"one of the three views
+the core added in `4c52eae2d` — their own guard catching their own new view."* **The guard is
+theirs. The view is not.** The Rust session did not write `cameradef.rs`, `cameraproto.rs` or
+`joystick.rs`, and did not add those three views — nor the four in `268105172` before them.
+**Both landed in `core-rs` from a session neither of us had accounted for, and they found out
+the way I did: a test going red and HEAD having moved underneath.**
+
+**The reasoning was sound and still reached the wrong owner**, which sharpens the lesson rather
+than softening it:
+
+- **git authorship cannot separate the sessions** — `4c52eae2d` and `268105172` both read
+  `Pavlo Kostiuk <kostyk.pavel.09@gmail.com>`, identical to mine;
+- **and neither can "whose area is it"**, once someone commits into another session's crate.
+  **That was the assumption doing the real work in my attribution, and it was unstated.**
+
+**What actually attributed it — a dirty file, an entry present now and absent from the binary I
+ran — was circumstantial.** It pointed at the right *fix* and the wrong *author*. **I reported
+the owner with the same confidence as the cause, and only the cause was evidenced.**
+
+**The correction is not cosmetic.** A red attributed to the wrong session is a red that session
+may go looking for in code they never wrote — the cost I inflicted on the Rust session is
+exactly the one I have twice thanked them for saving me.
+
+**Standing rule from here: attribute a CAUSE, not an OWNER, unless the owner is evidenced
+separately.** "This failure comes from `view.cameraDefinition` lacking a contract entry" is
+measured. "This is the core session's" was a guess wearing the same sentence.
