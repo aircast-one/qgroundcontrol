@@ -336,6 +336,7 @@ mod deps_cover_reads {
         "vehicle.landFlightMode",
         "links.linkTypeStrings",
     "vehicle.roiModeSupported",
+    "vehicle.supportsRadio",
     "links.linkTypeIds",
         "links.serialBaudRates",
         "radioCal.channelCount",

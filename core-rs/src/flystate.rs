@@ -3,7 +3,7 @@ use serde_json::{Value, json};
 use crate::read::{flag, object, text};
 use crate::router::Backend;
 
-pub const DEPS: &[&str] = &["vehicles.activeVehicleAvailable", "vehicle.armed", "vehicle.flying", "vehicle.landing", "vehicle.flightMode", "vehicle.vehicleLinkManager.communicationLost", "planFly.missionController.currentMissionIndex"];
+pub const DEPS: &[&str] = &["vehicles.activeVehicleAvailable", "vehicle.armed", "vehicle.flying", "vehicle.landing", "vehicle.flightMode", "vehicle.vehicleLinkManager.communicationLost", "planFly.missionController.currentMissionIndex", "vehicle.rcRSSI"];
 
 pub const STALE_NOTICE: &str = "No contact — these are the last values the vehicle sent.";
 
@@ -54,6 +54,15 @@ pub fn state_of(connected: bool, contact_lost: bool, armed: bool, flying: bool, 
     }
 }
 
+// QGC reports 255 when the vehicle has not said what the signal strength is, and 0..=100
+// otherwise. The range test excludes the sentinel on its own, so there is no separate
+// constant for it - one would be a branch nothing can reach. Zero stays a READING and the
+// worst one: QGC's own indicator hides at zero, so a total RC loss looks the same there as
+// an aircraft with no transmitter fitted.
+fn rc_signal(vehicle: &Value) -> Option<i64> {
+    vehicle.get("rcRSSI").and_then(Value::as_i64).filter(|rssi| (0..=100).contains(rssi))
+}
+
 fn flying_to(backend: &dyn Backend) -> Option<i64> {
     object(&backend.get_fields("planFly.missionController", "currentMissionIndex"))
         .get("currentMissionIndex")
@@ -62,7 +71,7 @@ fn flying_to(backend: &dyn Backend) -> Option<i64> {
 }
 
 pub fn fly_state_view(backend: &dyn Backend, _args: &[String]) -> Value {
-    let vehicle = object(&backend.get_fields("vehicle", "armed,flying,landing,flightMode"));
+    let vehicle = object(&backend.get_fields("vehicle", "armed,flying,landing,flightMode,rcRSSI,supportsRadio"));
     let connected = vehicle.get("kind").and_then(Value::as_str) == Some("object");
     let links = object(&backend.get_fields("vehicle.vehicleLinkManager", "communicationLost"));
     let contact_lost = connected && flag(&links, "communicationLost");
@@ -80,6 +89,12 @@ pub fn fly_state_view(backend: &dyn Backend, _args: &[String]) -> Value {
         "staleNotice": if contact_lost { STALE_NOTICE } else { "" },
         "mode": text(&vehicle, "flightMode"),
         "flyingToSequence": flying_to(backend),
+        "rcSupported": flag(&vehicle, "supportsRadio"),
+        "rcSignal": rc_signal(&vehicle),
+        "rcSignalText": rc_signal(&vehicle).map(|percent| match percent {
+            0 => "No signal".to_string(),
+            percent => format!("{percent}%"),
+        }),
     })
 }
 
@@ -112,6 +127,22 @@ mod tests {
 
     fn read(vehicle: Value, lost: bool) -> Value {
         fly_state_view(&Fake { vehicle, lost, flying_to: -1 }, &[])
+    }
+
+    #[test]
+    fn a_transmitter_reporting_nothing_is_not_a_transmitter_reporting_no_signal() {
+        let at = |rssi: i64| {
+            let mut vehicle = aloft(true, true, false);
+            vehicle["rcRSSI"] = json!(rssi);
+            vehicle["supportsRadio"] = json!(true);
+            fly_state_view(&Fake { vehicle, lost: false, flying_to: -1 }, &[])
+        };
+        assert_eq!(at(72)["rcSignal"], 72);
+        assert_eq!(at(72)["rcSignalText"], "72%");
+        assert_eq!(at(0)["rcSignalText"], "No signal", "a transmitter that is switched off is not a transmitter at zero per cent - an operator reading 0% concludes the link is alive and terrible rather than absent");
+        assert_eq!(at(0)["rcSignal"], 0, "zero is a READING and the worst one - the transmitter is gone. QGC's own indicator hides at zero, so a total RC loss looks exactly like an aircraft with no transmitter fitted");
+        assert_eq!(at(255)["rcSignal"], Value::Null, "255 is QGC's sentinel for a vehicle that has not reported a strength at all, which is the one case there is nothing to draw");
+        assert_eq!(at(255)["rcSignalText"], Value::Null);
     }
 
     #[test]
