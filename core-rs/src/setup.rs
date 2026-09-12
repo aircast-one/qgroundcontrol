@@ -151,9 +151,32 @@ const COMPONENTS: &str = "vehicle.autopilotPlugin.vehicleComponents";
 pub struct Component {
     pub name: String,
     pub class_name: String,
+    pub known: Option<String>,
     pub needs_attention: bool,
     pub blocked_reason: Option<&'static str>,
 }
+
+fn known_component(component: &Value) -> Option<String> {
+    let raw = component.get("KnownVehicleComponent")?;
+    let named = raw
+        .as_str()
+        .map(str::to_string)
+        .or_else(|| raw.as_i64().map(|index| KNOWN_COMPONENTS.get(index as usize).copied().unwrap_or("unknown").to_string()))?;
+    let trimmed = named.trim_start_matches("Known").trim_end_matches("VehicleComponent");
+    match trimmed.is_empty() || trimmed == "Unknown" {
+        true => None,
+        false => Some(trimmed[..1].to_lowercase() + &trimmed[1..]),
+    }
+}
+
+const KNOWN_COMPONENTS: [&str; 6] = [
+    "KnownRadioVehicleComponent",
+    "KnownFlightModesVehicleComponent",
+    "KnownSensorsVehicleComponent",
+    "KnownSafetyVehicleComponent",
+    "KnownPowerVehicleComponent",
+    "UnknownVehicleComponent",
+];
 
 fn blocked_by(component: &Value, armed: bool, flying: bool, rover: bool) -> Option<&'static str> {
     let by_armed = !flag(component, "allowSetupWhileArmed") && armed;
@@ -172,11 +195,12 @@ fn vehicle_components(backend: &dyn Backend) -> Vec<Component> {
     let count = listed.get("value").and_then(Value::as_array).map(|elements| elements.len()).unwrap_or(0);
     (0..count)
         .filter_map(|index| {
-            let component = object(&backend.get_fields(&format!("{COMPONENTS}.{index}"), "name,requiresSetup,setupComplete,allowSetupWhileArmed,allowSetupWhileFlying"));
+            let component = object(&backend.get_fields(&format!("{COMPONENTS}.{index}"), "name,requiresSetup,setupComplete,allowSetupWhileArmed,allowSetupWhileFlying,KnownVehicleComponent"));
             let name = component.get("name").and_then(Value::as_str).filter(|name| !name.is_empty())?;
             Some(Component {
                 name: name.to_string(),
                 class_name: component.get("class").and_then(Value::as_str).unwrap_or_default().to_string(),
+                known: known_component(&component),
                 needs_attention: flag(&component, "requiresSetup") && !flag(&component, "setupComplete"),
                 blocked_reason: blocked_by(&component, armed, flying, rover),
             })
@@ -200,6 +224,7 @@ fn overview(backend: &dyn Backend, connected: bool, px4: bool) -> Value {
         "components": components.iter().map(|c| json!({
             "name": c.name,
             "className": c.class_name,
+            "known": c.known,
             "needsAttention": c.needs_attention,
             "openable": c.blocked_reason.is_none(),
             "blockedReason": c.blocked_reason,
@@ -403,8 +428,8 @@ mod components {
 
     #[test]
     fn the_openable_field_carries_the_gate_and_not_only_the_rule_behind_it() {
-        let gated = json!({ "kind": "object", "name": "Sensors", "requiresSetup": true, "allowSetupWhileArmed": false, "allowSetupWhileFlying": false });
-        let permitted = json!({ "kind": "object", "name": "Safety", "requiresSetup": false, "allowSetupWhileArmed": true, "allowSetupWhileFlying": true });
+        let gated = json!({ "kind": "object", "name": "Sensoren", "requiresSetup": true, "allowSetupWhileArmed": false, "allowSetupWhileFlying": false, "KnownVehicleComponent": "KnownSensorsVehicleComponent" });
+        let permitted = json!({ "kind": "object", "name": "Safety", "requiresSetup": false, "allowSetupWhileArmed": true, "allowSetupWhileFlying": true, "KnownVehicleComponent": "UnknownVehicleComponent" });
 
         let parked = setup_view(&Flying { components: vec![gated.clone(), permitted.clone()], armed: false, flying: false, rover: false }, &[]);
         let resting = parked["components"].as_array().unwrap().clone();
@@ -415,6 +440,8 @@ mod components {
         let held = armed["components"].as_array().unwrap().clone();
         assert_eq!(held[0]["openable"], false, "a component that forbids setup while armed is not openable on an armed vehicle");
         assert_eq!(held[0]["blockedReason"], "armed");
+        assert_eq!(held[0]["known"], "sensors", "the component's name is tr() wrapped, so a head keying its sensors badge on the word cannot find it in another locale - KnownVehicleComponent is an enum and is the same on both firmwares, where className is APMSensorsComponent on one and PX4 on the other");
+        assert_eq!(held[1]["known"], Value::Null, "a firmware-specific component ANSWERS UnknownVehicleComponent, and that is no identity rather than an identity spelled unknown that a head could key on");
         assert_eq!(held[1]["openable"], true, "the one beside it permits it, so the gate is per component rather than per vehicle");
         assert_eq!(held[1]["blockedReason"], Value::Null, "a reason and an openable that disagree would be worse than either alone");
         assert_eq!(held[0]["needsAttention"], true, "being blocked does not stop a component still needing setup, and a head shows both");
