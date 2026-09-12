@@ -14,13 +14,18 @@ data class ItemRow(
     val placed: Boolean,
 )
 
+internal fun sequenceLabel(item: MissionItem): String = when {
+    item.foldedCommands > 0 -> "${item.sequence}\u2013${item.sequence + item.foldedCommands}"
+    else -> item.sequence.toString()
+}
+
 fun itemRows(
     items: List<MissionItem>,
     stats: Map<Int, SurveyStats> = emptyMap(),
 ): List<ItemRow> = items.map { item ->
     ItemRow(
         index = item.index,
-        number = item.sequence.toString(),
+        number = sequenceLabel(item),
         name = item.command.ifBlank { "Item ${item.sequence}" },
         detail = itemDetail(item, stats[item.index]),
         colour = waypointColour(item.kind, item.commandId),
