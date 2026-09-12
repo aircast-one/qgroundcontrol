@@ -509,7 +509,8 @@ struct PlanInspector: View {
                         trailing: {
                             HStack(spacing: Overlay.step) {
                                 if item.specifiesAltitude {
-                                    AltitudeField(value: item.altitude, units: item.altitudeUnits,
+                                    AltitudeField(value: item.altitude,
+                                                  units: item.altitudeFieldUnits,
                                                   commit: { mission.setAltitude(of: item, value: $0) })
                                 } else {
                                     Text(item.altitudeReading)

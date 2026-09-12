@@ -3013,3 +3013,38 @@ structure scan, land. They have no button that creates a structure scan and, aft
 authoring a fixture that was wrong in two ways at once, declined to hand-write one to
 test a drawing path. **A plan emitted by the producer beats a plan either of us
 invents**, which is the fixture rule applied to a whole document.
+
+### The editable rows carry a frame too — correcting the commit before this one, 2026-09-12
+
+`261b2e8c8` said the frame suffix "never reaches a field being typed into" and framed
+that as a happy accident of layout. **It was a hole, and the Android head warned me
+before I measured it.** An editable item draws through `AltitudeField`, which took
+`altitudeUnits` and knew nothing of the frame — so a waypoint set to *Calculated Above
+Terrain* drew **75.0 m**, character for character what the takeoff above the launch pad
+draws. Over rising ground those are different heights and the list said they were the
+same.
+
+**I also nearly refuted it with a stale quote.** I recalled "this vehicle's firmware
+cannot hold an altitude above terrain" and almost recorded the terrain branch as
+unreachable here. Measured instead: `view.altitudeModes` lists **Calculated Above
+Terrain as `enabled: true`** on this ArduPilot quadrotor — the refusal I was
+remembering belongs to a different mode. `setItemAltitudeMode value=3` then reads back
+`altitudeFrame: "terrain"`, so the branch is reachable, and the assertion I had written
+for it was passing against a fixture while the screen was wrong.
+
+The fix rides the frame on the unit beside the editor — `altitudeFieldUnits` is
+`altitudeUnits + frameSuffix`, so the number stays editable and the label sits where a
+unit already sat. Rendered: **491 m AMSL**, **75 m**, **75 m AGL**, three readings that
+are three different quantities and now look like it. The mutation dropping the suffix
+reproduces the defect exactly.
+
+**The lesson is about the shape of the claim, not the code.** I wrote "the two ambiguous
+rows are exactly the non-editable ones" from reading the layout, and it was true of the
+two rows *in front of me* — a launch point and a survey band. It was not true of the
+class, because an ordinary waypoint can carry a non-default frame and is editable. **A
+claim about which rows need a label, derived from the rows currently on screen, is the
+frame rule applied to a sentence rather than a fix.**
+
+`swift-checks.sh` could not have caught this: `PlanWindow.swift` is not among the 68 it
+compiles, which is why `altitudeFieldUnits` lives in the model and is asserted there.
+Suite 707/0/89.

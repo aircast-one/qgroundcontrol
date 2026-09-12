@@ -62,6 +62,8 @@ struct MissionItem: Identifiable, Equatable {
         }
     }
 
+    var altitudeFieldUnits: String { altitudeUnits + frameSuffix }
+
     var altitudeReading: String {
         let measure = specifiesAltitude || kind == MissionItem.settingsKind
             ? altitudeText

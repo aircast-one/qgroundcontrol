@@ -4329,6 +4329,24 @@ func checkAnAltitudeSaysWhatItIsMeasuredFrom() {
            "and a frame this head has never heard of is SHOWN, not swallowed. Falling through to "
            + "bare would spell a frame nobody can read as the default one, which is the exact "
            + "failure the field was added to end")
+    let terrainWaypoint = MissionItem(
+        view: ["index": 2 as NSNumber, "sequence": 2 as NSNumber, "name": "Waypoint",
+               "kind": "waypoint", "specifiesAltitude": true as NSNumber,
+               "altitudeText": "75.0 m", "altitudeUnits": "m", "altitudeFrame": "terrain"],
+        selected: -1)
+    expect(terrainWaypoint.altitudeFieldUnits, "m AGL",
+           "an EDITABLE item carries a frame too, and this is the case that nearly got away. A "
+           + "waypoint set to Calculated Above Terrain draws through AltitudeField, not through "
+           + "altitudeReading, so the suffix never reached it: measured on the running app, a "
+           + "terrain waypoint and a launch-relative takeoff both read \"75.0 m\" and are "
+           + "different heights over rising ground. The frame rides the units beside the editor")
+    expect(MissionItem(view: ["index": 1 as NSNumber, "sequence": 1 as NSNumber,
+                              "name": "Takeoff", "kind": "takeoff",
+                              "specifiesAltitude": true as NSNumber, "altitudeUnits": "m",
+                              "altitudeFrame": MissionItem.launchFrame], selected: -1)
+        .altitudeFieldUnits, "m",
+           "and the default frame adds nothing to the unit, so the common editable row is "
+           + "unchanged -- the whole point of labelling only the exceptions")
     expect(item("amsl", text: "").altitudeReading, MissionItem.noAltitude,
            "an item with no altitude at all keeps its em dash and gains no frame: there is no "
            + "measurement to say the reference of")
