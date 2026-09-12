@@ -749,6 +749,16 @@ internal fun MapSpikeScreen(
                                         onBridge { PlanBridge.setAltitude(item.index, item.altitude - 10.0) }
                                     },
                                 ) { Text("-10") }
+
+                                AltitudeModePicker(
+                                    item = item,
+                                    read = { path -> PlanBridge.readView(path) },
+                                    onPick = { raw ->
+                                        onBridge("Setting the altitude frame") {
+                                            PlanBridge.setAltitudeMode(item.index, raw)
+                                        }
+                                    },
+                                )
                             }
 
                             if (item.index > HOME_ITEM) {

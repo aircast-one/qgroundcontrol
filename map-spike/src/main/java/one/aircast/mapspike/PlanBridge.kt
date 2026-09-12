@@ -112,6 +112,7 @@ data class MissionItem(
     val foldedCommands: Int = 0,
     val altitudeFrame: String = "",
     val altitudeFrameText: String = "",
+    val altitudeMode: Int = -1,
     val altitudeEditUnits: String = "",
     val complexPattern: Boolean = false,
 )
@@ -160,6 +161,7 @@ fun allMissionItems(json: JSONObject?): List<MissionItem> {
             foldedCommands = element.optInt("foldedCommands"),
             altitudeFrame = element.optText("altitudeFrame"),
             altitudeFrameText = element.optText("altitudeFrameText"),
+            altitudeMode = element.optInt("altitudeMode", -1),
             altitudeEditUnits = element.optText("altitudeEditUnits"),
             complexPattern = !element.optBoolean("simple", true),
             routed = element.optBoolean("flownLeg") && index <= endsAfter,
@@ -177,6 +179,9 @@ object PlanBridge {
     fun rawItems(): JSONObject? =
         runCatching { JSONObject(QGCBridge.get(PLAN_VIEW)) }.getOrNull()
 
+    fun readView(path: String): JSONObject? =
+        runCatching { JSONObject(QGCBridge.get(path)) }.getOrNull()
+
     fun loadFromVehicle() = invokeOk("$PLAN_ROOT.loadFromVehicle")
 
     fun clearPlan() = invokeOk("$PLAN_ROOT.removeAll")
@@ -185,6 +190,9 @@ object PlanBridge {
 
     fun setAltitude(index: Int, metres: Double): Boolean =
         setOk("$PLAN_ITEMS.$index.altitude", settingJson("$metres"))
+
+    fun setAltitudeMode(index: Int, raw: Int): Boolean =
+        setOk("$PLAN_ITEMS.$index.altitudeMode", settingJson("$raw"))
 
     fun removeItem(index: Int): Boolean = removeMissionItem(index).ok
 
