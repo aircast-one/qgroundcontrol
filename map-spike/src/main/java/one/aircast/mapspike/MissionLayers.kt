@@ -204,7 +204,7 @@ fun installFenceLayers(style: Style) {
         style.addSource(GeoJsonSource(FIRMWARE_FENCE_SOURCE))
         style.addLayer(
             LineLayer(FIRMWARE_FENCE_LAYER, FIRMWARE_FENCE_SOURCE).withProperties(
-                PropertyFactory.lineColor(KEEP_IN_COLOUR),
+                PropertyFactory.lineColor(FIRMWARE_FENCE_COLOUR),
                 PropertyFactory.lineWidth(2.0f),
                 PropertyFactory.lineDasharray(arrayOf(3.0f, 3.0f)),
             ),
@@ -228,6 +228,7 @@ const val CIRCLE_INDEX_PROPERTY = "circleIndex"
 const val KEEPS_IN_PROPERTY = "keepsIn"
 const val KEEP_IN_COLOUR = "#FF9500"
 const val KEEP_OUT_COLOUR = "#FF3B30"
+const val FIRMWARE_FENCE_COLOUR = "#AF52DE"
 
 private fun ringFeature(vertices: List<TrackPoint>): Feature {
     val ring = vertices.map { Point.fromLngLat(it.longitude, it.latitude) }

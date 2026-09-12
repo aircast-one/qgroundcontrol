@@ -340,7 +340,7 @@ fun VehicleMap(
 
     LaunchedEffect(
         style, missionItems, fencePolygons, fenceCircles, rallyPoints, surveys,
-        selectedWaypoint, linkStartToHome,
+        landings, firmwareFence, selectedWaypoint, linkStartToHome,
     ) {
         val currentStyle = style ?: return@LaunchedEffect
         renderSurveys(currentStyle, surveys)

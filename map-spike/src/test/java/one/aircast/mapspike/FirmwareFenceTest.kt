@@ -2,6 +2,7 @@ package one.aircast.mapspike
 
 import org.json.JSONObject
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertNotEquals
 import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertNull
 import org.junit.Test
@@ -39,5 +40,11 @@ class FirmwareFenceTest {
         assertNotNull(fence)
         assertNull(fence!!.centre)
         assertEquals("300 m", fence.radiusText)
+    }
+
+    @Test
+    fun `the fence the vehicle imposes cannot be drawn like one the plan can edit`() {
+        assertNotEquals(KEEP_IN_COLOUR, FIRMWARE_FENCE_COLOUR)
+        assertNotEquals(KEEP_OUT_COLOUR, FIRMWARE_FENCE_COLOUR)
     }
 }
