@@ -3483,3 +3483,26 @@ was editing.** It crashed rather than passing quietly, which is the only reason 
 a minute instead of a cycle.
 
 **57 of 57, exit 0 — the first honest green this checker has reported.**
+
+### The three-state hole was sitting in my own acceptance table
+
+The core mentioned in passing that `specifiesAltitude` is `bool|null` and the null is
+withheld for anything that is not a simple item. Measured rather than taken on trust, and
+it is sharper than that: **a simple item answers true or FALSE** — a command item measures
+`false` here — **while the settings row and every pattern answer null.**
+
+So **null and false are different answers**: not-applicable against measured-no. My
+ACCEPTED entry for this key said "the launch row specifies no altitude, so false is what
+it means" — **naming one row where the rule is a whole class, and treating a withheld
+answer as a measured one.** That is the same three-state defect this session has now found
+in QGC's C++, in my fence store, in a peer's instrument, in a peer's view shape — and,
+it turns out, **in the table I wrote to catch exactly this.**
+
+The behaviour is unaffected: `altitudeReading` names `settingsKind` explicitly, and every
+pattern wants the band the merge sends it to. **The entry was right and its reason was
+wrong**, which is the worse failure of the two, because an accepted entry is read as a
+decision someone made on purpose. A third state arriving in this flag would be silent.
+
+The core offered to add a field that settles which of its two altitude strings a head
+should draw. **Worth taking**: the consumer is not the renderer, which is already correct,
+but the CHECKER, which today cannot verify the choice and says so in its own comment.

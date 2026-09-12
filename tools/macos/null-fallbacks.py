@@ -48,8 +48,14 @@ ACCEPTED = {
         "catalogue holds no command 0, so the probe's route highlights nothing either",
     ("MissionItem", "category"): "the same row behind the same gate: pickCommand is reached "
         "only through the button canChangeCommand draws",
-    ("MissionItem", "specifiesAltitude"): "the launch row specifies no altitude, so false is "
-        "what it means, and altitudeReading names settingsKind rather than leaning on the flag",
+    ("MissionItem", "specifiesAltitude"): "MEASURED, and my first reason for this entry was "
+        "wrong: it named the launch row, where the rule is a whole class. The core withholds "
+        "this for anything that is NOT a simple item -- the settings row and every pattern send "
+        "null -- while a simple item answers true or FALSE, and the false is real: a command "
+        "item measured false here. So null and false are DIFFERENT answers, not-applicable "
+        "against measured-no, and decoding the null to false merges them. It is safe only "
+        "because altitudeReading names settingsKind explicitly and every pattern wants the band "
+        "the merge sends it to. A third state arriving in this flag would be silent",
     ("MissionItem", "altitudeBandText"): "the settings kind returns altitudeText before the "
         "band is consulted, so the empty string is never the sentence drawn",
     ("MissionItem", "altitudeText"): "every pattern and the Return To Launch send it null, "
