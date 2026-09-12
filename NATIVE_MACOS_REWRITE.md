@@ -4023,3 +4023,41 @@ argument-versus-base-name blindness.**
 **Proven both directions:** renaming the key `ModeSlot` reads for `live` now reports GONE
 against `modeslots.rs`, so the new entries are exercised; dropping `ModeSlot` back out of
 `MODELS` makes the guard report it again.
+
+### (nn) The inline-decoded views, and the checker had been reading the wrong module
+
+**Measured before acting, and the documented number was stale.** The docstrings say
+*"the seventeen views decoded inline in a store are out of its reach"*. **It is thirteen** —
+that figure predates five models being added — and **ten of the thirteen had a decoding
+struct that simply was not listed**. Coverage **24 → 34 models**. The two genuine holdouts
+are `view.label`, which reads a bare `value` string, and `view.battery`, walked as a
+`packs` dictionary in two stores with no struct to name.
+
+**Widening the coverage exposed a defect in the checker itself, and it announced itself by
+accusing the core falsely.** `view-fields.py` parsed the registry with
+`View { path: "..." .*? compute: (\w+)::` across the whole file. **Two views are computed by
+a BARE function** — `view.messages` and `view.dependencies` — and for those the non-greedy
+run walked past its own entry into the next one and **paired the path with a LATER view's
+module**, with `finditer` then resuming past the swallowed path.
+
+**So the registry was short by two — it reported 62 served views where the core serves 64 —
+and at least one view was compared against the WRONG module's literals.** That is a
+false-negative machine: a key "found" in an unrelated module's string pool counts as
+emitted, so a genuinely removed key reads as fine. The tell was two GONE reports against
+`VehicleMessages` for `items` and `order`, **both plainly present in the live payload**.
+
+**Third instance of one mis-pairing shape in that file.** Its own comments describe the
+same non-greedy failure twice for string literals — once reporting 247 fixtures broken,
+once 25 live fields gone. **I wrote the fix for the literal case and left the identical
+hazard in the registry parse directly above it.**
+
+**A model may now declare several views.** `GuidedRange` decodes `guidedAltitude`,
+`guidedTakeoff` and `guidedSpeed`; keyed to one it reported `initial` as gone, which only
+the other two emit. Both checkers union across the declared views.
+
+**Two null fallbacks surfaced and both are accepted with measurements, not waved through.**
+`Detections.error` is null for no error and a sentence for one, so null and the empty
+string mean the same thing to every consumer. `GuidedRange.label` is **unreachable by
+construction**: `speed.rs` builds it as `range.as_ref().map(|r| r.label)`, null exactly when
+there is no range, which is exactly when `available` is false — and the init returns nil
+unless `available` is true.
