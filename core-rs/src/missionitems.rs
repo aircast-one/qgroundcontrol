@@ -147,7 +147,7 @@ fn item(read: &Value, index: i64, vertical: &Unit, speed: &Unit, imperial: bool)
         "endsRoute": flag(read, "isLandCommand") || integer(read, "command") == Some(RETURN_TO_LAUNCH),
         "command": integer(read, "command"),
         "flownLeg": flag(read, "specifiesCoordinate") && !flag(read, "isStandaloneCoordinate") && !flag(read, "isIncomplete"),
-        "movable": coordinate.is_some() && kind(read) != "settings",
+        "movable": coordinate.is_some(),
         "blocked": ready.is_some_and(|state| state != READY_TO_SAVE && state != AWAITING_TERRAIN),
         "awaitingTerrain": ready == Some(AWAITING_TERRAIN),
         "blockedReason": match ready {
@@ -487,7 +487,7 @@ mod tests {
         assert_eq!(placed["items"][1]["movable"], true);
 
         assert_eq!(unplaced["items"][0]["kind"], "settings");
-        assert_eq!(unplaced["items"][0]["movable"], false, "the plan's own entry is not on the map, whatever coordinate it reports");
+        assert_eq!(unplaced["items"][0]["movable"], false, "an item with no place cannot be moved to another one");
     }
 
     #[test]
@@ -585,6 +585,14 @@ mod reported {
         let command = listed(json!({ "kind": "object", "sequenceNumber": 2, "isSimpleItem": true, "specifiesAltitude": false, "altitudeMode": 1 }));
         assert_eq!(command["specifiesAltitude"], false, "including the false that means no");
         assert_eq!(command["incomplete"], false, "isIncomplete is ComplexMissionItem-only and reads absent here too, but false is the right answer for a simple item, so it is left alone");
+    }
+
+    #[test]
+    fn the_launch_point_moves_because_qgc_lets_an_operator_move_it() {
+        let start = listed(json!({ "kind": "object", "sequenceNumber": 0, "homePosition": true, "isSimpleItem": false,
+            "specifiesCoordinate": true, "coordinate": { "kind": "coordinate", "valid": true, "latitude": 47.4, "longitude": 8.5 } }));
+        assert_eq!(start["movable"], true, "MissionSettingsItem::setCoordinate exists and is commented \"Should only be called if the end user is moving\" - dragging the launch point moves it and the plan recomputes, measured on a handset");
+        assert_eq!(start["kind"], "settings", "the kind still travels, so a head that wants to refuse the drag can decide that for itself");
     }
 
     #[test]
