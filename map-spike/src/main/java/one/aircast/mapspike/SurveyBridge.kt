@@ -18,6 +18,8 @@ data class Survey(
     val shape: String,
     val property: String,
     val editable: EditableShape? = null,
+    val flightLoop: List<TrackPoint> = emptyList(),
+    val layers: Int = 0,
 )
 
 private fun points(array: JSONArray?): List<TrackPoint> {
@@ -48,12 +50,15 @@ object SurveyBridge {
 
             val area = points(geometry.optJSONArray("vertices"))
             val transects = points(geometry.optJSONArray("transects"))
-            if (transects.isEmpty() && area.isEmpty()) return@mapNotNull null
+            val flightLoop = points(geometry.optJSONArray("flightLoop"))
+            if (transects.isEmpty() && flightLoop.isEmpty() && area.isEmpty()) return@mapNotNull null
 
             Survey(
                 index = index,
                 area = area,
                 transects = transects,
+                flightLoop = flightLoop,
+                layers = geometry.optInt("layers", 0),
                 cameraShots = element.optInt("cameraShots"),
                 kind = element.optText("kind"),
                 shape = shape,

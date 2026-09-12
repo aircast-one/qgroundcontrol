@@ -481,10 +481,20 @@ fun surveyLineFeatures(surveys: List<Survey>): FeatureCollection {
     return FeatureCollection.fromFeatures(features)
 }
 
+fun flownRoute(survey: Survey): List<TrackPoint> = when {
+    survey.transects.size >= 2 -> survey.transects
+    survey.flightLoop.size >= 2 -> closedLoop(survey.flightLoop)
+    else -> emptyList()
+}
+
+private fun closedLoop(points: List<TrackPoint>): List<TrackPoint> =
+    if (points.first() == points.last()) points else points + points.first()
+
 fun surveyTransectFeatures(surveys: List<Survey>): FeatureCollection {
     val features = surveys.mapNotNull { survey ->
-        if (survey.transects.size < 2) return@mapNotNull null
-        val line = survey.transects.map { Point.fromLngLat(it.longitude, it.latitude) }
+        val route = flownRoute(survey)
+        if (route.size < 2) return@mapNotNull null
+        val line = route.map { Point.fromLngLat(it.longitude, it.latitude) }
         Feature.fromGeometry(LineString.fromLngLats(line))
     }
     return FeatureCollection.fromFeatures(features)
