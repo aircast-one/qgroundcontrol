@@ -106,6 +106,7 @@ fun SetupScreen(modifier: Modifier = Modifier) {
     val vehicleType by qgcString("vehicle.vehicleTypeString")
     val firmwareType by qgcString("vehicle.firmwareTypeString")
     var openComponent by remember { mutableStateOf<SetupComponent?>(null) }
+    var parametersOpen by remember { mutableStateOf(false) }
 
     BackHandler(enabled = openComponent != null) { openComponent = null }
 
@@ -124,6 +125,23 @@ fun SetupScreen(modifier: Modifier = Modifier) {
 
     if (!parametersReady) {
         SetupNotice("Loading parameters from the vehicle.", modifier)
+        return
+    }
+
+    if (parametersOpen) {
+        Column(modifier.fillMaxSize()) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                IconButton(onClick = { parametersOpen = false }) {
+                    Icon(Icons.AutoMirrored.Filled.ArrowBack, "Back to Setup")
+                }
+                Text("Parameters", style = MaterialTheme.typography.titleMedium)
+            }
+            HorizontalDivider()
+            ParametersScreen(Modifier.weight(1f))
+        }
         return
     }
 
@@ -233,6 +251,16 @@ fun SetupScreen(modifier: Modifier = Modifier) {
                     },
                 )
             }
+        }
+
+        item(key = "parameters") {
+            SectionHeader("Everything else")
+            SetupRow(
+                title = "Parameters",
+                status = "Every setting the vehicle has",
+                state = SetupState.Neutral,
+                onClick = { parametersOpen = true },
+            )
         }
 
         item(key = "footnote") {

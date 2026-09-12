@@ -93,7 +93,6 @@ enum class Tab(val label: String, val icon: ImageVector, val page: String) {
     Fly("Fly", Icons.Default.Home, "fly"),
     Plan("Plan", Icons.Default.Place, "plan"),
     Setup("Setup", Icons.Default.Build, "fly"),
-    Params("Params", Icons.AutoMirrored.Filled.List, "fly"),
     Analyze("Analyze", Icons.Default.Info, "fly"),
     Settings("Settings", Icons.Default.Settings, "fly");
 
@@ -102,7 +101,6 @@ enum class Tab(val label: String, val icon: ImageVector, val page: String) {
             "fly" -> Fly
             "plan" -> Plan
             "setup" -> Setup
-            "parameters" -> Params
             "analyze" -> Analyze
             else -> Settings
         }
@@ -325,7 +323,6 @@ fun AircastShell(quickView: QtQuickView) {
 
                 when (tab) {
                     Tab.Settings -> Surface(Modifier.fillMaxSize()) { SettingsScreen() }
-                    Tab.Params -> Surface(Modifier.fillMaxSize()) { ParametersScreen() }
                     Tab.Setup -> Surface(Modifier.fillMaxSize()) { SetupScreen() }
                     Tab.Plan -> Surface(Modifier.fillMaxSize()) { PlanTab() }
                     Tab.Analyze -> AnalyzeScreen(
