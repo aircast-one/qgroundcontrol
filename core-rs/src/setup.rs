@@ -10,6 +10,41 @@ pub const DEPS: &[&str] = &["vehicles.activeVehicleAvailable", "vehicle.autopilo
 const PX4_ONLY: &[&str] = &["Flight Behavior"];
 const APM_ONLY: &[&str] = &["Camera", "Lights", "Remote Support"];
 
+/// Which component backs each page. The join is on the KnownVehicleComponent enum where the
+/// firmware declares one and on the C++ class name otherwise - both untranslated, where the
+/// component's own name is tr() wrapped and would gate in English only. Pages with no
+/// component are named so that adding one without deciding fails the test below rather than
+/// silently reading as never blocked.
+const PAGE_COMPONENTS: &[(&str, &[&str])] = &[
+    ("Summary", &[]),
+    ("Parameters", &[]),
+    ("Sensors", &["known:sensors"]),
+    ("Radio", &["known:radio"]),
+    ("Flight Modes", &["known:flightModes"]),
+    ("Safety", &["known:safety"]),
+    ("Power", &["known:power"]),
+    ("Frame", &["AirframeComponent", "APMAirframeComponent", "APMSubFrameComponent"]),
+    ("Motors", &["MotorComponent"]),
+    ("Tuning", &["APMTuningComponent", "PX4TuningComponent"]),
+    ("Camera", &["APMCameraComponent"]),
+    ("Lights", &["APMLightsComponent"]),
+    ("Flight Behavior", &["PX4FlightBehavior"]),
+    ("Remote Support", &["APMRemoteSupportComponent"]),
+];
+
+fn page_block(page: &str, components: &[Component]) -> Option<&'static str> {
+    let keys = PAGE_COMPONENTS.iter().find(|(name, _)| *name == page).map(|(_, keys)| *keys)?;
+    components
+        .iter()
+        .find(|c| {
+            keys.iter().any(|key| match key.strip_prefix("known:") {
+                Some(known) => c.known.as_deref() == Some(known),
+                None => c.class_name == *key,
+            })
+        })
+        .and_then(|c| c.blocked_reason)
+}
+
 pub fn page_exists(page: &str, px4: bool) -> bool {
     match (PX4_ONLY.contains(&page), APM_ONLY.contains(&page)) {
         (true, _) => px4,
@@ -231,7 +266,10 @@ fn overview(backend: &dyn Backend, connected: bool, px4: bool) -> Value {
         })).collect::<Vec<_>>(),
         "groups": PAGES.iter().map(|(title, pages)| json!({
             "title": title,
-            "pages": pages.iter().filter(|p| page_exists(p, px4)).map(|p| json!({ "name": p, "parameterSections": sections_for(p, px4).is_some() })).collect::<Vec<_>>(),
+            "pages": pages.iter().filter(|p| page_exists(p, px4)).map(|p| {
+                let blocked = page_block(p, &components);
+                json!({ "name": p, "parameterSections": sections_for(p, px4).is_some(), "openable": blocked.is_none(), "blockedReason": blocked })
+            }).collect::<Vec<_>>(),
             "omitted": pages.iter().filter(|p| !page_exists(p, px4)).map(|p| json!({ "name": p, "reason": page_absence(px4) })).collect::<Vec<_>>(),
         })).collect::<Vec<_>>(),
     })
@@ -427,6 +465,14 @@ mod components {
     }
 
     #[test]
+    fn every_page_decides_whether_a_component_backs_it() {
+        let named: Vec<&str> = PAGE_COMPONENTS.iter().map(|(page, _)| *page).collect();
+        let missing: Vec<&&str> = PAGES.iter().flat_map(|(_, pages)| pages.iter()).filter(|page| !named.contains(page)).collect();
+        assert!(missing.is_empty(), "a page nothing names reads as never blocked, which is the quiet direction to be wrong in: {missing:?}");
+        assert_eq!(named.len(), PAGES.iter().map(|(_, pages)| pages.len()).sum::<usize>(), "and nothing is named that is not a page");
+    }
+
+    #[test]
     fn the_openable_field_carries_the_gate_and_not_only_the_rule_behind_it() {
         let gated = json!({ "kind": "object", "name": "Sensoren", "requiresSetup": true, "allowSetupWhileArmed": false, "allowSetupWhileFlying": false, "KnownVehicleComponent": "KnownSensorsVehicleComponent" });
         let permitted = json!({ "kind": "object", "name": "Safety", "requiresSetup": false, "allowSetupWhileArmed": true, "allowSetupWhileFlying": true, "KnownVehicleComponent": "UnknownVehicleComponent" });
@@ -441,6 +487,16 @@ mod components {
         assert_eq!(held[0]["openable"], false, "a component that forbids setup while armed is not openable on an armed vehicle");
         assert_eq!(held[0]["blockedReason"], "armed");
         assert_eq!(held[0]["known"], "sensors", "the component's name is tr() wrapped, so a head keying its sensors badge on the word cannot find it in another locale - KnownVehicleComponent is an enum and is the same on both firmwares, where className is APMSensorsComponent on one and PX4 on the other");
+        let sensors_page = armed["groups"].as_array().unwrap().iter()
+            .flat_map(|g| g["pages"].as_array().unwrap().clone())
+            .find(|p| p["name"] == "Sensors").unwrap();
+        assert_eq!(sensors_page["openable"], false, "the page a head disables is the thing it needs answered, and it had been joining page to component on a tr() wrapped name - so six pages gated in English only");
+        assert_eq!(sensors_page["blockedReason"], "armed");
+        let summary_page = armed["groups"].as_array().unwrap().iter()
+            .flat_map(|g| g["pages"].as_array().unwrap().clone())
+            .find(|p| p["name"] == "Summary").unwrap();
+        assert_eq!(summary_page["openable"], true, "Summary is backed by no component at all, and QGC shows it on an armed vehicle - blocking every page whose component cannot be identified would have disabled three that were never gated");
+
         assert_eq!(held[1]["known"], Value::Null, "a firmware-specific component ANSWERS UnknownVehicleComponent, and that is no identity rather than an identity spelled unknown that a head could key on");
         assert_eq!(held[1]["openable"], true, "the one beside it permits it, so the gate is per component rather than per vehicle");
         assert_eq!(held[1]["blockedReason"], Value::Null, "a reason and an openable that disagree would be worse than either alone");
