@@ -508,13 +508,13 @@ internal fun MapSpikeScreen(
 
                     TextButton(onClick = {
                         val at = placeAt()
-                        onBridge("Adding fence") {
+                        onBridge("Adding fence", done = support.reason.ifBlank { null }) {
                             at != null && FenceBridge.addInclusionPolygon(
                                 TrackPoint(at.latitude + 0.002, at.longitude - 0.002),
                                 TrackPoint(at.latitude - 0.002, at.longitude + 0.002),
                             )
                         }
-                    }, enabled = support.fence) { Text("Fence") }
+                    }) { Text("Fence") }
 
                     addingAfterText(selected, allItems)?.let {
                         Text(it, style = MaterialTheme.typography.labelSmall)
@@ -538,10 +538,10 @@ internal fun MapSpikeScreen(
 
                     TextButton(onClick = {
                         val at = placeAt()
-                        onBridge("Adding rally") {
+                        onBridge("Adding rally", done = support.reason.ifBlank { null }) {
                             at != null && FenceBridge.addRallyPoint(at.latitude, at.longitude)
                         }
-                    }, enabled = support.rally) { Text("Rally") }
+                    }) { Text("Rally") }
                     TextButton(
                         onClick = {
                             val at = placeAt()
