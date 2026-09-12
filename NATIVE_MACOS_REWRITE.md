@@ -4880,3 +4880,51 @@ device that was *ahead* of the source they were reading.
 **Three failures tonight, one cause: an artifact whose age nobody checked.** A library newer than
 the process reading it, a device newer than the file being reasoned about, and a library rebuilt
 under a running suite. **None of the three is visible in the reading itself.**
+
+### Every detection box lost its confidence, and the test agreed with the bug
+
+**The core renames the upstream `conf` to `confidence` on the way out** (`detections.rs:78`) and
+pins that shape in its own test. **This head went on reading `json["conf"]`** — `"confidence"`
+appears nowhere under `macos/` — so `confidence` was nil on every box and `caption` took its
+guard branch every time. **Every detection drawn over the video was captioned `"car"` instead of
+`"car 91%"`**: the number an operator uses to judge whether to trust the box, gone with no tell,
+**a low-confidence box looking identical to a high-confidence one.** The QML original drew it, so
+this is a regression.
+
+**The test asserted `caption == "car 91%"` and was green the whole time**, because its own
+`box()` helper built the fixture with `"conf"` — **the same wrong key the decoder read.** A
+hand-written fixture can only ever agree with the decoder. The fixture now uses the core's key,
+and a second assertion is **copied from the exact shape `detections.rs` pins in its own test**, so
+it comes from the producer rather than from me; a third pins the pre-rename spelling as NOT the
+key. **Reverting the decoder now fails all three, including the assertion that was green while
+the feature was broken.**
+
+**Found by a five-lens sweep fanned out across subagents** — served-but-unread, assembled
+formatters, duplicated derivation, latched state, decoded-but-undrawn — **each finding checked by
+an adversarial verifier that defaults to refuted.** The verifier not only confirmed this one but
+**corrected it**: the core's `unwrap_or(0.0)` means `confidence` is always a number, so the nil
+branch is unreachable through the core and a box with no upstream reading will read `"car 0%"`.
+**That is a substituted default and it is the core's to decide, not mine to work around.**
+
+### The instrument could never have caught it, and the widened version failed its control
+
+`view-fields.py` checks that every key a model decodes still exists in the core, which is exactly
+the shape of this defect — **so why was it silent?** Two reasons, and only one of them is fixable.
+
+**First, it reads only the top-level model's own `init`.** `keys_a_model_reads` takes the body up
+to the next `struct` declaration, so **`DetectionBox` — which decodes from the same payload — was
+never looked at at all.** I widened it to follow stored-property types recursively.
+
+**Then the widened version failed its control.** It produced 28 new hits across three models
+(`SettingsPage`, `SettingsSection`, `VehicleMessages`, all reading nested keys built by shared
+helpers in other modules) **and still did not flag `conf`** — because **`"conf"` IS a quoted
+literal in `detections.rs`**, on the very line that renames it. The instrument's evidence base is
+*every quoted literal in the module*, a deliberate choice recorded in its own comments to avoid
+false negatives on `json["x"] = …` assignments, and **that choice cannot distinguish a key the
+core SERVES from a key the core CONSUMES.**
+
+**So the widening was reverted.** It added false positives and did not catch the case that
+motivated it. **A change to an instrument is worth shipping only if it would have caught the
+defect that prompted it** — the same bar that killed the consumer-gate and unconsumed-field
+sweeps earlier tonight. **Three instrument ideas tried, three discarded, and each one measured
+against a known answer rather than argued about.**
