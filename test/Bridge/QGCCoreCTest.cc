@@ -1264,7 +1264,7 @@ const char *const kViewPaths[] = {
     "view.geoToUtm(47.397,8.546)", "view.utmToGeo(465000,5248000,32)",
     "view.adsbTraffic", "view.followMe", "view.gcsPosition", "view.gimbal",
     "view.cameraProtocol", "view.joystickMapping",
-    "view.operatorControl", "view.orbit", "view.debugApi(GET,/native/windows)", "view.packetRadio(receiving)",
+    "view.operatorControl", "view.orbit", "view.vehicleLinks", "view.debugApi(GET,/native/windows)", "view.packetRadio(receiving)",
     "view.gpsRtkBase(trimble)", "view.videoSource(RTSP Video Stream,rtsp://127.0.0.1:8554/live,12)",
 };
 

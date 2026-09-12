@@ -1556,6 +1556,13 @@
         "view.links.baudRates.9",
         "view.links.class",
         "view.links.kind",
+        "view.links.linkTypeIds.#",
+        "view.links.linkTypeIds.0",
+        "view.links.linkTypeIds.1",
+        "view.links.linkTypeIds.2",
+        "view.links.linkTypeIds.3",
+        "view.links.linkTypeIds.4",
+        "view.links.linkTypeIds.5",
         "view.links.linkTypes.#",
         "view.links.linkTypes.0",
         "view.links.linkTypes.1",
@@ -3206,6 +3213,8 @@
         "view.utmToGeo(465000,5248000,32).latitude",
         "view.utmToGeo(465000,5248000,32).longitude",
         "view.utmToGeo(465000,5248000,32).valid",
+        "view.vehicleLinks.class",
+        "view.vehicleLinks.kind",
         "view.vehicles.ambiguous",
         "view.vehicles.class",
         "view.vehicles.kind",
@@ -5102,6 +5111,13 @@
         "view.links.configured.0.type",
         "view.links.configured.0.typeLabel",
         "view.links.kind",
+        "view.links.linkTypeIds.#",
+        "view.links.linkTypeIds.0",
+        "view.links.linkTypeIds.1",
+        "view.links.linkTypeIds.2",
+        "view.links.linkTypeIds.3",
+        "view.links.linkTypeIds.4",
+        "view.links.linkTypeIds.5",
         "view.links.linkTypes.#",
         "view.links.linkTypes.0",
         "view.links.linkTypes.1",
@@ -9306,6 +9322,18 @@
         "view.utmToGeo(465000,5248000,32).latitude",
         "view.utmToGeo(465000,5248000,32).longitude",
         "view.utmToGeo(465000,5248000,32).valid",
+        "view.vehicleLinks.autoDisconnect",
+        "view.vehicleLinks.available",
+        "view.vehicleLinks.class",
+        "view.vehicleLinks.contactLost",
+        "view.vehicleLinks.kind",
+        "view.vehicleLinks.links.#",
+        "view.vehicleLinks.links.0.commLost",
+        "view.vehicleLinks.links.0.name",
+        "view.vehicleLinks.links.0.primary",
+        "view.vehicleLinks.primary",
+        "view.vehicleLinks.reason",
+        "view.vehicleLinks.watching",
         "view.vehicles.activeId",
         "view.vehicles.ambiguous",
         "view.vehicles.class",
@@ -9956,6 +9984,7 @@
             "view.flyState",
             "view.operatorControl",
             "view.orbit",
+            "view.vehicleLinks",
             "view.coreVehicle",
             "view.coreGuided",
             "view.coreParameter",
@@ -10617,6 +10646,9 @@
             }
         ],
         "kind": "string",
+        "linkTypeIds": [
+            "string"
+        ],
         "linkTypes": [
             "string"
         ],
@@ -11474,6 +11506,23 @@
         "latitude": "number",
         "longitude": "number",
         "valid": "bool"
+    },
+    "view.vehicleLinks": {
+        "autoDisconnect": "bool",
+        "available": "bool",
+        "class": "string",
+        "contactLost": "bool|null",
+        "kind": "string",
+        "links": [
+            {
+                "commLost": "bool",
+                "name": "string",
+                "primary": "bool"
+            }
+        ],
+        "primary": "string",
+        "reason": "string",
+        "watching": "bool"
     },
     "view.vehicles": {
         "activeId": "null|number",
