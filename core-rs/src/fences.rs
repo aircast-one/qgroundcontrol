@@ -192,6 +192,18 @@ mod tests {
         assert_eq!((view["rallyPoints"][0]["altitude"].clone(), view["rallyPoints"][0]["altitudeUnits"].clone()), (json!(50.0), json!("m")));
         let metric = Unit { name: "m\u{b2}".to_string(), factor: 1.0 };
         assert_eq!(area_text(9999.0, &metric), "9999 m\u{b2}");
+        let across = [
+            ("m\u{b2}", 1.0, "89999 m\u{b2}"),
+            ("km\u{b2}", 0.000001, "0.1 km\u{b2}"),
+            ("ha", 0.0001, "9.0 ha"),
+            ("ft\u{b2}", 10.7639104, "968741 ft\u{b2}"),
+            ("ac", 0.000247105, "22.2 ac"),
+        ];
+        across.iter().for_each(|(name, factor, spelled)| {
+            let unit = Unit { name: (*name).to_string(), factor: *factor };
+            assert_eq!(&area_text(89999.0, &unit), spelled, "nine hectares in each of the five units QGC offers; a head with no vehicle cannot reach view.fences, so these are the sentences to build against");
+        });
+
         let hectares = Unit { name: "ha".to_string(), factor: 0.0001 };
         assert_eq!(area_text(89999.0, &hectares), "9.0 ha", "the operator picks the area unit from five, and a fence that spelled km\u{b2} by hand ignored the choice - nine hectares read as 0.09 km\u{b2} whatever they asked for");
     }
