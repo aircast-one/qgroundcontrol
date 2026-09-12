@@ -1256,6 +1256,7 @@ const char *const kViewPaths[] = {
     "view.geoToUtm(47.397,8.546)", "view.utmToGeo(465000,5248000,32)",
     "view.adsbTraffic", "view.followMe", "view.gcsPosition", "view.gimbal",
     "view.cameraProtocol", "view.joystickMapping",
+    "view.gpsRtkBase(trimble)", "view.videoSource(RTSP Video Stream,rtsp://127.0.0.1:8554/live,12)",
 };
 
 } // namespace
@@ -1359,6 +1360,7 @@ void QGCCoreCTest::_viewShapesMatchTheRecordedContract()
         { QStringLiteral("view.shapeFile"), QStringLiteral("needs a shapefile on disk") },
         { QStringLiteral("view.terrainTile"), QStringLiteral("needs a terrain tile on disk") },
         { QStringLiteral("view.cameraDefinition"), QStringLiteral("needs a camera definition file on disk") },
+        { QStringLiteral("view.geoTag"), QStringLiteral("needs a telemetry log and an image directory on disk") },
         { QStringLiteral("view.coreVehicle"), QStringLiteral("takes a vehicle id and the recorder has not established which id the mock holds") },
         { QStringLiteral("view.coreGuided"), QStringLiteral("takes a vehicle id and the recorder has not established which id the mock holds") },
         { QStringLiteral("view.coreParameter"), QStringLiteral("takes a vehicle id and a parameter name") },

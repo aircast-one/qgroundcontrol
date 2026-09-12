@@ -116,8 +116,9 @@ fn item(read: &Value, index: i64, vertical: &Unit, speed: &Unit, imperial: bool)
         "coordinate": coordinate,
         "exitCoordinate": exit,
         "altitude": height(read),
-        "altitudeText": height(read).map(|metres| format_measure(vertical.show(metres), &vertical.name)),
+        "altitudeText": height_metres(read).map(|metres| format_measure(vertical.show(metres), &vertical.name)),
         "altitudeUnits": height(read).map(|_| vertical.name.clone()),
+        "altitudeEditUnits": fact_units(read, "altitude").or_else(|| fact_units(read, "plannedHomePositionAltitude")),
         "specifiesAltitude": flag(read, "isSimpleItem").then(|| flag(read, "specifiesAltitude")),
         "altitudeOnly": flag(read, "specifiesAltitudeOnly"),
         "category": Some(text(read, "category")).filter(|category| !category.is_empty()),
@@ -235,6 +236,16 @@ fn band(read: &Value, vertical: &Unit) -> Option<String> {
         (Some(low), Some(high)) if high > low => Some(crate::read::range_text(low, high, vertical)),
         (Some(low), Some(high)) if high == low => Some(crate::read::altitude_text(low, vertical, false)),
         _ => None,
+    }
+}
+
+fn height_metres(read: &Value) -> Option<f64> {
+    if flag(read, "isSimpleItem") && !flag(read, "specifiesAltitude") {
+        return None;
+    }
+    match flag(read, "homePosition") {
+        true => fact_raw_number(read, "altitude").or_else(|| fact_raw_number(read, "plannedHomePositionAltitude")),
+        false => fact_raw_number(read, "altitude"),
     }
 }
 
@@ -358,6 +369,25 @@ fn fields_of(backend: &dyn Backend, index: i64) -> Value {
         true => Value::Null,
         false => Value::Array(fields),
     }
+}
+
+fn fact_units(read: &Value, name: &str) -> Option<String> {
+    read.get("facts")
+        .and_then(Value::as_array)
+        .and_then(|facts| facts.iter().find(|fact| fact.get("property").and_then(Value::as_str) == Some(name)))
+        .and_then(|fact| fact.get("units"))
+        .and_then(Value::as_str)
+        .filter(|units| !units.is_empty())
+        .map(str::to_string)
+}
+
+fn fact_raw_number(read: &Value, name: &str) -> Option<f64> {
+    read.get("facts")
+        .and_then(Value::as_array)
+        .and_then(|facts| facts.iter().find(|fact| fact.get("property").and_then(Value::as_str) == Some(name)))
+        .and_then(|fact| fact.get("rawValue").or_else(|| fact.get("value")))
+        .and_then(Value::as_f64)
+        .filter(|value| value.is_finite())
 }
 
 fn fact_number(read: &Value, name: &str) -> Option<f64> {
@@ -624,6 +654,14 @@ mod reported {
 
         let imperial = items_view(&Imperial(item), &[])["items"][1].clone();
         assert_eq!(imperial["altitudeText"], "246 ft", "the feet come from the app's own conversion, not a factor the core keeps its own copy of");
+
+        let cooked = json!({ "kind": "object", "sequenceNumber": 1, "isSimpleItem": true, "specifiesAltitude": true,
+            "facts": [ { "name": "Altitude", "property": "altitude", "value": 246.06, "rawValue": 75.0, "units": "ft" } ] });
+        let twice = items_view(&Imperial(cooked), &[])["items"][1].clone();
+        assert_eq!(twice["altitudeText"], "246 ft", "Fact::value is the COOKED value and altitude declares setRawUnits(\"m\"), which FactMetaData maps to UnitHorizontalDistance with a metres-to-feet translator - so with feet chosen the value is ALREADY feet and converting it again drew 75 m as 807 ft");
+        assert_eq!(twice["altitude"], 246.06, "the editable number stays the cooked one an editor bound to that fact would show, so this fixes the text without moving the field a head writes back");
+        assert_eq!(twice["altitudeEditUnits"], "ft", "AltitudeFactTextField takes its unitsLabel from fact.units, so the editor's number and unit come from one fact and agree whatever the settings say - altitude follows the HORIZONTAL preference because QGC declares rawUnits m, while altitudeText follows VERTICAL, and pairing the cooked number with the vertical name is what made them disagree");
+        assert_eq!(metric["altitudeEditUnits"], Value::Null, "the fake without a units key gets none, which is what compactFactJson emitted before rawValue and units were added to it");
         assert_eq!(imperial["altitudeUnits"], "ft");
         assert_eq!(imperial["altitude"], 75.0);
     }

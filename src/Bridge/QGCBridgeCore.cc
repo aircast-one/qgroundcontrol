@@ -387,6 +387,8 @@ QJsonObject compactFactJson(Fact *fact)
         { QStringLiteral("name"), fact->name() },
         { QStringLiteral("value"), QJsonValue::fromVariant(fact->cookedValue()) },
         { QStringLiteral("valueString"), fact->cookedValueString() },
+        { QStringLiteral("rawValue"), QJsonValue::fromVariant(fact->rawValue()) },
+        { QStringLiteral("units"), fact->cookedUnits() },
     };
 }
 
