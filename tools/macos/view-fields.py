@@ -204,13 +204,19 @@ UNDRAWN = [
                         "base is ground equipment, so unlike the vehicle-gated entries this one "
                         "could be built and seen to work here. PARITY GAP, recorded not built -- "
                         "the core began serving it tonight"),
-    ("view.operatorControl", "NOT YET MEASURABLE, and recorded as that rather than guessed. The "
-                             "core added it minutes ago: operatorcontrol.rs and view.rs both "
-                             "postdate the built libqgc_core.a, so THIS binary answers a bare "
-                             "null for it while the source shows an object with available, known, "
-                             "inControl, holderSystemId and takeoverAllowed. Writing a reason "
-                             "from that null would be recording a stale binary as a fact. Rebuild "
-                             "and measure before deciding whether this head draws it"),
+    ("view.operatorControl", "MEASURED now the binary carries it, replacing the placeholder that "
+                             "said NOT YET MEASURABLE: available false, known false, inControl, "
+                             "holderSystemId, takeoverAllowed and systemManager all null, reason "
+                             "\"No vehicle is connected.\" It answers which ground station is "
+                             "flying the vehicle and whether it will hand over, which needs a "
+                             "vehicle AND A SECOND GROUND STATION -- this rig has neither, so "
+                             "every field would stay null however long it ran. QML DOES have an "
+                             "original, src/UI/toolbar/GCSControlIndicator.qml, so this is a "
+                             "PARITY GAP rather than a core-only capability. Half of it is a "
+                             "reading and drawable; the other half sends requestOperatorControl "
+                             "to acquire control or allow takeover, which is a vehicle command "
+                             "forbidden here -- so those buttons could be built and never once "
+                             "pressed to see them work. Recorded not built"),
     ("view.obstacle", "a proximity ring: available is false with no vehicle, so there is nothing "
                       "to draw and nothing to check. PARITY GAP, recorded not built"),
 ]
