@@ -36,6 +36,7 @@ pub fn profile(points: Vec<Point>) -> Profile {
     let padding = ((high - low) * 0.2).max(5.0);
     let min_clearance = points
         .iter()
+        .filter(|p| p.distance > 0.0)
         .filter_map(|p| p.terrain_altitude.map(|ground| p.mission_altitude - ground))
         .fold(None, |worst: Option<f64>, clearance| Some(worst.map_or(clearance, |worst| worst.min(clearance))));
     Profile { points, min_altitude: low - padding, max_altitude: high + padding, total_distance, unknown_terrain, min_clearance }
@@ -196,6 +197,9 @@ mod tests {
     fn the_profile_says_how_far_below_the_ground_it_runs_and_not_only_that_it_does() {
         let below = profile(vec![point(0.0, 700.0, Some(600.0)), point(100.0, 500.0, Some(668.0)), point(200.0, 700.0, Some(650.0))]);
         assert_eq!(below.min_clearance, Some(-168.0), "having been told the mission is below terrain the operator has to pick a new altitude, and the worst deficit is the number that choice is made from");
+
+        let launched = profile(vec![point(0.0, 491.0, Some(491.0)), point(100.0, 543.0, Some(491.0)), point(200.0, 560.0, Some(500.0))]);
+        assert_eq!(launched.min_clearance, Some(52.0), "the aircraft is ON THE GROUND at the launch point by construction, mission altitude equal to terrain altitude, so folding it in reported every mission as clearing terrain by zero - which reads as touching, and understates the real margin by the whole margin");
 
         let clear = profile(vec![point(0.0, 700.0, Some(600.0)), point(100.0, 700.0, Some(690.0))]);
         assert_eq!(clear.min_clearance, Some(10.0), "the same field answers how much room is left when there is room, so a head draws one number rather than two");
