@@ -590,9 +590,10 @@ internal fun MapSpikeScreen(
                 if (survey != null || waypoint != null || fenceHit != null ||
                     rallyHit != null || circle != null
                 ) {
-                    Row(
+                    FlowRow(
                         Modifier.fillMaxWidth(),
                         horizontalArrangement = Arrangement.spacedBy(4.dp),
+                        verticalArrangement = Arrangement.spacedBy(4.dp),
                     ) {
                         survey?.takeIf { it.kind == KIND_SURVEY }?.let {
                             TextButton(onClick = {
