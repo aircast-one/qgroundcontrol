@@ -2593,6 +2593,33 @@ func checkVehicleMessages() {
 
 checkVehicleMessages()
 
+func checkAPlacedPatternIsFoundByKind() {
+    func item(_ kind: String, command: String, sequence: Int) -> MissionItem? {
+        MissionItem(view: ["index": sequence as NSNumber, "sequence": sequence as NSNumber,
+                           "name": command, "kind": kind], selected: -1)
+    }
+    let survey = MissionItemKind(["id": "survey", "title": "Survey", "enabled": true as NSNumber,
+                                  "complexName": "Survey"])!
+    let german = [item("takeoff", command: "Start", sequence: 1),
+                  item("survey", command: "Vermessung", sequence: 2)].compactMap { $0 }
+
+    expect(MissionKinds.placed(survey, among: german)?.sequence == 2,
+           "a just-placed pattern is found by the core's KIND, which reads the same in every "
+           + "locale. It was found by matching the item's COMMAND against the fixed English "
+           + "complexName -- and command is the core's \"name\", which is text(read, "
+           + "\"commandName\") and therefore TRANSLATED. In German the item is \"Vermessung\" "
+           + "and the literal is \"Survey\", so createPlan found nothing and returned \"Survey "
+           + "could not be added to the plan.\" about a plan it had just built correctly -- and "
+           + "skipped seed(), so the pattern never got its shape")
+    expect(MissionKinds.lastPlaced(survey, among: german)?.sequence == 2,
+           "and the shape-import path checks the LAST item the same way, because an import appends")
+    expect(MissionKinds.lastPlaced(survey, among: [german[0]]) == nil,
+           "but it still refuses when the last item is not the kind that was asked for, so an "
+           + "import that added nothing is still reported")
+    expect(MissionKinds.placed(survey, among: []) == nil,
+           "and an empty plan finds nothing rather than crashing on last")
+}
+
 func checkAFenceCircleIsDrawnInMetres() {
     let imperial = FenceShape(["index": 0 as NSNumber, "path": "plan.geoFenceController.circles.0",
                                "shape": "circle", "inclusion": false as NSNumber,
@@ -2916,6 +2943,7 @@ checkAddMenuNeedsNoVehicle()
 checkAWarnedRoutineIsNotTruncated()
 checkAClickPlacesWhatThePageArms()
 checkAFenceCircleIsDrawnInMetres()
+checkAPlacedPatternIsFoundByKind()
 
 final class ProbeStub: Probeable {
     static let probeID = "stub"

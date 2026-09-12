@@ -52,6 +52,18 @@ struct MissionKinds: Equatable {
     static let empty = MissionKinds(all: [])
 
     var offersAny: Bool { all.contains { $0.enabled } }
+
+    // Finding a just-placed pattern by its COMMAND compares the core's translated commandName
+    // against the fixed English complexName, so outside en_US the item is never found: createPlan
+    // reported a plan it had just built as having failed, and skipped seeding the pattern's shape.
+    // kind is the core's own id and reads the same in every locale.
+    static func placed(_ kind: MissionItemKind, among items: [MissionItem]) -> MissionItem? {
+        items.first { $0.kind == kind.id }
+    }
+
+    static func lastPlaced(_ kind: MissionItemKind, among items: [MissionItem]) -> MissionItem? {
+        items.last.flatMap { $0.kind == kind.id ? $0 : nil }
+    }
     static let unknownSymbol = "square.on.square.dashed"
 
     init(all: [MissionItemKind]) { self.all = all }

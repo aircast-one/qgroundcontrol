@@ -773,7 +773,7 @@ final class MissionStore: ObservableObject, Probeable, WriteReporting {
         Bridge.invoke("plan.missionController.insertLandItem", [at, -1, false])
         reload()
 
-        guard let pattern = items.first(where: { $0.command == complex }) else {
+        guard let pattern = MissionKinds.placed(kind, among: items) else {
             return "\(kind.title) could not be added to the plan."
         }
         seed(kind, at: pattern.index,
@@ -799,7 +799,7 @@ final class MissionStore: ObservableObject, Probeable, WriteReporting {
                       [complex, file.path, items.count, true])
         reload()
 
-        guard let placed = items.last, placed.command == complex else {
+        guard let placed = MissionKinds.lastPlaced(kind, among: items) else {
             return "\(file.lastPathComponent) added nothing to the plan."
         }
         let vertices = max(surveyPolygon(of: placed).count, corridorPath(of: placed).count)
