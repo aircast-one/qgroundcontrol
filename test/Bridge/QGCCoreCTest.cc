@@ -3328,6 +3328,24 @@ void QGCCoreCTest::_changingAModeSlotWakesThePanelThatShowsIt()
     const auto liveCount = std::count_if(offered.begin(), offered.end(), [](const QJsonValue &entry) { return entry.toObject().value(QStringLiteral("live")).toBool(); });
     QVERIFY2(liveCount <= 1, qPrintable(QStringLiteral("%1 slots claim to be the live one, and the panel exists to answer which single mode the transmitter has selected").arg(liveCount)));
 
+    const char *const fenceEnable = "vehicle.parameterManager.getParameter(-1,FENCE_ENABLE).rawValue";
+    const double enabledBefore = take(qgc_bridge_get(fenceEnable)).value(QStringLiteral("value")).toDouble(-1.0);
+    QVERIFY2(enabledBefore >= 0.0, "FENCE_ENABLE did not read back, so the writes below would prove nothing");
+    const auto restoreFence = qScopeGuard([fenceEnable, enabledBefore]() {
+        (void) take(qgc_bridge_set(fenceEnable, QStringLiteral("{\"value\":%1}").arg(enabledBefore).toUtf8().constData()));
+    });
+
+    QCOMPARE(take(qgc_core_get("view.fences")).value(QStringLiteral("firmwareFence")).isNull(), true);
+    QVERIFY2(take(qgc_bridge_get("vehicle.parameterManager.getParameter(-1,FENCE_RADIUS).rawValue")).value(QStringLiteral("value")).toDouble(0.0) > 0.0,
+             "this vehicle carries a fence radius while the fence is switched off, which is the state that has to read as no fence rather than as a fence");
+
+    QVERIFY2(take(qgc_bridge_set(fenceEnable, "{\"value\":1}")).value(QStringLiteral("ok")).toBool(false), "FENCE_ENABLE would not take a write");
+    QTRY_VERIFY_WITH_TIMEOUT(!take(qgc_core_get("view.fences")).value(QStringLiteral("firmwareFence")).isNull(), 5000);
+    const QJsonObject firmwareFence = take(qgc_core_get("view.fences")).value(QStringLiteral("firmwareFence")).toObject();
+    QVERIFY2(firmwareFence.value(QStringLiteral("radiusMetres")).toDouble(0.0) > 0.0, "the fence is switched on and the radius did not travel");
+    QVERIFY2(!firmwareFence.value(QStringLiteral("radiusText")).toString().isEmpty(), "a head draws the text rather than formatting the metres itself");
+    QVERIFY2(firmwareFence.contains(QStringLiteral("centre")), "the centre key is always present even when home is unset, so a head can tell a fence with no centre from no fence");
+
     paths.clear();
     qgc_bridge_set_event_handler(onEvent);
     qgc_bridge_watch("view.modeSlots");
