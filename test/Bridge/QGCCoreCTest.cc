@@ -1291,6 +1291,11 @@ void QGCCoreCTest::_viewShapesMatchTheRecordedContract()
         recorded.insert(key, mergeShapes(offline.value(key), shapeOf(take(qgc_bridge_get(path)))));
     }
     (void) take(qgc_bridge_invoke("plan.start", "[]"));
+    const QByteArray plannedVehicleClass = QJsonDocument(QJsonObject { { QStringLiteral("value"), take(qgc_bridge_get("settings.appSettings.offlineEditingVehicleClass")).value(QStringLiteral("value")) } }).toJson(QJsonDocument::Compact);
+    const auto restoreVehicleClass = qScopeGuard([plannedVehicleClass]() { (void) take(qgc_bridge_set("settings.appSettings.offlineEditingVehicleClass", plannedVehicleClass.constData())); });
+    (void) take(qgc_bridge_set("settings.appSettings.offlineEditingVehicleClass", plannedVehicleClass.constData()));
+    QVERIFY2(take(qgc_bridge_get("settings.appSettings.offlineEditingVehicleClass")).value(QStringLiteral("value")).isDouble(), "the guard restores whatever this read returns, so if the key were absent it would write a null back and the comparison below would still pass");
+    QCOMPARE(QJsonDocument(QJsonObject { { QStringLiteral("value"), take(qgc_bridge_get("settings.appSettings.offlineEditingVehicleClass")).value(QStringLiteral("value")) } }).toJson(QJsonDocument::Compact), plannedVehicleClass);
     (void) take(qgc_bridge_set("settings.appSettings.offlineEditingVehicleClass", "{\"value\":1}"));
     const auto corner = [](double latitude, double longitude) { return QJsonObject { { QStringLiteral("latitude"), latitude }, { QStringLiteral("longitude"), longitude }, { QStringLiteral("altitude"), 0.0 } }; };
     const QByteArray box = QJsonDocument(QJsonArray { corner(47.398, 8.545), corner(47.396, 8.548) }).toJson(QJsonDocument::Compact);
@@ -1321,7 +1326,6 @@ void QGCCoreCTest::_viewShapesMatchTheRecordedContract()
         const QString key = QString::fromUtf8(path);
         recorded.insert(key, mergeShapes(recorded.value(key), shapeOf(take(qgc_bridge_get(path)))));
     }
-    (void) take(qgc_bridge_set("settings.appSettings.offlineEditingVehicleClass", "{\"value\":2}"));
 
     for (auto it = recorded.begin(); it != recorded.end(); ++it) {
         if (!it.key().startsWith(QStringLiteral("view."))) {
