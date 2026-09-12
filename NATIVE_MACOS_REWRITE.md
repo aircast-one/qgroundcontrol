@@ -4219,3 +4219,35 @@ lives in that assertion's label where it costs nothing.
 working copy — HEAD's `battery.rs` has neither — so the running binary serves them for
 nobody. **Building against a peer's working tree is the mistake the four new views already
 taught.** The ask stands.
+
+### (uu) The head no longer spells a battery measure, and one formatter no screen used
+
+**(tt) closed.** `02ce9ab9a` serves `currentText`/`percentText` beside `voltageText` — **checked
+at HEAD, not the working copy**, after last cycle's lesson. The head-side formatting is
+**deleted rather than kept as a fallback**: one `String(format:)` left in a panel whose other
+rows come from the core is the disagreement this set out to remove. **Two tests had to change
+and both pinned the old rule rather than the requirement** — including one written a single
+cycle earlier, which asserted the very fallback this deletes.
+
+**Then a sweep of the remaining sixteen `String(format:` sites found a formatter nothing
+calls.** `FlyTelemetry.measure` and its `zeroed` helper had **no caller in `macos/Sources` —
+only eleven test assertions across two functions.** That is worse than ordinary dead code:
+**the tests made it look covered.** `FlyTelemetry` no longer carries an altitude or a speed at
+all, so there was nothing left to format. `view.instruments` serves a spelled value and units
+per instrument from the Fact's own `valueString`, and the panel draws those.
+
+**One deleted assertion carried knowledge that is real and is no longer this head's to keep:**
+*"a vehicle sitting on the ground reports a relative altitude a hair below zero, like -0.04,
+which rounds to -0.0 m"*. **That guard existed because the head was formatting raw numbers.**
+Reading a `valueString`, it cannot apply the guard and should not — **whether a stationary
+vehicle reads `-0.0 m` is Qt's answer and the core's to check**, and it cannot be checked here
+because every instrument value is an em dash with no vehicle. **Reported, not dropped.**
+
+**And the coordinate case, which looked identical and was not.** Five copies of `%.6f, %.6f`
+now go through `GeoPoint.text` — but **the core spells a fence centre with
+`format!("{lat:.6}, {lon:.6}")` and both sides are locale-independent BY CONSTRUCTION**, so
+they produce byte-identical strings. **Tidying, not a fix**, and said so.
+
+**THE TEST THAT SEPARATES THEM IS UNIT CHOICE.** A voltage, a distance and a speed have an
+operator-chosen unit and a locale-chosen separator, so the core owns them. **A coordinate has
+neither — degrees are degrees — which is why that one stayed in the head.**
