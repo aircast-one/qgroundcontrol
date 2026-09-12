@@ -5987,3 +5987,35 @@ units at these magnitudes, so 3.20 m reads `3 m`. Right for route distances; for
 a proximity warning 3.4 m and 2.6 m both reading "3 m" loses what the old head
 showed as `3.2 m`. The sensor's resolution is centimetres. Left with the core
 session to weigh.
+
+### The landing pattern gap, reproduced at last, 2026-09-12
+
+"Landing patterns are not drawn" had been in the gap list unverified because
+this rig is a quadrotor and `MissionController::insertLandItem` only builds a
+landing pattern for a fixed wing or a VTOL — on a multirotor it inserts a plain
+RTL. `VEHICLE=plane` in the fake now reaches it (`fc4337f`).
+
+**Two caches sat in the way, and the second is the interesting one.** QGC reads
+the vehicle type from the heartbeat at connect, so the app has to be restarted
+after the sim changes — the same shape as `capabilityBits`. And then, with a
+plane connected and the Setup screen reading `Fixed wing aircraft · ArduPilot
+4.5.7`, pressing Land still produced `5 items (takeoff, RTL)`. **The plan
+carries its own `vehicleType`**, and `insertLandItem` consults the plan
+controller's vehicle rather than the connected one. The test plan was saved as a
+multirotor. A plan file with `vehicleType: 1` produced the landing pattern.
+
+With that, the gap is confirmed exactly as recorded: the item exists, is
+selected, reports its landing altitude of `-10.0 m`, and **the map draws
+nothing for it at all** — no loiter circle, no approach line, no touchdown
+point. Markers 0, 2 and 3 draw; item 4 is invisible.
+
+**And the earlier note that it "needs a `KINDS` entry in the core" was too
+simple.** A landing pattern is not one editable shape: `LandingComplexItem`
+exposes `finalApproachCoordinate`, `slopeStartCoordinate` and
+`landingCoordinate`, plus `loiterRadius` and `loiterClockwise`. The `KINDS`
+geometry model is `(shape, property)` pointing at a single `QGCMapPolygon` or
+polyline, and none of those three coordinates is that. Drawing this needs a view
+of its own rather than another row in the catalogue.
+
+It is also already *addable* — the head's existing Land button reaches it on the
+right airframe — so the gap is drawing only, which the old note did not say.
