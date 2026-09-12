@@ -3,6 +3,30 @@ import Foundation
 // Which page a window is showing is state a test must be able to reach: with the screen
 // locked no window can become key, so a synthesised click on the sidebar does nothing.
 // Keeping it in @State would make every multi-page window untestable for that reason.
+// A map click on the Plan window places whatever the CURRENT PAGE arms, and nothing otherwise.
+// The banner offering to stop adding was already gated on the page; the placement was not, so
+// arming a waypoint and switching to Rally without placing left the click adding a MISSION item
+// while the operator was looking at the rally list -- the banner had vanished, which reads as
+// cancelled.
+enum PlanPlacement: Equatable {
+    case mission
+    case rally
+    case nothing
+
+    static let missionPage = "Mission"
+    static let rallyPage = "Rally"
+
+    static func decided(page: String, missionArmed: Bool, rallyArmed: Bool) -> PlanPlacement {
+        switch page {
+        case PlanPlacement.missionPage: return missionArmed ? .mission : .nothing
+        case PlanPlacement.rallyPage: return rallyArmed ? .rally : .nothing
+        default: return .nothing
+        }
+    }
+
+    var places: Bool { self != .nothing }
+}
+
 final class PageSelection: ObservableObject, Probeable {
     static var probeID: String { "pages" }
 

@@ -1170,7 +1170,7 @@ struct PlanView: View {
                        shapes: fenceRally.shapes, rallyPoints: fenceRally.rallyPoints,
                        padding: PlanView.mapPadding,
                        select: mission.select(sequence:),
-                       adding: mission.arming != nil || fenceRally.armingRally,
+                       adding: placement.places,
                        add: place(latitude:longitude:),
                        move: mission.move(sequence:latitude:longitude:),
                        firmwareFence: fenceRally.firmwareFence,
@@ -1247,11 +1247,17 @@ struct PlanView: View {
 
     private var rallyPoints: [GeoPoint] { fenceRally.rallyGeoPoints }
 
+    private var placement: PlanPlacement {
+        PlanPlacement.decided(page: selection.page,
+                              missionArmed: mission.arming != nil,
+                              rallyArmed: fenceRally.armingRally)
+    }
+
     private func place(latitude: Double, longitude: Double) {
-        if fenceRally.armingRally {
-            fenceRally.addRallyPoint(latitude: latitude, longitude: longitude)
-        } else {
-            mission.addWaypoint(latitude: latitude, longitude: longitude)
+        switch placement {
+        case .rally: fenceRally.addRallyPoint(latitude: latitude, longitude: longitude)
+        case .mission: mission.addWaypoint(latitude: latitude, longitude: longitude)
+        case .nothing: return
         }
     }
 }

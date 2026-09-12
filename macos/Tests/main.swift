@@ -2593,6 +2593,29 @@ func checkVehicleMessages() {
 
 checkVehicleMessages()
 
+func checkAClickPlacesWhatThePageArms() {
+    expect(PlanPlacement.decided(page: "Mission", missionArmed: true, rallyArmed: false) == .mission,
+           "a waypoint armed on the Mission page is what a click there places")
+    expect(PlanPlacement.decided(page: "Rally", missionArmed: false, rallyArmed: true) == .rally,
+           "and a rally point armed on the Rally page likewise")
+    expect(PlanPlacement.decided(page: "Rally", missionArmed: true, rallyArmed: false) == .nothing,
+           "but a waypoint armed on the MISSION page places NOTHING once the operator has moved to "
+           + "Rally. place() used to ask only whether armingRally was set and fall through to "
+           + "addWaypoint otherwise, so arming a waypoint and switching pages without placing left "
+           + "a map click adding a MISSION item while the rally list was on screen. The banner "
+           + "offering to stop adding was ALREADY gated on the page and had vanished, which reads "
+           + "as cancelled -- the head knew the page mattered for what it SAID and forgot it for "
+           + "what it DID")
+    expect(PlanPlacement.decided(page: "Mission", missionArmed: false, rallyArmed: true) == .nothing,
+           "and the same in reverse, so neither page can place the other's item")
+    expect(PlanPlacement.decided(page: "Fence", missionArmed: true, rallyArmed: true) == .nothing,
+           "and the Fence page places nothing by click at all -- its shapes come from the Add menu "
+           + "with a centre and a radius, so a stray click there must not drop a waypoint")
+    expect(PlanPlacement.decided(page: "Mission", missionArmed: true, rallyArmed: false).places,
+           "and the map only enters adding mode when the current page has something armed, so the "
+           + "cursor agrees with what a click would do")
+}
+
 func checkAWarnedRoutineIsNotTruncated() {
     func routine(_ id: String, warning: String) -> CalibrationRoutine? {
         CalibrationRoutine(["id": id, "title": id.capitalized, "invocation": "calibrate" + id,
@@ -2869,6 +2892,7 @@ checkSetupBlocked()
 checkCameraModeRow()
 checkAddMenuNeedsNoVehicle()
 checkAWarnedRoutineIsNotTruncated()
+checkAClickPlacesWhatThePageArms()
 
 final class ProbeStub: Probeable {
     static let probeID = "stub"
