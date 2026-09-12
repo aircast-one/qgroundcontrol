@@ -5612,3 +5612,43 @@ every conditional one is missing because QGC never created it. QGC has already
 evaluated `MNT1_TYPE`, `sub()` and the version compares, per vehicle rather than
 per firmware. Reported that `vehicleComponents` beats any table for this
 question.
+
+### The fence and rally round trip, closed, 2026-09-12
+
+Two rig defects stood between the claim and the evidence, and neither was in
+the head.
+
+`tools/apmvehicle.py` acked any non-zero `mission_type` and stored nothing. Fixed
+that — and upload still sent only `type=0`. The second defect was upstream of
+the first: the fake advertised `MISSION_FLOAT | PARAM_FLOAT | COMMAND_INT` and
+neither `MISSION_FENCE` nor `MISSION_RALLY`, and `GeoFenceController.cc:486` and
+`RallyPointController.cc:264` gate sending on exactly those bits. QGC was right
+to send nothing. **Either defect alone makes a fence round trip look like a head
+bug**, and fixing one leaves the other's symptom intact — which is the shape that
+cost a peer a false report earlier tonight.
+
+A third thing hid the fix after it was correct: **QGC caches `capabilityBits`
+from the `AUTOPILOT_VERSION` received when the vehicle connects.** Restarting the
+sim changed nothing until the app was force-stopped too.
+
+With all three handled, the round trip runs and matches:
+
+    upload    type=0 count=4   type=1 count=7   type=2 count=2
+    New plan  empties the tab
+    download  3 items (takeoff) · 3 fences · 2 rally · 677 m · 2:32
+
+Saved and compared against the file sent: both circles by radius, centre and
+inclusion; the polygon by all four vertices and its inclusion; both rally points
+including altitude; `breachReturn`; three mission items. **So the gate's plan
+half now covers fence and rally as well as mission items**, and the only thing
+left in Phase 4 is the flight.
+
+### A survey row shows the heights it spans
+
+`altitudeBandText` (`0b6bf1caf`) was in the built library and read nowhere — the
+head parsed `altitudeText` only, which is null for a survey. Wired it into
+`itemDetail` behind the item's own altitude (`a55f524`). On the handset a survey
+over ground with no terrain data reads `50.0 m`, the core collapsing a span of
+zero to one height rather than `50.0 m to 50.0 m`. The spanning case is
+unit-tested on both sides and still unseen — this rig has no terrain to vary
+over.
