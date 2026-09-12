@@ -4345,3 +4345,32 @@ and it is the best argument for putting a distinction in the assertion rather th
 
 **No code changed this cycle, deliberately.** The wording is not this head's to settle alone,
 and choosing one unilaterally would make the two heads diverge faster, not slower.
+
+### (x) Android confirmed the divergence is live — and a test stopped the fix I was about to make
+
+**It is not hypothetical.** Android draws **`"75 m above ground"`** where this head draws
+**`"75 m AGL"`** — same plan, same item, shipped on both. **`amsl` and `launch` agree; terrain
+is the one.** Neither head could have seen it.
+
+**Android found a worse case that I have identically**, and both heads' fallback is the same
+line: an unrecognised frame token is **uppercased and drawn**, so a token the core adds
+tomorrow renders as `"75 m RELATIVE"` — an internal identifier presented as aviation language,
+from a branch no diff would flag.
+
+**I went to delete mine, and an assertion already in the suite stopped me with a better
+argument than the one I was acting on:**
+
+> `expect(item("gundeck").altitudeReading, "541 m GUNDECK", "a frame this head has never heard
+> of is SHOWN, not swallowed. Falling through to bare would spell a frame nobody can read as
+> THE DEFAULT ONE, which is the exact failure the field was added to end.")`
+
+**An unlabelled altitude does not read as "unknown" — it reads as launch-relative**, the frame
+that legitimately carries no suffix. **Swallowing the token turns a frame the operator has
+never seen into the most common one, silently.** `GUNDECK` is visibly odd and sends them to the
+picker. **The generated string is the safer of two bad options; the defect is upstream of both
+heads and `altitudeFrameText` removes the branch rather than improving it.**
+
+**Reverted cleanly, shipped nothing. Second time in two cycles an existing assertion stopped a
+plausible change** — the first was the guided slider's precision rule. **Both times the test
+carried the reasoning and the code did not**, which is the argument for putting the why in the
+assertion rather than in a comment above the branch.
