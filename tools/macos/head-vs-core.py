@@ -104,11 +104,38 @@ def selected_survey(core):
 # position altitude instead, and the head falls back to the coordinate's, so comparing its 585 m
 # against a core answering null was this tool reporting a disagreement that was not one. Which
 # source was used is in the label, so the fallback cannot quietly stand in for the real thing.
-def altitude_check(seq, mine, theirs):
-    # Both sides are compared as the operator sees them, now that the core formats the altitude
-    # itself. That catches a divergence in the formatting as well as in the number, and it means
-    # neither side has to parse the other's string back into metres to disagree with it.
-    return (f"item {seq} altitude as shown", mine["altitude"], theirs["altitudeText"] or NO_ALTITUDE)
+# The shown altitude is COMPOSED: a measure the core formatted, plus a frame word this head adds.
+# Comparing that composed string against the core's bare altitudeText reported three of my own
+# commits as defects -- "585 m AMSL" against "585 m", and a survey's band against an em dash,
+# because altitudeText is null for a pattern while altitudeBandText holds the figure drawn.
+#
+# Decomposed rather than re-derived. Re-implementing the head's choice of source here would be a
+# fixture agreeing with its implementation: it would pass whatever the head did. These two checks
+# assert what the head cannot satisfy by being wrong -- the measure is a string the CORE produced
+# rather than one this head invented, and the frame word answers to the frame the CORE reported.
+#
+# What this deliberately does NOT decide: WHICH of the two core strings the head should have
+# picked. Both are legitimate sources, and specifiesAltitude is not served on every item, so
+# there is nothing here to settle it against. Named rather than skipped silently.
+FRAME_WORDS = {"amsl": "AMSL", "terrain": "AGL", "launch": "", "": ""}
+
+
+def altitude_checks(seq, mine, theirs):
+    shown = mine["altitude"]
+    frame = theirs.get("altitudeFrame") or ""
+    word = FRAME_WORDS.get(frame, frame.upper())
+    suffix = f" {word}" if word else ""
+    measure = shown[: -len(suffix)] if suffix and shown.endswith(suffix) else shown
+    offered = [text for text in (theirs.get("altitudeText"), theirs.get("altitudeBandText")) if text]
+    return [
+        (f"item {seq} altitude measure is one the core formatted",
+         measure,
+         measure if measure in offered or (not offered and measure == NO_ALTITUDE)
+         else " or ".join(offered) or NO_ALTITUDE),
+        (f"item {seq} altitude names its frame",
+         shown[len(measure):],
+         suffix if measure != NO_ALTITUDE else ""),
+    ]
 
 
 # Per item, and by sequence rather than by position, so a list that gained or lost one reports
@@ -134,7 +161,7 @@ def item_comparisons(head_items, core_items):
             (f"item {seq} name", mine[seq]["command"], theirs[seq]["name"]),
             (f"item {seq} has a position", mine[seq]["position"] != "\u2014",
              theirs[seq]["coordinate"] is not None),
-            altitude_check(seq, mine[seq], theirs[seq]),
+            *altitude_checks(seq, mine[seq], theirs[seq]),
         )
     ]
 

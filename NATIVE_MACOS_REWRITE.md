@@ -3427,3 +3427,31 @@ since the first frame-suffix commit.
 **The third difference — legs 4 against 3 — is NOT diagnosed.** `head-vs-core.py` builds
 its own plan, so the item list I inspected afterwards was not the one it judged. Naming
 it as open rather than guessing.
+
+### (bb) The checker had to stop re-deriving what it was checking
+
+`head-vs-core.py` compared my COMPOSED altitude string against the core's bare
+`altitudeText`, and so reported three of my own commits as defects: `585 m AMSL`
+against `585 m`, and a survey's band against an em dash, because `altitudeText` is
+null for a pattern while `altitudeBandText` holds the figure actually drawn.
+
+**The obvious repair — teach the checker the head's composition rule — is the one to
+refuse.** It would then pass whatever the head did, which is a fixture agreeing with its
+implementation. So the string is **decomposed** instead, into two checks the head cannot
+satisfy by being wrong: **the measure is a string the CORE produced** rather than one
+this head invented, and **the frame word answers to the frame the CORE reported.**
+
+**What it deliberately does not decide is WHICH of the two core strings the head should
+have picked.** Both are legitimate sources and `specifiesAltitude` is not served on every
+item, so nothing here can settle it. Named in the file rather than skipped silently.
+
+**Two controls, both mutated in place.** Mapping `amsl` to `MSL` fires 5 differences
+across both checks. Dropping `altitudeBandText` from the offered sources **reproduces the
+original blindness exactly** — item 4, `635 m` against an em dash — which is the check
+pointed at the very failure it was built for.
+
+50 facts became 57, and 56 agree. **The one remaining difference is (cc), legs 4 against
+3, still undiagnosed** — and the comment already standing above this function records an
+EARLIER version of the same check failing the same way in the other direction. Third time
+this one comparison has been wrong; it is the place where the head's presentation and the
+core's data are least alike, and it deserves the suspicion.
