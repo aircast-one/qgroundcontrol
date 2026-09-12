@@ -133,6 +133,7 @@ fn item(read: &Value, index: i64, vertical: &Unit, speed: &Unit, imperial: bool)
         "altitudeAmslLowest": number(read, "minAMSLAltitude"),
         "altitudeAmslHighest": number(read, "maxAMSLAltitude"),
         "altitudeBandText": band(read, vertical),
+        "altitudeSource": altitude_source(read, vertical),
         "altitudeFrame": altitude_frame(read, vertical),
         "specifiesCoordinate": flag(read, "specifiesCoordinate"),
         "altitudeChange": number(read, "altDifference"),
@@ -215,6 +216,14 @@ fn altitude_frame(read: &Value, vertical: &Unit) -> Option<&'static str> {
         MODE_ABSOLUTE => Some("amsl"),
         MODE_CALC_ABOVE_TERRAIN | MODE_TERRAIN_FRAME => Some("terrain"),
         _ => None,
+    }
+}
+
+fn altitude_source(read: &Value, vertical: &Unit) -> Option<&'static str> {
+    match (band(read, vertical).is_some(), height(read).is_some()) {
+        (true, _) => Some("band"),
+        (false, true) => Some("text"),
+        (false, false) => None,
     }
 }
 
@@ -664,6 +673,15 @@ mod reported {
             "minAMSLAltitude": 520.0, "maxAMSLAltitude": 560.0 }));
         assert_eq!(survey["altitudeFrame"], "amsl", "a pattern's band is sea-level, and it carries no altitudeMode either - so the two rows a head cannot infer are exactly the two that differ from the plan's default");
         assert_eq!(survey["altitudeText"], Value::Null, "and the frame describes whichever height the row does have, since a band and a text never both arrive");
+
+        assert_eq!(survey["altitudeSource"], "band", "a head holds two altitude strings and nothing told it which one this row means, so the one place that knows has to say");
+        assert_eq!(listed(simple(1, 75.0))["altitudeSource"], "text");
+        assert_eq!(listed(json!({ "kind": "object", "sequenceNumber": 4, "isSimpleItem": true, "specifiesAltitude": false }))["altitudeSource"], Value::Null, "a row that states no height at all names no string, rather than naming an empty one");
+        let both = listed(json!({ "kind": "object", "sequenceNumber": 5, "isSimpleItem": false, "specifiesCoordinate": true,
+            "minAMSLAltitude": 520.0, "maxAMSLAltitude": 560.0, "facts": [ { "property": "altitude", "value": 75.0 } ] }));
+        assert_eq!(both["altitudeBandText"].is_null(), false);
+        assert_eq!(both["altitudeText"].is_null(), false);
+        assert_eq!(both["altitudeSource"], "band", "the two are mutually exclusive in every plan measured so far, which is an observation and not a guarantee - if a row ever carries both, the band is the one that describes a pattern and this says so rather than leaving each head to pick");
 
         let command = listed(json!({ "kind": "object", "sequenceNumber": 2, "isSimpleItem": true, "specifiesAltitude": false, "altitudeMode": 1 }));
         assert_eq!(command["altitudeFrame"], Value::Null, "a DO_ command still carries an altitudeMode, because that is a SimpleMissionItem property - so the mode alone is not evidence there is a height to frame");

@@ -56,9 +56,9 @@ pub fn plan_view(backend: &dyn Backend, _args: &[String]) -> Value {
         "rallySupported": rally,
         "unsupportedReason": match (fences, rally) {
             (None, _) | (_, None) => "This vehicle has not said what it accepts yet.",
-            (Some(false), Some(false)) => "This vehicle accepts neither a geofence nor rally points.",
-            (Some(false), Some(true)) => "This vehicle does not accept a geofence.",
-            (Some(true), Some(false)) => "This vehicle does not accept rally points.",
+            (Some(false), Some(false)) => "This link accepts neither a geofence nor rally points.",
+            (Some(false), Some(true)) => "This link does not accept a geofence.",
+            (Some(true), Some(false)) => "This link does not accept rally points.",
             (Some(true), Some(true)) => "",
         },
         "sync": sync_json(offline, syncing),
@@ -178,6 +178,7 @@ mod tests {
         assert_eq!(neither["actions"]["addRally"], false);
         assert_eq!(neither["fenceSupported"], false);
         assert!(neither["unsupportedReason"].as_str().unwrap().contains("neither"));
+        assert!(neither["unsupportedReason"].as_str().unwrap().starts_with("This link"), "GeoFenceController::supported is a capability bit AND maxProtoVersion >= 200, so a false can mean the vehicle lacks the feature or that the link speaks MAVLink 1 - naming the vehicle picks one of the two causes without reading either, and the operator acts on the wrong one");
 
         let fence_only = plan_view(&supporting(connected.clone(), true, false), &[]);
         assert_eq!(fence_only["actions"]["addFence"], true, "the two are separate capabilities and a vehicle can accept one and not the other");
