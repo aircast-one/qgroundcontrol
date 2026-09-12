@@ -74,7 +74,7 @@ void LogDownloadController::_downloadToDirectory(const QString &dir)
 
     QGCLogEntry *const log = _getNextSelected();
     if (log) {
-        log->setStatus(tr("Waiting"));
+        log->setStatus(tr("Waiting"), QStringLiteral("waiting"));
     }
 
     _setDownloading(true);
@@ -121,7 +121,7 @@ void LogDownloadController::_findMissingEntries()
         for (int i = 0; i < num_logs; i++) {
             QGCLogEntry *const entry = _logEntriesModel->value<QGCLogEntry*>(i);
             if (entry && !entry->received()) {
-                entry->setStatus(tr("Error"));
+                entry->setStatus(tr("Error"), QStringLiteral("error"));
             }
         }
 
@@ -188,7 +188,7 @@ void LogDownloadController::_logEntry(uint32_t time_utc, uint32_t size, uint16_t
                 entry->setSize(size);
                 entry->setTime(QDateTime::fromSecsSinceEpoch(time_utc));
                 entry->setReceived(true);
-                entry->setStatus(tr("Available"));
+                entry->setStatus(tr("Available"), QStringLiteral("available"));
             } else {
                 qCWarning(LogDownloadControllerLog) << "Received log entry for out-of-bound index:" << id;
             }
@@ -279,7 +279,7 @@ void LogDownloadController::_logData(uint32_t ofs, uint16_t id, uint8_t count, c
 
             _timer->start(kTimeOutMs);
             if (_logComplete()) {
-                _downloadData->entry->setStatus(tr("Downloaded"));
+                _downloadData->entry->setStatus(tr("Downloaded"), QStringLiteral("downloaded"));
                 _receivedAllData();
             } else if (_chunkComplete()) {
                 _downloadData->advanceChunk();
@@ -298,7 +298,7 @@ void LogDownloadController::_logData(uint32_t ofs, uint16_t id, uint8_t count, c
     }
 
     if (!result) {
-        _downloadData->entry->setStatus(tr("Error"));
+        _downloadData->entry->setStatus(tr("Error"), QStringLiteral("error"));
     }
 }
 
@@ -349,7 +349,7 @@ void LogDownloadController::_updateDataRate()
     const QString status = QStringLiteral("%1 (%2/s)").arg(qgcApp()->bigSizeToString(_downloadData->written),
                                                            qgcApp()->bigSizeToString(_downloadData->rate_avg));
 
-    _downloadData->entry->setStatus(status);
+    _downloadData->entry->setStatus(status, QStringLiteral("downloading"));
     _downloadData->elapsed.start();
 }
 
@@ -433,7 +433,7 @@ bool LogDownloadController::_prepareLogDownload()
             (void) _downloadData->file.remove();
         }
 
-        _downloadData->entry->setStatus(QStringLiteral("Error"));
+        _downloadData->entry->setStatus(tr("Error"), QStringLiteral("error"));
         _downloadData.reset();
     }
 
@@ -469,7 +469,7 @@ void LogDownloadController::cancel()
     _receivedAllEntries();
 
     if (_downloadData) {
-        _downloadData->entry->setStatus(QStringLiteral("Canceled"));
+        _downloadData->entry->setStatus(tr("Canceled"), QStringLiteral("canceled"));
         if (_downloadData->file.exists()) {
             (void) _downloadData->file.remove();
         }
@@ -492,7 +492,7 @@ void LogDownloadController::_resetSelection(bool canceled)
 
         if (entry->selected()) {
             if (canceled) {
-                entry->setStatus(tr("Canceled"));
+                entry->setStatus(tr("Canceled"), QStringLiteral("canceled"));
             }
             entry->setSelected(false);
         }

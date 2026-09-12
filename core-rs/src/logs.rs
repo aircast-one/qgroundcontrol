@@ -65,6 +65,7 @@ pub fn logs_view(backend: &dyn Backend, _args: &[String]) -> Value {
                         "sizeBytes": size,
                         "sizeText": human_size(size),
                         "status": e.get("status").and_then(Value::as_str).unwrap_or(""),
+                        "statusId": e.get("statusId").and_then(Value::as_str).unwrap_or(""),
                         "received": flag(e, "received"),
                         "selected": flag(e, "selected"),
                         "time": time,
@@ -86,7 +87,7 @@ pub fn logs_view(backend: &dyn Backend, _args: &[String]) -> Value {
         "canDownload": !busy,
         "canCancel": busy,
         "canErase": !entries.is_empty() && !busy,
-        "anyDownloaded": entries.iter().any(|e| e["status"] == "Downloaded"),
+        "anyDownloaded": entries.iter().any(|e| e["statusId"] == "downloaded"),
         "emptyText": empty_text(connected, requesting),
         "eraseWarning": erase_warning(entries.len()),
         "entries": entries,
@@ -128,11 +129,15 @@ mod tests {
             fn invoke(&self, _p: &str, _a: &str) -> String { String::new() }
             fn watch(&self, _p: &[String]) {}
         }
-        let idle = logs_view(&Fake { connected: true, requesting: false, entries: json!([{ "id": 1, "size": 4096, "status": "Downloaded", "received": true, "selected": false, "time": "2026-09-08T14:42:51.000" }]) }, &[]);
+        let idle = logs_view(&Fake { connected: true, requesting: false, entries: json!([{ "id": 1, "size": 4096, "status": "Downloaded", "statusId": "downloaded", "received": true, "selected": false, "time": "2026-09-08T14:42:51.000" }]) }, &[]);
         assert_eq!(idle["canRefresh"], true);
         assert_eq!(idle["canDownload"], true, "nothing selected and not busy still enables download, as the QGC page does");
         assert_eq!(idle["canErase"], true);
         assert_eq!(idle["anyDownloaded"], true);
+
+        let german = logs_view(&Fake { connected: true, requesting: false, entries: json!([{ "id": 1, "size": 4096, "status": "Heruntergeladen", "statusId": "downloaded", "received": true, "selected": false, "time": "2026-09-08T14:42:51.000" }]) }, &[]);
+        assert_eq!(german["anyDownloaded"], true, "LogDownloadController wraps every status in tr(), so comparing against the English word made this permanently false outside English and whatever it gates never appeared");
+        assert_eq!(german["entries"][0]["statusId"], "downloaded", "the id travels beside the text so a head can tell Available from Error without reading either word");
         assert_eq!(idle["entries"][0]["sizeText"], "4.0 KB");
         assert_eq!(idle["entries"][0]["timeState"], "known");
         assert!(idle["entries"][0].get("timeText").is_none(), "the head renders the time in its own locale");
