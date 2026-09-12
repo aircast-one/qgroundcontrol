@@ -1,6 +1,6 @@
 use serde_json::{Value, json};
 
-use crate::read::{object, refused};
+use crate::read::{Unit, object, refused};
 use crate::router::Backend;
 
 pub const DEPS: &[&str] = &[
@@ -21,11 +21,8 @@ fn points(json: Option<&Value>) -> Vec<(f64, f64)> {
     json.and_then(Value::as_array).map(|a| a.iter().filter_map(point).collect()).unwrap_or_default()
 }
 
-pub fn area_text(area: f64) -> String {
-    match area >= 10000.0 {
-        true => format!("{:.2} km\u{b2}", area / 1_000_000.0),
-        false => format!("{area:.0} m\u{b2}"),
-    }
+pub fn area_text(area: f64, unit: &Unit) -> String {
+    crate::read::format_measure(unit.show(area), &unit.name)
 }
 
 fn elements(backend: &dyn Backend, path: &str) -> Vec<Value> {
@@ -40,7 +37,7 @@ fn radius_fact(json: &Value) -> (f64, String) {
         .unwrap_or((0.0, "m".to_string()))
 }
 
-fn polygon_json(index: usize, json: &Value) -> Value {
+fn polygon_json(index: usize, json: &Value, area_unit: &Unit) -> Value {
     let inclusion = json.get("inclusion").and_then(Value::as_bool).unwrap_or(false);
     let vertices = points(json.get("path"));
     let count = json.get("count").and_then(Value::as_i64).unwrap_or(vertices.len() as i64);
@@ -52,7 +49,7 @@ fn polygon_json(index: usize, json: &Value) -> Value {
         "shape": "polygon",
         "inclusion": inclusion,
         "kindText": if inclusion { "Keep-in polygon" } else { "Keep-out polygon" },
-        "detailText": if area > 0.0 { format!("{vertex_text} \u{b7} {}", area_text(area)) } else { vertex_text },
+        "detailText": if area > 0.0 { format!("{vertex_text} \u{b7} {}", area_text(area, area_unit)) } else { vertex_text },
         "vertices": vertices.iter().map(|(lat, lon)| json!({ "latitude": lat, "longitude": lon })).collect::<Vec<_>>(),
         "usable": vertices.len() >= 3,
         "framing": vertices.iter().map(|(lat, lon)| json!({ "latitude": lat, "longitude": lon })).collect::<Vec<_>>(),
@@ -90,7 +87,7 @@ fn circle_json(index: usize, json: &Value) -> Value {
 }
 
 pub fn fences_view(backend: &dyn Backend, _args: &[String]) -> Value {
-    let polygons: Vec<Value> = elements(backend, "plan.geoFenceController.polygons").iter().enumerate().map(|(i, p)| polygon_json(i, p)).collect();
+    let polygons: Vec<Value> = elements(backend, "plan.geoFenceController.polygons").iter().enumerate().map(|(i, p)| polygon_json(i, p, &Unit::area(backend))).collect();
     let circles: Vec<Value> = elements(backend, "plan.geoFenceController.circles").iter().enumerate().map(|(i, c)| circle_json(i, c)).collect();
     let rally: Vec<Value> = elements(backend, "plan.rallyPointController.points")
         .iter()
@@ -187,13 +184,16 @@ mod tests {
         let view = fences_view(&Fake, &[]);
         assert_eq!(view["count"], 2);
         assert_eq!(view["polygons"][0]["kindText"], "Keep-out polygon");
-        assert_eq!(view["polygons"][0]["detailText"], "4 vertices \u{b7} 0.03 km\u{b2}");
+        assert_eq!(view["polygons"][0]["detailText"], "4 vertices \u{b7} 25000 m\u{b2}", "the fence area follows the operator's unit now, the way the survey area always has - it stepped to km\u{b2} by hand before, whatever the five area settings said");
         assert_eq!(view["circles"][0]["detailText"], "150 m radius");
         assert_eq!(view["circles"][0]["centreText"], "47.000000, 8.000000");
         assert_eq!(view["circles"][0]["framing"].as_array().unwrap().len(), 2);
         assert_eq!(view["rallyPoints"][0]["path"], "plan.rallyPointController.points.0");
         assert_eq!((view["rallyPoints"][0]["altitude"].clone(), view["rallyPoints"][0]["altitudeUnits"].clone()), (json!(50.0), json!("m")));
-        assert_eq!(area_text(9999.0), "9999 m\u{b2}");
+        let metric = Unit { name: "m\u{b2}".to_string(), factor: 1.0 };
+        assert_eq!(area_text(9999.0, &metric), "9999 m\u{b2}");
+        let hectares = Unit { name: "ha".to_string(), factor: 0.0001 };
+        assert_eq!(area_text(89999.0, &hectares), "9.0 ha", "the operator picks the area unit from five, and a fence that spelled km\u{b2} by hand ignored the choice - nine hectares read as 0.09 km\u{b2} whatever they asked for");
     }
 
     #[test]
@@ -213,12 +213,13 @@ mod tests {
 
     #[test]
     fn a_fence_that_will_not_say_which_kind_it_is_reads_as_the_restrictive_one() {
-        let polygon = polygon_json(0, &json!({ "path": [ { "latitude": 47.0, "longitude": 8.0 }, { "latitude": 47.1, "longitude": 8.0 }, { "latitude": 47.1, "longitude": 8.1 } ] }));
+        let metres = Unit { name: "m\u{b2}".to_string(), factor: 1.0 };
+        let polygon = polygon_json(0, &json!({ "path": [ { "latitude": 47.0, "longitude": 8.0 }, { "latitude": 47.1, "longitude": 8.0 }, { "latitude": 47.1, "longitude": 8.1 } ] }), &metres);
         assert_eq!(polygon["inclusion"], false);
         assert_eq!(polygon["kindText"], "Keep-out polygon", "mistaking a keep-out zone for a boundary to stay inside flies an operator into forbidden airspace; the other way round only keeps them out of their own");
         let circle = circle_json(0, &json!({ "center": { "latitude": 47.0, "longitude": 8.0 } }));
         assert_eq!(circle["kindText"], "Keep-out circle");
-        let stated = polygon_json(0, &json!({ "inclusion": true, "path": [] }));
+        let stated = polygon_json(0, &json!({ "inclusion": true, "path": [] }), &metres);
         assert_eq!(stated["kindText"], "Keep-in polygon", "a fence that says what it is is taken at its word");
     }
 
