@@ -4089,3 +4089,35 @@ from here on.** A blank map region in a capture is the expected appearance.
 
 **What made this worth an hour: the probe and the screen disagreed, and the rule is to check
 both rather than believe the louder one.** Here the screen was wrong.
+
+### (oo) One battery, spelled two ways in one app
+
+**The last two unread views were worth reading for opposite reasons.**
+
+`view.battery` held a real inconsistency. **The core spells each pack's voltage from the
+vehicle's own Fact, units included** — its test pins `"15.80V"` — and **the Fly view already
+drew that string** through `secondaryText`. The power panel in vehicle setup took the raw
+number and re-spelled it with `String(format: "%.2f V")`, producing **`"15.80 V"`**. **One
+battery, written two ways, in two places in one app.**
+
+**The locale half is the part that would have hurt later.** `String(format:)` is
+**locale-independent** and always emits a full stop; the core's `voltage_text` is
+`shown("voltage")`, a Fact's displayed value, which is locale-aware. **In a build whose Fact
+reads `15,80V`, that one row would still have printed `15.80 V`** — a decimal separator
+disagreeing with every other number on the same screen. Same shape as the summary row
+labels: latent, a line to fix now, three wrong-looking figures later.
+
+**What is NOT fixed, and is a gap rather than a decision:** current and percent are still
+formatted in the head, because **the core serves no `currentText` or `percentText`** — voltage
+is the only measure with a spelling. Asked for them. **A head that refused to draw a current
+rather than spell it differently from a string that does not exist would be worse.**
+
+`view.label` stays unread and rightly: it returns **a bare `value` string** through
+`Labels.humanise`, and a struct around one string is ceremony. **That closes the thirteen.**
+
+**And the coverage guard earned itself within the hour.** Listing `BatteryReading` took the
+checkers to 35 models — and the same run reported **four views the core serves that nothing
+here reads**: `adsbTraffic`, `followMe`, `gcsPosition`, `gimbal`. They are in the core's
+**uncommitted** working copy, with their `.rs` files untracked, and the running binary
+answers a bare null for all four. **`view-fields.py` reads the registry SOURCE by design, so
+it sees a peer's in-flight views before they exist. Left red rather than weakened.**
