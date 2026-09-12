@@ -58,6 +58,35 @@ LOOKUP = re.compile(r'\w+\??\[\s*"([^"]+)"\s*\]|\b\w+\(\s*"([^"]+)"\s*\)')
 LITERAL = re.compile(r'"((?:[^"\\]|\\.)*)"')
 COMMENT = re.compile(r"//[^\n]*")
 
+
+# A regex cannot strip Rust line comments, because "//" occurs INSIDE string literals -- an SSE
+# URL, an rtsp:// fixture. Cutting there deletes the rest of the line INCLUDING the closing quote,
+# and every later quote pairs off by one: one poisoned line in detections.rs swallowed 1861
+# characters as a single "literal" and hid stale, error and confidence. The instrument then
+# reported keys as GONE that the core still serves, and could not have seen a real removal after
+# that line either. Both directions, from one stray "//".
+def strip_line_comments(text):
+    out, index, length = [], 0, len(text)
+    while index < length:
+        char = text[index]
+        if char == "r" and text.startswith(('r"', 'r#'), index):
+            hashes = len(text[index + 1:]) - len(text[index + 1:].lstrip("#"))
+            close = '"' + "#" * hashes
+            end = text.find(close, index + 2 + hashes)
+            end = length if end < 0 else end + len(close)
+            out.append(text[index:end]); index = end
+        elif char == '"':
+            end = index + 1
+            while end < length and text[end] != '"':
+                end += 2 if text[end] == "\\" else 1
+            out.append(text[index:min(end + 1, length)]); index = end + 1
+        elif text.startswith("//", index):
+            end = text.find("\n", index)
+            index = length if end < 0 else end
+        else:
+            out.append(char); index += 1
+    return "".join(out)
+
 # Not every key is written as a string. A serde-derived struct serialises its FIELD NAMES, so
 # preflight.rs never spells "prompt", "verdict" or "reason" and all three reach the head --
 # reported as gone until this was added. Fourth blindness in this reference set, each one a
@@ -228,7 +257,7 @@ for model, view in sorted(MODELS.items()):
         continue
     emitted = set()
     for source in sources:
-        stripped = COMMENT.sub("", source.read_text())
+        stripped = strip_line_comments(source.read_text())
         emitted |= set(LITERAL.findall(stripped)) | set(FIELD.findall(stripped))
     for key in sorted(read - emitted):
         gone.append((model, key, view, "/".join(modules)))
