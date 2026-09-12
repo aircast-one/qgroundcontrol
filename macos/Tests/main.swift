@@ -4883,6 +4883,14 @@ func checkAnItemSaysEverythingItDoes() {
            + "judgement the core makes about a commanded speed of zero, made on the other side")
     expect(item(hold: 2.5).subtitle(unreached: false), "Holds for 2.5 s",
            "a fraction keeps its fraction, and a whole number loses the .0 a Double would print")
+    expect(item(hold: Double(Float(2.7))).subtitle(unreached: false), "Holds for 2.7 s",
+           "a hold that has been through a vehicle keeps a bounded number of digits. A mission "
+           + "item's param1 is a float32 on the wire, so a plan DOWNLOADED from a vehicle widens "
+           + "2.7 to 2.700000047683716, and String(Double) prints every one of those digits -- the "
+           + "row read \"Holds for 2.700000047683716 s\". The local editing path never showed it "
+           + "because the core serves a clean 2.7 when the value came from a fact this head set, "
+           + "measured on the running app. Swift's Double description is a debugging spelling, "
+           + "never a drawn measurement")
     expect(item(hold: 1e30).subtitle(unreached: false), "Holds for 1000000000000000019884624838656 s",
            "and an absurd number is spelled, not crashed on. String(Int(seconds)) would trap here "
            + "-- the value is past Int.max -- so a payload nobody expects would take down the plan "

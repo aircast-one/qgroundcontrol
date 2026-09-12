@@ -81,7 +81,7 @@ struct MissionItem: Identifiable, Equatable {
         guard let extraSeconds, extraSeconds.isFinite, extraSeconds > 0 else { return nil }
         let whole = extraSeconds.rounded() == extraSeconds
         return "Holds for "
-            + (whole ? String(format: "%.0f", extraSeconds) : String(extraSeconds)) + " s"
+            + String(format: whole ? "%.0f" : "%.1f", extraSeconds) + " s"
     }
 
     var foldedReading: String? {
