@@ -91,7 +91,7 @@ class VideoPanelVisibilityTest {
             ),
         )
 
-        org.junit.Assert.assertEquals(false, off?.available)
+        assertEquals(false, off?.available)
     }
 
     @Test
@@ -104,6 +104,6 @@ class VideoPanelVisibilityTest {
             ),
         )
 
-        org.junit.Assert.assertEquals(true, waiting?.available)
+        assertEquals(true, waiting?.available)
     }
 }

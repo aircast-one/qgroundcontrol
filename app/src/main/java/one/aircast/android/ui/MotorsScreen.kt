@@ -16,6 +16,8 @@ import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import androidx.compose.foundation.layout.Row
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import androidx.compose.foundation.layout.FlowRow
@@ -60,8 +62,8 @@ fun MotorsScreen(modifier: Modifier = Modifier) {
             Text(it, style = MaterialTheme.typography.bodySmall)
         }
 
-        androidx.compose.foundation.layout.Row(
-            verticalAlignment = androidx.compose.ui.Alignment.CenterVertically,
+        Row(
+            verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(12.dp),
         ) {
             Switch(checked = propsOff, onCheckedChange = { propsOff = it })

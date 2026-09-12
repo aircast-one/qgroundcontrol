@@ -74,7 +74,6 @@ import one.aircast.android.ui.PlanTab
 import one.aircast.android.ui.RcControlsLayer
 import one.aircast.android.ui.SettingsScreen
 import one.aircast.android.ui.SetupScreen
-import one.aircast.android.ui.StatusStrip
 import one.aircast.android.ui.VehicleTitle
 import one.aircast.mapspike.FlyMap
 import one.aircast.android.ui.VideoSourceLayer

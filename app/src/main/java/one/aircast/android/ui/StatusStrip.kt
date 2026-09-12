@@ -79,60 +79,6 @@ internal fun satsText(fix: FixLevel, count: String): String = when (fix) {
 }
 
 
-@Composable
-fun StatusStrip(modifier: Modifier = Modifier) {
-    val available by qgcBool("vehicles.activeVehicleAvailable")
-    if (!available) return
-
-    val stateJson by qgcPath(FLY_STATE)
-    val live = remember(stateJson) { flyState(stateJson)?.staleNotice.isNullOrBlank() }
-
-    val batteryJson by qgcPath(BATTERY)
-    val rcRssi by qgcDouble("vehicle.rcRSSI", Double.NaN)
-    val supportsRadio by qgcBool("vehicle.supportsRadio")
-    val battery = remember(batteryJson) { batteryReading(batteryJson) }
-    val satellites by qgcString("$GPS.count")
-    val hdop by qgcString("$GPS.hdop")
-    val lock by qgcDouble("$GPS.lock")
-    val fix = fixLevel(lock)
-
-    Row(
-        modifier
-            .alpha(if (live) 1f else 0.45f)
-            .fillMaxWidth()
-            .horizontalScroll(rememberScrollState())
-            .padding(horizontal = 12.dp, vertical = 6.dp),
-        horizontalArrangement = Arrangement.spacedBy(20.dp),
-        verticalAlignment = Alignment.CenterVertically,
-    ) {
-        battery?.let { reading ->
-            StatusCell("Battery", reading.text, batteryLevelColour(reading.level))
-        }
-        fix?.let { StatusCell("Sats", satsText(it, satellites), gpsColour(it)) }
-        if (fix != FixLevel.None) {
-            hdop.ifBlank { null }?.let { StatusCell("HDOP", it, Color.Unspecified) }
-        }
-        val rssi = rcRssi.takeIf { !it.isNaN() }?.toInt()
-        rcSignalText(supportsRadio, rssi)?.let {
-            StatusCell("RC", it, if (rssi == 0) CRITICAL else Color.Unspecified)
-        }
-    }
-}
-
-@Composable
-private fun StatusCell(label: String, value: String, colour: Color) {
-    Column(horizontalAlignment = Alignment.CenterHorizontally) {
-        Text(
-            value,
-            style = MaterialTheme.typography.titleSmall,
-            fontWeight = FontWeight.Bold,
-            color = if (colour == Color.Unspecified) MaterialTheme.colorScheme.onSurface else colour,
-        )
-        Text(label, style = MaterialTheme.typography.labelSmall)
-    }
-}
-
-
 private val CAUTION = Color(0xFFFFD54F)
 private val WARNING = Color(0xFFFFB74D)
 private val CRITICAL = Color(0xFFFF5252)
