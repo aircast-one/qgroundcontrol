@@ -1255,6 +1255,7 @@ const char *const kViewPaths[] = {
     "view.geoToNed(47.397,8.546,500,47.396,8.545,490)", "view.nedToGeo(100,50,-10,47.396,8.545,490)",
     "view.geoToUtm(47.397,8.546)", "view.utmToGeo(465000,5248000,32)",
     "view.adsbTraffic", "view.followMe", "view.gcsPosition", "view.gimbal",
+    "view.cameraProtocol", "view.joystickMapping",
 };
 
 } // namespace
@@ -1356,6 +1357,7 @@ void QGCCoreCTest::_viewShapesMatchTheRecordedContract()
         { QStringLiteral("view.kmlFile"), QStringLiteral("needs a KML file on disk") },
         { QStringLiteral("view.shapeFile"), QStringLiteral("needs a shapefile on disk") },
         { QStringLiteral("view.terrainTile"), QStringLiteral("needs a terrain tile on disk") },
+        { QStringLiteral("view.cameraDefinition"), QStringLiteral("needs a camera definition file on disk") },
         { QStringLiteral("view.coreVehicle"), QStringLiteral("takes a vehicle id and the recorder has not established which id the mock holds") },
         { QStringLiteral("view.coreGuided"), QStringLiteral("takes a vehicle id and the recorder has not established which id the mock holds") },
         { QStringLiteral("view.coreParameter"), QStringLiteral("takes a vehicle id and a parameter name") },

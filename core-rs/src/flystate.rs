@@ -3,7 +3,7 @@ use serde_json::{Value, json};
 use crate::read::{flag, object, text};
 use crate::router::Backend;
 
-pub const DEPS: &[&str] = &["vehicles.activeVehicleAvailable", "vehicle.armed", "vehicle.flying", "vehicle.landing", "vehicle.flightMode", "vehicle.vehicleLinkManager.communicationLost"];
+pub const DEPS: &[&str] = &["vehicles.activeVehicleAvailable", "vehicle.armed", "vehicle.flying", "vehicle.landing", "vehicle.flightMode", "vehicle.vehicleLinkManager.communicationLost", "planFly.missionController.currentMissionIndex"];
 
 pub const STALE_NOTICE: &str = "No contact — these are the last values the vehicle sent.";
 
@@ -54,6 +54,13 @@ pub fn state_of(connected: bool, contact_lost: bool, armed: bool, flying: bool, 
     }
 }
 
+fn flying_to(backend: &dyn Backend) -> Option<i64> {
+    object(&backend.get_fields("planFly.missionController", "currentMissionIndex"))
+        .get("currentMissionIndex")
+        .and_then(Value::as_i64)
+        .filter(|sequence| *sequence >= 0)
+}
+
 pub fn fly_state_view(backend: &dyn Backend, _args: &[String]) -> Value {
     let vehicle = object(&backend.get_fields("vehicle", "armed,flying,landing,flightMode"));
     let connected = vehicle.get("kind").and_then(Value::as_str) == Some("object");
@@ -72,6 +79,7 @@ pub fn fly_state_view(backend: &dyn Backend, _args: &[String]) -> Value {
         "stateText": state.line(),
         "staleNotice": if contact_lost { STALE_NOTICE } else { "" },
         "mode": text(&vehicle, "flightMode"),
+        "flyingToSequence": flying_to(backend),
     })
 }
 
@@ -82,6 +90,7 @@ mod tests {
     struct Fake {
         vehicle: Value,
         lost: bool,
+        flying_to: i64,
     }
 
     impl Backend for Fake {
@@ -91,6 +100,7 @@ mod tests {
         fn get_fields(&self, path: &str, _fields: &str) -> String {
             match path {
                 "vehicle" => self.vehicle.to_string(),
+                "planFly.missionController" => json!({ "kind": "object", "currentMissionIndex": self.flying_to }).to_string(),
                 "vehicle.vehicleLinkManager" => json!({ "kind": "object", "communicationLost": self.lost }).to_string(),
                 _ => json!({ "kind": "null" }).to_string(),
             }
@@ -101,7 +111,15 @@ mod tests {
     }
 
     fn read(vehicle: Value, lost: bool) -> Value {
-        fly_state_view(&Fake { vehicle, lost }, &[])
+        fly_state_view(&Fake { vehicle, lost, flying_to: -1 }, &[])
+    }
+
+    #[test]
+    fn the_item_the_aircraft_is_flying_to_is_a_sequence_and_is_withheld_on_the_ground() {
+        let airborne = |flying_to: i64| fly_state_view(&Fake { vehicle: aloft(true, true, false), lost: false, flying_to }, &[])["flyingToSequence"].clone();
+        assert_eq!(airborne(3), json!(3), "MissionController::currentMissionIndex is a sequence number, already stepped past home for firmwares that do not send it, so a head matches it against an item's sequence rather than its index - the two differ as soon as a complex item is in the plan");
+        assert_eq!(airborne(-1), Value::Null, "the fly controller answers -1 in the plan view and before the vehicle names an item, and a head drawing -1 would highlight nothing or the row before the first");
+        assert_eq!(airborne(0), json!(0), "sequence 0 is the launch row and a real answer");
     }
 
     fn aloft(armed: bool, flying: bool, landing: bool) -> Value {
