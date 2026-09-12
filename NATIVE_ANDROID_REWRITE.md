@@ -24,12 +24,13 @@ QGC linked in as `AircastQGC.aar`.
 
 What landed, native:
 
-- **Shell and navigation** — `MainActivity`, six tabs, Material 3. QGC's fly-view toolbar and the
+- **Shell and navigation** — `MainActivity`, five tabs since Parameters folded into Setup, Material 3. QGC's fly-view toolbar and the
   plan view's Fly/Plan switcher are gated off behind `toolbarVisible` / `hostProvidesNavigation`.
 - **Settings** — eight fact groups rendered from metadata; switches, dropdowns and fields chosen by
   fact type.
 - **Comm links** — list, connect, disconnect over `links.linkConfigurations`.
-- **Vehicle status** — flight mode, armed, battery, satellites, HDOP, RC signal.
+- **Vehicle status** — flight mode, armed, battery, satellites, RC signal. HDOP was dropped when the
+  readings moved into the single header row, so that RC fits without scrolling.
 - **Flight actions** — arm/disarm, mode picker, takeoff, land, RTL.
 - **Parameters** — search and edit over the full tree.
 - **Activity duties** — wake lock, multicast lock, font scale, safe area, deep links, USB serial,
@@ -51,9 +52,11 @@ QGC's desktop UI and this app draws none of them.
 1. **Hardware.** Everything was verified against SITL, a fake vehicle and a OnePlus 6, never a real
    airframe. Accelerometer, compass and radio calibration on real hardware are unproven, as is the
    Phase 4 flight gate — 212 items uploaded, flown, downloaded byte-identical.
-2. **Motor test and CompassMot**, deliberately not built: both spin propellers and need a supervised
+2. ~~**Motor test and CompassMot**, deliberately not built: both spin propellers and need a supervised
    airframe. `Vehicle::motorTest` is already `Q_INVOKABLE`, so this is a safety decision rather than
-   a bridge one, and the pages send the operator to desktop QGC.
+   a bridge one, and the pages send the operator to desktop QGC.~~ **Overruled and built, 2026-09-13.**
+   `ui/MotorsScreen.kt` mirrors `MotorComponent` behind a propellers-off switch; CompassMot is a
+   routine in the core's list carrying `spinsPropeller` so the page names the ones that turn a motor.
 3. **Radio calibration is not built here either**, and belongs with item 2 rather than on its own.
    The Radio page is a channel monitor; its footer tells the operator that "calibration stays on the
    desktop: it needs you holding each stick at its extremes while watching the aircraft, and it
