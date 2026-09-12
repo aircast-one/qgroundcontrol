@@ -143,9 +143,10 @@ def main():
                               else mavlink.MAV_PARAM_TYPE_REAL32,
                               len(names), names.index(name))
 
-    stored = []          # mission the vehicle holds
-    incoming = {}        # seq -> item while an upload is in progress
-    expected = 0         # how many items the GCS said it would send
+    stored = {}
+    incoming = {}
+    expected = 0
+    uploading = 0
 
     while True:
         elapsed = time.time() - boot
@@ -314,42 +315,45 @@ def main():
                         message.get_srcSystem(), message.get_srcComponent()), flush=True)
                     link.command_ack_send(message.command, mavlink.MAV_RESULT_ACCEPTED)
                 elif kind == "MISSION_COUNT":
-                    if getattr(message, "mission_type", 0) != 0:
-                        link.mission_ack_send(255, 0, mavlink.MAV_MISSION_ACCEPTED,
-                                              mission_type=getattr(message, "mission_type", 0))
-                        continue
+                    uploading = getattr(message, "mission_type", 0)
                     expected = message.count
                     incoming = {}
-                    print("UPLOAD start count=%d" % expected, flush=True)
+                    print("UPLOAD start type=%d count=%d" % (uploading, expected), flush=True)
                     if expected == 0:
-                        stored = []
-                        link.mission_ack_send(255, 0, mavlink.MAV_MISSION_ACCEPTED)
+                        stored[uploading] = []
+                        link.mission_ack_send(255, 0, mavlink.MAV_MISSION_ACCEPTED,
+                                              mission_type=uploading)
                     else:
-                        link.mission_request_int_send(255, 0, 0)
+                        link.mission_request_int_send(255, 0, 0, mission_type=uploading)
                 elif kind == "MISSION_ITEM_INT":
                     incoming[message.seq] = message
                     if len(incoming) < expected:
-                        link.mission_request_int_send(255, 0, len(incoming))
+                        link.mission_request_int_send(255, 0, len(incoming),
+                                                      mission_type=uploading)
                     else:
-                        stored = [incoming[i] for i in sorted(incoming)]
-                        link.mission_ack_send(255, 0, mavlink.MAV_MISSION_ACCEPTED)
-                        print("UPLOAD done items=%d" % len(stored), flush=True)
-                        for item in stored:
+                        stored[uploading] = [incoming[i] for i in sorted(incoming)]
+                        link.mission_ack_send(255, 0, mavlink.MAV_MISSION_ACCEPTED,
+                                              mission_type=uploading)
+                        print("UPLOAD done type=%d items=%d" % (
+                            uploading, len(stored[uploading])), flush=True)
+                        for item in stored[uploading]:
                             print("  seq=%d cmd=%d lat=%.7f lon=%.7f alt=%.1f" % (
                                 item.seq, item.command, item.x / 1e7, item.y / 1e7, item.z), flush=True)
                 elif kind == "MISSION_REQUEST_LIST":
                     kind_of = getattr(message, "mission_type", 0)
-                    count = len(stored) if kind_of == 0 else 0
+                    count = len(stored.get(kind_of, []))
                     print("DOWNLOAD start type=%d count=%d" % (kind_of, count), flush=True)
                     link.mission_count_send(255, 0, count, mission_type=kind_of)
                 elif kind in ("MISSION_REQUEST_INT", "MISSION_REQUEST"):
-                    if getattr(message, "mission_type", 0) == 0 and 0 <= message.seq < len(stored):
-                        item = stored[message.seq]
+                    kind_of = getattr(message, "mission_type", 0)
+                    held = stored.get(kind_of, [])
+                    if 0 <= message.seq < len(held):
+                        item = held[message.seq]
                         link.mission_item_int_send(
                             255, 0, item.seq, item.frame, item.command,
                             item.current, item.autocontinue,
                             item.param1, item.param2, item.param3, item.param4,
-                            item.x, item.y, item.z, item.mission_type)
+                            item.x, item.y, item.z, kind_of)
                 elif kind == "MISSION_ACK":
                     print("DOWNLOAD done", flush=True)
                 elif kind == "LOG_REQUEST_LIST":
@@ -386,7 +390,9 @@ def main():
                     link.autopilot_version_send(
                         mavlink.MAV_PROTOCOL_CAPABILITY_MISSION_FLOAT
                         | mavlink.MAV_PROTOCOL_CAPABILITY_PARAM_FLOAT
-                        | mavlink.MAV_PROTOCOL_CAPABILITY_COMMAND_INT,
+                        | mavlink.MAV_PROTOCOL_CAPABILITY_COMMAND_INT
+                        | mavlink.MAV_PROTOCOL_CAPABILITY_MISSION_FENCE
+                        | mavlink.MAV_PROTOCOL_CAPABILITY_MISSION_RALLY,
                         FIRMWARE_VERSION, 0, 0, 0,
                         [0] * 8, [0] * 8, [0] * 8, 0, 0, 0, [0] * 18)
                     link.command_ack_send(message.command, mavlink.MAV_RESULT_ACCEPTED)
