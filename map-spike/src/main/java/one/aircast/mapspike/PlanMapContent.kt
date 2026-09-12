@@ -797,7 +797,7 @@ internal fun MapSpikeScreen(
                             OutlinedTextField(
                                 value = surveyAlt,
                                 onValueChange = { surveyAlt = it },
-                                label = { Text("Survey alt m") },
+                                label = { Text("Alt m") },
                                 singleLine = true,
                                 keyboardOptions = KeyboardOptions(
                                     keyboardType = KeyboardType.Number,
@@ -824,7 +824,7 @@ internal fun MapSpikeScreen(
                             TextButton(onClick = {
                                 onBridge { PlanBridge.removeItem(hit.item) }
                                 selected = null
-                            }) { Text("Delete survey") }
+                            }) { Text("Delete ${patternName(hit.item, allItems)}") }
                         }
 
                         circle?.let { it ->

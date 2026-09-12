@@ -61,3 +61,22 @@ class StructureScanLayersTest {
         assertNull(layersText(null))
     }
 }
+
+class PatternNameTest {
+    private fun item(index: Int, name: String) =
+        MissionItem(index, index, 41.0, 44.0, name, false)
+
+    @Test
+    fun `a structure scan is not called a survey, because the core already named it`() {
+        val items = listOf(item(2, "Structure Scan"), item(3, "Corridor Scan"))
+
+        assertEquals("Structure Scan", patternName(2, items))
+        assertEquals("Corridor Scan", patternName(3, items))
+    }
+
+    @Test
+    fun `an item the list does not hold falls back to a word that is true of all three`() {
+        assertEquals("pattern", patternName(9, emptyList()))
+        assertEquals("pattern", patternName(2, listOf(item(2, ""))))
+    }
+}

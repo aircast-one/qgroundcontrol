@@ -131,6 +131,9 @@ fun writeMove(hit: MapHit, latitude: Double, longitude: Double, surveys: List<Su
             moveLandingPlace(hit.index, hit.place, latitude, longitude)
     }
 
+internal fun patternName(index: Int, items: List<MissionItem>): String =
+    items.firstOrNull { it.index == index }?.command?.ifBlank { null } ?: "pattern"
+
 internal fun layersText(survey: Survey?): String? =
     survey?.layers?.takeIf { it > 1 }?.let { "$it layers, one drawn" }
 
