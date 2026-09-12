@@ -118,6 +118,25 @@ fun surveyStats(view: org.json.JSONObject?): SurveyStats? {
     )
 }
 
+fun insetRing(corners: List<TrackPoint>, fraction: Double): List<TrackPoint> {
+    if (corners.size < 3) return emptyList()
+    val midLatitude = corners.sumOf { it.latitude } / corners.size
+    val midLongitude = corners.sumOf { it.longitude } / corners.size
+    return corners.map {
+        TrackPoint(
+            midLatitude + (it.latitude - midLatitude) * fraction,
+            midLongitude + (it.longitude - midLongitude) * fraction,
+        )
+    }
+}
+
+fun fitSurveyArea(survey: Survey, corners: List<TrackPoint>): Boolean {
+    if (corners.isEmpty() || survey.area.size != corners.size) return false
+    return corners.withIndex().all { (vertex, at) ->
+        SurveyBridge.adjustVertex(survey, vertex, at.latitude, at.longitude)
+    }
+}
+
 fun surveyStatsFor(items: List<MissionItem>): Map<Int, SurveyStats> =
     items.filter { it.complexPattern }
         .mapNotNull { item ->

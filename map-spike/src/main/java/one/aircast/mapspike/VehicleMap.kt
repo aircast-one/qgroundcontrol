@@ -164,6 +164,7 @@ fun VehicleMap(
     onWaypointSelected: (MapHit?) -> Unit = {},
     onMoved: (MapHit, Double, Double) -> Unit = { _, _, _ -> },
     onCentreChanged: (TrackPoint, Double) -> Unit = { _, _ -> },
+    onViewChanged: (List<TrackPoint>) -> Unit = { },
     bottomInsetPx: Int = 0,
     topInsetPx: Int = 0,
     cameraBottomPx: Int = 0,
@@ -221,6 +222,15 @@ fun VehicleMap(
             fun reportCentre() {
                 val target = loaded.cameraPosition.target ?: return
                 onCentreChanged(TrackPoint(target.latitude, target.longitude), loaded.cameraPosition.zoom)
+                val seen = loaded.projection.visibleRegion.latLngBounds
+                onViewChanged(
+                    listOf(
+                        TrackPoint(seen.latitudeNorth, seen.longitudeWest),
+                        TrackPoint(seen.latitudeNorth, seen.longitudeEast),
+                        TrackPoint(seen.latitudeSouth, seen.longitudeEast),
+                        TrackPoint(seen.latitudeSouth, seen.longitudeWest),
+                    ),
+                )
             }
             reportCentre()
             loaded.addOnCameraIdleListener { reportCentre() }

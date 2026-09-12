@@ -210,6 +210,7 @@ internal fun MapSpikeScreen(
         else -> centre?.takeIf { isPlottable(it.latitude, it.longitude) }
     }
 
+    var visible by remember { mutableStateOf<List<TrackPoint>>(emptyList()) }
     var firstRead by remember { mutableStateOf(true) }
     var listOpen by remember { mutableStateOf(false) }
     var centreRequest by remember { mutableIntStateOf(0) }
@@ -324,6 +325,7 @@ internal fun MapSpikeScreen(
                 onBridge(done = movedText(hit, allItems)) { writeMove(hit, lat, lon, surveyList) }
             },
             selectedWaypoint = (selected as? MapHit.Waypoint)?.index,
+            onViewChanged = { visible = it },
             onCentreChanged = { at, level ->
                 centre = at
                 zoom = level
@@ -619,6 +621,15 @@ internal fun MapSpikeScreen(
                                     SurveyBridge.rotateGrid(it.index)
                                 }
                             }) { Text("Rotate") }
+
+                            TextButton(
+                                enabled = visible.size == it.area.size,
+                                onClick = {
+                                    onBridge("Fitting the survey", done = "Survey fitted to the map") {
+                                        fitSurveyArea(it, insetRing(visible, SURVEY_FIT_INSET))
+                                    }
+                                },
+                            ) { Text("Fit to map") }
                         }
 
                         waypoint?.let { legText(it) }?.let {
@@ -797,6 +808,8 @@ internal fun MapSpikeScreen(
         }
     }
 }
+
+private const val SURVEY_FIT_INSET = 0.8
 
 private val ITEM_NUMBER_WIDTH = 48.dp
 
