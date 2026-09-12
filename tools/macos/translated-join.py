@@ -15,8 +15,12 @@ initialiser runs before installTranslator, so it is frozen at source text in eve
 Android session established this for CorridorScanComplexItem::name (fd277b067), which is why
 comparing against it is safe. This check cannot tell the two apart and will flag such a
 comparison; the answer is to record it here with where the tr() is evaluated, not to remove it.
-Both entries below were checked that way -- linkTypeStrings fills a function-local static on
-first call, and a component's _name is a member initialiser run when a vehicle connects.
+This cuts BOTH ways and a hit must be read twice: which vocabulary does each side come from, and
+when is it evaluated. The Sensors hit was filed as real on the first reading and is not - the
+core's PAGES table is English constants it owns, never passed through tr().
+
+OUTSTANDING is empty as of f304fe27d and the mechanism stays: a hit that is REAL but not fixable
+here is recorded there and printed on every run, rather than filed away where nobody sees it.
 
 Precision on this head is about half -- "true", "false", "Mission" and "Rally" all collide with
 some tr() literal by accident. Those are listed with a reason. A hit that is REAL but not yet
@@ -37,13 +41,15 @@ COINCIDENCE = {
     ("PlanWindow.swift", "Rally"): "the same head-owned page vocabulary as 'Mission'",
     ("PlanWindow.swift", "true"): "a Fact's raw boolean, which Qt spells 'true' in every locale",
     ("Links.swift", "false"): "a Fact's raw boolean, as above",
+    ("VehicleSetupWindow.swift", "Sensors"): "a page name from the core's own PAGES table, which "
+        "is a list of English constants it owns and does NOT pass through tr(). I first recorded "
+        "this as real and it is not: the join in fb0c97a6c is a COMPONENT's tr()'d name against "
+        "one of these page ids, which is the variable-to-variable shape this check cannot see at "
+        "all. Reading the hit without reading which vocabulary each side came from is how it got "
+        "filed wrong",
 }
 
-OUTSTANDING = {
-    ("VehicleSetupWindow.swift", "Sensors"): "REAL, and the same missing join recorded in "
-        "fb0c97a6c -- a setup page's name is tr()'d, so the failing-sensors badge appears on no "
-        "row outside English. Waiting on the same core-side page id",
-}
+OUTSTANDING = {}
 
 
 def translated():
