@@ -797,7 +797,7 @@ internal fun MapSpikeScreen(
                             OutlinedTextField(
                                 value = surveyAlt,
                                 onValueChange = { surveyAlt = it },
-                                label = { Text("Alt m") },
+                                label = { Text("Above surface m") },
                                 singleLine = true,
                                 keyboardOptions = KeyboardOptions(
                                     keyboardType = KeyboardType.Number,
