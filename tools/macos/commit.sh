@@ -41,6 +41,19 @@ if print -rl -- "$@" | grep -q '^macos/'; then
     fi
 fi
 
+# The core cannot derive which fields a head stopped reading -- only the head knows the names it
+# references. This emits that set for them to diff, and is scoped to macos/ commits the same way
+# the Swift checks are, so a C++ session never picks it up. Included only when it actually moved,
+# and said out loud, because silently adding a file to someone's commit is what this script exists
+# to prevent.
+if print -rl -- "$@" | grep -q '^macos/'; then
+    python3 "$root/tools/macos/head-reads.py" > /dev/null
+    if ! git diff --quiet -- tools/macos/head-reads.txt; then
+        set -- "$@" tools/macos/head-reads.txt
+        print "including tools/macos/head-reads.txt: the names this head references changed"
+    fi
+fi
+
 message="$(cat)"
 if [[ -z "${message// }" ]]; then
     print -u2 "refusing to commit with an empty message"

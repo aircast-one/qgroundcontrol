@@ -199,13 +199,6 @@ UNDRAWN = [
                          "class as the file parsers -- it spells figures a caller already holds "
                          "rather than answering live state. Nothing in this head holds them: there "
                          "is no packet-radio surface and no adapter on this machine"),
-    ("view.orbit", "MEASURED: available false, orbiting null, reason \"No vehicle is connected.\" "
-                   "Vehicle-gated like the rest -- but this one is ALSO WITHHELD ON PURPOSE. "
-                   "Starting an orbit is forbidden in this session, and the probe hook for it was "
-                   "deliberately built incapable of the write, so a control could be drawn and "
-                   "never once exercised to see it work. The reading half, whether the vehicle is "
-                   "orbiting, needs a vehicle that is flying one. Recorded not built, and the "
-                   "reason is the session's own safety rule rather than a gap in the core"),
     ("view.geoTag", "MEASURED as a REFUSAL, which is the answer: it asks for the path of a "
                     "telemetry log, a tolerance and one epoch timestamp per image. It is the "
                     "tagging COMPUTATION, not the controller state the Analyze page draws -- "
