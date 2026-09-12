@@ -5798,3 +5798,40 @@ candidate being `deps_for(args)` at `instruments.rs:42`, the one view that
 computes its deps from args rather than using `DEPS` directly.
 
 Below the C ABI, so not this head's to fix. Reported with the reproduction.
+
+### Where the third cause actually lives
+
+Retracted the `deps_for` guess — `router.rs:90` and `:115` both use it and the
+core's registration is correct. The deciding function is
+`QGCBridgeCore.cc:885`:
+
+```cpp
+static QMetaMethod _changeSignal(QObject *object, const QString &property)
+{
+    if (qobject_cast<Fact *>(object)) {
+        return QMetaMethod::fromSignal(&Fact::rawValueChanged);
+    }
+    if (property.isEmpty()) { return QMetaMethod(); }
+    ...
+    return (index >= 0 && meta->property(index).hasNotifySignal()) ? ... : QMetaMethod();
+}
+```
+
+Which branch a settings fact takes depends on whether the watcher resolves
+`settings.unitsSettings.verticalDistanceUnits` to the `Fact` object or stops at
+`unitsSettings` with the rest as a property name. `SettingsGroup.h:39` declares
+every settings fact as `Q_PROPERTY(Fact* NAME READ NAME CONSTANT)`, so on the
+second branch `hasNotifySignal()` is false and **no connection is made at all** —
+silently, because an invalid `QMetaMethod` is a legitimate return.
+
+Stopped there rather than guess further: `vehicle.altitudeRelative` is declared
+identically and does drive the strip, so one of those branches demonstrably
+works and which one is not visible from this side of the ABI. Handed over with
+one untested hypothesis — that `_changeSignal` connects to `rawValueChanged`
+specifically, and a settings enum written through `setCookedValue` may not raise
+it — labelled as a hypothesis.
+
+**The retraction is the point.** The first guess was plausible, topical, and
+wrong, and it would have sent someone to read the one file that was already
+correct. Naming the mechanism is only worth doing when the mechanism has been
+read.
