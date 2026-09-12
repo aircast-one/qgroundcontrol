@@ -84,6 +84,12 @@ class SelectedSurveyTest {
     }
 
     @Test
+    fun `one resolver serving both kinds does not hand a landing hit back as a survey`() {
+        assertNull(selectedSurvey(MapHit.LandingPlace(7, 0), surveys))
+        assertEquals(4, selectedSurvey(MapHit.LandingPlace(4, 0), surveys)!!.index)
+    }
+
+    @Test
     fun `a selection naming a survey that is gone yields nothing`() {
         assertNull(selectedSurvey(MapHit.SurveyVertex(9, 0), surveys))
     }
