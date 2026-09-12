@@ -801,10 +801,29 @@ and the largest single reclaim is the header: 162px of flight telemetry on a tab
 whose job is editing a map. The terrain profile does not hold space when the plan
 is empty, so that is not the cost it looks like.
 
-Not attempted, deliberately: collapsing the header on the Plan tab in landscape
+~~Not attempted, deliberately: collapsing the header on the Plan tab in landscape
 is a shell-wide product decision, not a map-module fix, and nobody has asked for
-it. Recorded with a current measurement so the decision is available rather than
-rediscovered.
+it.~~ **Asked for and done the same evening** (`b12348b`, `0b329d7`). Recording
+the measurement rather than only the decision is what made it a two-minute
+answer when the question came.
+
+The telemetry chips — Battery, Sats, HDOP, RC — now show on the Fly tab only.
+The name and state line stays everywhere, because it carries "Communication
+lost", which is the fact most worth having before an Upload. Portrait Plan map
+goes 1532px to 1654px of 2280, 67% to 72.5%.
+
+What decided it was not the space. With the vehicle gone twenty seconds the
+header read "Communication lost" in the subtitle and "25% · 11.10V", "11 Sats",
+"HDOP 1.2", "RC 31%" beneath it, every chip frozen — one row telling the truth
+and four contradicting it. The chips are latched exactly as
+`vehicle.latitude` is.
+
+That was true on the Fly tab too, where it matters more, so the strip now dims
+when `flyState.staleNotice` is non-blank. It does not repeat the notice: the
+core's sentence is already drawn three lines away, and saying it twice is the
+duplicate-notice defect from the plan tab. Dimmed rather than blanked, because a
+lost link is when the last known battery reading is worth most; it just must not
+look current.
 
 **Boundary import** (`230b5d9`): a site boundary arrives as a file, and
 `insertComplexMissionItemFromKMLOrSHP` had been in `MissionController` all along
