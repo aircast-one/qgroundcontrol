@@ -174,6 +174,16 @@ pub fn seed_view(_backend: &dyn Backend, args: &[String]) -> Value {
 mod tests {
     use super::*;
 
+    #[test]
+    fn the_simple_kinds_come_first_and_only_the_complex_ones_carry_a_shape() {
+        let (simple, complex): (Vec<&Kind>, Vec<&Kind>) = KINDS.iter().partition(|kind| kind.geometry.is_none());
+        assert_eq!(simple.iter().map(|k| k.id).collect::<Vec<_>>(), vec!["waypoint", "takeoff", "land", "roi"]);
+        assert_eq!(complex.iter().map(|k| k.id).collect::<Vec<_>>(), vec!["survey", "corridor", "structure"]);
+        assert_eq!(&KINDS[..simple.len()].iter().map(|k| k.id).collect::<Vec<_>>(), &simple.iter().map(|k| k.id).collect::<Vec<_>>(), "the simple kinds are the leading run, which is what makes items 0 to 3 of view.missionKinds carry no className, complexName or geometry");
+        assert!(simple.iter().all(|k| k.class_name.is_none() && k.complex_name.is_none()), "a kind with no shape has no complex class behind it either, so those three fields are absent together or not at all");
+        assert!(complex.iter().all(|k| k.class_name.is_some() && k.complex_name.is_some()));
+    }
+
     struct Nothing;
     impl Backend for Nothing {
         fn get(&self, _p: &str) -> String { String::new() }
