@@ -150,6 +150,7 @@ fun SetupScreen(modifier: Modifier = Modifier) {
                 open.name == SENSORS -> SensorsScreen(Modifier.weight(1f))
                 open.name == RADIO -> RadioScreen(Modifier.weight(1f))
                 open.name == REMOTE_SUPPORT -> RemoteSupportScreen(Modifier.weight(1f))
+                open.name == MOTORS -> MotorsScreen(Modifier.weight(1f))
                 nativePage?.parameterSections == true -> ParameterForm(open.name, Modifier.weight(1f))
                 else -> SetupNotice(
                     "${open.name} is set up on the desktop.",
@@ -236,9 +237,9 @@ fun SetupScreen(modifier: Modifier = Modifier) {
 
         item(key = "footnote") {
             FootNote(
-                "Radio and motor calibration stay on the desktop: they need you " +
-                    "watching the aircraft while it moves. Any parameter can still be " +
-                    "edited from the Params tab.",
+                "Radio calibration stays on the desktop: it needs you holding each " +
+                    "stick at its extremes while watching the aircraft. Any parameter can " +
+                    "still be edited from the Params tab.",
             )
         }
     }

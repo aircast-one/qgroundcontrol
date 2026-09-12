@@ -65,14 +65,21 @@ class SetupViewTest {
 
     @Test
     fun `a page the head has no screen for does not open`() {
-        val motors = SetupPage("Motors", parameterSections = false)
         val summary = SetupPage("Summary", parameterSections = false)
+        val frame = SetupPage("Frame", parameterSections = false)
 
         assertFalse(
-            "Motors opened the Remote Support screen, which forwards live position to a third party",
-            headCanOpen(motors, "Motors"),
+            "an unnamed page once opened the Remote Support screen, which forwards live position to a third party",
+            headCanOpen(summary, "Summary"),
         )
-        assertFalse(headCanOpen(summary, "Summary"))
+        assertFalse(headCanOpen(frame, "Frame"))
+    }
+
+    @Test
+    fun `Motors opens here now, because the operator asked for it rather than the desktop`() {
+        val motors = SetupPage("Motors", parameterSections = false)
+
+        assertTrue(headCanOpen(motors, MOTORS))
     }
 
     @Test
