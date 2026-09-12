@@ -6410,3 +6410,129 @@ item it precedes. Nothing on screen accounts for the gap. Not fixed: an
 operator who never authored a speed change does not need telling about a row
 that does not exist, and if it is worth saying at all the core should say
 "this item carries a folded command" once for both heads.
+
+## What the core knew and the head never asked, 2026-09-12, third pass
+
+Eight commits since the second pass, and every one of them came from the same
+question asked four different ways: **what does the core already serve that the
+head never names?** Not one came from reading a screen and wanting something.
+
+**The sweeps, sharpest last.**
+
+1. *Every key the core emits vs every name the head mentions.* 590 emitted, 333
+   unnamed. Useless as shipped — most are `hub` telemetry read another way, or
+   views for screens not built. Found `foldedCommands` anyway.
+2. *Restricted to the five views whose screens exist.* Better, but it filters by
+   a fact about **my head** rather than about the core's output.
+3. ***Fields whose name ends in `Text`.*** The one to keep. A text exists only to
+   be displayed, so one no head names is a drawn-nothing by construction, with no
+   judgement about screens at all. 36 served, 22 drawn, 14 unnamed — and it
+   correctly produced a **non**-defect: `shotsText` is the bare number, and the
+   head owns the word "photos" and its plural. An instrument that can say
+   "correctly undrawn" is worth more than one that only ever finds gaps.
+4. *Documented-but-unimplemented.* Every backticked identifier in
+   `map-spike/README.md` against every name in the Kotlin. 28 hits, 27 of them
+   QGC-side names the core now owns. The 28th had already cost an hour — see
+   below.
+
+**What they found, all verified on the OnePlus 6 rather than inferred**
+
+- **`speedChangeText`** — a `DO_CHANGE_SPEED` row read "Change speed" and no
+  speed. Reviewing a thirty-item plan for speed changes meant selecting thirty
+  items.
+- **`foldedCommands`** — the list numbered 0, 1, 2, 4 with nothing accounting for
+  the hole. The row now takes the span it owns: `2–3`, and a survey `4–145`. One
+  row, a hundred and forty-one commands, visible without opening anything.
+- **`altitudeFrame`** — two rows both reading `50.0 m` and meaning different
+  things. `launch` left bare, `amsl` and `terrain` labelled. An unknown frame is
+  uppercased rather than swallowed, which is the failure the field exists to end.
+- **The survey camera facts** — `footprintText`, `intervalText`,
+  `surfaceDistanceText`. A survey said how large it was and how many photos, and
+  nothing about whether the camera can take them.
+- **`loiterRadiusText`** — a circle drawn on the map with its one dimension
+  stated nowhere, and `loiterClockwise` read, used for nothing visible, while the
+  core's own test says a circle drawn the wrong way round is an approach from the
+  wrong side.
+- **`kindText`** — `inclusion` was parsed, carried through the circle-to-polygon
+  conversion, asserted in three tests, and reached nothing an operator sees. A
+  keep-in and a keep-out fence were drawn identically and named nowhere.
+
+**Three defects that were mine, not gaps**
+
+- **`surveyStatsFor` filtered on `kind == survey` before asking**, so a corridor
+  doing 27 photos and a structure scan doing 126 were never asked about. The
+  core's own test names this mistake — `isSurveyItem` is final-true on
+  `SurveyComplexItem` while `cameraShots` lives on `TransectStyleComplexItem` —
+  and I was making it downstream of the code that had stopped making it. Now
+  gated on `simple`: what an item **is**, not what it is called.
+- **The selection controls were a `Row` that cannot wrap.** `Delete #3` rendered
+  as `Del ete #3` — a destructive action broken mid-word. Two wrong fixes first:
+  `softWrap = false` traded the break for a clip, and shortening to `Delete`
+  still did not fit. That second one is the measurement that mattered: **a
+  six-character label failing says the row is over-full, not the label
+  over-long.** One word, `Row` → `FlowRow`.
+- **`cornerRemovable` counted vertices against a hardcoded 3** while the view it
+  had just started reading answers `canRemoveVertex` against the shape's own
+  minimum. The old test named the core as the authority in its own title while
+  reimplementing the rule underneath.
+
+**A takeoff could be created and not placed.** `insertTakeoffItem` throws away
+the coordinate it is handed, so the item arrived at 0,0 in wizard mode reading
+"Set its location" — and there was nowhere to set it from, because an unplaced
+item has no marker to drag. `launchCoordinate` places it and sets the planned
+home at the same time.
+
+**`map-spike/README.md` had recorded that property, and the reason, months ago.**
+Documented, never implemented. I guessed `coordinate` first, watched the row not
+change, and then found the answer by grepping QGC for a string I had written
+myself. Prose is not executable: nothing goes red when a documented fix is never
+applied, and nothing goes red when the note goes stale either.
+
+**A regression prevented, which is the result worth the most.** The core serves
+`movable: coordinate.is_some() && kind != "settings"`, so the launch row is not
+movable and the obvious fix was to wire it as the drag gate. I dragged the marker
+first: it moved, and the plan recomputed 5.72 → 5.81 km. **The write succeeds.**
+Wiring the gate would have deleted a working capability behind a change that
+looked like a correctness fix — the worst shape, because the core's authority is
+what sells it. The core withdrew the clause in `2448b3319`.
+
+**Instruments that report clean over ground they never examined.** Three this
+session, and they are one bug in three disguises:
+
+- the macOS sweep silently skipped every view taking an argument — a refusal
+  swallowed, 22 fields invisible behind a healthy total
+- mine matches key names across the whole head, so `detailText` read by
+  `FenceCircle` masked `detailText` unread by `FencePolygon`
+- and the third is prose, above, which cannot fail at all
+
+The shared form: **an instrument whose unit of measurement is coarser than the
+thing it measures.** Per-view when the gap is per-argument; per-key-name when it
+is per-consumer. A positive control proves the instrument runs, never that its
+unit is fine enough.
+
+**The two sweeps are complements, not rivals.** Source-reading sees every key the
+core *can* emit and cannot tell whether one is reachable — it over-reports.
+Live-payload reading sees only what the plan you built produced — it
+under-reports, and a plan of plain waypoints hides every field only a complex
+item carries. Run the first for candidates and the second to sort them.
+
+**`tools/fixtures/every-kind.plan`** is the macOS probe's output, not anyone's
+hand-written fixture: takeoff, waypoint, ROI, survey, corridor, structure scan,
+RTL. It immediately confirmed the folded spans against counts the other head
+measured independently, and it is the reason the corridor and structure-scan
+defect was findable at all. A fixture from the producer beats one either head
+invents — the fixture rule applied to a whole document.
+
+**Still open, and none of it is head-side.** A structure scan draws its boundary
+and nothing inside: it descends from `ComplexMissionItem` rather than
+`TransectStyleComplexItem`, so it circles rather than mows, carries zero
+transects, and neither head has a path to draw for 126 photos and 18 sequence
+numbers. The core spells a survey area `89999 m²` and a fence area `0.08 km²` —
+two formatters, one product. `maxTelemetryMetres` has no `Text` sibling, so the
+figure that says whether a plan exceeds radio range cannot be drawn without the
+head spelling metres.
+
+**And one on my side, deliberately not fixed.** The altitude field's label reads
+`Alt m` with no frame. My UI has no altitude-mode control, so no simple item in
+any plan I can build carries a non-launch frame — the path is unreachable and
+fixing it would be blind work against a fixture. It waits for a mode control.
