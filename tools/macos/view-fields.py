@@ -85,6 +85,38 @@ COMMENT = re.compile(r"//[^\n]*")
 FIELD = re.compile(r"\bpub\s+(\w+)\s*:")
 
 
+# A view the core serves that no model here decodes is invisible to the check above, because
+# MODELS is written by hand: view.obstacle arrived in abeca9f79 and was noticed only because
+# someone read the commit. These are the families this head deliberately does not decode, kept
+# as patterns rather than as 26 names so the table does not rot on every new file parser.
+UNDRAWN = [
+    ("view.core", "the core's own link path, behind QGC_CORE_LINKS, which this head must not enable"),
+    ("view.contract", "introspection, not a screen"),
+    ("view.dependencies", "introspection, not a screen"),
+    ("view.geoTo", "a coordinate conversion called as a function, not a view to draw"),
+    ("view.nedTo", "a coordinate conversion called as a function, not a view to draw"),
+    ("view.utmTo", "a coordinate conversion called as a function, not a view to draw"),
+    ("view.kmlFile", "a file parser the plan store reaches through its own action"),
+    ("view.shapeFile", "a file parser the plan store reaches through its own action"),
+    ("view.missionFile", "a file parser the plan store reaches through its own action"),
+    ("view.planFile", "a file parser the plan store reaches through its own action"),
+    ("view.waypointsFile", "a file parser the plan store reaches through its own action"),
+    ("view.planFromWaypoints", "a file parser the plan store reaches through its own action"),
+    ("view.tlog", "a file parser the analyze window reaches through its own action"),
+    ("view.terrainTile", "a tile fetch, not a screen"),
+    ("view.control", "manual control, which needs a joystick this machine does not have"),
+    ("view.linkForm", "link creation, which is a transient-handle API and QML-only"),
+    ("view.transports", "link creation, which is a transient-handle API and QML-only"),
+    ("view.vehicles", "built and unverifiable: no second vehicle has ever connected here"),
+    ("view.obstacle", "a proximity ring: available is false with no vehicle, so there is nothing "
+                      "to draw and nothing to check. PARITY GAP, recorded not built"),
+]
+
+
+def undrawn_reason(path):
+    return next((why for prefix, why in UNDRAWN if path.startswith(prefix)), None)
+
+
 def balanced(text, start):
     depth = 0
     for end in range(start, len(text)):
@@ -150,7 +182,20 @@ for model, key, view, module in gone:
     print(f"  GONE {model} reads {key!r}, which {module}.rs no longer emits for {view}",
           file=sys.stderr)
 
+# Asking whether a view has an entry in MODELS is the wrong question and reported 17 views
+# this head decodes inline in a store rather than through a listed model. What matters is
+# whether the head names the path at all.
+names = "\n".join(path.read_text() for path in sorted(SOURCES.glob("*.swift")))
+unmodelled = [v for v in sorted(registry)
+              if v not in names and undrawn_reason(v) is None]
+for view in unmodelled:
+    print(f"  UNREAD {view} is served by the core, is named nowhere in macos/Sources, and is "
+          f"not in UNDRAWN either. Read it, or add it with the reason it stays undrawn.",
+          file=sys.stderr)
+
 checked = len(MODELS) - len(unchecked)
 print(f"checked {checked} of {len(MODELS)} models against the views they decode: "
       f"{len(gone)} read a key the core no longer emits")
-sys.exit(1 if gone or unchecked else 0)
+print(f"every one of the {len(registry)} views the core serves is either read here or listed "
+      f"with the reason it is not: {len(unmodelled)} are neither")
+sys.exit(1 if gone or unchecked or unmodelled else 0)
