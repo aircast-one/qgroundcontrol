@@ -44,6 +44,47 @@ def matching(image, target):
     ]
 
 
+BRIDGE = 12
+
+
+def cluster(points):
+    cells = {}
+    for point in points:
+        cells.setdefault((point[0] // BRIDGE, point[1] // BRIDGE), []).append(point)
+    parent = {cell: cell for cell in cells}
+
+    def root(cell):
+        while parent[cell] != cell:
+            parent[cell] = parent[parent[cell]]
+            cell = parent[cell]
+        return cell
+
+    for cell in cells:
+        for dx in (-1, 0, 1):
+            for dy in (-1, 0, 1):
+                other = (cell[0] + dx, cell[1] + dy)
+                if other in parent:
+                    a, b = root(cell), root(other)
+                    if a != b:
+                        parent[a] = b
+    groups = {}
+    for cell, members in cells.items():
+        groups.setdefault(root(cell), []).extend(members)
+    return sorted(groups.values(), key=len, reverse=True)
+
+
+def describe(points):
+    xs = [p[0] for p in points]
+    ys = [p[1] for p in points]
+    return (
+        (min(xs) + max(xs)) // 2,
+        (min(ys) + max(ys)) // 2,
+        max(xs) - min(xs),
+        max(ys) - min(ys),
+        len(points),
+    )
+
+
 def report_absence(image):
     present = {name: len(matching(image, rgb)) for name, rgb in KNOWN.items()}
     seen = [f"{name}={count}" for name, count in present.items() if count]
@@ -51,10 +92,16 @@ def report_absence(image):
 
 
 def main():
-    args = [a for a in sys.argv[1:] if a != "--tap"]
-    tap = "--tap" in sys.argv[1:]
+    raw = sys.argv[1:]
+    tap = "--tap" in raw
+    nth = None
+    if "--nth" in raw:
+        index = raw.index("--nth")
+        nth = int(raw[index + 1])
+        raw = raw[:index] + raw[index + 2:]
+    args = [a for a in raw if a != "--tap"]
     if not args:
-        raise SystemExit("usage: onmap.py <#RRGGBB|keep-in|keep-out> [--tap]")
+        raise SystemExit("usage: onmap.py <#RRGGBB|keep-in|keep-out> [--nth N] [--tap]")
     serial = subprocess.run(
         ["adb", "devices"], capture_output=True, text=True, check=True
     ).stdout.splitlines()
@@ -67,12 +114,21 @@ def main():
     if not points:
         print(f"NOT ON SCREEN: {args[0]}. What is: {report_absence(image)}", file=sys.stderr)
         raise SystemExit(1)
-    xs = [p[0] for p in points]
-    ys = [p[1] for p in points]
-    x = (min(xs) + max(xs)) // 2
-    y = (min(ys) + max(ys)) // 2
-    width = max(xs) - min(xs)
-    height = max(ys) - min(ys)
+    shapes = cluster(points)
+    if len(shapes) > 1 and nth is None:
+        print(
+            f"{len(shapes)} separate shapes are this colour. The midpoint of all of them is "
+            f"usually empty map, so a tap there would clear the selection rather than make one. "
+            f"Say which with --nth:",
+            file=sys.stderr,
+        )
+        for i, shape in enumerate(shapes, 1):
+            cx, cy, w, h, n = describe(shape)
+            print(f"  --nth {i}: {cx} {cy} span={w}x{h} pixels={n}", file=sys.stderr)
+        raise SystemExit(3)
+    chosen = shapes[(nth or 1) - 1] if shapes else points
+    x, y, width, height, count = describe(chosen)
+    points = chosen
     lopsided = min(width, height) < 0.85 * max(width, height)
     if lopsided:
         print(
