@@ -43,7 +43,6 @@ struct TerrainProfile: Equatable {
     let lowestText: String
     let highestText: String
     let clearanceText: String
-    let minClearance: Double?
     let clearanceComplete: Bool
 
     static let empty = TerrainProfile()
@@ -60,7 +59,6 @@ struct TerrainProfile: Equatable {
         lowestText = ""
         highestText = ""
         clearanceText = ""
-        minClearance = nil
         clearanceComplete = false
     }
 
@@ -76,7 +74,6 @@ struct TerrainProfile: Equatable {
         hasCollision = flag("hasCollision")
         distanceText = text("distanceText")
         clearanceText = text("clearanceText")
-        minClearance = (json["minClearanceMetres"] as? NSNumber)?.doubleValue
         clearanceComplete = flag("clearanceComplete")
         lowestText = text("lowestText")
         highestText = text("highestText")

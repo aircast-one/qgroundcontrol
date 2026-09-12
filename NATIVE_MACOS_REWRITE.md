@@ -3857,3 +3857,40 @@ polyline. The test now carries the trap so the next reader meets it before the f
 after `stopsSave`, `supportsTerrainFrame` and `clearMission`. Three were mine; this one is
 the core's, and I only saw it because a shape comparison put `ring: false` and
 `closed: true` on the same line.
+
+### (ii) The unconsumed-field sweep FAILED ITS CONTROL THREE TIMES AND IS NOT SHIPPED
+
+`8269db808` found `EditablePolygon.closed` decoded and read by nothing, **by accident**.
+Accident is not a method, so I built a sweep. **It failed its control three times, in three
+different ways, and I am recording it rather than shipping it.**
+
+**First version: 35 findings, mostly false.** It counted only `.field` uses, but the normal
+way to read a stored property is a **bare name inside the declaring type** —
+`restartNotices.joined(...)`, `guard let exitLatitude`, `canMove { movable }`. Acting on it
+would have deleted live fields.
+
+**Second: counting bare names made every decoded field look used.** The JSON key in
+`json["closed"]` is the same word as the property, so **each decode granted itself a
+phantom reference.** The control caught it: with `closed` restored, the sweep did not flag
+the one field it was built for.
+
+**Third: stripping strings corrupted the corpus.** `LaunchPositionModel.swift` holds a
+Swift multi-line literal (`"""`), my single-line regex mis-paired it, and because I joined
+every file before stripping, **one literal ate real code across the rest of the corpus** —
+`joined=0` against `per-file=6` for the same identifier. That produced a 46-item list whose
+membership was decided by alphabetical order.
+
+**Fourth, per-file: 11 findings, and the control STILL fails.** `.closed` exists as an enum
+case on an unrelated type (`LinkHealth.closed`), so a **cross-type name collision** makes
+the field look consumed. **This is rule 37 one level out: a text predicate cannot see
+across a TYPE boundary either.**
+
+**So the sweep is a lead generator, not a checker, and its silence means nothing.** Two of
+the eleven hand-check as genuinely dead — `VideoStatus.streamSource` and
+`TerrainProfile.minClearance`, both only ever assigned — **and those two are removed here.**
+The other nine are recorded as a lead list to be worked by hand, not as a result.
+
+**And the removal itself needed the build to catch me**: my deletion regex assumed a
+`json[...]` assignment when the real form was `flag("streamSource")`, so the property went
+and its assignment stayed. **`cmake` exit 1 is what said so** — the third time this session
+that reading an exit code rather than assuming one was the whole difference.

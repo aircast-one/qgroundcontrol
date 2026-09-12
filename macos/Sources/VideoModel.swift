@@ -62,7 +62,6 @@ struct VideoCamera: Identifiable, Equatable {
 struct VideoStatus: Equatable {
     let available: Bool
     let gstreamer: Bool
-    let streamSource: Bool
     let decoding: Bool
     let streaming: Bool
     let recording: Bool
@@ -78,7 +77,6 @@ struct VideoStatus: Equatable {
     private init() {
         available = false
         gstreamer = false
-        streamSource = false
         decoding = false
         streaming = false
         recording = false
@@ -94,7 +92,6 @@ struct VideoStatus: Equatable {
         func flag(_ name: String) -> Bool { (json[name] as? NSNumber)?.boolValue ?? false }
         available = flag("available")
         gstreamer = flag("gstreamer")
-        streamSource = flag("streamSource")
         decoding = flag("decoding")
         streaming = flag("streaming")
         recording = flag("recording")
