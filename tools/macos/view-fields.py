@@ -106,9 +106,16 @@ UNDRAWN = [
                         "question an operator asks"),
     ("view.vehicles", "built and unverifiable: no second vehicle has ever connected here"),
     ("view.landingPattern", "a fixed-wing or VTOL landing pattern: this SITL is a quadrotor and "
-                            "arm(land) places a plain Return To Launch, so every simple item gets "
-                            "the view's refusal. Changing the offline vehicle type is a settings "
-                            "write. PARITY GAP against six QML files, recorded not built"),
+                            "arm(land) places a plain Return To Launch, so landing_view's own "
+                            "isSimpleItem guard refuses every item this rig can produce. Changing "
+                            "the offline vehicle type is a settings write, which is forbidden "
+                            "here, so the state cannot be reached at all rather than merely being "
+                            "unmeasured. PARITY GAP, recorded not built: QML carries an EDITOR and "
+                            "a MAP VISUAL for each of fixed-wing and VTOL. Counted as six once and "
+                            "re-measured to four -- the fifth QML hit is PlanViewSettings, which "
+                            "only holds the allowMultipleLandingPatterns toggle and draws no "
+                            "pattern. Named by their shape rather than their number because a "
+                            "count in a reason rots the moment a file is added"),
     ("view.cameraProtocol", "MEASURED: a PROTOCOL VOCABULARY, not live state -- action names, "
                             "capabilities, retry attempts and delays, level types, refusal and "
                             "result strings, storage and video status enumerations, staleMs. It "
