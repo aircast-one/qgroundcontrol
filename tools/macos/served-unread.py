@@ -36,7 +36,7 @@ CONTRACT = ROOT / "test/Bridge/fixtures/view-shapes.json"
 
 # The last contract this head has reconciled. Move it forward when the additions
 # since it have each been read or accepted -- never to silence a hit.
-SINCE = "11124b8e3"
+SINCE = "a1e1d6c7b"
 
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent))
 from head_models import MODELS  # noqa: E402
@@ -60,6 +60,14 @@ ACCEPTED = {
         "already draws the same band as AMSL from altitudeBandText -- 485 m launch, so "
         "\"62.5 m to 87.5 m\" and \"548 m to 572 m AMSL\" are one measurement in two frames. A "
         "SCREENSHOT proved it; the two strings never appear side by side in any payload",
+    "goneQuiet": "MEASURED, and my first note about this field was wrong twice over. It is on "
+        "view.links, not view.vehicleLinks, and the core told me it was not built there -- "
+        "links.rs:79 builds it, matching a configured link's name against the quiet list. What "
+        "makes it legitimately unread is the next line: gone_quiet feeds the `state` match that "
+        "becomes statusLine, and ConnectionsSection already DRAWS statusLine beside every link's "
+        "type. Reading the flag as well would be this head re-deriving a sentence the core owns. "
+        "The per-link answer for the CONNECTED vehicle is commLost on view.vehicleLinks, which "
+        "this head decodes and names in 47b375ff9",
     "altitudeMetres": "the RAW quantity behind a mission item's altitude, served for a head that "
         "would rather convert and write metres through the fact's rawValue setter. This head does "
         "the opposite on purpose: 8110770d3 fixed an editable altitude wearing the wrong unit by "
