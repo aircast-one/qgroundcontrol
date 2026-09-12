@@ -4634,3 +4634,34 @@ header documents five, unprompted:
 
 **Every one of those is a lesson this session re-derived independently today.** The tool that
 encodes them was three directories away the whole time. **`notes-that-know-the-answer`, again.**
+
+### (yy) The suite, finally run: 706 passed, 1 failed, 89 suites — and the failure is not mine
+
+**706 + 1 = 707 across 89 suites, so the number I have been quoting all session is real.** What
+I had never done was run it.
+
+**The one failure is attributed and was already being fixed while I ran:**
+
+> `QGCCoreCTest::_viewShapesMatchTheRecordedContract()` — *"view.cameraDefinition takes
+> arguments and every recording of it passes none, so whatever those arguments unlock is
+> pinned by nothing — record it with arguments, or name it in `kArgumentsNotRecorded` with the
+> reason it cannot be."*
+
+`view.cameraDefinition` is one of the **three views the core added in `4c52eae2d`**, and this is
+**the core's own guard catching the core's own new view.** By the time I read the failure, the
+entry was **already in `kArgumentsNotRecorded`** — *"needs a camera definition file on disk"* —
+in a **dirty `test/Bridge/QGCCoreCTest.cc`**. My run built before that edit existed. **I caught
+the window between their view landing and their contract entry landing, not a defect.**
+
+**Attribution needed care here because git authorship cannot separate the three sessions** —
+one name, one config, one tree. **The evidence is the file being dirty, the entry being present
+now and absent from the binary I ran, and the view being theirs.** Authorship proved nothing.
+
+**Two things I would have got wrong by stopping early.** `ctest` answers *"No tests were
+found!!!"*; the suite is a `--unittest` mode run by `tools/macos/run-tests.sh`. And the failure
+line alone reads as a defect in a contract I do not own — **the map contents and the dirty flag
+are what made it attributable.**
+
+**Not re-run.** This is not one of the three known timing flakes, it is a real failure with a
+known cause and a fix already in the author's tree. **Re-running after their commit lands is
+next cycle's confirmation, not tonight's claim.**
