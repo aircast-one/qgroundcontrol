@@ -6290,34 +6290,58 @@ as the core session said; what clears the warning is the bridge re-reading a
 time-dependent property on a timer. That is a weaker guarantee than a signal and
 worth knowing, rather than either "it expires by itself" or "a head must poll".
 
-### The language setting does nothing, because no translation ships, 2026-09-13
+### Retracted: the translations do ship, and my probe could not have seen them, 2026-09-13
 
-Applying the same move that found the unit defect - change what the rig can
-only render one way - to language. The Settings screen offers 22 languages.
-Selecting 中文 (Chinese) and restarting leaves every string English, including
-the ones that come from QGC through the bridge:
-`complexMissionItemNames` still reads `["Survey", "Corridor Scan", "Structure
-Scan"]`.
+I recorded an hour ago that the Settings screen offers 22 languages and none of
+them do anything, because "48 `.qm` files are compiled into
+`build-android/i18n/` and zero reach the `.aar` or the `.apk`". Both halves of
+that are wrong, and the second one is wrong in a way worth keeping.
 
-**Why.** 48 `.qm` files are compiled into `build-android/i18n/`, and **zero**
-reach the `.aar` or the `.apk`. Qt has no catalogue to load, so every `tr()`
-string is its source text. The setting is written correctly - the fact holds
-enum value 58, which `enumValues` maps to Chinese - it simply has nothing to
-act on.
+**The catalogue ships.** `qt_add_translations(... RESOURCE_PREFIX "/")` compiles
+the `.qm` files into a Qt resource, not into files on disk.
+`build-android/.qt/rcc/qrc_AircastQGC_translations.cpp` is 23 MB holding 48
+entries under the name `i18n`, its object is linked into the target, and
+`qInitResources_AircastQGC_translations` is a defined symbol in the shipped
+`libAircastQGC_arm64-v8a.so`. `QGCApplication::setLanguage()` loads from
+`":/i18n"`, which is exactly where they are. I listed files in the archive; the
+question I needed answered was whether Qt can open a catalogue, and an embedded
+resource is invisible to that check.
 
-So the head's own strings being Kotlin literals is not what keeps the app
-English. Nothing is translated, including QGC's own.
+**The probe could not have detected a translation either way.**
+`complexMissionItemNames` is built from statics like
 
-**This makes a recorded risk unreachable rather than open.** The note above
-says `mission.insert` compares against `CorridorScanComplexItem::name`, a
-`tr()` static, so "a non-English build can draw a corridor it cannot add", and
-the core is holding it rather than guessing on a write path. On this build
-there is no non-English build to be wrong in. The comparison is still fragile
-and still worth fixing before translations ship; it cannot bite today.
+```cpp
+const QString CorridorScanComplexItem::name(CorridorScanComplexItem::tr("Corridor Scan"));
+```
 
-**The defect that is real today** is smaller and certain: a settings screen
-offering 22 choices where every choice does nothing. Either package the `.qm`
-files or stop offering the list.
+a namespace-scope `const QString` whose `tr()` runs during static
+initialisation - before `main()`, therefore before any `installTranslator`
+call. Those names are frozen at their source text in every build, on every
+platform, in every locale. Watching them stay English after a language switch
+is not evidence about translation; it is what they do unconditionally.
+
+The Compose UI staying English is not evidence either: the head's strings are
+Kotlin literals and QGC's translators never reach them.
+
+**What actually survives, and it is the better finding.** Those `tr()` statics
+can never be translated. That closes the risk recorded above - `mission.insert`
+comparing an item name against `CorridorScanComplexItem::name` - by mechanism
+rather than by accident. It was never "safe because nothing is translated"; it
+is safe because the value on both sides of that comparison is fixed at
+static-init and cannot vary with locale. A translation shipping later does not
+reopen it.
+
+**What is now unmeasured.** Whether selecting a language changes anything a
+user sees on this head. This rig cannot answer it: the Android head renders
+almost nothing that passes through QGC's translators, so both a working and a
+broken language setting look identical here. Answering it needs a probe on a
+string that goes through `tr()` at call time, and I do not have one.
+
+Three readings in one night where the instrument answered a narrower question
+than the one I asked - a key check that only proves the keys I picked are
+present, a file listing that cannot see an embedded resource, and a static
+that cannot vary. The pattern is not carelessness about the answer; it is not
+asking what else would produce the same reading.
 
 ### A metric rig cannot tell a conversion from an identity, 2026-09-13
 
