@@ -5918,3 +5918,38 @@ on the existing `busy` channel so the change is visible. All three are design
 decisions about what the map's primary gesture should be, and that is not a call
 to make unilaterally on the strength of one measurement at half past five. The
 measurement is here so the decision can be made on evidence.
+
+### Correcting "nearly any pan", and what the density fix was also doing
+
+I wrote that on a 212-item plan "the markers cover most of the canvas, so nearly
+any pan starts on one", and sent the same to the core session. **Measured, that
+is wrong.** Counting canvas points within 40 px of a marker at Fit zoom:
+
+    4 items                                    5%
+    212 items, as it is now                   22%
+    212 items, before the marker density fix  56%
+
+So it is roughly **one pan in five** at gate density, not nearly any. Still a
+real defect — a pilot panning repeatedly will hit it, and the move is silent and
+un-undoable — but a fifth is not most, and the earlier phrasing would have set
+the wrong priority for whoever picks the fix.
+
+**The density fix was also halving the accidental-drag surface**, 56% to 22%,
+which I had not claimed because I had not looked. It was made for legibility;
+reducing the target area was a side effect worth knowing when weighing whether
+a gesture change is still needed.
+
+**Second overstatement tonight**, after "21% of the screen is telemetry" turned
+out to be the whole header at about 5%. Both times an emphatic quantifier went
+out before anything was counted, and both times counting took under two minutes.
+The tell is reaching for "most", "nearly any" or a percentage recalled rather
+than measured — if the sentence needs a quantity, measure it or drop the
+quantity.
+
+### Adding an item at gate density is awkward, separately
+
+Long-pressing to add a waypoint on the 212-item plan selected item #166 instead,
+from a spot my own check had cleared to 24 px. The app's hit tolerance is wider
+than that, so finding somewhere to add is fiddly at density even with 78% of the
+canvas nominally free. Not the same defect as the drag, and not measured
+carefully enough to file — noted so it is not rediscovered as a mystery.
