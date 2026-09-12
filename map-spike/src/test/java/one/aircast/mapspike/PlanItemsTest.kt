@@ -415,6 +415,38 @@ class PhotosTextTest {
     }
 }
 
+class SpeedChangeRowTest {
+
+    @Test
+    fun `an item that commands a speed says which, in the operator's unit`() {
+        val change = MissionItem(
+            3, 3, 41.0, 44.0, "Change speed", false, Double.NaN, kind = "command",
+            speedChangeText = "12.0 m/s",
+        )
+
+        assertEquals("12.0 m/s", itemDetail(change))
+    }
+
+    @Test
+    fun `a commanded speed reads alongside the altitude rather than instead of it`() {
+        val waypoint = MissionItem(
+            2, 2, 41.0, 44.0, "Waypoint", false, 50.0, kind = "waypoint",
+            altitudeText = "50.0 m", speedChangeText = "8.0 m/s",
+        )
+
+        assertEquals("50.0 m \u00b7 8.0 m/s", itemDetail(waypoint))
+    }
+
+    @Test
+    fun `an item the core withheld a speed for says nothing about speed`() {
+        val plain = MissionItem(
+            3, 3, 41.0, 44.0, "Change speed", false, Double.NaN, kind = "command",
+        )
+
+        assertEquals("", itemDetail(plain))
+    }
+}
+
 class HoldTextTest {
 
     @Test

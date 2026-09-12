@@ -69,6 +69,7 @@ data class MissionItem(
     val blockedReason: String = "",
     val cameraShots: Int = 0,
     val extraSeconds: Double = 0.0,
+    val speedChangeText: String = "",
 )
 
 fun routeEndsAfter(items: JSONArray?): Int =
@@ -111,6 +112,7 @@ fun allMissionItems(json: JSONObject?): List<MissionItem> {
             blockedReason = element.optText("blockedReason"),
             cameraShots = element.optInt("cameraShots"),
             extraSeconds = element.optDouble("extraSeconds", 0.0),
+            speedChangeText = element.optText("speedChangeText"),
             routed = element.optBoolean("flownLeg") && index <= endsAfter,
             afterRouteEnds = index > endsAfter,
             placed = at != null,

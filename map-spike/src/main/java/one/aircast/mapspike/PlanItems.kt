@@ -33,6 +33,7 @@ internal fun itemDetail(item: MissionItem, stats: SurveyStats? = null): String =
         ?: item.altitudeBandText.ifBlank { null }
         ?: NO_POSITION.takeIf { !item.placed && item.specifiesCoordinate },
     AFTER_THE_ROUTE_ENDS.takeIf { item.afterRouteEnds },
+    item.speedChangeText.ifBlank { null },
     stats?.areaText?.ifBlank { null },
     photosText(item.cameraShots),
     holdText(item.extraSeconds),
