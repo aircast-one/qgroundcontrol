@@ -810,7 +810,9 @@ answer when the question came.
 The telemetry chips — Battery, Sats, HDOP, RC — now show on the Fly tab only.
 The name and state line stays everywhere, because it carries "Communication
 lost", which is the fact most worth having before an Upload. Portrait Plan map
-goes 1532px to 1654px of 2280, 67% to 72.5%.
+goes 1532px to 1654px of 2280, 67% to 72.5%; **landscape goes 32% to 43%**,
+which is the finding this paragraph opened with and the one it now closes. The
+chrome no longer outweighs the canvas two to one.
 
 What decided it was not the space. With the vehicle gone twenty seconds the
 header read "Communication lost" in the subtitle and "25% · 11.10V", "11 Sats",
