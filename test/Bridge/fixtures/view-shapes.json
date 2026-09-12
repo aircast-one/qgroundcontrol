@@ -16,7 +16,6 @@
         "view.detections.error",
         "view.detections.host",
         "view.detections.track",
-        "view.fences.firmwareFence",
         "view.followMe.fixAgeMs",
         "view.followMe.fixFresh",
         "view.followMe.fixValid",
@@ -474,7 +473,6 @@
         "view.detections.track",
         "view.fences.class",
         "view.fences.fenceSupported",
-        "view.fences.firmwareFence",
         "view.fences.kind",
         "view.fences.rallySupported",
         "view.flightModes.class",
@@ -2821,6 +2819,9 @@
         "view.fences.count",
         "view.fences.fenceSupported",
         "view.fences.firmwareFence",
+        "view.fences.firmwareFence.centre",
+        "view.fences.firmwareFence.radiusMetres",
+        "view.fences.firmwareFence.radiusText",
         "view.fences.kind",
         "view.fences.polygons.#",
         "view.fences.polygons.0.detailText",
@@ -8147,7 +8148,11 @@
         "class": "string",
         "count": "number",
         "fenceSupported": "bool",
-        "firmwareFence": "null",
+        "firmwareFence": {
+            "centre": "null",
+            "radiusMetres": "number",
+            "radiusText": "string"
+        },
         "kind": "string",
         "polygons": [
             {

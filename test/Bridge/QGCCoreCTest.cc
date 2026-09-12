@@ -1331,6 +1331,15 @@ void QGCCoreCTest::_viewShapesMatchTheRecordedContract()
     };
     QTRY_VERIFY_WITH_TIMEOUT(recorderIndex() >= 0, 5000);
 
+    const char *const horizontalFence = "vehicle.parameterManager.getParameter(-1,GF_MAX_HOR_DIST).rawValue";
+    const double fenceBefore = take(qgc_bridge_get(horizontalFence)).value(QStringLiteral("value")).toDouble(-1.0);
+    QVERIFY2(fenceBefore >= 0.0, "GF_MAX_HOR_DIST did not read back, so firmwareFence would record null and every field under it would stay unpinned");
+    const auto restoreHorizontalFence = qScopeGuard([horizontalFence, fenceBefore]() {
+        (void) take(qgc_bridge_set(horizontalFence, QStringLiteral("{\"value\":%1}").arg(fenceBefore).toUtf8().constData()));
+    });
+    QVERIFY2(take(qgc_bridge_set(horizontalFence, "{\"value\":250}")).value(QStringLiteral("ok")).toBool(false), "GF_MAX_HOR_DIST would not take a write");
+    QTRY_VERIFY_WITH_TIMEOUT(!take(qgc_core_get("view.fences")).value(QStringLiteral("firmwareFence")).isNull(), 5000);
+
     QTRY_VERIFY_WITH_TIMEOUT(take(qgc_core_get("view.missionSummary")).value(QStringLiteral("distanceMetres")).toDouble(0.0) > 0.0, 10000);
     states.append(snapshotOfEveryView(kViewPaths, int(std::size(kViewPaths))));
     for (const char *path : kViewPaths) {
