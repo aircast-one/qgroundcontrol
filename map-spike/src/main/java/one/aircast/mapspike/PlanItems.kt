@@ -134,8 +134,11 @@ fun writeMove(hit: MapHit, latitude: Double, longitude: Double, surveys: List<Su
 internal fun patternName(index: Int, items: List<MissionItem>): String =
     items.firstOrNull { it.index == index }?.command?.ifBlank { null } ?: "pattern"
 
-internal fun layersText(survey: Survey?): String? =
-    survey?.layers?.takeIf { it > 1 }?.let { "$it layers, one drawn" }
+internal fun layersText(survey: Survey?): String? {
+    val count = survey?.layers?.takeIf { it > 1 } ?: return null
+    val span = survey.layerSpanText
+    return if (span.isBlank()) "$count layers, one drawn" else "$count layers, $span, one drawn"
+}
 
 internal fun cameraText(stats: SurveyStats?): String? = listOfNotNull(
     stats?.surfaceDistanceText?.ifBlank { null }?.let { "$it above the surface" },

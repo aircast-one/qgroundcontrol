@@ -46,11 +46,22 @@ class StructureScanRouteTest {
 }
 
 class StructureScanLayersTest {
-    private fun survey(layers: Int) =
-        Survey(0, emptyList(), emptyList(), 0, "structure", "shape", "property", null, emptyList(), layers)
+    private fun survey(layers: Int, span: String = "") =
+        Survey(0, emptyList(), emptyList(), 0, "structure", "shape", "property", null, emptyList(), layers, span)
 
     @Test
     fun `stacked circuits are said in words, because on a map they sit exactly on each other`() {
+        assertEquals("3 layers, one drawn", layersText(survey(3)))
+    }
+
+    @Test
+    fun `the span is the core's sentence, so a feet rig does not read metres`() {
+        assertEquals("3 layers, 12.0 m to 42.0 m, one drawn", layersText(survey(3, "12.0 m to 42.0 m")))
+        assertEquals("3 layers, 39 ft to 138 ft, one drawn", layersText(survey(3, "39 ft to 138 ft")))
+    }
+
+    @Test
+    fun `a span the core withheld leaves the count alone rather than inventing one`() {
         assertEquals("3 layers, one drawn", layersText(survey(3)))
     }
 

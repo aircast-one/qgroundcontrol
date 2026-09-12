@@ -20,6 +20,7 @@ data class Survey(
     val editable: EditableShape? = null,
     val flightLoop: List<TrackPoint> = emptyList(),
     val layers: Int = 0,
+    val layerSpanText: String = "",
 )
 
 private fun points(array: JSONArray?): List<TrackPoint> {
@@ -59,6 +60,7 @@ object SurveyBridge {
                 transects = transects,
                 flightLoop = flightLoop,
                 layers = geometry.optInt("layers", 0),
+                layerSpanText = geometry.optText("layerSpanText"),
                 cameraShots = element.optInt("cameraShots"),
                 kind = element.optText("kind"),
                 shape = shape,

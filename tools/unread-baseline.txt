@@ -163,6 +163,7 @@ lastKnownHeading
 lastKnownLatitude
 lastKnownLongitude
 lastReportAgeMs
+layerAltitudesMetres
 legs
 levelRange
 levelTypes
