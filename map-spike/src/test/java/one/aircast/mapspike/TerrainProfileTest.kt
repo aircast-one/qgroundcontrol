@@ -116,6 +116,22 @@ class ProfileLabelTest {
     }
 
     @Test
+    fun `terrain at points that do not join up is not one per cent of the route`() {
+        val measured = profile(
+            ProfilePoint(0.0, 440.0, 440.0),
+            ProfilePoint(0.0, null, 490.0),
+            ProfilePoint(36.0, 444.0, 490.0),
+            band = "430 m to 500 m",
+            distance = "36 m",
+        )
+        assertEquals(0.0, measured.terrainCoverage, 0.0)
+        assertEquals(
+            "430 m to 500 m AMSL \u00b7 36 m \u00b7 ground height at points, none along the route",
+            profileLabel(measured),
+        )
+    }
+
+    @Test
     fun `ground under part of the route says how much`() {
         assertEquals(
             "40 m to 90 m AMSL \u00b7 1.00 km \u00b7 ground height for 50% of the route",

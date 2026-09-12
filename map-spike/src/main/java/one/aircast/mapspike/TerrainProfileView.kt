@@ -62,6 +62,7 @@ internal fun profileLabel(profile: TerrainProfile): String =
         " \u00b7 ${profile.distanceText}" +
         when {
             !profile.hasTerrain -> " \u00b7 ground height unknown"
+            profile.terrainCoverage <= 0.0 -> " \u00b7 ground height at points, none along the route"
             profile.terrainCoverage < FULL_TERRAIN ->
                 " \u00b7 ground height for ${(profile.terrainCoverage * 100).toInt().coerceAtLeast(1)}% " +
                     "of the route"
