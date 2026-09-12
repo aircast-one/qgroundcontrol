@@ -4964,7 +4964,25 @@ away.**
 sweep's leads have been right that something is wrong and wrong about where — **a finding names a
 symptom; only the re-measurement names the cause.**
 
-### My own armed-setup gate works in English and silently does nothing elsewhere
+### The armed-setup gate: five pages fixed, nine still English-only
+
+**Resolved for the five components QGC gives an enum.** The core now serves `known` on each
+component — `radio`, `flightModes`, `sensors`, `safety`, `power`, from `AutoPilotPlugin::
+KnownVehicleComponent`, and **NULL rather than the string `"unknown"`** for a component that has
+none, so an unidentified component cannot be mistaken for an identified one. The head camel-cases
+the core's own English page id (`"Flight Modes"` → `"flightModes"`) and matches the enum. Neither
+side passes through `tr()`. The German fixture in `checkSetupGateInAnyLocale` fails under the old
+rule.
+
+**Still open for the rest.** Frame, Motors, Tuning, Camera, Lights and Flight Behavior are real
+components with no enum, and they are still matched by their translated `name` — correct in
+English, absent elsewhere. **The obvious wider fix is wrong**: blocking every page the head cannot
+identify would also disable Summary, Remote Support and Parameters, which are not vehicle
+components at all and are viewable while armed upstream. The head cannot separate "a component I
+could not identify" from "not a component" without a join only the core holds both halves of.
+**Asked the core for it; they have `openable` per component but no page mapping for the nine.**
+
+### The original record: this gate worked in English and silently did nothing elsewhere
 
 **`0bb52d657` disabled a setup page while the vehicle is armed, and the join it uses is a
 translated string.** `blockedSentence(for page:in:)` matches `$0.name == page` — the component's

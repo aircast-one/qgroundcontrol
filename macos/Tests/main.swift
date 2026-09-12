@@ -1589,6 +1589,7 @@ func checkMissionItemKinds() {
     checkSetupCacheIdentity()
     checkVehicleLinkRows()
     checkSerialLinkInAnyLocale()
+    checkSetupGateInAnyLocale()
 
     expect(WriteReport.failure("the fence radius"),
            "Could not change the fence radius. It is unchanged.",
@@ -6134,4 +6135,63 @@ func checkSerialLinkInAnyLocale() {
            "and with no ids served at all this fails CLOSED. Offering Port and Baud for whatever "
            + "happens to sit at index 0 would put a baud rate on a UDP link; the older shape, "
            + "Address and Port, is merely wrong for serial rather than wrong for everything")
+}
+
+func checkSetupGateInAnyLocale() {
+    func component(_ name: String, known: String?, openable: Bool, why: String?) -> Any {
+        var json: [String: Any] = ["name": name, "openable": openable]
+        if let known { json["known"] = known }
+        if let why { json["blockedReason"] = why }
+        return json
+    }
+
+    expect(VehicleComponentInfo.identity(ofPage: "Sensors"), "sensors",
+           "a page name is one of the core's own English PAGES constants and the component's "
+           + "known id is the KnownVehicleComponent enum lowercased, so the two meet without "
+           + "either side passing through tr()")
+    expect(VehicleComponentInfo.identity(ofPage: "Flight Modes"), "flightModes",
+           "and a two-word page camel-cases to match the enum spelling")
+
+    let german = VehicleComponentInfo.list([
+        component("Sensoren", known: "sensors", openable: false, why: "armed"),
+        component("Funkgerät", known: "radio", openable: true, why: nil),
+    ])
+    expect(VehicleComponentInfo.blockedSentence(for: "Sensors", in: german) ?? "",
+           "Disabled while the vehicle is armed",
+           "THE FIXTURE THAT MATTERS: every component name here is German, which is what QGC "
+           + "actually serves outside English because VehicleComponent::_name is a tr() member "
+           + "initialiser run when the vehicle connects. The old rule compared that name against "
+           + "the English page id, matched nothing, and left the page ENABLED while armed -- the "
+           + "gate calls pages.disabled(), so this was a live control on an armed aircraft")
+    expect(VehicleComponentInfo.blockedSentence(for: "Radio", in: german) == nil,
+           "and the component beside it that allows setup while armed is still openable, so the "
+           + "gate stays per component rather than becoming per vehicle")
+    expect(VehicleComponentInfo.blockedSentence(for: "Sensoren", in: german) == nil,
+           "the TRANSLATED name is not a key: a page is addressed by the core's page id, and "
+           + "matching a component's display name would be the same join in the other direction")
+
+    let unidentified = VehicleComponentInfo.list([
+        component("Frame", known: nil, openable: false, why: "armed"),
+    ])
+    expect(VehicleComponentInfo.blockedSentence(for: "Frame", in: unidentified) ?? "",
+           "Disabled while the vehicle is armed",
+           "a component with no KnownVehicleComponent enum is still gated by its name. THIS HALF "
+           + "REMAINS ENGLISH-ONLY and is recorded, not fixed: the core serves no identity for "
+           + "those components, and blocking every unidentified page instead would disable "
+           + "Parameters, Summary and Remote Support, which are not vehicle components at all")
+
+    let both = VehicleComponentInfo.list([
+        component("Sensoren", known: "sensors", openable: true, why: nil),
+        component("Sensors", known: nil, openable: false, why: "armed"),
+    ])
+    expect(VehicleComponentInfo.blockedSentence(for: "Sensors", in: both) == nil,
+           "an IDENTIFIED component wins over a same-named unidentified one, so the name fallback "
+           + "can never overrule an id that actually answered")
+
+    let silent = VehicleComponentInfo.list([
+        component("Sensoren", known: "sensors", openable: false, why: nil),
+    ])
+    expect(VehicleComponentInfo.blockedSentence(for: "Sensors", in: silent) ?? "", "Disabled",
+           "and a component that is not openable without saying why still closes the page, "
+           + "because failing open on a safety gate offers the control the core just refused")
 }

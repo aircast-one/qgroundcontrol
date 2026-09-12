@@ -6,6 +6,7 @@ struct VehicleComponentInfo: Identifiable, Equatable {
     let needsAttention: Bool
     let openable: Bool
     let blockedReason: String?
+    let known: String?
 
     var id: String { className.isEmpty ? name : className }
 
@@ -21,6 +22,7 @@ struct VehicleComponentInfo: Identifiable, Equatable {
         needsAttention = (json["needsAttention"] as? NSNumber)?.boolValue ?? false
         openable = (json["openable"] as? NSNumber)?.boolValue ?? true
         blockedReason = (json["blockedReason"] as? String).flatMap { $0.isEmpty ? nil : $0 }
+        known = (json["known"] as? String).flatMap { $0.isEmpty ? nil : $0 }
     }
 
     static let blockedWithoutReason = "Disabled"
@@ -31,8 +33,17 @@ struct VehicleComponentInfo: Identifiable, Equatable {
         return "Disabled while the vehicle is \(blockedReason)"
     }
 
+    static func identity(ofPage page: String) -> String {
+        let words = page.split(separator: " ").map(String.init)
+        guard let first = words.first else { return "" }
+        return ([first.lowercased()] + words.dropFirst()).joined()
+    }
+
     static func blockedSentence(for page: String, in listed: [VehicleComponentInfo]) -> String? {
-        listed.first { $0.name == page }?.blockedSentence
+        let wanted = identity(ofPage: page)
+        let matched = listed.first { $0.known == wanted }
+            ?? listed.first { $0.known == nil && $0.name == page }
+        return matched?.blockedSentence
     }
 
     static func list(_ json: Any?) -> [VehicleComponentInfo] {
