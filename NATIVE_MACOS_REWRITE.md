@@ -4502,3 +4502,41 @@ requirement is `"541 m GUNDECK"`.
 
 **The token stays beside the word for branching, and the read/edit edge does not apply** — a
 frame word is read, never typed, unlike the rally and launch altitudes that kept their numbers.
+
+### (ww) The firmware fence was drawn in the colour that means keep OUT
+
+**Android read `0e4df8eda` and found it.** This head's plan fences are
+`inclusion ? .systemOrange : .systemRed` — **red means keep-out here, and `#FF3B30` means
+keep-out on Android, a scheme both heads reached independently.** I drew the firmware ring in
+`systemRed`. **A circular firmware fence is a KEEP-IN: the vehicle stops you leaving it.** So an
+operator read **an exclusion zone around home.** Inverted, not merely distinct.
+
+**My reason was right and my execution contradicted it.** I wanted the ring unlike a plan fence
+so the operator could tell what the firmware imposes from what the plan asks — then reached for
+the only other fence colour I had, **which already meant something.**
+
+**Android argued the opposite position and changed to mine, on an argument neither of us had
+named: THE AFFORDANCE.** A plan fence can be dragged, resized and deleted; **the firmware ring
+cannot be touched, and both heads exclude it from their hit tests.** Identical appearance
+**promises an interaction that does nothing** — *"a missed tap looks like a broken feature"*
+with a person on the other end instead of a rig.
+
+**Both heads now draw it violet and dashed** — `systemPurple` / `#AF52DE`. **Violet rather than
+the neutral grey they also offered, for the reason they raised against their own suggestion:
+grey reads as disabled, and this is the one boundary on the map the operator cannot argue
+with.**
+
+**Their evidence beats both our arguments.** Their rig tools conflated the two shapes **three
+times in one day** — a locator returning the midpoint of the plan circle and the firmware ring,
+*which is the empty map between them*, while reporting success; a check asking for the largest
+keep-in and getting the firmware ring; handles needing the plan cleared to disambiguate.
+**Tooling written with full knowledge of both shapes kept confusing them.**
+
+**Type, not appearance, is the general answer — and only this head can have it.**
+`FirmwareFenceCircle` is its own class, so it is **structurally excluded** from every "how many
+fences" question. **Their rig reads pixels, and a pixel matcher has no types.**
+
+**What is pinned and what is not:** `FenceShape.enforced` is a third boundary kind in a file
+`swift-checks` compiles. **The mapping from role to `NSColor` is NOT pinned** — it lives in
+`MissionMap.swift`, which the checks do not compile. **If the colour regresses, nothing here
+catches it, and the green does not cover it.**
