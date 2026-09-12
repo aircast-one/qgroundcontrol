@@ -3571,3 +3571,38 @@ choosing between two paths.
 **The producer keeps the refused member and its reason**, which is the only thing that
 made this legible: had raw 4 simply been absent, `supportsTerrainFrame: false` would have
 been the entire story and it would have read as a verdict on terrain altitudes generally.
+
+### (t) The next group measured, and it is a negative sweep
+
+Read live rather than reasoned about. Recording the negative so nobody runs it again.
+
+**UNREACHABLE WITHOUT A VEHICLE, and named as such rather than as safe:**
+`currentSummary` (`""`), `everyday` (`[]`), `folded` (`[]`) — all three from `view.flightModes`,
+empty because no vehicle has told us its modes. `anyDownloaded` false, `total` and `count`
+null on `view.logs` — and **requesting a log list is forbidden here**, so this is a
+permanent hole in my coverage rather than a cycle's worth of work.
+
+**UNREACHABLE BY MY OWN SAFETY RULES:** `imperial` measures `false` on both `view.mapScale`
+and `view.missionSummary`. It tracks a units setting, and **writing a settings fact is
+forbidden**, so I can never see its true branch. A field whose other state I am not
+permitted to produce is not a field I have checked.
+
+**`choices` and `dynamic` — 0 of 35 item fields populate them.** Empty everywhere this rig
+reaches.
+
+**And that raised a better question than the field did.** My head draws twelve camera
+brands; if `choices` is empty, where do they come from? **They come from the core's
+`cameraBrandList`** — `CameraChoiceModel` reads it directly. Not a hand-written
+enumeration, which is what I was afraid of finding. Checked and clean.
+
+**`configuredCount` measures 2, against a `cameras` list of 4, and no head reads it.**
+My head has `configuredCameras = cameras.filter(\.configured)` — measured, cameras 1 and 3
+are configured, so the two agree. **This is NOT the duplicated-derivation class**: a head
+renders a LIST and cannot render one from a count, so the filter is not replaceable by the
+served figure. **And the head draws no count anywhere**, so there is no second derivation
+of the same number to drift apart. Accepted with that as the reason.
+
+**Nothing to fix in the whole group.** The useful output is the shape of my blind spot: a
+third of these fields need a vehicle, and two of them need a write I am not allowed to
+make. **Those are not "still to measure" — they are "cannot be measured here", and keeping
+them on a to-do list would have me re-running them forever.**
