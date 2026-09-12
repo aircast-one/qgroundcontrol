@@ -1,4 +1,4 @@
-use serde_json::Value;
+use serde_json::{Value, json};
 
 use crate::router::Backend;
 
@@ -127,6 +127,10 @@ pub fn range_text(low: f64, high: f64, unit: &Unit) -> String {
         false => format!("{value:.1}"),
     };
     format!("{} {} to {} {}", spell(shown_low), unit.name, spell(shown_high), unit.name)
+}
+
+pub fn refused(reason: &str) -> Value {
+    json!({ "kind": "null", "reason": reason })
 }
 
 pub fn format_measure(value: f64, units: &str) -> String {

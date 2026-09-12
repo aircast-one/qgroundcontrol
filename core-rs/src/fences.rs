@@ -1,6 +1,6 @@
 use serde_json::{Value, json};
 
-use crate::read::object;
+use crate::read::{object, refused};
 use crate::router::Backend;
 
 // The three list properties are QmlObjectListModel* and CONSTANT, as every list model in QGC is,
@@ -125,11 +125,11 @@ pub fn fences_view(backend: &dyn Backend, _args: &[String]) -> Value {
 }
 
 pub fn polygon_view(backend: &dyn Backend, args: &[String]) -> Value {
-    let Some(path) = args.first().filter(|p| !p.is_empty()) else { return json!({ "kind": "null" }) };
+    let Some(path) = args.first().filter(|p| !p.is_empty()) else { return refused("view.polygon needs the path of the shape to read") };
     let ring = args.get(1).map(|r| r != "line").unwrap_or(true);
     let json = object(&backend.get(path));
     if json.get("kind").and_then(Value::as_str) != Some("object") {
-        return json!({ "kind": "null" });
+        return refused("nothing answers at that path, so there is no shape to read");
     }
     let vertices = points(json.get("path"));
     let minimum = json.get("minVertexCount").and_then(Value::as_i64).map(|m| m as usize).unwrap_or(if ring { 3 } else { 2 });

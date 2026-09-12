@@ -1,6 +1,6 @@
 use serde_json::{Value, json};
 
-use crate::read::{Unit, flag, object};
+use crate::read::{Unit, flag, object, refused};
 use crate::router::Backend;
 
 pub const DEPS: &[&str] = &["plan.missionController.missionItemCount", "plan.dirty"];
@@ -21,7 +21,7 @@ pub fn warning(minimum_interval: f64, seconds_between_shots: f64) -> String {
 }
 
 pub fn survey_stats_view(backend: &dyn Backend, args: &[String]) -> Value {
-    let Some(index) = args.first().and_then(|a| a.parse::<usize>().ok()) else { return json!({ "kind": "null" }) };
+    let Some(index) = args.first().and_then(|a| a.parse::<usize>().ok()) else { return refused("view.surveyStats needs the index of the item in the plan, as view.surveyStats(3) - the position in the list, not the sequence number") };
     let item_path = format!("plan.missionController.visualItems.{index}");
     let survey = object(&backend.get_fields(&item_path, "isSurveyItem,cameraShots,timeBetweenShots,coveredArea,complexDistance"));
     let is_survey = flag(&survey, "isSurveyItem");
@@ -105,7 +105,9 @@ mod tests {
         assert_eq!(survey_stats_view(&Fake, &["3".to_string()])["distanceText"], crate::missionsummary::distance_text(900.0, false), "a survey's own length is a ground distance and is spelled the way every other ground distance is");
         assert_eq!(view["footprintText"], "12.5 \u{d7} 8.0 m");
         assert_eq!(view["tooFast"], true);
-        assert_eq!(survey_stats_view(&Fake, &[])["kind"], "null");
+        let refusal = survey_stats_view(&Fake, &[]);
+        assert_eq!(refusal["kind"], "null", "the kind stays null so a head that already treats this as absent is unaffected");
+        assert!(refusal["reason"].as_str().unwrap().contains("index"), "and the reason says which argument is missing, because a bare null is indistinguishable from a survey that has nothing to report");
     }
 
     #[test]

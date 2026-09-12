@@ -784,6 +784,7 @@
         "view.plan.upload.pausesFirst",
         "view.plan.upload.proceedTitle",
         "view.polygon.kind",
+        "view.polygon.reason",
         "view.preflight.class",
         "view.preflight.groups.#",
         "view.preflight.groups.0.checks.#",
@@ -3643,6 +3644,7 @@
         "view.plan.upload.refusal",
         "view.plan.upload.state",
         "view.polygon.kind",
+        "view.polygon.reason",
         "view.preflight.airframe",
         "view.preflight.blocked.#",
         "view.preflight.blocked.0",
@@ -6585,7 +6587,8 @@
         }
     },
     "view.polygon": {
-        "kind": "string"
+        "kind": "string",
+        "reason": "string"
     },
     "view.preflight": {
         "airframe": "string",
