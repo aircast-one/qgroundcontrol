@@ -52,6 +52,7 @@ pub mod missionkinds;
 pub mod missionsummary;
 pub mod modes;
 pub mod modeslots;
+pub mod obstacle;
 pub mod plan;
 pub mod params;
 pub mod planfile;
