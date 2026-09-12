@@ -6745,3 +6745,34 @@ in the same command as the conclusion.
 
 Both are the granularity error the core hit the same hour — a predicate whose
 unit is finer or coarser than the thing it measures.
+
+### The plan status is inverted on a connected vehicle
+
+Found by walking the operator's task end to end for the first time — new plan,
+takeoff, survey, land, upload — rather than by checking a field.
+
+    a 3-item plan, 145 items just uploaded    status "New plan"       dirty false
+    a genuinely empty, freshly cleared plan   status "Unsaved plan"   dirty true
+
+The finished uploaded work says "New plan"; the blank canvas says "Unsaved
+plan". `plan.dirty` means "not saved to a file" offline and "not synced to the
+vehicle" when connected — both `setDirty(false)` calls are gated on `offline()`
+— so an upload clears it and a clear-to-new sets it. `status_text` is correct
+for the case it was written for and is being handed a flag that changed meaning
+underneath it. Raised with the core; the fix is theirs.
+
+**There is also no confirmation that an upload succeeded.** 145 items went to the
+vehicle and the only thing that changed on screen was that status line.
+
+**A note I already had did not stop me.** `qgc-plan-dirty-means-two-things` has
+been in memory since an earlier session. I had read it as a caution about
+*reading* `dirty` and never connected it to the string rendered *from* it. A
+recorded hazard only fires when you are looking at the thing it names — walking
+the task is what put the two readings side by side.
+
+**And the measurement nearly went the other way.** My first check for the upload
+grepped the vehicle log for `mission.*count|MISSION_ITEM` and returned 0, which
+reads exactly like an upload that never happened. The fake prints `UPLOAD start`.
+Seventh instance today of an instrument answering honestly about a question
+narrowed wrongly — and the first where a wrong answer would have sent a peer
+chasing a failure that did not exist.
