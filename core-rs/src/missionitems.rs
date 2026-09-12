@@ -133,6 +133,7 @@ fn item(read: &Value, index: i64, vertical: &Unit, speed: &Unit, imperial: bool)
         "altitudeAmslLowest": number(read, "minAMSLAltitude"),
         "altitudeAmslHighest": number(read, "maxAMSLAltitude"),
         "altitudeBandText": band(read, vertical),
+        "altitudeFrame": altitude_frame(read, vertical),
         "specifiesCoordinate": flag(read, "specifiesCoordinate"),
         "altitudeChange": number(read, "altDifference"),
         "altitudeChangeText": number(read, "altDifference").map(|change| crate::read::altitude_text(change, vertical, true)),
@@ -193,6 +194,27 @@ fn unwalked(item: Value) -> Value {
             Value::Object(fields)
         }
         other => other,
+    }
+}
+
+const MODE_RELATIVE: f64 = 1.0;
+const MODE_ABSOLUTE: f64 = 2.0;
+const MODE_CALC_ABOVE_TERRAIN: f64 = 3.0;
+const MODE_TERRAIN_FRAME: f64 = 4.0;
+
+fn altitude_frame(read: &Value, vertical: &Unit) -> Option<&'static str> {
+    if flag(read, "homePosition") {
+        return Some("amsl");
+    }
+    if band(read, vertical).is_some() {
+        return Some("amsl");
+    }
+    height(read)?;
+    match number(read, "altitudeMode")? {
+        MODE_RELATIVE => Some("launch"),
+        MODE_ABSOLUTE => Some("amsl"),
+        MODE_CALC_ABOVE_TERRAIN | MODE_TERRAIN_FRAME => Some("terrain"),
+        _ => None,
     }
 }
 
@@ -560,9 +582,33 @@ mod reported {
         let waypoint = listed(json!({ "kind": "object", "sequenceNumber": 1, "isSimpleItem": true, "specifiesAltitude": true, "specifiesCoordinate": true, "facts": [ { "property": "altitude", "value": 50.0 } ] }));
         assert_eq!(waypoint["specifiesAltitude"], true, "where the property exists the answer still travels");
 
-        let command = listed(json!({ "kind": "object", "sequenceNumber": 2, "isSimpleItem": true, "specifiesAltitude": false }));
+        let command = listed(json!({ "kind": "object", "sequenceNumber": 2, "isSimpleItem": true, "specifiesAltitude": false, "altitudeMode": 1 }));
         assert_eq!(command["specifiesAltitude"], false, "including the false that means no");
         assert_eq!(command["incomplete"], false, "isIncomplete is ComplexMissionItem-only and reads absent here too, but false is the right answer for a simple item, so it is left alone");
+    }
+
+    #[test]
+    fn every_altitude_says_which_frame_it_is_measured_from() {
+        let simple = |mode: i64, metres: f64| json!({ "kind": "object", "sequenceNumber": 1, "isSimpleItem": true,
+            "specifiesAltitude": true, "specifiesCoordinate": true, "altitudeMode": mode,
+            "facts": [ { "property": "altitude", "value": metres } ] });
+
+        assert_eq!(listed(simple(1, 75.0))["altitudeFrame"], "launch", "a relative altitude is measured from the launch point");
+        assert_eq!(listed(simple(2, 541.0))["altitudeFrame"], "amsl");
+        assert_eq!(listed(simple(3, 40.0))["altitudeFrame"], "terrain", "calculated-above-terrain is what the operator typed above the ground, whatever it is converted to on upload");
+        assert_eq!(listed(simple(4, 40.0))["altitudeFrame"], "terrain");
+
+        let start = listed(json!({ "kind": "object", "sequenceNumber": 0, "homePosition": true, "isSimpleItem": false,
+            "facts": [ { "property": "plannedHomePositionAltitude", "value": 491.0 } ] }));
+        assert_eq!(start["altitudeFrame"], "amsl", "the launch row carries no altitudeMode at all, and its height is a sea-level one");
+
+        let survey = listed(json!({ "kind": "object", "sequenceNumber": 3, "isSimpleItem": false, "specifiesCoordinate": true,
+            "minAMSLAltitude": 520.0, "maxAMSLAltitude": 560.0 }));
+        assert_eq!(survey["altitudeFrame"], "amsl", "a pattern's band is sea-level, and it carries no altitudeMode either - so the two rows a head cannot infer are exactly the two that differ from the plan's default");
+        assert_eq!(survey["altitudeText"], Value::Null, "and the frame describes whichever height the row does have, since a band and a text never both arrive");
+
+        let command = listed(json!({ "kind": "object", "sequenceNumber": 2, "isSimpleItem": true, "specifiesAltitude": false, "altitudeMode": 1 }));
+        assert_eq!(command["altitudeFrame"], Value::Null, "a DO_ command still carries an altitudeMode, because that is a SimpleMissionItem property - so the mode alone is not evidence there is a height to frame");
     }
 
     #[test]
