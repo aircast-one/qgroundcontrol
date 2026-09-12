@@ -518,6 +518,21 @@ func checkAFenceSaysWhichSideIsSafe() {
     expect(FenceShape.keepIn != FenceShape.keepOut,
            "and the two names are distinct, without which both assertions above pass while "
            + "saying nothing")
+
+    let enforced = FirmwareFence(["radiusMetres": 300.0 as NSNumber, "radiusText": "300 m"])
+    expect(enforced?.boundary ?? "", FenceShape.enforced,
+           "the fence the FIRMWARE enforces is a THIRD kind, not a keep-in drawn differently. "
+           + "It was drawn in systemRed -- and red is keep-OUT in this head and #FF3B30 on "
+           + "Android, arrived at independently. A circular firmware fence is a keep-IN: the "
+           + "vehicle stops you LEAVING it. So an operator read an exclusion zone around home. "
+           + "Inverted, not merely distinct, and Android found it by reading 0e4df8eda")
+    expect(FenceShape.enforced != FenceShape.keepIn
+           && FenceShape.enforced != FenceShape.keepOut,
+           "so it takes neither plan colour. The deciding argument is the AFFORDANCE neither "
+           + "head named first: a plan fence can be dragged, resized and deleted; the firmware "
+           + "ring cannot be touched, and both heads exclude it from their hit tests. Identical "
+           + "appearance PROMISES an interaction that does nothing -- the operator drags it and "
+           + "the map ignores them. Both heads now draw it violet and dashed")
 }
 
 checkAFenceSaysWhichSideIsSafe()

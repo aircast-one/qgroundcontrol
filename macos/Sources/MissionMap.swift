@@ -618,10 +618,10 @@ struct MissionMap: NSViewRepresentable {
             }
             if let enforced = overlay as? FirmwareFenceCircle {
                 let renderer = MKCircleRenderer(circle: enforced)
-                renderer.strokeColor = .systemRed
+                renderer.strokeColor = .systemPurple
                 renderer.lineWidth = 2
                 renderer.lineDashPattern = [6, 4]
-                renderer.fillColor = NSColor.systemRed.withAlphaComponent(0.05)
+                renderer.fillColor = NSColor.systemPurple.withAlphaComponent(0.05)
                 return renderer
             }
             if let circle = overlay as? FenceCircle {

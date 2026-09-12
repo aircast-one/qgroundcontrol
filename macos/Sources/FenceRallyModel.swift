@@ -37,6 +37,8 @@ struct FirmwareFence: Equatable {
     static let unplacedDetail = "The vehicle enforces this, and has not reported where from yet"
     static let detail = "The vehicle enforces this from its own parameters"
 
+    var boundary: String { FenceShape.enforced }
+
     var drawable: Bool { centre != nil }
 
     var rowDetail: String { drawable ? FirmwareFence.detail : FirmwareFence.unplacedDetail }
@@ -88,6 +90,7 @@ struct FenceShape: Identifiable, Equatable {
 
     static let keepIn = "keepIn"
     static let keepOut = "keepOut"
+    static let enforced = "enforced"
 
     var boundary: String { inclusion ? FenceShape.keepIn : FenceShape.keepOut }
 
