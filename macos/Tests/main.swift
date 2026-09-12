@@ -2773,16 +2773,29 @@ func checkCameraModeRow() {
            "a camera in photo mode gets the segmented picker, which can represent it")
     expect(camera(mode: 1, text: "Video").offersModePicker,
            "and so does video")
-    expect(camera(mode: 2, text: "Survey").offersModePicker == false,
-           "but SURVEY does not. video.rs spells three modes -- Photo, Video and Survey -- and the "
-           + "picker carries exactly two tags, so a camera in survey matched NEITHER and SwiftUI "
-           + "drew the segmented control with nothing selected: a blank where the operator looks "
-           + "to see what the camera is doing. The row now draws the core's own modeText instead. "
-           + "A third TAG would have been wrong -- there is no setCameraModeSurvey to invoke, so "
-           + "it would offer a switch the head cannot perform")
-    expect(camera(mode: -1, text: "Not set").offersModePicker == false,
-           "and an undefined mode is the same case: the core already spells it \"Not set\", which "
-           + "is a better answer than an empty segmented control")
+    expect(camera(mode: 2, text: "Survey").pickerShowsCurrentMode == false,
+           "but SURVEY is not one of them. video.rs spells three modes and the picker carries "
+           + "exactly two tags, so a camera in survey matches NEITHER and the segmented control "
+           + "draws with nothing selected. A third TAG would still be wrong -- there is no "
+           + "setCameraModeSurvey to invoke, so it would offer a switch the head cannot perform")
+    expect(camera(mode: 2, text: "Survey").offersModePicker,
+           "BUT THE PICKER IS STILL OFFERED, and this reverses an earlier decision of mine. I hid "
+           + "it for survey because a blank segmented control is a poor answer where the operator "
+           + "looks -- correct about the blank, and it silently cost the capability: the picker is "
+           + "the head's ONLY caller of setCameraMode, so a camera in survey had no route back to "
+           + "photo or video at all. The core's canChangeMode returns TRUE there whenever video "
+           + "capture is stopped, and PhotoVideoControl.qml:115 offers the toggle on hasModes "
+           + "alone. The row now carries modeText BESIDE the picker, so the mode is still named "
+           + "and the way out still exists")
+    expect(camera(mode: -1, text: "Not set").offersModePicker,
+           "and an undefined mode is the same: the core spells it \"Not set\" in the row, and the "
+           + "picker beside it is how the operator resolves it")
+    let modeless = CameraControl(["present": true as NSNumber, "hasModes": false as NSNumber,
+                                  "mode": -1 as NSNumber, "modeText": "Not set"])
+    expect(modeless.offersModePicker == false,
+           "THE CASE THAT DISCRIMINATES: a camera that reports no modes shows no picker. Without "
+           + "this the gate could read `true` and pass every assertion above, because every other "
+           + "fixture here has hasModes set")
     expect(camera(mode: 2, text: "Survey").modeText, "Survey",
            "and the word drawn is the core's, not one this head invents for a mode it cannot set")
 }

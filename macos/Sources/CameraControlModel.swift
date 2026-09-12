@@ -24,7 +24,15 @@ struct CameraControl: Equatable {
     let hasModes: Bool
     let canChangeMode: Bool
 
-    var offersModePicker: Bool {
+    // PhotoVideoControl.qml:115 offers the toggle on hasModes alone, and the core's
+    // canChangeMode says a camera sitting in a third mode WILL accept the change whenever video
+    // capture is stopped. The picker is the head's only route to setCameraMode, so gating its
+    // existence on the current mode stranded such a camera with no way back to photo or video.
+    var offersModePicker: Bool { hasModes }
+
+    // The picker carries a tag for photo and one for video, so it cannot represent a third mode.
+    // Where it cannot, the row says which mode the camera is actually in beside it.
+    var pickerShowsCurrentMode: Bool {
         mode == CameraControl.photoMode || mode == CameraControl.videoMode
     }
 
