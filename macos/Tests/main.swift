@@ -4347,6 +4347,17 @@ func checkAnAltitudeSaysWhatItIsMeasuredFrom() {
         .altitudeFieldUnits, "m",
            "and the default frame adds nothing to the unit, so the common editable row is "
            + "unchanged -- the whole point of labelling only the exceptions")
+    expect(terrainWaypoint.mapSubtitle ?? "", "75.0 m AGL",
+           "the MAP MARKER spells the altitude too, and it was the third place -- I added the "
+           + "frame to the list row and to the editable field and stopped, because those were "
+           + "the two I had been looking at. The Android head hit the same shape on a summary "
+           + "chip: adding a qualifier to a value means finding EVERY place that value is "
+           + "spelled, and the count is never one, because you have already fixed the one you "
+           + "were thinking of")
+    expect(item("amsl", text: "").mapSubtitle == nil,
+           "and an item with no altitude gets NO subtitle rather than a pin labelled with an em "
+           + "dash: the annotation had been comparing against the dash by hand, in one of two "
+           + "spellings of the same character used a few lines apart")
     expect(item("amsl", text: "").altitudeReading, MissionItem.noAltitude,
            "an item with no altitude at all keeps its em dash and gains no frame: there is no "
            + "measurement to say the reference of")

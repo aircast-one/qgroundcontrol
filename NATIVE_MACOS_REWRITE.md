@@ -3048,3 +3048,53 @@ frame rule applied to a sentence rather than a fix.**
 `swift-checks.sh` could not have caught this: `PlanWindow.swift` is not among the 68 it
 compiles, which is why `altitudeFieldUnits` lives in the model and is asserted there.
 Suite 707/0/89.
+
+### The third place an altitude is spelled, 2026-09-12
+
+**Android predicted this on my tree before I looked.** Their words: *adding a
+qualifier to a value means finding every place that value is spelled, and the count
+is never one, because you have already fixed the one you were thinking of.* They
+found a summary chip; I found a **map marker**. `MissionMap` built its annotation
+subtitle from raw `altitudeText`, so a terrain-frame waypoint's pin read **75.0 m**
+with no frame — the same defect as the editable field, one renderer further out, two
+cycles after I first shipped the suffix.
+
+**And the probe projection had it too, which is worse.** `Mission.swift` projected
+`altitudeText` into the `items` list — **the list I have been measuring with all
+session.** Every measurement I made of the altitude column was blind to the exact
+distinction I had just shipped. It now reads `0.0 m AMSL`, `75.0 m`, `75.0 m AGL`.
+An instrument that cannot see the thing you are changing is the same family as the
+five already recorded, arrived from a new direction: not a checker that cannot fail,
+but a **projection that cannot distinguish**.
+
+The rule lives in `mapSubtitle` on the model, because `MissionMap.swift` is not among
+the 68 files `swift-checks.sh` compiles. It also removes a hand-written em-dash
+comparison that appeared in two different spellings of the same character a few lines
+apart.
+
+**`argumentModes` paid immediately.** The core's `368c76339` serves 39 of them; I
+knew four. Sampling the ten this rig can honestly produce — the other 27 want a file,
+a vehicle or a coordinate, and inventing one measures the refusal path rather than the
+view — turned up `view.missionItems(fields)` and `view.missionSummary(verify)`, two
+modes on views I read every cycle and had never called.
+
+**Measured, and a reason NOT to adopt one of them.** `view.missionItems(fields)`
+offers the selected item's editable fields: **10 of them, labelled with raw property
+names** like `TurnAroundDistanceMultiRotor`. This head already builds **14**, labelled
+from the Fact metadata's descriptions — *"Amount of additional distance to add outside
+the survey area for vehicle turn around."* — and grouped into Camera and Settings.
+Adopting the core's mode would lose four facts and every readable label. **Reported to
+the core rather than taken.**
+
+**Unreachable without a forbidden write, and stated as such.** `view.settings(<page>)`
+carries `applicationRestartRequired`, `vehicleRebootRequired` and `restartNotices`,
+and this head names none of them. All three read null on every page, and `control.rs`
+sets them from a **fact's** own flags — so producing the state means writing a setting
+or a vehicle parameter, both of which are forbidden here. **Recorded as a gap I cannot
+measure rather than a gap I have judged.**
+
+Suite: the full run gave 706/1/89 on
+`AircastDeviceSetupTest::_reapplyReplacesExistingLink`. **Re-run alone it is 6/0** —
+seventh sighting of that known flake, under the documented condition, with
+`core-rs/src/fences.rs` modified in the core's tree so a concurrent Rust rebuild was
+live during the full run.

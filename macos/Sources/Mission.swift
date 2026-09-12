@@ -990,7 +990,7 @@ final class MissionStore: ObservableObject, Probeable, WriteReporting {
                      "min": terrain.minAltitude, "max": terrain.maxAltitude],
          "items": items.prefix(8).map {
              ["seq": $0.sequence, "command": $0.command, "selected": $0.isCurrent,
-              "position": $0.positionText, "altitude": $0.altitudeText]
+              "position": $0.positionText, "altitude": $0.altitudeReading]
          }]
     }
 

@@ -14,7 +14,7 @@ final class MissionAnnotation: NSObject, MKAnnotation {
     init(item: MissionItem, latitude: Double, longitude: Double) {
         coordinate = CLLocationCoordinate2D(latitude: latitude, longitude: longitude)
         title = "\(item.sequence). \(item.command)"
-        subtitle = item.altitudeText == "—" ? nil : item.altitudeText
+        subtitle = item.mapSubtitle
         sequence = item.sequence
         isCurrent = item.isCurrent
         isLaunch = item.isLaunch
