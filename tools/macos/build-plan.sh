@@ -14,6 +14,13 @@
 # It ADDS to whatever plan is already open rather than starting one, so a second run on
 # the same launch gives fourteen items and the printed counts double. Relaunch the app
 # for a clean plan; createPlan resets but takes a kind and would drop the others.
+#
+# The fence steps were REFUSED here for one cycle and I recorded that as a vehicle
+# capability. It was not: the fence store had never read, fenceSupported defaulted to
+# false, and the head answered with its own sentence about a vehicle that had refused
+# nothing. Opening the Plan WINDOW is what makes it read -- selecting the Fence page
+# through the probe does not -- so that now happens first and both fence steps are
+# REQUIRED. A rig that expects a refusal will never notice the refusal going away.
 set -u
 port="${QGC_PORT:-8777}"
 api=(-s -H "X-QGC-Debug-Api: 1")
@@ -33,6 +40,9 @@ call() {
 
 probe="http://127.0.0.1:$port/native/probe"
 call REQUIRED "open the Plan window" "$probe?id=plan.pages"
+# The stores read on the window's onAppear, not on a page selection, so ask for the
+# window itself before anything depends on what they hold.
+osascript -e 'tell application "System Events" to tell process "AircastQGC" to click menu item "Plan" of menu 1 of menu bar item "Window" of menu bar 1' >/dev/null 2>&1
 
 place() {
     call REQUIRED "arm $1" "$probe?id=mission&action=arm&kind=$1"
@@ -50,10 +60,10 @@ call REQUIRED "select the waypoint" "$probe?id=mission&action=select&sequence=2"
 call REQUIRED "command a speed"     "$probe?id=mission&action=itemSpeed&on=1&value=9"
 call REQUIRED "set a hold"          "$probe?id=mission&action=setFact&name=Hold&value=20"
 
-# Both are gated on a connected vehicle: view.fences answers fenceSupported false and
-# rallySupported false with none attached, so these are expected to be refused here.
-call REFUSED "add a polygon fence" "$probe?id=fenceRally&action=addFence"
-call REFUSED "add a circular fence" "$probe?id=fenceRally&action=addFence&circle=1"
+# Measured with no vehicle attached and the Plan window open: geoFenceController and
+# rallyPointController both answer supported, and both calls succeed. They are REQUIRED.
+call REQUIRED "add a polygon fence" "$probe?id=fenceRally&action=addFence"
+call REQUIRED "add a circular fence" "$probe?id=fenceRally&action=addFence&circle=1"
 
 curl "${api[@]}" "$probe?id=mission" | python3 -c '
 import json, sys

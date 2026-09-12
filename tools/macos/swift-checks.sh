@@ -90,6 +90,7 @@ swiftc -Onone -o "$out" \
     "$root/macos/Sources/MotorTestModel.swift" \
     "$root/macos/Sources/RemoteSupportModel.swift" \
     "$root/macos/Sources/VehicleSetupTextModel.swift" \
+    "$root/macos/Sources/FenceSupportModel.swift" \
     "$root/macos/Sources/PatternGeometryModel.swift" \
     "$root/macos/Sources/SurveyStatsModel.swift" \
     "$root/macos/Sources/MissionVehicleModel.swift" \

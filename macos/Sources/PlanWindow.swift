@@ -991,9 +991,8 @@ struct PlanInspector: View {
                                           commit: fenceRally.setBreachAltitude)
                         })
                 } else {
-                    EmptyStateRow(text: fenceRally.fenceSupported
-                        ? "No breach return point. On a fence breach the vehicle follows its firmware default."
-                        : "This vehicle does not accept a geofence.")
+                    EmptyStateRow(text: fenceRally.fence.refusal
+                        ?? "No breach return point. On a fence breach the vehicle follows its firmware default.")
                 }
             }
         }

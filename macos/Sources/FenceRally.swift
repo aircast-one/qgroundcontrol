@@ -5,7 +5,8 @@ final class FenceRallyStore: ObservableObject, Probeable, WriteReporting {
 
     @Published private(set) var shapes: [FenceShape] = []
     @Published private(set) var rallyPoints: [RallyPointRow] = []
-    @Published private(set) var fenceSupported = false
+    @Published private(set) var fence = FenceSupport.unread
+    var fenceSupported: Bool { fence.offers }
     @Published private(set) var rallySupported = false
     @Published private(set) var connected = false
     @Published private(set) var breachReturn: RallyPointRow?
@@ -38,26 +39,26 @@ final class FenceRallyStore: ObservableObject, Probeable, WriteReporting {
 
     func reload() {
         reloads += 1
-        let fence = Bridge.group("plan.geoFenceController")
-        guard fence["kind"] as? String == "object" else {
+        let read = Bridge.group("plan.geoFenceController")
+        guard read["kind"] as? String == "object" else {
             set(\.status, "The plan is not available.")
             set(\.shapes, [])
             set(\.rallyPoints, [])
-            set(\.fenceSupported, false)
+            set(\.fence, .unread)
             set(\.rallySupported, false)
             return
         }
         set(\.status, "")
 
         set(\.connected, Bridge.group("vehicle")["kind"] as? String == "object")
-        set(\.fenceSupported, (fence["supported"] as? NSNumber)?.boolValue ?? false)
+        set(\.fence, .answered((read["supported"] as? NSNumber)?.boolValue ?? false))
         set(\.rallySupported,
             (Bridge.group("plan.rallyPointController")["supported"] as? NSNumber)?.boolValue ?? false)
 
         set(\.shapes, FenceRallyStore.readShapes())
         set(\.rallyPoints, FenceRallyStore.readRally())
 
-        set(\.breachReturn, (fence["breachReturnPoint"] as? [String: Any])
+        set(\.breachReturn, (read["breachReturnPoint"] as? [String: Any])
             .map { RallyPointRow(coordinate: $0) })
         let breachFact = Bridge.group("plan.geoFenceController.breachReturnAltitude")
         set(\.breachAltitude, (breachFact["value"] as? NSNumber)?.doubleValue)
@@ -89,9 +90,8 @@ final class FenceRallyStore: ObservableObject, Probeable, WriteReporting {
     }
 
     func addFence(circle: Bool) -> String? {
-        guard fenceSupported else {
-            return "This vehicle does not accept a geofence."
-        }
+        if !fence.read { reload() }
+        if let refusal = fence.refusal { return refusal }
         guard let window = mapWindow else {
             return "The map has not settled yet, so there is nowhere to put a fence."
         }
@@ -132,7 +132,8 @@ final class FenceRallyStore: ObservableObject, Probeable, WriteReporting {
     }
 
     func addBreachReturn() -> String? {
-        guard fenceSupported else { return "This vehicle does not accept a geofence." }
+        if !fence.read { reload() }
+        if let refusal = fence.refusal { return refusal }
         guard let centre = mapCentre else {
             return "The map has not settled yet, so there is nowhere to put it."
         }

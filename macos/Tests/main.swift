@@ -1352,6 +1352,7 @@ func checkMissionItemKinds() {
     checkAnItemSaysHowManyCommandsItFolds()
     checkAPatternSaysHowHighAboveTheGroundItFlies()
     checkAPatternDrawsThePathItActuallyFlies()
+    checkAnUnreadStoreDoesNotBlameTheVehicle()
     checkAnAltitudeSaysWhatItIsMeasuredFrom()
     checkSensorsComponentIsFoundByClass()
     checkShapeAbsence()
@@ -4386,6 +4387,31 @@ func checkAnAltitudeSaysWhatItIsMeasuredFrom() {
     expect(item("amsl", text: "").altitudeReading, MissionItem.noAltitude,
            "an item with no altitude at all keeps its em dash and gains no frame: there is no "
            + "measurement to say the reference of")
+}
+
+func checkAnUnreadStoreDoesNotBlameTheVehicle() {
+    expect(FenceSupport.unread.refusal ?? "", FenceSupport.unreadRefusal,
+           "a store that has never read says so. fenceSupported was a Bool defaulting to false, "
+           + "and addFence guarded on it, so before the Plan window appeared the head answered "
+           + "\"This vehicle does not accept a geofence\" -- its OWN sentence, about a vehicle "
+           + "that had refused nothing. I measured that, believed it, told both peers fences "
+           + "were unreachable here, and wrote the refusal into a rig as expected")
+    expect(FenceSupport.answered(false).refusal ?? "", FenceSupport.unsupportedRefusal,
+           "and a store that HAS read and been told no still says the vehicle does not accept "
+           + "one, because then it is true")
+    expect(FenceSupport.answered(true).refusal == nil,
+           "a supported fence has nothing to refuse")
+    expect(!FenceSupport.unread.offers,
+           "unread offers nothing either -- the button is not drawn as available on the strength "
+           + "of a value nobody has fetched")
+    expect(FenceSupport.answered(true).offers,
+           "and an answered yes does, which is the state the running app is actually in: measured "
+           + "after the Plan window appears, fenceSupported is true and addFence succeeds with no "
+           + "vehicle attached")
+    expect(FenceSupport.unread != FenceSupport.answered(false),
+           "unread and answered-no are different states carrying different sentences, which is "
+           + "the whole point: collapsing them to one Bool is what let a default speak for a "
+           + "vehicle")
 }
 
 func checkAPatternDrawsThePathItActuallyFlies() {

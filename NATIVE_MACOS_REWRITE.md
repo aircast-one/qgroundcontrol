@@ -3176,3 +3176,44 @@ this is the case where the Swift one is the only one that fires.
 the store in both states rather than seeing all eleven drawn. The section that draws
 them is the same `ForEach` that already renders the catalogue four and is unchanged
 here. Suite 707/0/89.
+
+### The refusal I measured was my own default, 2026-09-12
+
+**Last cycle I reported that fences cannot be created here with no vehicle, wrote it
+into `build-plan.sh` as an expected REFUSED, told both peers, and drew a general lesson
+from it about stale permissions. All of it rested on a sentence my own head made up.**
+
+`addFence` guarded on `fenceSupported`, a `Bool` **defaulting to false**, and answered
+`"This vehicle does not accept a geofence."` — the head's own string, at
+`FenceRally.swift:93`, about a vehicle that had refused nothing. The store's `reload()`
+runs on the Plan **window's** `onAppear`; selecting the Fence page through the probe does
+not trigger it. Measured: `reloads 0` after a page selection, `reloads 1` and
+`fenceSupported true` the moment the window appears — **and then `addFence` succeeds.**
+
+So: `plan.geoFenceController.supported` is **true** on this ArduPilot SITL with no
+vehicle attached. Fences and rally points are creatable. The core's `view.plan` said so
+all along (`fenceSupported: true`, `actions.addFence: true`) and I read the disagreement
+as the core being wrong rather than as a question.
+
+**The failure is the one I had just written a rule about, inverted.** I wrote *a stale
+permission is worse than a stale refusal* and then manufactured a stale **refusal**, from
+an initial value, propagated it to two peers and froze it into a tool as the expected
+outcome. **A rig that expects a refusal will never notice the refusal going away.**
+
+`FenceSupport` now carries three states — unread, answered-no, answered-yes — with the
+sentence belonging to each. Unread says *"The plan has not been read yet."*;
+answered-no keeps the vehicle sentence, because then it is true; and `offers` is false
+for unread, so no button is drawn available on a value nobody fetched. `addFence` reads
+first if it never has. The mutation collapsing unread into unsupported fails.
+
+**This is the same three-state lesson as the bridge's value / null / absent, arriving in
+a store instead of a payload:** a Bool cannot hold "not asked", so the default answers
+for the vehicle.
+
+`build-plan.sh` now opens the Plan window before anything depends on what the stores
+hold, and both fence steps are **REQUIRED**. Verified: all twenty steps accepted.
+
+**I have told the Android head that the datum they built four experiments on was
+false.** They were testing whether `GeoFenceController::supported()` can be made to
+return false, using my report as evidence that the path fires on a real SITL. It does
+not fire here — nothing refused. Suite 707/0/89.
