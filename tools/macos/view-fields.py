@@ -108,6 +108,10 @@ UNDRAWN = [
     ("view.linkForm", "link creation, which is a transient-handle API and QML-only"),
     ("view.transports", "link creation, which is a transient-handle API and QML-only"),
     ("view.vehicles", "built and unverifiable: no second vehicle has ever connected here"),
+    ("view.landingPattern", "a fixed-wing or VTOL landing pattern: this SITL is a quadrotor and "
+                            "arm(land) places a plain Return To Launch, so the view answers its "
+                            "refusal at every index. Changing the offline vehicle type is a "
+                            "settings write. PARITY GAP against six QML files, recorded not built"),
     ("view.obstacle", "a proximity ring: available is false with no vehicle, so there is nothing "
                       "to draw and nothing to check. PARITY GAP, recorded not built"),
 ]
