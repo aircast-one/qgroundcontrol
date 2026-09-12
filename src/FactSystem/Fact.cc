@@ -222,7 +222,7 @@ int Fact::enumIndex()
                 index++;
             }
             // Current value is not in list, add it manually
-            _metaData->addEnumInfo(tr("Unknown: %1").arg(rawValue().toString()), rawValue());
+            _metaData->addEnumInfo(unknownEnumLabel(), rawValue());
             emit enumsChanged();
             return index;
         }
@@ -422,6 +422,15 @@ QString Fact::longDescription() const
         qCWarning(FactLog) << kMissingMetadata << name();
         return QString();
     }
+}
+
+// The label enumIndex() synthesises when the current value is not among the declared ones.
+// It is served rather than matched: the entry is tr() wrapped, so a consumer filtering it by
+// the English prefix offers the bogus entry in every other language, and matching its SHAPE
+// assumes every translation keeps %1 last.
+QString Fact::unknownEnumLabel() const
+{
+    return tr("Unknown: %1").arg(rawValue().toString());
 }
 
 QString Fact::rawUnits() const

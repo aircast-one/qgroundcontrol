@@ -51,6 +51,7 @@ class Fact : public QObject
     Q_PROPERTY(QString      shortDescription        READ shortDescription                                       CONSTANT)
     Q_PROPERTY(QString      units                   READ cookedUnits                                            CONSTANT)
     Q_PROPERTY(QString      rawUnits                READ rawUnits                                               CONSTANT)
+    Q_PROPERTY(QString      unknownEnumLabel        READ unknownEnumLabel                                       NOTIFY rawValueChanged)
     Q_PROPERTY(QVariant     value                   READ cookedValue                WRITE setCookedValue        NOTIFY valueChanged)
     Q_PROPERTY(QVariant     rawValue                READ rawValue                   WRITE setRawValue           NOTIFY rawValueChanged)
     Q_PROPERTY(bool         valueEqualsDefault      READ valueEqualsDefault                                     NOTIFY valueChanged)
@@ -114,6 +115,7 @@ public:
     FactMetaData::ValueType_t type() const { return _type; }
     QString cookedUnits() const;
     QString rawUnits() const;
+    QString unknownEnumLabel() const;
     QString rawValueString() const;
     QString cookedValueString() const;
     bool valueEqualsDefault() const;

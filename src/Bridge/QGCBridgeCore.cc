@@ -345,6 +345,7 @@ QJsonObject factJson(Fact *fact)
         QStringLiteral("shortDescription"),
         QStringLiteral("units"),
         QStringLiteral("rawUnits"),
+        QStringLiteral("unknownEnumLabel"),
         QStringLiteral("value"),
         QStringLiteral("rawValue"),
         QStringLiteral("valueString"),
