@@ -52,11 +52,9 @@ ACCEPTED = {
     "qgcRebootRequired": "Fact metadata read by path",
     "h": "the detection feed, which is not a core view",
     "w": "the detection feed, which is not a core view",
-    "y": "the detection feed, which is not a core view",
     "confidence": "the detection feed, which is not a core view",
     "width": "the video surface, not a core view",
     "height": "the video surface, not a core view",
-    "source": "the extra-video-sources file, written by this head",
     "url": "the extra-video-sources file, written by this head",
     "received": "the log download screen reads its own progress shape",
     "sizeText": "the log download screen reads its own progress shape",
@@ -64,7 +62,6 @@ ACCEPTED = {
     "notices": "view.notices is not in the recorded contract at all",
     "close": "view.obstacle recorded without the nearest object present",
     "sectorText": "view.obstacle recorded without the nearest object present",
-    "transects": "the geometry argument mode, recorded without a pattern in the plan",
 }
 
 
