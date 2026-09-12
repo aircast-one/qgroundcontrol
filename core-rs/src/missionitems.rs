@@ -115,7 +115,7 @@ fn item(read: &Value, index: i64, vertical: &Unit, imperial: bool) -> Value {
         "altitudeText": height(read).map(|metres| format_measure(vertical.show(metres), &vertical.name)),
         "altitudeUnits": height(read).map(|_| vertical.name.clone()),
         "altitudeFactUnits": fact_units(read, "altitude").or_else(|| fact_units(read, "plannedHomePositionAltitude")),
-        "specifiesAltitude": flag(read, "specifiesAltitude"),
+        "specifiesAltitude": flag(read, "isSimpleItem").then(|| flag(read, "specifiesAltitude")),
         "altitudeOnly": flag(read, "specifiesAltitudeOnly"),
         "category": Some(text(read, "category")).filter(|category| !category.is_empty()),
         "cameraShots": number(read, "cameraShots").map(|shots| shots as i64).filter(|shots| *shots > 0),
@@ -538,6 +538,23 @@ mod reported {
         assert_eq!(imperial["altitudeText"], "246 ft", "the feet come from the app's own conversion, not a factor the core keeps its own copy of");
         assert_eq!(imperial["altitudeUnits"], "ft");
         assert_eq!(imperial["altitude"], 75.0);
+    }
+
+    #[test]
+    fn a_flag_only_one_kind_of_item_carries_is_absent_on_the_others() {
+        let survey = listed(json!({ "kind": "object", "sequenceNumber": 3, "isSimpleItem": false, "specifiesCoordinate": true, "minAMSLAltitude": 585.0, "maxAMSLAltitude": 660.0 }));
+        assert_eq!(survey["specifiesAltitude"], Value::Null, "specifiesAltitude is a Q_PROPERTY on SimpleMissionItem alone, so on a survey it reads false because it is not there - and a survey does state altitudes, which is what makes false the wrong answer rather than a harmless one");
+
+        let start = listed(json!({ "kind": "object", "sequenceNumber": 0, "homePosition": true, "isSimpleItem": false, "facts": [ { "property": "plannedHomePositionAltitude", "value": 12.0 } ] }));
+        assert_eq!(start["specifiesAltitude"], Value::Null);
+        assert_eq!(start["altitudeText"], "12.0 m", "the launch row states one, and its altitude is how a head should ask rather than the flag");
+
+        let waypoint = listed(json!({ "kind": "object", "sequenceNumber": 1, "isSimpleItem": true, "specifiesAltitude": true, "specifiesCoordinate": true, "facts": [ { "property": "altitude", "value": 50.0 } ] }));
+        assert_eq!(waypoint["specifiesAltitude"], true, "where the property exists the answer still travels");
+
+        let command = listed(json!({ "kind": "object", "sequenceNumber": 2, "isSimpleItem": true, "specifiesAltitude": false }));
+        assert_eq!(command["specifiesAltitude"], false, "including the false that means no");
+        assert_eq!(command["incomplete"], false, "isIncomplete is ComplexMissionItem-only and reads absent here too, but false is the right answer for a simple item, so it is left alone");
     }
 
     #[test]

@@ -269,6 +269,17 @@ mod tests {
     }
 
     #[test]
+    fn the_firmware_table_answers_only_what_a_firmware_can_never_have() {
+        assert!(page_exists("Camera", false), "APMAutoPilotPlugin builds the camera component only when MNT1_TYPE exists, and Lights only for sub(); PX4 builds Flight Behavior only when SYS_VEHICLE_RESP exists");
+        assert!(page_exists("Lights", false), "so an ArduPilot copter with no gimbal has neither, and this table cannot say so - a firmware flag cannot express a parameter or a vehicle type");
+        assert!(!page_exists("Camera", true), "what it does say is sound in the other direction: PX4 has no camera component under any condition");
+        assert!(!page_exists("Flight Behavior", false));
+        assert!(page_exists("Remote Support", false), "and Remote Support is the one entry that is purely firmware - APM builds it unconditionally and PX4 has none");
+
+        assert!(DEPS.contains(&"vehicle.autopilotPlugin.vehicleComponents"), "which is why view.components stays the authoritative list once a vehicle is connected: QGC has already evaluated every condition, per vehicle rather than per firmware");
+    }
+
+    #[test]
     fn readiness_reads_like_the_summary_page() {
         assert_eq!(readiness(false, &[], &[]).1, "No vehicle connected");
         let ok = readiness(true, &[("Sensors".into(), false)], &[]);

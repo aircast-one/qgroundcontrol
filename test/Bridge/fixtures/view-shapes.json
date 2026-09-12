@@ -17,6 +17,7 @@
         "view.missionItems.items.0.command",
         "view.missionItems.items.0.exitCoordinate",
         "view.missionItems.items.0.patternDistance",
+        "view.missionItems.items.0.specifiesAltitude",
         "view.missionItems.items.0.speedChange",
         "view.missionKinds.kinds.0.className",
         "view.missionKinds.kinds.0.complexName",
@@ -6468,7 +6469,7 @@
                 "selected": "bool",
                 "sequence": "number",
                 "simple": "bool",
-                "specifiesAltitude": "bool",
+                "specifiesAltitude": "bool|null",
                 "specifiesCoordinate": "bool",
                 "speedChange": "null"
             }
