@@ -2596,3 +2596,33 @@ question for whoever deletes the files and can be answered then.
 `macos/Sources` reads `instrumentQmlFile2` -- zero matches, against a control showing the head
 does read two other `flyViewSettings` facts -- so this head draws no such control and has no
 defect. The item stays open for Phase 6 with a measurement attached instead of a prediction.
+
+### The two Phase 6 decision items, measured, and they answer oppositely (2026-09-12)
+
+`instrumentQmlFile2` and `Viewer3D` have sat on the open list as the two "port it or record the
+non-port" decisions. Both had an analysis and neither had a reading. Measured now, and the
+readings point in opposite directions, which changes the order they should be taken in.
+
+**`instrumentQmlFile2` is armed.** `rawValue` is `VerticalCompassAttitude.qml` against a default of
+`IntegratedCompassAttitude.qml` -- a non-default value is persisted in the shared QSettings space
+on this machine today, so deleting the three widgets strands live user state. Recorded in
+`f2aa25654` along with the finding that the fact is an enum and already carries the names a head
+would key on.
+
+**`Viewer3D` is dormant, and every fact says so.** `enabled` is `false` against a default of
+`false`; `osmFilePath` still reads `"Please select an OSM file"`, which is its default placeholder,
+so no file has ever been chosen; `buildingLevelHeight` is 3 against a default of 3. Nothing in the
+group has been touched. The head reads four settings groups -- `appSettings`, `flyViewSettings`,
+`mavlinkSettings`, `videoSettings` -- and `viewer3DSettings` is not among them, nor is it a served
+view, so `view-fields.py` would never have reported it.
+
+**What that changes.** The two items are the same shape on paper and not in practice: one deletion
+strands a persisted value and needs a migration, the other strands nothing because no user state
+exists to strand. **Enabling `Viewer3D` also is not something an operator drifts into** -- the
+default is off and it additionally requires deliberately choosing an OSM file, so the placeholder
+being untouched is a stronger signal than the boolean alone.
+
+**The limit of this, stated.** These are one machine's settings. A user elsewhere may have enabled
+`Viewer3D` or left `instrumentQmlFile2` at its default, and nothing here measures that. The claim
+is about what is persisted *here*, which is a data point the decision did not previously have --
+not a claim about the population.
