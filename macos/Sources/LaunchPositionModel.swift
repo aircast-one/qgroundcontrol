@@ -23,7 +23,7 @@ struct LaunchPosition: Equatable {
     init(home: [String: Any], item: [String: Any]) {
         self.init(vehicleHasHome: (home["valid"] as? NSNumber)?.boolValue ?? false,
                   altitude: (item["altitude"] as? NSNumber)?.doubleValue,
-                  units: (item["altitudeUnits"] as? String) ?? Measure.defaultUnits,
+                  units: (item["altitudeEditUnits"] as? String) ?? "",
                   altitudeText: (item["altitudeText"] as? String) ?? "",
                   coordinate: GeoPoint(json: item["coordinate"]))
     }

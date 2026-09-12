@@ -23,6 +23,7 @@ struct MissionItem: Identifiable, Equatable {
     let movable: Bool
     let category: String
     let altitudeUnits: String
+    let altitudeEditUnits: String
 
     let altitudeText: String
     let altitudeBandText: String
@@ -60,7 +61,7 @@ struct MissionItem: Identifiable, Equatable {
         return " " + altitudeFrame.uppercased()
     }
 
-    var altitudeFieldUnits: String { altitudeUnits + frameSuffix }
+    var altitudeFieldUnits: String { altitudeEditUnits + frameSuffix }
 
     var mapSubtitle: String? {
         altitudeReading == MissionItem.noAltitude ? nil : altitudeReading
@@ -178,6 +179,7 @@ struct MissionItem: Identifiable, Equatable {
 
         altitude = (json["altitude"] as? NSNumber)?.doubleValue
         altitudeUnits = (json["altitudeUnits"] as? String) ?? Measure.defaultUnits
+        altitudeEditUnits = (json["altitudeEditUnits"] as? String) ?? ""
         altitudeText = (json["altitudeText"] as? String) ?? MissionItem.noAltitude
         altitudeBandText = (json["altitudeBandText"] as? String) ?? ""
         altitudeFrame = (json["altitudeFrame"] as? String) ?? ""

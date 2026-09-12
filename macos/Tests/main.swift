@@ -3269,9 +3269,18 @@ func checkLaunchPosition() {
            + "that was missing settled() and drew \"-0.0 m\" for a vehicle on the ground")
     expect(onVehicle.positionText == "-35.360000, 149.160000", "a placed launch position reads out")
 
+    expect(LaunchPosition(home: ["valid": false],
+                          item: ["altitude": 100.0 as NSNumber, "altitudeUnits": "ft",
+                                 "altitudeEditUnits": "m", "altitudeText": "328 ft"]).units, "m",
+           "and the launch field takes the FACT'S OWN units like the item rows, not the vertical "
+           + "setting. plannedHomePositionAltitude is declared units \"m\" in "
+           + "MissionSettings.FactMetaData.json, so its cooked value follows the HORIZONTAL "
+           + "preference while altitudeUnits follows VERTICAL -- the same split that made a "
+           + "waypoint's editable field read \"30 ft\" beside a subtitle reading \"98.4 ft\"")
+
     let feet = LaunchPosition(home: ["valid": false],
                               item: ["altitude": 100.0 as NSNumber, "altitudeUnits": "ft",
-                                     "altitudeText": "100 ft"])
+                                     "altitudeEditUnits": "ft", "altitudeText": "100 ft"])
     expect(feet.units, "ft",
            "the RAW number and its unit are kept as well, because this altitude is EDITED rather "
            + "than read: PlanWindow hands them to an AltitudeField with a commit. A spelled "
@@ -4829,7 +4838,8 @@ func checkAnAltitudeSaysWhatItIsMeasuredFrom() {
     let terrainWaypoint = MissionItem(
         view: ["index": 2 as NSNumber, "sequence": 2 as NSNumber, "name": "Waypoint",
                "kind": "waypoint", "specifiesAltitude": true as NSNumber,
-               "altitudeText": "75.0 m", "altitudeUnits": "m", "altitudeFrame": "terrain",
+               "altitudeText": "75.0 m", "altitudeUnits": "m", "altitudeEditUnits": "m",
+               "altitudeFrame": "terrain",
                "altitudeFrameText": "AGL"],
         selected: -1)
     expect(terrainWaypoint.altitudeFieldUnits, "m AGL",
@@ -4841,11 +4851,32 @@ func checkAnAltitudeSaysWhatItIsMeasuredFrom() {
     expect(MissionItem(view: ["index": 1 as NSNumber, "sequence": 1 as NSNumber,
                               "name": "Takeoff", "kind": "takeoff",
                               "specifiesAltitude": true as NSNumber, "altitudeUnits": "m",
+                              "altitudeEditUnits": "m",
                               "altitudeFrame": MissionItem.launchFrame,
                               "altitudeFrameText": ""], selected: -1)
         .altitudeFieldUnits, "m",
            "and the default frame adds nothing to the unit, so the common editable row is "
            + "unchanged -- the whole point of labelling only the exceptions")
+    expect(MissionItem(view: ["index": 3 as NSNumber, "sequence": 3 as NSNumber,
+                              "name": "Waypoint", "kind": "waypoint",
+                              "specifiesAltitude": true as NSNumber,
+                              "altitude": 30.0 as NSNumber,
+                              "altitudeUnits": "ft", "altitudeEditUnits": "m",
+                              "altitudeFrame": MissionItem.launchFrame,
+                              "altitudeFrameText": ""], selected: -1)
+        .altitudeFieldUnits, "m",
+           "and the editor's label comes from the FACT'S OWN units, not the vertical setting. The "
+           + "core serves three things from one item: altitude is the fact's COOKED value, which "
+           + "follows the HORIZONTAL preference because QGC declares the item altitude with "
+           + "setRawUnits(\"m\"); altitudeUnits is the VERTICAL preference; and altitudeEditUnits "
+           + "is the fact's own cooked units. This head paired the cooked NUMBER with the VERTICAL "
+           + "NAME, so with Horizontal=Meters and Vertical=Feet a 30 m waypoint's editable field "
+           + "read \"30 ft\" while the same item's map subtitle read \"98.4 ft\". Worse than a "
+           + "misread: the field is EDITABLE and the bridge writes COOKED, so an operator seeing "
+           + "\"30 ft\" who types 98 to raise it puts the waypoint at 98 METRES. QML never had "
+           + "this because AltitudeFactTextField takes unitsLabel from fact.units -- one fact, one "
+           + "number, one label")
+
     expect(terrainWaypoint.mapSubtitle ?? "", "75.0 m AGL",
            "the MAP MARKER spells the altitude too, and it was the third place -- I added the "
            + "frame to the list row and to the editable field and stopped, because those were "

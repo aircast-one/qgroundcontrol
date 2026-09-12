@@ -10,6 +10,7 @@ airframe
 altitude
 altitudeBandText
 altitudeChangeText
+altitudeEditUnits
 altitudeFrame
 altitudeFrameText
 altitudeMode
