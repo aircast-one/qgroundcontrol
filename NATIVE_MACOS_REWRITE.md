@@ -3540,3 +3540,34 @@ it.**
 **Four of seven reasons in this table have now been corrected in two cycles.** They were
 all written by the same hand on the same day, which is the case for auditing the rest of
 a set once one member is found wrong.
+
+### (t) Three more fields measured, and one of them is a name trap I had already half-fallen for
+
+**`altitudeFactUnits` — null on EVERY item, in every state this rig reaches.** No head
+reads it and nothing here makes it answer. Recorded as unreachable rather than as safe,
+the same treatment `altitudeUnits` got: **a field I cannot make speak is not a field I
+have checked.**
+
+**`supportsTerrainFrame` — measured FALSE, and it does NOT mean what its name suggests.**
+The same read carries `omitted: [{raw: 4, title: "Terrain Frame", reason: "This vehicle's
+firmware cannot hold an altitude above terrain."}]` — while **"Calculated Above Terrain"
+(raw 3) is `enabled: true`**, helped by "Above terrain, converted to AMSL before upload."
+
+**Two different modes.** `supportsTerrainFrame` answers for raw 4 alone. A head reading it
+as "this vehicle cannot plan against terrain" would hide a mode that works: raw 3 is
+selectable here and `setItemAltitudeMode&value=3` is one of my proven-safe actions.
+
+**I had already half-fallen for this once** — I nearly dismissed Android's terrain warning
+by recalling that firmware sentence, and only re-reading the view showed raw 3 enabled.
+**And my own working notes still say `setItemAltitudeMode&value=3` "gives a terrain
+frame", which is the same conflation in my own hand**: it gives *Calculated Above
+Terrain*, converted to AMSL before upload, which is precisely NOT the terrain frame the
+firmware refuses.
+
+**`context` — `"mission"`.** A discriminator naming which altitude-mode list this is,
+which is why the same view can answer for a plan and for a guided action without a head
+choosing between two paths.
+
+**The producer keeps the refused member and its reason**, which is the only thing that
+made this legible: had raw 4 simply been absent, `supportsTerrainFrame: false` would have
+been the entire story and it would have read as a verdict on terrain altitudes generally.
