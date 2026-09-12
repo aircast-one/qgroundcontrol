@@ -43,7 +43,10 @@ internal fun altitudeRangeUsable(reading: GuidedAltitude?): Boolean =
 
 internal fun rangeLabel(minimum: Double?, maximum: Double?, unit: String): String? {
     if (minimum == null || maximum == null || maximum <= minimum) return null
-    val show = { value: Double -> String.format(java.util.Locale.US, "%.1f", value) }
+    val show = { value: Double ->
+        val text = String.format(java.util.Locale.US, "%.1f", value)
+        if (text == "-0.0") "0.0" else text
+    }
     return listOf("${show(minimum)} to ${show(maximum)}", unit)
         .filter { it.isNotBlank() }
         .joinToString(" ")

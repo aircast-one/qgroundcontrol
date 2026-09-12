@@ -75,4 +75,9 @@ class RangeLabelTest {
         org.junit.Assert.assertNull(rangeLabel(5.0, 5.0, "m"))
         org.junit.Assert.assertNull(rangeLabel(9.0, 5.0, "m"))
     }
+
+    @Test
+    fun `an altitude a hair below launch reads as zero, not as minus zero`() {
+        assertEquals("0.0 to 60.0 m", rangeLabel(-0.03, 60.0, "m"))
+    }
 }
