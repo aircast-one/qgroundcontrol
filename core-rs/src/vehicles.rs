@@ -5,7 +5,7 @@ use crate::router::Backend;
 
 pub const DEPS: &[&str] = &["vehicles.activeVehicleAvailable", "vehicles.vehicles.count", "vehicle.id"];
 
-const FIELDS: &str = "id,vehicleTypeString,firmwareTypeString,armed,flying,flightMode,coordinate";
+const FIELDS: &str = "id,vehicleTypeString,firmwareTypeString,armed,flying,flightMode";
 
 pub fn vehicles_view(backend: &dyn Backend, _args: &[String]) -> Value {
     let count = integer(&object(&backend.get("vehicles.vehicles.count")), "value").unwrap_or(0).max(0);

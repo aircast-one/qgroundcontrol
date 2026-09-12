@@ -80,7 +80,7 @@ pub fn slots_view(backend: &dyn Backend, _args: &[String]) -> Value {
     }
 
     let channel_index = parameter(backend, channel_name).map(|value| value as i64 - 1).unwrap_or(DEFAULT_CHANNEL_INDEX);
-    let radio = object(&backend.get_fields("radioCal", "rcValues,channelCount"));
+    let radio = object(&backend.get_fields("radioCal", "rcValues"));
     let pwm: Vec<i64> = radio.get("rcValues").and_then(Value::as_array).map(|values| values.iter().filter_map(Value::as_i64).collect()).unwrap_or_default();
     let reachable = channel_index >= 0 && (channel_index as usize) < pwm.len();
     let live = match reachable {

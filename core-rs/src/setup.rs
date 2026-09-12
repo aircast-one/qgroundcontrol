@@ -137,7 +137,7 @@ pub fn readiness(connected: bool, components: &[(String, bool)], sensor_faults: 
 }
 
 pub fn setup_view(backend: &dyn Backend, args: &[String]) -> Value {
-    let vehicle = object(&backend.get_fields("vehicle", "px4Firmware,apmFirmware"));
+    let vehicle = object(&backend.get_fields("vehicle", "px4Firmware"));
     let connected = vehicle.get("kind").and_then(Value::as_str) == Some("object");
     let px4 = flag(&vehicle, "px4Firmware");
     match args.first() {

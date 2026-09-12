@@ -207,7 +207,7 @@ pub fn summary_view(backend: &dyn Backend, args: &[String]) -> Value {
     let imperial = imperial(backend);
     let mission = object(&backend.get_fields(
         "plan.missionController",
-        "containsItems,missionTotalDistance,missionPlannedDistance,missionTime,missionHoverDistance,missionCruiseDistance,missionHoverTime,missionCruiseTime,missionMaxTelemetry,minAMSLAltitude,maxAMSLAltitude",
+        "containsItems,missionTotalDistance,missionPlannedDistance,missionTime,missionHoverDistance,missionCruiseDistance,missionMaxTelemetry,minAMSLAltitude,maxAMSLAltitude",
     ));
     let has_items = mission.get("containsItems").and_then(Value::as_bool).unwrap_or(false);
     let metres = |key: &str| mission.get(key).and_then(Value::as_f64).filter(|value| value.is_finite() && *value >= 0.0);
