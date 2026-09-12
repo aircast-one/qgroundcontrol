@@ -6713,3 +6713,35 @@ square. I had labelled that an inference when I could not measure it; it is now
 a measurement, and it agrees with the inference — which is worth noting because
 it is the first time today one of my guesses survived contact with an
 instrument.
+
+### The summary chip checked against the core, and a null I turned into a zero
+
+    chip   7 items (takeoff, RTL) · 120 scan pts · 12.70 km · 49:22
+    core   distanceMetres 12699.0957   timeSeconds 2961.85
+
+12.699 km renders as `12.70 km`; 2961.85 s as `49:22`. Both correct, measured
+rather than assumed, on a surface that had never been verified.
+
+**And I nearly filed an anomaly against the core that my own script invented.**
+My first read printed `durationSeconds: 0` beside `timeSeconds: 2961`, which
+reads exactly like a field that never varies — one of the tells this document
+already warns about. The value is `None`. My print used
+`round(d.get('durationSeconds') or 0)`, and `or 0` turns a null into a zero.
+
+A default in a MEASUREMENT script is the same defect as a fallback in a head: it
+answers for something that did not answer, and the answer is plausible. Fifth
+instance today of reading a value from something other than the world being
+described, and the first where the instrument was a throwaway one-liner I wrote
+in the same command as the conclusion.
+
+**Two sweep flaws found the same way, neither worth fixing:**
+
+- the `*Text` sweep only sees TOP-LEVEL keys, so `altitudeRange.text` and two
+  other nested strings were invisible to it. Enumerating them from the contract
+  found three, all fine.
+- checking "does the head name this key" misses a head that names the whole
+  VIEW: `view.warnings` reported unread because `VehicleMessages.kt` holds
+  `"view.warnings"` as a path constant and never the bare key.
+
+Both are the granularity error the core hit the same hour — a predicate whose
+unit is finer or coarser than the thing it measures.
