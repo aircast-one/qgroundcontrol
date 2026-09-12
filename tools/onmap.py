@@ -47,10 +47,10 @@ def matching(image, target):
 BRIDGE = 12
 
 
-def cluster(points):
+def cluster(points, bridge=BRIDGE):
     cells = {}
     for point in points:
-        cells.setdefault((point[0] // BRIDGE, point[1] // BRIDGE), []).append(point)
+        cells.setdefault((point[0] // bridge, point[1] // bridge), []).append(point)
     parent = {cell: cell for cell in cells}
 
     def root(cell):
@@ -95,13 +95,18 @@ def main():
     raw = sys.argv[1:]
     tap = "--tap" in raw
     nth = None
+    gap = BRIDGE
+    if "--gap" in raw:
+        index = raw.index("--gap")
+        gap = int(raw[index + 1])
+        raw = raw[:index] + raw[index + 2:]
     if "--nth" in raw:
         index = raw.index("--nth")
         nth = int(raw[index + 1])
         raw = raw[:index] + raw[index + 2:]
     args = [a for a in raw if a != "--tap"]
     if not args:
-        raise SystemExit("usage: onmap.py <#RRGGBB|keep-in|keep-out> [--nth N] [--tap]")
+        raise SystemExit("usage: onmap.py <#RRGGBB|keep-in|keep-out> [--gap N] [--nth N] [--tap]")
     serial = subprocess.run(
         ["adb", "devices"], capture_output=True, text=True, check=True
     ).stdout.splitlines()
@@ -114,7 +119,7 @@ def main():
     if not points:
         print(f"NOT ON SCREEN: {args[0]}. What is: {report_absence(image)}", file=sys.stderr)
         raise SystemExit(1)
-    shapes = cluster(points)
+    shapes = cluster(points, gap)
     if len(shapes) > 1 and nth is None:
         print(
             f"{len(shapes)} separate shapes are this colour. The midpoint of all of them is "
@@ -125,6 +130,15 @@ def main():
         for i, shape in enumerate(shapes, 1):
             cx, cy, w, h, n = describe(shape)
             print(f"  --nth {i}: {cx} {cy} span={w}x{h} pixels={n}", file=sys.stderr)
+        spread_x = max(x for shape in shapes for x, _ in shape) - min(x for shape in shapes for x, _ in shape)
+        spread_y = max(y for shape in shapes for _, y in shape) - min(y for shape in shapes for _, y in shape)
+        biggest = max(max(describe(shape)[2], describe(shape)[3]) for shape in shapes)
+        if len(shapes) > 3 and biggest < 0.4 * max(spread_x, spread_y):
+            print(
+                f"  all of them are small, which is what one dashed line looks like to a colour "
+                f"matcher. If you meant one shape, widen the gap it bridges: --gap 60",
+                file=sys.stderr,
+            )
         raise SystemExit(3)
     chosen = shapes[(nth or 1) - 1] if shapes else points
     x, y, width, height, count = describe(chosen)
