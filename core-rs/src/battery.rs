@@ -42,6 +42,7 @@ pub struct Pack {
     pub charge_label: String,
     pub percent_text: String,
     pub voltage_text: String,
+    pub current_text: String,
     pub time_remaining_text: Option<String>,
 }
 
@@ -99,6 +100,7 @@ fn pack(fact: &dyn Fn(&str) -> Value) -> Pack {
         charge_label: text("chargeState", "enumOrValueString"),
         percent_text: shown("percentRemaining"),
         voltage_text: shown("voltage"),
+        current_text: shown("current"),
         time_remaining_text: number("timeRemaining").map(|_| text("timeRemainingStr", "valueString")).filter(|t| !t.is_empty()),
     }
 }
@@ -122,6 +124,8 @@ pub fn battery_view(backend: &dyn Backend, _args: &[String]) -> Value {
                 "text": text(p),
                 "secondaryText": secondary_text(p),
                 "voltageText": p.voltage_text,
+                "currentText": p.current_text,
+                "percentText": p.percent_text,
             })
         })
         .collect();
@@ -146,6 +150,7 @@ mod tests {
     fn pack_facts(percent: Option<f64>, state: i64, label: &str) -> Vec<(String, Value)> {
         [
             Some(("voltage".to_string(), json!({ "kind": "fact", "name": "voltage", "value": 15.8, "valueString": "15.80", "units": "V" }))),
+            Some(("current".to_string(), json!({ "kind": "fact", "name": "current", "value": 12.5, "valueString": "12.50", "units": "A" }))),
             Some(("chargeState".to_string(), json!({ "kind": "fact", "name": "chargeState", "value": state, "enumOrValueString": label }))),
             percent.map(|p| ("percentRemaining".to_string(), json!({ "kind": "fact", "name": "percentRemaining", "value": p, "valueString": format!("{p:.0}"), "units": "%" }))),
         ]
@@ -178,7 +183,7 @@ mod tests {
         assert_eq!(text(&packs[1]), "72%");
         assert_eq!(text(&packs[2]), "15.80V");
         assert_eq!(packs[0].voltage_text, "15.80V");
-        let bare = Pack { voltage: None, current: None, percent: None, charge_state: CHARGE_LOW, charge_label: "Low".into(), percent_text: String::new(), voltage_text: String::new(), time_remaining_text: None };
+        let bare = Pack { voltage: None, current: None, percent: None, charge_state: CHARGE_LOW, charge_label: "Low".into(), percent_text: String::new(), voltage_text: String::new(), current_text: String::new(), time_remaining_text: None };
         assert_eq!(text(&bare), "Low");
         assert_eq!(secondary_text(&bare), "Low");
         let empty = Pack { charge_state: CHARGE_UNDEFINED, charge_label: String::new(), ..bare };
@@ -214,6 +219,8 @@ mod tests {
         assert_eq!(view["text"], "90%");
         assert_eq!(view["packs"][1]["level"], "warning");
         assert_eq!(view["packs"][0]["secondaryText"], "15.80V");
+        assert_eq!(view["packs"][0]["currentText"], "12.50A", "the head was formatting this itself as %.2f A, which is locale-independent and prints a full stop where the Fact prints whatever the operator's locale does");
+        assert_eq!(view["packs"][0]["percentText"], "90%", "and this was on the struct already and simply never served, so a head had nothing to read and spelled its own");
     }
 
     #[test]
