@@ -6,7 +6,7 @@ shipping app**, keeping the C++ flight core untouched.
 Sibling of `NATIVE_MACOS_REWRITE.md`. One core, two bridges, two native apps. Every path the Compose
 UI needs is added to `QGCBridgeCore`, never to a platform head.
 
-## Status — Phases 0 to 3 built; Phase 5 part-built; hardware gates unmet
+## Status — the UI is native throughout; what is left is hardware, not porting
 
 Built and run on a OnePlus 6 (LineageOS 22.2, Android 15) on 2026-09-06 against a MAVLink vehicle.
 `aircast-android` is a Kotlin/Compose app that owns the Activity, the navigation and the chrome, with
@@ -39,6 +39,31 @@ Still QML, hosted under native tabs: nothing. Corrected 2026-09-12 — the Fly t
 `FlyMap` from map-spike and video through the native `VideoSurface`. `QtQuickView` is still
 constructed and added to the layout, but with `renderViews` set false: it hosts the Qt runtime
 rather than drawing any UI.
+
+**The measurement behind that, taken 2026-09-12 rather than inferred.** `src/UI/AndroidHost.qml`
+is nine lines and is an empty `Item` — its own comment says why: Qt 6.8.3 exposes no public way to
+start Qt embedded without a `QtQuickView`, so it is the smallest thing that view can load. Six tabs
+render from 50 Compose files in `app` plus 31 in `map-spike`. The 466 `.qml` files in `src/` are
+QGC's desktop UI and this app draws none of them.
+
+**What is actually left, and none of it is porting:**
+
+1. **Hardware.** Everything was verified against SITL, a fake vehicle and a OnePlus 6, never a real
+   airframe. Accelerometer, compass and radio calibration on real hardware are unproven, as is the
+   Phase 4 flight gate — 212 items uploaded, flown, downloaded byte-identical.
+2. **Motor test and CompassMot**, deliberately not built: both spin propellers and need a supervised
+   airframe. `Vehicle::motorTest` is already `Q_INVOKABLE`, so this is a safety decision rather than
+   a bridge one, and the pages send the operator to desktop QGC.
+3. **Radio calibration is built and undrivable here** — stick movement cannot be simulated, so the
+   flow has never been exercised.
+4. **`Viewer3D`** — a keep-or-drop decision, not a port task.
+5. **Deleting the QML this app no longer draws.** That is the plan's own completion rule, and it is a
+   QGC-wide call rather than Android's: the desktop app still renders those files and the macOS head
+   is porting the same ones.
+
+Treat any percentage elsewhere in this document with suspicion. This heading said "Phase 5
+part-built" for days after the Fly tab became native, which is the failure `tools/doc-claims.py`
+exists to catch.
 
 ### Since that gate — Phase 3 done, Phase 5 started
 
