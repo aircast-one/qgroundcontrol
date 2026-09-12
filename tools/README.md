@@ -72,3 +72,14 @@ alone is enough to make a fence round trip look like a head defect.
 vehicle connects.** Restarting the sim is not enough to pick up a capability
 change — force-stop the app too, or it will keep the old answer and go on not
 sending.
+
+### Panning the map with `input swipe` can drag a waypoint
+
+A swipe that starts on a marker **drags that marker** rather than panning, and
+nothing on screen says so — the plan silently changes shape. Caught on
+2026-09-12 when a 212-item plan went from 9.87 km to 10.93 km across three pan
+gestures; the distance in the summary chip was the only tell.
+
+Start a pan on empty map, and read the summary chip before and after: if the
+distance moved, the plan moved. Reload the file before trusting any measurement
+taken after a pan.
