@@ -1593,6 +1593,7 @@ func checkMissionItemKinds() {
     checkSummaryOpensInAnyLocale()
     checkModeSlotNaming()
     checkBreachReturnAltitude()
+    checkCameraBrandSelection()
     checkResumeSequence()
     checkOrbitRingNeedsContact()
 
@@ -6341,4 +6342,57 @@ func checkBreachReturnAltitude() {
     expect(BreachReturn.altitudeMetres([:]) == nil,
            "a fact that answered nothing yields no altitude rather than zero, so the caller "
            + "decides what an absent altitude means rather than being handed sea level")
+}
+
+func checkCameraBrandSelection() {
+    let german = CameraChoice(json: [
+        "cameraBrand": "Manual (no camera specs)",
+        "cameraBrandList": ["Manuell (keine Kameradaten)", "Eigene Kamera", "Sony"],
+        "xlatManualCameraName": "Manuell (keine Kameradaten)",
+        "xlatCustomCameraName": "Eigene Kamera",
+    ])
+    expect(german.selectedBrand, "Manuell (keine Kameradaten)",
+           "THE FIXTURE THAT MATTERS: CameraCalc::_setBrandModelFromCanonicalName leaves "
+           + "_cameraBrand at the CANONICAL name for a manual camera while _cameraBrandList "
+           + "carries the tr()'d one, so the Picker's selection matched no tag and the Camera row "
+           + "drew BLANK -- on every survey using a manual camera, which is what a new survey "
+           + "starts as. An English fixture has the two spellings IDENTICAL and passes either "
+           + "way, which is why the running app showed nothing wrong")
+
+    let custom = CameraChoice(json: [
+        "cameraBrand": "Custom Camera",
+        "cameraBrandList": ["Manuell (keine Kameradaten)", "Eigene Kamera"],
+        "xlatManualCameraName": "Manuell (keine Kameradaten)",
+        "xlatCustomCameraName": "Eigene Kamera",
+    ])
+    expect(custom.selectedBrand, "Eigene Kamera", "and the custom entry is the same case")
+
+    let vendor = CameraChoice(json: [
+        "cameraBrand": "Sony",
+        "cameraBrandList": ["Manuell (keine Kameradaten)", "Sony"],
+        "xlatManualCameraName": "Manuell (keine Kameradaten)",
+        "xlatCustomCameraName": "Eigene Kamera",
+    ])
+    expect(vendor.selectedBrand, "Sony",
+           "a VENDOR brand is never translated -- CameraCalc takes it from the camera metadata -- "
+           + "so it already matches its tag and is passed through untouched")
+
+    let english = CameraChoice(json: [
+        "cameraBrand": "Manual (no camera specs)",
+        "cameraBrandList": ["Manual (no camera specs)", "Custom Camera"],
+        "xlatManualCameraName": "Manual (no camera specs)",
+        "xlatCustomCameraName": "Custom Camera",
+    ])
+    expect(english.selectedBrand, "Manual (no camera specs)",
+           "in English the canonical and translated spellings are the same string, so the "
+           + "substitution is a no-op and this rig cannot see the defect at all")
+
+    let unknown = CameraChoice(json: [
+        "cameraBrand": "Something else",
+        "cameraBrandList": ["Sony"],
+        "xlatManualCameraName": "Manuell (keine Kameradaten)",
+    ])
+    expect(unknown.selectedBrand, "Something else",
+           "and a brand that is in no list and is neither canonical name is left alone rather "
+           + "than being replaced by a guess")
 }

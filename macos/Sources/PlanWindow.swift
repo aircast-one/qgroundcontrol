@@ -752,7 +752,7 @@ struct PlanInspector: View {
                     if group == ItemFact.cameraGroup, mission.camera.canChooseBrand {
                         GroupRow(title: "Camera", showSeparator: false, trailing: {
                             Picker("", selection: Binding(
-                                get: { mission.camera.brand },
+                                get: { mission.camera.selectedBrand },
                                 set: { mission.setCamera(brand: $0) })
                             ) {
                                 ForEach(mission.camera.brands, id: \.self) { Text($0).tag($0) }
