@@ -234,6 +234,7 @@ range
 rate
 rateText
 raw
+rcSignal
 readOnly
 ready
 reason

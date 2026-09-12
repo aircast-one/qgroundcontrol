@@ -100,6 +100,16 @@ struct SettingsControl: Identifiable, Equatable {
         options.map { ParameterOption(label: $0.label, raw: $0.raw) }
     }
 
+    // A stored value matching no offered option must not resolve to the FIRST one. The picker
+    // would assert the setting is something it is not, and a touch anywhere near it would write
+    // that wrong value back as though the operator had chosen it. This index matches no tag, so
+    // the control draws empty and says nothing instead of something false.
+    static let noChoice = -1
+
+    var choiceIndex: Int {
+        options.firstIndex { $0.raw == valueString } ?? SettingsControl.noChoice
+    }
+
     init?(_ json: Any?) {
         guard let json = json as? [String: Any],
               let path = json["path"] as? String, !path.isEmpty,

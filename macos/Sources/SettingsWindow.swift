@@ -210,7 +210,7 @@ struct FactControl: View {
 
         case .choice:
             Picker("", selection: Binding(
-                get: { fact.options.firstIndex { $0.raw == fact.valueString } ?? 0 },
+                get: { fact.choiceIndex },
                 set: { if fact.options.indices.contains($0) { write(fact.options[$0].writable) } })
             ) {
                 ForEach(Array(fact.options.enumerated()), id: \.offset) { index, option in

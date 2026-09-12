@@ -1620,6 +1620,7 @@ func checkMissionItemKinds() {
     checkLinkEntryRule()
     checkPowerPagePacks()
     checkInstrumentBatteryGroups()
+    checkSettingsChoiceIndex()
     checkSetupGateInAnyLocale()
     checkSummaryOpensInAnyLocale()
     checkModeSlotNaming()
@@ -6554,4 +6555,35 @@ func checkInstrumentBatteryGroups() {
     expect(InstrumentGroup.batteryPosition(of: "batteries") == nil,
            "the list itself is not a pack -- it carries no facts of its own, which is why the "
            + "bridge's children never offered it and the literal was there in the first place")
+}
+
+func checkSettingsChoiceIndex() {
+    func control(_ value: String, _ options: [(String, String)]) -> SettingsControl? {
+        SettingsControl([
+            "path": "appSettings.style", "name": "style", "label": "Style", "control": "choice",
+            "valueString": value,
+            "options": options.map { ["label": $0.0, "raw": $0.1] },
+        ])
+    }
+
+    let style = control("0", [("Indoor", "1"), ("Outdoor", "0"), ("System", "2")])
+    expect(style?.choiceIndex == 1,
+           "a stored value is matched by its RAW value, not by its position: measured on the "
+           + "running app, Outdoor is raw \"0\" and sits SECOND, so a rule keyed on position "
+           + "would show Indoor for a vehicle set to Outdoor")
+
+    let stray = control("9", [("Indoor", "1"), ("Outdoor", "0")])
+    expect(stray?.choiceIndex == SettingsControl.noChoice,
+           "THE CASE THAT MATTERS: a value matching no option used to fall back to option 0, so "
+           + "the picker asserted the setting was Indoor when it was neither -- and a touch "
+           + "anywhere near it would have written that wrong value back as though it had been "
+           + "chosen. An index matching no tag draws empty and says nothing instead")
+    expect(SettingsControl.noChoice < 0,
+           "and the sentinel is outside every valid position, so it can never collide with a real "
+           + "option however long the list grows")
+
+    let empty = control("0", [])
+    expect(empty?.choiceIndex == SettingsControl.noChoice,
+           "a control offering no options at all selects nothing rather than crashing on a first "
+           + "element that is not there")
 }
