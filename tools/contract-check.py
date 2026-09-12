@@ -36,6 +36,19 @@ def groups(node, into):
     return into
 
 
+def recorded_empty(node, path, into):
+    if isinstance(node, dict):
+        for key, value in node.items():
+            if value == ["empty"]:
+                into.append(f"{path}/{key}")
+            else:
+                recorded_empty(value, f"{path}/{key}", into)
+    elif isinstance(node, list):
+        for item in node:
+            recorded_empty(item, path, into)
+    return into
+
+
 def head_keys(root):
     found = {}
     for base, _, names in os.walk(root):
@@ -72,6 +85,9 @@ ACCEPTED = {
     "notices": "view.notices is not in the recorded contract at all",
     "close": "view.obstacle recorded without the nearest object present",
     "sectorText": "view.obstacle recorded without the nearest object present",
+    "w": "view.detections recorded with no box, so boxes[] pins no element shape",
+    "h": "view.detections recorded with no box, so boxes[] pins no element shape",
+    "confidence": "view.detections recorded with no box, so boxes[] pins no element shape",
 }
 
 
@@ -97,6 +113,12 @@ def main():
         print(f"  STALE ACCEPTANCE: {key} is served now; delete its entry")
     for key, files in unexplained.items():
         print(f"  NOT SERVED: {key:<24} {', '.join(sorted(files))}")
+
+    blind = recorded_empty(json.load(open(CONTRACT)), "", [])
+    print(f"\n  {len(blind)} list(s) recorded empty. Their element fields are in no contract,")
+    print("  so the core can rename or drop one and every check here stays green.")
+    for where in sorted(blind):
+        print(f"    EMPTY WHEN RECORDED: {where}")
 
     beside = {}
     for names in groups(json.load(open(CONTRACT)), []):
