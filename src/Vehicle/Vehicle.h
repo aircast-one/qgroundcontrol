@@ -140,6 +140,7 @@ public:
     Q_PROPERTY(QGeoCoordinate       armedPosition               READ armedPosition                                                  NOTIFY armedPositionChanged)
     Q_PROPERTY(bool                 armed                       READ armed                      WRITE setArmedShowError             NOTIFY armedChanged)
     Q_PROPERTY(bool                 autoDisarm                  READ autoDisarm                                                     NOTIFY autoDisarmChanged)
+    Q_PROPERTY(bool                 capabilitiesKnown           READ capabilitiesKnown                                              NOTIFY capabilitiesKnownChanged)
     Q_PROPERTY(bool                 rcChannelOverrideActive     READ rcChannelOverrideActive                                        NOTIFY rcChannelOverrideActiveChanged)
     Q_PROPERTY(QVariantList         rcChannelValues             READ rcChannelValues                                                NOTIFY rcChannelValuesChanged)
     Q_PROPERTY(bool                 flightModeSetAvailable      READ flightModeSetAvailable                                         CONSTANT)
