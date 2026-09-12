@@ -7,6 +7,21 @@ enum LocationAccess: Equatable {
     case refused
 }
 
+struct GcsFix: Equatable {
+    let point: GeoPoint?
+    let usable: Bool
+    let fix: String
+    let source: String
+
+    init?(_ json: Any?) {
+        guard let json = json as? [String: Any] else { return nil }
+        usable = (json["usable"] as? NSNumber)?.boolValue ?? false
+        fix = (json["fix"] as? String) ?? ""
+        source = (json["source"] as? String) ?? ""
+        point = usable ? MapCentre.usable(json) : nil
+    }
+}
+
 struct MapCentreState: Equatable {
     var missionPoints: [GeoPoint] = []
     var otherPoints: [GeoPoint] = []

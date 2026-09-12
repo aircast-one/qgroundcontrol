@@ -109,6 +109,25 @@ UNDRAWN = [
                             "arm(land) places a plain Return To Launch, so every simple item gets "
                             "the view's refusal. Changing the offline vehicle type is a settings "
                             "write. PARITY GAP against six QML files, recorded not built"),
+    ("view.gimbal", "MEASURED with no vehicle: available false, count 0, gimbals empty, "
+                    "discovery idle, ready false. A gimbal is discovered from a connected "
+                    "vehicle that has one, and this SITL is a bare quadrotor -- so every field "
+                    "worth drawing is absent and a head built against this payload would be "
+                    "built against nothing. There is also no gimbal surface in this head to "
+                    "put it on. PARITY GAP against QGC's own gimbal controls, recorded not "
+                    "built"),
+    ("view.followMe", "MEASURED: reason 'noVehicles', enabled false, fixValid null. Follow-me "
+                      "makes the AIRCRAFT FOLLOW THE GROUND STATION, so exercising it needs a "
+                      "vehicle and then commands it to move -- which this session must not do. "
+                      "The view is readable but every state that distinguishes it from silence "
+                      "requires the one action that is forbidden. PARITY GAP, recorded not "
+                      "built"),
+    ("view.adsbTraffic", "MEASURED: available true but connected false, enabled false, count 0, "
+                         "contacts empty. Traffic comes from an ADSB receiver or a MAVLink feed "
+                         "and this rig has neither, and turning it on is a SETTINGS WRITE, "
+                         "which is forbidden here. So the list can only ever be empty and a "
+                         "contacts layer could not be seen to work. PARITY GAP, recorded not "
+                         "built"),
     ("view.obstacle", "a proximity ring: available is false with no vehicle, so there is nothing "
                       "to draw and nothing to check. PARITY GAP, recorded not built"),
 ]

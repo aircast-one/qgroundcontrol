@@ -732,7 +732,7 @@ final class MissionStore: ObservableObject, Probeable, WriteReporting {
             guard marker.latitude != 0 || marker.longitude != 0 else { return nil }
             return GeoPoint(latitude: marker.latitude, longitude: marker.longitude)
         }
-        read.gcs = MapCentre.usable(Bridge.group("positionManager.gcsPosition"))
+        read.gcs = GcsFix(Bridge.group("view.gcsPosition"))?.point
         read.access = MissionStore.locationAccess
         return read
     }

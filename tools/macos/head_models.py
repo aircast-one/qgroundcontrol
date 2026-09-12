@@ -26,6 +26,7 @@ MODELS = {
     "FlightModeChoice": "view.flightModes",
     "LinkConfig": "view.links",
     "LogEntry": "view.logs",
+    "GcsFix": "view.gcsPosition",
     "GuidedOffer": "view.guidedActions",
     "MavlinkMessage": "view.inspector",
     "MissionItem": "view.missionItems",

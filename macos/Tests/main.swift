@@ -582,6 +582,34 @@ func checkTheBatteryIsSpelledOnce() {
 
 checkTheBatteryIsSpelledOnce()
 
+func checkMyLocationTrustsTheCoresGate() {
+    func fix(_ overrides: [String: Any]) -> GcsFix? {
+        GcsFix(["usable": true as NSNumber, "fix": "gps", "source": "internalGps",
+                "latitude": 47.397 as NSNumber, "longitude": 8.546 as NSNumber]
+            .merging(overrides) { _, override in override })
+    }
+
+    expect(fix([:])?.point != nil,
+           "a usable fix centres the map where the operator is standing")
+
+    expect(fix(["usable": false as NSNumber])?.point == nil,
+           "and an UNUSABLE one does not, however well-formed its numbers are. This head used "
+           + "to read positionManager.gcsPosition raw and judge it with MapCentre.usable, "
+           + "which checks only that the coordinate is valid and is not null island. The core "
+           + "also refuses a fix coarser than 100 m or older than 5 s, so the head would have "
+           + "centred My Location on a reading the core calls unusable -- a map jumping to a "
+           + "point two kilometres from where the operator stands, with nothing on screen "
+           + "saying the fix was poor")
+
+    expect(fix(["latitude": 0.0 as NSNumber, "longitude": 0.0 as NSNumber])?.point == nil,
+           "null island is still refused, so adopting the core's gate did not drop the one "
+           + "this head already had")
+    expect(fix([:])?.fix ?? "", "gps", "the fix kind travels for a head that wants to say why")
+    expect(GcsFix(nil) == nil, "and no view at all is no fix")
+}
+
+checkMyLocationTrustsTheCoresGate()
+
 
 func checkTilePyramid() {
     let tile = TileAddress(x: 59492, y: 37374, z: 16)
