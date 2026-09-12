@@ -6555,3 +6555,29 @@ So: "a fence can be created" is proven **on this rig with a vehicle attached**,
 which is the only configuration it has ever been tested in. Nothing here
 establishes what the Plan tab does with no vehicle, and the buttons are not
 gated on `fenceSupported` — the head does not read it.
+
+### Open and unexplained: the Fence button in a plan that already has items
+
+2026-09-12, observed three times, not diagnosed.
+
+In a plan holding a takeoff and a survey, tapping **Fence** produces no fence.
+The button reports `enabled=true` in the view tree, so the new capability gate
+is not the cause; a vehicle is connected; and sampling the screen immediately
+after the tap shows **no notice at all** — neither "Adding fence" nor a failure
+reason, which `onBridge` would hold for `FAILURE_MESSAGE_MS`.
+
+`planSummary` includes `"N fence"` whenever `polygons + circles` is non-empty,
+independent of item count, so the absence from the chip means no fence exists
+rather than a summary that omits it. Earlier the same button worked in an
+**empty** plan ("1 fence · 0 m · 0:00"), which is the only difference I have
+isolated.
+
+**Not diagnosed on purpose.** Three attempts is where I stop and write it down
+rather than keep pulling — the same discipline that turned the capability-gate
+hunt into a real finding only because I stopped and checked one different thing.
+Candidates, none tested: `placeAt()` returning a vehicle position the fence is
+built around off-screen; `addInclusionPolygon` refusing silently when mission
+items exist; `view.fences` not answering in this state.
+
+The cheapest next probe is a logcat capture across the tap, which reads the
+refusal QGC itself prints rather than inferring from the screen.
