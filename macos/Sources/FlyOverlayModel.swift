@@ -32,10 +32,10 @@ struct FlyOverlays: Equatable {
     }
 
     static func read(orbitCircle: [String: Any]?, radius: Double,
-                     orbitActive: Bool, roiActive: Bool,
+                     orbiting: Bool?, roiActive: Bool,
                      roi: [String: Any]? = nil) -> FlyOverlays {
         var built = FlyOverlays()
-        built.orbitActive = orbitActive
+        built.orbitActive = orbiting == true
         built.roiActive = roiActive
         built.roiAt = roiActive ? MapCentre.usable(roi) : nil
         built.orbitCentre = GeoPoint(json: orbitCircle?["center"])

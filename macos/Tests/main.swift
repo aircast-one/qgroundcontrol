@@ -1591,6 +1591,7 @@ func checkMissionItemKinds() {
     checkSerialLinkInAnyLocale()
     checkSetupGateInAnyLocale()
     checkResumeSequence()
+    checkOrbitRingNeedsContact()
 
     expect(WriteReport.failure("the fence radius"),
            "Could not change the fence radius. It is unchanged.",
@@ -3775,32 +3776,32 @@ func checkFlyOverlays() {
     expect(FlyOverlays.none.roiNote, "", "with nothing to explain about the camera")
 
     let grounded = FlyOverlays.read(orbitCircle: ["center": NSNull()], radius: 0,
-                                    orbitActive: false, roiActive: false)
+                                    orbiting: false, roiActive: false)
     expect(grounded == FlyOverlays.none,
            "which is exactly what this SITL reports: a null centre, a zero radius and both flags false")
 
     let flying = FlyOverlays.read(
         orbitCircle: ["center": ["latitude": -35.363 as NSNumber, "longitude": 149.165 as NSNumber]],
-        radius: 60, orbitActive: true, roiActive: false)
+        radius: 60, orbiting: true, roiActive: false)
     expect(flying.showsOrbit, "an active orbit with a centre and a radius is drawn")
     expect(flying.orbitRadius == 60, "at the radius the vehicle reports")
 
     let noRadius = FlyOverlays.read(
         orbitCircle: ["center": ["latitude": -35.363 as NSNumber, "longitude": 149.165 as NSNumber]],
-        radius: 0, orbitActive: true, roiActive: false)
+        radius: 0, orbiting: true, roiActive: false)
     expect(!noRadius.showsOrbit, "a circle with no radius is not a circle")
 
     let noCentre = FlyOverlays.read(orbitCircle: ["center": NSNull()], radius: 60,
-                                    orbitActive: true, roiActive: false)
+                                    orbiting: true, roiActive: false)
     expect(!noCentre.showsOrbit,
            "and an orbit flag with no centre draws nothing rather than a circle at null island")
 
     let stale = FlyOverlays.read(
         orbitCircle: ["center": ["latitude": -35.363 as NSNumber, "longitude": 149.165 as NSNumber]],
-        radius: 60, orbitActive: false, roiActive: false)
+        radius: 60, orbiting: false, roiActive: false)
     expect(!stale.showsOrbit, "a centre left over from a finished orbit is not drawn either")
 
-    let looking = FlyOverlays.read(orbitCircle: nil, radius: 0, orbitActive: false, roiActive: true,
+    let looking = FlyOverlays.read(orbitCircle: nil, radius: 0, orbiting: false, roiActive: true,
                                    roi: ["valid": true as NSNumber,
                                          "latitude": -35.363 as NSNumber,
                                          "longitude": 149.165 as NSNumber])
@@ -3809,13 +3810,13 @@ func checkFlyOverlays() {
     expect(looking.roiNote.contains("marked spot"), "with the note pointing at the marker")
     expect(looking.summary, "look-at", "which is what is in progress")
 
-    let blind = FlyOverlays.read(orbitCircle: nil, radius: 0, orbitActive: false, roiActive: true,
+    let blind = FlyOverlays.read(orbitCircle: nil, radius: 0, orbiting: false, roiActive: true,
                                  roi: ["valid": false as NSNumber])
     expect(blind.roiActive, "an ROI with no position is still reported as running")
     expect(!blind.showsRoi, "but nothing is drawn at a place the vehicle did not give")
     expect(blind.roiNote.contains("not given a position"), "and the note says why there is no marker")
 
-    let stopped = FlyOverlays.read(orbitCircle: nil, radius: 0, orbitActive: false, roiActive: false,
+    let stopped = FlyOverlays.read(orbitCircle: nil, radius: 0, orbiting: false, roiActive: false,
                                    roi: ["valid": true as NSNumber,
                                          "latitude": -35.363 as NSNumber,
                                          "longitude": 149.165 as NSNumber])
@@ -3836,7 +3837,7 @@ func checkFlyOverlays() {
 
     var everything = FlyOverlays.read(
         orbitCircle: ["center": ["latitude": -35.363 as NSNumber, "longitude": 149.165 as NSNumber]],
-        radius: 60, orbitActive: true, roiActive: true)
+        radius: 60, orbiting: true, roiActive: true)
     everything.goingTo = GeoPoint(latitude: -35.36, longitude: 149.16)
     expect(everything.summary, "orbit, look-at, fly-to", "all three read out together")
 }
@@ -6214,4 +6215,22 @@ func checkResumeSequence() {
     expect(GuidedOffer.resumeSequence("5") == nil,
            "a string is not a sequence -- the bridge serves a number or nothing, and coercing "
            + "text here would invent one")
+}
+
+func checkOrbitRingNeedsContact() {
+    let circle: [String: Any] = ["center": ["latitude": 47.4, "longitude": 8.5]]
+
+    expect(FlyOverlays.read(orbitCircle: circle, radius: 60, orbiting: true,
+                            roiActive: false).orbitActive,
+           "an orbiting vehicle gets its ring")
+    expect(FlyOverlays.read(orbitCircle: circle, radius: 60, orbiting: false,
+                            roiActive: false).orbitActive == false,
+           "and a vehicle that has stopped orbiting loses it")
+    expect(FlyOverlays.read(orbitCircle: circle, radius: 60, orbiting: nil,
+                            roiActive: false).orbitActive == false,
+           "NULL is the case this changes for. The head was reading vehicle.orbitActive raw, and "
+           + "a raw vehicle flag LATCHES -- after contact is lost it keeps answering true, so the "
+           + "map kept drawing a circle claiming an aircraft nobody can hear is still flying it. "
+           + "The core withholds the flag entirely when there is no contact, and unknown draws "
+           + "nothing rather than drawing the last thing that was true")
 }

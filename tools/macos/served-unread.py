@@ -36,7 +36,7 @@ CONTRACT = ROOT / "test/Bridge/fixtures/view-shapes.json"
 
 # The last contract this head has reconciled. Move it forward when the additions
 # since it have each been read or accepted -- never to silence a hit.
-SINCE = "27caaf587"
+SINCE = "11124b8e3"
 
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent))
 from head_models import MODELS  # noqa: E402
@@ -60,6 +60,17 @@ ACCEPTED = {
         "already draws the same band as AMSL from altitudeBandText -- 485 m launch, so "
         "\"62.5 m to 87.5 m\" and \"548 m to 572 m AMSL\" are one measurement in two frames. A "
         "SCREENSHOT proved it; the two strings never appear side by side in any payload",
+    "altitudeMetres": "the RAW quantity behind a mission item's altitude, served for a head that "
+        "would rather convert and write metres through the fact's rawValue setter. This head does "
+        "the opposite on purpose: 8110770d3 fixed an editable altitude wearing the wrong unit by "
+        "drawing the fact's OWN value beside the fact's OWN unit, and writing through setFact so "
+        "the conversion happens where the unit is defined. Decoding a metre quantity here would "
+        "put a second conversion in the head, which is the defect that fix removed",
+    "autoDisconnect": "whether the vehicle drops its link by itself after contact is lost. It is "
+        "a SETTING, and this head neither draws it nor may write it -- FirmwareUpgrade.qml is the "
+        "only place upstream that touches it, and it WRITES it as part of a flow this head does "
+        "not have. Drawing a control's state with no control is the unread-field debt removed in "
+        "c485b1aac",
     "rangeText": "the guided slider's two ends as one combined string. This head draws them as "
         "SEPARATE labels at opposite ends of the track, and the dragged value between them can "
         "only be spelled here, so adopting it would put two precision rules on one control. The "
