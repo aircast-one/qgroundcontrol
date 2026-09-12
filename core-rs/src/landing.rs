@@ -30,10 +30,10 @@ pub fn landing_view(backend: &dyn Backend, args: &[String]) -> Value {
     };
     let path = format!("plan.missionController.visualItems.{index}");
     let item = object(&backend.get_fields(&path, FIELDS));
-    let (landing, slope_start, approach) = (place(&item, "landingCoordinate"), place(&item, "slopeStartCoordinate"), place(&item, "finalApproachCoordinate"));
-    if landing.is_none() && slope_start.is_none() && approach.is_none() {
+    if crate::read::flag(&item, "isSimpleItem") {
         return refused("that item draws no landing pattern; only a fixed wing or a VTOL gets one, and a multirotor land is a plain return");
     }
+    let (landing, slope_start, approach) = (place(&item, "landingCoordinate"), place(&item, "slopeStartCoordinate"), place(&item, "finalApproachCoordinate"));
     let facts = object(&backend.get(&path));
     let fact = |property: &str| {
         facts
@@ -125,6 +125,13 @@ mod tests {
         let refusal = landing_view(&Plan(plain), &["4".to_string()]);
         assert_eq!(refusal["kind"], "null");
         assert!(refusal["reason"].as_str().unwrap().contains("multirotor"), "MissionController::insertLandItem builds a pattern only for a fixed wing or a VTOL, so a rotor's land is a plain return and a head asking for its pattern deserves that answer rather than silence");
+
+        let unplaced = json!({ "kind": "object", "sequenceNumber": 5, "isSimpleItem": false, "facts": [
+            { "property": "loiterRadius", "value": 75.0 } ] });
+        let fresh = landing_view(&Plan(unplaced), &["4".to_string()]);
+        assert_eq!(fresh["kind"], "object", "a pattern whose corners are not placed yet is still a pattern - refusing on absent coordinates alone would blame the airframe for a plan that is merely unfinished");
+        assert_eq!(fresh["landing"], Value::Null);
+        assert_eq!(fresh["loiterRadiusMetres"], 75.0, "and the settings it does have still travel");
 
         let missing = landing_view(&Plan(pattern()), &[]);
         assert!(missing["reason"].as_str().unwrap().contains("index"));
