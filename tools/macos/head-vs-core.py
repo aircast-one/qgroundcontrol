@@ -114,9 +114,13 @@ def selected_survey(core):
 # assert what the head cannot satisfy by being wrong -- the measure is a string the CORE produced
 # rather than one this head invented, and the frame word answers to the frame the CORE reported.
 #
-# What this deliberately does NOT decide: WHICH of the two core strings the head should have
-# picked. Both are legitimate sources, and specifiesAltitude is not served on every item, so
-# there is nothing here to settle it against. Named rather than skipped silently.
+# It now DOES decide which of the two core strings the head should have picked, because
+# b5462e307 added altitudeSource for exactly this consumer: "text", "band", or null for a row
+# stating no height at all. Before it, this could only ask whether the measure was one of the
+# two the core offered, which passes a head drawing the band where the text belonged. The
+# core's own note is why the field exists rather than an inference: the two are mutually
+# exclusive in every plan measured so far, and that is an OBSERVATION, not a guarantee - a row
+# carrying minAMSLAltitude and an altitude fact produces both, and the core's test builds one.
 FRAME_WORDS = {"amsl": "AMSL", "terrain": "AGL", "launch": "", "": ""}
 
 
@@ -126,12 +130,10 @@ def altitude_checks(seq, mine, theirs):
     word = FRAME_WORDS.get(frame, frame.upper())
     suffix = f" {word}" if word else ""
     measure = shown[: -len(suffix)] if suffix and shown.endswith(suffix) else shown
-    offered = [text for text in (theirs.get("altitudeText"), theirs.get("altitudeBandText")) if text]
+    named = {"text": theirs.get("altitudeText"), "band": theirs.get("altitudeBandText")}
     return [
-        (f"item {seq} altitude measure is one the core formatted",
-         measure,
-         measure if measure in offered or (not offered and measure == NO_ALTITUDE)
-         else " or ".join(offered) or NO_ALTITUDE),
+        (f"item {seq} altitude measure is the string the core named",
+         measure, named.get(theirs.get("altitudeSource")) or NO_ALTITUDE),
         (f"item {seq} altitude names its frame",
          shown[len(measure):],
          suffix if measure != NO_ALTITUDE else ""),

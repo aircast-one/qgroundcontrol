@@ -3606,3 +3606,50 @@ of the same number to drift apart. Accepted with that as the reason.
 third of these fields need a vehicle, and two of them need a write I am not allowed to
 make. **Those are not "still to measure" — they are "cannot be measured here", and keeping
 them on a to-do list would have me re-running them forever.**
+
+### (dd) The core added the field, and the checker can now decide the thing it said it could not
+
+`b5462e307` serves **`altitudeSource`** — `"text"`, `"band"`, or null for a row stating no
+height at all — and the commit names this checker as the consumer. Measured live: `text`
+on the settings row and every simple item, `band` on the survey, corridor and structure
+scan, **null on the Return To Launch**. Exactly the split the acceptance table predicted,
+now stated by the producer instead of inferred by me.
+
+`head-vs-core.py` asked only whether the head's measure was **one of the two** strings the
+core offered. **That passes a head drawing the band where the text belonged** — which is
+the single defect the pair can produce. It now asserts the measure is the string
+`altitudeSource` NAMES.
+
+**Three controls, all mutated in place.** Swapping the two sources fires **6 differences**.
+The frame-word mutation still fires. And the third is the one that matters: **restoring the
+OLD rule passes 57/57 while consulting no source at all** — insensitive by construction,
+so the strengthening is not decoration. **Keeping the wrong rule as a control is what turns
+"this looks stronger" into a measurement.**
+
+**A near-miss worth recording.** My first edit asserted against comment text that did not
+match the file, so the script raised and wrote nothing — and the very next line of output
+was `57 of 57, exit 0` from the UNCHANGED checker. **A failed edit followed by a green run
+reads exactly like a successful change.** Only reading the rig's own output caught it.
+
+### SurveyStats' raw family, measured against an actual survey
+
+The first read was against index 3, which is **not a survey in the current plan**:
+`isSurvey: false`, `available: false`, every figure zero. **Those zeros meant nothing**, and
+had I recorded them the whole family would have looked dead. Re-read against index 4.
+
+**Every raw figure has a `*Text` sibling this head draws** — `areaSquareMetres`/`areaText`,
+`distanceMetres`/`distanceText`, `footprintFrontal`+`footprintSide`/`footprintText`,
+`secondsBetweenShots`/`intervalText`, `shots`/`shotsText`,
+`surfaceDistanceMetres`/`surfaceDistanceText`. Accepted for the same reason as the azimuth
+family: the sibling is what reaches the screen.
+
+**`minimumInterval` is 0.0 with `tooFast` false and `warning` empty**, and that is NOT a
+coverage limit — a Custom Camera carries a `minTriggerInterval` this head already draws, so
+a too-fast survey is producible here. **Genuinely unmeasured rather than unmeasurable, and
+the distinction is the point of this split.**
+
+### `actions.*` completed
+
+`newPlan`, `addFence`, `addRally`, `open`, `save`, `exportKml` all true; **`clearMission`
+false**, which is the vehicle term and matches the trap recorded when I declined to wire it
+to a Clear button that empties the local plan.
