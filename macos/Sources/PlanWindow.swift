@@ -692,6 +692,13 @@ struct PlanInspector: View {
     private var surveyCard: some View {
         VStack(alignment: .leading, spacing: Overlay.unit * 0.35) {
             SectionLabel(text: mission.items.first(where: \.isCurrent)?.command ?? "Survey")
+            if !mission.surveyStats.warning.isEmpty {
+                Label(mission.surveyStats.warning, systemImage: "exclamationmark.triangle.fill")
+                    .font(.caption)
+                    .foregroundColor(.orange)
+                    .fixedSize(horizontal: false, vertical: true)
+                    .padding(.horizontal, Overlay.horizontalPadding)
+            }
             GroupCard {
                 GroupRow(title: "Photos", value: mission.surveyStats.shotsText, showSeparator: false)
                 GroupRow(title: "Between shots", value: mission.surveyStats.intervalText)
@@ -702,13 +709,6 @@ struct PlanInspector: View {
                     GroupRow(title: "Above the ground",
                              value: mission.surveyStats.surfaceDistanceText)
                 }
-            }
-            if !mission.surveyStats.warning.isEmpty {
-                Label(mission.surveyStats.warning, systemImage: "exclamationmark.triangle.fill")
-                    .font(.caption)
-                    .foregroundColor(.orange)
-                    .fixedSize(horizontal: false, vertical: true)
-                    .padding(.horizontal, Overlay.horizontalPadding)
             }
         }
     }

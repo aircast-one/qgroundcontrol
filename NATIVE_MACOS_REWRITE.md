@@ -3653,3 +3653,43 @@ the distinction is the point of this split.**
 `newPlan`, `addFence`, `addRally`, `open`, `save`, `exportKml` all true; **`clearMission`
 false**, which is the vehicle term and matches the trap recorded when I declined to wire it
 to a Clear button that empties the local plan.
+
+### The one sentence in the survey card that is a task was the last thing in it
+
+**Built the too-fast survey rather than calling it unmeasurable.** `setCameraBrand=Custom
+Camera`, then `MinTriggerInterval = 5` against a survey shooting every 1.22 s. The core
+answers `tooFast: true` and **`warning: "The camera needs 5.00 s between shots but the
+survey asks for 1.22 s."`** — a 4× shortfall that would silently drop most of the photos
+the operator planned for.
+
+**My head decodes it and draws it, so there was no missing-field defect. The defect was
+WHERE.** The warning was the LAST element of the survey card, after six rows of ordinary
+statistics, in a card at the bottom of a scrolling panel. **Screenshotted before the fix:
+the section shows "Photos 464" and the window cuts off — the warning is not on screen at
+all.** An operator reads the photo count, sees nothing wrong, and flies a survey that
+cannot take them.
+
+**The window already knew better one panel up**: the plan-level blocker, *"Takeoff (1):
+set its location"*, sits at the TOP with a triangle, above the tabs and the whole list. The
+survey card had the same information in the opposite position. **A statistic describes; a
+warning is a task, and the two do rank** — which is the same ordering rule as
+`blockedReason ?? unreached ?? doings`, applied one level out and previously only inside a
+row.
+
+Moved above the `GroupCard`. **Rendered again and looked: it now sits directly under the
+SURVEY header in orange, visible without scrolling.** Both states seen, which is what a
+render defect requires.
+
+**Two rig facts learned the hard way.** `setFact` resolves against the SELECTED item's
+facts and the name is **`MinTriggerInterval`** — capitalised. `view.missionItems(fields)`
+spells the same fact **`minTriggerInterval`**, and passing that spelling earns *"the
+selected item has no fact named minTriggerInterval"*, which reads exactly like a fact that
+is not there. **Two views of one fact disagreeing on case is a name match failing at its
+weakest.** And I had not confirmed the selection in the same observation — `selected: 5`
+and the Custom Camera brand were both fine, so the refusal was purely the spelling.
+
+**The core renamed `supportsTerrainFrame` to `holdsAltitudeAboveTerrain` and REMOVED
+`altitudeFactUnits` (`dcf78d526`).** Checked with a control search that finds a key I do
+read: **neither is named anywhere in `macos/Sources` or `tools/macos`.** No exposure. Their
+warning was the right one to send — a missing key decodes to false, and false was the value
+I was already seeing, so a break would have looked identical to the old reading.
