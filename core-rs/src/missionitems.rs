@@ -119,6 +119,7 @@ fn item(read: &Value, index: i64, vertical: &Unit, speed: &Unit, imperial: bool)
         "altitudeText": height_metres(read).map(|metres| format_measure(vertical.show(metres), &vertical.name)),
         "altitudeUnits": height(read).map(|_| vertical.name.clone()),
         "altitudeEditUnits": fact_units(read, "altitude").or_else(|| fact_units(read, "plannedHomePositionAltitude")),
+        "altitudeMetres": height_metres(read),
         "specifiesAltitude": flag(read, "isSimpleItem").then(|| flag(read, "specifiesAltitude")),
         "altitudeOnly": flag(read, "specifiesAltitudeOnly"),
         "category": Some(text(read, "category")).filter(|category| !category.is_empty()),
@@ -660,6 +661,7 @@ mod reported {
         let twice = items_view(&Imperial(cooked), &[])["items"][1].clone();
         assert_eq!(twice["altitudeText"], "246 ft", "Fact::value is the COOKED value and altitude declares setRawUnits(\"m\"), which FactMetaData maps to UnitHorizontalDistance with a metres-to-feet translator - so with feet chosen the value is ALREADY feet and converting it again drew 75 m as 807 ft");
         assert_eq!(twice["altitude"], 246.06, "the editable number stays the cooked one an editor bound to that fact would show, so this fixes the text without moving the field a head writes back");
+        assert_eq!(twice["altitudeMetres"], 75.0, "the raw quantity, for a head that would rather convert and write metres through the fact's rawValue setter than trust a cooked unit that binds once");
         assert_eq!(twice["altitudeEditUnits"], "ft", "AltitudeFactTextField takes its unitsLabel from fact.units, so the editor's number and unit come from one fact and agree whatever the settings say - altitude follows the HORIZONTAL preference because QGC declares rawUnits m, while altitudeText follows VERTICAL, and pairing the cooked number with the vertical name is what made them disagree");
         assert_eq!(metric["altitudeEditUnits"], Value::Null, "the fake without a units key gets none, which is what compactFactJson emitted before rawValue and units were added to it");
         assert_eq!(imperial["altitudeUnits"], "ft");
