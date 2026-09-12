@@ -4602,3 +4602,35 @@ so the flag is decoded and never exercised. **That stays a coverage limit, not a
 **(g2) is still open: `currentMissionIndex` remains unserved.** `view.missionItems` carries
 `flownLeg`, which is a **plan** concept — whether a leg is flown in the route — and not the
 item the aircraft is at. **Not a substitute, and worth naming so nobody adopts it as one.**
+
+### (yy) `ctest` finds no tests — the baseline I have quoted all session runs another way
+
+**I have quoted "707/0/89" for hours without once running it.** Taking the instruction
+literally — `ctest` in `build-test` — produced **`No tests were found!!!`**, and I would have
+reported that as a defect had I stopped there.
+
+**`BUILD_TESTING:BOOL=ON` and `QGC_BUILD_TESTING:BOOL=ON` are both set, and there is no
+`CTestTestfile.cmake`.** The suite is not registered with CTest at all: it is a **`--unittest`
+mode of the app binary**, run by `tools/macos/run-tests.sh`. **The instruction was wrong, not
+the tree.**
+
+**And the real runner already knows every trap I hit today**, which is the humbling part. Its
+header documents five, unprompted:
+
+- a parallel session's `pkill -9 -x AircastQGC` kills a run, **so the clone gets its own
+  executable name** — the renamed-bundle trick;
+- a crashed run **spins in QGC's signal handler at >100% CPU and ignores SIGTERM**, so
+  leftovers are SIGKILLed first — *two once ran for over two hours and made timing-sensitive
+  link tests fail*;
+- **`pgrep -f` was the first attempt and it matched the very command line asking the
+  question** — the same self-match that made `ps aux | grep` count my own shell this morning;
+- **the suite binary is whatever was last built**, so the script builds and refuses rather than
+  trusting the caller: *"I read '74 passed' off a binary predating a test file that did not
+  compile… A number from a build that failed is not a smaller number, it is someone else's
+  number"*;
+- **two suites at once share one QSettings space and corrupt each other**, and checking by eye
+  does not work: *"I printed exactly this check once, watched it say another suite was running,
+  and let the next command go anyway."*
+
+**Every one of those is a lesson this session re-derived independently today.** The tool that
+encodes them was three directories away the whole time. **`notes-that-know-the-answer`, again.**
