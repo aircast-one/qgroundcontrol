@@ -619,8 +619,22 @@ cooks:
   reads `view.sensors`.
 - **`VehicleMap` carries its own `VehicleTrack`** - an `ArrayDeque` with a point
   cap and an `isJump` heuristic - while `view.track` accumulates the same trail
-  in the core, with its own arming rule and its own jump handling. Two
-  implementations of one trail, each free to drift.
+  in the core. Read side by side they are not duplicates, they are two different
+  algorithms:
+
+  | | core `view.track` | head `VehicleTrack` |
+  |---|---|---|
+  | records | only while armed, restarts on the arm edge | always, armed or not |
+  | ignores | moves under 2 m | only an exactly repeated point |
+  | straight legs | replaces the last point while the turn is under 1.5 deg | appends every fix |
+  | discontinuity | a new arm starts a new trail | clears everything on a jump over 0.5 deg |
+  | vehicles | up to 8 | one |
+
+  Both cap at 500 points, which is where it bites: with collinear collapse 500
+  points can hold a whole flight, and without it a long straight leg spends the
+  budget and the start of the flight falls off the front. The head also draws
+  pre-arm GPS drift as flight path, and keeps the previous flight's trail until
+  the vehicle moves 55 km.
 
 That last one is the rule in [[core-owns-vehicle-not-head]] pointed the other
 way: the core must not encode what a head can do, and a head must not re-derive
