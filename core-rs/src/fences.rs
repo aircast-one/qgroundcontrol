@@ -131,8 +131,8 @@ pub fn polygon_view(backend: &dyn Backend, args: &[String]) -> Value {
     }
     let vertices = points(json.get("path"));
     let minimum = json.get("minVertexCount").and_then(Value::as_i64).map(|m| m as usize).unwrap_or(if ring { 3 } else { 2 });
-    let closed = vertices.len() >= minimum;
-    let segments = match (closed, ring) {
+    let has_enough_vertices = vertices.len() >= minimum;
+    let segments = match (has_enough_vertices, ring) {
         (false, _) => 0,
         (true, true) => vertices.len(),
         (true, false) => vertices.len().saturating_sub(1),
@@ -149,7 +149,7 @@ pub fn polygon_view(backend: &dyn Backend, args: &[String]) -> Value {
         "path": path,
         "ring": ring,
         "minimumVertices": minimum,
-        "closed": closed,
+        "hasEnoughVertices": has_enough_vertices,
         "canRemoveVertex": vertices.len() > minimum,
         "segments": segments,
         "splitInvokable": if ring { "splitPolygonSegment" } else { "splitSegment" },
@@ -242,7 +242,10 @@ mod tests {
     #[test]
     fn a_ring_has_as_many_segments_as_vertices_and_a_line_one_fewer() {
         let ring = polygon_view(&Fake, &["poly".to_string()]);
-        assert_eq!(ring["closed"], true);
+        assert_eq!(ring["hasEnoughVertices"], true);
+        let polyline = polygon_view(&Fake, &["line".to_string(), "line".to_string()]);
+        assert_eq!(polyline["ring"], false);
+        assert_eq!(polyline["hasEnoughVertices"], true, "a polyline is never closed in the sense the word carries here, and this flag was called closed - a head reading it as the geometric term draws a corridor looping back to its start, which looks plausible because both ends are genuinely on the map");
         assert_eq!(ring["canRemoveVertex"], false);
         assert_eq!(ring["segments"], 3);
         assert_eq!(ring["midpoints"][2]["longitude"], 1.0);

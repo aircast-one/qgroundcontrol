@@ -4491,7 +4491,7 @@
         "view.polygon(plan.geoFenceController.polygons.0).adjustInvokable",
         "view.polygon(plan.geoFenceController.polygons.0).canRemoveVertex",
         "view.polygon(plan.geoFenceController.polygons.0).class",
-        "view.polygon(plan.geoFenceController.polygons.0).closed",
+        "view.polygon(plan.geoFenceController.polygons.0).hasEnoughVertices",
         "view.polygon(plan.geoFenceController.polygons.0).kind",
         "view.polygon(plan.geoFenceController.polygons.0).midpoints.#",
         "view.polygon(plan.geoFenceController.polygons.0).midpoints.0.latitude",
@@ -7702,7 +7702,7 @@
         "adjustInvokable": "string",
         "canRemoveVertex": "bool",
         "class": "string",
-        "closed": "bool",
+        "hasEnoughVertices": "bool",
         "kind": "string",
         "midpoints": [
             {
