@@ -2786,19 +2786,33 @@ func checkSetupBlocked() {
 
 func checkModeRequest() {
     expect(FlightModes.requestResolved(requested: "Hold", askedFrom: "Position",
-                                       now: "Position") == false,
+                                       now: "Position", reads: 1) == false,
            "a mode request stays pending while the vehicle has not moved, which is what the "
            + "header's spinner is for")
-    expect(FlightModes.requestResolved(requested: "Hold", askedFrom: "Position", now: "Hold"),
+    expect(FlightModes.requestResolved(requested: "Hold", askedFrom: "Position", now: "Hold", reads: 1),
            "and it resolves when the vehicle arrives")
-    expect(FlightModes.requestResolved(requested: "Hold", askedFrom: "Position", now: "Return"),
+    expect(FlightModes.requestResolved(requested: "Hold", askedFrom: "Position", now: "Return", reads: 1),
            "and it ALSO resolves when the vehicle moves somewhere else, which is the case that "
            + "was missing. The old rule cleared only on requestedMode == state.mode, so a request "
            + "the vehicle REFUSED or a mode a failsafe overrode left the header spinning forever "
            + "-- and the header draws requestedMode INSTEAD of the real mode, so an aircraft that "
            + "dropped into Return on failsafe would still show the operator's stale ask. Hiding a "
            + "safety-relevant mode change behind a spinner is worse than showing no spinner")
-    expect(FlightModes.requestResolved(requested: "", askedFrom: "Position", now: "Return") == false,
+    expect(FlightModes.requestResolved(requested: "Hold", askedFrom: "Position",
+                                       now: "Position", reads: FlightModes.pendingReads),
+           "and a request the controller simply IGNORES resolves on TIME, because nothing else "
+           + "can end it. Movement covers reaching the mode, being refused into another, and a "
+           + "failsafe override -- but a flight controller that does nothing moves nothing, and "
+           + "view.flightModes carries no refusal for this head to read. The header draws "
+           + "requestedMode INSTEAD of the real mode, so an unbounded spinner hides the mode the "
+           + "vehicle is actually in, forever. The spinner is this head's own invention, which is "
+           + "what makes its lifetime this head's to bound rather than something to ask the core "
+           + "for")
+    expect(FlightModes.requestResolved(requested: "Hold", askedFrom: "Position",
+                                       now: "Position", reads: FlightModes.pendingReads - 1) == false,
+           "and it is still pending one read earlier, so the bound is a real threshold rather than "
+           + "a value that resolves immediately")
+    expect(FlightModes.requestResolved(requested: "", askedFrom: "Position", now: "Return", reads: 1) == false,
            "and with nothing pending there is nothing to resolve")
 }
 

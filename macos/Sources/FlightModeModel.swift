@@ -22,8 +22,18 @@ struct FlightModeChoice: Identifiable, Equatable {
 }
 
 enum FlightModes {
-    static func requestResolved(requested: String, askedFrom: String, now: String) -> Bool {
-        !requested.isEmpty && now != askedFrom
+    // The header draws requestedMode INSTEAD of the real mode, with a spinner, so a request that
+    // never resolves hides the mode the vehicle is actually in. Movement resolves it -- reaching
+    // the mode, being refused into another, or a failsafe override. But a flight controller that
+    // simply IGNORES the request moves nothing, and view.flightModes carries no refusal for the
+    // head to read, so time is the only remaining signal. The spinner is this head's own
+    // invention, which makes its lifetime this head's to bound.
+    static let pendingReads = 10
+
+    static func requestResolved(requested: String, askedFrom: String, now: String,
+                                reads: Int) -> Bool {
+        guard !requested.isEmpty else { return false }
+        return now != askedFrom || reads >= FlightModes.pendingReads
     }
 
     static let glyphs: [(keywords: [String], symbol: String)] = [
