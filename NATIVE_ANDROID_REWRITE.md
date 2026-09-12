@@ -6666,3 +6666,30 @@ through this whole session.
 **Why it is worth finishing.** Every one of today's four false measurements —
 an `enabled=` attribute that could not vary, a plan state never confirmed, a
 peer's default string, a rotated log file — would have been a single bridge read.
+
+### First end-to-end check: served against rendered, all eight rows
+
+With `tools/probe.sh` working, the every-kind plan can be checked field by field
+instead of inferred. Core on the left, screen on the right:
+
+    seq   0  alt '0.0 m'  frame amsl              ->  0.0 m AMSL
+    seq   1  alt '75.0 m' frame launch            ->  75.0 m
+    seq   2  alt '75.0 m' frame launch            ->  75.0 m
+    seq   3  alt '75.0 m' frame launch            ->  75.0 m
+    seq   4  band '541 m' amsl   folded 141       ->  4–145    541 m AMSL
+    seq 146  band '566 m' amsl   folded 11        ->  146–157  566 m AMSL
+    seq 158  band '554 m to 578 m' amsl folded 17 ->  158–175  554 m to 578 m AMSL
+    seq 176  no altitude, no frame                ->  (nothing)
+
+Every row agrees. Two commands, no inference. The frame labelling, the folded
+spans, the band handling and the withheld-altitude case are all confirmed
+against what the core actually sent rather than against what I expected it to
+send.
+
+**Deliberately NOT building a served-vs-rendered differ.** The macOS session has
+one and reported it stale today: it compares a composed string against the core's
+bare `altitudeText`, so `585 m AMSL` reads as a mismatch and a survey whose
+`altitudeText` is null reads as a refusal to draw. Their head is right and the
+check is wrong. **Any differ encodes today's rendering rules, and the rendering
+rules are what keep changing** — so this stays a two-command comparison run when
+it matters, rather than a checker that will quietly assert the old world.
