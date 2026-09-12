@@ -235,6 +235,8 @@ rate
 rateText
 raw
 rcSignal
+rcSignalText
+rcSupported
 readOnly
 ready
 reason

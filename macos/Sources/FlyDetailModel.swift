@@ -70,25 +70,20 @@ enum FlyDetail {
                                      ("mgrs", "MGRS")])
     }
 
-    // Vehicle::_remoteControlRSSIChanged uses 255 for invalid or unknown and stores an explicit
-    // 0 once the filtered signal decays away, so the two are not the same answer: 255 means the
-    // vehicle never told us, 0 means it told us the RC link is gone. Anything else outside
-    // 0...100 is not a percentage QGC will accept either.
-    static let rcRange = 0...100
-    static let rcSilent = "No signal"
-
-    // 255 is the sentinel and needs no clause of its own: it falls outside the percentage range
-    // along with every other value QGC's own rcRSSI > 0 && <= 100 test rejects. Writing it out
-    // separately read as protection and was dead - removing it failed nothing.
-    static func rcSignal(_ value: Int) -> String? {
-        guard rcRange.contains(value) else { return nil }
-        return value == rcRange.lowerBound ? rcSilent : "\(value)%"
-    }
-
-    static func link(rcRSSI: Int?, localRSSI: Int?, remoteRSSI: Int?) -> [DetailRow] {
-        let rc = rcRSSI.flatMap { value -> DetailRow? in
-            rcSignal(value).map { DetailRow(label: "RC signal", value: $0) }
-        }
+    // RCRSSIIndicator.qml shows the indicator on supportsRadio && rcRSSI in 1...100, so a vehicle
+    // with no transmitter at all gets no row upstream. This head drew one from the reading alone
+    // and could not tell "there is no radio" from "there is a radio saying nothing".
+    //
+    // The WORDS are now the core's. It spells 0 as "No signal" rather than "0%", which is the
+    // distinction this head used to own and argued for: 255 means the vehicle never told us, 0
+    // means it told us the RC link is gone, and "0%" reads as a link that is alive and terrible.
+    // The core widened rcSignalText to say so, so the rule lives in one place and both heads
+    // phrase it identically. rcSignal still carries the NUMBER for anything drawing a bar.
+    static func link(rcSignalText: String, rcSupported: Bool,
+                     localRSSI: Int?, remoteRSSI: Int?) -> [DetailRow] {
+        let rc = rcSupported && !rcSignalText.isEmpty
+            ? DetailRow(label: "RC signal", value: rcSignalText)
+            : nil
         // Unlike the RC percentage, a telemetry dBm of 0 is the unset value: Vehicle initialises
         // both to 0 and QGC's own TelemetryRSSIIndicator reads telemetryLRSSI !== 0 as "there is
         // a telemetry radio at all". Dropping it is right here and the two cases do not match.

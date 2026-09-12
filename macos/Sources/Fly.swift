@@ -108,7 +108,8 @@ final class FlyStore: ObservableObject, Probeable, WriteReporting {
         if readPacks != batteries { batteries = readPacks }
 
         let readLink = FlyDetail.link(
-            rcRSSI: (vehicle["rcRSSI"] as? NSNumber)?.intValue,
+            rcSignalText: state.rcSignalText,
+            rcSupported: state.rcSupported,
             localRSSI: (vehicle["telemetryLRSSI"] as? NSNumber)?.intValue,
             remoteRSSI: (vehicle["telemetryRRSSI"] as? NSNumber)?.intValue)
             + VehicleLinks.rows(VehicleLinks.list(Bridge.group("view.vehicleLinks")["links"]))

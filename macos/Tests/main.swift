@@ -1233,25 +1233,32 @@ func checkFlyDetail() {
     expect(FlyDetail.gps([FactReading(name: "lat", value: "1.0", units: "")]).isEmpty,
            "half a position is no position")
 
-    expect(FlyDetail.link(rcRSSI: 255, localRSSI: 0, remoteRSSI: 0).isEmpty,
+    expect(FlyDetail.link(rcSignalText: "", rcSupported: false,
+                          localRSSI: 0, remoteRSSI: 0).isEmpty,
            "a TCP link reports no radio at all, so the link row stays away")
-    expect(FlyDetail.link(rcRSSI: 84, localRSSI: -70, remoteRSSI: -68).map(\.label)
+    expect(FlyDetail.link(rcSignalText: "84%", rcSupported: true,
+                          localRSSI: -70, remoteRSSI: -68).map(\.label)
         .joined(separator: ","), "RC signal,Telemetry here,Telemetry on the vehicle",
            "a real radio reports all three")
-    expect(FlyDetail.link(rcRSSI: 0, localRSSI: nil, remoteRSSI: nil).map(\.value)
+    expect(FlyDetail.link(rcSignalText: "No signal", rcSupported: true,
+                          localRSSI: nil, remoteRSSI: nil).map(\.value)
         .joined(separator: ","), "No signal",
            "a zero RC reading is a dead stick, not absence: Vehicle stores 255 when it has "
            + "nothing to say and an explicit 0 once the filtered signal decays, so the row that "
-           + "used to vanish now says so - a row that disappears reads as not applicable")
-    expect(FlyDetail.rcSignal(255) == nil,
-           "255 is the vehicle having nothing to report, and still shows no row")
-    expect(FlyDetail.rcSignal(0) ?? "", "No signal", "0 is the vehicle reporting silence")
-    expect(FlyDetail.rcSignal(84) ?? "", "84%", "and a live reading is a plain percentage")
-    expect(FlyDetail.rcSignal(100) ?? "", "100%", "including the top of the range")
-    expect(FlyDetail.rcSignal(101) == nil,
-           "a percentage QGC would not accept is dropped rather than rendered; the old guard "
-           + "only excluded 255 and would have printed 150%")
-    expect(FlyDetail.rcSignal(254) == nil, "and so is anything else short of the sentinel")
+           + "used to vanish now says so - a row that disappears reads as not applicable. THE "
+           + "WORDS ARE THE CORE'S NOW: flystate.rs spells 0 as \"No signal\" after I measured "
+           + "that its first version said \"0%\", which reads as a link alive and terrible")
+    expect(FlyDetail.link(rcSignalText: "84%", rcSupported: false,
+                          localRSSI: nil, remoteRSSI: nil).isEmpty,
+           "THE CASE THAT MATTERS: a vehicle that supports no radio draws NO RC row even when a "
+           + "reading arrives. RCRSSIIndicator.qml gates on supportsRadio && rcRSSI in 1...100, "
+           + "and this head gated on the reading alone - so it could not tell \"there is no "
+           + "radio\" from \"there is a radio saying nothing\" and drew the same row for both")
+    expect(FlyDetail.link(rcSignalText: "", rcSupported: true,
+                          localRSSI: nil, remoteRSSI: nil).isEmpty,
+           "and a vehicle that HAS a radio reporting nothing usable draws none either - the core "
+           + "withholds the text for 255 and for anything outside 0...100, which is where the "
+           + "range rules this head used to own now live")
 
     expect(Units.display("v"), "V",
            "the vehicle spells volts in lower case; the whole window spells it the same way")

@@ -19,6 +19,8 @@ struct FlyState: Equatable {
     let connected: Bool
     let armed: Bool
     let contactLost: Bool
+    let rcSupported: Bool
+    let rcSignalText: String
     let kind: Kind
     let line: String
     let staleNotice: String
@@ -30,6 +32,8 @@ struct FlyState: Equatable {
         connected = false
         armed = false
         contactLost = false
+        rcSupported = false
+        rcSignalText = ""
         kind = .notConnected
         line = ""
         staleNotice = ""
@@ -41,6 +45,8 @@ struct FlyState: Equatable {
         connected = flag("connected")
         armed = flag("armed")
         contactLost = flag("contactLost")
+        rcSupported = flag("rcSupported")
+        rcSignalText = (json["rcSignalText"] as? String) ?? ""
         kind = Kind(rawValue: (json["state"] as? String) ?? "") ?? .unknown
         line = (json["stateText"] as? String) ?? ""
         staleNotice = (json["staleNotice"] as? String) ?? ""
