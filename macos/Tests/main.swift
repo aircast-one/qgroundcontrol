@@ -658,6 +658,20 @@ func checkAMeasureNeverReadsMinusZero() {
            "the guided slider is the ONE place this head still spells a measurement, because "
            + "the value is DRAGGED and the core spells no guided reading. It keeps its own "
            + "precision rule -- a decimal below ten, none above -- and shares the guard")
+
+    let grounded = GuidedRange(["available": true as NSNumber, "minimum": -0.03 as NSNumber,
+                                "maximum": 60.0 as NSNumber, "initial": 0.0 as NSNumber,
+                                "label": "Height", "unit": "m"])
+    expect(grounded?.text(grounded?.minimum ?? 0) ?? "", "0.0 m",
+           "and the slider's END LABELS are guarded too, which is a separate requirement from "
+           + "the dragged value and the one Android shipped broken. The core serves minimum as "
+           + "the LESSER of the configured floor and the vehicle's CURRENT altitude, and a "
+           + "grounded vehicle reads a hair below launch on baro drift -- so the end label was "
+           + "\"-0.0 to 60.0 m\" on a control an operator uses to command a CLIMB. It is safe "
+           + "here only because the guard lives inside text(), which all three drawing sites "
+           + "call; had it been applied at the value's call site the ends would have escaped it")
+    expect(grounded?.text(grounded?.maximum ?? 0) ?? "", "60 m",
+           "and the far end keeps the whole-number rule above ten")
 }
 
 checkAMeasureNeverReadsMinusZero()
@@ -4591,13 +4605,14 @@ func checkAnAltitudeSaysWhatItIsMeasuredFrom() {
            "a terrain-following item is the THIRD frame, not a second one -- altitude_frame "
            + "returns amsl, launch or terrain, and a head treating this as a boolean would leave "
            + "the terrain case wearing the label of whichever branch it fell into")
-    expect(item("gundeck", word: "").altitudeReading, "541 m GUNDECK",
+    expect(item("gundeck").altitudeReading, "541 m GUNDECK",
            "and a frame NEITHER side has heard of is SHOWN, not swallowed -- even when the core "
-           + "spells it as the empty string. frame_word maps every token it does not know to "
-           + "\"\", the same answer it gives launch-relative, so drawing the core's word alone "
-           + "would promote an unseen frame to THE DEFAULT ONE silently. The head keeps its "
-           + "uppercase fallback for exactly the tokens the core declined to name, and Android "
-           + "has the identical test under the name SEABED")
+           + "declines to name it. 7f624ad2d made frame_word return Option, so an unnamed token "
+           + "now serialises as JSON NULL and this fixture omits the key to match -- it used to "
+           + "send \"\", which was what the core did before and is what launch-relative still "
+           + "sends. Those two must not collapse: empty means NO SUFFIX, absent means NO IDEA. "
+           + "The head keeps its uppercase fallback for exactly the second, and Android has the "
+           + "identical test under the name SEABED")
     let terrainWaypoint = MissionItem(
         view: ["index": 2 as NSNumber, "sequence": 2 as NSNumber, "name": "Waypoint",
                "kind": "waypoint", "specifiesAltitude": true as NSNumber,
