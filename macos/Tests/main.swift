@@ -1327,6 +1327,7 @@ func checkMissionItemKinds() {
     checkAnItemSaysHowManyCommandsItFolds()
     checkAPatternSaysHowHighAboveTheGroundItFlies()
     checkAPatternDrawsThePathItActuallyFlies()
+    checkAnAltitudeSaysWhatItIsMeasuredFrom()
     checkSensorsComponentIsFoundByClass()
     checkShapeAbsence()
     checkBatteryReading()
@@ -4302,6 +4303,35 @@ func checkSpeedChangeIsListedNotOnlySelected() {
     expect(item(speed: "12.0 m/s").subtitle(unreached: true), "Never flown to",
            "and so does never being flown to, which says the item is not on the route at all -- "
            + "the speed it would have commanded there is not the point")
+}
+
+func checkAnAltitudeSaysWhatItIsMeasuredFrom() {
+    func item(_ frame: Any, text: String = "541 m", kind: String = "survey") -> MissionItem {
+        MissionItem(view: ["index": 3 as NSNumber, "sequence": 3 as NSNumber,
+                           "name": kind, "kind": kind, "altitudeBandText": text,
+                           "altitudeFrame": frame], selected: -1)
+    }
+    expect(item("amsl").altitudeReading, "541 m AMSL",
+           "the column was showing 491 m, 75.0 m and 541 m together with nothing saying which "
+           + "was measured from where -- a launch height above the sea, a waypoint above the "
+           + "launch pad, and a survey band above the sea, with 75 four pixels from 541. The "
+           + "core now names the frame and the two that are not the operator's default say so")
+    expect(item(MissionItem.launchFrame, text: "75.0 m", kind: "waypoint").altitudeReading,
+           "75.0 m",
+           "and the common case stays bare: a number with no frame reads as relative to launch, "
+           + "which is what QGC has always meant by it. Labelling all three would put a word "
+           + "under every row to disambiguate the two that need it")
+    expect(item("terrain").altitudeReading, "541 m AGL",
+           "a terrain-following item is the THIRD frame, not a second one -- altitude_frame "
+           + "returns amsl, launch or terrain, and a head treating this as a boolean would leave "
+           + "the terrain case wearing the label of whichever branch it fell into")
+    expect(item("gundeck").altitudeReading, "541 m GUNDECK",
+           "and a frame this head has never heard of is SHOWN, not swallowed. Falling through to "
+           + "bare would spell a frame nobody can read as the default one, which is the exact "
+           + "failure the field was added to end")
+    expect(item("amsl", text: "").altitudeReading, MissionItem.noAltitude,
+           "an item with no altitude at all keeps its em dash and gains no frame: there is no "
+           + "measurement to say the reference of")
 }
 
 func checkAPatternDrawsThePathItActuallyFlies() {

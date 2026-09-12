@@ -26,6 +26,7 @@ struct MissionItem: Identifiable, Equatable {
 
     let altitudeText: String
     let altitudeBandText: String
+    let altitudeFrame: String
 
     let azimuthText: String
     let distanceText: String
@@ -52,10 +53,23 @@ struct MissionItem: Identifiable, Equatable {
 
     var canMove: Bool { movable }
 
-    var altitudeReading: String {
-        if specifiesAltitude || kind == MissionItem.settingsKind { return altitudeText }
-        return altitudeBandText.isEmpty ? MissionItem.noAltitude : altitudeBandText
+    var frameSuffix: String {
+        switch altitudeFrame {
+        case "", MissionItem.launchFrame: return ""
+        case "amsl": return " AMSL"
+        case "terrain": return " AGL"
+        default: return " " + altitudeFrame.uppercased()
+        }
     }
+
+    var altitudeReading: String {
+        let measure = specifiesAltitude || kind == MissionItem.settingsKind
+            ? altitudeText
+            : (altitudeBandText.isEmpty ? MissionItem.noAltitude : altitudeBandText)
+        return measure == MissionItem.noAltitude ? measure : measure + frameSuffix
+    }
+
+    static let launchFrame = "launch"
 
     var speedReading: String? { speedChangeText.map { "Flies at \($0)" } }
 
@@ -162,6 +176,7 @@ struct MissionItem: Identifiable, Equatable {
         altitudeUnits = (json["altitudeUnits"] as? String) ?? Measure.metres.units
         altitudeText = (json["altitudeText"] as? String) ?? MissionItem.noAltitude
         altitudeBandText = (json["altitudeBandText"] as? String) ?? ""
+        altitudeFrame = (json["altitudeFrame"] as? String) ?? ""
 
         azimuthText = (json["azimuthText"] as? String) ?? MissionItem.noAltitude
         distanceText = (json["distanceText"] as? String) ?? MissionItem.noAltitude

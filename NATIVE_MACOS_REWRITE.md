@@ -2969,3 +2969,47 @@ mixed-frame column** — and the recorded contract has not caught up; both
 in their working tree right now. My change touches no view shape. Their values are
 `"launch"` and `"amsl"`: **a key rather than a phrase**, which is what Android asked
 for so neither head matches on a translated string. Reading it is the next cycle's work.
+
+### Every altitude says what it is measured from, 2026-09-12
+
+I reported the mixed-frame column and deliberately did not patch it, because every
+text in it was the core's deliberate choice and a head inventing a frame label would
+be making a rule about the core's quantities. **An hour later the core served
+`altitudeFrame` (`5ee549e69`) and the column can now say.** Reading it took one cycle;
+guessing at it would have been wrong in a way nothing would have caught.
+
+Rendered, the column reads **491 m AMSL**, 75 m, 75 m, **541 m AMSL**. The two figures
+measured from sea level now say so and the waypoints stay bare, because a number with
+no frame is what QGC has always meant by relative-to-launch — labelling all three
+would put a word under every row to disambiguate the two that need it.
+
+**It is a THREE-value enum, not a boolean.** `altitude_frame` returns `amsl`, `launch`
+or `terrain`, and I read the function before assuming. A head treating it as two
+states leaves a terrain-following item wearing whichever label it fell into; the
+mutation that makes `terrain` return `AMSL` fails.
+
+**And a frame this head has never heard of is SHOWN, uppercased, not swallowed.**
+Falling through to bare would spell an unknown frame as the default one — precisely
+the failure the field was added to end. The mutation that drops that branch fails.
+The values are keys, not phrases, so neither head matches a translated string.
+
+The label lands only where it is needed by accident of layout, and the accident is
+worth recording: an editable item draws through `AltitudeField` and a non-editable one
+through `altitudeReading`. The two ambiguous rows — the launch point and a pattern's
+band — are exactly the non-editable ones, so the suffix reaches them and never reaches
+a field being typed into.
+
+**Re-measured rather than restated:** `0f7825627` fixed a double conversion in the
+camera measures I draw. The survey card's footprint still reads `15.2 × 6.8 m` and the
+above-ground height `50.0 m`, so the figures I recorded last cycle stand — but they
+stand because I looked again, not because I asserted them twice.
+
+**The contract red is gone.** Suite 707/0/89. The core re-recorded `view-shapes.json`
+after adding the field, which is what the failure was waiting for.
+
+**A structure-scan plan is saved for the Android head** at
+`scratchpad/every-kind.plan` — takeoff, waypoint, ROI, survey, corridor scan,
+structure scan, land. They have no button that creates a structure scan and, after
+authoring a fixture that was wrong in two ways at once, declined to hand-write one to
+test a drawing path. **A plan emitted by the producer beats a plan either of us
+invents**, which is the fixture rule applied to a whole document.
