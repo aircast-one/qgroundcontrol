@@ -716,6 +716,24 @@ in the map (single source of truth). Eight macOS-only routes remain:
 `vehicleLinks` - and two of those eight are the ones already triaged as
 not-gaps, so six are genuinely unexamined.
 
+Two more triaged the same night:
+
+- **`label` is not applicable.** It humanises an identifier - `altitudeRelative`
+  becomes "Altitude Relative" - and macOS uses it as a fallback when a fact has
+  no description. This head has no local humaniser and no surface that needs
+  one: every control on `view.settings(General)` has a title, parameters are
+  named `RTL_ALT` rather than camel case, and inspector fields are snake case,
+  which `humanise` does not claim to handle. Nothing to build until something
+  here displays a bare identifier.
+- **`orbit` is blocked, not absent.** It carries the centre, radius and
+  direction of an orbit in progress, which is what draws the circle on the map.
+  Reaching it needs an armed vehicle flying a commanded orbit, the same gate as
+  `track`.
+
+Four left unexamined: `gcsPosition`, `missionSeed`, `track`, `vehicleLinks`.
+`vehicleLinks` needs a second link to be worth anything - it names which radio
+is carrying the vehicle and which has gone quiet - and this rig has one.
+
 ### The rate label was broken on every head, and the rig was hiding it, 2026-09-13
 
 The paragraph below was half right and its conclusion was wrong. The rig really
