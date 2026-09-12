@@ -1594,6 +1594,7 @@ func checkMissionItemKinds() {
     checkModeSlotNaming()
     checkBreachReturnAltitude()
     checkCameraBrandSelection()
+    checkBatteryHeadlines()
     checkResumeSequence()
     checkOrbitRingNeedsContact()
 
@@ -6395,4 +6396,30 @@ func checkCameraBrandSelection() {
     expect(unknown.selectedBrand, "Something else",
            "and a brand that is in no list and is neither canonical name is left alone rather "
            + "than being replaced by a guess")
+}
+
+func checkBatteryHeadlines() {
+    let two: [[String: Any]] = [
+        ["text": "78%", "secondaryText": "22.1 V"],
+        ["text": "64%", "secondaryText": "21.4 V"],
+    ]
+    let lines = FlyTelemetry.batteryHeadlines(two)
+    expect(lines.count == 2, "every pack gets a headline, not just the first")
+    expect(lines.first ?? "", "78% \u{00B7} 22.1 V", "composed the same way for pack one")
+    expect(lines.last ?? "", "64% \u{00B7} 21.4 V",
+           "THE CASE THAT MATTERS: the second row used to show its first DETAIL FACT instead of "
+           + "the core's composed headline, so on a two-battery aircraft the summary beside "
+           + "Battery 2 was a different quantity in a different shape from the one beside "
+           + "Battery 1. The core serves text and secondaryText for every pack; the head was "
+           + "reading them for packs.first alone")
+
+    expect(FlyTelemetry.batteryHeadlines([["text": "", "secondaryText": "22.1 V"]]).first ?? "",
+           "\u{2014}",
+           "a pack that reports no charge shows the em dash rather than a voltage standing in for "
+           + "a percentage")
+    expect(FlyTelemetry.batteryHeadlines([["text": "78%", "secondaryText": "78%"]]).first ?? "",
+           "78%", "and a secondary that repeats the main is not said twice")
+    expect(FlyTelemetry.batteryHeadlines([]).isEmpty,
+           "no packs, no headlines -- the row falls back to the telemetry line, which is what an "
+           + "aircraft with no battery telemetry at all still draws")
 }

@@ -57,6 +57,15 @@ struct FlyTelemetry: Equatable {
         return "\(main) · \(secondary)"
     }
 
+    // The core composes a headline for EVERY pack, not just the first. The head used packs[0]'s
+    // and gave rows 2+ whatever their first detail fact happened to be, so a second battery's
+    // summary was a different quantity in a different shape from the one above it.
+    static func batteryHeadlines(_ packs: [[String: Any]]) -> [String] {
+        packs.map {
+            batteryLine(($0["text"] as? String) ?? "", ($0["secondaryText"] as? String) ?? "")
+        }
+    }
+
 
 
 }

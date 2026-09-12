@@ -14,6 +14,7 @@ final class FlyStore: ObservableObject, Probeable, WriteReporting {
     @Published private(set) var airframe = "Generic"
     @Published private(set) var checklist: [PreflightGroup] = []
     @Published private(set) var batteries: [[DetailRow]] = []
+    @Published private(set) var batteryHeadlines: [String] = []
     @Published private(set) var batteryLevels: [FlyTelemetry.Level] = []
     @Published private(set) var gpsDetail: [DetailRow] = []
     @Published private(set) var linkDetail: [DetailRow] = []
@@ -119,6 +120,8 @@ final class FlyStore: ObservableObject, Probeable, WriteReporting {
         reading.batteryLevel = FlyTelemetry.Level(batteryView["level"] as? String)
         reading.batteryText = FlyTelemetry.batteryLine((first?["text"] as? String) ?? "",
                                                        (first?["secondaryText"] as? String) ?? "")
+        let readHeadlines = FlyTelemetry.batteryHeadlines(batteryPacks)
+        if readHeadlines != batteryHeadlines { batteryHeadlines = readHeadlines }
         let readLevels = batteryPacks.map { FlyTelemetry.Level($0["level"] as? String) }
         if readLevels != batteryLevels { batteryLevels = readLevels }
 
