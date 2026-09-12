@@ -173,8 +173,9 @@ struct LogDownloadView: View {
                     ForEach(Array(store.logs.enumerated()), id: \.element.id) { index, entry in
                         GroupRow(title: "Log \(entry.id)",
                                  description: entry.timeText,
-                                 value: entry.status == "Available" ? entry.sizeText
-                                     : "\(entry.sizeText) \u{00B7} \(entry.status)",
+                                 value: entry.noteworthyStatus
+                                     ? "\(entry.sizeText) \u{00B7} \(entry.status)"
+                                     : entry.sizeText,
                                  showSeparator: index > 0,
                                  leading: {
                                      Tile(symbol: "doc.text.fill",

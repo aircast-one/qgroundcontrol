@@ -2593,6 +2593,30 @@ func checkVehicleMessages() {
 
 checkVehicleMessages()
 
+func checkALogRowKeysOnTheId() {
+    func entry(_ status: String, id: String) -> LogEntry? {
+        LogEntry(["id": 1 as NSNumber, "size": 4096 as NSNumber, "status": status,
+                  "statusId": id, "received": false as NSNumber, "selected": false as NSNumber,
+                  "time": "2026-09-08T14:42:51.000"])
+    }
+    expect(entry("Available", id: "available")?.noteworthyStatus == false,
+           "an ordinary log row shows only its size")
+    expect(entry("Verf\u{00FC}gbar", id: "available")?.noteworthyStatus == false,
+           "and the SAME row in German shows only its size too. The row used to compare the "
+           + "status TEXT against \"Available\", and LogDownloadController wraps every status in "
+           + "tr(), so outside English the comparison never matched and every row appended its "
+           + "status. The core now carries a statusId beside the text -- fixed at the SOURCE, in "
+           + "QGCLogEntry, rather than by mapping the translated string back to an id one layer "
+           + "up, which would have been the same defect in a different file")
+    expect(entry("Fehler", id: "error")?.noteworthyStatus == true,
+           "and an error is still worth reading in any language. `received` could not separate "
+           + "these two -- it is false for available and error alike -- which is why this was "
+           + "recorded and left alone rather than worked around head-side")
+    expect(entry("", id: "")?.noteworthyStatus == false,
+           "and a log the core answered nothing for says nothing, rather than appending an empty "
+           + "separator")
+}
+
 func checkCentringTwiceMovesTheMapTwice() {
     let frame = MapFrame(latitudes: [47.4, 47.41], longitudes: [8.5, 8.51])
     let first = MapFocus.next(after: nil, to: frame)
@@ -2979,6 +3003,7 @@ checkAClickPlacesWhatThePageArms()
 checkAFenceCircleIsDrawnInMetres()
 checkAPlacedPatternIsFoundByKind()
 checkCentringTwiceMovesTheMapTwice()
+checkALogRowKeysOnTheId()
 
 final class ProbeStub: Probeable {
     static let probeID = "stub"

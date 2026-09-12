@@ -5,6 +5,14 @@ struct LogEntry: Identifiable, Equatable {
     let id: Int
     let sizeText: String
     let status: String
+    let statusId: String
+
+    // The row draws the status only when it is worth reading. Comparing the TEXT against
+    // "Available" was a join on a tr() string, so outside English every row appended its
+    // status. statusId is the same fact in a form an operator never sees.
+    static let ordinaryStatus = "available"
+
+    var noteworthyStatus: Bool { !statusId.isEmpty && statusId != LogEntry.ordinaryStatus }
     let received: Bool
     let timeState: TimeState
     let time: String
@@ -39,6 +47,7 @@ struct LogEntry: Identifiable, Equatable {
         index = (json["index"] as? NSNumber)?.intValue ?? 0
         sizeText = (json["sizeText"] as? String) ?? ""
         status = (json["status"] as? String) ?? ""
+        statusId = (json["statusId"] as? String) ?? ""
         received = (json["received"] as? NSNumber)?.boolValue ?? false
         timeState = TimeState(json["timeState"] as? String)
         time = (json["time"] as? String) ?? ""
