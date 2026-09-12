@@ -18,6 +18,9 @@ use crate::flystate;
 use crate::geo;
 use crate::adsb;
 use crate::cameradef;
+use crate::geotag;
+use crate::gpsrtk;
+use crate::videostate;
 use crate::cameraproto;
 use crate::joystick;
 use crate::detections;
@@ -70,6 +73,9 @@ pub struct View {
 pub const ARGUMENT_MODES: &[(&str, &str)] = &[
     ("view.altitudeModes", "item,<index>"),
     ("view.cameraDefinition", "<file path>[,<locale>]"),
+    ("view.geoTag", "<file path>[,<tolerance seconds>]"),
+    ("view.gpsRtkBase", "<gps type>"),
+    ("view.videoSource", "<source>[,<url>[,<rtsp timeout seconds>]]"),
     ("view.control", "<fact path>"),
     ("view.guidedAltitude", "<metres>"),
     ("view.guidedSpeed", "<metres per second>"),
@@ -172,6 +178,9 @@ pub const VIEWS: &[View] = &[
     View { path: "view.followMe", deps: followme::DEPS, compute: followme::follow_me_view },
     View { path: "view.gcsPosition", deps: &[], compute: gcsposition::gcs_position_view },
     View { path: "view.gimbal", deps: &[], compute: gimbal::gimbal_view },
+    View { path: "view.geoTag", deps: geotag::DEPS, compute: geotag::geotag_view },
+    View { path: "view.gpsRtkBase", deps: &[], compute: gpsrtk::base_view },
+    View { path: "view.videoSource", deps: videostate::DEPS, compute: videostate::video_source_view },
     View { path: "view.kmlFile", deps: kml::DEPS, compute: kml::kml_view },
     View { path: "view.shapeFile", deps: shp::DEPS, compute: shp::shp_view },
     View { path: "view.geoToNed", deps: geo::DEPS, compute: geo::geo_to_ned_view },

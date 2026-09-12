@@ -5,6 +5,20 @@ use crate::router::Backend;
 pub const DEPS: &[&str] = &[];
 const WGS84_A: f64 = 6_378_137.0;
 
+pub const FULL_TURN_DEGREES: f64 = 360.0;
+
+pub fn wrap_bearing(degrees: f64) -> f64 {
+    degrees.rem_euclid(FULL_TURN_DEGREES)
+}
+
+pub fn wrap_tilt(degrees: f64) -> f64 {
+    let wrapped = (degrees + 180.0).rem_euclid(FULL_TURN_DEGREES) - 180.0;
+    match wrapped == -180.0 {
+        true => 180.0,
+        false => wrapped,
+    }
+}
+
 pub fn wrap_longitude(longitude: f64) -> f64 {
     let wrapped = (longitude + 180.0).rem_euclid(360.0) - 180.0;
     if wrapped == -180.0 { 180.0 } else { wrapped }
