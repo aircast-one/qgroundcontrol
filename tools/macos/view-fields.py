@@ -185,6 +185,32 @@ UNDRAWN = [
                          "which is forbidden here. So the list can only ever be empty and a "
                          "contacts layer could not be seen to work. PARITY GAP, recorded not "
                          "built"),
+    ("view.geoTag", "MEASURED as a REFUSAL, which is the answer: it asks for the path of a "
+                    "telemetry log, a tolerance and one epoch timestamp per image. It is the "
+                    "tagging COMPUTATION, not the controller state the Analyze page draws -- "
+                    "logFile, imageDirectory, saveDirectory, progress, inProgress. raw-reads.py "
+                    "flags GeoTag.swift for reading 'geoTag' straight from Qt while a view names "
+                    "the same subject, and its own question -- ask what that view refuses -- has "
+                    "the answer here: it refuses everything except the tagging run. Same class as "
+                    "the file parsers above, and the head reaches it through its own action"),
+    ("view.videoSource", "MEASURED as a REFUSAL: it asks for a source token, optionally a url and "
+                         "an rtsp timeout. A PARSER, same class as the file parsers. The head's "
+                         "VideoSource model is a settings-slot list -- slot, name, url, enabled, "
+                         "configured -- and shares only the NAME, which is why this checker's "
+                         "filename heuristic paired VideoSourceModel.swift with it under UNLISTED. "
+                         "A shared word is not a shared subject"),
+    ("view.gpsRtkBase", "MEASURED with no vehicle and it answers REAL STATE: driver ublox, mode "
+                        "surveyIn, accuracy 2.0 m, minimum duration 180 s, fixedBase null. An RTK "
+                        "base is ground equipment, so unlike the vehicle-gated entries this one "
+                        "could be built and seen to work here. PARITY GAP, recorded not built -- "
+                        "the core began serving it tonight"),
+    ("view.operatorControl", "NOT YET MEASURABLE, and recorded as that rather than guessed. The "
+                             "core added it minutes ago: operatorcontrol.rs and view.rs both "
+                             "postdate the built libqgc_core.a, so THIS binary answers a bare "
+                             "null for it while the source shows an object with available, known, "
+                             "inControl, holderSystemId and takeoverAllowed. Writing a reason "
+                             "from that null would be recording a stale binary as a fact. Rebuild "
+                             "and measure before deciding whether this head draws it"),
     ("view.obstacle", "a proximity ring: available is false with no vehicle, so there is nothing "
                       "to draw and nothing to check. PARITY GAP, recorded not built"),
 ]
@@ -284,7 +310,12 @@ for source in sorted(SOURCES.glob("*Model*.swift")):
     stem = source.name.replace("Model.swift", "").replace(".swift", "")
     served = "view." + stem[0].lower() + stem[1:]
     declared = set(re.findall(r"struct ([A-Z][A-Za-z]*)", source.read_text()))
-    if served in registry and not declared & set(MODELS):
+    # The pairing is a FILENAME heuristic, so it asserts a shared subject from a shared word.
+    # Measured twice and wrong both times: GeoTagModel holds the controller's job state while
+    # view.geoTag is the tagging computation, and VideoSource is a settings-slot list while
+    # view.videoSource is a parser. A view carrying an UNDRAWN reason is an explicit statement
+    # that this head does not read it, and that outranks a guess made from a name.
+    if served in registry and not declared & set(MODELS) and not undrawn_reason(served):
         unlisted.append((source.name, served))
 for name, served in unlisted:
     print(f"  UNLISTED {name} decodes {served}, which the core serves, and no struct in it is in "
