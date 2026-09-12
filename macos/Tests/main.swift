@@ -563,28 +563,24 @@ func checkTheFenceTheFirmwareEnforces() {
 checkTheFenceTheFirmwareEnforces()
 
 func checkTheBatteryIsSpelledOnce() {
-    let pack = BatteryReading(["voltage": 15.8 as NSNumber, "current": 2.5 as NSNumber,
-                               "percent": 87.0 as NSNumber, "voltageText": "15.80V"])
+    let pack = BatteryReading(["voltage": 15.8 as NSNumber, "voltageText": "15.80V",
+                               "currentText": "12.50A", "percentText": "90%"])
     expect(pack?.voltageText ?? "", "15.80V",
-           "the core spells the voltage from the vehicle's own Fact, units included, and the "
+           "the core spells each measure from the vehicle's own Fact, units included, and the "
            + "Fly view already drew that string through secondaryText. This panel took the raw "
-           + "number and re-spelled it as \"15.80 V\" with String(format:), so ONE battery was "
-           + "written two ways in one app -- and String(format:) is locale-independent, so a "
-           + "build whose Fact says 15,80V would still print a full stop here")
-    expect(pack?.available == true, "a pack with a voltage is a reading")
+           + "numbers and re-spelled them -- \"15.80 V\" -- so ONE battery was written two ways "
+           + "in one app, and String(format:) is locale-independent, so a build whose Fact says "
+           + "15,80V would still have printed a full stop here")
 
     let unspelled = BatteryReading(["voltage": 15.8 as NSNumber])
-    expect(unspelled?.voltageText ?? "", "15.80 V",
-           "with no spelling from the core the head still says something rather than nothing: "
-           + "the fallback is the previous behaviour, not an invented value, and it is what a "
-           + "pack sent before the core spelled voltages would still draw")
-    expect(unspelled?.currentText ?? "", "\u{2014}",
-           "and a measure the pack does not carry is an em dash rather than a zero, because a "
-           + "battery drawing no current and a battery not reporting one are different facts")
-
-    expect(BatteryReading(nil) == nil, "no pack at all is no reading")
-    expect(BatteryReading.unavailable.available == false,
-           "and the unavailable reading stays the one the panel shows with no vehicle")
+    expect(unspelled?.voltageText ?? "", BatteryReading.unreported,
+           "and with no spelling the head now says nothing rather than spelling its own. The "
+           + "formatter it used to fall back to is DELETED: keeping it would have left one "
+           + "locale-dependent string in a panel whose other rows come from the core, which is "
+           + "the disagreement this set out to remove")
+    expect(unspelled?.available == true,
+           "the reading is still a reading -- the voltage gate is the number, not the string, "
+           + "so a pack the core has not spelled yet is present rather than missing")
 }
 
 checkTheBatteryIsSpelledOnce()
@@ -4401,22 +4397,33 @@ func checkFlownLeg() {
 }
 
 func checkBatteryReading() {
-    let live = BatteryReading(voltage: 15.812, current: 3.407, percent: 76.4)
-    expect(live.voltageText, "15.81 V", "voltage to two places, because the last one is the one "
-           + "that moves as a pack sags")
-    expect(live.currentText, "3.41 A", "current the same")
-    expect(live.percentText, "76%", "and a whole percent, because a tenth of a percent of charge "
-           + "is precision the number does not have")
-    expect(live.available, "a pack reporting a voltage is a pack there is a reading for")
+    let live = BatteryReading(["voltage": 15.812 as NSNumber, "voltageText": "15.81V",
+                               "currentText": "3.41A", "percentText": "76%"])
+    expect(live?.voltageText ?? "", "15.81V",
+           "every measure on this panel is the string the CORE spelled, from the vehicle's own "
+           + "Fact. This head used to format all three with String(format:), which is "
+           + "locale-independent and prints a full stop where the Fact prints whatever the "
+           + "operator's locale does -- and the Fly view was already drawing the core's "
+           + "spelling, so one battery was written two ways in one app")
+    expect(live?.currentText ?? "", "3.41A", "the current likewise")
+    expect(live?.percentText ?? "", "76%", "and the charge")
+    expect(live?.available == true, "a pack reporting a voltage is a pack there is a reading for")
 
     expect(BatteryReading.unavailable.available == false,
-           "and no reading at all is not a reading of zero, which would draw a flat pack")
-    expect(BatteryReading.unavailable.voltageText, "\u{2014}", "it shows a dash")
+           "no reading at all is not a reading of zero, which would draw a flat pack")
+    expect(BatteryReading.unavailable.voltageText, BatteryReading.unreported, "it shows a dash")
 
-    let partial = BatteryReading(voltage: 15.0, current: .nan, percent: nil)
-    expect(partial.available, "a pack with a voltage and no current still has a voltage")
-    expect(partial.currentText, "\u{2014}", "but its current reads as absent rather than as nan")
-    expect(partial.percentText, "\u{2014}", "and so does a percentage it never sent")
+    let partial = BatteryReading(["voltage": 15.0 as NSNumber, "voltageText": "15.00V"])
+    expect(partial?.currentText ?? "", BatteryReading.unreported,
+           "a measure the core did not spell reads as absent rather than as an empty row -- and "
+           + "the head no longer has a formatter to fall back to, which is the point: it cannot "
+           + "invent a spelling that disagrees with the one beside it")
+    expect(partial?.available == true, "a pack with a voltage and no current still has a voltage")
+
+    expect(BatteryReading(["voltage": Double.nan as NSNumber])?.available == false,
+           "a nan voltage is not a voltage, so the panel says there is no reading rather than "
+           + "drawing one whose number cannot be compared")
+    expect(BatteryReading(nil) == nil, "no pack at all is no reading")
 }
 
 func checkShapeAbsence() {

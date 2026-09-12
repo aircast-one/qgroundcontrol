@@ -2,42 +2,39 @@ import Foundation
 
 struct BatteryReading: Equatable {
     let voltage: Double?
-    let current: Double?
-    let percent: Double?
-    let spelledVoltage: String
+    let voltageText: String
+    let currentText: String
+    let percentText: String
 
-    static let unavailable = BatteryReading(voltage: nil, current: nil, percent: nil)
+    static let unavailable = BatteryReading(voltage: nil)
+    static let unreported = "\u{2014}"
 
-    init(voltage: Double?, current: Double?, percent: Double?, spelledVoltage: String = "") {
+    init(voltage: Double?, voltageText: String = "", currentText: String = "",
+         percentText: String = "") {
         self.voltage = voltage
-        self.current = current
-        self.percent = percent
-        self.spelledVoltage = spelledVoltage
+        self.voltageText = BatteryReading.shown(voltageText)
+        self.currentText = BatteryReading.shown(currentText)
+        self.percentText = BatteryReading.shown(percentText)
     }
 
     init?(_ json: Any?) {
         guard let json = json as? [String: Any] else { return nil }
-        func measure(_ name: String) -> Double? {
-            guard let number = json[name] as? NSNumber, number.doubleValue.isFinite else {
-                return nil
-            }
-            return number.doubleValue
-        }
-        self.init(voltage: measure("voltage"), current: measure("current"),
-                  percent: measure("percent"),
-                  spelledVoltage: (json["voltageText"] as? String) ?? "")
+        let measure = (json["voltage"] as? NSNumber)?.doubleValue
+        self.init(voltage: measure.filter(\.isFinite),
+                  voltageText: (json["voltageText"] as? String) ?? "",
+                  currentText: (json["currentText"] as? String) ?? "",
+                  percentText: (json["percentText"] as? String) ?? "")
     }
 
     var available: Bool { voltage != nil }
 
-    var voltageText: String {
-        spelledVoltage.isEmpty ? BatteryReading.text(voltage, "%.2f V") : spelledVoltage
+    static func shown(_ spelled: String) -> String {
+        spelled.isEmpty ? unreported : spelled
     }
-    var currentText: String { BatteryReading.text(current, "%.2f A") }
-    var percentText: String { BatteryReading.text(percent, "%.0f%%") }
+}
 
-    static func text(_ value: Double?, _ format: String) -> String {
-        guard let value, value.isFinite else { return "\u{2014}" }
-        return String(format: format, value)
+private extension Optional where Wrapped == Double {
+    func filter(_ keep: (Double) -> Bool) -> Double? {
+        flatMap { keep($0) ? $0 : nil }
     }
 }
