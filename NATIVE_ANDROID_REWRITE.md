@@ -6536,3 +6536,22 @@ head spelling metres.
 `Alt m` with no frame. My UI has no altitude-mode control, so no simple item in
 any plan I can build carries a non-launch frame — the path is unreachable and
 fixing it would be blind work against a fixture. It waits for a mode control.
+
+### A caveat on every fence and rally result in this document
+
+All of them were taken with `tools/apmvehicle.py` running. The macOS session
+found on 2026-09-12 that with no vehicle attached, `fenceSupported` and
+`rallySupported` are both false and every fence creation is refused — and that
+their rig had been silently refused all session because the calls were piped to
+`/dev/null`, while a standing note in their procedure said "fence and rally
+creation proven".
+
+That note was presumably true when written, with a vehicle connected, and had
+been carried forward untested. **A stale permission is more dangerous than a
+stale refusal**: a refusal that has gone stale blocks work that would succeed, a
+permission that has gone stale licenses work that will not.
+
+So: "a fence can be created" is proven **on this rig with a vehicle attached**,
+which is the only configuration it has ever been tested in. Nothing here
+establishes what the Plan tab does with no vehicle, and the buttons are not
+gated on `fenceSupported` — the head does not read it.
