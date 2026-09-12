@@ -144,6 +144,7 @@ public:
     Q_PROPERTY(QVariantList         rcChannelValues             READ rcChannelValues                                                NOTIFY rcChannelValuesChanged)
     Q_PROPERTY(bool                 flightModeSetAvailable      READ flightModeSetAvailable                                         CONSTANT)
     Q_PROPERTY(QStringList          flightModes                 READ flightModes                                                    NOTIFY flightModesChanged)
+    Q_PROPERTY(QVariantList         flightModeIds               READ flightModeIds                                                  NOTIFY flightModesChanged)   ///< Custom mode number per entry of flightModes, in the same order
     Q_PROPERTY(QStringList          advancedFlightModes         READ advancedFlightModes                                            NOTIFY flightModesChanged)
     Q_PROPERTY(QString              flightMode                  READ flightMode                 WRITE setFlightMode                 NOTIFY flightModeChanged)
     Q_PROPERTY(TrajectoryPoints*    trajectoryPoints            MEMBER _trajectoryPoints                                            CONSTANT)
@@ -490,6 +491,7 @@ public:
 
     bool flightModeSetAvailable             ();
     QStringList flightModes                 ();
+    QVariantList flightModeIds              ();
     QStringList advancedFlightModes         () const;
     QString flightMode                      () const;
     void setFlightMode                      (const QString& flightMode);
@@ -628,6 +630,7 @@ public:
     FactGroup* rpmFactGroup                 () { return &_rpmFactGroup; }
     QmlObjectListModel* batteries           () { return &_batteryFactGroupListModel; }
 
+    Q_PROPERTY(MissionManager*      missionManager      READ missionManager      CONSTANT)
     MissionManager*                 missionManager      () { return _missionManager; }
     GeoFenceManager*                geoFenceManager     () { return _geoFenceManager; }
     RallyPointManager*              rallyPointManager   () { return _rallyPointManager; }

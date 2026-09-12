@@ -1655,6 +1655,25 @@ QStringList Vehicle::flightModes()
     return flightModes;
 }
 
+/// The custom mode number behind each entry of flightModes, in the same order. The names are tr()
+/// strings, so nothing outside the running locale can key on them; these are the stable identity.
+QVariantList Vehicle::flightModeIds()
+{
+    QVariantList ids;
+    const QStringList named = flightModes();
+    for (const QString &name : named) {
+        quint32 found = 0;
+        for (const FirmwareFlightMode &mode : _firmwarePlugin->flightModeList()) {
+            if (mode.mode_name == name) {
+                found = mode.custom_mode;
+                break;
+            }
+        }
+        ids.append(found);
+    }
+    return ids;
+}
+
 QStringList Vehicle::advancedFlightModes() const
 {
     QStringList advanced;

@@ -47,6 +47,7 @@ public:
     Q_PROPERTY(bool             homePosition                        READ homePosition                                                       CONSTANT)                                           ///< true: This item is being used as a home position indicator
     Q_PROPERTY(QGeoCoordinate   coordinate                          READ coordinate                         WRITE setCoordinate             NOTIFY coordinateChanged)                           ///< Does not include altitude
     Q_PROPERTY(double           amslEntryAlt                        READ amslEntryAlt                                                       NOTIFY amslEntryAltChanged)
+    Q_PROPERTY(double           additionalTimeDelay                 READ additionalTimeDelay                                            NOTIFY additionalTimeDelayChanged)
     Q_PROPERTY(double           terrainAltitude                     READ terrainAltitude                                                    NOTIFY terrainAltitudeChanged)                      ///< The altitude of terrain at the coordinate position, NaN if not known
     Q_PROPERTY(QGeoCoordinate   exitCoordinate                      READ exitCoordinate                                                     NOTIFY exitCoordinateChanged)                       ///< Does not include altitude
     Q_PROPERTY(double           amslExitAlt                         READ amslExitAlt                                                        NOTIFY amslExitAltChanged)

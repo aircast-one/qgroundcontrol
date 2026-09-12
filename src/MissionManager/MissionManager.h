@@ -24,6 +24,7 @@ public:
     ~MissionManager();
         
     /// Current mission item as reported by MISSION_CURRENT
+    Q_PROPERTY(int currentIndex READ currentIndex NOTIFY currentIndexChanged)
     int currentIndex(void) const { return _currentMissionIndex; }
 
     /// Last current mission item reported while in Mission flight mode
