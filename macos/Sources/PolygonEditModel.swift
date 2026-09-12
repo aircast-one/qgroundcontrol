@@ -6,7 +6,6 @@ struct EditablePolygon: Equatable {
     let midpoints: [GeoPoint]
     let minimumVertices: Int
     let ring: Bool
-    let closed: Bool
     let canRemoveVertex: Bool
     let segments: Int
     let splitInvokable: String
@@ -21,7 +20,6 @@ struct EditablePolygon: Equatable {
         midpoints = ((json["midpoints"] as? [Any]) ?? []).compactMap(GeoPoint.init(json:))
         minimumVertices = (json["minimumVertices"] as? NSNumber)?.intValue ?? 3
         ring = (json["ring"] as? NSNumber)?.boolValue ?? true
-        closed = (json["closed"] as? NSNumber)?.boolValue ?? false
         canRemoveVertex = (json["canRemoveVertex"] as? NSNumber)?.boolValue ?? false
         segments = (json["segments"] as? NSNumber)?.intValue ?? 0
         splitInvokable = (json["splitInvokable"] as? String) ?? ""

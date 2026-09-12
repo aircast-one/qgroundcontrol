@@ -3841,7 +3841,13 @@ func checkPolygonEdit() {
         "vertices": [corner(0, 0), corner(0, 2), corner(2, 2), corner(2, 0)],
         "midpoints": [corner(0, 1), corner(1, 2), corner(2, 1), corner(1, 0)],
     ])
-    expect(polygon?.closed == true, "the core says whether four corners make a polygon")
+    expect(polygon?.ring == true,
+           "the core says whether the shape closes back on itself, which decides polygon or "
+           + "polyline on the map. Its sibling `closed` was decoded here and consumed by NOTHING, "
+           + "so it is gone: it does NOT mean the path loops -- fences.rs computes it as "
+           + "`vertices.len() >= minimum`, so a two-point corridor line reports closed true with "
+           + "ring false. A head reading it as the geometric term would loop a corridor back on "
+           + "itself")
     expect(polygon?.canRemoveVertex == true, "and whether one can go without breaking it")
     expect(polygon?.segments == 4, "a ring has as many segments as corners")
     expect(polygon?.midpoints.count == 4,

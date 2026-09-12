@@ -3823,3 +3823,37 @@ I filtered the kinds on `insertable` — **a key that does not exist** — and r
 `enabled: true` and `disabledReason: null` for all seven. Then I read the no-argument call
 as "an answer with no where", when it defaults to the selection. **Both would have been
 findings if I had trusted my first projection instead of printing one kind in full.**
+
+### Every argument mode I read is contract-recorded — and `closed` does not mean closed
+
+**Took the lead from the core's `8a2ae2ccf`** rather than inventing one: they recorded
+arguments for the views that take them and listed 24 with reasons for not recording.
+**The question for this head was which of MY argument modes the contract protects.**
+Cross-referenced all thirteen against the fixture: **every one is recorded with an
+argument** — `altitudeModes(item,4)`, `guidedAltitude(30)`, `guidedSpeed(3)`,
+`guidedTakeoff(10)`, `instruments(vehicle/altitudeRelative)`, `label(altitudeRelative)`,
+`mapScale(120)`, `missionSeed(survey,47,8)`, `polygon(...)`, `settings(General)`,
+`setup(Safety)`, `surveyStats(0)`, `missionItems(geometry)`. **A clean negative.**
+
+**`view.polygon(...,line)` is recorded only in its RING form, and I checked whether that
+matters.** Measured both against real items — a corridor at index 5 and a survey at index
+4 — and **the keys are identical**; only values differ (`ring`, `minimumVertices`,
+`segments`, `canRemoveVertex`). The contract records shapes, so the ring recording does
+protect the line mode. **Worth checking rather than assuming, and the answer was no gap.**
+
+**What the measurement did find is a name.** The line form reports **`ring: false` with
+`closed: true`**, which reads as a contradiction. `fences.rs:134` computes
+`let closed = vertices.len() >= minimum` — **`closed` means "has enough vertices to
+draw", not "the path returns to its start".** A two-point corridor is `closed: true`.
+**A head reading it as the geometric term would loop a corridor back on itself.**
+
+**Mine did not, because it never read it at all.** `EditablePolygon` decoded `closed` and
+**consumed it nowhere** — confirmed against a control (`canRemoveVertex` appears in two
+files and is used; `closed` appeared only in its own declaration and decode). **Removed**,
+and its test re-aimed at `ring`, which is the flag that actually decides polygon or
+polyline. The test now carries the trap so the next reader meets it before the field does.
+
+**This is the fourth name this session that asserts something its value does not mean** —
+after `stopsSave`, `supportsTerrainFrame` and `clearMission`. Three were mine; this one is
+the core's, and I only saw it because a shape comparison put `ring: false` and
+`closed: true` on the same line.
