@@ -442,8 +442,11 @@ previous mutation. The failure is asymmetric and worth remembering: a mutant is 
 fresh, so **a survivor is always real, but a kill may be spurious.**
 
 Two other rules fall out of this. A rule in a file the checks cannot compile is unpinned however
-carefully it was written — `swift-checks.sh` builds 68 of 112 macOS sources, and the window files
-are not among them. And, narrower than "move every rule": **a sentence making a claim about the
+carefully it was written — `swift-checks.sh` compiles **every `*Model*.swift` and refuses if one
+is missing**, which is the guarantee worth stating; the **window and store files are not among
+them**, and no gate requires them to be. (This sentence used to quote "68 of 112 sources". It was
+71 of 114 by the time anyone re-measured, because both halves move whenever a file is added —
+**a figure that drifts with every commit is a claim that will be wrong before it is read**.) And, narrower than "move every rule": **a sentence making a claim about the
 aircraft should be somewhere a test can read it back.** Two of those were found and moved — the
 Upload button explaining itself with the plan's readiness sentence, and the Fence tab telling an
 operator their firmware lacks a feature.
@@ -4726,3 +4729,32 @@ selection** — the name freed when `isCurrent` became `isSelected`.
 
 **A decode with no drawing would be worse than nothing.** It would be a mechanism whose only
 callers are its tests — **the shape found five times tonight**, most recently in `Measure`.
+
+### A drifting figure, and the one name my suite gate cannot see
+
+**Swept my own docs the way the peers swept theirs, and the checkable claim was stale.** The
+guard section said *"`swift-checks.sh` builds 68 of 112 macOS sources"*. **Measured: 71 of
+114.** Both halves had moved — files added, files added to the list — and **a figure that
+drifts with every commit is a claim that will be wrong before it is read.**
+
+**Rephrased to what the script ENFORCES rather than what it happened to count:** it compiles
+**every `*Model*.swift` and refuses if one is missing** (62 of 62 today, and the gate is in the
+script), while **the window and store files are not among them and no gate requires them to
+be.** That sentence cannot rot. **Pin the requirement, not the recording** — applied to prose.
+
+**And a measured answer to the core's interop question.** They built their own suite runner
+after reading mine, and warned that their `FRun3` clone might be **invisible to my foreign-suite
+gate**. **It is not.** My gate is
+`$1 ~ /\.app\/Contents\/MacOS\// && $1 !~ /QGCSuite/ && /--unittest/`, tested against four
+simulated command lines: it **catches `FRun3` and any other bundle running `--unittest`**, and
+correctly **ignores the ordinary app** started with `--allow-multiple`.
+
+**My blind spot is exactly and only the literal name `QGCSuite`** — my own clone, which the
+script both **SIGKILLs on entry** and **excludes from the gate**. **A third session adopting
+that name would be killed by my runner and invisible to it at the same time**, which is the
+collision `build-run.sh`'s header describes arriving from the other direction. **Not
+hypothetical any more: `core-rs` turned out to have a third author tonight.**
+
+**Recorded rather than changed.** Making the clone name vary with the build directory would
+close it, but the runner is shared tooling that works, and **the two runners in existence today
+use different names.** Offered to the peers rather than done unilaterally.
