@@ -59,7 +59,7 @@ pub fn link_json(index: usize, element: &Value) -> Value {
         (true, false) => "Waiting for the vehicle",
         (true, true) => "Connected",
     };
-    let detail = summary.trim();
+    let detail = display_summary.trim();
     let status_line = if detail.is_empty() || name.contains(detail) { state.to_string() } else { format!("{state} \u{b7} {detail}") };
     json!({
         "index": index,
@@ -128,12 +128,12 @@ mod tests {
         assert_eq!(tcp["typeLabel"], "TCP");
         assert_eq!(tcp["editing"], "hostAndPort");
         assert_eq!(tcp["displaySummary"], "No host set");
+        assert_eq!(tcp["statusLine"], "Waiting for the vehicle \u{b7} No host set", "the line took the RAW summary while displaySummary held the words that replace it, so a TCP link with no host read as a bare colon and a port with nothing in front of it");
         assert_eq!(tcp["connected"], true);
         assert_eq!(tcp["heardVehicle"], false);
-        assert_eq!(tcp["statusLine"], "Waiting for the vehicle");
-        let heard = link_json(0, &json!({ "name": "Ground", "settingsURL": "TcpSettings.qml", "summary": "", "children": ["link"], "heardVehicle": true }));
-        assert_eq!(heard["statusLine"], "Connected");
-        let silent = link_json(0, &json!({ "name": "Ground", "settingsURL": "TcpSettings.qml", "summary": "", "children": [], "heardVehicle": true }));
+        let heard = link_json(0, &json!({ "name": "Ground", "settingsURL": "TcpSettings.qml", "summary": "", "host": "10.0.0.2", "children": ["link"], "heardVehicle": true }));
+        assert_eq!(heard["statusLine"], "Connected", "a link with a host and nothing to add says only where it stands");
+        let silent = link_json(0, &json!({ "name": "Ground", "settingsURL": "TcpSettings.qml", "summary": "", "host": "10.0.0.2", "children": [], "heardVehicle": true }));
         assert_eq!(silent["statusLine"], "Not connected");
         let udp = link_json(1, &json!({ "name": "UDP 14550", "settingsURL": "UdpSettings.qml", "summary": "14550", "localPort": 14550, "children": [] }));
         assert_eq!(udp["port"], 14550);
