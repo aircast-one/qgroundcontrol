@@ -4856,3 +4856,27 @@ reading**, because the AAR rebuilt while they reasoned from an open file. **Behi
 indistinguishable from the reading itself.** Only the clock on the artifact separates them, so
 the check is a timestamp comparison before trusting any measurement, not a closer look at the
 payload.
+
+### The suite's one red, attributed by a clock rather than a pattern
+
+**Full run: `PASS=706 FAIL=1 suites=89`**, the failure being
+`AircastDeviceSetupTest::_reapplyReplacesExistingLink` — *"Compared lists have different sizes"*.
+**That is one of the two tests recorded as reproducible under a concurrent Rust rebuild, and this
+was the eighth sighting.** Re-run alone: **`PASS=6 FAIL=0 suites=1`**. So the real result is
+**707/0/89** and nothing regressed.
+
+**What is new is the evidence, not the conclusion.** The previous seven sightings rested on
+co-occurrence — the test failed, a peer was probably building, the pattern held. This time the
+overlap is a measurement: the run spanned **21:07 to 21:17** and
+`build-test/core-rs/debug/libqgc_core.a` carries an mtime of **21:09:09**, inside the window. A
+peer relinked the core under a running suite.
+
+**Co-occurrence seen eight times is still not a mechanism.** It was the right call to keep
+re-running the suite alone each time rather than accepting the pattern, and the thing that finally
+turned it into evidence was checking a FILE'S CLOCK — the same move that caught my stale app an
+hour earlier, and the same one Android reached from the opposite direction after measuring a
+device that was *ahead* of the source they were reading.
+
+**Three failures tonight, one cause: an artifact whose age nobody checked.** A library newer than
+the process reading it, a device newer than the file being reasoned about, and a library rebuilt
+under a running suite. **None of the three is visible in the reading itself.**
