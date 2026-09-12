@@ -111,21 +111,24 @@ impl Unit {
 pub const WHOLE_NUMBER_FROM: f64 = 100.0;
 
 pub fn altitude_text(metres: f64, vertical: &Unit, signed: bool) -> String {
-    let sign = match (metres < 0.0, signed) {
-        (true, _) => "-",
-        (false, true) => "+",
-        (false, false) => "",
+    let measure = format_measure(vertical.show(metres.abs()), &vertical.name);
+    let nothing = measure.split(' ').next().map(|number| number.chars().all(|c| c == '0' || c == '.')).unwrap_or(false);
+    let sign = match (metres < 0.0, signed, nothing) {
+        (_, _, true) => "",
+        (true, _, false) => "-",
+        (false, true, false) => "+",
+        (false, false, false) => "",
     };
-    format!("{sign}{}", format_measure(vertical.show(metres.abs()), &vertical.name))
+    format!("{sign}{measure}")
 }
 
 pub fn range_text(low: f64, high: f64, unit: &Unit) -> String {
     let (shown_low, shown_high) = (unit.show(low), unit.show(high));
     let whole = shown_low.abs().max(shown_high.abs()) >= WHOLE_NUMBER_FROM;
-    let spell = |value: f64| match whole {
+    let spell = |value: f64| settled(match whole {
         true => format!("{value:.0}"),
         false => format!("{value:.1}"),
-    };
+    });
     format!("{} {} to {} {}", spell(shown_low), unit.name, spell(shown_high), unit.name)
 }
 
@@ -148,6 +151,19 @@ pub fn format_measure(value: f64, units: &str) -> String {
 #[cfg(test)]
 mod measure_tests {
     use super::format_measure;
+
+    #[test]
+    fn a_range_and_a_signed_change_do_not_carry_a_minus_before_nothing() {
+        let metric = super::Unit { factor: 1.0, name: "m".to_string() };
+        assert_eq!(super::range_text(-0.04, 60.0, &metric), "0.0 m to 60.0 m", "a grounded vehicle a hair below launch made the climb control read -0.0 to 60.0 m on two heads and three drawing sites");
+        assert_eq!(super::range_text(-12.0, 60.0, &metric), "-12.0 m to 60.0 m", "a real low end keeps its sign");
+
+        assert_eq!(super::altitude_text(-0.04, &metric, true), "0.0 m", "the sign was chosen from the raw value and pasted in front of a separately formatted magnitude, so settled() could not see it - and a change of nothing is neither a climb nor a descent");
+        assert_eq!(super::altitude_text(0.04, &metric, true), "0.0 m", "so the plus goes too, rather than reading +0.0 m");
+        assert_eq!(super::altitude_text(-2.5, &metric, true), "-2.5 m");
+        assert_eq!(super::altitude_text(2.5, &metric, true), "+2.5 m", "a real climb still announces itself");
+        assert_eq!(super::altitude_text(-2.5, &metric, false), "-2.5 m");
+    }
 
     #[test]
     fn a_guided_sentence_does_not_offer_to_hold_at_minus_nothing() {

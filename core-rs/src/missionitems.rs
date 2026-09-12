@@ -248,6 +248,19 @@ fn height(read: &Value) -> Option<f64> {
     }
 }
 
+fn path_at(backend: &dyn Backend, path: &str) -> Vec<Value> {
+    object(&backend.get(path))
+        .get("value")
+        .and_then(Value::as_array)
+        .map(|points| {
+            points
+                .iter()
+                .filter_map(|at| Some(json!({ "latitude": at.get("latitude")?.as_f64()?, "longitude": at.get("longitude")?.as_f64()? })))
+                .collect()
+        })
+        .unwrap_or_default()
+}
+
 fn geometry_of(backend: &dyn Backend, index: i64, kind: &str) -> Value {
     let Some(shape) = crate::missionkinds::lookup(kind).and_then(|kind| kind.geometry) else {
         return Value::Null;
@@ -273,9 +286,20 @@ fn geometry_of(backend: &dyn Backend, index: i64, kind: &str) -> Value {
                 .collect()
         })
         .unwrap_or_default();
+    let base = format!("plan.missionController.visualItems.{index}");
+    let flown_loop = path_at(backend, &format!("{base}.flightPolygon.path"));
+    let item = object(&backend.get(&base));
+    let layers = fact_number(&item, "layers").map(|count| count as i64);
     match listed.is_empty() {
         true => Value::Null,
-        false => json!({ "shape": shape.0, "property": shape.1, "vertices": listed, "transects": transects }),
+        false => json!({
+            "shape": shape.0,
+            "property": shape.1,
+            "vertices": listed,
+            "transects": transects,
+            "flightLoop": (!flown_loop.is_empty()).then_some(flown_loop),
+            "layers": layers,
+        }),
     }
 }
 
@@ -973,6 +997,41 @@ mod reported {
             "kind": "object", "sequenceNumber": 1, "isSimpleItem": true, "specifiesAltitude": true,
             "facts": [ { "name": "Altitude", "property": "altitude", "value": 50.0, "units": "ft" } ],
         }))["altitudeUnits"], "m", "the unit a head draws is the operator's display preference, never the unit the fact declares - Fact::units is CONSTANT and binds once at setRawUnits, so a row spelled from it keeps saying metres after the operator chooses feet");
+    }
+
+    #[test]
+    fn a_structure_scan_carries_the_loop_it_flies_rather_than_transects_it_has_none_of() {
+        struct Shapes;
+        impl Backend for Shapes {
+            fn get(&self, path: &str) -> String {
+                let at = |lat: f64, lon: f64| json!({ "latitude": lat, "longitude": lon });
+                match path {
+                    "plan.missionController.visualItems.4.surveyAreaPolygon.path" => json!({ "kind": "value", "value": [at(47.0, 8.0), at(47.0, 8.1), at(47.1, 8.1)] }),
+                    "plan.missionController.visualItems.4.visualTransectPoints" => json!({ "kind": "value", "value": [at(47.01, 8.01), at(47.01, 8.09)] }),
+                    "plan.missionController.visualItems.5.structurePolygon.path" => json!({ "kind": "value", "value": [at(47.2, 8.2), at(47.2, 8.3), at(47.3, 8.3)] }),
+                    "plan.missionController.visualItems.5.flightPolygon.path" => json!({ "kind": "value", "value": [at(47.19, 8.19), at(47.19, 8.31), at(47.31, 8.31)] }),
+                    "plan.missionController.visualItems.5" => json!({ "kind": "object", "facts": [ { "property": "layers", "value": 3.0 } ] }),
+                    _ => json!({ "kind": "null" }),
+                }
+                .to_string()
+            }
+            fn get_fields(&self, p: &str, _f: &str) -> String { self.get(p) }
+            fn set(&self, _p: &str, _v: &str) -> String { String::new() }
+            fn invoke(&self, _p: &str, _a: &str) -> String { String::new() }
+            fn watch(&self, _p: &[String]) {}
+        }
+
+        let survey = geometry_of(&Shapes, 4, "survey");
+        assert_eq!(survey["transects"].as_array().unwrap().len(), 2);
+        assert_eq!(survey["flightLoop"], Value::Null, "a survey mows and its route is the transect list, so there is no loop to draw and an empty one would be a shape rather than an absence");
+        assert_eq!(survey["layers"], Value::Null);
+
+        let structure = geometry_of(&Shapes, 5, "structure");
+        assert_eq!(structure["vertices"].as_array().unwrap().len(), 3, "the structure outline is what the operator drew");
+        assert_eq!(structure["transects"].as_array().unwrap().len(), 0, "StructureScanComplexItem is a plain ComplexMissionItem with no visualTransectPoints, so the route was read from a property it does not have and both heads drew a boundary with nothing through it");
+        assert_eq!(structure["flightLoop"].as_array().unwrap().len(), 3, "the flown path is flightPolygon, offset outward from the structure by the camera distance");
+        assert_eq!(structure["layers"], 3, "and it is flown once per layer, stacked in altitude - a head drawing one loop draws a third of the mission");
+        assert_eq!(survey["flightLoop"], Value::Null, "the absent cases stay absent rather than becoming an empty shape a head would draw");
     }
 
     #[test]

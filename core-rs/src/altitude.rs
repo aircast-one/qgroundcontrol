@@ -33,6 +33,8 @@ pub fn altitude_view(backend: &dyn Backend, args: &[String]) -> Value {
         "minimum": range.as_ref().map(|r| unit.show(r.minimum)),
         "maximum": range.as_ref().map(|r| unit.show(r.maximum)),
         "currentMeters": range.as_ref().map(|r| r.current),
+        "currentText": range.as_ref().map(|r| unit.label(r.current)),
+        "rangeText": range.as_ref().map(|r| crate::read::range_text(r.minimum, r.maximum, &unit)),
     });
     match (range, target) {
         (Some(range), Some(target)) => merge(base, with_target(&range, target, &unit, pause)),
@@ -122,6 +124,11 @@ mod tests {
         assert_eq!(view["unit"], "m");
         assert_eq!(view["label"], "Height above launch");
         assert!(view.get("sentence").is_none());
+        assert_eq!(view["rangeText"], "2 m to 150 m", "one precision comes from the wider end, so both ends lose the tenth together rather than reading 2.0 m to 150 m - and both heads were formatting these themselves");
+        assert_eq!(view["currentText"], "150.0 m");
+
+        let grounded = altitude_view(&Fake { current: Some(-0.04), feet: false }, &[]);
+        assert_eq!(grounded["currentText"], "0.0 m", "which is the reading two heads reported independently, and it is spelled here now rather than three times over");
     }
 
     #[test]
