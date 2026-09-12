@@ -81,20 +81,19 @@ class SelectedSurveyTest {
 }
 
 class CornerRemovalTest {
-    private fun polygon(corners: Int) = FencePolygon(
+    private fun polygon(canRemove: Boolean?) = FencePolygon(
         index = 0,
         inclusion = true,
-        vertices = (0 until corners).map { TrackPoint(it.toDouble(), it.toDouble()) },
+        vertices = (0 until 4).map { TrackPoint(it.toDouble(), it.toDouble()) },
+        editable = canRemove?.let {
+            EditableShape("plan.geoFenceController.polygons.0", emptyList(), "splitPolygonSegment", it)
+        },
     )
 
     @Test
-    fun `a triangle cannot lose a corner, because the core refuses to trash the polygon`() {
-        assertFalse(cornerRemovable(polygon(3)))
-    }
-
-    @Test
-    fun `a quadrilateral can lose one`() {
-        assertTrue(cornerRemovable(polygon(4)))
+    fun `the core decides whether a corner can go, counting vertices here would be a second opinion`() {
+        assertFalse(cornerRemovable(polygon(false)))
+        assertTrue(cornerRemovable(polygon(true)))
     }
 
     @Test
@@ -103,8 +102,7 @@ class CornerRemovalTest {
     }
 
     @Test
-    fun `a degenerate polygon is never offered a removal`() {
-        assertFalse(cornerRemovable(polygon(0)))
-        assertFalse(cornerRemovable(polygon(2)))
+    fun `a shape the core did not answer for hides the removal rather than guessing`() {
+        assertFalse(cornerRemovable(polygon(null)))
     }
 }

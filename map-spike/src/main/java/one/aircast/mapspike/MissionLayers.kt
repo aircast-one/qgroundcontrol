@@ -257,7 +257,6 @@ const val HANDLE_KIND_FENCE = "fence"
 const val HANDLE_KIND_SURVEY = "survey"
 const val HANDLE_KIND_CIRCLE = "circle"
 const val HANDLE_KIND_LANDING = "landing"
-const val HANDLE_KIND_MIDPOINT = "midpoint"
 
 const val SHAPE_PATH_PROPERTY = "shapePath"
 const val SPLIT_INVOKABLE_PROPERTY = "splitInvokable"
@@ -359,7 +358,6 @@ fun midpointFeatures(shapes: List<EditableShape?>): FeatureCollection =
         shapes.filterNotNull().filter { it.splitInvokable.isNotBlank() }.flatMap { shape ->
             shape.midpoints.mapIndexed { segment, at ->
                 Feature.fromGeometry(Point.fromLngLat(at.longitude, at.latitude)).apply {
-                    addStringProperty(HANDLE_KIND_PROPERTY, HANDLE_KIND_MIDPOINT)
                     addStringProperty(SHAPE_PATH_PROPERTY, shape.path)
                     addStringProperty(SPLIT_INVOKABLE_PROPERTY, shape.splitInvokable)
                     addNumberProperty(VERTEX_INDEX_PROPERTY, segment)

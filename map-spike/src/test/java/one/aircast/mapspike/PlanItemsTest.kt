@@ -438,6 +438,16 @@ class SpeedChangeRowTest {
     }
 
     @Test
+    fun `an item that both holds and changes speed says both, because neither ranks`() {
+        val both = MissionItem(
+            2, 2, 41.0, 44.0, "Waypoint", false, 50.0, kind = "waypoint",
+            altitudeText = "50.0 m", speedChangeText = "8.0 m/s", extraSeconds = 15.0,
+        )
+
+        assertEquals("50.0 m \u00b7 8.0 m/s \u00b7 holds 15 s", itemDetail(both))
+    }
+
+    @Test
     fun `an item the core withheld a speed for says nothing about speed`() {
         val plain = MissionItem(
             3, 3, 41.0, 44.0, "Change speed", false, Double.NaN, kind = "command",

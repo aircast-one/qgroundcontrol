@@ -39,8 +39,7 @@ private fun listed(json: JSONObject?, key: String): JSONArray? = json?.optJSONAr
 const val FENCE_POLYGON_MINIMUM = 3
 
 internal fun cornerRemovable(polygon: FencePolygon?): Boolean =
-    (polygon?.vertices?.size ?: 0) > FENCE_POLYGON_MINIMUM
-
+    polygon?.editable?.canRemoveVertex == true
 
 fun fencePolygons(json: JSONObject?): List<FencePolygon> {
     val list = listed(json, "polygons") ?: return emptyList()
@@ -111,7 +110,6 @@ object FenceBridge {
 
     fun removeRallyPoint(index: Int): Boolean =
         invokeOk("$RALLY_ROOT.removePoint", "[\"@$RALLY_POINTS.$index\"]")
-
 
     fun removeVertex(polygon: Int, vertex: Int): Boolean =
         invokeOk("$FENCE_POLYGONS.$polygon.removeVertex", "[$vertex]")

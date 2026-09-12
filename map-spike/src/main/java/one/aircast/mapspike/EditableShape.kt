@@ -22,4 +22,3 @@ fun editableShape(path: String, shape: String = ""): EditableShape? {
         canRemoveVertex = view.optBoolean("canRemoveVertex"),
     )
 }
-
