@@ -84,6 +84,10 @@ enum Preflight {
         ((json as? [Any]) ?? []).compactMap(PreflightGroup.init)
     }
 
+    static func ticksSurvive(_ previous: FlyState, _ latest: FlyState) -> Bool {
+        !(previous.connected && !latest.connected)
+    }
+
     static func total(_ groups: [PreflightGroup]) -> Int {
         groups.reduce(0) { $0 + $1.checks.count }
     }

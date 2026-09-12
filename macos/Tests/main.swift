@@ -2581,6 +2581,27 @@ func checkVehicleMessages() {
 
 checkVehicleMessages()
 
+func checkChecklistReset() {
+    let flying = FlyState(["connected": true as NSNumber, "armed": false as NSNumber,
+                           "kind": "ready", "line": "Ready to fly"])
+    expect(Preflight.ticksSurvive(flying, flying),
+           "ticks survive an ordinary poll of the same connected vehicle, which is every reload")
+    expect(Preflight.ticksSurvive(FlyState.none, flying),
+           "and they survive a vehicle ARRIVING -- the checklist's first group is the one an "
+           + "operator works through before anything is powered up, so ticks made with nothing "
+           + "connected are about the aircraft that is now here")
+    expect(Preflight.ticksSurvive(flying, FlyState.none) == false,
+           "but a tick does NOT survive the vehicle going away. A tick is an assertion the "
+           + "operator made about a SPECIFIC aircraft -- props clear, hatch closed -- and carrying "
+           + "it onto the next one presents somebody else's inspection as this aircraft's. "
+           + "PreFlightCheckList.qml holds `property var vehicleCopy: globals.activeVehicle` and "
+           + "calls model.reset() in onVehicleCopyChanged, so the original clears them and this "
+           + "head cleared them only from the manual Reset button. LIMIT, stated rather than "
+           + "hidden: this head tracks presence and not identity, so it cannot see a switch "
+           + "between two SIMULTANEOUSLY connected vehicles -- view.vehicles is unbuilt, so that "
+           + "state cannot arise here yet, and a disconnect is the only route between aircraft")
+}
+
 func checkSetupCache() {
     expect(SettingsSection.worthRemembering([]) == false,
            "an EMPTY setup page is never remembered. view.setup(<page>) answers sections:0 until a "
@@ -2713,6 +2734,7 @@ func checkDetections() {
 checkDetections()
 checkEditableFields()
 checkSetupCache()
+checkChecklistReset()
 
 final class ProbeStub: Probeable {
     static let probeID = "stub"

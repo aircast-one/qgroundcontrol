@@ -68,6 +68,7 @@ final class FlyStore: ObservableObject, Probeable, WriteReporting {
         readChecklist()
 
         let read = FlyState(Bridge.group("view.flyState"))
+        if !Preflight.ticksSurvive(state, read) { ticked = [] }
         if read != state { state = read }
 
         let trail = VehicleTrack(Bridge.group("view.track"))
