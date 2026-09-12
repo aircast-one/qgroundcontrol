@@ -1275,6 +1275,7 @@ func checkMissionItemKinds() {
     checkLegsSpelled()
     checkWithheldLegFigures()
     checkTerrainMarkers()
+    checkOmittedModesSayWhy()
     checkCamerasTheOperatorTurnedOn()
     checkRefusedModesSayWhy()
     checkAltitudeReading()
@@ -4484,6 +4485,30 @@ func checkCamerasTheOperatorTurnedOn() {
            "a camera the operator never switched on stays absent: the core says enabled false, "
            + "which is a different answer from configured false and the only one that means "
            + "nothing was asked for")
+}
+
+func checkOmittedModesSayWhy() {
+    let noTerrain = "This vehicle\u{2019}s firmware cannot hold an altitude above terrain."
+    let needsItem = "Add a mission item before choosing how its altitude is measured."
+    let read = AltitudeMode.offers([
+        "modes": [["raw": 1 as NSNumber, "title": "Relative To Launch",
+                   "enabled": true as NSNumber, "reason": ""],
+                  ["raw": 2 as NSNumber, "title": "AMSL",
+                   "enabled": false as NSNumber, "reason": needsItem]],
+        "omitted": [["raw": 4 as NSNumber, "title": "Terrain Frame", "reason": noTerrain]]])
+
+    expect(read.count == 3,
+           "a mode the core removed outright is read alongside the ones it served, without which "
+           + "every assertion below passes because the list never had it")
+    expect(AltitudeMode.choosable(read).map(\.title).joined(separator: ","), "Relative To Launch",
+           "an omitted mode carries no enabled flag, so it is false and it stays out of the "
+           + "picker -- which is what the core already did by removing it")
+    expect(AltitudeMode.refusalNote(read) ?? "", "\(needsItem) \(noTerrain)",
+           "but both reasons are drawn now. Terrain Frame vanished with no evidence at all until "
+           + "the core began serving omitted, and was legible before that only because "
+           + "supportsTerrainFrame happened to ride along beside it")
+    expect(AltitudeMode.title(for: 4, in: read), "Terrain Frame",
+           "and an omitted mode resolves to its own name rather than to \u{201C}Mode 4\u{201D}")
 }
 
 func checkTerrainMarkers() {

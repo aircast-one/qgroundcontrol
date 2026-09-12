@@ -49,7 +49,10 @@ enum AltitudeMode {
     }
 
     static func offers(_ json: Any?) -> [AltitudeModeOffer] {
-        (((json as? [String: Any])?["modes"] as? [Any]) ?? []).compactMap(AltitudeModeOffer.init)
+        let read = json as? [String: Any]
+        let served = ((read?["modes"] as? [Any]) ?? []).compactMap(AltitudeModeOffer.init)
+        let removed = ((read?["omitted"] as? [Any]) ?? []).compactMap(AltitudeModeOffer.init)
+        return served + removed
     }
 
     static func choosable(_ offers: [AltitudeModeOffer]) -> [AltitudeModeOffer] {
