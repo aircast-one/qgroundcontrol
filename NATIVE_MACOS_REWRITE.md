@@ -2626,3 +2626,34 @@ being untouched is a stronger signal than the boolean alone.
 `Viewer3D` or left `instrumentQmlFile2` at its default, and nothing here measures that. The claim
 is about what is persisted *here*, which is a data point the decision did not previously have --
 not a claim about the population.
+
+### Idle memory is flat and idle CPU is not the figure in this file (2026-09-12)
+
+Phase 5's gate is *"a 30-minute flight with flat memory"* and nobody had measured the flat part.
+Measured now with four windows open, no vehicle connected, the app otherwise untouched.
+
+**Memory is flat within noise, and a short series said otherwise.** The first six samples over 100
+seconds ran 217.8 to 221.2 MB and looked like ~2 MB a minute, which extrapolates to 60 MB over the
+gate's half hour. Fourteen samples over 390 seconds say it is noise: the range is 197.6 to 226.3
+MB with no monotonic trend, the first-half mean is 219.5 against a second-half mean of 221.1 --
+a 1.6 MB difference inside a 28.7 MB spread -- and **the final sample is the lowest of the
+fourteen**, which no growth story survives. **A trend needs a series longer than the thing it is
+trending against**, and the 100-second version would have been reported as a leak.
+
+**Idle CPU is 38.8% mean over those 390 seconds, range 25.5 to 47.2.** The entry in this file
+attributing ~21% to a GStreamer pipeline is either stale or was measured under different
+conditions; this is not a regression claim, because the earlier reading's conditions are not
+recorded and cannot now be reconstructed.
+
+**The attribution is unfinished and here is the test that would settle it.** The head runs around
+twenty pollers at 0.5 to 1 second, but only while a window is open; the video pipeline retries
+independently, and `view.video` currently reports `anyConnecting: true` with cameras 1 and 3
+dialling a stream that is not there. **Closing every window and re-measuring separates them** -- if
+the figure collapses the pollers dominate, if it holds the pipeline does. That was not run here
+because the macOS window menu offers Minimize and Zoom and no Close, and nothing in the probe set
+closes a window.
+
+**What this establishes and what it does not.** It establishes that idle memory is flat on this
+machine over six and a half minutes, which is the first half of the gate and was previously
+unmeasured. It does not establish anything about memory under a connected vehicle, over thirty
+minutes, or on any other machine.
