@@ -5679,3 +5679,39 @@ here if they would rather not own prose.
 
 **Reproducing it needs a sim restart**: the fake stops sending the obstacle ring
 after 45 seconds by design, so the label only exists in that first window.
+
+### The flight strip keeps the old units, 2026-09-12
+
+Switching units to check the obstacle label turned up something larger, because
+I dumped the whole Fly frame afterwards instead of only the line I went in for.
+With both distances set to Feet, one app disagreed with itself:
+
+    Plan tab   2221 ft · -39 ft to 236 ft AMSL              follows at once
+    Fly strip  Alt (Rel) 0.0 m · Distance to Home 437.3 m   unchanged
+
+Force-stop and relaunch on the same settings: `0.0 ft`, `1178.7 ft`. The
+conversion works — it just never happens while the app is running.
+
+**The cause is upstream and it is a property declaration.** `Fact.h:52` declares
+`units` as `READ cookedUnits` **CONSTANT**, so a units change cannot be notified
+at all. And `FactMetaData.cc:604` calls `_setAppSettingsTranslators()` from
+`setRawUnits`, once, when the metadata is built; nothing rebinds it afterwards.
+`valueString` does notify on `valueChanged`, and the value was changing
+constantly as the vehicle orbited, and it still read metres — because the
+translator bound at creation is the one applied.
+
+So `instruments.rs` reading `valueString` and `units` is reading a conversion
+fixed before the operator chose. Everything the core converts itself was right
+throughout. Suggested the core read `rawValue`/`rawUnits` and convert, as
+`altitude.rs:75` already does — with the caveat that each fact has its own
+dimension, since ground speed correctly stayed `m/s` and heading is `deg` either
+way.
+
+**This is the trap in [[qgc-check-the-property-before-watching-it]]**, which I had
+recorded and did not think to apply: a dependency fires only if its `Q_PROPERTY`
+has `NOTIFY`, and this one is `CONSTANT`. Having the note was not the same as
+reaching for it.
+
+Not a regression — QGC desktop behaves the same way and gives no restart
+warning. And like the obstacle label, not a wrong number: the value and its unit
+agree, the operator's choice is simply ignored.
