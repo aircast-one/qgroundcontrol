@@ -21,6 +21,7 @@ final class FlyStore: ObservableObject, Probeable, WriteReporting {
     @Published private(set) var modes: [FlightModeChoice] = []
     @Published private(set) var canSetMode = false
     @Published private(set) var requestedMode = ""
+    private var modeAtRequest = ""
     @Published var showingModes = false
     @Published var showingAdvancedModes = false
     @Published private(set) var confirmingMode = ""
@@ -136,7 +137,8 @@ final class FlyStore: ObservableObject, Probeable, WriteReporting {
         if readModes != modes { modes = readModes }
         let settable = (flightModes["canSet"] as? NSNumber)?.boolValue ?? false
         if settable != canSetMode { canSetMode = settable }
-        if !requestedMode.isEmpty, requestedMode == state.mode { requestedMode = "" }
+        if FlightModes.requestResolved(requested: requestedMode, askedFrom: modeAtRequest,
+                                       now: state.mode) { requestedMode = "" }
 
         let raised = Bridge.group("view.warnings")
         let assessed = VehicleWarning.list(raised["warnings"])
@@ -198,7 +200,10 @@ final class FlyStore: ObservableObject, Probeable, WriteReporting {
     private func send(_ name: String) {
         confirmingMode = ""
         showingModes = false
-        if write("vehicle.flightMode", name, "the flight mode") { requestedMode = name }
+        if write("vehicle.flightMode", name, "the flight mode") {
+            modeAtRequest = state.mode
+            requestedMode = name
+        }
         refresh()
     }
 

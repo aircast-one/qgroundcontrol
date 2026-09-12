@@ -22,6 +22,10 @@ struct FlightModeChoice: Identifiable, Equatable {
 }
 
 enum FlightModes {
+    static func requestResolved(requested: String, askedFrom: String, now: String) -> Bool {
+        !requested.isEmpty && now != askedFrom
+    }
+
     static let glyphs: [(keywords: [String], symbol: String)] = [
         (["rtl", "return"], "house"),
         (["land", "dock"], "arrow.down.to.line"),

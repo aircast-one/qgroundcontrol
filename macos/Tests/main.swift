@@ -2581,6 +2581,24 @@ func checkVehicleMessages() {
 
 checkVehicleMessages()
 
+func checkModeRequest() {
+    expect(FlightModes.requestResolved(requested: "Hold", askedFrom: "Position",
+                                       now: "Position") == false,
+           "a mode request stays pending while the vehicle has not moved, which is what the "
+           + "header's spinner is for")
+    expect(FlightModes.requestResolved(requested: "Hold", askedFrom: "Position", now: "Hold"),
+           "and it resolves when the vehicle arrives")
+    expect(FlightModes.requestResolved(requested: "Hold", askedFrom: "Position", now: "Return"),
+           "and it ALSO resolves when the vehicle moves somewhere else, which is the case that "
+           + "was missing. The old rule cleared only on requestedMode == state.mode, so a request "
+           + "the vehicle REFUSED or a mode a failsafe overrode left the header spinning forever "
+           + "-- and the header draws requestedMode INSTEAD of the real mode, so an aircraft that "
+           + "dropped into Return on failsafe would still show the operator's stale ask. Hiding a "
+           + "safety-relevant mode change behind a spinner is worse than showing no spinner")
+    expect(FlightModes.requestResolved(requested: "", askedFrom: "Position", now: "Return") == false,
+           "and with nothing pending there is nothing to resolve")
+}
+
 func checkChecklistReset() {
     let flying = FlyState(["connected": true as NSNumber, "armed": false as NSNumber,
                            "kind": "ready", "line": "Ready to fly"])
@@ -2735,6 +2753,7 @@ checkDetections()
 checkEditableFields()
 checkSetupCache()
 checkChecklistReset()
+checkModeRequest()
 
 final class ProbeStub: Probeable {
     static let probeID = "stub"
