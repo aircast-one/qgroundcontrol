@@ -6047,3 +6047,26 @@ command redirected it, and the private-index commit created a second
 commit output, on a file that has been appended to a dozen times tonight.
 Removed in `93b483c`. **On a shared checkout with two repositories in play, read
 the commit output for `create mode` on a file that should already exist.**
+
+### The fixed-wing axis, swept, 2026-09-12
+
+`VEHICLE=plane` opened an axis that had never been checked — anything verified
+only on a quadrotor is unverified for a plane, the same shape as the
+small-plan prior. Swept Setup and Fly as a fixed-wing.
+
+**Nothing new.** The setup sidebar is identical to the copter's — Frame, Radio,
+Flight Modes, Sensors, Power, Motors, Safety, Tuning, Remote Support — which is
+right, since `APMAutoPilotPlugin.cc:140` adds Remote Support outside any airframe
+branch. The Fly strip reads `Manual · Disarmed` with the plane's own mode, and
+the telemetry is unchanged.
+
+**A near miss worth recording.** My first read of that sidebar showed eight
+entries and I had "Remote Support is missing on a plane" half-written before
+scrolling. It was below the fold. That would have been the third overstatement of
+the night, and the only thing that stopped it was checking before claiming — the
+rule from the 22% correction, applied in time rather than after.
+
+The fixed-wing rig cannot go much deeper than this: the fake's parameters are
+copter-shaped, so a plane's flight-mode list or frame page would be testing the
+fake rather than the head. What it is genuinely good for is the airframe-gated
+*paths* — `insertLandItem` above all.
