@@ -59,6 +59,22 @@ pub fn video_summary(available: bool, decoding: bool, recording: bool, connectin
     }
 }
 
+fn shot_points(backend: &dyn Backend) -> Vec<Value> {
+    object(&backend.get("vehicle.cameraTriggerPoints"))
+        .get("elements")
+        .and_then(Value::as_array)
+        .map(|listed| {
+            listed
+                .iter()
+                .filter_map(|point| {
+                    let at = point.get("coordinate")?;
+                    Some(json!({ "latitude": at.get("latitude")?.as_f64()?, "longitude": at.get("longitude")?.as_f64()? }))
+                })
+                .collect()
+        })
+        .unwrap_or_default()
+}
+
 pub fn video_view(backend: &dyn Backend, _args: &[String]) -> Value {
     let video = object(&backend.get_fields("video", "hasVideo,gstreamerEnabled,isStreamSource,decoding,streaming,recording,activeVideoSource,videoSize,hasMultipleVideoSources,cameraStatuses,cameraConnecting,cameraRecording"));
     let strings = |key: &str| -> Vec<String> { video.get(key).and_then(Value::as_array).map(|a| a.iter().map(|v| v.as_str().unwrap_or("").to_string()).collect()).unwrap_or_default() };
@@ -148,6 +164,7 @@ pub fn camera_view(backend: &dyn Backend, _args: &[String]) -> Value {
         "storageText": match storage_status { 0 => "No card".to_string(), 1 => "Not formatted".to_string(), 2 => if storage_free.is_empty() { "Ready".to_string() } else { storage_free.clone() }, _ => "Not reported".to_string() },
         "shots": shots,
         "shotsText": format!("{shots:05}"),
+        "shotPoints": shot_points(backend),
         "batteryRemaining": battery,
         "batteryText": if battery >= 0 { format!("{battery}%") } else { String::new() },
         "hasZoom": flag(&camera, "hasZoom"),
@@ -172,7 +189,16 @@ mod tests {
     }
 
     impl Backend for Fake {
-        fn get(&self, _p: &str) -> String { json!({ "kind": "null" }).to_string() }
+        fn get(&self, path: &str) -> String {
+            match path {
+                "vehicle.cameraTriggerPoints" => json!({ "kind": "object", "elements": [
+                    { "coordinate": { "latitude": 47.397, "longitude": 8.546, "valid": true } },
+                    { "coordinate": { "latitude": 47.398, "longitude": 8.547, "valid": true } },
+                ] }),
+                _ => json!({ "kind": "null" }),
+            }
+            .to_string()
+        }
         fn get_fields(&self, path: &str, _f: &str) -> String {
             match path {
                 "video" => self.video.to_string(),
@@ -241,6 +267,8 @@ mod tests {
         assert_eq!(view["clockText"], "00:01:15");
         assert_eq!(view["storageText"], "12 GB");
         assert_eq!(view["shotsText"], "00042");
+        assert_eq!(view["shotPoints"].as_array().unwrap().len(), 2, "the core counted the photos and never said where they were taken - a head could report 42 shots and draw none of them, while QGC marks every one on the map");
+        assert_eq!(view["shotPoints"][0]["latitude"], 47.397);
         assert_eq!(view["batteryText"], "80%");
         assert_eq!(view["canPhoto"], false);
         assert_eq!(view["canRecord"], true);
