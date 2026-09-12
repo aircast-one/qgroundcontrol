@@ -42,12 +42,16 @@ PORT = 8777
 # and a gate that moves has to move this line with it. Without this table the steady
 # state is four hits nobody reads, which is how an instrument stops being believed.
 ACCEPTED = {
-    ("MissionItem", "command"): "only the launch row sends null, and canChangeCommand -- "
-        "isSimpleItem && sequence > 0 && !isLaunch -- keeps it out of chosenCommand, the "
-        "one consumer. The mission probe's pickCommand does not check that gate, but the "
-        "catalogue holds no command 0, so the probe's route highlights nothing either",
-    ("MissionItem", "category"): "the same row behind the same gate: pickCommand is reached "
-        "only through the button canChangeCommand draws",
+    ("MissionItem", "command"): "MEASURED, and the reason I first wrote was wrong twice. It "
+        "said ONLY the launch row sends null; the rule is a CLASS -- no COMPLEX item carries a "
+        "command, so the settings row, the survey, the corridor and the structure scan all send "
+        "null here. And it quoted canChangeCommand as isSimpleItem && sequence > 0 && !isLaunch, "
+        "a rule 1942cdad0 deleted. The gate is now isSimpleItem && !isLaunch, and isSimpleItem "
+        "alone excludes every item in that measured set, so the acceptance holds for a BROADER "
+        "reason than the one written. The mission probe's pickCommand does not check the gate, "
+        "but the catalogue holds no command 0, so a defaulted zero highlights nothing",
+    ("MissionItem", "category"): "the same measured set behind the same gate, and the same two "
+        "corrections: every complex item, not one row, and the gate no longer names a sequence",
     ("MissionItem", "specifiesAltitude"): "MEASURED, and my first reason for this entry was "
         "wrong: it named the launch row, where the rule is a whole class. The core withholds "
         "this for anything that is NOT a simple item -- the settings row and every pattern send "
@@ -56,8 +60,12 @@ ACCEPTED = {
         "against measured-no, and decoding the null to false merges them. It is safe only "
         "because altitudeReading names settingsKind explicitly and every pattern wants the band "
         "the merge sends it to. A third state arriving in this flag would be silent",
-    ("MissionItem", "altitudeBandText"): "the settings kind returns altitudeText before the "
-        "band is consulted, so the empty string is never the sentence drawn",
+    ("MissionItem", "altitudeBandText"): "MEASURED: null on EVERY SIMPLE item and on the "
+        "settings row -- a band is the range a pattern sweeps, so an item that flies to one "
+        "height has none. My first reason named the settings kind alone, which is a row where "
+        "the rule is a class. Safe in both: the settings kind returns altitudeText before the "
+        "band is consulted, and for a simple item that specifies no altitude the empty string "
+        "falls to the em dash, which is the honest answer for a row with no height",
     ("MissionItem", "altitudeText"): "every pattern and the Return To Launch send it null, "
         "because altitudeText is built from height(read) and those items carry no height fact. "
         "altitudeReading only reaches altitudeText when specifiesAltitude is true or the kind is "

@@ -3506,3 +3506,37 @@ decision someone made on purpose. A third state arriving in this flag would be s
 The core offered to add a field that settles which of its two altitude strings a head
 should draw. **Worth taking**: the consumer is not the renderer, which is already correct,
 but the CHECKER, which today cannot verify the choice and says so in its own comment.
+
+### (ee) Three of the six remaining reasons were wrong, one of them twice
+
+Audited every ACCEPTED entry the way `1efd3065f` audited the first, by **measuring which
+items actually send each key null** rather than re-reading my own prose.
+
+**`altitudeText`, `altitudeUnits` and `altitudeFrame` check out exactly as written** —
+including "the Return To Launch **alone**", which measures as the single item at index 7
+and no other. An exclusivity claim that survives measurement is worth more than a vague
+one that cannot be checked.
+
+**`command` and `category` were wrong in TWO ways at once.** The reason said *only the
+launch row sends null*; measured, the rule is a **class** — no complex item carries a
+command, so the settings row, the survey, the corridor **and the structure scan** all send
+null. And both reasons quoted `canChangeCommand` as `isSimpleItem && sequence > 0 &&
+!isLaunch` — **the rule `1942cdad0` deleted three commits earlier.** The acceptance still
+holds, and for a broader reason than written: `isSimpleItem` alone excludes every item in
+the measured set.
+
+**`altitudeBandText`** named "the settings kind" where the measurement says **every simple
+item** sends no band — a band is the range a pattern sweeps, so an item flying to one
+height has none.
+
+**No guard could have caught the stale quote, and I want that recorded rather than
+papered over with one.** `canChangeCommand` still exists; only its body changed, so
+checking that named identifiers survive would have passed. The reason is prose, and prose
+cannot be pinned by a checker. What catches it is the standing rule — after a fix, grep
+for every name that asserts the behaviour you changed — and periodic re-measurement,
+which is what this cycle was. **I changed that gate and did not grep my own tooling for
+it.**
+
+**Four of seven reasons in this table have now been corrected in two cycles.** They were
+all written by the same hand on the same day, which is the case for auditing the rest of
+a set once one member is found wrong.
