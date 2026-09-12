@@ -68,6 +68,23 @@ class Sender:
         self.sock.sendto(data, self.target)
 
 
+STICKS_FILE = os.environ.get("STICKS_FILE", "/tmp/aircast-sticks")
+
+
+def read_sticks():
+    """Eight PWM values the rig wants the transmitter to be sending, or None.
+
+    A zero in any slot leaves that channel to whatever it was already doing, so a
+    test can pin one stick without freezing the rest.
+    """
+    try:
+        with open(STICKS_FILE) as handle:
+            values = [int(part) for part in handle.read().split()]
+    except (OSError, ValueError):
+        return None
+    return (values + [0] * 8)[:8]
+
+
 def main():
     sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
     sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
@@ -214,6 +231,9 @@ def main():
             int(1500 + 380 * math.sin(elapsed * 0.6 + channel * 1.3))
             for channel in range(8)
         ] if os.environ.get("STILL_STICKS") != "1" else [1500, 1500, 1100, 1500, 1000, 1000, 1000, 1000]
+        held = read_sticks()
+        if held:
+            sticks = [h if h else moving for h, moving in zip(held, sticks)]
         link.rc_channels_send(
             now_ms, 8, *sticks,
             0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
