@@ -4540,3 +4540,34 @@ fences" question. **Their rig reads pixels, and a pixel matcher has no types.**
 `swift-checks` compiles. **The mapping from role to `NSColor` is NOT pinned** — it lives in
 `MissionMap.swift`, which the checks do not compile. **If the colour regresses, nothing here
 catches it, and the green does not cover it.**
+
+### (g2) The core already reads `currentMissionIndex` and serves it nowhere
+
+**Asked, and the asking found something better than an answer.** `MissionManager::currentIndex`
+is the item **the aircraft is flying to**. The core **already reads it** —
+`guided.rs` watches `planFly.missionController.currentMissionIndex` and puts it on
+`GuidedState.current_mission_index`, where it decides whether *Resume Mission* is offered.
+**No view emits it.** `view.guidedActions`, `view.missionItems` and `view.flyState` carry no key
+with `current` or `index` in it. **Measured, not assumed.**
+
+**So it is the second confirmed instance of the hole the core named:** *a field a producer holds
+and never serialises is invisible to every instrument on both sides.* `percent_text` was the
+first, and it surfaced only because this head complained about spelling its own. **This one was
+found by looking for the shape rather than tripping over it.**
+
+**What this head would draw, if it is served:** a map marker and a row highlight **distinct from
+selection** — the name is free since `isCurrent` became `isSelected`, which was done for exactly
+this reason. **Nothing is built.** It is flight state, and **no state on this rig separates a
+correct implementation from a stuck one.**
+
+**Three new views arrived mid-cycle and the guard caught all three within minutes** —
+`view.cameraProtocol`, `view.cameraDefinition`, `view.joystickMapping`, **71 served where there
+were 68.** Third time. Each recorded with what the payload actually says: a **protocol
+vocabulary** (action names, retry delays, refusal and result strings — not live state), a **file
+parser** that refuses without a path, and an **axis-mapping schema** for a joystick surface this
+head does not have (**zero files in `macos/Sources` mention one**).
+
+**The joystick reason is written carefully on purpose.** The UNDRAWN table once carried *"manual
+control, which needs a joystick this machine does not have"* for `view.control` — **and that was
+false; `view.control` is a Fact control.** This entry names what the payload *is* and what this
+head *lacks*, **both checkable without hardware.**
