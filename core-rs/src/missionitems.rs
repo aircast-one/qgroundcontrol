@@ -192,6 +192,9 @@ fn unwalked(item: Value) -> Value {
 }
 
 fn band(read: &Value, vertical: &Unit) -> Option<String> {
+    if flag(read, "homePosition") {
+        return None;
+    }
     let edge = |key: &str| number(read, key).filter(|metres| metres.is_finite());
     match (edge("minAMSLAltitude"), edge("maxAMSLAltitude")) {
         (Some(low), Some(high)) if high > low => Some(crate::read::range_text(low, high, vertical)),
@@ -577,6 +580,14 @@ mod reported {
             "specifiesCoordinate": true, "facts": [ { "property": "altitude", "value": 50.0 } ],
         }));
         assert_eq!(waypoint["altitudeBandText"], Value::Null, "a simple item carries no band - the property is declared on ComplexMissionItem - and inventing one from its single altitude would be a second spelling of the same number");
+
+        let start = listed(json!({
+            "kind": "object", "sequenceNumber": 0, "homePosition": true, "isSimpleItem": false,
+            "minAMSLAltitude": 0.0, "maxAMSLAltitude": 0.0,
+            "facts": [ { "property": "plannedHomePositionAltitude", "value": 487.0 } ],
+        }));
+        assert_eq!(start["altitudeBandText"], Value::Null, "MissionSettingsItem is a ComplexMissionItem, so it carries the band properties and answers its entry altitude for both - a launch point is one height, and a head reaching for the band before altitudeText would draw that pair instead of the real 487 m");
+        assert_eq!(start["altitudeText"], "487 m");
     }
 
     #[test]
