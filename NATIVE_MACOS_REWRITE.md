@@ -3455,3 +3455,31 @@ pointed at the very failure it was built for.
 EARLIER version of the same check failing the same way in the other direction. Third time
 this one comparison has been wrong; it is the place where the head's presentation and the
 core's data are least alike, and it deserves the suspicion.
+
+### (cc) Neither side was counting legs
+
+The last difference was `legs the vehicle flies`, head 4 against core 3, and the two
+rules read identically — prefix to `endsRoute`, filter on a flown leg with a place. They
+disagreed because **one counted ITEMS and the other counted POINTS**, under a single name
+that described neither.
+
+`MissionMap` reports `route.count` where `route = MissionItem.routePoints(items)`, and a
+pattern contributes **TWO** route points — the corner the aircraft enters by and the one
+it leaves by. That is `40decbaf7`, the fix made after the route was seen doubling back
+**411 m** across a survey. The checker counted one per item, so every pattern with an
+exit put the two a step apart. **Legs would have been either number minus one; nobody was
+computing that.**
+
+Both sides now say what they count: the head's projection is `routePoints` and the check
+is `points the route passes through`. **Control: dropping the exit point from the
+expected count reproduces the false red exactly, 4 against 3** — so the comparison now
+pins the pattern-exit rule rather than an item tally wearing the word "legs".
+
+**And repairing it found a SECOND call site in the same file** — `worth_comparing` used
+the old function inside an equality trick to ask whether anything flown sits after the
+end of the mission. It now asks that directly. **I wrote rule 50 about finding every place
+a value is spelled, applied it, and still missed a spelling one screen away in the file I
+was editing.** It crashed rather than passing quietly, which is the only reason it cost
+a minute instead of a cycle.
+
+**57 of 57, exit 0 — the first honest green this checker has reported.**

@@ -205,9 +205,20 @@ def fence_comparisons(head, core):
 
 # What the core's own fields say the route should be: the placed legs, stopping wherever the
 # mission ends. Computed from the core's answers and compared against what the head drew.
-def flown_legs(core_items):
+# Counted as POINTS, not items, and the distinction was a false red for a whole cycle: the head
+# reported 4 where this said 3, and neither number was the "legs" the label claimed. A pattern
+# contributes TWO route points -- the corner the aircraft enters by and the one it leaves by --
+# which is what 40decbaf7 fixed after the route was seen doubling back 411 m across a survey.
+# So an item-count and a point-count shared one name while measuring from different references.
+def flown_after_end(core_items):
     ends = next((n for n, item in enumerate(core_items) if item["endsRoute"]), len(core_items))
-    return sum(1 for item in core_items[:ends] if item["flownLeg"] and item["coordinate"])
+    return [item for item in core_items[ends:] if item["flownLeg"] and item["coordinate"]]
+
+
+def flown_route_points(core_items):
+    ends = next((n for n, item in enumerate(core_items) if item["endsRoute"]), len(core_items))
+    flown = [item for item in core_items[:ends] if item["flownLeg"] and item["coordinate"]]
+    return sum(2 if item.get("exitCoordinate") else 1 for item in flown)
 
 
 # Everything after the item that ends the route is uploaded and never reached. Derived from the
@@ -232,7 +243,8 @@ def comparisons():
         # detoured through a region of interest the aircraft never visits.
         ("items with a place on the map", head["map"]["placed"],
          sum(1 for item in items["items"] if item["coordinate"])),
-        ("legs the vehicle flies", head["map"]["routeLegs"], flown_legs(items["items"])),
+        ("points the route passes through", head["map"]["routePoints"],
+         flown_route_points(items["items"])),
         ("rows marked never flown to", head["unreached"], unreached_after_route(items["items"])),
         # The head reads the selection from the view's own index; this asks the OTHER field the
         # core serves for it, the per-item flag, so the two sides come from different places and
@@ -286,8 +298,7 @@ def worth_comparing(core):
         missing.append("no item has a place without a leg, so the route cannot detour through one")
     if not any(item["endsRoute"] for item in items["items"]):
         missing.append("nothing ends the mission, so the route cannot be drawn past the end of it")
-    elif flown_legs(items["items"]) == sum(1 for item in items["items"]
-                                           if item["flownLeg"] and item["coordinate"]):
+    elif not flown_after_end(items["items"]):
         missing.append("nothing sits after the end of the mission, so stopping there proves nothing")
     if not (fences.get("polygons") or fences.get("circles")):
         missing.append("no fence was drawn, so the fence panel cannot be wrong about one")

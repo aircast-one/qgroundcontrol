@@ -257,7 +257,7 @@ struct MissionMap: NSViewRepresentable {
         MissionMap.lastRender[owner] = [
             "items": items.count,
             "placed": placed.count,
-            "routeLegs": route.count,
+            "routePoints": route.count,
             "annotations": map.annotations.count,
             "rally": rally.count,
             "fenceOverlays": map.overlays.filter { $0 is FencePolygon || $0 is FenceCircle }.count,
