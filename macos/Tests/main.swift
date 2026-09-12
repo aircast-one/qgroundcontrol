@@ -816,11 +816,16 @@ func checkParameterOptions() {
     let mode = Parameter(name: "FLTMODE1", componentId: 1, json: [
         "units": "", "shortDescription": "Flight mode 1",
         "enumIndex": 2, "enumStrings": ["Stabilize", "Acro", "AltHold"],
-        "enumValues": [0, 1, 2], "valueString": "2",
+        "enumValues": [0, 1, 5], "valueString": "5",
     ])
     expect(mode.value, "AltHold", "an enum parameter shows its label")
     expect(mode.options.count == 3, "and keeps every option it can be set to")
-    expect(mode.selectedOption?.raw == "2", "the selected option carries the raw value to write")
+    expect(mode.selectedOption?.raw == "5",
+           "the selected option carries the RAW value to write, which is the number the vehicle "
+           + "stores and not the position it sits at. The enum value here is 5 at index 2 ON "
+           + "PURPOSE: the old fixture had index, value and position all equal to 2, so returning "
+           + "String(enumIndex) passed as readily as reading enumValues, and ArduPilot mode "
+           + "numbers are genuinely sparse")
 
     let unknown = Parameter(name: "FLTMODE2", componentId: 1, json: [
         "enumIndex": 3, "enumStrings": ["Stabilize", "Acro", "AltHold", "Unknown: 9"],
@@ -3471,6 +3476,23 @@ func checkMissionStartSpeed() {
            "but mission start does not on ArduPilot, which is what QGC hides")
     expect(speed.shown(missionStart: true, vehicle: px4), "on PX4 it does")
     expect(!speed.shown(missionStart: true, vehicle: vtol), "and never on a VTOL")
+
+    // THE TWO FIXTURES ABOVE VARY multiRotor AND vtol TOGETHER in opposite directions, so a rule
+    // keyed on !multiRotor passes both as readily as the correct one keyed on !vtol. These two
+    // separate them. MissionSettingsEditor.qml is the authority: _showFlightSpeed is
+    // !_controllerVehicle.vtol && !_simpleMissionStart && !_controllerVehicle.apmFirmware, with
+    // no mention of multiRotor at all.
+    let plane = MissionVehicle(firmware: "PX4 Pro", type: "Fixed Wing",
+                               multiRotor: false, vtol: false, apmFirmware: false)
+    expect(speed.shown(missionStart: true, vehicle: plane),
+           "a PX4 FIXED WING is neither a multirotor nor a VTOL and still offers a mission start "
+           + "speed. A rule keyed on multiRotor would withhold it here, which is the wrong "
+           + "answer and the one the original two fixtures could not catch")
+    let hybrid = MissionVehicle(firmware: "PX4 Pro", type: "VTOL",
+                                multiRotor: true, vtol: true, apmFirmware: false)
+    expect(!speed.shown(missionStart: true, vehicle: hybrid),
+           "and a VTOL reporting multiRotor while in its copter mode is still a VTOL, so it is "
+           + "still withheld -- the other direction of the same separation")
 
     let absent = ItemSpeed.unavailable
     expect(!absent.shown(missionStart: false, vehicle: px4),
