@@ -21,7 +21,7 @@ class ScanPatternsTest {
 
     @Test
     fun `only the patterns are offered, and by the core's own names`() {
-        val patterns = scanPatterns(served)
+        val patterns = scanPatterns(missionKinds(served))
 
         assertEquals(listOf("survey", "corridor", "structure"), patterns.map { it.id })
         assertEquals(listOf("Survey", "Corridor Scan", "Structure Scan"), patterns.map { it.label })
@@ -29,11 +29,11 @@ class ScanPatternsTest {
 
     @Test
     fun `a pattern the plan will not take is offered disabled, with the core's reason`() {
-        val structure = scanPatterns(served).single { it.id == "structure" }
+        val structure = scanPatterns(missionKinds(served)).single { it.id == "structure" }
 
         assertFalse(structure.enabled)
         assertTrue(structure.disabledReason.contains("takeoff"))
-        assertTrue(scanPatterns(served).single { it.id == "survey" }.enabled)
+        assertTrue(scanPatterns(missionKinds(served)).single { it.id == "survey" }.enabled)
     }
 
     @Test
@@ -43,13 +43,13 @@ class ScanPatternsTest {
                  {"id":"spiral","simple":false,"complexName":"Spiral Scan","enabled":true}]}""",
         )
 
-        assertEquals(listOf("Spiral Scan"), scanPatterns(later).map { it.label })
+        assertEquals(listOf("Spiral Scan"), scanPatterns(missionKinds(later)).map { it.label })
     }
 
     @Test
     fun `no answer offers nothing rather than a list this head remembers`() {
-        assertEquals(emptyList<MissionKind>(), scanPatterns(null))
-        assertEquals(emptyList<MissionKind>(), scanPatterns(JSONObject("""{"kind":"null"}""")))
+        assertEquals(emptyList<MissionKind>(), scanPatterns(missionKinds(null)))
+        assertEquals(emptyList<MissionKind>(), scanPatterns(missionKinds(JSONObject("""{"kind":"null"}"""))))
     }
 }
 

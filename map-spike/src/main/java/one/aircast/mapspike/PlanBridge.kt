@@ -37,8 +37,10 @@ fun missionKinds(view: JSONObject?): List<MissionKind> {
     }
 }
 
-fun scanPatterns(view: JSONObject?): List<MissionKind> =
-    missionKinds(view).filter { it.label.isNotBlank() }
+// A pattern is a kind the core gave a complexName to; nothing else distinguishes
+// one, and inventing a second test here is how the hardcoded list started.
+fun scanPatterns(kinds: List<MissionKind>): List<MissionKind> =
+    kinds.filter { it.label.isNotBlank() }
 
 // A kind the core has not spoken about is offered, because withholding a
 // control on silence removes something that works - see the fence gate.
@@ -48,8 +50,6 @@ fun kindAllows(kinds: List<MissionKind>, id: String): Boolean =
 fun blockedReason(kinds: List<MissionKind>): String? =
     kinds.firstOrNull { !it.enabled && it.disabledReason.isNotBlank() }?.disabledReason
 
-fun missionKindsView(): JSONObject? =
-    runCatching { JSONObject(QGCBridge.get("view.missionKinds")) }.getOrNull()
 
 const val MAV_CMD_NAV_RETURN_TO_LAUNCH = 20
 

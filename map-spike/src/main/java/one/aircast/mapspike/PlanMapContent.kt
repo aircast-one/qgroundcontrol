@@ -527,7 +527,7 @@ internal fun MapSpikeScreen(
 
                     TextButton(
                         enabled = kindAllows(insertable, KIND_SURVEY),
-                        onClick = { patternWanted = scanPatterns(missionKindsView()) },
+                        onClick = { patternWanted = scanPatterns(insertable) },
                     ) { Text("Pattern") }
 
                     if (patternWanted.isNotEmpty()) {
