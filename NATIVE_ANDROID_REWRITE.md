@@ -6260,9 +6260,12 @@ have drawn, so every one of those pixels comes from the loop. On screen it is a
 closed rectangle offset outward from the shaded polygon, which is what
 `flightPolygon` is: the drawn shape pushed out by the camera distance.
 
-**`layers` is read and not drawn.** Two stacked circuits render as one, which
-under-draws the mission in the same way the bare outline did. Recorded here
-rather than left to be rediscovered.
+~~**`layers` is read and not drawn.**~~ **Said in words instead** (`573ca49`):
+the detail row reads `2 layers, one drawn` beside the camera line, seen on the
+handset. Drawing them would not have worked — the circuits are stacked in
+altitude over one ground track, so three loops are three lines on the same
+pixels. A single layer says nothing, because then the drawn loop is the whole
+mission and there is no discrepancy to explain.
 
 ### Landing patterns: drawn, then placeable, 2026-09-12
 
