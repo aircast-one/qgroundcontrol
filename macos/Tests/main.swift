@@ -1736,6 +1736,28 @@ func checkPlanSummary() {
 
 checkPlanSummary()
 
+func checkSummaryRowsSurviveALabelChange() {
+    let translated = MissionSummary(["available": true as NSNumber, "reason": "",
+                                     "rows": [["label": "Strecke", "value": "7.05 km"],
+                                              ["label": "Zeit", "value": "12:30"],
+                                              ["label": "Am weitesten vom Start",
+                                               "value": "2.10 km"]]])
+    expect(translated.value(MissionSummary.distance) == nil,
+           "the three curated lookups key on the core's ENGLISH label, so a core that ever "
+           + "localises its rows answers none of them. The core spells them as Rust literals "
+           + "today and this is latent, not live -- the same shape as the survey polygon that "
+           + "went undrawn because a lookup keyed on a translated commandName")
+    expect(translated.timeText, MissionSummary.unknown,
+           "and the duration falls to the em dash while the core is reporting one")
+    expect(translated.extraRows.map(\.value).joined(separator: ","), "7.05 km,12:30,2.10 km",
+           "but NO FIGURE IS LOST: a label the strip does not recognise falls through to the "
+           + "extra rows, so the operator still reads every number the core sent. That is what "
+           + "makes this latent rather than dangerous, and it is the property to keep if the "
+           + "curated three are ever rekeyed")
+}
+
+checkSummaryRowsSurviveALabelChange()
+
 func checkSurveyStats() {
     func stats(_ overrides: [String: Any]) -> SurveyStats {
         SurveyStats(["available": true as NSNumber, "shotsText": "1043",
@@ -3349,8 +3371,16 @@ func checkViewContract() {
         return expect(false, "the recorded view contract is readable at \(path)")
     }
 
+    func base(_ name: String) -> Substring { name.prefix { $0 != "(" } }
+
+    func recordedKey(_ view: String) -> String? {
+        guard shapes[view] == nil else { return view }
+        let siblings = shapes.keys.filter { base($0) == base(view) }.sorted()
+        return siblings.count == 1 ? siblings.first : nil
+    }
+
     func walk(_ view: String, _ inner: [String]) -> Any? {
-        inner.reduce(shapes[view]) { here, step in
+        inner.reduce(recordedKey(view).flatMap { shapes[$0] }) { here, step in
             guard let dictionary = here as? [String: Any] else { return nil }
             let next = dictionary[step]
             return (next as? [Any])?.first ?? next
