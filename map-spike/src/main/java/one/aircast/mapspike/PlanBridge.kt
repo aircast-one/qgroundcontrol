@@ -172,5 +172,11 @@ fun placeLandingIfUnplaced(index: Int, latitude: Double, longitude: Double): Boo
     if (pattern != null && pattern.landing != null) {
         return false
     }
-    return moveLandingPlace(index, LANDING_PLACE_TOUCHDOWN, latitude, longitude)
+    if (!moveLandingPlace(index, LANDING_PLACE_TOUCHDOWN, latitude, longitude)) {
+        return false
+    }
+    return leaveWizardMode(index)
 }
+
+fun leaveWizardMode(index: Int): Boolean =
+    setOk("$PLAN_ITEMS.$index.wizardMode", settingJson("false"))
