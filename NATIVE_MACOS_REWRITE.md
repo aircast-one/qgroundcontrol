@@ -4571,3 +4571,34 @@ head does not have (**zero files in `macos/Sources` mention one**).
 control, which needs a joystick this machine does not have"* for `view.control` — **and that was
 false; `view.control` is a Fact control.** This entry names what the payload *is* and what this
 head *lacks*, **both checkable without hardware.**
+
+### (i) and (m) answered by measurement — one is a non-issue, the other is already guarded
+
+**(i) `view.components` does not exist because it does not need to.** The components ride on
+`view.setup` as a `components` array, and `VehicleComponents.swift` reads them from there.
+**Measured, not assumed** — `view.setup` carries `components`, `connected`, `detail`,
+`firmware` and the grouped pages. **Nothing is missing; the open item was describing a view
+that was never the shape.**
+
+**(m) `className` is already pinned, and by a guard whose reason is this morning's defect.**
+`interpolated-names.py` checks `VehicleComponentInfo.sensorClasses` against the real headers —
+`src/AutoPilotPlugins/PX4/SensorsComponent.h` and `.../APM/APMSensorsComponent.h` — with the
+comment: *"the head recognises the sensors component by class because its name is translated,
+and a hand-written list of C++ class names rots exactly as silently as a hand-written list of
+property names."*
+
+**That is the same rule that produced the survey-polygon fix**: a lookup keyed on a translated
+`commandName` drew nothing in a non-English build. **Someone had already written the guard for
+the component case before I hit the mission-item case**, which is the first time this session
+that a trap I fell into was already fenced somewhere else in the same tree.
+
+**Controlled rather than trusted:** renaming one entry to `APMSensorsComponentRenamed` fails
+with *"is not a VehicleComponent subclass in …"*. **The guard can fail, so its silence is a
+result.**
+
+**`needsAttention`'s VALUE still needs a vehicle** — `components` is empty with none connected,
+so the flag is decoded and never exercised. **That stays a coverage limit, not a gap.**
+
+**(g2) is still open: `currentMissionIndex` remains unserved.** `view.missionItems` carries
+`flownLeg`, which is a **plan** concept — whether a leg is flown in the route — and not the
+item the aircraft is at. **Not a substitute, and worth naming so nobody adopts it as one.**
