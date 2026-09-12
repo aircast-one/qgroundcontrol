@@ -9,7 +9,7 @@ CLAIM = re.compile(
     r"metres-only|deliberately not|there is no|there are no|has no|have no)\b",
     re.I,
 )
-SETTLED = re.compile(r"^\s*[-*]?\s*~~")
+STRUCK = re.compile(r"~~.+?~~", re.S)
 
 
 def sections(lines):
@@ -24,7 +24,7 @@ def sections(lines):
 
 
 def claims(body):
-    text = " ".join(line for line in body if not SETTLED.match(line))
+    text = STRUCK.sub(" ", " ".join(body))
     sentences = re.split(r"(?<=[.;])\s+", text)
     return [s.strip() for s in sentences if CLAIM.search(s) and len(s.strip()) > 18]
 
