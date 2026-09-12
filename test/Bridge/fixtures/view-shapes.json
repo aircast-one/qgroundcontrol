@@ -2852,6 +2852,7 @@
         "view.fences.rallyPoints.#",
         "view.fences.rallyPoints.0.altitude",
         "view.fences.rallyPoints.0.altitudePath",
+        "view.fences.rallyPoints.0.altitudeText",
         "view.fences.rallyPoints.0.altitudeUnits",
         "view.fences.rallyPoints.0.index",
         "view.fences.rallyPoints.0.latitude",
@@ -8181,6 +8182,7 @@
             {
                 "altitude": "number",
                 "altitudePath": "string",
+                "altitudeText": "string",
                 "altitudeUnits": "string",
                 "index": "number",
                 "latitude": "number",

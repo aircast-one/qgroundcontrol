@@ -108,6 +108,7 @@ fn firmware_fence(backend: &dyn Backend) -> Value {
 }
 
 pub fn fences_view(backend: &dyn Backend, _args: &[String]) -> Value {
+    let vertical = Unit::vertical(backend);
     let polygons: Vec<Value> = elements(backend, "plan.geoFenceController.polygons").iter().enumerate().map(|(i, p)| polygon_json(i, p, &Unit::area(backend))).collect();
     let circles: Vec<Value> = elements(backend, "plan.geoFenceController.circles").iter().enumerate().map(|(i, c)| circle_json(i, c)).collect();
     let rally: Vec<Value> = elements(backend, "plan.rallyPointController.points")
@@ -124,6 +125,11 @@ pub fn fences_view(backend: &dyn Backend, _args: &[String]) -> Value {
                 "longitude": lon,
                 "altitude": if is_fact { altitude.get("value").cloned().unwrap_or(Value::Null) } else { Value::Null },
                 "altitudeUnits": if is_fact { altitude.get("units").and_then(Value::as_str).unwrap_or("") } else { "" },
+                "altitudeText": is_fact
+                    .then(|| altitude.get("rawValue").or_else(|| altitude.get("value")).and_then(Value::as_f64))
+                    .flatten()
+                    .filter(|metres| metres.is_finite())
+                    .map(|metres| crate::read::format_measure(vertical.show(metres), &vertical.name)),
                 "altitudePath": format!("plan.rallyPointController.points.{i}.textFieldFacts.2"),
             }))
         })
@@ -270,6 +276,27 @@ mod tests {
         assert_eq!(view["circles"][0]["framing"].as_array().unwrap().len(), 2);
         assert_eq!(view["rallyPoints"][0]["path"], "plan.rallyPointController.points.0");
         assert_eq!((view["rallyPoints"][0]["altitude"].clone(), view["rallyPoints"][0]["altitudeUnits"].clone()), (json!(50.0), json!("m")));
+        assert_eq!(view["rallyPoints"][0]["altitudeText"], "50.0 m", "the number and the unit stay beside it because a rally altitude is typed into, and a spelled string cannot be edited - but the head was spelling this itself from a copy of format_measure that had already drifted once by missing settled()");
+
+        struct Feet;
+        impl Backend for Feet {
+            fn get(&self, path: &str) -> String { Fake.get(path) }
+            fn get_fields(&self, path: &str, fields: &str) -> String {
+                match path {
+                    "units" => json!({ "kind": "object", "appSettingsVerticalDistanceUnitsString": "ft" }).to_string(),
+                    _ => Fake.get_fields(path, fields),
+                }
+            }
+            fn set(&self, _p: &str, _v: &str) -> String { String::new() }
+            fn invoke(&self, path: &str, args: &str) -> String {
+                match path {
+                    "units.metersToAppSettingsVerticalDistanceUnits" => json!({ "ok": true, "result": serde_json::from_str::<Vec<f64>>(args).unwrap()[0] * 3.2808399 }).to_string(),
+                    _ => String::new(),
+                }
+            }
+            fn watch(&self, _p: &[String]) {}
+        }
+        assert_eq!(fences_view(&Feet, &[])["rallyPoints"][0]["altitudeText"], "164 ft", "the altitude is held in metres and spelled in the operator's unit, so a head reading the raw number and the fact's own CONSTANT units would still say 50.0 m after they chose feet");
         let metric = Unit { name: "m\u{b2}".to_string(), factor: 1.0 };
         assert_eq!(area_text(9999.0, &metric), "9999 m\u{b2}");
         let across = [
