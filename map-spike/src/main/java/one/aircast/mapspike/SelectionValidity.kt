@@ -31,39 +31,53 @@ internal fun selectedItem(selected: MapHit?): Int? = when (selected) {
     else -> null
 }
 
-private fun fenceWording(kindText: String, detailText: String): String? =
-    listOf(kindText, detailText).filter { it.isNotBlank() }
-        .takeIf { it.isNotEmpty() }?.joinToString(" \u00b7 ")
+data class SelectedFence(
+    val keepsIn: Boolean,
+    val kindText: String,
+    val detailText: String,
+    val flip: () -> Boolean,
+)
 
-// The selected fence, whichever handle names it, with the flip that turns a
-// boundary into a no-fly zone.
+private fun fenceOf(polygon: FencePolygon) = SelectedFence(
+    keepsIn = polygon.inclusion,
+    kindText = polygon.kindText,
+    detailText = polygon.detailText,
+    flip = { FenceBridge.setPolygonInclusion(polygon.index, !polygon.inclusion) },
+)
+
+private fun fenceOf(circle: FenceCircle) = SelectedFence(
+    keepsIn = circle.inclusion,
+    kindText = circle.kindText,
+    detailText = circle.detailText,
+    flip = { FenceBridge.setCircleInclusion(circle.index, !circle.inclusion) },
+)
+
+// The wording and the keep-in flip both need one answer - which fence does this
+// hit name - and a circle is named by its edge or its centre, which the map
+// reports as two different hits.
 internal fun selectedFence(
     selected: MapHit?,
     polygons: List<FencePolygon>,
     circles: List<FenceCircle>,
-): Pair<Boolean, () -> Boolean>? = when (selected) {
-    is MapHit.FenceVertex -> polygons.firstOrNull { it.index == selected.polygon }
-        ?.let { it.inclusion to { FenceBridge.setPolygonInclusion(it.index, !it.inclusion) } }
-    is MapHit.Circle -> circles.firstOrNull { it.index == selected.index }
-        ?.let { it.inclusion to { FenceBridge.setCircleInclusion(it.index, !it.inclusion) } }
-    is MapHit.CircleCentre -> circles.firstOrNull { it.index == selected.index }
-        ?.let { it.inclusion to { FenceBridge.setCircleInclusion(it.index, !it.inclusion) } }
-    else -> null
+): SelectedFence? {
+    fun circleAt(index: Int) = circles.firstOrNull { it.index == index }?.let(::fenceOf)
+    return when (selected) {
+        is MapHit.FenceVertex -> polygons.firstOrNull { it.index == selected.polygon }?.let(::fenceOf)
+        is MapHit.Circle -> circleAt(selected.index)
+        is MapHit.CircleCentre -> circleAt(selected.index)
+        else -> null
+    }
 }
 
 internal fun fenceDetail(
     selected: MapHit?,
     polygons: List<FencePolygon>,
     circles: List<FenceCircle>,
-): String? = when (selected) {
-    is MapHit.FenceVertex -> polygons.firstOrNull { it.index == selected.polygon }
-        ?.let { fenceWording(it.kindText, it.detailText) }
-    is MapHit.Circle -> circles.firstOrNull { it.index == selected.index }
-        ?.let { fenceWording(it.kindText, it.detailText) }
-    is MapHit.CircleCentre -> circles.firstOrNull { it.index == selected.index }
-        ?.let { fenceWording(it.kindText, it.detailText) }
-    else -> null
-}
+): String? = selectedFence(selected, polygons, circles)
+    ?.let { listOf(it.kindText, it.detailText) }
+    ?.filter { it.isNotBlank() }
+    ?.takeIf { it.isNotEmpty() }
+    ?.joinToString(" · ")
 
 internal fun selectedLanding(selected: MapHit?, landings: List<LandingPattern>): LandingPattern? =
     selectedItem(selected)?.let { index -> landings.firstOrNull { it.index == index } }

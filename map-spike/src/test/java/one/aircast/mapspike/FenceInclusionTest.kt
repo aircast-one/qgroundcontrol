@@ -26,16 +26,16 @@ class FenceInclusionTest {
         val keepIn = selectedFence(MapHit.FenceVertex(0, 0), listOf(polygon(0, true)), emptyList())
         val keepOut = selectedFence(MapHit.FenceVertex(0, 0), listOf(polygon(0, false)), emptyList())
 
-        assertEquals(true, keepIn?.first)
-        assertEquals(false, keepOut?.first)
+        assertEquals(true, keepIn?.keepsIn)
+        assertEquals(false, keepOut?.keepsIn)
     }
 
     @Test
     fun `a circle is flipped whether it was named by its edge or its centre`() {
         val circles = listOf(circle(2, false))
 
-        assertEquals(false, selectedFence(MapHit.Circle(2), emptyList(), circles)?.first)
-        assertEquals(false, selectedFence(MapHit.CircleCentre(2), emptyList(), circles)?.first)
+        assertEquals(false, selectedFence(MapHit.Circle(2), emptyList(), circles)?.keepsIn)
+        assertEquals(false, selectedFence(MapHit.CircleCentre(2), emptyList(), circles)?.keepsIn)
     }
 
     @Test
