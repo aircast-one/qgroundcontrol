@@ -148,6 +148,10 @@ struct SettingsSection: Identifiable, Equatable {
         !sections.isEmpty
     }
 
+    static func cacheSurvives(vehicle previous: Int?, now: Int?) -> Bool {
+        previous != nil && previous == now
+    }
+
     let title: String
     let group: String
     let path: String

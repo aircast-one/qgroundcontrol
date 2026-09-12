@@ -216,6 +216,7 @@ polling
 port
 portName
 present
+primary
 proceedTitle
 progress
 progressText
@@ -320,6 +321,7 @@ voltage
 voltageText
 warning
 warningLevel
+watching
 worst
 x
 y

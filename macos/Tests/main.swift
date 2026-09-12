@@ -1586,6 +1586,7 @@ func checkMissionItemKinds() {
     checkMavlinkConsole()
     checkModeSlots()
     checkVideoFrame()
+    checkSetupCacheIdentity()
 
     expect(WriteReport.failure("the fence radius"),
            "Could not change the fence radius. It is unchanged.",
@@ -6050,4 +6051,24 @@ func checkVideoFrame() {
     expect(VideoFrame.capacity(width: 0, height: 1080) == 0,
            "and no buffer at all before the first frame reports a size, so nothing is allocated "
            + "on the thirty times a second that run before a stream arrives")
+}
+
+func checkSetupCacheIdentity() {
+    expect(SettingsSection.cacheSurvives(vehicle: 1, now: 1),
+           "a setup page's sections are cached so the six pages that read them do not each pay a "
+           + "bridge round trip, and while the same aircraft stays connected that cache is right")
+    expect(SettingsSection.cacheSurvives(vehicle: 1, now: 2) == false,
+           "but a DIFFERENT aircraft is a different set of components, and serving the first "
+           + "one's sections for the second shows an operator settings that belong to a vehicle "
+           + "they are no longer looking at")
+    expect(SettingsSection.cacheSurvives(vehicle: 1, now: nil) == false,
+           "a vehicle going away drops it too, so what is on screen when the next one arrives was "
+           + "read for that one")
+    expect(SettingsSection.cacheSurvives(vehicle: nil, now: 1) == false,
+           "and a vehicle ARRIVING drops it as well. This is the half 7a2c867dc left: that fix "
+           + "stopped caching an EMPTY read, which is what a disconnected vehicle returns, but a "
+           + "non-empty cache read from one aircraft still outlived it")
+    expect(SettingsSection.cacheSurvives(vehicle: nil, now: nil) == false,
+           "with nothing connected there is no aircraft the cache could be about, so it is never "
+           + "kept on identity alone")
 }

@@ -14,6 +14,7 @@ final class ParametersStore: ObservableObject, Probeable, WriteReporting {
 
     private let componentId = 1
     private var setupCache: [String: [SettingsSection]] = [:]
+    private var cachedFor: Int?
 
     var groups: [String] {
         Array(Set(parameters.map(\.group))).sorted()
@@ -21,7 +22,11 @@ final class ParametersStore: ObservableObject, Probeable, WriteReporting {
 
     func load() {
         guard !loading else { return }
-        connected = Bridge.group("vehicle")["kind"] as? String == "object"
+        let vehicle = Bridge.group("vehicle")
+        connected = vehicle["kind"] as? String == "object"
+        let identity = (vehicle["id"] as? NSNumber)?.intValue
+        if !SettingsSection.cacheSurvives(vehicle: cachedFor, now: identity) { setupCache.removeAll() }
+        cachedFor = identity
         let manager = Bridge.group("vehicle.parameterManager")
         guard (manager["parametersReady"] as? NSNumber)?.boolValue == true else {
             status = VehicleSetupText.waiting(connected: connected, for: "parameters")
