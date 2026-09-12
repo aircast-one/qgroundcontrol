@@ -775,7 +775,7 @@ from the core's own `distanceText`, the same reading `8f9c0c9e7` recorded when i
 **Task-level UX review of the finished tab (2026-09-08).** Every command from
 `PlanView.qml` is now present, and that is the problem: twelve controls of
 identical weight, so the action that completes the job — Upload — is styled
-exactly like Fit, which recentres the view. There is no primary action. Measured
+exactly like Fit, which recentres the view. ~~There is no primary action.~~ Measured
 off the handset, the map gets 34% of the screen (header 18, map 34, terrain
 profile 11, Follow 5, button grid 11, nav 21), so on a screen whose job is
 editing a map the chrome outweighs the canvas about two to one. The bottom grid
@@ -839,12 +839,13 @@ Android modules consume the prebuilt AAR, so this is a silent, total block on
 every bridge change — **when a bridge fix seems not to take effect on the device,
 check that the AAR actually rebuilt before doubting the fix.**
 
-**Known gap — the map draws less than the plan holds.** Waypoints, fences, rally
+~~**Known gap — the map draws less than the plan holds.** Waypoints, fences, rally
 points and surveys are drawn; corridor scans, structure scans and landing
-patterns are not. They still count in the distance and duration and they still
-upload to the aircraft, so a pilot can see a map that looks like their whole
-plan and fly one that is not. Opening a `.plan` file is the likeliest way such
-an item arrives, since it was planned on desktop.
+patterns are not.~~ **Closed 2026-09-12** — all three draw now, and the struck
+note below this one recorded the same closure while this paragraph went on
+asserting the gap. The danger it named was real and is worth keeping: an undrawn
+item still counts in the distance and duration and still uploads, so a pilot
+could see a map that looked like their whole plan and fly one that was not.
 
 A warning was attempted three times and withdrawn (`58295f8`). Each predicate —
 is the item complex, did anything on the map come from it, does it specify a
