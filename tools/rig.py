@@ -38,9 +38,20 @@ def freshness():
             print(f"  rig: {line.strip()}")
 
 
+def vehicle_present():
+    raw = sh(f"{TOOLS}/probe.sh get vehicle.vehicleLinkManager.communicationLost")
+    if '"value": true' in raw or '"value":true' in raw:
+        print("  rig: COMMUNICATION LOST - no vehicle is talking. vehicle.latitude keeps its")
+        print("       last value for at least a minute after the fake dies, so the map looks")
+        print("       fine and anything placed relative to it lands nowhere.")
+        return False
+    return True
+
+
 def ensure_app():
     wake()
     freshness()
+    vehicle_present()
     if "REFUSED" in sh(f"{TOOLS}/ui.sh text 2>&1"):
         sh(f"adb shell am start -n {APP}/.MainActivity")
         time.sleep(8)
