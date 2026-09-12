@@ -35,7 +35,9 @@ def main():
     lines = open(sys.argv[1]).read().split("\n")
     total = 0
     print("Claims in the present tense, from status sections only. Each one asserts something")
-    print("about the code as it is now, and nothing expires it. Check them, do not trust them.\n")
+    print("about the code as it is now, and nothing expires it. Check them, do not trust them.")
+    print("Expect false positives: a bullet whose headline states a principle and whose body")
+    print("then says it was fixed reads here as an open claim. Read around the line before acting.\n")
     for line_no, heading, body in sections(lines):
         found = claims(body)
         if not found:
