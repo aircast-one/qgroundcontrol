@@ -33,7 +33,8 @@ internal fun motorCount(reported: Double): Int =
 
 internal fun motorCountNotice(reported: Double): String? =
     if (reported.isNaN() || reported < 1) {
-        "The vehicle did not say how many motors it has, so eight are offered."
+        "No motor layout is published for this airframe, so eight are offered. " +
+            "Test only the motors it actually has."
     } else {
         null
     }
