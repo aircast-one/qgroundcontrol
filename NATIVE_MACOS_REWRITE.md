@@ -4442,3 +4442,36 @@ would not have.
 
 **`text-fields.py` stays red on `altitudeFrameText`** — checked at HEAD again: still zero, still
 only in the core's working copy and running binary.
+
+### (r) The idle CPU is the QML scene repainting, and the head contributes nothing measurable
+
+**Measured, attributed, and not what the open item assumed.** With no vehicle and no window
+focused, the app draws **27–42% of one core**. The head runs **eleven repeating timers** at
+0.3–1.0 s, so the obvious suspect was the polling.
+
+**It is not.** Two five-second `sample` runs of the main thread:
+
+| frame | run 1 | run 2 |
+|---|---|---|
+| `QPlatformWindow::deliverUpdateRequest` | 475 / 1262 | **1200 / 1262** |
+| `QSGGuiThreadRenderLoop::renderWindow` | 363 / 1262 | **975 / 1262** |
+| **`QGCNativeUI` — the Swift head** | **0** | **0** |
+| **`libqgc_core` — the Rust core** | **0** | — |
+
+**The QML scene graph is repainting continuously**, and neither the Swift head nor the Rust
+core appears in the main thread's profile **at all**. The head's polling costs nothing this
+instrument can see.
+
+**The absolute percentage is inflated and I am not quoting it as a figure:** load average was
+**5.59**, with XprotectService at 123% and cpptools at 100% — three sessions and their builds
+share this machine. **Attribution by frame is unaffected by contention; the percentage is
+not.**
+
+**What it means for the migration:** the Qt window is visible and repainting **even unfocused**,
+so **idle CPU will not fall because the native head got leaner — it falls when that scene stops
+rendering.** That is the QML the other sessions verify against, so it is **cross-stream and not
+mine to touch.** Reported rather than acted on.
+
+**The item was open as "idle CPU attribution" and the attribution is the whole answer.** The
+head was the natural suspect and is measurably innocent; **an eleven-timer poll loop that costs
+zero samples is worth knowing before anyone optimises it.**
