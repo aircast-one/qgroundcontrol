@@ -112,10 +112,18 @@ fun coordinateOf(json: JSONObject?): TrackPoint? {
     return if (isPlottable(latitude, longitude)) TrackPoint(latitude, longitude) else null
 }
 
+const val FLY_STATE_VIEW = "view.flyState"
+
 @Composable
 fun mapCoordinate(path: String): State<TrackPoint?> {
     val json by mapPath(path)
     return remember(path) { derivedStateOf { coordinateOf(json) } }
+}
+
+@Composable
+fun mapViewFlag(path: String, field: String): State<Boolean> {
+    val json by mapPath(path)
+    return remember(path, field) { derivedStateOf { json?.optBoolean(field) == true } }
 }
 
 @Composable

@@ -178,7 +178,7 @@ fun VehicleMap(
     val longitude by mapDouble("vehicle.longitude")
     val heading by mapDouble("vehicle.heading")
     val home by mapCoordinate("vehicle.homePosition")
-    val linkLost by mapBool("vehicle.vehicleLinkManager.communicationLost")
+    val linkLost by mapViewFlag(FLY_STATE_VIEW, "contactLost")
 
     var map by remember { mutableStateOf<MapLibreMap?>(null) }
     var style by remember { mutableStateOf<Style?>(null) }
