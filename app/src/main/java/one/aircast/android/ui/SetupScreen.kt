@@ -169,6 +169,7 @@ fun SetupScreen(modifier: Modifier = Modifier) {
                 open.name == RADIO -> RadioScreen(Modifier.weight(1f))
                 open.name == REMOTE_SUPPORT -> RemoteSupportScreen(Modifier.weight(1f))
                 open.name == MOTORS -> MotorsScreen(Modifier.weight(1f))
+                open.name == FLIGHT_MODES_PAGE -> FlightModesSetup(Modifier.weight(1f))
                 nativePage?.parameterSections == true -> ParameterForm(open.name, Modifier.weight(1f))
                 else -> SetupNotice(
                     "${open.name} is set up on the desktop.",
