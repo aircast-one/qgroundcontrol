@@ -1243,6 +1243,7 @@ const char *const kViewPaths[] = {
     "view.settings(General)", "view.surveyStats(0)", "view.fences", "view.polygon", "view.setup",
     "view.setup(Safety)", "view.video", "view.camera", "view.detections", "view.coreCalibration", "view.flyState", "view.track",
     "view.altitudeModes", "view.altitudeModes(item,4)",
+    "view.missionItems(geometry)", "view.obstacle", "view.landingPattern(1)",
 };
 
 } // namespace
