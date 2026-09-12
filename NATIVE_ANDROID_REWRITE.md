@@ -5770,3 +5770,31 @@ So the unit defect is bounded to two places: the instruments strip and the
 obstacle label, both already reported. A negative result, and the reason to
 write it down is that the next person to find a `CONSTANT` cooked property will
 otherwise have to re-run this.
+
+### Their fix converts; it still does not follow, 2026-09-12
+
+Verified `79544b5a6` on the handset, against a library confirmed to contain it —
+`appSettingsVerticalDistanceUnitsString` present in the built `.so` (7) and in
+the installed APK (3, stripped).
+
+    app started in feet          0.0 ft · 1133.6 ft   correct
+    live switch metric -> feet   0.0 m  · 441.9 m     unchanged
+    live switch feet -> metric   0.0 ft               unchanged
+
+So the conversion half is fixed and the strip is frozen at whatever the setting
+was when the app launched, in **both** directions. Adding the four unit settings
+to `DEPS` did not make the view recompute.
+
+**Third cause on one symptom tonight**, after the fence needing both storage and
+capability bits, and the `DO_` altitude needing both the fallback scoping and the
+unconditional JSON load path. Each time the first fix was correct and
+insufficient, and each time the unchanged symptom read like a wrong diagnosis.
+The prior is now written down in memory.
+
+The discriminator handed over: `view.guidedAltitude` followed a live units change
+before any of this work, and `altitude.rs:10` lists the same settings dep, so the
+path can fire. Whatever differs is specific to instruments — the obvious
+candidate being `deps_for(args)` at `instruments.rs:42`, the one view that
+computes its deps from args rather than using `DEPS` directly.
+
+Below the C ABI, so not this head's to fix. Reported with the reproduction.
