@@ -6631,3 +6631,38 @@ attribute that could not vary, a plan state I never confirmed, and a peer's
 default string I repeated as a vehicle refusal. This one is the most dangerous
 of the four because the log file *was* the right instrument — it had simply been
 rotated between the event and the reading.
+
+### A bridge probe for the Android head: mapped, not working
+
+Four false measurements today all came from inferring a value off a screen or a
+log rather than reading it. The macOS session has a probe and is far more
+precise for it; this head has none, and that gap is the common cause.
+
+**What exists already**, so nobody rebuilds it:
+
+- `src/DebugApi/DebugApiServer.cc` is compiled into the Android build —
+  `QGC_ENABLE_DEBUG_API:BOOL=ON` in `build-android/CMakeCache.txt`. Routes
+  include `/status`, `/bridge/...`, `/ui/tree`, `/vehicle`, `/vehicle/params`.
+- It starts two ways: `QGC_DEBUG_API_PORT` in the environment, or a deep link
+  `aircast-qgc://…?debug=<port>` handled at `QGCApplication.cc:794`.
+- `MainActivity.kt:133` forwards `intent.data` to `QGCBridge.notifyDeepLink`,
+  and `:141` handles `ACTION_VIEW` on a warm start. So the path is wired.
+
+**What failed**, three attempts:
+
+- `adb shell setprop wrap.one.aircast.android "QGC_DEBUG_API_PORT=8790"` is
+  refused — the shell user cannot set `wrap.*` on this device.
+- `am start -a android.intent.action.VIEW -d "aircast-qgc://debug?debug=8790"`,
+  sent twice as the cold-start note advises, produces **no** "Enabled debug API
+  via deep link" line in logcat and nothing listens on 8790 after
+  `adb forward`.
+
+So the intent is either not reaching `_handleUrl` or is being rejected before
+the port parse. The next probe is a logcat filter on `QGCApplicationLog` while
+sending the link, which distinguishes "never arrived" from "arrived and was
+refused" — the same never-asked-versus-answered-no distinction that has run
+through this whole session.
+
+**Why it is worth finishing.** Every one of today's four false measurements —
+an `enabled=` attribute that could not vary, a plan state never confirmed, a
+peer's default string, a rotated log file — would have been a single bridge read.
