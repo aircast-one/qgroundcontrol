@@ -69,6 +69,7 @@ class Sender:
 
 
 STICKS_FILE = os.environ.get("STICKS_FILE", "/tmp/aircast-sticks")
+INTERVALS = {}
 
 
 def read_sticks():
@@ -419,6 +420,18 @@ def main():
                     target_altitude = message.param7 or DEFAULT_TAKEOFF_ALTITUDE
                     landing = False
                     link.command_ack_send(message.command, mavlink.MAV_RESULT_ACCEPTED)
+                elif (kind == "COMMAND_LONG"
+                        and message.command == mavlink.MAV_CMD_SET_MESSAGE_INTERVAL):
+                    asked_id = int(message.param1)
+                    INTERVALS[asked_id] = int(message.param2)
+                    print("INTERVAL msg=%d us=%d" % (asked_id, INTERVALS[asked_id]), flush=True)
+                    link.command_ack_send(message.command, mavlink.MAV_RESULT_ACCEPTED)
+                elif (kind == "COMMAND_LONG" and message.command == mavlink.MAV_CMD_REQUEST_MESSAGE
+                        and int(message.param1) == mavlink.MAVLINK_MSG_ID_MESSAGE_INTERVAL):
+                    asked_id = int(message.param2)
+                    link.message_interval_send(asked_id, INTERVALS.get(asked_id, 0))
+                    link.command_ack_send(message.command, mavlink.MAV_RESULT_ACCEPTED)
+                    print("MESSAGE_INTERVAL msg=%d us=%d" % (asked_id, INTERVALS.get(asked_id, 0)), flush=True)
                 elif (kind == "COMMAND_LONG" and message.command == mavlink.MAV_CMD_REQUEST_MESSAGE
                         and int(message.param1) == mavlink.MAVLINK_MSG_ID_AUTOPILOT_VERSION):
                     link.autopilot_version_send(
