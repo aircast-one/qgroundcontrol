@@ -8123,10 +8123,10 @@
         "landingAltitudeMetres": "number",
         "landingDistanceMetres": "number",
         "landingHeadingDegrees": "number",
-        "loiterClockwise": "null",
+        "loiterClockwise": "bool",
         "loiterRadiusMetres": "number",
         "loiterRadiusText": "string",
-        "loiterToAltitude": "null",
+        "loiterToAltitude": "bool",
         "reason": "string",
         "slopeStart": "null"
     },

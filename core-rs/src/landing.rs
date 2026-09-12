@@ -47,6 +47,14 @@ pub fn landing_view(backend: &dyn Backend, args: &[String]) -> Value {
             .and_then(Value::as_f64)
             .filter(|value| value.is_finite())
     };
+    let truth = |property: &str| {
+        facts
+            .get("facts")
+            .and_then(Value::as_array)
+            .and_then(|list| list.iter().find(|f| f.get("property").and_then(Value::as_str) == Some(property)))
+            .and_then(|f| f.get("value"))
+            .and_then(|value| value.as_bool().or_else(|| value.as_f64().map(|number| number != 0.0)))
+    };
     let unit = Unit::horizontal(backend);
     let radius = fact("loiterRadius").filter(|metres| *metres > 0.0);
     json!({
@@ -58,8 +66,8 @@ pub fn landing_view(backend: &dyn Backend, args: &[String]) -> Value {
         "finalApproach": approach,
         "loiterRadiusMetres": radius,
         "loiterRadiusText": radius.map(|metres| format_measure(unit.show(metres), &unit.name)),
-        "loiterClockwise": fact("loiterClockwise").map(|turn| turn != 0.0),
-        "loiterToAltitude": fact("useLoiterToAlt").map(|use_it| use_it != 0.0),
+        "loiterClockwise": truth("loiterClockwise"),
+        "loiterToAltitude": truth("useLoiterToAlt"),
         "landingAltitudeMetres": fact("landingAltitude"),
         "landingHeadingDegrees": fact("landingHeading"),
         "landingDistanceMetres": fact("landingDistance"),
@@ -100,8 +108,8 @@ mod tests {
                 "finalApproachCoordinate": at(47.410, 8.552),
                 "facts": [
                     { "property": "loiterRadius", "value": 75.0 },
-                    { "property": "loiterClockwise", "value": 1.0 },
-                    { "property": "useLoiterToAlt", "value": 0.0 },
+                    { "property": "loiterClockwise", "value": true },
+                    { "property": "useLoiterToAlt", "value": false },
                     { "property": "landingAltitude", "value": 0.0 },
                     { "property": "landingHeading", "value": 130.0 },
                     { "property": "landingDistance", "value": 200.0 }
@@ -116,7 +124,7 @@ mod tests {
         assert_eq!(view["finalApproach"]["latitude"], 47.410);
         assert_eq!(view["loiterRadiusMetres"], 75.0);
         assert_eq!(view["loiterRadiusText"], "75.0 m");
-        assert_eq!(view["loiterClockwise"], true, "the direction is a fact holding 0 or 1, and a circle drawn the wrong way round is an approach from the wrong side");
+        assert_eq!(view["loiterClockwise"], true, "LoiterClockwise is declared bool in FWLandingPattern.FactMetaData.json, so cookedValue serialises a JSON bool and reading it as a number gave null on every real pattern - a circle drawn the wrong way round is an approach from the wrong side, and null read as no");
         assert_eq!(view["loiterToAltitude"], false);
         assert_eq!(view["landingHeadingDegrees"], 130.0);
         assert_eq!(view["landingAltitudeMetres"], 0.0, "a touchdown at field elevation is zero and that is a measurement, not an absence");
