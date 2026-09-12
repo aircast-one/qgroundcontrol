@@ -5738,3 +5738,35 @@ through `Unit::vertical`, and keeps `deltaMeters` raw for the wire alongside a
 converted `delta` for display. It follows a units change live and the head only
 formats numbers and appends the core's `unit`. Checked because an operator
 entering 50 for a climb needs that to be their unit; it is.
+
+### Auditing the CONSTANT trap, and bounding it, 2026-09-12
+
+The flight-strip defect came from a `Q_PROPERTY` declared `CONSTANT`, so the
+obvious question is how many more there are. Extracted all **151 dep paths** from
+every `DEPS` in `core-rs`, resolved the 128 distinct leaf properties against
+QGC's headers, and classified them.
+
+**Nothing else.** Sixteen are `CONSTANT`, and every one is either a pointer to a
+live object that emits its own signals — `Fact *`, `QmlObjectListModel *` for
+`circles`, `polygons`, `points`, `messages`, `linkConfigurations` — or a value
+that genuinely never changes, `Vehicle::id`. Ninety-one carry `NOTIFY`. So the
+dependency lists are clean on this axis, which is worth knowing precisely
+because it means the instruments defect is not the tip of anything.
+
+**The near miss was one layer down.** `Fact.h` declares every cooked bound
+`CONSTANT` — `cookedMin`, `cookedMax`, `cookedMinString`, `cookedMaxString`,
+`cookedDefaultValue(String)` — and `control.rs:77-83` reads `units`, `min` and
+`max` off facts for the parameter editor. Same shape as `units`, so it looked
+like a second instance.
+
+It is not. Checked on the handset with the app **started** in feet, so the
+translators would have bound to feet if they applied: `RTL_ALT` reads
+`RTL Altitude · cm`, `Min 200 · Max 300000` — raw ArduPilot units, unconverted.
+QGC's app-settings translators do not touch `cm`, QGC desktop shows the same,
+and an operator editing raw parameters expects raw units. No staleness, because
+there is no conversion to go stale.
+
+So the unit defect is bounded to two places: the instruments strip and the
+obstacle label, both already reported. A negative result, and the reason to
+write it down is that the next person to find a `CONSTANT` cooked property will
+otherwise have to re-run this.
