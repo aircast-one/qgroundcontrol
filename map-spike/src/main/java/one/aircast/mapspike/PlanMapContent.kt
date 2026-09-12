@@ -684,6 +684,11 @@ internal fun MapSpikeScreen(
                             GroupBreak()
                         }
 
+                        layersText(survey)?.let {
+                            Text(it, style = MaterialTheme.typography.labelSmall)
+                            GroupBreak()
+                        }
+
                         survey?.takeIf { it.kind == KIND_SURVEY }?.let {
                             TextButton(onClick = {
                                 onBridge("Rotating grid") {

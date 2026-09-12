@@ -1,6 +1,7 @@
 package one.aircast.mapspike
 
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertNull
 import org.junit.Test
 
 class StructureScanRouteTest {
@@ -41,5 +42,22 @@ class StructureScanRouteTest {
     fun `an item with neither draws no route rather than a degenerate one`() {
         assertEquals(emptyList<TrackPoint>(), flownRoute(survey()))
         assertEquals(emptyList<TrackPoint>(), flownRoute(survey(loop = square.take(1))))
+    }
+}
+
+class StructureScanLayersTest {
+    private fun survey(layers: Int) =
+        Survey(0, emptyList(), emptyList(), 0, "structure", "shape", "property", null, emptyList(), layers)
+
+    @Test
+    fun `stacked circuits are said in words, because on a map they sit exactly on each other`() {
+        assertEquals("3 layers, one drawn", layersText(survey(3)))
+    }
+
+    @Test
+    fun `a single layer says nothing, because the loop drawn is the whole mission`() {
+        assertNull(layersText(survey(1)))
+        assertNull(layersText(survey(0)))
+        assertNull(layersText(null))
     }
 }
