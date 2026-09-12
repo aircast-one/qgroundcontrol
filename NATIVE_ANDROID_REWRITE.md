@@ -6145,3 +6145,33 @@ items still round-tripped with `AltitudeMode: 1` and `frame: 3`.
 the record, and open items get picked up. The check was three greps. The tell
 that something was worth re-reading: I had described a value as "wrong" without
 ever finding out what consumed it.
+
+### The obstacle staleness limitation does not hold here
+
+The consolidated block listed "staleness does not wake the obstacle view — a head
+wanting the warning to expire must poll" as open. **I had copied that from the
+core session's message without checking it, and on this head it is false.**
+
+Measured against the rig's deliberate 45-second ring:
+
+    ring live, ~17 s     3.2 m right
+    ring stopped, +37 s  <none>
+    +57 s, +77 s, +97 s  <none>
+
+The Fly view was live throughout — telemetry updating, 56 vehicle messages
+counted — so the warning genuinely cleared rather than the screen having gone
+away.
+
+The statement is true of the core in isolation: nothing *dedicated* wakes the
+view when the ring stops, because the only signal is a message that is no longer
+arriving. But `view.obstacle` shares dependencies with vehicle state that changes
+several times a second, so it is recomputed constantly and `stale` flips on its
+own. A head would only see a frozen warning on a vehicle that had stopped sending
+everything, and that operator has a larger problem.
+
+**Second time in two entries that a claim on the record turned out to be
+unchecked** — the other was `globalPlanAltitudeMode`. Both were cheap to test and
+both were wrong. The pattern in both: a statement adopted because it came from a
+credible source or a plausible mechanism, rather than because it had been seen.
+Reviewing the record for claims that were never observed is worth doing
+deliberately, not just when something else leads there.
