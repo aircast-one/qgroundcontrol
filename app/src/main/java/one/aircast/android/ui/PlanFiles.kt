@@ -16,6 +16,7 @@ import kotlinx.coroutines.withContext
 import one.aircast.android.bridge.Qgc
 import org.json.JSONArray
 import java.io.File
+import one.aircast.mapspike.freshPlanView
 import one.aircast.mapspike.optText
 
 private const val PLAN_ROOT = "plan"
@@ -46,9 +47,6 @@ class PlanFileActions(
     val clearMission: () -> Unit,
     val documentName: () -> String?,
 )
-
-private fun planReadyForSave(): Int? =
-    (Qgc.invokeResult("$PLAN_ROOT.readyForSaveState") as? Number)?.toInt()
 
 internal fun planLoad(path: String): Boolean? =
     Qgc.invokeResult("$PLAN_ROOT.loadFromFile", path) as? Boolean
@@ -161,7 +159,7 @@ fun rememberPlanFileActions(onResult: (String) -> Unit = {}): PlanFileActions {
 
     fun guarded(action: () -> Unit) {
         scope.launch {
-            val blocked = withContext(Dispatchers.Default) { saveBlockedReason(planReadyForSave()) }
+            val blocked = withContext(Dispatchers.Default) { saveBlockedReason(freshPlanView()) }
             if (blocked == null) action() else onResult(blocked)
         }
     }

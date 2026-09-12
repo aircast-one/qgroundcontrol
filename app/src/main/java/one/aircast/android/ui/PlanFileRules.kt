@@ -41,15 +41,16 @@ internal fun planActions(view: org.json.JSONObject?): PlanActions {
 internal fun discardNeedsConfirming(dirty: Boolean, containsItems: Boolean): Boolean =
     dirty && containsItems
 
-internal const val READY_FOR_SAVE = 0
-internal const val NOT_READY_TERRAIN = 1
-internal const val NOT_READY_DATA = 2
-
-internal fun saveBlockedReason(state: Int?): String? = when (state) {
-    READY_FOR_SAVE -> null
-    NOT_READY_TERRAIN -> "Waiting on terrain data. Saving now would store wrong altitudes."
-    NOT_READY_DATA -> "Some items still need a position or a value."
-    else -> "The plan could not be checked for saving."
+// The core maps readyForSaveState to a sentence in readiness.reason. This head
+// mapped the same three states to different words, so which sentence an operator
+// saw depended on which path refused.
+internal fun saveBlockedReason(view: org.json.JSONObject?): String? {
+    val readiness = view?.optJSONObject("readiness")
+        ?: return "The plan could not be checked for saving."
+    if (readiness.optBoolean("ready")) {
+        return null
+    }
+    return readiness.optString("reason").ifBlank { "The plan could not be checked for saving." }
 }
 
 enum class PlanConfirm { Open, NewPlan, ClearMission }

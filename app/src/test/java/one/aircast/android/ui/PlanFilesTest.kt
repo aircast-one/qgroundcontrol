@@ -8,36 +8,38 @@ import org.json.JSONArray
 import org.json.JSONObject
 import org.junit.Test
 
-class SaveGuardTest {
+class SaveBlockedTest {
+    private fun view(body: String) = org.json.JSONObject("""{"kind":"object","readiness":$body}""")
+
     @Test
-    fun `a ready plan saves`() {
-        assertNull(saveBlockedReason(READY_FOR_SAVE))
+    fun `a plan the core calls ready is not blocked`() {
+        assertNull(saveBlockedReason(view("""{"state":0,"ready":true,"reason":""}""")))
     }
 
     @Test
-    fun `a plan still fetching terrain is refused, because its altitudes are wrong`() {
+    fun `the core's own sentence is shown, not this head's paraphrase of the same state`() {
         assertEquals(
-            "Waiting on terrain data. Saving now would store wrong altitudes.",
-            saveBlockedReason(NOT_READY_TERRAIN),
+            "Waiting for terrain heights before the plan can be saved or sent.",
+            saveBlockedReason(view("""{"state":1,"ready":false,"reason":"Waiting for terrain heights before the plan can be saved or sent."}""")),
+        )
+        assertEquals(
+            "An item is still being drawn, so the plan cannot be saved or sent.",
+            saveBlockedReason(view("""{"state":2,"ready":false,"reason":"An item is still being drawn, so the plan cannot be saved or sent."}""")),
         )
     }
 
     @Test
-    fun `a plan with incomplete items is refused`() {
-        assertEquals(
-            "Some items still need a position or a value.",
-            saveBlockedReason(NOT_READY_DATA),
-        )
-    }
-
-    @Test
-    fun `an unreadable readiness check blocks the save rather than allowing it`() {
+    fun `no answer blocks the save rather than letting it through unchecked`() {
         assertEquals("The plan could not be checked for saving.", saveBlockedReason(null))
+        assertEquals("The plan could not be checked for saving.", saveBlockedReason(org.json.JSONObject("""{"kind":"null"}""")))
     }
 
     @Test
-    fun `a state this build does not know about blocks the save`() {
-        assertEquals("The plan could not be checked for saving.", saveBlockedReason(7))
+    fun `a state the core has no sentence for still refuses rather than passing silently`() {
+        assertEquals(
+            "The plan could not be checked for saving.",
+            saveBlockedReason(view("""{"state":9,"ready":false,"reason":""}""")),
+        )
     }
 }
 
