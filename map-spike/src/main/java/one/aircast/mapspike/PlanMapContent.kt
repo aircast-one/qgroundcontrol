@@ -59,6 +59,7 @@ import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.repeatOnLifecycle
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.KeyboardType
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
@@ -810,6 +811,8 @@ internal fun MapSpikeScreen(
     }
 }
 
+private const val DETAIL_SHARE = 2f
+
 private const val SURVEY_FIT_INSET = 0.8
 
 private const val SHORT_ALTITUDE_LABEL = 10
@@ -847,7 +850,12 @@ private fun ItemRowView(row: ItemRow, selected: Boolean, onClick: () -> Unit) {
                 style = MaterialTheme.typography.labelLarge,
             )
             Text(row.name, Modifier.weight(1f), style = MaterialTheme.typography.bodyMedium)
-            Text(row.detail, style = MaterialTheme.typography.labelSmall)
+            Text(
+                row.detail,
+                Modifier.weight(DETAIL_SHARE),
+                style = MaterialTheme.typography.labelSmall,
+                textAlign = TextAlign.End,
+            )
         }
     }
 }
