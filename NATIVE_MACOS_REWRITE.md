@@ -3954,3 +3954,35 @@ match the grep, and the count reads exactly like a surviving app. **The same sha
 Recorded rather than restated, because **a remembered green is not a measurement** and the
 last thing this session needs is a number carried forward on the strength of a tool that
 never executed.
+
+### That was my own crash, not a peer's kill — and the instruments now run
+
+**The previous entry blamed the wrong thing.** It attributed the dead app to a peer's
+port-blind `pkill`. **That was wrong, and one command separates the two: a SIGKILL leaves
+no crash report.** `~/Library/Logs/DiagnosticReports` held three — 16:20, 16:26, 16:31 —
+and the Rust session confirms it never runs this bundle at all.
+
+**What actually happened.** `EXC_BAD_ACCESS` on the main thread at launch:
+`PlanWindow.shared` → `MissionStore.init()` → the one-time init of `TerrainProfile.empty`
+→ **`outlined destroy of TerrainProfile`**, decrementing a refcount on a pointer that
+failed authentication. **I removed `minClearance` from that struct at 15:56.**
+`TerrainProfileModel.swift.o` recompiled at 15:56; **`PlanWindow.swift.o` did not** — it
+went on believing the struct still had the field, so its destroy walked past the end.
+`touch macos/Sources/*.swift` and rebuild: the dependent recompiled at 16:33 and the app
+came up first try. **`cmake --build` exited 0 throughout, and ninja reported nothing dirty.**
+
+**The general rule: a Swift struct that loses a stored property can leave its CONSUMERS
+compiled against the old layout, and the crash lands in the consumer rather than in the
+file that was edited** — which is exactly why it did not look like the change that caused
+it. Removing a field is not a free deletion.
+
+**Five instruments, all green, on a live app:** head-vs-core **57/57**; bridge-paths 35
+bound, **0 binding to nothing**; view-fields 19 of 19 models, 0 gone, **0 of 62 views
+unread**; null-fallbacks 0 hits, 7 accepted; text-fields 29 served, 28 drawn, **0 undrawn**.
+
+**And the measurement error repeated itself in a new disguise.** To check what had
+recompiled I ran `find ... ! -newer TerrainProfileModel.swift` — **having just touched
+that file to `now`**, so the test read "not compiled in the last few seconds" and called
+123 objects stale. **The reference point was something I had moved myself**, one cycle
+after `ps aux | grep` counted its own shell. **Both instruments answered honestly about
+the wrong population.**
