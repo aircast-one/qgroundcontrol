@@ -622,7 +622,7 @@ struct MissionMap: NSViewRepresentable {
         }
 
         static func fenceRenderer(_ renderer: MKOverlayPathRenderer, inclusion: Bool) -> MKOverlayRenderer {
-            let colour = NSColor.systemOrange
+            let colour = inclusion ? NSColor.systemOrange : NSColor.systemRed
             renderer.strokeColor = colour
             renderer.fillColor = colour.withAlphaComponent(0.12)
             renderer.lineWidth = 2

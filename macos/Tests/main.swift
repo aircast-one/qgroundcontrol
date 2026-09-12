@@ -492,6 +492,30 @@ func checkFenceGeometry() {
 }
 checkFenceGeometry()
 
+func checkAFenceSaysWhichSideIsSafe() {
+    func fence(_ inclusion: Bool) -> FenceShape? {
+        FenceShape(["index": 0 as NSNumber, "shape": "circle", "path": "p",
+                    "inclusion": inclusion as NSNumber, "kindText": inclusion ? "Keep-in circle"
+                        : "Keep-out circle", "detailText": "", "usable": true as NSNumber,
+                    "centre": ["latitude": 47.4 as NSNumber, "longitude": 8.5 as NSNumber],
+                    "centreText": "", "radius": 120.0 as NSNumber, "radiusUnits": "m"])
+    }
+    expect(fence(true)?.boundary ?? "", FenceShape.keepIn,
+           "a keep-in fence and a keep-out fence are opposite instructions -- one says the "
+           + "aircraft must stay inside, the other that it must stay out -- and the map drew "
+           + "both in the same orange, because the renderer took an inclusion flag and then "
+           + "ignored it")
+    expect(fence(false)?.boundary ?? "", FenceShape.keepOut,
+           "so the two must not share a value here either; a boundary that answered the same "
+           + "for both would let the map collapse them again with nothing going red")
+    expect(FenceShape.keepIn != FenceShape.keepOut,
+           "and the two names are distinct, without which both assertions above pass while "
+           + "saying nothing")
+}
+
+checkAFenceSaysWhichSideIsSafe()
+
+
 func checkTilePyramid() {
     let tile = TileAddress(x: 59492, y: 37374, z: 16)
 

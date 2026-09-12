@@ -54,6 +54,11 @@ struct FenceShape: Identifiable, Equatable {
 
     var shapeText: String { isCircle ? "Circle" : "Polygon" }
 
+    static let keepIn = "keepIn"
+    static let keepOut = "keepOut"
+
+    var boundary: String { inclusion ? FenceShape.keepIn : FenceShape.keepOut }
+
     var rowDetail: String { isCircle ? "" : detailText }
 
     var framingPoints: [GeoPoint] { framing }
