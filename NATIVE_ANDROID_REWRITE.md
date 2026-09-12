@@ -742,15 +742,22 @@ honest. Arming and the guided actions are left for a different reason: the prear
 banner and the vehicle's own state already report them, and a second voice would
 compete with the more authoritative one.
 
-**Deliberately not built:** the motor test and CompassMot. Both spin the
+~~**Deliberately not built:** the motor test and CompassMot. Both spin the
 propellers, `APMMotorComponent` sets `allowSetupWhileArmed`, and their gate needs
 a supervised airframe. `Vehicle::motorTest` is already `Q_INVOKABLE` through the
 `vehicle` root, so this is a UI and safety decision, not a bridge one. The Setup
-pages say so and send the operator to desktop QGroundControl.
+pages say so and send the operator to desktop QGroundControl.~~ **Overruled and
+built.** Sending the operator to another machine is not a safety measure, it is
+an absence. `ui/MotorsScreen.kt` mirrors `MotorComponent` behind a propellers-off
+switch, and CompassMot is a routine in the core's list carrying `spinsPropeller`
+so the page can say which ones turn a motor.
 
-**Radio calibration cannot be driven in this rig.** Stick movement cannot
+~~**Radio calibration cannot be driven in this rig.** Stick movement cannot
 be simulated *by SITL*: `setRcChannelOverride` is accepted but SITL does not reflect it in
-`RC_CHANNELS`, so the controller never sees a stick move. The long-disabled
+`RC_CHANNELS`, so the controller never sees a stick move.~~ **The rig moved off SITL.**
+`tools/apmvehicle.py` sends `RC_CHANNELS` itself and reads held stick positions from
+`STICKS_FILE`, so a stick can be driven to any value and held there. What follows was true
+of SITL and is kept because it still describes `RadioConfigTest`: The long-disabled
 `RadioConfigTest` hits the same wall — its mock input no longer drives channel
 identification, so no channel ever maps. Covering radio calibration needs either
 a transmitter on the bench or MockLink taught to drive `_inputStickDetect`; the
@@ -999,11 +1006,13 @@ transects; the summary reads `4 items (takeoff) · 10 scan pts · 3.50 km · 11:
 `"survey pts"` became `"scan pts"` in the same change, because the count is every pattern's
 transects and a corridor is not a survey.
 
-**Identification is locale-safe as of the core's `24c5de566`; insertion is not.**
+~~**Identification is locale-safe as of the core's `24c5de566`; insertion is not.**
 `mission.insert` compares against `CorridorScanComplexItem::name`, a `tr()` static, so a
-non-English build can draw a corridor it cannot add. Found while sweeping for the defect in
-this document's previous section and reported; the core is holding it rather than guessing
-on a write path.
+non-English build can draw a corridor it cannot add.~~ **Settled 2026-09-13: insertion is
+locale-safe too.** That `tr()` sits in a namespace-scope `const QString`, so it runs during
+static initialisation, before `main()` and before any `installTranslator`. Both sides of the
+comparison are fixed at source text in every locale, and a shipped translation does not
+reopen it. See the entry near the end of this file for the measurement.
 
 ### The plan can be read as a list, and building it found an item nothing could show
 
