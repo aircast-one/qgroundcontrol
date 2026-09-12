@@ -271,31 +271,40 @@ fn geometry_of(backend: &dyn Backend, index: i64, kind: &str) -> Value {
     }
 }
 
+fn editable_facts(facts: &Value, path: &str) -> Vec<Value> {
+    facts
+        .get("facts")
+        .and_then(Value::as_array)
+        .map(|list| {
+            list.iter()
+                .filter_map(|fact| {
+                    let property = fact.get("property").and_then(Value::as_str).filter(|property| !property.is_empty())?;
+                    let described = fact.get("shortDescription").and_then(Value::as_str).filter(|described| !described.is_empty());
+                    let named = fact.get("name").and_then(Value::as_str).filter(|name| !name.is_empty());
+                    Some(json!({
+                        "name": property,
+                        "label": described.or(named).unwrap_or(property),
+                        "units": fact.get("units").and_then(Value::as_str).filter(|units| !units.is_empty()),
+                        "value": fact.get("value"),
+                        "text": fact.get("enumOrValueString").and_then(Value::as_str),
+                        "choices": fact.get("enumStrings"),
+                        "path": format!("{path}.{property}"),
+                    }))
+                })
+                .collect()
+        })
+        .unwrap_or_default()
+}
+
 fn fields_of(backend: &dyn Backend, index: i64) -> Value {
     if index <= 0 {
         return Value::Null;
     }
     let path = format!("plan.missionController.visualItems.{index}");
-    let item = object(&backend.get(&path));
-    let Some(facts) = item.get("facts").and_then(Value::as_array) else {
-        return Value::Null;
-    };
-    let fields: Vec<Value> = facts
-        .iter()
-        .filter_map(|fact| {
-            let property = fact.get("property").and_then(Value::as_str).filter(|property| !property.is_empty())?;
-            let name = fact.get("name").and_then(Value::as_str).filter(|name| !name.is_empty()).unwrap_or(property);
-            Some(json!({
-                "name": property,
-                "label": name,
-                "units": fact.get("units").and_then(Value::as_str).filter(|units| !units.is_empty()),
-                "value": fact.get("value"),
-                "text": fact.get("enumOrValueString").and_then(Value::as_str),
-                "choices": fact.get("enumStrings"),
-                "path": format!("{path}.{property}"),
-            }))
-        })
-        .collect();
+    let own = editable_facts(&object(&backend.get(&path)), &path);
+    let camera_path = format!("{path}.cameraCalc");
+    let camera = editable_facts(&object(&backend.get(&camera_path)), &camera_path);
+    let fields: Vec<Value> = own.into_iter().chain(camera).collect();
     match fields.is_empty() {
         true => Value::Null,
         false => Value::Array(fields),
@@ -585,6 +594,44 @@ mod reported {
         let command = listed(json!({ "kind": "object", "sequenceNumber": 2, "isSimpleItem": true, "specifiesAltitude": false, "altitudeMode": 1 }));
         assert_eq!(command["specifiesAltitude"], false, "including the false that means no");
         assert_eq!(command["incomplete"], false, "isIncomplete is ComplexMissionItem-only and reads absent here too, but false is the right answer for a simple item, so it is left alone");
+    }
+
+    #[test]
+    fn an_editable_field_is_labelled_the_way_qgc_labels_it_and_the_camera_is_included() {
+        struct Editable;
+        impl Backend for Editable {
+            fn get(&self, path: &str) -> String {
+                match path {
+                    "plan.missionController.visualItems.1" => json!({ "kind": "object", "facts": [
+                        { "property": "turnAroundDistance", "name": "TurnAroundDistanceMultiRotor", "shortDescription": "Turn around distance", "value": 10.0, "units": "m" },
+                    ] }),
+                    "plan.missionController.visualItems.1.cameraCalc" => json!({ "kind": "object", "facts": [
+                        { "property": "distanceToSurface", "name": "DistanceToSurface", "shortDescription": "Altitude above the surface", "value": 50.0, "units": "m" },
+                        { "property": "frontalOverlap", "name": "FrontalOverlap", "value": 70.0 },
+                    ] }),
+                    "plan.missionController.visualItems.count" => json!({ "kind": "value", "value": 2 }),
+                    "plan.missionController.currentPlanViewVIIndex" => json!({ "kind": "value", "value": 1 }),
+                    _ => json!({ "kind": "null" }),
+                }
+                .to_string()
+            }
+            fn get_fields(&self, path: &str, _f: &str) -> String {
+                match path {
+                    "plan.missionController" => json!({ "kind": "object", "containsItems": true }).to_string(),
+                    _ => json!({ "kind": "null" }).to_string(),
+                }
+            }
+            fn set(&self, _p: &str, _v: &str) -> String { String::new() }
+            fn invoke(&self, _p: &str, _a: &str) -> String { String::new() }
+            fn watch(&self, _p: &[String]) {}
+        }
+        let fields = items_view(&Editable, &["fields".to_string()])["items"][1]["fields"].clone();
+        let names: Vec<&str> = fields.as_array().unwrap().iter().map(|f| f["name"].as_str().unwrap()).collect();
+        assert_eq!(names, vec!["turnAroundDistance", "distanceToSurface", "frontalOverlap"], "the camera calc is a child object, so its facts arrive under children rather than facts and an item's own list alone is short by the whole camera group");
+
+        assert_eq!(fields[0]["label"], "Turn around distance", "the metadata carries a sentence for an operator; the Fact's own name is a Q_PROPERTY spelling and is not one");
+        assert_eq!(fields[1]["path"], "plan.missionController.visualItems.1.cameraCalc.distanceToSurface", "a camera field is written through the camera, so the path a head writes to has to say so");
+        assert_eq!(fields[2]["label"], "FrontalOverlap", "a fact with no short description falls back to its name rather than to nothing");
     }
 
     #[test]
