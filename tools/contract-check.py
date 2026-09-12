@@ -64,12 +64,6 @@ ACCEPTED = {
     "notices": "view.notices is not in the recorded contract at all",
     "close": "view.obstacle recorded without the nearest object present",
     "sectorText": "view.obstacle recorded without the nearest object present",
-    "midpoints": "view.polygon recorded as a refusal - called with no argument",
-    "splitInvokable": "view.polygon recorded as a refusal - called with no argument",
-    "canRemoveVertex": "view.polygon recorded as a refusal - called with no argument",
-    "loiterRadiusText": "view.landingPattern(1) recorded as a refusal - item 1 is not a pattern",
-    "loiterRadiusMetres": "view.landingPattern(1) recorded as a refusal - item 1 is not a pattern",
-    "loiterClockwise": "view.landingPattern(1) recorded as a refusal - item 1 is not a pattern",
     "transects": "the geometry argument mode, recorded without a pattern in the plan",
 }
 
