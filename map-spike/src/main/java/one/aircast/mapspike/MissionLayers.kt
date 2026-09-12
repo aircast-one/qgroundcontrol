@@ -306,8 +306,36 @@ const val SURVEY_AREA_SOURCE = "aircast-survey-area"
 const val SURVEY_AREA_LAYER = "aircast-survey-area-layer"
 const val SURVEY_TRANSECT_SOURCE = "aircast-survey-transects"
 const val SURVEY_TRANSECT_LAYER = "aircast-survey-transect-layer"
+const val LANDING_PATH_SOURCE = "aircast-landing-path"
+const val LANDING_PATH_LAYER = "aircast-landing-path-layer"
+const val LANDING_LOITER_SOURCE = "aircast-landing-loiter"
+const val LANDING_LOITER_LAYER = "aircast-landing-loiter-layer"
+
 const val SURVEY_LINE_SOURCE = "aircast-survey-line"
 const val SURVEY_LINE_LAYER = "aircast-survey-line-layer"
+
+fun installLandingLayers(style: Style) {
+    if (style.getSource(LANDING_LOITER_SOURCE) == null) {
+        style.addSource(GeoJsonSource(LANDING_LOITER_SOURCE))
+        style.addLayer(
+            LineLayer(LANDING_LOITER_LAYER, LANDING_LOITER_SOURCE).withProperties(
+                PropertyFactory.lineColor("#26C6DA"),
+                PropertyFactory.lineWidth(2.5f),
+            ),
+        )
+    }
+
+    if (style.getSource(LANDING_PATH_SOURCE) == null) {
+        style.addSource(GeoJsonSource(LANDING_PATH_SOURCE))
+        style.addLayer(
+            LineLayer(LANDING_PATH_LAYER, LANDING_PATH_SOURCE).withProperties(
+                PropertyFactory.lineColor("#26C6DA"),
+                PropertyFactory.lineWidth(3f),
+                PropertyFactory.lineDasharray(arrayOf(3f, 2f)),
+            ),
+        )
+    }
+}
 
 fun installSurveyLayers(style: Style) {
     if (style.getSource(SURVEY_AREA_SOURCE) == null) {

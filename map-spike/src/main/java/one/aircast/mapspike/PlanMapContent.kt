@@ -120,6 +120,7 @@ internal fun MapSpikeScreen(
     var rally by remember { mutableStateOf<List<RallyPoint>>(emptyList()) }
     var circles by remember { mutableStateOf<List<FenceCircle>>(emptyList()) }
     var surveyList by remember { mutableStateOf<List<Survey>>(emptyList()) }
+    var landingList by remember { mutableStateOf<List<LandingPattern>>(emptyList()) }
     var selected by remember { mutableStateOf<MapHit?>(null) }
 
     BackHandler(enabled = selected != null) { selected = null }
@@ -226,6 +227,7 @@ internal fun MapSpikeScreen(
             val nextRally = rallyPoints(fenceView)
             val nextCircles = fenceCircles(fenceView)
             val nextSurveys = SurveyBridge.surveysFrom(plan)
+            val nextLandings = landingPatterns(nextAll)
             val drawn = planIsDrawn(nextItems, nextSurveys, nextFences, nextCircles, nextRally)
             withContext(Dispatchers.Main) {
                 if (fitsPlanOnEntry(firstRead, plan != null, drawn)) {
@@ -245,6 +247,7 @@ internal fun MapSpikeScreen(
                 }
                 circles = nextCircles
                 surveyList = nextSurveys
+                landingList = nextLandings
             }
         }
     }
@@ -284,6 +287,7 @@ internal fun MapSpikeScreen(
             fenceCircles = circles,
             rallyPoints = rally,
             surveys = surveyList,
+            landings = landingList,
             editable = true,
             onAdd = { lat, lon ->
                 addMissionItem(

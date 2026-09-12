@@ -156,6 +156,7 @@ fun VehicleMap(
     fenceCircles: List<FenceCircle> = emptyList(),
     rallyPoints: List<RallyPoint> = emptyList(),
     surveys: List<Survey> = emptyList(),
+    landings: List<LandingPattern> = emptyList(),
     editable: Boolean = false,
     selectedWaypoint: Int? = null,
     onAdd: (Double, Double) -> Unit = { _, _ -> },
@@ -231,6 +232,7 @@ fun VehicleMap(
             loaded.setStyle(builder) { loadedStyle ->
                 installLayers(loadedStyle)
                 installSurveyLayers(loadedStyle)
+                    installLandingLayers(loadedStyle)
                 installFenceLayers(loadedStyle)
                 installMissionLayers(loadedStyle)
                 installFenceHandleLayer(loadedStyle)
@@ -330,6 +332,7 @@ fun VehicleMap(
     ) {
         val currentStyle = style ?: return@LaunchedEffect
         renderSurveys(currentStyle, surveys)
+        renderLandings(currentStyle, landings)
         renderFences(currentStyle, fencePolygons, rallyPoints, circlesAsPolygons(fenceCircles))
         renderVertexHandles(currentStyle, fencePolygons, surveys, fenceCircles)
         renderMission(currentStyle, missionItems, linkStartToHome, selectedWaypoint)
@@ -429,4 +432,9 @@ private fun headingArrow(): Bitmap {
         color = android.graphics.Color.parseColor("#E53935")
     })
     return bitmap
+}
+
+private fun renderLandings(style: Style, landings: List<LandingPattern>) {
+    (style.getSource(LANDING_PATH_SOURCE) as? GeoJsonSource)?.setGeoJson(landingPathFeatures(landings))
+    (style.getSource(LANDING_LOITER_SOURCE) as? GeoJsonSource)?.setGeoJson(landingLoiterFeatures(landings))
 }

@@ -8,6 +8,7 @@ const val PLAN_ROOT = "plan"
 const val PLAN_ITEMS = "$PLAN_ROOT.missionController.visualItems"
 const val PLAN_VIEW = "view.missionItems(geometry)"
 
+const val KIND_LAND = "land"
 const val KIND_TAKEOFF = "takeoff"
 const val KIND_SURVEY = "survey"
 
@@ -140,3 +141,14 @@ object PlanBridge {
 internal fun takeoffMissing(items: List<MissionItem>): Boolean =
     items.any { it.latitude != 0.0 || it.longitude != 0.0 } &&
         items.none { it.kind == "takeoff" }
+
+fun landingPatterns(items: List<MissionItem>): List<LandingPattern> =
+    items.filter { it.kind == KIND_LAND }
+        .mapNotNull { item ->
+            landingPattern(
+                item.index,
+                runCatching {
+                    JSONObject(QGCBridge.get("view.landingPattern(${item.index})"))
+                }.getOrNull(),
+            )
+        }
