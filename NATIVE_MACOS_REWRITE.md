@@ -4374,3 +4374,35 @@ heads and `altitudeFrameText` removes the branch rather than improving it.**
 plausible change** — the first was the guided slider's precision rule. **Both times the test
 carried the reasoning and the code did not**, which is the argument for putting the why in the
 assertion rather than in a comment above the branch.
+
+### (s) One wrong variable, two defects — and the firmware fence could never draw
+
+**The fence store's `read` is `Bridge.group("plan.geoFenceController")` — a RAW Qt path — and I
+had been treating it as `view.fences`.**
+
+**The firmware fence shipped in `45eafaf54` decoded `read["firmwareFence"]`. That key is not on
+the controller** — it carries `paramCircularFence`, the raw parameter — **so the decode returned
+nil every time and the feature could never have drawn on any vehicle.** The core had even pinned
+its children against a real vehicle; none of that reached this head.
+
+**The part to keep: the probe reported `{}`, which is EXACTLY what a correct no-vehicle state
+looks like, so I read it as confirmation when I shipped it.** **An absent key and an absent
+value are indistinguishable when the field is nullable.**
+
+**The capability gate was wrong in the other direction.** The head read the controller's own
+`supported` — QGC's `supported()`, which **ignores `capabilitiesKnown()` while `capabilityBits`
+DEFAULT to fence and rally.** **So a vehicle that had reported nothing read as one that accepts
+a geofence.** The core already returns `known.then_some(supported)`, an `Option`, and its test
+warns a head must *"meet the same three states, or the view it happened to pick decides whether
+an unanswered vehicle reads as a refusing one."* **`FenceSupport` already modelled all three
+with a different sentence for each — the wiring collapsed them with `?? false`.**
+
+**`raw-reads.py` did not report this and could not.** Its rule is that **a served view names the
+same subject** as the raw path, and `plan.geoFenceController`'s last component is a controller
+name. **It found the `gcsPosition` shape and misses this one — a limit, not a bug, and the
+reason it is a lead generator rather than a proof.** 26 non-view read paths down to 25.
+
+**`text-fields.py` is red on `altitudeFrameText`, and that is the instrument working.** The core
+serves it from their **uncommitted** tree — HEAD has none of it — so the running binary offers a
+text this head names nowhere. **Left red; adopting a peer's working copy is the mistake their
+four views already taught.**
