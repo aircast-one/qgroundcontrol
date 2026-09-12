@@ -5715,3 +5715,26 @@ reaching for it.
 Not a regression — QGC desktop behaves the same way and gives no restart
 warning. And like the obstacle label, not a wrong number: the value and its unit
 agree, the operator's choice is simply ignored.
+
+### Two causes, one symptom, again
+
+Swept the rest of the unit-bearing paths after the flight strip. The instruments
+defect has a **second, independent cause**: `instruments.rs:7` declares
+`DEPS = ["vehicles.activeVehicleAvailable"]` plus the selected fact paths, with
+no units setting. So even with a live conversion the view would never recompute
+when the operator changes units. Fixing either half alone leaves `Alt (Rel)
+0.0 m` on a screen set to feet.
+
+That is the third time tonight one symptom had two causes — the fence round trip
+needed both per-`mission_type` storage *and* the capability bits, and either
+fix alone left the symptom looking like a head defect. Worth treating as a prior
+rather than a coincidence: **when a fix does not move the symptom, the first
+suspicion should be a second cause, not a wrong diagnosis.**
+
+**And the highest-stakes path is correct.** `view.guidedAltitude` — what an
+operator types for a takeoff — lists `settings.unitsSettings.verticalDistanceUnits`
+in its DEPS (`altitude.rs:10`), converts `current`, `minimum` and `maximum`
+through `Unit::vertical`, and keeps `deltaMeters` raw for the wire alongside a
+converted `delta` for display. It follows a units change live and the head only
+formats numbers and appends the core's `unit`. Checked because an operator
+entering 50 for a climb needs that to be their unit; it is.
