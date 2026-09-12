@@ -64,9 +64,32 @@ struct InstrumentGroup: Identifiable, Equatable {
 
     static let vehicleTitle = "Vehicle"
 
+    static let batteryGroup = "batteries"
+
+    // The instrument editor offered the literal "batteries.0", so on a two-pack vehicle the one
+    // pack an operator most wants on the Fly panel - the suspect one - could not be put there at
+    // all, and nothing on the editor hinted a second pack existed. Upstream offers one fact group
+    // per pack: VehicleBatteryFactGroup::_findOrAddBatteryGroupById registers battery<id> and
+    // InstrumentValueData::factGroupNames() feeds the Group combo directly.
+    //
+    // STATED LIMIT: upstream keys those groups on the battery's ID, this head addresses packs by
+    // their LIST POSITION, because vehicle.batteries.<n> is the only path the bridge offers. The
+    // two coincide whenever ids run from zero, and where they do not, "Battery 2" here means the
+    // second pack in the list rather than the pack whose id is 1. Label and address agree with
+    // each other, which is what a selection needs; they do not agree with QGC's numbering.
+    static func batteryGroups(count: Int) -> [String] {
+        (0..<max(0, count)).map { "\(batteryGroup).\($0)" }
+    }
+
+    static func batteryPosition(of group: String) -> Int? {
+        let parts = group.split(separator: ".")
+        guard parts.count == 2, parts[0] == batteryGroup else { return nil }
+        return Int(parts[1])
+    }
+
     static func title(for group: String, label: (String) -> String) -> String {
         guard !group.isEmpty else { return vehicleTitle }
-        if group == "batteries.0" { return "Battery 1" }
+        if let position = batteryPosition(of: group) { return "Battery \(position + 1)" }
         return label(group)
     }
 

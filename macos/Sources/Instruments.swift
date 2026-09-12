@@ -81,7 +81,9 @@ final class InstrumentsStore: ObservableObject, Probeable {
     func discoverGroups() {
         let vehicle = Bridge.group("vehicle")
         let children = (vehicle["children"] as? [String]) ?? []
-        let candidates = [InstrumentSelection.vehicleGroup] + children + ["batteries.0"]
+        let packs = ((Bridge.group("vehicle.batteries")["elements"] as? [Any]) ?? []).count
+        let candidates = [InstrumentSelection.vehicleGroup] + children
+            + InstrumentGroup.batteryGroups(count: packs)
         let read = candidates.map { group in
             (group: group,
              json: group == InstrumentSelection.vehicleGroup

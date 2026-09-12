@@ -1619,6 +1619,7 @@ func checkMissionItemKinds() {
     checkSerialLinkInAnyLocale()
     checkLinkEntryRule()
     checkPowerPagePacks()
+    checkInstrumentBatteryGroups()
     checkSetupGateInAnyLocale()
     checkSummaryOpensInAnyLocale()
     checkModeSlotNaming()
@@ -6526,4 +6527,31 @@ func checkPowerPagePacks() {
     expect(BatteryReading.list(nil).isEmpty,
            "no packs at all yields none, and the page draws its not-reporting state instead of an "
            + "empty card")
+}
+
+func checkInstrumentBatteryGroups() {
+    expect(InstrumentGroup.batteryGroups(count: 2) == ["batteries.0", "batteries.1"],
+           "THE CASE THAT MATTERS: the editor's group list held the LITERAL \"batteries.0\", so on "
+           + "a two-pack vehicle only Battery 1 could ever be placed on the Fly panel -- the pack "
+           + "an operator most wants there is the suspect one, and nothing in the editor hinted a "
+           + "second existed. Upstream offers one fact group per pack through "
+           + "InstrumentValueData::factGroupNames()")
+    expect(InstrumentGroup.batteryGroups(count: 1) == ["batteries.0"],
+           "a single-pack vehicle offers exactly what it did before, so nothing changes on the "
+           + "rig this was written on")
+    expect(InstrumentGroup.batteryGroups(count: 0).isEmpty,
+           "and with no packs the editor offers no battery group rather than one that resolves to "
+           + "nothing")
+
+    expect(InstrumentGroup.title(for: "batteries.1", label: { $0 }), "Battery 2",
+           "the second pack is NAMED, which the old rule could not do: it matched the literal "
+           + "batteries.0 and everything else fell through to humanise(), so batteries.1 would "
+           + "have been titled \"Batteries 1\"")
+    expect(InstrumentGroup.title(for: "batteries.0", label: { $0 }), "Battery 1",
+           "and the first is unchanged")
+    expect(InstrumentGroup.title(for: "gps", label: { _ in "GPS" }), "GPS",
+           "a group that is not a battery still takes its humanised label")
+    expect(InstrumentGroup.batteryPosition(of: "batteries") == nil,
+           "the list itself is not a pack -- it carries no facts of its own, which is why the "
+           + "bridge's children never offered it and the literal was there in the first place")
 }
