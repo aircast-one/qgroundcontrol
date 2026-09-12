@@ -185,6 +185,27 @@ UNDRAWN = [
                          "which is forbidden here. So the list can only ever be empty and a "
                          "contacts layer could not be seen to work. PARITY GAP, recorded not "
                          "built"),
+    ("view.debugApi", "INTROSPECTION, and pointed the other way: it answers count 10 and a "
+                      "hostRoutes list naming /native/windows, /native/menu, /native/probe and the "
+                      "rest -- routes THIS HEAD ITSELF SERVES, each with the reason it exists. The "
+                      "core is modelling the test surface the head provides, so drawing it would "
+                      "be the app showing an operator its own debugging plumbing. Same class as "
+                      "view.contract and view.dependencies above"),
+    ("view.packetRadio", "MEASURED as a REFUSAL, which is the answer: it wants a status token "
+                         "(disabled, noAdapter, adapterUnavailable, invalidKey, listening, "
+                         "receiving), then the adapter name, per-antenna raw rssi, snr and link "
+                         "score written a/b, packets lost in the last second, the video packet "
+                         "count and the host's start error. A FORMATTER for a wfb-ng link, same "
+                         "class as the file parsers -- it spells figures a caller already holds "
+                         "rather than answering live state. Nothing in this head holds them: there "
+                         "is no packet-radio surface and no adapter on this machine"),
+    ("view.orbit", "MEASURED: available false, orbiting null, reason \"No vehicle is connected.\" "
+                   "Vehicle-gated like the rest -- but this one is ALSO WITHHELD ON PURPOSE. "
+                   "Starting an orbit is forbidden in this session, and the probe hook for it was "
+                   "deliberately built incapable of the write, so a control could be drawn and "
+                   "never once exercised to see it work. The reading half, whether the vehicle is "
+                   "orbiting, needs a vehicle that is flying one. Recorded not built, and the "
+                   "reason is the session's own safety rule rather than a gap in the core"),
     ("view.geoTag", "MEASURED as a REFUSAL, which is the answer: it asks for the path of a "
                     "telemetry log, a tolerance and one epoch timestamp per image. It is the "
                     "tagging COMPUTATION, not the controller state the Analyze page draws -- "
