@@ -1735,6 +1735,13 @@ func checkSurveyStats() {
     expect(strained.warning.contains("0.84 s"), "alongside what the survey asks for")
 
     expect(SurveyStats(["available": true as NSNumber, "isSurvey": false as NSNumber,
+                        "shotsText": "126", "areaText": "\u{2014}",
+                        "distanceText": "3.25 km"]).describes,
+           "and so does a structure scan, which is the third member of the class and the one "
+           + "abfa9d123 did not measure -- it covers no area at all, so areaSquareMetres is 0 "
+           + "and the core renders the em dash, and a head reading areaText to decide would "
+           + "have hidden 126 photos over 3.25 km behind a blank")
+    expect(SurveyStats(["available": true as NSNumber, "isSurvey": false as NSNumber,
                         "shotsText": "27", "areaText": "15000 m\u{b2}"]).describes,
            "a corridor scan describes its camera work too. 647cd7193 stopped the core gating "
            + "available on is_survey, and this head had the same premise one layer out -- it "
