@@ -3217,3 +3217,48 @@ hold, and both fence steps are **REQUIRED**. Verified: all twenty steps accepted
 false.** They were testing whether `GeoFenceController::supported()` can be made to
 return false, using my report as evidence that the path fires on a real SITL. It does
 not fire here — nothing refused. Suite 707/0/89.
+
+### A text the core formatted for nobody, 2026-09-12
+
+Android's predicate, and it is sharper than my unread-field sweep for a reason worth
+keeping. Mine asks *"does this head name this key"*, which needs a judgement about every
+field — raw number behind a text, envelope tag, a term an instrument diffs — and produced
+**69 hits nobody would read**. This one asks nothing: **a key ending in `Text` is a string
+the core formatted FOR A SCREEN**, so one no head names is a gap by construction.
+
+**29 served, 28 drawn, 0 undrawn, 1 accepted.** Control: the pre-`4e4fbdc1c` head reports
+`speedChangeText` undrawn, which is the cycle before this head drew it. The accepted one
+is `bandText` — the terrain panel draws `lowestText` and `highestText` at the plot's two
+ends rather than one sentence, a display choice this head owns. **An instrument that can
+only ever say "gap" is one you stop believing**, and this one says "correctly undrawn".
+
+**Its only other hit was self-inflicted.** `view.camera.modeText` looked undrawn while
+`CameraControlModel` reads `modeText` perfectly well — because `view.contract` keys its
+`enumerations` **by path**, and a path's last segment ends in `Text`. **A field name never
+contains a dot**; that is a semantic discriminator rather than excluding the introspection
+views by name. First run, one false positive, understood and removed.
+
+All **16** views it could not read are named rather than counted — they want a file, a
+vehicle, a coordinate or an index this rig has no honest value for.
+
+**Two corrections travelled between sessions this hour and both were mine at the root.**
+The core verified my fence retraction against QGC's C++: with nothing attached
+`_managerVehicle` is the offline editing vehicle, whose capability bits make `supported`
+true — so `view.plan` was right throughout. They then corrected **their own** commit
+message, which had asserted a defect they never measured, taken from my report.
+
+Their statement of it is the one to keep: **"you trusted the store you could read, I
+trusted the peer whose measurements have been good all night. Neither of us checked the
+thing itself when checking was three greps."** A peer's measurement is **evidence, not a
+measurement** — believing it is the same class of error as believing my own store, one
+step removed.
+
+**And the three-state lesson turns out to be in the flight stack itself.** Android found
+that `GeoFenceController::supported()` reads `capabilityBits() & MISSION_FENCE` and never
+consults `capabilitiesKnown()`, which exists on `Vehicle` for exactly that purpose — so
+QGC's "supported" means **"not known to be unsupported"**, and `Vehicle.cc:210`
+initialises the bits to `MISSION_FENCE | MISSION_RALLY`. The same defect in QGC's C++, in
+my Swift store, and travelling between two sessions as a false datum, within one hour.
+**A Bool cannot hold "not asked", so a default answers for whoever was never asked.**
+
+Tool-only: no Swift changed, so no ctest run.
