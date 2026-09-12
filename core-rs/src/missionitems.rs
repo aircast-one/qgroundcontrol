@@ -134,7 +134,7 @@ fn item(read: &Value, index: i64, vertical: &Unit, speed: &Unit, imperial: bool)
         "altitudeBandText": band(read, vertical),
         "altitudeSource": altitude_source(read, vertical),
         "altitudeFrame": altitude_frame(read, vertical),
-        "altitudeFrameText": altitude_frame(read, vertical).map(frame_word),
+        "altitudeFrameText": altitude_frame(read, vertical).and_then(frame_word),
         "specifiesCoordinate": flag(read, "specifiesCoordinate"),
         "altitudeChange": number(read, "altDifference"),
         "altitudeChangeText": number(read, "altDifference").map(|change| crate::read::altitude_text(change, vertical, true)),
@@ -193,11 +193,12 @@ const MODE_ABSOLUTE: f64 = 2.0;
 const MODE_CALC_ABOVE_TERRAIN: f64 = 3.0;
 const MODE_TERRAIN_FRAME: f64 = 4.0;
 
-pub fn frame_word(frame: &str) -> &'static str {
+pub fn frame_word(frame: &str) -> Option<&'static str> {
     match frame {
-        "terrain" => "AGL",
-        "amsl" => "AMSL",
-        _ => "",
+        "terrain" => Some("AGL"),
+        "amsl" => Some("AMSL"),
+        "launch" => Some(""),
+        _ => None,
     }
 }
 
@@ -660,6 +661,8 @@ mod reported {
 
         assert_eq!(listed(simple(1, 75.0))["altitudeFrame"], "launch", "a relative altitude is measured from the launch point");
         assert_eq!(listed(simple(1, 75.0))["altitudeFrameText"], "", "launch-relative is the default and carries no suffix, so a head draws the number alone rather than inventing a word for the ordinary case");
+        assert_eq!(frame_word("launch"), Some(""), "an empty word is an answer - this frame is spelled with nothing after the number");
+        assert_eq!(frame_word("seabed"), None, "and a token the core has not named is no answer at all: mapping it to the empty word would spell an unrecognised frame as the default one, which is the order these two fields arrived in tonight - the token was served for weeks before anything named it");
         assert_eq!(listed(simple(3, 40.0))["altitudeFrameText"], "AGL", "each head was inventing this word, so the same plan could read AGL on one and above terrain on the other with nothing to notice");
         assert_eq!(listed(simple(2, 541.0))["altitudeFrameText"], "AMSL");
         assert_eq!(listed(simple(2, 541.0))["altitudeFrame"], "amsl");
