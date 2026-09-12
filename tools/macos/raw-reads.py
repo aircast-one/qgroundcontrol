@@ -37,6 +37,13 @@ CORE = ROOT / "core-rs/src"
 # A raw read kept on purpose. Each reason names what the view does NOT cover, and a view that
 # grows to cover it has to move this line with it.
 ACCEPTED = {
+    "geoTag": "MEASURED, and the answer to this checker's own question -- ask what that view "
+        "refuses. view.geoTag refuses everything except the tagging RUN: it wants the path of a "
+        "telemetry log, a tolerance in seconds and one epoch timestamp per image. The head reads "
+        "the controller's JOB STATE from Qt -- logFile, imageDirectory, saveDirectory, progress, "
+        "inProgress -- which that view does not serve and cannot be asked for. The names collide "
+        "on a subject; the questions do not overlap at all. Same shape as the plan and links "
+        "entries below, and view-fields.py carries the mirror of this reason",
     "plan": "MEASURED: the head takes syncInProgress and canUndo from here, and view.plan "
         "carries readiness and upload. The names collide; the fields do not. The core serves "
         "no undo state and no sync flag, so there is nothing here to defer to",
