@@ -312,7 +312,7 @@ internal fun MapSpikeScreen(
             onWaypointSelected = { hit ->
                 when (hit) {
                     is MapHit.Midpoint -> onBridge("Adding a corner") {
-                        FenceBridge.splitSegment(hit.polygon, hit.segment)
+                        invokeOk("${hit.path}.${hit.invokable}", "[${hit.segment}]")
                     }
                     else -> selected = hit
                 }

@@ -17,6 +17,7 @@ data class Survey(
     val kind: String,
     val shape: String,
     val property: String,
+    val editable: EditableShape? = null,
 )
 
 private fun points(array: JSONArray?): List<TrackPoint> {
@@ -57,6 +58,7 @@ object SurveyBridge {
                 kind = element.optText("kind"),
                 shape = shape,
                 property = property,
+                editable = editableShape("$PLAN_ITEMS.$index.$property", shape),
             )
         }
     }
@@ -81,6 +83,7 @@ object SurveyBridge {
 
     fun setGridAngle(itemIndex: Int, degrees: Double): Boolean =
         setOk("$PLAN_ITEMS.$itemIndex.gridAngle", settingJson("$degrees"))
+
 
     fun adjustVertex(survey: Survey, vertex: Int, latitude: Double, longitude: Double): Boolean =
         invokeOk(

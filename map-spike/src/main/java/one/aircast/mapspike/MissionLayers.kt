@@ -259,6 +259,8 @@ const val HANDLE_KIND_CIRCLE = "circle"
 const val HANDLE_KIND_LANDING = "landing"
 const val HANDLE_KIND_MIDPOINT = "midpoint"
 
+const val SHAPE_PATH_PROPERTY = "shapePath"
+const val SPLIT_INVOKABLE_PROPERTY = "splitInvokable"
 const val MIDPOINT_SOURCE = "aircast-midpoints"
 const val MIDPOINT_LAYER = "aircast-midpoints-layer"
 
@@ -352,21 +354,23 @@ fun installMidpointLayer(style: Style) {
     )
 }
 
-fun midpointFeatures(polygons: List<FencePolygon>): FeatureCollection =
+fun midpointFeatures(shapes: List<EditableShape?>): FeatureCollection =
     FeatureCollection.fromFeatures(
-        polygons.flatMap { polygon ->
-            polygon.midpoints.mapIndexed { segment, at ->
+        shapes.filterNotNull().filter { it.splitInvokable.isNotBlank() }.flatMap { shape ->
+            shape.midpoints.mapIndexed { segment, at ->
                 Feature.fromGeometry(Point.fromLngLat(at.longitude, at.latitude)).apply {
                     addStringProperty(HANDLE_KIND_PROPERTY, HANDLE_KIND_MIDPOINT)
-                    addNumberProperty(POLYGON_INDEX_PROPERTY, polygon.index)
+                    addStringProperty(SHAPE_PATH_PROPERTY, shape.path)
+                    addStringProperty(SPLIT_INVOKABLE_PROPERTY, shape.splitInvokable)
                     addNumberProperty(VERTEX_INDEX_PROPERTY, segment)
                 }
             }
         },
     )
 
-fun renderMidpoints(style: Style, polygons: List<FencePolygon>) {
-    (style.getSource(MIDPOINT_SOURCE) as? GeoJsonSource)?.setGeoJson(midpointFeatures(polygons))
+fun renderMidpoints(style: Style, polygons: List<FencePolygon>, surveys: List<Survey>) {
+    (style.getSource(MIDPOINT_SOURCE) as? GeoJsonSource)
+        ?.setGeoJson(midpointFeatures(polygons.map { it.editable } + surveys.map { it.editable }))
 }
 
 fun installLandingLayers(style: Style) {

@@ -334,7 +334,7 @@ fun VehicleMap(
         val currentStyle = style ?: return@LaunchedEffect
         renderSurveys(currentStyle, surveys)
         renderLandings(currentStyle, landings)
-        renderMidpoints(currentStyle, fencePolygons)
+        renderMidpoints(currentStyle, fencePolygons, surveys)
         renderFences(currentStyle, fencePolygons, rallyPoints, circlesAsPolygons(fenceCircles))
         renderVertexHandles(currentStyle, fencePolygons, surveys, fenceCircles, landings)
         renderMission(currentStyle, missionItems, linkStartToHome, selectedWaypoint)
