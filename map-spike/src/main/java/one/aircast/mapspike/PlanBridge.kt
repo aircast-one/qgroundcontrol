@@ -67,6 +67,7 @@ data class MissionItem(
     val altitudeChangeText: String = "",
     val altitudeBandText: String = "",
     val blockedReason: String = "",
+    val cameraShots: Int = 0,
 )
 
 fun routeEndsAfter(items: JSONArray?): Int =
@@ -107,6 +108,7 @@ fun allMissionItems(json: JSONObject?): List<MissionItem> {
             altitudeChangeText = element.optText("altitudeChangeText"),
             altitudeBandText = element.optText("altitudeBandText"),
             blockedReason = element.optText("blockedReason"),
+            cameraShots = element.optInt("cameraShots"),
             routed = element.optBoolean("flownLeg") && index <= endsAfter,
             afterRouteEnds = index > endsAfter,
             placed = at != null,

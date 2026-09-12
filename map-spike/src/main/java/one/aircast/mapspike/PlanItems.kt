@@ -30,6 +30,7 @@ internal fun itemDetail(item: MissionItem): String = listOfNotNull(
         ?: item.altitudeBandText.ifBlank { null }
         ?: NO_POSITION.takeIf { !item.placed && item.specifiesCoordinate },
     AFTER_THE_ROUTE_ENDS.takeIf { item.afterRouteEnds },
+    photosText(item.cameraShots),
     item.blockedReason.ifBlank { null },
 ).joinToString(" \u00b7 ")
 
@@ -93,3 +94,9 @@ fun writeMove(hit: MapHit, latitude: Double, longitude: Double, surveys: List<Su
         is MapHit.LandingPlace ->
             moveLandingPlace(hit.index, hit.place, latitude, longitude)
     }
+
+internal fun photosText(shots: Int): String? = when {
+    shots <= 0 -> null
+    shots == 1 -> "1 photo"
+    else -> "$shots photos"
+}

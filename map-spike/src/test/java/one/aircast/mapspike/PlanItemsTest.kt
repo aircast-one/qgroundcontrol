@@ -385,3 +385,31 @@ class BlockedReasonTest {
         assertEquals("50.0 m", itemDetail(item))
     }
 }
+
+class PhotosTextTest {
+
+    @Test
+    fun `a pattern that takes photos says how many`() {
+        val survey = MissionItem(
+            5, 5, 41.0, 44.0, "Survey", false, Double.NaN, kind = "survey",
+            altitudeBandText = "0.0 m to 40.0 m", cameraShots = 340,
+        )
+
+        assertEquals("0.0 m to 40.0 m · 340 photos", itemDetail(survey))
+    }
+
+    @Test
+    fun `one photo is not one photos`() {
+        assertEquals("1 photo", photosText(1))
+        assertEquals("2 photos", photosText(2))
+    }
+
+    @Test
+    fun `an item that takes none says nothing about photos`() {
+        assertEquals(null, photosText(0))
+        assertEquals(null, photosText(-1))
+
+        val waypoint = MissionItem(2, 2, 41.0, 44.0, "Waypoint", false, 50.0, kind = "waypoint", altitudeText = "50.0 m")
+        assertEquals("50.0 m", itemDetail(waypoint))
+    }
+}
