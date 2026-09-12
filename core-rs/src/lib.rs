@@ -34,6 +34,7 @@ pub mod hub;
 pub mod inspector;
 pub mod instruments;
 pub mod kml;
+pub mod landing;
 pub mod label;
 pub mod links;
 pub mod linkconfig;

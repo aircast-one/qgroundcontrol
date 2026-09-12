@@ -5961,6 +5961,7 @@
             "view.label",
             "view.instruments",
             "view.obstacle",
+            "view.landingPattern",
             "view.vibration",
             "view.sensors",
             "view.control",

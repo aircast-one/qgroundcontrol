@@ -20,6 +20,7 @@ use crate::detections;
 use crate::guided;
 use crate::inspector;
 use crate::instruments;
+use crate::landing;
 use crate::obstacle;
 use crate::kml;
 use crate::label;
@@ -72,6 +73,7 @@ pub const VIEWS: &[View] = &[
     View { path: "view.label", deps: label::DEPS, compute: label::label_view },
     View { path: "view.instruments", deps: instruments::DEPS, compute: instruments::instruments_view },
     View { path: "view.obstacle", deps: obstacle::DEPS, compute: obstacle::obstacle_view },
+    View { path: "view.landingPattern", deps: landing::DEPS, compute: landing::landing_view },
     View { path: "view.vibration", deps: vibration::DEPS, compute: vibration::vibration_view },
     View { path: "view.sensors", deps: sensors::DEPS, compute: sensors::sensors_view },
     View { path: "view.control", deps: control::DEPS, compute: control::control_view },
