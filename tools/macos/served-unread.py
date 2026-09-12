@@ -60,6 +60,12 @@ ACCEPTED = {
         "already draws the same band as AMSL from altitudeBandText -- 485 m launch, so "
         "\"62.5 m to 87.5 m\" and \"548 m to 572 m AMSL\" are one measurement in two frames. A "
         "SCREENSHOT proved it; the two strings never appear side by side in any payload",
+    "rcSignalText": "the RC percentage, composed. MEASURED AGAINST THE HEAD'S OWN SPELLING AND "
+        "REJECTED: flystate.rs formats every accepted value as \"{percent}%\", so a reading of 0 "
+        "becomes \"0%\". This head says \"No signal\" for 0, which is a different statement -- a "
+        "transmitter that is off is not a transmitter at 0 per cent -- and FlyDetailModel carries "
+        "the comment explaining why. Adopting the composed text would lose that distinction, so "
+        "the head keeps its own and the core has been told which case differs",
     "altitudeMetres": "the RAW quantity behind a mission item's altitude, served for a head that "
         "would rather convert and write metres through the fact's rawValue setter. This head does "
         "the opposite on purpose: 8110770d3 fixed an editable altitude wearing the wrong unit by "
