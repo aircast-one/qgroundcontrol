@@ -22,6 +22,7 @@ const RETURN_TO_LAUNCH: i64 = 20;
 pub fn items_view(backend: &dyn Backend, args: &[String]) -> Value {
     let everything = args.iter().any(|arg| arg == "fields");
     let vertical = Unit::vertical(backend);
+    let speed = Unit::speed(backend);
     let imperial = crate::missionsummary::imperial(backend);
     let shapes = args.iter().any(|arg| arg == "geometry");
     let count = integer(&object(&backend.get("plan.missionController.visualItems.count")), "value").unwrap_or(0);
@@ -32,9 +33,9 @@ pub fn items_view(backend: &dyn Backend, args: &[String]) -> Value {
     let current = integer(&object(&backend.get("plan.missionController.currentPlanViewVIIndex")), "value").unwrap_or(-1);
     let listed = object(&backend.get_fields("plan.missionController.visualItems", FIELDS));
     let items: Vec<Value> = match listed.get("elements").and_then(Value::as_array) {
-        Some(elements) => elements.iter().enumerate().map(|(index, element)| item(element, index as i64, &vertical, imperial)).collect(),
+        Some(elements) => elements.iter().enumerate().map(|(index, element)| item(element, index as i64, &vertical, &speed, imperial)).collect(),
         None => (0..count)
-            .map(|index| item(&object(&backend.get_fields(&format!("plan.missionController.visualItems.{index}"), FIELDS)), index, &vertical, imperial))
+            .map(|index| item(&object(&backend.get_fields(&format!("plan.missionController.visualItems.{index}"), FIELDS)), index, &vertical, &speed, imperial))
             .collect(),
     };
     let items: Vec<Value> = match walked(&items) {
@@ -94,7 +95,7 @@ fn at_key(read: &Value, key: &str) -> Option<Value> {
     (at.get("valid").and_then(Value::as_bool) == Some(true) && !unset).then(|| at.clone())
 }
 
-fn item(read: &Value, index: i64, vertical: &Unit, imperial: bool) -> Value {
+fn item(read: &Value, index: i64, vertical: &Unit, speed: &Unit, imperial: bool) -> Value {
     let coordinate = placed(read);
     let exit = match flag(read, "exitCoordinateSameAsEntry") {
         true => None,
@@ -125,6 +126,7 @@ fn item(read: &Value, index: i64, vertical: &Unit, imperial: bool) -> Value {
         "altitudeAmsl": number(read, "amslEntryAlt"),
         "extraSeconds": number(read, "additionalTimeDelay"),
         "speedChange": number(read, "specifiedFlightSpeed"),
+        "speedChangeText": number(read, "specifiedFlightSpeed").filter(|mps| mps.is_finite() && *mps > 0.0).map(|mps| format_measure(speed.show(mps), &speed.name)),
         "altitudeAmslLowest": number(read, "minAMSLAltitude"),
         "altitudeAmslHighest": number(read, "maxAMSLAltitude"),
         "altitudeBandText": band(read, vertical),
@@ -655,6 +657,41 @@ mod reported {
         let done = items_view(&Plan(walked_plan), &[]);
         assert_eq!(done["items"][1]["distanceText"], "120 m", "one item reporting a distance from the start is the tell that the walk has run, and then every figure it produced is trusted - including the zeros, which are real once something moved");
         assert_eq!(done["items"][2]["distance"], 0.0);
+    }
+
+    #[test]
+    fn a_speed_the_plan_sets_is_spelled_in_the_operators_speed_unit() {
+        struct Knots(Value);
+        impl Backend for Knots {
+            fn get(&self, path: &str) -> String { One(self.0.clone()).get(path) }
+            fn get_fields(&self, path: &str, fields: &str) -> String {
+                match path {
+                    "units" => json!({ "kind": "object", "appSettingsSpeedUnitsString": "kn" }).to_string(),
+                    _ => One(self.0.clone()).get_fields(path, fields),
+                }
+            }
+            fn set(&self, _p: &str, _v: &str) -> String { String::new() }
+            fn invoke(&self, path: &str, args: &str) -> String {
+                match path {
+                    "units.metersSecondToAppSettingsSpeedUnits" => json!({ "ok": true, "result": serde_json::from_str::<Vec<f64>>(args).unwrap()[0] * 1.94384 }).to_string(),
+                    _ => String::new(),
+                }
+            }
+            fn watch(&self, _p: &[String]) {}
+        }
+        let change = json!({ "kind": "object", "sequenceNumber": 2, "isSimpleItem": true, "specifiesAltitude": false, "specifiedFlightSpeed": 12.0 });
+        assert_eq!(listed(change.clone())["speedChangeText"], "12.0 m/s", "seconds have no unit preference but speed does, and a head spelling this itself would rebuild the defect the obstacle label was");
+        assert_eq!(listed(change.clone())["speedChange"], 12.0, "the raw metres per second still travel");
+
+        let knots = items_view(&Knots(change), &[])["items"][1].clone();
+        assert_eq!(knots["speedChangeText"], "23.3 kn", "and it follows the speed setting, which is separate from both distance settings");
+
+        let ordinary = listed(json!({ "kind": "object", "sequenceNumber": 1, "isSimpleItem": true, "specifiesAltitude": true, "specifiesCoordinate": true, "facts": [ { "property": "altitude", "value": 50.0 } ] }));
+        assert_eq!(ordinary["speedChangeText"], Value::Null, "an item that sets no speed says nothing");
+
+        let zeroed = listed(json!({ "kind": "object", "sequenceNumber": 2, "isSimpleItem": true, "specifiesAltitude": false, "specifiedFlightSpeed": 0.0 }));
+        assert_eq!(zeroed["speedChangeText"], Value::Null, "a commanded speed of zero is not a speed, and spelling it \"0.0 m/s\" reads as an instruction to stop");
+        assert_eq!(zeroed["speedChange"], 0.0, "the raw value still travels for anyone who wants to know it is there and zero");
     }
 
     #[test]
