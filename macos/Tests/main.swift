@@ -1353,6 +1353,7 @@ func checkMissionItemKinds() {
     checkAPatternSaysHowHighAboveTheGroundItFlies()
     checkAPatternDrawsThePathItActuallyFlies()
     checkAnUnreadStoreDoesNotBlameTheVehicle()
+    checkSaveAsksTheCoreRatherThanTheReadiness()
     checkAnAltitudeSaysWhatItIsMeasuredFrom()
     checkSensorsComponentIsFoundByClass()
     checkShapeAbsence()
@@ -4387,6 +4388,36 @@ func checkAnAltitudeSaysWhatItIsMeasuredFrom() {
     expect(item("amsl", text: "").altitudeReading, MissionItem.noAltitude,
            "an item with no altitude at all keeps its em dash and gains no frame: there is no "
            + "measurement to say the reference of")
+}
+
+func checkSaveAsksTheCoreRatherThanTheReadiness() {
+    let busy = PlanActions(["open": true as NSNumber, "save": true as NSNumber,
+                            "exportKml": true as NSNumber, "newPlan": true as NSNumber,
+                            "clearMission": false as NSNumber, "addFence": true as NSNumber,
+                            "addRally": true as NSNumber])
+    expect(busy?.save == true,
+           "the Save button was disabled whenever readiness said not ready, and readiness is "
+           + "about an item still being drawn. Measured: an eight-item plan with a half-drawn "
+           + "takeoff had readyToSave false and the menu greyed out -- and saving it through the "
+           + "probe wrote 92943 bytes. The head was blocking an action that works and telling "
+           + "the operator their plan could not be saved")
+    expect(PlanActions(["save": NSNull()])?.save == false,
+           "an answer the core did not give is not a yes: a missing or null flag disables rather "
+           + "than enables, so a view that failed to answer cannot open a door")
+    expect(PlanActions("not an object") == nil,
+           "and a payload that is not an object yields no actions at all, rather than seven "
+           + "falses that look like a considered refusal")
+    expect(busy?.clearFromVehicle == false,
+           "the core's key is clearMission and this head names it clearFromVehicle, because that "
+           + "is what it is: its test says clearing needs a vehicle to clear it FROM. The Clear "
+           + "button in this window calls plan.removeAll and empties the local plan, which needs "
+           + "no vehicle -- wiring the two together by name would disable a working action "
+           + "whenever nothing is connected, which here is always")
+    expect(busy?.exportKml == true,
+           "Export KML was gated on items.count < 2, a count this head made up. It happens to "
+           + "agree with the core in both states measured, which is how a duplicated derivation "
+           + "survives every sweep: nothing is wrong on screen until the producer changes its "
+           + "mind and only one of the two follows")
 }
 
 func checkAnUnreadStoreDoesNotBlameTheVehicle() {

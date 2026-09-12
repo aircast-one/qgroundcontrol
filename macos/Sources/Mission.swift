@@ -42,6 +42,7 @@ final class MissionStore: ObservableObject, Probeable, WriteReporting {
     @Published private(set) var hoverSpeed = ""
     @Published private(set) var planFile = ""
     @Published private(set) var readyToSave = false
+    @Published private(set) var offers = PlanActions.none
     @Published private(set) var notReadyReason = ""
 
     // Whether the plan can go to the vehicle, and why not. Read here rather than worked out from
@@ -104,6 +105,8 @@ final class MissionStore: ObservableObject, Probeable, WriteReporting {
         let readiness = PlanReadiness(view["readiness"]) ?? .unknown
         if readiness.ready != readyToSave { readyToSave = readiness.ready }
         if readiness.reason != notReadyReason { notReadyReason = readiness.reason }
+        let offered = PlanActions(view["actions"]) ?? .none
+        if offered != offers { offers = offered }
         let sending = PlanUpload(view["upload"]) ?? .unknown
         if sending != upload { upload = sending }
     }

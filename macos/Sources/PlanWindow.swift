@@ -1009,12 +1009,13 @@ struct PlanInspector: View {
         HStack(spacing: Overlay.step) {
             Menu {
                 Button("Open\u{2026}", action: openPlan)
+                    .disabled(!mission.offers.open)
                 Button("Save", action: savePlan)
-                    .disabled(!mission.readyToSave)
+                    .disabled(!mission.offers.save)
                 Button("Save As\u{2026}", action: savePlanAs)
-                    .disabled(!mission.readyToSave)
+                    .disabled(!mission.offers.save)
                 Button("Export KML\u{2026}", action: exportKml)
-                    .disabled(mission.items.count < 2)
+                    .disabled(!mission.offers.exportKml)
                 Divider()
                 Menu("New Plan") {
                     Button("Empty") { startPlan(nil) }

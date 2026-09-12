@@ -52,6 +52,20 @@ ACCEPTED = {
         "what it means, and altitudeReading names settingsKind rather than leaning on the flag",
     ("MissionItem", "altitudeBandText"): "the settings kind returns altitudeText before the "
         "band is consulted, so the empty string is never the sentence drawn",
+    ("MissionItem", "altitudeText"): "every pattern and the Return To Launch send it null, "
+        "because altitudeText is built from height(read) and those items carry no height fact. "
+        "altitudeReading only reaches altitudeText when specifiesAltitude is true or the kind is "
+        "settings, and none of these are either, so the em dash it falls back to is never the "
+        "string drawn -- the band or the em dash answers first",
+    ("MissionItem", "altitudeUnits"): "the same items, and the fallback is UNREACHABLE in every "
+        "state this rig produces: altitudeUnits is only read through altitudeFieldUnits, which "
+        "PlanWindow reaches only inside `if item.specifiesAltitude`. The core derives units and "
+        "text from one height(read), so a null unit means no height -- but specifiesAltitude is "
+        "a separate flag, so an item claiming an altitude it has no height for would draw a "
+        "defaulted metre. Nothing here produces one and I am not inventing it",
+    ("MissionItem", "altitudeFrame"): "the Return To Launch alone: a command with no altitude "
+        "has no reference to name one from, and frameSuffix maps the empty string to no suffix. "
+        "A pattern is NOT in this set -- its frame is amsl, from the band",
 }
 
 COMMENT = re.compile(r"//[^\n]*")

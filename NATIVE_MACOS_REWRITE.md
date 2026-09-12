@@ -3262,3 +3262,52 @@ my Swift store, and travelling between two sessions as a false datum, within one
 **A Bool cannot hold "not asked", so a default answers for whoever was never asked.**
 
 Tool-only: no Swift changed, so no ctest run.
+
+### Save was disabled for an action that works, 2026-09-12
+
+Android's duplicated-derivation class, pointed at this head — and it turned up a real
+blocked task rather than a tidiness problem.
+
+`Save` and `Save As` were gated on `readyToSave`, which is the core's
+`readiness.ready`, which is about **an item still being drawn**. Measured: an eight-item
+plan with a half-drawn takeoff gives `readyToSave false` and greys the menu — **and
+saving that same plan through the probe wrote 92943 bytes.** The head was blocking an
+action that works and telling the operator *"the plan cannot be saved or sent."* An
+operator with one incomplete item could not save their work.
+
+The core has answered this separately all along: `view.plan.actions.save` is
+`!syncing && contains_items` — *is there anything to save* — while `readiness` is *is
+the plan complete*. **Two different questions, and the head was asking the wrong one.**
+In the empty-plan state the two are inverted: core `save: false`, head `readyToSave:
+true`, so the Save button was enabled with nothing to save and disabled with something.
+
+`PlanActions` reads all seven. `Save`, `Save As`, `Export KML` and `Open` now ask it. A
+flag the core did not give is **false**, and a payload that is not an object yields no
+actions at all rather than seven falses that look like a considered refusal; the
+mutation making a missing flag enable fails.
+
+**`Export KML` was the duplicated derivation proper.** It was gated on
+`mission.items.count < 2` — a count this head invented — which **agrees with the core in
+both states I measured.** That is exactly how a duplicated derivation survives every
+sweep: nothing is wrong on screen until the producer changes its mind and only one of
+the two follows.
+
+**And one trap avoided by reading rather than matching names.** The core's key is
+`clearMission`, and its own test says *"clearing needs a vehicle to clear it from"* — it
+is clearing the mission **from the vehicle**. This window's Clear button calls
+`plan.removeAll` and empties the **local** plan, needing no vehicle. Wiring them
+together by name would have disabled a working action whenever nothing is connected,
+which here is always. The model names it `clearFromVehicle` so the mistake is not
+available to the next reader. **Rule 51 in a new disguise: the field and the button
+share a word and not a meaning.**
+
+**The instruments earned their keep this cycle before any of that.**
+`null-fallbacks.py` went from 0 hits to **3** — not a regression, but the every-kind
+plan being a richer corpus than the plan I used to build. All three are the altitude
+family on patterns and the Return To Launch, all measured and accepted with reasons; one
+of them, `altitudeUnits`, is unreachable in every state this rig produces and says so
+rather than claiming to be safe.
+
+Suite 707/0/89. **Limit: the Save gate lives inside a menu a screenshot cannot open**, so
+the measured `actions.save` and the one-line binding are the evidence, not a look at the
+greyed item.
