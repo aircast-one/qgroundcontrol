@@ -248,6 +248,9 @@ required
 resumeFromSequence
 reversed
 ring
+roi
+roiActive
+roiSupported
 rotate
 route
 running

@@ -116,6 +116,7 @@ final class GuidedStore: ObservableObject, Probeable, WriteReporting {
             let view = Bridge.group("view.guidedActions")
             guard let sequence = GuidedOffer.resumeSequence(view["resumeFromSequence"]) else { return }
             Bridge.invoke("planFly.missionController.resumeMission", [sequence])
+        case .cancelRoi: Bridge.invoke("vehicle.stopGuidedModeROI")
         case .landAbort: Bridge.invoke("vehicle.abortLanding", [GuidedStore.climbOutAltitude])
         case .emergencyStop: Bridge.invoke("vehicle.emergencyStop")
         case .grab: Bridge.invoke("vehicle.sendGripperAction", [GuidedStore.gripperGrab])
