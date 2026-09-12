@@ -54,8 +54,13 @@ QGC's desktop UI and this app draws none of them.
 2. **Motor test and CompassMot**, deliberately not built: both spin propellers and need a supervised
    airframe. `Vehicle::motorTest` is already `Q_INVOKABLE`, so this is a safety decision rather than
    a bridge one, and the pages send the operator to desktop QGC.
-3. **Radio calibration is built and undrivable here** — stick movement cannot be simulated, so the
-   flow has never been exercised.
+3. **Radio calibration is not built here either**, and belongs with item 2 rather than on its own.
+   The Radio page is a channel monitor; its footer tells the operator that "calibration stays on the
+   desktop: it needs you holding each stick at its extremes while watching the aircraft, and it
+   rewrites the mapping". The older note in this file — that calibration "cannot be driven in this
+   rig" — is about SITL not reflecting `setRcChannelOverride`, and says nothing about what this head
+   offers. I repeated it as a gap on 2026-09-12 without reading the page, which is the same mistake
+   as trusting any other claim in here.
 4. **`Viewer3D`** — a keep-or-drop decision, not a port task.
 5. **Deleting the QML this app no longer draws.** That is the plan's own completion rule, and it is a
    QGC-wide call rather than Android's: the desktop app still renders those files and the macOS head
