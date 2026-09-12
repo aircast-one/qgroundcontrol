@@ -3,7 +3,7 @@ use serde_json::{Value, json};
 use crate::read::object;
 use crate::router::Backend;
 
-pub const DEPS: &[&str] = &["links.linkConfigurations"];
+pub const DEPS: &[&str] = &["links.linkConfigurations", "vehicle.vehicleLinkManager.communicationLostEnabled", "vehicle.vehicleLinkManager.linkNames", "vehicle.vehicleLinkManager.linkStatuses"];
 
 fn kind(settings_url: &str) -> &'static str {
     match settings_url {
@@ -42,7 +42,28 @@ fn editing(kind: &str) -> &'static str {
     }
 }
 
+pub fn quiet_links(backend: &dyn Backend) -> Vec<String> {
+    let manager = object(&backend.get_fields("vehicle.vehicleLinkManager", "communicationLostEnabled,linkNames,linkStatuses"));
+    if manager.get("communicationLostEnabled").and_then(Value::as_bool) != Some(true) {
+        return Vec::new();
+    }
+    let strings = |key: &str| {
+        manager.get(key).and_then(Value::as_array).map(|a| a.iter().filter_map(Value::as_str).map(str::to_string).collect::<Vec<_>>()).unwrap_or_default()
+    };
+    let (names, statuses) = (strings("linkNames"), strings("linkStatuses"));
+    names
+        .iter()
+        .enumerate()
+        .filter(|(index, _)| statuses.get(*index).is_some_and(|status| !status.is_empty()))
+        .map(|(_, name)| name.clone())
+        .collect()
+}
+
 pub fn link_json(index: usize, element: &Value) -> Value {
+    link_json_with(index, element, &[])
+}
+
+pub fn link_json_with(index: usize, element: &Value, quiet: &[String]) -> Value {
     let text = |key: &str| element.get(key).and_then(Value::as_str).unwrap_or("").to_string();
     let flag = |key: &str| element.get(key).and_then(Value::as_bool).unwrap_or(false);
     let number = |key: &str| element.get(key).and_then(Value::as_i64);
@@ -55,10 +76,12 @@ pub fn link_json(index: usize, element: &Value) -> Value {
         _ => summary.clone(),
     };
     let heard = flag("heardVehicle");
-    let state = match (connected, heard) {
-        (false, _) => "Not connected",
-        (true, false) => "Waiting for the vehicle",
-        (true, true) => "Connected",
+    let gone_quiet = quiet.iter().any(|quiet_name| *quiet_name == name);
+    let state = match (connected, heard, gone_quiet) {
+        (false, _, _) => "Not connected",
+        (true, false, _) => "Waiting for the vehicle",
+        (true, true, true) => "Not hearing the vehicle",
+        (true, true, false) => "Connected",
     };
     let detail = display_summary.trim();
     let status_line = if detail.is_empty() || name.contains(detail) { state.to_string() } else { format!("{state} \u{b7} {detail}") };
@@ -74,6 +97,7 @@ pub fn link_json(index: usize, element: &Value) -> Value {
         "statusLine": status_line,
         "connected": connected,
         "heardVehicle": heard,
+        "goneQuiet": gone_quiet,
         "autoConnect": flag("autoConnect"),
         "dynamic": flag("dynamic"),
         "host": host,
@@ -89,7 +113,8 @@ pub fn link_json(index: usize, element: &Value) -> Value {
 pub fn links_view(backend: &dyn Backend, _args: &[String]) -> Value {
     let model = object(&backend.get("links.linkConfigurations"));
     let root = object(&backend.get_fields("links", "linkTypeStrings,linkTypeIds,serialBaudRates"));
-    let links: Vec<Value> = model.get("elements").and_then(Value::as_array).map(|e| e.iter().enumerate().map(|(i, el)| link_json(i, el)).collect()).unwrap_or_default();
+    let quiet = quiet_links(backend);
+    let links: Vec<Value> = model.get("elements").and_then(Value::as_array).map(|e| e.iter().enumerate().map(|(i, el)| link_json_with(i, el, &quiet)).collect()).unwrap_or_default();
     let configured: Vec<Value> = links.iter().filter(|l| l["dynamic"] == false).cloned().collect();
     json!({
         "kind": "object",
@@ -134,6 +159,14 @@ mod tests {
         assert_eq!(tcp["connected"], true);
         assert_eq!(tcp["heardVehicle"], false);
         let heard = link_json(0, &json!({ "name": "Ground", "settingsURL": "TcpSettings.qml", "summary": "", "host": "10.0.0.2", "children": ["link"], "heardVehicle": true }));
+        let quiet = link_json_with(
+            0,
+            &json!({ "name": "Ground", "settingsURL": "TcpSettings.qml", "summary": "", "host": "10.0.0.2", "children": ["link"], "heardVehicle": true }),
+            &["Ground".to_string()],
+        );
+        assert_eq!(quiet["statusLine"], "Not hearing the vehicle", "heardVehicle latches on the first packet ever decoded, so a radio that has gone silent still reads Connected unless the roster is consulted");
+        assert_eq!(quiet["goneQuiet"], true);
+        assert_eq!(heard["goneQuiet"], false, "a link nothing reported quiet is not quiet");
         assert_eq!(heard["statusLine"], "Connected", "a link with a host and nothing to add says only where it stands");
         let silent = link_json(0, &json!({ "name": "Ground", "settingsURL": "TcpSettings.qml", "summary": "", "host": "10.0.0.2", "children": [], "heardVehicle": true }));
         assert_eq!(silent["statusLine"], "Not connected");
