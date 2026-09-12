@@ -596,6 +596,11 @@ internal fun MapSpikeScreen(
                         horizontalArrangement = Arrangement.spacedBy(4.dp),
                         verticalArrangement = Arrangement.spacedBy(4.dp),
                     ) {
+                        landingText(selectedLanding(selected, landingList))?.let {
+                            Text(it, style = MaterialTheme.typography.labelSmall)
+                            GroupBreak()
+                        }
+
                         survey?.let { cameraText(surveyStatsMap[it.index]) }?.let {
                             Text(it, style = MaterialTheme.typography.labelSmall)
                             GroupBreak()

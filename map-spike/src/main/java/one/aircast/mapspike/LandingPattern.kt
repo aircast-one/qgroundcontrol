@@ -13,6 +13,7 @@ data class LandingPattern(
     val finalApproach: TrackPoint?,
     val loiterRadiusMetres: Double?,
     val loiterClockwise: Boolean,
+    val loiterRadiusText: String = "",
 )
 
 private fun place(view: JSONObject?, key: String): TrackPoint? =
@@ -39,8 +40,21 @@ fun landingPattern(index: Int, view: JSONObject?): LandingPattern? {
         finalApproach = place(view, "finalApproach"),
         loiterRadiusMetres = view.optDouble("loiterRadiusMetres", Double.NaN).takeIf { !it.isNaN() },
         loiterClockwise = view.optBoolean("loiterClockwise"),
+        loiterRadiusText = view.optText("loiterRadiusText"),
     )
     return pattern.takeIf { it.landing != null || it.slopeStart != null || it.finalApproach != null }
+}
+
+internal fun landingText(pattern: LandingPattern?): String? {
+    val radius = pattern?.loiterRadiusText?.ifBlank { null } ?: return null
+    val turn = if (pattern.loiterClockwise) "clockwise" else "anticlockwise"
+    return "circles $radius $turn"
+}
+
+internal fun selectedLanding(selected: MapHit?, landings: List<LandingPattern>): LandingPattern? = when (selected) {
+    is MapHit.LandingPlace -> landings.firstOrNull { it.index == selected.index }
+    is MapHit.Waypoint -> landings.firstOrNull { it.index == selected.index }
+    else -> null
 }
 
 internal fun approachPath(pattern: LandingPattern): List<TrackPoint> =
