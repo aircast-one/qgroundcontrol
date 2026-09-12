@@ -75,7 +75,7 @@ pub fn frame_from(payload: &Value, received_ms: u64) -> Frame {
                         "w": b.get("w").and_then(Value::as_f64).unwrap_or(0.0),
                         "h": b.get("h").and_then(Value::as_f64).unwrap_or(0.0),
                         "label": b.get("label").and_then(Value::as_str).unwrap_or(""),
-                        "confidence": b.get("conf").and_then(Value::as_f64).unwrap_or(0.0),
+                        "confidence": b.get("conf").and_then(Value::as_f64).filter(|score| score.is_finite()),
                         "target": b.get("target").and_then(Value::as_bool).unwrap_or(false),
                     })
                 })
@@ -215,6 +215,15 @@ mod tests {
     }
 
     #[test]
+    fn a_box_the_detector_put_no_score_on_says_so_rather_than_saying_zero() {
+        let mut feed = Feed::default();
+        let generation = feed.generation;
+        let unscored = event_payload(r#"data: {"boxes":[{"label":"car","x":0.1,"y":0.2,"w":0.3,"h":0.4}],"ageMs":0}"#).unwrap();
+        assert!(feed.receive(generation, frame_from(&unscored, 1_000)));
+        assert_eq!(feed.snapshot(1_100)["boxes"][0]["confidence"], Value::Null, "this was served as 0.0, which draws \"car 0%\" and asserts the detector reported no confidence - a measurement it never made, and a low-confidence box then looks exactly like an unscored one");
+    }
+
+    #[test]
     fn frames_arrive_as_sse_lines_and_go_stale_after_a_second() {
         let mut feed = Feed::default();
         assert_eq!(feed.snapshot(0)["available"], false);
@@ -229,6 +238,7 @@ mod tests {
         assert_eq!(fresh["stale"], false);
         assert_eq!(fresh["ageMs"], 500);
         assert_eq!(fresh["boxes"][0], json!({ "x": 0.1, "y": 0.2, "w": 0.3, "h": 0.4, "label": "car", "confidence": 0.91, "target": true }));
+
         assert!(!feed.went_stale(5_500));
         let old = feed.snapshot(6_001);
         assert_eq!((old["stale"].clone(), old["boxes"].as_array().unwrap().len()), (json!(true), 0));
