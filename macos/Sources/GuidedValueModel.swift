@@ -29,9 +29,10 @@ struct GuidedRange: Equatable {
 
     func text(_ value: Double) -> String {
         let shown = clamped(value)
-        let digits = abs(shown) < 10 ? 1 : 0
-        return unit.isEmpty
-            ? String(format: "%.\(digits)f", shown)
-            : String(format: "%.\(digits)f %@", shown, unit)
+        let digits = abs(shown) < GuidedRange.wholeNumberFrom ? 1 : 0
+        let number = Measure.settled(String(format: "%.\(digits)f", shown))
+        return unit.isEmpty ? number : "\(number) \(unit)"
     }
+
+    static let wholeNumberFrom = 10.0
 }

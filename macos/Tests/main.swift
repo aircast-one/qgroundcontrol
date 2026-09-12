@@ -605,6 +605,34 @@ func checkACoordinateIsSpelledOneWay() {
 
 checkACoordinateIsSpelledOneWay()
 
+func checkAMeasureNeverReadsMinusZero() {
+    expect(Measure.format(-0.04, "m"), "0.0 m",
+           "the core strips the sign when every digit it printed is a zero -- read.rs wraps its "
+           + "number in settled() -- and this head's copy did not, while its own comment claimed "
+           + "it \"spells a number the way core-rs read.rs format_measure does\". A vehicle "
+           + "sitting on the ground reports a relative altitude a hair below zero, so a rally "
+           + "point or a launch altitude read \"-0.0 m\" here and \"0.0 m\" from the core. On an "
+           + "altitude that reads as BELOW THE LAUNCH POINT at a glance")
+    expect(Measure.format(-0.0, "m"), "0.0 m", "and negative zero itself is not a place")
+    expect(Measure.format(-12.5, "m"), "-12.5 m", "while a real negative keeps its sign")
+    expect(Measure.format(-150.0, "m"), "-150 m", "at any precision")
+    expect(Measure.settled("-0"), "0", "the guard is on the printed digits, not the input")
+    expect(Measure.settled("-0.00"), "0.00", "at any number of places")
+    expect(Measure.settled("-1.0"), "-1.0",
+           "and a number with a non-zero digit anywhere keeps its sign, which is what stops the guard from eating a real reading")
+
+    let range = GuidedRange(["available": true as NSNumber, "minimum": -5.0 as NSNumber,
+                             "maximum": 100.0 as NSNumber, "initial": 0.0 as NSNumber,
+                             "label": "Height", "unit": "m"])
+    expect(range?.text(-0.04) ?? "", "0.0 m",
+           "the guided slider shares the guard. It keeps its OWN precision rule -- a decimal "
+           + "below ten, none above -- because it spells a value the operator is dragging and "
+           + "two existing assertions pin that as deliberate, while Measure follows the core's "
+           + "hundred. Two rules, one guard")
+}
+
+checkAMeasureNeverReadsMinusZero()
+
 func checkMyLocationTrustsTheCoresGate() {
     func fix(_ overrides: [String: Any]) -> GcsFix? {
         GcsFix(["usable": true as NSNumber, "fix": "gps", "source": "internalGps",
