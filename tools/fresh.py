@@ -37,7 +37,24 @@ def show(stamp):
     return datetime.datetime.fromtimestamp(stamp).strftime("%H:%M:%S")
 
 
+def against(path):
+    if not os.path.exists(path):
+        raise SystemExit(f"no such source: {path}")
+    lib = os.path.getmtime(LIB)
+    source = os.path.getmtime(path)
+    print(f"{os.path.basename(path)} changed {show(source)}")
+    print(f"library built   {show(lib)}")
+    if source > lib:
+        print(f"  STALE: the library predates {os.path.basename(path)} - it cannot hold what that file added")
+        return 1
+    print(f"  the library postdates {os.path.basename(path)}, so it can hold what that file defines")
+    print("  other files may have changed since; this answers one question, not the general one")
+    return 0
+
+
 def main():
+    if "--for" in sys.argv:
+        return against(sys.argv[sys.argv.index("--for") + 1])
     core = newest(CORE, (".rs",))
     bridge = newest(BRIDGE, (".cc", ".h"))
     source = max([s for s in (core, bridge) if s], key=lambda s: s[0])
