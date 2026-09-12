@@ -4061,3 +4061,31 @@ string mean the same thing to every consumer. `GuidedRange.label` is **unreachab
 construction**: `speed.rs` builds it as `range.as_ref().map(|r| r.label)`, null exactly when
 there is no range, which is exactly when `available` is false — and the init returns nil
 unless `available` is true.
+
+### (pp) The map that drew nothing was my camera, not the map
+
+**I nearly filed a blank-map defect.** A screenshot of the Plan window showed **no route, no
+survey outline, no fence rings and no tiles**, while the mission probe reported
+`overlays: 11`, `annotations: 41`, `fenceOverlays: 4`, `framed: true`, `tileOverlay: true`
+and **203 renderer calls** at 980x677. One window, two captures thirty seconds apart,
+identical.
+
+**The control settled it.** A capture of the same window from **2026-09-11** — before any of
+today's map changes — shows the same blank map region **and renders MKMapView's own chrome,
+the "Legal" link and the compass rose**. Those are ordinary subviews. **So the map view is
+present and laid out; its tile and overlay content simply never reaches a CGWindowID
+capture, and never has.**
+
+**The stale scale bar is the second half.** The captured bar read **500 m** while
+`lastRender["plan"]` said **2 km** — and `native/windows` shows **no window is key**, because
+the terminal has focus. A non-key window's backing store is not refreshed, so the capture
+can return the frame from when the window appeared: **the blank map and the stale scale are
+one artefact, not two.**
+
+**This is a limitation of my verification channel, not a defect in the product** — and the
+cycle instruction to *render and look* has been running against a camera that cannot see the
+thing most worth looking at. **The map is judged from `state.map` and `state.renderers`
+from here on.** A blank map region in a capture is the expected appearance.
+
+**What made this worth an hour: the probe and the screen disagreed, and the rule is to check
+both rather than believe the louder one.** Here the screen was wrong.
