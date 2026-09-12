@@ -781,6 +781,26 @@ and the map module — the file row should collapse to a single File button as Q
 has, but only once Upload is visually primary, or Save goes two taps away while
 the text beside it says "unsaved changes".
 
+**Re-measured 2026-09-12, and two of those three findings are closed.** Upload is
+a filled `Button` with its own padding where every sibling is a `TextButton`, so
+there is a primary action; and `GroupBreak()` dividers separate vehicle sync from
+item creation from view control in seven places. Both were fixed without this
+paragraph being updated, which is the same drift the gap list above had.
+
+The third stands, and the number has not moved. Map bounds read off the handset:
+**portrait 67% of screen height, landscape 32%** — 30% by area. The landscape
+bands are status 7, header 15, file row 11, map 32, an empty band 11, nav 6, with
+the plan controls overlaying the map at y600-651 rather than taking a band of
+their own. So chrome still outweighs the canvas about two to one in landscape,
+and the largest single reclaim is the header: 162px of flight telemetry on a tab
+whose job is editing a map. The terrain profile does not hold space when the plan
+is empty, so that is not the cost it looks like.
+
+Not attempted, deliberately: collapsing the header on the Plan tab in landscape
+is a shell-wide product decision, not a map-module fix, and nobody has asked for
+it. Recorded with a current measurement so the decision is available rather than
+rediscovered.
+
 **Boundary import** (`230b5d9`): a site boundary arrives as a file, and
 `insertComplexMissionItemFromKMLOrSHP` had been in `MissionController` all along
 with nothing calling it from a native head. Two things the Android side had to
