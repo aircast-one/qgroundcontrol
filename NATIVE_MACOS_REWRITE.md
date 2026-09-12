@@ -4251,3 +4251,33 @@ they produce byte-identical strings. **Tidying, not a fix**, and said so.
 **THE TEST THAT SEPARATES THEM IS UNIT CHOICE.** A voltage, a distance and a speed have an
 operator-chosen unit and a locale-chosen separator, so the core owns them. **A coordinate has
 neither — degrees are degrees — which is why that one stayed in the head.**
+
+### (uu) The guard I had just called dead was live one file over
+
+`Measure.format` carried a comment saying it *"spells a number the way core-rs read.rs
+format_measure does"*. **It did not.** The core wraps its number in **`settled()`**, which
+strips the sign when every printed digit is a zero. This head's copy had no such guard, so at
+the measured shape — a vehicle on the ground reporting **-0.04** — it drew **`"-0.0 m"`**
+where the core spells **`"0.0 m"`**. `Measure.reading` is what rally points and the launch
+position spell their altitudes with, and **a minus sign in front of an altitude reads as
+"below the launch point" at a glance.**
+
+**The sequencing is the lesson.** I deleted that exact guard from `FlyTelemetry.measure` an
+hour earlier **as dead code** — correctly; it had no caller — and reported the knowledge as
+the core's. **It was dead there and live here**, in a copy of the core's algorithm whose own
+comment asserted fidelity. **The comment is deleted with the defect rather than corrected: it
+was the thing standing between me and looking.**
+
+**Sixth untrue comment today, and the first that was a claim of AGREEMENT with another
+component.** *"This matches X"* is the least checkable kind of comment there is, because
+verifying it means reading a file in another language in another directory.
+
+**A change I made and backed out of.** The guided slider had the same bug and also uses a
+**different precision rule** — a decimal below ten, none above, against the core's hundred. I
+unified them, and **two existing assertions stopped me**: *"a speed the operator can read at a
+glance"* pins the terser rule for a value the operator is **dragging**. **A tested UX decision
+is not an inconsistency to tidy away.** Two precision rules, one shared guard.
+
+**Still not closed:** whether a stationary vehicle reads `-0.0` through `view.instruments`.
+That value is Qt's `valueString` — **neither side formats it, so `settled()` never touches
+it** — and only a connected vehicle can tell.
