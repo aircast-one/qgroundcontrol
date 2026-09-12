@@ -110,6 +110,7 @@ pub mod vehicles;
 pub mod video;
 pub mod videostate;
 pub mod vehiclefacts;
+pub mod operatorcontrol;
 pub mod view;
 pub mod warnings;
 pub mod waypoints;

@@ -221,17 +221,17 @@ mod tests {
         assert_eq!(partial.min_clearance, Some(10.0), "the samples that do have ground still measure, so the number is a bound rather than nothing");
         assert_eq!(partial.unknown_terrain, 1);
 
-        assert_eq!(clearance_complete(&complete), true);
-        assert_eq!(clearance_complete(&partial), false);
+        assert!(clearance_complete(&complete));
+        assert!(!clearance_complete(&partial));
 
         let nothing = profile(Vec::new());
         assert_eq!(nothing.unknown_terrain, 0, "an empty profile has no unknown points, which is why the count is the wrong instrument");
         assert_eq!(nothing.min_clearance, None);
-        assert_eq!(clearance_complete(&nothing), false, "there is no figure, so there is nothing for completeness to be true of");
+        assert!(!clearance_complete(&nothing), "there is no figure, so there is nothing for completeness to be true of");
 
         let no_ground = profile(vec![point(0.0, 700.0, None), point(100.0, 700.0, None)]);
         assert_eq!(no_ground.min_clearance, None, "ground under nothing is not a clearance of zero");
-        assert_eq!(clearance_complete(&no_ground), false);
+        assert!(!clearance_complete(&no_ground));
     }
 
     #[test]
