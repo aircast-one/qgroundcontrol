@@ -2593,6 +2593,30 @@ func checkVehicleMessages() {
 
 checkVehicleMessages()
 
+func checkCameraModeRow() {
+    func camera(mode: Int, text: String) -> CameraControl {
+        CameraControl(["present": true as NSNumber, "hasModes": true as NSNumber,
+                       "mode": mode as NSNumber, "modeText": text,
+                       "canChangeMode": true as NSNumber])
+    }
+    expect(camera(mode: 0, text: "Photo").offersModePicker,
+           "a camera in photo mode gets the segmented picker, which can represent it")
+    expect(camera(mode: 1, text: "Video").offersModePicker,
+           "and so does video")
+    expect(camera(mode: 2, text: "Survey").offersModePicker == false,
+           "but SURVEY does not. video.rs spells three modes -- Photo, Video and Survey -- and the "
+           + "picker carries exactly two tags, so a camera in survey matched NEITHER and SwiftUI "
+           + "drew the segmented control with nothing selected: a blank where the operator looks "
+           + "to see what the camera is doing. The row now draws the core's own modeText instead. "
+           + "A third TAG would have been wrong -- there is no setCameraModeSurvey to invoke, so "
+           + "it would offer a switch the head cannot perform")
+    expect(camera(mode: -1, text: "Not set").offersModePicker == false,
+           "and an undefined mode is the same case: the core already spells it \"Not set\", which "
+           + "is a better answer than an empty segmented control")
+    expect(camera(mode: 2, text: "Survey").modeText, "Survey",
+           "and the word drawn is the core's, not one this head invents for a mode it cannot set")
+}
+
 func checkSetupBlocked() {
     func made(_ name: String, openable: Bool, reason: String?) -> [String: Any] {
         var json: [String: Any] = ["name": name, "className": name + "Component",
@@ -2797,6 +2821,7 @@ checkSetupCache()
 checkChecklistReset()
 checkModeRequest()
 checkSetupBlocked()
+checkCameraModeRow()
 
 final class ProbeStub: Probeable {
     static let probeID = "stub"

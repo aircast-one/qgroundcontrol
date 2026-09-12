@@ -24,6 +24,10 @@ struct CameraControl: Equatable {
     let hasModes: Bool
     let canChangeMode: Bool
 
+    var offersModePicker: Bool {
+        mode == CameraControl.photoMode || mode == CameraControl.videoMode
+    }
+
     static let modeBusy = "The camera is capturing. It will not change mode until that finishes."
 
     static let absent = CameraControl()

@@ -287,7 +287,10 @@ struct FlyPanel: View {
                                  .foregroundColor(video.camera.isRecording ? Overlay.vehicle : .secondary)
                          },
                          trailing: { EmptyView() })
-                if video.camera.hasModes {
+                if video.camera.hasModes, !video.camera.offersModePicker {
+                    GroupRow(title: "Mode", value: video.camera.modeText)
+                }
+                if video.camera.hasModes, video.camera.offersModePicker {
                     GroupRow(title: "Mode", trailing: {
                         Picker("", selection: Binding(
                             get: { video.camera.mode },
