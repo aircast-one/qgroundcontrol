@@ -163,20 +163,16 @@ fun StatusReadingsInline(modifier: Modifier = Modifier) {
     val supportsRadio by qgcBool("vehicle.supportsRadio")
     val battery = remember(batteryJson) { batteryReading(batteryJson) }
     val satellites by qgcString("$GPS.count")
-    val hdop by qgcString("$GPS.hdop")
     val lock by qgcDouble("$GPS.lock")
     val fix = fixLevel(lock)
 
     Row(
-        modifier.alpha(if (live) 1f else 0.45f).horizontalScroll(rememberScrollState()),
+        modifier.alpha(if (live) 1f else 0.45f),
         horizontalArrangement = Arrangement.spacedBy(14.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         battery?.let { InlineCell(it.text, batteryLevelColour(it.level)) }
         fix?.let { InlineCell("${satsText(it, satellites)} sats", gpsColour(it)) }
-        if (fix != FixLevel.None) {
-            hdop.ifBlank { null }?.let { InlineCell("$it HDOP", Color.Unspecified) }
-        }
         val rssi = rcRssi.takeIf { !it.isNaN() }?.toInt()
         rcSignalText(supportsRadio, rssi)?.let {
             InlineCell("$it RC", if (rssi == 0) CRITICAL else Color.Unspecified)
