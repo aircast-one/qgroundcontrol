@@ -4475,3 +4475,30 @@ mine to touch.** Reported rather than acted on.
 **The item was open as "idle CPU attribution" and the attribution is the whole answer.** The
 head was the natural suspect and is measurably innocent; **an eleven-timer poll loop that costs
 zero samples is worth knowing before anyone optimises it.**
+
+### (x2) The core names the frame — and adopting its word blindly would have reintroduced the defect
+
+`e070e1ea8` serves `altitudeFrameText` — checked at HEAD after three cycles of `text-fields.py`
+sitting red on it. **The three-case map is gone; both heads now draw the core's word by
+construction**, closing the live divergence where this head said `"75 m AGL"` and Android said
+`"75 m above ground"` for the same item on the same plan.
+
+**THE FALLBACK STAYS, AND THAT IS THE FINDING.** The core's `frame_word` is
+`match frame { "terrain" => "AGL", "amsl" => "AMSL", _ => "" }` — **the catch-all maps every
+unrecognised token to `""`, the same answer it gives launch-relative.** So a head that simply
+drew the core's word would **spell an unknown frame as the default one, silently** — precisely
+what this head's `GUNDECK` assertion and Android's `SEABED` assertion independently forbid.
+
+**It cannot bite today** (three tokens, two named) and **bites the day a fourth token arrives
+before its word does — which is the order these two changes arrived in tonight.** The head
+takes the core's word when non-empty, draws nothing for launch-relative, and uppercases the raw
+token for anything the core declined to name. **That branch is unreachable now and deliberately
+kept.** Suggested to the core that `Option<&str>` would let a head tell *"no suffix"* from
+*"no idea"* without guessing.
+
+**Proven both ways.** Ignoring the core's word gives `"541 m TERRAIN"` where the requirement is
+`"541 m AGL"`; trusting its empty word for an unknown token gives `"541 m"` where the
+requirement is `"541 m GUNDECK"`.
+
+**The token stays beside the word for branching, and the read/edit edge does not apply** — a
+frame word is read, never typed, unlike the rally and launch altitudes that kept their numbers.
