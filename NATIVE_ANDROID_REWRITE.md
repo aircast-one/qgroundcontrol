@@ -5560,3 +5560,55 @@ the period, so what `VFR_HUD` says is what the position does. The file's
 comments moved to `tools/README.md` under the house rule, and the fact that it
 orbits whether or not it is armed is written down there now — that is the part
 that sent me looking for a head bug.
+
+### The fence and rally round trip is not testable on this rig, 2026-09-12
+
+The 212-item round trip covered `mission.items` only — that plan's `geoFence`
+and `rallyPoints` were empty, so it proved nothing about them. Built one with
+two circles, a polygon and two rally points to close the gap.
+
+**Three findings, in order.**
+
+First, the file was rejected: "That is not a plan file." Caught only by dumping
+frames immediately after the pick — the message clears fast. **My fixture was
+malformed for the third time tonight**, and bisecting four cut-down files
+located it: rally accepted, `breachReturn` accepted, circles and polygons both
+rejected. `QGCFencePolygon::loadFromJson:57` and `QGCFenceCircle::loadFromJson:64`
+each require a **per-object `version`** key, which nothing else in the file does.
+I had checked the section loader and the shape loader and skipped the layer
+between them, where the version lives. With it added the plan reads
+`3 items (takeoff) · 3 fences · 2 rally`.
+
+Second, `loadFromFile` **is not atomic**: the mission loaded and drew while a
+later section failed and the call returned false. A partial plan plus a "not a
+plan file" message is a confusing pair, and it is what made the first attempt
+look like the fence simply had not drawn.
+
+Third, and the reason the gap stays open: **the fake vehicle accepts fences and
+rally and throws them away.** `tools/apmvehicle.py:317` acks any non-zero
+`mission_type` with `MISSION_ACCEPTED` and stores nothing; line 342 reports
+`count = 0` for them on download. So upload showed 3 fences and 2 rally,
+download returned 3 items and neither. No head defect — the protocol is simply
+not implemented in the rig. Teaching the fake per-`mission_type` storage is
+maybe ten lines and would close it.
+
+### The setup sidebar is right for a better reason than the core's table
+
+Checked the core's new firmware-aware `PAGES` (`b5019228b`) for APM regressions:
+none. The sidebar reads Frame, Radio, Flight Modes, Sensors, Power, Motors,
+Safety, Tuning, Remote Support.
+
+**Camera and Lights are absent and always were.** `APMAutoPilotPlugin.cc:115`
+creates the camera component only `if parameterExists(-1, "MNT1_TYPE")`, and
+line 121 creates lights only `if (_vehicle->sub())` — **Lights is ArduSub-only,
+not APM-only.** So `APM_ONLY = ["Camera", "Lights", "Remote Support"]` is a
+level too coarse: one is a vehicle-type condition and one a parameter-existence
+condition, and a firmware flag expresses neither.
+
+This head is right by construction rather than by table: `SetupScreen` lists
+`view.components`, which is `vehicle.autopilotPlugin.vehicleComponents`. The
+nine pages are exactly the components the APM plugin builds unconditionally;
+every conditional one is missing because QGC never created it. QGC has already
+evaluated `MNT1_TYPE`, `sub()` and the version compares, per vehicle rather than
+per firmware. Reported that `vehicleComponents` beats any table for this
+question.
