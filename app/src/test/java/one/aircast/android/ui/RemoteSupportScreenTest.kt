@@ -19,15 +19,6 @@ class RemoteSupportScreenTest {
     }
 
     @Test
-    fun `pwm maps onto the bar and clamps outside the rc range`() {
-        assertEquals(0f, pwmFraction(1000))
-        assertEquals(0.5f, pwmFraction(1500))
-        assertEquals(1f, pwmFraction(2000))
-        assertEquals(0f, pwmFraction(800))
-        assertEquals(1f, pwmFraction(2400))
-    }
-
-    @Test
     fun `a value outside the listed options is not treated as an enum`() {
         val listed = Fact(
             path = "p", name = "ACRO_TRAINER", description = "", units = "",

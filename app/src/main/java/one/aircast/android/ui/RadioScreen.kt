@@ -22,27 +22,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
-import org.json.JSONObject
-import one.aircast.android.bridge.qgcBool
-import one.aircast.android.bridge.qgcDouble
 import one.aircast.android.bridge.qgcPath
-
-private const val CAL = "radioCal"
-
-internal data class AttitudeChannel(
-    val label: String,
-    val mapped: Boolean,
-    val pwm: Int,
-    val reversed: Boolean,
-)
-
-internal fun pwmFraction(pwm: Int): Float =
-    ((pwm - PWM_MIN).toDouble() / (PWM_MAX - PWM_MIN)).toFloat().coerceIn(0f, 1f)
-
-internal fun parseRcValues(json: JSONObject?): List<Int> {
-    val array = json?.optJSONArray("value") ?: return emptyList()
-    return (0 until array.length()).map { array.optInt(it) }
-}
 
 @Composable
 private fun RadioNotice(text: String, modifier: Modifier = Modifier) {
@@ -57,7 +37,7 @@ private fun RadioNotice(text: String, modifier: Modifier = Modifier) {
 }
 
 @Composable
-private fun PwmBar(pwm: Int, modifier: Modifier = Modifier) {
+private fun PwmBar(fraction: Float, modifier: Modifier = Modifier) {
     Box(
         modifier = modifier
             .height(8.dp)
@@ -66,7 +46,7 @@ private fun PwmBar(pwm: Int, modifier: Modifier = Modifier) {
     ) {
         Box(
             Modifier
-                .fillMaxWidth(pwmFraction(pwm))
+                .fillMaxWidth(fraction)
                 .fillMaxSize()
                 .background(MaterialTheme.colorScheme.primary),
         )
@@ -74,7 +54,7 @@ private fun PwmBar(pwm: Int, modifier: Modifier = Modifier) {
 }
 
 @Composable
-private fun AttitudeRow(channel: AttitudeChannel) {
+private fun AttitudeRow(stick: RadioStick) {
     Row(
         modifier = Modifier
             .fillMaxWidth()
@@ -83,11 +63,11 @@ private fun AttitudeRow(channel: AttitudeChannel) {
         horizontalArrangement = Arrangement.spacedBy(12.dp),
     ) {
         Text(
-            text = channel.label,
+            text = stick.title,
             style = MaterialTheme.typography.bodyMedium,
             modifier = Modifier.width(72.dp),
         )
-        if (!channel.mapped) {
+        if (!stick.mapped) {
             Text(
                 text = "Not mapped",
                 style = MaterialTheme.typography.bodySmall,
@@ -95,9 +75,9 @@ private fun AttitudeRow(channel: AttitudeChannel) {
                 modifier = Modifier.weight(1f),
             )
         } else {
-            PwmBar(channel.pwm, Modifier.weight(1f))
+            PwmBar(stick.fraction, Modifier.weight(1f))
             Text(
-                text = if (channel.reversed) "${channel.pwm} R" else "${channel.pwm}",
+                text = if (stick.reversed) "${stick.valueText} R" else stick.valueText,
                 style = MaterialTheme.typography.bodySmall,
                 fontFamily = FontFamily.Monospace,
                 modifier = Modifier.width(64.dp),
@@ -108,40 +88,16 @@ private fun AttitudeRow(channel: AttitudeChannel) {
 
 @Composable
 fun RadioScreen(modifier: Modifier = Modifier) {
-    val hasVehicle by qgcBool("vehicles.activeVehicleAvailable")
-    val channelCount by qgcDouble("$CAL.channelCount", 0.0)
-    val rcValuesJson by qgcPath("$CAL.rcValues")
+    val json by qgcPath(RADIO_VIEW)
+    val view = radioView(json)
 
-    val rollMapped by qgcBool("$CAL.rollChannelMapped")
-    val pitchMapped by qgcBool("$CAL.pitchChannelMapped")
-    val yawMapped by qgcBool("$CAL.yawChannelMapped")
-    val throttleMapped by qgcBool("$CAL.throttleChannelMapped")
-
-    val rollPwm by qgcDouble("$CAL.rollChannelRCValue", 1500.0)
-    val pitchPwm by qgcDouble("$CAL.pitchChannelRCValue", 1500.0)
-    val yawPwm by qgcDouble("$CAL.yawChannelRCValue", 1500.0)
-    val throttlePwm by qgcDouble("$CAL.throttleChannelRCValue", 1500.0)
-
-    val rollRev by qgcDouble("$CAL.rollChannelReversed", 0.0)
-    val pitchRev by qgcDouble("$CAL.pitchChannelReversed", 0.0)
-    val yawRev by qgcDouble("$CAL.yawChannelReversed", 0.0)
-    val throttleRev by qgcDouble("$CAL.throttleChannelReversed", 0.0)
-
-    if (!hasVehicle) {
+    if (view == null || !view.connected) {
         RadioNotice("Connect a vehicle to check its radio.", modifier)
         return
     }
 
-    val attitude = listOf(
-        AttitudeChannel("Roll", rollMapped, rollPwm.toInt(), rollRev != 0.0),
-        AttitudeChannel("Pitch", pitchMapped, pitchPwm.toInt(), pitchRev != 0.0),
-        AttitudeChannel("Yaw", yawMapped, yawPwm.toInt(), yawRev != 0.0),
-        AttitudeChannel("Throttle", throttleMapped, throttlePwm.toInt(), throttleRev != 0.0),
-    )
-    val rcValues = parseRcValues(rcValuesJson)
-
     LazyColumn(modifier.fillMaxSize()) {
-        if (channelCount.toInt() == 0) {
+        if (view.channelCount == 0) {
             item(key = "nochannels") {
                 RadioNotice(
                     "No transmitter signal. Turn the transmitter on and check the " +
@@ -151,14 +107,32 @@ fun RadioScreen(modifier: Modifier = Modifier) {
         }
 
         item(key = "attitudeheader") { SectionHeader("Attitude controls") }
-        items(attitude.size, key = { "att${attitude[it].label}" }) { index ->
-            AttitudeRow(attitude[index])
+        items(view.sticks.size, key = { "att${view.sticks[it].title}" }) { index ->
+            AttitudeRow(view.sticks[index])
         }
 
-        item(key = "monitorheader") {
-            SectionHeader("Channel monitor · ${channelCount.toInt()} channels")
+        item(key = "monitorheader") { SectionHeader("Channel monitor") }
+        if (view.summary.isNotBlank()) {
+            item(key = "summary") {
+                Text(
+                    text = view.summary,
+                    style = MaterialTheme.typography.bodySmall,
+                    modifier = Modifier.fillMaxWidth().padding(horizontal = 20.dp, vertical = 4.dp),
+                )
+            }
         }
-        items(rcValues.size, key = { "ch$it" }) { index ->
+        if (view.shortfall.isNotBlank()) {
+            item(key = "shortfall") {
+                Text(
+                    text = view.shortfall,
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.error,
+                    modifier = Modifier.fillMaxWidth().padding(horizontal = 20.dp, vertical = 4.dp),
+                )
+            }
+        }
+        items(view.channels.size, key = { "ch${view.channels[it].label}" }) { index ->
+            val channel = view.channels[index]
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
@@ -167,14 +141,14 @@ fun RadioScreen(modifier: Modifier = Modifier) {
                 horizontalArrangement = Arrangement.spacedBy(12.dp),
             ) {
                 Text(
-                    text = "${index + 1}",
+                    text = channel.label,
                     style = MaterialTheme.typography.bodySmall,
                     fontFamily = FontFamily.Monospace,
                     modifier = Modifier.width(28.dp),
                 )
-                PwmBar(rcValues[index], Modifier.weight(1f))
+                PwmBar(channel.fraction, Modifier.weight(1f))
                 Text(
-                    text = "${rcValues[index]}",
+                    text = channel.valueText,
                     style = MaterialTheme.typography.bodySmall,
                     fontFamily = FontFamily.Monospace,
                     modifier = Modifier.width(48.dp),
@@ -184,7 +158,7 @@ fun RadioScreen(modifier: Modifier = Modifier) {
 
         item(key = "footer") {
             FootNote(
-                "Move each stick and switch — every channel you use should move here. " +
+                "Move each stick and switch \u2014 every channel you use should move here. " +
                     "Calibration stays on the desktop: it needs you holding each stick at " +
                     "its extremes while watching the aircraft, and it rewrites the mapping.",
             )
