@@ -668,8 +668,8 @@ mod reported {
         assert_eq!(listed(json!({ "kind": "object", "sequenceNumber": 4, "isSimpleItem": true, "specifiesAltitude": false }))["altitudeSource"], Value::Null, "a row that states no height at all names no string, rather than naming an empty one");
         let both = listed(json!({ "kind": "object", "sequenceNumber": 5, "isSimpleItem": false, "specifiesCoordinate": true,
             "minAMSLAltitude": 520.0, "maxAMSLAltitude": 560.0, "facts": [ { "property": "altitude", "value": 75.0 } ] }));
-        assert_eq!(both["altitudeBandText"].is_null(), false);
-        assert_eq!(both["altitudeText"].is_null(), false);
+        assert!(!both["altitudeBandText"].is_null());
+        assert!(!both["altitudeText"].is_null());
         assert_eq!(both["altitudeSource"], "band", "the two are mutually exclusive in every plan measured so far, which is an observation and not a guarantee - if a row ever carries both, the band is the one that describes a pattern and this says so rather than leaving each head to pick");
 
         let command = listed(json!({ "kind": "object", "sequenceNumber": 2, "isSimpleItem": true, "specifiesAltitude": false, "altitudeMode": 1 }));

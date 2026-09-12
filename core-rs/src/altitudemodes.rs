@@ -28,7 +28,7 @@ const MODES: &[(i64, &str, &str)] = &[
 pub struct Inputs {
     pub mission: bool,
     pub current: i64,
-    pub supports_terrain_frame: bool,
+    pub holds_altitude_above_terrain: bool,
     pub has_items: bool,
     pub show_absolute: bool,
 }
@@ -36,7 +36,7 @@ pub struct Inputs {
 fn offered(mode: i64, inputs: &Inputs) -> bool {
     let removed = match mode {
         MIXED => !inputs.mission,
-        TERRAIN_FRAME => !inputs.supports_terrain_frame,
+        TERRAIN_FRAME => !inputs.holds_altitude_above_terrain,
         ABSOLUTE => !inputs.show_absolute,
         _ => false,
     };
@@ -67,7 +67,7 @@ pub fn omitted(inputs: &Inputs) -> Vec<Value> {
 fn reason(mode: i64, inputs: &Inputs) -> &'static str {
     match () {
         _ if enabled(mode, inputs) => "",
-        _ if mode == TERRAIN_FRAME && !inputs.supports_terrain_frame => NO_TERRAIN_FRAME,
+        _ if mode == TERRAIN_FRAME && !inputs.holds_altitude_above_terrain => NO_TERRAIN_FRAME,
         _ => NO_ITEMS_YET,
     }
 }
@@ -97,7 +97,7 @@ pub fn altitude_modes_view(backend: &dyn Backend, args: &[String]) -> Value {
     let inputs = Inputs {
         mission: args.first().map(|a| a != "item").unwrap_or(true),
         current: args.get(1).and_then(|a| a.trim().parse().ok()).unwrap_or(-1),
-        supports_terrain_frame: flag(&vehicles, "activeVehicleAvailable") && flag(&vehicle, "supportsTerrainFrame"),
+        holds_altitude_above_terrain: flag(&vehicles, "activeVehicleAvailable") && flag(&vehicle, "supportsTerrainFrame"),
         has_items: flag(&mission, "containsItems"),
         show_absolute: options.get("showMissionAbsoluteAltitude").and_then(Value::as_bool).unwrap_or(true),
     };
@@ -106,7 +106,7 @@ pub fn altitude_modes_view(backend: &dyn Backend, args: &[String]) -> Value {
         "class": "AltitudeModes",
         "context": if inputs.mission { "mission" } else { "item" },
         "current": inputs.current,
-        "holdsAltitudeAboveTerrain": inputs.supports_terrain_frame,
+        "holdsAltitudeAboveTerrain": inputs.holds_altitude_above_terrain,
         "modes": modes(&inputs),
         "omitted": omitted(&inputs),
     })
@@ -117,7 +117,7 @@ mod tests {
     use super::*;
 
     fn base() -> Inputs {
-        Inputs { mission: true, current: RELATIVE, supports_terrain_frame: true, has_items: true, show_absolute: true }
+        Inputs { mission: true, current: RELATIVE, holds_altitude_above_terrain: true, has_items: true, show_absolute: true }
     }
 
     fn raws(inputs: &Inputs) -> Vec<i64> {
@@ -126,10 +126,10 @@ mod tests {
 
     #[test]
     fn a_mode_the_list_does_not_offer_says_why_it_is_not_there() {
-        let vtol = Inputs { mission: true, current: RELATIVE, supports_terrain_frame: true, has_items: true, show_absolute: true };
+        let vtol = Inputs { mission: true, current: RELATIVE, holds_altitude_above_terrain: true, has_items: true, show_absolute: true };
         assert!(omitted(&vtol).is_empty(), "with everything supported nothing is left out, so an empty list is a real answer and not the only answer this can give");
 
-        let plain = Inputs { supports_terrain_frame: false, show_absolute: false, ..vtol };
+        let plain = Inputs { holds_altitude_above_terrain: false, show_absolute: false, ..vtol };
         let left_out = omitted(&plain);
         let named: Vec<i64> = left_out.iter().map(|m| m["raw"].as_i64().unwrap()).collect();
         assert_eq!(named, vec![ABSOLUTE, TERRAIN_FRAME], "a mode removed from the picker is indistinguishable from a mode that never existed, unless the list that dropped it says so");
@@ -148,9 +148,9 @@ mod tests {
     #[test]
     fn a_vehicle_that_cannot_hold_an_altitude_above_terrain_is_not_offered_it() {
         assert_eq!(raws(&base()), [RELATIVE, ABSOLUTE, CALC_ABOVE_TERRAIN, TERRAIN_FRAME, MIXED]);
-        let plain = Inputs { supports_terrain_frame: false, ..base() };
+        let plain = Inputs { holds_altitude_above_terrain: false, ..base() };
         assert_eq!(raws(&plain), [RELATIVE, ABSOLUTE, CALC_ABOVE_TERRAIN, MIXED], "offering a mode the firmware cannot fly is an offer without its gate");
-        let already_on_it = Inputs { supports_terrain_frame: false, current: TERRAIN_FRAME, ..base() };
+        let already_on_it = Inputs { holds_altitude_above_terrain: false, current: TERRAIN_FRAME, ..base() };
         assert!(raws(&already_on_it).contains(&TERRAIN_FRAME), "a mode the plan is already set to stays listed, so an operator can see what they are on and leave it");
     }
 
@@ -159,7 +159,7 @@ mod tests {
         assert!(raws(&base()).contains(&MIXED));
         let item = Inputs { mission: false, ..base() };
         assert!(!raws(&item).contains(&MIXED), "mixed means each item chooses, which is not a choice an item can make");
-        let item_without_terrain = Inputs { mission: false, supports_terrain_frame: false, ..base() };
+        let item_without_terrain = Inputs { mission: false, holds_altitude_above_terrain: false, ..base() };
         assert_eq!(raws(&item_without_terrain), [RELATIVE, ABSOLUTE, CALC_ABOVE_TERRAIN]);
     }
 
