@@ -17,6 +17,9 @@ use crate::modeslots;
 use crate::flystate;
 use crate::geo;
 use crate::adsb;
+use crate::cameradef;
+use crate::cameraproto;
+use crate::joystick;
 use crate::detections;
 use crate::followme;
 use crate::gcsposition;
@@ -66,6 +69,7 @@ pub struct View {
 
 pub const ARGUMENT_MODES: &[(&str, &str)] = &[
     ("view.altitudeModes", "item,<index>"),
+    ("view.cameraDefinition", "<file path>[,<locale>]"),
     ("view.control", "<fact path>"),
     ("view.guidedAltitude", "<metres>"),
     ("view.guidedSpeed", "<metres per second>"),
@@ -162,6 +166,9 @@ pub const VIEWS: &[View] = &[
     View { path: "view.coreCalibration", deps: &[], compute: hub::core_calibration_view },
     View { path: "view.detections", deps: detections::DEPS, compute: detections::detections_view },
     View { path: "view.adsbTraffic", deps: adsb::DEPS, compute: adsb::adsb_traffic_view },
+    View { path: "view.cameraDefinition", deps: cameradef::DEPS, compute: cameradef::camera_definition_view },
+    View { path: "view.cameraProtocol", deps: &[], compute: cameraproto::protocol_view },
+    View { path: "view.joystickMapping", deps: &[], compute: joystick::joystick_view },
     View { path: "view.followMe", deps: followme::DEPS, compute: followme::follow_me_view },
     View { path: "view.gcsPosition", deps: &[], compute: gcsposition::gcs_position_view },
     View { path: "view.gimbal", deps: &[], compute: gimbal::gimbal_view },
