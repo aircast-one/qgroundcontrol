@@ -6600,3 +6600,34 @@ Third instance today of reading a value without confirming in the same
 observation that the state it describes was reached. The other two were the
 Fence button (disabled by my own gate, not by the plan's contents) and
 `enabled=` on a node that is always enabled. One dump, grep both.
+
+### Retraction: the maxProtoVersion explanation
+
+`31b9555`'s message says `supported()` is false on this rig because
+`maxProtoVersion() >= 200` fails, "my fake never advertises MAVLINK2 and is
+never asked for capabilities". Both halves are wrong.
+
+- `Vehicle.cc:208` initialises `_maxProtoVersion` to **200** in the constructor,
+  so the protocol term is true by default. I cited the source and reasoned
+  against it.
+- `grep -c 'AUTOPILOT_VERSION sent'` on the vehicle log read **0** when I took it
+  and **5** on the next process. The zero described a window in a log that had
+  been restarted under me, not the session. QGC does request capabilities here.
+
+So the elimination — "the fence bit stayed at its permissive default, therefore
+the protocol term must be the false one" — rested on a false premise. **Which
+conjunct of `supported()` is false on this rig is unmeasured**, and the Android
+rig has no bridge probe to read `capabilityBits` or `maxProtoVersion` directly.
+
+What survives is the source reading: `_capabilityBits` defaults to
+`MISSION_FENCE | MISSION_RALLY`, `supported()` never consults
+`capabilitiesKnown()`, and it ANDs two terms that fail for unrelated reasons.
+That is enough to justify the core's three-valued field without any rig evidence
+at all — which is how it should have been argued in the first place.
+
+**The pattern, fourth instance today:** a number read from a log, a node, or a
+screen that was not the world being described. The others were an `enabled=`
+attribute that could not vary, a plan state I never confirmed, and a peer's
+default string I repeated as a vehicle refusal. This one is the most dangerous
+of the four because the log file *was* the right instrument — it had simply been
+rotated between the event and the reading.
