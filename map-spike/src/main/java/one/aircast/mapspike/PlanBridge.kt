@@ -72,6 +72,7 @@ data class MissionItem(
     val speedChangeText: String = "",
     val foldedCommands: Int = 0,
     val altitudeFrame: String = "",
+    val complexPattern: Boolean = false,
 )
 
 fun routeEndsAfter(items: JSONArray?): Int =
@@ -117,6 +118,7 @@ fun allMissionItems(json: JSONObject?): List<MissionItem> {
             speedChangeText = element.optText("speedChangeText"),
             foldedCommands = element.optInt("foldedCommands"),
             altitudeFrame = element.optText("altitudeFrame"),
+            complexPattern = !element.optBoolean("simple", true),
             routed = element.optBoolean("flownLeg") && index <= endsAfter,
             afterRouteEnds = index > endsAfter,
             placed = at != null,

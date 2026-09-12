@@ -119,7 +119,7 @@ fun surveyStats(view: org.json.JSONObject?): SurveyStats? {
 }
 
 fun surveyStatsFor(items: List<MissionItem>): Map<Int, SurveyStats> =
-    items.filter { it.kind == KIND_SURVEY }
+    items.filter { it.complexPattern }
         .mapNotNull { item ->
             surveyStats(
                 runCatching {
