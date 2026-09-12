@@ -2879,3 +2879,27 @@ would be wrong for a corridor, which needs 2. The core serves it correctly for b
 (ring 3, line 2), so the fallback is unreachable and I am not inventing a fix for a
 state I cannot produce. Worth knowing that `EditablePolygon` is decoded inline in a
 store, which is exactly the blind spot `null-fallbacks.py` documents.
+
+### A fallback test that never crossed its own boundary, 2026-09-12
+
+Android caught this in their tree and it was true in mine. Every "absent" case in the
+three new checks was written as `view["key"] = optional`, and **assigning nil to a
+Swift dictionary removes the key.** So all of them tested the KEY-ABSENT branch and
+none tested the one that actually travels: `60141bb0c` established that the bridge
+carries three states, and what the core really sends for "no value" is a **key held
+at null**. The fallback existed for a boundary no assertion crossed.
+
+Both paths do reach nil through `as? NSNumber`, so the code was right — but it was
+right unverified, which is the same species as a fixture sharing an author with its
+implementation. An explicit `NSNull()` payload is now asserted, and a mutation that
+substitutes a value for the null fails it.
+
+**The two sweeps are complements, not rivals — Android's correction to my corpus
+point.** Mine reads LIVE payloads: it sees only what the plan I built produced, so a
+simple plan hid `exitCoordinate`, `patternDistance` and `foldedCommands`. It
+**under-reports**. Theirs reads the core's SOURCE: every key the core can ever emit,
+including ones no reachable state produces. It **over-reports** — their 333 is
+inflated by exactly what mine filters for free. Source gives the universe, live gives
+reachability. Run theirs for candidates and mine to sort them; a key in one and not
+the other is either unreachable or wants a richer plan, and which of those it is, is
+the question worth asking.

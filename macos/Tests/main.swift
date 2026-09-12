@@ -4321,6 +4321,16 @@ func checkAnItemSaysHowManyCommandsItFolds() {
            "and an item that never reported a last sequence is silent rather than claiming it "
            + "folds none: the core sends null there instead of zero, precisely so the two stay "
            + "distinguishable, and a head collapsing them throws that away")
+    expect(MissionItem(view: ["index": 2 as NSNumber, "sequence": 2 as NSNumber,
+                              "name": "Survey", "kind": "survey",
+                              "foldedCommands": NSNull(), "extraSeconds": NSNull(),
+                              "speedChangeText": NSNull()], selected: -1)
+        .subtitle(unreached: false), "",
+           "and an EXPLICIT null is silent too, which is the case that actually travels: the "
+           + "core distinguishes value, null and absent, and a key held at null is what it "
+           + "really sends. Assigning nil to a Swift dictionary REMOVES the key, so every other "
+           + "assertion here tests the absent branch and none of them crossed the boundary the "
+           + "fallback exists for")
     expect(item(folds: 1, speed: "9.0 m/s").subtitle(unreached: false),
            "Flies at 9.0 m/s \u{00B7} 1 more command",
            "the singular loses its s. A waypoint that commands a speed folds exactly one -- the "
