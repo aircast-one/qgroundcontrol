@@ -12,6 +12,7 @@ fn kind(settings_url: &str) -> &'static str {
         "SerialSettings.qml" => "serial",
         "BluetoothSettings.qml" => "bluetooth",
         "LogReplaySettings.qml" => "logReplay",
+        "MockLinkSettings.qml" => "mock",
         _ => "other",
     }
 }

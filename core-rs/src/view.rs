@@ -19,6 +19,8 @@ use crate::operatorcontrol;
 use crate::geo;
 use crate::adsb;
 use crate::cameradef;
+use crate::debugapi;
+use crate::packetradio;
 use crate::geotag;
 use crate::gpsrtk;
 use crate::videostate;
@@ -74,7 +76,9 @@ pub struct View {
 pub const ARGUMENT_MODES: &[(&str, &str)] = &[
     ("view.altitudeModes", "item,<index>"),
     ("view.cameraDefinition", "<file path>[,<locale>]"),
+    ("view.debugApi", "<method>,<path>[,<query>]"),
     ("view.geoTag", "<file path>[,<tolerance seconds>]"),
+    ("view.packetRadio", "<status>[,<adapter>[,<stats>]]"),
     ("view.gpsRtkBase", "<gps type>"),
     ("view.videoSource", "<source>[,<url>[,<rtsp timeout seconds>]]"),
     ("view.control", "<fact path>"),
@@ -180,7 +184,9 @@ pub const VIEWS: &[View] = &[
     View { path: "view.followMe", deps: followme::DEPS, compute: followme::follow_me_view },
     View { path: "view.gcsPosition", deps: &[], compute: gcsposition::gcs_position_view },
     View { path: "view.gimbal", deps: &[], compute: gimbal::gimbal_view },
+    View { path: "view.debugApi", deps: debugapi::DEPS, compute: debugapi::debug_api_view },
     View { path: "view.geoTag", deps: geotag::DEPS, compute: geotag::geotag_view },
+    View { path: "view.packetRadio", deps: &[], compute: packetradio::packet_radio_view },
     View { path: "view.gpsRtkBase", deps: &[], compute: gpsrtk::base_view },
     View { path: "view.videoSource", deps: videostate::DEPS, compute: videostate::video_source_view },
     View { path: "view.kmlFile", deps: kml::DEPS, compute: kml::kml_view },
