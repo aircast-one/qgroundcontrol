@@ -1,49 +1,19 @@
 package one.aircast.android.ui
 
-import java.util.Locale
-import kotlin.math.roundToInt
+import one.aircast.mapspike.optText
+import org.json.JSONObject
 
-data class Obstacle(val metres: Double, val bearingDeg: Double)
+internal data class ObstacleWarning(val label: String, val close: Boolean)
 
-private val SECTORS = listOf(
-    "ahead", "ahead right", "right", "behind right",
-    "behind", "behind left", "left", "ahead left",
-)
-
-internal fun bearingSector(bearingDeg: Double): String {
-    val wrapped = ((bearingDeg % 360) + 360) % 360
-    return SECTORS[(((wrapped + 22.5) % 360) / 45).toInt()]
-}
-
-internal fun nearestObstacle(
-    distancesCm: List<Int>,
-    incrementDeg: Double,
-    angleOffsetDeg: Double,
-    minCm: Int,
-    maxCm: Int,
-): Obstacle? {
-    if (incrementDeg <= 0.0 || minCm <= 0 || maxCm <= minCm) {
+internal fun obstacleWarning(view: JSONObject?): ObstacleWarning? {
+    if (view == null || !view.optBoolean("available") || view.optBoolean("stale")) {
         return null
     }
-    return distancesCm.withIndex()
-        .filter { (_, cm) -> cm in minCm..maxCm }
-        .minByOrNull { (_, cm) -> cm }
-        ?.let { (index, cm) ->
-            Obstacle(
-                metres = cm / 100.0,
-                bearingDeg = ((angleOffsetDeg + index * incrementDeg) % 360 + 360) % 360,
-            )
-        }
+    val nearest = view.optJSONObject("nearest") ?: return null
+    val distance = nearest.optText("distanceText").ifBlank { return null }
+    val sector = nearest.optText("sectorText")
+    return ObstacleWarning(
+        label = listOf(distance, sector).filter { it.isNotBlank() }.joinToString(" "),
+        close = nearest.optBoolean("close"),
+    )
 }
-
-internal fun obstacleLabel(obstacle: Obstacle?): String? = obstacle?.let {
-    String.format(Locale.US, "%.1f m %s", it.metres, bearingSector(it.bearingDeg))
-}
-
-internal fun obstacleIsClose(obstacle: Obstacle?, minCm: Int): Boolean =
-    obstacle != null && (obstacle.metres * 100).roundToInt() <= minCm * 2
-
-internal const val OBSTACLE_STALE_MS = 3000L
-
-internal fun obstacleIsStale(msSinceUpdate: Long): Boolean =
-    msSinceUpdate < 0 || msSinceUpdate > OBSTACLE_STALE_MS

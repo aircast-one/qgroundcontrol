@@ -8,53 +8,24 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
-import one.aircast.android.bridge.qgcBool
-import one.aircast.android.bridge.qgcDouble
 import one.aircast.android.bridge.qgcPath
-import org.json.JSONArray
 
-private const val AVOIDANCE = "vehicle.objectAvoidance"
-
-private fun distancesFrom(json: org.json.JSONObject?): List<Int> {
-    val raw = json?.opt("value") as? JSONArray ?: return emptyList()
-    return (0 until raw.length()).map { raw.optInt(it, 65535) }
-}
+private const val OBSTACLE = "view.obstacle"
 
 @Composable
 fun ObstacleReadout(modifier: Modifier = Modifier) {
-    val available by qgcBool("$AVOIDANCE.available")
-    val distancesJson by qgcPath("$AVOIDANCE.distances")
-    val increment by qgcDouble("$AVOIDANCE.increment")
-    val angleOffset by qgcDouble("$AVOIDANCE.angleOffset")
-    val minDistance by qgcDouble("$AVOIDANCE.minDistance")
-    val maxDistance by qgcDouble("$AVOIDANCE.maxDistance")
-    val msSinceUpdate by qgcDouble("$AVOIDANCE.msSinceUpdate")
-
-    // Nothing here is ever cleared, so a sensor that stops leaves the last reading in
-    // place. Without this the readout keeps naming an obstacle that may be long gone.
-    if (!available || obstacleIsStale(msSinceUpdate.toLong())) {
-        return
-    }
-
-    val nearest = nearestObstacle(
-        distancesCm = distancesFrom(distancesJson),
-        incrementDeg = increment,
-        angleOffsetDeg = angleOffset,
-        minCm = minDistance.toInt(),
-        maxCm = maxDistance.toInt(),
-    )
-    val label = obstacleLabel(nearest) ?: return
+    val view by qgcPath(OBSTACLE)
+    val warning = obstacleWarning(view) ?: return
 
     Surface(
         modifier = modifier,
-        color = if (obstacleIsClose(nearest, minDistance.toInt())) {
-            MaterialTheme.colorScheme.errorContainer
-        } else {
-            MaterialTheme.colorScheme.surfaceVariant
+        color = when {
+            warning.close -> MaterialTheme.colorScheme.errorContainer
+            else -> MaterialTheme.colorScheme.surfaceVariant
         },
     ) {
         Text(
-            text = label,
+            text = warning.label,
             style = MaterialTheme.typography.labelLarge,
             modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp),
         )
