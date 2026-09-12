@@ -537,19 +537,20 @@ func checkVehicleReadiness() {
     let ready = VehicleReadiness(["connected": true as NSNumber,
                                   "ready": true as NSNumber, "headline": "Ready to fly",
                                   "detail": "Setup complete and all enabled sensors are healthy."])
-    expect(ready.ready && ready.headline == "Ready to fly",
+    expect(ready.ready == true && ready.headline == "Ready to fly",
            "the summary carries the core's verdict rather than recomputing it")
 
     let faulty = VehicleReadiness(["connected": true as NSNumber, "ready": false as NSNumber,
                                    "headline": "2 sensors reporting a fault",
                                    "detail": "GPS, Pre-Arm Check"])
-    expect(!faulty.ready && faulty.detail == "GPS, Pre-Arm Check",
+    expect(faulty.ready == false && faulty.detail == "GPS, Pre-Arm Check",
            "including the sensor faults, which the core now folds in itself, so this summary no "
            + "longer has to be handed the sensor list by a store that may not have loaded")
 
-    expect(VehicleReadiness([:]) == VehicleReadiness(connected: false, ready: false,
+    expect(VehicleReadiness([:]) == VehicleReadiness(connected: false, ready: nil,
                                                      headline: "", detail: ""),
-           "an empty answer is not ready and says nothing, rather than claiming readiness")
+           "an empty answer gives no verdict and says nothing, rather than claiming readiness -- "
+           + "and it no longer claims the vehicle was checked and found wanting either")
 
     let none = VehicleReadiness(["connected": false as NSNumber,
                                  "headline": "No vehicle connected",
@@ -559,6 +560,14 @@ func checkVehicleReadiness() {
            + "is offered -- the pill read \u{201C}Check\u{201D} beside a sentence saying a vehicle "
            + "must be connected before anything can be checked, an imperative in the shape of a "
            + "button that answers nothing when pressed")
+    expect(none.ready == nil,
+           "and the absent verdict is the core's own since d40192d83, not one this head "
+           + "reconstructs from connected -- ready is three-state now and a bool cannot hold it")
+    expect(VehicleReadiness(["connected": true as NSNumber, "ready": false as NSNumber])
+               .verdict?.text ?? "", "Check",
+           "a connected vehicle reporting no components at all HAS been checked and is not "
+           + "ready, which is a different answer from having nothing to check, and the two were "
+           + "the same false before")
     expect(ready.verdict?.text ?? "", "Ready",
            "a connected vehicle that is ready still says so")
     expect(faulty.verdict?.text ?? "", "Check",

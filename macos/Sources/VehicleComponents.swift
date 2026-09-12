@@ -48,7 +48,8 @@ final class VehicleComponentsStore: ObservableObject, Probeable {
         ["connected": connected, "count": components.count,
          "reloads": reloads, "watching": watchPoll != nil, "pages": pageNames,
          "outstanding": outstanding.map(\.name),
-         "ready": readiness.ready, "headline": readiness.headline, "detail": readiness.detail,
+         "ready": readiness.ready as Any, "verdict": readiness.verdict?.text as Any,
+         "headline": readiness.headline, "detail": readiness.detail,
          "components": components.map {
              ["name": $0.name, "needsAttention": $0.needsAttention]
          }]
