@@ -7,6 +7,7 @@ CONTRACT = os.environ.get(
     "VIEW_SHAPES",
     os.path.expanduser("~/Code/aircast/qgroundcontrol/test/Bridge/fixtures/view-shapes.json"),
 )
+BASELINE = os.path.join(os.path.dirname(os.path.abspath(__file__)), "unread-baseline.txt")
 READS = re.compile(r'\.opt(?:Text|Boolean|Int|Double|JSONObject|JSONArray|String)\(\s*"([A-Za-z][A-Za-z0-9]*)"')
 
 
@@ -19,6 +20,19 @@ def served(node, into):
     elif isinstance(node, list):
         for item in node:
             served(item, into)
+    return into
+
+
+def groups(node, into):
+    if isinstance(node, dict):
+        names = {k for k in node if "." not in k}
+        if len(names) > 1:
+            into.append(names)
+        for value in node.values():
+            groups(value, into)
+    elif isinstance(node, list):
+        for item in node:
+            groups(item, into)
     return into
 
 
@@ -41,7 +55,6 @@ ACCEPTED = {
     "elements": "the bridge's list envelope",
     "facts": "a Fact object read by path, not through a view",
     "enumStrings": "Fact metadata read by path",
-    "enumValues": "Fact metadata read by path",
     "enumIndex": "Fact metadata read by path",
     "bitmaskStrings": "Fact metadata read by path",
     "bitmaskValues": "Fact metadata read by path",
@@ -87,7 +100,30 @@ def main():
         print(f"  STALE ACCEPTANCE: {key} is served now; delete its entry")
     for key, files in unexplained.items():
         print(f"  NOT SERVED: {key:<24} {', '.join(sorted(files))}")
-    return 1 if unexplained or stale else 0
+
+    beside = {}
+    for names in groups(json.load(open(CONTRACT)), []):
+        known = names & set(reads)
+        if not known:
+            continue
+        for name in sorted(names - set(reads) - ACCEPTED.keys()):
+            beside.setdefault(name, set()).update(sorted(known)[:3])
+
+    seen = set()
+    if os.path.exists(BASELINE):
+        seen = {line.strip() for line in open(BASELINE) if line.strip()}
+    fresh = {k: v for k, v in beside.items() if k not in seen}
+    if "--baseline" in sys.argv:
+        with open(BASELINE, "w") as handle:
+            handle.write("\n".join(sorted(beside)) + "\n")
+        print(f"\n  baseline written: {len(beside)} fields unread beside ones this head reads")
+        return 0
+    if fresh:
+        print(f"\n  {len(fresh)} field(s) NEWLY served beside ones this head already reads:")
+        for name, near in sorted(fresh.items()):
+            print(f"    UNREAD BESIDE {', '.join(sorted(near))}: {name}")
+        print("  A field the core adds to a shape you consume is invisible to every other check here.")
+    return 1 if unexplained or stale or fresh else 0
 
 
 if __name__ == "__main__":
